@@ -14,6 +14,21 @@ pub trait SecretStore: Send + Sync {
     fn list(&self) -> Vec<String>;
 }
 
+/// Secret names no feature reads any more: `asr.deepgram` (Deepgram removed, ADR 0067).
+pub const RETIRED_SECRETS: &[&str] = &["asr.deepgram"];
+
+/// Launch migration: delete a retired key the user once saved (from the file store or the Keychain), so it doesn't
+/// linger unused. Only names the store lists are touched (no Keychain lookup for a key that was never saved).
+pub fn drop_retired(store: &dyn SecretStore) {
+    let saved = store.list();
+    for name in RETIRED_SECRETS.iter().filter(|n| saved.iter().any(|s| s == *n)) {
+        match store.set(name, None) {
+            Ok(()) => tracing::info!(name, "retired secret deleted"),
+            Err(e) => tracing::warn!(name, err = %e.message, "couldn't delete a retired secret"),
+        }
+    }
+}
+
 /// Write `bytes` to `file` atomically and owner-only: remove a stale `<file>.tmp` (an existing file keeps its old
 /// mode), create the tmp 0600, write, fsync, rename over the target.
 pub fn write_private_atomic(file: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {

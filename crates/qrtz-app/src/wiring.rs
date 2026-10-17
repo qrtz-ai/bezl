@@ -329,6 +329,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     // One tombstone store for the runtime (undo window) and backup import (skips meetings pending delete).
     let pending = Arc::new(qrtz_storage::PendingDeletes::new(&dirs.data));
     let secrets = b.secrets.unwrap_or_else(|| platform_secrets(&dirs.data));
+    crate::secrets::drop_retired(secrets.as_ref());
     let booted = boot(BootOptions {
         data_dir: dirs.data.clone(),
         events: events.clone(),
