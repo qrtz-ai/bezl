@@ -207,6 +207,24 @@ pub struct TalkWiring {
     pub local: Option<Arc<dyn qrtz_speech::SpeechEngine>>,
     /// The cleanup LLM (production: [`TalkLlm`]).
     pub llm: Arc<dyn CleanupLlmSource>,
+    /// Dev knob `QRTZ_TALK_CLOUD=echo|fail`: the cloud engines are `qrtz_talk::mock::MockCloud` (echo every
+    /// stream, or refuse every connection) instead of real WebSockets. `None` in production.
+    pub cloud: Option<String>,
+}
+
+/// The cloud WebSocket transport: real (tungstenite) unless the `talk_cloud` dev knob picks a mock.
+fn cloud_connector(knob: Option<&str>) -> Arc<dyn qrtz_talk::ws::WsConnector> {
+    use qrtz_talk::contract::Engine;
+    use qrtz_talk::mock::{MockCloud, MockMode};
+    match knob {
+        Some("echo") => Arc::new(MockCloud::new()),
+        Some("fail") => Arc::new(
+            MockCloud::new()
+                .with(Engine::Deepgram, MockMode::Refuse)
+                .with(Engine::Elevenlabs, MockMode::Refuse),
+        ),
+        _ => Arc::new(qrtz_talk::ws::TungsteniteConnector),
+    }
 }
 
 /// Build the service. The on-device engine is today's helper's `dictation.asr` lines until the qrtz speech
@@ -222,7 +240,7 @@ pub fn talk_service(w: TalkWiring) -> TalkService {
         clock: Arc::new(SystemClock::default()),
         ids: Arc::new(RandomIds),
         llm: w.llm,
-        connector: Arc::new(qrtz_talk::ws::TungsteniteConnector),
+        connector: cloud_connector(w.cloud.as_deref()),
         local: w.local.unwrap_or_else(|| asr.clone()),
         helper_asr: asr,
         config: Arc::new(move || config.get()),
@@ -231,4 +249,16 @@ pub fn talk_service(w: TalkWiring) -> TalkService {
         store_io: Arc::new(qrtz_talk::FsIo),
         timeouts: Timeouts::default(),
     })
+}
+
+#[cfg(test)]
+mod cloud_knob_tests {
+    use super::cloud_connector;
+    #[test]
+    fn the_talk_cloud_knob_picks_the_connector() {
+        // Smoke: every value builds a connector (the mock behaviour itself is qrtz-talk's mock tests).
+        for k in [None, Some("echo"), Some("fail"), Some("other")] {
+            let _ = cloud_connector(k);
+        }
+    }
 }

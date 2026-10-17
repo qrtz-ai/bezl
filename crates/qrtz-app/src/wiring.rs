@@ -188,6 +188,8 @@ pub struct DevKnobs {
     pub minilm_base: Option<String>,
     /// `QRTZ_TALK_LLM=fake|hang`: a stand-in cleanup LLM for the talk E2E.
     pub talk_llm: Option<String>,
+    /// `QRTZ_TALK_CLOUD=echo|fail`: the cloud talk engines are `qrtz_talk::mock::MockCloud` (Echo or Refuse).
+    pub talk_cloud: Option<String>,
 }
 
 impl DevKnobs {
@@ -209,6 +211,7 @@ impl DevKnobs {
             minilm_dir: get("QRTZ_MINILM_DIR").map(PathBuf::from),
             minilm_base: get("QRTZ_MINILM_BASE").filter(|v| !v.is_empty()),
             talk_llm: get("QRTZ_TALK_LLM").filter(|v| v == "fake" || v == "hang"),
+            talk_cloud: get("QRTZ_TALK_CLOUD").filter(|v| v == "echo" || v == "fail"),
         }
     }
 }
@@ -517,6 +520,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
                     b.knobs.llm_base_url.clone(),
                     b.knobs.talk_llm.clone(),
                 )),
+                cloud: b.knobs.talk_cloud.clone(),
                 local: b.speech.as_ref().map(|s| {
                     let e = qrtz_speech::spawn::OnDeviceSpeech::new(s.store.clone(), s.opts.clone())
                         .with_attach(attach.clone());
@@ -579,6 +583,30 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
 #[cfg(test)]
 mod knob_tests {
     use super::DevKnobs;
+    #[test]
+    fn the_talk_cloud_knob_is_dev_only_and_validated() {
+        let env = |allow: bool, v: &'static str| {
+            move |k: &str| match k {
+                "QRTZ_TALK_CLOUD" => Some(v.to_string()),
+                "QRTZ_ALLOW_DEV_KNOBS" if allow => Some("1".to_string()),
+                _ => None,
+            }
+        };
+        assert_eq!(DevKnobs::from_vars(false, env(false, "echo")).talk_cloud, None);
+        assert_eq!(
+            DevKnobs::from_vars(false, env(true, "fail"))
+                .talk_cloud
+                .as_deref(),
+            Some("fail")
+        );
+        assert_eq!(
+            DevKnobs::from_vars(true, env(false, "echo"))
+                .talk_cloud
+                .as_deref(),
+            Some("echo")
+        );
+        assert_eq!(DevKnobs::from_vars(true, env(false, "bogus")).talk_cloud, None);
+    }
     #[test]
     fn n87_release_builds_ignore_the_llm_base_url_unless_dev_knobs_are_allowed() {
         let env = |allow: bool| {
