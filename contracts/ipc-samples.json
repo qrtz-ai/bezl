@@ -1,0 +1,704 @@
+{
+  "$comment": "GENERATED from packages/core/src/ipc/samples.ts. Golden request/response per channel (zod output shape) + idle answers + event payloads. Do not edit; run `npm run gen:contracts`.",
+  "channels": {
+    "app:get-info": {
+      "request": null,
+      "response": {
+        "name": "qrtz",
+        "version": "0.1.0",
+        "platform": "darwin",
+        "arch": "arm64",
+        "electron": "tauri 2"
+      }
+    },
+    "config:get": {
+      "request": null,
+      "response": {}
+    },
+    "config:set": {
+      "request": {
+        "patch": {
+          "theme": "light"
+        }
+      },
+      "response": {
+        "theme": "light"
+      }
+    },
+    "secrets:set": {
+      "request": {
+        "name": "llm.openrouter",
+        "value": "sk-test"
+      },
+      "response": {
+        "ok": true
+      }
+    },
+    "secrets:list": {
+      "request": null,
+      "response": [],
+      "idle": []
+    },
+    "db:health": {
+      "request": null,
+      "response": {
+        "ok": true,
+        "schemaVersion": 5,
+        "fts5": true
+      }
+    },
+    "helper:status": {
+      "request": null,
+      "response": {
+        "state": "running",
+        "restarts": 0
+      }
+    },
+    "permissions:get": {
+      "request": null,
+      "response": {
+        "accessibility": "unknown",
+        "screen-recording": "unknown",
+        "microphone": "unknown"
+      },
+      "idle": {
+        "accessibility": "unknown",
+        "screen-recording": "unknown",
+        "microphone": "unknown"
+      }
+    },
+    "permissions:request": {
+      "request": {
+        "permission": "microphone"
+      },
+      "response": {
+        "accessibility": "unknown",
+        "screen-recording": "unknown",
+        "microphone": "granted"
+      }
+    },
+    "note:session": {
+      "request": null,
+      "response": {
+        "phase": "idle",
+        "elapsedMs": 0,
+        "participants": [],
+        "level": 0,
+        "lines": [],
+        "partial": "",
+        "helper": "ok",
+        "paused": false,
+        "degraded": []
+      },
+      "idle": {
+        "phase": "idle",
+        "elapsedMs": 0,
+        "participants": [],
+        "level": 0,
+        "lines": [],
+        "partial": "",
+        "helper": "ok",
+        "paused": false,
+        "degraded": []
+      }
+    },
+    "note:start": {
+      "request": {
+        "title": "Standup"
+      },
+      "response": {
+        "phase": "recording",
+        "elapsedMs": 0,
+        "participants": [],
+        "level": 0,
+        "lines": [],
+        "partial": "",
+        "helper": "ok",
+        "paused": false,
+        "degraded": [],
+        "meetingId": "00000000-0000-4000-8000-000000000001",
+        "startedAt": 1760659200000
+      }
+    },
+    "note:stop": {
+      "request": null,
+      "response": {
+        "phase": "processing",
+        "elapsedMs": 0,
+        "participants": [],
+        "level": 0,
+        "lines": [],
+        "partial": "",
+        "helper": "ok",
+        "paused": false,
+        "degraded": [],
+        "meetingId": "00000000-0000-4000-8000-000000000001",
+        "startedAt": 1760659200000,
+        "stopReason": "manual"
+      }
+    },
+    "note:pipeline": {
+      "request": {
+        "id": "00000000-0000-4000-8000-000000000001"
+      },
+      "response": {
+        "meetingId": "00000000-0000-4000-8000-000000000001",
+        "stopReason": "manual",
+        "steps": {
+          "finalize": {
+            "status": "done",
+            "attempts": 1,
+            "maxAttempts": 3
+          },
+          "summary": {
+            "status": "done",
+            "attempts": 1,
+            "maxAttempts": 3
+          },
+          "index": {
+            "status": "done",
+            "attempts": 1,
+            "maxAttempts": 3
+          }
+        },
+        "updatedAt": 1760661001000
+      },
+      "idle": null
+    },
+    "note:retry-step": {
+      "request": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "step": "summary"
+      },
+      "response": {
+        "meetingId": "00000000-0000-4000-8000-000000000001",
+        "stopReason": "manual",
+        "steps": {
+          "finalize": {
+            "status": "done",
+            "attempts": 1,
+            "maxAttempts": 3
+          },
+          "summary": {
+            "status": "done",
+            "attempts": 1,
+            "maxAttempts": 3
+          },
+          "index": {
+            "status": "done",
+            "attempts": 1,
+            "maxAttempts": 3
+          }
+        },
+        "updatedAt": 1760661001000
+      }
+    },
+    "note:live-transcript": {
+      "request": {
+        "meetingId": "00000000-0000-4000-8000-000000000001"
+      },
+      "response": {
+        "meetingId": "00000000-0000-4000-8000-000000000001",
+        "rev": 2,
+        "segments": [
+          {
+            "id": "u1",
+            "text": "Let's start.",
+            "startMs": 0,
+            "endMs": 1200,
+            "speaker": "Ada Lovelace"
+          }
+        ],
+        "partial": {
+          "id": "u2",
+          "text": "sounds",
+          "startMs": 1300
+        }
+      },
+      "idle": null
+    },
+    "note:dismiss": {
+      "request": null,
+      "response": {
+        "phase": "idle",
+        "elapsedMs": 0,
+        "participants": [],
+        "level": 0,
+        "lines": [],
+        "partial": "",
+        "helper": "ok",
+        "paused": false,
+        "degraded": []
+      },
+      "idle": {
+        "phase": "idle",
+        "elapsedMs": 0,
+        "participants": [],
+        "level": 0,
+        "lines": [],
+        "partial": "",
+        "helper": "ok",
+        "paused": false,
+        "degraded": []
+      }
+    },
+    "note:list": {
+      "request": {
+        "query": ""
+      },
+      "response": [
+        {
+          "meeting": {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "title": "Weekly Product Sync",
+            "platform": "google-meet",
+            "startedAt": 1760659200000,
+            "endedAt": 1760661000000,
+            "participants": [
+              "Ada Lovelace",
+              "Grace Hopper"
+            ],
+            "status": "done",
+            "durationMs": 1800000
+          }
+        }
+      ],
+      "idle": []
+    },
+    "note:get": {
+      "request": {
+        "id": "00000000-0000-4000-8000-000000000001"
+      },
+      "response": {
+        "meeting": {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "title": "Weekly Product Sync",
+          "platform": "google-meet",
+          "startedAt": 1760659200000,
+          "endedAt": 1760661000000,
+          "participants": [
+            "Ada Lovelace",
+            "Grace Hopper"
+          ],
+          "status": "done",
+          "durationMs": 1800000
+        },
+        "segments": [
+          {
+            "id": "s1",
+            "startMs": 0,
+            "endMs": 1200,
+            "text": "Let's start.",
+            "speakerName": "Ada Lovelace",
+            "source": "live"
+          }
+        ],
+        "summary": {
+          "summary": "Agreed to ship the beta on Friday.",
+          "actionItems": [
+            {
+              "text": "Ship the beta",
+              "owner": "Ada Lovelace"
+            }
+          ],
+          "qa": [
+            {
+              "question": "Is QA done?",
+              "answer": "Yes.",
+              "askedBy": "Grace Hopper"
+            }
+          ],
+          "provider": "extractive"
+        },
+        "notes": [
+          {
+            "id": "n1",
+            "atMs": 1000,
+            "text": "Follow up on pricing",
+            "createdAt": 1760659200000
+          }
+        ]
+      }
+    },
+    "note:export": {
+      "request": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "save": false
+      },
+      "response": {
+        "filename": "weekly-product-sync.md",
+        "markdown": "# Weekly Product Sync\n"
+      }
+    },
+    "note:resummarize": {
+      "request": {
+        "id": "00000000-0000-4000-8000-000000000001"
+      },
+      "response": {
+        "summary": "Agreed to ship the beta on Friday.",
+        "actionItems": [
+          {
+            "text": "Ship the beta",
+            "owner": "Ada Lovelace"
+          }
+        ],
+        "qa": [
+          {
+            "question": "Is QA done?",
+            "answer": "Yes.",
+            "askedBy": "Grace Hopper"
+          }
+        ],
+        "provider": "extractive"
+      }
+    },
+    "note:set-auto-record": {
+      "request": {
+        "enabled": true
+      },
+      "response": {
+        "autoRecord": true
+      }
+    },
+    "note:chat": {
+      "request": {
+        "question": "What did we agree?"
+      },
+      "response": {
+        "answer": "Ship the beta on Friday [1].",
+        "sources": [
+          {
+            "meetingId": "00000000-0000-4000-8000-000000000001",
+            "title": "Weekly Product Sync",
+            "startedAt": 1760659200000,
+            "startMs": 0,
+            "text": "Ship it Friday."
+          }
+        ],
+        "provider": "extractive"
+      }
+    },
+    "note:rename-speaker": {
+      "request": {
+        "meetingId": "00000000-0000-4000-8000-000000000001",
+        "from": "Speaker 1",
+        "to": "Ada"
+      },
+      "response": {
+        "changed": 3
+      }
+    },
+    "note:delete": {
+      "request": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "deferMs": 5000
+      },
+      "response": {
+        "ok": true
+      }
+    },
+    "note:undo-delete": {
+      "request": {
+        "id": "00000000-0000-4000-8000-000000000001"
+      },
+      "response": {
+        "restored": true
+      }
+    },
+    "note:add-note": {
+      "request": {
+        "text": "Follow up on pricing"
+      },
+      "response": {
+        "id": "n1",
+        "atMs": 1000,
+        "text": "Follow up on pricing",
+        "createdAt": 1760659200000,
+        "meetingId": "00000000-0000-4000-8000-000000000001"
+      }
+    },
+    "note:update-note": {
+      "request": {
+        "id": "n1",
+        "text": "Edited"
+      },
+      "response": {
+        "ok": true
+      }
+    },
+    "note:delete-note": {
+      "request": {
+        "id": "n1"
+      },
+      "response": {
+        "ok": true
+      }
+    },
+    "note:list-notes": {
+      "request": {
+        "meetingId": "00000000-0000-4000-8000-000000000001"
+      },
+      "response": [
+        {
+          "id": "n1",
+          "atMs": 1000,
+          "text": "Follow up on pricing",
+          "createdAt": 1760659200000
+        }
+      ],
+      "idle": []
+    },
+    "note:set-template": {
+      "request": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "template": "standup"
+      },
+      "response": {
+        "summary": "Agreed to ship the beta on Friday.",
+        "actionItems": [
+          {
+            "text": "Ship the beta",
+            "owner": "Ada Lovelace"
+          }
+        ],
+        "qa": [
+          {
+            "question": "Is QA done?",
+            "answer": "Yes.",
+            "askedBy": "Grace Hopper"
+          }
+        ],
+        "provider": "extractive",
+        "template": "standup"
+      }
+    },
+    "hud:set-expanded": {
+      "request": {
+        "expanded": true
+      },
+      "response": {
+        "expanded": true
+      }
+    },
+    "note:pause": {
+      "request": {
+        "paused": true
+      },
+      "response": {
+        "phase": "recording",
+        "elapsedMs": 0,
+        "participants": [],
+        "level": 0,
+        "lines": [],
+        "partial": "",
+        "helper": "ok",
+        "paused": true,
+        "degraded": [],
+        "meetingId": "00000000-0000-4000-8000-000000000001",
+        "startedAt": 1760659200000
+      }
+    },
+    "data:export-backup": {
+      "request": {},
+      "response": {
+        "savedTo": "/tmp/qrtz-backup.zip",
+        "meetings": 1,
+        "audioFiles": 1,
+        "bytes": 1024
+      }
+    },
+    "data:import-backup": {
+      "request": {},
+      "response": {
+        "imported": 1,
+        "skipped": 0,
+        "audioFiles": 1
+      }
+    },
+    "talk:state": {
+      "request": null,
+      "response": {
+        "phase": "idle",
+        "text": "",
+        "partial": "",
+        "level": 0
+      },
+      "idle": {
+        "phase": "idle",
+        "text": "",
+        "partial": "",
+        "level": 0
+      }
+    },
+    "talk:start": {
+      "request": null,
+      "response": {
+        "phase": "listening",
+        "text": "",
+        "partial": "",
+        "level": 0,
+        "id": "t1",
+        "startedAt": 1760659200000,
+        "engine": "on-device"
+      }
+    },
+    "talk:stop": {
+      "request": null,
+      "response": {
+        "phase": "finalizing",
+        "text": "",
+        "partial": "",
+        "level": 0,
+        "id": "t1"
+      }
+    },
+    "talk:cancel": {
+      "request": null,
+      "response": {
+        "phase": "idle",
+        "text": "",
+        "partial": "",
+        "level": 0
+      },
+      "idle": {
+        "phase": "idle",
+        "text": "",
+        "partial": "",
+        "level": 0
+      }
+    },
+    "talk:history": {
+      "request": null,
+      "response": [],
+      "idle": []
+    },
+    "talk:delete-entry": {
+      "request": {
+        "id": "t1"
+      },
+      "response": {
+        "ok": true
+      }
+    },
+    "talk:clear-history": {
+      "request": null,
+      "response": {
+        "ok": true
+      }
+    },
+    "talk:copy": {
+      "request": {
+        "id": "t1"
+      },
+      "response": {
+        "ok": true
+      }
+    },
+    "talk:dictionary": {
+      "request": null,
+      "response": [],
+      "idle": []
+    },
+    "talk:set-dictionary": {
+      "request": {
+        "entries": [
+          {
+            "term": "qrtz",
+            "aliases": [
+              "quartz"
+            ]
+          }
+        ]
+      },
+      "response": [
+        {
+          "term": "qrtz",
+          "aliases": [
+            "quartz"
+          ]
+        }
+      ]
+    }
+  },
+  "events": {
+    "helper:status": {
+      "state": "running",
+      "restarts": 0
+    },
+    "config:changed": {
+      "theme": "dark"
+    },
+    "note:session": {
+      "phase": "recording",
+      "elapsedMs": 0,
+      "participants": [],
+      "level": 0,
+      "lines": [],
+      "partial": "",
+      "helper": "ok",
+      "paused": false,
+      "degraded": [],
+      "meetingId": "00000000-0000-4000-8000-000000000001",
+      "startedAt": 1760659200000
+    },
+    "note:pipeline": {
+      "meetingId": "00000000-0000-4000-8000-000000000001",
+      "stopReason": "manual",
+      "steps": {
+        "finalize": {
+          "status": "done",
+          "attempts": 1,
+          "maxAttempts": 3
+        },
+        "summary": {
+          "status": "done",
+          "attempts": 1,
+          "maxAttempts": 3
+        },
+        "index": {
+          "status": "done",
+          "attempts": 1,
+          "maxAttempts": 3
+        }
+      },
+      "updatedAt": 1760661001000
+    },
+    "note:transcript": {
+      "meetingId": "00000000-0000-4000-8000-000000000001",
+      "baseRev": 1,
+      "rev": 2,
+      "append": [
+        {
+          "id": "u1",
+          "text": "Let's start.",
+          "startMs": 0,
+          "endMs": 1200
+        }
+      ],
+      "partial": null
+    },
+    "note:changed": {
+      "id": "00000000-0000-4000-8000-000000000001"
+    },
+    "data:backup-progress": {
+      "kind": "export",
+      "phase": "write",
+      "done": 1,
+      "total": 2
+    },
+    "talk:state": {
+      "phase": "idle",
+      "text": "",
+      "partial": "",
+      "level": 0
+    },
+    "talk:history-changed": {
+      "id": "t1"
+    },
+    "permissions:changed": {
+      "accessibility": "unknown",
+      "screen-recording": "unknown",
+      "microphone": "unknown"
+    }
+  }
+}

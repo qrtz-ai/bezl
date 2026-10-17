@@ -152,3 +152,16 @@ pub fn issues(v: &Validator, value: &Value) -> Vec<Value> {
         })
         .collect()
 }
+
+/// Golden samples (packages/core/src/ipc/samples.ts → contracts/ipc-samples.json).
+pub const SAMPLES_JSON: &str = include_str!("../../../contracts/ipc-samples.json");
+
+pub fn samples() -> &'static Value {
+    static S: OnceLock<Value> = OnceLock::new();
+    S.get_or_init(|| serde_json::from_str(SAMPLES_JSON).expect("ipc-samples.json"))
+}
+
+/// What an empty backend answers on `channel`, if the samples define one.
+pub fn idle_response(channel: &str) -> Option<Value> {
+    samples()["channels"][channel].get("idle").cloned()
+}

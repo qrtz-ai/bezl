@@ -5,7 +5,7 @@ pub mod error;
 pub mod router;
 pub mod subscriptions;
 
-pub use contract::{contract, Contract};
+pub use contract::{contract, idle_response, samples, Contract};
 pub use error::{AppError, ErrorCode};
 pub use router::{no_handler, CallContext, Handler, Router};
 pub use subscriptions::{validate_event, Subscriptions};

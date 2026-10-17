@@ -15,6 +15,11 @@ import {
   eventContract,
   ipcContract,
 } from '@qrtz/core';
+import {
+  eventSamples,
+  idleResponses,
+  ipcSamples,
+} from '@qrtz/core/ipc/samples';
 import { manifests } from './manifests';
 
 /**
@@ -90,7 +95,25 @@ export function renderContracts() {
     helperToHost: schema(HelperToHost, 'input'),
     hostToHelper: schema(HostToHelper, 'input'),
   };
+  const samples = {
+    $comment:
+      'GENERATED from packages/core/src/ipc/samples.ts. Golden request/response per channel (zod output shape) + idle answers + event payloads. Do not edit; run `npm run gen:contracts`.',
+    channels: Object.fromEntries(
+      Object.entries(ipcSamples).map(([name, s]) => [
+        name,
+        {
+          request: s.request ?? null,
+          response: s.response,
+          ...(name in idleResponses
+            ? { idle: idleResponses[name as keyof typeof idleResponses] }
+            : {}),
+        },
+      ]),
+    ),
+    events: eventSamples,
+  };
   return {
+    'contracts/ipc-samples.json': JSON.stringify(samples, null, 2) + '\n',
     'contracts/ipc-contract.json': JSON.stringify(ipc, null, 2) + '\n',
     'contracts/helper-protocol.json': JSON.stringify(helper, null, 2) + '\n',
   };
@@ -108,6 +131,34 @@ describe('generated JSON contracts (consumed by the Rust/Tauri build)', () => {
       ).toBe(true);
     });
   }
+
+  it('golden samples cover every channel and event and are zod-valid output', () => {
+    expect(Object.keys(ipcSamples).sort()).toEqual(
+      Object.keys(ipcContract).sort(),
+    );
+    expect(Object.keys(eventSamples).sort()).toEqual(
+      Object.keys(eventContract).sort(),
+    );
+    for (const [name, def] of Object.entries(ipcContract)) {
+      const s = ipcSamples[name as keyof typeof ipcSamples];
+      const req = def.request.safeParse(s.request);
+      expect(req.success, `${name} request`).toBe(true);
+      const res = def.response.safeParse(s.response);
+      expect(res.success, `${name} response`).toBe(true);
+      // Output-shaped: parsing adds no defaults, so the Rust side can emit it verbatim.
+      expect(res.data, `${name} response is not output-shaped`).toEqual(
+        s.response,
+      );
+      if (name in idleResponses) {
+        const idle = idleResponses[name as keyof typeof idleResponses];
+        expect(def.response.parse(idle), `${name} idle`).toEqual(idle);
+      }
+    }
+    for (const [name, def] of Object.entries(eventContract)) {
+      const p = eventSamples[name as keyof typeof eventSamples];
+      expect(def.payload.parse(p), name).toEqual(p);
+    }
+  });
 
   it('every channel and event capability is held by at least one sub app', () => {
     const held = new Set(manifests.flatMap((m) => m.capabilities));
