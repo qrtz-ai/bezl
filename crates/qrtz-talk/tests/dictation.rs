@@ -267,6 +267,7 @@ async fn warm_mic_is_configured_on_hello() {
     let last = c.last().expect("configure sent");
     assert_eq!(last["warmMic"], true);
     assert_eq!(last["preRollMs"], 500);
+    assert_eq!(last["consumeFn"], true, "talk.blockGlobeKey is on by default");
     assert_eq!(
         last["streamAudio"], false,
         "no audio streaming without an opted-in cloud"

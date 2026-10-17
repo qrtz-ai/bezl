@@ -6,6 +6,8 @@ use serde_json::Value;
 pub struct TalkConfig {
     pub enabled: bool,
     pub push_key: String,
+    /// `talk.blockGlobeKey`: with `fn` as the push key, the helper swallows the Fn/globe events (`consumeFn`).
+    pub block_globe_key: bool,
     pub warm_mic: bool,
     pub pre_roll_ms: i64,
     /// `on-device` | `auto` (= on-device here: the cloud is opt-in) | `elevenlabs`. A legacy `deepgram` (removed engine) is migrated to `auto` by qrtz-app's config loader, and
@@ -28,6 +30,7 @@ impl TalkConfig {
         Self {
             enabled: b("enabled", true),
             push_key: t["pushKey"].as_str().unwrap_or("fn").to_owned(),
+            block_globe_key: b("blockGlobeKey", true),
             warm_mic: b("warmMic", false),
             pre_roll_ms: t["preRollMs"].as_i64().unwrap_or(300).clamp(0, 2000),
             engine: t["engine"].as_str().unwrap_or("auto").to_owned(),

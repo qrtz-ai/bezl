@@ -188,6 +188,7 @@ export default function SettingsView() {
   const talkCfg = (cfg?.talk ?? {}) as {
     enabled?: boolean;
     pushKey?: string;
+    blockGlobeKey?: boolean;
     toggleHotkey?: string;
     warmMic?: boolean;
     engine?: string;
@@ -405,6 +406,15 @@ export default function SettingsView() {
             <option value="">off</option>
           </Select>
         </SettingRow>
+        {(talkCfg.pushKey ?? 'fn') === 'fn'
+          ? toggle(
+              'fn only for talk (no input switch or emoji)',
+              'talk-block-globe',
+              talkCfg.blockGlobeKey,
+              true,
+              (v) => void patchTalk({ blockGlobeKey: v }),
+            )
+          : null}
         <Field label="toggle shortcut">
           <Input
             key={talkCfg.toggleHotkey ?? ''}

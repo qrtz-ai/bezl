@@ -426,6 +426,7 @@ impl TalkService {
             "preRollMs": cfg.pre_roll_ms,
             "streamAudio": stream,
             "pushKey": if cfg.enabled { cfg.push_key.clone() } else { String::new() },
+            "consumeFn": cfg.block_globe_key,
         }));
     }
 

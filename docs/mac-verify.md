@@ -78,6 +78,7 @@ bun start                      # tauri dev (or `bun run make` for the .app + .dm
 - [ ] `mac/Talk.swift` compiles (Linux can't type-check it). Two Parakeet instances are loaded (meeting + dictation), so check memory.
 - [ ] Hold **fn** in TextEdit and speak: the pill shows level and streaming text, and on release the text appears at the caret (`insert.result` method `ax-selected-text`).
 - [ ] Chrome/Slack/VS Code (Electron fields often ignore AX writes): text arrives via `paste`, and the clipboard you had before is restored.
+- [ ] **Fn/globe (fix for Jared's report):** with "Press 🌐 key to" set to change input source (and again set to show emoji), hold and release **fn** for talk: the input source doesn't change and no emoji picker opens. fn+arrow (Home/End) and fn+F-keys still work. Turn off settings → talk → "fn only for talk": the globe action is back. With Accessibility denied (Input Monitoring only), talk still works (listen-only fallback) and the globe action runs.
 - [ ] Input Monitoring / Accessibility denied: a `dictation.hotkey` error is logged and ⌘⇧Space still works.
 - [ ] Warm mic on: the first word isn't clipped (pre-roll), and the mic indicator stays on as expected.
 - [ ] With an ElevenLabs key: the history meta shows the engine. Pull the network mid-dictation and it shows "on-device (fallback)".

@@ -206,8 +206,8 @@ public actor HelperController {
         case .recordingPause: paused = true; send(.log(level: .info, msg: "capture paused"))
         case .recordingResume: paused = false; send(.log(level: .info, msg: "capture resumed"))
         case .shutdown: await shutdown()
-        case .dictationConfigure(let warm, let pre, let stream, let key):
-            await dictation.configure(warmMic: warm, preRollMs: pre, streamAudio: stream, pushKey: key)
+        case .dictationConfigure(let warm, let pre, let stream, let key, let consume):
+            await dictation.configure(warmMic: warm, preRollMs: pre, streamAudio: stream, pushKey: key, consumeFn: consume ?? true)
             _ = await admit(.configure(warmMic: warm))
             watchPermissions()
         case .dictationStart(let id):

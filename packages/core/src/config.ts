@@ -55,6 +55,8 @@ export const ConfigSchema = z.object({
       pushKey: z
         .enum(['fn', 'right-option', 'right-command', 'right-control', ''])
         .default('fn'),
+      /** With fn as the talk key, stop macOS from also running its fn/globe action (input source, emoji). */
+      blockGlobeKey: z.boolean().default(true),
       /** Press once to start, again to stop (Electron accelerator; '' = none). */
       toggleHotkey: z.string().max(60).default('CommandOrControl+Shift+Space'),
       /** Keep the mic open between dictations so the first word isn't clipped (mic indicator stays on). */

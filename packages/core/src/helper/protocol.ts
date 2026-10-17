@@ -268,6 +268,9 @@ export const HostToHelper = z.discriminatedUnion('type', [
     preRollMs: z.number().int().min(0).max(2000),
     streamAudio: z.boolean(),
     pushKey: z.string(),
+    /** With pushKey 'fn': swallow the Fn/globe events so macOS doesn't also run its globe action (switch input
+     * source, emoji). Absent = on (`talk.blockGlobeKey`). */
+    consumeFn: z.boolean().optional(),
   }),
   z.object({ type: z.literal('dictation.start'), id: z.string() }),
   z.object({ type: z.literal('dictation.stop'), id: z.string() }),

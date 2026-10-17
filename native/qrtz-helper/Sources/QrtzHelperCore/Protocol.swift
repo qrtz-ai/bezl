@@ -105,7 +105,8 @@ public enum HostMessage: Equatable, Sendable {
     /// Privacy pause: audio is replaced by silence (timeline stays aligned) and nothing reaches the recogniser.
     case recordingPause
     case recordingResume
-    case dictationConfigure(warmMic: Bool, preRollMs: Int, streamAudio: Bool, pushKey: String)
+    /// consumeFn: nil = not sent (an older host): the helper's default, on.
+    case dictationConfigure(warmMic: Bool, preRollMs: Int, streamAudio: Bool, pushKey: String, consumeFn: Bool? = nil)
     case dictationStart(id: String)
     case dictationStop(id: String)
     case dictationCancel(id: String)
@@ -353,8 +354,10 @@ extension HostMessage {
         case .recordingAbort(let p): return .object(["type": s("recording.abort"), "audioPath": s(p)])
         case .recordingPause: return .object(["type": s("recording.pause")])
         case .recordingResume: return .object(["type": s("recording.resume")])
-        case .dictationConfigure(let warm, let pre, let stream, let key):
-            return .object(["type": s("dictation.configure"), "warmMic": .bool(warm), "preRollMs": n(Double(pre)), "streamAudio": .bool(stream), "pushKey": s(key)])
+        case .dictationConfigure(let warm, let pre, let stream, let key, let consume):
+            var o: [String: JSONValue] = ["type": s("dictation.configure"), "warmMic": .bool(warm), "preRollMs": n(Double(pre)), "streamAudio": .bool(stream), "pushKey": s(key)]
+            if let consume { o["consumeFn"] = .bool(consume) }
+            return .object(o)
         case .dictationStart(let id): return .object(["type": s("dictation.start"), "id": s(id)])
         case .dictationStop(let id): return .object(["type": s("dictation.stop"), "id": s(id)])
         case .dictationCancel(let id): return .object(["type": s("dictation.cancel"), "id": s(id)])
@@ -384,7 +387,9 @@ extension HostMessage {
         case "recording.resume": self = .recordingResume
         case "dictation.configure":
             guard let warm = f.o["warmMic"]?.bool, let stream = f.o["streamAudio"]?.bool else { throw ProtocolError("missing bool") }
-            self = .dictationConfigure(warmMic: warm, preRollMs: Int(try f.num("preRollMs")), streamAudio: stream, pushKey: try f.str("pushKey"))
+            if let c = f.o["consumeFn"], c.bool == nil { throw ProtocolError("consumeFn must be a bool") }
+            self = .dictationConfigure(warmMic: warm, preRollMs: Int(try f.num("preRollMs")), streamAudio: stream, pushKey: try f.str("pushKey"),
+                                       consumeFn: f.o["consumeFn"]?.bool)
         case "dictation.start": self = .dictationStart(id: try f.str("id"))
         case "dictation.stop": self = .dictationStop(id: try f.str("id"))
         case "dictation.cancel": self = .dictationCancel(id: try f.str("id"))

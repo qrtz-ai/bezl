@@ -11,8 +11,9 @@ public protocol MicSource: AnyObject, Sendable {
 
 /// Native key monitor for push-to-talk (Electron global shortcuts only report key-down).
 public protocol HotkeyMonitor: AnyObject, Sendable {
-    /// key: "fn", "right-option", "right-command", "right-control". Returns false if unsupported or not permitted.
-    func start(key: String, onChange: @escaping @Sendable (HotkeyAction) -> Void) -> Bool
+    /// key: "fn", "right-option", "right-command", "right-control". consumeFn: with `fn`, swallow the Fn/globe events
+    /// so macOS doesn't also run its globe action ([`HotkeyFilter`]). Returns false if unsupported or not permitted.
+    func start(key: String, consumeFn: Bool, onChange: @escaping @Sendable (HotkeyAction) -> Void) -> Bool
     func stop()
 }
 
@@ -97,6 +98,7 @@ public actor DictationEngine {
     var warmMic = false
     var streamAudio = false
     var pushKey = ""
+    var consumeFn = true
     var preRoll = PreRollBuffer(capacity: 16_000 * 300 / 1000)
     var micRunning = false
     /// Set by HelperController: the session arbiter owns the mic lifecycle (attachMic/detachMic per its
@@ -123,15 +125,16 @@ public actor DictationEngine {
     public var isMicRunning: Bool { micRunning }
     public var preRollSamples: Int { preRoll.count }
 
-    public func configure(warmMic: Bool, preRollMs: Int, streamAudio: Bool, pushKey: String) {
+    public func configure(warmMic: Bool, preRollMs: Int, streamAudio: Bool, pushKey: String, consumeFn: Bool = true) {
         self.warmMic = warmMic; self.streamAudio = streamAudio
         preRoll.setCapacity(16_000 * preRollMs / 1000)
-        if pushKey != self.pushKey {
+        if pushKey != self.pushKey || consumeFn != self.consumeFn {
             hotkeys?.stop()
             self.pushKey = pushKey
+            self.consumeFn = consumeFn
             if !pushKey.isEmpty, let hk = hotkeys {
                 let send = self.send
-                if !hk.start(key: pushKey, onChange: { send(.hotkey($0)) }) {
+                if !hk.start(key: pushKey, consumeFn: consumeFn, onChange: { send(.hotkey($0)) }) {
                     send(.error(code: "dictation.hotkey", message: "push-to-talk key \(pushKey) unavailable (Input Monitoring / Accessibility?)", fatal: false))
                 }
             }

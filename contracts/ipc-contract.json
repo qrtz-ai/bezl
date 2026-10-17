@@ -8620,6 +8620,7 @@
       "talk": {
         "enabled": true,
         "pushKey": "fn",
+        "blockGlobeKey": true,
         "toggleHotkey": "CommandOrControl+Shift+Space",
         "warmMic": false,
         "preRollMs": 300,
@@ -8814,6 +8815,10 @@
                 ""
               ]
             },
+            "blockGlobeKey": {
+              "default": true,
+              "type": "boolean"
+            },
             "toggleHotkey": {
               "default": "CommandOrControl+Shift+Space",
               "type": "string",
@@ -8881,6 +8886,7 @@
           "required": [
             "enabled",
             "pushKey",
+            "blockGlobeKey",
             "toggleHotkey",
             "warmMic",
             "preRollMs",
