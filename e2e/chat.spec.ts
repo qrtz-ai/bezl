@@ -49,8 +49,16 @@ async function recordStandup(win: Page) {
     timeout: 10_000,
   });
   await win.getByTestId('note-record').click();
+  // Stop only after the line the cross-meeting question needs ("parakeet latency", near the end of the standup): stopping after any
+  // six lines raced it, and the meeting then had nothing to find.
   await until(win, async () => {
     expect(await win.getByTestId('live-segment').count()).toBeGreaterThan(5);
+    expect(
+      await win
+        .getByTestId('live-segment')
+        .filter({ hasText: /parakeet/i })
+        .count(),
+    ).toBeGreaterThan(0);
   });
   await win.getByTestId('note-stop').click();
   await expect(win.getByTestId('note-done')).toBeVisible({ timeout: 20_000 });
