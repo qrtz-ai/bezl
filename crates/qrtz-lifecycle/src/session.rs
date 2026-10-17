@@ -118,6 +118,20 @@ fn close_lost(mut s: RecordingState, at: EpochMs, all: bool) -> RecordingState {
     s
 }
 
+/// N42 (ADR 0034, `HELPER_SCOPED`): flags a helper reports at each recording start, before `recording.started`. They
+/// die with that helper; the next one reports its own while the session is reconnecting.
+const HELPER_SCOPED: [Degradation; 2] = [Degradation::AsrUnavailable, Degradation::AudioUnavailable];
+
+/// `dropHelperScoped` (N42): drops the helper-scoped flags at a helper loss; a source they took away is no longer lost.
+fn drop_helper_scoped(mut s: RecordingState, at: EpochMs) -> RecordingState {
+    if !s.degraded.iter().any(|f| HELPER_SCOPED.contains(f)) {
+        return s;
+    }
+    s.degraded.retain(|f| !HELPER_SCOPED.contains(f));
+    s.device_lost.retain(|f| !HELPER_SCOPED.contains(f));
+    close_lost(s, at, false)
+}
+
 /// `cutChars`: a code-point cut (TS `Array.from(v).slice(0, n)`).
 pub fn cut_chars(v: &str, n: usize) -> String {
     v.chars().take(n).collect()
@@ -351,17 +365,19 @@ pub fn reduce(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> 
                 if s.phase != P::Reconnecting {
                     return None;
                 }
-                // Another loss while reconnecting: count it, keep the original deadline (TS quirk kept).
+                // Another loss while reconnecting: count it, keep the original deadline (TS quirk kept). N42: a
+                // helper that died while reconnecting takes its own start reports with it, too.
                 let r = s.reconnect.as_ref()?;
                 return Some(RecordingState {
                     reconnect: Some(ReconnectInfo {
                         attempt: r.attempt + 1,
                         ..r.clone()
                     }),
-                    ..s.clone()
+                    ..drop_helper_scoped(s.clone(), *at)
                 });
             }
-            // The helper's silence trackers die with it: close every silent stretch at the loss (N29).
+            // The helper's silence trackers die with it: close every silent stretch at the loss (N29). N42: so do
+            // its start reports.
             Some(RecordingState {
                 phase: P::Reconnecting,
                 reconnect: Some(ReconnectInfo {
@@ -369,7 +385,7 @@ pub fn reduce(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> 
                     since: *at,
                     deadline_at: *deadline_at,
                 }),
-                ..close_silent(s.clone(), Some(*at), None)
+                ..drop_helper_scoped(close_silent(s.clone(), Some(*at), None), *at)
             })
         }
         E::HelperRestored { at, audio_path } => {

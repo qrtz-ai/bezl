@@ -4,7 +4,14 @@ import {
   captureGapGuidance,
   captureGapsForPrompt,
 } from './llm';
-import type { SilentSpan } from './lifecycle';
+import {
+  captureReport,
+  initialRecordingState,
+  lifecycleReducer,
+  type LifecycleEvent,
+  type RecordingState,
+  type SilentSpan,
+} from './lifecycle';
 
 const seg = {
   id: 'u0',
@@ -134,5 +141,41 @@ describe('N29 capture gaps in the summary prompt', () => {
       '- 2:00–5:00: no audio at all (nothing was captured)',
     ]);
     expect(captureGapsForPrompt([], undefined, lost)).toEqual([]);
+  });
+
+  it('N42: no source at the start, then a reconnect that brings audio back: only the stretch before the loss is "no audio at all"', () => {
+    const t0 = 1_000_000;
+    const events: LifecycleEvent[] = [
+      { type: 'start-requested', meetingId: 'm', at: t0, audioPath: '/p0' },
+      {
+        type: 'capture-fallback',
+        from: 'screencapturekit',
+        to: null,
+        reason: 'busy',
+        at: t0,
+      },
+      { type: 'start-acked' },
+      {
+        type: 'helper-lost',
+        at: t0 + 2 * min,
+        deadlineAt: t0 + 2 * min + 30_000,
+      },
+      { type: 'helper-restored', at: t0 + 2 * min + 5_000, audioPath: '/p1' },
+      { type: 'stop-requested', reason: 'manual', at: t0 + 30 * min },
+    ];
+    const s = events.reduce<RecordingState>(
+      (st, e) => lifecycleReducer(st, e) ?? st,
+      initialRecordingState(),
+    );
+    expect(s.degraded).toEqual(['transcript-gap']);
+    const cap = captureReport(s)!;
+    expect(cap.lostSpans).toEqual([
+      { source: 'system', startMs: 0, endMs: 2 * min },
+      { source: 'mic', startMs: 0, endMs: 2 * min },
+    ]);
+    // Before N42 both stretches stayed open to the stop: 28 minutes of real transcript were "never summarize".
+    expect(captureGapsForPrompt([], 30 * min, cap.lostSpans)).toEqual([
+      '- 0:00–2:00: no audio at all (nothing was captured)',
+    ]);
   });
 });

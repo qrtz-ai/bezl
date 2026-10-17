@@ -1,0 +1,516 @@
+{
+  "name": "N42-audio-back-after-reconnect",
+  "about": "N42: no audio source and no recogniser could start, then the helper crashed and the new one started both. Those flags are the old helper's start reports and die with it, so the lost stretches end at the loss, the restored part is neither audio-unavailable nor asr-unavailable, and the summary does not drop the transcript after the reconnect as 'no audio at all'. The reconnect gap is padded (H7): the stitched file is meeting length.",
+  "script": [
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permissions.status",
+        "status": {
+          "accessibility": "granted",
+          "screen-recording": "granted",
+          "microphone": "granted"
+        }
+      }
+    },
+    {
+      "op": "call",
+      "fn": "start",
+      "label": "start",
+      "args": {
+        "title": "Standup"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "error",
+        "code": "asr.unavailable",
+        "message": "no speech recogniser available; recording audio only",
+        "fatal": false
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "capture.fallback",
+        "from": "core-audio-tap",
+        "to": "screencapturekit",
+        "reason": "tap creation failed"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "capture.fallback",
+        "from": "screencapturekit",
+        "to": null,
+        "reason": "device busy"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "error",
+        "code": "audio.unavailable",
+        "message": "no audio source could start",
+        "fatal": false
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.started",
+        "audioPath": "$REC/id1.wav"
+      }
+    },
+    {
+      "op": "snapshot",
+      "label": "no-source"
+    },
+    {
+      "op": "advance",
+      "ms": 2000
+    },
+    {
+      "op": "wav",
+      "file": "id1.wav",
+      "ms": 0,
+      "broken": true
+    },
+    {
+      "op": "helperDown",
+      "reason": "exited"
+    },
+    {
+      "op": "snapshot",
+      "label": "lost"
+    },
+    {
+      "op": "advance",
+      "ms": 1000
+    },
+    {
+      "op": "helperUp"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.started",
+        "audioPath": "$REC/id1.p1.wav"
+      }
+    },
+    {
+      "op": "snapshot",
+      "label": "restored"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "asr",
+        "event": {
+          "kind": "final",
+          "utteranceId": "u1",
+          "startMs": 0,
+          "endMs": 1500,
+          "text": "we are back"
+        }
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 3000
+    },
+    {
+      "op": "wav",
+      "file": "id1.p1.wav",
+      "ms": 3000,
+      "broken": false
+    },
+    {
+      "op": "call",
+      "fn": "stop",
+      "label": "stop"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.stopped",
+        "audioPath": "$REC/id1.p1.wav",
+        "durationMs": 3000
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 100
+    }
+  ],
+  "expect": {
+    "trace": {
+      "session": [
+        "idle|-|-|-|-|-|ok",
+        "starting|id1|-|-|-|-|ok",
+        "starting|id1|asr-unavailable|-|-|-|ok",
+        "starting|id1|asr-unavailable,audio-unavailable|-|-|-|ok",
+        "recording|id1|asr-unavailable,audio-unavailable|-|-|-|ok",
+        "reconnecting|id1|-|-|r1|-|ok",
+        "recording|id1|transcript-gap|-|-|-|ok",
+        "stopping|id1|transcript-gap|-|-|-|ok",
+        "processing|id1|transcript-gap|-|-|-|ok",
+        "done|id1|transcript-gap|-|-|-|ok"
+      ],
+      "pipelines": {
+        "id1": [
+          "manual finalize:pending/0 summary:pending/0 index:pending/0 [fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0 lost:system:0-2000 lost:mic:0-2000]",
+          "manual finalize:running/1 summary:pending/0 index:pending/0 [fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0 lost:system:0-2000 lost:mic:0-2000]",
+          "manual finalize:done/1 summary:pending/0 index:pending/0 [fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0 lost:system:0-2000 lost:mic:0-2000]",
+          "manual finalize:done/1 summary:running/1 index:pending/0 [fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0 lost:system:0-2000 lost:mic:0-2000]",
+          "manual finalize:done/1 summary:done/1 index:pending/0 [fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0 lost:system:0-2000 lost:mic:0-2000]",
+          "manual finalize:done/1 summary:done/1 index:running/1 [fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0 lost:system:0-2000 lost:mic:0-2000]",
+          "manual finalize:done/1 summary:done/1 index:done/1 [fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0 lost:system:0-2000 lost:mic:0-2000]"
+        ]
+      },
+      "helper": [
+        "permissions.check",
+        "recording.start $REC/id1.wav",
+        "permissions.check",
+        "recording.start $REC/id1.p1.wav",
+        "recording.stop"
+      ],
+      "transcript": [
+        [
+          0,
+          1,
+          [
+            "p1-u1"
+          ],
+          null
+        ],
+        [
+          1,
+          2,
+          [],
+          null
+        ]
+      ],
+      "changed": [
+        "id1",
+        "id1",
+        "id1",
+        "id1"
+      ],
+      "permissions": [
+        "granted|granted|granted"
+      ],
+      "prompts": []
+    },
+    "results": {
+      "start": {
+        "ok": {
+          "phase": "recording",
+          "meetingId": "id1"
+        }
+      },
+      "stop": {
+        "ok": {
+          "phase": "processing",
+          "meetingId": "id1"
+        }
+      }
+    },
+    "snapshots": {
+      "no-source": {
+        "view": {
+          "phase": "recording",
+          "meetingId": "id1",
+          "startedAt": 1760000000000,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [
+            "asr-unavailable",
+            "audio-unavailable"
+          ],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": {
+          "meetingId": "id1",
+          "rev": 0,
+          "segments": [],
+          "partial": null
+        },
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "recording",
+              1760000000000,
+              null,
+              null,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "recording",
+            "id1"
+          ]
+        },
+        "files": []
+      },
+      "lost": {
+        "view": {
+          "phase": "reconnecting",
+          "meetingId": "id1",
+          "startedAt": 1760000000000,
+          "elapsedMs": 2000,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": {
+            "attempt": 1,
+            "since": 1760000002000,
+            "deadlineAt": 1760000032000
+          },
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": {
+          "meetingId": "id1",
+          "rev": 0,
+          "segments": [],
+          "partial": null
+        },
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "recording",
+              1760000000000,
+              null,
+              null,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "reconnecting",
+            "id1"
+          ]
+        },
+        "files": [
+          [
+            "id1.wav",
+            44
+          ]
+        ]
+      },
+      "restored": {
+        "view": {
+          "phase": "recording",
+          "meetingId": "id1",
+          "startedAt": 1760000000000,
+          "elapsedMs": 3000,
+          "stopReason": null,
+          "degraded": [
+            "transcript-gap"
+          ],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": {
+          "meetingId": "id1",
+          "rev": 0,
+          "segments": [],
+          "partial": null
+        },
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "recording",
+              1760000000000,
+              null,
+              null,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "recording",
+            "id1"
+          ]
+        },
+        "files": [
+          [
+            "id1.wav",
+            44
+          ]
+        ]
+      },
+      "end": {
+        "view": {
+          "phase": "done",
+          "meetingId": "id1",
+          "startedAt": 1760000000000,
+          "elapsedMs": 6000,
+          "stopReason": "manual",
+          "degraded": [
+            "transcript-gap"
+          ],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [
+            [
+              "p1-u1",
+              null,
+              "we are back",
+              3000
+            ]
+          ],
+          "partial": "",
+          "pipeline": "finalize:done/1 summary:done/1 index:done/1"
+        },
+        "live": {
+          "meetingId": "id1",
+          "rev": 2,
+          "segments": [
+            [
+              "p1-u1",
+              null,
+              3000,
+              4500
+            ]
+          ],
+          "partial": null
+        },
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "done",
+              1760000000000,
+              1760000006000,
+              6000,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [
+            [
+              "id1",
+              "p1-u1",
+              "live",
+              3000,
+              4500,
+              null,
+              "we are back"
+            ]
+          ],
+          "summaries": [
+            [
+              "id1",
+              "stub",
+              "STUB summary",
+              null
+            ]
+          ],
+          "notes": [],
+          "pipelines": [
+            [
+              "id1",
+              1,
+              "manual",
+              "finalize:done/1 summary:done/1 index:done/1",
+              3000,
+              true,
+              [
+                "$REC/id1.wav",
+                "$REC/id1.p1.wav"
+              ],
+              0,
+              "fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0 lost:system:0-2000 lost:mic:0-2000"
+            ]
+          ],
+          "session": [
+            "done",
+            "id1"
+          ]
+        },
+        "files": [
+          [
+            "id1.wav",
+            192044
+          ]
+        ]
+      }
+    }
+  }
+}

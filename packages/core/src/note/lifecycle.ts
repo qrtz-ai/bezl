@@ -337,6 +337,30 @@ function closeLost(s: RecordingState, at: number, all = false): RecordingState {
   );
 }
 
+/**
+ * N42 (ADR 0034): flags a helper reports at each recording start, before `recording.started`
+ * (`error{asr.unavailable}`, and `capture.fallback{to: null}` + `error{audio.unavailable}`). They describe that
+ * helper process, so they die with it: the next helper reports its own while the session is `reconnecting`.
+ */
+const HELPER_SCOPED: readonly Degradation[] = [
+  'asr-unavailable',
+  'audio-unavailable',
+];
+
+/** N42: drops the helper-scoped flags at a helper loss (wall clock `at`); a source they took away is no longer lost. */
+function dropHelperScoped(s: RecordingState, at: number): RecordingState {
+  if (!s.degraded.some((f) => HELPER_SCOPED.includes(f))) return s;
+  const keep = (f: Degradation) => !HELPER_SCOPED.includes(f);
+  return closeLost(
+    withList(
+      { ...s, degraded: s.degraded.filter(keep) },
+      'deviceLost',
+      (s.deviceLost ?? []).filter(keep),
+    ),
+    at,
+  );
+}
+
 /** Code-point cut (same in Rust: `chars().take(n)`), so a cut never lands inside a surrogate pair. */
 export const cutChars = (v: string, n: number) =>
   Array.from(v).slice(0, n).join('');
@@ -531,15 +555,16 @@ export function lifecycleReducer(
     case 'helper-lost':
       if (s.phase !== 'recording' && s.phase !== 'starting') {
         if (s.phase !== 'reconnecting') return null;
+        // N42: a helper that died while reconnecting takes its own start reports with it, too.
         return {
-          ...s,
+          ...dropHelperScoped(s, e.at),
           reconnect: { ...s.reconnect!, attempt: s.reconnect!.attempt + 1 },
         };
       }
       // The helper's silence trackers die with it: close every silent stretch at the loss (N29). The new helper
-      // reports afresh; the restart interval itself is the `transcript-gap`.
+      // reports afresh; the restart interval itself is the `transcript-gap`. N42: so do its start reports.
       return {
-        ...closeSilent(s, e.at),
+        ...dropHelperScoped(closeSilent(s, e.at), e.at),
         phase: 'reconnecting',
         reconnect: { attempt: 1, since: e.at, deadlineAt: e.deadlineAt },
       };

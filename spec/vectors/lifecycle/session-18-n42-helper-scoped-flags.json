@@ -1,0 +1,716 @@
+{
+  "kind": "session",
+  "name": "N42: start reports (asr-unavailable, audio-unavailable) die with the helper that sent them; a revoke (no-mic) stays; the next helper's reports while reconnecting stick to the new part",
+  "from": "hardening cycle 9 (N42, ADR 0034)",
+  "initial": null,
+  "steps": [
+    {
+      "event": {
+        "type": "start-requested",
+        "meetingId": "m",
+        "at": 0,
+        "audioPath": "/p0"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0
+      }
+    },
+    {
+      "event": {
+        "type": "degraded",
+        "flag": "asr-unavailable",
+        "at": 0
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [
+          "asr-unavailable"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0
+      }
+    },
+    {
+      "event": {
+        "type": "capture-fallback",
+        "from": "screencapturekit",
+        "to": null,
+        "reason": "busy",
+        "at": 0
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [
+          "asr-unavailable",
+          "audio-unavailable"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0,
+        "fallbacks": [
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "busy",
+            "atMs": 0
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 0
+          },
+          {
+            "source": "mic",
+            "startMs": 0
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "start-acked"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "asr-unavailable",
+          "audio-unavailable"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0,
+        "fallbacks": [
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "busy",
+            "atMs": 0
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 0
+          },
+          {
+            "source": "mic",
+            "startMs": 0
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "helper-lost",
+        "at": 20000,
+        "deadlineAt": 50000
+      },
+      "expect": {
+        "phase": "reconnecting",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0,
+        "fallbacks": [
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "busy",
+            "atMs": 0
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 0,
+            "endMs": 20000
+          },
+          {
+            "source": "mic",
+            "startMs": 0,
+            "endMs": 20000
+          }
+        ],
+        "reconnect": {
+          "attempt": 1,
+          "since": 20000,
+          "deadlineAt": 50000
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "degraded",
+        "flag": "asr-unavailable",
+        "at": 21000
+      },
+      "expect": {
+        "phase": "reconnecting",
+        "degraded": [
+          "asr-unavailable"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0,
+        "fallbacks": [
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "busy",
+            "atMs": 0
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 0,
+            "endMs": 20000
+          },
+          {
+            "source": "mic",
+            "startMs": 0,
+            "endMs": 20000
+          }
+        ],
+        "reconnect": {
+          "attempt": 1,
+          "since": 20000,
+          "deadlineAt": 50000
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "helper-lost",
+        "at": 22000,
+        "deadlineAt": 52000
+      },
+      "expect": {
+        "phase": "reconnecting",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0,
+        "fallbacks": [
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "busy",
+            "atMs": 0
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 0,
+            "endMs": 20000
+          },
+          {
+            "source": "mic",
+            "startMs": 0,
+            "endMs": 20000
+          }
+        ],
+        "reconnect": {
+          "attempt": 2,
+          "since": 20000,
+          "deadlineAt": 50000
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "helper-restored",
+        "at": 23000,
+        "audioPath": "/p1"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1"
+        ],
+        "partOffsetMs": 23000,
+        "meetingId": "m",
+        "startedAt": 0,
+        "fallbacks": [
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "busy",
+            "atMs": 0
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 0,
+            "endMs": 20000
+          },
+          {
+            "source": "mic",
+            "startMs": 0,
+            "endMs": 20000
+          }
+        ],
+        "partOffsetsMs": [
+          0,
+          23000
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "degraded",
+        "flag": "no-mic",
+        "at": 30000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "transcript-gap",
+          "no-mic"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1"
+        ],
+        "partOffsetMs": 23000,
+        "meetingId": "m",
+        "startedAt": 0,
+        "fallbacks": [
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "busy",
+            "atMs": 0
+          }
+        ],
+        "partOffsetsMs": [
+          0,
+          23000
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 0,
+            "endMs": 20000
+          },
+          {
+            "source": "mic",
+            "startMs": 0,
+            "endMs": 20000
+          },
+          {
+            "source": "mic",
+            "startMs": 30000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "capture-degraded",
+        "degraded": [
+          "audio-unavailable"
+        ],
+        "reason": "engine error",
+        "at": 31000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "transcript-gap",
+          "no-mic",
+          "audio-unavailable"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1"
+        ],
+        "partOffsetMs": 23000,
+        "meetingId": "m",
+        "startedAt": 0,
+        "fallbacks": [
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "busy",
+            "atMs": 0
+          }
+        ],
+        "partOffsetsMs": [
+          0,
+          23000
+        ],
+        "deviceLost": [
+          "audio-unavailable"
+        ],
+        "deviceFailures": [
+          {
+            "degraded": [
+              "audio-unavailable"
+            ],
+            "reason": "engine error",
+            "atMs": 31000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 0,
+            "endMs": 20000
+          },
+          {
+            "source": "mic",
+            "startMs": 0,
+            "endMs": 20000
+          },
+          {
+            "source": "mic",
+            "startMs": 30000
+          },
+          {
+            "source": "system",
+            "startMs": 31000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "helper-lost",
+        "at": 40000,
+        "deadlineAt": 70000
+      },
+      "expect": {
+        "phase": "reconnecting",
+        "degraded": [
+          "transcript-gap",
+          "no-mic"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1"
+        ],
+        "partOffsetMs": 23000,
+        "meetingId": "m",
+        "startedAt": 0,
+        "fallbacks": [
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "busy",
+            "atMs": 0
+          }
+        ],
+        "partOffsetsMs": [
+          0,
+          23000
+        ],
+        "deviceFailures": [
+          {
+            "degraded": [
+              "audio-unavailable"
+            ],
+            "reason": "engine error",
+            "atMs": 31000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 0,
+            "endMs": 20000
+          },
+          {
+            "source": "mic",
+            "startMs": 0,
+            "endMs": 20000
+          },
+          {
+            "source": "mic",
+            "startMs": 30000
+          },
+          {
+            "source": "system",
+            "startMs": 31000,
+            "endMs": 40000
+          }
+        ],
+        "reconnect": {
+          "attempt": 1,
+          "since": 40000,
+          "deadlineAt": 70000
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "capture-fallback",
+        "from": "screencapturekit",
+        "to": null,
+        "reason": "busy again",
+        "at": 41000
+      },
+      "expect": {
+        "phase": "reconnecting",
+        "degraded": [
+          "transcript-gap",
+          "no-mic",
+          "audio-unavailable"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1"
+        ],
+        "partOffsetMs": 23000,
+        "meetingId": "m",
+        "startedAt": 0,
+        "partOffsetsMs": [
+          0,
+          23000
+        ],
+        "deviceFailures": [
+          {
+            "degraded": [
+              "audio-unavailable"
+            ],
+            "reason": "engine error",
+            "atMs": 31000
+          }
+        ],
+        "reconnect": {
+          "attempt": 1,
+          "since": 40000,
+          "deadlineAt": 70000
+        },
+        "fallbacks": [
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "busy",
+            "atMs": 0
+          },
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "busy again",
+            "atMs": 41000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 0,
+            "endMs": 20000
+          },
+          {
+            "source": "mic",
+            "startMs": 0,
+            "endMs": 20000
+          },
+          {
+            "source": "mic",
+            "startMs": 30000
+          },
+          {
+            "source": "system",
+            "startMs": 31000,
+            "endMs": 40000
+          },
+          {
+            "source": "system",
+            "startMs": 41000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "helper-restored",
+        "at": 42000,
+        "audioPath": "/p2"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "transcript-gap",
+          "no-mic",
+          "audio-unavailable"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1",
+          "/p2"
+        ],
+        "partOffsetMs": 42000,
+        "meetingId": "m",
+        "startedAt": 0,
+        "deviceFailures": [
+          {
+            "degraded": [
+              "audio-unavailable"
+            ],
+            "reason": "engine error",
+            "atMs": 31000
+          }
+        ],
+        "fallbacks": [
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "busy",
+            "atMs": 0
+          },
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "busy again",
+            "atMs": 41000
+          }
+        ],
+        "partOffsetsMs": [
+          0,
+          23000,
+          42000
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 0,
+            "endMs": 20000
+          },
+          {
+            "source": "mic",
+            "startMs": 0,
+            "endMs": 20000
+          },
+          {
+            "source": "mic",
+            "startMs": 30000
+          },
+          {
+            "source": "system",
+            "startMs": 31000,
+            "endMs": 40000
+          },
+          {
+            "source": "system",
+            "startMs": 41000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "stop-requested",
+        "reason": "manual",
+        "at": 60000
+      },
+      "expect": {
+        "phase": "stopping",
+        "degraded": [
+          "transcript-gap",
+          "no-mic",
+          "audio-unavailable"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1",
+          "/p2"
+        ],
+        "partOffsetMs": 42000,
+        "meetingId": "m",
+        "startedAt": 0,
+        "deviceFailures": [
+          {
+            "degraded": [
+              "audio-unavailable"
+            ],
+            "reason": "engine error",
+            "atMs": 31000
+          }
+        ],
+        "fallbacks": [
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "busy",
+            "atMs": 0
+          },
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "busy again",
+            "atMs": 41000
+          }
+        ],
+        "partOffsetsMs": [
+          0,
+          23000,
+          42000
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 0,
+            "endMs": 20000
+          },
+          {
+            "source": "mic",
+            "startMs": 0,
+            "endMs": 20000
+          },
+          {
+            "source": "mic",
+            "startMs": 30000,
+            "endMs": 60000
+          },
+          {
+            "source": "system",
+            "startMs": 31000,
+            "endMs": 40000
+          },
+          {
+            "source": "system",
+            "startMs": 41000,
+            "endMs": 60000
+          }
+        ],
+        "stopReason": "manual",
+        "stoppedAt": 60000
+      }
+    }
+  ]
+}
