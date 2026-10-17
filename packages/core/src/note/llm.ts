@@ -349,27 +349,98 @@ export function createProvider(
   return make(model);
 }
 
+const clock = (ms: number) => {
+  const t = Math.floor(Math.max(0, ms) / 1000);
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+};
+
+/** Cuts `s` to at most `n` UTF-16 units without leaving a lone surrogate (N21). */
+const cutSafe = (s: string, n: number) => {
+  if (s.length <= n) return s;
+  const c = s.charCodeAt(n);
+  return s.slice(0, c >= 0xdc00 && c <= 0xdfff ? n - 1 : n);
+};
+
+/**
+ * The transcript as prompt text, at most `maxChars`. A transcript over the budget is shown as evenly spaced,
+ * line-aligned windows across the whole meeting (the first window opens at the start, the last one ends at the
+ * end), joined by markers that say which stretch was left out. Cycle 5 (N21): before, only the head and the
+ * tail were kept, so the middle of a meeting over ~1.5 h never reached the summary at all. Still lossy: the
+ * full fix is map-reduce with `qrtz-llm` (ADR 0019, ADR 0022). Whole lines are kept, so no cut lands inside a
+ * character; a single line longer than its window is cut surrogate-safe.
+ */
 export function formatTranscriptForPrompt(
   segments: Segment[],
   maxChars = 60_000,
 ): string {
-  const lines = segments.map((s) => {
-    const t = Math.floor(s.startMs / 1000);
-    const ts = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
-    return `[${ts}] ${s.speakerName ?? s.speaker ?? 'Speaker'}: ${s.text}`;
-  });
+  const lines = segments.map(
+    (s) =>
+      `[${clock(s.startMs)}] ${s.speakerName ?? s.speaker ?? 'Speaker'}: ${s.text}`,
+  );
   const out = lines.join('\n');
   if (out.length <= maxChars) return out;
-  // Head and tail of the budget (N21: the middle of a very long meeting is not summarized). Never cut between
-  // the two halves of a surrogate pair: a lone surrogate is invalid Unicode that providers may reject.
-  const half = Math.floor(maxChars / 2);
-  const low = (i: number) => {
-    const c = out.charCodeAt(i);
-    return c >= 0xdc00 && c <= 0xdfff;
-  };
-  const a = low(half) ? half - 1 : half;
-  const b = low(out.length - half) ? out.length - half + 1 : out.length - half;
-  return out.slice(0, a) + '\n…\n' + out.slice(b);
+  // One window per ~7.5k chars of budget, odd from 3 up so one window sits on the middle of the meeting (a
+  // budget under 15k keeps head + tail). Window j is centered at j/(k-1) of the text: the first one opens at the
+  // start, the last one ends at the end. A gap marker costs at most MARK chars of the budget.
+  const k0 = Math.max(2, Math.min(8, Math.floor(maxChars / 7500)));
+  const k = k0 > 2 && k0 % 2 === 0 ? k0 - 1 : k0;
+  const MARK = 40;
+  const per = Math.max(1, Math.floor((maxChars - (k - 1) * MARK) / k));
+  const starts: number[] = [];
+  let total = 0;
+  for (const l of lines) {
+    starts.push(total);
+    total += l.length + 1;
+  }
+  const n = lines.length;
+  const fits = (used: number, i: number) => used + lines[i]!.length + 1 <= per;
+  // Whole lines, in order, none taken twice. `from`/`to` are line indices, `to` exclusive.
+  const windows: { from: number; to: number; text: string }[] = [];
+  let next = 0;
+  for (let j = 0; j < k - 1 && next < n - 1; j++) {
+    const a = Math.min(
+      Math.max(0, (j / (k - 1)) * total - per / 2),
+      Math.max(0, total - per),
+    );
+    let lo = next;
+    while (lo < n - 1 && starts[lo]! < a) lo++;
+    if (lo >= n - 1) break; // the rest is the last line: the end window takes it
+    let i = lo;
+    let used = 0;
+    while (i < n - 1 && fits(used, i)) used += lines[i++]!.length + 1;
+    if (i === lo) i = lo + 1; // one line longer than the window: its start, cut
+    windows.push({
+      from: lo,
+      to: i,
+      text:
+        i === lo + 1 && !fits(0, lo)
+          ? cutSafe(lines[lo]!, per)
+          : lines.slice(lo, i).join('\n'),
+    });
+    next = i;
+  }
+  // The end window: whole lines back from the last one while they fit, or the start of the last line (its
+  // timestamp and speaker matter more than its last words).
+  let i = n;
+  let used = 0;
+  while (i > next && fits(used, i - 1)) used += lines[--i]!.length + 1;
+  windows.push(
+    i === n
+      ? { from: n - 1, to: n, text: cutSafe(lines[n - 1]!, per) }
+      : { from: i, to: n, text: lines.slice(i).join('\n') },
+  );
+  let r = '';
+  let prevTo = 0;
+  for (const w of windows) {
+    if (r)
+      r +=
+        w.from > prevTo
+          ? `\n[… ${clock(segments[prevTo]!.startMs)}–${clock(segments[w.from - 1]!.startMs)} not shown …]\n`
+          : '\n';
+    r += w.text;
+    prevTo = w.to;
+  }
+  return r;
 }
 
 export function buildSummaryPrompt(

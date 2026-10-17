@@ -1,6 +1,6 @@
 /**
- * Hardening cycle 4: huge transcripts against the LLM prompt budget (N21). A 3h meeting is cut to the head and
- * tail of the prompt budget; the cut never splits a character (emoji, CJK astral) into a lone surrogate.
+ * Hardening cycle 4: huge transcripts against the LLM prompt budget (N21). A 3h meeting is cut to fit the prompt
+ * budget (head and tail in cycle 4, evenly spaced windows since cycle 5); the cut never splits a character (emoji, CJK astral) into a lone surrogate.
  */
 import { describe, expect, it } from 'vitest';
 import { formatTranscriptForPrompt } from './llm';
@@ -30,9 +30,10 @@ describe('hardening 4: huge transcripts and the prompt budget', () => {
     expect(out.length).toBeLessThanOrEqual(60_003);
     expect(out).toContain('line 0:');
     expect(out).toContain('line 2699:');
-    expect(out).toContain('\n…\n');
-    // Accepted for now (N21): the middle hour is not seen by the summary at all.
-    expect(out).not.toContain('line 1350:');
+    // Cycle 5 (N21): the cut is now evenly spaced windows with "not shown" markers, and the middle hour is
+    // represented (hardening5.stress.test.ts). Cycle 4 kept only the head and the tail here.
+    expect(out).toMatch(/\[… \d+:\d\d–\d+:\d\d not shown …\]/);
+    expect(out).toContain('line 1350:');
   });
 
   it('the cut never leaves a lone surrogate, whatever the offset', () => {
