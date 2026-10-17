@@ -82,8 +82,10 @@ public enum AXScraper {
     }
 
     static let speakingPatterns: [NSRegularExpression] = [
-        #"^(.+?),?\s+(?:is\s+)?(?:speaking|talking)\b"#,
-        #"^(?:active speaker|speaking now|currently speaking)[:,]?\s+(.+)$"#,
+        // English, plus the Meet/Zoom strings for de, fr, es, it, pt.
+        #"^(.+?),?\s+(?:is\s+)?(?:speaking|talking|spricht|parle|est en train de parler|está hablando|sta parlando|está falando)\b"#,
+        #"^(.+?),\s*(?:active speaker|aktiver sprecher|intervenant actif|orador activo)$"#,
+        #"^(?:active speaker|speaking now|currently speaking|aktiver sprecher|intervenant actif|orador activo)[:,]?\s+(.+)$"#,
     ].map { try! NSRegularExpression(pattern: $0, options: [.caseInsensitive]) }
 
     static func speakingName(_ label: String) -> String? {
@@ -98,7 +100,17 @@ public enum AXScraper {
         return hay.contains { h in words.contains { h.contains($0) } }
     }
 
-    static let ignoredNames: Set<String> = ["", "participants", "people", "in call", "in the meeting", "contributors", "you", "mute", "unmute", "more options", "pin", "invite"]
+    static let ignoredNames: Set<String> = ["", "participants", "people", "in call", "in the meeting", "contributors", "you", "mute", "unmute", "more options", "pin", "invite",
+                                            "teilnehmer", "personen", "du", "ich", "personnes", "vous", "participantes", "personas", "tú"]
+    /// Interactive controls ("Show Captions", "Turn on captions", "Participants") share labels with the panels they
+    /// toggle; never treat them as the panel.
+    static let controlRoles: Set<String> = ["AXButton", "AXMenuButton", "AXMenuItem", "AXCheckBox", "AXRadioButton", "AXPopUpButton", "AXLink", "AXTab"]
+    static let participantWords = ["participant", "people", "contributors", "in call", "teilnehmer", "personen", "personnes", "personas", "partecipanti"]
+    static let captionWords = ["captions", "live transcript", "subtitles", "untertitel", "sous-titres", "subtítulos", "sottotitoli", "legendas", "transcription"]
+
+    static func isRegion(_ n: AXNode, _ words: [String]) -> Bool {
+        !controlRoles.contains(n.role) && !n.children.isEmpty && isLabeled(n, words)
+    }
 
     static func names(in list: AXNode) -> [String] {
         var out: [String] = []
@@ -118,7 +130,10 @@ public enum AXScraper {
     public static func scrape(platform: MeetingPlatform, window: AXNode) -> MeetingScrape {
         var r = MeetingScrape()
         // Participants panel: Zoom "Participants (N)", Meet "People" / "Contributors", Teams "Participants".
-        if let panel = window.first(where: { ($0.role == "AXTable" || $0.role == "AXOutline" || $0.role == "AXList" || $0.role == "AXGroup") && isLabeled($0, ["participants", "people", "contributors", "in call"]) }) {
+        // Prefer a real list; fall back to a labelled group (Safari flattens lists; Zoom's "Gallery View, N participants").
+        let listRoles: Set<String> = ["AXTable", "AXOutline", "AXList"]
+        if let panel = window.first(where: { listRoles.contains($0.role) && isRegion($0, participantWords) })
+            ?? window.first(where: { $0.role == "AXGroup" && isRegion($0, participantWords) }) {
             let n = names(in: panel)
             if !n.isEmpty { r.participants = n }
             r.selfName = selfName(in: panel)
@@ -126,32 +141,36 @@ public enum AXScraper {
         // Active speaker: tiles whose label announces speaking (Zoom app/web, Meet), or a speaking-indicator subtree.
         window.walk { n, _ in
             if r.activeSpeaker != nil { return false }
+            // Caption and chat text is prose ("we're talking about…"), never a speaking indicator.
+            if n.role == "AXStaticText" || n.role == "AXTextArea" { return true }
             for l in [n.desc, n.title, n.value].compactMap({ $0 }) { if let s = speakingName(l) { r.activeSpeaker = s; return false } }
             return true
         }
         // Captions: Meet "Captions" region (speaker name text, then caption text); Zoom "Live Transcript" / "Captions".
-        if let region = window.first(where: { isLabeled($0, ["captions", "live transcript", "subtitles"]) }) {
+        if let region = window.first(where: { isRegion($0, captionWords) }) {
             r.captions = captions(in: region, platform: platform)
         }
         // Chat: Meet "In-call messages", Zoom "Chat" panel / "Meeting chat", Teams "Chat".
-        if let panel = window.first(where: { $0.role != "AXButton" && isLabeled($0, ["in-call messages", "meeting chat", "chat messages", "chat"]) && !$0.children.isEmpty }) {
+        if let panel = window.first(where: { $0.role != "AXButton" && isRegion($0, ["in-call messages", "meeting chat", "chat messages", "chat", "nachrichten im anruf", "messages dans l'appel"]) }) {
             r.chat = chat(in: panel)
         }
         return r
     }
 
-    static let selfMarkers = ["(me)", "(you)", ", me)", "(host, me)", "(co-host, me)"]
+    static let selfMarkers = ["(me)", "(you)", ", me)", "(host, me)", "(co-host, me)", "(ich)", "(du)", "(vous)", "(moi)", "(tú)", "(yo)", "(você)"]
 
+    /// The row holding a self marker; the name is that row's first text (Meet puts "(You)" in its own text node).
     static func selfName(in list: AXNode) -> String? {
         var found: String?
         list.walk { n, _ in
             if found != nil { return false }
-            let l = n.label.lowercased()
-            if (n.role == "AXStaticText" || n.role == "AXCell") && selfMarkers.contains(where: { l.contains($0) }) {
-                found = cleanName(n.label)
-                return false
-            }
-            return true
+            guard n.role == "AXStaticText" || n.role == "AXCell" || n.role == "AXRow" || n.role == "AXListItem" || n.role == "AXGroup" else { return true }
+            let t = n.role == "AXStaticText" ? [n.label] : n.texts
+            guard t.contains(where: { s in selfMarkers.contains { s.lowercased().contains($0) } }) else { return true }
+            if n.role == "AXGroup" && !n.children.contains(where: { $0.role == "AXStaticText" }) { return true }
+            let name = cleanName(t[0])
+            if !name.isEmpty { found = name }
+            return false
         }
         return found
     }
@@ -179,9 +198,16 @@ public enum AXScraper {
 
     static func captions(in region: AXNode, platform: MeetingPlatform) -> [(speaker: String?, text: String)] {
         var out: [(speaker: String?, text: String)] = []
+        // Unwrap layout-only wrappers (one child, no text of its own) so turns are the region's real children.
+        var region = region
+        while region.children.count == 1, !region.children[0].children.isEmpty,
+              !region.children[0].children.contains(where: { $0.role == "AXStaticText" }) {
+            region = region.children[0]
+        }
         // Each speaker turn is a child group: [name, text...]. A lone text without a name continues the previous turn.
         for turn in region.children {
-            let t = turn.texts
+            // Zoom's transcript rows carry a timestamp ("10:02 AM") between name and text.
+            let t = turn.texts.filter { timeLike.firstMatch(in: $0, range: NSRange($0.startIndex..., in: $0)) == nil }
             if t.count >= 2 {
                 out.append((cleanName(t[0]), t.dropFirst().joined(separator: " ")))
             } else if let only = t.first {

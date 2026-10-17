@@ -1,0 +1,130 @@
+{
+  "platform": "google-meet",
+  "expect": {
+    "participants": ["Jared Grimes", "Grace Hopper", "Ada Lovelace"],
+    "activeSpeaker": "Grace Hopper",
+    "selfName": "Jared Grimes",
+    "captions": [
+      ["Grace Hopper", "Shipping Friday."],
+      ["Grace Hopper", "Any blockers?"]
+    ]
+  },
+  "tree": {
+    "role": "AXWindow",
+    "title": "Meet - Weekly Product Sync",
+    "children": [
+      {
+        "role": "AXWebArea",
+        "children": [
+          {
+            "role": "AXGroup",
+            "children": [
+              {
+                "role": "AXGroup",
+                "children": [
+                  {
+                    "role": "AXGroup",
+                    "desc": "Grace Hopper is speaking"
+                  }
+                ]
+              },
+              {
+                "role": "AXGroup",
+                "children": [
+                  {
+                    "role": "AXGroup",
+                    "desc": "Ada Lovelace"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "role": "AXGroup",
+            "desc": "Participants",
+            "children": [
+              {
+                "role": "AXGroup",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Jared Grimes (You)"
+                  }
+                ]
+              },
+              {
+                "role": "AXGroup",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Grace Hopper"
+                  }
+                ]
+              },
+              {
+                "role": "AXGroup",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Ada Lovelace"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "role": "AXGroup",
+            "desc": "Captions",
+            "children": [
+              {
+                "role": "AXGroup",
+                "children": [
+                  {
+                    "role": "AXGroup",
+                    "children": [
+                      {
+                        "role": "AXStaticText",
+                        "value": "Grace Hopper"
+                      },
+                      {
+                        "role": "AXGroup",
+                        "children": [
+                          {
+                            "role": "AXStaticText",
+                            "value": "Shipping Friday."
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "role": "AXGroup",
+                    "children": [
+                      {
+                        "role": "AXStaticText",
+                        "value": "Any blockers?"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "role": "AXGroup",
+            "children": [
+              {
+                "role": "AXButton",
+                "desc": "Turn off captions"
+              },
+              {
+                "role": "AXButton",
+                "desc": "Leave call"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

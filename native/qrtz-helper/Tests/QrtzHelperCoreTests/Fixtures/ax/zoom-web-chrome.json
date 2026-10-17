@@ -1,0 +1,131 @@
+{
+  "platform": "zoom",
+  "expect": {
+    "participants": ["Jared Grimes", "Grace Hopper", "Ada Lovelace"],
+    "activeSpeaker": "Grace Hopper",
+    "selfName": "Jared Grimes",
+    "captions": [
+      ["Grace Hopper", "Can everyone see my screen?"],
+      ["Ada Lovelace", "Yes, looks good."]
+    ]
+  },
+  "tree": {
+    "role": "AXWindow",
+    "title": "Zoom - Google Chrome",
+    "children": [
+      {
+        "role": "AXWebArea",
+        "title": "Zoom",
+        "children": [
+          {
+            "role": "AXGroup",
+            "desc": "Video gallery",
+            "children": [
+              {
+                "role": "AXGroup",
+                "desc": "Grace Hopper, talking"
+              },
+              {
+                "role": "AXGroup",
+                "desc": "Ada Lovelace"
+              }
+            ]
+          },
+          {
+            "role": "AXList",
+            "desc": "Participant list, 3 participants",
+            "children": [
+              {
+                "role": "AXListItem",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Jared Grimes (Host, Me)"
+                  }
+                ]
+              },
+              {
+                "role": "AXListItem",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Grace Hopper"
+                  }
+                ]
+              },
+              {
+                "role": "AXListItem",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Ada Lovelace"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "role": "AXGroup",
+            "desc": "Live Transcript",
+            "children": [
+              {
+                "role": "AXGroup",
+                "children": [
+                  {
+                    "role": "AXGroup",
+                    "children": [
+                      {
+                        "role": "AXListItem",
+                        "children": [
+                          {
+                            "role": "AXStaticText",
+                            "value": "Grace Hopper"
+                          },
+                          {
+                            "role": "AXStaticText",
+                            "value": "Can everyone see my screen?"
+                          }
+                        ]
+                      },
+                      {
+                        "role": "AXListItem",
+                        "children": [
+                          {
+                            "role": "AXStaticText",
+                            "value": "Ada Lovelace"
+                          },
+                          {
+                            "role": "AXStaticText",
+                            "value": "Yes, looks good."
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "role": "AXGroup",
+            "desc": "Footer",
+            "children": [
+              {
+                "role": "AXButton",
+                "desc": "Unmute"
+              },
+              {
+                "role": "AXButton",
+                "desc": "Captions"
+              },
+              {
+                "role": "AXButton",
+                "desc": "Participants"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

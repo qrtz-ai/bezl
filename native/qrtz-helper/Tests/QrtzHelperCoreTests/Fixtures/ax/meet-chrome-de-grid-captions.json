@@ -1,0 +1,127 @@
+{
+  "platform": "google-meet",
+  "expect": {
+    "participants": ["Jared Grimes", "Grace Hopper", "Ada Lovelace"],
+    "activeSpeaker": "Grace Hopper",
+    "selfName": "Jared Grimes",
+    "captions": [
+      ["Grace Hopper", "Wir liefern am Freitag."],
+      ["Ada Lovelace", "Ich schreibe die Release Notes."]
+    ]
+  },
+  "tree": {
+    "role": "AXWindow",
+    "title": "Meet – Wöchentlicher Sync - Google Chrome",
+    "children": [
+      {
+        "role": "AXWebArea",
+        "children": [
+          {
+            "role": "AXGroup",
+            "children": [
+              {
+                "role": "AXGroup",
+                "desc": "Grace Hopper spricht"
+              },
+              {
+                "role": "AXGroup",
+                "desc": "Ada Lovelace"
+              },
+              {
+                "role": "AXGroup",
+                "desc": "Du"
+              }
+            ]
+          },
+          {
+            "role": "AXList",
+            "desc": "Teilnehmer",
+            "children": [
+              {
+                "role": "AXListItem",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Jared Grimes (Ich)"
+                  },
+                  {
+                    "role": "AXStaticText",
+                    "value": "Gastgeber der Besprechung"
+                  }
+                ]
+              },
+              {
+                "role": "AXListItem",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Grace Hopper"
+                  }
+                ]
+              },
+              {
+                "role": "AXListItem",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Ada Lovelace"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "role": "AXGroup",
+            "desc": "Untertitel",
+            "children": [
+              {
+                "role": "AXGroup",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Grace Hopper"
+                  },
+                  {
+                    "role": "AXStaticText",
+                    "value": "Wir liefern am Freitag."
+                  }
+                ]
+              },
+              {
+                "role": "AXGroup",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Ada Lovelace"
+                  },
+                  {
+                    "role": "AXStaticText",
+                    "value": "Ich schreibe die Release Notes."
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "role": "AXGroup",
+            "desc": "Anrufsteuerung",
+            "children": [
+              {
+                "role": "AXButton",
+                "desc": "Untertitel deaktivieren"
+              },
+              {
+                "role": "AXButton",
+                "desc": "Jetzt präsentieren"
+              },
+              {
+                "role": "AXButton",
+                "desc": "Anruf verlassen"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

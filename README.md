@@ -13,21 +13,27 @@ qrtz desktop app for macOS: an Electron shell hosting modular React "sub apps", 
 - Error states: the capture helper missing or stopped (shown on Home and Memo, recording disabled), LLM failures (falls back to the on-device summary with a Retry button), Settings sections that load independently, and a meeting that fails to load (Try again).
 - Chat: per-meeting Q&A (the Ask tab) and "Ask all meetings" (full-text retrieval across transcripts). Answers come from OpenRouter with citations when a key is set, or as extractive quotes without one. Clicking a citation jumps to that moment in the transcript.
 - Menu bar (tray) item: the recording state, with elapsed time in the menu bar, plus Start/Stop, Record this meeting / Not now, Open qrtz and Quit. Shown on macOS and Windows; opt in on Linux with `QRTZ_TRAY=1`.
-- Semantic chat retrieval: an on-device MiniLM model (transformers.js, ~23 MB, downloaded once) runs in the worker. It's combined with full-text search by rank fusion. If the model can't load, retrieval falls back to full-text only. Packaged builds bundle transformers.js and onnxruntime-node, trimmed to the target platform (Linux x64 package ~48 MB of resources). `npm run smoke:packaged` checks this. Intel Macs fall back to full-text search, because onnxruntime ships no darwin-x64 binary.
+- Semantic chat retrieval: an on-device MiniLM model (transformers.js, ~23 MB, downloaded once) runs in the worker. It's combined with full-text search by rank fusion. If the model can't load, retrieval falls back to full-text only. Packaged builds bundle transformers.js with native onnxruntime-node, trimmed to the target platform. Where no native binary exists (Intel Macs), they use an onnxruntime-web WASM fallback that produces identical vectors. `npm run smoke:packaged` checks both backends against the packaged binary.
 - Calendar-free auto-start: a detected Zoom or Meet call shows a "Record?" prompt in the app, plus an OS notification when qrtz isn't focused. "Always record" (also in Settings) starts recording with no prompt.
 - Speaker rename and merge in meeting detail.
 - Hundreds of meetings: the Memo list pages 100 at a time ("Show 100 more"), and so do search results. Crash recovery finds stuck meetings at any age.
 - OpenRouter path: proven end to end against a local OpenAI-compatible stub server (`apps/desktop/src/worker/llm-openrouter.test.ts` and `e2e/states.spec.ts`), without a key.
 - Accessibility: no serious or critical axe violations (WCAG 2.1 AA) on Home, Memo, Gallery, Settings or the palette. Transcript rows can be operated by keyboard.
-- Swift helper core (protocol, DSP, echo pipeline with the LocalVQE → gate fallback): 27 tests pass on Linux.
+- Swift helper core (protocol, DSP, echo pipeline with the LocalVQE → gate fallback): 28 tests pass on Linux.
+- Meeting scrapers (participants, active speaker, self name, captions) are tested against 11 synthetic AX-tree fixtures (`native/qrtz-helper/Tests/QrtzHelperCoreTests/Fixtures/ax`):
+  - Zoom app: gallery and speaker views, with and without captions.
+  - Zoom web.
+  - Meet in Chrome and Safari: grid, presenting, captions on and off, German and French.
+  - Real `--dump-ax` captures from a Mac should replace or extend them.
 
+- Auto-update: an optional self-hosted static feed (R2/S3 or GitHub Releases) baked in at build with `QRTZ_UPDATE_FEED_URL`. It's off by default.
 - Release: `scripts/release-mac.sh` signs (hardened runtime and entitlements), notarizes and staples once a Developer ID exists. The checklist is in [docs/release.md](docs/release.md).
 
 **Needs a Mac to verify (see docs/mac-verify.md):**
 
 - Real capture: ScreenCaptureKit / Core Audio system audio, the microphone, and the TCC permission prompts.
 - FluidAudio streaming ASR and LocalVQE echo cancellation on real Zoom (app and web) and Meet (Chrome and Safari) calls.
-- Building the helper with Xcode, plus a signed and notarized run of `scripts/release-mac.sh`. Auto-update needs a public release feed, because the repo is private (see docs/release.md).
+- Building the helper with Xcode, plus a signed and notarized run of `scripts/release-mac.sh`.
 
 **Accounts / secrets needed:**
 

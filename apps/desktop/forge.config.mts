@@ -56,8 +56,8 @@ const osxNotarize = !osxSign
  * - sharp: replaced by a stub; transformers imports it statically for image
  *   pipelines we never use, and the real one would drag in ~30 MB of libvips.
  *
- * onnxruntime-node 1.30 ships no darwin/x64 binary. On Intel Macs the worker's
- * embedder fails to load, `embedderBroken` is set and retrieval stays lexical (FTS).
+ * onnxruntime-node 1.30 ships no darwin/x64 binary. On Intel Macs the worker falls back
+ * to onnxruntime-web (WASM, bundled below); see src/worker/embedder.ts.
  */
 
 const root = path.resolve(import.meta.dirname, '../../node_modules');
@@ -120,6 +120,31 @@ function bundleExternals(
     );
   }
 
+  // WASM fallback (Intel Macs / missing native binary): only the Node build + the plain SIMD wasm (~14 MB).
+  const web = path.join(root, 'onnxruntime-web');
+  const webDst = path.join(nm, 'onnxruntime-web');
+  fs.mkdirSync(path.join(webDst, 'dist'), { recursive: true });
+  fs.copyFileSync(
+    path.join(web, 'package.json'),
+    path.join(webDst, 'package.json'),
+  );
+  for (const f of [
+    'ort.node.min.js',
+    'ort.node.min.mjs',
+    'ort-wasm-simd-threaded.mjs',
+    'ort-wasm-simd-threaded.wasm',
+  ]) {
+    fs.copyFileSync(path.join(web, 'dist', f), path.join(webDst, 'dist', f));
+  }
+  const webCommon = path.join(web, 'node_modules/onnxruntime-common');
+  if (fs.existsSync(webCommon)) {
+    copy(
+      webCommon,
+      path.join(webDst, 'node_modules/onnxruntime-common'),
+      (p) => !p.endsWith('.map'),
+    );
+  }
+
   const sharp = path.join(nm, 'sharp');
   fs.mkdirSync(sharp, { recursive: true });
   fs.writeFileSync(
@@ -139,7 +164,7 @@ function bundleExternals(
 const config: ForgeConfig = {
   packagerConfig: {
     // Native addons cannot be dlopen'd from inside the asar.
-    asar: { unpack: '**/*.{node,dylib,so,so.*}' },
+    asar: { unpack: '**/{*.node,*.dylib,*.so,*.so.*,*.wasm,ort-wasm*.mjs}' },
     name: 'qrtz',
     executableName: 'qrtz',
     appBundleId: 'ai.qrtz.desktop',
@@ -170,7 +195,18 @@ const config: ForgeConfig = {
   makers: [
     new MakerSquirrel({}),
     new MakerDMG({ name: 'qrtz', format: 'ULFO' }, ['darwin']),
-    new MakerZIP({}, ['darwin']),
+    // With a self-hosted feed, the zip maker also writes RELEASES.json (merged with the live one) to upload next to the zip.
+    new MakerZIP(
+      env.QRTZ_UPDATE_FEED_URL
+        ? {
+            macUpdateManifestBaseUrl: env.QRTZ_UPDATE_FEED_URL.replaceAll(
+              '{platform}',
+              'darwin',
+            ).replaceAll('{arch}', env.QRTZ_MAKE_ARCH ?? 'arm64'),
+          }
+        : {},
+      ['darwin'],
+    ),
     new MakerRpm({}),
     new MakerDeb({}),
   ],

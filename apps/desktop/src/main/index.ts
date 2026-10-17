@@ -388,7 +388,12 @@ export function bootstrap() {
       {
         isPackaged: app.isPackaged,
         platform: process.platform,
+        arch: process.arch,
         env: process.env,
+        build: {
+          feedUrl: __QRTZ_UPDATE_FEED_URL__,
+          autoUpdate: __QRTZ_AUTO_UPDATE__,
+        },
       },
       log,
     );

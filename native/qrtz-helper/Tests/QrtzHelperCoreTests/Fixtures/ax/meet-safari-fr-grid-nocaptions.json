@@ -1,0 +1,54 @@
+{
+  "platform": "google-meet",
+  "expect": {
+    "participants": null,
+    "activeSpeaker": null,
+    "selfName": null,
+    "captions": []
+  },
+  "tree": {
+    "role": "AXWindow",
+    "title": "Meet - Point hebdo",
+    "children": [
+      {
+        "role": "AXWebArea",
+        "children": [
+          {
+            "role": "AXGroup",
+            "children": [
+              {
+                "role": "AXGroup",
+                "desc": "Ada Lovelace"
+              },
+              {
+                "role": "AXGroup",
+                "desc": "Grace Hopper"
+              },
+              {
+                "role": "AXGroup",
+                "desc": "Vous"
+              }
+            ]
+          },
+          {
+            "role": "AXGroup",
+            "children": [
+              {
+                "role": "AXButton",
+                "desc": "Activer les sous-titres"
+              },
+              {
+                "role": "AXButton",
+                "desc": "Afficher tout le monde"
+              },
+              {
+                "role": "AXButton",
+                "desc": "Quitter l'appel"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

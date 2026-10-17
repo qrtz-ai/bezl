@@ -1,0 +1,203 @@
+{
+  "platform": "zoom",
+  "expect": {
+    "participants": ["Jared Grimes", "Grace Hopper", "Ada Lovelace"],
+    "activeSpeaker": "Ada Lovelace",
+    "selfName": "Jared Grimes",
+    "captions": [
+      ["Grace Hopper", "Let's lock the launch date."],
+      ["Ada Lovelace", "We're talking about Friday, right?"],
+      ["Grace Hopper", "Yes, Friday."]
+    ]
+  },
+  "tree": {
+    "role": "AXWindow",
+    "title": "Zoom Meeting",
+    "children": [
+      {
+        "role": "AXGroup",
+        "desc": "Meeting controls",
+        "children": [
+          {
+            "role": "AXButton",
+            "desc": "Mute"
+          },
+          {
+            "role": "AXButton",
+            "desc": "Stop Video"
+          },
+          {
+            "role": "AXButton",
+            "desc": "Participants"
+          },
+          {
+            "role": "AXButton",
+            "desc": "Chat"
+          },
+          {
+            "role": "AXButton",
+            "desc": "Show Captions"
+          },
+          {
+            "role": "AXButton",
+            "desc": "Share Screen"
+          },
+          {
+            "role": "AXButton",
+            "desc": "End"
+          }
+        ]
+      },
+      {
+        "role": "AXGroup",
+        "desc": "Speaker View",
+        "children": [
+          {
+            "role": "AXGroup",
+            "desc": "Active speaker, Ada Lovelace",
+            "children": [
+              {
+                "role": "AXStaticText",
+                "value": "Ada Lovelace"
+              }
+            ]
+          },
+          {
+            "role": "AXGroup",
+            "desc": "Video strip",
+            "children": [
+              {
+                "role": "AXGroup",
+                "desc": "Jared Grimes"
+              },
+              {
+                "role": "AXGroup",
+                "desc": "Grace Hopper"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "role": "AXOutline",
+        "title": "Participants (3)",
+        "children": [
+          {
+            "role": "AXRow",
+            "subrole": "AXOutlineRow",
+            "children": [
+              {
+                "role": "AXCell",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Jared Grimes (Host, me)"
+                  },
+                  {
+                    "role": "AXImage",
+                    "desc": "Computer audio unmuted"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "role": "AXRow",
+            "subrole": "AXOutlineRow",
+            "children": [
+              {
+                "role": "AXCell",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Grace Hopper"
+                  },
+                  {
+                    "role": "AXImage",
+                    "desc": "Video on"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "role": "AXRow",
+            "subrole": "AXOutlineRow",
+            "children": [
+              {
+                "role": "AXCell",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Ada Lovelace"
+                  },
+                  {
+                    "role": "AXImage",
+                    "desc": "Computer audio muted"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "role": "AXGroup",
+        "desc": "Captions",
+        "children": [
+          {
+            "role": "AXRow",
+            "children": [
+              {
+                "role": "AXStaticText",
+                "value": "Grace Hopper"
+              },
+              {
+                "role": "AXStaticText",
+                "value": "10:02 AM"
+              },
+              {
+                "role": "AXStaticText",
+                "value": "Let's lock the launch date."
+              }
+            ]
+          },
+          {
+            "role": "AXRow",
+            "children": [
+              {
+                "role": "AXStaticText",
+                "value": "Ada Lovelace"
+              },
+              {
+                "role": "AXStaticText",
+                "value": "10:02 AM"
+              },
+              {
+                "role": "AXStaticText",
+                "value": "We're talking about Friday, right?"
+              }
+            ]
+          },
+          {
+            "role": "AXRow",
+            "children": [
+              {
+                "role": "AXStaticText",
+                "value": "Grace Hopper"
+              },
+              {
+                "role": "AXStaticText",
+                "value": "10:03 AM"
+              },
+              {
+                "role": "AXStaticText",
+                "value": "Yes, Friday."
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

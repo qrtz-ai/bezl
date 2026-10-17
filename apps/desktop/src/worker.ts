@@ -37,18 +37,18 @@ log('info', 'worker ready', { dbFile });
 // Packaged-build smoke (scripts/smoke-packaged.mjs): prove the bundled runtime loads. Read-only, no secrets.
 if (process.env.QRTZ_EMBED_SELFTEST === '1') {
   const t0 = Date.now();
-  void embedder()
-    .then((e) => e?.embed(['qrtz embedding self-test']))
-    .then((v) =>
-      log('info', 'embedder selftest', {
-        ok: !!v?.[0],
-        dims: v?.[0]?.length ?? 0,
-        ms: Date.now() - t0,
-      }),
-    )
-    .catch((err: unknown) =>
-      log('warn', 'embedder selftest', { ok: false, err: String(err) }),
-    );
+  void (async () => {
+    const e = await embedder();
+    const v = await e?.embed(['qrtz embedding self-test']);
+    log('info', 'embedder selftest', {
+      ok: !!v?.[0],
+      backend: e?.backend ?? 'none',
+      dims: v?.[0]?.length ?? 0,
+      ms: Date.now() - t0,
+    });
+  })().catch((err: unknown) =>
+    log('warn', 'embedder selftest', { ok: false, err: String(err) }),
+  );
 }
 
 port.on('message', async (e: { data: unknown }) => {

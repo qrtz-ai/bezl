@@ -10,6 +10,9 @@
 # Optional:
 #   QRTZ_ARCH                arm64 (default) | x64 | both   (x64: no on-device embeddings, FTS only)
 #   QRTZ_SKIP_HELPER=1       reuse an existing native/qrtz-helper build
+#   QRTZ_UPDATE_FEED_URL     https base of a self-hosted update feed (R2/S3 or GitHub Releases latest/download;
+#                            `{platform}`/`{arch}` placeholders allowed). Baked into the build and turns
+#                            auto-update on. Unset = updates stay off. See docs/release.md.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -37,6 +40,15 @@ case "${QRTZ_ARCH:-arm64}" in
   *) die "QRTZ_ARCH must be arm64, x64 or both" ;;
 esac
 
+if [[ -n "${QRTZ_UPDATE_FEED_URL:-}" ]]; then
+  [[ "$QRTZ_UPDATE_FEED_URL" == https://* ]] || die "QRTZ_UPDATE_FEED_URL must be https"
+  export QRTZ_UPDATE_FEED_URL QRTZ_AUTO_UPDATE=1
+  echo "auto-update: on, feed $QRTZ_UPDATE_FEED_URL"
+else
+  unset QRTZ_AUTO_UPDATE
+  echo "auto-update: off (no QRTZ_UPDATE_FEED_URL)"
+fi
+
 echo "==> checks"
 npm ci
 npm run check
@@ -50,6 +62,7 @@ fi
 for arch in "${archs[@]}"; do
   [[ "$arch" == x64 ]] && echo "note: onnxruntime-node ships no darwin/x64 binary; x64 build uses FTS-only chat retrieval"
   echo "==> make (signed + notarized) darwin/$arch"
+  export QRTZ_MAKE_ARCH="$arch"
   npm run make -w @qrtz/desktop -- --platform=darwin --arch="$arch"
 
   app="apps/desktop/out/qrtz-darwin-$arch/qrtz.app"
@@ -70,4 +83,9 @@ done
 
 echo "==> artifacts"
 find apps/desktop/out/make -type f \( -name '*.dmg' -o -name '*.zip' \) -print
-echo "Done. Publish the zip + dmg as a GitHub release (see docs/release.md, auto-update)."
+find apps/desktop/out/make -name RELEASES.json -print
+if [[ -n "${QRTZ_UPDATE_FEED_URL:-}" ]]; then
+  echo "Done. Upload each arch's zip + RELEASES.json to the feed location, and the dmg for first installs."
+else
+  echo "Done. Distribute the dmg (auto-update off; see docs/release.md)."
+fi

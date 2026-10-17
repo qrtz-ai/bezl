@@ -1,0 +1,124 @@
+{
+  "platform": "google-meet",
+  "expect": {
+    "participants": ["Jared Grimes", "Grace Hopper", "Ada Lovelace"],
+    "activeSpeaker": "Ada Lovelace",
+    "selfName": "Jared Grimes",
+    "captions": [
+      ["Ada Lovelace", "Voici la feuille de route."],
+      ["Grace Hopper", "Parfait, merci."]
+    ]
+  },
+  "tree": {
+    "role": "AXWindow",
+    "title": "Meet - Point hebdo",
+    "children": [
+      {
+        "role": "AXWebArea",
+        "children": [
+          {
+            "role": "AXGroup",
+            "desc": "Ada Lovelace (présentation)",
+            "children": [
+              {
+                "role": "AXStaticText",
+                "value": "Ada Lovelace présente"
+              }
+            ]
+          },
+          {
+            "role": "AXGroup",
+            "children": [
+              {
+                "role": "AXGroup",
+                "desc": "Ada Lovelace parle"
+              },
+              {
+                "role": "AXGroup",
+                "desc": "Grace Hopper"
+              }
+            ]
+          },
+          {
+            "role": "AXGroup",
+            "desc": "Participants",
+            "children": [
+              {
+                "role": "AXGroup",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Jared Grimes (vous)"
+                  }
+                ]
+              },
+              {
+                "role": "AXGroup",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Grace Hopper"
+                  }
+                ]
+              },
+              {
+                "role": "AXGroup",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Ada Lovelace"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "role": "AXGroup",
+            "desc": "Sous-titres",
+            "children": [
+              {
+                "role": "AXGroup",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Ada Lovelace"
+                  },
+                  {
+                    "role": "AXStaticText",
+                    "value": "Voici la feuille de route."
+                  }
+                ]
+              },
+              {
+                "role": "AXGroup",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Grace Hopper"
+                  },
+                  {
+                    "role": "AXStaticText",
+                    "value": "Parfait, merci."
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "role": "AXGroup",
+            "children": [
+              {
+                "role": "AXButton",
+                "desc": "Désactiver les sous-titres"
+              },
+              {
+                "role": "AXButton",
+                "desc": "Quitter l'appel"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

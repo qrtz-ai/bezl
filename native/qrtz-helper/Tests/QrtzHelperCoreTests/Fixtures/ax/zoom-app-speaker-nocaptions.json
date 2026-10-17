@@ -1,0 +1,65 @@
+{
+  "platform": "zoom",
+  "expect": {
+    "participants": null,
+    "activeSpeaker": "Ada Lovelace",
+    "selfName": null,
+    "captions": []
+  },
+  "tree": {
+    "role": "AXWindow",
+    "title": "Zoom Meeting",
+    "children": [
+      {
+        "role": "AXGroup",
+        "desc": "Speaker View",
+        "children": [
+          {
+            "role": "AXGroup",
+            "desc": "Active speaker, Ada Lovelace",
+            "children": [
+              {
+                "role": "AXStaticText",
+                "value": "Ada Lovelace"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "role": "AXGroup",
+        "desc": "Meeting controls",
+        "children": [
+          {
+            "role": "AXButton",
+            "desc": "Mute"
+          },
+          {
+            "role": "AXButton",
+            "desc": "Stop Video"
+          },
+          {
+            "role": "AXButton",
+            "desc": "Participants"
+          },
+          {
+            "role": "AXButton",
+            "desc": "Chat"
+          },
+          {
+            "role": "AXButton",
+            "desc": "Show Captions"
+          },
+          {
+            "role": "AXButton",
+            "desc": "Share Screen"
+          },
+          {
+            "role": "AXButton",
+            "desc": "End"
+          }
+        ]
+      }
+    ]
+  }
+}

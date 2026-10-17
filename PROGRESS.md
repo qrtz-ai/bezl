@@ -304,3 +304,33 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
 
 - Mac: run `scripts/release-mac.sh` with a Developer ID, and verify real calls (docs/mac-verify.md).
 - Pick the auto-update feed.
+
+## 2026-10-16 ~18:49–19:00 PT: iteration 12 (WASM embeddings, update feed, AX fixtures)
+
+- WASM fallback: `chooseBackend()` in `src/worker/embedder.ts` tries native onnxruntime-node first. If that's missing, or `QRTZ_EMBEDDINGS_BACKEND=wasm` is set, it aliases `onnxruntime-node` to onnxruntime-web's Node build (1 thread, wasm loaded from asar-unpacked) before importing transformers.js. The vectors are identical. The Forge hook bundles `ort.node.min.*` plus `ort-wasm-simd-threaded.{mjs,wasm}`; Linux resources went from 48 to 62 MB.
+- Verified on the packaged Linux binary:
+  - The smoke script passes with the native backend and with the forced WASM backend.
+  - With the native `bin/` deleted, auto mode picks WASM. This is the Intel-Mac simulation.
+  - Unit tests cover `chooseBackend`.
+- Update feed:
+  - `resolveUpdateSource` uses a static feed when `QRTZ_UPDATE_FEED_URL` is baked in through a Vite define. It supports `{platform}`/`{arch}` placeholders and rejects non-HTTPS URLs. The default stays off.
+  - The zip maker writes `RELEASES.json` when the feed is set.
+  - `release-mac.sh` takes the feed and turns updates on. The decision is documented in docs/release.md.
+  - No repos or accounts were created.
+- AX scrapers:
+  - 11 synthetic fixtures (JSON in `--dump-ax` shape), checked by `AXFixtureTests`. 15 assertions failed before the fixes; all pass now.
+  - Fixes: toolbar controls ("Show Captions", "Turn on captions") are never taken for panels. A real list is preferred over a labelled group.
+  - Speaking indicators are read only from non-text nodes, so caption prose like "we're talking…" isn't mistaken for one. Added the "Name, Active Speaker" form.
+  - Layout-only wrappers around caption turns are unwrapped, and Zoom transcript timestamps are dropped.
+  - The self name comes from the row when "(You)" is a separate text node.
+  - Added de/fr/es labels, speaking verbs and self markers.
+  - There is no TS mirror of the scrapers; the TS side only consumes `ax.*` events.
+
+### Side work
+
+- The fixtures are synthetic. Real dumps from current Zoom and Meet builds (`qrtz-helper --dump-ax`) still need to be recorded on a Mac.
+- The WASM backend runs single-threaded, because Node can't load ort-web's blob: worker URLs. That's fine for a 384-d MiniLM.
+
+### Next
+
+- Mac: record real AX dumps, run the signed release, verify real calls.

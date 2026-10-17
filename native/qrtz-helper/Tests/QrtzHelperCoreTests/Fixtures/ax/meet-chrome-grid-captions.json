@@ -1,0 +1,140 @@
+{
+  "platform": "google-meet",
+  "expect": {
+    "participants": ["Jared Grimes", "Grace Hopper", "Ada Lovelace"],
+    "activeSpeaker": "Grace Hopper",
+    "selfName": "Jared Grimes",
+    "captions": [
+      ["Grace Hopper", "Shipping Friday."],
+      ["Ada Lovelace", "We're talking to legal first."]
+    ]
+  },
+  "tree": {
+    "role": "AXWindow",
+    "title": "Meet - Weekly Product Sync - Google Chrome",
+    "children": [
+      {
+        "role": "AXWebArea",
+        "title": "Meet - Weekly Product Sync",
+        "children": [
+          {
+            "role": "AXGroup",
+            "children": [
+              {
+                "role": "AXButton",
+                "desc": "Grace Hopper is speaking"
+              },
+              {
+                "role": "AXGroup",
+                "desc": "Ada Lovelace"
+              },
+              {
+                "role": "AXGroup",
+                "desc": "You"
+              }
+            ]
+          },
+          {
+            "role": "AXList",
+            "desc": "Participants",
+            "children": [
+              {
+                "role": "AXListItem",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Jared Grimes"
+                  },
+                  {
+                    "role": "AXStaticText",
+                    "value": "(You)"
+                  },
+                  {
+                    "role": "AXStaticText",
+                    "value": "Meeting host"
+                  }
+                ]
+              },
+              {
+                "role": "AXListItem",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Grace Hopper"
+                  }
+                ]
+              },
+              {
+                "role": "AXListItem",
+                "children": [
+                  {
+                    "role": "AXStaticText",
+                    "value": "Ada Lovelace"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "role": "AXGroup",
+            "desc": "Captions",
+            "children": [
+              {
+                "role": "AXGroup",
+                "children": [
+                  {
+                    "role": "AXImage",
+                    "desc": "Grace Hopper"
+                  },
+                  {
+                    "role": "AXStaticText",
+                    "value": "Grace Hopper"
+                  },
+                  {
+                    "role": "AXStaticText",
+                    "value": "Shipping Friday."
+                  }
+                ]
+              },
+              {
+                "role": "AXGroup",
+                "children": [
+                  {
+                    "role": "AXImage",
+                    "desc": "Ada Lovelace"
+                  },
+                  {
+                    "role": "AXStaticText",
+                    "value": "Ada Lovelace"
+                  },
+                  {
+                    "role": "AXStaticText",
+                    "value": "We're talking to legal first."
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "role": "AXGroup",
+            "desc": "Call controls",
+            "children": [
+              {
+                "role": "AXButton",
+                "desc": "Turn off captions"
+              },
+              {
+                "role": "AXButton",
+                "desc": "Present now"
+              },
+              {
+                "role": "AXButton",
+                "desc": "Leave call"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

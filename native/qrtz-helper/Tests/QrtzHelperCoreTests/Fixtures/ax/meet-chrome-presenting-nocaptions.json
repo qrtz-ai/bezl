@@ -1,0 +1,65 @@
+{
+  "platform": "google-meet",
+  "expect": {
+    "participants": null,
+    "activeSpeaker": "Ada Lovelace",
+    "selfName": null,
+    "captions": []
+  },
+  "tree": {
+    "role": "AXWindow",
+    "title": "Meet - Weekly Product Sync - Google Chrome",
+    "children": [
+      {
+        "role": "AXWebArea",
+        "children": [
+          {
+            "role": "AXGroup",
+            "desc": "Ada Lovelace (Presentation)",
+            "children": [
+              {
+                "role": "AXStaticText",
+                "value": "Ada Lovelace is presenting"
+              }
+            ]
+          },
+          {
+            "role": "AXGroup",
+            "children": [
+              {
+                "role": "AXGroup",
+                "desc": "Ada Lovelace, speaking"
+              },
+              {
+                "role": "AXGroup",
+                "desc": "Grace Hopper"
+              }
+            ]
+          },
+          {
+            "role": "AXGroup",
+            "desc": "Call controls",
+            "children": [
+              {
+                "role": "AXButton",
+                "desc": "Turn on captions"
+              },
+              {
+                "role": "AXButton",
+                "desc": "Present now"
+              },
+              {
+                "role": "AXButton",
+                "desc": "Show everyone"
+              },
+              {
+                "role": "AXButton",
+                "desc": "Leave call"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

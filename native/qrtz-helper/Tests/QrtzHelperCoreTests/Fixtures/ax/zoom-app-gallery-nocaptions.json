@@ -1,0 +1,85 @@
+{
+  "platform": "zoom",
+  "expect": {
+    "participants": ["Jared Grimes", "Grace Hopper", "Ada Lovelace"],
+    "activeSpeaker": null,
+    "selfName": null,
+    "captions": []
+  },
+  "tree": {
+    "role": "AXWindow",
+    "title": "Zoom Meeting",
+    "children": [
+      {
+        "role": "AXGroup",
+        "desc": "Gallery View, 3 participants",
+        "children": [
+          {
+            "role": "AXGroup",
+            "desc": "Jared Grimes",
+            "children": [
+              {
+                "role": "AXStaticText",
+                "value": "Jared Grimes"
+              }
+            ]
+          },
+          {
+            "role": "AXGroup",
+            "desc": "Grace Hopper",
+            "children": [
+              {
+                "role": "AXStaticText",
+                "value": "Grace Hopper"
+              }
+            ]
+          },
+          {
+            "role": "AXGroup",
+            "desc": "Ada Lovelace, Audio muted",
+            "children": [
+              {
+                "role": "AXStaticText",
+                "value": "Ada Lovelace"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "role": "AXGroup",
+        "desc": "Meeting controls",
+        "children": [
+          {
+            "role": "AXButton",
+            "desc": "Mute"
+          },
+          {
+            "role": "AXButton",
+            "desc": "Stop Video"
+          },
+          {
+            "role": "AXButton",
+            "desc": "Participants"
+          },
+          {
+            "role": "AXButton",
+            "desc": "Chat"
+          },
+          {
+            "role": "AXButton",
+            "desc": "Show Captions"
+          },
+          {
+            "role": "AXButton",
+            "desc": "Share Screen"
+          },
+          {
+            "role": "AXButton",
+            "desc": "End"
+          }
+        ]
+      }
+    ]
+  }
+}
