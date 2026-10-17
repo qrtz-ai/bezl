@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Back-to-back meetings keep their speaker labels (N125):** a meeting that starts while the previous one's speaker model is still busy no longer loses speaker labels for the whole meeting.
 - **echo no longer cuts off your last words:** after you release fn, echo keeps listening for a quarter second and finishes the last word before inserting (about 0.3–0.5 s more before the text appears). If recognition falls far behind, echo waits for it instead of inserting a cut-short text.
 - **Speaker labels from the first recording:** right after the speech models download, qrtz prepares them once, so the first recording doesn't spend a minute preparing the speaker model. On by default ("get speech ready right after download" in settings → speech).
 - **Stopping a recording no longer waits for a slow speaker model (N121):** if speaker labelling falls more than 30 s behind, it stops for that channel (labels so far stay), and stop waits for it at most 3 s.

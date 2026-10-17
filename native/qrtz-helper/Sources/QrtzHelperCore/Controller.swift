@@ -270,6 +270,10 @@ public actor HelperController {
 
     /// N121 test seam: each channel's largest diarizer queue (samples) in the last recording.
     var lastDiarizerPeaks: [CaptureSource: Int] = [:]
+    /// N125 (ADR 0082): a closed-out or aborted run's task, which may still be inside a model call on its channel's
+    /// shared diarizer. The next run on that channel waits for it before `prepare()`, so the old task's trailing
+    /// `unload()` can never take the model away from a newer recording.
+    var lingering: [CaptureSource: Task<Void, Never>] = [:]
     /// A `models.warm` is running (a second one is ignored).
     var warming = false
 
@@ -643,8 +647,10 @@ public actor HelperController {
         for (source, d) in deps.diarizers.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
             let run = DiarRun(source: source, diarizer: d, send: send)
             let stream = run.stream
+            let prior = lingering.removeValue(forKey: source)
             run.task = Task.detached {
                 defer { run.end() }
+                if let prior { await prior.value }  // N125: one model call at most; the queue bound covers it
                 do { try await d.prepare(); await d.reset() } catch {
                     send(.log(level: .warn, msg: "diarizer \(source.rawValue) unavailable: \(error)"))
                     run.end()
@@ -772,6 +778,7 @@ public actor HelperController {
                 send(.log(level: .warn, msg: "diarizer \(run.source.rawValue) still busy at stop: closed out"))
                 run.closeOut()
             }
+            for run in rec.diarRuns { lingering[run.source] = run.task }  // N125: stood-down runs may be mid-call too
         }
         lastDiarizerPeaks = Dictionary(rec.diarRuns.map { ($0.source, $0.peakQueued) }, uniquingKeysWith: max)
         rec.diarRuns.removeAll()
@@ -803,7 +810,7 @@ public actor HelperController {
             recordingStartMs = nil
             rec.samplesIn?.finish()
             rec.consumer?.cancel()
-            for run in rec.diarRuns { run.end(); run.input.finish(); run.task?.cancel() }
+            for run in rec.diarRuns { run.end(); run.input.finish(); run.task?.cancel(); lingering[run.source] = run.task }
             rec.diarRuns.removeAll()
             if rec.asrReady { Task { [weak self] in await self?.unloadAsr(rec) } }  // else prepareAsr unloads when done
             if let audio = rec.audio { Task.detached { await audio.stop() } }  // may be what is wedged: don't wait

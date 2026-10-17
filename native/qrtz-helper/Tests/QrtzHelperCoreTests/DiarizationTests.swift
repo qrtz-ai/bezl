@@ -248,3 +248,76 @@ final class ModelsWarmTests: XCTestCase {
         try? FileManager.default.removeItem(atPath: path)
     }
 }
+
+/// N125: a diarizer whose `append` blocks until released, logging prepare/append/unload in order, with a real
+/// loaded flag (append without a model returns no turns, as `NemotronChannelDiarizer` does).
+final class GatedDiarizer: ChannelDiarizer, @unchecked Sendable {
+    let name = "gated-diar"
+    let lock = NSLock()
+    var log: [String] = []
+    var loaded = false
+    var gate: CheckedContinuation<Void, Never>?
+    var blocking = true
+    var waiting = false
+    func note(_ e: String) { lock.withLock { log.append(e) } }
+    func prepare() async throws { lock.withLock { loaded = true; log.append("prepare") } }
+    func reset() async {}
+    func append(_ s: [Float]) async -> [DiarizedTurn] {
+        note("append")
+        if lock.withLock({ blocking }) {
+            await withCheckedContinuation { c in lock.withLock { gate = c; waiting = true } }
+        }
+        return lock.withLock { loaded } ? [DiarizedTurn(speaker: 0, startMs: 0, endMs: Double(s.count) / 16)] : []
+    }
+    func release() { let c = lock.withLock { () -> CheckedContinuation<Void, Never>? in blocking = false; defer { gate = nil }; return gate }; c?.resume() }
+    var isWaiting: Bool { lock.withLock { waiting } }
+    func finish() async -> [DiarizedTurn] { [] }
+    func unload() async { lock.withLock { loaded = false; log.append("unload") } }
+    func abandon() -> [DiarizedTurn] { [] }
+}
+
+final class DiarizerRunScopeTests: XCTestCase {
+    func controller(_ d: ChannelDiarizer, out: Box<[HelperMessage]>) -> HelperController {
+        var deps = HelperDeps(permissions: FakePerms(), meetings: nil, audio: [FakeAudio("sck")],
+                              transcribers: [SlowASR("mic", words: "hi.", delayNs: 1_000_000)],
+                              helperVersion: "t", os: "linux", features: [])
+        deps.systemTranscribers = [SlowASR("sys", words: "yo.", delayNs: 1_000_000)]
+        deps.diarizers = [.mic: d]
+        deps.diarizerStopWaitMs = 200
+        return HelperController(deps: deps, send: { m in out.mutate { $0.append(m) } }, now: { 0 })
+    }
+
+    func waitFor(_ f: () -> Bool) async { for _ in 0..<200 where !f() { try? await Task.sleep(nanoseconds: 10_000_000) } }
+
+    func path() -> String { FileManager.default.temporaryDirectory.appendingPathComponent("qrtz-n125-\(UUID()).wav").path }
+
+    func runBackToBack(abortFirst: Bool) async {
+        let d = GatedDiarizer()
+        let out = Box<[HelperMessage]>([])
+        let c = controller(d, out: out)
+        let loud = [Float](repeating: 0.2, count: 16_000)
+        let p1 = path(), p2 = path()
+        await c.handle(.recordingStart(audioPath: p1))
+        await c.onSamples(loud, of: nil, channels: (system: loud, mic: loud))
+        await waitFor { d.isWaiting }  // the first run is inside a model call
+        if abortFirst { await c.handle(.recordingAbort(audioPath: p1)) } else { await c.handle(.recordingStop()) }  // closed out after 200 ms
+        // The next meeting starts at once, then the old model call returns.
+        await c.handle(.recordingStart(audioPath: p2))
+        d.release()
+        out.mutate { $0.removeAll() }
+        for _ in 0..<3 { await c.onSamples(loud, of: nil, channels: (system: loud, mic: loud)) }
+        await waitFor { d.lock.withLock { d.log.filter { $0 == "append" }.count } >= 4 }
+        await c.handle(.recordingStop())
+        let log = d.lock.withLock { d.log }
+        let secondPrepare = log.lastIndex(of: "prepare")!
+        let lastAppend = log.lastIndex(of: "append")!
+        XCTAssertGreaterThan(lastAppend, secondPrepare)
+        XCTAssertFalse(log[secondPrepare...lastAppend].contains("unload"), "the old run's unload landed under the new recording: \(log)")
+        XCTAssertTrue(out.value.contains { if case .diarizationSegment(.mic, _, _, _) = $0 { true } else { false } }, "the second meeting has speakers")
+        try? FileManager.default.removeItem(atPath: p1); try? FileManager.default.removeItem(atPath: p2)
+    }
+
+    func testAClosedOutRunNeverUnloadsTheNextRecordingsModel() async { await runBackToBack(abortFirst: false) }
+    func testAnAbortedRunNeverUnloadsTheNextRecordingsModel() async { await runBackToBack(abortFirst: true) }
+}
+
