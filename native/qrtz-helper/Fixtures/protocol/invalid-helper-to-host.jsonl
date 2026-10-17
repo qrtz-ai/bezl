@@ -28,3 +28,6 @@ not json
 {"endMs":4200,"source":"camera","speaker":0,"startMs":1200,"type":"diarization.segment"}
 {"endMs":4200,"source":"mic","speaker":0,"startMs":-1,"type":"diarization.segment"}
 {"endMs":4200,"source":"mic","speaker":1.5,"startMs":0,"type":"diarization.segment"}
+{"atMs":-1,"reason":"backlog","source":"mic","type":"diarization.unavailable"}
+{"atMs":10,"reason":"tired","source":"mic","type":"diarization.unavailable"}
+{"atMs":10,"reason":"backlog","source":"camera","type":"diarization.unavailable"}

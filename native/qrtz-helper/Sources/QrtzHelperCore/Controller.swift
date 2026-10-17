@@ -209,6 +209,8 @@ public actor HelperController {
         private let send: @Sendable (HelperMessage) -> Void
         private let lock = NSLock()
         private var queued = 0
+        /// Samples the model has been handed (recording time it covers): where speaker turns end on a stand-down.
+        private var taken = 0
         private var active = true
         private(set) var peakQueued = 0
         var task: Task<Void, Never>?
@@ -221,7 +223,14 @@ public actor HelperController {
         func offer(_ s: [Float], cap: Int) -> Bool {
             let ok: Bool = lock.withLock {
                 guard active else { return true }
-                if queued + s.count > cap { active = false; return false }
+                if queued + s.count > cap {
+                    // N126: the open turn up to the processed audio goes out, then the host is told from when on
+                    // this channel has no speakers.
+                    active = false
+                    for t in diarizer.abandon() { send(.diarizationSegment(source: source, speaker: t.speaker, startMs: t.startMs, endMs: t.endMs)) }
+                    send(.diarizationUnavailable(source: source, atMs: Double(taken) / 16, reason: .backlog))
+                    return false
+                }
                 queued += s.count
                 peakQueued = max(peakQueued, queued)
                 input.yield(s)
@@ -230,7 +239,15 @@ public actor HelperController {
             if !ok { input.finish() }
             return ok
         }
-        func took(_ n: Int) { lock.withLock { queued -= n } }
+        func took(_ n: Int) { lock.withLock { queued -= n; taken += n } }
+        /// N126: the model didn't load: no turns at all on this channel (unless the run already ended).
+        func unavailable(_ why: DiarizationUnavailableReason) {
+            lock.withLock {
+                guard active else { return }
+                active = false
+                send(.diarizationUnavailable(source: source, atMs: 0, reason: why))
+            }
+        }
         func emit(_ turns: [DiarizedTurn]) {
             lock.withLock {
                 guard active else { return }
@@ -653,7 +670,7 @@ public actor HelperController {
                 if let prior { await prior.value }  // N125: one model call at most; the queue bound covers it
                 do { try await d.prepare(); await d.reset() } catch {
                     send(.log(level: .warn, msg: "diarizer \(source.rawValue) unavailable: \(error)"))
-                    run.end()
+                    run.unavailable(.modelUnavailable)
                     for await s in stream { run.took(s.count) }
                     return
                 }

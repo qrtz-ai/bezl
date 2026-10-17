@@ -18,6 +18,7 @@
     "capture.silent",
     "capture.audible",
     "diarization.segment",
+    "diarization.unavailable",
     "capture.fallback",
     "capture.degraded",
     "asr",
@@ -461,6 +462,39 @@
           "speaker",
           "startMs",
           "endMs"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "diarization.unavailable"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "system",
+              "mic"
+            ]
+          },
+          "atMs": {
+            "type": "number",
+            "minimum": 0
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "backlog",
+              "model-unavailable"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "source",
+          "atMs",
+          "reason"
         ]
       },
       {

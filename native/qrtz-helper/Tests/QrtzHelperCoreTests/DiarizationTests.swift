@@ -147,8 +147,19 @@ final class SlowDiarizer: ChannelDiarizer, @unchecked Sendable {
     }
 }
 
+final class FailingDiarizer: ChannelDiarizer, @unchecked Sendable {
+    struct NoModel: Error {}
+    let name = "failing-diar"
+    func prepare() async throws { throw NoModel() }
+    func reset() async {}
+    func append(_ s: [Float]) async -> [DiarizedTurn] { [] }
+    func finish() async -> [DiarizedTurn] { [] }
+    func unload() async {}
+    func abandon() -> [DiarizedTurn] { [] }
+}
+
 final class DiarizerBacklogTests: XCTestCase {
-    func record(_ d: SlowDiarizer, seconds: Int, waitMs: UInt64, paceNs: UInt64 = 0) async -> (msgs: [HelperMessage], stopMs: Double, peak: Int, cap: Int) {
+    func record(_ d: ChannelDiarizer, seconds: Int, waitMs: UInt64, paceNs: UInt64 = 0) async -> (msgs: [HelperMessage], stopMs: Double, peak: Int, cap: Int) {
         let out = Box<[HelperMessage]>([])
         var deps = HelperDeps(permissions: FakePerms(), meetings: nil, audio: [FakeAudio("sck")],
                               transcribers: [SlowASR("mic", words: "hi.", delayNs: 1_000_000)],
@@ -197,6 +208,38 @@ final class DiarizerBacklogTests: XCTestCase {
         let after = r.msgs.count
         try? await Task.sleep(nanoseconds: 400_000_000)
         XCTAssertEqual(turns(Array(r.msgs.prefix(after))).count, turns(r.msgs).count)
+    }
+
+    func testAStandDownSendsItsOpenTurnAndSaysFromWhenOn() async {
+        // N126: same slow model; past the cap the tracker's open turn goes out once, then diarization.unavailable.
+        let d = SlowDiarizer(appendNs: 100_000_000)
+        let r = await record(d, seconds: 60, waitMs: 500, paceNs: 30_000_000)
+        let un = r.msgs.compactMap { m -> (CaptureSource, Double, DiarizationUnavailableReason)? in
+            if case .diarizationUnavailable(let s, let a, let w) = m { (s, a, w) } else { nil }
+        }
+        XCTAssertEqual(un.count, 1, "once")
+        XCTAssertEqual(un.first?.0, .mic)
+        XCTAssertEqual(un.first?.2, .backlog)
+        XCTAssertEqual(d.abandoned.value, 1)
+        let open = turns(r.msgs).filter { $0.0 == 1 }
+        XCTAssertEqual(open.count, 1, "the open turn, sent at the stand-down")
+        let i = r.msgs.firstIndex { if case .diarizationUnavailable = $0 { true } else { false } }!
+        let j = r.msgs.firstIndex { if case .diarizationSegment(.mic, 1, _, _) = $0 { true } else { false } }!
+        XCTAssertLessThan(j, i, "turns first, then the stand-down line")
+        // atMs: the audio the model was handed (≥ what it processed, whole seconds of input, before the end).
+        let at = un.first!.1
+        XCTAssertGreaterThanOrEqual(at, open[0].2)
+        XCTAssertEqual(at.truncatingRemainder(dividingBy: 1000), 0)
+        XCTAssertLessThan(at, 60_000)
+        XCTAssertTrue(r.msgs[(i + 1)...].allSatisfy { if case .diarizationSegment(.mic, _, _, _) = $0 { false } else { true } })
+    }
+
+    func testAModelThatDoesNotLoadSaysSoFromTheStart() async {
+        let d = FailingDiarizer()
+        let r = await record(d, seconds: 2, waitMs: 500)
+        XCTAssertTrue(r.msgs.contains(.diarizationUnavailable(source: .mic, atMs: 0, reason: .modelUnavailable)))
+        XCTAssertEqual(r.msgs.filter { if case .diarizationUnavailable = $0 { true } else { false } }.count, 1)
+        XCTAssertTrue(turns(r.msgs).isEmpty)
     }
 
     func testASlowLoadIsBoundedAndTheStopClosesItOut() async {

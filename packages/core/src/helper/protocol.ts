@@ -165,6 +165,17 @@ export const HelperToHost = z.discriminatedUnion('type', [
   }),
   z.object({
     /**
+     * N126 (ADR 0082): `source` gets no more speaker turns this recording from `atMs` (recording-relative) on.
+     * `backlog`: its diarizer fell too far behind and stood down (the turns up to there were sent first);
+     * `model-unavailable`: its model didn't load. Once per channel per recording; lines after it keep no speaker.
+     */
+    type: z.literal('diarization.unavailable'),
+    source: CaptureSource,
+    atMs: z.number().min(0),
+    reason: z.enum(['backlog', 'model-unavailable']),
+  }),
+  z.object({
+    /**
      * H8: a capture source failed to start and the helper moves on to the next one (Core Audio process tap →
      * ScreenCaptureKit → …). `to` is the source tried next; null when none is left (`error{audio.unavailable}`
      * follows). Informational: the host logs it; recording.started still follows.

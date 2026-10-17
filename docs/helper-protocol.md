@@ -174,6 +174,14 @@ diarizer reports finished speaker turns:
 - Mock helper: `QRTZ_MOCK_DIARIZE=1`.
 - N121: each channel's queue is capped at 30 s of audio; past it that channel stands down for the recording (a
   `log` warn says so). The stop waits at most 3 s for the diarizers, then sends their open turns and cancels them.
+- N126 (ADR 0082): a channel that gets no more turns says so once per recording:
+  `{"type":"diarization.unavailable","source":"system","atMs":612000,"reason":"backlog"}`. `backlog` is a
+  stand-down: the tracker's open turn is sent first, and `atMs` is the part-relative audio the model was handed.
+  `model-unavailable` means the diarizer's model didn't load (`atMs: 0`). Later lines on that channel keep no
+  speaker. Host side: the "speakers not separated after …" stretch in the capture report. An older host drops the
+  line as invalid.
+- N125: a run the stop closed out, or an aborted run, may still be inside a model call. The next recording's run on
+  that channel waits for it before loading, so the old run's unload never lands under it.
 
 Host → helper `{"type":"models.warm"}` (ADR 0079 / N121): sent once after the local speech models finish installing
 (`speech.warmAfterDownload`, default on). The helper loads each model once, one at a time, then unloads it, and logs

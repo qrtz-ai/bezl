@@ -10,6 +10,9 @@ public enum OsPermission: String, CaseIterable, Sendable { case accessibility, s
 public enum RevocationDegradation: String, Sendable, CaseIterable {
     case axUnavailable = "ax-unavailable", audioUnavailable = "audio-unavailable", micOnly = "mic-only", noMic = "no-mic"
 }
+/// N126: why a channel has no speaker turns from `atMs` on (`backlog`: the diarizer fell too far behind and stood
+/// down; `model-unavailable`: its model didn't load).
+public enum DiarizationUnavailableReason: String, Sendable { case backlog, modelUnavailable = "model-unavailable" }
 public enum DictationStopReason: String, Sendable { case permissionRevoked = "permission-revoked", micLost = "mic-lost" }
 public enum PermissionState: String, Sendable { case granted, denied, notDetermined = "not-determined", unsupported }
 public enum MeetingPlatform: String, Sendable { case zoom, googleMeet = "google-meet", teams, slackHuddle = "slack-huddle", webex, other }
@@ -83,6 +86,9 @@ public enum HelperMessage: Equatable, Sendable {
     /// ADR 0079: one speaker's turn on one raw channel (on-device diarization), recording-relative ms. `speaker` is
     /// that channel's slot 0...7 (the host names it `mic:N` / `system:N`); never merged across channels.
     case diarizationSegment(source: CaptureSource, speaker: Int, startMs: Double, endMs: Double)
+    /// N126: `source` gets no more speaker turns this recording from `atMs` (recording-relative) on. Once per channel
+    /// per recording, after the turns it could still send.
+    case diarizationUnavailable(source: CaptureSource, atMs: Double, reason: DiarizationUnavailableReason)
     /// H8: capture source `from` failed to start; `to` is tried next (nil: none left).
     case captureFallback(from: String, to: String?, reason: String)
     /// N35: a source lost part of its input (today: its in-source mic) and records the rest. Sticky until a reconnect.
@@ -244,6 +250,8 @@ extension HelperMessage {
         case .captureAudible(let src): return obj("capture.audible", ["source": s(src.rawValue)])
         case .diarizationSegment(let src, let spk, let a, let b):
             return obj("diarization.segment", ["source": s(src.rawValue), "speaker": n(Double(spk)), "startMs": n(a), "endMs": n(b)])
+        case .diarizationUnavailable(let src, let at, let why):
+            return obj("diarization.unavailable", ["source": s(src.rawValue), "atMs": n(at), "reason": s(why.rawValue)])
         case .captureFallback(let from, let to, let reason):
             return obj("capture.fallback", ["from": s(from), "to": to.map(s) ?? .null, "reason": s(reason)])
         case .captureDegraded(let degraded, let reason):
@@ -346,6 +354,11 @@ extension HelperMessage {
             let spk = try f.num("speaker"), a = try f.num("startMs"), b = try f.num("endMs")
             guard spk >= 0, spk <= 7, spk == spk.rounded(), a >= 0, b > a else { throw ProtocolError("bad diarization.segment") }
             self = .diarizationSegment(source: try f.enumValue("source", CaptureSource.self), speaker: Int(spk), startMs: a, endMs: b)
+        case "diarization.unavailable":
+            let at = try f.num("atMs")
+            guard at >= 0 else { throw ProtocolError("negative atMs") }
+            self = .diarizationUnavailable(source: try f.enumValue("source", CaptureSource.self), atMs: at,
+                                           reason: try f.enumValue("reason", DiarizationUnavailableReason.self))
         case "capture.fallback":
             guard let to = f.o["to"] else { throw ProtocolError("missing to") }
             guard to == .null || !(to.string ?? "").isEmpty else { throw ProtocolError("bad to") }

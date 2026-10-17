@@ -51,3 +51,5 @@
 {"available":false,"id":"c2","reason":"model-not-ready","type":"summarize.status"}
 {"endMs":4200,"source":"mic","speaker":0,"startMs":1200,"type":"diarization.segment"}
 {"endMs":9100,"source":"system","speaker":2,"startMs":5000,"type":"diarization.segment"}
+{"atMs":612000,"reason":"backlog","source":"system","type":"diarization.unavailable"}
+{"atMs":0,"reason":"model-unavailable","source":"mic","type":"diarization.unavailable"}
