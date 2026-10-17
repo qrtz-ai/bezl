@@ -81,7 +81,15 @@ if (process.platform !== 'darwin') {
 if (run(['build', '-c', 'release', '--arch', 'arm64'])) process.exit(1);
 // Tauri's externalBin (tauri.macos.conf.json) wants the sidecar at src-tauri/binaries/qrtz-helper-<target triple>;
 // `cargo build` / `tauri dev` fail in the build script without it.
-const built = path.join(dir, '.build/arm64-apple-macosx/release/qrtz-helper');
+// The output dir depends on the SwiftPM build system (.build/arm64-apple-macosx/release with the native one,
+// .build/out/Products/Release with swiftbuild on newer Xcode), so ask SwiftPM.
+const binPath = spawnSync(
+  swift,
+  ['build', '-c', 'release', '--arch', 'arm64', '--show-bin-path'],
+  { cwd: dir, encoding: 'utf8' },
+);
+if (binPath.status !== 0) process.exit(1);
+const built = path.join(binPath.stdout.trim(), 'qrtz-helper');
 const binDir = path.resolve(
   import.meta.dirname,
   '../apps/desktop/src-tauri/binaries',
