@@ -152,10 +152,14 @@ host's `audio.level` is only the mix) and reports a source that stays under a fl
 - Once per silent stretch per source; `capture.audible` when that source is above the floor again. A pause breaks a
   stretch (nothing is captured), an already reported one stays reported. A mic channel the source does not deliver
   is not tracked (no mic, or revoked: `permission.revoked` covers that). Nothing is sent outside a recording.
-- Host: wire only so far (Electron logs it). The session degradation (`silent-input`), reducers, vectors and runtimes
-  come separately.
+- Host (ADR 0025): a live per-source state, not a sticky degradation. `RecordingState.silent` / `SessionView.silent`
+  and `noAudio` while it lasts. Closed stretches become `silentSpans`, kept on the meeting in
+  `PipelineState.capture`. The summary step lists stretches of 60 s or more as capture gaps. Ignored: a duplicate,
+  an audible with no silent before it, a source already lost. A revoke, `helper-lost`, a `to: null` fallback or
+  stop closes the stretch. Electron `NoteService` and Rust `NoteRuntime`.
 - Mock helper: `createMockHelper({ silence: [{ source, afterMs, audibleAfterMs?, sinceMs? }] })`, or
-  `QRTZ_MOCK_SILENT="system@1500,mic@2000-4000"` (ms after `recording.start`; `-4000`: audible again then).
+  `QRTZ_MOCK_SILENT="system@1500,mic@2000-4000"` (ms after `recording.start`; `-4000`: audible again then). The
+  Rust `qrtz-mock-helper` takes the same value (`QRTZ_MOCK_SILENT=1` still means a mute helper there).
 
 ## Capture fallback (H8)
 
@@ -169,9 +173,13 @@ Each one that fails to start is reported as a structured message (this used to b
 
 - `from`: the source that failed (its `AudioSource.name`). `to`: the source tried next, `null` when none is left; then
   `error{code: "audio.unavailable"}` follows. `reason`: the error text.
-- Sent before `recording.started`, which still follows. Informational: the host logs it as a warning
-  (`capture fallback {from, to, reason}`, Electron `index.ts` and `qrtz-app`), the same surface as the old log line.
+- Sent before `recording.started`, which still follows. The host logs it as a warning and records it on the meeting
+  (ADR 0025): `RecordingState.fallbacks` and later `PipelineState.capture.fallbacks` `[{from, to, reason, atMs}]`,
+  capped at 8. `to: null` degrades `audio-unavailable` at once, so the following `audio.unavailable` error is a
+  no-op.
 - Mock helper: `createMockHelper({ captureFallback: [{ from, to, reason }] })` emits them on every `recording.start`.
+  Rust `qrtz-mock-helper`: `QRTZ_MOCK_FALLBACK="screen>mic,mic>"`, where an empty `to` is `null` and is followed by
+  `error{audio.unavailable}`.
 
 ## Permission revocation (H5)
 

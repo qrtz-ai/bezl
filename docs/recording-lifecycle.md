@@ -85,6 +85,15 @@ stateDiagram-v2
 | `audio-unavailable` | helper `error{code: audio.unavailable}`                                           | nothing captured (the start is refused up front if both permissions are denied) |
 | `transcript-gap`    | helper restarted mid-recording                                                    | the restart interval is missing                                                 |
 
+**Silent input (N29, ADR 0025)** is separate from `degraded[]` because it clears. After `capture.silent{source}`
+(60 s under ≈ −70 dBFS), `silent[]` holds `{source, sinceMs}` until `capture.audible{source}`. `SessionView` has
+`silent` and `noAudio: true` when neither source delivers audio, counting silent, lost and denied sources. Each
+stretch becomes a `silentSpans` entry in meeting ms. A revoke of that source, `helper-lost` (the new helper
+measures again) and stop all close it. Duplicates, an audible without a silent, and silence of a lost source are
+ignored. At stop (and R1 recovery) spans and **capture fallbacks** (H8, `capture.fallback{from, to, reason}`,
+`to: null` = `audio-unavailable` now) go to `PipelineState.capture`, which `note:pipeline` carries. The summary
+prompt lists stretches of 60 s or more as capture gaps and tells the model not to fill them.
+
 ## Post-processing pipeline
 
 There is one pipeline per meeting (`pipeline_state`, keyed by meeting id, cascade-deleted with the meeting).
@@ -193,5 +202,3 @@ At startup, after the worker is ready, `NoteService.recover()` runs. `start()` w
   live per-segment speaker stamped at append time.
 - The WAV parts from a helper restart are stitched end to end. The gap is not padded with silence, so
   playback after the gap runs early by the length of the gap. The transcript timestamps are correct.
-- The helper reports the capture source it fell back to (tap → SCK → mic) only as a log line. Exposing it
-  as a structured event is backlog (see architecture-review.md).

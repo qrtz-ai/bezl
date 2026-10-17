@@ -132,12 +132,20 @@ pub struct RecordingState {
     pub reconnect: Option<ReconnectInfo>, pub error: Option<LifecycleError>,
     pub audio_parts: Vec<String>,            // default []
     pub part_offset_ms: Ms,                  // default 0
+    // N29/H8 (ADR 0025): all omitted when empty
+    pub silent: Vec<SilentInput>,            // {source, since_ms} silent right now
+    pub silent_spans: Vec<SilentSpan>,       // {source, start_ms, end_ms?} closed stretches, meeting ms, ≤ 256
+    pub fallbacks: Vec<CaptureFallback>,     // {from, to: Option<String> (null), reason, at_ms}, ≤ 8
 }
+pub enum CaptureSource { System, Mic }
+pub struct CaptureReport { pub silent_spans: Vec<SilentSpan>, pub fallbacks: Vec<CaptureFallback> }
 #[serde(tag = "type", rename_all = "kebab-case", rename_all_fields = "camelCase")]
 pub enum LifecycleEvent {
     Detected { meeting: DetectedMeeting }, MeetingEnded { key: String },
     StartRequested { meeting_id: String, at: EpochMs, audio_path: String },
-    StartAcked, StartFailed { error: LifecycleError }, Degraded { flag: Degradation },
+    StartAcked, StartFailed { error: LifecycleError }, Degraded { flag: Degradation, at: Option<EpochMs> },
+    InputSilent { source: CaptureSource, since_ms: Ms }, InputAudible { source: CaptureSource, at: EpochMs },
+    CaptureFallback { from: String, to: Option<String>, reason: String, at: EpochMs },
     HelperLost { at: EpochMs, deadline_at: EpochMs }, HelperRestored { at: EpochMs, audio_path: String },
     StopRequested { reason: StopReason, at: EpochMs }, Stopped { at: EpochMs },
     ProcessingDone, ProcessingFailed { error: LifecycleError }, Rejected { error: LifecycleError },
@@ -153,8 +161,9 @@ pub struct PipelineContext { pub started_at: EpochMs, pub ended_at: EpochMs, pub
     pub audio_parts: Vec<String>, pub active: Vec<ActiveSpeakerEvent>, pub helper_crashed: bool }
 pub struct PipelineSteps { pub finalize: StepState, pub summary: StepState, pub index: StepState }
 pub struct PipelineState { pub meeting_id: String, pub stop_reason: StopReason, pub steps: PipelineSteps,
-    pub ctx: PipelineContext, pub updated_at: EpochMs }
-pub struct PipelineView { /* PipelineState minus ctx */ }
+    pub ctx: PipelineContext, pub updated_at: EpochMs,
+    pub capture: Option<CaptureReport> /* N29/H8: written at stop and R1 recovery, omitted when empty */ }
+pub struct PipelineView { /* PipelineState minus ctx (so it carries capture) */ }
 
 // ---- live transcript + views ----
 pub struct LiveSegment { pub id: String, pub text: String, pub start_ms: Ms, pub end_ms: Ms, pub speaker: Option<String> }
@@ -163,7 +172,8 @@ pub struct LiveTranscript { pub meeting_id: String, pub rev: u64, pub segments: 
                             pub partial: Option<LivePartial> /* serialized as null, not omitted */ }
 pub struct LiveTranscriptDelta { pub meeting_id: String, pub base_rev: u64, pub rev: u64,
                                  pub append: Vec<LiveSegment>, pub partial: Option<LivePartial> /* null */ }
-pub struct SessionView { /* every field of note/contract.ts SessionView, same optionality */ }
+pub struct SessionView { /* every field of note/contract.ts SessionView, same optionality;
+    N29: silent: Vec<SilentInput> (omitted when empty), no_audio: bool (`noAudio: true`, omitted when false) */ }
 pub type PermissionsStatus = BTreeMap<OsPermission, PermissionState>;
 ```
 
@@ -498,6 +508,8 @@ pub enum HelperInput {                 // the subset NoteService consumes; every
     ActiveSpeaker { at_ms: Ms, name: String }, AudioLevel { rms: f64 }, Asr(AsrEvent),
     RecordingStarted { audio_path: String }, RecordingStopped { duration_ms: Option<Ms> },
     Error { code: String, message: String },
+    CaptureSilent { source: CaptureSource, since_ms: Ms }, CaptureAudible { source: CaptureSource },   // N29
+    CaptureFallback { from: String, to: Option<String>, reason: String },                             // H8
 }
 
 /// Outbound events. Bobs's shell fans these out as `qrtz:event` {event, payload, subApps}.
@@ -530,6 +542,11 @@ Why the narrow `HelperCommand`/`HelperInput` instead of the full helper protocol
 (and the talk worker is changing it right now for dictation). The lifecycle only consumes the messages
 `NoteService.handle()` switches on, so dictation, `ax.caption`/`ax.chat`, `log`, heartbeat and ping never reach
 it, and protocol changes for talk don't touch this crate.
+
+**Silent input and capture fallbacks (N29, H8; ADR 0025).** `capture.silent` / `capture.audible` /
+`capture.fallback` map onto `HelperInput::CaptureSilent` / `CaptureAudible` / `CaptureFallback`. The UI events are
+the existing ones: `note:session` carries `silent` and `noAudio` live, and `note:pipeline` carries `capture`
+(`silentSpans`, `fallbacks`) once the recording stops. No new `CoreEvent` and no new channel.
 
 ### 4.3 Command ↔ IPC channel mapping
 
