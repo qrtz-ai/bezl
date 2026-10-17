@@ -2,6 +2,8 @@
 
 ## Unreleased: helper mux + TCC revocation (H5/H6)
 
+- **Chat answers questions asked in Chinese, Japanese or Thai (Bozniak cycle 14, N49; ADR 0047):** "我们决定了什么" now finds "我们决定推迟发布。" across meetings, with or without an embedding model. Question words in scripts written without spaces are cut into character bigrams (at most 16) and matched inside transcript lines, in retrieval (TS and Rust, shared SQL) and in the ranker; other words still use the index, and questions without such a word run as before. Chat words keep combining marks, so Thai and Hindi words stay whole. TS and Rust share `spec/stress/chat-cjk.json`. No migration.
+
 - **Search finds Chinese, Japanese and Thai words anywhere in a line (Bozniak cycle 12, N48; ADR 0039):** "会议" in "明天的会议很重要", "金曜日" in "会議は金曜日です" and "ประชุม" in "เริ่มประชุมกันเลย" now match in meeting search and the list filter, in transcripts, titles and summaries. Words in scripts written without spaces are matched as substrings; every other word still uses the FTS index, and searches without such a word run exactly as before. TS and Rust share `spec/stress/fts-substring.json`. No migration. Still open: chat questions in Chinese or Japanese (N49).
 
 - **Search finds words with apostrophes (Bozniak cycle 11, N46/N47; ADR 0038):** "don't", "O'Reilly", "l'équipe" and possessives ("Jared's" finds "Jared") now match in meeting search, the list filter and chat. Each word goes to SQLite FTS5 as a quoted phrase, so it is split by the same tokenizer as the index; Hindi and Thai words stay one phrase. Chat no longer drops the line it found for such a question. TS and Rust share `spec/stress/fts-queries.json`. No migration. Still open: a Chinese, Japanese or Thai word inside a longer run of text is not found (N48).
