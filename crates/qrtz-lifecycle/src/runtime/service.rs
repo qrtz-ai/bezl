@@ -2462,7 +2462,9 @@ impl Shared {
         if p.is_some_and(|p| p.steps.finalize.status == StepStatus::Done) {
             // Through the pipeline so retries/backoff/progress are tracked like any other step.
             self.clone().retry_step(id, StepId::Summary).await?;
-            self.wait_settled(id, StepId::Summary).await;
+            let budget = settle_budget_ms(StepId::Summary, self.config().summary_timeout_ms);
+            self.wait_settled(id, StepId::Summary, Duration::from_millis(budget))
+                .await;
             return Ok(self.d.store.get_summary(id.to_string()).await?);
         }
         let summary = with_timeout(
@@ -2475,8 +2477,10 @@ impl Shared {
         Ok(Some(summary))
     }
 
-    async fn wait_settled(&self, id: &str, step: StepId) {
-        for _ in 0..2400 {
+    /// Polls until `step` is done/failed/skipped or `budget` passes (monotonic: a wall-clock jump can't cut it).
+    async fn wait_settled(&self, id: &str, step: StepId, budget: Duration) {
+        let until = tokio::time::Instant::now() + budget;
+        while tokio::time::Instant::now() < until {
             let st = self.lock().pipelines.get(id).map(|p| p.steps.get(step).status);
             if matches!(
                 st,
@@ -2487,6 +2491,17 @@ impl Shared {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
     }
+}
+
+/// How long `resummarize` waits for a retried step to settle (N112, ADR 0077): every attempt's own timeout plus
+/// the longest backoff before it (+20 % jitter), and 10 s of slack. It was a fixed 120 s (the old cloud timeout),
+/// so with the 900 s on-device summary (ADR 0075) a long meeting's resummarize returned the stale summary while
+/// the new one was still being written.
+pub fn settle_budget_ms(step: StepId, step_timeout_ms: u64) -> u64 {
+    let p = policies::for_step(step);
+    (1..=p.max_attempts)
+        .map(|a| step_timeout_ms.saturating_add(max_retry_delay(&p, a, 1.0)))
+        .fold(10_000u64, u64::saturating_add)
 }
 
 /// True when `file` resolves lexically to a path strictly inside `dir` (no `..` escape). TS `insideDir`.

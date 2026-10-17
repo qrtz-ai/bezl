@@ -10,7 +10,9 @@
 //! - **What comes back**: guided-generation data only (`summarize.result`), schema-checked by the helper contract
 //!   and re-capped here ([`clean_reply`]) before anything is stored or shown.
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+// tokio's clock (the same monotonic clock in the app) so the deadline is testable in paused time.
+use tokio::time::Instant;
 
 use async_trait::async_trait;
 use qrtz_lifecycle::runtime::{
