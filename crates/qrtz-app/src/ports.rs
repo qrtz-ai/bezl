@@ -17,6 +17,8 @@ pub const RUNTIME_CHANNELS: &[&str] = &[
     "note:start",
     "note:stop",
     "note:dismiss",
+    // The runtime owns the full delete (pipeline, rows, audio; refuses the meeting being recorded).
+    "note:delete",
     "note:pause",
     "note:pipeline",
     "note:retry-step",
@@ -35,7 +37,6 @@ pub const STORAGE_CHANNELS: &[&str] = &[
     "note:update-note",
     "note:delete-note",
     "note:rename-speaker",
-    "note:delete",
     "note:undo-delete",
     "note:export",
     "db:health",

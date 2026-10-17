@@ -7,7 +7,12 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# `NoteRuntimePort`: the qrtz-lifecycle `NoteRuntime` behind `RuntimePort` (note:delete so far).
+runtime = ["dep:qrtz-lifecycle"]
+
 [dependencies]
+qrtz-lifecycle = { workspace = true, features = ["runtime"], optional = true }
 qrtz-ipc = { path = "../qrtz-ipc" }
 qrtz-helper-bridge = { path = "../qrtz-helper-bridge" }
 serde.workspace = true
@@ -23,3 +28,6 @@ keyring = { version = "3", features = ["apple-native"] }
 tokio = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true
 qrtz-helper-bridge = { path = "../qrtz-helper-bridge" }
+qrtz-storage.workspace = true
+# `cargo test --workspace` builds the runtime adapter tests without extra flags.
+qrtz-app = { path = ".", features = ["runtime"] }

@@ -54,6 +54,10 @@ pub struct RuntimeDeps {
     pub pending_delete: Option<PendingDelete>,
 }
 
+/// Refusal for deleting the meeting that is still recording or flushing (TS `DELETE_WHILE_RECORDING`).
+pub const DELETE_WHILE_RECORDING: &str =
+    "This meeting is still recording. Stop the recording, then delete it.";
+
 /// [`RuntimeDeps::pending_delete`]: is this meeting's delete confirmed but not yet run?
 pub type PendingDelete = Arc<dyn Fn(&str) -> bool + Send + Sync>;
 
@@ -1358,6 +1362,15 @@ impl Shared {
 
     /// User delete: forget the pipeline first so no retry timer races the delete, then rows, then audio (N15).
     async fn delete_meeting(self: &Arc<Self>, id: &str) -> Result<Vec<String>, CoreError> {
+        {
+            let g = self.lock();
+            let s = g.machine.state();
+            if s.meeting_id.as_deref() == Some(id)
+                && (is_capturing(s.phase) || s.phase == RecordingPhase::Stopping)
+            {
+                return Err(CoreError::validation(DELETE_WHILE_RECORDING));
+            }
+        }
         self.forget_pipeline(id);
         self.drop_meeting(id).await
     }

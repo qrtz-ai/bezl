@@ -304,6 +304,7 @@ export function bootstrap() {
         return r;
       },
       'note:delete': async ({ id, deferMs }) => {
+        note.assertDeletable(id); // never tombstone the meeting being recorded either
         if (deferMs) {
           pendingDeletes.schedule(id, deferMs);
           bus.emit('note:changed', { id });

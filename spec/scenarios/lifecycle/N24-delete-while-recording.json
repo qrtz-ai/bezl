@@ -1,0 +1,273 @@
+{
+  "name": "N24-delete-while-recording",
+  "about": "Cycle 4 follow-up: the host refuses to delete the meeting it is recording (E_VALIDATION, nothing removed, the recording goes on), and so while that meeting is still stopping. Once it is processing or done, delete works as usual. Before, only the UI kept the user from deleting a live meeting.",
+  "script": [
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permissions.status",
+        "status": {
+          "accessibility": "granted",
+          "screen-recording": "granted",
+          "microphone": "granted"
+        }
+      }
+    },
+    {
+      "op": "call",
+      "fn": "start",
+      "label": "start",
+      "args": {
+        "title": "Standup"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.started",
+        "audioPath": "$REC/id1.wav"
+      }
+    },
+    {
+      "op": "wav",
+      "file": "id1.wav",
+      "ms": 400,
+      "broken": false
+    },
+    {
+      "op": "call",
+      "fn": "deleteMeeting",
+      "label": "delete-recording",
+      "args": {
+        "id": "id1"
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 50
+    },
+    {
+      "op": "snapshot",
+      "label": "still-recording"
+    },
+    {
+      "op": "call",
+      "fn": "stop",
+      "label": "stop"
+    },
+    {
+      "op": "call",
+      "fn": "deleteMeeting",
+      "label": "delete-stopping",
+      "args": {
+        "id": "id1"
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 10
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.stopped",
+        "audioPath": "$REC/id1.wav",
+        "durationMs": 4000
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 200
+    },
+    {
+      "op": "call",
+      "fn": "deleteMeeting",
+      "label": "delete-done",
+      "args": {
+        "id": "id1"
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 50
+    }
+  ],
+  "expect": {
+    "trace": {
+      "session": [
+        "idle|-|-|-|-|-|ok",
+        "starting|id1|-|-|-|-|ok",
+        "recording|id1|-|-|-|-|ok",
+        "stopping|id1|-|-|-|-|ok",
+        "processing|id1|-|-|-|-|ok",
+        "done|id1|-|-|-|-|ok",
+        "idle|-|-|-|-|-|ok"
+      ],
+      "pipelines": {
+        "id1": [
+          "manual finalize:pending/0 summary:pending/0 index:pending/0",
+          "manual finalize:running/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:running/1 index:pending/0",
+          "manual finalize:done/1 summary:done/1 index:pending/0",
+          "manual finalize:done/1 summary:done/1 index:running/1",
+          "manual finalize:done/1 summary:done/1 index:done/1"
+        ]
+      },
+      "helper": [
+        "permissions.check",
+        "recording.start $REC/id1.wav",
+        "recording.stop"
+      ],
+      "transcript": [
+        [
+          0,
+          1,
+          [],
+          null
+        ]
+      ],
+      "changed": [
+        "id1",
+        "id1",
+        "id1",
+        "id1"
+      ],
+      "permissions": [
+        "granted|granted|granted"
+      ],
+      "prompts": []
+    },
+    "results": {
+      "start": {
+        "ok": {
+          "phase": "recording",
+          "meetingId": "id1"
+        }
+      },
+      "delete-recording": {
+        "err": [
+          "E_VALIDATION",
+          "This meeting is still recording. Stop the recording, then delete it."
+        ]
+      },
+      "stop": {
+        "ok": {
+          "phase": "processing",
+          "meetingId": "id1"
+        }
+      },
+      "delete-stopping": {
+        "err": [
+          "E_VALIDATION",
+          "This meeting is still recording. Stop the recording, then delete it."
+        ]
+      },
+      "delete-done": {
+        "ok": [
+          "id1.wav"
+        ]
+      }
+    },
+    "snapshots": {
+      "still-recording": {
+        "view": {
+          "phase": "recording",
+          "meetingId": "id1",
+          "startedAt": 1760000000000,
+          "elapsedMs": 50,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": {
+          "meetingId": "id1",
+          "rev": 0,
+          "segments": [],
+          "partial": null
+        },
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "recording",
+              1760000000000,
+              null,
+              null,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "recording",
+            "id1"
+          ]
+        },
+        "files": [
+          [
+            "id1.wav",
+            12844
+          ]
+        ]
+      },
+      "end": {
+        "view": {
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "idle",
+            null
+          ]
+        },
+        "files": []
+      }
+    }
+  }
+}

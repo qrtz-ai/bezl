@@ -79,6 +79,10 @@ const toLifecycleError = (
  *   every step transition (`pipeline_state`) and broadcast as `note:pipeline`; restarts resume it.
  * - The live transcript is streamed as `note:transcript` deltas with a monotonically increasing `rev`.
  */
+/** Refusal message for deleting the meeting that is still recording (same text in the Rust runtime). */
+export const DELETE_WHILE_RECORDING =
+  'This meeting is still recording. Stop the recording, then delete it.';
+
 export class NoteService {
   readonly machine = new LifecycleMachine();
   private asr = new TranscriptAssembler();
@@ -229,7 +233,18 @@ export class NoteService {
    * retry timer can race the delete, drop the rows, then remove the meeting's audio (N15). Only files inside
    * the recordings directory are removed: the paths come from the DB, which a restored backup also wrote.
    */
+  /**
+   * The meeting being captured (starting, recording, reconnecting) or still flushing its WAV (stopping) can't be
+   * deleted: its helper writer and live finals would outlive the rows. Stop it first. Throws E_VALIDATION.
+   */
+  assertDeletable(id: string): void {
+    const s = this.machine.state;
+    if (s.meetingId === id && (isCapturing(s.phase) || s.phase === 'stopping'))
+      throw new AppError('E_VALIDATION', DELETE_WHILE_RECORDING);
+  }
+
   async deleteMeeting(id: string): Promise<{ removed: string[] }> {
+    this.assertDeletable(id);
     this.forgetPipeline(id);
     return this.dropMeeting(id);
   }

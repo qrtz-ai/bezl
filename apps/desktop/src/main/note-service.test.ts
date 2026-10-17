@@ -19,7 +19,7 @@ import {
 import { DatabaseSync } from 'node:sqlite';
 import { openDatabase } from '../worker/db';
 import { createWorkerHandlers } from '../worker/handlers';
-import { NoteService } from './note-service';
+import { DELETE_WHILE_RECORDING, NoteService } from './note-service';
 import type { WorkerClient } from './worker-client';
 
 // Integration: the real NoteService + Supervisor + TS mock helper (standup scenario, real timers, fast) +
@@ -852,6 +852,31 @@ describe('NoteService lifecycle (integration with mock helper + real worker hand
       await until(() => r.sessions.some((v) => v.phase === 'done'), 15_000);
     },
   );
+
+  it('the meeting being recorded cannot be deleted (also not deferred); once processing it can', async () => {
+    const r = rig();
+    await detected(r);
+    await r.note.start();
+    await until(() => finals(r) >= 1);
+    const id = r.note.view().meetingId!;
+    const refused = await r.note.deleteMeeting(id).catch((e) => e);
+    expect(refused).toBeInstanceOf(AppError);
+    expect(refused).toMatchObject({
+      code: 'E_VALIDATION',
+      message: DELETE_WHILE_RECORDING,
+    });
+    expect(() => r.note.assertDeletable(id)).toThrow(DELETE_WHILE_RECORDING); // the deferMs (undo) path
+    expect(() => r.note.assertDeletable('another-meeting')).not.toThrow();
+    // Nothing was removed and the recording goes on.
+    expect(r.note.view().phase).toBe('recording');
+    expect(await r.h['note.get']({ id })).toBeTruthy();
+    expect(r.writes.filter((w) => w.type === 'recording.stop')).toEqual([]);
+    await r.note.stop();
+    expect(() => r.note.assertDeletable(id)).not.toThrow();
+    await until(() => r.note.view().phase === 'done');
+    await r.note.deleteMeeting(id);
+    expect(r.h['note.list']({})).toHaveLength(0);
+  });
 
   it('C5: a step never runs if its start could not be persisted (durability barrier), then retries', async () => {
     const r = rig();

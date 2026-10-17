@@ -759,8 +759,11 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "keyring",
+ "qrtz-app",
  "qrtz-helper-bridge",
  "qrtz-ipc",
+ "qrtz-lifecycle",
+ "qrtz-storage",
  "serde",
  "serde_json",
  "tempfile",

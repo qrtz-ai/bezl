@@ -234,6 +234,12 @@ impl AppService {
 impl Handler for AppService {
     async fn handle(&self, channel: &str, payload: Value, _ctx: &CallContext) -> Result<Value, AppError> {
         match Self::owner(channel) {
+            Some("runtime") if channel == "note:delete" => {
+                let id = payload["id"].clone();
+                let r = self.runtime.call(channel, payload).await?;
+                self.events.emit("note:changed", json!({ "id": id }));
+                Ok(r)
+            }
             Some("runtime") => self.runtime.call(channel, payload).await,
             Some("storage") => self.storage.call(channel, payload).await,
             Some("talk") => self.talk.call(channel, payload).await,
