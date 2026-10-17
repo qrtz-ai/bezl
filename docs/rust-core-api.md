@@ -847,3 +847,54 @@ let steps = Arc::new(qrtz_llm::LlmSteps::on_device(storage.clone(), core, Arc::n
 - DB errors keep the storage classification (busy / full disk retryable, N13); a missing meeting is `E_NOT_FOUND`.
 - Parity: `spec/vectors/llm/*.json`, written by `packages/core/src/note/llm.vectors.test.ts`, read by
   `crates/qrtz-llm/tests/*.rs`.
+
+## 9. `qrtz-backup`: Markdown export and backup zip (phase 3, done)
+
+Owner: Bozniak. ADR 0043. Port of `markdown.ts`, `backup.ts` and the `note:export` / `data:*-backup` handlers.
+All calls are synchronous over `&Db`; run them on the storage thread (`StorageHandle::call`).
+
+```rust
+// Markdown (byte-identical to TS on spec/vectors/export/markdown.json)
+qrtz_backup::export_meeting(db: &Db, id: &str) -> Result<MeetingExport { filename, markdown }, StorageError> // NotFound
+qrtz_backup::meeting_to_markdown(&Meeting, &[Segment], Option<&MeetingSummary>, &[MeetingNote]) -> String
+qrtz_backup::export_filename(&Meeting) -> String
+
+// Backup (progress: FnMut(Phase::{Write | Verify | Import}, done, total))
+qrtz_backup::export_backup(&ExportBackup { db, target, recordings_dir, temp_dir, app_version, now_ms }, progress)
+    -> Result<ExportReport { saved_to, meetings, audio_files, bytes }, StorageError>   // serde: camelCase
+qrtz_backup::import_backup(&ImportBackup { db, source, recordings_dir, temp_dir, pending: Option<&PendingDeletes>,
+    limits: ImportLimits::default() }, progress)
+    -> Result<ImportReport { imported, skipped, audio_files }, StorageError>          // serde: camelCase
+// Lower level, for tests/tools: write_backup(&WriteBackup{..}), format::{Manifest, is_safe_entry}
+// qrtz-storage: Db::import_from_with(src, &mut dyn ImportHooks) (import_from is the map-based wrapper)
+```
+
+Rejections are `StorageError::Validation("Backup rejected: …")` (E_VALIDATION) with the TS wording; a corrupt DB
+entry is a SQLite error ("file is not a database"); a newer schema is `Validation("backup is from a newer qrtz
+(schema N)")`; a full disk is `Io` (ENOSPC) or `Sqlite(DiskFull)`.
+
+### Wiring in qrtz-app (Bobs)
+
+1. `crates/qrtz-app/Cargo.toml`: `qrtz-backup.workspace = true`.
+2. **`note:export {id, save}`**: replace `crate::markdown` with
+   `storage.call(move |db| qrtz_backup::export_meeting(db, &id)).await?`. It's pinned by the shared vectors (your
+   JSON-based port isn't). Keep your clipboard (`save: false`) and `QRTZ_EXPORT_DIR` / save-dialog (`save: true`)
+   code; respond `{filename, markdown, savedTo?}`. Then delete `crates/qrtz-app/src/markdown.rs`.
+3. **`data:export-backup {}`**: target = `QRTZ_BACKUP_PATH`, else a save dialog defaulting to
+   `<documents>/qrtz-backup-<UTC ISO[0..16] with ':' and 'T' → '-'>.zip`, filter `qrtz backup`/`zip`. Cancelled:
+   `{meetings: 0, audioFiles: 0, bytes: 0}`. Otherwise
+   `storage.call(move |db| export_backup(&ExportBackup { db, target: &t, recordings_dir: &dirs.recordings,
+   temp_dir: &std::env::temp_dir(), app_version: <package version>, now_ms: <wall clock> }, &mut progress))`, where
+   `progress` throttles to about 10/s and emits `data:backup-progress {kind: "export", phase: "write", done, total}`.
+   Then emit `{kind: "export", phase: "done", done: 1, total: 1}` and respond with the `ExportReport` JSON
+   (`{savedTo, meetings, audioFiles, bytes}`).
+4. **`data:import-backup {}`**: source = `QRTZ_BACKUP_PATH`, else an open dialog (`zip`). Cancelled:
+   `{canceled: true, imported: 0, skipped: 0, audioFiles: 0}`. Otherwise
+   `storage.call(move |db| import_backup(&ImportBackup { db, source: &s, recordings_dir: &dirs.recordings,
+   temp_dir: &std::env::temp_dir(), pending: Some(&pending_deletes), limits: ImportLimits::default() },
+   &mut progress))` with `kind: "import"` (`Phase::Verify` → `"verify"`, `Phase::Import` → `"import"`), then
+   `{kind: "import", phase: "done", done: 1, total: 1}`, then `note:changed {id: "*"}`, respond with the
+   `ImportReport` JSON. Pass the **same** `Arc<PendingDeletes>` as `RuntimeDeps::pending_delete`.
+5. Map errors with the existing `StorageError` → `AppError` path. Both calls hold the storage thread for the
+   whole run, like the TS worker; the renderer already shows progress for that.
+6. E2E: `QRTZ_BACKUP_PATH` / `QRTZ_EXPORT_DIR` drive the existing Electron specs unchanged.
