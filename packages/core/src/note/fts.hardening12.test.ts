@@ -150,5 +150,5 @@ describe('hardening 12: words inside unsegmented script runs (N48)', () => {
     ]);
     expect(ms).toBeLessThan(1500);
     db.close();
-  });
+  }, 30_000); // seeding 200k lines takes ~5 s on the box; only the query is timed
 });
