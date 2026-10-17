@@ -21,8 +21,6 @@ export * from './note/transcript';
 export * from './note/fusion';
 export * from './note/schema';
 export * from './note/summary';
-export * from './note/chat';
-export * from './note/embeddings';
 export * from './note/repo';
 export * from './note/extractive';
 export * from './note/llm';

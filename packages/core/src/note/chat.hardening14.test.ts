@@ -11,7 +11,6 @@ import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { migrate, migrations } from '../db/migrate';
-import { rankSources, type ChatSource } from './chat';
 import { CHAT_MAX_BIGRAMS, chatPlan, NoteRepo } from './repo';
 
 interface Spec {
@@ -59,18 +58,6 @@ function seeded() {
   return { db, repo };
 }
 
-const sources = (): ChatSource[] =>
-  spec.meetings.flatMap((m) =>
-    m.segments.map((s) => ({
-      meetingId: m.id,
-      title: m.title,
-      startedAt: m.startedAt,
-      startMs: s.startMs,
-      ...(s.speaker ? { speaker: s.speaker } : {}),
-      text: s.text,
-    })),
-  );
-
 describe('hardening 14: chat in unsegmented scripts (N49)', () => {
   it('plans every spec question the same way as Rust', () => {
     for (const c of spec.plans) {
@@ -96,23 +83,6 @@ describe('hardening 14: chat in unsegmented scripts (N49)', () => {
       if (update) c.hits = got;
       else expect(got, c.input).toEqual(c.hits);
     }
-    db.close();
-  });
-
-  it('ranks the lines about the question first', () => {
-    const all = sources();
-    for (const c of spec.ranks) {
-      const got = rankSources(c.question, all, c.k).map((s) => s.text);
-      if (update) c.texts = got;
-      else expect(got, c.question).toEqual(c.texts);
-    }
-  });
-
-  it('a Chinese question with no LLM quotes the line, not "nothing found"', () => {
-    const { db, repo } = seeded();
-    const hits = repo.searchSegments('我们决定了什么', 80);
-    const top = rankSources('我们决定了什么', hits, 3);
-    expect(top[0]?.text).toBe('我们决定推迟发布。');
     db.close();
   });
 
