@@ -358,10 +358,18 @@ export function formatTranscriptForPrompt(
     const ts = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
     return `[${ts}] ${s.speakerName ?? s.speaker ?? 'Speaker'}: ${s.text}`;
   });
-  let out = lines.join('\n');
-  if (out.length > maxChars)
-    out = out.slice(0, maxChars / 2) + '\n…\n' + out.slice(-maxChars / 2);
-  return out;
+  const out = lines.join('\n');
+  if (out.length <= maxChars) return out;
+  // Head and tail of the budget (N21: the middle of a very long meeting is not summarized). Never cut between
+  // the two halves of a surrogate pair: a lone surrogate is invalid Unicode that providers may reject.
+  const half = Math.floor(maxChars / 2);
+  const low = (i: number) => {
+    const c = out.charCodeAt(i);
+    return c >= 0xdc00 && c <= 0xdfff;
+  };
+  const a = low(half) ? half - 1 : half;
+  const b = low(out.length - half) ? out.length - half + 1 : out.length - half;
+  return out.slice(0, a) + '\n…\n' + out.slice(b);
 }
 
 export function buildSummaryPrompt(
