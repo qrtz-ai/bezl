@@ -94,6 +94,12 @@ ignored. At stop (and R1 recovery) spans and **capture fallbacks** (H8, `capture
 `to: null` = `audio-unavailable` now) go to `PipelineState.capture`, which `note:pipeline` carries. The summary
 prompt lists stretches of 60 s or more as capture gaps and tells the model not to fill them.
 
+**Device failure (N35, ADR 0028).** `capture.degraded{degraded, reason}` comes from a source whose in-source mic
+failed. It is applied like a revoke, but only while `recording`, and only for the flags not already set. Those flags
+are listed in `deviceLost` (on `SessionView` too). They are the one exception to "never cleared within one
+recording": `helper-restored` removes them, unless a revoke of the same flag took them over in between. Each failure
+goes to `deviceFailures` and then `PipelineState.capture.deviceFailures`, apart from revokes.
+
 ## Post-processing pipeline
 
 There is one pipeline per meeting (`pipeline_state`, keyed by meeting id, cascade-deleted with the meeting).

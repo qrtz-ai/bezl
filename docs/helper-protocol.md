@@ -210,6 +210,16 @@ the rest and says so, instead of only a stderr line:
   while it is recording (nothing after its stop or abort), and drops the reports of a source that then failed to
   start (its `capture.fallback` covers it).
 - `capture.fallback` does not fit this: on the host, its `to: null` means no source is left (`audio-unavailable`).
+- Host (ADR 0028, Electron `NoteService` and Rust `NoteRuntime`):
+  - Only the flags not already set are applied, and they are remembered in `RecordingState.deviceLost` /
+    `SessionView.deviceLost`.
+  - `helper-restored` clears them. A later revoke of the same flag takes it over, so it stays.
+  - Ignored outside `recording`: before the ack, or while reconnecting.
+  - The meeting gets `PipelineState.capture.deviceFailures [{degraded, reason, atMs}]` (at most 8). A revoke never
+    writes one.
+- Mock helpers: TS `createMockHelper({ micFails: { afterMs, reason? } })`, and `QRTZ_MOCK_MIC_FAILS=1500` for both
+  the TS mock and the Rust `qrtz-mock-helper`. Each sends `capture.degraded{no-mic}` after `recording.started`, once
+  per recording, never after a stop. Scripted mic silence after it is not sent.
 
 ## Permission revocation (H5)
 

@@ -136,9 +136,13 @@ pub struct RecordingState {
     pub silent: Vec<SilentInput>,            // {source, since_ms} silent right now
     pub silent_spans: Vec<SilentSpan>,       // {source, start_ms, end_ms?} closed stretches, meeting ms, ≤ 256
     pub fallbacks: Vec<CaptureFallback>,     // {from, to: Option<String> (null), reason, at_ms}, ≤ 8
+    // N35 (ADR 0028): omitted when empty
+    pub device_lost: Vec<Degradation>,       // degraded flags only a failed device set; helper-restored drops them
+    pub device_failures: Vec<DeviceFailure>, // {degraded, reason, at_ms}, ≤ 8; never written for a revoke
 }
 pub enum CaptureSource { System, Mic }
-pub struct CaptureReport { pub silent_spans: Vec<SilentSpan>, pub fallbacks: Vec<CaptureFallback> }
+pub struct CaptureReport { pub silent_spans: Vec<SilentSpan>, pub fallbacks: Vec<CaptureFallback>,
+                           pub device_failures: Vec<DeviceFailure> /* N35 */ }
 #[serde(tag = "type", rename_all = "kebab-case", rename_all_fields = "camelCase")]
 pub enum LifecycleEvent {
     Detected { meeting: DetectedMeeting }, MeetingEnded { key: String },
@@ -146,6 +150,7 @@ pub enum LifecycleEvent {
     StartAcked, StartFailed { error: LifecycleError }, Degraded { flag: Degradation, at: Option<EpochMs> },
     InputSilent { source: CaptureSource, since_ms: Ms }, InputAudible { source: CaptureSource, at: EpochMs },
     CaptureFallback { from: String, to: Option<String>, reason: String, at: EpochMs },
+    CaptureDegraded { degraded: Vec<Degradation>, reason: String, at: EpochMs },   // N35, only in Recording
     HelperLost { at: EpochMs, deadline_at: EpochMs }, HelperRestored { at: EpochMs, audio_path: String },
     StopRequested { reason: StopReason, at: EpochMs }, Stopped { at: EpochMs },
     ProcessingDone, ProcessingFailed { error: LifecycleError }, Rejected { error: LifecycleError },
@@ -173,7 +178,8 @@ pub struct LiveTranscript { pub meeting_id: String, pub rev: u64, pub segments: 
 pub struct LiveTranscriptDelta { pub meeting_id: String, pub base_rev: u64, pub rev: u64,
                                  pub append: Vec<LiveSegment>, pub partial: Option<LivePartial> /* null */ }
 pub struct SessionView { /* every field of note/contract.ts SessionView, same optionality;
-    N29: silent: Vec<SilentInput> (omitted when empty), no_audio: bool (`noAudio: true`, omitted when false) */ }
+    N29: silent: Vec<SilentInput> (omitted when empty), no_audio: bool (`noAudio: true`, omitted when false);
+    N35: device_lost: Vec<Degradation> (omitted when empty) */ }
 pub type PermissionsStatus = BTreeMap<OsPermission, PermissionState>;
 ```
 
@@ -510,6 +516,7 @@ pub enum HelperInput {                 // the subset NoteService consumes; every
     Error { code: String, message: String },
     CaptureSilent { source: CaptureSource, since_ms: Ms }, CaptureAudible { source: CaptureSource },   // N29
     CaptureFallback { from: String, to: Option<String>, reason: String },                             // H8
+    CaptureDegraded { degraded: Vec<Degradation>, reason: String },                                   // N35
 }
 
 /// Outbound events. Bobs's shell fans these out as `qrtz:event` {event, payload, subApps}.
@@ -546,7 +553,9 @@ it, and protocol changes for talk don't touch this crate.
 **Silent input and capture fallbacks (N29, H8; ADR 0025).** `capture.silent` / `capture.audible` /
 `capture.fallback` map onto `HelperInput::CaptureSilent` / `CaptureAudible` / `CaptureFallback`. The UI events are
 the existing ones: `note:session` carries `silent` and `noAudio` live, and `note:pipeline` carries `capture`
-(`silentSpans`, `fallbacks`) once the recording stops. No new `CoreEvent` and no new channel.
+(`silentSpans`, `fallbacks`) once the recording stops. No new `CoreEvent` and no new channel. N35 `capture.degraded` maps
+onto `HelperInput::CaptureDegraded`. `note:session` carries `deviceLost`, and `capture.deviceFailures` goes to the
+meeting (ADR 0028).
 
 ### 4.3 Command ↔ IPC channel mapping
 
