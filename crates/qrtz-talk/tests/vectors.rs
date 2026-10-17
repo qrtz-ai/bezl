@@ -1,6 +1,6 @@
 //! Shared talk vectors (spec/vectors/talk/*.json), computed by the TS oracle (packages/core/src/talk/*.vectors.test.ts).
 use qrtz_talk::arbiter::Arbiter;
-use qrtz_talk::cleanup::{apply_dictionary, plausible_cleanup, rule_cleanup};
+use qrtz_talk::cleanup::{apply_dictionary, rule_cleanup};
 use qrtz_talk::store::{parse, serialize};
 use qrtz_talk::{DictionaryEntry, Engine};
 use serde_json::Value;
@@ -27,16 +27,8 @@ fn cleanup_matches_ts() {
         );
         n += 1;
     }
-    for r in v["plausible"].as_array().unwrap() {
-        assert_eq!(
-            plausible_cleanup(r["raw"].as_str().unwrap(), r["out"].as_str().unwrap()),
-            r["expect"].as_bool().unwrap(),
-            "{}",
-            r["out"]
-        );
-        n += 1;
-    }
-    assert!(n > 30);
+    // `plausible` (the LLM-reply check) went with talk's LLM cleanup (ADR 0071); only the TS oracle still reads it.
+    assert!(n > 20);
 }
 
 fn engine(s: &str) -> Engine {

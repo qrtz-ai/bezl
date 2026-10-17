@@ -14,9 +14,9 @@ pub struct TalkConfig {
     /// anything else unknown is on-device too.
     pub engine: String,
     pub auto_failover: bool,
+    /// `talk.autoCleanup`: the on-device rules. There is no LLM cleanup (ADR 0071); an old config's `aiCleanup`,
+    /// `cleanupModel` and `cleanupTimeoutMs` are ignored here (qrtz-app's loader drops them).
     pub auto_cleanup: bool,
-    pub ai_cleanup: bool,
-    pub cleanup_timeout_ms: u64,
     pub auto_insert: bool,
     pub restore_clipboard: bool,
     pub save_history: bool,
@@ -36,8 +36,6 @@ impl TalkConfig {
             engine: t["engine"].as_str().unwrap_or("auto").to_owned(),
             auto_failover: b("autoFailover", true),
             auto_cleanup: b("autoCleanup", true),
-            ai_cleanup: b("aiCleanup", true),
-            cleanup_timeout_ms: t["cleanupTimeoutMs"].as_u64().unwrap_or(900).clamp(100, 10_000),
             auto_insert: b("autoInsert", true),
             restore_clipboard: b("restoreClipboard", true),
             save_history: b("saveHistory", true),

@@ -136,8 +136,6 @@ pub fn talk_service(w: TalkWiring) -> TalkService {
         clipboard: Arc::new(TalkClipboard(w.shell)),
         clock: Arc::new(SystemClock::default()),
         ids: Arc::new(RandomIds),
-        // No LLM cleanup in talk (Jared, for speed): the text goes in on release, rules only.
-        llm: Arc::new(qrtz_talk::NoLlm),
         connector: cloud_connector(w.cloud.as_deref()),
         local: w.local.unwrap_or_else(|| asr.clone()),
         helper_asr: asr,

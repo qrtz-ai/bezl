@@ -516,7 +516,6 @@ pub fn rig(o: RigOpts) -> Rig {
         clipboard: clip.clone(),
         clock: Arc::new(TestClock::new()),
         ids: Arc::new(SeqIds::default()),
-        llm: Arc::new(NoLlm),
         connector: Arc::new(o.cloud.clone()),
         local,
         helper_asr,

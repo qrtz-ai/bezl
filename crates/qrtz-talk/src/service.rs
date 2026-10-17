@@ -1,12 +1,12 @@
-//! The talk service: push-to-talk dictation. idle → listening → finalizing → cleaning → inserting → idle (or
-//! error). The helper opens the mic; the on-device engine (`qrtz_speech::SpeechEngine`, the qrtz speech module) is
+//! The talk service: push-to-talk dictation. idle → listening → finalizing → inserting → idle (or
+//! error). On release the final ASR text gets the on-device cleanup only (no LLM: ADR 0071) and goes straight in. The helper opens the mic; the on-device engine (`qrtz_speech::SpeechEngine`, the qrtz speech module) is
 //! the default, so dictation works offline. An opt-in cloud provider (ElevenLabs) runs alongside when the user picks it, and
 //! the [`Arbiter`] fails over to the on-device text when it breaks; with auto-failover off an unreachable cloud
 //! ends the dictation at once with `errorKind: offline`. Every wait has a timeout so a dictation always ends.
 //!
 //! Port of `apps/desktop/src/main/talk-service.ts` (busy ids 8eddeab, T1 2ea8a53, H5, T3/T4); ADR 0058.
 use crate::arbiter::Arbiter;
-use crate::cleanup::{cleanup_dictation, CleanupLlm};
+use crate::cleanup::cleanup_dictation;
 use crate::config::TalkConfig;
 use crate::contract::*;
 use crate::provider::{ElevenLabsProvider, StreamingProvider};
@@ -16,7 +16,6 @@ use crate::speech::{
 };
 use crate::store::{self, LoadOutcome, Store, StoreIo, MAX_HISTORY};
 use crate::ws::WsConnector;
-use async_trait::async_trait;
 use base64::Engine as _;
 use qrtz_ipc::{AppError, ErrorCode};
 use qrtz_speech::engine::StatusPhase;
@@ -54,12 +53,6 @@ pub trait Clock: Send + Sync {
 pub trait IdSource: Send + Sync {
     fn next_id(&self) -> String;
 }
-/// Builds the cleanup LLM call for this dictation (`None` = none configured; rules only).
-#[async_trait]
-pub trait CleanupLlmSource: Send + Sync {
-    async fn llm(&self) -> Option<Arc<dyn CleanupLlm>>;
-}
-
 pub struct SystemClock {
     origin: std::time::Instant,
 }
@@ -112,14 +105,6 @@ impl IdSource for RandomIds {
     }
 }
 
-pub struct NoLlm;
-#[async_trait]
-impl CleanupLlmSource for NoLlm {
-    async fn llm(&self) -> Option<Arc<dyn CleanupLlm>> {
-        None
-    }
-}
-
 /// The cloud providers a user can opt into (`talk.engine`).
 pub struct Providers {
     pub elevenlabs: Arc<dyn StreamingProvider>,
@@ -168,7 +153,6 @@ pub struct TalkDeps {
     pub clipboard: Arc<dyn Clipboard>,
     pub clock: Arc<dyn Clock>,
     pub ids: Arc<dyn IdSource>,
-    pub llm: Arc<dyn CleanupLlmSource>,
     pub connector: Arc<dyn WsConnector>,
     /// The on-device engine (`qrtz_speech::SpeechEngine`: the qrtz speech module). Talk never knows the model.
     pub local: Arc<dyn SpeechEngine>,
@@ -1135,7 +1119,7 @@ impl TalkService {
         self.emit_view(&g);
     }
 
-    /// Flush the cloud (if still in use), pick the text, then cleanup → insert → history.
+    /// Flush the cloud (if still in use), pick the text, then the on-device cleanup → insert → history.
     async fn finish(&self, id: String, local_text: String, duration_ms: f64) {
         let t = self.deps().timeouts;
         let rx = {
@@ -1213,33 +1197,15 @@ impl TalkService {
         let cfg = self.cfg();
         let dictionary = {
             let mut g = self.lock();
-            g.view.phase = TalkPhase::Cleaning;
             g.view.text = asr.text.clone();
             g.view.partial.clear();
             g.view.engine = Some(asr.engine);
             g.view.failover = Some(asr.failover);
-            self.emit_view(&g);
             g.store.dictionary.clone()
         };
-        let llm = if cfg.auto_cleanup && cfg.ai_cleanup && !cfg.local_only {
-            self.deps().llm.llm().await
-        } else {
-            None
-        };
-        let clock = self.deps().clock.clone();
-        let mono = move || clock.mono_ms();
-        let cleaned = cleanup_dictation(
-            &asr.text,
-            &dictionary,
-            cfg.auto_cleanup,
-            llm.as_deref(),
-            Duration::from_millis(cfg.cleanup_timeout_ms),
-            &mono,
-        )
-        .await;
-        if let Some(r) = &cleaned.fallback_reason {
-            tracing::info!(reason = %r.chars().take(80).collect::<String>(), "talk cleanup fell back to rules");
-        }
+        let clean_at = self.mono();
+        let cleaned = cleanup_dictation(&asr.text, &dictionary, cfg.auto_cleanup);
+        let cleanup_ms = self.mono() - clean_at;
         let mut insert: Option<Value> = None;
         let mut error: Option<String> = None;
         if cfg.auto_insert {
@@ -1285,7 +1251,7 @@ impl TalkService {
             latency: Latency {
                 first_partial_ms: g.first_partial.map(|f| (f - g.key_down).max(0.0).round()),
                 final_ms: Some((final_at - g.key_up).max(0.0).round()),
-                cleanup_ms: Some(cleaned.ms.max(0.0).round()),
+                cleanup_ms: Some(cleanup_ms.max(0.0).round()),
                 inserted_ms: ok.then(|| (inserted_at - g.key_up).max(0.0).round()),
             },
             error,

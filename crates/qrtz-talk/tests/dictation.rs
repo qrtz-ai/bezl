@@ -26,10 +26,7 @@ async fn on_device_is_the_default_and_never_touches_the_network() {
         "raw = {}",
         e.raw
     );
-    assert_eq!(
-        r.phases(),
-        ["listening", "finalizing", "cleaning", "inserting", "idle"]
-    );
+    assert_eq!(r.phases(), ["listening", "finalizing", "inserting", "idle"]);
     assert_eq!(r.svc.history().len(), 1);
 }
 

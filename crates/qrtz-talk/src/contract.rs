@@ -29,7 +29,6 @@ pub enum TalkPhase {
     Listening,
     /// Key released; waiting for the provider's final text.
     Finalizing,
-    Cleaning,
     Inserting,
     Error,
 }
@@ -81,9 +80,12 @@ impl TalkErrorKind {
     }
 }
 
+/// How a history entry's `text` was made from its `raw` ASR text. New entries are `rules` or `off`; `llm` is only
+/// read, from entries written before talk's LLM cleanup was removed (ADR 0071), and kept as it was.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CleanupMethod {
+    /// Legacy (read only): the removed LLM cleanup.
     Llm,
     Rules,
     Off,
@@ -136,6 +138,7 @@ pub struct Latency {
         serialize_with = "js_num_opt",
         default
     )]
+    /// The on-device cleanup pass (rules; old entries: also the removed LLM pass).
     pub cleanup_ms: Option<f64>,
     /// Key-up → text inserted into the focused app.
     #[serde(
