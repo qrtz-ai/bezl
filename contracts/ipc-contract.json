@@ -922,6 +922,32 @@
                       ],
                       "additionalProperties": false
                     }
+                  },
+                  "lostSpans": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "startMs": {
+                          "type": "number"
+                        },
+                        "endMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "startMs"
+                      ],
+                      "additionalProperties": false
+                    }
                   }
                 },
                 "additionalProperties": false
@@ -1498,6 +1524,32 @@
                       ],
                       "additionalProperties": false
                     }
+                  },
+                  "lostSpans": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "startMs": {
+                          "type": "number"
+                        },
+                        "endMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "startMs"
+                      ],
+                      "additionalProperties": false
+                    }
                   }
                 },
                 "additionalProperties": false
@@ -2065,6 +2117,32 @@
                       ],
                       "additionalProperties": false
                     }
+                  },
+                  "lostSpans": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "startMs": {
+                          "type": "number"
+                        },
+                        "endMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "startMs"
+                      ],
+                      "additionalProperties": false
+                    }
                   }
                 },
                 "additionalProperties": false
@@ -2441,6 +2519,32 @@
                       ],
                       "additionalProperties": false
                     }
+                  },
+                  "lostSpans": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "startMs": {
+                          "type": "number"
+                        },
+                        "endMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "startMs"
+                      ],
+                      "additionalProperties": false
+                    }
                   }
                 },
                 "additionalProperties": false
@@ -2785,6 +2889,32 @@
                     "degraded",
                     "reason",
                     "atMs"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "lostSpans": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "system",
+                        "mic"
+                      ]
+                    },
+                    "startMs": {
+                      "type": "number"
+                    },
+                    "endMs": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "startMs"
                   ],
                   "additionalProperties": false
                 }
@@ -3409,6 +3539,32 @@
                         "degraded",
                         "reason",
                         "atMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "lostSpans": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "startMs": {
+                          "type": "number"
+                        },
+                        "endMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "startMs"
                       ],
                       "additionalProperties": false
                     }
@@ -5013,6 +5169,32 @@
                       ],
                       "additionalProperties": false
                     }
+                  },
+                  "lostSpans": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "startMs": {
+                          "type": "number"
+                        },
+                        "endMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "startMs"
+                      ],
+                      "additionalProperties": false
+                    }
                   }
                 },
                 "additionalProperties": false
@@ -6571,6 +6753,32 @@
                       ],
                       "additionalProperties": false
                     }
+                  },
+                  "lostSpans": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "startMs": {
+                          "type": "number"
+                        },
+                        "endMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "startMs"
+                      ],
+                      "additionalProperties": false
+                    }
                   }
                 },
                 "additionalProperties": false
@@ -6926,6 +7134,32 @@
                     "degraded",
                     "reason",
                     "atMs"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "lostSpans": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "system",
+                        "mic"
+                      ]
+                    },
+                    "startMs": {
+                      "type": "number"
+                    },
+                    "endMs": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "startMs"
                   ],
                   "additionalProperties": false
                 }

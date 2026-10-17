@@ -154,13 +154,13 @@
       ],
       "pipelines": {
         "id1": [
-          "manual finalize:pending/0 summary:pending/0 index:pending/0 [mic:0-1000 system:1800-2000 dev:no-mic@1000]",
-          "manual finalize:running/1 summary:pending/0 index:pending/0 [mic:0-1000 system:1800-2000 dev:no-mic@1000]",
-          "manual finalize:done/1 summary:pending/0 index:pending/0 [mic:0-1000 system:1800-2000 dev:no-mic@1000]",
-          "manual finalize:done/1 summary:running/1 index:pending/0 [mic:0-1000 system:1800-2000 dev:no-mic@1000]",
-          "manual finalize:done/1 summary:done/1 index:pending/0 [mic:0-1000 system:1800-2000 dev:no-mic@1000]",
-          "manual finalize:done/1 summary:done/1 index:running/1 [mic:0-1000 system:1800-2000 dev:no-mic@1000]",
-          "manual finalize:done/1 summary:done/1 index:done/1 [mic:0-1000 system:1800-2000 dev:no-mic@1000]"
+          "manual finalize:pending/0 summary:pending/0 index:pending/0 [mic:0-1000 system:1800-2000 dev:no-mic@1000 lost:mic:1000-2000]",
+          "manual finalize:running/1 summary:pending/0 index:pending/0 [mic:0-1000 system:1800-2000 dev:no-mic@1000 lost:mic:1000-2000]",
+          "manual finalize:done/1 summary:pending/0 index:pending/0 [mic:0-1000 system:1800-2000 dev:no-mic@1000 lost:mic:1000-2000]",
+          "manual finalize:done/1 summary:running/1 index:pending/0 [mic:0-1000 system:1800-2000 dev:no-mic@1000 lost:mic:1000-2000]",
+          "manual finalize:done/1 summary:done/1 index:pending/0 [mic:0-1000 system:1800-2000 dev:no-mic@1000 lost:mic:1000-2000]",
+          "manual finalize:done/1 summary:done/1 index:running/1 [mic:0-1000 system:1800-2000 dev:no-mic@1000 lost:mic:1000-2000]",
+          "manual finalize:done/1 summary:done/1 index:done/1 [mic:0-1000 system:1800-2000 dev:no-mic@1000 lost:mic:1000-2000]"
         ]
       },
       "helper": [
@@ -385,7 +385,7 @@
                 "$REC/id1.wav"
               ],
               0,
-              "mic:0-1000 system:1800-2000 dev:no-mic@1000"
+              "mic:0-1000 system:1800-2000 dev:no-mic@1000 lost:mic:1000-2000"
             ]
           ],
           "session": [

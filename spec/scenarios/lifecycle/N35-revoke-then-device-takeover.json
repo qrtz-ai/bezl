@@ -145,13 +145,13 @@
       ],
       "pipelines": {
         "id1": [
-          "manual finalize:pending/0 summary:pending/0 index:pending/0 [dev:no-mic@500]",
-          "manual finalize:running/1 summary:pending/0 index:pending/0 [dev:no-mic@500]",
-          "manual finalize:done/1 summary:pending/0 index:pending/0 [dev:no-mic@500]",
-          "manual finalize:done/1 summary:running/1 index:pending/0 [dev:no-mic@500]",
-          "manual finalize:done/1 summary:done/1 index:pending/0 [dev:no-mic@500]",
-          "manual finalize:done/1 summary:done/1 index:running/1 [dev:no-mic@500]",
-          "manual finalize:done/1 summary:done/1 index:done/1 [dev:no-mic@500]"
+          "manual finalize:pending/0 summary:pending/0 index:pending/0 [dev:no-mic@500 lost:mic:500-3000]",
+          "manual finalize:running/1 summary:pending/0 index:pending/0 [dev:no-mic@500 lost:mic:500-3000]",
+          "manual finalize:done/1 summary:pending/0 index:pending/0 [dev:no-mic@500 lost:mic:500-3000]",
+          "manual finalize:done/1 summary:running/1 index:pending/0 [dev:no-mic@500 lost:mic:500-3000]",
+          "manual finalize:done/1 summary:done/1 index:pending/0 [dev:no-mic@500 lost:mic:500-3000]",
+          "manual finalize:done/1 summary:done/1 index:running/1 [dev:no-mic@500 lost:mic:500-3000]",
+          "manual finalize:done/1 summary:done/1 index:done/1 [dev:no-mic@500 lost:mic:500-3000]"
         ]
       },
       "helper": [
@@ -319,7 +319,7 @@
                 "$REC/id1.p1.wav"
               ],
               0,
-              "dev:no-mic@500"
+              "dev:no-mic@500 lost:mic:500-3000"
             ]
           ],
           "session": [

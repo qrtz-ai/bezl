@@ -9,6 +9,8 @@ pub mod capture_limits {
     pub const FALLBACKS: usize = 8;
     /// N35: `capture.degraded` records kept per recording.
     pub const DEVICE_FAILURES: usize = 8;
+    /// N39: lost-source stretches kept per recording.
+    pub const LOST_SPANS: usize = 16;
     /// `capture.fallback` strings are kept to this many code points.
     pub const REASON_CHARS: usize = 200;
 }
@@ -84,6 +86,38 @@ fn close_silent(
     s
 }
 
+/// `openLost` (N39): a lost stretch opens at `at` for each of `sources` with none open (capped).
+fn open_lost(mut s: RecordingState, at: EpochMs, sources: &[CaptureSource]) -> RecordingState {
+    for src in sources {
+        if !s
+            .lost_spans
+            .iter()
+            .any(|x| x.source == *src && x.end_ms.is_none())
+            && s.lost_spans.len() < capture_limits::LOST_SPANS
+        {
+            let start = meeting_ms(&s, at, 0);
+            s.lost_spans.push(SilentSpan {
+                source: *src,
+                start_ms: start,
+                end_ms: None,
+            });
+        }
+    }
+    s
+}
+
+/// `closeLost` (N39): open lost stretches of sources `degraded[]` no longer takes away (all when `all`) end at `at`.
+fn close_lost(mut s: RecordingState, at: EpochMs, all: bool) -> RecordingState {
+    let degraded = s.degraded.clone();
+    let started = s.started_at;
+    for x in s.lost_spans.iter_mut() {
+        if x.end_ms.is_none() && (all || !source_lost(&degraded, x.source)) {
+            x.end_ms = Some((at - started.unwrap_or(at)).max(x.start_ms));
+        }
+    }
+    s
+}
+
 /// `cutChars`: a code-point cut (TS `Array.from(v).slice(0, n)`).
 pub fn cut_chars(v: &str, n: usize) -> String {
     v.chars().take(n).collect()
@@ -98,13 +132,14 @@ pub fn capture_report(s: &RecordingState) -> Option<CaptureReport> {
         end_ms: None,
     }));
     spans.truncate(capture_limits::SILENT_SPANS);
-    if spans.is_empty() && s.fallbacks.is_empty() && s.device_failures.is_empty() {
+    if spans.is_empty() && s.fallbacks.is_empty() && s.device_failures.is_empty() && s.lost_spans.is_empty() {
         return None;
     }
     Some(CaptureReport {
         silent_spans: spans,
         fallbacks: s.fallbacks.clone(),
         device_failures: s.device_failures.clone(),
+        lost_spans: s.lost_spans.clone(),
     })
 }
 
@@ -214,12 +249,16 @@ pub fn reduce(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> 
             }
             let mut n = s.clone();
             n.degraded.push(*flag);
-            // A source this flag takes away is no longer tracked by the helper: close its silent stretch (N29).
+            // A source this flag takes away is no longer tracked by the helper: close its silent stretch (N29), and
+            // it is lost from now on (N39; an event without a time records no lost stretch).
             let lost = sources_lost(*flag);
-            Some(if lost.is_empty() {
-                n
-            } else {
-                close_silent(n, *at, Some(lost))
+            if lost.is_empty() {
+                return Some(n);
+            }
+            let closed = close_silent(n, *at, Some(lost));
+            Some(match at {
+                Some(at) => open_lost(closed, *at, lost),
+                None => closed,
             })
         }
         E::InputSilent { source, since_ms } => {
@@ -277,7 +316,7 @@ pub fn reduce(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> 
             Some(if lost.is_empty() {
                 n
             } else {
-                close_silent(n, Some(*at), Some(&lost))
+                open_lost(close_silent(n, Some(*at), Some(&lost)), *at, &lost)
             })
         }
         E::CaptureFallback { from, to, reason, at } => {
@@ -298,7 +337,11 @@ pub fn reduce(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> 
             // No source left: nothing is captured (`error{audio.unavailable}` follows and is then a no-op).
             if to.is_none() && !n.degraded.contains(&Degradation::AudioUnavailable) {
                 n.degraded.push(Degradation::AudioUnavailable);
-                n = close_silent(n, Some(*at), None);
+                n = open_lost(
+                    close_silent(n, Some(*at), None),
+                    *at,
+                    &[CaptureSource::System, CaptureSource::Mic],
+                );
                 changed = true;
             }
             changed.then_some(n)
@@ -345,7 +388,8 @@ pub fn reduce(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> 
             if !n.degraded.contains(&Degradation::TranscriptGap) {
                 n.degraded.push(Degradation::TranscriptGap);
             }
-            Some(n)
+            // N39: a source the reconnect brings back is no longer lost.
+            Some(close_lost(n, *at, false))
         }
         E::StopRequested { reason, at } => {
             if !is_capturing(s.phase) {
@@ -357,7 +401,7 @@ pub fn reduce(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> 
                 phase: P::Stopping,
                 stop_reason: Some(*reason),
                 stopped_at: Some(*at),
-                ..close_silent(s.clone(), Some(*at), None)
+                ..close_lost(close_silent(s.clone(), Some(*at), None), *at, true)
             })
         }
         E::Stopped { .. } => {

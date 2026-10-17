@@ -22,6 +22,11 @@ export interface SummaryOptions {
    * gaps, so the model says nothing about stretches nobody could hear instead of inventing content for them.
    */
   silentSpans?: SilentSpan[];
+  /**
+   * N39: stretches in which a source was lost (PipelineState.capture.lostSpans). They count as that source's silence:
+   * a lost mic plus quiet system audio is "no audio at all", never a one-sided gap (where the mic would be real).
+   */
+  lostSpans?: SilentSpan[];
   /** Meeting length, for a stretch with no end (the app died while it was silent). */
   durationMs?: number;
 }
@@ -499,14 +504,19 @@ export const GAP_LABELS = {
  * N29: the large capture gaps of a recording as prompt lines, in meeting order: stretches where both sources were
  * silent ("no audio at all"), then what is left of each source's own silence. A stretch with no end runs to
  * `durationMs` (dropped when that is unknown too). At most 20 lines.
+ *
+ * N39: `lost` (stretches in which the helper did not deliver a source at all) count as that source's silence. Before,
+ * a lost mic was not tracked for silence, so silent system audio after it was labelled one-sided ("the transcript
+ * there is real") when nothing at all was captured.
  */
 export function captureGapsForPrompt(
   spans: readonly SilentSpan[],
   durationMs?: number,
+  lost: readonly SilentSpan[] = [],
 ): string[] {
   const of = (src: SilentSpan['source']) =>
     mergeIv(
-      spans
+      [...spans, ...lost]
         .filter((x) => x.source === src)
         .flatMap((x): Iv[] => {
           const end = x.endMs ?? durationMs;
@@ -563,7 +573,11 @@ export function buildSummaryPrompt(
 ): ChatMessage[] {
   const tpl = templateById(opts.template);
   const notes = (opts.notes ?? []).filter((n) => n.text.trim());
-  const gaps = captureGapsForPrompt(opts.silentSpans ?? [], opts.durationMs);
+  const gaps = captureGapsForPrompt(
+    opts.silentSpans ?? [],
+    opts.durationMs,
+    opts.lostSpans ?? [],
+  );
   return [
     {
       role: 'system',

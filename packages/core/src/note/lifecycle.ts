@@ -95,6 +95,12 @@ export const CaptureReport = z.object({
   silentSpans: z.array(SilentSpan).optional(),
   fallbacks: z.array(CaptureFallback).optional(),
   deviceFailures: z.array(DeviceFailure).optional(),
+  /**
+   * N39: stretches in which the helper did not deliver a source at all, because `degraded[]` took it away (a revoke,
+   * a device failure, no source left). Same shape as a silent stretch: the summary treats a lost source like a
+   * silent one, so a lost mic plus silent system audio is "no audio at all", not a one-sided gap.
+   */
+  lostSpans: z.array(SilentSpan).optional(),
 });
 export type CaptureReport = z.infer<typeof CaptureReport>;
 
@@ -104,6 +110,8 @@ export const CAPTURE_LIMITS = {
   fallbacks: 8,
   /** N35: `capture.degraded` records kept per recording (each reconnect can fail the device again). */
   deviceFailures: 8,
+  /** N39: stretches of a lost source kept per recording (each reconnect can lose and restore the mic again). */
+  lostSpans: 16,
   /** `capture.fallback.reason` / `capture.degraded.reason` are helper error text: kept to this many code points. */
   reasonChars: 200,
 } as const;
@@ -153,6 +161,11 @@ export const RecordingState = z.object({
   deviceLost: z.array(Degradation).optional(),
   /** N35: device failures of this recording, for the meeting record (omitted when none). */
   deviceFailures: z.array(DeviceFailure).optional(),
+  /**
+   * N39: stretches in which a source was lost (see `CaptureReport.lostSpans`). One without `endMs` is still lost; it
+   * ends at the reconnect that brings the source back (a device failure), or at the stop.
+   */
+  lostSpans: z.array(SilentSpan).optional(),
 });
 export type RecordingState = z.infer<typeof RecordingState>;
 
@@ -244,7 +257,8 @@ function withList<
     | 'silentSpans'
     | 'fallbacks'
     | 'deviceLost'
-    | 'deviceFailures',
+    | 'deviceFailures'
+    | 'lostSpans',
 >(s: RecordingState, k: K, v: NonNullable<RecordingState[K]>): RecordingState {
   const { [k]: _old, ...rest } = s;
   return (v.length ? { ...rest, [k]: v } : rest) as RecordingState;
@@ -281,6 +295,42 @@ function closeSilent(
   );
 }
 
+/**
+ * N39: opens a lost stretch for each of `sources` that has none open, at wall clock `at` (meeting time; capped, so
+ * past the cap a loss is not recorded and the summary falls back to the silent stretches alone).
+ */
+function openLost(
+  s: RecordingState,
+  at: number,
+  sources: readonly CaptureSource[],
+): RecordingState {
+  const spans = [...(s.lostSpans ?? [])];
+  for (const src of sources)
+    if (
+      !spans.some((x) => x.source === src && x.endMs === undefined) &&
+      spans.length < CAPTURE_LIMITS.lostSpans
+    )
+      spans.push({ source: src, startMs: meetingMs(s, at, 0) });
+  return spans.length === (s.lostSpans ?? []).length
+    ? s
+    : withList(s, 'lostSpans', spans);
+}
+
+/** N39: ends, at wall clock `at`, the open lost stretches of the sources `degraded[]` no longer takes away (all when `all`). */
+function closeLost(s: RecordingState, at: number, all = false): RecordingState {
+  const spans = s.lostSpans ?? [];
+  if (!spans.some((x) => x.endMs === undefined)) return s;
+  return withList(
+    s,
+    'lostSpans',
+    spans.map((x) =>
+      x.endMs === undefined && (all || !sourceLost(s.degraded, x.source))
+        ? { ...x, endMs: meetingMs(s, at, x.startMs) }
+        : x,
+    ),
+  );
+}
+
 /** Code-point cut (same in Rust: `chars().take(n)`), so a cut never lands inside a surrogate pair. */
 export const cutChars = (v: string, n: number) =>
   Array.from(v).slice(0, n).join('');
@@ -296,12 +346,19 @@ export function captureReport(s: RecordingState): CaptureReport | undefined {
   ].slice(0, CAPTURE_LIMITS.silentSpans);
   const fallbacks = s.fallbacks ?? [];
   const deviceFailures = s.deviceFailures ?? [];
-  if (!spans.length && !fallbacks.length && !deviceFailures.length)
+  const lostSpans = s.lostSpans ?? [];
+  if (
+    !spans.length &&
+    !fallbacks.length &&
+    !deviceFailures.length &&
+    !lostSpans.length
+  )
     return undefined;
   return {
     ...(spans.length ? { silentSpans: spans } : {}),
     ...(fallbacks.length ? { fallbacks } : {}),
     ...(deviceFailures.length ? { deviceFailures } : {}),
+    ...(lostSpans.length ? { lostSpans } : {}),
   };
 }
 
@@ -379,9 +436,13 @@ export function lifecycleReducer(
         );
       }
       // A source this flag takes away is no longer tracked by the helper: close its silent stretch now (N29).
+      // N39: and it is lost from now on (the summary must not read its absence as the other side being quiet).
       const lost = SOURCES_LOST[e.flag];
       const n = { ...s, degraded: [...s.degraded, e.flag] };
-      return lost ? closeSilent(n, e.at, lost) : n;
+      // An event without a time (only older callers) records no lost stretch: it can't be placed.
+      if (!lost) return n;
+      const closed = closeSilent(n, e.at, lost);
+      return e.at === undefined ? closed : openLost(closed, e.at, lost);
     }
     case 'input-silent': {
       // Only while the helper is capturing; a duplicate (already silent) is idempotent; a source the helper no
@@ -429,7 +490,7 @@ export function lifecycleReducer(
         ]);
       // A source it takes away is no longer tracked: its silent stretch ends now; later silence of it is ignored.
       const lost = [...new Set(fresh.flatMap((f) => SOURCES_LOST[f] ?? []))];
-      return lost.length ? closeSilent(n, e.at, lost) : n;
+      return lost.length ? openLost(closeSilent(n, e.at, lost), e.at, lost) : n;
     }
     case 'capture-fallback': {
       if (!isCapturing(s.phase)) return null;
@@ -451,9 +512,13 @@ export function lifecycleReducer(
           : s;
       // No source left: nothing is captured (`error{audio.unavailable}` follows and is then a no-op).
       if (e.to === null && !n.degraded.includes('audio-unavailable'))
-        n = closeSilent(
-          { ...n, degraded: [...n.degraded, 'audio-unavailable'] },
+        n = openLost(
+          closeSilent(
+            { ...n, degraded: [...n.degraded, 'audio-unavailable'] },
+            e.at,
+          ),
           e.at,
+          ['system', 'mic'],
         );
       return n === s ? null : n;
     }
@@ -477,21 +542,30 @@ export function lifecycleReducer(
       // N35: a device failure lasts until the reconnect: the new helper starts from its own state.
       const { reconnect: _r, deviceLost: lost = [], ...rest } = s;
       const kept = s.degraded.filter((f) => !lost.includes(f));
-      return {
-        ...rest,
-        phase: 'recording',
-        audioParts: [...s.audioParts, e.audioPath],
-        // Clamp: a backward clock jump must not invent negative meeting-time offsets.
-        partOffsetMs: Math.max(0, e.at - (s.startedAt ?? e.at)),
-        degraded: kept.includes('transcript-gap')
-          ? kept
-          : [...kept, 'transcript-gap'],
-      };
+      // N39: a source the reconnect brings back is no longer lost (its lost stretch ends at the restore).
+      return closeLost(
+        {
+          ...rest,
+          phase: 'recording',
+          audioParts: [...s.audioParts, e.audioPath],
+          // Clamp: a backward clock jump must not invent negative meeting-time offsets.
+          partOffsetMs: Math.max(0, e.at - (s.startedAt ?? e.at)),
+          degraded: kept.includes('transcript-gap')
+            ? kept
+            : [...kept, 'transcript-gap'],
+        },
+        e.at,
+      );
     }
     case 'stop-requested': {
       if (!isCapturing(s.phase)) return null;
       // A source still silent at the stop: its stretch ends at the stop (N29).
-      const { reconnect: _r, ...rest } = closeSilent(s, e.at);
+      // N39: and a source still lost is lost until the stop.
+      const { reconnect: _r, ...rest } = closeLost(
+        closeSilent(s, e.at),
+        e.at,
+        true,
+      );
       return {
         ...rest,
         phase: 'stopping',

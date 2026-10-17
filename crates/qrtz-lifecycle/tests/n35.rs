@@ -54,4 +54,12 @@ fn device_failures_stay_bounded_across_a_reconnect_loop() {
     for d in &r.device_failures {
         assert_eq!(d.reason.chars().count(), capture_limits::REASON_CHARS);
     }
+    // N39: each failure is a lost stretch that its reconnect ends; kept up to the cap.
+    assert_eq!(r.lost_spans.len(), capture_limits::LOST_SPANS);
+    for (i, x) in r.lost_spans.iter().enumerate() {
+        let i = i as i64;
+        assert_eq!(x.source, CaptureSource::Mic);
+        assert_eq!(x.start_ms, i * 10_000 + 1000);
+        assert_eq!(x.end_ms, Some(i * 10_000 + 3000));
+    }
 }

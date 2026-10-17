@@ -109,6 +109,12 @@
             "startMs": 500,
             "endMs": 60000
           }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 60000
+          }
         ]
       }
     },
@@ -175,6 +181,12 @@
             "endMs": 60000
           }
         ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 60000
+          }
+        ],
         "silent": [
           {
             "source": "system",
@@ -237,6 +249,16 @@
             "startMs": 2000,
             "endMs": 69000
           }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 60000
+          },
+          {
+            "source": "system",
+            "startMs": 69000
+          }
         ]
       }
     },
@@ -288,6 +310,16 @@
             "source": "system",
             "startMs": 2000,
             "endMs": 69000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 60000
+          },
+          {
+            "source": "system",
+            "startMs": 69000
           }
         ],
         "reconnect": {
@@ -353,6 +385,18 @@
             "startMs": 2000,
             "endMs": 69000
           }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 60000,
+            "endMs": 89000
+          },
+          {
+            "source": "system",
+            "startMs": 69000,
+            "endMs": 89000
+          }
         ]
       }
     },
@@ -402,6 +446,18 @@
             "endMs": 69000
           }
         ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 60000,
+            "endMs": 89000
+          },
+          {
+            "source": "system",
+            "startMs": 69000,
+            "endMs": 89000
+          }
+        ],
         "silent": [
           {
             "source": "mic",
@@ -442,6 +498,18 @@
             ],
             "reason": "mic engine error: éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
             "atMs": 69000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 60000,
+            "endMs": 89000
+          },
+          {
+            "source": "system",
+            "startMs": 69000,
+            "endMs": 89000
           }
         ],
         "silentSpans": [

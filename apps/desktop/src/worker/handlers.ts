@@ -183,20 +183,30 @@ export function createWorkerHandlers(
     );
   /**
    * N29: PipelineState.capture.silentSpans of a meeting ({} without a pipeline row or capture record), with the
-   * meeting length for a stretch with no end (the meeting row's, else the recording's).
+   * meeting length for a stretch with no end (the meeting row's, else the recording's). N39: and its lost stretches.
    */
   const captureOf = (
     id: string,
     meetingMs: number | undefined,
-  ): { silentSpans?: SilentSpan[]; durationMs?: number } => {
+  ): {
+    silentSpans?: SilentSpan[];
+    lostSpans?: SilentSpan[];
+    durationMs?: number;
+  } => {
     const r = db
       .prepare('SELECT json FROM pipeline_state WHERE meeting_id=?')
       .get(id) as { json: string } | undefined;
     const p = r ? PipelineState.safeParse(JSON.parse(r.json)) : undefined;
-    const silentSpans = p?.success ? p.data.capture?.silentSpans : undefined;
-    if (!p?.success || !silentSpans?.length) return {};
+    if (!p?.success) return {};
+    const silentSpans = p.data.capture?.silentSpans ?? [];
+    const lostSpans = p.data.capture?.lostSpans ?? [];
+    if (!silentSpans.length && !lostSpans.length) return {};
     const durationMs = meetingMs || p.data.ctx.durationMs;
-    return { silentSpans, ...(durationMs ? { durationMs } : {}) };
+    return {
+      ...(silentSpans.length ? { silentSpans } : {}),
+      ...(lostSpans.length ? { lostSpans } : {}),
+      ...(durationMs ? { durationMs } : {}),
+    };
   };
 
   const need = (id: string) => {

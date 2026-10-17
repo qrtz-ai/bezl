@@ -112,13 +112,13 @@
       ],
       "pipelines": {
         "id1": [
-          "manual finalize:pending/0 summary:pending/0 index:pending/0 [fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0]",
-          "manual finalize:running/1 summary:pending/0 index:pending/0 [fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0]",
-          "manual finalize:done/1 summary:pending/0 index:pending/0 [fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0]",
-          "manual finalize:done/1 summary:running/1 index:pending/0 [fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0]",
-          "manual finalize:done/1 summary:done/1 index:pending/0 [fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0]",
-          "manual finalize:done/1 summary:done/1 index:running/1 [fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0]",
-          "manual finalize:done/1 summary:done/1 index:done/1 [fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0]"
+          "manual finalize:pending/0 summary:pending/0 index:pending/0 [fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0 lost:system:0-1000 lost:mic:0-1000]",
+          "manual finalize:running/1 summary:pending/0 index:pending/0 [fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0 lost:system:0-1000 lost:mic:0-1000]",
+          "manual finalize:done/1 summary:pending/0 index:pending/0 [fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0 lost:system:0-1000 lost:mic:0-1000]",
+          "manual finalize:done/1 summary:running/1 index:pending/0 [fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0 lost:system:0-1000 lost:mic:0-1000]",
+          "manual finalize:done/1 summary:done/1 index:pending/0 [fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0 lost:system:0-1000 lost:mic:0-1000]",
+          "manual finalize:done/1 summary:done/1 index:running/1 [fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0 lost:system:0-1000 lost:mic:0-1000]",
+          "manual finalize:done/1 summary:done/1 index:done/1 [fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0 lost:system:0-1000 lost:mic:0-1000]"
         ]
       },
       "helper": [
@@ -275,7 +275,7 @@
                 "$REC/id1.wav"
               ],
               0,
-              "fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0"
+              "fb:core-audio-tap>screencapturekit@0 fb:screencapturekit>-@0 lost:system:0-1000 lost:mic:0-1000"
             ]
           ],
           "session": [

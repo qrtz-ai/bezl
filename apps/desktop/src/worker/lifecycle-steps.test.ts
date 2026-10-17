@@ -102,6 +102,45 @@ describe('worker lifecycle steps', () => {
     );
   });
 
+  it('stepSummary reads lost stretches from the pipeline row: a revoked mic plus quiet system audio is no audio at all (N39)', async () => {
+    const bodies: string[] = [];
+    const h = createWorkerHandlers(openDatabase(':memory:'), {
+      fetch: async (_url, init) => {
+        bodies.push(String(init.body));
+        return new Response('{"error":{"message":"x"}}', { status: 503 });
+      },
+    });
+    h['note.create']({ meeting: meeting('m', 'processing') });
+    h['note.appendLive']({ meetingId: 'm', segment: seg });
+    const ctx = {
+      startedAt: 1,
+      endedAt: 2,
+      durationMs: 600_000,
+      audioParts: [],
+      active: [],
+      helperCrashed: false,
+    };
+    h['pipeline.save']({
+      state: {
+        ...newPipeline('m', 'manual', ctx, 1),
+        // Only a lost record (no silent stretch of the mic, which is no longer tracked after the revoke).
+        capture: {
+          silentSpans: [{ source: 'system', startMs: 120_000, endMs: 300_000 }],
+          lostSpans: [{ source: 'mic', startMs: 60_000 }],
+        },
+      },
+      settled: false,
+    });
+    await h['note.stepSummary']({ meetingId: 'm', llm }).catch(() => {});
+    const prompt = JSON.stringify(JSON.parse(bodies[0]!).messages);
+    expect(prompt).toContain("1:00–2:00: no audio from this user's microphone");
+    expect(prompt).toContain('2:00–5:00: no audio at all');
+    expect(prompt).toContain(
+      "5:00–10:00: no audio from this user's microphone",
+    );
+    expect(prompt).not.toContain('no audio from the other participants');
+  });
+
   it('stepFinalize is idempotent and pipeline rows round-trip; orphans exclude meetings with a pipeline', () => {
     const h = createWorkerHandlers(openDatabase(':memory:'), {
       fetch: failing(500),

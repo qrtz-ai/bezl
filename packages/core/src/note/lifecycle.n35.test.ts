@@ -53,5 +53,13 @@ describe('N35 device failures stay bounded across a reconnect loop', () => {
     expect(r?.deviceFailures?.[7]?.atMs).toBe(71_000);
     for (const d of r?.deviceFailures ?? [])
       expect(Array.from(d.reason)).toHaveLength(CAPTURE_LIMITS.reasonChars);
+    // N39: each failure is a lost stretch that its reconnect ends; kept up to the cap.
+    expect(r?.lostSpans).toHaveLength(CAPTURE_LIMITS.lostSpans);
+    for (const [i, x] of (r?.lostSpans ?? []).entries())
+      expect(x).toEqual({
+        source: 'mic',
+        startMs: i * 10_000 + 1000,
+        endMs: i * 10_000 + 3000,
+      });
   });
 });

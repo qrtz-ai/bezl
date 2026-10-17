@@ -294,6 +294,12 @@
             "startMs": 85000,
             "endMs": 94000
           }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 94000
+          }
         ]
       }
     },
@@ -341,6 +347,12 @@
             "endMs": 94000
           }
         ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 94000
+          }
+        ],
         "silent": [
           {
             "source": "system",
@@ -384,6 +396,12 @@
             "source": "mic",
             "startMs": 85000,
             "endMs": 94000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 94000
           }
         ],
         "silent": [
@@ -433,6 +451,13 @@
           {
             "source": "system",
             "startMs": 87000,
+            "endMs": 99000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 94000,
             "endMs": 99000
           }
         ],
@@ -494,6 +519,13 @@
           {
             "source": "system",
             "startMs": 87000,
+            "endMs": 99000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 94000,
             "endMs": 99000
           }
         ],

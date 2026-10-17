@@ -315,6 +315,10 @@ pub struct CaptureReport {
     pub fallbacks: Vec<CaptureFallback>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub device_failures: Vec<DeviceFailure>,
+    /// N39: stretches in which the helper did not deliver a source at all (`degraded[]` took it away); the summary
+    /// treats them as that source's silence (`CaptureReport.lostSpans` in lifecycle.ts).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lost_spans: Vec<SilentSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -360,6 +364,10 @@ pub struct RecordingState {
     /// N35: device failures of this recording, for the meeting record (omitted when none).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub device_failures: Vec<DeviceFailure>,
+    /// N39: stretches in which a source was lost; one without `end_ms` is still lost (ends at the reconnect that
+    /// brings it back, or at the stop).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lost_spans: Vec<SilentSpan>,
 }
 
 impl Default for RecordingState {
@@ -382,6 +390,7 @@ impl Default for RecordingState {
             fallbacks: Vec::new(),
             device_lost: Vec::new(),
             device_failures: Vec::new(),
+            lost_spans: Vec::new(),
         }
     }
 }

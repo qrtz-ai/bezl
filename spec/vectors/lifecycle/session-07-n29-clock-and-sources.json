@@ -182,6 +182,12 @@
             "startMs": 60000,
             "endMs": 120000
           }
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 120000
+          }
         ]
       }
     },
@@ -210,6 +216,12 @@
         "partOffsetMs": 0,
         "meetingId": "m",
         "startedAt": 10000,
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 120000
+          }
+        ],
         "silentSpans": [
           {
             "source": "mic",
@@ -262,6 +274,13 @@
             "source": "mic",
             "startMs": 60500,
             "endMs": 60500
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 120000,
+            "endMs": 130000
           }
         ],
         "stopReason": "meeting-ended",

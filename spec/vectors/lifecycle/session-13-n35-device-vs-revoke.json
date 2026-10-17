@@ -64,7 +64,13 @@
         ],
         "partOffsetMs": 0,
         "meetingId": "m",
-        "startedAt": 1000
+        "startedAt": 1000,
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000
+          }
+        ]
       }
     },
     {
@@ -111,6 +117,16 @@
             "reason": "screen capture audio failed",
             "atMs": 3000
           }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000
+          },
+          {
+            "source": "system",
+            "startMs": 3000
+          }
         ]
       }
     },
@@ -139,6 +155,16 @@
             ],
             "reason": "screen capture audio failed",
             "atMs": 3000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000
+          },
+          {
+            "source": "system",
+            "startMs": 3000
           }
         ]
       }
@@ -173,6 +199,16 @@
         "partOffsetMs": 0,
         "meetingId": "m",
         "startedAt": 1000,
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000
+          },
+          {
+            "source": "system",
+            "startMs": 3000
+          }
+        ],
         "deviceLost": [
           "ax-unavailable"
         ],
@@ -213,6 +249,16 @@
         "partOffsetMs": 0,
         "meetingId": "m",
         "startedAt": 1000,
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000
+          },
+          {
+            "source": "system",
+            "startMs": 3000
+          }
+        ],
         "deviceLost": [
           "ax-unavailable"
         ],
@@ -274,6 +320,16 @@
             "reason": "ax device",
             "atMs": 5000
           }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000
+          },
+          {
+            "source": "system",
+            "startMs": 3000
+          }
         ]
       }
     },
@@ -301,6 +357,16 @@
         "partOffsetMs": 8000,
         "meetingId": "m",
         "startedAt": 1000,
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000
+          },
+          {
+            "source": "system",
+            "startMs": 3000
+          }
+        ],
         "deviceLost": [
           "ax-unavailable"
         ],
@@ -350,6 +416,16 @@
         "partOffsetMs": 8000,
         "meetingId": "m",
         "startedAt": 1000,
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000
+          },
+          {
+            "source": "system",
+            "startMs": 3000
+          }
+        ],
         "deviceLost": [
           "ax-unavailable"
         ],
@@ -425,6 +501,16 @@
             ],
             "reason": "failed again on the new helper",
             "atMs": 9000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000
+          },
+          {
+            "source": "system",
+            "startMs": 3000
           }
         ]
       }

@@ -99,13 +99,13 @@
       ],
       "pipelines": {
         "id1": [
-          "manual finalize:pending/0 summary:pending/0 index:pending/0",
-          "manual finalize:running/1 summary:pending/0 index:pending/0",
-          "manual finalize:done/1 summary:pending/0 index:pending/0",
-          "manual finalize:done/1 summary:running/1 index:pending/0",
-          "manual finalize:done/1 summary:done/1 index:pending/0",
-          "manual finalize:done/1 summary:done/1 index:running/1",
-          "manual finalize:done/1 summary:done/1 index:done/1"
+          "manual finalize:pending/0 summary:pending/0 index:pending/0 [lost:mic:0-0 lost:system:0-0]",
+          "manual finalize:running/1 summary:pending/0 index:pending/0 [lost:mic:0-0 lost:system:0-0]",
+          "manual finalize:done/1 summary:pending/0 index:pending/0 [lost:mic:0-0 lost:system:0-0]",
+          "manual finalize:done/1 summary:running/1 index:pending/0 [lost:mic:0-0 lost:system:0-0]",
+          "manual finalize:done/1 summary:done/1 index:pending/0 [lost:mic:0-0 lost:system:0-0]",
+          "manual finalize:done/1 summary:done/1 index:running/1 [lost:mic:0-0 lost:system:0-0]",
+          "manual finalize:done/1 summary:done/1 index:done/1 [lost:mic:0-0 lost:system:0-0]"
         ]
       },
       "helper": [
@@ -268,7 +268,8 @@
               [
                 "$REC/id1.wav"
               ],
-              0
+              0,
+              "lost:mic:0-0 lost:system:0-0"
             ]
           ],
           "session": [

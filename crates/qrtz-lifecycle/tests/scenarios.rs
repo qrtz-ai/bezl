@@ -71,6 +71,15 @@ fn compact_capture(c: &Option<CaptureReport>) -> String {
                 d.at_ms
             )
         }))
+        // N39: stretches in which a source was lost.
+        .chain(c.lost_spans.iter().map(|x| {
+            format!(
+                "lost:{}:{}-{}",
+                x.source.as_str(),
+                x.start_ms,
+                x.end_ms.map_or("?".to_string(), |e| e.to_string())
+            )
+        }))
         .collect::<Vec<_>>()
         .join(" ")
 }

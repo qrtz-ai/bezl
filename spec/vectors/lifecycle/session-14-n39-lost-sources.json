@@ -1,0 +1,800 @@
+{
+  "kind": "session",
+  "name": "N39 lost sources: a revoke or a device failure opens a lost stretch; a reconnect ends a device failure's, a revoke's lasts to the stop; no source left loses both",
+  "from": "ADR 0031",
+  "initial": null,
+  "steps": [
+    {
+      "event": {
+        "type": "start-requested",
+        "meetingId": "m",
+        "at": 1000,
+        "audioPath": "/p0"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000
+      }
+    },
+    {
+      "event": {
+        "type": "start-acked"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000
+      }
+    },
+    {
+      "event": {
+        "type": "capture-degraded",
+        "degraded": [
+          "no-mic"
+        ],
+        "reason": "busy",
+        "at": 2000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "no-mic"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceLost": [
+          "no-mic"
+        ],
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "busy",
+            "atMs": 1000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "capture-degraded",
+        "degraded": [
+          "no-mic"
+        ],
+        "reason": "dup",
+        "at": 2500
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "helper-lost",
+        "at": 3000,
+        "deadlineAt": 9000
+      },
+      "expect": {
+        "phase": "reconnecting",
+        "degraded": [
+          "no-mic"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceLost": [
+          "no-mic"
+        ],
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "busy",
+            "atMs": 1000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000
+          }
+        ],
+        "reconnect": {
+          "attempt": 1,
+          "since": 3000,
+          "deadlineAt": 9000
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "helper-restored",
+        "at": 4000,
+        "audioPath": "/p1"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1"
+        ],
+        "partOffsetMs": 3000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "busy",
+            "atMs": 1000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000,
+            "endMs": 3000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "degraded",
+        "flag": "no-mic",
+        "at": 5000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "transcript-gap",
+          "no-mic"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1"
+        ],
+        "partOffsetMs": 3000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "busy",
+            "atMs": 1000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000,
+            "endMs": 3000
+          },
+          {
+            "source": "mic",
+            "startMs": 4000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "capture-degraded",
+        "degraded": [
+          "no-mic"
+        ],
+        "reason": "after revoke",
+        "at": 5500
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "helper-lost",
+        "at": 6000,
+        "deadlineAt": 12000
+      },
+      "expect": {
+        "phase": "reconnecting",
+        "degraded": [
+          "transcript-gap",
+          "no-mic"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1"
+        ],
+        "partOffsetMs": 3000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "busy",
+            "atMs": 1000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000,
+            "endMs": 3000
+          },
+          {
+            "source": "mic",
+            "startMs": 4000
+          }
+        ],
+        "reconnect": {
+          "attempt": 1,
+          "since": 6000,
+          "deadlineAt": 12000
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "helper-restored",
+        "at": 7000,
+        "audioPath": "/p2"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "transcript-gap",
+          "no-mic"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1",
+          "/p2"
+        ],
+        "partOffsetMs": 6000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "busy",
+            "atMs": 1000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000,
+            "endMs": 3000
+          },
+          {
+            "source": "mic",
+            "startMs": 4000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "degraded",
+        "flag": "mic-only",
+        "at": 8000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "transcript-gap",
+          "no-mic",
+          "mic-only"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1",
+          "/p2"
+        ],
+        "partOffsetMs": 6000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "busy",
+            "atMs": 1000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000,
+            "endMs": 3000
+          },
+          {
+            "source": "mic",
+            "startMs": 4000
+          },
+          {
+            "source": "system",
+            "startMs": 7000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "degraded",
+        "flag": "no-mic"
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "stop-requested",
+        "reason": "manual",
+        "at": 9000
+      },
+      "expect": {
+        "phase": "stopping",
+        "degraded": [
+          "transcript-gap",
+          "no-mic",
+          "mic-only"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1",
+          "/p2"
+        ],
+        "partOffsetMs": 6000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "busy",
+            "atMs": 1000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000,
+            "endMs": 3000
+          },
+          {
+            "source": "mic",
+            "startMs": 4000,
+            "endMs": 8000
+          },
+          {
+            "source": "system",
+            "startMs": 7000,
+            "endMs": 8000
+          }
+        ],
+        "stopReason": "manual",
+        "stoppedAt": 9000
+      }
+    },
+    {
+      "event": {
+        "type": "stopped",
+        "at": 9100
+      },
+      "expect": {
+        "phase": "processing",
+        "degraded": [
+          "transcript-gap",
+          "no-mic",
+          "mic-only"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1",
+          "/p2"
+        ],
+        "partOffsetMs": 6000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "busy",
+            "atMs": 1000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000,
+            "endMs": 3000
+          },
+          {
+            "source": "mic",
+            "startMs": 4000,
+            "endMs": 8000
+          },
+          {
+            "source": "system",
+            "startMs": 7000,
+            "endMs": 8000
+          }
+        ],
+        "stopReason": "manual",
+        "stoppedAt": 9000
+      }
+    },
+    {
+      "event": {
+        "type": "processing-done"
+      },
+      "expect": {
+        "phase": "done",
+        "degraded": [
+          "transcript-gap",
+          "no-mic",
+          "mic-only"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1",
+          "/p2"
+        ],
+        "partOffsetMs": 6000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "busy",
+            "atMs": 1000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000,
+            "endMs": 3000
+          },
+          {
+            "source": "mic",
+            "startMs": 4000,
+            "endMs": 8000
+          },
+          {
+            "source": "system",
+            "startMs": 7000,
+            "endMs": 8000
+          }
+        ],
+        "stopReason": "manual",
+        "stoppedAt": 9000
+      }
+    },
+    {
+      "event": {
+        "type": "start-requested",
+        "meetingId": "m2",
+        "at": 20000,
+        "audioPath": "/q0"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/q0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m2",
+        "startedAt": 20000
+      }
+    },
+    {
+      "event": {
+        "type": "start-acked"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [],
+        "audioParts": [
+          "/q0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m2",
+        "startedAt": 20000
+      }
+    },
+    {
+      "event": {
+        "type": "capture-degraded",
+        "degraded": [
+          "no-mic"
+        ],
+        "reason": "busy",
+        "at": 21000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "no-mic"
+        ],
+        "audioParts": [
+          "/q0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m2",
+        "startedAt": 20000,
+        "deviceLost": [
+          "no-mic"
+        ],
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "busy",
+            "atMs": 1000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "degraded",
+        "flag": "no-mic",
+        "at": 21500
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "no-mic"
+        ],
+        "audioParts": [
+          "/q0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m2",
+        "startedAt": 20000,
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "busy",
+            "atMs": 1000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "helper-lost",
+        "at": 22000,
+        "deadlineAt": 30000
+      },
+      "expect": {
+        "phase": "reconnecting",
+        "degraded": [
+          "no-mic"
+        ],
+        "audioParts": [
+          "/q0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m2",
+        "startedAt": 20000,
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "busy",
+            "atMs": 1000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000
+          }
+        ],
+        "reconnect": {
+          "attempt": 1,
+          "since": 22000,
+          "deadlineAt": 30000
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "helper-restored",
+        "at": 23000,
+        "audioPath": "/q1"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "no-mic",
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/q0",
+          "/q1"
+        ],
+        "partOffsetMs": 3000,
+        "meetingId": "m2",
+        "startedAt": 20000,
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "busy",
+            "atMs": 1000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "capture-fallback",
+        "from": "core-audio-tap",
+        "to": null,
+        "reason": "no source",
+        "at": 24000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "no-mic",
+          "transcript-gap",
+          "audio-unavailable"
+        ],
+        "audioParts": [
+          "/q0",
+          "/q1"
+        ],
+        "partOffsetMs": 3000,
+        "meetingId": "m2",
+        "startedAt": 20000,
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "busy",
+            "atMs": 1000
+          }
+        ],
+        "fallbacks": [
+          {
+            "from": "core-audio-tap",
+            "to": null,
+            "reason": "no source",
+            "atMs": 4000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000
+          },
+          {
+            "source": "system",
+            "startMs": 4000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "stop-requested",
+        "reason": "manual",
+        "at": 25000
+      },
+      "expect": {
+        "phase": "stopping",
+        "degraded": [
+          "no-mic",
+          "transcript-gap",
+          "audio-unavailable"
+        ],
+        "audioParts": [
+          "/q0",
+          "/q1"
+        ],
+        "partOffsetMs": 3000,
+        "meetingId": "m2",
+        "startedAt": 20000,
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "busy",
+            "atMs": 1000
+          }
+        ],
+        "fallbacks": [
+          {
+            "from": "core-audio-tap",
+            "to": null,
+            "reason": "no source",
+            "atMs": 4000
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 1000,
+            "endMs": 5000
+          },
+          {
+            "source": "system",
+            "startMs": 4000,
+            "endMs": 5000
+          }
+        ],
+        "stopReason": "manual",
+        "stoppedAt": 25000
+      }
+    }
+  ]
+}

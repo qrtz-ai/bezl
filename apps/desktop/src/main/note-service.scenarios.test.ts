@@ -84,6 +84,10 @@ const compactCapture = (c: PipelineView['capture']) =>
         ...(c.deviceFailures ?? []).map(
           (d) => `dev:${d.degraded.join('+')}@${d.atMs}`,
         ),
+        // N39: stretches in which a source was lost (revoke, device failure, no source left).
+        ...(c.lostSpans ?? []).map(
+          (x) => `lost:${x.source}:${x.startMs}-${x.endMs ?? '?'}`,
+        ),
       ].join(' ')
     : '';
 

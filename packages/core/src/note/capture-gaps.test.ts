@@ -88,4 +88,51 @@ describe('N29 capture gaps in the summary prompt', () => {
     expect(mixed[0]!.content).toContain('only one source had no audio');
     expect(captureGapGuidance([])).toBe('');
   });
+
+  it('N39: a lost mic counts as mic silence, so silent system audio after it is no audio at all', () => {
+    const silent: SilentSpan[] = [
+      { source: 'system', startMs: 2 * min, endMs: 5 * min },
+    ];
+    const lost: SilentSpan[] = [
+      { source: 'mic', startMs: 1 * min, endMs: 6 * min },
+    ];
+    expect(captureGapsForPrompt(silent, undefined, lost)).toEqual([
+      "- 1:00–2:00: no audio from this user's microphone",
+      '- 2:00–5:00: no audio at all (nothing was captured)',
+      "- 5:00–6:00: no audio from this user's microphone",
+    ]);
+    // Before N39 the same stretch was one-sided: "the transcript there is real".
+    expect(captureGapsForPrompt(silent)).toEqual([
+      "- 2:00–5:00: no audio from the other participants (the computer's sound)",
+    ]);
+    const p = buildSummaryPrompt('T', [seg], {
+      silentSpans: silent,
+      lostSpans: lost,
+    });
+    expect(p[0]!.content).toContain('never summarize, guess or attribute');
+  });
+
+  it('N39: a lost stretch ended by a reconnect leaves the working mic after it alone (no N34 regression)', () => {
+    const silent: SilentSpan[] = [
+      { source: 'system', startMs: 4 * min, endMs: 8 * min },
+    ];
+    const lost: SilentSpan[] = [
+      { source: 'mic', startMs: 1 * min, endMs: 3 * min },
+    ];
+    expect(captureGapsForPrompt(silent, 10 * min, lost)).toEqual([
+      "- 1:00–3:00: no audio from this user's microphone",
+      "- 4:00–8:00: no audio from the other participants (the computer's sound)",
+    ]);
+  });
+
+  it('N39: a lost stretch with no end (the app died) runs to the meeting length; both sources lost is no audio at all', () => {
+    const lost: SilentSpan[] = [
+      { source: 'mic', startMs: 2 * min },
+      { source: 'system', startMs: 2 * min },
+    ];
+    expect(captureGapsForPrompt([], 5 * min, lost)).toEqual([
+      '- 2:00–5:00: no audio at all (nothing was captured)',
+    ]);
+    expect(captureGapsForPrompt([], undefined, lost)).toEqual([]);
+  });
 });

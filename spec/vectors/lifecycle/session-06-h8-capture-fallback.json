@@ -127,6 +127,16 @@
             "startMs": 0,
             "endMs": 200
           }
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 200
+          },
+          {
+            "source": "mic",
+            "startMs": 200
+          }
         ]
       }
     },
@@ -181,6 +191,16 @@
             "startMs": 0,
             "endMs": 200
           }
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 200
+          },
+          {
+            "source": "mic",
+            "startMs": 200
+          }
         ]
       }
     },
@@ -208,6 +228,16 @@
             "source": "system",
             "startMs": 0,
             "endMs": 200
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 200
+          },
+          {
+            "source": "mic",
+            "startMs": 200
           }
         ],
         "fallbacks": [
@@ -256,6 +286,16 @@
             "source": "system",
             "startMs": 0,
             "endMs": 200
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 200
+          },
+          {
+            "source": "mic",
+            "startMs": 200
           }
         ],
         "fallbacks": [
@@ -310,6 +350,16 @@
             "source": "system",
             "startMs": 0,
             "endMs": 200
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 200
+          },
+          {
+            "source": "mic",
+            "startMs": 200
           }
         ],
         "fallbacks": [
@@ -370,6 +420,16 @@
             "source": "system",
             "startMs": 0,
             "endMs": 200
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 200
+          },
+          {
+            "source": "mic",
+            "startMs": 200
           }
         ],
         "fallbacks": [
@@ -436,6 +496,16 @@
             "source": "system",
             "startMs": 0,
             "endMs": 200
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 200
+          },
+          {
+            "source": "mic",
+            "startMs": 200
           }
         ],
         "fallbacks": [
@@ -508,6 +578,16 @@
             "source": "system",
             "startMs": 0,
             "endMs": 200
+          }
+        ],
+        "lostSpans": [
+          {
+            "source": "system",
+            "startMs": 200
+          },
+          {
+            "source": "mic",
+            "startMs": 200
           }
         ],
         "fallbacks": [

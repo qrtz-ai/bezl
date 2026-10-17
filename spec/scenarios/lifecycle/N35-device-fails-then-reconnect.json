@@ -172,13 +172,13 @@
       ],
       "pipelines": {
         "id1": [
-          "manual finalize:pending/0 summary:pending/0 index:pending/0 [mic:4000-5000 dev:no-mic@1000]",
-          "manual finalize:running/1 summary:pending/0 index:pending/0 [mic:4000-5000 dev:no-mic@1000]",
-          "manual finalize:done/1 summary:pending/0 index:pending/0 [mic:4000-5000 dev:no-mic@1000]",
-          "manual finalize:done/1 summary:running/1 index:pending/0 [mic:4000-5000 dev:no-mic@1000]",
-          "manual finalize:done/1 summary:done/1 index:pending/0 [mic:4000-5000 dev:no-mic@1000]",
-          "manual finalize:done/1 summary:done/1 index:running/1 [mic:4000-5000 dev:no-mic@1000]",
-          "manual finalize:done/1 summary:done/1 index:done/1 [mic:4000-5000 dev:no-mic@1000]"
+          "manual finalize:pending/0 summary:pending/0 index:pending/0 [mic:4000-5000 dev:no-mic@1000 lost:mic:1000-4000 lost:mic:5000-5000]",
+          "manual finalize:running/1 summary:pending/0 index:pending/0 [mic:4000-5000 dev:no-mic@1000 lost:mic:1000-4000 lost:mic:5000-5000]",
+          "manual finalize:done/1 summary:pending/0 index:pending/0 [mic:4000-5000 dev:no-mic@1000 lost:mic:1000-4000 lost:mic:5000-5000]",
+          "manual finalize:done/1 summary:running/1 index:pending/0 [mic:4000-5000 dev:no-mic@1000 lost:mic:1000-4000 lost:mic:5000-5000]",
+          "manual finalize:done/1 summary:done/1 index:pending/0 [mic:4000-5000 dev:no-mic@1000 lost:mic:1000-4000 lost:mic:5000-5000]",
+          "manual finalize:done/1 summary:done/1 index:running/1 [mic:4000-5000 dev:no-mic@1000 lost:mic:1000-4000 lost:mic:5000-5000]",
+          "manual finalize:done/1 summary:done/1 index:done/1 [mic:4000-5000 dev:no-mic@1000 lost:mic:1000-4000 lost:mic:5000-5000]"
         ]
       },
       "helper": [
@@ -403,7 +403,7 @@
                 "$REC/id1.p1.wav"
               ],
               0,
-              "mic:4000-5000 dev:no-mic@1000"
+              "mic:4000-5000 dev:no-mic@1000 lost:mic:1000-4000 lost:mic:5000-5000"
             ]
           ],
           "session": [
