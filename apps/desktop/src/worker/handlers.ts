@@ -26,6 +26,8 @@ export interface FinalizeParams {
   audioPath?: string;
   active: ActiveSpeakerEvent[];
   llm: { provider: ProviderId | 'none'; model?: string; apiKey?: string };
+  /** The helper exited mid-recording; duration comes from the salvaged audio. */
+  helperCrashed?: boolean;
 }
 
 /** All worker RPC methods. Pure over a DB + fetch so they're integration-testable in Node. */
@@ -51,10 +53,13 @@ export function createWorkerHandlers(
     },
     'memo.finalize': async (p: FinalizeParams): Promise<MeetingSummary> => {
       const m = need(p.meetingId);
+      // Repairs the WAV header if the helper died before finalizing it; prefer the real audio length then.
+      const audioMs = p.audioPath ? repairWav(p.audioPath) : undefined;
+      const durationMs = p.helperCrashed && audioMs ? audioMs : p.durationMs;
       repo.upsertMeeting({
         ...m,
         endedAt: p.endedAt,
-        durationMs: p.durationMs,
+        durationMs,
         status: 'processing',
         ...(p.audioPath ? { audioPath: p.audioPath } : {}),
       });
@@ -63,7 +68,7 @@ export function createWorkerHandlers(
       const segments = nameSegmentsFromAx(
         repo.getSegments(p.meetingId),
         p.active,
-        p.durationMs,
+        durationMs,
       );
       repo.replaceSegments(p.meetingId, 'live', segments);
       const provider = createProvider(p.llm.provider, {

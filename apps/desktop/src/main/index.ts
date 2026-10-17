@@ -84,7 +84,15 @@ export function bootstrap() {
     spawn: spawnHelper,
     logger: log.child('helper'),
   });
-  helper.onStatus((s) => bus.emit('helper:status', s));
+  let helperWasRunning = false;
+  helper.onStatus((s) => {
+    bus.emit('helper:status', s);
+    if (s.state === 'running') helperWasRunning = true;
+    else if (helperWasRunning && s.state !== 'starting') {
+      helperWasRunning = false;
+      memo.onHelperDown(s.lastError ?? s.state);
+    }
+  });
   const recordingsDir = path.join(userData, 'recordings');
   const memo = new MemoService({
     helper,

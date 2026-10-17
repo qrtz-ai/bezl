@@ -5,6 +5,8 @@ import { FIXTURE_DURATION_MS, STANDUP_FIXTURE } from '@qrtz/core';
 export function writeFixtureWav(
   file: string,
   durationMs = FIXTURE_DURATION_MS,
+  /** false = leave the header's sizes at 0, like a helper killed mid-recording. */
+  finalized = true,
 ): void {
   const rate = 16_000;
   const n = Math.round((durationMs / 1000) * rate);
@@ -35,6 +37,10 @@ export function writeFixtureWav(
         44 + i * 2,
       );
     }
+  }
+  if (!finalized) {
+    buf.writeUInt32LE(36, 4);
+    buf.writeUInt32LE(0, 40);
   }
   fs.writeFileSync(file, buf);
 }

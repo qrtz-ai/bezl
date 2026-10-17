@@ -38,6 +38,7 @@ export class MemoService {
   private emitTimer: NodeJS.Timeout | null = null;
   private audioPath = '';
   private persisted = new Set<string>();
+  private helperCrashed = false;
 
   constructor(
     private readonly deps: {
@@ -252,11 +253,34 @@ export class MemoService {
       throw new AppError('E_VALIDATION', 'not recording');
     const meetingId = s.meetingId;
     const startedAt = s.startedAt ?? Date.now();
-    const stopped = this.waitFor('recording.stopped', 10_000);
-    this.send({ type: 'recording.stop' });
+    let stopped = this.waitFor('recording.stopped', 10_000);
+    try {
+      this.send({ type: 'recording.stop' });
+    } catch {
+      // Helper is down: finish from what's persisted rather than failing the stop.
+      this.helperCrashed = true;
+      stopped = Promise.resolve(null);
+    }
     this.machine.send({ type: 'stop', at: Date.now() });
     void this.postProcess(meetingId, startedAt, stopped);
     return this.view();
+  }
+
+  /**
+   * The helper process went away (crash, kill, failed restart). If we were recording, finish the meeting from what
+   * is already persisted: live segments are in the DB, audio is on disk (header repaired by the worker). Never
+   * leaves a session stuck in `recording`.
+   */
+  onHelperDown(reason: string): void {
+    const s = this.machine.state;
+    if (s.phase !== 'recording' || !s.meetingId) return;
+    this.deps.log.warn('helper went away mid-recording; salvaging', { reason });
+    this.helperCrashed = true;
+    const meetingId = s.meetingId;
+    const startedAt = s.startedAt ?? Date.now();
+    this.machine.send({ type: 'stop', at: Date.now() });
+    this.progress = 'Recovering after helper crash';
+    void this.postProcess(meetingId, startedAt, Promise.resolve(null));
   }
 
   dismiss(): SessionView {
@@ -329,9 +353,11 @@ export class MemoService {
           audioPath: this.audioPath,
           active: this.active,
           llm,
+          ...(this.helperCrashed ? { helperCrashed: true } : {}),
         },
         120_000,
       );
+      this.helperCrashed = false;
       this.machine.send({ type: 'processed' });
       this.deps.log.info('meeting processed', { id: meetingId });
     } catch (e) {

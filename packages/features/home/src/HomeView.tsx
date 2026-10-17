@@ -172,7 +172,11 @@ export default function HomeView() {
           style={{ textTransform: 'uppercase', letterSpacing: '0.08em' }}
         >
           Setup{' '}
-          {perms ? `· ${PERMS.length - missing.length}/${PERMS.length}` : ''}
+          {!perms
+            ? ''
+            : PERMS.every((p) => perms[p.id] === 'unsupported')
+              ? '· capture needs macOS'
+              : `· ${PERMS.length - missing.length}/${PERMS.length}`}
         </Text>
         <Card padding={3}>
           {PERMS.map((p) => {

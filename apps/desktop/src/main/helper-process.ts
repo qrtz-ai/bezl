@@ -50,8 +50,23 @@ export function spawnHelper(): ChildHandle {
       ...mock,
       write(line) {
         const m = HostToHelper.safeParse(JSON.parse(line));
-        if (m.success && m.data.type === 'recording.start' && scenario)
-          writeFixtureWav(m.data.audioPath);
+        const crashAfter = Number(process.env.QRTZ_MOCK_CRASH_AFTER_MS ?? 0);
+        if (m.success && m.data.type === 'recording.start' && scenario) {
+          const audioPath = m.data.audioPath;
+          if (crashAfter > 0) {
+            // Fault injection (e2e): the helper dies mid-meeting, leaving a WAV with an unfinalized header
+            // holding the first half of the fixture audio.
+            setTimeout(() => {
+              writeFixtureWav(audioPath, undefined, false);
+              const half = fs.readFileSync(audioPath);
+              fs.writeFileSync(
+                audioPath,
+                half.subarray(0, 44 + Math.floor((half.length - 44) / 4) * 2),
+              );
+              mock.kill();
+            }, crashAfter);
+          } else writeFixtureWav(audioPath);
+        }
         mock.write(line);
       },
     };
