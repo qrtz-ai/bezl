@@ -48,7 +48,7 @@ class SubAppErrorBoundary extends Component<
         <Text variant="h3">{this.props.name} hit an error</Text>
         <Text muted>{this.state.error.message}</Text>
         <Button variant="ghost" onClick={() => this.setState({ error: null })}>
-          Retry
+          retry
         </Button>
       </Stack>
     );

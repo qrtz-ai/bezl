@@ -1,38 +1,46 @@
 import { describe, expect, it } from 'vitest';
-import { titleProblems } from './check-titles.mjs';
+import { fixSource, titleProblems } from './check-titles.mjs';
 
-describe('check-titles', () => {
-  it('flags uppercase titles and allows lowercase, symbols and user content', () => {
-    expect(titleProblems('<Heading>Settings</Heading>', 'x.tsx')).toHaveLength(
+const n = (src, rel = 'x.tsx') => titleProblems(src, rel).length;
+
+describe('check-titles (all UI chrome lowercase)', () => {
+  it('flags headings, buttons, labels, placeholders, options, menus, toasts', () => {
+    expect(n('const a = <Heading>Settings</Heading>;')).toBe(1);
+    expect(n('const a = <Button>Retry</Button>;')).toBe(1);
+    expect(n('const a = <Field label="API key" />;')).toBe(1);
+    expect(n('const a = <Input placeholder="Search" />;')).toBe(1);
+    expect(n('const a = <option value="x">OpenAI</option>;')).toBe(1);
+    expect(n("const a = <B label={busy ? 'Summarizing' : 'Re-run'} />;")).toBe(
+      2,
+    );
+    expect(n("const a = <B>{busy ? 'Stop' : 'Dictate'}</B>;")).toBe(2);
+    expect(n("const m = [{ label: 'Copy Markdown', onSelect }];", 'x.ts')).toBe(
       1,
     );
-    expect(titleProblems('<Heading>settings ⌘K</Heading>', 'x.tsx')).toEqual(
-      [],
-    );
+    expect(n("toast('Copied', 'success');", 'x.ts')).toBe(1);
     expect(
-      titleProblems('<Heading preserveCase>Weekly Sync</Heading>', 'x.tsx'),
-    ).toEqual([]);
-    expect(
-      titleProblems('<Heading level={2}>{meeting.title}</Heading>', 'x.tsx'),
-    ).toEqual([]);
-    expect(
-      titleProblems('<SettingsSection title="Privacy">', 'x.tsx'),
-    ).toHaveLength(1);
-    expect(
-      titleProblems('<ConfirmDialog\n  open\n  title="Delete?"', 'x.tsx'),
-    ).toHaveLength(1);
-    expect(
-      titleProblems("name: 'Note',", 'packages/features/note/src/manifest.ts'),
-    ).toHaveLength(1);
-    expect(
-      titleProblems("title: 'qrtz HUD',", 'apps/desktop/src/main/index.ts'),
-    ).toHaveLength(1);
-    expect(
-      titleProblems(
-        "{ label: 'Quit qrtz', action: 'quit' }",
-        'apps/desktop/src/main/tray-model.ts',
+      n(
+        "export const m = { name: 'Note' };",
+        'packages/features/note/src/manifest.ts',
       ),
-    ).toHaveLength(1);
-    expect(titleProblems('<Text>Body Text Stays</Text>', 'x.tsx')).toEqual([]);
+    ).toBe(1);
+  });
+  it('allows lowercase, shortcut glyphs, user content, code values and ignores', () => {
+    expect(n('const a = <Heading>settings ⌘K</Heading>;')).toBe(0);
+    expect(n('const a = <Heading>{meeting.title}</Heading>;')).toBe(0);
+    expect(n('const a = <Kbd>⌘⇧R</Kbd>;')).toBe(0);
+    expect(
+      n("const a = <B data-testid=\"X\" variant={k === 'A' ? 'x' : 'y'} />;"),
+    ).toBe(0);
+    expect(
+      n('const a = { title: `Sync #${i}` }; // check-titles-ignore', 'x.ts'),
+    ).toBe(0);
+  });
+  it('--fix lowercases only the flagged literals', () => {
+    const src =
+      'const a = <B label="Copy" data-testid="Keep">Hello {name}</B>;';
+    expect(fixSource(src, titleProblems(src, 'x.tsx'))).toBe(
+      'const a = <B label="copy" data-testid="Keep">hello {name}</B>;',
+    );
   });
 });

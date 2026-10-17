@@ -1,10 +1,10 @@
 import fs from 'node:fs';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
-  OPENROUTER_FREE_MODELS,
+  OPENROUTER_DEFAULT_MODEL,
+  PROVIDER_DEFAULTS,
   createProvider,
   needsCredits,
-  resetOpenRouterFallback,
   summarizeMeeting,
   type FetchLike,
 } from './llm';
@@ -18,14 +18,13 @@ const reply = (status: number, body: unknown) =>
     json: async () => body,
   }) as unknown as Response;
 
-/** Fake OpenRouter: paid models 402, `:free`/router models answer. Records requested models. */
+/** Fake OpenRouter: 402 unless the account has credits. Records requested models. */
 function fakeOpenRouter(paidOk = false) {
   const asked: string[] = [];
   const f: FetchLike = async (_url, init) => {
     const { model } = JSON.parse(String(init?.body)) as { model: string };
     asked.push(model);
-    const free = model.endsWith(':free') || model === 'openrouter/free';
-    if (!free && !paidOk)
+    if (!paidOk)
       return reply(402, { error: { message: 'Insufficient credits' } });
     return reply(200, {
       choices: [{ message: { content: `ok from ${model}` } }],
@@ -34,41 +33,49 @@ function fakeOpenRouter(paidOk = false) {
   return { f, asked };
 }
 
-afterEach(resetOpenRouterFallback);
-
-describe('OpenRouter free-tier fallback', () => {
-  it('falls back to a :free model on 402 and sticks to it', async () => {
-    const { f, asked } = fakeOpenRouter();
-    const p = createProvider('openrouter', { fetch: f, apiKey: 'k' })!;
-    expect(await p.complete([{ role: 'user', content: 'hi' }])).toBe(
-      `ok from ${OPENROUTER_FREE_MODELS[0]}`,
-    );
-    await p.complete([{ role: 'user', content: 'again' }]);
-    expect(asked).toEqual([
-      'google/gemini-2.5-flash',
-      OPENROUTER_FREE_MODELS[0],
-      OPENROUTER_FREE_MODELS[0],
-    ]);
-  });
-
-  it('keeps the paid default when the account has credits', async () => {
+describe('OpenRouter default model (Claude Haiku 5.5)', () => {
+  it('defaults to anthropic/claude-haiku-5.5', async () => {
+    expect(OPENROUTER_DEFAULT_MODEL).toBe('anthropic/claude-haiku-5.5');
+    expect(PROVIDER_DEFAULTS.openrouter.model).toBe(OPENROUTER_DEFAULT_MODEL);
     const { f, asked } = fakeOpenRouter(true);
     const p = createProvider('openrouter', { fetch: f, apiKey: 'k' })!;
-    await p.complete([{ role: 'user', content: 'hi' }]);
-    expect(asked).toEqual(['google/gemini-2.5-flash']);
+    expect(await p.complete([{ role: 'user', content: 'hi' }])).toBe(
+      'ok from anthropic/claude-haiku-5.5',
+    );
+    expect(asked).toEqual(['anthropic/claude-haiku-5.5']);
   });
 
-  it('respects a model the user picked (no silent swap)', async () => {
+  it('on 402 surfaces a clear credits error (no free-model fallback)', async () => {
     const { f, asked } = fakeOpenRouter();
-    const p = createProvider('openrouter', {
-      fetch: f,
-      apiKey: 'k',
-      model: 'anthropic/claude-sonnet-4.5',
-    })!;
-    await expect(p.complete([{ role: 'user', content: 'hi' }])).rejects.toThrow(
-      /402/,
+    const p = createProvider('openrouter', { fetch: f, apiKey: 'k' })!;
+    const e = await p
+      .complete([{ role: 'user', content: 'hi' }])
+      .catch((x: Error) => x);
+    expect(String(e)).toMatch(/402.*no OpenRouter credits.*retry/);
+    expect(needsCredits(e)).toBe(true);
+    expect(asked).toEqual(['anthropic/claude-haiku-5.5']);
+  });
+
+  it('summaries keep the on-device fallback on 402, with the error attached', async () => {
+    const { f } = fakeOpenRouter();
+    const p = createProvider('openrouter', { fetch: f, apiKey: 'k' })!;
+    const s = await summarizeMeeting(
+      'Sync',
+      [
+        {
+          id: 's0',
+          meetingId: 'm',
+          startMs: 0,
+          endMs: 4000,
+          speaker: 'A',
+          text: 'We will ship the beta on Friday.',
+          source: 'live',
+        } as Segment,
+      ],
+      p,
     );
-    expect(asked).toEqual(['anthropic/claude-sonnet-4.5']);
+    expect(s.provider).toBe('extractive');
+    expect(s.llmError).toMatch(/credits/);
   });
 
   it('does not treat a bad key as a credits problem', () => {

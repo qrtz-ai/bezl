@@ -158,7 +158,7 @@ export function StreamingTranscript({
               if (el) el.scrollTop = el.scrollHeight;
             }}
           >
-            Jump to live
+            jump to live
           </Button>
         </div>
       ) : null}
@@ -241,7 +241,7 @@ export function PipelineSteps({
               data-testid={`pipeline-retry-${s.id}`}
               onClick={() => onRetry(s.id)}
             >
-              Retry
+              retry
             </Button>
           ) : null}
         </div>
@@ -279,7 +279,7 @@ export function CaptureStatus({
           tone="warning"
           data-testid="lifecycle-reconnecting"
         >
-          Reconnecting · attempt {reconnecting.attempt} ·{' '}
+          reconnecting · attempt {reconnecting.attempt} ·{' '}
           {reconnecting.secondsLeft}s
         </Text>
       ) : null}
@@ -311,7 +311,7 @@ export function CaptureStatus({
               data-testid="lifecycle-error-dismiss"
               onClick={onDismiss}
             >
-              Dismiss
+              dismiss
             </Button>
           ) : null}
         </span>

@@ -52,7 +52,7 @@ export function Notes({
       onAdd={add}
       onUpdate={update}
       error={error}
-      placeholder="Note"
+      placeholder="note"
       {...(compact ? { compact } : {})}
     />
   );

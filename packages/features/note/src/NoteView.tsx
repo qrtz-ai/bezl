@@ -83,10 +83,10 @@ export default function NoteView() {
         unhide(id);
         setError(e.message);
       });
-    toast(`Deleted “${title}”`, 'info', {
+    toast(`deleted “${title}”`, 'info', {
       durationMs: UNDO_MS,
       action: {
-        label: 'Undo',
+        label: 'undo',
         onClick: () => {
           void qrtz.invoke('note:undo-delete', { id }).then((r) => {
             unhide(id);
@@ -170,7 +170,7 @@ export default function NoteView() {
               <>
                 <IconButton
                   icon="search"
-                  label="Search meetings"
+                  label="search meetings"
                   pressed={searching}
                   data-testid="note-search-toggle"
                   onClick={() => {
@@ -180,7 +180,7 @@ export default function NoteView() {
                 />
                 <IconButton
                   icon="ask"
-                  label="Ask all meetings"
+                  label="ask all meetings"
                   pressed={askAll && !selected}
                   data-testid="note-ask-all"
                   onClick={() => {
@@ -198,27 +198,27 @@ export default function NoteView() {
                 data-testid="note-record-manual"
                 icon="circle"
               >
-                Record
+                record
               </Button>
             )}
           </Toolbar>
           {searching ? (
             <Input
               autoFocus
-              placeholder="Search"
+              placeholder="search"
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
                 setPages(1);
               }}
               data-testid="note-search"
-              aria-label="Search meetings"
+              aria-label="search meetings"
             />
           ) : null}
-          <Stack as="ul" gap={0} scroll grow aria-label="Meetings">
+          <Stack as="ul" gap={0} scroll grow aria-label="meetings">
             {visible.length === 0 ? (
               <Stack as="li">
-                <EmptyState title={query ? 'No matches' : 'No meetings'} />
+                <EmptyState title={query ? 'no matches' : 'no meetings'} />
               </Stack>
             ) : (
               visible.map(({ meeting, hit }) => (
@@ -247,7 +247,7 @@ export default function NoteView() {
                   onClick={() => setPages((n) => n + 1)}
                   data-testid="note-show-more"
                 >
-                  More
+                  more
                 </Button>
               </Stack>
             ) : null}
@@ -262,8 +262,8 @@ export default function NoteView() {
             data-testid="helper-notice"
             title={
               session.helper === 'missing'
-                ? 'Recording unavailable: capture helper missing'
-                : 'Capture helper stopped, restarting'
+                ? 'recording unavailable: capture helper missing'
+                : 'capture helper stopped, restarting'
             }
           />
         ) : null}
@@ -274,7 +274,7 @@ export default function NoteView() {
             data-testid="note-error"
             action={
               <Button variant="ghost" size="sm" onClick={() => setError(null)}>
-                Dismiss
+                dismiss
               </Button>
             }
           />

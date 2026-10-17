@@ -1,3 +1,4 @@
+import { lowerTitle } from './case';
 import { typeStyle } from './tokens';
 import type { ReactNode } from 'react';
 import { useTheme } from './theme';
@@ -58,7 +59,7 @@ export function Callout({
             ...typeStyle('label', t),
           }}
         >
-          {title}
+          {lowerTitle(title)}
         </div>
         {children ? (
           <div

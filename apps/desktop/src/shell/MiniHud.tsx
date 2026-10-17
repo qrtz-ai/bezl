@@ -86,7 +86,7 @@ function Hud() {
             {recording ? (
               <IconButton
                 icon="edit"
-                label={expanded ? 'Hide notes' : 'Take a note'}
+                label={expanded ? 'hide notes' : 'take a note'}
                 aria-expanded={expanded}
                 pressed={expanded}
                 data-testid="mini-hud-notes-toggle"
@@ -97,7 +97,7 @@ function Hud() {
               <IconButton
                 icon="stop"
                 tone="record"
-                label="Stop recording"
+                label="stop recording"
                 data-testid="mini-hud-stop"
                 onClick={() => void client.invoke('note:stop')}
               />
@@ -108,7 +108,7 @@ function Hud() {
       body={
         expanded ? (
           <>
-            <Stack as="ul" gap={1} scroll aria-label="Notes">
+            <Stack as="ul" gap={1} scroll aria-label="notes">
               {notes.map((n) => (
                 <Stack
                   as="li"
@@ -128,8 +128,8 @@ function Hud() {
             <Stack as="form" onSubmit={addNote}>
               <Input
                 autoFocus
-                aria-label="Add a note"
-                placeholder="Note"
+                aria-label="add a note"
+                placeholder="note"
                 value={draft}
                 maxLength={4000}
                 onChange={(e) => setDraft(e.target.value)}

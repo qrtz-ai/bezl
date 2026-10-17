@@ -1,11 +1,23 @@
 #!/usr/bin/env node
-// Brand rule: every title in qrtz is fully lowercase. @qrtz/ui lowercases titles at render time (lowerTitle); this
-// keeps the *source* strings lowercase too so accessible names, window titles and the tray match.
-// Checked: <Heading>literal</Heading> (unless preserveCase), title="…" on SettingsSection/Section/Dialog/
-// ConfirmDialog/EmptyState, sub-app manifest names, BrowserWindow/Notification titles in main, tray menu labels.
-// Symbols like ⌘ ⇧ are fine (they have no case). Body text and user content are not checked.
+// Brand rule: all qrtz UI chrome is lowercase: headers, titles, buttons, menu items, labels, dropdown options
+// (brand names too), placeholders, toasts, empty states, tray and window titles. Only user content (meeting
+// titles, transcripts, notes) keeps its case, and that always arrives through expressions, never literals.
+// @qrtz/ui also lowercases chrome props at render time (lowerTitle); this check keeps the source literals
+// lowercase so accessible names, window titles and the tray match.
+//
+// Scanned (AST, not regex) in apps/desktop/src, packages/features/*/src and packages/ui/src (tests skipped):
+//   - JSX text (except inside <Kbd>, <Code>, <Mono>)
+//   - string literals in JSX children expressions ({busy ? 'Stop' : 'Dictate'})
+//   - string literals in UI props (label, title, placeholder, aria-label, hint, tooltip, …)
+//   - object properties label/title/placeholder/hint/description (menus, tabs, tray, windows, notifications),
+//     sub-app manifest names and dialog filter names
+//   - the message passed to toast(…) and React state setters (setMsg(…), setExported(…))
+// Shortcut glyphs keep their key (⌘K, ⌘⇧Space). Mark deliberate exceptions (sample user content in the
+// gallery) with a `check-titles-ignore` comment on the line or the line above.
+// Usage: node scripts/check-titles.mjs [--fix]
 import fs from 'node:fs';
 import path from 'node:path';
+import ts from 'typescript';
 
 const ROOT = path.resolve(
   path.dirname(new URL(import.meta.url).pathname),
@@ -19,66 +31,199 @@ const SKIP = new Set([
   '.vite',
   'test-results',
 ]);
-const UPPER = /\p{Lu}/u;
+const UI_ATTRS = new Set([
+  'label',
+  'title',
+  'placeholder',
+  'aria-label',
+  'aria-description',
+  'alt',
+  'hint',
+  'description',
+  'tooltip',
+  'footer',
+  'confirmLabel',
+  'cancelLabel',
+  'caption',
+  'subtitle',
+  'emptyText',
+  'status',
+]);
+const UI_PROPS = new Set([
+  'label',
+  'title',
+  'placeholder',
+  'hint',
+  'description',
+]);
+const RAW_TAGS = new Set(['Kbd', 'Code', 'Mono']);
 
+export const hasUpper = (s) =>
+  /\p{Lu}/u.test(s.replace(/[⌘⇧⌥⌃]+\s*[\p{L}\d]*/gu, ''));
+
+/** Returns flagged spans: { start, end, line, text, what }. */
 export function titleProblems(src, rel) {
+  const isTsx = rel.endsWith('.tsx');
+  const sf = ts.createSourceFile(
+    rel,
+    src,
+    ts.ScriptTarget.Latest,
+    true,
+    isTsx ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  const lines = src.split('\n');
   const out = [];
-  const line = (i) => src.slice(0, i).split('\n').length;
-  const add = (i, s, what) => {
-    // Keyboard shortcuts (⌘K, ⌘⇧R) keep their key letter.
-    if (UPPER.test(s.replace(/[⌘⇧⌥⌃]+\p{Lu}?/gu, '')))
-      out.push(
-        `${rel}:${line(i)}: ${what} "${s.trim()}" has uppercase letters`,
-      );
+  const ignored = (pos) => {
+    const l = sf.getLineAndCharacterOfPosition(pos).line;
+    return (
+      /check-titles-ignore/.test(lines[l] ?? '') ||
+      /check-titles-ignore/.test(lines[l - 1] ?? '')
+    );
   };
-  for (const m of src.matchAll(/<Heading\b([^>]*)>([^<{]+)<\/Heading>/g))
-    if (!/preserveCase/.test(m[1])) add(m.index, m[2], 'heading');
-  for (const m of src.matchAll(
-    /<(SettingsSection|Section|ConfirmDialog|Dialog|EmptyState)\b[^>]*?\btitle="([^"]+)"/gs,
-  ))
-    add(m.index, m[2], `${m[1]} title`);
-  // Tabs: { id: '…', label: '…' } literal arrays passed to <Tabs>.
-  for (const m of src.matchAll(/<Tabs\b[\s\S]*?tabs=\{\[([\s\S]*?)\]\}/g))
-    for (const l of m[1].matchAll(/label:\s*'([^']+)'/g))
-      add(m.index, l[1], 'tab label');
-  if (/[\\/]features[\\/][^\\/]+[\\/]src[\\/]manifest\.ts$/.test(rel))
-    for (const m of src.matchAll(/\bname:\s*'([^']+)'/g))
-      add(m.index, m[1], 'sub-app name');
-  if (/[\\/]main[\\/]/.test(rel)) {
-    for (const m of src.matchAll(/\btitle:\s*'([^']+)'/g))
-      add(m.index, m[1], 'window/notification title');
-    if (/tray/.test(rel))
-      for (const m of src.matchAll(
-        /\blabel:\s*'([^']+)'|['`]((?:[A-Z][a-z]+)(?: [^'`$]*)?)['`]/g,
-      ))
-        add(m.index, m[1] ?? m[2], 'tray label');
-  }
+  const flag = (node, text, what) => {
+    const start = node.getStart(sf);
+    if (!hasUpper(text) || ignored(start)) return;
+    out.push({
+      start,
+      end: node.getEnd(),
+      line: sf.getLineAndCharacterOfPosition(start).line + 1,
+      text: text.trim(),
+      what,
+    });
+  };
+  // String literals reachable in an expression, without descending into calls, JSX or comparisons.
+  const literals = (e, what, intoCalls = false) => {
+    const walk = (n) => {
+      if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n))
+        return flag(n, n.text, what);
+      if (ts.isTemplateExpression(n)) {
+        flag(n.head, n.head.text, what);
+        n.templateSpans.forEach((s) => flag(s.literal, s.literal.text, what));
+        return;
+      }
+      if (ts.isCallExpression(n) && intoCalls) return n.arguments.forEach(walk);
+      if (
+        ts.isCallExpression(n) ||
+        ts.isJsxElement(n) ||
+        ts.isJsxSelfClosingElement(n) ||
+        ts.isJsxFragment(n)
+      )
+        return;
+      if (
+        ts.isBinaryExpression(n) &&
+        /^(===|!==|==|!=|in|instanceof)$/.test(n.operatorToken.getText(sf))
+      )
+        return;
+      if (ts.isElementAccessExpression(n)) return walk(n.expression);
+      if (ts.isTypeOfExpression(n)) return;
+      ts.forEachChild(n, walk);
+    };
+    walk(e);
+  };
+  const tagName = (el) =>
+    ts.isJsxElement(el) ? el.openingElement.tagName.getText(sf) : '';
+  const manifest = /[\\/]features[\\/][^\\/]+[\\/]src[\\/]manifest\.ts$/.test(
+    rel,
+  );
+  const visit = (n) => {
+    if (ts.isJsxText(n)) {
+      if (!RAW_TAGS.has(tagName(n.parent))) flag(n, n.text, 'jsx text');
+    } else if (
+      ts.isJsxExpression(n) &&
+      n.expression &&
+      !ts.isJsxAttribute(n.parent)
+    ) {
+      if (!RAW_TAGS.has(tagName(n.parent)))
+        literals(n.expression, 'jsx text', true);
+    } else if (
+      ts.isJsxAttribute(n) &&
+      UI_ATTRS.has(n.name.getText(sf)) &&
+      n.initializer
+    ) {
+      const what = `${n.name.getText(sf)} prop`;
+      if (ts.isStringLiteral(n.initializer))
+        flag(n.initializer, n.initializer.text, what);
+      else if (ts.isJsxExpression(n.initializer) && n.initializer.expression)
+        literals(n.initializer.expression, what, true);
+    } else if (
+      ts.isPropertyAssignment(n) &&
+      (ts.isIdentifier(n.name) || ts.isStringLiteral(n.name))
+    ) {
+      const k = n.name.text;
+      const inFilters =
+        k === 'name' &&
+        ts.isArrayLiteralExpression(n.parent.parent) &&
+        ts.isPropertyAssignment(n.parent.parent.parent) &&
+        n.parent.parent.parent.name.getText(sf) === 'filters';
+      if (UI_PROPS.has(k) || (manifest && k === 'name') || inFilters)
+        literals(n.initializer, `${k} property`);
+    } else if (
+      ts.isCallExpression(n) &&
+      n.arguments[0] &&
+      (n.expression.getText(sf) === 'toast' ||
+        (isTsx &&
+          /^set[A-Z]\w*$/.test(n.expression.getText(sf)) &&
+          !/^set(Timeout|Interval|Immediate)$/.test(n.expression.getText(sf))))
+    ) {
+      literals(n.arguments[0], 'toast/status', true);
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
   return out;
 }
 
+export function fixSource(src, problems) {
+  let s = src;
+  for (const p of [...problems].sort((a, b) => b.start - a.start))
+    s =
+      s.slice(0, p.start) +
+      s.slice(p.start, p.end).toLowerCase() +
+      s.slice(p.end);
+  return s;
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const problems = [];
+  const fix = process.argv.includes('--fix');
+  const files = [];
   const walk = (dir) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       if (SKIP.has(e.name) || e.name.startsWith('.')) continue;
       const p = path.join(dir, e.name);
       if (e.isDirectory()) walk(p);
       else if (
-        /\.(tsx?)$/.test(p) &&
-        !/\.test\.tsx?$/.test(p) &&
+        /\.tsx?$/.test(p) &&
+        !/\.(test|spec)\.tsx?$/.test(p) &&
         !p.endsWith('.d.ts')
       )
-        problems.push(
-          ...titleProblems(fs.readFileSync(p, 'utf8'), path.relative(ROOT, p)),
-        );
+        files.push(p);
     }
   };
-  for (const d of ['apps', 'packages']) walk(path.join(ROOT, d));
-  if (problems.length) {
+  walk(path.join(ROOT, 'apps/desktop/src'));
+  walk(path.join(ROOT, 'packages/ui/src'));
+  for (const d of fs.readdirSync(path.join(ROOT, 'packages/features')))
+    if (fs.existsSync(path.join(ROOT, 'packages/features', d, 'src')))
+      walk(path.join(ROOT, 'packages/features', d, 'src'));
+  const report = [];
+  for (const f of files) {
+    const rel = path.relative(ROOT, f);
+    const src = fs.readFileSync(f, 'utf8');
+    const ps = titleProblems(src, rel);
+    if (!ps.length) continue;
+    if (fix) fs.writeFileSync(f, fixSource(src, ps));
+    report.push(
+      ...ps.map((p) => `${rel}:${p.line}: ${p.what} "${p.text.slice(0, 60)}"`),
+    );
+  }
+  if (report.length && !fix) {
     console.error(
-      `check-titles: ${problems.length} title(s) not lowercase:\n  ${problems.join('\n  ')}`,
+      `check-titles: ${report.length} UI string(s) not lowercase:\n  ${report.join('\n  ')}\n(run node scripts/check-titles.mjs --fix, or mark user content with check-titles-ignore)`,
     );
     process.exit(1);
   }
-  console.log('check-titles: ok (all titles lowercase)');
+  console.log(
+    fix
+      ? `check-titles: lowercased ${report.length} string(s)\n  ${report.join('\n  ')}`
+      : 'check-titles: ok (all UI strings lowercase)',
+  );
 }

@@ -89,6 +89,21 @@ export function ChatPanel({
                     tone="warning"
                     title={x.answer.llmError}
                     data-testid="chat-llm-error"
+                    action={
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={busy}
+                        onClick={() => {
+                          const prior = turns.slice(0, i - 1);
+                          const question = turns[i - 1]?.content;
+                          if (question) void ask(question, prior);
+                        }}
+                        data-testid="chat-retry"
+                      >
+                        retry
+                      </Button>
+                    }
                   />
                 ) : undefined
               }
@@ -113,7 +128,7 @@ export function ChatPanel({
                     )
                   }
                 >
-                  Retry
+                  retry
                 </Button>
               ) : null
             }
@@ -126,9 +141,9 @@ export function ChatPanel({
         onSubmit={submit}
         busy={busy}
         placeholder={
-          meetingId ? 'Ask about this meeting' : 'Ask across all meetings'
+          meetingId ? 'ask about this meeting' : 'ask across all meetings'
         }
-        label={meetingId ? 'Ask about this meeting' : 'Ask across all meetings'}
+        label={meetingId ? 'ask about this meeting' : 'ask across all meetings'}
         inputTestId="chat-input"
         submitTestId="chat-send"
       />

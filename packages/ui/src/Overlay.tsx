@@ -249,7 +249,7 @@ export function Tooltip({
             pointerEvents: 'none',
           }}
         >
-          {label}
+          {lowerTitle(label)}
         </span>
       ) : null}
     </span>

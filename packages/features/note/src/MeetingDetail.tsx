@@ -86,7 +86,7 @@ export function MeetingDetail({
       .catch((e: Error) => {
         if (!live) return;
         setD(null);
-        setLoadError(e.message || 'Could not load this meeting.');
+        setLoadError(e.message || 'could not load this meeting.');
       });
     return () => {
       live = false;
@@ -167,7 +167,7 @@ export function MeetingDetail({
             variant="secondary"
             onClick={() => setReloadKey((k) => k + 1)}
           >
-            Try again
+            try again
           </Button>
         }
       />
@@ -202,7 +202,7 @@ export function MeetingDetail({
           segments={live?.segments ?? []}
           partial={live?.partial ?? null}
           maxHeight="calc(100vh - 300px)"
-          empty={<Text muted>Listening…</Text>}
+          empty={<Text muted>listening…</Text>}
         />
       </Stack>
     );
@@ -213,9 +213,9 @@ export function MeetingDetail({
     setExported(
       save
         ? r.savedTo
-          ? `Saved to ${r.savedTo}`
-          : 'Export canceled'
-        : `Copied ${r.filename}`,
+          ? `saved to ${r.savedTo}`
+          : 'export canceled'
+        : `copied ${r.filename}`,
     );
   };
   const audioName = meeting.audioPath?.split(/[\\/]/).pop();
@@ -234,21 +234,21 @@ export function MeetingDetail({
         <Toolbar
           end={
             <ActionMenu
-              label="Meeting actions"
+              label="meeting actions"
               data-testid="meeting-menu"
               items={[
                 {
-                  label: 'Export .md',
+                  label: 'export .md',
                   onSelect: () => void doExport(true),
                   testId: 'export-save',
                 },
                 {
-                  label: 'Copy Markdown',
+                  label: 'copy markdown',
                   onSelect: () => void doExport(false),
                   testId: 'export-copy',
                 },
                 {
-                  label: 'Delete',
+                  label: 'delete',
                   onSelect: () => setConfirmDelete(true),
                   danger: true,
                   testId: 'meeting-delete',
@@ -274,7 +274,7 @@ export function MeetingDetail({
         open={confirmDelete}
         title="delete this meeting?"
         body={meeting.title}
-        confirmLabel="Delete"
+        confirmLabel="delete"
         data-testid="confirm-delete"
         onCancel={() => setConfirmDelete(false)}
         onConfirm={() => {
@@ -344,7 +344,7 @@ export function MeetingDetail({
                   <>
                     <Select
                       id="summary-template"
-                      aria-label="Template"
+                      aria-label="template"
                       data-testid="summary-template"
                       value={d?.meeting.template ?? 'general'}
                       disabled={retrying}
@@ -360,7 +360,7 @@ export function MeetingDetail({
                     </Select>
                     <IconButton
                       icon="refresh"
-                      label={retrying ? 'Summarizing' : 'Re-run'}
+                      label={retrying ? 'summarizing' : 're-run'}
                       onClick={retrySummary}
                       data-testid="summary-rerun"
                     />
@@ -388,7 +388,7 @@ export function MeetingDetail({
                       disabled={retrying}
                       data-testid="llm-retry"
                     >
-                      {retrying ? 'Retrying…' : 'Retry'}
+                      {retrying ? 'retrying…' : 'retry'}
                     </Button>
                   }
                 />
@@ -407,7 +407,7 @@ export function MeetingDetail({
                       disabled={retrying}
                       data-testid="summary-run"
                     >
-                      Summarize
+                      summarize
                     </Button>
                   ),
                 }

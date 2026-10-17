@@ -1,3 +1,5 @@
+import { Children, cloneElement, isValidElement, type ReactNode } from 'react';
+import { lowerTitle } from './case';
 import { Label } from './Text';
 import { typeStyle } from './tokens';
 import {
@@ -29,6 +31,14 @@ export const Input = forwardRef<
   return <input ref={ref} {...rest} style={{ ...base, ...style }} />;
 });
 
+/** Dropdown options are UI chrome: lowercase (brand rule), including brand and model names. */
+const lowerOptions = (children: ReactNode): ReactNode =>
+  Children.map(children, (c) =>
+    isValidElement<{ children?: ReactNode }>(c) && c.type === 'option'
+      ? cloneElement(c, {}, lowerTitle(c.props.children))
+      : c,
+  );
+
 export function Select({
   style,
   children,
@@ -37,7 +47,7 @@ export function Select({
   const base = useFieldStyle();
   return (
     <select {...rest} style={{ ...base, ...style }}>
-      {children}
+      {lowerOptions(children)}
     </select>
   );
 }
@@ -53,7 +63,7 @@ export function Field({
   const t = useTheme();
   return (
     <label style={{ display: 'grid', gap: t.space[1] }}>
-      <Label>{label}</Label>
+      <Label>{lowerTitle(label)}</Label>
       {children}
     </label>
   );

@@ -132,7 +132,7 @@ test('note end-to-end: detect, record, live transcript, summarize, search, expor
   // 5. Markdown export.
   await win.getByTestId('meeting-menu').click();
   await win.getByTestId('export-save').click();
-  await expect(win.getByTestId('export-result')).toContainText('Saved to');
+  await expect(win.getByTestId('export-result')).toContainText('saved to');
   const files = fs.readdirSync(exportDir);
   expect(files).toHaveLength(1);
   expect(files[0]).toMatch(/weekly-product-sync\.md$/);

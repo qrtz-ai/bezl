@@ -48,7 +48,7 @@ test('delete a meeting and copy its Markdown', async () => {
   await win.getByTestId('meeting-delete').click();
   await win.getByTestId('confirm-delete-ok').click();
   await expect(first).toHaveCount(0);
-  await expect(win.getByTestId('toast')).toContainText('Deleted “Sync #500”');
+  await expect(win.getByTestId('toast')).toContainText('deleted “Sync #500”');
   await win.getByTestId('toast-action').click();
   await expect(first).toBeVisible();
   await expect(win.getByTestId('meeting-detail')).toContainText('Sync #500');
@@ -81,13 +81,13 @@ test('settings persist across restarts; API key save and remove', async () => {
   await win.getByTestId('default-template').selectOption('standup');
   await win.getByTestId('theme').selectOption('light');
   await win.getByTestId('llm-key').fill('sk-test-not-real');
-  await win.getByRole('button', { name: 'Save', exact: true }).click();
+  await win.getByRole('button', { name: 'save', exact: true }).click();
   // Linux CI has no keyring, so safeStorage refuses and the key must not be stored in plaintext.
   const secure = process.platform === 'darwin';
   if (secure) await expect(win.getByText('Key configured')).toBeVisible();
   else
     await expect(win.getByRole('alert')).toContainText(
-      'Secure storage is not available',
+      /secure storage is not available/i,
     );
   await app.close();
 
@@ -184,11 +184,11 @@ test('backup progress bar shows on a large seeded recording', async () => {
     'aria-valuenow',
     /\d+/,
   );
-  await expect(bar).toContainText(/Computing checksums|Writing zip/);
+  await expect(bar).toContainText(/computing checksums|writing zip/);
   await win.screenshot({
     path: path.join(__dirname, '..', 'test-results', 'backup-progress.png'),
   });
-  await expect(win.getByTestId('backup-result')).toContainText('Backed up', {
+  await expect(win.getByTestId('backup-result')).toContainText('backed up', {
     timeout: 90_000,
   });
   await expect(bar).toHaveCount(0);

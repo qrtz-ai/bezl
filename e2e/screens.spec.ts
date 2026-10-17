@@ -66,7 +66,7 @@ test('first run → record → review walkthrough', async () => {
 
   await win.getByTestId('nav-settings').click();
   await expect(win.getByRole('heading', { name: 'Settings' })).toBeVisible();
-  await expect(win.getByText(/Native helper:/)).toBeVisible();
+  await expect(win.getByText(/native helper:/)).toBeVisible();
   await shot(win, 'settings');
   await win.keyboard.press('ControlOrMeta+k');
   await win.getByTestId('palette-input').fill('onboarding');

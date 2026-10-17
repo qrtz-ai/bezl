@@ -29,7 +29,7 @@ test('command palette and component gallery', async () => {
   // First run: Note is the home screen, an empty meeting list and one Record button.
   await expect(win.getByTestId('note-app')).toBeVisible();
   await expect(win.getByTestId('empty-state').first()).toContainText(
-    'No meetings',
+    'no meetings',
   );
   await expect(win.getByTestId('note-record-manual')).toBeEnabled();
   await expect(win.getByTestId('nav-note')).toHaveText('note');
@@ -77,7 +77,7 @@ test('command palette and component gallery', async () => {
   await win.keyboard.press('Escape');
   await expect(win.getByRole('dialog')).toHaveCount(0);
   await win.getByTestId('gallery-toast').click();
-  await expect(win.getByTestId('toast')).toContainText('Saved');
+  await expect(win.getByTestId('toast')).toContainText('saved');
   await win.getByRole('switch').first().click();
   await expect(win.getByRole('switch').first()).toHaveAttribute(
     'aria-checked',
@@ -113,7 +113,7 @@ test('command palette and component gallery', async () => {
   await expect(win.getByTestId('cmd-note.stop')).toBeVisible();
   await win.getByTestId('cmd-note.stop').click();
   await expect(win.getByTestId('toast').last()).toContainText(
-    'Recording stopped',
+    'recording stopped',
   );
 
   expect(errors).toEqual([]);

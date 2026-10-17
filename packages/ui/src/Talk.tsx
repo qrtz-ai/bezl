@@ -167,13 +167,13 @@ export function TalkHistoryRow({
       <div style={{ display: 'flex', gap: t.space[1], alignItems: 'start' }}>
         <IconButton
           icon="copy"
-          label="Copy"
+          label="copy"
           onClick={onCopy}
           data-testid="talk-entry-copy"
         />
         <IconButton
           icon="trash"
-          label="Delete"
+          label="delete"
           onClick={onDelete}
           data-testid="talk-entry-delete"
         />
@@ -235,7 +235,7 @@ export function DictionaryTerm({
       ) : null}
       <button
         type="button"
-        aria-label={`Remove ${term}`}
+        aria-label={`remove ${term}`}
         onClick={onRemove}
         style={{
           all: 'unset',
@@ -255,7 +255,7 @@ export function TermList({ children }: { children: ReactNode }) {
   const t = useTheme();
   return (
     <ul
-      aria-label="Dictionary"
+      aria-label="dictionary"
       style={{
         margin: 0,
         padding: 0,

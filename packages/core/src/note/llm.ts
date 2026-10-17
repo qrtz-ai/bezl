@@ -48,6 +48,12 @@ export type ProviderId =
   | 'ollama'
   | 'nvidia';
 
+/**
+ * Default model for every LLM use in qrtz (note summary + final note, chat/ask, talk cleanup) via OpenRouter.
+ * Slug verified against https://openrouter.ai/api/v1/models (Oct 2026).
+ */
+export const OPENROUTER_DEFAULT_MODEL = 'anthropic/claude-haiku-5.5';
+
 export const PROVIDER_DEFAULTS: Record<
   ProviderId,
   { baseUrl: string; model: string; secret?: string }
@@ -59,7 +65,7 @@ export const PROVIDER_DEFAULTS: Record<
   },
   openrouter: {
     baseUrl: 'https://openrouter.ai/api/v1',
-    model: 'google/gemini-2.5-flash',
+    model: OPENROUTER_DEFAULT_MODEL,
     secret: 'llm.openrouter',
   },
   nvidia: {
@@ -107,9 +113,11 @@ async function post(
     const hint =
       res.status === 401 || res.status === 403
         ? ' (check the API key in Settings)'
-        : res.status === 429
-          ? ' (rate limited; try again shortly)'
-          : '';
+        : res.status === 402
+          ? ' (no OpenRouter credits: add credits at openrouter.ai/settings/credits, then retry)'
+          : res.status === 429
+            ? ' (rate limited; try again shortly)'
+            : '';
     throw new AppError(
       'E_PROVIDER',
       `LLM HTTP ${res.status}: ${detail}${hint}`,
@@ -220,16 +228,6 @@ export function google(o: {
   };
 }
 
-/**
- * Free-tier OpenRouter accounts (no credits) get HTTP 402 for paid models like the default. Without an
- * explicit model, qrtz then falls back to these current `:free` models (first that answers wins, and
- * sticks for the rest of the session). `openrouter/free` is OpenRouter's own free-model router.
- */
-export const OPENROUTER_FREE_MODELS = [
-  'google/gemma-4-31b-it:free',
-  'openrouter/free',
-];
-
 /** True when an error means "this account can't pay for that model" (not a bad key or an outage). */
 export const needsCredits = (e: unknown): boolean => {
   const m = e instanceof Error ? e.message : String(e);
@@ -238,40 +236,6 @@ export const needsCredits = (e: unknown): boolean => {
     /\b(credits?|insufficient|requires? (?:more )?payment)\b/i.test(m)
   );
 };
-
-let openRouterFree: string | null = null;
-/** Test hook: forget the sticky free-tier fallback. */
-export const resetOpenRouterFallback = () => {
-  openRouterFree = null;
-};
-
-function withFreeFallback(
-  make: (model: string) => LlmProvider,
-  primary: string,
-): LlmProvider {
-  const first = make(openRouterFree ?? primary);
-  return {
-    ...first,
-    async complete(messages, opts) {
-      try {
-        return await make(openRouterFree ?? primary).complete(messages, opts);
-      } catch (e) {
-        if (openRouterFree || !needsCredits(e)) throw e;
-        let last = e;
-        for (const m of OPENROUTER_FREE_MODELS) {
-          try {
-            const r = await make(m).complete(messages, opts);
-            openRouterFree = m;
-            return r;
-          } catch (err) {
-            last = err;
-          }
-        }
-        throw last;
-      }
-    },
-  };
-}
 
 /** Builds a provider from config + key. Returns null when no usable provider is configured. */
 export function createProvider(
@@ -303,10 +267,8 @@ export function createProvider(
           }
         : {}),
     });
-  // Only the default model falls back; a model the user picked is respected (and its error shown).
-  return id === 'openrouter' && !o.model
-    ? withFreeFallback(make, model)
-    : make(model);
+  // No silent model swap: a 402 (no credits) surfaces as an error with retry; summaries keep the on-device fallback.
+  return make(model);
 }
 
 export function formatTranscriptForPrompt(

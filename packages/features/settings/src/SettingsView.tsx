@@ -23,12 +23,12 @@ import {
 import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
 
 const PROVIDERS: { id: ProviderId | 'none'; label: string }[] = [
-  { id: 'openrouter', label: 'OpenRouter (recommended)' },
-  { id: 'openai', label: 'OpenAI' },
-  { id: 'anthropic', label: 'Anthropic' },
-  { id: 'google', label: 'Google Gemini' },
-  { id: 'ollama', label: 'Ollama (local, no key)' },
-  { id: 'none', label: 'Off (on-device extractive only)' },
+  { id: 'openrouter', label: 'openrouter (recommended)' },
+  { id: 'openai', label: 'openai' },
+  { id: 'anthropic', label: 'anthropic' },
+  { id: 'google', label: 'google gemini' },
+  { id: 'ollama', label: 'ollama (local, no key)' },
+  { id: 'none', label: 'off (on-device extractive only)' },
 ];
 
 export default function SettingsView() {
@@ -104,15 +104,15 @@ export default function SettingsView() {
             .invoke('data:export-backup', {})
             .then((r) =>
               r.savedTo
-                ? `Backed up ${r.meetings} meetings and ${r.audioFiles} recordings (${(r.bytes / 1e6).toFixed(1)} MB)`
-                : 'Canceled',
+                ? `backed up ${r.meetings} meetings and ${r.audioFiles} recordings (${(r.bytes / 1e6).toFixed(1)} MB)`
+                : 'canceled',
             )
         : qrtz
             .invoke('data:import-backup', {})
             .then((r) =>
               r.canceled
-                ? 'Canceled'
-                : `Verified and imported ${r.imported} meetings (${r.skipped} already here, ${r.audioFiles} recordings)`,
+                ? 'canceled'
+                : `verified and imported ${r.imported} meetings (${r.skipped} already here, ${r.audioFiles} recordings)`,
             );
     void run
       .then(setBackupMsg, (e: Error) => setBackupMsg(e.message))
@@ -136,7 +136,7 @@ export default function SettingsView() {
     try {
       await qrtz.invoke('secrets:set', { name: secretName, value });
       setKey('');
-      setMsg(value ? 'Key saved' : 'Key removed');
+      setMsg(value ? 'key saved' : 'key removed');
       setSecrets(await qrtz.invoke('secrets:list'));
     } catch (e) {
       setError((e as Error).message);
@@ -231,49 +231,49 @@ export default function SettingsView() {
           data-testid="settings-error"
           action={
             <Button variant="secondary" size="sm" onClick={refresh}>
-              Retry
+              retry
             </Button>
           }
         />
       ) : null}
       <SettingsSection title="recording">
         {toggle(
-          'Detect meetings',
+          'detect meetings',
           'auto-detect',
           noteCfg.autoDetectMeetings,
           true,
           (v) => void patchNote({ autoDetectMeetings: v }),
         )}
         {toggle(
-          'Record automatically',
+          'record automatically',
           'auto-record',
           noteCfg.autoRecord,
           false,
           (v) => void patchNote({ autoRecord: v }),
         )}
         {toggle(
-          'Ask to record',
+          'ask to record',
           'detect-prompt',
           noteCfg.detectPrompt,
           true,
           (v) => void patchNote({ detectPrompt: v }),
         )}
         {toggle(
-          'Floating HUD',
+          'floating hud',
           'floating-hud',
           noteCfg.floatingHud,
           true,
           (v) => void patchNote({ floatingHud: v }),
         )}
         {toggle(
-          'Delete old recordings',
+          'delete old recordings',
           'retain-audio-on',
           days > 0,
           false,
           (v) => void patchNote({ retainAudioDays: v ? 30 : 0 }),
         )}
         {days > 0 ? (
-          <SettingRow label="After">
+          <SettingRow label="after">
             <Select
               value={String(days)}
               onChange={(e) =>
@@ -290,20 +290,20 @@ export default function SettingsView() {
       </SettingsSection>
       <SettingsSection title="summaries">
         {toggle(
-          'Summarize after meetings',
+          'summarize after meetings',
           'auto-summarize',
           noteCfg.autoSummarize,
           true,
           (v) => void patchNote({ autoSummarize: v }),
         )}
         {toggle(
-          'Index for search',
+          'index for search',
           'background-indexing',
           noteCfg.backgroundIndexing,
           true,
           (v) => void patchNote({ backgroundIndexing: v }),
         )}
-        <SettingRow label="Template">
+        <SettingRow label="template">
           <Select
             value={noteCfg.defaultTemplate ?? 'general'}
             onChange={(e) =>
@@ -318,7 +318,7 @@ export default function SettingsView() {
             ))}
           </Select>
         </SettingRow>
-        <SettingRow label="Provider">
+        <SettingRow label="provider">
           <Select
             value={provider}
             onChange={(e) => void patchNote({ llmProvider: e.target.value })}
@@ -332,7 +332,7 @@ export default function SettingsView() {
           </Select>
         </SettingRow>
         {provider !== 'none' ? (
-          <Field label="Model">
+          <Field label="model">
             <Input
               defaultValue={noteCfg.llmModel ?? ''}
               placeholder={PROVIDER_DEFAULTS[provider].model}
@@ -343,7 +343,7 @@ export default function SettingsView() {
           </Field>
         ) : null}
         {secretName ? (
-          <Field label="API key">
+          <Field label="api key">
             <Stack dir="row" gap={2}>
               <Input
                 type="password"
@@ -356,18 +356,18 @@ export default function SettingsView() {
                 onClick={() => void saveKey(key.trim())}
                 disabled={!key.trim()}
               >
-                Save
+                save
               </Button>
               {hasKey ? (
                 <Button variant="ghost" onClick={() => void saveKey(null)}>
-                  Remove
+                  remove
                 </Button>
               ) : null}
             </Stack>
           </Field>
         ) : null}
         <Text variant="caption" muted>
-          {hasKey ? 'Key configured' : 'Using extractive fallback'}
+          {hasKey ? 'key configured' : 'using extractive fallback'}
         </Text>
         {msg ? (
           <Text variant="caption" muted>
@@ -377,26 +377,26 @@ export default function SettingsView() {
       </SettingsSection>
       <SettingsSection title="talk" data-testid="talk-settings">
         {toggle(
-          'Dictation',
+          'dictation',
           'talk-enabled',
           talkCfg.enabled,
           true,
           (v) => void patchTalk({ enabled: v }),
         )}
-        <SettingRow label="Hold to talk">
+        <SettingRow label="hold to talk">
           <Select
             value={talkCfg.pushKey ?? 'fn'}
             onChange={(e) => void patchTalk({ pushKey: e.target.value })}
             data-testid="talk-push-key"
           >
             <option value="fn">fn</option>
-            <option value="right-option">Right ⌥</option>
-            <option value="right-command">Right ⌘</option>
-            <option value="right-control">Right ⌃</option>
-            <option value="">Off</option>
+            <option value="right-option">right ⌥</option>
+            <option value="right-command">right ⌘</option>
+            <option value="right-control">right ⌃</option>
+            <option value="">off</option>
           </Select>
         </SettingRow>
-        <Field label="Toggle shortcut">
+        <Field label="toggle shortcut">
           <Input
             key={talkCfg.toggleHotkey ?? ''}
             defaultValue={
@@ -408,20 +408,20 @@ export default function SettingsView() {
             }
           />
         </Field>
-        <SettingRow label="Speech engine">
+        <SettingRow label="speech engine">
           <Select
             value={asrEngine}
             onChange={(e) => void patchTalk({ engine: e.target.value })}
             data-testid="talk-engine"
           >
-            <option value="auto">Auto</option>
-            <option value="elevenlabs">ElevenLabs Scribe</option>
-            <option value="deepgram">Deepgram Nova-3</option>
-            <option value="on-device">On-device</option>
+            <option value="auto">auto</option>
+            <option value="elevenlabs">elevenlabs scribe</option>
+            <option value="deepgram">deepgram nova-3</option>
+            <option value="on-device">on-device</option>
           </Select>
         </SettingRow>
         {asrSecret ? (
-          <Field label="Engine key">
+          <Field label="engine key">
             <Stack dir="row" gap={2}>
               <Input
                 type="password"
@@ -434,67 +434,67 @@ export default function SettingsView() {
                 onClick={() => void saveAsrKey(asrKey.trim())}
                 disabled={!asrKey.trim()}
               >
-                Save
+                save
               </Button>
               {hasAsrKey ? (
                 <Button variant="ghost" onClick={() => void saveAsrKey(null)}>
-                  Remove
+                  remove
                 </Button>
               ) : null}
             </Stack>
           </Field>
         ) : null}
         {toggle(
-          'Fall back to on-device',
+          'fall back to on-device',
           'talk-auto-failover',
           talkCfg.autoFailover,
           true,
           (v) => void patchTalk({ autoFailover: v }),
         )}
         {toggle(
-          'Warm mic',
+          'warm mic',
           'talk-warm-mic',
           talkCfg.warmMic,
           false,
           (v) => void patchTalk({ warmMic: v }),
         )}
         {toggle(
-          'Clean up text',
+          'clean up text',
           'talk-auto-cleanup',
           talkCfg.autoCleanup,
           true,
           (v) => void patchTalk({ autoCleanup: v }),
         )}
         {toggle(
-          'AI cleanup',
+          'ai cleanup',
           'talk-ai-cleanup',
           talkCfg.aiCleanup,
           true,
           (v) => void patchTalk({ aiCleanup: v }),
         )}
         {toggle(
-          'Insert into app',
+          'insert into app',
           'talk-auto-insert',
           talkCfg.autoInsert,
           true,
           (v) => void patchTalk({ autoInsert: v }),
         )}
         {toggle(
-          'Restore clipboard',
+          'restore clipboard',
           'talk-restore-clipboard',
           talkCfg.restoreClipboard,
           true,
           (v) => void patchTalk({ restoreClipboard: v }),
         )}
         {toggle(
-          'Floating pill',
+          'floating pill',
           'talk-show-pill',
           talkCfg.showPill,
           true,
           (v) => void patchTalk({ showPill: v }),
         )}
         {toggle(
-          'Keep history',
+          'keep history',
           'talk-save-history',
           talkCfg.saveHistory,
           true,
@@ -503,17 +503,17 @@ export default function SettingsView() {
       </SettingsSection>
       <SettingsSection title="privacy" data-testid="privacy-card">
         {toggle(
-          'Local only',
+          'local only',
           'local-only',
           privacy.localOnly,
           false,
           (v) => void patchPrivacy({ localOnly: v }),
         )}
-        <Field label="Never record in">
+        <Field label="never record in">
           <Input
             key={(privacy.excludedApps ?? []).join(',')}
             defaultValue={(privacy.excludedApps ?? []).join(', ')}
-            placeholder="Safari, zoom"
+            placeholder="safari, zoom"
             data-testid="excluded-apps"
             onBlur={(e) =>
               void patchPrivacy({
@@ -525,7 +525,7 @@ export default function SettingsView() {
             }
           />
         </Field>
-        <Field label="Pause shortcut">
+        <Field label="pause shortcut">
           <Input
             key={privacy.pauseHotkey ?? ''}
             defaultValue={privacy.pauseHotkey ?? 'CommandOrControl+Shift+P'}
@@ -537,7 +537,7 @@ export default function SettingsView() {
         </Field>
       </SettingsSection>
       <SettingsSection title="app">
-        <SettingRow label="Theme">
+        <SettingRow label="theme">
           <Select
             value={String(cfg?.theme ?? 'dark')}
             onChange={(e) =>
@@ -548,27 +548,27 @@ export default function SettingsView() {
             }
             data-testid="theme"
           >
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-            <option value="system">System</option>
+            <option value="dark">dark</option>
+            <option value="light">light</option>
+            <option value="system">system</option>
           </Select>
         </SettingRow>
         {toggle(
-          'Menu bar icon',
+          'menu bar icon',
           'menu-bar-icon',
           appCfg.menuBarIcon,
           true,
           (v) => void patchApp({ menuBarIcon: v }),
         )}
         {toggle(
-          'Open at login',
+          'open at login',
           'launch-at-login',
           appCfg.launchAtLogin,
           false,
           (v) => void patchApp({ launchAtLogin: v }),
         )}
         {toggle(
-          'Check for updates',
+          'check for updates',
           'auto-update-check',
           appCfg.autoUpdateCheck,
           true,
@@ -583,7 +583,7 @@ export default function SettingsView() {
             onClick={() => backup('export')}
             data-testid="backup-export"
           >
-            Export
+            export
           </Button>
           <Button
             variant="ghost"
@@ -591,22 +591,22 @@ export default function SettingsView() {
             onClick={() => backup('import')}
             data-testid="backup-import"
           >
-            Import
+            import
           </Button>
         </Stack>
         {backupBusy && backupProgress && backupProgress.phase !== 'done' ? (
           <Stack gap={1} data-testid="backup-progress">
             <Progress
               value={backupProgress.done / Math.max(1, backupProgress.total)}
-              label={`Backup ${backupProgress.kind} progress`}
+              label={`backup ${backupProgress.kind} progress`}
             />
             <Text variant="caption" muted>
               {
                 {
-                  checksum: 'Computing checksums…',
-                  write: 'Writing zip…',
-                  verify: 'Verifying backup…',
-                  import: 'Importing meetings…',
+                  checksum: 'computing checksums…',
+                  write: 'writing zip…',
+                  verify: 'verifying backup…',
+                  import: 'importing meetings…',
                   done: '',
                 }[backupProgress.phase]
               }{' '}
@@ -630,16 +630,16 @@ export default function SettingsView() {
       <SettingsSection title="system">
         <Text variant="caption" muted>
           {info
-            ? `qrtz ${info.version} · ${info.platform}/${info.arch} · Electron ${info.electron}`
+            ? `qrtz ${info.version} · ${info.platform}/${info.arch} · electron ${info.electron}`
             : '…'}
         </Text>
         <Text variant="caption" muted>
           {db
-            ? `Database: ${db.ok ? 'ok' : 'error'} · schema v${db.schemaVersion} · FTS5 ${db.fts5 ? 'on' : 'off'}`
+            ? `database: ${db.ok ? 'ok' : 'error'} · schema v${db.schemaVersion} · fts5 ${db.fts5 ? 'on' : 'off'}`
             : ''}
         </Text>
         <Text variant="caption" muted>
-          {h ? `Native helper: ${h.state} (restarts ${h.restarts})` : ''}
+          {h ? `native helper: ${h.state} (restarts ${h.restarts})` : ''}
         </Text>
         <Stack dir="row">
           <Button
@@ -648,7 +648,7 @@ export default function SettingsView() {
             onClick={refresh}
             data-testid="settings-refresh"
           >
-            Refresh
+            refresh
           </Button>
         </Stack>
       </SettingsSection>

@@ -64,21 +64,21 @@ export function Speakers({
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            aria-label={`New name for ${editing}`}
+            aria-label={`new name for ${editing}`}
             data-testid="speaker-name"
             maxLength={120}
           />
           <Button size="sm" type="submit" data-testid="speaker-save">
-            Rename
+            rename
           </Button>
           {speakers.length > 1 ? (
             <Select
-              aria-label={`Merge ${editing} into another speaker`}
+              aria-label={`merge ${editing} into another speaker`}
               data-testid="speaker-merge"
               value=""
               onChange={(e) => e.target.value && apply(editing, e.target.value)}
             >
-              <option value="">Merge into…</option>
+              <option value="">merge into…</option>
               {speakers
                 .filter(([sp]) => sp !== editing)
                 .map(([sp]) => (
@@ -94,7 +94,7 @@ export function Speakers({
             type="button"
             onClick={() => setEditing(null)}
           >
-            Cancel
+            cancel
           </Button>
         </Stack>
       ) : null}

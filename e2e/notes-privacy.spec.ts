@@ -118,7 +118,7 @@ test('live notes + privacy pause in the HUD, notes merged into the summary, temp
   await until(win, async () => {
     expect(
       await win.getByTestId('summary-rerun').getAttribute('aria-label'),
-    ).toBe('Re-run');
+    ).toBe('re-run');
   });
   await expect(summary).toContainText('send recap to everyone');
   await win.getByTestId('nav-settings').click();
@@ -223,7 +223,7 @@ test('backup: export zip with checksums, import into a fresh profile, tampered z
   await a.win.getByTestId('nav-settings').click();
   await a.win.getByTestId('backup-export').click();
   await expect(a.win.getByTestId('backup-result')).toContainText(
-    /Backed up 1 meetings and 1 recordings/,
+    /backed up 1 meetings and 1 recordings/,
     { timeout: 20_000 },
   );
   expect(fs.statSync(zip).size).toBeGreaterThan(10_000);
@@ -233,7 +233,7 @@ test('backup: export zip with checksums, import into a fresh profile, tampered z
   await b.win.getByTestId('nav-settings').click();
   await b.win.getByTestId('backup-import').click();
   await expect(b.win.getByTestId('backup-result')).toContainText(
-    'Verified and imported 1 meetings (0 already here, 1 recordings)',
+    'verified and imported 1 meetings (0 already here, 1 recordings)',
     { timeout: 20_000 },
   );
   await b.win.getByTestId('backup-import').click();

@@ -325,7 +325,7 @@ export function bootstrap() {
         else {
           const r = await dialog.showSaveDialog({
             defaultPath: path.join(app.getPath('documents'), ex.filename),
-            filters: [{ name: 'Markdown', extensions: ['md'] }],
+            filters: [{ name: 'markdown', extensions: ['md'] }],
           });
           target = r.canceled ? undefined : r.filePath;
         }

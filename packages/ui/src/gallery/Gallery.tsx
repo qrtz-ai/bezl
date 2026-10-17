@@ -221,7 +221,8 @@ function Showcase({
                   <Text variant={v} truncate>
                     {v === 'code' || v === 'mono'
                       ? '00:12:34 · note.record()'
-                      : 'Meeting notes'}
+                      : 'meeting notes'}{' '}
+                    // check-titles-ignore (sample user content)
                   </Text>
                   <Text variant="caption" muted>
                     {t.type[v].size} / {t.type[v].lineHeight}
@@ -235,11 +236,12 @@ function Showcase({
                 <Heading level={1}>heading 1</Heading>
                 <Heading level={2}>heading 2</Heading>
                 <Heading level={3}>heading 3</Heading>
-                <Label>Label</Label>
+                <Label>label</Label>
                 <Label caps tone="muted">
-                  Section label
+                  section label
                 </Label>
                 <Text>
+                  {/* check-titles-ignore: sample user content */}
                   Body with <Code>code</Code> and a{' '}
                   <Link href="#type">link</Link>.
                 </Text>
@@ -284,31 +286,32 @@ function Showcase({
           </Section>
 
           <Section id="buttons" title="buttons">
-            <Button>Primary</Button>
-            <Button variant="secondary">Secondary</Button>
-            <Button variant="ghost">Ghost</Button>
-            <Button variant="danger">Danger</Button>
-            <Button size="sm">Small</Button>
-            <Button loading>Loading</Button>
-            <Button disabled>Disabled</Button>
+            <Button>primary</Button>
+            <Button variant="secondary">secondary</Button>
+            <Button variant="ghost">ghost</Button>
+            <Button variant="danger">danger</Button>
+            <Button size="sm">small</Button>
+            <Button loading>loading</Button>
+            <Button disabled>disabled</Button>
             <Button size="sm" icon="circle">
-              Record
+              record
             </Button>
-            <IconButton icon="search" label="Search" onClick={() => {}} />
+            <IconButton icon="search" label="search" onClick={() => {}} />
             <IconButton
               icon="stop"
-              label="Stop"
+              label="stop"
               tone="record"
               onClick={() => {}}
             />
             <ActionMenu
-              label="More actions"
+              label="more actions"
               items={[
-                { label: 'Export .md', onSelect: () => {} },
-                { label: 'Delete', onSelect: () => {}, danger: true },
+                { label: 'export .md', onSelect: () => {} },
+                { label: 'delete', onSelect: () => {}, danger: true },
               ]}
             />
             <Chip pressed={chip} onClick={() => setChip(!chip)}>
+              {/* check-titles-ignore: sample user content */}
               Grace
             </Chip>
           </Section>
@@ -326,11 +329,11 @@ function Showcase({
             </span>
             <Spinner />
             <div style={{ width: 160 }}>
-              <Progress value={0.6} label="Example progress" />
+              <Progress value={0.6} label="example progress" />
             </div>
-            <Tooltip label="Start recording (⌘⇧R)">
+            <Tooltip label="start recording (⌘⇧r)">
               <Button variant="ghost" size="sm">
-                Hover me
+                hover me
               </Button>
             </Tooltip>
           </Section>
@@ -344,23 +347,23 @@ function Showcase({
                 gridTemplateColumns: '1fr 1fr',
               }}
             >
-              <Field label="Input">
-                <Input placeholder="Type here" />
+              <Field label="input">
+                <Input placeholder="type here" />
               </Field>
-              <Field label="Select">
+              <Field label="select">
                 <Select defaultValue="b">
-                  <option value="a">Alpha</option>
-                  <option value="b">Beta</option>
+                  <option value="a">alpha</option>
+                  <option value="b">beta</option>
                 </Select>
               </Field>
-              <Field label="TextArea">
-                <TextArea placeholder="Notes" />
+              <Field label="textarea">
+                <TextArea placeholder="notes" />
               </Field>
-              <Field label="Switch">
+              <Field label="switch">
                 <Switch
                   checked={on}
                   onChange={setOn}
-                  label={on ? 'On' : 'Off'}
+                  label={on ? 'on' : 'off'}
                   showLabel
                 />
               </Field>
@@ -368,8 +371,8 @@ function Showcase({
                 value={ask}
                 onChange={setAsk}
                 onSubmit={() => setAsk('')}
-                placeholder="Ask"
-                label="Gallery composer"
+                placeholder="ask"
+                label="gallery composer"
               />
             </div>
           </Section>
@@ -380,11 +383,11 @@ function Showcase({
                 embedded
                 tabs={
                   <TabBar
-                    label="Example tabs"
+                    label="example tabs"
                     testIdPrefix="gallery-tab"
                     items={[
-                      { id: 'note', label: 'Note' },
-                      { id: 'settings', label: 'Settings' },
+                      { id: 'note', label: 'note' },
+                      { id: 'settings', label: 'settings' },
                     ]}
                     active={bar}
                     onSelect={setBar}
@@ -407,16 +410,16 @@ function Showcase({
                       end={
                         <IconButton
                           icon="search"
-                          label="Search"
+                          label="search"
                           onClick={() => {}}
                         />
                       }
                     >
                       <Button size="sm" icon="circle">
-                        Record
+                        record
                       </Button>
                     </Toolbar>
-                    <Stack as="ul" gap={0} aria-label="Example meetings">
+                    <Stack as="ul" gap={0} aria-label="example meetings">
                       {meetings.map((m, i) => (
                         <MeetingRow
                           key={m}
@@ -497,12 +500,14 @@ function Showcase({
 
           <Section id="chat" title="chat">
             <div style={{ display: 'grid', gap: t.space[3], width: '100%' }}>
+              {/* check-titles-ignore: sample user content */}
               <ChatQuestion>When is the beta?</ChatQuestion>
               <ChatAnswer
                 text="Friday, per Grace."
                 sources={[
                   {
-                    label: '[1] 00:41 · Grace',
+                    // check-titles-ignore: sample user content
+                    label: '[1] 00:41 · Grace', // check-titles-ignore
                     title: "Let's ship the beta Friday.",
                     onOpen: () => {},
                   },
@@ -514,14 +519,17 @@ function Showcase({
 
           <Section id="hud" title="recording hud">
             <div style={{ display: 'grid', gap: t.space[4], width: '100%' }}>
-              <Banner actions={<Button size="sm">Record</Button>}>
+              <Banner actions={<Button size="sm">record</Button>}>
+                {/* check-titles-ignore: sample user content */}
                 <Text>Weekly Product Sync</Text>
                 <Text variant="caption" muted>
+                  {/* check-titles-ignore: sample user content */}
                   Zoom
                 </Text>
               </Banner>
               <RecordingBar
                 clock="12:04"
+                // check-titles-ignore: sample user content
                 title="Weekly Product Sync"
                 level={0.6}
                 speaker="Grace"
@@ -550,7 +558,7 @@ function Showcase({
               />
               <CaptureStatus
                 reconnecting={{ attempt: 2, secondsLeft: 12 }}
-                degraded={[{ id: 'mic-only', label: 'Mic only' }]}
+                degraded={[{ id: 'mic-only', label: 'mic only' }]}
                 error="Microphone permission denied"
                 onDismiss={() => {}}
               />
@@ -575,7 +583,7 @@ function Showcase({
                   },
                   {
                     id: 'index',
-                    label: 'Search index',
+                    label: 'search index',
                     status: 'retrying',
                     attempts: 1,
                     maxAttempts: 3,
@@ -601,7 +609,7 @@ function Showcase({
                         <IconButton
                           icon="stop"
                           tone="record"
-                          label="Stop recording"
+                          label="stop recording"
                           onClick={() => {}}
                         />
                       </NoDrag>
@@ -637,7 +645,7 @@ function Showcase({
                 partial=""
                 error="Microphone did not start"
               />
-              <PlainList label="History">
+              <PlainList label="history">
                 <TalkHistoryRow
                   text="I think we should ship qrtz talk on Friday."
                   meta="10:42 PM · Notes · elevenlabs · 312 ms"
@@ -658,20 +666,20 @@ function Showcase({
           <Section id="settings" title="settings rows, permissions">
             <div style={{ display: 'grid', gap: t.space[4], width: '100%' }}>
               <SettingsSection title="recording">
-                <SettingRow label="Record automatically">
+                <SettingRow label="record automatically">
                   <Switch
                     checked={on}
                     onChange={setOn}
-                    label="Record automatically"
+                    label="record automatically"
                   />
                 </SettingRow>
               </SettingsSection>
               <PermissionList
                 items={[
-                  { id: 'mic', label: 'Microphone', state: 'Granted' },
+                  { id: 'mic', label: 'microphone', state: 'Granted' },
                   {
                     id: 'ax',
-                    label: 'Accessibility',
+                    label: 'accessibility',
                     state: '',
                     onGrant: () => {},
                   },
@@ -686,25 +694,25 @@ function Showcase({
               onClick={() => setOpen(true)}
               data-testid="gallery-open-dialog"
             >
-              Open dialog
+              open dialog
             </Button>
             <Button variant="secondary" onClick={() => setConfirm(true)}>
-              Confirm
+              confirm
             </Button>
             <Button variant="secondary" onClick={() => setPalette(true)}>
-              Palette
+              palette
             </Button>
             <Button
               variant="secondary"
-              onClick={() => toast('Saved to Downloads', 'success')}
+              onClick={() => toast('saved to downloads', 'success')}
               data-testid="gallery-toast"
             >
-              Show toast
+              show toast
             </Button>
             <Dialog
               open={open}
               onClose={() => setOpen(false)}
-              title="Delete meeting?"
+              title="delete meeting?"
             >
               <div
                 style={{
@@ -715,10 +723,10 @@ function Showcase({
                 }}
               >
                 <Button variant="ghost" onClick={() => setOpen(false)}>
-                  Cancel
+                  cancel
                 </Button>
                 <Button variant="danger" onClick={() => setOpen(false)}>
-                  Delete
+                  delete
                 </Button>
               </div>
             </Dialog>
@@ -726,7 +734,7 @@ function Showcase({
               open={confirm}
               title="delete this meeting?"
               body="Weekly Product Sync"
-              confirmLabel="Delete"
+              confirmLabel="delete"
               onCancel={() => setConfirm(false)}
               onConfirm={() => setConfirm(false)}
             />
@@ -736,8 +744,8 @@ function Showcase({
               query={pq}
               onQuery={setPq}
               results={[
-                { id: 'rec', title: 'Start recording', hint: '⌘⇧R' },
-                { id: 'set', title: 'Go to Settings' },
+                { id: 'rec', title: 'start recording', hint: '⌘⇧R' },
+                { id: 'set', title: 'go to settings' },
               ].filter((r) => r.title.toLowerCase().includes(pq.toLowerCase()))}
               index={pi}
               onIndex={setPi}
@@ -754,7 +762,7 @@ function Showcase({
                   title={`${tone[0]!.toUpperCase()}${tone.slice(1)}`}
                   action={
                     <Button size="sm" variant="secondary">
-                      Action
+                      action
                     </Button>
                   }
                 />
@@ -820,7 +828,7 @@ function Showcase({
                   onClick={() => setMoved((m) => !m)}
                   data-testid="gallery-motion"
                 >
-                  Play
+                  play
                 </Button>
               </Stack>
               {(['hover', 'enter', 'exit'] as const).map((speed) => (
@@ -850,9 +858,9 @@ function Showcase({
           </Section>
 
           <Section id="focus" title="focus ring">
-            <Button size="sm">Button</Button>
-            <Input aria-label="Focus demo input" placeholder="Input" />
-            <Link href="#focus">Link</Link>
+            <Button size="sm">button</Button>
+            <Input aria-label="focus demo input" placeholder="input" />
+            <Link href="#focus">link</Link>
           </Section>
 
           <Section id="empty" title="empty state">
@@ -861,7 +869,7 @@ function Showcase({
               title="no meetings"
               action={
                 <Button size="sm" icon="circle">
-                  Record
+                  record
                 </Button>
               }
             />

@@ -40,7 +40,7 @@ export function Onboarding({
           onClick={onDone}
           data-testid="onboarding-continue"
         >
-          Continue
+          continue
         </Button>
       </Stack>
     </Page>

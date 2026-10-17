@@ -1,3 +1,4 @@
+import { lowerTitle } from './case';
 import { typeStyle } from './tokens';
 import type { ButtonHTMLAttributes, CSSProperties } from 'react';
 import { useTheme } from './theme';
@@ -88,7 +89,7 @@ export function Button({
           fill={icon === 'circle' || icon === 'stop'}
         />
       ) : null}
-      {children}
+      {lowerTitle(children)}
     </button>
   );
 }

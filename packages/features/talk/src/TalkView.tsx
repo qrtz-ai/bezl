@@ -76,7 +76,7 @@ export default function TalkView() {
             disabled={busy}
             data-testid="talk-toggle"
           >
-            {listening ? 'Stop' : 'Dictate'}
+            {listening ? 'stop' : 'dictate'}
           </Button>
         </Stack>
       </Stack>
@@ -94,7 +94,7 @@ export default function TalkView() {
       ) : null}
       <SettingsSection title="history" data-testid="talk-history">
         {history.length ? (
-          <PlainList label="Dictation history">
+          <PlainList label="dictation history">
             {history.map((e) => (
               <TalkHistoryRow
                 key={e.id}
@@ -104,7 +104,7 @@ export default function TalkView() {
                 onCopy={() =>
                   void qrtz
                     .invoke('talk:copy', { id: e.id })
-                    .then(() => toast('Copied', 'success'))
+                    .then(() => toast('copied', 'success'))
                 }
                 onDelete={() =>
                   void qrtz.invoke('talk:delete-entry', { id: e.id })
@@ -119,7 +119,7 @@ export default function TalkView() {
       <SettingsSection title="dictionary" data-testid="talk-dictionary">
         <Stack as="form" dir="row" gap={2} onSubmit={addTerm}>
           <Input
-            aria-label="Add a word"
+            aria-label="add a word"
             placeholder="qrtz = cue arts"
             value={draft}
             maxLength={200}
@@ -132,7 +132,7 @@ export default function TalkView() {
             disabled={!parseTerm(draft)}
             data-testid="talk-term-add"
           >
-            Add
+            add
           </Button>
         </Stack>
         {dict.length ? (

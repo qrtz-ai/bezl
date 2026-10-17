@@ -45,10 +45,10 @@ export function Hud({
         actions={
           <>
             <Button size="sm" onClick={onRecord} data-testid="note-record">
-              Record
+              record
             </Button>
             <Button size="sm" variant="ghost" onClick={onDismiss}>
-              Not now
+              not now
             </Button>
             {onAlways ? (
               <Button
@@ -57,7 +57,7 @@ export function Hud({
                 onClick={onAlways}
                 data-testid="note-always-record"
               >
-                Always
+                always
               </Button>
             ) : null}
           </>
@@ -75,7 +75,7 @@ export function Hud({
       <Stack gap={4} data-testid="note-hud">
         <RecordingBar
           clock={fmtClock(elapsed)}
-          title={s.detected?.title ?? 'Recording'}
+          title={s.detected?.title ?? 'recording'}
           level={s.level}
           speaker={s.activeSpeaker}
           paused={s.paused}
@@ -90,7 +90,7 @@ export function Hud({
     return (
       <Banner data-testid="note-processing" actions={<Spinner size={14} />}>
         <Text>
-          {s.phase === 'stopping' ? 'Stopping' : (s.progress ?? 'Summarizing')}…
+          {s.phase === 'stopping' ? 'stopping' : (s.progress ?? 'summarizing')}…
         </Text>
       </Banner>
     );
@@ -106,16 +106,16 @@ export function Hud({
                 onClick={() => onOpen(s.meetingId!)}
                 data-testid="note-open"
               >
-                Open
+                open
               </Button>
             ) : null}
             <Button size="sm" variant="ghost" onClick={onDismiss}>
-              Dismiss
+              dismiss
             </Button>
           </>
         }
       >
-        <Text>Ready</Text>
+        <Text>ready</Text>
       </Banner>
     );
   return (
@@ -124,11 +124,11 @@ export function Hud({
       data-testid="note-error"
       actions={
         <Button size="sm" variant="ghost" onClick={onDismiss}>
-          Dismiss
+          dismiss
         </Button>
       }
     >
-      <Text tone="danger">Recording failed: {s.error}</Text>
+      <Text tone="danger">recording failed: {s.error}</Text>
     </Banner>
   );
 }

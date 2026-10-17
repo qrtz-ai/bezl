@@ -75,7 +75,7 @@ export function TranscriptList({ children }: { children: ReactNode }) {
     <div
       data-testid="detail-transcript"
       role="list"
-      aria-label="Transcript"
+      aria-label="transcript"
       style={{ display: 'grid', gap: 2 }}
     >
       {children}
@@ -131,7 +131,7 @@ export function NotesEditor({
         style={{ display: 'flex', gap: t.space[2] }}
       >
         <Input
-          aria-label="Add a note"
+          aria-label="add a note"
           placeholder={placeholder}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -144,7 +144,7 @@ export function NotesEditor({
           variant="secondary"
           data-testid="note-add"
         >
-          Add
+          add
         </Button>
       </form>
       {error ? (
@@ -153,7 +153,7 @@ export function NotesEditor({
         </Text>
       ) : null}
       <ul
-        aria-label="Notes"
+        aria-label="notes"
         style={{
           listStyle: 'none',
           margin: 0,
@@ -175,7 +175,7 @@ export function NotesEditor({
             {editing?.id === n.id ? (
               <Input
                 autoFocus
-                aria-label="Edit note"
+                aria-label="edit note"
                 value={editing.text}
                 onChange={(e) => setEditing({ id: n.id, text: e.target.value })}
                 onBlur={save}
@@ -479,7 +479,7 @@ export function RecordingBar({
         {onPause ? (
           <IconButton
             icon={paused ? 'play' : 'pause'}
-            label={paused ? 'Resume' : 'Pause'}
+            label={paused ? 'resume' : 'pause'}
             pressed={!!paused}
             onClick={onPause}
             data-testid="note-pause"
@@ -487,7 +487,7 @@ export function RecordingBar({
         ) : null}
         <IconButton
           icon="stop"
-          label="Stop"
+          label="stop"
           tone="record"
           onClick={onStop}
           data-testid="note-stop"
@@ -673,7 +673,7 @@ export function ConfirmDialog({
             onClick={onCancel}
             data-testid={testId ? `${testId}-cancel` : undefined}
           >
-            Cancel
+            cancel
           </Button>
           <Button
             variant="danger"
@@ -721,14 +721,14 @@ export function CommandPalette({
       onClose={onClose}
       width={560}
       top="14vh"
-      label="Command palette"
+      label="command palette"
     >
       <div data-testid="palette">
         <input
           data-testid="palette-input"
-          aria-label="Command or meeting search"
+          aria-label="command or meeting search"
           value={query}
-          placeholder="Type a command…"
+          placeholder="type a command…"
           onChange={(e) => onQuery(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown') {
@@ -756,7 +756,7 @@ export function CommandPalette({
         />
         <div
           role="listbox"
-          aria-label="Results"
+          aria-label="results"
           style={{ maxHeight: 360, overflow: 'auto', padding: t.space[1] }}
         >
           {results.map((r, i) => (
@@ -797,7 +797,7 @@ export function CommandPalette({
           ))}
           {results.length === 0 ? (
             <div style={{ padding: t.space[3] }}>
-              <Text muted>No matching commands</Text>
+              <Text muted>no matching commands</Text>
             </div>
           ) : null}
         </div>
@@ -832,7 +832,7 @@ export function PermissionList({
           <Text style={{ flex: 1 }}>{p.label}</Text>
           {p.onGrant ? (
             <Button size="sm" variant="secondary" onClick={p.onGrant}>
-              Allow
+              allow
             </Button>
           ) : (
             <Text variant="caption" muted>

@@ -404,7 +404,7 @@ export function createWorkerHandlers(
         const startedAt = p.now - (i + 1) * 3_600_000;
         repo.upsertMeeting({
           id,
-          title: `Sync #${p.count - i}`,
+          title: `Sync #${p.count - i}`, // check-titles-ignore (sample user content)
           platform: i % 2 ? 'zoom' : 'google-meet',
           startedAt,
           endedAt: startedAt + 60_000,
@@ -425,7 +425,7 @@ export function createWorkerHandlers(
       const durationMs = p.minutes * 60_000;
       repo.upsertMeeting({
         id: p.id,
-        title: `All-hands (${p.minutes} min)`,
+        title: `All-hands (${p.minutes} min)`, // check-titles-ignore (sample user content)
         platform: 'google-meet',
         startedAt: p.startedAt,
         endedAt: p.startedAt + durationMs,

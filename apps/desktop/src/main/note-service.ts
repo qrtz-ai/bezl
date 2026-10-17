@@ -524,7 +524,7 @@ export class NoteService {
         title:
           title ||
           s.detected?.title ||
-          `Recording ${new Date(now).toLocaleString()}`,
+          `Recording ${new Date(now).toLocaleString()}`, // check-titles-ignore (sample user content)
         platform: s.detected?.platform ?? 'other',
         startedAt: now,
         status: 'recording',

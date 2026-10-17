@@ -53,22 +53,22 @@ export function Palette({
     const rec: Command = recording
       ? {
           id: 'note.stop',
-          title: 'Stop recording',
+          title: 'stop recording',
           hint: '⌘⇧R',
           icon: 'stop',
           keywords: 'note meeting end',
           run: () =>
-            client.invoke('note:stop').then(() => toast('Recording stopped')),
+            client.invoke('note:stop').then(() => toast('recording stopped')),
         }
       : {
           id: 'note.start',
-          title: 'Start recording',
+          title: 'start recording',
           hint: '⌘⇧R',
           icon: 'circle',
           keywords: 'note meeting record',
           run: () =>
             client.invoke('note:start', {}).then(() => {
-              toast('Recording started', 'success');
+              toast('recording started', 'success');
               onNavigate('note');
             }),
         };
@@ -76,7 +76,7 @@ export function Palette({
       rec,
       ...registry.list().map(({ manifest }) => ({
         id: `nav.${manifest.id}`,
-        title: `Go to ${manifest.name}`,
+        title: `go to ${manifest.name}`,
         icon: manifest.icon,
         keywords: `open ${manifest.id}`,
         run: () => onNavigate(manifest.id),
@@ -91,7 +91,7 @@ export function Palette({
       title: meeting.title,
       hint: hit?.snippet
         ? hit.snippet.replace(/[[\]]/g, '').slice(0, 48)
-        : 'Meeting',
+        : 'meeting',
       icon: 'mic',
       run: () => requestNavigate({ app: 'note', meetingId: meeting.id }),
     })),

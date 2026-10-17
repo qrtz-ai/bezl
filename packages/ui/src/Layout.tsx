@@ -328,8 +328,8 @@ export function IconButton({
   return (
     <button
       type="button"
-      aria-label={label}
-      title={label}
+      aria-label={label.toLowerCase()}
+      title={label.toLowerCase()}
       aria-pressed={pressed}
       aria-expanded={expanded}
       data-testid={testId}
@@ -515,7 +515,7 @@ export function SettingRow({
         minHeight: 28,
       }}
     >
-      <Text>{label}</Text>
+      <Text>{lowerTitle(label)}</Text>
       <div
         style={{
           flex: '0 0 auto',
