@@ -63,7 +63,7 @@ export default function MemoView() {
   );
   const [error, setError] = useState<string | null>(null);
   const toast = useToast();
-  // Deletes are deferred for UNDO_MS so the toast's Undo can cancel them; hidden meanwhile.
+  // Main defers the delete for UNDO_MS behind a durable tombstone (completed on next launch if we quit first).
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
   const unhide = (id: string) =>
     setHidden((h) => {
@@ -74,23 +74,21 @@ export default function MemoView() {
   const requestDelete = (id: string, title: string) => {
     setHidden((h) => new Set(h).add(id));
     setSelected(null);
-    const timer = setTimeout(() => {
-      qrtz.invoke('memo:delete', { id }).then(
-        () => unhide(id),
-        (e: AppError) => {
-          unhide(id);
-          setError(e.message);
-        },
-      );
-    }, UNDO_MS);
+    qrtz
+      .invoke('memo:delete', { id, deferMs: UNDO_MS })
+      .catch((e: AppError) => {
+        unhide(id);
+        setError(e.message);
+      });
     toast(`Deleted “${title}”`, 'info', {
       durationMs: UNDO_MS,
       action: {
         label: 'Undo',
         onClick: () => {
-          clearTimeout(timer);
-          unhide(id);
-          setSelected(id);
+          void qrtz.invoke('memo:undo-delete', { id }).then((r) => {
+            unhide(id);
+            if (r.restored) setSelected(id);
+          });
         },
       },
     });

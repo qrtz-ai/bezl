@@ -190,3 +190,35 @@ test('backup progress bar shows on a large seeded recording', async () => {
   expect(fs.statSync(out).size).toBeGreaterThan(400e6);
   await app.close();
 });
+
+test('quitting inside the undo window still deletes (tombstone completed on next launch)', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-flows-'));
+  const { app, win } = await launch(dir, { QRTZ_DEV_SEED: 'many' });
+  await win.getByTestId('nav-memo').click();
+  const item = win.getByTestId('meeting-item').filter({ hasText: 'Sync #500' });
+  await expect(item).toBeVisible({ timeout: 15_000 });
+  await item.click();
+  await win.getByTestId('meeting-delete').click();
+  await win.getByTestId('confirm-delete-ok').click();
+  await expect(win.getByTestId('toast')).toBeVisible();
+  const tomb = path.join(dir, 'pending-deletes.json');
+  const id = (JSON.parse(fs.readFileSync(tomb, 'utf8')) as string[])[0];
+  expect(id).toBeTruthy();
+  await app.close(); // well inside the 6 s undo window
+  expect(JSON.parse(fs.readFileSync(tomb, 'utf8'))).toEqual([id]);
+
+  const again = await launch(dir);
+  await expect
+    .poll(() => JSON.parse(fs.readFileSync(tomb, 'utf8')) as string[], {
+      timeout: 10_000,
+    })
+    .toEqual([]);
+  await again.win.getByTestId('nav-memo').click();
+  await expect(again.win.getByTestId('meeting-item').first()).toContainText(
+    'Sync #499',
+  );
+  await expect(
+    again.win.getByTestId('meeting-item').filter({ hasText: 'Sync #500' }),
+  ).toHaveCount(0);
+  await again.app.close();
+});

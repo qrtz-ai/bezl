@@ -1,4 +1,5 @@
 import { createTray } from './tray';
+import { PendingDeletes } from './pending-deletes';
 import {
   app,
   BrowserWindow,
@@ -118,6 +119,15 @@ export function bootstrap() {
     }
   });
   const recordingsDir = path.join(userData, 'recordings');
+  const pendingDeletes = new PendingDeletes(
+    userData,
+    async (id) => {
+      await worker.call('memo.delete', { id });
+      log.info('deferred delete done', { id });
+      bus.emit('memo:changed', { id });
+    },
+    (id, e) => log.warn('deferred delete failed', { id, err: String(e) }),
+  );
   const memo = new MemoService({
     helper,
     worker,
@@ -206,7 +216,11 @@ export function bootstrap() {
       'memo:start': (req) => memo.start(req?.title),
       'memo:stop': () => memo.stop(),
       'memo:dismiss': () => memo.dismiss(),
-      'memo:list': (req) => worker.call('memo.list', req),
+      'memo:list': async (req) => {
+        const rows = await worker.call('memo.list', req);
+        const gone = new Set(pendingDeletes.ids());
+        return gone.size ? rows.filter((r) => !gone.has(r.meeting.id)) : rows;
+      },
       'memo:get': ({ id }) => worker.call('memo.get', { id }),
       'memo:resummarize': ({ id }) => memo.resummarize(id),
       'memo:chat': (req) => memo.chat(req),
@@ -219,10 +233,20 @@ export function bootstrap() {
         bus.emit('memo:changed', { id: req.meetingId });
         return r;
       },
-      'memo:delete': async ({ id }) => {
+      'memo:delete': async ({ id, deferMs }) => {
+        if (deferMs) {
+          pendingDeletes.schedule(id, deferMs);
+          bus.emit('memo:changed', { id });
+          return { ok: true as const };
+        }
         await worker.call('memo.delete', { id });
         bus.emit('memo:changed', { id });
         return { ok: true as const };
+      },
+      'memo:undo-delete': ({ id }) => {
+        const restored = pendingDeletes.undo(id);
+        bus.emit('memo:changed', { id });
+        return { restored };
       },
       'memo:export': async ({ id, save }) => {
         const ex = await worker.call('memo.export', { id });
@@ -516,6 +540,9 @@ export function bootstrap() {
         )
         .catch((e) => log.warn('dev seed failed', { err: String(e) }));
     }
+    void workerReady
+      .then(() => pendingDeletes.recover())
+      .then(() => bus.emit('memo:changed', { id: '*' }));
     helper.start();
     createWindow();
     // Menu bar item (macOS/Windows; Linux tray support varies by desktop, opt in with QRTZ_TRAY=1).

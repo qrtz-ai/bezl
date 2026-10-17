@@ -199,8 +199,18 @@ export const ipcContract = {
   'memo:delete': defineChannel({
     version: 1,
     capability: 'memo.write',
-    request: z.object({ id: z.string().max(64) }),
+    /** deferMs: undoable delete. A tombstone is written now and the delete runs after deferMs (or on next launch). */
+    request: z.object({
+      id: z.string().max(64),
+      deferMs: z.number().int().min(0).max(60_000).optional(),
+    }),
     response: z.object({ ok: z.literal(true) }),
+  }),
+  'memo:undo-delete': defineChannel({
+    version: 1,
+    capability: 'memo.write',
+    request: z.object({ id: z.string().max(64) }),
+    response: z.object({ restored: z.boolean() }),
   }),
   /** Live notes. Without meetingId the note goes to the meeting being recorded, stamped at the current offset. */
   'memo:add-note': defineChannel({

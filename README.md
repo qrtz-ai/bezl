@@ -8,7 +8,7 @@
 | **Live recording**                                 | **Mini HUD with notes · Backup progress**                                                           |
 | ![Live transcript](docs/screenshots/memo-live.png) | ![Mini HUD](docs/screenshots/mini-hud.png) ![Backup progress](docs/screenshots/backup-progress.png) |
 
-These screenshots come from the e2e suite on Linux with the mock helper. Dark is the default theme; Light and System are in Settings → Appearance. More are in [`docs/screenshots/`](docs/screenshots/), and every view in both themes is saved to `test-results/themes/` after `npm run e2e`.
+These screenshots come from the e2e suite on Linux with the mock helper. Regenerate them with `npm run screenshots`, which packages the app, runs the screenshot specs and refreshes `docs/screenshots/`. Dark is the default theme; Light and System are in Settings → Appearance. More are in [`docs/screenshots/`](docs/screenshots/), including light variants of the summary and mini HUD.
 
 ## Quickstart on a Mac
 
