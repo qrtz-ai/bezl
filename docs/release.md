@@ -3,6 +3,9 @@
 The goal is a signed, notarized qrtz that opens without Gatekeeper warnings. The app is Tauri 2 (ADR 0061); the
 bundler signs and notarizes when Apple credentials are in the environment.
 
+CI builds an unsigned Apple Silicon release from a `v*` tag (`.github/workflows/release.yml`, docs/ci.md); the
+steps below are the local, signed path.
+
 ## One-time setup
 
 1. **Apple Developer Program** membership on Jared's Apple ID.

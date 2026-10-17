@@ -1,0 +1,103 @@
+# Release (docs/ci.md): push a tag vX.Y.Z → build the macOS app (Apple Silicon) on a macOS runner, make a .dmg,
+# and publish a GitHub release whose notes are the CHANGELOG.md section "## X.Y.Z".
+# Unsigned for now: code signing and notarization need the Apple secrets listed in docs/ci.md.
+# workflow_dispatch builds the same artifacts without publishing (dry run).
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  macos:
+    name: build macOS app (aarch64)
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - name: version and notes
+        id: meta
+        run: |
+          version=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+              echo "::error::tag $GITHUB_REF_NAME does not match tauri.conf.json version $version"
+              exit 1
+            fi
+            bun scripts/release-notes.mjs "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
+          else
+            bun scripts/release-notes.mjs "v$version" > "$RUNNER_TEMP/notes.md" \
+              || echo "(dry run: no CHANGELOG section for $version yet)" > "$RUNNER_TEMP/notes.md"
+          fi
+          cat "$RUNNER_TEMP/notes.md"
+      - name: rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install && rustc --version
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos-release
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - uses: actions/cache@v4
+        with:
+          path: native/qrtz-helper/.build
+          key: swiftpm-release-${{ runner.os }}-${{ hashFiles('native/qrtz-helper/Package.swift', 'native/qrtz-helper/Package.resolved') }}
+          restore-keys: swiftpm-release-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      # Release arm64 Swift helper → apps/desktop/src-tauri/binaries/qrtz-helper-aarch64-apple-darwin (externalBin).
+      - name: swift helper
+        run: bun run build:helper
+      - name: tauri build (.app + .dmg)
+        working-directory: apps/desktop
+        env:
+          CI: 'true'
+          # Speech module source, baked in at compile time (docs/release.md). Unset = a build without speech.
+          QRTZ_SPEECH_URL: ${{ secrets.QRTZ_SPEECH_URL }}
+          QRTZ_SPEECH_KEY_ID: ${{ secrets.QRTZ_SPEECH_KEY_ID }}
+          QRTZ_SPEECH_KEY: ${{ secrets.QRTZ_SPEECH_KEY }}
+          QRTZ_SPEECH_ROOT_KEY_ID: ${{ secrets.QRTZ_SPEECH_ROOT_KEY_ID }}
+          QRTZ_SPEECH_ROOT_KEY: ${{ secrets.QRTZ_SPEECH_ROOT_KEY }}
+        run: bun --bun run tauri build --bundles app,dmg
+      - name: collect artifacts
+        id: art
+        run: |
+          v=${{ steps.meta.outputs.version }}
+          bundle=target/release/bundle
+          mkdir -p dist-release
+          dmg=$(ls "$bundle"/dmg/*.dmg | head -1)
+          cp "$dmg" "dist-release/qrtz_${v}_aarch64.dmg"
+          ditto -c -k --keepParent "$bundle/macos/qrtz.app" "dist-release/qrtz_${v}_aarch64.app.zip"
+          (cd dist-release && shasum -a 256 * > SHA256SUMS.txt)
+          ls -la dist-release && cat dist-release/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qrtz-${{ steps.meta.outputs.version }}-macos-aarch64
+          path: dist-release/
+          retention-days: 14
+      - name: publish GitHub release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist-release/* \
+            --title "qrtz $GITHUB_REF_NAME" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --verify-tag

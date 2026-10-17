@@ -2,6 +2,7 @@
 
 ## Unreleased: Tauri only
 
+- **GitHub Actions (docs/ci.md):** every push to main runs lint, typecheck, vitest, the renderer Playwright suite, cargo fmt, clippy and cargo test on Linux, plus the Swift helper tests and a desktop-crate check on macOS. A `v*` tag builds the Apple Silicon app (.dmg and zipped .app, unsigned for now) and publishes a GitHub release with the CHANGELOG section as notes.
 - **qrtz is entirely offline (Jared's decision, ADR 0076):**
   - ElevenLabs is gone. Talk is on-device only, and if speech is missing or withdrawn, talk and note say they're unavailable instead of using the cloud.
   - OpenRouter and the other summary providers are gone. Summaries are Apple Intelligence on your Mac (ADR 0075).

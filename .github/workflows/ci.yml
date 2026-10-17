@@ -1,0 +1,155 @@
+# CI for qrtz (docs/ci.md). Linux runs everything that runs on Linux; macOS (10x minutes on a private repo)
+# only runs what needs a Mac: the Swift helper tests and a cargo check of the desktop crate.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+
+jobs:
+  js:
+    name: lint · typecheck · vitest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun run typecheck
+      - run: bun run test
+
+  e2e:
+    name: playwright (renderer, mocked backend)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      QRTZ_TAURI_E2E_PORT: 1420
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      - name: playwright version
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: pw-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - name: install browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium webkit
+      - name: install browser system deps
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium webkit
+      - run: bun run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results
+          path: test-results/
+          retention-days: 7
+
+  rust:
+    name: fmt · clippy · cargo test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: system deps (Tauri / WebKitGTK)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev \
+            libssl-dev libxdo-dev libdbus-1-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev pkg-config
+      - name: rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install && rustc --version && cargo clippy --version
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: linux
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      # tauri::generate_context! needs apps/desktop/dist (frontendDist).
+      - name: renderer build
+        run: bun --bun run --cwd apps/desktop build
+      - run: cargo fmt --all --check
+      - name: clippy (as check:rust)
+        run: |
+          cargo clippy --workspace --all-targets
+          cargo clippy -p qrtz-ipc -p qrtz-helper-bridge -p qrtz-app --all-targets -- -D warnings
+      - run: cargo test --workspace
+
+  macos:
+    name: macOS · swift test · cargo check desktop
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - uses: actions/cache@v4
+        with:
+          path: native/qrtz-helper/.build
+          key: swiftpm-${{ runner.os }}-${{ hashFiles('native/qrtz-helper/Package.swift', 'native/qrtz-helper/Package.resolved') }}
+          restore-keys: swiftpm-${{ runner.os }}-
+      - name: swift test (helper)
+        run: |
+          swift --version
+          bun run test:helper
+      - name: rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install && rustc --version
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      - name: renderer build
+        run: bun --bun run --cwd apps/desktop build
+      # externalBin (tauri.macos.conf.json) must exist for the build script; a stub is enough for a check.
+      - name: sidecar stub
+        run: |
+          mkdir -p apps/desktop/src-tauri/binaries
+          printf '#!/bin/sh\nexit 1\n' > apps/desktop/src-tauri/binaries/qrtz-helper-aarch64-apple-darwin
+          chmod +x apps/desktop/src-tauri/binaries/qrtz-helper-aarch64-apple-darwin
+      - run: cargo check -p qrtz-desktop --all-targets
