@@ -18,18 +18,18 @@ this document disagree, the code is wrong.
   helper and worker handlers), `apps/desktop/src/worker/lifecycle-steps.test.ts`, and
   `e2e/lifecycle.spec.ts` (Playwright).
 
-Transcription is **cloud streaming with late backfill** (ADR 0044, reversing "live only"): the host streams
-capture frames to the ASR provider (our Nemotron server, ElevenLabs second); while offline it spools the frames
-(capped, retained) and transcribes them when the network returns, in meeting time. No on-device models.
+Transcription is **live only, on-device** (ADR 0045). Nemotron Speech Streaming (560 ms) runs in the helper and
+two Nemotron 3 diarizers (mic, system) label speakers per channel. The streamed finals are the transcript of
+record, and nothing re-transcribes after the meeting. Models load only while recording or dictating.
 
 ## Processes
 
-| Process                                    | Owns                                                                                                                                                                         | Dies →                                                                                                   |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `qrtz-helper` (Swift; TS mock on Linux/CI) | AX observation (detection, participants, active speaker), audio capture (Core Audio process tap → ScreenCaptureKit → mic), echo gate/AEC, Parakeet streaming ASR, WAV writer | Supervisor restarts it with backoff; NoteService goes to `reconnecting` (see F3)                         |
-| main (`NoteService`)                       | the lifecycle machine, helper protocol, live transcript stream, post-processing pipelines, retry timers                                                                      | everything in-memory is lost; the persisted session + pipelines are recovered at next launch (see R1–R3) |
-| worker (utilityProcess)                    | SQLite (meetings, segments, summaries, vectors, lifecycle), WAV repair/stitch, LLM calls, embeddings                                                                         | WorkerClient rejects pending calls; the failing step retries with backoff                                |
-| renderer                                   | presentation only                                                                                                                                                            | reloads; re-fetches snapshots                                                                            |
+| Process                                    | Owns                                                                                                                                                                                                               | Dies →                                                                                                   |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `qrtz-helper` (Swift; TS mock on Linux/CI) | AX observation (detection, participants, active speaker), audio capture (Core Audio process tap → ScreenCaptureKit → mic), echo gate/AEC, Nemotron streaming ASR + per-channel diarization (on demand), WAV writer | Supervisor restarts it with backoff; NoteService goes to `reconnecting` (see F3)                         |
+| main (`NoteService`)                       | the lifecycle machine, helper protocol, live transcript stream, post-processing pipelines, retry timers                                                                                                            | everything in-memory is lost; the persisted session + pipelines are recovered at next launch (see R1–R3) |
+| worker (utilityProcess)                    | SQLite (meetings, segments, summaries, vectors, lifecycle), WAV repair/stitch, LLM calls, embeddings                                                                                                               | WorkerClient rejects pending calls; the failing step retries with backoff                                |
+| renderer                                   | presentation only                                                                                                                                                                                                  | reloads; re-fetches snapshots                                                                            |
 
 ## Session state machine
 
