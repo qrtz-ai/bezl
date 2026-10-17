@@ -158,7 +158,9 @@ test('seeded meeting opens; views pass axe', async ({ page }, info) => {
   await open(page, 'seed=1');
   await page.getByText('Weekly Product Sync').first().click();
   await expect(page.getByText("Let's start.")).toBeVisible();
-  if (info.project.name === 'chromium') await axe(page, 'tauri-note');
+  if (info.project.name === 'chromium')
+    expect(await axe(page, 'tauri-note')).toEqual([]);
   await page.getByRole('button', { name: 'settings', exact: true }).click();
-  if (info.project.name === 'chromium') await axe(page, 'tauri-settings');
+  if (info.project.name === 'chromium')
+    expect(await axe(page, 'tauri-settings')).toEqual([]);
 });

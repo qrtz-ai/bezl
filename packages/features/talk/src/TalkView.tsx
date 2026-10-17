@@ -15,17 +15,20 @@ import {
   TermList,
   Text,
   useToast,
+  SpeechNotice,
 } from '@qrtz/ui';
 import type {
   DictionaryEntry,
   TalkEntry,
   TalkView as TalkState,
 } from '@qrtz/core';
-import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
+import { useQrtz, useQrtzEvent, useSpeechSetup } from '@qrtz/core/react';
+import { requestNavigate } from '@qrtz/core';
 import { entryMeta, parseTerm } from './format';
 
 export default function TalkView() {
   const qrtz = useQrtz();
+  const speechSetup = useSpeechSetup({ check: false });
   const toast = useToast();
   const live = useQrtzEvent('talk:state');
   const changed = useQrtzEvent('talk:history-changed');
@@ -80,6 +83,10 @@ export default function TalkView() {
           </Button>
         </Stack>
       </Stack>
+      <SpeechNotice
+        status={speechSetup.speech}
+        onOpenSettings={() => requestNavigate({ app: 'settings' })}
+      />
       {state && state.phase !== 'idle' ? (
         <Stack data-testid="talk-live">
           <TalkPill

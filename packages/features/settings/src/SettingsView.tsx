@@ -7,9 +7,11 @@ import {
   Input,
   Page,
   Progress,
+  SearchModelRow,
   Select,
   SettingRow,
   SettingsSection,
+  SpeechSetupPanel,
   Stack,
   Switch,
   Text,
@@ -20,7 +22,7 @@ import {
   type IpcResponse,
   type ProviderId,
 } from '@qrtz/core';
-import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
+import { useQrtz, useQrtzEvent, useSpeechSetup } from '@qrtz/core/react';
 
 const PROVIDERS: { id: ProviderId | 'none'; label: string }[] = [
   { id: 'openrouter', label: 'openrouter (recommended)' },
@@ -45,6 +47,7 @@ export default function SettingsView() {
   const live = useQrtzEvent('helper:status');
   const backupProgress = useQrtzEvent('data:backup-progress');
   const [error, setError] = useState<string | null>(null);
+  const setup = useSpeechSetup();
 
   const refresh = () => {
     setError(null);
@@ -78,6 +81,7 @@ export default function SettingsView() {
     autoSummarize?: boolean;
     backgroundIndexing?: boolean;
     defaultTemplate?: string;
+    searchModelDownload?: boolean;
   };
   const privacy = (cfg?.privacy ?? {}) as {
     localOnly?: boolean;
@@ -509,6 +513,51 @@ export default function SettingsView() {
           (v) => void patchTalk({ saveHistory: v }),
         )}
       </SettingsSection>
+      <SettingsSection title="speech" data-testid="speech-settings">
+        {setup.error ? (
+          <Callout
+            tone="danger"
+            title={setup.error}
+            data-testid="speech-settings-error"
+          />
+        ) : null}
+        <SpeechSetupPanel
+          status={setup.speech}
+          manage
+          onDownload={setup.download}
+          onPause={setup.pause}
+          onResume={setup.resume}
+          onDelete={setup.remove}
+        />
+        {toggle(
+          'update speech automatically',
+          'speech-auto-update',
+          (cfg?.speech as { autoUpdate?: boolean } | undefined)?.autoUpdate,
+          true,
+          (v) => {
+            setCfg((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    speech: { ...(prev.speech as object), autoUpdate: v },
+                  }
+                : prev,
+            );
+            void qrtz
+              .invoke('config:set', { patch: { speech: { autoUpdate: v } } })
+              .then(setCfg)
+              .catch((e: Error) => setError(e.message));
+          },
+        )}
+        <SearchModelRow status={setup.model} onDownload={setup.downloadModel} />
+        {toggle(
+          'download the search model',
+          'search-model-auto',
+          noteCfg.searchModelDownload,
+          true,
+          (v) => void patchNote({ searchModelDownload: v }),
+        )}
+      </SettingsSection>
       <SettingsSection title="privacy" data-testid="privacy-card">
         {toggle(
           'local only',
@@ -638,7 +687,7 @@ export default function SettingsView() {
       <SettingsSection title="system">
         <Text variant="caption" muted>
           {info
-            ? `qrtz ${info.version} · ${info.platform}/${info.arch} · electron ${info.electron}`
+            ? `qrtz ${info.version} · ${info.platform}/${info.arch} · ${info.electron}`
             : '…'}
         </Text>
         <Text variant="caption" muted>

@@ -2,7 +2,10 @@
 // the same `TauriBridge` the real app uses, routes through the real TS router with the real manifests
 // (capability + zod checks), and plays a scripted meeting: start → streamed transcript (partials replaced by
 // finals) → stop → finalize/summary/index → done. Query params inject faults:
-//   ?mockFail=start-permission | summary-once   ?seed=1 (one finished meeting)   ?mockSpeed=<ms per tick>
+//   ?mockFail=start-permission | summary-once | speech-once | model-once   ?seed=1 (one finished meeting)
+//   ?mockSpeed=<ms per tick>   ?onboarding=1 (first run: onboarding not done, speech not downloaded)
+//   ?mockSpeech=missing | installed (default installed, or missing with onboarding=1)   ?mockModel=missing | ready
+//   ?mockPerms=denied (every OS permission starts not-determined)   ?theme=light | dark | system
 import {
   AppError,
   TAURI_EVENT,
@@ -49,6 +52,89 @@ export function createMockBridge(): TauriBridge {
   let live: Json | null = null;
   let timers: ReturnType<typeof setTimeout>[] = [];
   let summaryFailed = false;
+  const firstRun = params.get('onboarding') === '1';
+  if (!firstRun)
+    config = applyConfigPatch(config, { onboarding: { done: true } });
+  const theme = params.get('theme');
+  if (theme === 'light' || theme === 'dark' || theme === 'system')
+    config = applyConfigPatch(config, { theme });
+  const SPEECH_BYTES = 412_000_000;
+  const speechMissing =
+    (params.get('mockSpeech') ?? (firstRun ? 'missing' : 'installed')) ===
+    'missing';
+  let speech = {
+    configured: true,
+    installed: speechMissing ? null : '1.0.0',
+    bytes: speechMissing ? 0 : SPEECH_BYTES,
+    latest: '1.0.0',
+    latestBytes: SPEECH_BYTES,
+    waiting: null as string | null,
+    listExpired: false,
+    download: {
+      state: 'idle',
+      done: 0,
+      total: 0,
+    } as Json & { state: string; done: number; total: number },
+  };
+  let speechTimer: ReturnType<typeof setInterval> | undefined;
+  let speechFailed = false;
+  let model: Json = {
+    state: params.get('mockModel') ?? (firstRun ? 'missing' : 'ready'),
+  };
+  let modelFailed = false;
+  let perms: Json =
+    params.get('mockPerms') === 'denied'
+      ? {
+          accessibility: 'not-determined',
+          'screen-recording': 'not-determined',
+          microphone: 'not-determined',
+        }
+      : { ...unknownPermissions };
+  const setSpeech = (download: Json, patch: Json = {}) => {
+    speech = {
+      ...speech,
+      ...patch,
+      download: download as typeof speech.download,
+    };
+    emit('speech:status', speech);
+    return speech as never;
+  };
+  const runSpeech = () => {
+    clearInterval(speechTimer);
+    const step = SPEECH_BYTES / 8;
+    speechTimer = setInterval(() => {
+      const done = Math.min(SPEECH_BYTES, speech.download.done + step);
+      if (fail === 'speech-once' && !speechFailed && done >= SPEECH_BYTES / 2) {
+        speechFailed = true;
+        clearInterval(speechTimer);
+        setSpeech({
+          state: 'error',
+          done,
+          total: SPEECH_BYTES,
+          error: "couldn't reach the download server",
+          errorKind: 'network',
+        });
+        return;
+      }
+      if (done >= SPEECH_BYTES) {
+        clearInterval(speechTimer);
+        setSpeech({ state: 'installing', done, total: SPEECH_BYTES });
+        later(tickMs, () =>
+          setSpeech(
+            { state: 'idle', done: 0, total: 0 },
+            { installed: '1.0.0', bytes: SPEECH_BYTES },
+          ),
+        );
+        return;
+      }
+      setSpeech({ state: 'downloading', done, total: SPEECH_BYTES });
+    }, tickMs);
+  };
+  const setModel = (m: Json) => {
+    model = m;
+    emit('search:model-status', model);
+    return model as never;
+  };
 
   const emit = (event: EventName, payload: unknown) => {
     const parsed = eventContract[event].payload.parse(payload);
@@ -232,11 +318,63 @@ export function createMockBridge(): TauriBridge {
     'secrets:set': () => ({ ok: true as const }),
     'db:health': () => ipcSamples['db:health'].response,
     'helper:status': () => ipcSamples['helper:status'].response,
-    'permissions:get': () => unknownPermissions,
-    'permissions:request': ({ permission }) => ({
-      ...unknownPermissions,
-      [permission]: 'granted',
-    }),
+    'permissions:get': () => perms as never,
+    'permissions:request': ({ permission }) => {
+      perms = { ...perms, [permission]: 'granted' };
+      emit('permissions:changed', perms);
+      return perms as never;
+    },
+    'speech:status': () => speech as never,
+    'speech:check': () => speech as never,
+    'speech:download': ({ force }) => {
+      if (speech.installed && !force) return speech as never;
+      const keep = speech.download.state === 'error' ? speech.download.done : 0;
+      const r = setSpeech({
+        state: 'downloading',
+        done: keep,
+        total: SPEECH_BYTES,
+      });
+      runSpeech();
+      return r;
+    },
+    'speech:pause': () => {
+      clearInterval(speechTimer);
+      if (speech.download.state !== 'downloading') return speech as never;
+      return setSpeech({ ...speech.download, state: 'paused' });
+    },
+    'speech:resume': () => {
+      if (speech.download.state !== 'paused') return speech as never;
+      const r = setSpeech({ ...speech.download, state: 'downloading' });
+      runSpeech();
+      return r;
+    },
+    'speech:delete': () => {
+      if (['downloading', 'installing'].includes(speech.download.state))
+        throw new AppError('E_UNAVAILABLE', 'pause the download first');
+      clearInterval(speechTimer);
+      return setSpeech(
+        { state: 'idle', done: 0, total: 0 },
+        { installed: null, bytes: 0 },
+      );
+    },
+    'search:model-status': () => model as never,
+    'search:model-download': () => {
+      if (model.state === 'ready') return model as never;
+      const r = setModel({ state: 'downloading' });
+      later(tickMs * 2, () => {
+        if (fail === 'model-once' && !modelFailed) {
+          modelFailed = true;
+          setModel({
+            state: 'error',
+            error: "couldn't download the search model",
+          });
+          return;
+        }
+        setModel({ state: 'loading' });
+        later(tickMs, () => setModel({ state: 'ready' }));
+      });
+      return r;
+    },
     'note:session': () => session as never,
     'note:dismiss': () => {
       if (['done', 'error'].includes(String(session.phase)))
@@ -377,6 +515,7 @@ export function createMockBridge(): TauriBridge {
     emit,
     reset: () => {
       timers.forEach(clearTimeout);
+      clearInterval(speechTimer);
       session = { ...idleSession };
     },
   };

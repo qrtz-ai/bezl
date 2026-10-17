@@ -5,6 +5,8 @@ import { onNavigateRequest } from '@qrtz/core';
 import { registry } from './subapps';
 import { SubAppHost } from './SubAppHost';
 import { useConfigTheme } from './useConfigTheme';
+import { Onboarding } from './Onboarding';
+import { useOnboarded } from './useOnboarded';
 
 export function App() {
   const first = registry.list()[0]?.manifest.id ?? '';
@@ -23,7 +25,16 @@ export function App() {
   }, []);
   useEffect(() => onNavigateRequest((r) => setActive(r.app)), []);
   const theme = useConfigTheme();
+  const [onboarded, setOnboarded] = useOnboarded();
   const app = registry.get(active);
+  if (onboarded === false)
+    return (
+      <ThemeProvider mode={theme}>
+        <ToastProvider>
+          <Onboarding onDone={() => setOnboarded(true)} />
+        </ToastProvider>
+      </ThemeProvider>
+    );
   return (
     <ThemeProvider mode={theme}>
       <ToastProvider>

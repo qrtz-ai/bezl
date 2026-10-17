@@ -63,6 +63,27 @@ import {
   TranscriptRow,
   type NoteItem,
 } from '../Meeting';
+import {
+  SearchModelRow,
+  SpeechNotice,
+  SpeechSetupPanel,
+  type SpeechSetupView,
+} from '../Setup';
+
+const speechView = (
+  download: SpeechSetupView['download'],
+  installed: string | null = null,
+): SpeechSetupView => ({
+  configured: true,
+  installed,
+  bytes: installed ? 412_000_000 : 0,
+  latest: '1.1.0',
+  latestBytes: 412_000_000,
+  waiting: null,
+  listExpired: false,
+  download,
+});
+const noop = () => {};
 
 function Section({
   id,
@@ -337,6 +358,49 @@ function Showcase({
                 hover me
               </Button>
             </Tooltip>
+          </Section>
+
+          <Section id="speech-setup" title="speech setup">
+            {[
+              speechView({ state: 'idle', done: 0, total: 0 }),
+              speechView({
+                state: 'downloading',
+                done: 160_000_000,
+                total: 412_000_000,
+              }),
+              speechView({
+                state: 'error',
+                done: 0,
+                total: 0,
+                error: "couldn't reach the download server",
+              }),
+              speechView({ state: 'idle', done: 0, total: 0 }, '1.0.0'),
+            ].map((v, i) => (
+              <div key={i} style={{ width: 320 }}>
+                <SpeechSetupPanel
+                  status={v}
+                  manage
+                  onDownload={noop}
+                  onPause={noop}
+                  onResume={noop}
+                  onDelete={noop}
+                  data-testid={`gallery-speech-${i}`}
+                />
+              </div>
+            ))}
+            <div style={{ width: 320 }}>
+              <SpeechNotice
+                status={speechView({
+                  state: 'paused',
+                  done: 100_000_000,
+                  total: 412_000_000,
+                })}
+                onOpenSettings={noop}
+              />
+            </div>
+            <div style={{ width: 320 }}>
+              <SearchModelRow status={{ state: 'missing' }} onDownload={noop} />
+            </div>
           </Section>
 
           <Section id="inputs" title="inputs">

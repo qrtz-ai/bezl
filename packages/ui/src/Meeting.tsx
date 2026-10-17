@@ -727,6 +727,13 @@ export function CommandPalette({
         <input
           data-testid="palette-input"
           aria-label="command or meeting search"
+          role="combobox"
+          aria-expanded={results.length > 0}
+          aria-controls="palette-results"
+          aria-autocomplete="list"
+          {...(results[index]
+            ? { 'aria-activedescendant': `palette-option-${index}` }
+            : {})}
           value={query}
           placeholder="type a command…"
           onChange={(e) => onQuery(e.target.value)}
@@ -755,6 +762,7 @@ export function CommandPalette({
           }}
         />
         <div
+          id="palette-results"
           role="listbox"
           aria-label="results"
           style={{ maxHeight: 360, overflow: 'auto', padding: t.space[1] }}
@@ -762,6 +770,7 @@ export function CommandPalette({
           {results.map((r, i) => (
             <div
               key={r.id}
+              id={`palette-option-${i}`}
               role="option"
               aria-selected={i === index}
               data-testid={r.testId ?? 'palette-item'}
@@ -795,12 +804,12 @@ export function CommandPalette({
               ) : null}
             </div>
           ))}
-          {results.length === 0 ? (
-            <div style={{ padding: t.space[3] }}>
-              <Text muted>no matching commands</Text>
-            </div>
-          ) : null}
         </div>
+        {results.length === 0 ? (
+          <div role="status" style={{ padding: t.space[3] }}>
+            <Text muted>no matching commands</Text>
+          </div>
+        ) : null}
       </div>
     </Dialog>
   );

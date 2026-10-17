@@ -12,20 +12,20 @@ import {
   Stack,
   Toolbar,
   useToast,
+  SpeechNotice,
 } from '@qrtz/ui';
 import {
   AppError,
   SessionView,
   onNavigateRequest,
   takePendingMeeting,
-  type PermissionsStatus,
 } from '@qrtz/core';
-import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
+import { useQrtz, useQrtzEvent, useSpeechSetup } from '@qrtz/core/react';
+import { requestNavigate } from '@qrtz/core';
 import { Hud } from './Hud';
 import { isCapturingPhase, useSession } from './useRecording';
 import { MeetingDetail } from './MeetingDetail';
 import { ChatPanel } from './ChatPanel';
-import { Onboarding, needsOnboarding } from './Onboarding';
 import { fmtDate } from './format';
 
 const UNDO_MS = 6000;
@@ -34,10 +34,9 @@ const PAGE = 100;
 
 export default function NoteView() {
   const qrtz = useQrtz();
+  const speechSetup = useSpeechSetup({ check: false });
   // Lifecycle state comes only from main (note:session); the view never guesses.
   const session = useSession();
-  const [perms, setPerms] = useState<PermissionsStatus | null>(null);
-  const [onboarded, setOnboarded] = useState(false);
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   // Paging: render PAGE meetings at a time; "Show more" grows the window (list stays cheap with hundreds).
@@ -97,12 +96,8 @@ export default function NoteView() {
     });
   };
   const visible = items.filter((i) => !hidden.has(i.meeting.id));
-  const livePerms = useQrtzEvent('permissions:changed');
   const changed = useQrtzEvent('note:changed');
 
-  useEffect(() => {
-    void qrtz.invoke('permissions:get').then(setPerms);
-  }, [qrtz]);
   // A new recording opens its meeting so the live transcript is front and center.
   const liveId = isCapturingPhase(session.phase)
     ? session.meetingId
@@ -113,9 +108,6 @@ export default function NoteView() {
       setAskAll(false);
     }
   }, [liveId]);
-  useEffect(() => {
-    if (livePerms) setPerms(livePerms);
-  }, [livePerms]);
 
   const refresh = useCallback(() => {
     qrtz
@@ -142,24 +134,6 @@ export default function NoteView() {
       if (e.code !== 'E_FORBIDDEN' && e.code !== 'E_TIMEOUT')
         setError(e.message);
     });
-
-  // A permission revoked mid-recording (H5) degrades the live view; it must not swap it for onboarding.
-  const busyRecording =
-    isCapturingPhase(session.phase) ||
-    session.phase === 'stopping' ||
-    session.phase === 'processing';
-  if (perms && needsOnboarding(perms) && !onboarded && !busyRecording)
-    return (
-      <Onboarding
-        status={perms}
-        onRequest={(p) =>
-          void qrtz
-            .invoke('permissions:request', { permission: p })
-            .then(setPerms)
-        }
-        onDone={() => setOnboarded(true)}
-      />
-    );
 
   const busy =
     isCapturingPhase(session.phase) ||
@@ -220,6 +194,10 @@ export default function NoteView() {
               aria-label="search meetings"
             />
           ) : null}
+          <SpeechNotice
+            status={speechSetup.speech}
+            onOpenSettings={() => requestNavigate({ app: 'settings' })}
+          />
           <Stack as="ul" gap={0} scroll grow aria-label="meetings">
             {visible.length === 0 ? (
               <Stack as="li">
