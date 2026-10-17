@@ -129,6 +129,12 @@ test('memo end-to-end: detect, record, live transcript, summarize, search, expor
   });
   const win2 = await app2.firstWindow();
   await expect(win2.getByTestId('brand')).toBeVisible();
+  // Home dashboard lists the recorded meeting; clicking opens it in Memo.
+  await expect(win2.getByTestId('home-meeting')).toHaveCount(1);
+  await expect(win2.getByTestId('home-meeting')).toContainText(
+    'Weekly Product Sync',
+  );
+  await win2.screenshot({ path: path.join(shots, 'home.png') });
   // ⌘K meeting search (FTS) from Home opens the meeting in Memo.
   await win2.keyboard.press('ControlOrMeta+k');
   await win2.getByTestId('palette-input').fill('onboarding');

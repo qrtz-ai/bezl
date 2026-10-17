@@ -89,6 +89,28 @@ public enum DSP {
         }
     }
 
+    /// Aligns two 16 kHz mono streams (system + mic) arriving in separate callbacks into CaptureBlocks.
+    /// If the mic stalls for more than `maxSkewFrames` (or there is no mic), system audio passes with mic = nil;
+    /// if system stalls, the mic passes with silent system audio.
+    public final class Aligner: @unchecked Sendable {
+        private var a: [Float] = [], b: [Float] = []
+        public let maxSkewFrames: Int
+        public init(maxSkewFrames: Int = 16_000 / 2) { self.maxSkewFrames = maxSkewFrames }
+        public func pushSystem(_ x: [Float]) -> [CaptureBlock] { a += x; return drain() }
+        public func pushMic(_ x: [Float]) -> [CaptureBlock] { b += x; return drain() }
+        private func drain() -> [CaptureBlock] {
+            var out: [CaptureBlock] = []
+            let n = min(a.count, b.count)
+            if n > 0 {
+                out.append(CaptureBlock(system: Array(a[0..<n]), mic: Array(b[0..<n])))
+                a.removeFirst(n); b.removeFirst(n)
+            }
+            if a.count > maxSkewFrames { out.append(CaptureBlock(system: a, mic: nil)); a.removeAll() }
+            if b.count > maxSkewFrames { out.append(CaptureBlock(system: [Float](repeating: 0, count: b.count), mic: b)); b.removeAll() }
+            return out
+        }
+    }
+
     /// Mixes two 16 kHz mono streams (system + mic) that arrive in separate callbacks. Whatever is buffered on both
     /// sides is mixed; if one side stalls for more than `maxSkewFrames`, the other is passed through alone.
     public final class Mixer {

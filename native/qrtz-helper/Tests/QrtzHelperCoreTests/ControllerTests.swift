@@ -13,11 +13,11 @@ struct FakePerms: PermissionsProvider {
 
 final class FakeAudio: AudioSource, @unchecked Sendable {
     let name: String; let fails: Bool
-    var cb: (@Sendable ([Float]) -> Void)?
+    var cb: (@Sendable (CaptureBlock) -> Void)?
     init(_ name: String, fails: Bool = false) { self.name = name; self.fails = fails }
-    func start(onSamples: @escaping @Sendable ([Float]) -> Void) async throws {
+    func start(onBlock: @escaping @Sendable (CaptureBlock) -> Void) async throws {
         if fails { throw ProtocolError("denied") }
-        cb = onSamples
+        cb = onBlock
     }
     func stop() async { cb = nil }
 }

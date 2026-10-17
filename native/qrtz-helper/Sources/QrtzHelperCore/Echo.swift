@@ -62,3 +62,90 @@ public final class EchoGate: @unchecked Sendable {
         gain = t
     }
 }
+
+/// One aligned block of capture: far-end/system audio and the user's mic, both 16 kHz mono, equal length.
+/// `mic` is nil when no microphone is available (system audio only).
+public struct CaptureBlock: Sendable, Equatable {
+    public var system: [Float]
+    public var mic: [Float]?
+    public init(system: [Float], mic: [Float]?) {
+        precondition(mic == nil || mic!.count == system.count, "capture block channels must be aligned")
+        self.system = system; self.mic = mic
+    }
+}
+
+/// Acoustic echo canceller for the mic channel using the system/far-end audio as the reference
+/// (FluidAudio LocalVQE on macOS). Output sample i corresponds to input sample i but may be delivered later,
+/// so `enhance` can return fewer or more samples than it was given.
+public protocol MicEnhancer: AnyObject, Sendable {
+    var name: String { get }
+    func prepare() async throws
+    func enhance(mic: [Float], reference: [Float]) async throws -> [Float]
+    func reset() async
+}
+
+/// Turns aligned capture blocks into the single mixed track that is recorded and transcribed.
+/// Uses the AEC when it is available and healthy; on any AEC failure it permanently falls back to the EchoGate
+/// for the rest of the recording (and says so once via `onLog`).
+public final class MicPipeline: @unchecked Sendable {
+    public let gate: EchoGate
+    public let enhancer: MicEnhancer?
+    private var aecReady = false
+    private var aecFailed = false
+    private var pendingSystem: [Float] = []  // system samples awaiting their (delayed) enhanced mic samples
+    public var onLog: (@Sendable (LogLevel, String) -> Void)?
+
+    public init(gate: EchoGate, enhancer: MicEnhancer?) { self.gate = gate; self.enhancer = enhancer }
+
+    public var mode: String { aecReady && !aecFailed ? "aec:\(enhancer?.name ?? "")" : "gate" }
+
+    /// Call at recording start. Never throws: an AEC that can't load just leaves the gate in charge.
+    public func start() async {
+        pendingSystem.removeAll()
+        aecFailed = false
+        aecReady = false
+        guard let e = enhancer else { return }
+        do {
+            try await e.prepare()
+            await e.reset()
+            aecReady = true
+            onLog?(.info, "echo: \(e.name)")
+        } catch {
+            onLog?(.warn, "echo: \(e.name) unavailable (\(error)); using echo gate")
+        }
+    }
+
+    public func process(_ b: CaptureBlock) async -> [Float] {
+        guard var mic = b.mic else { return b.system }
+        if let e = enhancer, aecReady, !aecFailed {
+            pendingSystem += b.system
+            do {
+                let clean = try await e.enhance(mic: mic, reference: b.system)
+                let n = min(clean.count, pendingSystem.count)
+                var out = [Float](repeating: 0, count: n)
+                for i in 0..<n { out[i] = max(-1, min(1, pendingSystem[i] + clean[i])) }
+                pendingSystem.removeFirst(n)
+                return out
+            } catch {
+                aecFailed = true
+                onLog?(.warn, "echo: \(e.name) failed (\(error)); falling back to echo gate")
+                // Release the system audio that was waiting on the AEC, then continue with the gate.
+                let held = pendingSystem
+                pendingSystem.removeAll()
+                gate.process(system: b.system, mic: &mic)
+                let tail = zip(b.system, mic).map { max(-1, min(1, $0 + $1)) }
+                return Array(held.dropLast(b.system.count)) + tail
+            }
+        }
+        gate.process(system: b.system, mic: &mic)
+        var out = [Float](repeating: 0, count: mic.count)
+        for i in 0..<mic.count { out[i] = max(-1, min(1, b.system[i] + mic[i])) }
+        return out
+    }
+
+    /// End of recording: whatever system audio is still waiting is emitted (its mic tail is lost, ≤ 1 hop).
+    public func finish() -> [Float] {
+        defer { pendingSystem.removeAll() }
+        return pendingSystem
+    }
+}

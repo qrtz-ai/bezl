@@ -6,5 +6,6 @@ export const manifest = SubAppManifest.parse({
   name: 'Home',
   icon: '◆',
   order: 0,
-  capabilities: ['app.info'],
+  capabilities: ['app.info', 'memo.read', 'memo.record', 'os.permissions'],
+  permissions: ['accessibility', 'screen-recording', 'microphone'],
 });

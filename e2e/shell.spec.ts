@@ -23,6 +23,12 @@ test('command palette and component gallery', async () => {
   win.on('pageerror', (e) => errors.push(e.message));
   await expect(win.getByTestId('brand')).toHaveText('qrtz');
 
+  // Home dashboard on first run: setup checklist, empty recent list, quick record.
+  await expect(win.getByTestId('home-permissions')).toBeVisible();
+  await expect(win.getByTestId('home-recent')).toContainText('No meetings yet');
+  await expect(win.getByTestId('home-record')).toBeEnabled();
+  await win.screenshot({ path: path.join(shots, 'home-first-run.png') });
+
   // ⌘K / Ctrl+K opens the palette; fuzzy filter + Enter navigates.
   await win.keyboard.press('ControlOrMeta+k');
   await expect(win.getByTestId('palette')).toBeVisible();

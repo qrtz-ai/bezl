@@ -14,10 +14,11 @@ public protocol MeetingSource: AnyObject, Sendable {
     func stop()
 }
 
-/// Captured audio, already converted to 16 kHz mono Float32 and mixed (system + mic).
+/// Captured audio, converted to 16 kHz mono Float32.
 public protocol AudioSource: AnyObject, Sendable {
     var name: String { get }
-    func start(onSamples: @escaping @Sendable ([Float]) -> Void) async throws
+    /// Delivers aligned system + mic blocks (16 kHz mono). Echo handling and mixing happen in the controller.
+    func start(onBlock: @escaping @Sendable (CaptureBlock) -> Void) async throws
     func stop() async
 }
 
@@ -41,9 +42,14 @@ public struct HelperDeps: Sendable {
     public var helperVersion: String
     public var os: String
     public var features: [String]
-    public init(permissions: PermissionsProvider, meetings: MeetingSource?, audio: [AudioSource], transcribers: [StreamingTranscriber], helperVersion: String, os: String, features: [String]) {
+    /// Shared AX → audio context (who's speaking, who am I); feeds the echo gate.
+    public var context: MeetingContext
+    /// Optional AEC (LocalVQE on macOS); the echo gate is always the fallback.
+    public var enhancer: MicEnhancer?
+    public init(permissions: PermissionsProvider, meetings: MeetingSource?, audio: [AudioSource], transcribers: [StreamingTranscriber], helperVersion: String, os: String, features: [String], context: MeetingContext = MeetingContext(), enhancer: MicEnhancer? = nil) {
         self.permissions = permissions; self.meetings = meetings; self.audio = audio; self.transcribers = transcribers
         self.helperVersion = helperVersion; self.os = os; self.features = features
+        self.context = context; self.enhancer = enhancer
     }
 }
 
@@ -65,7 +71,8 @@ public actor HelperController {
         let segmenter = UtteranceSegmenter()
         var lastLevelMs: Double = 0
         var pendingLevel: [Float] = []
-        var samplesIn: AsyncStream<[Float]>.Continuation?
+        var samplesIn: AsyncStream<CaptureBlock>.Continuation?
+        var pipeline: MicPipeline?
         var consumer: Task<Void, Never>?
         init(wav: WavWriter, startMs: Double) { self.wav = wav; self.startMs = startMs }
     }
@@ -120,14 +127,22 @@ public actor HelperController {
         if rec.transcriber == nil { send(.error(code: "asr.unavailable", message: "no speech recogniser available; recording audio only", fatal: false)) }
 
         // Audio callbacks arrive on capture threads; funnel them through one ordered stream into the actor.
-        let (samples, samplesIn) = AsyncStream<[Float]>.makeStream(bufferingPolicy: .bufferingNewest(400))
+        let pipeline = MicPipeline(gate: EchoGate(context: deps.context), enhancer: deps.enhancer)
+        let send = self.send
+        pipeline.onLog = { level, msg in send(.log(level: level, msg: msg)) }
+        await pipeline.start()
+        rec.pipeline = pipeline
+        let (blocks, samplesIn) = AsyncStream<CaptureBlock>.makeStream(bufferingPolicy: .bufferingNewest(400))
         rec.samplesIn = samplesIn
         rec.consumer = Task { [weak self] in
-            for await s in samples { await self?.onSamples(s) }
+            for await b in blocks {
+                let mixed = await pipeline.process(b)
+                await self?.onSamples(mixed)
+            }
         }
         for a in deps.audio {
             do {
-                try await a.start(onSamples: { s in samplesIn.yield(s) })
+                try await a.start(onBlock: { b in samplesIn.yield(b) })
                 rec.audio = a
                 send(.log(level: .info, msg: "audio: \(a.name)"))
                 break
@@ -145,7 +160,7 @@ public actor HelperController {
     }
 
     func onSamples(_ s: [Float]) async {
-        guard let rec = recording else { return }
+        guard let rec = recording, !s.isEmpty else { return }
         do { try rec.wav.append(s) } catch { send(.error(code: "recording.write", message: "\(error)", fatal: false)) }
         rec.pendingLevel += s
         let t = now()
@@ -169,6 +184,7 @@ public actor HelperController {
         await rec.audio?.stop()
         rec.samplesIn?.finish()
         await rec.consumer?.value
+        if let tail = rec.pipeline?.finish(), !tail.isEmpty { await onSamples(tail) }
         if let tr = rec.transcriber {
             let text = await tr.finish()
             for e in rec.segmenter.flush(cumulative: text, nowMs: now() - rec.startMs) { send(.asr(e)) }

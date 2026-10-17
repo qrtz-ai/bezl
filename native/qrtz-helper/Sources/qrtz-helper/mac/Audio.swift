@@ -2,6 +2,7 @@
 import AVFoundation
 import CoreAudio
 import CoreMedia
+import FluidAudio
 import Foundation
 import QrtzHelperCore
 import ScreenCaptureKit
@@ -66,8 +67,7 @@ final class CoreAudioTapSource: AudioSource, @unchecked Sendable {
     private var aggregateID = AudioObjectID(kAudioObjectUnknown)
     private var procID: AudioDeviceIOProcID?
     private let queue = DispatchQueue(label: "qrtz.tap", qos: .userInteractive)
-    private let mixer: DSP.Mixer
-    init(context: MeetingContext) { mixer = DSP.Mixer(echo: EchoGate(context: context)) }
+    private let aligner = DSP.Aligner()
     private let mic = MicCapture()
     private let conv = MonoConverter()
 
@@ -85,7 +85,7 @@ final class CoreAudioTapSource: AudioSource, @unchecked Sendable {
         return uid as String
     }
 
-    func start(onSamples: @escaping @Sendable ([Float]) -> Void) async throws {
+    func start(onBlock: @escaping @Sendable (CaptureBlock) -> Void) async throws {
         let desc = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
         desc.uuid = UUID()
         desc.muteBehavior = .unmuted
@@ -114,18 +114,17 @@ final class CoreAudioTapSource: AudioSource, @unchecked Sendable {
         st = AudioObjectGetPropertyData(tapID, &addr, 0, nil, &size, &asbd)
         guard st == noErr, let format = AVAudioFormat(streamDescription: &asbd) else { cleanup(); throw AudioError.os("tap format", st) }
 
-        let mixer = self.mixer, conv = self.conv
+        let aligner = self.aligner, conv = self.conv
         st = AudioDeviceCreateIOProcIDWithBlock(&procID, aggregateID, queue) { _, inInput, _, _, _ in
             guard let buf = AVAudioPCMBuffer(pcmFormat: format, bufferListNoCopy: inInput, deallocator: nil) else { return }
-            let mixed = mixer.pushSystem(conv.convert(buf))
-            if !mixed.isEmpty { onSamples(mixed) }
+            for b in aligner.pushSystem(conv.convert(buf)) { onBlock(b) }
         }
         guard st == noErr else { cleanup(); throw AudioError.os("AudioDeviceCreateIOProcIDWithBlock", st) }
         st = AudioDeviceStart(aggregateID, procID)
         guard st == noErr else { cleanup(); throw AudioError.os("AudioDeviceStart", st) }
 
         do {
-            try mic.start { [queue] s in queue.async { let m = mixer.pushMic(s); if !m.isEmpty { onSamples(m) } } }
+            try mic.start { [queue] s in queue.async { for b in aligner.pushMic(s) { onBlock(b) } } }
         } catch {
             logErr("mic unavailable, recording system audio only: \(error)")
         }
@@ -148,22 +147,62 @@ final class CoreAudioTapSource: AudioSource, @unchecked Sendable {
     }
 }
 
+/// Echo cancellation for the mic using the system tap as far-end reference: FluidAudio LocalVQE (v1.3, 16 ms
+/// streaming hop, CPU). Models download once (~20 MB). Any load/inference error makes MicPipeline fall back to the
+/// AX/energy echo gate. Set QRTZ_AEC=0 to disable. [MAC-VERIFY: reference/mic clock alignment on target devices]
+final class LocalVqeEnhancer: MicEnhancer, @unchecked Sendable {
+    let name = "localvqe-v1.3"
+    private var stream: LocalVqeStream?
+
+    func prepare() async throws {
+        if ProcessInfo.processInfo.environment["QRTZ_AEC"] == "0" { throw AudioError("disabled by QRTZ_AEC=0") }
+        if stream != nil { return }
+        let vqe = try await LocalVqeManager(config: LocalVqeConfig(chunk: .realtime16ms))
+        stream = try await vqe.makeStream()
+    }
+
+    func enhance(mic: [Float], reference: [Float]) async throws -> [Float] {
+        guard let stream else { throw AudioError("LocalVQE not prepared") }
+        return try await stream.enhance(mic: mic, reference: reference)
+    }
+
+    func reset() async { try? await stream?.reset() }
+}
+
+/// Echo cancellation for the mic using the system tap as far-end reference: FluidAudio LocalVQE (v1.3, 16 ms
+/// streaming hop, CPU). Models download once. Any load/inference error makes MicPipeline fall back to the
+/// AX/energy echo gate. Set QRTZ_AEC=0 to disable. [MAC-VERIFY: reference/mic clock alignment on target devices]
+final class LocalVqeEnhancer: MicEnhancer, @unchecked Sendable {
+    let name = "localvqe-v1.3"
+    private var stream: LocalVqeStream?
+
+    func prepare() async throws {
+        if ProcessInfo.processInfo.environment["QRTZ_AEC"] == "0" { throw AudioError("disabled by QRTZ_AEC=0") }
+        if stream != nil { return }
+        let vqe = try await LocalVqeManager(config: LocalVqeConfig(chunk: .realtime16ms))
+        stream = try await vqe.makeStream()
+    }
+
+    func enhance(mic: [Float], reference: [Float]) async throws -> [Float] {
+        guard let stream else { throw AudioError("LocalVQE not prepared") }
+        return try await stream.enhance(mic: mic, reference: reference)
+    }
+
+    func reset() async { try? await stream?.reset() }
+}
+
 /// Fallback: ScreenCaptureKit audio-only stream of the main display (macOS 13+; needs Screen Recording). Mic mixed in.
 final class ScreenCaptureKitSource: NSObject, AudioSource, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
     let name = "screencapturekit"
     private var stream: SCStream?
     private let queue = DispatchQueue(label: "qrtz.sck", qos: .userInteractive)
-    private let mixer: DSP.Mixer
-    init(context: MeetingContext) {
-        mixer = DSP.Mixer(echo: EchoGate(context: context))
-        super.init()
-    }
+    private let aligner = DSP.Aligner()
     private let mic = MicCapture()
     private let conv = MonoConverter()
-    private var onSamples: (@Sendable ([Float]) -> Void)?
+    private var onBlock: (@Sendable (CaptureBlock) -> Void)?
 
-    func start(onSamples: @escaping @Sendable ([Float]) -> Void) async throws {
-        self.onSamples = onSamples
+    func start(onBlock: @escaping @Sendable (CaptureBlock) -> Void) async throws {
+        self.onBlock = onBlock
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         guard let display = content.displays.first else { throw AudioError("no display for ScreenCaptureKit") }
         let filter = SCContentFilter(display: display, excludingWindows: [])
@@ -180,24 +219,23 @@ final class ScreenCaptureKitSource: NSObject, AudioSource, SCStreamOutput, SCStr
         try s.addStreamOutput(self, type: .audio, sampleHandlerQueue: queue)
         try await s.startCapture()
         stream = s
-        let mixer = self.mixer
+        let aligner = self.aligner
         do {
-            try mic.start { [queue] x in queue.async { let m = mixer.pushMic(x); if !m.isEmpty { onSamples(m) } } }
+            try mic.start { [queue] x in queue.async { for b in aligner.pushMic(x) { onBlock(b) } } }
         } catch {
             logErr("mic unavailable, recording system audio only: \(error)")
         }
     }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sb: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .audio, sb.isValid, let onSamples else { return }
+        guard type == .audio, sb.isValid, let onBlock else { return }
         try? sb.withAudioBufferList { abl, _ in
             guard let desc = sb.formatDescription?.audioStreamBasicDescription else { return }
             var asbd = desc
             guard let fmt = AVAudioFormat(streamDescription: &asbd),
                   let buf = AVAudioPCMBuffer(pcmFormat: fmt, bufferListNoCopy: abl.unsafePointer, deallocator: nil)
             else { return }
-            let m = mixer.pushSystem(conv.convert(buf))
-            if !m.isEmpty { onSamples(m) }
+            for b in aligner.pushSystem(conv.convert(buf)) { onBlock(b) }
         }
     }
 

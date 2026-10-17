@@ -321,6 +321,17 @@ export function ListItem({
       role="option"
       aria-selected={!!active}
       onClick={onClick}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       {...rest}
