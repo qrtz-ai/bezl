@@ -59,6 +59,16 @@ const SUMMARY_DEADLINE_MS = 110_000;
 /** Index: worker deadline inside the RPC timeout, like the summary (N3, ADR 0007). */
 const INDEX_RPC_MS = 300_000;
 const INDEX_DEADLINE_MS = 280_000;
+/**
+ * N37: helper lines that belong to the recording a `recording.started` just acknowledged and that the session would
+ * drop before the ack is applied (`capture.degraded` and `asr` need `recording`). Held behind the ack, then replayed.
+ */
+const HELD_BEHIND_ACK: ReadonlySet<HelperToHost['type']> = new Set([
+  'capture.degraded',
+  'asr',
+]);
+/** N37: the continuation runs a microtask after the ack, so this only bounds a misbehaving helper. */
+const MAX_HELD_BEHIND_ACK = 64;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const toLifecycleError = (
   e: unknown,
@@ -99,6 +109,14 @@ export class NoteService {
   private waiters: Waiter[] = [];
   /** Audio path of the recording.start in flight (start or resume); acks for any other path are stale. */
   private pendingStartPath: string | null = null;
+  /**
+   * N37: the start (or resume) whose `recording.started` was read but not yet applied. `start-acked` /
+   * `helper-restored` run in the continuation after `await acked`, a microtask later, while the line splitter hands
+   * every line of a stdout chunk to `handle` in one loop. Lines the new recording owns that came in the same chunk
+   * (the helper sends a source's `capture.degraded` right behind `recording.started`) wait here and are replayed in
+   * order right after the transition, or dropped when the start does not take.
+   */
+  private acked: { audioPath: string; held: HelperToHost[] } | null = null;
   /**
    * The helper answered a start with error{recording.busy, audioPath}: another recording still owns it. Keyed by
    * the refused attempt's audioPath, so a busy only ever fails the start it names.
@@ -332,12 +350,44 @@ export class NoteService {
 
   /** Feed every parsed helper message here. */
   handle(m: HelperToHost) {
+    if (m.type === 'recording.started' && m.audioPath === this.pendingStartPath)
+      this.acked = { audioPath: m.audioPath, held: [] };
+    else if (this.acked && HELD_BEHIND_ACK.has(m.type)) {
+      if (this.acked.held.length < MAX_HELD_BEHIND_ACK) this.acked.held.push(m);
+      return;
+    }
     for (const w of this.waiters.slice()) {
       if (w.type === m.type && (!w.match || w.match(m))) {
         this.waiters.splice(this.waiters.indexOf(w), 1);
         w.resolve(m);
       }
     }
+    this.dispatch(m);
+  }
+
+  /**
+   * N37: the start (or resume) for `audioPath` is settled. `applied`: its transition is in the state, so replay the
+   * lines held behind its ack. Otherwise (refused, timed out, the helper died, the meeting moved on) drop them: they
+   * belong to a recording the session never took.
+   */
+  private releaseHeld(audioPath: string, applied: boolean) {
+    const a = this.acked;
+    if (!a || a.audioPath !== audioPath) return;
+    this.acked = null;
+    if (!applied) {
+      if (a.held.length)
+        this.deps.log.info(
+          'dropped helper lines behind a start that did not take',
+          {
+            lines: a.held.length,
+          },
+        );
+      return;
+    }
+    for (const m of a.held) this.dispatch(m);
+  }
+
+  private dispatch(m: HelperToHost) {
     const s = this.machine.state;
     switch (m.type) {
       case 'hello':
@@ -942,6 +992,7 @@ export class NoteService {
     const ok = await acked;
     if (this.pendingStartPath === audioPath) this.pendingStartPath = null;
     if (!ok) {
+      this.releaseHeld(audioPath, false);
       // The helper may have died meanwhile: then `reconnecting` owns the meeting, do not delete it.
       if (
         this.machine.state.meetingId !== id ||
@@ -995,11 +1046,14 @@ export class NoteService {
     if (
       this.machine.state.meetingId !== id ||
       this.machine.state.phase !== 'starting'
-    )
+    ) {
+      this.releaseHeld(audioPath, false);
       return this.view(); // helper crashed during start: reconnect path owns it now
+    }
     this.machine.send({ type: 'start-acked' });
     if (p['screen-recording'] === 'denied') this.degrade('mic-only');
     if (p.accessibility === 'denied') this.degrade('ax-unavailable');
+    this.releaseHeld(audioPath, true);
     this.deps.log.info('recording started', { id });
     return this.view();
   }
@@ -1085,7 +1139,8 @@ export class NoteService {
     const ok = await acked;
     if (this.pendingStartPath === audioPath) this.pendingStartPath = null;
     this.busyRefusals.delete(audioPath);
-    if (!ok || this.machine.state.phase !== 'reconnecting') return;
+    if (!ok || this.machine.state.phase !== 'reconnecting')
+      return this.releaseHeld(audioPath, false);
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
     // A fresh helper starts unpaused: re-apply a privacy pause before anything is transcribed.
@@ -1097,6 +1152,7 @@ export class NoteService {
       }
     }
     this.machine.send({ type: 'helper-restored', at, audioPath });
+    this.releaseHeld(audioPath, true);
     this.deps.log.info('recording resumed after helper restart', { part });
   }
 

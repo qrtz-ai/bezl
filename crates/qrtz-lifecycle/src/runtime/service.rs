@@ -82,6 +82,15 @@ pub fn utc_recording_title(now: EpochMs) -> String {
 }
 
 const HELPER_GONE: &str = "native helper is not running";
+/// N37: lines held behind an ack are bounded; the continuation runs right after the ack, so this only caps a
+/// misbehaving helper (port of `MAX_HELD_BEHIND_ACK`).
+const MAX_HELD_BEHIND_ACK: usize = 64;
+
+/// N37: the start (or resume) whose `recording.started` was read but not yet applied (port of `NoteService.acked`).
+struct Acked {
+    audio_path: String,
+    held: Vec<HelperInput>,
+}
 /// TS `WorkerClient.call` timeouts of the step calls.
 const FINALIZE_TIMEOUT_MS: u64 = 60_000;
 const SUMMARY_TIMEOUT_MS: u64 = 120_000;
@@ -320,6 +329,11 @@ struct State {
     waiters: Vec<WaiterEntry>,
     /// Audio path of the `recording.start` in flight (start or resume); acks for any other path are stale.
     pending_start_path: Option<String>,
+    /// N37: `StartAcked` / `HelperRestored` are sent by the start (or resume) task after its ack waiter fires, while
+    /// the bridge hands every line of a chunk to `handle` with no await between them. Lines the new recording owns
+    /// that arrive behind the ack (`capture.degraded`, `asr`) are held here and replayed right after the transition,
+    /// or dropped when the start does not take.
+    acked: Option<Acked>,
     /// Starts the helper refused, keyed by the refused attempt's file, so a refusal only ever fails the start it
     /// names: `error{recording.busy, audioPath}` (another recording still owns it), `error{recording.file,
     /// audioPath}` (the file could not be created; the helper already tore that recording down), or a busy naming
@@ -373,6 +387,7 @@ impl State {
             .collect(),
             waiters: Vec::new(),
             pending_start_path: None,
+            acked: None,
             busy_refusals: HashMap::new(),
             emit_timer: false,
             persisted: HashSet::new(),
@@ -764,6 +779,27 @@ impl Shared {
         let kind = m.type_name();
         let (s, ready) = {
             let mut st = self.lock();
+            // N37: hold what belongs to a recording whose ack is read but not applied (checked and queued under the
+            // same lock `release_held` takes, so a line is either replayed or sees the applied transition).
+            match &m {
+                HelperInput::RecordingStarted { audio_path }
+                    if st.pending_start_path.as_deref() == Some(audio_path.as_str()) =>
+                {
+                    st.acked = Some(Acked {
+                        audio_path: audio_path.clone(),
+                        held: Vec::new(),
+                    });
+                }
+                HelperInput::CaptureDegraded { .. } | HelperInput::Asr { .. } => {
+                    if let Some(a) = st.acked.as_mut() {
+                        if a.held.len() < MAX_HELD_BEHIND_ACK {
+                            a.held.push(m);
+                        }
+                        return;
+                    }
+                }
+                _ => {}
+            }
             let mut ready = Vec::new();
             let mut i = 0;
             while i < st.waiters.len() {
@@ -782,6 +818,36 @@ impl Shared {
             }
             let _ = w.tx.send(Some(m.clone()));
         }
+        self.dispatch(m, s);
+    }
+
+    /// N37: the start (or resume) for `audio_path` is settled. `applied`: its transition is in the state, so replay
+    /// the lines held behind its ack, in order. Otherwise (refused, timed out, the helper died, the meeting moved on)
+    /// drop them: they belong to a recording the session never took.
+    fn release_held(self: &Arc<Self>, audio_path: &str, applied: bool) {
+        let held = {
+            let mut st = self.lock();
+            if st.acked.as_ref().is_none_or(|a| a.audio_path != audio_path) {
+                return;
+            }
+            st.acked.take().map(|a| a.held).unwrap_or_default()
+        };
+        if !applied {
+            if !held.is_empty() {
+                tracing::info!(
+                    lines = held.len(),
+                    "dropped helper lines behind a start that did not take"
+                );
+            }
+            return;
+        }
+        for m in held {
+            let s = self.lock().machine.state().clone();
+            self.dispatch(m, s);
+        }
+    }
+
+    fn dispatch(self: &Arc<Self>, m: HelperInput, s: RecordingState) {
         match m {
             HelperInput::Hello {} => {
                 if self.send_helper(HelperCommand::PermissionsCheck).is_err() {
@@ -1321,6 +1387,7 @@ impl Shared {
             s.meeting_id.as_deref() == Some(id.as_str()) && s.phase == RecordingPhase::Starting
         };
         if acked.is_none() {
+            self.release_held(&audio_path, false);
             // The helper may have died meanwhile: then `reconnecting` owns the meeting, do not delete it.
             if !still_ours(&self) {
                 return Ok(self.view());
@@ -1367,6 +1434,7 @@ impl Shared {
             });
         }
         if !still_ours(&self) {
+            self.release_held(&audio_path, false);
             return Ok(self.view()); // helper crashed during start: the reconnect path owns it now
         }
         self.send(LifecycleEvent::StartAcked);
@@ -1376,6 +1444,7 @@ impl Shared {
         if perm(OsPermission::Accessibility) == PermissionState::Denied {
             self.degrade(Degradation::AxUnavailable);
         }
+        self.release_held(&audio_path, true);
         tracing::info!(id = %id, "recording started");
         Ok(self.view())
     }
@@ -1538,6 +1607,7 @@ impl Shared {
         self.clear_pending_start(&audio_path);
         self.lock().busy_refusals.remove(&audio_path);
         if acked.is_none() || self.lock().machine.state().phase != RecordingPhase::Reconnecting {
+            self.release_held(&audio_path, false);
             return;
         }
         self.clear_reconnect_timer();
@@ -1545,7 +1615,11 @@ impl Shared {
         if self.lock().paused {
             let _ = self.send_helper(HelperCommand::RecordingPause);
         }
-        self.send(LifecycleEvent::HelperRestored { at, audio_path });
+        self.send(LifecycleEvent::HelperRestored {
+            at,
+            audio_path: audio_path.clone(),
+        });
+        self.release_held(&audio_path, true);
         tracing::info!(part, "recording resumed after helper restart");
     }
 

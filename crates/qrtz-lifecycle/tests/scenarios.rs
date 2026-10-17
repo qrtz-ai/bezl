@@ -811,6 +811,15 @@ impl Run {
                     let v: Value = serde_json::from_str(&raw).unwrap();
                     live.rt.helper_json(&v);
                 }
+                // N37: several lines from one stdout chunk, handled with no await between them (as the bridge's
+                // reader loop does), so a start's ack continuation cannot run in between.
+                "helperBatch" => {
+                    for msg in op["msgs"].as_array().unwrap() {
+                        let raw = serde_json::to_string(msg).unwrap().replace("$REC", &self.sh.rec);
+                        let v: Value = serde_json::from_str(&raw).unwrap();
+                        live.rt.helper_json(&v);
+                    }
+                }
                 // A line the host's parser must refuse (qrtz-app drops it): it never reaches the runtime.
                 "helperInvalid" => {
                     let line = serde_json::to_string(&op["msg"]).unwrap();

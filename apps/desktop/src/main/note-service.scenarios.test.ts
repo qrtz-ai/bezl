@@ -465,6 +465,21 @@ function run(sc: Scenario) {
             note.handle(r.msg);
             break;
           }
+          case 'helperBatch': {
+            // N37: several lines from one stdout chunk. The line splitter hands them to NoteService in one
+            // synchronous loop, so no continuation (a start's `await acked`) runs between them.
+            for (const msg of op.msgs as unknown[]) {
+              const r = parseHelperLine(
+                JSON.stringify(msg).split('$REC').join(rec),
+              );
+              if (!r.ok)
+                throw new Error(
+                  `invalid helper message in ${sc.name}: ${JSON.stringify(msg)}`,
+                );
+              note.handle(r.msg);
+            }
+            break;
+          }
           case 'helperInvalid': {
             // A line the host's parser must refuse (as index.ts drops it): it never reaches NoteService.
             const r = parseHelperLine(JSON.stringify(op.msg));
