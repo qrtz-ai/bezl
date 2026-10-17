@@ -218,6 +218,10 @@
             "startMs": 0,
             "endMs": 80000
           }
+        ],
+        "partOffsetsMs": [
+          0,
+          84000
         ]
       }
     },
@@ -251,6 +255,10 @@
             "endMs": 80000
           }
         ],
+        "partOffsetsMs": [
+          0,
+          84000
+        ],
         "silent": [
           {
             "source": "mic",
@@ -278,6 +286,10 @@
         "partOffsetMs": 84000,
         "meetingId": "m",
         "startedAt": 1000,
+        "partOffsetsMs": [
+          0,
+          84000
+        ],
         "silentSpans": [
           {
             "source": "system",
@@ -330,6 +342,10 @@
         "partOffsetMs": 84000,
         "meetingId": "m",
         "startedAt": 1000,
+        "partOffsetsMs": [
+          0,
+          84000
+        ],
         "silentSpans": [
           {
             "source": "system",
@@ -381,6 +397,10 @@
         "partOffsetMs": 84000,
         "meetingId": "m",
         "startedAt": 1000,
+        "partOffsetsMs": [
+          0,
+          84000
+        ],
         "silentSpans": [
           {
             "source": "system",
@@ -432,6 +452,10 @@
         "partOffsetMs": 84000,
         "meetingId": "m",
         "startedAt": 1000,
+        "partOffsetsMs": [
+          0,
+          84000
+        ],
         "silentSpans": [
           {
             "source": "system",
@@ -500,6 +524,10 @@
         "partOffsetMs": 84000,
         "meetingId": "m",
         "startedAt": 1000,
+        "partOffsetsMs": [
+          0,
+          84000
+        ],
         "silentSpans": [
           {
             "source": "system",

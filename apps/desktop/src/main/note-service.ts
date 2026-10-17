@@ -1252,6 +1252,8 @@ export class NoteService {
         endedAt,
         durationMs: stopped?.durationMs || endedAt - startedAt,
         audioParts: st.audioParts,
+        // H7: where each part starts in meeting time, so finalize pads the reconnect gaps (ADR 0032).
+        ...(st.partOffsetsMs ? { partOffsetsMs: st.partOffsetsMs } : {}),
         active: this.active,
         helperCrashed: this.helperCrashed || !stopped,
       },
@@ -1547,6 +1549,9 @@ export class NoteService {
               endedAt: saved.stoppedAt ?? now,
               durationMs: 0, // finalize derives it from the repaired audio
               audioParts: saved.audioParts,
+              ...(saved.partOffsetsMs
+                ? { partOffsetsMs: saved.partOffsetsMs }
+                : {}),
               active: [],
               helperCrashed: true,
             },

@@ -33,6 +33,11 @@ pub fn de_ms_opt<'de, D: Deserializer<'de>>(d: D) -> Result<Option<i64>, D::Erro
     Ok(Option::<f64>::deserialize(d)?.map(round_f64))
 }
 
+/// Optional list variant of [`de_ms`] (H7 part offsets).
+pub fn de_ms_vec_opt<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Vec<i64>>, D::Error> {
+    Ok(Option::<Vec<f64>>::deserialize(d)?.map(|v| v.into_iter().map(round_f64).collect()))
+}
+
 macro_rules! kebab_enum {
     ($(#[$m:meta])* $name:ident { $($variant:ident = $s:literal),+ $(,)? }) => {
         $(#[$m])*
@@ -349,6 +354,14 @@ pub struct RecordingState {
     /// Offset added to helper timestamps for the current part (ms since startedAt).
     #[serde(default, deserialize_with = "de_ms")]
     pub part_offset_ms: Ms,
+    /// H7 (ADR 0032): each part's `part_offset_ms`, parallel to `audio_parts`; written by the first
+    /// `HelperRestored`, so omitted for a one-part recording. Missing with several parts (older row): no padding.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "de_ms_vec_opt"
+    )]
+    pub part_offsets_ms: Option<Vec<Ms>>,
     /// N29: sources silent right now (omitted when none).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub silent: Vec<SilentInput>,
@@ -385,6 +398,7 @@ impl Default for RecordingState {
             error: None,
             audio_parts: Vec::new(),
             part_offset_ms: 0,
+            part_offsets_ms: None,
             silent: Vec::new(),
             silent_spans: Vec::new(),
             fallbacks: Vec::new(),
@@ -525,6 +539,13 @@ pub struct PipelineContext {
     #[serde(deserialize_with = "de_ms")]
     pub duration_ms: Ms,
     pub audio_parts: Vec<String>,
+    /// H7: meeting-time start of each part (parallel to `audio_parts`); finalize pads the gaps. `None`: no padding.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "de_ms_vec_opt"
+    )]
+    pub part_offsets_ms: Option<Vec<Ms>>,
     pub active: Vec<ActiveSpeakerEvent>,
     pub helper_crashed: bool,
 }

@@ -67,7 +67,11 @@
         ],
         "partOffsetMs": 5,
         "meetingId": "m",
-        "startedAt": 0
+        "startedAt": 0,
+        "partOffsetsMs": [
+          0,
+          5
+        ]
       }
     }
   ]

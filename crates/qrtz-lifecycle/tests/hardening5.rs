@@ -36,12 +36,12 @@ fn failed_stitch_leaves_no_temp_and_retries() {
         main.to_string_lossy().into_owned(),
         part.to_string_lossy().into_owned(),
     ];
-    assert!(stitch_parts(&parts).is_err());
+    assert!(stitch_parts(&parts, None).is_err());
     assert!(!d.path().join("m.wav.stitch").exists());
     assert_eq!(std::fs::read(&main).unwrap(), before);
     std::fs::remove_dir(&part).unwrap();
     wav(&part, 1600);
-    assert_eq!(stitch_parts(&parts).unwrap(), Some(150));
+    assert_eq!(stitch_parts(&parts, None).unwrap(), Some(150));
     assert!(!part.exists());
 }
 

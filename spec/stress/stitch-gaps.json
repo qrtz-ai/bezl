@@ -1,0 +1,210 @@
+{
+  "description": "Hardening cycle 9 (H7, N44; ADR 0032): finalize stitches WAV parts with each reconnect gap as zero PCM, so audio time matches transcript time. The pad before part i is max(0, min(cap, at(offset_i) - dataBytesSoFar)) with at(ms) = floor(round(ms) * byteRate / (1000 * blockAlign)) * blockAlign and cap = at(maxGapMs). `padBytes[i-1]` is the pad before part i (null: the part is missing and adds nothing). Every part is 16 kHz mono 16-bit, filled with its own byte (part index + 1) so the runners can check where each one landed. Run by apps/desktop/src/worker/stitch.hardening9.test.ts and crates/qrtz-lifecycle/tests/hardening9.rs.",
+  "format": {
+    "sampleRate": 16000,
+    "byteRate": 32000,
+    "blockAlign": 2
+  },
+  "maxGapMs": 35000,
+  "cases": [
+    {
+      "name": "one reconnect: 15 s gap after a minute",
+      "parts": [
+        {
+          "dataBytes": 1920000
+        },
+        {
+          "dataBytes": 960000
+        }
+      ],
+      "offsetsMs": [0, 75000],
+      "expect": {
+        "padBytes": [480000],
+        "dataBytes": 3360000,
+        "durationMs": 105000
+      }
+    },
+    {
+      "name": "no offsets (a row from an older build): back to back",
+      "parts": [
+        {
+          "dataBytes": 1920000
+        },
+        {
+          "dataBytes": 960000
+        }
+      ],
+      "expect": {
+        "padBytes": [0],
+        "dataBytes": 2880000,
+        "durationMs": 90000
+      }
+    },
+    {
+      "name": "offsets that do not line up with the parts: back to back",
+      "parts": [
+        {
+          "dataBytes": 1920000
+        },
+        {
+          "dataBytes": 960000
+        }
+      ],
+      "offsetsMs": [0],
+      "expect": {
+        "padBytes": [0],
+        "dataBytes": 2880000,
+        "durationMs": 90000
+      }
+    },
+    {
+      "name": "clock jumped back while the helper was down: offset clamped to 0, no pad",
+      "parts": [
+        {
+          "dataBytes": 1920000
+        },
+        {
+          "dataBytes": 960000
+        }
+      ],
+      "offsetsMs": [0, 0],
+      "expect": {
+        "padBytes": [0],
+        "dataBytes": 2880000,
+        "durationMs": 90000
+      }
+    },
+    {
+      "name": "clock jumped forward an hour: the pad is capped at the reconnect window plus the start ack",
+      "parts": [
+        {
+          "dataBytes": 1920000
+        },
+        {
+          "dataBytes": 960000
+        }
+      ],
+      "offsetsMs": [0, 3660000],
+      "expect": {
+        "padBytes": [1120000],
+        "dataBytes": 4000000,
+        "durationMs": 125000
+      }
+    },
+    {
+      "name": "helper audio ran slightly ahead of the wall clock: overlap, no pad",
+      "parts": [
+        {
+          "dataBytes": 1920000
+        },
+        {
+          "dataBytes": 960000
+        }
+      ],
+      "offsetsMs": [0, 59990],
+      "expect": {
+        "padBytes": [0],
+        "dataBytes": 2880000,
+        "durationMs": 90000
+      }
+    },
+    {
+      "name": "a fractional offset is rounded like Math.round, then block-aligned",
+      "parts": [
+        {
+          "dataBytes": 1920000
+        },
+        {
+          "dataBytes": 320
+        }
+      ],
+      "offsetsMs": [0, 60001.5],
+      "expect": {
+        "padBytes": [64],
+        "dataBytes": 1920384,
+        "durationMs": 60012
+      }
+    },
+    {
+      "name": "a missing middle part: the next part's pad covers it, up to the cap",
+      "parts": [
+        {
+          "dataBytes": 1920000
+        },
+        {
+          "dataBytes": 0,
+          "missing": true
+        },
+        {
+          "dataBytes": 640000
+        }
+      ],
+      "offsetsMs": [0, 61000, 125000],
+      "expect": {
+        "padBytes": [null, 1120000],
+        "dataBytes": 3680000,
+        "durationMs": 115000
+      }
+    },
+    {
+      "name": "a part larger than one copy chunk and a pad larger than one zero chunk",
+      "parts": [
+        {
+          "dataBytes": 2621500
+        },
+        {
+          "dataBytes": 2621500
+        }
+      ],
+      "offsetsMs": [0, 120000],
+      "expect": {
+        "padBytes": [1120000],
+        "dataBytes": 6363000,
+        "durationMs": 198844
+      }
+    },
+    {
+      "name": "three reconnects, each gap different",
+      "parts": [
+        {
+          "dataBytes": 320000
+        },
+        {
+          "dataBytes": 160000
+        },
+        {
+          "dataBytes": 96000
+        },
+        {
+          "dataBytes": 32000
+        }
+      ],
+      "offsetsMs": [0, 12000, 20500, 30000],
+      "expect": {
+        "padBytes": [64000, 112000, 208000],
+        "dataBytes": 992000,
+        "durationMs": 31000
+      }
+    },
+    {
+      "name": "an empty part (the helper died at once) still gets its pad",
+      "parts": [
+        {
+          "dataBytes": 320000
+        },
+        {
+          "dataBytes": 0
+        },
+        {
+          "dataBytes": 32000
+        }
+      ],
+      "offsetsMs": [0, 11000, 14000],
+      "expect": {
+        "padBytes": [32000, 96000],
+        "dataBytes": 480000,
+        "durationMs": 15000
+      }
+    }
+  ]
+}

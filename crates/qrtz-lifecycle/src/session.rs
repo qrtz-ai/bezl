@@ -379,9 +379,19 @@ pub fn reduce(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> 
             let mut n = s.clone();
             n.reconnect = None;
             n.phase = P::Recording;
-            n.audio_parts.push(audio_path.clone());
             // Clamp: a backward clock jump must not invent negative meeting-time offsets.
             n.part_offset_ms = (*at - s.started_at.unwrap_or(*at)).max(0);
+            // H7: the offsets are kept only while they line up with the parts (a row from an older build has none).
+            n.part_offsets_ms = match &s.part_offsets_ms {
+                Some(v) if v.len() == s.audio_parts.len() => Some(v.clone()),
+                None if s.audio_parts.len() == 1 => Some(vec![0]),
+                _ => None,
+            }
+            .map(|mut v| {
+                v.push(n.part_offset_ms);
+                v
+            });
+            n.audio_parts.push(audio_path.clone());
             // N35: a device failure lasts until the reconnect: the new helper starts from its own state.
             let lost = std::mem::take(&mut n.device_lost);
             n.degraded.retain(|f| !lost.contains(f));

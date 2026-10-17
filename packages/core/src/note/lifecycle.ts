@@ -147,6 +147,12 @@ export const RecordingState = z.object({
   audioParts: z.array(z.string()).default([]),
   /** Offset added to helper timestamps for the current part (ms since startedAt). */
   partOffsetMs: z.number().default(0),
+  /**
+   * H7 (ADR 0032): each part's `partOffsetMs`, parallel to `audioParts` (`[0, …]`), so finalize can put each
+   * reconnect gap back as silence. Written by the first `helper-restored`, so it is omitted for a one-part
+   * recording. Missing with several parts (a row from an older build): the parts are stitched back to back.
+   */
+  partOffsetsMs: z.array(z.number()).optional(),
   /** N29: sources silent right now (omitted when none). */
   silent: z.array(SilentInput).optional(),
   /** N29: closed silent stretches of this recording (omitted when none). */
@@ -542,14 +548,24 @@ export function lifecycleReducer(
       // N35: a device failure lasts until the reconnect: the new helper starts from its own state.
       const { reconnect: _r, deviceLost: lost = [], ...rest } = s;
       const kept = s.degraded.filter((f) => !lost.includes(f));
+      // Clamp: a backward clock jump must not invent negative meeting-time offsets.
+      const partOffsetMs = Math.max(0, e.at - (s.startedAt ?? e.at));
+      // H7: the offsets are kept only while they line up with the parts (a row from an older build has none).
+      const prev =
+        s.partOffsetsMs?.length === s.audioParts.length
+          ? s.partOffsetsMs
+          : s.audioParts.length === 1 && !s.partOffsetsMs
+            ? [0]
+            : undefined;
+      const { partOffsetsMs: _o, ...base } = rest;
       // N39: a source the reconnect brings back is no longer lost (its lost stretch ends at the restore).
       return closeLost(
         {
-          ...rest,
+          ...base,
           phase: 'recording',
           audioParts: [...s.audioParts, e.audioPath],
-          // Clamp: a backward clock jump must not invent negative meeting-time offsets.
-          partOffsetMs: Math.max(0, e.at - (s.startedAt ?? e.at)),
+          partOffsetMs,
+          ...(prev ? { partOffsetsMs: [...prev, partOffsetMs] } : {}),
           degraded: kept.includes('transcript-gap')
             ? kept
             : [...kept, 'transcript-gap'],
@@ -657,6 +673,8 @@ export const PipelineContext = z.object({
   endedAt: z.number(),
   durationMs: z.number(),
   audioParts: z.array(z.string()),
+  /** H7: meeting-time start of each part (parallel to `audioParts`); finalize pads the gaps. Omitted: no padding. */
+  partOffsetsMs: z.array(z.number()).optional(),
   active: z.array(z.object({ atMs: z.number(), name: z.string() })),
   helperCrashed: z.boolean(),
 });

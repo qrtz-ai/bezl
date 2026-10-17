@@ -321,6 +321,10 @@
             "atMs": 5000
           }
         ],
+        "partOffsetsMs": [
+          0,
+          8000
+        ],
         "lostSpans": [
           {
             "source": "mic",
@@ -357,6 +361,10 @@
         "partOffsetMs": 8000,
         "meetingId": "m",
         "startedAt": 1000,
+        "partOffsetsMs": [
+          0,
+          8000
+        ],
         "lostSpans": [
           {
             "source": "mic",
@@ -416,6 +424,10 @@
         "partOffsetMs": 8000,
         "meetingId": "m",
         "startedAt": 1000,
+        "partOffsetsMs": [
+          0,
+          8000
+        ],
         "lostSpans": [
           {
             "source": "mic",
@@ -502,6 +514,11 @@
             "reason": "failed again on the new helper",
             "atMs": 9000
           }
+        ],
+        "partOffsetsMs": [
+          0,
+          8000,
+          11000
         ],
         "lostSpans": [
           {

@@ -157,6 +157,10 @@
             "atMs": 1000
           }
         ],
+        "partOffsetsMs": [
+          0,
+          3000
+        ],
         "lostSpans": [
           {
             "source": "mic",
@@ -193,6 +197,10 @@
             "reason": "busy",
             "atMs": 1000
           }
+        ],
+        "partOffsetsMs": [
+          0,
+          3000
         ],
         "lostSpans": [
           {
@@ -246,6 +254,10 @@
             "atMs": 1000
           }
         ],
+        "partOffsetsMs": [
+          0,
+          3000
+        ],
         "lostSpans": [
           {
             "source": "mic",
@@ -293,6 +305,11 @@
             "atMs": 1000
           }
         ],
+        "partOffsetsMs": [
+          0,
+          3000,
+          6000
+        ],
         "lostSpans": [
           {
             "source": "mic",
@@ -335,6 +352,11 @@
             "reason": "busy",
             "atMs": 1000
           }
+        ],
+        "partOffsetsMs": [
+          0,
+          3000,
+          6000
         ],
         "lostSpans": [
           {
@@ -390,6 +412,11 @@
             "atMs": 1000
           }
         ],
+        "partOffsetsMs": [
+          0,
+          3000,
+          6000
+        ],
         "lostSpans": [
           {
             "source": "mic",
@@ -440,6 +467,11 @@
             "atMs": 1000
           }
         ],
+        "partOffsetsMs": [
+          0,
+          3000,
+          6000
+        ],
         "lostSpans": [
           {
             "source": "mic",
@@ -488,6 +520,11 @@
             "reason": "busy",
             "atMs": 1000
           }
+        ],
+        "partOffsetsMs": [
+          0,
+          3000,
+          6000
         ],
         "lostSpans": [
           {
@@ -684,6 +721,10 @@
             "atMs": 1000
           }
         ],
+        "partOffsetsMs": [
+          0,
+          3000
+        ],
         "lostSpans": [
           {
             "source": "mic",
@@ -722,6 +763,10 @@
             "reason": "busy",
             "atMs": 1000
           }
+        ],
+        "partOffsetsMs": [
+          0,
+          3000
         ],
         "fallbacks": [
           {
@@ -771,6 +816,10 @@
             "reason": "busy",
             "atMs": 1000
           }
+        ],
+        "partOffsetsMs": [
+          0,
+          3000
         ],
         "fallbacks": [
           {

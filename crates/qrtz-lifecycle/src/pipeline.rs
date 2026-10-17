@@ -269,6 +269,7 @@ mod tests {
             ended_at: 1,
             duration_ms: 1,
             audio_parts: vec![],
+            part_offsets_ms: None,
             active: vec![],
             helper_crashed: false,
         }

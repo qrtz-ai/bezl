@@ -37,7 +37,7 @@ import {
   type SilentSpan,
 } from '@qrtz/core';
 import { dbHealth, freshOwnerOnlyFile } from './db';
-import { repairWav } from './wav-repair';
+import { repairWav, stitchParts } from './wav-repair';
 
 export interface LlmParams {
   provider: ProviderId | 'none';
@@ -276,40 +276,15 @@ export function createWorkerHandlers(
               .get(m.id),
         ),
     /**
-     * Step 1, idempotent: stitch WAV parts (one per helper restart) into the first part, repair the header,
-     * fuse AX speaker names into the live segments, record duration. Safe to re-run after a crash at any point.
+     * Step 1, idempotent: stitch WAV parts (one per helper restart) into the first part with each reconnect gap as
+     * silence (H7), repair the header, fuse AX speaker names into the live segments, record duration. Safe to re-run
+     * after a crash at any point.
      */
     'note.stepFinalize': (p: { meetingId: string; ctx: PipelineContext }) => {
       const m = need(p.meetingId);
-      const [main, ...rest] = p.ctx.audioParts;
-      let audioMs: number | undefined;
-      if (main) {
-        repairWav(main);
-        const extra = rest.filter((f) => fs.existsSync(f));
-        if (extra.length && fs.existsSync(main)) {
-          for (const f of extra) repairWav(f);
-          const tmp = `${main}.stitch`;
-          try {
-            const out = fs.openSync(tmp, 'w');
-            try {
-              fs.writeSync(out, fs.readFileSync(main));
-              for (const f of extra) {
-                const b = fs.readFileSync(f);
-                if (b.length > 44) fs.writeSync(out, b, 44, b.length - 44);
-              }
-            } finally {
-              fs.closeSync(out);
-            }
-            fs.renameSync(tmp, main); // atomic: either the old main or the stitched one
-          } catch (e) {
-            // N28: a failed stitch (disk full, unreadable part) must not leave a meeting-sized `.stitch` behind.
-            fs.rmSync(tmp, { force: true });
-            throw e;
-          }
-          for (const f of extra) fs.rmSync(f, { force: true });
-        }
-        audioMs = repairWav(main);
-      }
+      const main = p.ctx.audioParts[0];
+      // H7: reconnect gaps are padded with silence when the context has the part offsets (ADR 0032).
+      const audioMs = stitchParts(p.ctx.audioParts, p.ctx.partOffsetsMs);
       const segs = repo.getSegments(p.meetingId);
       const durationMs =
         (p.ctx.helperCrashed && audioMs) ||

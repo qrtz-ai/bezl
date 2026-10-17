@@ -1714,6 +1714,8 @@ impl Shared {
                 ended_at,
                 duration_ms: helper_dur.unwrap_or(ended_at - started_at),
                 audio_parts: st.audio_parts.clone(),
+                // H7: where each part starts in meeting time, so finalize pads the reconnect gaps (ADR 0032).
+                part_offsets_ms: st.part_offsets_ms.clone(),
                 active,
                 helper_crashed: crashed || stopped.is_none(),
             },
@@ -2028,6 +2030,7 @@ impl Shared {
                         ended_at: saved.stopped_at.unwrap_or(now),
                         duration_ms: 0, // finalize derives it from the repaired audio
                         audio_parts: saved.audio_parts.clone(),
+                        part_offsets_ms: saved.part_offsets_ms.clone(),
                         active: Vec::new(),
                         helper_crashed: true,
                     };
@@ -2048,6 +2051,7 @@ impl Shared {
                 ended_at: m.ended_at.unwrap_or(now),
                 duration_ms: m.duration_ms.unwrap_or(0),
                 audio_parts: m.audio_path.iter().filter(|p| !p.is_empty()).cloned().collect(),
+                part_offsets_ms: None,
                 active: Vec::new(),
                 helper_crashed: true,
             };

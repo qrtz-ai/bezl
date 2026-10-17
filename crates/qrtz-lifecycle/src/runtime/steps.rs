@@ -19,7 +19,9 @@ pub fn finalize_sync(
 ) -> qrtz_storage::Result<FinalizeOutcome> {
     let repo = db.notes();
     let m = repo.need(meeting_id)?;
-    let audio_ms = stitch_parts(&ctx.audio_parts).map_err(StorageError::Io)?;
+    // H7: reconnect gaps are padded with silence when the context has the part offsets (ADR 0032).
+    let audio_ms =
+        stitch_parts(&ctx.audio_parts, ctx.part_offsets_ms.as_deref()).map_err(StorageError::Io)?;
     let segs = repo.get_segments(meeting_id)?;
     let truthy = |v: Option<i64>| v.filter(|x| *x != 0);
     // `(helperCrashed && audioMs) || ctx.durationMs || audioMs || Math.max(0, ...segment ends)`

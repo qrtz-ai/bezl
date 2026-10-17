@@ -98,7 +98,11 @@
         ],
         "partOffsetMs": 3000,
         "meetingId": "m",
-        "startedAt": 1000
+        "startedAt": 1000,
+        "partOffsetsMs": [
+          0,
+          3000
+        ]
       }
     },
     {
@@ -119,6 +123,10 @@
         "partOffsetMs": 3000,
         "meetingId": "m",
         "startedAt": 1000,
+        "partOffsetsMs": [
+          0,
+          3000
+        ],
         "reconnect": {
           "attempt": 1,
           "since": 5000,
@@ -144,7 +152,12 @@
         ],
         "partOffsetMs": 5000,
         "meetingId": "m",
-        "startedAt": 1000
+        "startedAt": 1000,
+        "partOffsetsMs": [
+          0,
+          3000,
+          5000
+        ]
       }
     },
     {

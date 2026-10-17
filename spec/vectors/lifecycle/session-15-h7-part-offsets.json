@@ -1,0 +1,306 @@
+{
+  "kind": "session",
+  "name": "H7: part offsets parallel to the parts, written by the first restore; a clock that jumped back clamps to 0; a stop keeps them",
+  "from": "hardening cycle 9 (H7, ADR 0032)",
+  "initial": null,
+  "steps": [
+    {
+      "event": {
+        "type": "start-requested",
+        "meetingId": "m",
+        "at": 1000,
+        "audioPath": "/p0"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000
+      }
+    },
+    {
+      "event": {
+        "type": "start-acked"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000
+      }
+    },
+    {
+      "event": {
+        "type": "helper-lost",
+        "at": 61000,
+        "deadlineAt": 91000
+      },
+      "expect": {
+        "phase": "reconnecting",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "reconnect": {
+          "attempt": 1,
+          "since": 61000,
+          "deadlineAt": 91000
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "helper-restored",
+        "at": 76000,
+        "audioPath": "/p1"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1"
+        ],
+        "partOffsetMs": 75000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "partOffsetsMs": [
+          0,
+          75000
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "helper-lost",
+        "at": 120000,
+        "deadlineAt": 150000
+      },
+      "expect": {
+        "phase": "reconnecting",
+        "degraded": [
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1"
+        ],
+        "partOffsetMs": 75000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "partOffsetsMs": [
+          0,
+          75000
+        ],
+        "reconnect": {
+          "attempt": 1,
+          "since": 120000,
+          "deadlineAt": 150000
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "helper-restored",
+        "at": 500,
+        "audioPath": "/p2"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1",
+          "/p2"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "partOffsetsMs": [
+          0,
+          75000,
+          0
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "helper-lost",
+        "at": 130000,
+        "deadlineAt": 160000
+      },
+      "expect": {
+        "phase": "reconnecting",
+        "degraded": [
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1",
+          "/p2"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "partOffsetsMs": [
+          0,
+          75000,
+          0
+        ],
+        "reconnect": {
+          "attempt": 1,
+          "since": 130000,
+          "deadlineAt": 160000
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "helper-restored",
+        "at": 140000,
+        "audioPath": "/p3"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1",
+          "/p2",
+          "/p3"
+        ],
+        "partOffsetMs": 139000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "partOffsetsMs": [
+          0,
+          75000,
+          0,
+          139000
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "stop-requested",
+        "reason": "manual",
+        "at": 200000
+      },
+      "expect": {
+        "phase": "stopping",
+        "degraded": [
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1",
+          "/p2",
+          "/p3"
+        ],
+        "partOffsetMs": 139000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "partOffsetsMs": [
+          0,
+          75000,
+          0,
+          139000
+        ],
+        "stopReason": "manual",
+        "stoppedAt": 200000
+      }
+    },
+    {
+      "event": {
+        "type": "stopped",
+        "at": 200100
+      },
+      "expect": {
+        "phase": "processing",
+        "degraded": [
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1",
+          "/p2",
+          "/p3"
+        ],
+        "partOffsetMs": 139000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "partOffsetsMs": [
+          0,
+          75000,
+          0,
+          139000
+        ],
+        "stopReason": "manual",
+        "stoppedAt": 200000
+      }
+    },
+    {
+      "event": {
+        "type": "processing-done"
+      },
+      "expect": {
+        "phase": "done",
+        "degraded": [
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1",
+          "/p2",
+          "/p3"
+        ],
+        "partOffsetMs": 139000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "partOffsetsMs": [
+          0,
+          75000,
+          0,
+          139000
+        ],
+        "stopReason": "manual",
+        "stoppedAt": 200000
+      }
+    },
+    {
+      "event": {
+        "type": "start-requested",
+        "meetingId": "m2",
+        "at": 300000,
+        "audioPath": "/q0"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/q0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m2",
+        "startedAt": 300000
+      }
+    }
+  ]
+}

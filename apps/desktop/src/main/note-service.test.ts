@@ -19,6 +19,7 @@ import {
 import { DatabaseSync } from 'node:sqlite';
 import { openDatabase } from '../worker/db';
 import { createWorkerHandlers } from '../worker/handlers';
+import { gapPadBytes } from '../worker/wav-repair';
 import { DELETE_WHILE_RECORDING, NoteService } from './note-service';
 import type { WorkerClient } from './worker-client';
 
@@ -346,7 +347,12 @@ describe('NoteService lifecycle (integration with mock helper + real worker hand
     await r.note.stop();
     await until(() => r.note.view().phase === 'done');
     expect(fs.existsSync(parts[1]!)).toBe(false);
-    expect(fs.statSync(parts[0]!).size).toBe(44 + 2 * 1600 * 2);
+    // H7: the reconnect gap is silence, so the second part starts at its offset in the stitched file.
+    const pad = gapPadBytes(offset, 3200, { byteRate: 32000, blockAlign: 2 });
+    expect(pad).toBe(
+      Math.max(0, Math.floor((offset * 32000) / 2000) * 2 - 3200),
+    );
+    expect(fs.statSync(parts[0]!).size).toBe(44 + 3200 + pad + 3200);
     expect(r.note.view().pipeline?.stopReason).toBe('manual');
   });
 

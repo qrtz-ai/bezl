@@ -676,7 +676,11 @@
           "/p0",
           "/p9"
         ],
-        "partOffsetMs": 400
+        "partOffsetMs": 400,
+        "partOffsetsMs": [
+          0,
+          400
+        ]
       },
       {
         "phase": "stopping",
