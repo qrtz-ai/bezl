@@ -59,12 +59,26 @@ export function liveCaptureStatus(
  * N95 (ADR 0062): why live transcription stopped, as the live notice says it. Not installed → install it; an expired
  * or stale revocation list or a revoked release → connect to update; anything else → the audio is still recorded.
  */
+const ASR_UNAVAILABLE_LABEL: Record<
+  NonNullable<SessionView['asrUnavailable']>,
+  string
+> = {
+  'not-installed': 'install qrtz speech',
+  stale: 'connect to update',
+  revoked: 'connect to update',
+  crashed: 'speech stopped, audio is still recorded',
+  'start-failed': 'speech stopped, audio is still recorded',
+  timeout: 'speech stopped, audio is still recorded',
+  'protocol-violations': 'speech stopped, audio is still recorded',
+  network: 'speech stopped, audio is still recorded',
+  cancelled: 'speech stopped, audio is still recorded',
+};
+
+/** Exhaustive over the zod enum: renaming a reason fails the typecheck instead of falling through to a default. */
 export function asrUnavailableLabel(
   r: NonNullable<SessionView['asrUnavailable']>,
 ): string {
-  if (r === 'not-installed') return 'install qrtz speech';
-  if (r === 'stale' || r === 'revoked') return 'connect to update';
-  return 'speech stopped, audio is still recorded';
+  return ASR_UNAVAILABLE_LABEL[r];
 }
 
 /** N35: what a failed capture device took away, as the meeting notice says it (not a permission revoke). */
