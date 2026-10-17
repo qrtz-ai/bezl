@@ -2,6 +2,7 @@
 //! undo window) forgets them, a meeting pending delete never reads or writes them, and an attempt still running
 //! across a delete doesn't store them again. Over a fake model that fails the 2nd of 2 map calls: after the
 //! delete, summarizing the same id again must call the model for both parts (a cache hit would make it one).
+//! N128: the delete counts that fence running attempts are kept only while an attempt for that id is in flight.
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -43,11 +44,15 @@ fn meeting_of(lines: i64) -> Loaded {
     }
 }
 
-/// Counts map calls; the 2nd map call of the whole run fails. `on_first_map` runs inside the first map call.
+/// Counts map calls; the 2nd map call of the whole run fails (`fail_at` to change it). `on_first_map` runs inside
+/// the first map call; map call `hang_at` never answers (after `started` fires).
 #[derive(Default)]
 struct Model {
     maps: AtomicUsize,
     on_first_map: Mutex<Option<Box<dyn FnOnce() + Send>>>,
+    fail_at: Option<usize>,
+    hang_at: Option<usize>,
+    started: tokio::sync::Notify,
 }
 
 impl Model {
@@ -66,7 +71,11 @@ impl OnDeviceModel for Model {
                     f();
                 }
             }
-            if n == 2 {
+            if Some(n) == self.hang_at {
+                self.started.notify_one();
+                std::future::pending::<()>().await;
+            }
+            if n == self.fail_at.unwrap_or(2) {
                 return Err(OnDeviceError::Failed("model failed".into()));
             }
         }
@@ -229,4 +238,66 @@ async fn note_delete_forgets_the_part_summaries() {
 #[tokio::test]
 async fn note_delete_with_an_undo_window_forgets_them_and_the_tombstone_keeps_them_out() {
     through_note_delete(60_000).await;
+}
+
+// N128: the delete counts that fence off running attempts are kept only while an attempt is in flight.
+
+#[tokio::test]
+async fn deletes_with_no_attempt_in_flight_keep_nothing() {
+    let e = OnDeviceSummaries::new(Arc::new(Model::default()));
+    for i in 0..10_000 {
+        e.forget(&format!("deleted-{i}"));
+    }
+    assert_eq!(e.tracked_deletes(), 0);
+    assert_eq!(e.cached_meetings(), 0);
+}
+
+#[tokio::test]
+async fn a_delete_inside_an_attempt_is_tracked_only_until_that_attempt_ends() {
+    let m = Arc::new(Model::default());
+    let slot: Arc<OnceLock<Arc<OnDeviceSummaries>>> = Arc::default();
+    let inside = Arc::new(AtomicUsize::new(usize::MAX));
+    let (s, i) = (slot.clone(), inside.clone());
+    *m.on_first_map.lock().unwrap() = Some(Box::new(move || {
+        let e = s.get().unwrap();
+        e.forget(ID);
+        i.store(e.tracked_deletes(), Ordering::SeqCst);
+    }));
+    let e = Arc::new(two_parts(OnDeviceSummaries::new(m.clone())));
+    let _ = slot.set(e.clone());
+    first_attempt_fails(&e, &m).await;
+    assert_eq!(inside.load(Ordering::SeqCst), 1, "fenced while its attempt ran");
+    assert_eq!(e.tracked_deletes(), 0, "and dropped with the attempt");
+    // N123 still holds: part 1 finished after the delete and wasn't stored.
+    assert_eq!(e.cached_meetings(), 0);
+    // The retry asks for both parts again (nothing was stored).
+    e.summarize(&meeting()).await.unwrap();
+    assert_eq!(m.maps() - 2, 2);
+}
+
+#[tokio::test]
+async fn a_dropped_attempt_ends_too_and_later_attempts_cache_as_usual() {
+    // Map call 1 hangs, call 3 fails.
+    let m = Arc::new(Model {
+        hang_at: Some(1),
+        fail_at: Some(3),
+        ..Model::default()
+    });
+    let e = Arc::new(two_parts(OnDeviceSummaries::new(m.clone())));
+    let run = tokio::spawn({
+        let e = e.clone();
+        async move { e.summarize(&meeting()).await }
+    });
+    m.started.notified().await;
+    assert_eq!(e.tracked_deletes(), 1, "an attempt in flight has an entry");
+    e.forget(ID);
+    run.abort(); // a timeout drops the attempt's future the same way
+    let _ = run.await;
+    assert_eq!(e.tracked_deletes(), 0, "a dropped attempt ends too");
+    // The next attempt: part 1 (call 2) is stored, part 2 (call 3) fails; the retry asks only for part 2.
+    assert!(e.summarize(&meeting()).await.is_err());
+    assert_eq!(e.cached_meetings(), 1);
+    assert_eq!(e.tracked_deletes(), 0);
+    e.summarize(&meeting()).await.unwrap();
+    assert_eq!(m.maps(), 4, "resumed from part 1");
 }

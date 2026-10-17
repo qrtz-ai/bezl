@@ -32,6 +32,79 @@ impl HelperPort for SupervisorHelper {
     }
 }
 
+/// ADR 0079 / N121: `models.warm` after a speech download (`speech.warmAfterDownload`, on by default), so the first
+/// recording doesn't pay the OS model compile. N129: a warm the helper couldn't take (not running) is remembered
+/// and sent on its next `hello`, then forgotten; the setting is read again at that point.
+pub struct ModelsWarm {
+    helper: Arc<dyn HelperPort>,
+    enabled: Arc<dyn Fn() -> bool + Send + Sync>,
+    pending: std::sync::atomic::AtomicBool,
+}
+
+impl ModelsWarm {
+    pub fn new(helper: Arc<dyn HelperPort>, enabled: Arc<dyn Fn() -> bool + Send + Sync>) -> Self {
+        ModelsWarm {
+            helper,
+            enabled,
+            pending: Default::default(),
+        }
+    }
+
+    /// Warm now, or on the next helper `hello` if the helper isn't running.
+    pub fn request(&self) {
+        use std::sync::atomic::Ordering;
+        if !(self.enabled)() {
+            return;
+        }
+        if !self.helper.send(&HelperCommand::ModelsWarm) {
+            self.pending.store(true, Ordering::SeqCst);
+            tracing::info!("models.warm: helper not running; sent when it says hello");
+        }
+    }
+
+    /// A helper process said `hello`: send the warm it missed, if any.
+    pub fn on_hello(&self) {
+        if self.pending.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            self.request();
+        }
+    }
+
+    /// A warm is waiting for the helper (tests).
+    pub fn pending(&self) -> bool {
+        self.pending.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+/// What the app takes from helper lines before the runtime and talk see them: `speech.*` (module audio
+/// attach), note speech's lines (`asr` is consumed once speech is configured), and `hello` for a pending
+/// [`ModelsWarm`] (N129; the line still reaches the runtime and talk).
+pub fn helper_line_tap(
+    attach: Arc<crate::speech::HelperAttach>,
+    note_speech: Option<Arc<crate::speech::NoteSpeech>>,
+    warm: Option<Arc<ModelsWarm>>,
+) -> crate::service::SpeechTap {
+    Arc::new(move |m: &Value| {
+        let ty = m["type"].as_str().unwrap_or_default();
+        if ty == "hello" {
+            if let Some(w) = &warm {
+                w.on_hello();
+            }
+        }
+        if ty.starts_with("speech.") {
+            attach.on_line(m);
+            return true;
+        }
+        match &note_speech {
+            Some(ns) => {
+                ns.on_helper_line(m);
+                // The module is note's only recogniser once speech is configured.
+                ty == "asr"
+            }
+            None => false,
+        }
+    })
+}
+
 /// No helper at all (missing install): every send fails like a stopped supervisor.
 pub struct NoHelper;
 impl HelperPort for NoHelper {
@@ -371,18 +444,18 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     let setup = Arc::new(crate::setup::Setup {
         speech: crate::setup::SpeechManager::with_local(b.speech.clone(), local_models, events.clone()),
     });
-    // ADR 0079 / N121: warm the just-downloaded models (`speech.warmAfterDownload`, on by default) so the first
-    // recording doesn't spend its diarizer backlog on the OS model compile.
-    if let Some(sup) = supervisor.clone() {
+    // ADR 0079 / N121: warm the just-downloaded models so the first recording doesn't spend its diarizer backlog
+    // on the OS model compile; N129: a warm the helper misses is sent on its next hello.
+    let warm = supervisor.clone().map(|sup| {
         let cfg = config.clone();
-        setup.speech.on_installed(Arc::new(move || {
-            if cfg.get()["speech"]["warmAfterDownload"].as_bool().unwrap_or(true)
-                && !SupervisorHelper(sup.clone()).send(&HelperCommand::ModelsWarm)
-            {
-                tracing::warn!("models.warm: helper not running");
-            }
-        }));
-    }
+        let w = Arc::new(ModelsWarm::new(
+            Arc::new(SupervisorHelper(sup)),
+            Arc::new(move || cfg.get()["speech"]["warmAfterDownload"].as_bool().unwrap_or(true)),
+        ));
+        let on = w.clone();
+        setup.speech.on_installed(Arc::new(move || on.request()));
+        w
+    });
     let service = crate::AppService::new(crate::AppDeps {
         info: b.info,
         config,
@@ -397,24 +470,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         events,
     });
     service.set_setup(setup.clone());
-    {
-        let (a, ns) = (attach.clone(), note_speech.clone());
-        service.set_speech_tap(Arc::new(move |m: &serde_json::Value| {
-            let ty = m["type"].as_str().unwrap_or_default();
-            if ty.starts_with("speech.") {
-                a.on_line(m);
-                return true;
-            }
-            match &ns {
-                Some(ns) => {
-                    ns.on_helper_line(m);
-                    // The module is note's only recogniser once speech is configured.
-                    ty == "asr"
-                }
-                None => false,
-            }
-        }));
-    }
+    service.set_speech_tap(helper_line_tap(attach.clone(), note_speech.clone(), warm));
     Ok(BuiltApp {
         service,
         runtime: booted.runtime,

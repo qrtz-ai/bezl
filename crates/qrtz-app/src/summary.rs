@@ -318,14 +318,31 @@ enum Piece {
 #[derive(Default)]
 struct PartCache {
     meetings: VecDeque<(String, HashMap<u64, Piece>)>,
-    /// How many times each meeting was deleted in this process (N123): an attempt that started before a delete
-    /// never writes the deleted meeting's pieces back.
-    deletes: HashMap<String, u64>,
+    /// Per meeting id with an attempt in flight: (attempts in flight, deletes since the oldest of them began).
+    /// An attempt that started before a delete never writes the deleted meeting's pieces back (N123). The entry
+    /// goes with the last attempt (N128): a delete with no attempt in flight has nothing to fence off, and an
+    /// attempt that starts after it can't see what it dropped.
+    deletes: HashMap<String, (usize, u64)>,
 }
 
 impl PartCache {
+    /// An attempt for `id` begins: the delete count to compare its writes against.
+    fn begin(&mut self, id: &str) -> u64 {
+        let e = self.deletes.entry(id.to_string()).or_default();
+        e.0 += 1;
+        e.1
+    }
+    /// An attempt for `id` ended (finished, failed or dropped); the last one takes the entry with it.
+    fn end(&mut self, id: &str) {
+        if let Some(e) = self.deletes.get_mut(id) {
+            e.0 = e.0.saturating_sub(1);
+            if e.0 == 0 {
+                self.deletes.remove(id);
+            }
+        }
+    }
     fn deletes(&self, id: &str) -> u64 {
-        self.deletes.get(id).copied().unwrap_or(0)
+        self.deletes.get(id).map_or(0, |e| e.1)
     }
     fn get(&self, id: &str, key: u64) -> Option<Piece> {
         self.meetings
@@ -353,7 +370,31 @@ impl PartCache {
     }
     fn deleted(&mut self, id: &str) {
         self.forget(id);
-        *self.deletes.entry(id.to_string()).or_default() += 1;
+        // Only attempts in flight need fencing (N128: nothing is kept for a meeting with none).
+        if let Some(e) = self.deletes.get_mut(id) {
+            e.1 += 1;
+        }
+    }
+}
+
+/// One map attempt's hold on its meeting's delete count; dropping it (also when the attempt's future is dropped
+/// by a timeout) ends the attempt.
+struct Attempt<'a> {
+    cache: &'a std::sync::Mutex<PartCache>,
+    id: &'a str,
+    deletes: u64,
+}
+
+impl<'a> Attempt<'a> {
+    fn begin(cache: &'a std::sync::Mutex<PartCache>, id: &'a str) -> Self {
+        let deletes = cache.lock().unwrap_or_else(|p| p.into_inner()).begin(id);
+        Attempt { cache, id, deletes }
+    }
+}
+
+impl Drop for Attempt<'_> {
+    fn drop(&mut self) {
+        self.cache.lock().unwrap_or_else(|p| p.into_inner()).end(self.id);
     }
 }
 
@@ -417,6 +458,12 @@ impl OnDeviceSummaries {
     #[doc(hidden)]
     pub fn cached_meetings(&self) -> usize {
         self.cache().meetings.len()
+    }
+
+    /// Meeting ids whose delete count is kept (tests, N128): only those with an attempt in flight.
+    #[doc(hidden)]
+    pub fn tracked_deletes(&self) -> usize {
+        self.cache().deletes.len()
     }
 
     fn pending_delete(&self, id: &str) -> bool {
@@ -522,7 +569,8 @@ impl OnDeviceSummaries {
     ) -> Result<Vec<SummaryReply>, OnDeviceError> {
         let mut queue: VecDeque<(String, u32)> = parts.into_iter().map(|p| (p, 0)).collect();
         let mut done: Vec<SummaryReply> = Vec::new();
-        let deletes = self.cache().deletes(id);
+        let attempt = Attempt::begin(&self.cache, id);
+        let deletes = attempt.deletes;
         while let Some((body, depth)) = queue.pop_front() {
             let key = piece_key(&c.title, &body);
             // N123: a meeting pending delete keeps nothing: no read, no write, and what it had is dropped.
