@@ -587,6 +587,24 @@
         }
       ]
     },
+    "log:write": {
+      "request": {
+        "level": "error",
+        "scope": "player",
+        "message": "media error 4"
+      },
+      "response": {
+        "accepted": true
+      }
+    },
+    "logs:export": {
+      "request": {},
+      "response": {
+        "savedTo": "/Users/me/Documents/qrtz-logs-0.2.0.log",
+        "files": 2,
+        "bytes": 48213
+      }
+    },
     "speech:status": {
       "request": null,
       "response": {

@@ -70,6 +70,28 @@ impl ShellHooks for TauriShell {
             tracing::warn!(err = %e, "notification failed");
         }
     }
+    /// ADR 0083: Settings → export logs. The e2e export dir (debug builds only) skips the dialog.
+    fn logs_save_path(&self, default_name: &str) -> Option<PathBuf> {
+        if cfg!(debug_assertions) {
+            if let Some(d) = std::env::var_os("QRTZ_EXPORT_DIR") {
+                return Some(PathBuf::from(d).join(default_name));
+            }
+        }
+        let app = self.0.get()?;
+        let mut d = app
+            .dialog()
+            .file()
+            .set_file_name(default_name)
+            .add_filter("log", &["log", "txt"]);
+        if let Ok(docs) = app.path().document_dir() {
+            d = d.set_directory(docs);
+        }
+        d.blocking_save_file().and_then(|p| p.into_path().ok())
+    }
+    /// ADR 0083: Settings → show logs: Finder with qrtz.log selected (the folder elsewhere). No URL is ever opened.
+    fn reveal(&self, dir: &std::path::Path) -> bool {
+        crate::paths::reveal(dir)
+    }
 }
 
 /// Clipboard + save dialog for `note:export`.

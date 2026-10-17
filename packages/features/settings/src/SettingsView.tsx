@@ -65,6 +65,18 @@ export default function SettingsView() {
     pauseHotkey?: string;
   };
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
+  const [logsMsg, setLogsMsg] = useState<string | null>(null);
+  // ADR 0083: the local logs (~/Library/Logs/qrtz), for sending to us when something breaks.
+  const logs = (reveal: boolean) => {
+    setLogsMsg(null);
+    void qrtz.invoke('logs:export', { reveal }).then(
+      (r) =>
+        setLogsMsg(
+          reveal ? null : r.savedTo ? `saved ${r.files} log files` : 'canceled',
+        ),
+      (e: Error) => setLogsMsg(e.message),
+    );
+  };
   const [backupBusy, setBackupBusy] = useState(false);
   const patchPrivacy = (p: Record<string, unknown>) => {
     // Optimistic so the checkbox reflects the click immediately.
@@ -540,7 +552,7 @@ export default function SettingsView() {
         <Text variant="caption" muted>
           {h ? `native helper: ${h.state} (restarts ${h.restarts})` : ''}
         </Text>
-        <Stack dir="row">
+        <Stack dir="row" gap={2}>
           <Button
             variant="ghost"
             size="sm"
@@ -549,7 +561,28 @@ export default function SettingsView() {
           >
             refresh
           </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => logs(false)}
+            data-testid="logs-export"
+          >
+            export logs
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => logs(true)}
+            data-testid="logs-show"
+          >
+            show logs
+          </Button>
         </Stack>
+        {logsMsg ? (
+          <Text variant="caption" muted data-testid="logs-result" role="status">
+            {logsMsg}
+          </Text>
+        ) : null}
       </SettingsSection>
     </Page>
   );

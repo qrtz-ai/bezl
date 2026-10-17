@@ -87,7 +87,7 @@ None open.
 
 Notes (no change needed for parity):
 
-- The Tauri build logs through `tracing` to stderr; there is no `logs/main.jsonl`. Row 23 reads the log through a
+- The Tauri build logs through `tracing` to stderr and `~/Library/Logs/qrtz/qrtz.log` (ADR 0083); there is no `logs/main.jsonl`. Row 23 reads the log through a
   test `tracing` subscriber instead.
 - `qrtz-mock-helper` gained the TS mock's knobs in `79b1728` (standup, SPEED, REVOKE, INSERT, CRASH_AFTER_MS). The
   E2E tests still use the scripted `examples/e2e_helper.rs` (written before that landed); both play the same

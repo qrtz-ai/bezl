@@ -269,6 +269,18 @@ export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
     request: { entries: [{ term: 'qrtz', aliases: ['quartz'] }] },
     response: [{ term: 'qrtz', aliases: ['quartz'] }],
   },
+  'log:write': {
+    request: { level: 'error', scope: 'player', message: 'media error 4' },
+    response: { accepted: true },
+  },
+  'logs:export': {
+    request: {},
+    response: {
+      savedTo: '/Users/me/Documents/qrtz-logs-0.2.0.log',
+      files: 2,
+      bytes: 48_213,
+    },
+  },
   'speech:status': { request: undefined, response: speechInstalled },
   'speech:check': { request: undefined, response: speechInstalled },
   'speech:download': { request: {}, response: speechDownloading },

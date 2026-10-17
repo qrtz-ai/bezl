@@ -55,6 +55,15 @@ impl Subscriptions {
 }
 
 /// Validate an outgoing event payload against the contract.
+/// Where an event payload fails its schema (paths only, no values; for logs, ADR 0083).
+pub fn validate_event_paths(event: &str, payload: &Value) -> Vec<String> {
+    contract()
+        .events
+        .get(event)
+        .map(|d| crate::contract::issue_paths(&d.payload, payload))
+        .unwrap_or_default()
+}
+
 pub fn validate_event(event: &str, payload: &Value) -> Result<(), AppError> {
     let def = contract()
         .events

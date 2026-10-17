@@ -49,24 +49,46 @@ pub fn parse_helper_line(line: &str) -> Result<Value, String> {
     if p.helper_to_host.is_valid(&v) {
         Ok(v)
     } else {
-        let msg = p
+        // ADR 0083: where the line fails, never what it says (an `asr` line carries transcript text).
+        let at = p
             .helper_to_host
             .iter_errors(&v)
             .next()
-            .map(|e| e.to_string())
-            .unwrap_or_else(|| "invalid".into());
-        Err(msg)
+            .map(|e| format!(" at /{}", e.instance_path().to_string().trim_start_matches('/')))
+            .unwrap_or_default();
+        Err(format!(
+            "type {} does not match the protocol{at}",
+            v.get("type").and_then(Value::as_str).map(short).unwrap_or("?")
+        ))
     }
 }
 
 /// Validate and encode a host → helper message as one line (sorted keys, like the golden fixtures).
 pub fn encode_host_message(msg: &Value) -> Result<String, String> {
     if !protocol().host_to_helper.is_valid(msg) {
-        return Err(format!("invalid host→helper message: {msg}"));
+        // ADR 0083: never the message itself (a summarize prompt carries the transcript, dictation.configure the
+        // dictionary); this error is logged.
+        return Err(format!(
+            "invalid host→helper message: type {} ({} bytes)",
+            msg.get("type").and_then(Value::as_str).map(short).unwrap_or("?"),
+            msg.to_string().len()
+        ));
     }
     let mut s = serde_json::to_string(msg).map_err(|e| e.to_string())?;
     s.push('\n');
     Ok(s)
+}
+
+/// A protocol `type` for an error message: kept only if it is a short identifier.
+pub(crate) fn short(t: &str) -> &str {
+    if t.len() <= 40
+        && t.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'_' || b == b'-')
+    {
+        t
+    } else {
+        "?"
+    }
 }
 
 pub fn message_type(v: &Value) -> Option<&str> {

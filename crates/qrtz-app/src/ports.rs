@@ -52,6 +52,9 @@ pub const APP_CHANNELS: &[&str] = &[
     "note:set-auto-record",
     "helper:status",
     "hud:set-expanded",
+    // ADR 0083: the local log.
+    "log:write",
+    "logs:export",
 ];
 pub const TALK_PREFIX: &str = "talk:";
 /// qrtz speech setup (onboarding, settings "speech"; ADR 0046 §7).
@@ -117,6 +120,15 @@ pub trait ShellHooks: Send + Sync {
     fn set_hud_expanded(&self, expanded: bool) -> bool;
     /// Raise an OS notification (Tauri shell); headless builds ignore it.
     fn notify(&self, _n: Notice) {}
+    /// `logs:export`: where to save the logs (the save dialog; blocking, called off the async runtime). `None` =
+    /// canceled, or no dialog in this build.
+    fn logs_save_path(&self, _default_name: &str) -> Option<std::path::PathBuf> {
+        None
+    }
+    /// `logs:export {reveal}`: show `dir` in Finder (blocking, off the async runtime). `false` = couldn't.
+    fn reveal(&self, _dir: &std::path::Path) -> bool {
+        false
+    }
 }
 
 pub struct NoShell;

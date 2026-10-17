@@ -307,6 +307,11 @@ export function createMockBridge(): TauriBridge {
       return { autoRecord: enabled };
     },
     'db:health': () => ipcSamples['db:health'].response,
+    'log:write': () => ({ accepted: true }),
+    'logs:export': ({ reveal }) =>
+      reveal
+        ? { revealed: true, files: 1, bytes: 0 }
+        : ipcSamples['logs:export'].response,
     'helper:status': () => ipcSamples['helper:status'].response,
     'permissions:get': () => perms as never,
     'permissions:request': ({ permission }) => {

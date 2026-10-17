@@ -41,6 +41,20 @@ export const AppInfo = z.object({
   electron: z.string(),
 });
 
+/** ADR 0083: renderer log lines. Never transcript, dictated or summary text, notes or titles: errors only. */
+export const LOG_MESSAGE_MAX = 1000;
+export const RendererLogLevel = z.enum(['debug', 'info', 'warn', 'error']);
+export const LogWrite = z.object({
+  level: RendererLogLevel,
+  scope: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^[a-z0-9._:-]+$/),
+  message: z.string().max(LOG_MESSAGE_MAX),
+});
+export type LogWrite = z.infer<typeof LogWrite>;
+
 export const HelperStatus = z.object({
   state: z.enum(['stopped', 'starting', 'running', 'backoff', 'failed']),
   restarts: z.number().int(),
@@ -248,6 +262,25 @@ export const ipcContract = {
     capability: 'note.write',
     request: z.object({ id: z.string().max(64), template: SummaryTemplateId }),
     response: MeetingSummary,
+  }),
+  /** One line into the local log (ADR 0083), rate-limited in the backend; `accepted: false` = dropped. */
+  'log:write': defineChannel({
+    version: 1,
+    capability: 'log.write',
+    request: LogWrite,
+    response: z.object({ accepted: z.boolean() }),
+  }),
+  /** Save every local log file as one text file where the user picks, or (`reveal`) show the log folder. */
+  'logs:export': defineChannel({
+    version: 1,
+    capability: 'logs.export',
+    request: z.object({ reveal: z.boolean().optional() }).default({}),
+    response: z.object({
+      savedTo: z.string().optional(),
+      revealed: z.boolean().optional(),
+      files: z.number().int().nonnegative(),
+      bytes: z.number().int().nonnegative(),
+    }),
   }),
   /** Floating mini HUD: grow to show the notes field, or collapse back to the strip. */
   'hud:set-expanded': defineChannel({

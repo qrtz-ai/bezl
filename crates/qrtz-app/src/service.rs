@@ -32,7 +32,12 @@ impl Events {
             Ok(()) => {
                 let _ = self.0.send((event.to_owned(), payload));
             }
-            Err(e) => tracing::error!(event, err = ?e, "dropping invalid event"),
+            // ADR 0083: the failing paths only; the issues quote the payload (`note:transcript` is transcript text).
+            Err(_) => tracing::error!(
+                event,
+                at = ?qrtz_ipc::validate_event_paths(event, &payload),
+                "dropping invalid event"
+            ),
         }
     }
     pub fn subscribe(&self) -> broadcast::Receiver<(String, Value)> {
@@ -84,6 +89,10 @@ pub struct AppService {
     speech_tap: std::sync::OnceLock<SpeechTap>,
     /// The last helper status every port has seen (`on_helper_status` finished), for readiness checks.
     delivered: std::sync::Mutex<Option<HelperStatus>>,
+    /// `log:write` rate limit (ADR 0083).
+    renderer_log: Mutex<crate::logging::RendererGate>,
+    /// The log folder `logs:export` reads (`set_log_dir`; default: the one `logging::init` opened).
+    log_dir: std::sync::OnceLock<std::path::PathBuf>,
 }
 
 /// Sees every valid helper line first; `true` = consumed (not routed to talk or the runtime).
@@ -108,7 +117,67 @@ impl AppService {
             setup: std::sync::OnceLock::new(),
             speech_tap: std::sync::OnceLock::new(),
             delivered: Default::default(),
+            renderer_log: Mutex::new(crate::logging::RendererGate::new()),
+            log_dir: std::sync::OnceLock::new(),
         })
+    }
+    /// Where `logs:export` reads the logs from (tests; the app uses the folder `logging::init` opened).
+    pub fn set_log_dir(&self, dir: std::path::PathBuf) {
+        let _ = self.log_dir.set(dir);
+    }
+    fn log_dir(&self) -> Option<std::path::PathBuf> {
+        self.log_dir
+            .get()
+            .cloned()
+            .or_else(|| crate::logging::dir().map(std::path::Path::to_path_buf))
+    }
+
+    /// `logs:export`: save one text file of every log (oldest first) where the user picks, or reveal the folder.
+    async fn export_logs(&self, reveal: bool) -> Result<Value, AppError> {
+        let dir = self.log_dir().ok_or_else(|| {
+            AppError::new(ErrorCode::Unavailable, "no log folder in this build").retryable(false)
+        })?;
+        crate::logging::flush();
+        if reveal {
+            let shell = self.shell.clone();
+            let d = dir.clone();
+            let ok = tokio::task::spawn_blocking(move || shell.reveal(&d))
+                .await
+                .unwrap_or(false);
+            if !ok {
+                return Err(AppError::new(
+                    ErrorCode::Unavailable,
+                    "couldn't open the log folder",
+                ));
+            }
+            let files = crate::logging::log_files(&dir).len();
+            return Ok(json!({"revealed": true, "files": files, "bytes": 0}));
+        }
+        let shell = self.shell.clone();
+        let header = format!(
+            "qrtz {} logs · {}/{} · {} · {}\n",
+            self.info.version,
+            self.info.platform,
+            self.info.arch,
+            self.info.shell,
+            crate::logging::os_version()
+        );
+        let name = format!("qrtz-logs-{}.log", self.info.version);
+        tokio::task::spawn_blocking(move || {
+            let Some(dest) = shell.logs_save_path(&name) else {
+                return Ok(json!({"files": 0, "bytes": 0}));
+            };
+            let (files, bytes) = crate::logging::export_to(&dir, &dest, &header).map_err(|e| {
+                AppError::new(
+                    ErrorCode::Internal,
+                    format!("couldn't save the logs ({})", e.kind()),
+                )
+            })?;
+            tracing::info!(files, bytes, "logs exported");
+            Ok(json!({"savedTo": dest.display().to_string(), "files": files, "bytes": bytes}))
+        })
+        .await
+        .map_err(|_| AppError::new(ErrorCode::Internal, "log export failed"))?
     }
     /// Speech routing sees every helper line first (`speech.attached` / `speech.attach.rejected`, N55; the
     /// part boundaries for note speech; the helper's own `asr` lines are dropped once the module transcribes).
@@ -178,6 +247,12 @@ impl AppService {
         match parse_helper_line(line) {
             Ok(msg) => {
                 let ty = msg["type"].as_str().unwrap_or_default();
+                if ty == "log" {
+                    crate::logging::helper_log(
+                        msg["level"].as_str().unwrap_or("info"),
+                        msg["msg"].as_str().unwrap_or_default(),
+                    );
+                }
                 if ty == "capture.fallback" {
                     // H8: structured capture fallback (was a free-text log line); same surface: a warn log.
                     tracing::warn!(from = %msg["from"], to = %msg["to"], reason = %msg["reason"], "capture fallback");
@@ -204,9 +279,8 @@ impl AppService {
                     self.runtime.helper_line(&msg);
                 }
             }
-            Err(e) => {
-                tracing::warn!(err = %e, line = %line.chars().take(200).collect::<String>(), "bad helper line")
-            }
+            // ADR 0083: never the line itself (an `asr` or `dictation.*` line carries what was said).
+            Err(e) => tracing::warn!(err = %e, bytes = line.len(), "bad helper line"),
         }
     }
 
@@ -257,6 +331,16 @@ impl AppService {
                 Some(h) => serde_json::to_value(h.status()).unwrap(),
                 None => json!({"state": "stopped", "restarts": 0}),
             }),
+            "log:write" => {
+                let accepted = crate::logging::renderer_log(
+                    &self.renderer_log,
+                    p["level"].as_str().unwrap_or("info"),
+                    p["scope"].as_str().unwrap_or_default(),
+                    p["message"].as_str().unwrap_or_default(),
+                );
+                Ok(json!({"accepted": accepted}))
+            }
+            "logs:export" => self.export_logs(p["reveal"].as_bool().unwrap_or(false)).await,
             "hud:set-expanded" => {
                 let e = self
                     .shell

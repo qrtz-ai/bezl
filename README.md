@@ -23,6 +23,7 @@ bun start                    # tauri dev: the Rust core + the React renderer wit
 
 - **Summaries:** written on your Mac by Apple Intelligence (macOS 26+, ADR 0075). There is no key to add: qrtz is entirely offline (ADR 0076).
 - **Packaged app:** `bun run make` runs `tauri build` (`.app` + `.dmg`). Signing and notarization: [docs/release.md](docs/release.md).
+- **Logs:** local only, at `~/Library/Logs/qrtz/qrtz.log` (`tail -f ~/Library/Logs/qrtz/qrtz.log`; older files are `qrtz.1.log` … `qrtz.4.log`, 40 MB at most). No transcript or dictated text, notes, titles or summaries go in. Settings → system → "export logs" saves one file to send us; "show logs" opens the folder in Finder. More detail: `QRTZ_LOG=debug` (ADR 0083).
 - **No Mac?** Everything except real capture runs on Linux with the Rust mock helper: `QRTZ_MOCK_HELPER=1 QRTZ_MOCK_SCENARIO=standup QRTZ_MOCK_SPEED=0.1 bun start`.
 
 ## What it does

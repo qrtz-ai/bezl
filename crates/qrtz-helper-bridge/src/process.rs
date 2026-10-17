@@ -42,6 +42,61 @@ fn signal_name(_: &std::process::ExitStatus) -> Option<String> {
     None
 }
 
+/// A helper stderr line is cut to this many bytes before it reaches the log (ADR 0083).
+pub const STDERR_LINE_MAX: usize = 2000;
+
+/// The helper's stderr (diagnostics, `logErr`) into the app log under the `helper` target, one event per line.
+/// Lines are read with a bounded buffer: a line longer than [`STDERR_LINE_MAX`] is cut, never held whole. The log
+/// sink redacts the home directory and escapes control characters.
+pub async fn log_stderr<R: tokio::io::AsyncRead + Unpin>(stderr: R) {
+    let mut r = BufReader::new(stderr);
+    let mut line = Vec::with_capacity(256);
+    let mut cut = 0usize;
+    loop {
+        let (done, used) = match r.fill_buf().await {
+            Ok([]) | Err(_) => break,
+            Ok(buf) => match buf.iter().position(|&b| b == b'\n') {
+                Some(i) => {
+                    take(&mut line, &mut cut, &buf[..i]);
+                    (true, i + 1)
+                }
+                None => {
+                    take(&mut line, &mut cut, buf);
+                    (false, buf.len())
+                }
+            },
+        };
+        r.consume(used);
+        if done {
+            emit_stderr_line(&line, cut);
+            line.clear();
+            cut = 0;
+        }
+    }
+    if !line.is_empty() {
+        emit_stderr_line(&line, cut);
+    }
+}
+
+fn take(line: &mut Vec<u8>, cut: &mut usize, b: &[u8]) {
+    let room = STDERR_LINE_MAX.saturating_sub(line.len());
+    line.extend_from_slice(&b[..b.len().min(room)]);
+    *cut += b.len().saturating_sub(room);
+}
+
+fn emit_stderr_line(line: &[u8], cut: usize) {
+    let text = String::from_utf8_lossy(line);
+    let text = text.trim_end_matches('\r');
+    if text.is_empty() && cut == 0 {
+        return;
+    }
+    if cut > 0 {
+        tracing::info!(target: "helper", stream = "stderr", cut, "{text}");
+    } else {
+        tracing::info!(target: "helper", stream = "stderr", "{text}");
+    }
+}
+
 impl Spawn for ProcessSpawn {
     fn spawn(&self) -> std::io::Result<ChildIo> {
         let mut cmd = Command::new(&self.program);
@@ -113,12 +168,7 @@ impl Spawn for ProcessSpawn {
                 }
             }
         });
-        tokio::spawn(async move {
-            let mut lines = BufReader::new(stderr).lines();
-            while let Ok(Some(l)) = lines.next_line().await {
-                tracing::debug!(target: "qrtz_helper_stderr", "{l}");
-            }
-        });
+        tokio::spawn(log_stderr(stderr));
         tokio::spawn(async move {
             let status = tokio::select! {
                 s = child.wait() => s,

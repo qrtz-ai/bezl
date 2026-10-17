@@ -41,6 +41,15 @@ Status as of M0 (2026-10-16). Items marked ☐ are tracked in PLAN.md.
 ## Privacy controls (iteration 13)
 
 - **Entirely offline** (ADR 0076): no cloud speech and no summary provider; summaries are Apple Intelligence on the Mac (ADR 0075). In qrtz's own code the only outbound requests are the signed speech-bundle downloads (qrtz-speech; plain http only to a real loopback host, N100), enforced by `qrtz-lifecycle/tests/offline_graph.rs` (ADR 0078). Open: the helper's FluidAudio model downloads (Parakeet, LocalVQE) and the OS speech-asset download still reach the network, and there is no App Sandbox (ADR 0078 follow-ups). The old `privacy.localOnly` switch is gone, and saved cloud keys are deleted at launch.
+- **Logs** (ADR 0083): local only, in `~/Library/Logs/qrtz/` (folder 0700, files 0600), size-capped at 40 MiB
+  (`qrtz.log` rotating at 8 MiB through `qrtz.1.log` … `qrtz.4.log`), written by a non-blocking writer that drops
+  lines rather than stall the app. They never hold transcript, dictated or summary text, notes, meeting titles,
+  speaker names, the dictionary, clipboard contents or secrets: call sites log ids, lengths, codes and schema paths,
+  and the sink shortens the home directory to `~`, escapes control characters and cuts long lines
+  (`qrtz-app/tests/logging_privacy.rs` runs a meeting and a dictation with sentinel text at `trace` and checks the
+  file). A release build reads only a bare level from `QRTZ_LOG`, and third-party crates log `warn` and up. The
+  renderer's `log:write` is shell-only, capped and rate-limited. Logs leave the Mac only when the user exports them
+  (Settings → export logs) and sends the file.
 - **Pause** (`recording.pause` / `recording.resume`): the helper writes silence and doesn't feed the recogniser; main also drops in-flight ASR.
 - **Excluded apps**: detection events from listed apps or platforms are dropped in main (logged without the title).
 - **Backups**: entries are restricted to `db/qrtz.db` and `audio/<safe name>.wav`. Every byte is sha256-verified before anything is written. The imported DB is integrity-checked and schema-checked, then merged without overwriting. `QRTZ_BACKUP_PATH` (which skips the dialogs, for tests) is stripped in packaged builds.

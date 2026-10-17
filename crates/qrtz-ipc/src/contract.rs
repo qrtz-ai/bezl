@@ -153,6 +153,22 @@ pub fn issues(v: &Validator, value: &Value) -> Vec<Value> {
         .collect()
 }
 
+/// Up to 10 failing instance paths (`a.b.0`), no values: what may go into a log (ADR 0083).
+pub fn issue_paths(v: &Validator, value: &Value) -> Vec<String> {
+    let mut at: Vec<String> = v
+        .iter_errors(value)
+        .take(10)
+        .map(|e| {
+            e.instance_path()
+                .to_string()
+                .trim_start_matches('/')
+                .replace('/', ".")
+        })
+        .collect();
+    at.dedup();
+    at
+}
+
 /// Golden samples (packages/core/src/ipc/samples.ts → contracts/ipc-samples.json).
 pub const SAMPLES_JSON: &str = include_str!("../../../contracts/ipc-samples.json");
 

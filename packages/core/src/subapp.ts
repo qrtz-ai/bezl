@@ -62,6 +62,8 @@ export const SHELL_MANIFEST: SubAppManifest = {
     // First-run onboarding: permissions and the speech download.
     'os.permissions',
     'config.write',
+    // ADR 0083: uncaught errors and player errors from every window go to the local log.
+    'log.write',
     'speech.read',
     'speech.manage',
   ],

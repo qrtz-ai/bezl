@@ -104,6 +104,9 @@ pub fn scripted_helper_bin() -> PathBuf {
 pub struct RecShell {
     pub notices: Mutex<Vec<Notice>>,
     pub hud: Mutex<Vec<bool>>,
+    /// `logs:export`: the "save dialog" answer, and the folders `reveal` was asked to show (ADR 0083).
+    pub logs_to: Mutex<Option<PathBuf>>,
+    pub revealed: Mutex<Vec<PathBuf>>,
 }
 impl ShellHooks for RecShell {
     fn set_hud_expanded(&self, e: bool) -> bool {
@@ -112,6 +115,13 @@ impl ShellHooks for RecShell {
     }
     fn notify(&self, n: Notice) {
         self.notices.lock().unwrap().push(n);
+    }
+    fn logs_save_path(&self, name: &str) -> Option<PathBuf> {
+        self.logs_to.lock().unwrap().as_ref().map(|d| d.join(name))
+    }
+    fn reveal(&self, dir: &Path) -> bool {
+        self.revealed.lock().unwrap().push(dir.to_path_buf());
+        true
     }
 }
 

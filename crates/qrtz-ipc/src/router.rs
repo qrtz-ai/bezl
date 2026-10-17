@@ -2,7 +2,7 @@
 //! packages/core/src/ipc/router.ts: envelope → channel → version → sub app → capability →
 //! request schema → handler → response schema. Never panics, never returns Err: failures are
 //! `{ok:false, id, error}` results exactly like the TS router.
-use crate::contract::{contract, issues, Contract, RequestSpec};
+use crate::contract::{contract, issue_paths, issues, Contract, RequestSpec};
 use crate::error::{AppError, ErrorCode};
 use async_trait::async_trait;
 use serde_json::{json, Value};
@@ -134,7 +134,8 @@ impl<H: Handler> Router<H> {
         };
         let data = self.handler.handle(channel, payload, &ctx).await?;
         if self.validate_responses && !def.response.is_valid(&data) {
-            tracing::error!(channel, issues = ?issues(&def.response, &data), "invalid handler response");
+            // ADR 0083: the paths only; an issue's message quotes the value (a transcript, a summary).
+            tracing::error!(channel, at = ?issue_paths(&def.response, &data), "invalid handler response");
             return Err(AppError::new(
                 ErrorCode::Internal,
                 format!("Handler for \"{channel}\" returned invalid data"),

@@ -15,13 +15,25 @@ use tauri::{Manager, RunEvent, WindowEvent};
 
 pub fn run() {
     let started = std::time::Instant::now();
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_env("QRTZ_LOG")
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .with_writer(std::io::stderr)
-        .try_init();
+    // ADR 0083: stderr plus the local, size-capped log file (~/Library/Logs/qrtz/qrtz.log on macOS). A release
+    // build reads only a bare level from QRTZ_LOG.
+    let release = !cfg!(debug_assertions);
+    qrtz_app::logging::init(qrtz_app::logging::LogOptions {
+        dir: qrtz_app::logging::log_dir(
+            std::env::consts::OS,
+            qrtz_app::logging::home_dir().as_deref(),
+            |k| std::env::var(k).ok(),
+        ),
+        release,
+        env_filter: std::env::var("QRTZ_LOG").ok(),
+        version: env!("CARGO_PKG_VERSION").into(),
+        build: format!(
+            "{} {} tauri {}",
+            if release { "release" } else { "debug" },
+            option_env!("QRTZ_BUILD_ID").unwrap_or("dev"),
+            tauri::VERSION
+        ),
+    });
 
     let mut builder = tauri::Builder::default();
     // A second launch focuses the running app (Electron requestSingleInstanceLock). Off in e2e, where several

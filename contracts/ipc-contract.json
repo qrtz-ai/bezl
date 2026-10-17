@@ -4514,6 +4514,96 @@
         "additionalProperties": false
       }
     },
+    "log:write": {
+      "version": 1,
+      "capability": "log.write",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "level": {
+              "type": "string",
+              "enum": [
+                "debug",
+                "info",
+                "warn",
+                "error"
+              ]
+            },
+            "scope": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z0-9._:-]+$"
+            },
+            "message": {
+              "type": "string",
+              "maxLength": 1000
+            }
+          },
+          "required": [
+            "level",
+            "scope",
+            "message"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accepted"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "logs:export": {
+      "version": 1,
+      "capability": "logs.export",
+      "request": {
+        "optional": true,
+        "schema": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "reveal": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "savedTo": {
+            "type": "string"
+          },
+          "revealed": {
+            "type": "boolean"
+          },
+          "files": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "files",
+          "bytes"
+        ],
+        "additionalProperties": false
+      }
+    },
     "hud:set-expanded": {
       "version": 1,
       "capability": "note.record",
@@ -8294,6 +8384,7 @@
         "talk.dictate",
         "os.permissions",
         "config.write",
+        "log.write",
         "speech.read",
         "speech.manage"
       ]
@@ -8331,7 +8422,8 @@
         "helper.status",
         "data.backup",
         "speech.read",
-        "speech.manage"
+        "speech.manage",
+        "logs.export"
       ]
     }
   ],

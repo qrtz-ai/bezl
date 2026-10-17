@@ -44,24 +44,40 @@ pub fn protocol() -> &'static SpeechProtocol {
 }
 
 /// Schema check of one module line (no bounds/state checks; see `validate::OutputValidator`).
+/// A message's `type` for an error: kept only if it is a short identifier.
+fn short_type(v: &Value) -> &str {
+    match v.get("type").and_then(Value::as_str) {
+        Some(t)
+            if t.len() <= 40
+                && t.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b)) =>
+        {
+            t
+        }
+        _ => "?",
+    }
+}
+
 pub fn parse_speech_line(line: &str) -> Result<Value, String> {
     let v: Value = serde_json::from_str(line.trim()).map_err(|_| "invalid json".to_string())?;
     let p = protocol();
     if p.speech_to_host.is_valid(&v) {
         Ok(v)
     } else {
-        Err(p
+        // ADR 0083: where the line fails, never what it says (`words` carry transcript text); this is logged.
+        let at = p
             .speech_to_host
             .iter_errors(&v)
             .next()
-            .map(|e| e.to_string())
-            .unwrap_or_else(|| "invalid".into()))
+            .map(|e| format!(" at /{}", e.instance_path().to_string().trim_start_matches('/')))
+            .unwrap_or_default();
+        Err(format!("type {} does not match the protocol{at}", short_type(&v)))
     }
 }
 
 pub fn encode_host_to_speech(msg: &Value) -> Result<String, String> {
     if !protocol().host_to_speech.is_valid(msg) {
-        return Err(format!("invalid host→speech message: {msg}"));
+        return Err(format!("invalid host→speech message: type {}", short_type(msg)));
     }
     let mut s = serde_json::to_string(msg).map_err(|e| e.to_string())?;
     s.push('\n');

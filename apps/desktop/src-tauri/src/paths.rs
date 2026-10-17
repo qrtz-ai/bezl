@@ -68,3 +68,41 @@ pub fn helper_spawn() -> Option<(ProcessSpawn, HelperAvailability)> {
     }
     None
 }
+
+/// Show `dir` in the file manager (Finder selects `qrtz.log` if it exists). The program is fixed and the argument
+/// is a local path, so this can't open a URL. On unix the spawn takes the N98 fork guard, like every qrtz child.
+pub fn reveal(dir: &std::path::Path) -> bool {
+    use std::process::{Command, Stdio};
+    let log = dir.join(qrtz_app::logging::LOG_FILE);
+    let mut cmd = if cfg!(target_os = "macos") {
+        let mut c = Command::new("/usr/bin/open");
+        if log.is_file() {
+            c.arg("-R").arg(&log);
+        } else {
+            c.arg(dir);
+        }
+        c
+    } else if cfg!(windows) {
+        let mut c = Command::new("explorer");
+        c.arg(dir);
+        c
+    } else {
+        let mut c = Command::new("xdg-open");
+        c.arg(dir);
+        c
+    };
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(unix)]
+    let child = qrtz_cloexec::spawn(|| cmd.spawn());
+    #[cfg(not(unix))]
+    let child = cmd.spawn();
+    match child.and_then(|mut c| c.wait()) {
+        Ok(st) => st.success(),
+        Err(e) => {
+            tracing::warn!(kind = %e.kind(), "couldn't open the log folder");
+            false
+        }
+    }
+}
