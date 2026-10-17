@@ -144,6 +144,65 @@ impl SessionPin {
     pub fn open_files(&self) -> Result<ModuleFiles, SpeechError> {
         files::open_module_files(&self.dir, &self.manifest)
     }
+
+    /// A safe-point check for a running session (N66): `true` once any applied list denies the pinned version.
+    /// The session then finishes the utterance in flight and ends; the rollback or fixed install runs once idle.
+    pub fn revoked(&self) -> bool {
+        self.inner.lock().unwrap().state.denied.contains(&self.version)
+    }
+}
+
+/// Whether the on-device module can run a session now, and if not, why (talk picks its engine from this).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase", tag = "state")]
+pub enum SpeechAvailability {
+    Ready {
+        version: String,
+    },
+    NotInstalled,
+    /// The current version is revoked and could not be replaced: with an expired list there is no rollback or
+    /// install (fail closed, ADR 0046 §4b); with a fresh one the replacement is pending (busy or downloading).
+    Revoked {
+        version: String,
+        list_expired: bool,
+    },
+    Stale {
+        days: u64,
+    },
+}
+
+/// The engine a talk session or a note recording uses (ADR 0046 §4b, Bozniak 08:31 PT).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase", tag = "engine")]
+pub enum EngineChoice {
+    OnDevice,
+    /// The user's cloud engine (ElevenLabs, host-side), only if they turned it on.
+    Cloud,
+    /// Speech unavailable: the UI says so (with the expired-list notice when `list_expired`). Capture does not
+    /// start: never record silently with no transcript.
+    Unavailable {
+        reason: String,
+        list_expired: bool,
+    },
+}
+
+pub fn choose_engine(a: &SpeechAvailability, cloud_enabled: bool) -> EngineChoice {
+    match a {
+        SpeechAvailability::Ready { .. } => EngineChoice::OnDevice,
+        _ if cloud_enabled => EngineChoice::Cloud,
+        SpeechAvailability::NotInstalled => EngineChoice::Unavailable {
+            reason: "not-installed".into(),
+            list_expired: false,
+        },
+        SpeechAvailability::Revoked { list_expired, .. } => EngineChoice::Unavailable {
+            reason: "revoked".into(),
+            list_expired: *list_expired,
+        },
+        SpeechAvailability::Stale { .. } => EngineChoice::Unavailable {
+            reason: "stale".into(),
+            list_expired: true,
+        },
+    }
 }
 
 impl Drop for SessionPin {
@@ -331,6 +390,24 @@ impl SpeechStore {
     pub fn revocation(&self, now_ms: u64) -> Revocation {
         let eff = self.effective_now(now_ms);
         Self::revocation_of(&self.lock().state, eff)
+    }
+
+    /// What [`Self::pin_session`] would say, without pinning or moving anything.
+    pub fn availability(&self, now_ms: u64) -> SpeechAvailability {
+        let g = self.lock();
+        let eff = g.state.clock_hwm.max(now_ms);
+        let rev = Self::revocation_of(&g.state, eff);
+        match g.state.current.clone() {
+            None => SpeechAvailability::NotInstalled,
+            Some(v) if g.state.denied.contains(&v) => SpeechAvailability::Revoked {
+                version: v,
+                list_expired: rev.expired,
+            },
+            Some(_) if rev.stale => SpeechAvailability::Stale {
+                days: rev.age_ms / DAY_MS,
+            },
+            Some(version) => SpeechAvailability::Ready { version },
+        }
     }
 
     pub fn denylist_fresh(&self, now_ms: u64) -> bool {

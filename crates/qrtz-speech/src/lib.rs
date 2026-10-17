@@ -14,7 +14,9 @@ pub use engine::{
     Channel, EngineInfo, EngineKind, FailReason, SessionKind, SessionSpec, SpeakerId, SpeakerMode,
     SpeechEngine, SpeechEvent, SpeechSession, StatusError,
 };
-pub use store::{Revocation, RollbackKind, SpeechStore, StoreStatus};
+pub use store::{
+    choose_engine, EngineChoice, Revocation, RollbackKind, SpeechAvailability, SpeechStore, StoreStatus,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum SpeechError {

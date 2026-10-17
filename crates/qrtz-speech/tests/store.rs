@@ -7,7 +7,7 @@ use qrtz_speech::bundle::Manifest;
 use qrtz_speech::download::{DownloadControl, Downloader, Progress};
 use qrtz_speech::files::ModuleFiles;
 use qrtz_speech::update::{HealthCheck, UpdateOutcome, Updater};
-use qrtz_speech::{RollbackKind, SpeechError, SpeechStore};
+use qrtz_speech::{choose_engine, EngineChoice, RollbackKind, SpeechAvailability, SpeechError, SpeechStore};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -776,4 +776,109 @@ async fn n67_a_corrupt_state_with_no_good_copy_fails_closed() {
         SpeechStore::open(e.store.root(), APP, pk, rootpk),
         Err(SpeechError::StateCorrupt)
     ));
+}
+
+// ---- A revoked version on an expired list (Bozniak, 08:31 PT): fail closed, fall back, recover ----
+
+/// 1.1.0 revoked by a list that is itself expired: it stops, nothing rolls back.
+async fn revoked_on_an_expired_list() -> (Env, u64) {
+    let e = two_versions().await;
+    let later = NOW + 10 * DAY;
+    let (d, s) = denylist_at(&e.sk, "k1", 2, NOW + DAY, NOW + 8 * DAY, &["1.1.0"]);
+    assert_eq!(e.store.apply_denylist(&d, &s, later).unwrap(), None);
+    (e, later)
+}
+
+#[tokio::test]
+async fn r1_a_stopped_revoked_version_falls_back_to_cloud_or_says_unavailable() {
+    let (e, later) = revoked_on_an_expired_list().await;
+    let a = e.store.availability(later);
+    assert_eq!(
+        a,
+        SpeechAvailability::Revoked {
+            version: "1.1.0".into(),
+            list_expired: true
+        }
+    );
+    assert_eq!(choose_engine(&a, true), EngineChoice::Cloud);
+    assert_eq!(
+        choose_engine(&a, false),
+        EngineChoice::Unavailable {
+            reason: "revoked".into(),
+            list_expired: true
+        },
+        "speech-unavailable plus the expired-list notice"
+    );
+    // The module never starts on it (no silent capture): pin_session refuses, still no rollback.
+    assert!(matches!(
+        e.store.pin_session(later).unwrap_err(),
+        SpeechError::Denied(_)
+    ));
+    assert_eq!(e.store.state().current.as_deref(), Some("1.1.0"));
+    assert_eq!(e.store.active_sessions(), 0);
+    assert_eq!(
+        choose_engine(&SpeechAvailability::NotInstalled, false),
+        EngineChoice::Unavailable {
+            reason: "not-installed".into(),
+            list_expired: false
+        }
+    );
+}
+
+#[tokio::test]
+async fn r2_a_fresh_list_rolls_back_to_a_clean_n_minus_1_at_once() {
+    let (e, later) = revoked_on_an_expired_list().await;
+    let (d, s) = denylist_at(&e.sk, "k1", 3, later, later + 7 * DAY, &[]);
+    let rb = e.store.apply_denylist(&d, &s, later).unwrap().unwrap();
+    assert_eq!(
+        (rb.from.as_str(), rb.to.as_deref(), rb.kind),
+        ("1.1.0", Some("1.0.0"), RollbackKind::Revoked)
+    );
+    assert_eq!(
+        e.store.availability(later),
+        SpeechAvailability::Ready {
+            version: "1.0.0".into()
+        }
+    );
+    assert_eq!(e.store.pin_session(later).unwrap().version, "1.0.0");
+}
+
+#[tokio::test]
+async fn r3_a_fresh_list_without_a_clean_n_minus_1_installs_the_fixed_version() {
+    let (e, later) = revoked_on_an_expired_list().await;
+    // The fresh list denies N-1 too; the server has the fix.
+    let (d, s) = denylist_at(&e.sk, "k1", 3, later, later + 7 * DAY, &["1.0.0", "1.1.0"]);
+    e.srv.put("denylist.json", d);
+    e.srv.put("denylist.json.sig", s);
+    e.srv.publish(&bundle(&e.sk, "k1", "1.2.0", 4096));
+    let out = e.install(false).await.unwrap();
+    assert!(
+        matches!(out, UpdateOutcome::Installed { ref version, .. } if version == "1.2.0"),
+        "{out:?}"
+    );
+    assert_eq!(
+        e.store.availability(later),
+        SpeechAvailability::Ready {
+            version: "1.2.0".into()
+        }
+    );
+    assert!(!e.store.version_dir("1.1.0").exists(), "the revoked tree is gone");
+}
+
+#[tokio::test]
+async fn r4_a_running_session_on_a_revoked_version_ends_at_its_next_safe_point() {
+    let e = two_versions().await;
+    let pin = e.store.pin_session(NOW).unwrap();
+    assert!(!pin.revoked());
+    let (d, s) = denylist_at(&e.sk, "k1", 2, NOW, NOW + 7 * DAY, &["1.1.0"]);
+    assert_eq!(
+        e.store.apply_denylist(&d, &s, NOW).unwrap(),
+        None,
+        "busy: no swap under the session"
+    );
+    assert!(pin.revoked(), "the session sees it at its next safe point");
+    assert_eq!(e.store.state().pending_rollback, Some(RollbackKind::Revoked));
+    drop(pin);
+    // Idle: the next pin runs the rollback first (N66).
+    assert_eq!(e.store.pin_session(NOW).unwrap().version, "1.0.0");
 }
