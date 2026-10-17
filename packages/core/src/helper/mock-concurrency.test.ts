@@ -4,6 +4,7 @@ import {
   encodeHostMessage,
   parseHelperLine,
   CAPTURE_SILENCE,
+  CAPTURE_DEGRADED_REASON_MAX,
   HelperToHost,
   type HostToHelper,
 } from './protocol';
@@ -194,6 +195,50 @@ describe('mock helper: scripted capture.silent / capture.audible (N29)', () => {
     );
     expect(ok({ type: 'capture.audible', source: 'system' })).toBe(true);
     expect(CAPTURE_SILENCE).toEqual({ floorRms: 0.0003, afterMs: 60_000 }); // = Swift SilenceConfig.default
+  });
+});
+
+describe('mock helper: micFails → capture.degraded (N35)', () => {
+  it('the mic fails after recording.start; scripted mic silence after it is not sent; cleared on stop', async () => {
+    const { h, got, send } = rig({
+      micFails: { afterMs: 10, reason: 'device busy' },
+      silence: [
+        { source: 'mic', afterMs: 30 },
+        { source: 'system', afterMs: 30 },
+      ],
+    });
+    send({ type: 'recording.start', audioPath: '/tmp/d.wav' });
+    await tick(50);
+    expect(of(got, 'capture.degraded')).toEqual([
+      { type: 'capture.degraded', degraded: ['no-mic'], reason: 'device busy' },
+    ]);
+    expect(HelperToHost.parse(of(got, 'capture.degraded')[0])).toEqual(
+      of(got, 'capture.degraded')[0],
+    );
+    expect(of(got, 'capture.silent').map((m) => m.source)).toEqual(['system']);
+    send({ type: 'recording.stop' });
+    send({ type: 'recording.start', audioPath: '/tmp/e.wav' });
+    send({ type: 'recording.stop' });
+    await tick(30);
+    expect(of(got, 'capture.degraded')).toHaveLength(1); // the second recording's script was cleared
+    h.kill();
+  });
+  it('the wire shape: degraded non-empty from the revoke vocabulary, reason at most 200 characters', () => {
+    const ok = (m: unknown) => HelperToHost.safeParse(m).success;
+    const m = (degraded: unknown, reason: string) => ({
+      type: 'capture.degraded',
+      degraded,
+      reason,
+    });
+    expect(ok(m(['no-mic'], 'x'.repeat(CAPTURE_DEGRADED_REASON_MAX)))).toBe(
+      true,
+    );
+    expect(ok(m(['no-mic'], 'x'.repeat(CAPTURE_DEGRADED_REASON_MAX + 1)))).toBe(
+      false,
+    );
+    expect(ok(m([], 'x'))).toBe(false);
+    expect(ok(m(['transcript-gap'], 'x'))).toBe(false);
+    expect(CAPTURE_DEGRADED_REASON_MAX).toBe(200);
   });
 });
 

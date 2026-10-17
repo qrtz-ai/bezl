@@ -77,6 +77,14 @@ export function parseSilence(v: string) {
     }));
 }
 
+/**
+ * QRTZ_MOCK_MIC_FAILS="1500": the mock's in-source mic fails 1500 ms after each recording.start and it sends
+ * capture.degraded{no-mic} (N35 fault injection). Anything but a whole number of ms is ignored.
+ */
+export function parseMicFails(v: string) {
+  return /^\d+$/.test(v.trim()) ? { afterMs: Number(v.trim()) } : undefined;
+}
+
 /** QRTZ_MOCK_PERMISSIONS="screen-recording=denied,microphone=denied" (e2e fault injection). */
 function mockPermissions() {
   const out: Record<string, 'granted' | 'denied' | 'unsupported'> = {};
@@ -102,6 +110,10 @@ export function spawnHelper(): ChildHandle {
         : {}),
       ...(process.env.QRTZ_MOCK_SILENT
         ? { silence: parseSilence(process.env.QRTZ_MOCK_SILENT) }
+        : {}),
+      ...(process.env.QRTZ_MOCK_MIC_FAILS &&
+      parseMicFails(process.env.QRTZ_MOCK_MIC_FAILS)
+        ? { micFails: parseMicFails(process.env.QRTZ_MOCK_MIC_FAILS)! }
         : {}),
       ...(['ax', 'paste', 'fail'].includes(process.env.QRTZ_MOCK_INSERT ?? '')
         ? { insert: process.env.QRTZ_MOCK_INSERT as 'ax' | 'paste' | 'fail' }

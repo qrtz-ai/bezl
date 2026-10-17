@@ -57,6 +57,14 @@ export interface MockHelperOptions {
    */
   wedgeStop?: { abort?: 'ok' | 'wedged' };
   /**
+   * N35 fault injection: per recording, the in-source mic fails `afterMs` (real ms) after recording.start and the
+   * mock sends capture.degraded{degraded: ['no-mic'], reason}, like the Swift helper when the tap's or SCK's mic
+   * engine dies. Like the Swift controller (312cc83): after recording.started (the timer fires after the start is
+   * answered), once per recording, never after stop/abort (cleared with the script). The mic is no longer tracked:
+   * scripted mic silence after it is not sent.
+   */
+  micFails?: { afterMs: number; reason?: string };
+  /**
    * H8 fault injection: capture sources that fail to start on every recording.start. Each emits
    * capture.fallback{from, to, reason} before recording.started, like the Swift helper walking its source list.
    */
@@ -175,21 +183,38 @@ export function createMockHelper(
           stopDictation(dict.id, false, 'permission-revoked');
       });
   };
+  let micFailed = false;
   const armSilence = () => {
     const t0 = clock.now();
-    for (const sl of opts.silence ?? []) {
-      at(sl.afterMs, () =>
+    micFailed = false;
+    if (opts.micFails)
+      at(opts.micFails.afterMs, () => {
+        micFailed = true;
         emit({
-          type: 'capture.silent',
-          source: sl.source,
-          sinceMs:
-            sl.sinceMs ??
-            Math.max(0, clock.now() - t0 - CAPTURE_SILENCE.afterMs),
-        }),
+          type: 'capture.degraded',
+          degraded: ['no-mic'],
+          reason: opts.micFails?.reason ?? 'mock: mic device failed',
+        });
+      });
+    for (const sl of opts.silence ?? []) {
+      at(
+        sl.afterMs,
+        () =>
+          (sl.source === 'mic' && micFailed) ||
+          emit({
+            type: 'capture.silent',
+            source: sl.source,
+            sinceMs:
+              sl.sinceMs ??
+              Math.max(0, clock.now() - t0 - CAPTURE_SILENCE.afterMs),
+          }),
       );
       if (sl.audibleAfterMs !== undefined)
-        at(sl.audibleAfterMs, () =>
-          emit({ type: 'capture.audible', source: sl.source }),
+        at(
+          sl.audibleAfterMs,
+          () =>
+            (sl.source === 'mic' && micFailed) ||
+            emit({ type: 'capture.audible', source: sl.source }),
         );
     }
   };

@@ -215,6 +215,36 @@ async fn real_process_scripted_capture_fallback_silent_audible() {
 }
 
 #[tokio::test]
+async fn real_process_mic_fails_sends_capture_degraded_and_drops_mic_silence() {
+    // N35 knob of the Rust mock helper (QRTZ_MOCK_MIC_FAILS, same as the TS mock's micFails).
+    let s = Supervisor::spawn(
+        fast(),
+        Arc::new(mock(&[
+            ("QRTZ_MOCK_MIC_FAILS", "50"),
+            ("QRTZ_MOCK_SILENT", "mic@300,system@400"),
+        ])),
+    );
+    let mut rx = s.subscribe_lines();
+    s.start();
+    wait_state(&s, HelperState::Running).await;
+    let send = |v: Value| encode_host_message(&v).unwrap();
+    assert!(
+        s.send(send(
+            json!({"type": "recording.start", "audioPath": "/tmp/m.wav"})
+        ))
+        .await
+    );
+    let d = next_of(&mut rx, "capture.degraded").await;
+    assert_eq!(
+        d,
+        json!({"type": "capture.degraded", "degraded": ["no-mic"], "reason": "mock: mic device failed"})
+    );
+    // The mic is not tracked any more: the first silence after the failure is the system's.
+    assert_eq!(next_of(&mut rx, "capture.silent").await["source"], "system");
+    s.stop();
+}
+
+#[tokio::test]
 async fn real_process_crash_restarts_and_recovers() {
     let dir = tempfile::tempdir().unwrap();
     let marker = dir.path().join("crashed");

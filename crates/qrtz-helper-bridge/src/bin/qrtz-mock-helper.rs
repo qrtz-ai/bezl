@@ -9,6 +9,9 @@
 //!   QRTZ_MOCK_FALLBACK=screen>mic,mic>
 //!                                H8: capture.fallback {from, to, reason} lines before every recording.started;
 //!                                an empty `to` is null (no source left) and is followed by error audio.unavailable.
+//!   QRTZ_MOCK_MIC_FAILS=1500     N35: per recording, the in-source mic fails 1500 ms after recording.start:
+//!                                capture.degraded {degraded: ["no-mic"], reason}; scripted mic silence after it
+//!                                is not sent; cancelled by stop/abort. Same knob as the TS mock (parseMicFails).
 //!   QRTZ_MOCK_EXIT_AFTER_MS=n    exit(3) after n ms
 //!   QRTZ_MOCK_CRASH_ONCE=path    crash (exit 3) 100 ms after start unless `path` exists; creates it first
 //!   QRTZ_MOCK_GARBAGE=1          print one invalid line right after hello
@@ -72,6 +75,9 @@ fn main() {
         .as_deref()
         .map(parse_fallback)
         .unwrap_or_default();
+    let mic_fails = env("QRTZ_MOCK_MIC_FAILS").and_then(|v| v.trim().parse::<u64>().ok());
+    // The generation whose mic failed (0 = none): the mic is no longer tracked then.
+    let mic_failed = Arc::new(AtomicU64::new(0));
     // Bumped by every recording.start / stop / abort; a scripted line only goes out while its generation is current.
     let generation = Arc::new(AtomicU64::new(0));
     let out = Arc::new(Mutex::new(std::io::stdout()));
@@ -150,22 +156,38 @@ fn main() {
                     );
                 }
                 for (source, after, audible) in silence.clone() {
-                    let (say, generation) = (say.clone(), generation.clone());
+                    let (say, generation, mic_failed) = (say.clone(), generation.clone(), mic_failed.clone());
+                    let is_mic = source == "mic";
+                    let gone = move || is_mic && mic_failed.load(Ordering::SeqCst) == gen;
                     std::thread::spawn(move || {
                         std::thread::sleep(Duration::from_millis(after));
-                        if generation.load(Ordering::SeqCst) != gen {
+                        if generation.load(Ordering::SeqCst) != gen || gone() {
                             return;
                         }
                         let since = (now() - started).saturating_sub(SILENCE_AFTER_MS);
                         say(json!({"type": "capture.silent", "source": source, "sinceMs": since}));
                         let Some(audible) = audible else { return };
                         std::thread::sleep(Duration::from_millis(audible.saturating_sub(after)));
-                        if generation.load(Ordering::SeqCst) == gen {
+                        if generation.load(Ordering::SeqCst) == gen && !gone() {
                             say(json!({"type": "capture.audible", "source": source}));
                         }
                     });
                 }
                 say(json!({"type": "recording.started", "audioPath": path}));
+                // N35: like the Swift controller, only after recording.started, once per recording, never after
+                // stop/abort (the generation moves on).
+                if let Some(after) = mic_fails {
+                    let (say, generation, mic_failed) = (say.clone(), generation.clone(), mic_failed.clone());
+                    std::thread::spawn(move || {
+                        std::thread::sleep(Duration::from_millis(after));
+                        if generation.load(Ordering::SeqCst) == gen {
+                            mic_failed.store(gen, Ordering::SeqCst);
+                            say(
+                                json!({"type": "capture.degraded", "degraded": ["no-mic"], "reason": "mock: mic device failed"}),
+                            );
+                        }
+                    });
+                }
                 say(
                     json!({"type": "asr", "event": {"kind": "partial", "utteranceId": "u1", "text": "hello", "startMs": 0}}),
                 );
