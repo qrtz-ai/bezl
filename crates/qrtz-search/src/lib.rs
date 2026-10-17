@@ -5,6 +5,8 @@
 pub mod backfill;
 pub mod embedder;
 pub mod index;
+#[cfg(feature = "minilm")]
+pub mod minilm;
 pub mod rank;
 pub mod retrieve;
 

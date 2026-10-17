@@ -921,10 +921,14 @@ entry is a SQLite error ("file is not a database"); a newer schema is `Validatio
    whole run, like the TS worker; the renderer already shows progress for that.
 6. E2E: `QRTZ_BACKUP_PATH` / `QRTZ_EXPORT_DIR` drive the existing Electron specs unchanged.
 
-## 10. `qrtz-search` (index step, backfill, chat retrieval; ADR 0049)
+## 10. `qrtz-search` (index step, backfill, chat retrieval, local MiniLM; ADRs 0049, 0050)
 
 ```rust
-let embedder = qrtz_search::LazyEmbedder::none();          // full-text only; with a model: LazyEmbedder::new(loader)
+// Local all-MiniLM-L6-v2 (feature `minilm`, default). `dir` holds config.json, tokenizer.json, model.safetensors
+// from the model store; missing or unpinned files = full-text only. LazyEmbedder::none() = no model at all.
+let embedder = qrtz_search::LazyEmbedder::new(qrtz_search::minilm::loader(models_dir.join("minilm")));
+embedder.start();                                            // background load; search works meanwhile (FTS only)
+// Optional, feature `minilm-download`: qrtz_search::minilm::download(&client, qrtz_search::minilm::HF_BASE, &dir).await
 let steps = Arc::new(qrtz_search::SearchSteps::new(storage.clone(), llm_steps, embedder.clone()));
 // The runtime's StepExecutor is now `steps` (finalize/summary/resummarize go to LlmSteps, index here).
 let backfill = qrtz_search::Backfill::new(storage.clone(), Arc::new(move |id: &str| pending.has(id)));
@@ -941,4 +945,8 @@ let r = qrtz_search::retrieve(&storage, &embedder, &question, meeting_id).await?
   tombstoned meetings, and a model change re-embeds every line.
 - Stored vectors: little-endian f32 (`vec_to_blob`), the model id in `segment_vectors.model`, written with
   `NoteRepo::save_vectors_if_current` (only lines that still have the embedded text).
-- Parity: `spec/vectors/search/rank.json` and the `ranks` of `spec/stress/chat-cjk.json`.
+- MiniLM: pinned revision and SHA-256s in `minilm::{REVISION, FILES}`, 512-token truncation, mean pooling + L2,
+  vectors stored under `minilm::MODEL_ID` (`all-MiniLM-L6-v2@candle-f32`; Electron's q8 vectors get re-embedded once
+  by the backfill).
+- Parity: `spec/vectors/search/rank.json`, the `ranks` of `spec/stress/chat-cjk.json`, and
+  `spec/vectors/search/minilm.json` (with `QRTZ_MINILM_DIR` set to the weights).
