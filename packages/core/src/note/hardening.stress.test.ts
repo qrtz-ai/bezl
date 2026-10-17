@@ -179,7 +179,7 @@ describe('hardening stress: OpenRouter / network / disk-ish finalize', () => {
 describe('hardening stress: talk + note concurrency (pure)', () => {
   it('EngineArbiter failover is independent of a note pipeline advancing', async () => {
     const cloud = {
-      engine: 'deepgram' as const,
+      engine: 'elevenlabs' as const,
       push: () => {},
       finish: () =>
         new Promise<string>((_r, rej) =>

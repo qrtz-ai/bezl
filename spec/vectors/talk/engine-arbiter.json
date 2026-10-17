@@ -206,11 +206,11 @@
       "steps": [
         {
           "op": "attach",
-          "engine": "deepgram",
+          "engine": "elevenlabs",
           "at": 0,
           "expect": {
             "usingCloud": true,
-            "engine": "deepgram",
+            "engine": "elevenlabs",
             "view": [
               "",
               ""
@@ -223,7 +223,7 @@
           "at": 100,
           "expect": {
             "usingCloud": true,
-            "engine": "deepgram",
+            "engine": "elevenlabs",
             "view": [
               "",
               ""

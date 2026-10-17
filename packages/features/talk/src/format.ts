@@ -1,12 +1,11 @@
 import type { TalkEntry } from '@qrtz/core';
 
 const ENGINE: Record<TalkEntry['engine'], string> = {
-  deepgram: 'deepgram',
   elevenlabs: 'elevenlabs',
   'on-device': 'on-device',
 };
 
-/** "10:42 · Notes · deepgram · 412 ms" (latency = key-up → text in the app). */
+/** "10:42 · Notes · elevenlabs · 412 ms" (latency = key-up → text in the app). */
 export function entryMeta(e: TalkEntry, locale?: string): string {
   const time = new Date(e.at).toLocaleTimeString(locale, {
     hour: 'numeric',

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /** Where the words came from. Cloud engines stream over WebSocket; on-device is the qrtz speech module behind the helper. */
-export const TalkEngineId = z.enum(['deepgram', 'elevenlabs', 'on-device']);
+export const TalkEngineId = z.enum(['elevenlabs', 'on-device']);
 export type TalkEngineId = z.infer<typeof TalkEngineId>;
 
 export const TalkPhase = z.enum([
@@ -36,6 +36,16 @@ export const TalkLatency = z.object({
   insertedMs: z.number().optional(),
 });
 export type TalkLatency = z.infer<typeof TalkLatency>;
+
+/**
+ * A stored history entry from the removed Deepgram engine keeps its text and reads as `elevenlabs`: still a
+ * cloud engine, so history never claims it stayed on the device (crates/qrtz-talk `store::legacy_entry`).
+ */
+export function legacyTalkEntry(x: unknown): unknown {
+  if (typeof x !== 'object' || x === null || Array.isArray(x)) return x;
+  const e = x as Record<string, unknown>;
+  return e.engine === 'deepgram' ? { ...e, engine: 'elevenlabs' } : x;
+}
 
 export const TalkEntry = z.object({
   id: z.string(),

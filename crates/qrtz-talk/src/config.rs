@@ -8,7 +8,8 @@ pub struct TalkConfig {
     pub push_key: String,
     pub warm_mic: bool,
     pub pre_roll_ms: i64,
-    /// `on-device` | `auto` (= on-device here: the cloud is opt-in) | `elevenlabs` | `deepgram`.
+    /// `on-device` | `auto` (= on-device here: the cloud is opt-in) | `elevenlabs`. A legacy `deepgram` (removed engine) is migrated to `auto` by qrtz-app's config loader, and
+    /// anything else unknown is on-device too.
     pub engine: String,
     pub auto_failover: bool,
     pub auto_cleanup: bool,

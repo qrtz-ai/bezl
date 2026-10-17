@@ -61,10 +61,8 @@ export const ConfigSchema = z.object({
       warmMic: z.boolean().default(false),
       /** Audio kept from just before the key press (warm mic only). */
       preRollMs: z.number().int().min(0).max(2000).default(300),
-      /** auto: best cloud engine with a key, else on-device. */
-      engine: z
-        .enum(['auto', 'deepgram', 'elevenlabs', 'on-device'])
-        .default('auto'),
+      /** auto: on-device (the cloud is opt-in). ElevenLabs is the only cloud engine (Deepgram was removed). */
+      engine: z.enum(['auto', 'elevenlabs', 'on-device']).default('auto'),
       /** Switch to the on-device stream automatically when the cloud stream fails. */
       autoFailover: z.boolean().default(true),
       /** Clean up dictated text (fillers, punctuation, formatting). */
@@ -117,20 +115,32 @@ const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /**
- * Renamed settings keys. The Note sub app was called Memo, so stored files have `memo: {...}`; it moves
- * to `note` (keys already under `note` win). Returns the input unchanged when nothing needs migrating.
+ * Legacy settings (crates/qrtz-app `migrate_legacy` does the same). The Note sub app was called Memo, so stored
+ * files have `memo: {...}`; it moves to `note` (keys already under `note` win). `talk.engine: 'deepgram'` (the
+ * engine was removed) becomes `auto`, so the rest of `talk` survives. Returns the input unchanged when nothing
+ * needs migrating.
  */
 export function migrateLegacyConfig(raw: unknown): {
   raw: unknown;
   migrated: boolean;
 } {
-  if (!isObj(raw) || !('memo' in raw)) return { raw, migrated: false };
-  const { memo, ...rest } = raw;
-  const note = {
-    ...(isObj(memo) ? memo : {}),
-    ...(isObj(rest.note) ? rest.note : {}),
-  };
-  return { raw: { ...rest, note }, migrated: true };
+  if (!isObj(raw)) return { raw, migrated: false };
+  let out: Record<string, unknown> = raw;
+  let migrated = false;
+  if ('memo' in out) {
+    const { memo, ...rest } = out;
+    const note = {
+      ...(isObj(memo) ? memo : {}),
+      ...(isObj(rest.note) ? rest.note : {}),
+    };
+    out = { ...rest, note };
+    migrated = true;
+  }
+  if (isObj(out.talk) && out.talk.engine === 'deepgram') {
+    out = { ...out, talk: { ...out.talk, engine: 'auto' } };
+    migrated = true;
+  }
+  return { raw: migrated ? out : raw, migrated };
 }
 
 /** Parse untrusted stored config; falls back to defaults field-by-field rather than failing. */

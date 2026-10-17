@@ -8,9 +8,9 @@
       ]
     },
     {
-      "term": "Deepgram",
+      "term": "Postgres",
       "aliases": [
-        "deep gram"
+        "post gres"
       ]
     },
     {
@@ -152,9 +152,9 @@
       "expect": "Hello 世界."
     },
     {
-      "raw": "I use see plus plus and deep gram daily",
+      "raw": "I use see plus plus and post gres daily",
       "dict": true,
-      "expect": "I use see plus and Deepgram daily."
+      "expect": "I use see plus and Postgres daily."
     }
   ],
   "dictionaryOnly": [
@@ -167,8 +167,8 @@
       "expect": "quartzite stays"
     },
     {
-      "text": "deep  gram, deep-gram",
-      "expect": "Deepgram, Deepgram"
+      "text": "post  gres, post-gres",
+      "expect": "Postgres, Postgres"
     },
     {
       "text": "see plus plus rocks",

@@ -107,6 +107,18 @@ pub enum LoadOutcome {
     Unreadable(String),
 }
 
+/// A dictation from the removed Deepgram engine keeps its text and reads as `elevenlabs`: still a cloud engine (so
+/// history never claims it stayed on the device), and the entry isn't dropped (`legacyTalkEntry` in TS).
+fn legacy_entry(mut h: Value) -> Value {
+    if let Some(o) = h
+        .as_object_mut()
+        .filter(|o| o.get("engine").is_some_and(|e| e == "deepgram"))
+    {
+        o.insert("engine".into(), Value::from("elevenlabs"));
+    }
+    h
+}
+
 /// Parse a talk.json body the way TS does. `None` = not a JSON object (corrupt).
 pub fn parse(bytes: &[u8]) -> Option<(Store, usize)> {
     let v: Value = serde_json::from_slice(bytes).ok()?;
@@ -117,6 +129,7 @@ pub fn parse(bytes: &[u8]) -> Option<(Store, usize)> {
     let mut dropped = 0;
     let history: Vec<TalkEntry> = items("history")
         .into_iter()
+        .map(legacy_entry)
         .filter_map(|h| serde_json::from_value(h).map_err(|_| dropped += 1).ok())
         .collect();
     let dictionary: Vec<DictionaryEntry> = items("dictionary")

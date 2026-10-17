@@ -3,7 +3,7 @@
 //! and the opt-in cloud provider is wrapped here as one more `SpeechEngine` that runs in the host process (the
 //! module stays network-less).
 //!
-//! - [`CloudSpeech`]: ElevenLabs (Deepgram kept for parity) as a `SpeechEngine`.
+//! - [`CloudSpeech`]: ElevenLabs (the one cloud engine) as a `SpeechEngine`.
 //! - [`HelperAsrSpeech`]: transitional. Today's helper still sends `dictation.asr`; this adapter turns those
 //!   lines into `SpeechEvent::Words` so the service has one path. It goes away with the helper's asr lines.
 //! - [`drive`]: runs one `SpeechSession` on a task (audio / finish / cancel in, events out).

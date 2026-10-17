@@ -52,27 +52,36 @@ pub fn deep_merge(base: &Value, patch: &Value) -> Value {
     Value::Object(out)
 }
 
-/// The Note sub app was called Memo: stored `memo: {...}` moves to `note` (keys under `note` win).
+/// Legacy shapes, migrated before validation (and persisted once by [`ConfigStore::open`]):
+/// - the Note sub app was called Memo: stored `memo: {...}` moves to `note` (keys under `note` win);
+/// - `talk.engine: "deepgram"` (the Deepgram engine was removed) becomes `auto`, which is on-device unless the user
+///   picks ElevenLabs. Without this the whole `talk` section would fail the enum and reset to defaults.
 pub fn migrate_legacy(raw: &Value) -> (Value, bool) {
     let Some(o) = raw.as_object() else {
         return (raw.clone(), false);
     };
-    let Some(memo) = o.get("memo") else {
-        return (raw.clone(), false);
-    };
     let mut rest = o.clone();
-    rest.remove("memo");
-    let note = deep_merge(
-        if memo.is_object() { memo } else { &Value::Null },
-        rest.get("note").unwrap_or(&Value::Null),
-    );
-    let note = if note.is_object() {
-        note
-    } else {
-        Value::Object(Map::new())
-    };
-    rest.insert("note".into(), note);
-    (Value::Object(rest), true)
+    let mut changed = false;
+    if let Some(memo) = rest.remove("memo") {
+        let note = deep_merge(
+            if memo.is_object() { &memo } else { &Value::Null },
+            rest.get("note").unwrap_or(&Value::Null),
+        );
+        let note = if note.is_object() {
+            note
+        } else {
+            Value::Object(Map::new())
+        };
+        rest.insert("note".into(), note);
+        changed = true;
+    }
+    if let Some(talk) = rest.get_mut("talk").and_then(Value::as_object_mut) {
+        if talk.get("engine").is_some_and(|e| e == "deepgram") {
+            talk.insert("engine".into(), Value::from("auto"));
+            changed = true;
+        }
+    }
+    (Value::Object(rest), changed)
 }
 
 /// `loadConfig`: defaults + stored values; an invalid top-level key falls back to its default alone.
@@ -169,5 +178,37 @@ impl ConfigStore {
             v = &v[*p];
         }
         v.as_str().unwrap_or_default().to_owned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// Deepgram was removed: an old config that picked it still loads, keeps every other talk setting, and
+    /// falls back to `auto` (on-device unless ElevenLabs is picked); the migration is reported so it's persisted.
+    #[test]
+    fn a_config_that_picked_deepgram_loads_and_falls_back_to_auto() {
+        let old = json!({"talk": {"engine": "deepgram", "showPill": false, "pushKey": "right-option"},
+                         "privacy": {"localOnly": true}});
+        let (m, changed) = migrate_legacy(&old);
+        assert!(changed);
+        let cfg = load_config(Some(&old));
+        assert_eq!(cfg["talk"]["engine"], "auto", "{cfg}");
+        assert_eq!(cfg["talk"]["showPill"], false, "{cfg}");
+        assert_eq!(cfg["talk"]["pushKey"], "right-option", "{cfg}");
+        assert_eq!(cfg["privacy"]["localOnly"], true, "{cfg}");
+        assert_eq!(m["talk"]["engine"], "auto");
+        // And it's written back once, so the next read needs no migration.
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("config.json");
+        std::fs::write(&f, old.to_string()).unwrap();
+        let s = ConfigStore::open(&f);
+        assert_eq!(s.get()["talk"]["engine"], "auto");
+        let back: Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+        assert_eq!(back["talk"]["engine"], "auto", "{back}");
+        // An unrelated config is not rewritten.
+        assert!(!migrate_legacy(&json!({"talk": {"engine": "elevenlabs"}})).1);
     }
 }

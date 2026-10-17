@@ -9,7 +9,7 @@ use crate::arbiter::Arbiter;
 use crate::cleanup::{cleanup_dictation, CleanupLlm};
 use crate::config::TalkConfig;
 use crate::contract::*;
-use crate::provider::{DeepgramProvider, ElevenLabsProvider, StreamingProvider};
+use crate::provider::{ElevenLabsProvider, StreamingProvider};
 use crate::speech::{
     bound_final, cloud_fail_text, drive, fail_error, max_rejects, start_error, CloudSpeech, HelperAsrSpeech,
     SessionCtl, TalkValidator,
@@ -123,13 +123,11 @@ impl CleanupLlmSource for NoLlm {
 /// The cloud providers a user can opt into (`talk.engine`).
 pub struct Providers {
     pub elevenlabs: Arc<dyn StreamingProvider>,
-    pub deepgram: Arc<dyn StreamingProvider>,
 }
 impl Default for Providers {
     fn default() -> Self {
         Self {
             elevenlabs: Arc::new(ElevenLabsProvider::default()),
-            deepgram: Arc::new(DeepgramProvider::default()),
         }
     }
 }
@@ -402,7 +400,6 @@ impl TalkService {
         let p = &self.deps().providers;
         let pr = match cfg.engine.as_str() {
             "elevenlabs" => p.elevenlabs.clone(),
-            "deepgram" => p.deepgram.clone(),
             _ => return None,
         };
         let key = pr

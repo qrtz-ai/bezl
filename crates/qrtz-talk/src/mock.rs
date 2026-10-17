@@ -1,6 +1,6 @@
 //! In-process mock speech servers for tests and dev/e2e builds (never the network). [`MockCloud`] is a
-//! [`WsConnector`] that answers each request in the protocol of the provider it was meant for (ElevenLabs or
-//! Deepgram, told apart by the URL), with a scriptable failure mode per engine and an
+//! [`WsConnector`] that answers each request in the ElevenLabs protocol, with a scriptable failure mode per
+//! engine and an
 //! "offline" switch that refuses new connections and drops live ones.
 use crate::contract::Engine;
 use crate::ws::{WsConn, WsConnector, WsIn, WsOut, WsRequest};
@@ -52,12 +52,9 @@ pub struct MockCloud {
     offline: Arc<AtomicBool>,
 }
 
-pub fn engine_of(url: &str) -> Engine {
-    if url.contains("deepgram") {
-        Engine::Deepgram
-    } else {
-        Engine::Elevenlabs
-    }
+/// ElevenLabs is the only cloud engine, so every request is one.
+pub fn engine_of(_url: &str) -> Engine {
+    Engine::Elevenlabs
 }
 
 impl MockCloud {
@@ -96,35 +93,26 @@ impl MockCloud {
     }
 }
 
-fn reply(engine: Engine, text: &str, fin: bool) -> Vec<String> {
-    match engine {
-        Engine::Elevenlabs if fin => {
-            vec![json!({"message_type": "committed_transcript", "text": text}).to_string()]
-        }
-        Engine::Elevenlabs => vec![json!({"message_type": "partial_transcript", "text": text}).to_string()],
-        _ => vec![json!({"type": "Results", "is_final": fin, "from_finalize": fin,
-                         "channel": {"alternatives": [{"transcript": text}]}})
-        .to_string()],
-    }
+fn reply(text: &str, fin: bool) -> Vec<String> {
+    let kind = if fin {
+        "committed_transcript"
+    } else {
+        "partial_transcript"
+    };
+    vec![json!({"message_type": kind, "text": text}).to_string()]
 }
 
-fn is_audio(engine: Engine, f: &WsOut) -> bool {
-    match (engine, f) {
-        (Engine::Elevenlabs, WsOut::Text(t)) => {
-            serde_json::from_str::<Value>(t).is_ok_and(|v| v["commit"] == false)
-        }
-        (_, WsOut::Binary(_)) => true,
+fn is_audio(f: &WsOut) -> bool {
+    match f {
+        WsOut::Text(t) => serde_json::from_str::<Value>(t).is_ok_and(|v| v["commit"] == false),
+        WsOut::Binary(_) => true,
         _ => false,
     }
 }
 
-fn is_flush(engine: Engine, f: &WsOut) -> bool {
+fn is_flush(f: &WsOut) -> bool {
     let WsOut::Text(t) = f else { return false };
-    let v: Value = serde_json::from_str(t).unwrap_or(Value::Null);
-    match engine {
-        Engine::Elevenlabs => v["commit"] == true,
-        _ => v["type"] == "Finalize",
-    }
+    serde_json::from_str::<Value>(t).is_ok_and(|v| v["commit"] == true)
 }
 
 impl WsConnector for MockCloud {
@@ -168,7 +156,7 @@ impl WsConnector for MockCloud {
                 if mode == MockMode::Hang {
                     continue;
                 }
-                if is_audio(engine, &f) {
+                if is_audio(&f) {
                     frames += 1;
                     st.lock().unwrap().audio_frames.insert(n, frames);
                     if let MockMode::DropAfter(k) = mode {
@@ -182,23 +170,18 @@ impl WsConnector for MockCloud {
                     }
                     if let MockMode::ErrorAfter(k) = mode {
                         if frames > k {
-                            let err = match engine {
-                                Engine::Elevenlabs => {
-                                    json!({"message_type": "error", "error": "quota exceeded"})
-                                }
-                                _ => json!({"type": "error", "message": "quota exceeded"}),
-                            };
+                            let err = json!({"message_type": "error", "error": "quota exceeded"});
                             let _ = in_tx.send(WsIn::Text(err.to_string()));
                             continue;
                         }
                     }
                     let t = words[..frames.min(words.len())].join(" ");
-                    for m in reply(engine, &t, false) {
+                    for m in reply(&t, false) {
                         let _ = in_tx.send(WsIn::Text(m));
                     }
-                } else if is_flush(engine, &f) && mode != MockMode::NoFinal {
+                } else if is_flush(&f) && mode != MockMode::NoFinal {
                     tokio::time::sleep(Duration::from_millis(5)).await;
-                    for m in reply(engine, MOCK_DICTATION, true) {
+                    for m in reply(MOCK_DICTATION, true) {
                         let _ = in_tx.send(WsIn::Text(m));
                     }
                 }

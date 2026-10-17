@@ -5428,7 +5428,6 @@
           "engine": {
             "type": "string",
             "enum": [
-              "deepgram",
               "elevenlabs",
               "on-device"
             ]
@@ -5481,7 +5480,6 @@
               "engine": {
                 "type": "string",
                 "enum": [
-                  "deepgram",
                   "elevenlabs",
                   "on-device"
                 ]
@@ -5593,7 +5591,6 @@
           "engine": {
             "type": "string",
             "enum": [
-              "deepgram",
               "elevenlabs",
               "on-device"
             ]
@@ -5646,7 +5643,6 @@
               "engine": {
                 "type": "string",
                 "enum": [
-                  "deepgram",
                   "elevenlabs",
                   "on-device"
                 ]
@@ -5758,7 +5754,6 @@
           "engine": {
             "type": "string",
             "enum": [
-              "deepgram",
               "elevenlabs",
               "on-device"
             ]
@@ -5811,7 +5806,6 @@
               "engine": {
                 "type": "string",
                 "enum": [
-                  "deepgram",
                   "elevenlabs",
                   "on-device"
                 ]
@@ -5923,7 +5917,6 @@
           "engine": {
             "type": "string",
             "enum": [
-              "deepgram",
               "elevenlabs",
               "on-device"
             ]
@@ -5976,7 +5969,6 @@
               "engine": {
                 "type": "string",
                 "enum": [
-                  "deepgram",
                   "elevenlabs",
                   "on-device"
                 ]
@@ -6084,7 +6076,6 @@
             "engine": {
               "type": "string",
               "enum": [
-                "deepgram",
                 "elevenlabs",
                 "on-device"
               ]
@@ -8239,7 +8230,6 @@
           "engine": {
             "type": "string",
             "enum": [
-              "deepgram",
               "elevenlabs",
               "on-device"
             ]
@@ -8292,7 +8282,6 @@
               "engine": {
                 "type": "string",
                 "enum": [
-                  "deepgram",
                   "elevenlabs",
                   "on-device"
                 ]
@@ -8845,7 +8834,6 @@
               "type": "string",
               "enum": [
                 "auto",
-                "deepgram",
                 "elevenlabs",
                 "on-device"
               ]

@@ -3,8 +3,8 @@
 //! transport is injected ([`crate::ws::WsConnector`]); failover to the on-device stream is [`crate::arbiter`]'s.
 //!
 //! The default engine is on-device (the helper's recogniser, `dictation.asr`); a cloud provider runs only when the
-//! user picks it (`talk.engine = elevenlabs`, off by default). ElevenLabs Scribe v2 Realtime is the cloud
-//! option; Deepgram is kept behind the trait for Electron parity (`talk.engine = deepgram`).
+//! user picks it (`talk.engine = elevenlabs`, off by default). ElevenLabs Scribe v2 Realtime is the only cloud
+//! option (Deepgram was removed, decisions-parity).
 //!
 //! Text is never attributed to a speaker here: the mic can pick up a whole room. A provider frame that carries a
 //! speaker label is read for its text only (diarization belongs to the note path).
@@ -181,101 +181,6 @@ impl ProviderCodec for ElevenLabsCodec {
             )]
         } else {
             vec![]
-        }
-    }
-    fn committed(&self) -> String {
-        self.committed.clone()
-    }
-}
-
-// ---------------------------------------------------------------------------------------------------------------
-// Deepgram (`deepgramStream`): parity only, never in the default chain.
-
-pub struct DeepgramProvider {
-    pub model: String,
-    pub base: String,
-}
-impl Default for DeepgramProvider {
-    fn default() -> Self {
-        Self {
-            model: "nova-3".into(),
-            base: "wss://api.deepgram.com".into(),
-        }
-    }
-}
-
-impl StreamingProvider for DeepgramProvider {
-    fn engine(&self) -> Engine {
-        Engine::Deepgram
-    }
-    fn secret_name(&self) -> Option<&str> {
-        Some("asr.deepgram")
-    }
-    fn configured(&self, key: Option<&str>) -> bool {
-        key.is_some_and(|k| !k.is_empty())
-    }
-    fn request(&self, key: Option<&str>, dictionary: &[DictionaryEntry]) -> WsRequest {
-        let mut pairs: Vec<(&str, &str)> = vec![
-            ("model", &self.model),
-            ("encoding", "linear16"),
-            ("sample_rate", "16000"),
-            ("channels", "1"),
-            ("interim_results", "true"),
-            ("smart_format", "true"),
-            ("punctuate", "true"),
-            ("endpointing", "300"),
-        ];
-        for d in dictionary {
-            pairs.push(("keyterm", &d.term));
-        }
-        WsRequest {
-            url: format!("{}/v1/listen?{}", self.base, query(&pairs)),
-            headers: vec![],
-            protocols: vec!["token".into(), key.unwrap_or_default().to_owned()],
-        }
-    }
-    fn codec(&self) -> Box<dyn ProviderCodec> {
-        Box::new(DeepgramCodec::default())
-    }
-}
-
-#[derive(Default)]
-pub struct DeepgramCodec {
-    committed: String,
-}
-
-impl ProviderCodec for DeepgramCodec {
-    fn audio(&mut self, pcm: &[u8]) -> WsOut {
-        WsOut::Binary(pcm.to_vec())
-    }
-    fn finish(&mut self) -> Vec<WsOut> {
-        vec![WsOut::Text(json!({"type": "Finalize"}).to_string())]
-    }
-    fn on_message(&mut self, text: &str) -> Vec<CodecEvent> {
-        let Ok(m) = serde_json::from_str::<Value>(text) else {
-            return vec![];
-        };
-        if m["type"] != "Results" {
-            return vec![];
-        }
-        let t = m["channel"]["alternatives"][0]["transcript"]
-            .as_str()
-            .unwrap_or_default();
-        if m["is_final"] == true {
-            self.committed = join(&self.committed, t);
-            let mut out = vec![CodecEvent::Text {
-                committed: self.committed.clone(),
-                partial: String::new(),
-            }];
-            if m["from_finalize"] == true {
-                out.push(CodecEvent::Final(self.committed.clone()));
-            }
-            out
-        } else {
-            vec![CodecEvent::Text {
-                committed: self.committed.clone(),
-                partial: t.to_owned(),
-            }]
         }
     }
     fn committed(&self) -> String {

@@ -993,7 +993,7 @@ let talk = qrtz_talk::TalkService::new(TalkDeps {
     local: Arc<dyn qrtz_speech::SpeechEngine>,  // the on-device module engine (ADR 0046)
     helper_asr: Arc<HelperAsrSpeech>,     // transitional: the helper's dictation.asr lines as an engine
     config: Arc<dyn Fn() -> Value + Send + Sync>, // the full app config JSON
-    providers: Providers::default(),      // ElevenLabs / Deepgram endpoints
+    providers: Providers::default(),      // the ElevenLabs endpoint
     store_path: <data dir>/talk.json,     // same file and format as Electron
     store_io: Arc::new(FsIo),
     timeouts: Timeouts::default(),
@@ -1032,7 +1032,7 @@ finalize attributes per-channel speakers (`qrtz_lifecycle::speakers::attribute`;
    `toggle` → `Ok(serde_json::to_value(self.0.toggle().await)?)`; `config_changed` → `self.0.configure()`.
 3. `HelperSink`: encode the line and `SupervisorHelper::try_send`; return `false` when it isn't running.
 4. `TalkEvents`: emit onto the validated event bus (`talk:state`, `talk:history-changed`).
-5. `SecretSource`: over `wiring::platform_secrets(data)` (`SecretStore::get`); names `asr.elevenlabs`, `asr.deepgram` (the TS names).
+5. `SecretSource`: over `wiring::platform_secrets(data)` (`SecretStore::get`); name `asr.elevenlabs` (the TS name; `asr.deepgram` went with the Deepgram engine).
 6. `Clipboard`: the shell's clipboard; `config`: a closure over the config store's current JSON.
 7. `local`: your module engine (the `SpeechEngine` over the spawner) once it lands; until then `let h = Arc::new(HelperAsrSpeech::new()); local: h.clone(),
    helper_asr: h`. Once it does, `local: Arc::new(<module engine>)` and keep any `helper_asr` instance.

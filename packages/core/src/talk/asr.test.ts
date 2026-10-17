@@ -1,10 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  EngineArbiter,
-  deepgramStream,
-  elevenLabsStream,
-  type WsLike,
-} from './asr';
+import { EngineArbiter, elevenLabsStream, type WsLike } from './asr';
 
 function fakeWs() {
   const sent: (string | Uint8Array)[] = [];
@@ -38,44 +33,6 @@ function fakeWs() {
 }
 
 describe('cloud streaming engines', () => {
-  it('deepgram: token subprotocol, keyterms, buffered audio, interim partials, Finalize', async () => {
-    const f = fakeWs();
-    const texts: [string, string][] = [];
-    const s = deepgramStream({
-      ws: f.factory,
-      apiKey: 'k',
-      dictionary: [{ term: 'qrtz', aliases: [] }],
-      cb: { onText: (c, p) => texts.push([c, p]), onError: () => {} },
-    });
-    expect(f.init.protocols).toEqual(['token', 'k']);
-    expect(f.url).toContain('interim_results=true');
-    expect(f.url).toContain('keyterm=qrtz');
-    s.push(new Uint8Array([1, 2]));
-    expect(f.sent).toHaveLength(0);
-    f.ws.open();
-    expect(f.sent).toHaveLength(1);
-    const res = (t: string, isFinal: boolean, fin = false) =>
-      f.ws.msg({
-        type: 'Results',
-        is_final: isFinal,
-        from_finalize: fin,
-        channel: { alternatives: [{ transcript: t }] },
-      });
-    res('hello', false);
-    res('hello world', true);
-    res('how', false);
-    const done = s.finish();
-    expect(f.sent.at(-1)).toContain('Finalize');
-    res('how are you', true, true);
-    expect(await done).toBe('hello world how are you');
-    expect(texts).toEqual([
-      ['', 'hello'],
-      ['hello world', ''],
-      ['hello world', 'how'],
-      ['hello world how are you', ''],
-    ]);
-  });
-
   it('elevenlabs: header auth, base64 chunks, partial/committed, commit flush, errors', async () => {
     const f = fakeWs();
     const onError = vi.fn();
@@ -107,7 +64,7 @@ describe('cloud streaming engines', () => {
 
 describe('EngineArbiter (cloud primary, on-device fallback)', () => {
   const cloud = (final: Promise<string>) => ({
-    engine: 'deepgram' as const,
+    engine: 'elevenlabs' as const,
     push: () => {},
     finish: () => final,
     close: vi.fn(),
@@ -124,7 +81,7 @@ describe('EngineArbiter (cloud primary, on-device fallback)', () => {
     expect(a.view()).toEqual({ committed: '', partial: 'cloud' });
     expect(await a.finish('local words')).toEqual({
       text: 'cloud words',
-      engine: 'deepgram',
+      engine: 'elevenlabs',
       failover: false,
     });
   });

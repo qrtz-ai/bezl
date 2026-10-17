@@ -80,7 +80,7 @@ bun start                      # tauri dev (or `bun run make` for the .app + .dm
 - [ ] Chrome/Slack/VS Code (Electron fields often ignore AX writes): text arrives via `paste`, and the clipboard you had before is restored.
 - [ ] Input Monitoring / Accessibility denied: a `dictation.hotkey` error is logged and ⌘⇧Space still works.
 - [ ] Warm mic on: the first word isn't clipped (pre-roll), and the mic indicator stays on as expected.
-- [ ] With an ElevenLabs or Deepgram key: the history meta shows the engine. Pull the network mid-dictation and it shows "on-device (fallback)".
+- [ ] With an ElevenLabs key: the history meta shows the engine. Pull the network mid-dictation and it shows "on-device (fallback)".
 - [ ] Record `talk latency` log lines (firstPartialMs, finalMs, insertedMs) for each engine, and run `bun scripts/bench-talk-asr.mjs speech16k.wav 5`. Put the numbers in docs/research-talk.md §2.
 
 ## Helper mux + TCC revocation (H5/H6)

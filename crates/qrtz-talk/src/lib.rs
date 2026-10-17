@@ -2,7 +2,7 @@
 //!
 //! The helper owns the mic and feeds the default, on-device qrtz speech module behind `qrtz_speech::SpeechEngine` (`dictation.start/stop/cancel`,
 //! busy ids, warm mic, mux with a recording), so dictation works offline. An opt-in cloud provider behind
-//! [`provider::StreamingProvider`] (ElevenLabs Scribe v2 Realtime; Deepgram for parity) streams alongside when
+//! [`provider::StreamingProvider`] (ElevenLabs Scribe v2 Realtime, the only cloud engine) streams alongside when
 //! picked; [`arbiter::Arbiter`] fails over to the on-device text, or, with auto-failover off, the dictation ends
 //! with [`TalkErrorKind::Offline`]. History and dictionary live in `talk.json`, the same file and format as
 //! Electron (owner-only, atomic). ADR 0058 (on ADR 0046).

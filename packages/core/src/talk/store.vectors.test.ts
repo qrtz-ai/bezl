@@ -6,7 +6,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { DictionaryEntry, TalkEntry } from './contract';
+import { DictionaryEntry, TalkEntry, legacyTalkEntry } from './contract';
 
 const FILE = fileURLToPath(
   new URL('../../../../spec/vectors/talk/store.json', import.meta.url),
@@ -33,7 +33,10 @@ describe('talk store vectors', () => {
         const r = s.safeParse(x);
         return r.success ? [r.data as T] : [];
       });
-    const history = keep<TalkEntry>(v.file.history, TalkEntry);
+    const history = keep<TalkEntry>(
+      v.file.history.map(legacyTalkEntry),
+      TalkEntry,
+    );
     const dictionary = keep<DictionaryEntry>(
       v.file.dictionary,
       DictionaryEntry,

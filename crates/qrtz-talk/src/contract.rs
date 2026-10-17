@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize, Serializer};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Engine {
-    Deepgram,
     Elevenlabs,
     OnDevice,
 }
@@ -17,7 +16,6 @@ impl Engine {
     pub fn as_str(self) -> &'static str {
         match self {
             Engine::Elevenlabs => "elevenlabs",
-            Engine::Deepgram => "deepgram",
             Engine::OnDevice => "on-device",
         }
     }

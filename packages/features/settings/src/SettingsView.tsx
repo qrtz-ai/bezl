@@ -209,10 +209,7 @@ export default function SettingsView() {
       .catch((e: Error) => setError(e.message));
   };
   const asrEngine = talkCfg.engine ?? 'auto';
-  const asrSecret =
-    asrEngine === 'deepgram' || asrEngine === 'elevenlabs'
-      ? `asr.${asrEngine}`
-      : undefined;
+  const asrSecret = asrEngine === 'elevenlabs' ? 'asr.elevenlabs' : undefined;
   const [asrKey, setAsrKey] = useState('');
   const hasAsrKey = !!asrSecret && secrets.includes(asrSecret);
   const saveAsrKey = async (value: string | null) => {
@@ -428,7 +425,6 @@ export default function SettingsView() {
           >
             <option value="auto">auto</option>
             <option value="elevenlabs">elevenlabs scribe</option>
-            <option value="deepgram">deepgram nova-3</option>
             <option value="on-device">on-device</option>
           </Select>
         </SettingRow>

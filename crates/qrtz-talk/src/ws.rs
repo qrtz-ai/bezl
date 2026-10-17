@@ -8,7 +8,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 pub struct WsRequest {
     pub url: String,
     pub headers: Vec<(String, String)>,
-    /// `Sec-WebSocket-Protocol` values (Deepgram takes its key as the `token` subprotocol).
+    /// `Sec-WebSocket-Protocol` values, if the provider needs any.
     pub protocols: Vec<String>,
 }
 

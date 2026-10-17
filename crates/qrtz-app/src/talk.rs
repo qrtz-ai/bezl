@@ -81,7 +81,7 @@ impl TalkEvents for TalkBus {
     }
 }
 
-/// Engine keys (`asr.elevenlabs`, `asr.deepgram`) from the app secret store.
+/// The cloud engine key (`asr.elevenlabs`) from the app secret store.
 pub struct TalkSecrets(pub Arc<dyn crate::secrets::SecretStore>);
 impl SecretSource for TalkSecrets {
     fn get(&self, name: &str) -> Option<String> {
@@ -218,11 +218,7 @@ fn cloud_connector(knob: Option<&str>) -> Arc<dyn qrtz_talk::ws::WsConnector> {
     use qrtz_talk::mock::{MockCloud, MockMode};
     match knob {
         Some("echo") => Arc::new(MockCloud::new()),
-        Some("fail") => Arc::new(
-            MockCloud::new()
-                .with(Engine::Deepgram, MockMode::Refuse)
-                .with(Engine::Elevenlabs, MockMode::Refuse),
-        ),
+        Some("fail") => Arc::new(MockCloud::new().with(Engine::Elevenlabs, MockMode::Refuse)),
         _ => Arc::new(qrtz_talk::ws::TungsteniteConnector),
     }
 }

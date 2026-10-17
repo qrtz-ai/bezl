@@ -132,15 +132,15 @@ async fn talk_cloud_engine_primary_with_automatic_failover_to_on_device_when_the
     a.helper_ready().await;
     a.settings(
         "secrets:set",
-        json!({"name": "asr.deepgram", "value": "dg-test-not-real"}),
+        json!({"name": "asr.elevenlabs", "value": "el-test-not-real"}),
     )
     .await;
-    a.settings("config:set", json!({"patch": {"talk": {"engine": "deepgram"}}}))
+    a.settings("config:set", json!({"patch": {"talk": {"engine": "elevenlabs"}}}))
         .await;
     let e = a.dictate().await;
     assert_eq!(
         (e["engine"].clone(), e["failover"].clone()),
-        (json!("deepgram"), json!(false)),
+        (json!("elevenlabs"), json!(false)),
         "{e}"
     );
     a.quit().await;
@@ -153,10 +153,10 @@ async fn talk_cloud_engine_primary_with_automatic_failover_to_on_device_when_the
     b.helper_ready().await;
     b.settings(
         "secrets:set",
-        json!({"name": "asr.deepgram", "value": "dg-test-not-real"}),
+        json!({"name": "asr.elevenlabs", "value": "el-test-not-real"}),
     )
     .await;
-    b.settings("config:set", json!({"patch": {"talk": {"engine": "deepgram"}}}))
+    b.settings("config:set", json!({"patch": {"talk": {"engine": "elevenlabs"}}}))
         .await;
     let e = b.dictate().await;
     // "on-device (fallback)".
@@ -190,10 +190,10 @@ async fn talk_settings_has_a_key_for_every_automatic_behavior_and_show_pill_off_
         assert_eq!(cfg["talk"][k], on, "talk.{k}: {cfg}");
     }
     assert_eq!(cfg["talk"]["engine"], "auto", "{cfg}");
-    // Picking Deepgram (the key field shows) and turning the pill off persist.
+    // Picking ElevenLabs (the key field shows) and turning the pill off persist.
     a.settings(
         "config:set",
-        json!({"patch": {"talk": {"engine": "deepgram", "showPill": false}}}),
+        json!({"patch": {"talk": {"engine": "elevenlabs", "showPill": false}}}),
     )
     .await;
     a.quit().await;
@@ -202,7 +202,7 @@ async fn talk_settings_has_a_key_for_every_automatic_behavior_and_show_pill_off_
     let cfg = b.call("shell", "config:get", Value::Null).await;
     assert_eq!(
         (cfg["talk"]["engine"].clone(), cfg["talk"]["showPill"].clone()),
-        (json!("deepgram"), json!(false)),
+        (json!("elevenlabs"), json!(false)),
         "{cfg}"
     );
     // With the pill off a dictation still streams in the talk view (the shell's `policy::pill_wanted` reads

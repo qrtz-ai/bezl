@@ -68,6 +68,22 @@ describe('config', () => {
     expect(migrateLegacyConfig({ note: {} }).migrated).toBe(false);
     expect(migrateLegacyConfig(legacy).migrated).toBe(true);
   });
+
+  it('a config that picked the removed deepgram engine loads, keeps the rest of talk, and falls back to auto', () => {
+    const old = {
+      talk: { engine: 'deepgram', showPill: false, pushKey: 'right-option' },
+      privacy: { localOnly: true },
+    };
+    const c = loadConfig(old);
+    expect(c.talk.engine).toBe('auto');
+    expect(c.talk.showPill).toBe(false);
+    expect(c.talk.pushKey).toBe('right-option');
+    expect(c.privacy.localOnly).toBe(true);
+    expect(migrateLegacyConfig(old).migrated).toBe(true);
+    expect(
+      migrateLegacyConfig({ talk: { engine: 'elevenlabs' } }).migrated,
+    ).toBe(false);
+  });
 });
 
 describe('secrets', () => {

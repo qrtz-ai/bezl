@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// Measures streaming ASR latency for qrtz talk's cloud engines with a real key and a real speech WAV.
+// Measures streaming ASR latency for qrtz talk's cloud engine (ElevenLabs; Deepgram was removed) with a real key and a real speech WAV.
 // Streams 16 kHz mono PCM16 at real time in 100 ms frames (like the helper), then reports:
 //   first partial  = audio start → first non-empty partial
-//   final          = end of audio → final text after the flush (Finalize / commit) — the "key-up → text" ASR cost
-// Usage: QRTZ_SECRET_ASR_DEEPGRAM=… QRTZ_SECRET_ASR_ELEVENLABS=… bun scripts/bench-talk-asr.mjs speech16k.wav [runs]
+//   final          = end of audio → final text after the flush (commit) — the "key-up → text" ASR cost
+// Usage: QRTZ_SECRET_ASR_ELEVENLABS=… bun scripts/bench-talk-asr.mjs speech16k.wav [runs]
 // (Convert any file: ffmpeg -i in.m4a -ar 16000 -ac 1 -c:a pcm_s16le speech16k.wav)
 import fs from 'node:fs';
 
@@ -19,23 +19,6 @@ const runs = Number(runsArg ?? 3);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const engines = {
-  deepgram: {
-    key: process.env.QRTZ_SECRET_ASR_DEEPGRAM,
-    open: (key) =>
-      new WebSocket(
-        'wss://api.deepgram.com/v1/listen?model=nova-3&encoding=linear16&sample_rate=16000&channels=1&interim_results=true&smart_format=true',
-        ['token', key],
-      ),
-    frame: (b) => b,
-    flush: () => JSON.stringify({ type: 'Finalize' }),
-    parse: (m) =>
-      m.type === 'Results'
-        ? {
-            text: m.channel?.alternatives?.[0]?.transcript ?? '',
-            final: !!m.from_finalize,
-          }
-        : null,
-  },
   elevenlabs: {
     key: process.env.QRTZ_SECRET_ASR_ELEVENLABS,
     open: (key) =>
