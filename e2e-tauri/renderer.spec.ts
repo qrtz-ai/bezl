@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { axe } from '../e2e/axe';
+import { axe } from './axe';
 
 // The shipped renderer + createTauriTransport against the mocked Tauri IPC backend.
 async function open(page: Page, query = '') {

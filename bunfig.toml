@@ -4,6 +4,6 @@ saveTextLockfile = true
 # npm-style hoisted node_modules (the packages rely on hoisting for react and @types across workspaces).
 linker = "hoisted"
 
-[run]
-# Run package bins (vite, vitest, tauri, tsc, oxlint) on bun, so a Mac needs no separate Node.
-bun = true
+# Node-shebang tools run on bun where the scripts say so (`bun --bun run` for the Tauri app and Vite, `bun --bun`
+# vitest/tsc/oxlint in the root scripts), so `bun install && bun start` needs no Node. `bun run e2e`
+# (Playwright) runs on Node: its runner does not load specs under bun.

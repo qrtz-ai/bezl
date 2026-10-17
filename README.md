@@ -80,7 +80,7 @@ bun run make           # tauri build (.app + .dmg on macOS)
 bun run check          # lint + typecheck + vitest
 bun run check:rust     # cargo fmt --check + clippy -D warnings + cargo test --workspace
 bun run gen:contracts  # re-render contracts/*.json from the zod contract
-bun run e2e            # renderer Playwright suite (mocked backend)
+bun run e2e            # renderer Playwright suite (mocked backend; needs Node for Playwright's runner)
 bun run test:helper    # Swift XCTests
 ```
 
