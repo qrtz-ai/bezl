@@ -2,6 +2,7 @@ import type { SqlDb } from '../db/migrate';
 import type { Meeting, Segment } from './types';
 import { MeetingSummary } from './summary';
 import type { MeetingNote } from './notes';
+import SEARCH_SEGMENT_HITS_SQL from './sql/search_segment_hits.sql?raw';
 
 export interface MeetingRow extends Meeting {
   durationMs?: number;
@@ -55,17 +56,31 @@ export function toFtsQuery(input: string): string | null {
   return words.map((w) => `"${w}"*`).join(' ');
 }
 
+let txSeq = 0;
+
 export class NoteRepo {
   constructor(private readonly db: SqlDb) {}
 
+  /**
+   * Atomic block. A SAVEPOINT, so blocks nest: outside a transaction it behaves like BEGIN/COMMIT, inside one it
+   * is a sub-transaction (backup import wraps each meeting around replaceSegments/saveSummary, N11).
+   */
   tx<T>(fn: () => T): T {
-    this.db.exec('BEGIN');
+    const sp = `qrtz_tx_${++txSeq}`;
+    this.db.exec(`SAVEPOINT ${sp}`);
     try {
       const r = fn();
-      this.db.exec('COMMIT');
+      this.db.exec(`RELEASE ${sp}`);
       return r;
     } catch (e) {
-      this.db.exec('ROLLBACK');
+      // SQLite may already have rolled the whole transaction back (SQLITE_FULL/IOERR/NOMEM), taking the savepoint
+      // with it; then ROLLBACK TO fails with "no such savepoint" and must not mask the original error.
+      try {
+        this.db.exec(`ROLLBACK TO ${sp}`);
+        this.db.exec(`RELEASE ${sp}`);
+      } catch {
+        /* already rolled back */
+      }
       throw e;
     }
   }
@@ -389,21 +404,19 @@ export class NoteRepo {
   search(input: string, limit = 50): SearchHit[] {
     const q = toFtsQuery(input);
     if (!q) return [];
+    // Best line per meeting in SQL, then the `limit` best meetings (sql/search_segment_hits.sql). It used to take the
+    // 500 best *lines* and dedupe after: one long meeting full of a common word filled all 500 and hid every other
+    // meeting that mentions it (cycle 3, N10).
     const segHits = this.db
-      .prepare(
-        `SELECT s.meeting_id AS meetingId, m.title AS title, m.started_at AS startedAt, s.start_ms AS startMs,
-                snippet(segments_fts, 0, '[', ']', '…', 12) AS snippet, bm25(segments_fts) AS rank
-         FROM segments_fts JOIN segments s ON s.rowid = segments_fts.rowid JOIN meetings m ON m.id = s.meeting_id
-         WHERE segments_fts MATCH ? ORDER BY rank LIMIT 500`,
-      )
-      .all(q) as (SearchHit & { rank: number })[];
+      .prepare(SEARCH_SEGMENT_HITS_SQL)
+      .all(q, limit) as (SearchHit & { rank: number })[];
     const metaHits = this.db
       .prepare(
         `SELECT m.id AS meetingId, m.title AS title, m.started_at AS startedAt,
                 snippet(meetings_fts, -1, '[', ']', '…', 12) AS snippet, bm25(meetings_fts) AS rank
-         FROM meetings_fts JOIN meetings m ON m.rowid = meetings_fts.rowid WHERE meetings_fts MATCH ? ORDER BY rank LIMIT 100`,
+         FROM meetings_fts JOIN meetings m ON m.rowid = meetings_fts.rowid WHERE meetings_fts MATCH ? ORDER BY rank LIMIT ?`,
       )
-      .all(q) as (SearchHit & { rank: number })[];
+      .all(q, limit) as (SearchHit & { rank: number })[];
     // Also match titles of meetings without a summary yet.
     const titleHits = (
       this.db

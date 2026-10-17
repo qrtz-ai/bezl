@@ -116,6 +116,14 @@ fn to_segment(r: &Row) -> Result<Segment> {
     })
 }
 
+static TX_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Transcript hits of `search` (best line per meeting, best meetings first); the file TS runs too (N10).
+const SEARCH_SEGMENT_HITS_SQL: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../packages/core/src/note/sql/search_segment_hits.sql"
+));
+
 fn collect<T>(
     conn: &Connection,
     sql: &str,
@@ -136,19 +144,24 @@ impl<'a> NoteRepo<'a> {
         NoteRepo { conn }
     }
 
-    /// `tx`: BEGIN/COMMIT, ROLLBACK on error (SQLite has no nested BEGIN; callers must not nest).
-    fn tx<T>(&self, f: impl FnOnce() -> Result<T>) -> Result<T> {
-        self.conn.execute_batch("BEGIN")?;
-        match f() {
-            Ok(v) => {
-                self.conn.execute_batch("COMMIT")?;
-                Ok(v)
-            }
-            Err(e) => {
-                let _ = self.conn.execute_batch("ROLLBACK");
-                Err(e)
-            }
+    /// `tx`: a SAVEPOINT, so blocks nest (outside a transaction it is BEGIN/COMMIT). Rolled back on error.
+    /// Backup import wraps each meeting around `replace_segments` / `save_summary` (cycle 3, N11).
+    pub(crate) fn tx<T>(&self, f: impl FnOnce() -> Result<T>) -> Result<T> {
+        let sp = format!(
+            "qrtz_tx_{}",
+            TX_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1
+        );
+        self.conn.execute_batch(&format!("SAVEPOINT {sp}"))?;
+        let out = f().and_then(|v| {
+            self.conn.execute_batch(&format!("RELEASE {sp}"))?;
+            Ok(v)
+        });
+        if out.is_err() {
+            let _ = self
+                .conn
+                .execute_batch(&format!("ROLLBACK TO {sp}; RELEASE {sp}"));
         }
+        out
     }
 
     /// Insert or update (template is set separately, like TS).
@@ -542,21 +555,20 @@ impl<'a> NoteRepo<'a> {
                 opt_f64(r, "rank")?.unwrap_or(0.0),
             ))
         };
+        // Best line per meeting in SQL, then the `limit` best meetings. It used to take the 500 best *lines* and
+        // dedupe after, so one long meeting full of a common word hid every other meeting (cycle 3, N10).
         let seg_hits = collect(
             self.conn,
-            "SELECT s.meeting_id AS meetingId, m.title AS title, m.started_at AS startedAt, s.start_ms AS startMs,
-                snippet(segments_fts, 0, '[', ']', '…', 12) AS snippet, bm25(segments_fts) AS rank
-         FROM segments_fts JOIN segments s ON s.rowid = segments_fts.rowid JOIN meetings m ON m.id = s.meeting_id
-         WHERE segments_fts MATCH ? ORDER BY rank LIMIT 500",
-            [&q],
+            SEARCH_SEGMENT_HITS_SQL,
+            rusqlite::params![&q, limit],
             |r| hit(r, true),
         )?;
         let meta_hits = collect(
             self.conn,
             "SELECT m.id AS meetingId, m.title AS title, m.started_at AS startedAt,
                 snippet(meetings_fts, -1, '[', ']', '…', 12) AS snippet, bm25(meetings_fts) AS rank
-         FROM meetings_fts JOIN meetings m ON m.rowid = meetings_fts.rowid WHERE meetings_fts MATCH ? ORDER BY rank LIMIT 100",
-            [&q],
+         FROM meetings_fts JOIN meetings m ON m.rowid = meetings_fts.rowid WHERE meetings_fts MATCH ? ORDER BY rank LIMIT ?",
+            rusqlite::params![&q, limit],
             |r| hit(r, false),
         )?;
         // Also match titles of meetings without a summary yet.

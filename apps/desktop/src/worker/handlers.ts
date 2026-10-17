@@ -693,8 +693,10 @@ export function createWorkerHandlers(
             ? p.audioMap[path.basename(m.audioPath)]
             : undefined;
           const { audioPath: _a, ...rest } = m;
-          {
-            // (replaceSegments/saveSummary open their own transactions; SQLite has no nested BEGIN.)
+          // One meeting is one transaction (tx nests as a SAVEPOINT): a failure mid-meeting (disk full, corrupt
+          // row) must not leave a meeting row without its transcript, because a re-import skips ids already
+          // present and would never repair it (cycle 3, N11).
+          repo.tx(() => {
             repo.upsertMeeting({
               ...rest,
               ...(audio ? { audioPath: audio } : {}),
@@ -709,7 +711,7 @@ export function createWorkerHandlers(
             if (sum) repo.saveSummary(m.id, sum);
             if (hasNotes)
               for (const n of srcRepo.getNotes(m.id)) repo.addNote(m.id, n);
-          }
+          });
           imported++;
         }
         return { imported, skipped };

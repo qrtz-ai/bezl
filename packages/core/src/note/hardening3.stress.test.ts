@@ -1,10 +1,14 @@
 /**
  * Hardening cycle 3 stress scenarios (keep running on every `npm test`). See docs/hardening/LOG.md.
- * LLM transport after a 200 (N8), OpenRouter error bodies, malformed model replies.
+ * LLM transport after a 200 (N8), OpenRouter error bodies, malformed model replies; search across one huge
+ * meeting (N10); nested atomic blocks (N11).
  */
+import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import { AppError } from '../errors';
+import { migrate, migrations } from '../db/migrate';
 import { createProvider, summarizeMeeting, type FetchLike } from './llm';
+import { NoteRepo } from './repo';
 
 const segs = [
   {
@@ -107,5 +111,117 @@ describe('hardening 3: LLM failures after the status line (N8)', () => {
     );
     expect(s.provider).toBe('extractive');
     expect(s.llmError).toContain('terminated');
+  });
+});
+
+function repoWith(): { db: DatabaseSync; repo: NoteRepo } {
+  const db = new DatabaseSync(':memory:');
+  migrate(db, migrations);
+  return { db, repo: new NoteRepo(db) };
+}
+const meetingRow = (id: string, title: string, startedAt: number) => ({
+  id,
+  title,
+  platform: 'zoom' as const,
+  startedAt,
+  status: 'done' as const,
+  participants: [],
+});
+
+describe('hardening 3: search is not starved by one long meeting (N10)', () => {
+  it('a 2h all-hands that says "budget" 600 times does not hide the five other meetings that mention it', () => {
+    const { repo } = repoWith();
+    repo.upsertMeeting(meetingRow('allhands', 'All hands', 1));
+    repo.replaceSegments(
+      'allhands',
+      'live',
+      Array.from({ length: 600 }, (_, i) => ({
+        id: `a${i}`,
+        startMs: i * 10_000,
+        endMs: i * 10_000 + 9_000,
+        text: `budget budget ${i}`,
+        source: 'live' as const,
+      })),
+    );
+    for (let k = 0; k < 5; k++) {
+      repo.upsertMeeting(meetingRow(`m${k}`, `Sync ${k}`, 10 + k));
+      repo.replaceSegments(`m${k}`, 'live', [
+        {
+          id: `s${k}`,
+          startMs: 0,
+          endMs: 5_000,
+          text: `We went over the quarterly plan and the marketing budget, among a few other topics ${k}.`,
+          source: 'live',
+        },
+      ]);
+    }
+    const hits = repo.search('budget', 50);
+    expect(hits.map((h) => h.meetingId).sort()).toEqual([
+      'allhands',
+      'm0',
+      'm1',
+      'm2',
+      'm3',
+      'm4',
+    ]);
+    // One hit per meeting, each with a snippet and the timestamp of its best line.
+    for (const h of hits) {
+      expect(h.snippet).toMatch(/\[budget\]/i);
+      expect(typeof h.startMs).toBe('number');
+    }
+    // `limit` is honoured in SQL, best meetings first (the all-hands lines are the densest match).
+    expect(repo.search('budget', 2)).toHaveLength(2);
+    expect(repo.search('budget', 2)[0]!.meetingId).toBe('allhands');
+  });
+});
+
+describe('hardening 3: repo.tx nests (N11)', () => {
+  it('an inner failure rolls back only the inner block; an outer failure rolls back both', () => {
+    const { repo } = repoWith();
+    repo.tx(() => {
+      repo.upsertMeeting(meetingRow('a', 'A', 1));
+      expect(() =>
+        repo.tx(() => {
+          repo.upsertMeeting(meetingRow('b', 'B', 2));
+          throw new Error('inner');
+        }),
+      ).toThrow('inner');
+    });
+    expect(repo.getMeeting('a')).toBeDefined();
+    expect(repo.getMeeting('b')).toBeUndefined();
+    expect(() =>
+      repo.tx(() => {
+        repo.upsertMeeting(meetingRow('c', 'C', 3));
+        repo.replaceSegments('c', 'live', [
+          { id: 'x', startMs: 0, endMs: 1, text: 'hello', source: 'live' },
+        ]);
+        throw new Error('outer');
+      }),
+    ).toThrow('outer');
+    expect(repo.getMeeting('c')).toBeUndefined();
+    expect(repo.getSegments('c')).toEqual([]);
+  });
+
+  it('disk full inside a block surfaces the disk-full error, not "no such savepoint"', () => {
+    const { db, repo } = repoWith();
+    repo.upsertMeeting(meetingRow('m', 'M', 1));
+    const pages = (
+      db.prepare('PRAGMA page_count').get() as { page_count: number }
+    ).page_count;
+    db.exec(`PRAGMA max_page_count = ${pages + 2}`);
+    const big = Array.from({ length: 2_000 }, (_, i) => ({
+      id: `s${i}`,
+      startMs: i,
+      endMs: i + 1,
+      text: `segment ${i} `.repeat(20),
+      source: 'live' as const,
+    }));
+    expect(() => repo.tx(() => repo.replaceSegments('m', 'live', big))).toThrow(
+      /full/,
+    );
+    expect(repo.getSegments('m')).toEqual([]);
+    db.exec('PRAGMA max_page_count = 1073741823');
+    repo.replaceSegments('m', 'live', big);
+    expect(repo.getSegments('m')).toHaveLength(2_000);
   });
 });

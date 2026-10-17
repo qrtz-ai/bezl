@@ -144,25 +144,30 @@ impl Db {
             });
             let mut row = m.clone();
             row.audio_path = audio;
-            to.upsert_meeting(&row)?;
-            if let Some(t) = &m.template {
-                to.set_template(&m.id, t)?;
-            }
-            let segs = from.get_segments(&m.id)?;
-            for kind in [SegmentSource::Live, SegmentSource::Post] {
-                let part: Vec<_> = segs.iter().filter(|s| s.source == kind).cloned().collect();
-                if !part.is_empty() {
-                    to.replace_segments(&m.id, kind, &part)?;
+            // One meeting is one transaction: a failure mid-meeting must not leave a meeting row without its
+            // transcript, because a re-import skips ids already present and would never repair it (N11).
+            to.tx(|| {
+                to.upsert_meeting(&row)?;
+                if let Some(t) = &m.template {
+                    to.set_template(&m.id, t)?;
                 }
-            }
-            if let Some(s) = from.get_summary(&m.id)? {
-                to.save_summary(&m.id, &s, now_ms())?;
-            }
-            if has_notes {
-                for n in from.get_notes(&m.id)? {
-                    to.add_note(&m.id, &n)?;
+                let segs = from.get_segments(&m.id)?;
+                for kind in [SegmentSource::Live, SegmentSource::Post] {
+                    let part: Vec<_> = segs.iter().filter(|s| s.source == kind).cloned().collect();
+                    if !part.is_empty() {
+                        to.replace_segments(&m.id, kind, &part)?;
+                    }
                 }
-            }
+                if let Some(s) = from.get_summary(&m.id)? {
+                    to.save_summary(&m.id, &s, now_ms())?;
+                }
+                if has_notes {
+                    for n in from.get_notes(&m.id)? {
+                        to.add_note(&m.id, &n)?;
+                    }
+                }
+                Ok(())
+            })?;
             imported += 1;
         }
         Ok(ImportReport { imported, skipped })
