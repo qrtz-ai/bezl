@@ -1,6 +1,6 @@
 [package]
 name = "qrtz-llm"
-description = "qrtz meeting summaries: the OpenRouter (OpenAI-compatible), Anthropic and Google clients, the summary prompt, the on-device extractive fallback, and the summary/resummarize StepExecutor (port of packages/core/src/note/{llm,extractive,templates}.ts and the worker's note.stepSummary / note.resummarize)."
+description = "qrtz meeting summaries and grounded chat: the OpenRouter (OpenAI-compatible), Anthropic and Google clients, summary and chat prompts, the on-device extractive fallback, the summary/resummarize StepExecutor, and answer_question (port of packages/core/src/note/{llm,chat,extractive,templates}.ts)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
