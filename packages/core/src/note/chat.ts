@@ -33,14 +33,18 @@ const STOP = new Set(
     ' ',
   ),
 );
+/**
+ * Question terms, split the same way as the source words in `rankSources` (on anything but letters and digits).
+ * They used to drop apostrophes instead, so "O'Reilly" became `oreilly`, which no source word (`o`, `reilly`) starts
+ * with, and the line FTS had just retrieved scored 0 and was dropped (N47, ADR 0038).
+ */
 export const queryTerms = (q: string) =>
   [
     ...new Set(
       q
         .toLowerCase()
         .normalize('NFKC')
-        .split(/[^\p{L}\p{N}']+/u)
-        .map((w) => w.replace(/'/g, ''))
+        .split(/[^\p{L}\p{N}]+/u)
         .filter((w) => w.length > 1 && !STOP.has(w)),
     ),
   ].slice(0, 12);
@@ -54,7 +58,10 @@ export function rankSources(
   const terms = queryTerms(question);
   if (!terms.length) return sources.slice(0, k);
   const words = sources.map((s) =>
-    `${s.speaker ?? ''} ${s.text}`.toLowerCase().split(/[^\p{L}\p{N}]+/u),
+    `${s.speaker ?? ''} ${s.text}`
+      .toLowerCase()
+      .normalize('NFKC')
+      .split(/[^\p{L}\p{N}]+/u),
   );
   const df = terms.map(
     (t) => words.filter((ws) => ws.some((w) => w.startsWith(t))).length,

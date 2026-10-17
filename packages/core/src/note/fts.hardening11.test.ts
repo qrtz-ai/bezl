@@ -9,6 +9,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { migrate, migrations } from '../db/migrate';
+import { extractiveAnswer, queryTerms, rankSources } from './chat';
 import { NoteRepo, toFtsQuery } from './repo';
 
 interface Spec {
@@ -85,5 +86,40 @@ describe('hardening 11: search keeps apostrophes and marks inside the term (N46)
         q,
       ).toEqual(['m']);
     db.close();
+  });
+});
+
+describe('hardening 11: chat ranking splits question and lines the same way (N47)', () => {
+  const src = (text: string, i: number) => ({
+    meetingId: `m${i}`,
+    title: 'Sync',
+    startedAt: 1,
+    startMs: 0,
+    text,
+  });
+  it("a question about O'Reilly keeps the line FTS retrieved for it", () => {
+    const lines = [
+      "Don't forget the O'Reilly contract.",
+      'Lunch is at noon.',
+    ].map(src);
+    expect(
+      rankSources("What about O'Reilly?", lines).map((s) => s.text),
+    ).toEqual([lines[0]!.text]);
+    expect(rankSources('o’reilly', lines).map((s) => s.text)).toEqual([
+      lines[0]!.text,
+    ]);
+    expect(queryTerms("don't O'Reilly's")).toEqual(['don', 'reilly']);
+  });
+  it('the extractive answer (no LLM) quotes it instead of saying nothing was found', () => {
+    const a = extractiveAnswer(
+      "What did we say about O'Reilly?",
+      ["Don't forget the O'Reilly contract."].map(src),
+    );
+    expect(a.sources).toHaveLength(1);
+  });
+  it('a ligature in the transcript matches the plain question (both sides NFKC)', () => {
+    expect(
+      rankSources('financials', ['Q3 ﬁnancials are late'].map(src)),
+    ).toHaveLength(1);
   });
 });
