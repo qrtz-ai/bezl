@@ -717,6 +717,19 @@ export const PipelineContext = z.object({
   partOffsetsMs: z.array(z.number()).optional(),
   active: z.array(z.object({ atMs: z.number(), name: z.string() })),
   helperCrashed: z.boolean(),
+  /**
+   * Diarized turns in meeting time with per-channel speaker ids (`mic:0`, `system:1`; ADR 0058 §12). Written by the
+   * Rust runtime only (Electron does not diarize); omitted when empty.
+   */
+  speakerTurns: z
+    .array(
+      z.object({
+        speaker: z.string().regex(/^(mic|system):[0-7]$/),
+        startMs: z.number(),
+        endMs: z.number(),
+      }),
+    )
+    .optional(),
 });
 export type PipelineContext = z.infer<typeof PipelineContext>;
 

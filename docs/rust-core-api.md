@@ -998,7 +998,8 @@ the mic opens (`Incompatible` → `speech-incompatible`; `NotInstalled`, `Denied
 
 Recording sessions: `NoteRuntime::speech_event(audio_path: Option<&str>, channels: &[Channel], event: SpeechEvent)`
 (feature `runtime`); `None` = the current part, `channels` = that session's `SessionSpec::channels` (words on any
-other channel are dropped: N68). Rules in ADR 0058 §11.
+other channel are dropped: N68). Rules in ADR 0058 §11. `Speaker` events become `PipelineContext::speaker_turns`, and
+finalize attributes per-channel speakers (`qrtz_lifecycle::speakers::attribute`; ADR 0058 §12).
 
 ### Wiring in qrtz-app (Bobs)
 

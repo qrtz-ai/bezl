@@ -7,11 +7,11 @@ use qrtz_storage::{Db, StorageError};
 
 use super::api::{FinalizeOutcome, IndexOutcome, StepExecutor, SummaryRequest};
 use super::store::{lifecycle_error, DbExec};
-use crate::fusion::name_segments_from_ax;
+use crate::speakers::attribute;
 use crate::wav::stitch_parts;
 
 /// `note.stepFinalize`, idempotent: stitch the WAV parts (one per helper restart) into the first part, repair
-/// the header, record duration, fuse AX speaker names into the live segments.
+/// the header, record duration, attribute speakers (per-channel diarization, AX names) on the live segments.
 pub fn finalize_sync(
     db: &Db,
     meeting_id: &str,
@@ -41,11 +41,13 @@ pub fn finalize_sync(
         audio_path: main.or(m.audio_path.clone()),
         ..m
     })?;
-    if !ctx.active.is_empty() {
+    // Per-channel diarized speakers ("me" by default for the mic's main voice) and AX names (ADR 0058 §12); with
+    // no turns, AX fusion only, as before.
+    if !ctx.active.is_empty() || !ctx.speaker_turns.is_empty() {
         repo.replace_segments(
             meeting_id,
             SegmentSource::Live,
-            &name_segments_from_ax(&segs, &ctx.active, duration_ms),
+            &attribute(&segs, &ctx.speaker_turns, &ctx.active, duration_ms),
         )?;
     }
     Ok(FinalizeOutcome {

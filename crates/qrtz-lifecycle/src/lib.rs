@@ -12,6 +12,7 @@ mod pipeline;
 #[cfg(feature = "runtime")]
 pub mod runtime;
 mod session;
+pub mod speakers;
 pub mod transcript;
 pub mod wav;
 

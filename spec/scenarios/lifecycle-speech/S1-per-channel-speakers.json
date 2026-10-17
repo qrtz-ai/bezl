@@ -1,0 +1,516 @@
+{
+  "name": "S1-per-channel-speakers",
+  "about": "ADR 0058 \u00a712 (Rust only). Mic and system audio are diarized apart: each channel has its own speaker ids (mic:0.., system:0..). At finalize every line takes its own channel's speaker with the most overlap. The mic's main voice is \"me\" by default (renameable); a second voice on the same mic is its own speaker, never folded into \"me\"; a mic line no mic turn covers gets no speaker. Other speakers are \"speaker n\" in order of first appearance. Turns of one voice that follow each other merge; a turn on a channel the session doesn't have is dropped (N68).",
+  "script": [
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permissions.status",
+        "status": {
+          "accessibility": "granted",
+          "screen-recording": "granted",
+          "microphone": "granted"
+        }
+      }
+    },
+    {
+      "op": "call",
+      "fn": "start",
+      "label": "start",
+      "args": {
+        "title": "Standup"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.started",
+        "audioPath": "$REC/id1.wav"
+      }
+    },
+    {
+      "op": "speech",
+      "audioPath": "$REC/id1.wav",
+      "event": {
+        "type": "speaker",
+        "speaker": "system:0",
+        "startMs": 0,
+        "endMs": 800
+      }
+    },
+    {
+      "op": "speech",
+      "audioPath": "$REC/id1.wav",
+      "event": {
+        "type": "words",
+        "utteranceId": "u1",
+        "channel": "system",
+        "final": true,
+        "language": "en",
+        "words": [
+          {
+            "text": "hi",
+            "startMs": 0,
+            "endMs": 300
+          },
+          {
+            "text": "all",
+            "startMs": 300,
+            "endMs": 800
+          }
+        ]
+      }
+    },
+    {
+      "op": "speech",
+      "audioPath": "$REC/id1.wav",
+      "event": {
+        "type": "speaker",
+        "speaker": "mic:0",
+        "startMs": 1000,
+        "endMs": 1600
+      }
+    },
+    {
+      "op": "speech",
+      "audioPath": "$REC/id1.wav",
+      "event": {
+        "type": "speaker",
+        "speaker": "mic:0",
+        "startMs": 1700,
+        "endMs": 2600
+      }
+    },
+    {
+      "op": "speech",
+      "audioPath": "$REC/id1.wav",
+      "event": {
+        "type": "words",
+        "utteranceId": "u2",
+        "channel": "mic",
+        "final": true,
+        "language": "en",
+        "words": [
+          {
+            "text": "morning",
+            "startMs": 1000,
+            "endMs": 1600
+          },
+          {
+            "text": "folks",
+            "startMs": 1700,
+            "endMs": 2600
+          }
+        ]
+      }
+    },
+    {
+      "op": "speech",
+      "audioPath": "$REC/id1.wav",
+      "event": {
+        "type": "speaker",
+        "speaker": "mic:1",
+        "startMs": 3000,
+        "endMs": 3800
+      }
+    },
+    {
+      "op": "speech",
+      "audioPath": "$REC/id1.wav",
+      "event": {
+        "type": "words",
+        "utteranceId": "u3",
+        "channel": "mic",
+        "final": true,
+        "language": "en",
+        "words": [
+          {
+            "text": "can",
+            "startMs": 3000,
+            "endMs": 3300
+          },
+          {
+            "text": "I",
+            "startMs": 3300,
+            "endMs": 3500
+          },
+          {
+            "text": "add",
+            "startMs": 3500,
+            "endMs": 3800
+          }
+        ]
+      }
+    },
+    {
+      "op": "speech",
+      "audioPath": "$REC/id1.wav",
+      "event": {
+        "type": "speaker",
+        "speaker": "system:1",
+        "startMs": 4000,
+        "endMs": 4800
+      }
+    },
+    {
+      "op": "speech",
+      "audioPath": "$REC/id1.wav",
+      "event": {
+        "type": "words",
+        "utteranceId": "u4",
+        "channel": "system",
+        "final": true,
+        "language": "en",
+        "words": [
+          {
+            "text": "sure",
+            "startMs": 4000,
+            "endMs": 4800
+          }
+        ]
+      }
+    },
+    {
+      "op": "speech",
+      "audioPath": "$REC/id1.wav",
+      "event": {
+        "type": "speaker",
+        "speaker": "system:0",
+        "startMs": 5000,
+        "endMs": 5500
+      },
+      "channels": [
+        "mic"
+      ]
+    },
+    {
+      "op": "speech",
+      "audioPath": "$REC/id1.wav",
+      "event": {
+        "type": "words",
+        "utteranceId": "u5",
+        "channel": "mic",
+        "final": true,
+        "language": "en",
+        "words": [
+          {
+            "text": "thanks",
+            "startMs": 6000,
+            "endMs": 6400
+          }
+        ]
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 100
+    },
+    {
+      "op": "call",
+      "fn": "stop",
+      "label": "stop"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.stopped",
+        "audioPath": "$REC/id1.wav",
+        "durationMs": 7000
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 100
+    }
+  ],
+  "expect": {
+    "results": {
+      "start": {
+        "ok": {
+          "meetingId": "id1",
+          "phase": "recording"
+        }
+      },
+      "stop": {
+        "ok": {
+          "meetingId": "id1",
+          "phase": "processing"
+        }
+      }
+    },
+    "snapshots": {
+      "end": {
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "done",
+              1760000000000,
+              1760000000100,
+              7000,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "notes": [],
+          "pipelines": [
+            [
+              "id1",
+              1,
+              "manual",
+              "finalize:done/1 summary:done/1 index:done/1",
+              7000,
+              false,
+              [
+                "$REC/id1.wav"
+              ],
+              0
+            ]
+          ],
+          "segments": [
+            [
+              "id1",
+              "system-u1",
+              "live",
+              0,
+              800,
+              "speaker 1",
+              "hi all"
+            ],
+            [
+              "id1",
+              "u2",
+              "live",
+              1000,
+              2600,
+              "me",
+              "morning folks"
+            ],
+            [
+              "id1",
+              "u3",
+              "live",
+              3000,
+              3800,
+              "speaker 2",
+              "can I add"
+            ],
+            [
+              "id1",
+              "system-u4",
+              "live",
+              4000,
+              4800,
+              "speaker 3",
+              "sure"
+            ],
+            [
+              "id1",
+              "u5",
+              "live",
+              6000,
+              6400,
+              null,
+              "thanks"
+            ]
+          ],
+          "session": [
+            "done",
+            "id1"
+          ],
+          "summaries": [
+            [
+              "id1",
+              "stub",
+              "STUB summary",
+              null
+            ]
+          ]
+        },
+        "files": [],
+        "live": {
+          "meetingId": "id1",
+          "partial": null,
+          "rev": 6,
+          "segments": [
+            [
+              "system-u1",
+              null,
+              0,
+              800
+            ],
+            [
+              "u2",
+              null,
+              1000,
+              2600
+            ],
+            [
+              "u3",
+              null,
+              3000,
+              3800
+            ],
+            [
+              "system-u4",
+              null,
+              4000,
+              4800
+            ],
+            [
+              "u5",
+              null,
+              6000,
+              6400
+            ]
+          ]
+        },
+        "view": {
+          "activeSpeaker": null,
+          "degraded": [],
+          "elapsedMs": 100,
+          "error": null,
+          "helper": "ok",
+          "lines": [
+            [
+              "system-u1",
+              null,
+              "hi all",
+              0
+            ],
+            [
+              "u2",
+              null,
+              "morning folks",
+              1000
+            ],
+            [
+              "u3",
+              null,
+              "can I add",
+              3000
+            ],
+            [
+              "system-u4",
+              null,
+              "sure",
+              4000
+            ],
+            [
+              "u5",
+              null,
+              "thanks",
+              6000
+            ]
+          ],
+          "meetingId": "id1",
+          "partial": "",
+          "participants": [],
+          "paused": false,
+          "phase": "done",
+          "pipeline": "finalize:done/1 summary:done/1 index:done/1",
+          "progress": null,
+          "reconnect": null,
+          "startedAt": 1760000000000,
+          "stopReason": "manual"
+        }
+      }
+    },
+    "trace": {
+      "changed": [
+        "id1",
+        "id1",
+        "id1",
+        "id1"
+      ],
+      "helper": [
+        "permissions.check",
+        "recording.start $REC/id1.wav",
+        "recording.stop"
+      ],
+      "permissions": [
+        "granted|granted|granted"
+      ],
+      "pipelines": {
+        "id1": [
+          "manual finalize:pending/0 summary:pending/0 index:pending/0",
+          "manual finalize:running/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:running/1 index:pending/0",
+          "manual finalize:done/1 summary:done/1 index:pending/0",
+          "manual finalize:done/1 summary:done/1 index:running/1",
+          "manual finalize:done/1 summary:done/1 index:done/1"
+        ]
+      },
+      "prompts": [],
+      "session": [
+        "idle|-|-|-|-|-|ok",
+        "starting|id1|-|-|-|-|ok",
+        "recording|id1|-|-|-|-|ok",
+        "stopping|id1|-|-|-|-|ok",
+        "processing|id1|-|-|-|-|ok",
+        "done|id1|-|-|-|-|ok"
+      ],
+      "transcript": [
+        [
+          0,
+          1,
+          [
+            "system-u1"
+          ],
+          null
+        ],
+        [
+          1,
+          2,
+          [
+            "u2"
+          ],
+          null
+        ],
+        [
+          2,
+          3,
+          [
+            "u3"
+          ],
+          null
+        ],
+        [
+          3,
+          4,
+          [
+            "system-u4"
+          ],
+          null
+        ],
+        [
+          4,
+          5,
+          [
+            "u5"
+          ],
+          null
+        ],
+        [
+          5,
+          6,
+          [],
+          null
+        ]
+      ]
+    }
+  }
+}

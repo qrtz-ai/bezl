@@ -13,7 +13,8 @@ use qrtz_model::{
     ActiveSpeakerEvent, AsrEvent, Degradation, EpochMs, HelperHealth, LifecycleError, LifecycleEvent,
     LivePartial, LiveSegment, LiveTranscript, LiveTranscriptDelta, Meeting, MeetingStatus, MeetingSummary,
     OsPermission, PermissionState, PermissionsStatus, PipelineContext, PipelineState, PipelineView,
-    RecordingPhase, RecordingState, Segment, SessionLine, SessionView, StepId, StepStatus, StopReason,
+    RecordingPhase, RecordingState, Segment, SessionLine, SessionView, SpeakerTurn, StepId, StepStatus,
+    StopReason,
 };
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::AbortHandle;
@@ -86,6 +87,10 @@ const HELPER_GONE: &str = "native helper is not running";
 /// N37: lines held behind an ack are bounded; the continuation runs right after the ack, so this only caps a
 /// misbehaving helper (port of `MAX_HELD_BEHIND_ACK`).
 const MAX_HELD_BEHIND_ACK: usize = 64;
+/// Diarized turns kept per meeting (an 8 h meeting at one turn change per second fits).
+const MAX_SPEAKER_TURNS: usize = 50_000;
+/// A speaker's next turn this close to its last one extends it.
+const TURN_MERGE_GAP_MS: qrtz_model::Ms = 250;
 
 /// N37: the start (or resume) whose `recording.started` was read but not yet applied (port of `NoteService.acked`).
 struct Acked {
@@ -372,6 +377,8 @@ struct State {
     machine: Machine,
     asr: TranscriptAssembler,
     active: Vec<ActiveSpeakerEvent>,
+    /// Diarized turns in meeting time (per-channel speaker ids), for finalize's attribution.
+    turns: Vec<SpeakerTurn>,
     participants: Vec<String>,
     level: f64,
     permissions: PermissionsStatus,
@@ -431,6 +438,7 @@ impl State {
             machine: Machine::new(initial_state()),
             asr: TranscriptAssembler::new(),
             active: Vec::new(),
+            turns: Vec::new(),
             participants: Vec::new(),
             level: 0.0,
             permissions: [
@@ -1288,9 +1296,45 @@ impl Shared {
             } => {
                 self.send(LifecycleEvent::SpeechReady);
             }
-            // Speaker turns go to fusion (ADR 0045 per-channel ids) once the module ships them; `finished` and
-            // `loading` carry nothing for the session.
-            Sp::Status { .. } | Sp::Speaker { .. } | Sp::Finished { .. } => {}
+            // Per-channel diarization (ADR 0058 §12): turns in meeting time for finalize's attribution. A speaker on
+            // a channel this session doesn't have is dropped (N68), like words.
+            Sp::Speaker {
+                speaker,
+                start_ms,
+                end_ms,
+            } => {
+                if !channels.contains(&speaker.channel()) {
+                    tracing::warn!(%speaker, "speaker turn on a channel of no session; dropped");
+                    return;
+                }
+                if !matches!(s.phase, RecordingPhase::Recording | RecordingPhase::Stopping)
+                    || s.meeting_id.is_none()
+                    || end_ms <= start_ms
+                    || self.lock().paused
+                {
+                    return;
+                }
+                let off = s.part_offset_ms;
+                let t = SpeakerTurn {
+                    speaker: speaker.to_string(),
+                    start_ms: start_ms as qrtz_model::Ms + off,
+                    end_ms: end_ms as qrtz_model::Ms + off,
+                };
+                let mut st = self.lock();
+                let n = st.turns.len();
+                match st.turns.last_mut() {
+                    // One voice talking on: extend its turn (bounded memory over a long meeting).
+                    Some(l) if l.speaker == t.speaker && t.start_ms <= l.end_ms + TURN_MERGE_GAP_MS => {
+                        l.end_ms = l.end_ms.max(t.end_ms);
+                    }
+                    _ if n >= MAX_SPEAKER_TURNS => {
+                        tracing::warn!("speaker turn cap reached; later turns are not attributed");
+                    }
+                    _ => st.turns.push(t),
+                }
+            }
+            // `finished` and `loading` carry nothing for the session.
+            Sp::Status { .. } | Sp::Finished { .. } => {}
         }
     }
 
@@ -1504,6 +1548,7 @@ impl Shared {
             let mut st = self.lock();
             st.asr = TranscriptAssembler::new();
             st.active.clear();
+            st.turns.clear();
             st.persisted.clear();
             st.t_sent.clear();
             st.t_rev = 0;
@@ -1986,9 +2031,9 @@ impl Shared {
             }
         }
         let ended_at = self.now();
-        let (active, crashed) = {
+        let (active, crashed, speaker_turns) = {
             let g = self.lock();
-            (g.active.clone(), g.helper_crashed)
+            (g.active.clone(), g.helper_crashed, g.turns.clone())
         };
         let helper_dur = stopped.flatten().filter(|d| *d != 0);
         let mut pipeline = new_pipeline(
@@ -2003,6 +2048,7 @@ impl Shared {
                 part_offsets_ms: st.part_offsets_ms.clone(),
                 active,
                 helper_crashed: crashed || stopped.is_none(),
+                speaker_turns,
             },
             ended_at,
         );
@@ -2330,6 +2376,7 @@ impl Shared {
                         part_offsets_ms: saved.part_offsets_ms.clone(),
                         active: Vec::new(),
                         helper_crashed: true,
+                        speaker_turns: Vec::new(),
                     };
                     // N29/H8: the session row carries the capture record; a stretch open at the crash keeps no end.
                     let mut p = new_pipeline(&mid, StopReason::CrashRecovered, ctx, now);
@@ -2351,6 +2398,7 @@ impl Shared {
                 part_offsets_ms: None,
                 active: Vec::new(),
                 helper_crashed: true,
+                speaker_turns: Vec::new(),
             };
             self.persist_pipeline(new_pipeline(&m.id, StopReason::CrashRecovered, ctx, now))
                 .await;

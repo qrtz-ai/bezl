@@ -551,6 +551,22 @@ pub struct PipelineContext {
     pub part_offsets_ms: Option<Vec<Ms>>,
     pub active: Vec<ActiveSpeakerEvent>,
     pub helper_crashed: bool,
+    /// Diarized speaker turns in meeting time, per channel (`mic:0`, `system:1`, ...; ADR 0058 §12). Empty when
+    /// nothing diarized (Electron, the helper's own ASR): finalize then fuses AX names only, as before.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub speaker_turns: Vec<SpeakerTurn>,
+}
+
+/// One diarized turn: a per-channel speaker id and its span in meeting time.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "camelCase")]
+pub struct SpeakerTurn {
+    pub speaker: String,
+    #[serde(deserialize_with = "de_ms")]
+    pub start_ms: Ms,
+    #[serde(deserialize_with = "de_ms")]
+    pub end_ms: Ms,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

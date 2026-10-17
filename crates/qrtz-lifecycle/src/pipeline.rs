@@ -272,6 +272,7 @@ mod tests {
             part_offsets_ms: None,
             active: vec![],
             helper_crashed: false,
+            speaker_turns: vec![],
         }
     }
 
