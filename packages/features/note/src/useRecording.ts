@@ -123,5 +123,36 @@ export const DEGRADED_LABELS: Record<SessionView['degraded'][number], string> =
     'transcript-gap': 'Gap after reconnect',
   };
 
+/** N29/N32: live "no sound" chip labels, per capture source the helper reported silent, and for all of them. */
+export const SILENT_LABELS: Record<
+  NonNullable<SessionView['silent']>[number]['source'] | 'all',
+  string
+> = {
+  system: 'No sound from system audio',
+  mic: 'No sound from mic',
+  all: 'No sound',
+};
+
+/**
+ * N32: the capture-health chips of the live view. The sticky degradations, then the sources that are silent right
+ * now (N29): one "No sound" chip when every source still delivered is silent (`noAudio`), else one per silent
+ * source. Silence is live: the chip goes away when the helper reports the source audible again.
+ */
+export function captureChips(
+  s: Pick<SessionView, 'degraded' | 'silent' | 'noAudio'>,
+): { id: string; label: string }[] {
+  const chips: { id: string; label: string }[] = s.degraded.map((f) => ({
+    id: f,
+    label: DEGRADED_LABELS[f],
+  }));
+  // `audio-unavailable` already says there is no audio at all.
+  if (s.degraded.includes('audio-unavailable')) return chips;
+  if (s.noAudio)
+    return [...chips, { id: 'no-sound', label: SILENT_LABELS.all }];
+  for (const x of s.silent ?? [])
+    chips.push({ id: `silent-${x.source}`, label: SILENT_LABELS[x.source] });
+  return chips;
+}
+
 export const isCapturingPhase = (p: SessionView['phase']) =>
   p === 'starting' || p === 'recording' || p === 'reconnecting';

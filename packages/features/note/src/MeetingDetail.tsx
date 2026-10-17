@@ -33,7 +33,7 @@ import { ChatPanel } from './ChatPanel';
 import { Speakers } from './Speakers';
 import { Notes } from './Notes';
 import {
-  DEGRADED_LABELS,
+  captureChips,
   STEP_LABELS,
   isCapturingPhase,
   useLiveTranscript,
@@ -192,10 +192,7 @@ export function MeetingDetail({
                 }
               : null
           }
-          degraded={session.degraded.map((f) => ({
-            id: f,
-            label: DEGRADED_LABELS[f],
-          }))}
+          degraded={captureChips(session)}
         />
         <StreamingTranscript
           live={session.phase !== 'stopping'}

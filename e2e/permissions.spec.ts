@@ -6,11 +6,19 @@ import path from 'node:path';
 // H5 + H6 against the built app and the mock helper: TCC revoked mid-capture degrades the recording live and stops
 // a dictation gracefully; a dictation runs alongside a meeting recording (mux, shared mic tap).
 const appDir = path.join(__dirname, '..', 'apps', 'desktop');
+// Each launch gets its own user-data dir; removed after the file so e2e runs do not pile up temp dirs.
+const userDataDirs: string[] = [];
+test.afterAll(() => {
+  for (const d of userDataDirs.splice(0))
+    fs.rmSync(d, { recursive: true, force: true });
+});
 
 async function launch(extra: Record<string, string>) {
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-perm-'));
+  userDataDirs.push(userData);
   const env: Record<string, string> = {
     ...(process.env as Record<string, string>),
-    QRTZ_USER_DATA: fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-perm-')),
+    QRTZ_USER_DATA: userData,
     QRTZ_MOCK_HELPER: '1',
     QRTZ_DEVTOOLS: '0',
     ...extra,
@@ -97,4 +105,46 @@ test('H5: microphone revoked mid-dictation stops gracefully: text kept, reason s
   await expect(win.getByTestId('talk-entry').first()).toBeVisible();
   expect(errors).toEqual([]);
   await app.close();
+});
+
+test('N29/N32: a silent capture source shows live and clears when it is audible again; all silent shows "No sound"', async () => {
+  const { app, win, errors } = await launch({
+    ...meeting,
+    QRTZ_MOCK_SILENT: 'mic@600-2500',
+  });
+  await win.getByTestId('nav-note').click();
+  await expect(win.getByTestId('note-detected')).toBeVisible({
+    timeout: 10_000,
+  });
+  await win.getByTestId('note-record').click();
+  await expect(win.getByTestId('degraded-silent-mic')).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(win.getByTestId('degraded-silent-mic')).toBeHidden({
+    timeout: 10_000,
+  });
+  await win.getByTestId('note-stop').click();
+  await expect(win.getByTestId('note-stop')).toBeHidden({ timeout: 10_000 });
+  expect(errors).toEqual([]);
+  await app.close();
+
+  const second = await launch({
+    ...meeting,
+    QRTZ_MOCK_SILENT: 'system@600,mic@600',
+  });
+  await second.win.getByTestId('nav-note').click();
+  await expect(second.win.getByTestId('note-detected')).toBeVisible({
+    timeout: 10_000,
+  });
+  await second.win.getByTestId('note-record').click();
+  await expect(second.win.getByTestId('degraded-no-sound')).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(second.win.getByTestId('degraded-silent-mic')).toHaveCount(0);
+  await second.win.getByTestId('note-stop').click();
+  await expect(second.win.getByTestId('note-stop')).toBeHidden({
+    timeout: 10_000,
+  });
+  expect(second.errors).toEqual([]);
+  await second.app.close();
 });
