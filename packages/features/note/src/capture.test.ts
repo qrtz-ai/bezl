@@ -94,4 +94,48 @@ describe('capture status (N29, H8)', () => {
     expect(many).toHaveLength(CAPTURE_NOTICE_MAX);
     expect(many.at(-1)).toEqual({ id: 'more', text: '+5 more' });
   });
+
+  it('meeting notice: a lost stretch says the source was not recorded, unless a device or fallback line already says it (N39)', () => {
+    const min = 60_000;
+    const lines = captureNoticeLines(start, {
+      deviceFailures: [
+        { degraded: ['no-mic'], reason: 'device busy', atMs: 7 * min },
+      ],
+      fallbacks: [
+        { from: 'screencapturekit', to: null, reason: 'busy', atMs: 40 * min },
+      ],
+      lostSpans: [
+        { source: 'mic', startMs: 7 * min, endMs: 9 * min }, // the device line says it
+        { source: 'mic', startMs: 12 * min, endMs: 20 * min }, // a revoke
+        { source: 'system', startMs: 25 * min, endMs: 30 * min }, // screen recording revoked
+        { source: 'mic', startMs: 32 * min, endMs: 35 * min }, // both together: one line
+        { source: 'system', startMs: 32 * min, endMs: 35 * min },
+        { source: 'mic', startMs: 40 * min }, // the "no source left" line says it
+        { source: 'system', startMs: 40 * min },
+        { source: 'system', startMs: 50 * min }, // still lost when the app died
+        { source: 'mic', startMs: 55 * min, endMs: 55 * min }, // zero length: nothing to say
+      ],
+    });
+    expect(lines.map((l) => l.text)).toEqual([
+      'screen capture failed, no audio source left',
+      'mic device failed at 10:07',
+      'mic not recorded 10:12–10:20',
+      'system audio not recorded 10:25–10:30',
+      'nothing recorded 10:32–10:35',
+      'system audio not recorded after 10:50',
+    ]);
+    const all = captureNoticeLines(start, {
+      lostSpans: [
+        { source: 'mic', startMs: 32 * min, endMs: 35 * min },
+        { source: 'system', startMs: 32 * min, endMs: 35 * min },
+        { source: 'system', startMs: 50 * min },
+      ],
+    });
+    expect(all).toEqual([
+      { id: 'lost-0', text: 'nothing recorded 10:32–10:35' },
+      { id: 'lost-2', text: 'system audio not recorded after 10:50' },
+    ]);
+    for (const l of [...lines, ...all])
+      expect(l.text).toBe(l.text.toLowerCase());
+  });
 });

@@ -57,6 +57,13 @@ const DEVICE_LOST_LABEL: Record<string, string> = {
   'ax-unavailable': 'speaker names',
 };
 
+/** The sources a flag takes away (`SOURCES_LOST` in core lifecycle), to match a lost stretch to its device line. */
+const LOST_BY: Record<string, readonly string[]> = {
+  'no-mic': ['mic'],
+  'mic-only': ['system'],
+  'audio-unavailable': ['mic', 'system'],
+};
+
 /** Most lines the meeting notice shows; the rest collapse into "+n more". */
 export const CAPTURE_NOTICE_MAX = 6;
 
@@ -106,6 +113,46 @@ export function captureNoticeLines(
       text: `${d.degraded.map((f) => DEVICE_LOST_LABEL[f] ?? f).join(', ')} device failed at ${fmtTimeOfDay(startedAt + d.atMs)}`,
       ...(d.reason ? { detail: d.reason } : {}),
     });
+  // N39 / ADR 0036: a stretch in which a source was not recorded at all (a revoke, a start without the permission, no
+  // source left). One that starts with a device failure or a "no source left" fallback at the same moment is already
+  // said by that line, so it is skipped; one source per line, or one line when both were lost together.
+  const explained = (src: 'mic' | 'system', atMs: number) =>
+    (capture?.deviceFailures ?? []).some(
+      (d) =>
+        d.atMs === atMs && d.degraded.some((f) => LOST_BY[f]?.includes(src)),
+    ) ||
+    (capture?.fallbacks ?? []).some((f) => f.to === null && f.atMs === atMs);
+  const lost = new Map<
+    string,
+    { sources: Set<string>; startMs: number; endMs?: number; i: number }
+  >();
+  for (const [i, sp] of (capture?.lostSpans ?? []).entries()) {
+    if (sp.endMs !== undefined && sp.endMs <= sp.startMs) continue;
+    if (explained(sp.source, sp.startMs)) continue;
+    const key = `${sp.startMs}-${sp.endMs ?? ''}`;
+    const g = lost.get(key);
+    if (g) g.sources.add(sp.source);
+    else
+      lost.set(key, {
+        sources: new Set([sp.source]),
+        startMs: sp.startMs,
+        endMs: sp.endMs,
+        i,
+      });
+  }
+  for (const g of lost.values()) {
+    const [only] = [...g.sources] as ('mic' | 'system')[];
+    const what =
+      g.sources.size > 1 ? 'nothing recorded' : `${SOURCE[only!]} not recorded`;
+    const from = fmtTimeOfDay(startedAt + g.startMs);
+    out.push({
+      id: `lost-${g.i}`,
+      text:
+        g.endMs === undefined
+          ? `${what} after ${from}`
+          : `${what} ${from}–${fmtTimeOfDay(startedAt + g.endMs)}`,
+    });
+  }
   if (out.length <= CAPTURE_NOTICE_MAX) return out;
   const shown = out.slice(0, CAPTURE_NOTICE_MAX - 1);
   return [...shown, { id: 'more', text: `+${out.length - shown.length} more` }];
