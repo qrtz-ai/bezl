@@ -37,5 +37,5 @@ Status as of M0 (2026-10-16). Items marked ☐ are tracked in PLAN.md.
 - ☑ Helper stdout is parsed line by line with zod. Malformed lines are dropped and logged.
 - ☑ Electron fuses: RunAsNode off, NODE_OPTIONS off, `--inspect` off, ASAR integrity on, OnlyLoadAppFromAsar on, and cookie encryption on.
 - ☑ Crash reporting is local only (`uploadToServer: false`). The `CrashSink` hook is there for opt-in remote reporting.
-- ☐ Sign and notarize with the hardened runtime. Entitlements: `com.apple.security.device.audio-input` and screen capture usage strings (M4.7/M5.3).
+- ☐ Sign and notarize with the hardened runtime. Entitlements: `com.apple.security.device.audio-input` and screen capture usage strings (M4.7/M5.3). Wired: see docs/release.md and scripts/release-mac.sh; needs a Developer ID.
 - ☐ Sign the helper binary with the same Team ID. The app verifies the helper's code signature before spawning it (M4.7).

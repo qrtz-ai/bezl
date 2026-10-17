@@ -13,7 +13,7 @@ qrtz desktop app for macOS: an Electron shell hosting modular React "sub apps", 
 - Error states: the capture helper missing or stopped (shown on Home and Memo, recording disabled), LLM failures (falls back to the on-device summary with a Retry button), Settings sections that load independently, and a meeting that fails to load (Try again).
 - Chat: per-meeting Q&A (the Ask tab) and "Ask all meetings" (full-text retrieval across transcripts). Answers come from OpenRouter with citations when a key is set, or as extractive quotes without one. Clicking a citation jumps to that moment in the transcript.
 - Menu bar (tray) item: the recording state, with elapsed time in the menu bar, plus Start/Stop, Record this meeting / Not now, Open qrtz and Quit. Shown on macOS and Windows; opt in on Linux with `QRTZ_TRAY=1`.
-- Semantic chat retrieval: an on-device MiniLM model (transformers.js, ~23 MB, downloaded once) runs in the worker. It's combined with full-text search by rank fusion. If the model can't load, retrieval falls back to full-text only. In packaged builds it's full-text only until onnxruntime is bundled (see Status).
+- Semantic chat retrieval: an on-device MiniLM model (transformers.js, ~23 MB, downloaded once) runs in the worker. It's combined with full-text search by rank fusion. If the model can't load, retrieval falls back to full-text only. Packaged builds bundle transformers.js and onnxruntime-node, trimmed to the target platform (Linux x64 package ~48 MB of resources). `npm run smoke:packaged` checks this. Intel Macs fall back to full-text search, because onnxruntime ships no darwin-x64 binary.
 - Calendar-free auto-start: a detected Zoom or Meet call shows a "Record?" prompt in the app, plus an OS notification when qrtz isn't focused. "Always record" (also in Settings) starts recording with no prompt.
 - Speaker rename and merge in meeting detail.
 - Hundreds of meetings: the Memo list pages 100 at a time ("Show 100 more"), and so do search results. Crash recovery finds stuck meetings at any age.
@@ -21,13 +21,13 @@ qrtz desktop app for macOS: an Electron shell hosting modular React "sub apps", 
 - Accessibility: no serious or critical axe violations (WCAG 2.1 AA) on Home, Memo, Gallery, Settings or the palette. Transcript rows can be operated by keyboard.
 - Swift helper core (protocol, DSP, echo pipeline with the LocalVQE → gate fallback): 27 tests pass on Linux.
 
-- Packaging gap: `@huggingface/transformers` and onnxruntime-node aren't in the packaged app yet, so packaged builds use full-text chat retrieval.
+- Release: `scripts/release-mac.sh` signs (hardened runtime and entitlements), notarizes and staples once a Developer ID exists. The checklist is in [docs/release.md](docs/release.md).
 
 **Needs a Mac to verify (see docs/mac-verify.md):**
 
 - Real capture: ScreenCaptureKit / Core Audio system audio, the microphone, and the TCC permission prompts.
 - FluidAudio streaming ASR and LocalVQE echo cancellation on real Zoom (app and web) and Meet (Chrome and Safari) calls.
-- Building the helper with Xcode, plus signing, notarization and auto-update (the scaffold is in `src/main/updates.ts` and stays off until `QRTZ_AUTO_UPDATE=1` is set on a signed build).
+- Building the helper with Xcode, plus a signed and notarized run of `scripts/release-mac.sh`. Auto-update needs a public release feed, because the repo is private (see docs/release.md).
 
 **Accounts / secrets needed:**
 

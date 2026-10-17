@@ -282,3 +282,25 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
 
 - Bundle onnxruntime for macOS (the packaging hook above).
 - Mac build and real-call verification.
+
+## 2026-10-16 ~18:45–18:50 PT: iteration 11 (bundle embeddings, release readiness)
+
+- Packaging: a Forge `packageAfterCopy` hook in `forge.config.mts` copies the embedding runtime into `app/node_modules`:
+  - The transformers.js node entry points.
+  - onnxruntime-common.
+  - onnxruntime-node dist plus only `bin/napi-v6/<platform>/<arch>`, without the CUDA and TensorRT providers.
+  - A `sharp` stub. transformers imports sharp statically for image pipelines we don't use.
+  - `asar.unpack` covers `*.node`, `*.dylib` and `*.so*`. Linux x64 resources come to 48 MB (onnxruntime-node alone is 548 MB unpruned).
+- Verification: `npm run smoke:packaged` launches `out/qrtz-linux-x64/qrtz` with `QRTZ_EMBED_SELFTEST=1`. The worker embeds a sentence and logs `embedder selftest`, and the script asserts 384 dimensions. Passes 4 of 4 runs (~0.2 s with a cached model).
+- Release: `docs/release.md` is the checklist. `forge.config.mts` has env-gated `osxSign` (hardened runtime and entitlements on every nested file) and `osxNotarize` (keychain profile or Apple ID). `scripts/release-mac.sh` runs the checks, the helper build, the signed make, codesign/spctl/stapler verification and DMG notarization.
+
+### Side work
+
+- onnxruntime-node 1.30 has no darwin-x64 binary, so Intel Mac builds fall back to FTS-only retrieval. Recommendation: ship arm64-only.
+- Auto-update: update.electronjs.org serves only public repos, and qrtz-ai/qrtz is private. Needs a public releases repo or a static feed (docs/release.md). The `QRTZ_AUTO_UPDATE` default should flip before the first public release.
+- The smoke test reuses the model cache at `/tmp/qrtz-e2e-models`. A cold run downloads ~23 MB from Hugging Face.
+
+### Next
+
+- Mac: run `scripts/release-mac.sh` with a Developer ID, and verify real calls (docs/mac-verify.md).
+- Pick the auto-update feed.

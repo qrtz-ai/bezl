@@ -20,7 +20,8 @@
     "test": "vitest run",
     "e2e": "playwright test -c e2e/playwright.config.ts",
     "build:helper": "node scripts/build-helper.mjs",
-    "test:helper": "node scripts/build-helper.mjs --test"
+    "test:helper": "node scripts/build-helper.mjs --test",
+    "smoke:packaged": "node scripts/smoke-packaged.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",

@@ -12,7 +12,7 @@ Each iteration is one pass of: **read, pick, build, verify, commit, push, log.**
    ```sh
    npm run lint && npm run typecheck && npm test && npm run package
    ```
-   Also run `npm run e2e` when shell/main/preload/IPC changed (it needs `xvfb-run` on Linux).
+   Also run `npm run e2e` when shell/main/preload/IPC changed (it needs `xvfb-run` on Linux). When packaging, the worker or deps changed, also run `npm run smoke:packaged`, which checks embeddings in the packaged binary.
    A task is done only when its **acceptance criteria** in PLAN.md hold.
 5. **Commit** with a message of the form `M<n>.<k>: <task>`. Push **straight to `main`**:
    no branches, no PRs, no GitHub Actions workflows (the token lacks workflow scope).

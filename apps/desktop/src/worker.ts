@@ -17,21 +17,39 @@ const log = (
 
 const dbFile = process.argv.at(-1) ?? ':memory:';
 const db = openDatabase(dbFile);
+const embedder = transformersEmbedder(
+  process.env.QRTZ_MODELS_DIR ||
+    (dbFile === ':memory:'
+      ? os.tmpdir()
+      : path.join(path.dirname(dbFile), 'models')),
+);
 const handlers = createWorkerHandlers(db, {
   fetch: (url, init) => fetch(url, init),
   log: (msg, f) => log('warn', msg, f as Record<string, unknown>),
-  embedder: transformersEmbedder(
-    process.env.QRTZ_MODELS_DIR ||
-      (dbFile === ':memory:'
-        ? os.tmpdir()
-        : path.join(path.dirname(dbFile), 'models')),
-  ),
+  embedder,
 });
 const methods = handlers as unknown as Record<
   string,
   (params: unknown) => unknown
 >;
 log('info', 'worker ready', { dbFile });
+
+// Packaged-build smoke (scripts/smoke-packaged.mjs): prove the bundled runtime loads. Read-only, no secrets.
+if (process.env.QRTZ_EMBED_SELFTEST === '1') {
+  const t0 = Date.now();
+  void embedder()
+    .then((e) => e?.embed(['qrtz embedding self-test']))
+    .then((v) =>
+      log('info', 'embedder selftest', {
+        ok: !!v?.[0],
+        dims: v?.[0]?.length ?? 0,
+        ms: Date.now() - t0,
+      }),
+    )
+    .catch((err: unknown) =>
+      log('warn', 'embedder selftest', { ok: false, err: String(err) }),
+    );
+}
 
 port.on('message', async (e: { data: unknown }) => {
   let req;

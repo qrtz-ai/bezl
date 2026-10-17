@@ -17,14 +17,136 @@ const helperBin = path.resolve(
 );
 const extraResource = fs.existsSync(helperBin) ? [helperBin] : [];
 
+/**
+ * macOS signing + notarization, only when scripts/release-mac.sh (or you) set the env.
+ * Unset = unsigned local build, exactly as before. See docs/release.md.
+ */
+const env = process.env;
+const entitlements = path.resolve(
+  import.meta.dirname,
+  'entitlements.mac.plist',
+);
+const osxSign = env.QRTZ_MAC_SIGN_IDENTITY
+  ? {
+      identity: env.QRTZ_MAC_SIGN_IDENTITY,
+      // Hardened runtime + entitlements for the app, its helpers, the Swift helper and the unpacked onnxruntime addon.
+      optionsForFile: () => ({ hardenedRuntime: true, entitlements }),
+    }
+  : undefined;
+const osxNotarize = !osxSign
+  ? undefined
+  : env.QRTZ_NOTARY_PROFILE
+    ? { keychainProfile: env.QRTZ_NOTARY_PROFILE }
+    : env.APPLE_ID && env.APPLE_APP_SPECIFIC_PASSWORD && env.APPLE_TEAM_ID
+      ? {
+          appleId: env.APPLE_ID,
+          appleIdPassword: env.APPLE_APP_SPECIFIC_PASSWORD,
+          teamId: env.APPLE_TEAM_ID,
+        }
+      : undefined;
+
+/**
+ * Forge `packageAfterCopy` hook: the Vite plugin ships only `.vite/`, so the
+ * on-device embedding runtime (kept external in vite.main.config.mts) is copied
+ * into `<app>/node_modules` here, trimmed to the target platform/arch.
+ *
+ * - @huggingface/transformers: node entry points only (no web/WASM builds).
+ * - onnxruntime-node: dist + bin/napi-v6/<platform>/<arch>, minus CUDA/TensorRT providers.
+ * - onnxruntime-common: whole (1 MB).
+ * - sharp: replaced by a stub; transformers imports it statically for image
+ *   pipelines we never use, and the real one would drag in ~30 MB of libvips.
+ *
+ * onnxruntime-node 1.30 ships no darwin/x64 binary. On Intel Macs the worker's
+ * embedder fails to load, `embedderBroken` is set and retrieval stays lexical (FTS).
+ */
+
+const root = path.resolve(import.meta.dirname, '../../node_modules');
+const SKIP_PROVIDERS = /onnxruntime_providers_(cuda|tensorrt)/;
+
+function copy(
+  src: string,
+  dst: string,
+  filter: (p: string) => boolean = () => true,
+) {
+  fs.cpSync(src, dst, { recursive: true, dereference: true, filter });
+}
+
+function bundleExternals(
+  buildPath: string,
+  platform: string,
+  arch: string,
+): void {
+  const nm = path.join(buildPath, 'node_modules');
+  fs.mkdirSync(nm, { recursive: true });
+
+  const tf = path.join(root, '@huggingface/transformers');
+  const tfDst = path.join(nm, '@huggingface/transformers');
+  fs.mkdirSync(path.join(tfDst, 'dist'), { recursive: true });
+  fs.copyFileSync(
+    path.join(tf, 'package.json'),
+    path.join(tfDst, 'package.json'),
+  );
+  for (const f of ['transformers.node.mjs', 'transformers.node.cjs']) {
+    fs.copyFileSync(path.join(tf, 'dist', f), path.join(tfDst, 'dist', f));
+  }
+
+  copy(
+    path.join(root, 'onnxruntime-common'),
+    path.join(nm, 'onnxruntime-common'),
+  );
+
+  const ort = path.join(root, 'onnxruntime-node');
+  const ortDst = path.join(nm, 'onnxruntime-node');
+  fs.mkdirSync(ortDst, { recursive: true });
+  fs.copyFileSync(
+    path.join(ort, 'package.json'),
+    path.join(ortDst, 'package.json'),
+  );
+  copy(
+    path.join(ort, 'dist'),
+    path.join(ortDst, 'dist'),
+    (p) => !p.endsWith('.map'),
+  );
+  const bin = path.join(ort, 'bin/napi-v6', platform, arch);
+  if (fs.existsSync(bin)) {
+    copy(
+      bin,
+      path.join(ortDst, 'bin/napi-v6', platform, arch),
+      (p) => !SKIP_PROVIDERS.test(p),
+    );
+  } else {
+    console.warn(
+      `[bundle-externals] no onnxruntime-node binary for ${platform}/${arch}; embeddings fall back to FTS`,
+    );
+  }
+
+  const sharp = path.join(nm, 'sharp');
+  fs.mkdirSync(sharp, { recursive: true });
+  fs.writeFileSync(
+    path.join(sharp, 'package.json'),
+    JSON.stringify({
+      name: 'sharp',
+      version: '0.0.0-qrtz-stub',
+      main: 'index.js',
+    }),
+  );
+  fs.writeFileSync(
+    path.join(sharp, 'index.js'),
+    "module.exports = function sharp() { throw new Error('sharp is not bundled in qrtz'); };\n",
+  );
+}
+
 const config: ForgeConfig = {
   packagerConfig: {
-    asar: true,
+    // Native addons cannot be dlopen'd from inside the asar.
+    asar: { unpack: '**/*.{node,dylib,so,so.*}' },
     name: 'qrtz',
     executableName: 'qrtz',
     appBundleId: 'ai.qrtz.desktop',
     appCategoryType: 'public.app-category.productivity',
     extraResource,
+    ...(osxSign ? { osxSign } : {}),
+    ...(osxNotarize ? { osxNotarize } : {}),
     extendInfo: {
       NSMicrophoneUsageDescription:
         'qrtz records your side of meetings to transcribe them on-device.',
@@ -33,6 +155,18 @@ const config: ForgeConfig = {
     },
   },
   rebuildConfig: {},
+  hooks: {
+    // The Vite plugin ships only `.vite/`; add the external embedding runtime.
+    packageAfterCopy: async (
+      _config,
+      buildPath,
+      _electronVersion,
+      platform,
+      arch,
+    ) => {
+      bundleExternals(buildPath, platform, arch);
+    },
+  },
   makers: [
     new MakerSquirrel({}),
     new MakerDMG({ name: 'qrtz', format: 'ULFO' }, ['darwin']),
