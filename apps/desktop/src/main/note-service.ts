@@ -53,6 +53,9 @@ interface Waiter {
 /** Host RPC timeout for one summary attempt, and the worker's LLM deadline inside it (ADR 0005). */
 const SUMMARY_RPC_MS = 120_000;
 const SUMMARY_DEADLINE_MS = 110_000;
+/** Index: worker deadline inside the RPC timeout, like the summary (N3, ADR 0007). */
+const INDEX_RPC_MS = 300_000;
+const INDEX_DEADLINE_MS = 280_000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const toLifecycleError = (
   e: unknown,
@@ -606,12 +609,32 @@ export class NoteService {
     });
   }
 
+  /**
+   * Template picker. Routed like `resummarize`: through the pipeline's summary step when there is one (heavy-step
+   * queue, worker deadline, retries, fallback), else one deadline-bounded call. It used to be a bare
+   * `note.resummarize` on the default 10 s RPC timeout: a real LLM summary outlived it, the UI got E_TIMEOUT
+   * while the worker kept going and saved later, outside the queue (cycle 3, N9, ADR 0008).
+   */
   async setTemplate(id: string, template: string) {
-    return this.deps.worker.call('note.resummarize', {
-      id,
-      template,
-      llm: await this.llmParams(),
-    });
+    const p =
+      this.pipelines.get(id) ??
+      (await this.deps.worker.call('pipeline.get', { id }));
+    if (p && p.steps.finalize.status === 'done') {
+      await this.deps.worker.call('note.setTemplate', { id, template });
+      return this.resummarize(id);
+    }
+    const summary = await this.deps.worker.call(
+      'note.resummarize',
+      {
+        id,
+        template,
+        llm: await this.llmParams(),
+        deadlineMs: SUMMARY_DEADLINE_MS,
+      },
+      SUMMARY_RPC_MS,
+    );
+    this.deps.bus.emit('note:changed', { id });
+    return summary;
   }
 
   private helperHealth: SessionView['helper'] = 'ok';
@@ -1158,8 +1181,8 @@ export class NoteService {
         if (!mc.backgroundIndexing && !manual) return true; // Settings → Index for search off
         const r = await this.deps.worker.call(
           'note.stepIndex',
-          { meetingId: p.meetingId },
-          300_000,
+          { meetingId: p.meetingId, deadlineMs: INDEX_DEADLINE_MS },
+          INDEX_RPC_MS,
         );
         return r.skipped;
       }
@@ -1338,8 +1361,8 @@ export class NoteService {
     }
     const summary = await this.deps.worker.call(
       'note.resummarize',
-      { id, llm: await this.llmParams() },
-      120_000,
+      { id, llm: await this.llmParams(), deadlineMs: SUMMARY_DEADLINE_MS },
+      SUMMARY_RPC_MS,
     );
     this.deps.bus.emit('note:changed', { id });
     return summary;

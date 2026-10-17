@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { newPipeline, type FetchLike } from '@qrtz/core';
+import { newPipeline, type Embedder, type FetchLike } from '@qrtz/core';
 import { openDatabase } from './db';
 import { createWorkerHandlers } from './handlers';
 
@@ -226,5 +226,86 @@ describe('stepSummary deadline (slow OpenRouter)', () => {
   it('the default deadline sits inside the host RPC timeout', async () => {
     const { SUMMARY_DEADLINE_MS } = await import('./handlers');
     expect(SUMMARY_DEADLINE_MS).toBeLessThan(120_000);
+  });
+});
+
+// Hardening cycle 3 (N3, ADR 0007): the index step gets the same worker-side deadline as the summary.
+describe('stepIndex deadline (hung on-device embedder)', () => {
+  const lines = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `u${i}`,
+      startMs: i * 1000,
+      endMs: i * 1000 + 900,
+      text: `line ${i} about the launch`,
+      source: 'live' as const,
+    }));
+  const vec = () => {
+    const v = new Float32Array(4);
+    v[0] = 1;
+    return v;
+  };
+  const setup = (embedder: () => Promise<Embedder | null>, n = 100) => {
+    const db = openDatabase(':memory:');
+    const h = createWorkerHandlers(db, { fetch: failing(500), embedder });
+    h['note.create']({ meeting: meeting('m', 'processing') });
+    for (const s of lines(n))
+      h['note.appendLive']({ meetingId: 'm', segment: s });
+    const vectors = () =>
+      Number(
+        (
+          db.prepare('SELECT count(*) AS n FROM segment_vectors').get() as {
+            n: number;
+          }
+        ).n,
+      );
+    return { h, vectors };
+  };
+
+  it('an embed that never resolves ends the attempt at deadlineMs: retryable E_TIMEOUT, nothing saved', async () => {
+    const hung: Embedder = { id: 'e', embed: () => new Promise(() => {}) };
+    const { h, vectors } = setup(async () => hung);
+    const err = await h['note.stepIndex']({
+      meetingId: 'm',
+      deadlineMs: 30,
+    }).catch((e) => e);
+    expect(err.code).toBe('E_TIMEOUT');
+    expect(err.retryable).toBe(true);
+    expect(vectors()).toBe(0);
+  });
+
+  it('a model load that hangs (first-run download) is bounded too', async () => {
+    const { h } = setup(() => new Promise(() => {}));
+    const err = await h['note.stepIndex']({
+      meetingId: 'm',
+      deadlineMs: 30,
+    }).catch((e) => e);
+    expect(err.code).toBe('E_TIMEOUT');
+  });
+
+  it('a batch that lands after the deadline is dropped; earlier batches stay and the retry resumes', async () => {
+    let calls = 0;
+    const slowSecond: Embedder = {
+      id: 'e',
+      embed: async (texts) => {
+        if (++calls === 2) await sleepMs(80); // lands after the 30 ms deadline
+        return texts.map(vec);
+      },
+    };
+    const { h, vectors } = setup(async () => slowSecond);
+    const err = await h['note.stepIndex']({
+      meetingId: 'm',
+      deadlineMs: 30,
+    }).catch((e) => e);
+    expect(err.code).toBe('E_TIMEOUT');
+    await sleepMs(100); // the abandoned batch resolves now
+    expect(vectors()).toBe(64); // batch 1 only; batch 2 was never written
+    const r = await h['note.stepIndex']({ meetingId: 'm', deadlineMs: 1000 });
+    expect(r).toEqual({ indexed: 36, skipped: false });
+    expect(vectors()).toBe(100);
+  });
+
+  it('the default deadline sits inside the host RPC timeout', async () => {
+    const { INDEX_DEADLINE_MS } = await import('./handlers');
+    expect(INDEX_DEADLINE_MS).toBeLessThan(300_000);
   });
 });

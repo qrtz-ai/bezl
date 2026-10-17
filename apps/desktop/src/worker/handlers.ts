@@ -61,6 +61,35 @@ export interface FinalizeParams {
 
 /** Default worker-side deadline for one strict LLM summary attempt; the host's RPC timeout is longer. */
 export const SUMMARY_DEADLINE_MS = 110_000;
+/** Default worker-side deadline for one index attempt (embedder load + batches); the host RPC is 300 s (ADR 0007). */
+export const INDEX_DEADLINE_MS = 280_000;
+
+const deadlineError = (what: string) =>
+  new AppError('E_TIMEOUT', `${what} deadline exceeded`, { retryable: true });
+
+/** Settles with `p`, or rejects with E_TIMEOUT as soon as `signal` aborts (the work itself may keep running). */
+function untilAborted<T>(
+  p: Promise<T>,
+  signal: AbortSignal | undefined,
+  what: string,
+): Promise<T> {
+  if (!signal) return p;
+  if (signal.aborted) return Promise.reject(deadlineError(what));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(deadlineError(what));
+    signal.addEventListener('abort', onAbort, { once: true });
+    p.then(
+      (v) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(v);
+      },
+      (e) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(e);
+      },
+    );
+  });
+}
 
 /** All worker RPC methods. Pure over a DB + fetch so they're integration-testable in Node. */
 export function createWorkerHandlers(
@@ -86,17 +115,32 @@ export function createWorkerHandlers(
       return null;
     }
   };
-  /** Embed up to `cap` unindexed lines (one meeting or all), in batches. */
-  const indexVectors = async (e: Embedder, cap: number, meetingId?: string) => {
+  /**
+   * Embed up to `cap` unindexed lines (one meeting or all), in batches. With `signal`, the run stops at the
+   * deadline: a batch still embedding is abandoned and never saved, no further batch starts, and batches saved
+   * before the deadline stay (saveVectors is idempotent, so the retry resumes where this attempt stopped).
+   */
+  const indexVectors = async (
+    e: Embedder,
+    cap: number,
+    meetingId?: string,
+    signal?: AbortSignal,
+  ) => {
     let done = 0;
     while (done < cap) {
+      if (signal?.aborted) throw deadlineError('index');
       const batch = repo.missingVectors(
         e.id,
         Math.min(64, cap - done),
         meetingId,
       );
       if (!batch.length) break;
-      const vecs = await e.embed(batch.map((b) => b.text));
+      const vecs = await untilAborted(
+        e.embed(batch.map((b) => b.text)),
+        signal,
+        'index',
+      );
+      if (signal?.aborted) throw deadlineError('index');
       repo.saveVectors(
         e.id,
         batch.map((b, i) => ({
@@ -313,15 +357,25 @@ export function createWorkerHandlers(
       repo.setStatus(p.meetingId, 'done');
       return summary;
     },
-    /** Step 3: embed this meeting's lines for semantic chat. `skipped` = no embedder on this machine. */
-    'note.stepIndex': async (p: { meetingId: string }) => {
+    /**
+     * Step 3: embed this meeting's lines for semantic chat. `skipped` = no embedder on this machine.
+     * `deadlineMs` bounds the whole attempt (model load included) inside the host's RPC timeout, so a hung
+     * embedder ends the attempt for real and the one-heavy-step-at-a-time queue holds (N3, ADR 0007).
+     */
+    'note.stepIndex': async (p: { meetingId: string; deadlineMs?: number }) => {
       need(p.meetingId);
-      const e = await getEmbedder();
-      if (!e) return { indexed: 0, skipped: true };
-      return {
-        indexed: await indexVectors(e, 100_000, p.meetingId),
-        skipped: false,
-      };
+      const ac = new AbortController();
+      const t = setTimeout(() => ac.abort(), p.deadlineMs ?? INDEX_DEADLINE_MS);
+      try {
+        const e = await untilAborted(getEmbedder(), ac.signal, 'index');
+        if (!e) return { indexed: 0, skipped: true };
+        return {
+          indexed: await indexVectors(e, 100_000, p.meetingId, ac.signal),
+          skipped: false,
+        };
+      } finally {
+        clearTimeout(t);
+      }
     },
     'db.health': () => dbHealth(db),
     'note.create': (p: { meeting: MeetingRow }) => {
@@ -528,25 +582,47 @@ export function createWorkerHandlers(
         ),
       };
     },
-    /** Re-run the summary (the "Retry" after an LLM failure). Keeps the old summary if this throws. */
+    /**
+     * Re-run the summary outside the pipeline (meetings with no pipeline row). Keeps the old summary if this
+     * throws. `deadlineMs` works like `note.stepSummary`: past it nothing is saved (cycle 3, N9).
+     */
     'note.resummarize': async (p: {
       id: string;
       llm: LlmParams;
       template?: string;
+      deadlineMs?: number;
     }): Promise<MeetingSummary> => {
       const m = need(p.id);
       if (p.template) {
         repo.setTemplate(p.id, p.template);
         m.template = p.template;
       }
-      const summary = await summarize(
-        m,
-        repo.getSegments(p.id),
-        p.llm,
-        'llm retry failed',
+      const ac = new AbortController();
+      const t = setTimeout(
+        () => ac.abort(),
+        p.deadlineMs ?? SUMMARY_DEADLINE_MS,
       );
-      repo.saveSummary(p.id, summary);
-      return summary;
+      try {
+        const summary = await summarize(
+          m,
+          repo.getSegments(p.id),
+          p.llm,
+          'llm retry failed',
+          false,
+          ac.signal,
+        );
+        if (ac.signal.aborted) throw deadlineError('LLM summary');
+        repo.saveSummary(p.id, summary);
+        return summary;
+      } finally {
+        clearTimeout(t);
+      }
+    },
+    /** Template picker: store the choice; the host re-runs the summary through the pipeline (N9). */
+    'note.setTemplate': (p: { id: string; template: string }) => {
+      need(p.id);
+      repo.setTemplate(p.id, p.template);
+      return { ok: true };
     },
     'note.listNotes': (p: { meetingId: string }) => repo.getNotes(p.meetingId),
     'note.addNote': (p: { meetingId: string; text: string; atMs: number }) => {
