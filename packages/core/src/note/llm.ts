@@ -109,18 +109,7 @@ async function post(
   } catch (e) {
     // Transport failures (DNS, offline, reset) must be retryable: F11 / summary policy.
     // A raw TypeError would become E_INTERNAL via AppError.from and fail the step once.
-    const msg = e instanceof Error ? e.message : String(e);
-    const aborted =
-      (e instanceof Error && e.name === 'AbortError') ||
-      (typeof DOMException !== 'undefined' &&
-        e instanceof DOMException &&
-        e.name === 'AbortError') ||
-      signal?.aborted;
-    throw new AppError(
-      aborted ? 'E_TIMEOUT' : 'E_UNAVAILABLE',
-      `LLM network error: ${msg.slice(0, 200)}`,
-      { retryable: true, cause: e },
-    );
+    throw transportError(e, signal, 'LLM network error');
   }
   if (!res.ok) {
     const t = await res.text().catch(() => '');
@@ -147,7 +136,69 @@ async function post(
       { retryable: res.status >= 500 || res.status === 429 },
     );
   }
-  return res.json();
+  // The body is still on the wire after a 200: a reset mid-body, the deadline firing, or a proxy/captive portal
+  // answering 200 with HTML must stay retryable too (cycle 3, N8; the cycle-1 wrap only covered fetch()).
+  try {
+    return await res.json();
+  } catch (e) {
+    if (e instanceof SyntaxError && !signal?.aborted)
+      throw new AppError(
+        'E_PROVIDER',
+        `LLM reply was not JSON: ${e.message.slice(0, 200)}`,
+        { retryable: true, cause: e },
+      );
+    throw transportError(
+      e,
+      signal,
+      'LLM network error while reading the reply',
+    );
+  }
+}
+
+function isAbortError(e: unknown): boolean {
+  return (
+    (e instanceof Error && e.name === 'AbortError') ||
+    (typeof DOMException !== 'undefined' &&
+      e instanceof DOMException &&
+      e.name === 'AbortError')
+  );
+}
+
+/** A transport-level failure: E_TIMEOUT when the caller's signal fired, else E_UNAVAILABLE. Always retryable. */
+function transportError(
+  e: unknown,
+  signal: AbortSignal | undefined,
+  what: string,
+): AppError {
+  if (e instanceof AppError) return e;
+  const msg = e instanceof Error ? e.message : String(e);
+  return new AppError(
+    isAbortError(e) || signal?.aborted ? 'E_TIMEOUT' : 'E_UNAVAILABLE',
+    `${what}: ${msg.slice(0, 200)}`,
+    { retryable: true, cause: e },
+  );
+}
+
+/** OpenRouter (and some gateways) report upstream failures as `{"error":{...}}` inside a 200. */
+function errorInBody(j: unknown): AppError | null {
+  if (!j || typeof j !== 'object' || !('error' in j)) return null;
+  const err = (j as { error?: unknown }).error;
+  if (err == null) return null;
+  const o =
+    typeof err === 'object'
+      ? (err as { message?: unknown; code?: unknown })
+      : {};
+  const message =
+    typeof err === 'string'
+      ? err
+      : typeof o.message === 'string'
+        ? o.message
+        : 'provider error';
+  const code = typeof o.code === 'number' ? o.code : undefined;
+  return new AppError('E_PROVIDER', `LLM error: ${message.slice(0, 200)}`, {
+    // An upstream 4xx (bad request, no credits) won't fix itself; anything else might.
+    retryable: code === undefined || code >= 500 || code === 429,
+  });
 }
 
 /** OpenAI Chat Completions–compatible (OpenAI, OpenRouter, NVIDIA NIM, Groq, Ollama, LM Studio...). */
@@ -177,7 +228,11 @@ export function openAiCompatible(o: {
         },
         opts?.signal,
       )) as { choices?: { message?: { content?: string } }[] };
-      return j.choices?.[0]?.message?.content ?? '';
+      if (!j?.choices?.length) {
+        const bodyErr = errorInBody(j);
+        if (bodyErr) throw bodyErr;
+      }
+      return j?.choices?.[0]?.message?.content ?? '';
     },
   };
 }
@@ -344,9 +399,22 @@ export function parseSummaryReply(
 ): z.infer<typeof LlmSummaryJson> {
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
+  // A malformed reply is a sampling accident, not a terminal provider state: retryable, so the pipeline
+  // re-asks (bounded by the summary policy) before falling back (cycle 3, N8).
   if (start < 0 || end <= start)
-    throw new AppError('E_PROVIDER', 'LLM reply had no JSON object');
-  return LlmSummaryJson.parse(JSON.parse(text.slice(start, end + 1)));
+    throw new AppError('E_PROVIDER', 'LLM reply had no JSON object', {
+      retryable: true,
+    });
+  try {
+    return LlmSummaryJson.parse(JSON.parse(text.slice(start, end + 1)));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new AppError(
+      'E_PROVIDER',
+      `LLM reply did not match the summary shape: ${msg.slice(0, 200)}`,
+      { retryable: true, cause: e },
+    );
+  }
 }
 
 /** LLM summary with automatic fallback to the local extractive summarizer. Never throws. */
