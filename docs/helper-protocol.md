@@ -214,7 +214,9 @@ the rest and says so, instead of only a stderr line:
   - Only the flags not already set are applied, and they are remembered in `RecordingState.deviceLost` /
     `SessionView.deviceLost`.
   - `helper-restored` clears them. A later revoke of the same flag takes it over, so it stays.
-  - Ignored outside `recording`: before the ack, or while reconnecting.
+  - Ignored outside `recording`: before the ack, or while reconnecting. A line that comes _behind_ the pending
+    start's own `recording.started` (often in the same chunk) is held until the host applies the ack, then
+    replayed. The same goes for `asr` (N37, ADR 0029).
   - The meeting gets `PipelineState.capture.deviceFailures [{degraded, reason, atMs}]` (at most 8). A revoke never
     writes one.
 - Mock helpers: TS `createMockHelper({ micFails: { afterMs, reason? } })`, and `QRTZ_MOCK_MIC_FAILS=1500` for both

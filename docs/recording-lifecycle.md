@@ -100,6 +100,10 @@ are listed in `deviceLost` (on `SessionView` too). They are the one exception to
 recording": `helper-restored` removes them, unless a revoke of the same flag took them over in between. Each failure
 goes to `deviceFailures` and then `PipelineState.capture.deviceFailures`, apart from revokes.
 
+**Lines behind an ack (N37, ADR 0029).** `start-acked` / `helper-restored` are applied in the start's continuation,
+after the line that resolved its waiter. Lines from the same chunk that the new recording owns (`capture.degraded`,
+`asr`) are held behind the ack and replayed right after the transition, or dropped if the start does not take.
+
 ## Post-processing pipeline
 
 There is one pipeline per meeting (`pipeline_state`, keyed by meeting id, cascade-deleted with the meeting).
