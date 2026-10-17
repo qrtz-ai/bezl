@@ -27,7 +27,6 @@ fn cleanup_matches_ts() {
         );
         n += 1;
     }
-    // `plausible` (the LLM-reply check) went with talk's LLM cleanup (ADR 0071); only the TS oracle still reads it.
     assert!(n > 20);
 }
 

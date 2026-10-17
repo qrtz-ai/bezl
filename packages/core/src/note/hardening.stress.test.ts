@@ -6,7 +6,6 @@ import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import { AppError } from '../errors';
 import { migrate, migrations } from '../db/migrate';
-import { cleanupDictation } from '../talk/cleanup';
 import { EngineArbiter } from '../talk/asr';
 import { syntheticSegments } from './large';
 import { createProvider, summarizeMeeting, type FetchLike } from './llm';
@@ -209,27 +208,5 @@ describe('hardening stress: talk + note concurrency (pure)', () => {
     p = pipelineStep(p, 'summary', { kind: 'skip', now: 3 });
     p = pipelineStep(p, 'index', { kind: 'skip', now: 4 });
     expect(pipelineSettled(p)).toBe(true);
-  });
-
-  it('cleanup timeout under network loss falls back to rules', async () => {
-    const r = await cleanupDictation({
-      raw: 'um hello hello world',
-      dictionary: [],
-      enabled: true,
-      timeoutMs: 20,
-      llm: async (_m, signal) => {
-        await new Promise<void>((resolve, reject) => {
-          const t = setTimeout(() => resolve(), 500);
-          signal.addEventListener('abort', () => {
-            clearTimeout(t);
-            reject(new Error('aborted'));
-          });
-        });
-        return 'should not win';
-      },
-    });
-    expect(r.method).toBe('rules');
-    expect(r.fallbackReason).toBe('timeout');
-    expect(r.text.toLowerCase()).toMatch(/hello world/);
   });
 });

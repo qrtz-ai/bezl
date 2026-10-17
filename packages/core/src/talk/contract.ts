@@ -10,7 +10,6 @@ export const TalkPhase = z.enum([
   'listening',
   /** Key released; waiting for the engine's final text. */
   'finalizing',
-  'cleaning',
   'inserting',
   'error',
 ]);

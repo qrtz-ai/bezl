@@ -5302,7 +5302,6 @@
               "idle",
               "listening",
               "finalizing",
-              "cleaning",
               "inserting",
               "error"
             ]
@@ -5465,7 +5464,6 @@
               "idle",
               "listening",
               "finalizing",
-              "cleaning",
               "inserting",
               "error"
             ]
@@ -5628,7 +5626,6 @@
               "idle",
               "listening",
               "finalizing",
-              "cleaning",
               "inserting",
               "error"
             ]
@@ -5791,7 +5788,6 @@
               "idle",
               "listening",
               "finalizing",
-              "cleaning",
               "inserting",
               "error"
             ]
@@ -8046,7 +8042,6 @@
               "idle",
               "listening",
               "finalizing",
-              "cleaning",
               "inserting",
               "error"
             ]

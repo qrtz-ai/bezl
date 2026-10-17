@@ -40,7 +40,6 @@ export type TalkPillPhase =
   | 'idle'
   | 'listening'
   | 'finalizing'
-  | 'cleaning'
   | 'inserting'
   | 'error';
 
@@ -65,8 +64,7 @@ export function TalkPill({
   error?: string;
 }) {
   const t = useTheme();
-  const busy =
-    phase === 'finalizing' || phase === 'cleaning' || phase === 'inserting';
+  const busy = phase === 'finalizing' || phase === 'inserting';
   return (
     <div
       data-testid="talk-pill"

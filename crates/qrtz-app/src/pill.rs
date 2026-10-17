@@ -74,7 +74,7 @@ mod tests {
             pill_action(&off, &json!({"phase": "listening"})),
             PillAction::Hide
         );
-        for p in ["finalizing", "cleaning", "inserting", "idle"] {
+        for p in ["finalizing", "inserting", "idle"] {
             assert_eq!(
                 pill_action(&on, &json!({"phase": p, "id": "d1"})),
                 PillAction::Hide,

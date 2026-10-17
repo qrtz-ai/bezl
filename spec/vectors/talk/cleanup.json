@@ -178,42 +178,5 @@
       "text": "xquartz no",
       "expect": "xquartz no"
     }
-  ],
-  "plausible": [
-    {
-      "raw": "um hello world",
-      "out": "Hello, world!",
-      "expect": true
-    },
-    {
-      "raw": "hello",
-      "out": "Here is the cleaned text: hello",
-      "expect": false
-    },
-    {
-      "raw": "hello",
-      "out": "Sure! hello",
-      "expect": false
-    },
-    {
-      "raw": "hi",
-      "out": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-      "expect": false
-    },
-    {
-      "raw": "hi",
-      "out": "",
-      "expect": false
-    },
-    {
-      "raw": "hello",
-      "out": "cleaned: hello",
-      "expect": false
-    },
-    {
-      "raw": "hello",
-      "out": "Hello.",
-      "expect": true
-    }
   ]
 }

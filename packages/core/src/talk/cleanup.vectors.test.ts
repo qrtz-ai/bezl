@@ -6,7 +6,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { applyDictionary, plausibleCleanup, ruleCleanup } from './cleanup';
+import { applyDictionary, ruleCleanup } from './cleanup';
 import type { DictionaryEntry } from './contract';
 
 const FILE = fileURLToPath(
@@ -18,7 +18,6 @@ interface Vectors {
   dictionary: DictionaryEntry[];
   rules: { raw: string; dict: boolean; expect: string | null }[];
   dictionaryOnly: { text: string; expect: string | null }[];
-  plausible: { raw: string; out: string; expect: boolean | null }[];
 }
 
 describe('talk cleanup vectors', () => {
@@ -33,11 +32,6 @@ describe('talk cleanup vectors', () => {
       const got = applyDictionary(d.text, v.dictionary);
       if (UPDATE) d.expect = got;
       else expect(got, d.text).toBe(d.expect);
-    }
-    for (const p of v.plausible) {
-      const got = plausibleCleanup(p.raw, p.out);
-      if (UPDATE) p.expect = got;
-      else expect(got, p.out).toBe(p.expect);
     }
     if (UPDATE) writeFileSync(FILE, `${JSON.stringify(v, null, 2)}\n`);
   });

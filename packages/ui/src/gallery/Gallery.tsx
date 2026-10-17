@@ -682,7 +682,7 @@ function Showcase({
               />
               <TalkPill
                 inline
-                phase="cleaning"
+                phase="finalizing"
                 level={0}
                 text="So I think we should ship qrtz talk"
                 partial=""
