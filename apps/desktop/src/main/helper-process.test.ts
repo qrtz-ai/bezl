@@ -14,6 +14,7 @@ describe('mock helper fault-injection env', () => {
   it('QRTZ_MOCK_MIC_FAILS: whole ms after recording.start, junk ignored (N35)', () => {
     expect(parseMicFails(' 1500 ')).toEqual({ afterMs: 1500 });
     expect(parseMicFails('1.5')).toBeUndefined();
+    expect(parseMicFails(' start ')).toEqual({ afterMs: 0, atStart: true }); // N38
     expect(parseMicFails('mic@1')).toBeUndefined();
   });
   it('QRTZ_MOCK_REVOKE still parses', () => {

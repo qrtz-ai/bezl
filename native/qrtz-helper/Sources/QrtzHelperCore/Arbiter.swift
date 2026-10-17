@@ -71,7 +71,8 @@ public enum SessionArbiter {
 
     static func transition(_ s: ArbiterState, _ e: ArbiterEvent) -> ArbiterResult {
         func r(_ st: ArbiterState, _ d: String, _ fx: [String] = [], _ reason: String? = nil) -> ArbiterResult {
-            ArbiterResult(state: st, decision: d, reason: reason, mux: st.mic.contains("recording") && st.mic.contains("dictation"), effects: fx)
+            // N5: mux = two live readers; a warm idle mic keeps the dictation reader without dictating.
+            ArbiterResult(state: st, decision: d, reason: reason, mux: st.mic.contains("recording") && st.dictating, effects: fx)
         }
         let micOk = !s.denied.contains(.microphone)
         let hasDict = s.mic.contains("dictation")

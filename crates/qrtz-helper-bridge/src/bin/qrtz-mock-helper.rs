@@ -12,6 +12,8 @@
 //!   QRTZ_MOCK_MIC_FAILS=1500     N35: per recording, the in-source mic fails 1500 ms after recording.start:
 //!                                capture.degraded {degraded: ["no-mic"], reason}; scripted mic silence after it
 //!                                is not sent; cancelled by stop/abort. Same knob as the TS mock (parseMicFails).
+//!   QRTZ_MOCK_MIC_FAILS=start    N38: the mic fails at start; capture.degraded is written in the same write (one
+//!                                stdout chunk) as recording.started, like Swift `DegradationInbox.goLive`.
 //!   QRTZ_MOCK_EXIT_AFTER_MS=n    exit(3) after n ms
 //!   QRTZ_MOCK_CRASH_ONCE=path    crash (exit 3) 100 ms after start unless `path` exists; creates it first
 //!   QRTZ_MOCK_GARBAGE=1          print one invalid line right after hello
@@ -75,7 +77,9 @@ fn main() {
         .as_deref()
         .map(parse_fallback)
         .unwrap_or_default();
-    let mic_fails = env("QRTZ_MOCK_MIC_FAILS").and_then(|v| v.trim().parse::<u64>().ok());
+    let mic_fails_env = env("QRTZ_MOCK_MIC_FAILS");
+    let mic_fails_at_start = mic_fails_env.as_deref().map(str::trim) == Some("start");
+    let mic_fails = mic_fails_env.and_then(|v| v.trim().parse::<u64>().ok());
     // The generation whose mic failed (0 = none): the mic is no longer tracked then.
     let mic_failed = Arc::new(AtomicU64::new(0));
     // Bumped by every recording.start / stop / abort; a scripted line only goes out while its generation is current.
@@ -173,7 +177,19 @@ fn main() {
                         }
                     });
                 }
-                say(json!({"type": "recording.started", "audioPath": path}));
+                if mic_fails_at_start {
+                    // N38: one write, two lines, so the host sees them in a single read chunk.
+                    mic_failed.store(gen, Ordering::SeqCst);
+                    if !silent {
+                        let started = json!({"type": "recording.started", "audioPath": path});
+                        let degraded = json!({"type": "capture.degraded", "degraded": ["no-mic"], "reason": "mock: mic device failed"});
+                        let mut o = out.lock().unwrap();
+                        let _ = o.write_all(format!("{started}\n{degraded}\n").as_bytes());
+                        let _ = o.flush();
+                    }
+                } else {
+                    say(json!({"type": "recording.started", "audioPath": path}));
+                }
                 // N35: like the Swift controller, only after recording.started, once per recording, never after
                 // stop/abort (the generation moves on).
                 if let Some(after) = mic_fails {

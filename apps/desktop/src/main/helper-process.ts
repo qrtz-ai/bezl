@@ -79,10 +79,13 @@ export function parseSilence(v: string) {
 
 /**
  * QRTZ_MOCK_MIC_FAILS="1500": the mock's in-source mic fails 1500 ms after each recording.start and it sends
- * capture.degraded{no-mic} (N35 fault injection). Anything but a whole number of ms is ignored.
+ * capture.degraded{no-mic} (N35 fault injection). "start" (N38): it fails at start, the degraded line right behind
+ * recording.started in the same turn. Anything else is ignored.
  */
 export function parseMicFails(v: string) {
-  return /^\d+$/.test(v.trim()) ? { afterMs: Number(v.trim()) } : undefined;
+  const t = v.trim();
+  if (t === 'start') return { afterMs: 0, atStart: true };
+  return /^\d+$/.test(t) ? { afterMs: Number(t) } : undefined;
 }
 
 /** QRTZ_MOCK_PERMISSIONS="screen-recording=denied,microphone=denied" (e2e fault injection). */

@@ -73,3 +73,16 @@ test('N29: every source silent → "no audio is being recorded"; the meeting kee
   expect(errors).toEqual([]);
   await app.close();
 });
+
+test('N38: the mic fails at start, in the same turn as recording.started → recording continues with "no mic"', async () => {
+  const { app, win, errors } = await launch({ QRTZ_MOCK_MIC_FAILS: 'start' });
+  // The degraded line arrived right behind the ack (N37 ordering): it must not be dropped or fail the start.
+  await expect(win.getByTestId('degraded-no-mic')).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(win.getByTestId('note-stop')).toBeVisible();
+  await win.getByTestId('note-stop').click();
+  await expect(win.getByTestId('note-stop')).toBeHidden({ timeout: 10_000 });
+  expect(errors).toEqual([]);
+  await app.close();
+});

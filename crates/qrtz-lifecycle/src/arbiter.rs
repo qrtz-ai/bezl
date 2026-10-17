@@ -141,7 +141,7 @@ pub struct ArbiterResult {
     pub decision: Decision,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
-    /// Recording and dictation both read the tap after this step.
+    /// A recording and a live dictation both read the tap after this step (N5).
     pub mux: bool,
     /// `mic.subscribe:<who>`, `mic.unsubscribe:<who>`, `dictation.stop:<reason>`, `recording.lost`,
     /// `degrade:<flag>` (strings so vectors stay language-neutral).
@@ -160,7 +160,8 @@ pub fn degradations_for_revocation(p: OsPermission, already_denied: &[OsPermissi
 }
 
 fn res(state: ArbiterState, decision: Decision, effects: Vec<String>, reason: Option<&str>) -> ArbiterResult {
-    let mux = state.reads(MicSubscriber::Recording) && state.reads(MicSubscriber::Dictation);
+    // N5: two live readers (a warm idle mic keeps the dictation reader without dictating).
+    let mux = state.reads(MicSubscriber::Recording) && state.dictating;
     ArbiterResult {
         state,
         decision,

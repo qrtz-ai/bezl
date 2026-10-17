@@ -1263,7 +1263,7 @@
      },
      "expect": {
       "decision": "accept",
-      "mux": true,
+      "mux": false,
       "effects": [
        "mic.subscribe:recording"
       ],

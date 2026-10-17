@@ -49,7 +49,7 @@ Rules (the arbiter's `cmd` events):
    so a late ack for an abandoned start never stops the recording that replaced it.
 3. Shared mic tap (`MicHub`). The physical mic (one `AVAudioEngine` input tap) starts on the first reader and stops on
    the last. Readers are `recording` (the capture source's mic leg, mixed with system audio and echo-gated) and `dictation`.
-   Every reader gets every block. When both are running, the helper logs `mux: recording and dictation share the mic tap`.
+   Every reader gets every block. When a recording and a live dictation both run, the helper logs `mux: recording and dictation share the mic tap`; a warm idle mic (the dictation reader kept open, nothing dictating) is not a mux (N5).
    The warm mic keeps a `dictation` reader subscribed between dictations (see Warm mic below).
    The device start is race-safe: `source.start` runs outside the hub lock, a subscribe during it joins and waits for
    the outcome, and if every reader left (or the tap was dropped) by the time it returns, the hub stops the device

@@ -75,7 +75,7 @@ export interface HelperArbiterResult {
   state: HelperArbiterState;
   decision: 'accept' | 'ignore' | 'refuse';
   reason?: string;
-  /** True when recording and dictation both read the mic tap after this step. */
+  /** True when a recording and a live dictation both read the mic tap after this step (N5: not a warm idle mic). */
   mux: boolean;
   effects: HelperArbiterEffect[];
 }
@@ -155,7 +155,8 @@ function step(
     state,
     decision,
     ...(reason ? { reason } : {}),
-    mux: state.mic.includes('recording') && state.mic.includes('dictation'),
+    // N5: two live readers. A warm idle mic keeps the `dictation` reader without dictating; that is not a mux.
+    mux: state.mic.includes('recording') && state.dictating,
     effects,
   });
 

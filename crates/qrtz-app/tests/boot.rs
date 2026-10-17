@@ -210,3 +210,32 @@ async fn notify_no_audio_off_suppresses_the_notice() {
     assert!(shell.0.lock().unwrap().is_empty());
     a.runtime.kill();
 }
+
+/// N38 end to end through the real bridge: the mock writes capture.degraded{no-mic} in the recording.started chunk;
+/// the runtime holds it behind the ack (N37) and the session shows the recording with `no-mic`, not a lost line.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn mic_fails_at_start_in_the_started_chunk_degrades_the_session() {
+    let tmp = tempfile::tempdir().unwrap();
+    let a = app(
+        tmp.path(),
+        &[("QRTZ_MOCK_MIC_FAILS", "start")],
+        Arc::new(Shell::default()),
+    );
+    let r = Router::new(Shared(a.service.clone())).validate_responses(true);
+    a.service.start_helper();
+    a.runtime.recover().await.unwrap();
+    let rt = a.runtime.clone();
+    until("helper", || rt.session().helper.as_str() == "simulated").await;
+    let s = call(&r, "note", "note:start", json!({})).await;
+    assert_eq!(s["phase"], "recording", "{s}");
+    let rt2 = a.runtime.clone();
+    until("no-mic", move || {
+        serde_json::to_value(rt2.session()).unwrap()["degraded"]
+            .as_array()
+            .is_some_and(|d| d.contains(&json!("no-mic")))
+    })
+    .await;
+    let s = call(&r, "note", "note:session", json!(null)).await;
+    assert_eq!(s["phase"], "recording", "{s}");
+    a.runtime.kill();
+}

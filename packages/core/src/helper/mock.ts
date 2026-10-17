@@ -63,7 +63,11 @@ export interface MockHelperOptions {
    * answered), once per recording, never after stop/abort (cleared with the script). The mic is no longer tracked:
    * scripted mic silence after it is not sent.
    */
-  micFails?: { afterMs: number; reason?: string };
+  /**
+   * N35 fault injection. `atStart` (N38): like Swift `DegradationInbox.goLive`, the start-time capture.degraded is
+   * written right behind recording.started in the same turn (no timer), the ordering that hid N37.
+   */
+  micFails?: { afterMs: number; reason?: string; atStart?: boolean };
   /**
    * H8 fault injection: capture sources that fail to start on every recording.start. Each emits
    * capture.fallback{from, to, reason} before recording.started, like the Swift helper walking its source list.
@@ -187,7 +191,7 @@ export function createMockHelper(
   const armSilence = () => {
     const t0 = clock.now();
     micFailed = false;
-    if (opts.micFails)
+    if (opts.micFails && !opts.micFails.atStart)
       at(opts.micFails.afterMs, () => {
         micFailed = true;
         emit({
@@ -454,6 +458,14 @@ export function createMockHelper(
               fatal: false,
             });
           emit({ type: 'recording.started', audioPath });
+          if (opts.micFails?.atStart) {
+            micFailed = true;
+            emit({
+              type: 'capture.degraded',
+              degraded: ['no-mic'],
+              reason: opts.micFails.reason ?? 'mock: mic device failed',
+            });
+          }
           if (opts.scenario) startScript();
           return;
         case 'recording.abort':

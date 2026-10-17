@@ -340,3 +340,44 @@ async fn real_swift_helper_when_available() {
     )
     .await;
 }
+
+/// N38: `QRTZ_MOCK_MIC_FAILS=start` writes capture.degraded in the same stdout chunk as recording.started (the Swift
+/// `goLive` ordering that hid N37), so host tests exercise the ack-hold with both lines in one read.
+#[test]
+fn mock_mic_fails_at_start_shares_the_started_chunk() {
+    use std::io::{BufRead, BufReader, Read, Write};
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_qrtz-mock-helper"))
+        .env("QRTZ_MOCK_HB_MS", "0")
+        .env("QRTZ_MOCK_MIC_FAILS", "start")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut out = BufReader::new(child.stdout.take().unwrap());
+    let mut hello = String::new();
+    out.read_line(&mut hello).unwrap();
+    assert!(hello.contains("\"hello\""));
+    let mut stdin = child.stdin.take().unwrap();
+    writeln!(
+        stdin,
+        r#"{{"type":"recording.start","audioPath":"/tmp/n38.wav","sources":["mic"]}}"#
+    )
+    .unwrap();
+    // One read returns everything written so far by the one write.
+    let mut buf = [0u8; 4096];
+    let n = out.get_mut().read(&mut buf).unwrap();
+    let chunk = std::str::from_utf8(&buf[..n]).unwrap();
+    let lines: Vec<Value> = chunk.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    assert!(lines.len() >= 2, "{chunk}");
+    assert_eq!(lines[0]["type"], "recording.started");
+    assert_eq!(
+        lines[1],
+        serde_json::json!({"type": "capture.degraded", "degraded": ["no-mic"], "reason": "mock: mic device failed"})
+    );
+    for l in &lines {
+        qrtz_helper_bridge::parse_helper_line(&l.to_string()).unwrap();
+    }
+    drop(stdin);
+    let _ = child.kill();
+    let _ = child.wait();
+}

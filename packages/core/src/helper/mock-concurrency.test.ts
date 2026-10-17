@@ -199,6 +199,24 @@ describe('mock helper: scripted capture.silent / capture.audible (N29)', () => {
 });
 
 describe('mock helper: micFails → capture.degraded (N35)', () => {
+  it('N38 atStart: capture.degraded follows recording.started in the same turn (Swift goLive ordering)', () => {
+    const { h, got, send } = rig({
+      micFails: { afterMs: 0, atStart: true, reason: 'device busy' },
+      silence: [{ source: 'mic', afterMs: 5 }],
+    });
+    send({ type: 'recording.start', audioPath: '/tmp/n38.wav' });
+    // No await: both lines are already out, back to back, with nothing between them.
+    const types = got.map((m) => (m as { type: string }).type);
+    const i = types.indexOf('recording.started');
+    expect(i).toBeGreaterThanOrEqual(0);
+    expect(types[i + 1]).toBe('capture.degraded');
+    expect(got[i + 1]).toEqual({
+      type: 'capture.degraded',
+      degraded: ['no-mic'],
+      reason: 'device busy',
+    });
+    h.kill();
+  });
   it('the mic fails after recording.start; scripted mic silence after it is not sent; cleared on stop', async () => {
     const { h, got, send } = rig({
       micFails: { afterMs: 10, reason: 'device busy' },

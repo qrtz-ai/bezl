@@ -263,9 +263,8 @@ function checkStep(
   // Confinement: nobody reads the mic while it is denied.
   if (st.denied.includes('microphone'))
     expect(st.mic, `mic read while denied @ ${ctx}`).toEqual([]);
-  expect(r.mux).toBe(
-    st.mic.includes('recording') && st.mic.includes('dictation'),
-  );
+  // N5: mux = a recording and a live dictation (a warm idle mic keeps the dictation reader without dictating).
+  expect(r.mux).toBe(st.mic.includes('recording') && st.dictating);
   return { r, m: x.m };
 }
 
