@@ -9,6 +9,7 @@ import {
   type ReactNode,
   type TextareaHTMLAttributes,
 } from 'react';
+import { lowerTitle } from './case';
 import { useTheme } from './theme';
 import { Text } from './Text';
 
@@ -72,7 +73,9 @@ export function Dialog({
         ref={ref}
         role="dialog"
         aria-modal="true"
-        aria-label={label ?? (typeof title === 'string' ? title : undefined)}
+        aria-label={
+          label ?? (typeof title === 'string' ? title.toLowerCase() : undefined)
+        }
         tabIndex={-1}
         data-q-no-ring
         style={{
@@ -93,7 +96,7 @@ export function Dialog({
               borderBottom: `1px solid ${t.color.border}`,
             }}
           >
-            <Text variant="h3">{title}</Text>
+            <Text variant="h3">{lowerTitle(title)}</Text>
           </div>
         ) : null}
         {children}

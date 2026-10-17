@@ -175,8 +175,8 @@ export function MeetingDetail({
   if (isLive)
     return (
       <Stack gap={3} data-testid="meeting-detail" data-live>
-        <Heading level={2}>
-          {d?.meeting.title ?? session.detected?.title ?? 'Recording'}
+        <Heading level={2} preserveCase>
+          {d?.meeting.title ?? session.detected?.title ?? 'recording'}
         </Heading>
         <CaptureStatus
           reconnecting={
@@ -257,7 +257,9 @@ export function MeetingDetail({
             />
           }
         >
-          <Heading level={2}>{meeting.title}</Heading>
+          <Heading level={2} preserveCase>
+            {meeting.title}
+          </Heading>
         </Toolbar>
         <Text variant="caption" muted>
           {PLATFORM_LABEL[meeting.platform]} · {meta}
@@ -270,7 +272,7 @@ export function MeetingDetail({
       </Stack>
       <ConfirmDialog
         open={confirmDelete}
-        title="Delete this meeting?"
+        title="delete this meeting?"
         body={meeting.title}
         confirmLabel="Delete"
         data-testid="confirm-delete"
@@ -304,10 +306,10 @@ export function MeetingDetail({
       <Speakers meetingId={id} segments={segments} />
       <Tabs
         tabs={[
-          { id: 'transcript', label: 'Transcript' },
-          { id: 'summary', label: 'Summary' },
-          { id: 'notes', label: 'Notes' },
-          { id: 'ask', label: 'Ask' },
+          { id: 'transcript', label: 'transcript' },
+          { id: 'summary', label: 'summary' },
+          { id: 'notes', label: 'notes' },
+          { id: 'ask', label: 'ask' },
         ]}
         value={tab}
         onChange={setTab}
@@ -395,7 +397,7 @@ export function MeetingDetail({
           />
         ) : (
           <EmptyState
-            title="No summary"
+            title="no summary"
             {...(meeting.status === 'done'
               ? {
                   action: (

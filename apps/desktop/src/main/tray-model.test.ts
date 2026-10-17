@@ -36,7 +36,7 @@ describe('tray state', () => {
         },
       }),
     );
-    expect(s.items.map((i) => i.label)).toContain('Record This Meeting');
+    expect(s.items.map((i) => i.label)).toContain('record this meeting');
     expect(s.items.some((i) => i.action === 'dismiss')).toBe(true);
   });
   it('helper missing disables start', () => {

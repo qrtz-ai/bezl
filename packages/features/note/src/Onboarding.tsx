@@ -21,7 +21,7 @@ export function Onboarding({
 }) {
   return (
     <Page width={480} data-testid="note-onboarding">
-      <Heading cursor>Set up Note</Heading>
+      <Heading cursor>set up note</Heading>
       <PermissionList
         items={(Object.keys(COPY) as OsPermission[]).map((p) => {
           const st = status[p] ?? 'unknown';

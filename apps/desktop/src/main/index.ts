@@ -159,7 +159,7 @@ export function bootstrap() {
       if (BrowserWindow.getFocusedWindow() || !Notification.isSupported())
         return;
       const n = new Notification({
-        title: 'Meeting detected',
+        title: 'meeting detected',
         body: `Record “${title || platform}”? Click to start recording.`,
         silent: true,
       });
@@ -599,7 +599,7 @@ export function bootstrap() {
       skipTaskbar: true,
       alwaysOnTop: true,
       show: false,
-      title: 'qrtz HUD',
+      title: 'qrtz hud',
       backgroundColor: '#111111',
       roundedCorners: true,
       webPreferences: {

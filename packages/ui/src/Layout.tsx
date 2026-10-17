@@ -8,6 +8,7 @@ import { useTheme } from './theme';
 import { Text } from './Text';
 import { Icon, type IconName } from './Icon';
 import { transition, typeStyle, type Tokens } from './tokens';
+import { lowerTitle } from './case';
 
 type Space = keyof Tokens['space'];
 
@@ -486,8 +487,8 @@ export function SettingsSection({
       data-testid={testId}
       style={{ display: 'flex', flexDirection: 'column', gap: t.space[3] }}
     >
-      <Text variant="label" tone="muted" style={{ textTransform: 'uppercase' }}>
-        {title}
+      <Text variant="label" tone="muted">
+        {lowerTitle(title)}
       </Text>
       {children}
     </section>

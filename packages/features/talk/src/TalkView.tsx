@@ -65,7 +65,7 @@ export default function TalkView() {
   return (
     <Page data-testid="talk">
       <Stack dir="row" align="center" justify="between">
-        <Heading>Talk</Heading>
+        <Heading>talk</Heading>
         <Stack dir="row" gap={2} align="center">
           <Text variant="caption" muted>
             hold <Kbd>fn</Kbd> or <Kbd>⌘⇧Space</Kbd>
@@ -92,7 +92,7 @@ export default function TalkView() {
           />
         </Stack>
       ) : null}
-      <SettingsSection title="History" data-testid="talk-history">
+      <SettingsSection title="history" data-testid="talk-history">
         {history.length ? (
           <PlainList label="Dictation history">
             {history.map((e) => (
@@ -113,10 +113,10 @@ export default function TalkView() {
             ))}
           </PlainList>
         ) : (
-          <EmptyState title="Nothing dictated yet" />
+          <EmptyState title="nothing dictated yet" />
         )}
       </SettingsSection>
-      <SettingsSection title="Dictionary" data-testid="talk-dictionary">
+      <SettingsSection title="dictionary" data-testid="talk-dictionary">
         <Stack as="form" dir="row" gap={2} onSubmit={addTerm}>
           <Input
             aria-label="Add a word"

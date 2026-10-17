@@ -26,7 +26,7 @@ export function EmptyState({
       }}
     >
       {icon ? <Icon name={icon} size="xl" tone="muted" /> : null}
-      <Text muted>{title}</Text>
+      <Text muted>{title.toLowerCase()}</Text>
       {action}
     </div>
   );

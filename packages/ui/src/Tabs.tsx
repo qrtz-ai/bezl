@@ -41,7 +41,7 @@ export function Tabs<T extends string>({
               transition: `color ${t.motion.fast} ${t.motion.easeOut}`,
             }}
           >
-            {tab.label}
+            {tab.label.toLowerCase()}
           </button>
         );
       })}

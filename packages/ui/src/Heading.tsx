@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { useTheme } from './theme';
 import { typeStyle, type TypeVariant } from './tokens';
+import { lowerTitle } from './case';
 
 /**
  * Semantic heading: `level` picks the element (h1–h3) and its default style; `variant` overrides the look
@@ -12,8 +13,11 @@ export function Heading({
   variant,
   cursor,
   style,
+  preserveCase,
   ...rest
 }: {
+  /** Headings are lowercase (brand rule); set for user content such as a meeting title. */
+  preserveCase?: boolean;
   children: ReactNode;
   level?: 1 | 2 | 3;
   variant?: Extract<
@@ -37,7 +41,7 @@ export function Heading({
         ...style,
       }}
     >
-      {children}
+      {preserveCase ? children : lowerTitle(children)}
       {cursor ? (
         <span
           aria-hidden

@@ -99,7 +99,7 @@ export function Label({
         margin: 0,
         ...typeStyle('label', t),
         color: toneColor(t, tone),
-        ...(caps ? { textTransform: 'uppercase' as const } : null),
+        ...(caps ? { textTransform: 'lowercase' as const } : null),
         ...style,
       }}
     >

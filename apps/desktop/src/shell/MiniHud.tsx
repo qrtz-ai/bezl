@@ -71,9 +71,9 @@ function Hud() {
           <StatusLines
             top={`${s?.activeSpeaker ? `${s.activeSpeaker} · ` : ''}${
               recording
-                ? 'Recording'
+                ? 'recording'
                 : s?.phase === 'processing'
-                  ? 'Summarizing…'
+                  ? 'summarizing…'
                   : 'qrtz'
             }`}
             bottom={line || '\u00a0'}

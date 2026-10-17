@@ -223,7 +223,7 @@ export default function SettingsView() {
 
   return (
     <Page data-testid="settings">
-      <Heading>Settings</Heading>
+      <Heading>settings</Heading>
       {error ? (
         <Callout
           tone="danger"
@@ -236,7 +236,7 @@ export default function SettingsView() {
           }
         />
       ) : null}
-      <SettingsSection title="Recording">
+      <SettingsSection title="recording">
         {toggle(
           'Detect meetings',
           'auto-detect',
@@ -288,7 +288,7 @@ export default function SettingsView() {
           </SettingRow>
         ) : null}
       </SettingsSection>
-      <SettingsSection title="Summaries">
+      <SettingsSection title="summaries">
         {toggle(
           'Summarize after meetings',
           'auto-summarize',
@@ -375,7 +375,7 @@ export default function SettingsView() {
           </Text>
         ) : null}
       </SettingsSection>
-      <SettingsSection title="Talk" data-testid="talk-settings">
+      <SettingsSection title="talk" data-testid="talk-settings">
         {toggle(
           'Dictation',
           'talk-enabled',
@@ -501,7 +501,7 @@ export default function SettingsView() {
           (v) => void patchTalk({ saveHistory: v }),
         )}
       </SettingsSection>
-      <SettingsSection title="Privacy" data-testid="privacy-card">
+      <SettingsSection title="privacy" data-testid="privacy-card">
         {toggle(
           'Local only',
           'local-only',
@@ -536,7 +536,7 @@ export default function SettingsView() {
           />
         </Field>
       </SettingsSection>
-      <SettingsSection title="App">
+      <SettingsSection title="app">
         <SettingRow label="Theme">
           <Select
             value={String(cfg?.theme ?? 'dark')}
@@ -575,7 +575,7 @@ export default function SettingsView() {
           (v) => void patchApp({ autoUpdateCheck: v }),
         )}
       </SettingsSection>
-      <SettingsSection title="Backup" data-testid="backup-card">
+      <SettingsSection title="backup" data-testid="backup-card">
         <Stack dir="row" gap={2}>
           <Button
             variant="secondary"
@@ -627,7 +627,7 @@ export default function SettingsView() {
           </Text>
         ) : null}
       </SettingsSection>
-      <SettingsSection title="System">
+      <SettingsSection title="system">
         <Text variant="caption" muted>
           {info
             ? `qrtz ${info.version} · ${info.platform}/${info.arch} · Electron ${info.electron}`

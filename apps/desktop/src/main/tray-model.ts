@@ -22,31 +22,31 @@ export function trayState(v: SessionView, now = Date.now()) {
   const elapsed = recording && v.startedAt ? now - v.startedAt : v.elapsedMs;
   const status =
     v.helper === 'missing'
-      ? 'Recording unavailable (helper missing)'
+      ? 'recording unavailable (helper missing)'
       : recording
-        ? `Recording · ${clock(elapsed)}${v.detected?.title ? ` · ${v.detected.title}` : ''}`
+        ? `recording · ${clock(elapsed)}${v.detected?.title ? ` · ${v.detected.title}` : ''}`
         : v.phase === 'detected'
-          ? `Meeting detected · ${v.detected?.title ?? ''}`.trim()
+          ? `meeting detected · ${v.detected?.title ?? ''}`.trim()
           : v.phase === 'processing'
-            ? 'Summarizing…'
-            : 'Not recording';
+            ? 'summarizing…'
+            : 'not recording';
   const items: TrayItem[] = [
     { label: status, enabled: false },
     { label: '', separator: true },
   ];
-  if (recording) items.push({ label: 'Stop Recording', action: 'stop' });
+  if (recording) items.push({ label: 'stop recording', action: 'stop' });
   else
     items.push({
-      label: v.phase === 'detected' ? 'Record This Meeting' : 'Start Recording',
+      label: v.phase === 'detected' ? 'record this meeting' : 'start recording',
       action: 'start',
       enabled: v.phase !== 'stopping' && v.helper !== 'missing',
     });
   if (v.phase === 'detected')
-    items.push({ label: 'Not Now', action: 'dismiss' });
+    items.push({ label: 'not now', action: 'dismiss' });
   items.push(
     { label: '', separator: true },
-    { label: 'Open qrtz', action: 'open' },
-    { label: 'Quit qrtz', action: 'quit' },
+    { label: 'open qrtz', action: 'open' },
+    { label: 'quit qrtz', action: 'quit' },
   );
   return {
     icon: recording ? ('rec' as const) : ('idle' as const),

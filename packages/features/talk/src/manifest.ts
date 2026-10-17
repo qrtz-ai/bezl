@@ -2,7 +2,7 @@ import { SubAppManifest } from '@qrtz/core';
 
 export const manifest = SubAppManifest.parse({
   id: 'talk',
-  name: 'Talk',
+  name: 'talk',
   icon: 'mic',
   order: 20,
   capabilities: ['talk.read', 'talk.dictate', 'talk.write'],

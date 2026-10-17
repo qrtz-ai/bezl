@@ -235,12 +235,8 @@ export function SummaryBlock({
       <Text as="p">{summary}</Text>
       {actionItems.length ? (
         <div style={{ display: 'grid', gap: t.space[2] }}>
-          <Text
-            variant="label"
-            tone="muted"
-            style={{ textTransform: 'uppercase' }}
-          >
-            Action items
+          <Text variant="label" tone="muted">
+            action items
           </Text>
           {actionItems.map((a, i) => (
             <div
@@ -265,12 +261,8 @@ export function SummaryBlock({
       ) : null}
       {qa.length ? (
         <div style={{ display: 'grid', gap: t.space[2] }}>
-          <Text
-            variant="label"
-            tone="muted"
-            style={{ textTransform: 'uppercase' }}
-          >
-            Q&amp;A
+          <Text variant="label" tone="muted">
+            q&amp;a
           </Text>
           {qa.map((q, i) => (
             <div key={i} style={{ display: 'grid', gap: 2 }}>

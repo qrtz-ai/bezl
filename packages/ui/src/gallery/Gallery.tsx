@@ -1,3 +1,4 @@
+import { lowerTitle } from '../case';
 import { useState, type ReactNode } from 'react';
 import { useTheme, ThemeScope } from '../theme';
 import { TYPE_VARIANTS, transition, type ThemeMode } from '../tokens';
@@ -78,7 +79,7 @@ function Section({
       style={{ display: 'grid', gap: t.space[3] }}
     >
       <Label caps tone="muted">
-        {title}
+        {lowerTitle(title)}
       </Label>
       <div
         style={{
@@ -173,12 +174,12 @@ function Showcase({
       }}
     >
       <header style={{ display: 'grid', gap: t.space[2] }}>
-        <Heading cursor>Gallery</Heading>
+        <Heading cursor>gallery</Heading>
         <div data-testid="gallery-theme">
           <Tabs
             tabs={[
-              { id: 'dark', label: 'Dark' },
-              { id: 'light', label: 'Light' },
+              { id: 'dark', label: 'dark' },
+              { id: 'light', label: 'light' },
             ]}
             value={mode}
             onChange={setMode}
@@ -187,8 +188,8 @@ function Showcase({
         <div data-testid="gallery-page">
           <Tabs
             tabs={[
-              { id: 'components', label: 'Components' },
-              { id: 'icons', label: 'Icons' },
+              { id: 'components', label: 'components' },
+              { id: 'icons', label: 'icons' },
             ]}
             value={page}
             onChange={setPage}
@@ -200,7 +201,7 @@ function Showcase({
         <IconsPage />
       ) : (
         <>
-          <Section id="type" title="Typography">
+          <Section id="type" title="typography">
             <div
               style={{ display: 'grid', gap: t.space[3], width: '100%' }}
               data-testid="gallery-type-scale"
@@ -231,9 +232,9 @@ function Showcase({
                 </div>
               ))}
               <Stack gap={2}>
-                <Heading level={1}>Heading 1</Heading>
-                <Heading level={2}>Heading 2</Heading>
-                <Heading level={3}>Heading 3</Heading>
+                <Heading level={1}>heading 1</Heading>
+                <Heading level={2}>heading 2</Heading>
+                <Heading level={3}>heading 3</Heading>
                 <Label>Label</Label>
                 <Label caps tone="muted">
                   Section label
@@ -262,7 +263,7 @@ function Showcase({
             </div>
           </Section>
 
-          <Section id="color" title="Color">
+          <Section id="color" title="color">
             {Object.entries(t.color)
               .filter(([k]) => k !== 'accentText')
               .map(([k, v]) => (
@@ -282,7 +283,7 @@ function Showcase({
               ))}
           </Section>
 
-          <Section id="buttons" title="Buttons">
+          <Section id="buttons" title="buttons">
             <Button>Primary</Button>
             <Button variant="secondary">Secondary</Button>
             <Button variant="ghost">Ghost</Button>
@@ -312,7 +313,7 @@ function Showcase({
             </Chip>
           </Section>
 
-          <Section id="badges" title="Badges, Kbd, Spinner, Progress, Tooltip">
+          <Section id="badges" title="badges, kbd, spinner, progress, tooltip">
             {(
               ['neutral', 'primary', 'success', 'warning', 'danger'] as const
             ).map((tone) => (
@@ -334,7 +335,7 @@ function Showcase({
             </Tooltip>
           </Section>
 
-          <Section id="inputs" title="Inputs">
+          <Section id="inputs" title="inputs">
             <div
               style={{
                 display: 'grid',
@@ -373,7 +374,7 @@ function Showcase({
             </div>
           </Section>
 
-          <Section id="shell" title="App frame and tab bar">
+          <Section id="shell" title="app frame and tab bar">
             <Frame height={140}>
               <AppFrame
                 embedded
@@ -397,7 +398,7 @@ function Showcase({
             </Frame>
           </Section>
 
-          <Section id="split" title="Split view, meeting rows, toolbar">
+          <Section id="split" title="split view, meeting rows, toolbar">
             <Frame height={260}>
               <SplitView
                 sidebar={
@@ -429,24 +430,26 @@ function Showcase({
                   </>
                 }
               >
-                <Heading level={2}>{meetings[sel]}</Heading>
+                <Heading level={2} preserveCase>
+                  {meetings[sel]}
+                </Heading>
               </SplitView>
             </Frame>
           </Section>
 
-          <Section id="nav" title="Tabs">
+          <Section id="nav" title="tabs">
             <Tabs
               tabs={[
-                { id: 'one', label: 'Summary' },
-                { id: 'two', label: 'Notes' },
-                { id: 'three', label: 'Transcript' },
+                { id: 'one', label: 'summary' },
+                { id: 'two', label: 'notes' },
+                { id: 'three', label: 'transcript' },
               ]}
               value={tab}
               onChange={setTab}
             />
           </Section>
 
-          <Section id="meeting" title="Summary, notes, transcript">
+          <Section id="meeting" title="summary, notes, transcript">
             <div style={{ display: 'grid', gap: t.space[6], width: '100%' }}>
               <SummaryBlock
                 summary="Agreed to ship the beta on Friday; pricing moves to next week."
@@ -492,7 +495,7 @@ function Showcase({
             </div>
           </Section>
 
-          <Section id="chat" title="Chat">
+          <Section id="chat" title="chat">
             <div style={{ display: 'grid', gap: t.space[3], width: '100%' }}>
               <ChatQuestion>When is the beta?</ChatQuestion>
               <ChatAnswer
@@ -509,7 +512,7 @@ function Showcase({
             </div>
           </Section>
 
-          <Section id="hud" title="Recording HUD">
+          <Section id="hud" title="recording hud">
             <div style={{ display: 'grid', gap: t.space[4], width: '100%' }}>
               <Banner actions={<Button size="sm">Record</Button>}>
                 <Text>Weekly Product Sync</Text>
@@ -556,14 +559,14 @@ function Showcase({
                 steps={[
                   {
                     id: 'finalize',
-                    label: 'Transcript',
+                    label: 'transcript',
                     status: 'done',
                     attempts: 1,
                     maxAttempts: 3,
                   },
                   {
                     id: 'summary',
-                    label: 'Summary',
+                    label: 'summary',
                     status: 'failed',
                     attempts: 3,
                     maxAttempts: 3,
@@ -609,7 +612,7 @@ function Showcase({
             </div>
           </Section>
 
-          <Section id="talk" title="Talk: pill, history, dictionary">
+          <Section id="talk" title="talk: pill, history, dictionary">
             <div style={{ display: 'grid', gap: t.space[4], width: '100%' }}>
               <LevelBars level={0.6} />
               <TalkPill
@@ -652,9 +655,9 @@ function Showcase({
             </div>
           </Section>
 
-          <Section id="settings" title="Settings rows, permissions">
+          <Section id="settings" title="settings rows, permissions">
             <div style={{ display: 'grid', gap: t.space[4], width: '100%' }}>
-              <SettingsSection title="Recording">
+              <SettingsSection title="recording">
                 <SettingRow label="Record automatically">
                   <Switch
                     checked={on}
@@ -677,7 +680,7 @@ function Showcase({
             </div>
           </Section>
 
-          <Section id="overlays" title="Dialog, confirm, palette, toast">
+          <Section id="overlays" title="dialog, confirm, palette, toast">
             <Button
               variant="secondary"
               onClick={() => setOpen(true)}
@@ -721,7 +724,7 @@ function Showcase({
             </Dialog>
             <ConfirmDialog
               open={confirm}
-              title="Delete this meeting?"
+              title="delete this meeting?"
               body="Weekly Product Sync"
               confirmLabel="Delete"
               onCancel={() => setConfirm(false)}
@@ -742,7 +745,7 @@ function Showcase({
             />
           </Section>
 
-          <Section id="callouts" title="Callout">
+          <Section id="callouts" title="callout">
             <div style={{ display: 'grid', gap: t.space[3], width: '100%' }}>
               {(['info', 'warning', 'danger'] as const).map((tone) => (
                 <Callout
@@ -759,7 +762,7 @@ function Showcase({
             </div>
           </Section>
 
-          <Section id="cards" title="Card">
+          <Section id="cards" title="card">
             <Card padding={3}>
               <Text>padding 3</Text>
             </Card>
@@ -768,7 +771,7 @@ function Showcase({
             </Card>
           </Section>
 
-          <Section id="space" title="Spacing and radius">
+          <Section id="space" title="spacing and radius">
             {Object.entries(t.space).map(([k, v]) => (
               <div
                 key={k}
@@ -808,7 +811,7 @@ function Showcase({
             ))}
           </Section>
 
-          <Section id="motion" title="Motion">
+          <Section id="motion" title="motion">
             <div style={{ display: 'grid', gap: t.space[3], width: '100%' }}>
               <Stack dir="row">
                 <Button
@@ -846,16 +849,16 @@ function Showcase({
             </div>
           </Section>
 
-          <Section id="focus" title="Focus ring">
+          <Section id="focus" title="focus ring">
             <Button size="sm">Button</Button>
             <Input aria-label="Focus demo input" placeholder="Input" />
             <Link href="#focus">Link</Link>
           </Section>
 
-          <Section id="empty" title="Empty state">
+          <Section id="empty" title="empty state">
             <EmptyState
               icon="mic"
-              title="No meetings"
+              title="no meetings"
               action={
                 <Button size="sm" icon="circle">
                   Record
@@ -876,7 +879,7 @@ function IconsPage() {
   const t = useTheme();
   return (
     <>
-      <Section id="icons" title="Icons (Feather)">
+      <Section id="icons" title="icons (feather)">
         <div
           style={{
             display: 'grid',
@@ -906,7 +909,7 @@ function IconsPage() {
           ))}
         </div>
       </Section>
-      <Section id="icon-sizes" title="Icon sizes">
+      <Section id="icon-sizes" title="icon sizes">
         {ICON_SIZES.map((sz) => (
           <span
             key={sz}
@@ -919,7 +922,7 @@ function IconsPage() {
           </span>
         ))}
       </Section>
-      <Section id="icon-tones" title="Icon tones">
+      <Section id="icon-tones" title="icon tones">
         <Icon name="info" />
         <Icon name="info" tone="muted" />
         <Icon name="check" tone="success" />

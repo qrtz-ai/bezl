@@ -301,7 +301,7 @@ export default function NoteView() {
         />
         {askAll && !selected ? (
           <Stack gap={3} data-testid="ask-all">
-            <Heading level={2}>Ask</Heading>
+            <Heading level={2}>ask</Heading>
             <ChatPanel
               onOpenSource={(m, ms) => {
                 setSelected(m);
@@ -316,7 +316,7 @@ export default function NoteView() {
             {...(seekTo ? { seekTo } : {})}
           />
         ) : isCapturingPhase(session.phase) ? null : (
-          <EmptyState title="No meeting selected" />
+          <EmptyState title="no meeting selected" />
         )}
       </Stack>
     </SplitView>
