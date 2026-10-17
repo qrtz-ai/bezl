@@ -23,7 +23,7 @@ for (const mode of ['dark', 'light'] as const) {
       },
     });
     const win = await app.firstWindow();
-    await expect(win.getByTestId('home')).toBeVisible();
+    await expect(win.getByTestId('nav-memo')).toBeVisible();
     await win.getByTestId('nav-settings').click();
     await win.getByTestId('theme').selectOption(mode);
     await expect(win.locator('html')).toHaveAttribute('data-theme', mode);
@@ -41,9 +41,6 @@ for (const mode of ['dark', 'light'] as const) {
       bad.push(...(await axe(win, `${mode}/${name}`)));
       console.log(`${mode}/${name} ok`);
     };
-    await win.getByTestId('nav-home').click();
-    await expect(win.getByTestId('home').locator('h1')).toBeVisible();
-    await check('home');
     await win.getByTestId('nav-memo').click();
     const item = win.getByTestId('meeting-item').first();
     await expect(item).toBeVisible({ timeout: 15_000 });

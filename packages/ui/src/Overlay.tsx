@@ -1,3 +1,4 @@
+import { typeStyle } from './tokens';
 import {
   createContext,
   useCallback,
@@ -92,7 +93,7 @@ export function Dialog({
               borderBottom: `1px solid ${t.color.border}`,
             }}
           >
-            <Text weight={600}>{title}</Text>
+            <Text variant="h3">{title}</Text>
           </div>
         ) : null}
         {children}
@@ -178,7 +179,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 background: dot[i.kind],
               }}
             />
-            <Text size="sm">{i.message}</Text>
+            <Text variant="bodySm">{i.message}</Text>
             {i.action ? (
               <button
                 type="button"
@@ -191,8 +192,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                   all: 'unset',
                   cursor: 'pointer',
                   marginLeft: 'auto',
-                  fontSize: 13,
-                  fontWeight: 600,
+                  ...typeStyle('label', t),
                   color: t.color.text,
                   textDecoration: 'underline',
                   borderRadius: t.radius.sm,
@@ -237,7 +237,7 @@ export function Tooltip({
             transform: 'translateX(-50%)',
             whiteSpace: 'nowrap',
             padding: '4px 8px',
-            fontSize: t.font.size.xs,
+            ...typeStyle('caption', t),
             color: t.color.text,
             background: t.color.accent,
             border: `1px solid ${t.color.borderStrong}`,
@@ -257,12 +257,17 @@ export function Switch({
   checked,
   onChange,
   label,
+  showLabel,
   disabled,
+  'data-testid': testId,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
+  /** Accessible name; drawn next to the switch only with `showLabel`. */
   label?: string;
+  showLabel?: boolean;
   disabled?: boolean;
+  'data-testid'?: string;
 }) {
   const t = useTheme();
   return (
@@ -272,6 +277,7 @@ export function Switch({
       aria-checked={checked}
       aria-label={label}
       disabled={disabled}
+      data-testid={testId}
       onClick={() => onChange(!checked)}
       style={{
         all: 'unset',
@@ -305,7 +311,7 @@ export function Switch({
           }}
         />
       </span>
-      {label ? <Text size="sm">{label}</Text> : null}
+      {label && showLabel ? <Text variant="bodySm">{label}</Text> : null}
     </button>
   );
 }
@@ -326,8 +332,7 @@ export function TextArea({
         border: `1px solid ${t.color.border}`,
         background: t.color.bg,
         color: t.color.text,
-        fontFamily: 'inherit',
-        fontSize: t.font.size.md,
+        ...typeStyle('body', t),
         resize: 'vertical',
         ...style,
       }}

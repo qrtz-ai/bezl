@@ -1,3 +1,4 @@
+import { typeStyle } from './tokens';
 import type { ReactNode } from 'react';
 import { useTheme } from './theme';
 
@@ -6,8 +7,7 @@ export function Kbd({ children }: { children: ReactNode }) {
   return (
     <kbd
       style={{
-        fontFamily: t.font.mono,
-        fontSize: t.font.size.xs,
+        ...typeStyle('mono', t),
         padding: '1px 6px',
         borderRadius: t.radius.sm,
         border: `1px solid ${t.color.border}`,

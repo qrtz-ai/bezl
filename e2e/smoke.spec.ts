@@ -25,11 +25,11 @@ test('boots, renders sidebar, and talks to main + worker over typed IPC', async 
   const errors: string[] = [];
   win.on('pageerror', (e) => errors.push(e.message));
 
-  await expect(win.getByTestId('nav-home')).toBeVisible();
-  await expect(win.getByRole('heading', { name: 'qrtz' })).toBeVisible();
+  await expect(win.getByTestId('nav-memo')).toBeVisible();
+  await expect(win.getByTestId('memo')).toBeVisible();
 
   await win.screenshot({
-    path: path.join(__dirname, '..', 'test-results', 'home.png'),
+    path: path.join(__dirname, '..', 'test-results', 'memo.png'),
   });
   await win.getByTestId('nav-settings').click();
   await expect(win.getByText(/Database: ok · schema v5 · FTS5 on/)).toBeVisible(
@@ -37,7 +37,7 @@ test('boots, renders sidebar, and talks to main + worker over typed IPC', async 
   );
   await expect(win.getByText(/Native helper: running/)).toBeVisible();
 
-  // Capability scoping: "home" may not read config.
+  // Capability scoping: "gallery" (no capabilities) may not read config.
   const denied = await win.evaluate(async () => {
     const t = (
       window as unknown as {
@@ -53,7 +53,7 @@ test('boots, renders sidebar, and talks to main + worker over typed IPC', async 
       id: 'x',
       channel: 'config:get',
       version: 1,
-      subApp: 'home',
+      subApp: 'gallery',
       payload: undefined,
     });
   });

@@ -14,6 +14,7 @@ import {
   type ThemeMode,
   type Tokens,
 } from './tokens';
+import fontUrl from './fonts/GeistPixel-Square.woff2?url';
 
 const ThemeContext = createContext<Tokens>(tokens);
 
@@ -59,7 +60,7 @@ export function ThemeProvider({
       style.id = 'q-global';
       document.head.appendChild(style);
     }
-    style.textContent = globalCss(t);
+    style.textContent = globalCss(t, fontUrl);
     document.documentElement.dataset.theme = resolved;
   }, [resolved]);
   return <ThemeContext.Provider value={t}>{children}</ThemeContext.Provider>;

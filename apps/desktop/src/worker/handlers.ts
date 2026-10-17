@@ -53,6 +53,8 @@ export interface FinalizeParams {
   audioPath?: string;
   active: ActiveSpeakerEvent[];
   llm: LlmParams;
+  /** false = skip the summary (Settings → Summarize after meetings off). */
+  summarize?: boolean;
   /** The helper exited mid-recording; duration comes from the salvaged audio. */
   helperCrashed?: boolean;
 }
@@ -252,8 +254,14 @@ export function createWorkerHandlers(
       meetingId: string;
       llm: LlmParams;
       fallback?: { error: string };
-    }): Promise<MeetingSummary> => {
+      /** Auto-summarize is off: mark the meeting done without a summary. */
+      skip?: boolean;
+    }): Promise<MeetingSummary | null> => {
       const m = need(p.meetingId);
+      if (p.skip) {
+        repo.setStatus(p.meetingId, 'done');
+        return null;
+      }
       const segments = repo.getSegments(p.meetingId);
       const summary = p.fallback
         ? {
@@ -289,7 +297,9 @@ export function createWorkerHandlers(
       repo.appendSegment(p.meetingId, { ...p.segment, source: 'live' });
       return { ok: true };
     },
-    'memo.finalize': async (p: FinalizeParams): Promise<MeetingSummary> => {
+    'memo.finalize': async (
+      p: FinalizeParams,
+    ): Promise<MeetingSummary | null> => {
       const m = need(p.meetingId);
       // Repairs the WAV header if the helper died before finalizing it; prefer the real audio length then.
       const audioMs = p.audioPath ? repairWav(p.audioPath) : undefined;
@@ -309,6 +319,10 @@ export function createWorkerHandlers(
         durationMs,
       );
       repo.replaceSegments(p.meetingId, 'live', segments);
+      if (p.summarize === false) {
+        repo.setStatus(p.meetingId, 'done');
+        return null;
+      }
       const summary = await summarize(
         m,
         segments,

@@ -47,6 +47,7 @@ test('2-hour meeting: list, detail, transcript and search stay fast', async () =
     win.locator('[data-testid="transcript-segment"][data-active]'),
   ).toHaveCount(1);
   t = Date.now();
+  await win.getByTestId('memo-search-toggle').click();
   const search = win.getByTestId('memo-search');
   await search.click();
   await search.pressSequentially('migration');
@@ -69,9 +70,9 @@ test('2-hour meeting: list, detail, transcript and search stay fast', async () =
 test('accessibility: no serious axe violations on main views', async () => {
   const { app, win } = await launch({});
   const bad: string[] = [];
-  await expect(win.getByTestId('home')).toBeVisible();
-  bad.push(...(await axe(win, 'home')));
-  for (const id of ['memo', 'gallery', 'settings']) {
+  await expect(win.getByTestId('memo')).toBeVisible();
+  bad.push(...(await axe(win, 'memo')));
+  for (const id of ['gallery', 'settings', 'memo']) {
     await win.getByTestId(`nav-${id}`).click();
     await win.waitForTimeout(300);
     bad.push(...(await axe(win, id)));
@@ -91,10 +92,10 @@ test('accessibility: no serious axe violations on main views', async () => {
   await app.close();
 });
 
-test('cold start: launch to first paint of home under 1.5 s', async () => {
+test('cold start: launch to first paint of memo under 1.5 s', async () => {
   const t0 = Date.now();
   const { app, win } = await launch({});
-  await expect(win.getByTestId('home')).toBeVisible();
+  await expect(win.getByTestId('memo')).toBeVisible();
   const coldMs = Date.now() - t0;
   const paint = await win.evaluate(
     () =>

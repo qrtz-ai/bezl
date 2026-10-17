@@ -38,7 +38,7 @@ sh(linux ? 'xvfb-run' : 'npx', linux ? ['-a', 'npx', ...pw] : pw, {
 const map = {
   'llm-error.png': 'llm-error.png',
   'helper-missing.png': 'helper-missing.png',
-  'themes/light-home.png': 'home-light.png',
+  'themes/light-memo-list.png': 'memo-light.png',
   'themes/light-memo-summary.png': 'meeting-summary-light.png',
   'themes/light-mini-hud.png': 'mini-hud-light.png',
   'mini-hud-notes.png': 'mini-hud.png',

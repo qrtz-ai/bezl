@@ -1,3 +1,4 @@
+import { typeStyle } from './tokens';
 import type { ButtonHTMLAttributes, CSSProperties } from 'react';
 import { useTheme } from './theme';
 import { Spinner } from './Spinner';
@@ -44,9 +45,9 @@ export function Button({
     },
   };
   const s: Record<ButtonSize, CSSProperties> = {
-    sm: { height: 28, padding: `0 ${t.space[3]}`, fontSize: t.font.size.sm },
-    md: { height: 34, padding: `0 ${t.space[4]}`, fontSize: t.font.size.md },
-    lg: { height: 40, padding: `0 ${t.space[5]}`, fontSize: t.font.size.md },
+    sm: { height: 28, padding: `0 ${t.space[3]}`, ...typeStyle('label', t) },
+    md: { height: 34, padding: `0 ${t.space[4]}`, ...typeStyle('label', t) },
+    lg: { height: 40, padding: `0 ${t.space[5]}`, ...typeStyle('label', t) },
   };
   const off = disabled || loading;
   return (
@@ -65,8 +66,6 @@ export function Button({
           opacity: off ? 0.55 : 1,
           borderRadius: t.radius.md,
           border: '1px solid',
-          fontFamily: 'inherit',
-          fontWeight: t.font.weight.medium,
           whiteSpace: 'nowrap',
           transition: `opacity ${t.motion.fast} ${t.motion.easeOut}, background ${t.motion.fast} ${t.motion.easeOut}`,
           WebkitAppRegion: 'no-drag',

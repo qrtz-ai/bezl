@@ -49,7 +49,6 @@ test('helper missing: clear notice, recording disabled, app still usable', async
   await expect(win.getByTestId('helper-notice')).toContainText(
     'capture helper missing',
   );
-  await expect(win.getByTestId('home-record')).toBeDisabled();
   await win.screenshot({ path: path.join(shots, 'helper-missing.png') });
   await win.getByTestId('nav-memo').click();
   await expect(win.getByTestId('helper-notice')).toBeVisible();
@@ -106,7 +105,7 @@ test('LLM failure falls back to on-device summary, Retry gets the AI summary', a
   });
   await win.getByTestId('memo-record').click();
   await until(win, async () => {
-    expect(await win.getByTestId('memo-live-line').count()).toBeGreaterThan(3);
+    expect(await win.getByTestId('live-segment').count()).toBeGreaterThan(3);
   });
   await win.getByTestId('memo-stop').click();
   await until(win, async () => {

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased: redesign
+
+- **One font:** Geist Pixel (Square, OFL-1.1, bundled locally) for everything, on a pixel-grid type scale (display, h1, h2, h3, bodyLg, body, bodySm, caption, label, mono, code; nothing below 13.158px). Typography lives only in `@qrtz/ui`, through `Text`, `Heading`, `Label`, `Code`/`Mono` and `Link`.
+- **Layout:** the sidebar and Home dashboard are gone. Tiny bottom tabs (memo, settings; gallery only in dev builds) sit under a full-window content area. Memo has two panes: the meeting list with Record on the left, and the selected meeting on the right (summary first; notes, transcript and ask one tab away). Secondary actions are in a "…" menu, and search is behind a toggle and ⌘K.
+- **Less text:** help blurbs, subtitles, hints and empty-state body copy are removed, and errors are one line.
+- **Toggles:** every automatic behavior has its own switch: detect meetings, record automatically, ask to record, floating HUD, delete old recordings, summarize after meetings, index for search, menu bar icon (live), open at login and check for updates.
+- **OpenRouter free tier:** with the default model, a 402 or a credits error falls back to a current `:free` model (`google/gemma-4-31b-it:free`, then `openrouter/free`). There is also an opt-in live test (`QRTZ_TEST_OPENROUTER=1`).
+- **Lint:** `check-typography.mjs` and `check-ui-purity.mjs` fail on raw typography, `style`/`className`, raw JSX elements, token styling or CSS outside `packages/ui`. Every new component has a gallery entry, and the gallery moved into `@qrtz/ui/gallery`.
+
 ## v0.1.0 (2026-10-16)
 
 First tagged build. Verified on Linux with the mock helper; macOS capture still needs on-device verification (see docs/mac-verify.md).

@@ -50,7 +50,7 @@ async function recordAndFinish(win: Page, during?: () => Promise<void>) {
   await expect(win.getByTestId('memo-hud')).toBeVisible();
   if (during) await during();
   await until(win, async () => {
-    expect(await win.getByTestId('memo-live-line').count()).toBeGreaterThan(1);
+    expect(await win.getByTestId('live-segment').count()).toBeGreaterThan(1);
   });
   await win.getByTestId('memo-stop').click();
   await until(win, async () => {
@@ -81,7 +81,7 @@ test('live notes + privacy pause in the HUD, notes merged into the summary, temp
     await expect(win.getByTestId('note')).toHaveCount(1);
     await expect(win.getByTestId('note-time').first()).toHaveText(/^0:0\d$/);
     await win.evaluate(() => new Promise((r) => setTimeout(r, 1500)));
-    expect(await win.getByTestId('memo-live-line').count()).toBe(0);
+    expect(await win.getByTestId('live-segment').count()).toBe(0);
     await win.getByTestId('memo-pause').click();
     await expect(win.getByTestId('memo-paused')).toHaveCount(0);
     await win.getByTestId('note-input').fill('TODO send recap to the team');
@@ -101,7 +101,7 @@ test('live notes + privacy pause in the HUD, notes merged into the summary, temp
   await win.screenshot({ path: path.join(shots, 'notes-summary.png') });
 
   // Notes tab: edit a note; the change is saved.
-  await win.getByRole('tab', { name: /Notes \(2\)/ }).click();
+  await win.getByRole('tab', { name: 'Notes' }).click();
   await win
     .getByRole('button', { name: /TODO send recap to the team \(edit note\)/ })
     .click();
@@ -116,10 +116,12 @@ test('live notes + privacy pause in the HUD, notes merged into the summary, temp
   await expect(win.getByTestId('summary-template')).toHaveValue('general');
   await win.getByTestId('summary-template').selectOption('standup');
   await until(win, async () => {
-    expect(await win.getByTestId('summary-rerun').innerText()).toBe('Re-run');
+    expect(
+      await win.getByTestId('summary-rerun').getAttribute('aria-label'),
+    ).toBe('Re-run');
   });
   await expect(summary).toContainText('send recap to everyone');
-  await win.getByTestId('nav-home').click();
+  await win.getByTestId('nav-settings').click();
   await win.getByTestId('nav-memo').click();
   await win.getByTestId('meeting-item').first().click();
   await win.getByTestId('tab-summary').click();
@@ -144,8 +146,11 @@ test('privacy: local-only never calls the cloud LLM; excluded apps are not detec
     QRTZ_LLM_BASE_URL: `http://127.0.0.1:${port}/api/v1`,
   });
   await win.getByTestId('nav-settings').click();
-  await win.getByTestId('local-only').check();
-  await expect(win.getByTestId('local-only-badge')).toBeVisible();
+  await win.getByTestId('local-only').click();
+  await expect(win.getByTestId('local-only')).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
   await win.getByTestId('pause-hotkey').fill('CommandOrControl+Alt+9');
   await win.getByTestId('pause-hotkey').blur();
   await win.getByTestId('excluded-apps').fill('Safari, webex');

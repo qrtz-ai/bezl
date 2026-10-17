@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Input, Select, Text, useTheme } from '@qrtz/ui';
+import { Button, Chip, Input, Select, Stack, Text } from '@qrtz/ui';
 import type { Segment } from '@qrtz/core';
 import { useQrtz } from '@qrtz/core/react';
 
@@ -12,7 +12,6 @@ export function Speakers({
   segments: Segment[];
 }) {
   const qrtz = useQrtz();
-  const t = useTheme();
   const [editing, setEditing] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -35,57 +34,32 @@ export function Speakers({
   };
 
   return (
-    <div style={{ display: 'grid', gap: 6 }} data-testid="speakers">
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 6,
-          alignItems: 'center',
-        }}
-      >
-        <Text size="xs" muted>
-          Speakers
-        </Text>
+    <Stack gap={2} data-testid="speakers">
+      <Stack dir="row" gap={1} wrap align="center">
         {speakers.map(([sp, n]) => (
-          <button
+          <Chip
             key={sp}
-            type="button"
             data-testid="speaker-chip"
-            aria-pressed={editing === sp}
+            pressed={editing === sp}
             aria-label={`${sp} · ${n}: rename or merge`}
             onClick={() => {
               setEditing(editing === sp ? null : sp);
               setName(sp);
             }}
-            style={{
-              font: 'inherit',
-              fontSize: 12,
-              color: t.color.text,
-              background: editing === sp ? t.color.accent : 'transparent',
-              border: `1px solid ${t.color.border}`,
-              borderRadius: 4,
-              padding: '2px 8px',
-              cursor: 'pointer',
-            }}
           >
-            {sp} <span style={{ color: t.color.textMuted }}>· {n}</span>
-          </button>
+            {sp}
+          </Chip>
         ))}
-      </div>
+      </Stack>
       {editing ? (
-        <form
+        <Stack
+          as="form"
+          dir="row"
+          gap={2}
+          align="center"
+          wrap
           data-testid="speaker-editor"
-          onSubmit={(e) => {
-            e.preventDefault();
-            apply(editing, name);
-          }}
-          style={{
-            display: 'flex',
-            gap: 8,
-            alignItems: 'center',
-            flexWrap: 'wrap',
-          }}
+          onSubmit={() => apply(editing, name)}
         >
           <Input
             value={name}
@@ -93,7 +67,6 @@ export function Speakers({
             aria-label={`New name for ${editing}`}
             data-testid="speaker-name"
             maxLength={120}
-            style={{ maxWidth: 220 }}
           />
           <Button size="sm" type="submit" data-testid="speaker-save">
             Rename
@@ -104,7 +77,6 @@ export function Speakers({
               data-testid="speaker-merge"
               value=""
               onChange={(e) => e.target.value && apply(editing, e.target.value)}
-              style={{ maxWidth: 220 }}
             >
               <option value="">Merge into…</option>
               {speakers
@@ -124,13 +96,13 @@ export function Speakers({
           >
             Cancel
           </Button>
-        </form>
+        </Stack>
       ) : null}
       {error ? (
-        <Text size="xs" style={{ color: t.color.danger }} role="alert">
+        <Text variant="caption" tone="danger" role="alert">
           {error}
         </Text>
       ) : null}
-    </div>
+    </Stack>
   );
 }

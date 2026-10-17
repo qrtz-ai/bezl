@@ -182,3 +182,27 @@ describe('backup import', () => {
     ).toThrow();
   });
 });
+
+describe('auto-summarize toggle', () => {
+  it('summarize: false finishes the meeting without a summary; resummarize adds one later', async () => {
+    const h = createWorkerHandlers(openDatabase(':memory:'), {
+      fetch: noFetch,
+    });
+    meeting(h, 'm9');
+    const s = await h['memo.finalize']({
+      meetingId: 'm9',
+      endedAt: 1,
+      durationMs: 15000,
+      active: [],
+      llm,
+      summarize: false,
+    });
+    expect(s).toBeNull();
+    const d = h['memo.get']({ id: 'm9' });
+    expect(d.meeting.status).toBe('done');
+    expect(d.summary).toBeFalsy();
+    expect(d.segments).toHaveLength(3);
+    const later = await h['memo.resummarize']({ id: 'm9', llm });
+    expect(later.summary.length).toBeGreaterThan(0);
+  });
+});

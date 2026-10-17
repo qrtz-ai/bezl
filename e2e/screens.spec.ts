@@ -44,10 +44,7 @@ test('first run → record → review walkthrough', async () => {
   const errors: string[] = [];
   win.on('pageerror', (e) => errors.push(e.message));
 
-  await expect(win.getByTestId('home')).toBeVisible();
-  await shot(win, 'home-first-run');
-
-  await win.getByTestId('nav-memo').click();
+  await expect(win.getByTestId('memo')).toBeVisible();
   await expect(win.getByTestId('memo-detected')).toBeVisible({
     timeout: 10_000,
   });
@@ -55,7 +52,7 @@ test('first run → record → review walkthrough', async () => {
   await win.getByTestId('memo-record').click();
   await expect(async () => {
     await win.evaluate(() => new Promise((r) => setTimeout(r, 50)));
-    expect(await win.getByTestId('memo-live-line').count()).toBeGreaterThan(4);
+    expect(await win.getByTestId('live-segment').count()).toBeGreaterThan(4);
   }).toPass({ timeout: 15_000 });
   await shot(win, 'memo-live');
   await win.getByTestId('memo-stop').click();
@@ -67,9 +64,6 @@ test('first run → record → review walkthrough', async () => {
   await win.getByTestId('tab-transcript').click();
   await shot(win, 'meeting-transcript');
 
-  await win.getByTestId('nav-home').click();
-  await expect(win.getByTestId('home')).toBeVisible();
-  await shot(win, 'home-with-meetings');
   await win.getByTestId('nav-settings').click();
   await expect(win.getByRole('heading', { name: 'Settings' })).toBeVisible();
   await expect(win.getByText(/Native helper:/)).toBeVisible();

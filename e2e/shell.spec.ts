@@ -21,13 +21,18 @@ test('command palette and component gallery', async () => {
   const win = await app.firstWindow();
   const errors: string[] = [];
   win.on('pageerror', (e) => errors.push(e.message));
-  await expect(win.getByTestId('brand')).toHaveText('qrtz');
+  await expect(win.getByTestId('nav-memo')).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
 
-  // Home dashboard on first run: setup checklist, empty recent list, quick record.
-  await expect(win.getByTestId('home-permissions')).toBeVisible();
-  await expect(win.getByTestId('home-recent')).toContainText('No meetings yet');
-  await expect(win.getByTestId('home-record')).toBeEnabled();
-  await win.screenshot({ path: path.join(shots, 'home-first-run.png') });
+  // First run: Memo is the home screen, an empty meeting list and one Record button.
+  await expect(win.getByTestId('memo')).toBeVisible();
+  await expect(win.getByTestId('empty-state').first()).toContainText(
+    'No meetings',
+  );
+  await expect(win.getByTestId('memo-record-manual')).toBeEnabled();
+  await win.screenshot({ path: path.join(shots, 'memo-first-run.png') });
 
   // ⌘K / Ctrl+K opens the palette; fuzzy filter + Enter navigates.
   await win.keyboard.press('ControlOrMeta+k');
@@ -64,14 +69,14 @@ test('command palette and component gallery', async () => {
   await expect(win.getByRole('dialog')).toHaveCount(0);
   await win.getByTestId('gallery-toast').click();
   await expect(win.getByTestId('toast')).toContainText('Saved');
-  await win.getByRole('switch').click();
-  await expect(win.getByRole('switch')).toHaveAttribute(
+  await win.getByRole('switch').first().click();
+  await expect(win.getByRole('switch').first()).toHaveAttribute(
     'aria-checked',
     'false',
   );
 
-  // Palette (via sidebar button) starts and stops a recording through shell-scoped IPC.
-  await win.getByTestId('open-palette').click();
+  // Palette (⌘K) starts and stops a recording through shell-scoped IPC.
+  await win.keyboard.press('ControlOrMeta+k');
   await win.getByTestId('palette-input').fill('start rec');
   await win.keyboard.press('Enter');
   await expect(win.getByTestId('memo-hud')).toBeVisible({ timeout: 10_000 });

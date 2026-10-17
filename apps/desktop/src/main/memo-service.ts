@@ -206,8 +206,10 @@ export class MemoService {
           });
           break;
         }
+        const mc = this.deps.config().memo;
         if (
-          this.deps.config().memo.autoDetectMeetings &&
+          mc.autoDetectMeetings &&
+          (mc.autoRecord || mc.detectPrompt) &&
           this.machine.send({ type: 'detected', meeting: m })
         ) {
           this.deps.log.info('meeting detected', {
@@ -761,6 +763,8 @@ export class MemoService {
     if (t) clearTimeout(t);
     this.pipelineTimers.delete(id);
     p = pipelineStep(p, step, { kind: 'manual-retry', now: Date.now() });
+    // A manual run always executes, even when Settings turned the automatic step off.
+    this.manualSteps.add(`${id}:${step}`);
     await this.persistPipeline(p);
     void this.runPipeline(id);
     return toPipelineView(p);
@@ -869,6 +873,8 @@ export class MemoService {
         retryable: true,
       });
     }
+    const manual = this.manualSteps.delete(`${p.meetingId}:${step}`);
+    const mc = this.deps.config().memo;
     switch (step) {
       case 'finalize':
         await this.deps.worker.call(
@@ -878,6 +884,15 @@ export class MemoService {
         );
         return false;
       case 'summary':
+        if (!mc.autoSummarize && !manual) {
+          // Settings → Summarize after meetings is off: finish without a summary (Summarize button later).
+          await this.deps.worker.call('memo.stepSummary', {
+            meetingId: p.meetingId,
+            llm: { provider: 'none' },
+            skip: true,
+          });
+          return true;
+        }
         await this.deps.worker.call(
           'memo.stepSummary',
           { meetingId: p.meetingId, llm: await this.llmParams() },
@@ -885,6 +900,7 @@ export class MemoService {
         );
         return false;
       case 'index': {
+        if (!mc.backgroundIndexing && !manual) return true; // Settings → Index for search off
         const r = await this.deps.worker.call(
           'memo.stepIndex',
           { meetingId: p.meetingId },
@@ -895,6 +911,7 @@ export class MemoService {
     }
   }
   private faultsFired = new Set<string>();
+  private manualSteps = new Set<string>();
 
   /** The session's own meeting: processing → done once usable, → error if finalize failed for good. */
   private syncSessionWithPipeline(p: PipelineState) {

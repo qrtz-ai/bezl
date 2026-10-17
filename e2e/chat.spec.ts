@@ -50,7 +50,7 @@ async function recordStandup(win: Page) {
   });
   await win.getByTestId('memo-record').click();
   await until(win, async () => {
-    expect(await win.getByTestId('memo-live-line').count()).toBeGreaterThan(5);
+    expect(await win.getByTestId('live-segment').count()).toBeGreaterThan(5);
   });
   await win.getByTestId('memo-stop').click();
   await expect(win.getByTestId('memo-done')).toBeVisible({ timeout: 20_000 });
@@ -163,8 +163,15 @@ test('detected meeting prompts; "Always record" persists and auto-starts next ti
   await expect(win.getByTestId('memo-hud')).toBeVisible({ timeout: 10_000 }); // no prompt, recording started
   await expect(win.getByTestId('memo-detected')).toHaveCount(0);
   await win.getByTestId('nav-settings').click();
-  await expect(win.getByTestId('auto-record')).toHaveValue('auto');
-  await win.getByTestId('auto-record').selectOption('ask');
+  await expect(win.getByTestId('auto-record')).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  await win.getByTestId('auto-record').click();
+  await expect(win.getByTestId('auto-record')).toHaveAttribute(
+    'aria-checked',
+    'false',
+  );
   await app.close();
   expect(
     JSON.parse(fs.readFileSync(path.join(userData, 'config.json'), 'utf8')).memo
@@ -178,6 +185,7 @@ test('search results are paged', async () => {
   await until(win, async () => {
     expect(await win.getByTestId('meeting-item').count()).toBe(100);
   });
+  await win.getByTestId('memo-search-toggle').click();
   await win.getByTestId('memo-search').fill('roadmap');
   await until(win, async () => {
     expect(await win.getByTestId('search-snippet').count()).toBe(100);

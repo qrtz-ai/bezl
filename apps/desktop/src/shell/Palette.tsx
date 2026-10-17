@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Dialog, Kbd, ListItem, Text, useTheme, useToast } from '@qrtz/ui';
+import { CommandPalette, useToast } from '@qrtz/ui';
 import { requestNavigate, type SessionView } from '@qrtz/core';
 import { registry } from './subapps';
 import { shellClient } from './shellClient';
@@ -19,7 +19,6 @@ export function Palette({
   onClose: () => void;
   onNavigate: (id: string) => void;
 }) {
-  const t = useTheme();
   const toast = useToast();
   const [q, setQ] = useState('');
   const [i, setI] = useState(0);
@@ -101,98 +100,23 @@ export function Palette({
   };
 
   return (
-    <Dialog
+    <CommandPalette
       open={open}
       onClose={onClose}
-      width={560}
-      top="14vh"
-      label="Command palette"
-    >
-      <div data-testid="palette">
-        <input
-          data-testid="palette-input"
-          aria-label="Command or meeting search"
-          value={q}
-          placeholder="Type a command…"
-          onChange={(e) => {
-            setQ(e.target.value);
-            setI(0);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowDown') {
-              e.preventDefault();
-              setI((x) => Math.min(x + 1, results.length - 1));
-            } else if (e.key === 'ArrowUp') {
-              e.preventDefault();
-              setI((x) => Math.max(x - 1, 0));
-            } else if (e.key === 'Enter') {
-              e.preventDefault();
-              pick(results[i]);
-            }
-          }}
-          style={{
-            width: '100%',
-            height: 52,
-            padding: `0 ${t.space[5]}`,
-            border: 'none',
-            borderBottom: `1px solid ${t.color.border}`,
-            background: 'transparent',
-            color: t.color.text,
-            fontSize: t.font.size.lg,
-            fontFamily: 'inherit',
-            outline: 'none',
-          }}
-        />
-        <div
-          role="listbox"
-          aria-label="Commands"
-          style={{ padding: t.space[2], maxHeight: 340, overflow: 'auto' }}
-        >
-          {results.length === 0 ? (
-            <div style={{ padding: t.space[4] }}>
-              <Text muted size="sm">
-                No matching commands
-              </Text>
-            </div>
-          ) : (
-            results.map((c, idx) => (
-              <ListItem
-                key={c.id}
-                active={idx === i}
-                onClick={() => pick(c)}
-                data-testid={`cmd-${c.id}`}
-                right={
-                  c.hint ? (
-                    <Text size="xs" mono muted>
-                      {c.hint}
-                    </Text>
-                  ) : undefined
-                }
-              >
-                <Text size="sm">{c.title}</Text>
-              </ListItem>
-            ))
-          )}
-        </div>
-        <div
-          style={{
-            display: 'flex',
-            gap: t.space[4],
-            padding: `${t.space[2]} ${t.space[4]}`,
-            borderTop: `1px solid ${t.color.border}`,
-          }}
-        >
-          <Text size="xs" muted>
-            <Kbd>↑</Kbd> <Kbd>↓</Kbd> navigate
-          </Text>
-          <Text size="xs" muted>
-            <Kbd>↵</Kbd> run
-          </Text>
-          <Text size="xs" muted>
-            <Kbd>esc</Kbd> close
-          </Text>
-        </div>
-      </div>
-    </Dialog>
+      query={q}
+      onQuery={(v) => {
+        setQ(v);
+        setI(0);
+      }}
+      results={results.map((c) => ({
+        id: c.id,
+        title: c.title,
+        ...(c.hint ? { hint: c.hint } : {}),
+        testId: `cmd-${c.id}`,
+      }))}
+      index={i}
+      onIndex={setI}
+      onPick={(idx) => pick(results[idx])}
+    />
   );
 }

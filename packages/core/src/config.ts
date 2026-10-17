@@ -5,6 +5,16 @@ export const ConfigSchema = z.object({
   schemaVersion: z.literal(1).default(1),
   theme: z.enum(['dark', 'light', 'system']).default('dark'),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+  app: z
+    .object({
+      /** Show the qrtz item in the macOS menu bar. */
+      menuBarIcon: z.boolean().default(true),
+      /** Open qrtz when you log in (macOS/Windows login item). */
+      launchAtLogin: z.boolean().default(false),
+      /** Check for updates in the background (packaged builds). */
+      autoUpdateCheck: z.boolean().default(true),
+    })
+    .prefault({}),
   telemetry: z
     .object({ crashReports: z.boolean().default(false) })
     .prefault({}),
@@ -13,6 +23,12 @@ export const ConfigSchema = z.object({
       autoDetectMeetings: z.boolean().default(true),
       /** Start recording as soon as a meeting is detected (no prompt). Off = show the "Record this meeting?" prompt. */
       autoRecord: z.boolean().default(false),
+      /** Show the "Record this meeting?" prompt and notification when a meeting is detected. */
+      detectPrompt: z.boolean().default(true),
+      /** Summarize automatically when a meeting ends (off = Summarize button in the meeting). */
+      autoSummarize: z.boolean().default(true),
+      /** Build semantic-search embeddings in the background after meetings. */
+      backgroundIndexing: z.boolean().default(true),
       liveAsr: z
         .enum(['parakeet-eou-160ms', 'parakeet-unified-320ms', 'apple-speech'])
         .default('parakeet-unified-320ms'),
@@ -20,9 +36,9 @@ export const ConfigSchema = z.object({
         .enum(['openai', 'anthropic', 'google', 'openrouter', 'ollama', 'none'])
         .default('openrouter'),
       llmModel: z.string().default(''),
-      /** Delete recordings (audio only; transcript and summary stay) this many days after the meeting. 0 = keep. */
       /** Show the floating always-on-top mini HUD while recording. */
       floatingHud: z.boolean().default(true),
+      /** Delete recordings (audio only; transcript and summary stay) this many days after the meeting. 0 = keep. */
       retainAudioDays: z.number().int().min(0).max(3650).default(0),
       /** Summary template for new meetings (per-meeting override in meeting detail). */
       defaultTemplate: z

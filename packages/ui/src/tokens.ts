@@ -71,21 +71,30 @@ export const tokens = {
     16: '64px',
   },
   radius: { sm: '4px', md: '6px', lg: '8px', full: '9999px' },
+  /**
+   * One family everywhere: Geist Pixel (Square), bundled locally from Vercel's `geist` 1.8.1 release (OFL-1.1).
+   * It ships one weight and draws on a 38/1000 em pixel grid, so sizes are multiples of 13.158px (one font
+   * pixel = 0.5 CSS px = one device pixel on Retina). Hierarchy comes from size and color, never fake bold.
+   */
   font: {
     family:
-      "'Geist', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-    mono: "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-    size: {
-      xs: '12px',
-      sm: '13px',
-      md: '14px',
-      lg: '18px',
-      xl: '24px',
-      '2xl': '30px',
-      '3xl': '48px',
-    },
-    weight: { regular: 400, medium: 500, semibold: 600, bold: 700 },
-    lineHeight: { tight: 1.2, normal: 1.5 },
+      "'Geist Pixel', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+    /** The only weight the font has; every type style uses it (font-synthesis is off). */
+    weight: 500,
+  },
+  /** The type scale. Use <Text variant>, <Heading>, <Label>, <Code>, <Mono> or typeStyle(); never raw values. */
+  type: {
+    display: { size: '52.632px', lineHeight: '64px', tracking: '0em' },
+    h1: { size: '39.474px', lineHeight: '48px', tracking: '0em' },
+    h2: { size: '26.316px', lineHeight: '32px', tracking: '0em' },
+    h3: { size: '19.737px', lineHeight: '24px', tracking: '0em' },
+    bodyLg: { size: '19.737px', lineHeight: '28px', tracking: '0em' },
+    body: { size: '13.158px', lineHeight: '20px', tracking: '0.019em' },
+    bodySm: { size: '13.158px', lineHeight: '18px', tracking: '0em' },
+    caption: { size: '13.158px', lineHeight: '16px', tracking: '0em' },
+    label: { size: '13.158px', lineHeight: '16px', tracking: '0.038em' },
+    mono: { size: '13.158px', lineHeight: '20px', tracking: '0em' },
+    code: { size: '13.158px', lineHeight: '20px', tracking: '0em' },
   },
   motion: {
     fast: '120ms',
@@ -106,6 +115,29 @@ export const tokens = {
 } as const;
 
 export type Tokens = typeof tokens;
+export type TypeVariant = keyof Tokens['type'];
+export const TYPE_VARIANTS = Object.keys(tokens.type) as TypeVariant[];
+
+/** Inline style for a type variant: family, size, weight, line-height, tracking (all from tokens). */
+export function typeStyle(
+  v: TypeVariant,
+  t: Tokens = tokens,
+): {
+  fontFamily: string;
+  fontSize: string;
+  fontWeight: number;
+  lineHeight: string;
+  letterSpacing: string;
+} {
+  const s = t.type[v];
+  return {
+    fontFamily: t.font.family,
+    fontSize: s.size,
+    fontWeight: t.font.weight,
+    lineHeight: s.lineHeight,
+    letterSpacing: s.tracking,
+  };
+}
 
 /** Tokens for a palette; everything but color (and mode) is shared. */
 export function themeTokens(mode: ThemeMode): Tokens {
@@ -141,14 +173,19 @@ export function tokensToCssVars(t: Tokens = tokens): Record<string, string> {
 }
 
 /** Global stylesheet: vars, reset, focus ring, scrollbars and the qrtz blink/underline motions. */
-export function globalCss(t: Tokens = tokens): string {
+export function globalCss(t: Tokens = tokens, fontUrl?: string): string {
   const vars = Object.entries(tokensToCssVars(t))
     .map(([k, v]) => `${k}:${v};`)
     .join('');
-  return `:root{${vars}color-scheme:${t.mode};}
+  const face = fontUrl
+    ? `@font-face{font-family:'Geist Pixel';src:url(${fontUrl}) format('woff2');font-weight:100 900;font-style:normal;font-display:block;}`
+    : '';
+  return `${face}:root{${vars}color-scheme:${t.mode};}
 *,*::before,*::after{box-sizing:border-box;}
 html,body,#root{height:100%;margin:0;}
-body{background:var(--q-color-bg);color:var(--q-color-text);font-family:var(--q-font-family);font-size:var(--q-font-size-md);line-height:var(--q-font-line-height-normal);-webkit-font-smoothing:antialiased;}
+body{background:var(--q-color-bg);color:var(--q-color-text);font-family:var(--q-font-family);font-weight:var(--q-font-weight);font-size:var(--q-type-body-size);line-height:var(--q-type-body-line-height);letter-spacing:var(--q-type-body-tracking);font-synthesis:none;-webkit-font-smoothing:antialiased;}
+button,input,select,textarea,option,code,kbd,pre,samp{font:inherit;letter-spacing:inherit;color:inherit;}
+h1,h2,h3,h4,h5,h6,strong,b,th{font-weight:inherit;}
 :focus-visible{outline:var(--q-focus-width) var(--q-focus-style) var(--q-color-ring)!important;outline-offset:var(--q-focus-offset)!important;}
 [data-q-no-ring]:focus-visible{outline:none!important;}
 ::selection{background:var(--q-color-selection);}
@@ -157,6 +194,9 @@ body{background:var(--q-color-bg);color:var(--q-color-text);font-family:var(--q-
 @keyframes q-spin{to{transform:rotate(360deg)}}
 @keyframes q-fade-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 @keyframes q-pulse{0%,100%{opacity:1}50%{opacity:.4}}
+html,body,#root{height:100%;margin:0;}
+.q-drag{position:fixed;inset:0 0 auto 0;height:32px;-webkit-app-region:drag;}
+.q-drag-all{-webkit-app-region:drag;}.q-no-drag{-webkit-app-region:no-drag;}
 .q-underline{position:relative}.q-underline::after{content:'';position:absolute;left:0;bottom:-2px;height:2px;width:100%;background:var(--q-color-primary);transform:scaleX(0);transform-origin:left;transition:transform var(--q-motion-normal) var(--q-motion-ease-out)}.q-underline:hover::after{transform:scaleX(1)}
 @media (prefers-reduced-motion: reduce){*{animation-duration:var(--q-motion-instant)!important;transition-duration:var(--q-motion-instant)!important}}`;
 }

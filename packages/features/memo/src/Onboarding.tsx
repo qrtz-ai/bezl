@@ -1,19 +1,10 @@
-import { Badge, Button, Card, Heading, Text } from '@qrtz/ui';
+import { Button, Heading, Page, PermissionList, Stack } from '@qrtz/ui';
 import type { OsPermission, PermissionsStatus } from '@qrtz/core';
 
-const COPY: Record<OsPermission, { title: string; why: string }> = {
-  accessibility: {
-    title: 'Accessibility',
-    why: 'Detects Zoom and Google Meet calls and reads the meeting title, participants and who is speaking.',
-  },
-  'screen-recording': {
-    title: 'Screen & System Audio Recording',
-    why: 'Captures the other participants’ audio from the meeting app. Nothing on screen is recorded.',
-  },
-  microphone: {
-    title: 'Microphone',
-    why: 'Captures your side of the conversation.',
-  },
+const COPY: Record<OsPermission, string> = {
+  accessibility: 'Accessibility',
+  'screen-recording': 'Screen & System Audio',
+  microphone: 'Microphone',
 };
 
 export const needsOnboarding = (p: PermissionsStatus) =>
@@ -29,43 +20,21 @@ export function Onboarding({
   onDone: () => void;
 }) {
   return (
-    <div
-      data-testid="memo-onboarding"
-      style={{ display: 'grid', gap: 16, maxWidth: 560 }}
-    >
+    <Page width={480} data-testid="memo-onboarding">
       <Heading cursor>Set up Memo</Heading>
-      <Text muted>
-        Memo runs entirely on your Mac. Grant these so it can find and
-        transcribe your meetings.
-      </Text>
-      {(Object.keys(COPY) as OsPermission[]).map((p) => {
-        const s = status[p] ?? 'unknown';
-        const ok = s === 'granted' || s === 'unsupported';
-        return (
-          <Card
-            key={p}
-            padding={4}
-            style={{ display: 'flex', gap: 16, alignItems: 'center' }}
-          >
-            <div style={{ flex: 1, display: 'grid', gap: 4 }}>
-              <Text weight={600}>{COPY[p].title}</Text>
-              <Text muted size="sm">
-                {COPY[p].why}
-              </Text>
-            </div>
-            {ok ? (
-              <Badge tone="success">
-                {s === 'granted' ? 'Granted' : 'Not needed'}
-              </Badge>
-            ) : (
-              <Button size="sm" onClick={() => onRequest(p)}>
-                {s === 'denied' ? 'Open Settings' : 'Allow'}
-              </Button>
-            )}
-          </Card>
-        );
-      })}
-      <div>
+      <PermissionList
+        items={(Object.keys(COPY) as OsPermission[]).map((p) => {
+          const st = status[p] ?? 'unknown';
+          const ok = st === 'granted' || st === 'unsupported';
+          return {
+            id: p,
+            label: COPY[p],
+            state: st === 'granted' ? 'Granted' : 'Not needed',
+            ...(ok ? {} : { onGrant: () => onRequest(p) }),
+          };
+        })}
+      />
+      <Stack dir="row">
         <Button
           variant="ghost"
           onClick={onDone}
@@ -73,7 +42,7 @@ export function Onboarding({
         >
           Continue
         </Button>
-      </div>
-    </div>
+      </Stack>
+    </Page>
   );
 }

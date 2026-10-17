@@ -1,3 +1,4 @@
+import { typeStyle } from './tokens';
 import type { ReactNode } from 'react';
 import { useTheme } from './theme';
 
@@ -54,8 +55,7 @@ export function Callout({
         <div
           style={{
             color: t.color.text,
-            fontWeight: t.font.weight.semibold,
-            fontSize: t.font.size.sm,
+            ...typeStyle('label', t),
           }}
         >
           {title}
@@ -64,7 +64,7 @@ export function Callout({
           <div
             style={{
               color: t.color.textMuted,
-              fontSize: t.font.size.xs,
+              ...typeStyle('bodySm', t),
               marginTop: 2,
               overflowWrap: 'anywhere',
             }}

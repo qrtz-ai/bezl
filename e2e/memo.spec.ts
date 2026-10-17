@@ -75,7 +75,7 @@ test('memo end-to-end: detect, record, live transcript, summarize, search, expor
   await mini.getByTestId('mini-hud-note-input').fill('From the mini HUD');
   await mini.getByTestId('mini-hud-note-input').press('Enter');
   await expect(mini.getByTestId('mini-hud-note')).toContainText(
-    /\d:\d\d From the mini HUD/,
+    /\d:\d\d\s*From the mini HUD/,
   );
   await expect
     .poll(() => mini.evaluate(() => window.innerHeight))
@@ -115,6 +115,7 @@ test('memo end-to-end: detect, record, live transcript, summarize, search, expor
 
   // 4. Meeting list + full-text search.
   await expect(win.getByTestId('meeting-item')).toHaveCount(1);
+  await win.getByTestId('memo-search-toggle').click();
   await win.getByTestId('memo-search').fill('parakeet');
   await expect(win.getByTestId('search-snippet')).toContainText('[parakeet]', {
     timeout: 5_000,
@@ -125,6 +126,7 @@ test('memo end-to-end: detect, record, live transcript, summarize, search, expor
   await expect(win.getByTestId('meeting-item')).toHaveCount(1);
 
   // 5. Markdown export.
+  await win.getByTestId('meeting-menu').click();
   await win.getByTestId('export-save').click();
   await expect(win.getByTestId('export-result')).toContainText('Saved to');
   const files = fs.readdirSync(exportDir);
@@ -143,14 +145,14 @@ test('memo end-to-end: detect, record, live transcript, summarize, search, expor
     env: { ...env, QRTZ_MOCK_SCENARIO: '' },
   });
   const win2 = await app2.firstWindow();
-  await expect(win2.getByTestId('brand')).toBeVisible();
-  // Home dashboard lists the recorded meeting; clicking opens it in Memo.
-  await expect(win2.getByTestId('home-meeting')).toHaveCount(1);
-  await expect(win2.getByTestId('home-meeting')).toContainText(
+  await expect(win2.getByTestId('nav-memo')).toBeVisible();
+  // The meeting list shows the recorded meeting.
+  await expect(win2.getByTestId('meeting-item')).toHaveCount(1);
+  await expect(win2.getByTestId('meeting-item')).toContainText(
     'Weekly Product Sync',
   );
-  await win2.screenshot({ path: path.join(shots, 'home.png') });
-  // ⌘K meeting search (FTS) from Home opens the meeting in Memo.
+  await win2.screenshot({ path: path.join(shots, 'memo-list.png') });
+  // ⌘K meeting search (FTS) opens the meeting in Memo.
   await win2.keyboard.press('ControlOrMeta+k');
   await win2.getByTestId('palette-input').fill('onboarding');
   const hit = win2.locator('[data-testid^="cmd-meeting."]');

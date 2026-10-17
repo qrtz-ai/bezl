@@ -22,7 +22,7 @@
 │ streaming ASR  │        └─────────────────────────────────────────┘
 │ (TS mock off-  │
 │  Mac)          │        Renderer (sandboxed, CSP): shell + sub apps
-└────────────────┘        (home, memo, gallery, settings) via @qrtz/ui
+└────────────────┘        (memo, settings, gallery*) via @qrtz/ui
 ```
 
 - **Packages:**

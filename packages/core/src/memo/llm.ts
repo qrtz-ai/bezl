@@ -220,6 +220,59 @@ export function google(o: {
   };
 }
 
+/**
+ * Free-tier OpenRouter accounts (no credits) get HTTP 402 for paid models like the default. Without an
+ * explicit model, qrtz then falls back to these current `:free` models (first that answers wins, and
+ * sticks for the rest of the session). `openrouter/free` is OpenRouter's own free-model router.
+ */
+export const OPENROUTER_FREE_MODELS = [
+  'google/gemma-4-31b-it:free',
+  'openrouter/free',
+];
+
+/** True when an error means "this account can't pay for that model" (not a bad key or an outage). */
+export const needsCredits = (e: unknown): boolean => {
+  const m = e instanceof Error ? e.message : String(e);
+  return (
+    /LLM HTTP 402\b/.test(m) ||
+    /\b(credits?|insufficient|requires? (?:more )?payment)\b/i.test(m)
+  );
+};
+
+let openRouterFree: string | null = null;
+/** Test hook: forget the sticky free-tier fallback. */
+export const resetOpenRouterFallback = () => {
+  openRouterFree = null;
+};
+
+function withFreeFallback(
+  make: (model: string) => LlmProvider,
+  primary: string,
+): LlmProvider {
+  const first = make(openRouterFree ?? primary);
+  return {
+    ...first,
+    async complete(messages, opts) {
+      try {
+        return await make(openRouterFree ?? primary).complete(messages, opts);
+      } catch (e) {
+        if (openRouterFree || !needsCredits(e)) throw e;
+        let last = e;
+        for (const m of OPENROUTER_FREE_MODELS) {
+          try {
+            const r = await make(m).complete(messages, opts);
+            openRouterFree = m;
+            return r;
+          } catch (err) {
+            last = err;
+          }
+        }
+        throw last;
+      }
+    },
+  };
+}
+
 /** Builds a provider from config + key. Returns null when no usable provider is configured. */
 export function createProvider(
   id: ProviderId | 'none',
@@ -234,21 +287,26 @@ export function createProvider(
     return anthropic({ fetch: o.fetch, apiKey: o.apiKey!, model, baseUrl });
   if (id === 'google')
     return google({ fetch: o.fetch, apiKey: o.apiKey!, model, baseUrl });
-  return openAiCompatible({
-    id,
-    fetch: o.fetch,
-    baseUrl,
-    model,
-    ...(o.apiKey ? { apiKey: o.apiKey } : {}),
-    ...(id === 'openrouter'
-      ? {
-          extraHeaders: {
-            'HTTP-Referer': 'https://qrtz.ai',
-            'X-Title': 'qrtz',
-          },
-        }
-      : {}),
-  });
+  const make = (m: string) =>
+    openAiCompatible({
+      id,
+      fetch: o.fetch,
+      baseUrl,
+      model: m,
+      ...(o.apiKey ? { apiKey: o.apiKey } : {}),
+      ...(id === 'openrouter'
+        ? {
+            extraHeaders: {
+              'HTTP-Referer': 'https://qrtz.ai',
+              'X-Title': 'qrtz',
+            },
+          }
+        : {}),
+    });
+  // Only the default model falls back; a model the user picked is respected (and its error shown).
+  return id === 'openrouter' && !o.model
+    ? withFreeFallback(make, model)
+    : make(model);
 }
 
 export function formatTranscriptForPrompt(

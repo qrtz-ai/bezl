@@ -2,15 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { manifests } from './manifests';
 
 describe('manifests', () => {
-  it('are unique and least-privilege for home (dashboard: read, quick record, permission status)', () => {
+  it('are unique, with no Home dashboard and a capability-free gallery', () => {
     const ids = manifests.map((m) => m.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(manifests.find((m) => m.id === 'home')?.capabilities).toEqual([
-      'app.info',
-      'memo.read',
-      'memo.record',
-      'os.permissions',
-    ]);
+    expect(manifests.find((m) => m.id === 'home')).toBeUndefined();
     expect(manifests.find((m) => m.id === 'gallery')?.capabilities).toEqual([]);
   });
 });

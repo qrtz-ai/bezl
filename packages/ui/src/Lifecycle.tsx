@@ -1,11 +1,11 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useTheme } from './theme';
 import { Button } from './Button';
-import { Badge, type BadgeTone } from './Badge';
+import { Text, type TextTone } from './Text';
 
 /**
  * Recording-lifecycle presentation (docs/recording-lifecycle.md). Pure views: all state comes from props,
- * which features derive from main's typed IPC (`memo:session`, `memo:pipeline`, `memo:transcript`).
+ * which features derive from main's typed IPC (`*:session`, `*:pipeline`, `*:transcript`).
  */
 
 export interface StreamSegment {
@@ -20,8 +20,50 @@ const clock = (ms: number) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
 
+function StreamRow({
+  ms,
+  speaker,
+  children,
+  partial,
+  ...rest
+}: {
+  ms: number;
+  speaker?: string | undefined;
+  children: ReactNode;
+  partial?: boolean;
+  'data-testid': string;
+  'data-id': string;
+}) {
+  const t = useTheme();
+  return (
+    <div
+      {...rest}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '56px 1fr',
+        gap: t.space[2],
+        padding: `${t.space[1]} ${t.space[2]}`,
+      }}
+    >
+      <Text variant="mono" muted>
+        {clock(ms)}
+      </Text>
+      <div>
+        {speaker ? (
+          <Text variant="label" tone="muted">
+            {speaker}
+          </Text>
+        ) : null}
+        <Text as="p" {...(partial ? { tone: 'muted' as TextTone } : {})}>
+          {children}
+        </Text>
+      </div>
+    </div>
+  );
+}
+
 /**
- * The transcript, front and center. Finalized segments plus the volatile partial (rendered distinctly and
+ * The live transcript, front and center. Finalized segments plus the volatile partial (rendered quieter and
  * replaced in place). Follows the bottom while live; scrolling up pauses following and shows "Jump to live".
  */
 export function StreamingTranscript({
@@ -53,54 +95,6 @@ export function StreamingTranscript({
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
     if (atBottom !== follow) setFollow(atBottom);
   };
-  const row = (
-    key: string,
-    ms: number,
-    speaker: string | undefined,
-    body: ReactNode,
-    extra: object,
-  ) => (
-    <div
-      key={key}
-      {...extra}
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '44px 1fr',
-        gap: t.space[3],
-        padding: `${t.space[1]} 0`,
-      }}
-    >
-      <span
-        style={{
-          color: t.color.textSubtle,
-          fontSize: t.font.size.xs,
-          fontFamily: t.font.mono,
-          paddingTop: 2,
-        }}
-      >
-        {clock(ms)}
-      </span>
-      <span
-        style={{
-          fontSize: t.font.size.md,
-          lineHeight: 1.55,
-          color: t.color.text,
-        }}
-      >
-        {speaker ? (
-          <span
-            style={{
-              fontWeight: t.font.weight.semibold,
-              marginRight: t.space[2],
-            }}
-          >
-            {speaker}
-          </span>
-        ) : null}
-        {body}
-      </span>
-    </div>
-  );
   return (
     <div style={{ position: 'relative' }}>
       <div
@@ -113,28 +107,35 @@ export function StreamingTranscript({
         style={{
           overflowY: 'auto',
           maxHeight: maxHeight ?? '60vh',
-          paddingRight: t.space[2],
+          display: 'grid',
+          gap: 2,
+          alignContent: 'start',
         }}
       >
         {segments.length === 0 && !partial?.text
           ? (empty ?? null)
-          : segments.map((s) =>
-              row(s.id, s.startMs, s.speaker, s.text, {
-                'data-testid': 'live-segment',
-                'data-id': s.id,
-              }),
-            )}
-        {live && partial?.text
-          ? row(
-              `partial-${partial.id}`,
-              partial.startMs ?? segments.at(-1)?.startMs ?? 0,
-              undefined,
-              <span style={{ color: t.color.textMuted, fontStyle: 'italic' }}>
-                {partial.text}
-              </span>,
-              { 'data-testid': 'live-partial', 'data-id': partial.id },
-            )
-          : null}
+          : segments.map((s) => (
+              <StreamRow
+                key={s.id}
+                ms={s.startMs}
+                speaker={s.speaker}
+                data-testid="live-segment"
+                data-id={s.id}
+              >
+                {s.text}
+              </StreamRow>
+            ))}
+        {live && partial?.text ? (
+          <StreamRow
+            key={`partial-${partial.id}`}
+            ms={partial.startMs ?? segments.at(-1)?.startMs ?? 0}
+            partial
+            data-testid="live-partial"
+            data-id={partial.id}
+          >
+            {partial.text}
+          </StreamRow>
+        ) : null}
       </div>
       {live && !follow ? (
         <div
@@ -143,7 +144,8 @@ export function StreamingTranscript({
             bottom: t.space[2],
             left: 0,
             right: 0,
-            textAlign: 'center',
+            display: 'flex',
+            justifyContent: 'center',
           }}
         >
           <Button
@@ -181,16 +183,16 @@ export interface PipelineStepView {
   fallback?: boolean;
 }
 
-const STATUS: Record<PipelineStepStatus, { tone: BadgeTone; label: string }> = {
-  pending: { tone: 'neutral', label: 'waiting' },
-  running: { tone: 'primary', label: 'running' },
+const STATUS: Record<PipelineStepStatus, { tone: TextTone; label: string }> = {
+  pending: { tone: 'muted', label: 'waiting' },
+  running: { tone: 'default', label: 'running' },
   retrying: { tone: 'warning', label: 'retrying' },
   done: { tone: 'success', label: 'done' },
   failed: { tone: 'danger', label: 'failed' },
-  skipped: { tone: 'neutral', label: 'skipped' },
+  skipped: { tone: 'muted', label: 'skipped' },
 };
 
-/** Post-processing progress, one row per step, with a Retry on failed steps. */
+/** Post-processing progress, one quiet row per step, with Retry on failed steps. */
 export function PipelineSteps({
   steps,
   onRetry,
@@ -214,35 +216,24 @@ export function PipelineSteps({
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: t.space[2],
-            fontSize: t.font.size.sm,
+            gap: t.space[3],
             minHeight: 28,
           }}
         >
-          <span style={{ minWidth: 120, color: t.color.text }}>{s.label}</span>
-          <Badge tone={STATUS[s.status].tone}>
+          <Text style={{ minWidth: 120 }}>{s.label}</Text>
+          <Text variant="caption" tone={STATUS[s.status].tone}>
             {s.status === 'failed' && s.fallback
               ? 'on-device fallback'
               : STATUS[s.status].label}
             {s.status === 'retrying' ? ` ${s.attempts}/${s.maxAttempts}` : ''}
-          </Badge>
-          {s.error && (s.status === 'failed' || s.status === 'retrying') ? (
-            <span
-              title={s.error}
-              style={{
-                color: t.color.textMuted,
-                fontSize: t.font.size.xs,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                flex: 1,
-              }}
-            >
-              {s.error}
-            </span>
-          ) : (
-            <span style={{ flex: 1 }} />
-          )}
+          </Text>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {s.error && (s.status === 'failed' || s.status === 'retrying') ? (
+              <Text variant="caption" muted truncate title={s.error}>
+                {s.error}
+              </Text>
+            ) : null}
+          </div>
           {s.status === 'failed' && onRetry ? (
             <Button
               size="sm"
@@ -259,7 +250,7 @@ export function PipelineSteps({
   );
 }
 
-/** Capture health while recording: reconnecting, degraded modes, or a refused start. */
+/** Capture health while recording: reconnecting, degraded modes, or a refused start. One line each. */
 export function CaptureStatus({
   reconnecting,
   degraded,
@@ -279,34 +270,40 @@ export function CaptureStatus({
         display: 'flex',
         flexWrap: 'wrap',
         alignItems: 'center',
-        gap: t.space[2],
+        gap: t.space[3],
       }}
     >
       {reconnecting ? (
-        <span data-testid="lifecycle-reconnecting">
-          <Badge tone="warning">
-            Reconnecting · attempt {reconnecting.attempt} ·{' '}
-            {reconnecting.secondsLeft}s
-          </Badge>
-        </span>
+        <Text
+          variant="caption"
+          tone="warning"
+          data-testid="lifecycle-reconnecting"
+        >
+          Reconnecting · attempt {reconnecting.attempt} ·{' '}
+          {reconnecting.secondsLeft}s
+        </Text>
       ) : null}
       {degraded.map((d) => (
-        <span key={d.id} data-testid={`degraded-${d.id}`}>
-          <Badge tone="warning">{d.label}</Badge>
-        </span>
+        <Text
+          key={d.id}
+          variant="caption"
+          tone="warning"
+          data-testid={`degraded-${d.id}`}
+        >
+          {d.label}
+        </Text>
       ))}
       {error ? (
         <span
           data-testid="lifecycle-error"
+          role="alert"
           style={{
             display: 'inline-flex',
             alignItems: 'center',
             gap: t.space[2],
-            color: t.color.danger,
-            fontSize: t.font.size.sm,
           }}
         >
-          {error}
+          <Text tone="danger">{error}</Text>
           {onDismiss ? (
             <Button
               size="sm"

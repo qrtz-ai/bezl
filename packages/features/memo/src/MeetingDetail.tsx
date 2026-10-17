@@ -1,25 +1,30 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Badge,
+  ActionMenu,
+  AudioPlayer,
   Button,
-  Card,
-  EmptyState,
-  Heading,
-  Spinner,
-  Tabs,
-  Text,
-  useTheme,
   Callout,
-  Select,
-  Dialog,
   CaptureStatus,
+  ConfirmDialog,
   PipelineSteps,
   StreamingTranscript,
+  EmptyState,
+  Heading,
+  IconButton,
+  Select,
+  Spinner,
+  Stack,
+  SummaryBlock,
+  Tabs,
+  Text,
+  Toolbar,
+  TranscriptList,
+  TranscriptRow,
 } from '@qrtz/ui';
 import {
   SUMMARY_TEMPLATES,
   type MeetingDetail as Detail,
-  type Segment,
+  type Segment as SegmentT,
   type SummaryTemplateId,
 } from '@qrtz/core';
 import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
@@ -48,7 +53,6 @@ export function MeetingDetail({
   seekTo?: { ms: number; nonce: number };
 }) {
   const qrtz = useQrtz();
-  const t = useTheme();
   const [d, setD] = useState<Detail | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -156,7 +160,7 @@ export function MeetingDetail({
     return (
       <Callout
         tone="danger"
-        title="Couldn't load this meeting"
+        title={loadError}
         data-testid="detail-load-error"
         action={
           <Button
@@ -166,17 +170,11 @@ export function MeetingDetail({
             Try again
           </Button>
         }
-      >
-        {loadError}
-      </Callout>
+      />
     );
   if (isLive)
     return (
-      <div
-        data-testid="meeting-detail"
-        data-live=""
-        style={{ display: 'grid', gap: 12, alignContent: 'start' }}
-      >
+      <Stack gap={3} data-testid="meeting-detail">
         <Heading level={2}>
           {d?.meeting.title ?? session.detected?.title ?? 'Recording'}
         </Heading>
@@ -203,14 +201,10 @@ export function MeetingDetail({
           live={session.phase !== 'stopping'}
           segments={live?.segments ?? []}
           partial={live?.partial ?? null}
-          maxHeight="calc(100vh - 260px)"
-          empty={
-            <Text size="sm" muted>
-              Listening…
-            </Text>
-          }
+          maxHeight="calc(100vh - 300px)"
+          empty={<Text muted>Listening…</Text>}
         />
-      </div>
+      </Stack>
     );
   if (!d) return <Spinner />;
   const { meeting, segments, summary } = d;
@@ -221,117 +215,75 @@ export function MeetingDetail({
         ? r.savedTo
           ? `Saved to ${r.savedTo}`
           : 'Export canceled'
-        : `Copied ${r.filename} to clipboard`,
+        : `Copied ${r.filename}`,
     );
   };
   const audioName = meeting.audioPath?.split(/[\\/]/).pop();
+  const meta = [
+    fmtDate(meeting.startedAt),
+    meeting.durationMs ? fmtClock(meeting.durationMs) : '',
+    meeting.participants.join(', '),
+    meeting.status !== 'done' ? meeting.status : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
-    <div
-      data-testid="meeting-detail"
-      style={{ display: 'grid', gap: 16, alignContent: 'start' }}
-    >
-      <div style={{ display: 'grid', gap: 6 }}>
-        <Heading level={2}>{meeting.title}</Heading>
-        <div
-          style={{
-            display: 'flex',
-            gap: 8,
-            alignItems: 'center',
-            flexWrap: 'wrap',
-          }}
+    <Stack gap={5} data-testid="meeting-detail">
+      <Stack gap={1}>
+        <Toolbar
+          end={
+            <ActionMenu
+              label="Meeting actions"
+              data-testid="meeting-menu"
+              items={[
+                {
+                  label: 'Export .md',
+                  onSelect: () => void doExport(true),
+                  testId: 'export-save',
+                },
+                {
+                  label: 'Copy Markdown',
+                  onSelect: () => void doExport(false),
+                  testId: 'export-copy',
+                },
+                {
+                  label: 'Delete',
+                  onSelect: () => setConfirmDelete(true),
+                  danger: true,
+                  testId: 'meeting-delete',
+                },
+              ]}
+            />
+          }
         >
-          <Badge>{PLATFORM_LABEL[meeting.platform]}</Badge>
-          <Text muted size="sm">
-            {fmtDate(meeting.startedAt)}
-            {meeting.durationMs ? ` · ${fmtClock(meeting.durationMs)}` : ''}
-            {meeting.participants.length
-              ? ` · ${meeting.participants.join(', ')}`
-              : ''}
-          </Text>
-          {meeting.status !== 'done' ? (
-            <Badge tone="warning">{meeting.status}</Badge>
-          ) : null}
-        </div>
-      </div>
-      {audioName && meeting.status === 'done' ? (
-        <audio
-          ref={audio}
-          controls
-          src={`qrtz-media://rec/${audioName}`}
-          onTimeUpdate={(e) => setNow(e.currentTarget.currentTime * 1000)}
-          style={{ width: '100%', height: 32 }}
-        />
-      ) : null}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => void doExport(true)}
-          data-testid="export-save"
-        >
-          Export .md
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => void doExport(false)}
-          data-testid="export-copy"
-        >
-          Copy Markdown
-        </Button>
-        <div style={{ flex: 1 }} />
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => setConfirmDelete(true)}
-          style={{ color: t.color.danger }}
-          data-testid="meeting-delete"
-        >
-          Delete
-        </Button>
-      </div>
-      <Dialog
-        open={confirmDelete}
-        onClose={() => setConfirmDelete(false)}
-        title="Delete this meeting?"
-        label="Confirm delete"
-      >
-        <div style={{ display: 'grid', gap: 16 }} data-testid="confirm-delete">
-          <Text size="sm" muted>
-            “{meeting.title}” and its transcript, notes and recording will be
-            deleted. You can undo for a few seconds.
-          </Text>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <Button
-              variant="ghost"
-              onClick={() => setConfirmDelete(false)}
-              data-testid="confirm-delete-cancel"
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() => {
-                setConfirmDelete(false);
-                onDelete(meeting.title);
-              }}
-              data-testid="confirm-delete-ok"
-            >
-              Delete
-            </Button>
-          </div>
-        </div>
-      </Dialog>
-      {exported ? (
-        <Text size="sm" muted data-testid="export-result">
-          {exported}
+          <Heading level={2}>{meeting.title}</Heading>
+        </Toolbar>
+        <Text variant="caption" muted>
+          {PLATFORM_LABEL[meeting.platform]} · {meta}
         </Text>
-      ) : null}
+        {exported ? (
+          <Text variant="caption" muted data-testid="export-result">
+            {exported}
+          </Text>
+        ) : null}
+      </Stack>
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Delete this meeting?"
+        body={meeting.title}
+        confirmLabel="Delete"
+        data-testid="confirm-delete"
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => {
+          setConfirmDelete(false);
+          onDelete(meeting.title);
+        }}
+      />
       {pipeline &&
       !(
         ['done', 'skipped'].includes(pipeline.steps.finalize.status) &&
-        pipeline.steps.summary.status === 'done' &&
+        ['done', 'skipped'].includes(pipeline.steps.summary.status) &&
         ['done', 'skipped'].includes(pipeline.steps.index.status)
       ) ? (
         <PipelineSteps
@@ -352,9 +304,9 @@ export function MeetingDetail({
       <Speakers meetingId={id} segments={segments} />
       <Tabs
         tabs={[
-          { id: 'transcript', label: `Transcript (${segments.length})` },
+          { id: 'transcript', label: 'Transcript' },
           { id: 'summary', label: 'Summary' },
-          { id: 'notes', label: `Notes (${d?.notes?.length ?? 0})` },
+          { id: 'notes', label: 'Notes' },
           { id: 'ask', label: 'Ask' },
         ]}
         value={tab}
@@ -372,185 +324,131 @@ export function MeetingDetail({
         <Notes meetingId={id} />
       ) : tab === 'summary' ? (
         summary ? (
-          <div
-            style={{ display: 'grid', gap: 16 }}
-            data-testid="detail-summary"
-          >
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <label htmlFor="summary-template">
-                <Text size="sm" muted>
-                  Template
-                </Text>
-              </label>
-              <Select
-                id="summary-template"
-                data-testid="summary-template"
-                value={d?.meeting.template ?? 'general'}
-                disabled={retrying}
-                onChange={(e) =>
-                  changeTemplate(e.target.value as SummaryTemplateId)
-                }
-                style={{ width: 180 }}
-              >
-                {SUMMARY_TEMPLATES.map((tp) => (
-                  <option key={tp.id} value={tp.id}>
-                    {tp.label}
-                  </option>
-                ))}
-              </Select>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={retrySummary}
-                disabled={retrying}
-                data-testid="summary-rerun"
-              >
-                {retrying ? 'Summarizing…' : 'Re-run'}
-              </Button>
-              {retryError && !summary.llmError ? (
-                <Text size="sm" style={{ color: t.color.danger }} role="alert">
-                  {retryError}
-                </Text>
-              ) : null}
-            </div>
-            {summary.llmError ? (
-              <Callout
-                tone="warning"
-                title="AI summary failed. Showing the on-device summary instead."
-                data-testid="llm-error"
-                action={
-                  <Button
-                    variant="secondary"
-                    onClick={retrySummary}
-                    disabled={retrying}
-                    data-testid="llm-retry"
-                  >
-                    {retrying ? 'Retrying…' : 'Retry'}
-                  </Button>
+          <SummaryBlock
+            summary={summary.summary}
+            actionItems={summary.actionItems.map((a) => ({
+              text: a.text,
+              ...(a.owner ? { owner: a.owner } : {}),
+            }))}
+            qa={summary.qa}
+            source={
+              summary.provider === 'extractive'
+                ? 'on-device extractive'
+                : summary.provider
+            }
+            toolbar={
+              <Toolbar
+                end={
+                  <>
+                    <Select
+                      id="summary-template"
+                      aria-label="Template"
+                      data-testid="summary-template"
+                      value={d?.meeting.template ?? 'general'}
+                      disabled={retrying}
+                      onChange={(e) =>
+                        changeTemplate(e.target.value as SummaryTemplateId)
+                      }
+                    >
+                      {SUMMARY_TEMPLATES.map((tp) => (
+                        <option key={tp.id} value={tp.id}>
+                          {tp.label}
+                        </option>
+                      ))}
+                    </Select>
+                    <IconButton
+                      icon="↻"
+                      label={retrying ? 'Summarizing' : 'Re-run'}
+                      onClick={retrySummary}
+                      data-testid="summary-rerun"
+                    />
+                  </>
                 }
               >
-                {retryError ?? summary.llmError}
-              </Callout>
-            ) : null}
-            <Card padding={4}>
-              <Text as="p" style={{ lineHeight: 1.6 }}>
-                {summary.summary}
-              </Text>
-            </Card>
-            <div style={{ display: 'grid', gap: 8 }}>
-              <Text weight={600}>Action items</Text>
-              {summary.actionItems.length ? (
-                summary.actionItems.map((a, i) => (
-                  <div
-                    key={i}
-                    data-testid="action-item"
-                    style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}
-                  >
-                    <span aria-hidden>☐</span>
-                    <Text style={{ flex: 1 }}>{a.text}</Text>
-                    {a.owner ? <Badge tone="neutral">{a.owner}</Badge> : null}
-                  </div>
-                ))
-              ) : (
-                <Text muted>None found.</Text>
-              )}
-            </div>
-            {summary.qa.length ? (
-              <div style={{ display: 'grid', gap: 8 }}>
-                <Text weight={600}>Q&amp;A</Text>
-                {summary.qa.map((q, i) => (
-                  <Card key={i} padding={3}>
-                    <Text weight={500}>Q: {q.question}</Text>
-                    <br />
-                    <Text muted>A: {q.answer}</Text>
-                  </Card>
-                ))}
-              </div>
-            ) : null}
-            <Text size="xs" muted>
-              Summary by{' '}
-              {summary.provider === 'extractive'
-                ? 'on-device extractive summarizer (add an LLM key in Settings for AI summaries)'
-                : summary.provider}
-            </Text>
-          </div>
+                {retryError && !summary.llmError ? (
+                  <Text variant="caption" tone="danger" role="alert">
+                    {retryError}
+                  </Text>
+                ) : null}
+              </Toolbar>
+            }
+            notice={
+              summary.llmError ? (
+                <Callout
+                  tone="warning"
+                  title={retryError ?? summary.llmError}
+                  data-testid="llm-error"
+                  action={
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={retrySummary}
+                      disabled={retrying}
+                      data-testid="llm-retry"
+                    >
+                      {retrying ? 'Retrying…' : 'Retry'}
+                    </Button>
+                  }
+                />
+              ) : undefined
+            }
+          />
         ) : (
           <EmptyState
-            icon="…"
-            title="No summary yet"
-            body="It will appear here when processing finishes."
+            title="No summary"
+            {...(meeting.status === 'done'
+              ? {
+                  action: (
+                    <Button
+                      size="sm"
+                      onClick={retrySummary}
+                      disabled={retrying}
+                      data-testid="summary-run"
+                    >
+                      Summarize
+                    </Button>
+                  ),
+                }
+              : {})}
           />
         )
       ) : (
-        <div
-          data-testid="detail-transcript"
-          role="list"
-          aria-label="Transcript"
-          style={{ display: 'grid', gap: 2 }}
-        >
-          {segments.map((s, i) => (
-            <SegmentRow key={s.id} s={s} active={i === current} onSeek={seek} />
-          ))}
-        </div>
+        <Stack gap={3}>
+          {audioName && meeting.status === 'done' ? (
+            <AudioPlayer
+              ref={audio}
+              src={`qrtz-media://rec/${audioName}`}
+              onTime={setNow}
+            />
+          ) : null}
+          <TranscriptList>
+            {segments.map((s, i) => (
+              <Segment key={s.id} s={s} active={i === current} onSeek={seek} />
+            ))}
+          </TranscriptList>
+        </Stack>
       )}
-    </div>
+    </Stack>
   );
 }
 
-/**
- * One transcript line. Memoized so audio timeupdates re-render only the two rows whose `active` flips, and
- * `content-visibility: auto` lets Chromium skip layout/paint for off-screen rows (native virtualization that
- * keeps variable-height wrapped text and Ctrl+F working on 2-hour meetings).
- */
-const SegmentRow = memo(function SegmentRow({
+function Segment({
   s,
   active,
   onSeek,
 }: {
-  s: Segment;
+  s: SegmentT;
   active: boolean;
   onSeek: (ms: number) => void;
 }) {
-  const t = useTheme();
-  const who = s.speakerName ?? s.speaker ?? 'Speaker';
+  const seekHere = useCallback(() => onSeek(s.startMs), [onSeek, s.startMs]);
   return (
-    <div
-      role="listitem"
-      tabIndex={0}
-      aria-current={active || undefined}
-      aria-label={`${fmtClock(s.startMs)} ${who}: ${s.text}`}
-      data-testid="transcript-segment"
-      data-active={active || undefined}
-      onClick={() => onSeek(s.startMs)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onSeek(s.startMs);
-        }
-      }}
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '48px 1fr',
-        gap: 8,
-        padding: '6px 8px',
-        borderRadius: t.radius.md,
-        cursor: 'pointer',
-        background: active ? t.color.surfaceHover : 'transparent',
-        contentVisibility: 'auto',
-        containIntrinsicSize: 'auto 56px',
-      }}
-    >
-      <Text size="xs" muted mono>
-        {fmtClock(s.startMs)}
-      </Text>
-      <div>
-        <Text size="sm" weight={600}>
-          {who}
-        </Text>
-        <Text as="p" size="sm">
-          {s.text}
-        </Text>
-      </div>
-    </div>
+    <TranscriptRow
+      time={fmtClock(s.startMs)}
+      speaker={s.speakerName ?? s.speaker ?? 'Speaker'}
+      text={s.text}
+      active={active}
+      onSeek={seekHere}
+    />
   );
-});
+}

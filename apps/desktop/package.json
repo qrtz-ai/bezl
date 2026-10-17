@@ -40,7 +40,6 @@
     "@huggingface/transformers": "^4.3.1",
     "@qrtz/core": "*",
     "@qrtz/feature-gallery": "*",
-    "@qrtz/feature-home": "*",
     "@qrtz/feature-memo": "*",
     "@qrtz/feature-settings": "*",
     "@qrtz/ui": "*",

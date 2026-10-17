@@ -1,34 +1,38 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { useTheme } from './theme';
+import { typeStyle, type TypeVariant } from './tokens';
 
-/** Display heading. `cursor` adds the qrtz.ai blinking underscore; `mono` for product names. */
+/**
+ * Semantic heading: `level` picks the element (h1–h3) and its default style; `variant` overrides the look
+ * (e.g. level={2} variant="h3"). `cursor` adds the qrtz.ai blinking underscore.
+ */
 export function Heading({
   children,
   level = 1,
-  mono,
+  variant,
   cursor,
   style,
+  ...rest
 }: {
   children: ReactNode;
   level?: 1 | 2 | 3;
-  mono?: boolean;
+  variant?: Extract<
+    TypeVariant,
+    'display' | 'h1' | 'h2' | 'h3' | 'bodyLg' | 'label'
+  >;
   cursor?: boolean;
   style?: CSSProperties;
+  id?: string;
+  'data-testid'?: string;
 }) {
   const t = useTheme();
   const Tag = `h${level}` as const;
-  const size = { 1: t.font.size['2xl'], 2: t.font.size.xl, 3: t.font.size.lg }[
-    level
-  ];
   return (
     <Tag
+      {...rest}
       style={{
         margin: 0,
-        fontSize: size,
-        fontWeight: level === 1 ? t.font.weight.bold : t.font.weight.semibold,
-        letterSpacing: '-0.02em',
-        lineHeight: t.font.lineHeight.tight,
-        fontFamily: mono ? t.font.mono : 'inherit',
+        ...typeStyle(variant ?? (`h${level}` as const), t),
         color: t.color.text,
         ...style,
       }}

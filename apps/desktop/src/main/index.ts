@@ -149,7 +149,7 @@ export function bootstrap() {
         }
       : {}),
     onDetectedPrompt: (title, platform) => {
-      // The in-app HUD prompt is always shown; when qrtz isn't focused, also raise an OS notification.
+      // The in-app prompt shows whenever detectPrompt is on; when qrtz isn't focused, also raise an OS notification.
       if (BrowserWindow.getFocusedWindow() || !Notification.isSupported())
         return;
       const n = new Notification({
@@ -444,8 +444,12 @@ export function bootstrap() {
     });
     win.once('ready-to-show', () => win.show());
     if (MAIN_WINDOW_VITE_DEV_SERVER_URL)
-      void win.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-    else void win.loadFile(path.join(rendererDir, 'index.html'));
+      void win.loadURL(`${MAIN_WINDOW_VITE_DEV_SERVER_URL}?dev=1`);
+    else
+      void win.loadFile(path.join(rendererDir, 'index.html'), {
+        // Dev-only sub apps (the component gallery) are listed only in unpackaged builds.
+        ...(app.isPackaged ? {} : { query: { dev: '1' } }),
+      });
     if (!app.isPackaged && process.env.QRTZ_DEVTOOLS !== '0') {
       win.webContents.openDevTools({ mode: 'detach' });
     }
@@ -575,43 +579,66 @@ export function bootstrap() {
     helper.start();
     createWindow();
     // Menu bar item (macOS/Windows; Linux tray support varies by desktop, opt in with QRTZ_TRAY=1).
-    if (process.platform !== 'linux' || process.env.QRTZ_TRAY === '1') {
-      const tray = createTray({
-        getView: () => memo.view(),
-        onAction: (a) => {
-          const w =
-            BrowserWindow.getAllWindows().find((x) => x !== hud) ?? null;
-          if (a === 'start')
-            void memo
-              .start()
-              .catch((e) => log.warn('tray start failed', { err: String(e) }));
-          else if (a === 'stop') void memo.stop().catch(() => {});
-          else if (a === 'dismiss') memo.dismiss();
-          else if (a === 'quit') app.quit();
-          else if (w) {
-            w.show();
-            w.focus();
-          } else createWindow();
-        },
-      });
-      bus.on('memo:session', () => tray.update());
-      app.on('before-quit', () => tray.destroy());
-    }
-    void import('./updates').then(({ initAutoUpdates }) =>
-      initAutoUpdates(
-        {
-          isPackaged: app.isPackaged,
-          platform: process.platform,
-          arch: process.arch,
-          env: process.env,
-          build: {
-            feedUrl: __QRTZ_UPDATE_FEED_URL__,
-            autoUpdate: __QRTZ_AUTO_UPDATE__,
+    // Settings → Menu bar icon toggles it live.
+    let tray: ReturnType<typeof createTray> | null = null;
+    const trayAllowed =
+      process.platform !== 'linux' || process.env.QRTZ_TRAY === '1';
+    const syncTray = (on: boolean) => {
+      if (!trayAllowed) return;
+      if (on && !tray)
+        tray = createTray({
+          getView: () => memo.view(),
+          onAction: (a) => {
+            const w =
+              BrowserWindow.getAllWindows().find((x) => x !== hud) ?? null;
+            if (a === 'start')
+              void memo
+                .start()
+                .catch((e) =>
+                  log.warn('tray start failed', { err: String(e) }),
+                );
+            else if (a === 'stop') void memo.stop().catch(() => {});
+            else if (a === 'dismiss') memo.dismiss();
+            else if (a === 'quit') app.quit();
+            else if (w) {
+              w.show();
+              w.focus();
+            } else createWindow();
           },
-        },
-        log,
-      ),
-    );
+        });
+      else if (!on && tray) {
+        tray.destroy();
+        tray = null;
+      }
+    };
+    syncTray(config.get().app.menuBarIcon);
+    config.onChange((c) => syncTray(c.app.menuBarIcon));
+    bus.on('memo:session', () => tray?.update());
+    app.on('before-quit', () => tray?.destroy());
+    // Settings → Open at login (macOS/Windows login item; no-op elsewhere and in dev).
+    const syncLogin = (on: boolean) => {
+      if (!app.isPackaged || process.platform === 'linux') return;
+      if (app.getLoginItemSettings().openAtLogin !== on)
+        app.setLoginItemSettings({ openAtLogin: on });
+    };
+    syncLogin(config.get().app.launchAtLogin);
+    config.onChange((c) => syncLogin(c.app.launchAtLogin));
+    if (config.get().app.autoUpdateCheck)
+      void import('./updates').then(({ initAutoUpdates }) =>
+        initAutoUpdates(
+          {
+            isPackaged: app.isPackaged,
+            platform: process.platform,
+            arch: process.arch,
+            env: process.env,
+            build: {
+              feedUrl: __QRTZ_UPDATE_FEED_URL__,
+              autoUpdate: __QRTZ_AUTO_UPDATE__,
+            },
+          },
+          log,
+        ),
+      );
     // M6.2: ⌘⇧R starts/stops Memo recording from anywhere (e.g. while in Zoom/Meet).
     const ok = globalShortcut.register('CommandOrControl+Shift+R', () => {
       memo

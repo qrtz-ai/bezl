@@ -18,7 +18,7 @@ async function launch(userData: string, extra: Record<string, string> = {}) {
     },
   });
   const win = await app.firstWindow();
-  await expect(win.getByTestId('home')).toBeVisible();
+  await expect(win.getByTestId('nav-memo')).toBeVisible();
   return { app, win };
 }
 
@@ -31,17 +31,20 @@ test('delete a meeting and copy its Markdown', async () => {
     .filter({ hasText: 'Sync #500' });
   await expect(first).toBeVisible({ timeout: 15_000 });
   await first.click();
+  await win.getByTestId('meeting-menu').click();
   await win.getByTestId('export-copy').click();
   await expect(win.getByTestId('export-result')).toBeVisible();
   const clip = await app.evaluate(({ clipboard }) => clipboard.readText());
   expect(clip).toMatch(/^# Sync \\?#500/);
   // Confirm dialog: Cancel keeps the meeting.
+  await win.getByTestId('meeting-menu').click();
   await win.getByTestId('meeting-delete').click();
   await expect(win.getByTestId('confirm-delete')).toContainText('Sync #500');
   await win.getByTestId('confirm-delete-cancel').click();
   await expect(win.getByTestId('confirm-delete')).toHaveCount(0);
   await expect(first).toBeVisible();
   // Delete → hidden at once, Undo in the toast restores it.
+  await win.getByTestId('meeting-menu').click();
   await win.getByTestId('meeting-delete').click();
   await win.getByTestId('confirm-delete-ok').click();
   await expect(first).toHaveCount(0);
@@ -50,6 +53,7 @@ test('delete a meeting and copy its Markdown', async () => {
   await expect(first).toBeVisible();
   await expect(win.getByTestId('meeting-detail')).toContainText('Sync #500');
   // Delete for real: once the undo window passes it's gone from the database.
+  await win.getByTestId('meeting-menu').click();
   await win.getByTestId('meeting-delete').click();
   await win.getByTestId('confirm-delete-ok').click();
   await expect(first).toHaveCount(0);
@@ -72,7 +76,8 @@ test('settings persist across restarts; API key save and remove', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-flows-'));
   const { app, win } = await launch(dir);
   await win.getByTestId('nav-settings').click();
-  await win.getByTestId('retain-audio').selectOption('30');
+  await win.getByTestId('retain-audio-on').click();
+  await win.getByTestId('retain-audio').selectOption('90');
   await win.getByTestId('default-template').selectOption('standup');
   await win.getByTestId('theme').selectOption('light');
   await win.getByTestId('llm-key').fill('sk-test-not-real');
@@ -92,7 +97,7 @@ test('settings persist across restarts; API key save and remove', async () => {
     'light',
   );
   await again.win.getByTestId('nav-settings').click();
-  await expect(again.win.getByTestId('retain-audio')).toHaveValue('30');
+  await expect(again.win.getByTestId('retain-audio')).toHaveValue('90');
   await expect(again.win.getByTestId('default-template')).toHaveValue(
     'standup',
   );
@@ -198,6 +203,7 @@ test('quitting inside the undo window still deletes (tombstone completed on next
   const item = win.getByTestId('meeting-item').filter({ hasText: 'Sync #500' });
   await expect(item).toBeVisible({ timeout: 15_000 });
   await item.click();
+  await win.getByTestId('meeting-menu').click();
   await win.getByTestId('meeting-delete').click();
   await win.getByTestId('confirm-delete-ok').click();
   await expect(win.getByTestId('toast')).toBeVisible();

@@ -416,6 +416,14 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
 
 qrtz v0.1.0 is feature-complete for the Memo MVP and green on Linux on every push. That covers lint, typecheck, about 130 unit tests, the packaged smoke test, 24 Electron e2e tests (axe-clean in dark and light), 29 Swift tests, and a from-scratch fresh-clone check. Everything that touches real macOS capture is built but unverified on hardware.
 
+## Redesign: Geist Pixel, minimal two-pane UI, toggles, UI purity (2026-10-16)
+
+- Geist Pixel is the only font. The type scale is on its pixel grid, and typography is lint-enforced outside `@qrtz/ui`. Raw typography outside `packages/ui` went from 110 usages to 0.
+- Every visual component lives in `@qrtz/ui`. The shell and features compose `Stack`, `AppFrame`/`TabBar`, `SplitView`, `MeetingRow`, `TranscriptRow`, `NotesEditor`, `SummaryBlock`, `RecordingBar`, `CommandPalette` and the rest. `scripts/check-ui-purity.mjs` blocks `style`, `className`, raw elements, token styling and CSS outside `packages/ui`.
+- Home is removed, with bottom tabs and a two-pane Memo. Gallery is dev only. The UI no longer has blurbs.
+- Settings has 10 toggles for every automatic behavior, wired in main and the worker (tray live toggle, login item, update gate, detect-prompt gate, summarize and indexing gates).
+- OpenRouter free-tier fallback, covered by 4 unit tests, plus an opt-in live test. The live call was not run this session: `/home/box/.secrets/openrouter_qrtz.key` is not on the box (the reset wiped it).
+
 ## Backlog for the next session (in priority order)
 
 1. **Mac verification** (`docs/mac-verify.md`): build the helper with Xcode, check the TCC prompts, real ScreenCaptureKit/Core Audio capture, FluidAudio ASR, diarization and echo cancellation on live Zoom and Meet, and the Keychain key path. Fix whatever the Mac compiler flags in `Sources/qrtz-helper/mac`.
@@ -424,4 +432,5 @@ qrtz v0.1.0 is feature-complete for the Memo MVP and green on Linux on every pus
 4. **Real AX captures:** replace the synthetic fixtures with `--dump-ax` captures and tune the `fusion.ts` settings (lag, minShare) against real speaker data.
 5. **Update feed:** choose a host (R2, S3 or GitHub Releases) and turn on `QRTZ_UPDATE_FEED_URL` for signed builds.
 6. **Dev dependencies:** swap or patch the `image-size` path in maker-dmg when upstream fixes it.
-7. **Polish:** README screenshots from a Mac, onboarding copy, and a first-run model download progress indicator.
+7. **Live OpenRouter check:** put the key back at `/home/box/.secrets/openrouter_qrtz.key` and run `QRTZ_TEST_OPENROUTER=1 npx vitest run packages/core/src/memo/openrouter.test.ts`.
+8. **Polish:** README screenshots from a Mac, onboarding copy, and a first-run model download progress indicator.

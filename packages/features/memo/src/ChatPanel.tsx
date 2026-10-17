@@ -1,12 +1,12 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import {
   Button,
   Callout,
-  Card,
-  Input,
+  ChatAnswer as AnswerCard,
+  ChatQuestion,
+  Composer,
   Spinner,
-  Text,
-  useTheme,
+  Stack,
 } from '@qrtz/ui';
 import type { ChatAnswer } from '@qrtz/core';
 import { useQrtz } from '@qrtz/core/react';
@@ -28,12 +28,10 @@ export function ChatPanel({
   onOpenSource?: (meetingId: string, startMs: number) => void;
 }) {
   const qrtz = useQrtz();
-  const t = useTheme();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const endRef = useRef<HTMLDivElement>(null);
 
   const ask = async (question: string, prior: Turn[]) => {
     setBusy(true);
@@ -54,9 +52,6 @@ export function ChatPanel({
       setError((e as Error).message);
     } finally {
       setBusy(false);
-      requestAnimationFrame(() =>
-        endRef.current?.scrollIntoView({ block: 'end' }),
-      );
     }
   };
 
@@ -69,83 +64,42 @@ export function ChatPanel({
   const lastUser = [...turns].reverse().find((x) => x.role === 'user');
 
   return (
-    <div style={{ display: 'grid', gap: 12 }} data-testid="chat">
-      {turns.length === 0 ? (
-        <Text muted size="sm">
-          {meetingId
-            ? 'Ask anything about this meeting, e.g. "What did we decide about the launch?"'
-            : 'Ask across all your meetings, e.g. "When did we last talk about pricing?"'}
-        </Text>
-      ) : null}
-      <div role="log" aria-live="polite" style={{ display: 'grid', gap: 10 }}>
+    <Stack gap={3} data-testid="chat">
+      <Stack gap={3} role="log" aria-live="polite">
         {turns.map((x, i) =>
           x.role === 'user' ? (
-            <Text key={i} weight={600} data-testid="chat-question">
-              {x.content}
-            </Text>
+            <ChatQuestion key={i}>{x.content}</ChatQuestion>
           ) : (
-            <Card key={i} padding={3} data-testid="chat-answer">
-              {x.answer.llmError ? (
-                <div style={{ marginBottom: 8 }}>
+            <AnswerCard
+              key={i}
+              text={x.content}
+              sources={x.answer.sources.slice(0, 6).map((s, j) => ({
+                label: `[${j + 1}] ${meetingId ? '' : `${s.title} · `}${fmtClock(s.startMs)}${
+                  s.speaker ? ` · ${s.speaker}` : ''
+                }`,
+                title: s.text,
+                onOpen: () => onOpenSource?.(s.meetingId, s.startMs),
+              }))}
+              {...(x.answer.provider === 'extractive'
+                ? {}
+                : { footer: x.answer.provider })}
+              notice={
+                x.answer.llmError ? (
                   <Callout
                     tone="warning"
-                    title="AI answer failed. Showing matching quotes instead."
+                    title={x.answer.llmError}
                     data-testid="chat-llm-error"
-                  >
-                    {x.answer.llmError}
-                  </Callout>
-                </div>
-              ) : null}
-              <Text as="p" style={{ whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>
-                {x.content}
-              </Text>
-              {x.answer.sources.length ? (
-                <div
-                  style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 6,
-                    marginTop: 8,
-                  }}
-                >
-                  {x.answer.sources.slice(0, 6).map((s, j) => (
-                    <button
-                      key={j}
-                      type="button"
-                      data-testid="chat-source"
-                      onClick={() => onOpenSource?.(s.meetingId, s.startMs)}
-                      title={s.text}
-                      style={{
-                        font: 'inherit',
-                        fontSize: 12,
-                        color: t.color.textMuted,
-                        background: 'transparent',
-                        border: `1px solid ${t.color.border}`,
-                        borderRadius: 4,
-                        padding: '2px 6px',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      [{j + 1}] {meetingId ? '' : `${s.title} · `}
-                      {fmtClock(s.startMs)}
-                      {s.speaker ? ` · ${s.speaker}` : ''}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-              <Text size="xs" muted style={{ marginTop: 6, display: 'block' }}>
-                {x.answer.provider === 'extractive'
-                  ? 'Quotes from your transcripts (add an LLM key in Settings for written answers)'
-                  : `Answered by ${x.answer.provider}`}
-              </Text>
-            </Card>
+                  />
+                ) : undefined
+              }
+            />
           ),
         )}
         {busy ? <Spinner size={14} /> : null}
         {error ? (
           <Callout
             tone="danger"
-            title="Couldn't answer that"
+            title={error}
             data-testid="chat-error"
             action={
               lastUser ? (
@@ -163,39 +117,21 @@ export function ChatPanel({
                 </Button>
               ) : null
             }
-          >
-            {error}
-          </Callout>
+          />
         ) : null}
-        <div ref={endRef} />
-      </div>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit();
-        }}
-        style={{ display: 'flex', gap: 8 }}
-      >
-        <Input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={
-            meetingId ? 'Ask about this meeting…' : 'Ask across all meetings…'
-          }
-          aria-label={
-            meetingId ? 'Ask about this meeting' : 'Ask across all meetings'
-          }
-          data-testid="chat-input"
-          maxLength={2000}
-        />
-        <Button
-          type="submit"
-          disabled={busy || !q.trim()}
-          data-testid="chat-send"
-        >
-          Ask
-        </Button>
-      </form>
-    </div>
+      </Stack>
+      <Composer
+        value={q}
+        onChange={setQ}
+        onSubmit={submit}
+        busy={busy}
+        placeholder={
+          meetingId ? 'Ask about this meeting' : 'Ask across all meetings'
+        }
+        label={meetingId ? 'Ask about this meeting' : 'Ask across all meetings'}
+        inputTestId="chat-input"
+        submitTestId="chat-send"
+      />
+    </Stack>
   );
 }

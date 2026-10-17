@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Badge,
   Button,
   Callout,
   CaptureStatus,
-  Card,
   EmptyState,
+  Heading,
+  IconButton,
   Input,
-  Text,
-  useTheme,
+  MeetingRow,
+  SplitView,
+  Stack,
+  Toolbar,
   useToast,
 } from '@qrtz/ui';
 import {
@@ -32,12 +34,12 @@ const PAGE = 100;
 
 export default function MemoView() {
   const qrtz = useQrtz();
-  const t = useTheme();
   // Lifecycle state comes only from main (memo:session); the view never guesses.
   const session = useSession();
   const [perms, setPerms] = useState<PermissionsStatus | null>(null);
   const [onboarded, setOnboarded] = useState(false);
   const [query, setQuery] = useState('');
+  const [searching, setSearching] = useState(false);
   // Paging: render PAGE meetings at a time; "Show more" grows the window (list stays cheap with hundreds).
   const [pages, setPages] = useState(1);
   const [askAll, setAskAll] = useState(false);
@@ -154,16 +156,105 @@ export default function MemoView() {
       />
     );
 
+  const busy =
+    isCapturingPhase(session.phase) ||
+    session.phase === 'stopping' ||
+    session.phase === 'processing';
   return (
-    <div
-      style={{
-        display: 'grid',
-        gap: 16,
-        height: '100%',
-        gridTemplateRows: 'auto 1fr',
-      }}
+    <SplitView
+      data-testid="memo"
+      sidebar={
+        <>
+          <Toolbar
+            end={
+              <>
+                <IconButton
+                  icon="⌕"
+                  label="Search meetings"
+                  pressed={searching}
+                  data-testid="memo-search-toggle"
+                  onClick={() => {
+                    if (searching) setQuery('');
+                    setSearching(!searching);
+                  }}
+                />
+                <IconButton
+                  icon="?"
+                  label="Ask all meetings"
+                  pressed={askAll && !selected}
+                  data-testid="memo-ask-all"
+                  onClick={() => {
+                    setAskAll(true);
+                    setSelected(null);
+                  }}
+                />
+              </>
+            }
+          >
+            {busy ? null : (
+              <Button
+                size="sm"
+                onClick={() => void act(qrtz.invoke('memo:start', {}))}
+                data-testid="memo-record-manual"
+              >
+                ● Record
+              </Button>
+            )}
+          </Toolbar>
+          {searching ? (
+            <Input
+              autoFocus
+              placeholder="Search"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPages(1);
+              }}
+              data-testid="memo-search"
+              aria-label="Search meetings"
+            />
+          ) : null}
+          <Stack as="ul" gap={0} scroll grow aria-label="Meetings">
+            {visible.length === 0 ? (
+              <Stack as="li">
+                <EmptyState title={query ? 'No matches' : 'No meetings'} />
+              </Stack>
+            ) : (
+              visible.map(({ meeting, hit }) => (
+                <MeetingRow
+                  key={meeting.id}
+                  title={meeting.title}
+                  date={
+                    meeting.status === 'done'
+                      ? fmtDate(meeting.startedAt)
+                      : `${fmtDate(meeting.startedAt)} · ${meeting.status}`
+                  }
+                  {...(hit ? { snippet: hit.snippet } : {})}
+                  selected={selected === meeting.id}
+                  onSelect={() => {
+                    setSelected(meeting.id);
+                    setSeekTo(null);
+                  }}
+                />
+              ))
+            )}
+            {hasMore ? (
+              <Stack as="li">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setPages((n) => n + 1)}
+                  data-testid="memo-show-more"
+                >
+                  More
+                </Button>
+              </Stack>
+            ) : null}
+          </Stack>
+        </>
+      }
     >
-      <div style={{ display: 'grid', gap: 8 }}>
+      <Stack gap={6}>
         {session?.helper === 'missing' || session?.helper === 'down' ? (
           <Callout
             tone="danger"
@@ -171,14 +262,27 @@ export default function MemoView() {
             title={
               session.helper === 'missing'
                 ? 'Recording unavailable: capture helper missing'
-                : 'Capture helper stopped'
+                : 'Capture helper stopped, restarting'
             }
-          >
-            {session.helper === 'missing'
-              ? (session.helperDetail ?? 'Reinstall qrtz to restore recording.')
-              : `Recording paused; anything already captured was saved. qrtz is restarting it automatically.${session.helperDetail ? ` (${session.helperDetail})` : ''}`}
-          </Callout>
+          />
         ) : null}
+        {error ? (
+          <Callout
+            tone="danger"
+            title={error}
+            data-testid="memo-error"
+            action={
+              <Button variant="ghost" size="sm" onClick={() => setError(null)}>
+                Dismiss
+              </Button>
+            }
+          />
+        ) : null}
+        <CaptureStatus
+          degraded={[]}
+          error={session.errorInfo?.message ?? null}
+          onDismiss={() => void act(qrtz.invoke('memo:dismiss'))}
+        />
         <Hud
           s={session}
           onRecord={() => void act(qrtz.invoke('memo:start', {}))}
@@ -194,181 +298,26 @@ export default function MemoView() {
           }
           onOpen={(id) => setSelected(id)}
         />
-        <CaptureStatus
-          degraded={[]}
-          error={session.errorInfo?.message ?? null}
-          onDismiss={() => void act(qrtz.invoke('memo:dismiss'))}
-        />
-        {session.phase === 'idle' || session.phase === 'done' ? (
-          <Text size="sm" muted>
-            Memo starts automatically when it detects a Zoom or Google Meet
-            call.{' '}
-            <a
-              href="#"
-              data-testid="memo-record-manual"
-              onClick={(e) => {
-                e.preventDefault();
-                void act(qrtz.invoke('memo:start', {}));
+        {askAll && !selected ? (
+          <Stack gap={3} data-testid="ask-all">
+            <Heading level={2}>Ask</Heading>
+            <ChatPanel
+              onOpenSource={(m, ms) => {
+                setSelected(m);
+                setSeekTo({ ms, nonce: Date.now() });
               }}
-              style={{ color: t.color.text }}
-            >
-              Record now
-            </a>
-          </Text>
-        ) : null}
-        {error ? (
-          <Callout
-            tone="danger"
-            title="Something went wrong"
-            data-testid="memo-error"
-            action={
-              <Button variant="ghost" size="sm" onClick={() => setError(null)}>
-                Dismiss
-              </Button>
-            }
-          >
-            {error}
-          </Callout>
-        ) : null}
-      </div>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '300px 1fr',
-          gap: 24,
-          minHeight: 0,
-        }}
-      >
-        <div
-          style={{
-            display: 'grid',
-            gap: 8,
-            alignContent: 'start',
-            overflow: 'auto',
-          }}
-        >
-          <Button
-            variant={askAll && !selected ? 'primary' : 'secondary'}
-            size="sm"
-            onClick={() => {
-              setAskAll(true);
-              setSelected(null);
-            }}
-            data-testid="memo-ask-all"
-          >
-            Ask all meetings
-          </Button>
-          <Input
-            placeholder="Search meetings…"
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setPages(1);
-            }}
-            data-testid="memo-search"
-            aria-label="Search meetings"
+            />
+          </Stack>
+        ) : selected ? (
+          <MeetingDetail
+            id={selected}
+            onDelete={(title) => requestDelete(selected, title)}
+            {...(seekTo ? { seekTo } : {})}
           />
-          {visible.length === 0 ? (
-            <EmptyState
-              icon="●"
-              title={query ? 'No matches' : 'No meetings yet'}
-              body={
-                query
-                  ? undefined
-                  : 'Join a Zoom or Google Meet call to get started.'
-              }
-            />
-          ) : (
-            visible.map(({ meeting, hit }) => (
-              <Card
-                key={meeting.id}
-                padding={3}
-                interactive
-                selected={selected === meeting.id}
-                onClick={() => {
-                  setSelected(meeting.id);
-                  setSeekTo(null);
-                }}
-                data-testid="meeting-item"
-                style={{
-                  contentVisibility: 'auto',
-                  containIntrinsicSize: 'auto 72px',
-                }}
-              >
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <Text
-                    weight={600}
-                    style={{
-                      flex: 1,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {meeting.title}
-                  </Text>
-                  {meeting.status !== 'done' ? (
-                    <Badge
-                      tone={meeting.status === 'failed' ? 'danger' : 'warning'}
-                    >
-                      {meeting.status}
-                    </Badge>
-                  ) : null}
-                </div>
-                <Text size="xs" muted>
-                  {fmtDate(meeting.startedAt)}
-                </Text>
-                {hit ? (
-                  <Text
-                    as="div"
-                    size="xs"
-                    muted
-                    data-testid="search-snippet"
-                    style={{ marginTop: 4 }}
-                  >
-                    {hit.snippet}
-                  </Text>
-                ) : null}
-              </Card>
-            ))
-          )}
-          {hasMore ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setPages((n) => n + 1)}
-              data-testid="memo-show-more"
-            >
-              Show {PAGE} more
-            </Button>
-          ) : null}
-        </div>
-        <div style={{ overflow: 'auto', minHeight: 0 }}>
-          {askAll && !selected ? (
-            <div style={{ display: 'grid', gap: 12 }} data-testid="ask-all">
-              <Text weight={600}>Ask across all meetings</Text>
-              <ChatPanel
-                onOpenSource={(m, ms) => {
-                  setSelected(m);
-                  setSeekTo({ ms, nonce: Date.now() });
-                }}
-              />
-            </div>
-          ) : selected ? (
-            <MeetingDetail
-              id={selected}
-              onDelete={(title) => requestDelete(selected, title)}
-              {...(seekTo ? { seekTo } : {})}
-            />
-          ) : (
-            <EmptyState
-              icon="_"
-              title="Select a meeting"
-              body="Transcripts, summaries and action items show up here."
-            />
-          )}
-        </div>
-      </div>
-    </div>
+        ) : isCapturingPhase(session.phase) ? null : (
+          <EmptyState title="No meeting selected" />
+        )}
+      </Stack>
+    </SplitView>
   );
 }

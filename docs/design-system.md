@@ -25,3 +25,39 @@ the tokens are derived from the site's Tailwind/shadcn class names and its visua
 - The full token reference is in [design-tokens.md](design-tokens.md). It is generated, and a unit test fails when it drifts or when text contrast drops below AA.
 - **Motion:** use `transition(prop, 'hover' | 'enter' | 'exit')`. Reduce Motion collapses every duration to `motion.instant`.
 - **Focus:** one global `:focus-visible` ring comes from the `focus.*` tokens. `data-q-no-ring` opts out containers that get focus programmatically.
+
+## One font, one scale (redesign)
+
+Everything renders in **Geist Pixel** (Square, OFL-1.1, bundled from the `geist` npm package into
+`packages/ui/src/fonts`). It has one weight, so every weight token is 500 and `font-synthesis: none`
+stops fake bold. Sizes sit on the font's pixel grid (13.158px = one device pixel per font pixel on
+Retina), so nothing renders below 13.158px. Hierarchy comes from size, color, case and tracking.
+See the Typography section of the gallery and `docs/design-tokens.md`.
+
+Use `Text variant=…`, `Heading level=…`, `Label`, `Code`/`Mono` and `Link`.
+`scripts/check-typography.mjs` fails on raw font-size/family/weight/line-height/letter-spacing.
+
+## Every visual abstraction lives in @qrtz/ui
+
+The shell (`apps/desktop/src/shell`) and feature packages compose `@qrtz/ui` and pass data and
+handlers only. `scripts/check-ui-purity.mjs` (part of `npm run lint`) fails outside `packages/ui` on:
+
+- `style=` or `className=` props
+- raw intrinsic JSX elements (`<div>`, `<span>`, `<button>`…); only `<option>`/`<optgroup>` are allowed
+- styling from tokens (`useTheme()`, `typeStyle()`, `transition()`, `globalCss()`)
+- stylesheets, CSS imports and CSS-in-JS
+
+Layout uses `Stack` (token gaps and padding only, semantic `as` for form/ul/li/nav/section).
+App and memo pieces: `AppFrame`, `TabBar`, `SplitView`, `Page`, `Toolbar`, `IconButton`, `Chip`,
+`ListRow`/`MeetingRow`, `SettingsSection`/`SettingRow`, `TranscriptRow`/`TranscriptList`,
+`NotesEditor`, `SummaryBlock`, `ChatQuestion`/`ChatAnswer`/`Composer`, `RecordingBar`, `RecordDot`,
+`LevelMeter`, `LiveTranscript`, `Banner`, `AudioPlayer`, `ActionMenu`, `ConfirmDialog`,
+`CommandPalette`, `PermissionList`, `MiniHudFrame`/`NoDrag`/`StatusLines`. Each has a gallery
+entry. The gallery itself is `@qrtz/ui/gallery`, mounted by the dev-only gallery sub app.
+
+## Layout
+
+Tiny lowercase tabs along the bottom (`memo`, `settings`, plus `gallery` in dev builds), with the
+content taking the full window. Memo is two panes: the meeting list (Record button, search toggle,
+ask-all) on the left, the selected meeting on the right (summary first, then notes, transcript and
+ask one tab away). No explanatory copy: labels, glyphs and layout carry the UI.

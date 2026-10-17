@@ -1,3 +1,5 @@
+import { Label } from './Text';
+import { typeStyle } from './tokens';
 import {
   forwardRef,
   type InputHTMLAttributes,
@@ -15,8 +17,7 @@ const useFieldStyle = () => {
     border: `1px solid ${t.color.border}`,
     background: t.color.bg,
     color: t.color.text,
-    fontFamily: 'inherit',
-    fontSize: t.font.size.md,
+    ...typeStyle('body', t),
   } as const;
 };
 
@@ -41,29 +42,19 @@ export function Select({
   );
 }
 
+/** Labelled control. No hint text: the label and placeholder carry the meaning. */
 export function Field({
   label,
-  hint,
   children,
 }: {
   label: string;
-  hint?: string;
   children: React.ReactNode;
 }) {
   const t = useTheme();
   return (
     <label style={{ display: 'grid', gap: t.space[1] }}>
-      <span
-        style={{ fontSize: t.font.size.sm, fontWeight: t.font.weight.medium }}
-      >
-        {label}
-      </span>
+      <Label>{label}</Label>
       {children}
-      {hint ? (
-        <span style={{ fontSize: t.font.size.xs, color: t.color.textMuted }}>
-          {hint}
-        </span>
-      ) : null}
     </label>
   );
 }

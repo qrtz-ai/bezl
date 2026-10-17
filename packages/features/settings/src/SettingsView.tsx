@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
 import {
-  Badge,
   Button,
   Callout,
-  Card,
   Field,
   Heading,
   Input,
+  Page,
   Progress,
   Select,
+  SettingRow,
+  SettingsSection,
+  Stack,
+  Switch,
   Text,
 } from '@qrtz/ui';
 import {
@@ -68,6 +71,11 @@ export default function SettingsView() {
     llmModel?: string;
     retainAudioDays?: number;
     autoRecord?: boolean;
+    autoDetectMeetings?: boolean;
+    detectPrompt?: boolean;
+    floatingHud?: boolean;
+    autoSummarize?: boolean;
+    backgroundIndexing?: boolean;
     defaultTemplate?: string;
   };
   const privacy = (cfg?.privacy ?? {}) as {
@@ -96,15 +104,15 @@ export default function SettingsView() {
             .invoke('data:export-backup', {})
             .then((r) =>
               r.savedTo
-                ? `Backed up ${r.meetings} meetings and ${r.audioFiles} recordings (${(r.bytes / 1e6).toFixed(1)} MB) to ${r.savedTo}.`
-                : 'Backup canceled.',
+                ? `Backed up ${r.meetings} meetings and ${r.audioFiles} recordings (${(r.bytes / 1e6).toFixed(1)} MB)`
+                : 'Canceled',
             )
         : qrtz
             .invoke('data:import-backup', {})
             .then((r) =>
               r.canceled
-                ? 'Import canceled.'
-                : `Verified and imported ${r.imported} meetings (${r.skipped} already here, ${r.audioFiles} recordings).`,
+                ? 'Canceled'
+                : `Verified and imported ${r.imported} meetings (${r.skipped} already here, ${r.audioFiles} recordings)`,
             );
     void run
       .then(setBackupMsg, (e: Error) => setBackupMsg(e.message))
@@ -128,83 +136,139 @@ export default function SettingsView() {
     try {
       await qrtz.invoke('secrets:set', { name: secretName, value });
       setKey('');
-      setMsg(
-        value
-          ? 'Key saved to the macOS Keychain-backed store.'
-          : 'Key removed.',
-      );
+      setMsg(value ? 'Key saved' : 'Key removed');
       setSecrets(await qrtz.invoke('secrets:list'));
     } catch (e) {
       setError((e as Error).message);
     }
   };
 
+  const appCfg = (cfg?.app ?? {}) as {
+    menuBarIcon?: boolean;
+    launchAtLogin?: boolean;
+    autoUpdateCheck?: boolean;
+  };
+  const patchApp = (p: Record<string, unknown>) => {
+    setCfg((prev) =>
+      prev ? { ...prev, app: { ...(prev.app as object), ...p } } : prev,
+    );
+    return qrtz
+      .invoke('config:set', { patch: { app: p } })
+      .then(setCfg)
+      .catch((e: Error) => setError(e.message));
+  };
+  const patchMemo = (p: Record<string, unknown>) => {
+    setCfg((prev) =>
+      prev ? { ...prev, memo: { ...(prev.memo as object), ...p } } : prev,
+    );
+    return patch(p);
+  };
+  const toggle = (
+    label: string,
+    testId: string,
+    value: boolean | undefined,
+    fallback: boolean,
+    set: (v: boolean) => void,
+  ) => (
+    <SettingRow label={label}>
+      <Switch
+        label={label}
+        checked={value ?? fallback}
+        onChange={set}
+        data-testid={testId}
+      />
+    </SettingRow>
+  );
+  const days = memoCfg.retainAudioDays ?? 0;
+
   return (
-    <div style={{ display: 'grid', gap: 20, maxWidth: 640 }}>
+    <Page data-testid="settings">
       <Heading>Settings</Heading>
-      <Card padding={4} style={{ display: 'grid', gap: 12 }}>
-        <Text weight={600}>Appearance</Text>
-        <Field
-          label="Theme"
-          hint="Dark is the qrtz look. Light uses the same neutral palette; System follows macOS."
-        >
-          <Select
-            value={String(cfg?.theme ?? 'dark')}
-            onChange={(e) =>
-              void qrtz
-                .invoke('config:set', { patch: { theme: e.target.value } })
-                .then(setCfg)
-                .catch((err: Error) => setError(err.message))
-            }
-            data-testid="theme"
-          >
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-            <option value="system">System</option>
-          </Select>
-        </Field>
-      </Card>
-      <Card padding={4} style={{ display: 'grid', gap: 12 }}>
-        <Text weight={600}>Recordings</Text>
-        <Field
-          label="When a meeting starts"
-          hint="qrtz detects Zoom and Google Meet calls without a calendar."
-        >
-          <Select
-            value={memoCfg.autoRecord ? 'auto' : 'ask'}
-            onChange={(e) =>
-              void patch({ autoRecord: e.target.value === 'auto' })
-            }
-            data-testid="auto-record"
-          >
-            <option value="ask">Ask me to record</option>
-            <option value="auto">Always record automatically</option>
-          </Select>
-        </Field>
-        <Field
-          label="Keep recordings"
-          hint="Transcripts and summaries are kept. Only the audio is deleted."
-        >
-          <Select
-            value={String(memoCfg.retainAudioDays ?? 0)}
-            onChange={(e) =>
-              void patch({ retainAudioDays: Number(e.target.value) })
-            }
-            data-testid="retain-audio"
-          >
-            <option value="0">Forever</option>
-            <option value="7">7 days</option>
-            <option value="30">30 days</option>
-            <option value="90">90 days</option>
-          </Select>
-        </Field>
-        <Field
-          label="Default summary template"
-          hint="Change it per meeting in the meeting's Summary tab."
-        >
+      {error ? (
+        <Callout
+          tone="danger"
+          title={error}
+          data-testid="settings-error"
+          action={
+            <Button variant="secondary" size="sm" onClick={refresh}>
+              Retry
+            </Button>
+          }
+        />
+      ) : null}
+      <SettingsSection title="Recording">
+        {toggle(
+          'Detect meetings',
+          'auto-detect',
+          memoCfg.autoDetectMeetings,
+          true,
+          (v) => void patchMemo({ autoDetectMeetings: v }),
+        )}
+        {toggle(
+          'Record automatically',
+          'auto-record',
+          memoCfg.autoRecord,
+          false,
+          (v) => void patchMemo({ autoRecord: v }),
+        )}
+        {toggle(
+          'Ask to record',
+          'detect-prompt',
+          memoCfg.detectPrompt,
+          true,
+          (v) => void patchMemo({ detectPrompt: v }),
+        )}
+        {toggle(
+          'Floating HUD',
+          'floating-hud',
+          memoCfg.floatingHud,
+          true,
+          (v) => void patchMemo({ floatingHud: v }),
+        )}
+        {toggle(
+          'Delete old recordings',
+          'retain-audio-on',
+          days > 0,
+          false,
+          (v) => void patchMemo({ retainAudioDays: v ? 30 : 0 }),
+        )}
+        {days > 0 ? (
+          <SettingRow label="After">
+            <Select
+              value={String(days)}
+              onChange={(e) =>
+                void patchMemo({ retainAudioDays: Number(e.target.value) })
+              }
+              data-testid="retain-audio"
+            >
+              <option value="7">7 days</option>
+              <option value="30">30 days</option>
+              <option value="90">90 days</option>
+            </Select>
+          </SettingRow>
+        ) : null}
+      </SettingsSection>
+      <SettingsSection title="Summaries">
+        {toggle(
+          'Summarize after meetings',
+          'auto-summarize',
+          memoCfg.autoSummarize,
+          true,
+          (v) => void patchMemo({ autoSummarize: v }),
+        )}
+        {toggle(
+          'Index for search',
+          'background-indexing',
+          memoCfg.backgroundIndexing,
+          true,
+          (v) => void patchMemo({ backgroundIndexing: v }),
+        )}
+        <SettingRow label="Template">
           <Select
             value={memoCfg.defaultTemplate ?? 'general'}
-            onChange={(e) => void patch({ defaultTemplate: e.target.value })}
+            onChange={(e) =>
+              void patchMemo({ defaultTemplate: e.target.value })
+            }
             data-testid="default-template"
           >
             {SUMMARY_TEMPLATES.map((tp) => (
@@ -213,139 +277,11 @@ export default function SettingsView() {
               </option>
             ))}
           </Select>
-        </Field>
-      </Card>
-      <Card
-        padding={4}
-        style={{ display: 'grid', gap: 12 }}
-        data-testid="privacy-card"
-      >
-        <Text weight={600}>Privacy</Text>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-          <input
-            type="checkbox"
-            checked={!!privacy.localOnly}
-            onChange={(e) => void patchPrivacy({ localOnly: e.target.checked })}
-            data-testid="local-only"
-          />
-          <span>
-            <Text>Never send audio or transcripts to the cloud</Text>
-            <br />
-            <Text size="sm" muted>
-              Summaries and chat use the on-device summarizer (or Ollama on this
-              Mac). Cloud API keys are not used while this is on.
-            </Text>
-          </span>
-        </label>
-        {privacy.localOnly ? (
-          <Badge tone="success">
-            <span data-testid="local-only-badge">Local-only mode</span>
-          </Badge>
-        ) : null}
-        <Field
-          label="Never record meetings in"
-          hint="Comma-separated apps or platforms, e.g. Safari, zoom, google-meet."
-        >
-          <Input
-            key={(privacy.excludedApps ?? []).join(',')}
-            defaultValue={(privacy.excludedApps ?? []).join(', ')}
-            placeholder="None"
-            data-testid="excluded-apps"
-            onBlur={(e) =>
-              void patchPrivacy({
-                excludedApps: e.target.value
-                  .split(',')
-                  .map((x) => x.trim())
-                  .filter(Boolean),
-              })
-            }
-          />
-        </Field>
-        <Field
-          label="Pause capture shortcut"
-          hint="Global shortcut that pauses and resumes capture while recording. Leave empty to turn off."
-        >
-          <Input
-            key={privacy.pauseHotkey ?? ''}
-            defaultValue={privacy.pauseHotkey ?? 'CommandOrControl+Shift+P'}
-            data-testid="pause-hotkey"
-            onBlur={(e) =>
-              void patchPrivacy({ pauseHotkey: e.target.value.trim() })
-            }
-          />
-        </Field>
-      </Card>
-      <Card
-        padding={4}
-        style={{ display: 'grid', gap: 12 }}
-        data-testid="backup-card"
-      >
-        <Text weight={600}>Backup</Text>
-        <Text muted size="sm">
-          Export everything (database and recordings) to one zip with integrity
-          checksums. Importing verifies the zip and adds meetings that
-          aren&apos;t already here; nothing is overwritten.
-        </Text>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Button
-            variant="secondary"
-            disabled={backupBusy}
-            onClick={() => backup('export')}
-            data-testid="backup-export"
-          >
-            Export backup…
-          </Button>
-          <Button
-            variant="ghost"
-            disabled={backupBusy}
-            onClick={() => backup('import')}
-            data-testid="backup-import"
-          >
-            Import backup…
-          </Button>
-        </div>
-        {backupBusy && backupProgress && backupProgress.phase !== 'done' ? (
-          <div
-            style={{ display: 'grid', gap: 6 }}
-            data-testid="backup-progress"
-          >
-            <Progress
-              value={backupProgress.done / Math.max(1, backupProgress.total)}
-              label={`Backup ${backupProgress.kind} progress`}
-            />
-            <Text size="sm" muted>
-              {
-                {
-                  checksum: 'Computing checksums…',
-                  write: 'Writing zip…',
-                  verify: 'Verifying backup…',
-                  import: 'Importing meetings…',
-                  done: '',
-                }[backupProgress.phase]
-              }{' '}
-              {backupProgress.phase === 'import'
-                ? ''
-                : `${Math.round((backupProgress.done / Math.max(1, backupProgress.total)) * 100)}%`}
-            </Text>
-          </div>
-        ) : null}
-        {backupMsg ? (
-          <Text size="sm" muted data-testid="backup-result" role="status">
-            {backupMsg}
-          </Text>
-        ) : null}
-      </Card>
-      <Card padding={4} style={{ display: 'grid', gap: 12 }}>
-        <Text weight={600}>AI summaries</Text>
-        <Text muted size="sm">
-          After a meeting, Memo sends the transcript to this provider for a
-          summary, action items and Q&amp;A. Without a key it uses the on-device
-          extractive summarizer.
-        </Text>
-        <Field label="Provider">
+        </SettingRow>
+        <SettingRow label="Provider">
           <Select
             value={provider}
-            onChange={(e) => void patch({ llmProvider: e.target.value })}
+            onChange={(e) => void patchMemo({ llmProvider: e.target.value })}
             data-testid="llm-provider"
           >
             {PROVIDERS.map((p) => (
@@ -354,29 +290,21 @@ export default function SettingsView() {
               </option>
             ))}
           </Select>
-        </Field>
+        </SettingRow>
         {provider !== 'none' ? (
-          <Field
-            label="Model"
-            hint={`Default: ${PROVIDER_DEFAULTS[provider].model}`}
-          >
+          <Field label="Model">
             <Input
               defaultValue={memoCfg.llmModel ?? ''}
               placeholder={PROVIDER_DEFAULTS[provider].model}
-              onBlur={(e) => void patch({ llmModel: e.target.value.trim() })}
+              onBlur={(e) =>
+                void patchMemo({ llmModel: e.target.value.trim() })
+              }
             />
           </Field>
         ) : null}
         {secretName ? (
-          <Field
-            label="API key"
-            hint={
-              provider === 'openrouter'
-                ? 'Or set QRTZ_SECRET_OPENROUTER in the environment.'
-                : undefined
-            }
-          >
-            <div style={{ display: 'flex', gap: 8 }}>
+          <Field label="API key">
+            <Stack dir="row" gap={2}>
               <Input
                 type="password"
                 value={key}
@@ -395,38 +323,159 @@ export default function SettingsView() {
                   Remove
                 </Button>
               ) : null}
-            </div>
+            </Stack>
           </Field>
         ) : null}
-        <div>
-          {hasKey ? (
-            <Badge tone="success">Key configured</Badge>
-          ) : (
-            <Badge tone="neutral">Using extractive fallback</Badge>
-          )}
-        </div>
+        <Text variant="caption" muted>
+          {hasKey ? 'Key configured' : 'Using extractive fallback'}
+        </Text>
         {msg ? (
-          <Text size="sm" muted>
+          <Text variant="caption" muted>
             {msg}
           </Text>
         ) : null}
-      </Card>
-      <Card padding={4} style={{ display: 'grid', gap: 6 }}>
-        <Text weight={600}>System</Text>
-        <Text muted size="sm">
+      </SettingsSection>
+      <SettingsSection title="Privacy" data-testid="privacy-card">
+        {toggle(
+          'Local only',
+          'local-only',
+          privacy.localOnly,
+          false,
+          (v) => void patchPrivacy({ localOnly: v }),
+        )}
+        <Field label="Never record in">
+          <Input
+            key={(privacy.excludedApps ?? []).join(',')}
+            defaultValue={(privacy.excludedApps ?? []).join(', ')}
+            placeholder="Safari, zoom"
+            data-testid="excluded-apps"
+            onBlur={(e) =>
+              void patchPrivacy({
+                excludedApps: e.target.value
+                  .split(',')
+                  .map((x) => x.trim())
+                  .filter(Boolean),
+              })
+            }
+          />
+        </Field>
+        <Field label="Pause shortcut">
+          <Input
+            key={privacy.pauseHotkey ?? ''}
+            defaultValue={privacy.pauseHotkey ?? 'CommandOrControl+Shift+P'}
+            data-testid="pause-hotkey"
+            onBlur={(e) =>
+              void patchPrivacy({ pauseHotkey: e.target.value.trim() })
+            }
+          />
+        </Field>
+      </SettingsSection>
+      <SettingsSection title="App">
+        <SettingRow label="Theme">
+          <Select
+            value={String(cfg?.theme ?? 'dark')}
+            onChange={(e) =>
+              void qrtz
+                .invoke('config:set', { patch: { theme: e.target.value } })
+                .then(setCfg)
+                .catch((err: Error) => setError(err.message))
+            }
+            data-testid="theme"
+          >
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+            <option value="system">System</option>
+          </Select>
+        </SettingRow>
+        {toggle(
+          'Menu bar icon',
+          'menu-bar-icon',
+          appCfg.menuBarIcon,
+          true,
+          (v) => void patchApp({ menuBarIcon: v }),
+        )}
+        {toggle(
+          'Open at login',
+          'launch-at-login',
+          appCfg.launchAtLogin,
+          false,
+          (v) => void patchApp({ launchAtLogin: v }),
+        )}
+        {toggle(
+          'Check for updates',
+          'auto-update-check',
+          appCfg.autoUpdateCheck,
+          true,
+          (v) => void patchApp({ autoUpdateCheck: v }),
+        )}
+      </SettingsSection>
+      <SettingsSection title="Backup" data-testid="backup-card">
+        <Stack dir="row" gap={2}>
+          <Button
+            variant="secondary"
+            disabled={backupBusy}
+            onClick={() => backup('export')}
+            data-testid="backup-export"
+          >
+            Export
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={backupBusy}
+            onClick={() => backup('import')}
+            data-testid="backup-import"
+          >
+            Import
+          </Button>
+        </Stack>
+        {backupBusy && backupProgress && backupProgress.phase !== 'done' ? (
+          <Stack gap={1} data-testid="backup-progress">
+            <Progress
+              value={backupProgress.done / Math.max(1, backupProgress.total)}
+              label={`Backup ${backupProgress.kind} progress`}
+            />
+            <Text variant="caption" muted>
+              {
+                {
+                  checksum: 'Computing checksums…',
+                  write: 'Writing zip…',
+                  verify: 'Verifying backup…',
+                  import: 'Importing meetings…',
+                  done: '',
+                }[backupProgress.phase]
+              }{' '}
+              {backupProgress.phase === 'import'
+                ? ''
+                : `${Math.round((backupProgress.done / Math.max(1, backupProgress.total)) * 100)}%`}
+            </Text>
+          </Stack>
+        ) : null}
+        {backupMsg ? (
+          <Text
+            variant="caption"
+            muted
+            data-testid="backup-result"
+            role="status"
+          >
+            {backupMsg}
+          </Text>
+        ) : null}
+      </SettingsSection>
+      <SettingsSection title="System">
+        <Text variant="caption" muted>
           {info
             ? `qrtz ${info.version} · ${info.platform}/${info.arch} · Electron ${info.electron}`
-            : 'Loading…'}
+            : '…'}
         </Text>
-        <Text muted size="sm">
+        <Text variant="caption" muted>
           {db
             ? `Database: ${db.ok ? 'ok' : 'error'} · schema v${db.schemaVersion} · FTS5 ${db.fts5 ? 'on' : 'off'}`
             : ''}
         </Text>
-        <Text muted size="sm">
+        <Text variant="caption" muted>
           {h ? `Native helper: ${h.state} (restarts ${h.restarts})` : ''}
         </Text>
-        <div>
+        <Stack dir="row">
           <Button
             variant="ghost"
             size="sm"
@@ -435,22 +484,8 @@ export default function SettingsView() {
           >
             Refresh
           </Button>
-        </div>
-      </Card>
-      {error ? (
-        <Callout
-          tone="danger"
-          title="Some settings couldn't be loaded or saved"
-          data-testid="settings-error"
-          action={
-            <Button variant="secondary" size="sm" onClick={refresh}>
-              Retry
-            </Button>
-          }
-        >
-          {error}
-        </Callout>
-      ) : null}
-    </div>
+        </Stack>
+      </SettingsSection>
+    </Page>
   );
 }

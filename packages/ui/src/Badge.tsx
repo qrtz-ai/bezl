@@ -1,3 +1,4 @@
+import { typeStyle } from './tokens';
 import type { ReactNode } from 'react';
 import { useTheme } from './theme';
 
@@ -31,13 +32,11 @@ export function Badge({
         alignItems: 'center',
         gap: 4,
         padding: '2px 8px',
-        fontSize: t.font.size.xs,
-        fontWeight: t.font.weight.semibold,
+        ...typeStyle('label', t),
         color: c,
         background: `color-mix(in srgb, ${c} 10%, transparent)`,
         border: `1px solid color-mix(in srgb, ${c} 20%, transparent)`,
         borderRadius: t.radius.sm,
-        lineHeight: 1.4,
       }}
     >
       {children}

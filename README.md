@@ -4,11 +4,11 @@
 
 | Home (light)                                       | Meeting summary                                                                                     |
 | -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| ![Home](docs/screenshots/home-light.png)           | ![Summary and action items](docs/screenshots/meeting-summary.png)                                   |
+| ![Memo](docs/screenshots/memo-light.png)           | ![Summary and action items](docs/screenshots/meeting-summary.png)                                   |
 | **Live recording**                                 | **Mini HUD with notes · Backup progress**                                                           |
 | ![Live transcript](docs/screenshots/memo-live.png) | ![Mini HUD](docs/screenshots/mini-hud.png) ![Backup progress](docs/screenshots/backup-progress.png) |
 
-These screenshots come from the e2e suite on Linux with the mock helper. Regenerate them with `npm run screenshots`, which packages the app, runs the screenshot specs and refreshes `docs/screenshots/`. Dark is the default theme; Light and System are in Settings → Appearance. More are in [`docs/screenshots/`](docs/screenshots/), including light variants of the summary and mini HUD.
+These screenshots come from the e2e suite on Linux with the mock helper. Regenerate them with `npm run screenshots`, which packages the app, runs the screenshot specs and refreshes `docs/screenshots/`. Dark is the default theme; Light and System are in Settings → App → Theme. More are in [`docs/screenshots/`](docs/screenshots/), including light variants of the summary and mini HUD.
 
 ## Quickstart on a Mac
 
@@ -51,7 +51,7 @@ npm start                    # run the app with hot reload
 └──────────────────────┘   └───────────────────────────────────────┘
 ```
 
-- **Monorepo:** npm workspaces. `packages/core` holds the contracts, IPC schema, DB and pipeline. `packages/ui` is the design system (tokens, light and dark themes, components). Each sub-app (`packages/features/{home,memo,gallery,settings}`) declares the capabilities it needs. `apps/desktop` composes them. `npm run lint` enforces the package boundaries.
+- **Monorepo:** npm workspaces. `packages/core` holds the contracts, IPC schema, DB and pipeline. `packages/ui` is the design system (Geist Pixel type scale, tokens, light and dark themes) and owns every visual component, down to the split view, meeting row and HUD. Each sub-app (`packages/features/{memo,settings,gallery}`, gallery dev-only) declares the capabilities it needs and only composes `@qrtz/ui` with data and handlers. `apps/desktop` composes them behind tiny bottom tabs. `npm run lint` enforces the package boundaries, the type scale and the no-styling-outside-ui rule.
 - **Security:** context isolation, sandbox, strict CSP, Electron fuses, and capability-checked channels. Secrets live only in safeStorage or env vars, and dev-only env vars are stripped from packaged builds. See [docs/security.md](docs/security.md).
 - **Docs:** [PLAN.md](PLAN.md) · [LOOP.md](LOOP.md) · [PROGRESS.md](PROGRESS.md) · [architecture](docs/architecture.md) · [design system](docs/design-system.md) · [tokens](docs/design-tokens.md) · [test matrix](docs/test-matrix.md) · [release](docs/release.md)
 
@@ -90,7 +90,7 @@ scripts/fresh-clone-check.sh   # clone → npm ci → lint → test → package 
 
 ## How to add a sub app
 
-1. Copy an example: `cp -r packages/features/home packages/features/notes`.
+1. Copy an example: `cp -r packages/features/settings packages/features/notes`.
 2. In `packages/features/notes/package.json`, set `"name": "@qrtz/feature-notes"`.
 3. In `src/index.ts`, set a unique manifest:
    ```ts

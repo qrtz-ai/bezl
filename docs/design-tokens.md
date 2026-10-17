@@ -59,21 +59,8 @@ Dark is the qrtz.ai brand default. Light is an opt-in palette with the same role
 
 | Token | CSS variable | Value |
 |---|---|---|
-| `font.family` | `--q-font-family` | `'Geist', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif` |
-| `font.mono` | `--q-font-mono` | `'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace` |
-| `font.size.xs` | `--q-font-size-xs` | `12px` |
-| `font.size.sm` | `--q-font-size-sm` | `13px` |
-| `font.size.md` | `--q-font-size-md` | `14px` |
-| `font.size.lg` | `--q-font-size-lg` | `18px` |
-| `font.size.xl` | `--q-font-size-xl` | `24px` |
-| `font.size.2xl` | `--q-font-size-2xl` | `30px` |
-| `font.size.3xl` | `--q-font-size-3xl` | `48px` |
-| `font.weight.regular` | `--q-font-weight-regular` | `400` |
-| `font.weight.medium` | `--q-font-weight-medium` | `500` |
-| `font.weight.semibold` | `--q-font-weight-semibold` | `600` |
-| `font.weight.bold` | `--q-font-weight-bold` | `700` |
-| `font.lineHeight.tight` | `--q-font-line-height-tight` | `1.2` |
-| `font.lineHeight.normal` | `--q-font-line-height-normal` | `1.5` |
+| `font.family` | `--q-font-family` | `'Geist Pixel', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace` |
+| `font.weight` | `--q-font-weight` | `500` |
 
 ## Motion
 
@@ -113,4 +100,4 @@ Global `:focus-visible` ring for every control (it beats inline `outline` and `a
 | `z.toast` | `--q-z-toast` | `60` |
 | `z.tooltip` | `--q-z-tooltip` | `70` |
 
-_70 CSS variables in total._
+_90 CSS variables in total._

@@ -14,7 +14,7 @@
     "start": "npm run start -w @qrtz/desktop",
     "package": "npm run package -w @qrtz/desktop",
     "make": "npm run make -w @qrtz/desktop",
-    "lint": "oxlint && oxfmt --check && node scripts/check-boundaries.mjs && node scripts/check-swift.mjs",
+    "lint": "oxlint && oxfmt --check && node scripts/check-boundaries.mjs && node scripts/check-typography.mjs && node scripts/check-ui-purity.mjs && node scripts/check-swift.mjs",
     "lint:fix": "oxlint --fix && oxfmt --write",
     "typecheck": "tsc -b && tsc -p tsconfig.test.json",
     "check": "npm run lint && npm run typecheck && npm test",

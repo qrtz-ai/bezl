@@ -1,3 +1,4 @@
+import { typeStyle } from './tokens';
 import { useTheme } from './theme';
 
 export function Tabs<T extends string>({
@@ -34,8 +35,7 @@ export function Tabs<T extends string>({
               cursor: 'pointer',
               padding: `${t.space[2]} 0`,
               marginBottom: -1,
-              fontSize: t.font.size.md,
-              fontWeight: t.font.weight.medium,
+              ...typeStyle('label', t),
               color: on ? t.color.text : t.color.textMuted,
               borderBottom: `2px solid ${on ? t.color.primary : 'transparent'}`,
               transition: `color ${t.motion.fast} ${t.motion.easeOut}`,

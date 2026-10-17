@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createClient, type QrtzTransport, type SubApp } from '@qrtz/core';
-import { Button, Text } from '@qrtz/ui';
+import { Button, Stack, Text } from '@qrtz/ui';
 import { QrtzClientProvider } from '@qrtz/core/react';
 
 export const noTransport: QrtzTransport = {
@@ -38,19 +38,19 @@ class SubAppErrorBoundary extends Component<
   override render() {
     if (!this.state.error) return this.props.children;
     return (
-      <div
+      <Stack
         role="alert"
         data-testid="subapp-error"
-        style={{ display: 'grid', gap: 12, justifyItems: 'start' }}
+        gap={3}
+        pad={8}
+        align="start"
       >
-        <Text size="lg" weight={600}>
-          {this.props.name} hit an error
-        </Text>
+        <Text variant="h3">{this.props.name} hit an error</Text>
         <Text muted>{this.state.error.message}</Text>
         <Button variant="ghost" onClick={() => this.setState({ error: null })}>
           Retry
         </Button>
-      </div>
+      </Stack>
     );
   }
 }
