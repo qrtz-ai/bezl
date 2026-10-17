@@ -2,6 +2,15 @@ import { z } from 'zod';
 import { OsPermission } from '../capabilities';
 import { AsrEvent, MeetingPlatform } from '../note/types';
 
+/** The recording degradations a TCC revocation can cause (subset of the lifecycle `Degradation`). */
+export const RevocationDegradation = z.enum([
+  'ax-unavailable',
+  'audio-unavailable',
+  'mic-only',
+  'no-mic',
+]);
+export type RevocationDegradation = z.infer<typeof RevocationDegradation>;
+
 /**
  * Wire protocol between the app (host) and the native Swift helper (`qrtz-helper`).
  * Transport: newline-delimited JSON over stdio. One message per line.
@@ -144,6 +153,12 @@ export const HelperToHost = z.discriminatedUnion('type', [
     permission: OsPermission,
     /** ms on the helper clock (recording-relative while recording, like other atMs fields). */
     atMs: z.number(),
+    /**
+     * N4: the recording degradations the helper's arbiter derived from its own TCC state (its `degrade:*`
+     * effects; `[]` when it is not recording). The host applies exactly these and derives them from its own
+     * permission snapshot only when an older helper omits the field.
+     */
+    degraded: z.array(RevocationDegradation).optional(),
   }),
   z.object({
     type: z.literal('insert.result'),

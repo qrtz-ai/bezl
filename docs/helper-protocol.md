@@ -141,8 +141,17 @@ While a recording or dictation is running, or the warm mic is on (even with noth
 it against the last snapshot. A granted → denied transition emits:
 
 ```json
-{ "type": "permission.revoked", "permission": "microphone", "atMs": 1500 }
+{
+  "type": "permission.revoked",
+  "permission": "microphone",
+  "atMs": 1500,
+  "degraded": ["no-mic"]
+}
 ```
+
+`degraded` (N4) is the helper arbiter's `degrade:*` effects for this revocation, worked out from the helper's own TCC
+state: `[]` when no recording is running. Values: `ax-unavailable`, `audio-unavailable`, `mic-only`, `no-mic`. It is
+optional only so lines from an older helper still parse.
 
 `atMs` is on the helper clock (recording-relative while recording). Each revocation fires once. Re-granting clears the
 helper's denied set, so the next session can use the source again. It never clears a degradation within the current recording.
@@ -157,8 +166,9 @@ Effects (the arbiter's `revoked` events):
 
 On the host side:
 
-- `NoteService` maps `permission.revoked` through `degradationsForRevocation` (shared with the arbiter) into the session's
-  `degraded[]`, so the recording keeps running with badges. It also updates the permission state. The note view never
+- `NoteService` (and the Rust `NoteRuntime`) applies `permission.revoked.degraded` to the session's `degraded[]` as is.
+  Only when the field is missing (older helper) does it derive the list with `degradationsForRevocation` from its own
+  permission snapshot, which may still be `unknown` (scenario `N4-revoked-carries-degraded`), so the recording keeps running with badges. It also updates the permission state. The note view never
   replaces a running recording with onboarding.
 - `TalkService` treats an unsolicited `dictation.stopped{reason}` as a graceful stop. It cleans up and inserts the text
   heard so far, keeps the history entry, then shows `microphone access was turned off, so dictation stopped`.

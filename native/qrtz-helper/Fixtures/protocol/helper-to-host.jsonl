@@ -33,3 +33,5 @@
 {"durationMs":640,"id":"d2","reason":"permission-revoked","text":"so far","type":"dictation.stopped"}
 {"atMs":1500,"permission":"microphone","type":"permission.revoked"}
 {"atMs":2500,"permission":"screen-recording","type":"permission.revoked"}
+{"atMs":1500,"degraded":["no-mic"],"permission":"microphone","type":"permission.revoked"}
+{"atMs":3000,"degraded":[],"permission":"accessibility","type":"permission.revoked"}

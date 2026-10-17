@@ -789,8 +789,11 @@ impl Shared {
                 };
                 self.emit(CoreEvent::PermissionsChanged(p));
             }
-            HelperInput::PermissionRevoked { permission, .. } => {
-                // H5: TCC withdrawn mid-capture: degrade live (arbiter rules, shared with the helper).
+            HelperInput::PermissionRevoked {
+                permission, degraded, ..
+            } => {
+                // H5: TCC withdrawn mid-capture: degrade live. N4: apply the helper arbiter's list; derive it from
+                // our own (possibly `unknown`) snapshot only for an older helper that omits it.
                 let denied: Vec<OsPermission> = {
                     let st = self.lock();
                     st.permissions
@@ -799,7 +802,7 @@ impl Shared {
                         .map(|(k, _)| *k)
                         .collect()
                 };
-                for f in degradations_for_revocation(permission, &denied) {
+                for f in degraded.unwrap_or_else(|| degradations_for_revocation(permission, &denied)) {
                     self.degrade(f);
                 }
                 let p = {

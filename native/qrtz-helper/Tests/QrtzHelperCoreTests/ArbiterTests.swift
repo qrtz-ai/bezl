@@ -136,7 +136,7 @@ final class ArbiterTests: XCTestCase {
         perms.set(.microphone, .denied)
         await c.checkPermissions()
         let msgs = out.value
-        XCTAssertTrue(msgs.contains(.permissionRevoked(permission: .microphone, atMs: 0)))
+        XCTAssertTrue(msgs.contains(.permissionRevoked(permission: .microphone, atMs: 0, degraded: [.noMic])))
         XCTAssertTrue(msgs.contains { if case .dictationStopped("d1", _, _, .permissionRevoked) = $0 { true } else { false } })
         XCTAssertFalse(hub.isRunning, "mic tap dropped for every reader")
         let st = await c.arbiter
@@ -147,7 +147,7 @@ final class ArbiterTests: XCTestCase {
         // Screen revoked too: one more event, recording still running (the host flags audio-unavailable).
         perms.set(.screenRecording, .denied)
         await c.checkPermissions()
-        XCTAssertTrue(out.value.contains(.permissionRevoked(permission: .screenRecording, atMs: 0)))
+        XCTAssertTrue(out.value.contains(.permissionRevoked(permission: .screenRecording, atMs: 0, degraded: [.audioUnavailable])))
         await c.checkPermissions()
         XCTAssertEqual(out.value.filter { if case .permissionRevoked = $0 { true } else { false } }.count, 2, "revocations fire once")
         await c.handle(.recordingStop())
@@ -160,7 +160,7 @@ final class ArbiterTests: XCTestCase {
         await c.handle(.dictationStart(id: "d1"))
         perms.set(.accessibility, .denied)
         await c.checkPermissions()
-        XCTAssertTrue(out.value.contains(.permissionRevoked(permission: .accessibility, atMs: 0)))
+        XCTAssertTrue(out.value.contains(.permissionRevoked(permission: .accessibility, atMs: 0, degraded: [])))
         let active = await c.dictation.isActive
         XCTAssertTrue(active, "insertion falls back to the clipboard; dictation keeps going")
         perms.set(.accessibility, .granted)

@@ -2,10 +2,12 @@ import {
   HELPER_PROTOCOL_VERSION,
   HostToHelper,
   type HelperToHost,
+  type RevocationDegradation,
 } from './protocol';
 import type { ChildHandle, Clock } from './supervisor';
 import {
   arbiterStep,
+  revocationDegradations,
   initialArbiterState,
   type HelperArbiterEvent,
   type HelperPermission,
@@ -147,6 +149,9 @@ export function createMockHelper(
           type: 'permission.revoked',
           permission: rv.permission,
           atMs: clock.now(),
+          degraded: revocationDegradations(
+            r.effects,
+          ) as RevocationDegradation[],
         });
         if (r.effects.includes('dictation.stop:permission-revoked') && dict)
           stopDictation(dict.id, false, 'permission-revoked');

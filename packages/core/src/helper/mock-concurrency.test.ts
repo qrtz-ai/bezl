@@ -159,7 +159,11 @@ describe('mock helper: permission revoked mid-capture (H5)', () => {
     send({ type: 'dictation.start', id: 'd1' });
     await tick(60);
     expect(of(got, 'permission.revoked')).toEqual([
-      expect.objectContaining({ permission: 'microphone' }),
+      // N4: the arbiter's own degradations ride along (recording, nothing else denied → system audio only).
+      expect.objectContaining({
+        permission: 'microphone',
+        degraded: ['no-mic'],
+      }),
     ]);
     const stopped = of(got, 'dictation.stopped')[0]!;
     expect(stopped).toMatchObject({ id: 'd1', reason: 'permission-revoked' });
@@ -182,6 +186,7 @@ describe('mock helper: permission revoked mid-capture (H5)', () => {
     send({ type: 'dictation.start', id: 'd1' });
     await tick(30);
     expect(of(got, 'permission.revoked')).toHaveLength(1);
+    expect(of(got, 'permission.revoked')[0]!.degraded).toEqual([]); // not recording: nothing to degrade
     expect(of(got, 'dictation.stopped')).toHaveLength(0);
     h.kill();
   });

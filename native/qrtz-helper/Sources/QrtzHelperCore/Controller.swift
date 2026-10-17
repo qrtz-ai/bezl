@@ -248,7 +248,11 @@ public actor HelperController {
             if now == .denied, was != .denied {
                 let r = SessionArbiter.step(arbiter, .revoked(p))
                 guard r.decision == "accept" else { arbiter = r.state; continue }
-                send(.permissionRevoked(permission: p, atMs: relativeMs()))
+                // N4: carry the arbiter's own degradations so the host never re-derives them from a stale snapshot.
+                let degraded = r.effects.compactMap { f in
+                    f.hasPrefix("degrade:") ? RevocationDegradation(rawValue: String(f.dropFirst("degrade:".count))) : nil
+                }
+                send(.permissionRevoked(permission: p, atMs: relativeMs(), degraded: degraded))
                 arbiter = r.state
                 await apply(r.effects)
                 if p == .microphone {

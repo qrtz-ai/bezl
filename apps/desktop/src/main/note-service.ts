@@ -343,10 +343,13 @@ export class NoteService {
       case 'permission.revoked': {
         // H5: TCC withdrawn mid-capture. Degrade the running recording live (arbiter rules, shared with the
         // helper) and reflect the new state in Settings/onboarding.
+        // N4: apply the helper arbiter's list (it knows the TCC state; our snapshot may still be `unknown`).
+        // Derive from the snapshot only for an older helper that omits it.
         const denied = (
           Object.keys(this.permissions) as (keyof PermissionsStatus)[]
         ).filter((k) => this.permissions[k] === 'denied');
-        for (const f of degradationsForRevocation(m.permission, denied))
+        for (const f of m.degraded ??
+          degradationsForRevocation(m.permission, denied))
           this.degrade(f);
         this.permissions = { ...this.permissions, [m.permission]: 'denied' };
         this.deps.bus.emit('permissions:changed', this.permissions);

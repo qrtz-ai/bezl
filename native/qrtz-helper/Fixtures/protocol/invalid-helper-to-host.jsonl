@@ -9,3 +9,5 @@ not json
 {"atMs":1,"permission":"camera","type":"permission.revoked"}
 {"durationMs":1,"id":"d","reason":"bored","text":"","type":"dictation.stopped"}
 {"type":"recording.aborted"}
+{"atMs":1,"degraded":["transcript-gap"],"permission":"microphone","type":"permission.revoked"}
+{"atMs":1,"degraded":"no-mic","permission":"microphone","type":"permission.revoked"}

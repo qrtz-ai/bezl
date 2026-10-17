@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use qrtz_model::{
-    de_ms, de_ms_opt, AsrEvent, EpochMs, LifecycleError, LiveTranscriptDelta, MeetingPlatform,
+    de_ms, de_ms_opt, AsrEvent, Degradation, EpochMs, LifecycleError, LiveTranscriptDelta, MeetingPlatform,
     MeetingSummary, Ms, OsPermission, PermissionState, PermissionsStatus, PipelineContext, PipelineView,
     SessionView,
 };
@@ -183,6 +183,10 @@ pub enum HelperInput {
         permission: OsPermission,
         #[serde(default, deserialize_with = "de_ms")]
         at_ms: Ms,
+        /// N4: the helper arbiter's degradations for this revocation (`[]` when not recording). `None` = an older
+        /// helper: the host derives them from its permission snapshot.
+        #[serde(default)]
+        degraded: Option<Vec<Degradation>>,
     },
     #[serde(rename = "ax.participants")]
     Participants { names: Vec<String> },

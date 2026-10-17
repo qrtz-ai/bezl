@@ -699,6 +699,18 @@
           },
           "atMs": {
             "type": "number"
+          },
+          "degraded": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "ax-unavailable",
+                "audio-unavailable",
+                "mic-only",
+                "no-mic"
+              ]
+            }
           }
         },
         "required": [

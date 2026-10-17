@@ -120,6 +120,15 @@ export function degradationsForRevocation(
   return [has('microphone') ? 'mic-only' : 'audio-unavailable'];
 }
 
+/** N4: the `degrade:*` effects of a revocation step, as `permission.revoked.degraded` carries them. */
+export function revocationDegradations(
+  effects: readonly HelperArbiterEffect[],
+): Degradation[] {
+  return effects
+    .filter((f) => f.startsWith('degrade:'))
+    .map((f) => f.slice('degrade:'.length) as Degradation);
+}
+
 const without = <T>(xs: T[], x: T) => xs.filter((y) => y !== x);
 
 export function arbiterStep(

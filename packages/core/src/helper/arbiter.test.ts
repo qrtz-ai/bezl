@@ -7,9 +7,11 @@ import {
   assertArbiterInvariant,
   degradationsForRevocation,
   initialArbiterState,
+  revocationDegradations,
   type HelperArbiterEvent,
   type HelperPermission,
 } from './arbiter';
+import { HelperToHost, RevocationDegradation } from './protocol';
 
 const vectors = JSON.parse(
   fs.readFileSync(
@@ -23,6 +25,46 @@ const vectors = JSON.parse(
     steps: { event: HelperArbiterEvent; expect: Record<string, unknown> }[];
   }[];
 };
+
+describe('N4: permission.revoked.degraded is the arbiter degrade:* effects', () => {
+  it('every revocation in the shared vectors maps to a valid wire list', () => {
+    let seen = 0;
+    for (const c of vectors.cases) {
+      let s = initialArbiterState(c.initialDenied);
+      for (const st of c.steps) {
+        const r = arbiterStep(s, st.event);
+        if ('revoked' in st.event && r.decision === 'accept') {
+          seen++;
+          const d = revocationDegradations(r.effects);
+          expect(RevocationDegradation.array().parse(d)).toEqual(d);
+          // Same rule the host falls back to, given the arbiter's own denied list (when recording).
+          expect(d).toEqual(
+            s.recording
+              ? degradationsForRevocation(st.event.revoked, s.denied)
+              : [],
+          );
+        }
+        s = r.state;
+      }
+    }
+    expect(seen).toBeGreaterThan(0);
+  });
+  it('parses old (no degraded) and new lines, rejects a non-revocation degradation', () => {
+    const base = {
+      type: 'permission.revoked',
+      permission: 'microphone',
+      atMs: 1,
+    };
+    expect(HelperToHost.safeParse(base).success).toBe(true);
+    expect(
+      HelperToHost.safeParse({ ...base, degraded: ['audio-unavailable'] })
+        .success,
+    ).toBe(true);
+    expect(
+      HelperToHost.safeParse({ ...base, degraded: ['transcript-gap'] }).success,
+    ).toBe(false);
+  });
+});
 
 describe('helper arbiter: shared vectors (TS ⇄ Swift)', () => {
   it('has the expected coverage', () => expect(vectors.cases.length).toBe(16));

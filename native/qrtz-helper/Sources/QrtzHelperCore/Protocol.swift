@@ -6,6 +6,10 @@ public let helperProtocolVersion = 1
 
 public enum OsPermission: String, CaseIterable, Sendable { case accessibility, screenRecording = "screen-recording", microphone }
 /// Why the helper ended a dictation on its own.
+/// Recording degradations a TCC revocation can cause (zod `RevocationDegradation`).
+public enum RevocationDegradation: String, Sendable, CaseIterable {
+    case axUnavailable = "ax-unavailable", audioUnavailable = "audio-unavailable", micOnly = "mic-only", noMic = "no-mic"
+}
 public enum DictationStopReason: String, Sendable { case permissionRevoked = "permission-revoked", micLost = "mic-lost" }
 public enum PermissionState: String, Sendable { case granted, denied, notDetermined = "not-determined", unsupported }
 public enum MeetingPlatform: String, Sendable { case zoom, googleMeet = "google-meet", teams, slackHuddle = "slack-huddle", webex, other }
@@ -53,8 +57,9 @@ public enum HelperMessage: Equatable, Sendable {
     case dictationAudio(id: String, seq: Int, pcm16: String)
     /// reason is set only when the helper ended the dictation itself (see DictationStopReason).
     case dictationStopped(id: String, text: String, durationMs: Double, reason: DictationStopReason? = nil)
-    /// A TCC permission went granted → denied while capturing or dictating.
-    case permissionRevoked(permission: OsPermission, atMs: Double)
+    /// A TCC permission went granted → denied while capturing or dictating. `degraded` (N4): the arbiter's
+    /// `degrade:*` effects, `[]` when not recording; nil only when parsing an older helper's line.
+    case permissionRevoked(permission: OsPermission, atMs: Double, degraded: [RevocationDegradation]? = nil)
     case insertResult(id: String, method: InsertMethod, ok: Bool, app: String?, error: String?)
 }
 
@@ -190,7 +195,10 @@ extension HelperMessage {
             var o: [String: JSONValue] = ["id": s(id), "text": s(text), "durationMs": n(d)]
             if let reason { o["reason"] = s(reason.rawValue) }
             return obj("dictation.stopped", o)
-        case .permissionRevoked(let p, let at): return obj("permission.revoked", ["permission": s(p.rawValue), "atMs": n(at)])
+        case .permissionRevoked(let p, let at, let degraded):
+            var o: [String: JSONValue] = ["permission": s(p.rawValue), "atMs": n(at)]
+            if let degraded { o["degraded"] = .array(degraded.map { s($0.rawValue) }) }
+            return obj("permission.revoked", o)
         case .insertResult(let id, let m, let ok, let app, let err):
             var o: [String: JSONValue] = ["id": s(id), "method": s(m.rawValue), "ok": .bool(ok)]
             if let app { o["app"] = s(app) }
@@ -253,7 +261,16 @@ extension HelperMessage {
                                          guard let v = DictationStopReason(rawValue: r) else { throw ProtocolError("bad reason \(r)") }
                                          return v
                                      })
-        case "permission.revoked": self = .permissionRevoked(permission: try f.enumValue("permission", OsPermission.self), atMs: try f.num("atMs"))
+        case "permission.revoked":
+            var degraded: [RevocationDegradation]?
+            if let v = f.o["degraded"], v != .null {
+                guard let a = v.array else { throw ProtocolError("bad array degraded") }
+                degraded = try a.map { x in
+                    guard let r = x.string.flatMap(RevocationDegradation.init(rawValue:)) else { throw ProtocolError("bad degraded") }
+                    return r
+                }
+            }
+            self = .permissionRevoked(permission: try f.enumValue("permission", OsPermission.self), atMs: try f.num("atMs"), degraded: degraded)
         case "insert.result":
             guard let ok = f.o["ok"]?.bool else { throw ProtocolError("missing ok") }
             self = .insertResult(id: try f.str("id"), method: try f.enumValue("method", InsertMethod.self), ok: ok, app: try f.optStr("app"), error: try f.optStr("error"))
