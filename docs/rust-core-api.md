@@ -537,7 +537,7 @@ pub enum CoreEvent {
 }
 impl CoreEvent { pub fn ipc_name(&self) -> Option<&'static str>; }
 
-pub trait Clock { fn now_ms(&self) -> EpochMs; }   // timers themselves are tokio::time
+pub trait Clock { fn now_ms(&self) -> EpochMs; fn mono_ms(&self) -> EpochMs { self.now_ms() } }  // wall + mono (N45); timers are tokio::time
 
 #[derive(Debug, thiserror::Error)]
 pub enum CoreError {   // maps 1:1 onto AppErrorJSON {code, message, retryable}

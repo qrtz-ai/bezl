@@ -2,6 +2,8 @@
 
 ## Unreleased: helper mux + TCC revocation (H5/H6)
 
+- **Reconnect offsets ignore a wall-clock jump (Bozniak cycle 10, N45; ADR 0037):** `helper-lost` / `helper-restored` stamps come from a monotonic clock (`performance.now()` / `Clock::mono_ms`), so a laptop sleep or NTP step during a reconnect no longer slides the next part's transcript while the WAV pad stays capped at 35 s. Wall clock still owns `startedAt` / `stoppedAt` / live elapsed. Scenario `H7-clock-jump-during-reconnect` now expects a meeting-length file; `N45-multi-reconnect-clock-jump` covers two jumps. No migration, no protocol change.
+
 - **Audio and transcript line up after a reconnect (Bozniak cycle 9, H7/N44; ADR 0032):** finalize pads each helper-restart gap with silence, from the part offsets the session now keeps (`partOffsetsMs`, on the session and the pipeline context), so seeking to a transcript line plays that moment. One gap is padded at most 35 s. The stitch streams in 1 MiB chunks instead of loading every part. TS and Rust share `spec/stress/stitch-gaps.json`. Rows from older builds have no offsets and stitch end to end as before. No migration.
 - **A crash during finalize never doubles the audio (N41; ADR 0033):** the stitch commits to `<main>.stitched` before it removes the parts, and a retry that finds it only finishes. Delete removes a leftover `.stitched`.
 - **A reconnect that brings audio back is not "no audio" any more (N42; ADR 0034):** "no audio" / "no transcription" reported by a helper at its start end with that helper. The new helper's own reports apply to its part, so the summary keeps the rest of the meeting.

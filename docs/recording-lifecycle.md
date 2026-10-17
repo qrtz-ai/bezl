@@ -230,6 +230,7 @@ At startup, after the worker is ready, `NoteService.recover()` runs. `start()` w
 - Speaker activity (`active[]`) is kept in memory until stop. After an R1 crash, names come only from the
   live per-segment speaker stamped at append time.
 - The WAV parts from a helper restart are stitched with each reconnect gap as zero PCM (H7, ADR 0032), so audio
-  time matches transcript time. One gap's pad is capped at 35 s (reconnect window + start ack): a wall clock that
-  jumps forward during a reconnect (a sleep) moves the next part's transcript by the jump, but the audio only by the
-  cap (N45, open). A session row from an older build has no offsets and stitches end to end.
+  time matches transcript time. One gap's pad is capped at 35 s (reconnect window + start ack). Part offsets are
+  stamped from a monotonic clock in the runtime (N45, ADR 0037), so a wall jump or sleep during a reconnect does not
+  slide the next part's transcript away from the pad. A session row from an older build has no offsets and stitches
+  end to end.
