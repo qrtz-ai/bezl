@@ -173,7 +173,15 @@ impl LazyEmbedder {
         let Some(loader) = &self.loader else { return };
         loop {
             let serves = self.loads.lock().unwrap().requested;
-            let res = loader().await;
+            // N102: the load runs as its own task, so a loader that panics fails this load (`Err`) instead of
+            // killing the loop with `running` still set, which would leave every later reload waiting for good.
+            let res = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(loader)) {
+                Ok(fut) => match tokio::spawn(fut).await {
+                    Ok(r) => r,
+                    Err(e) => Err(format!("embedder load panicked: {e}")),
+                },
+                Err(_) => Err("embedder load panicked".to_string()),
+            };
             let ok = res.is_ok();
             self.state.send_modify(|s| match res {
                 Ok(e) => {

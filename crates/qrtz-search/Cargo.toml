@@ -40,7 +40,7 @@ minilm = [
   "dep:tokenizers",
   "dep:sha2",
 ]
-minilm-download = ["minilm", "dep:reqwest", "tokio/fs"]
+minilm-download = ["minilm", "dep:reqwest", "tokio/fs", "tokio/io-util"]
 
 [dev-dependencies]
 tempfile.workspace = true

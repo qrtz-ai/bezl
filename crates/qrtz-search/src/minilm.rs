@@ -172,36 +172,108 @@ pub fn loader(dir: PathBuf) -> crate::embedder::Loader {
 /// Where [`download`] fetches from in the app.
 pub const HF_BASE: &str = "https://huggingface.co";
 
-/// Fetches the pinned revision from `base` (normally [`HF_BASE`]) into `dir`: each file is hash-checked, written to
-/// a `.part` file, then renamed, so a bad or partial download never sits under the real name. Files already there
-/// with the right hash are kept.
+/// Bounds on one [`download`] (N99). The defaults fit the pinned files (`model.safetensors` is about 90 MB).
+#[cfg(feature = "minilm-download")]
+#[derive(Clone, Copy, Debug)]
+pub struct DownloadLimits {
+    /// A file larger than this is refused (from `Content-Length`, or once the body passes it), never buffered.
+    pub max_file_bytes: u64,
+    /// No body bytes for this long (a dead connection after a network loss, a stalled CDN) fails the download.
+    pub idle: std::time::Duration,
+}
+
+#[cfg(feature = "minilm-download")]
+impl Default for DownloadLimits {
+    fn default() -> Self {
+        DownloadLimits {
+            max_file_bytes: 256 * 1024 * 1024,
+            idle: std::time::Duration::from_secs(60),
+        }
+    }
+}
+
+/// Fetches the pinned revision from `base` (normally [`HF_BASE`]) into `dir`: each file streams into a `.part`
+/// file while it is hashed, is synced, and only then renamed, so a bad or partial download never sits under the real
+/// name. Files already there with the right hash are kept. N99: the body is never held in memory, a file over
+/// [`DownloadLimits::max_file_bytes`] is refused, and a body that stalls for [`DownloadLimits::idle`] fails instead
+/// of hanging the search-model status in `downloading` for good. A failed file leaves no `.part` behind.
 #[cfg(feature = "minilm-download")]
 pub async fn download(client: &reqwest::Client, base: &str, dir: &Path) -> Result<(), String> {
+    download_files(client, base, dir, &FILES, DownloadLimits::default()).await
+}
+
+/// [`download`] for any pinned file list (tests use small files with their own hashes).
+#[cfg(feature = "minilm-download")]
+pub async fn download_files(
+    client: &reqwest::Client,
+    base: &str,
+    dir: &Path,
+    files: &[(&str, &str)],
+    limits: DownloadLimits,
+) -> Result<(), String> {
     tokio::fs::create_dir_all(dir).await.map_err(|e| e.to_string())?;
-    for (name, want) in FILES {
+    for (name, want) in files {
         let path = dir.join(name);
         if let Ok(b) = tokio::fs::read(&path).await {
-            if format!("{:x}", Sha256::digest(&b)) == want {
+            if format!("{:x}", Sha256::digest(&b)) == *want {
                 continue;
             }
         }
         let url = format!("{base}/{REPO}/resolve/{REVISION}/{name}");
-        let res = client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| format!("{name}: {e}"))?;
-        if !res.status().is_success() {
-            return Err(format!("{name}: HTTP {}", res.status()));
-        }
-        let bytes = res.bytes().await.map_err(|e| format!("{name}: {e}"))?;
-        let got = format!("{:x}", Sha256::digest(&bytes));
-        if got != want {
-            return Err(format!("{name}: sha256 {got} is not the pinned {want}"));
-        }
         let part = dir.join(format!("{name}.part"));
-        tokio::fs::write(&part, &bytes).await.map_err(|e| e.to_string())?;
-        tokio::fs::rename(&part, &path).await.map_err(|e| e.to_string())?;
+        let r = fetch_one(client, &url, &part, want, limits).await;
+        let r = match r {
+            Ok(()) => tokio::fs::rename(&part, &path).await.map_err(|e| e.to_string()),
+            Err(e) => Err(e),
+        };
+        if let Err(e) = r {
+            let _ = tokio::fs::remove_file(&part).await;
+            return Err(format!("{name}: {e}"));
+        }
     }
+    Ok(())
+}
+
+#[cfg(feature = "minilm-download")]
+async fn fetch_one(
+    client: &reqwest::Client,
+    url: &str,
+    part: &Path,
+    want: &str,
+    limits: DownloadLimits,
+) -> Result<(), String> {
+    use tokio::io::AsyncWriteExt;
+    let idle = |what: &str| format!("{what}: no data for {} s", limits.idle.as_secs());
+    let mut res = tokio::time::timeout(limits.idle, client.get(url).send())
+        .await
+        .map_err(|_| idle("request"))?
+        .map_err(|e| e.to_string())?;
+    if !res.status().is_success() {
+        return Err(format!("HTTP {}", res.status()));
+    }
+    if res.content_length().is_some_and(|n| n > limits.max_file_bytes) {
+        return Err(format!("larger than {} bytes", limits.max_file_bytes));
+    }
+    let mut out = tokio::fs::File::create(part).await.map_err(|e| e.to_string())?;
+    let mut hash = Sha256::new();
+    let mut got: u64 = 0;
+    loop {
+        let chunk = tokio::time::timeout(limits.idle, res.chunk())
+            .await
+            .map_err(|_| idle("body"))?
+            .map_err(|e| e.to_string())?;
+        let Some(chunk) = chunk else { break };
+        got += chunk.len() as u64;
+        if got > limits.max_file_bytes {
+            return Err(format!("larger than {} bytes", limits.max_file_bytes));
+        }
+        hash.update(&chunk);
+        out.write_all(&chunk).await.map_err(|e| e.to_string())?;
+    }
+    let digest = format!("{:x}", hash.finalize());
+    if digest != want {
+        return Err(format!("sha256 {digest} is not the pinned {want}"));
+    }
+    out.sync_all().await.map_err(|e| e.to_string())?;
     Ok(())
 }
