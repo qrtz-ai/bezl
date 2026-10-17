@@ -1,5 +1,6 @@
 //! The step executor the app runs today: the real finalize (WAV stitch/repair + speaker fusion, a port of the
-//! worker's `note.stepFinalize`) and placeholder summary/index until qrtz-llm / qrtz-search exist.
+//! worker's `note.stepFinalize`), a placeholder summary (qrtz-llm wraps it) and the index step, a no-op: search
+//! is full-text and there are no embeddings (ADR 0073).
 
 use async_trait::async_trait;
 use qrtz_model::{LifecycleError, Meeting, MeetingStatus, MeetingSummary, PipelineContext, SegmentSource};
@@ -56,11 +57,12 @@ pub fn finalize_sync(
     })
 }
 
-/// Production executor for the Tauri build until qrtz-llm / qrtz-search land:
+/// Production executor for the Tauri build without qrtz-llm (and the inner executor of `LlmSteps`):
 /// - finalize: real;
 /// - summary: no LLM yet, so a strict request fails non-retryably and the runtime falls back; the fallback (and
 ///   `Skip`) mark the meeting done without a summary (the on-device extractive summary is not ported yet);
-/// - index: always `skipped` (chat uses full-text search).
+/// - index: always `skipped`. Search is full-text (`NotesRepo::search`, FTS5 kept current by the storage writes);
+///   there are no embeddings since the chat was removed (ADR 0073).
 pub struct CoreSteps<E: DbExec> {
     pub db: E,
 }

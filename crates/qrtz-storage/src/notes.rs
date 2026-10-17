@@ -363,7 +363,8 @@ impl<'a> NoteRepo<'a> {
 
     /// Saves only the vectors whose line is still there with the text that was embedded (same meeting, same
     /// text), so a vector computed while the meeting was deleted, re-finalized or edited is dropped, never attached
-    /// to another line (qrtz-search, ADR 0049). Returns how many were saved.
+    /// to another line (ADR 0049). Returns how many were saved. No caller since the chat and its embeddings were
+    /// removed (ADR 0073); the `segment_vectors` table is kept inert so old databases open unchanged.
     pub fn save_vectors_if_current(&self, model: &str, rows: &[(VectorRow, String)]) -> Result<u32> {
         self.tx(|| {
             let mut check = self

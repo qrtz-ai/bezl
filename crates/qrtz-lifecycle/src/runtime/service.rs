@@ -98,7 +98,7 @@ struct Acked {
     held: Vec<HelperInput>,
 }
 /// TS `WorkerClient.call` timeouts of the step calls. Public so the executors' own deadlines can be pinned inside
-/// them (N3: `qrtz_llm::SUMMARY_DEADLINE_MS`, `qrtz_search::INDEX_DEADLINE_MS`).
+/// them (N3: `qrtz_llm::SUMMARY_DEADLINE_MS`).
 pub const FINALIZE_TIMEOUT_MS: u64 = 60_000;
 pub const SUMMARY_TIMEOUT_MS: u64 = 120_000;
 pub const INDEX_TIMEOUT_MS: u64 = 300_000;

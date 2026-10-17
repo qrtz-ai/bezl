@@ -1,6 +1,6 @@
-//! The summary and resummarize [`StepExecutor`], plus [`LlmSteps::answer_chat`] for `note:chat` (port of the worker's `note.stepSummary` / `note.resummarize`
+//! The summary and resummarize [`StepExecutor`] (port of the worker's `note.stepSummary` / `note.resummarize`
 //! and `summarizeMeeting`, apps/desktop/src/worker/handlers.ts + packages/core/src/note/llm.ts). Finalize and index
-//! are delegated to an inner executor (`CoreSteps`, later qrtz-search).
+//! are delegated to an inner executor (`CoreSteps`; the index step is its no-op, ADR 0073).
 //!
 //! - **No provider** ([`LlmSteps::on_device`], `none`, local-only, no key): the extractive summary is the summary,
 //!   as in TS (N53: a meeting always ends with one).
@@ -214,18 +214,6 @@ impl<E: DbExec> LlmSteps<E> {
             Ok(())
         })
         .await
-    }
-
-    /// `note:chat` answer half (N89, ADR 0059): LLM (or extractive) over already-ranked sources from
-    /// `qrtz_search::retrieve` / `rank_sources`. Same provider, local-only and deadline as summary.
-    pub async fn answer_chat(
-        &self,
-        question: &str,
-        sources: &[crate::chat::ChatSource],
-        history: &[crate::chat::ChatTurn],
-    ) -> crate::chat::ChatAnswer {
-        let provider = self.provider();
-        crate::chat::answer_question(question, sources, provider.as_deref(), history, self.deadline).await
     }
 }
 

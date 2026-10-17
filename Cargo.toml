@@ -35,7 +35,6 @@ qrtz-model = { path = "crates/qrtz-model" }
 qrtz-lifecycle = { path = "crates/qrtz-lifecycle" }
 qrtz-storage = { path = "crates/qrtz-storage" }
 qrtz-backup = { path = "crates/qrtz-backup" }
-qrtz-search = { path = "crates/qrtz-search" }
 thiserror = "2"
 rusqlite = { version = "0.40", features = ["bundled"] }
 unicode-normalization = "0.1"

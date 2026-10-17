@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use common::{Mock, Reply};
 use qrtz_lifecycle::runtime::{CoreSteps, InlineDb, StepExecutor, SummaryRequest, SUMMARY_TIMEOUT_MS};
-use qrtz_llm::{LlmConfig, LlmSteps, CHAT_DEADLINE_MS, SUMMARY_DEADLINE_MS};
+use qrtz_llm::{LlmConfig, LlmSteps, SUMMARY_DEADLINE_MS};
 use qrtz_model::*;
 use qrtz_storage::Db;
 use serde_json::json;
@@ -126,12 +126,11 @@ async fn n13_resummarize_on_a_full_disk_keeps_the_old_summary() {
 
 /// N3: each executor deadline ends before the runtime's RPC timeout for that step, with room to save, so a slow
 /// provider is always the executor's retryable E_TIMEOUT with nothing saved late, never an RPC timeout that leaves
-/// a reply free to land afterwards. Chat uses the same deadline.
+/// a reply free to land afterwards.
 const _: () = assert!(SUMMARY_DEADLINE_MS + 5_000 <= SUMMARY_TIMEOUT_MS);
-const _: () = assert!(CHAT_DEADLINE_MS == SUMMARY_DEADLINE_MS);
 
 #[test]
-fn n3_summary_and_chat_deadlines_sit_inside_the_rpc_timeout() {
+fn n3_the_summary_deadline_sits_inside_the_rpc_timeout() {
     // Checked at compile time above; this names the behaviour in the test list.
     let [deadline, rpc] = std::hint::black_box([SUMMARY_DEADLINE_MS, SUMMARY_TIMEOUT_MS]);
     assert!(deadline < rpc, "{deadline} vs {rpc}");
