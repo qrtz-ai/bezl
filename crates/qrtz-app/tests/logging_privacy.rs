@@ -282,7 +282,8 @@ fn a_note_list(md: &Value) -> Value {
 }
 
 /// Field names that would carry what the user said or wrote. A `tracing` call in any crate's sources (or the shell)
-/// that names one, as `name = …` or the `%name` / `?name` shorthand, fails here: log its length or id instead.
+/// that names one, as `name = …`, the `%name` / `?name` shorthand or an inline `{name}` capture in a message
+/// (N136; only [`INLINE_ALLOWED`]), fails here: log its length or id instead.
 const CONTENT_FIELDS: &[&str] = &[
     "text",
     "transcript",
@@ -353,8 +354,67 @@ fn content_fields_in(call: &str) -> Vec<String> {
     hits
 }
 
+/// The string literals of a call, unescaped only as far as needed to find `{…}` (N136).
+fn string_literals(call: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur: Option<String> = None;
+    let mut esc = false;
+    for c in call.chars() {
+        match cur.as_mut() {
+            Some(lit) => {
+                if esc {
+                    esc = false;
+                    lit.push(c);
+                } else if c == '\\' {
+                    esc = true;
+                } else if c == '"' {
+                    out.push(cur.take().unwrap());
+                } else {
+                    lit.push(c);
+                }
+            }
+            None if c == '"' => cur = Some(String::new()),
+            None => {}
+        }
+    }
+    out
+}
+
+/// N136: inline captures in a message (`"{title}"`, `"{text:?}"`, `"{ prompt }"`) name a content field too;
+/// `{{` is a literal brace.
+fn inline_content_in(call: &str) -> Vec<String> {
+    let mut hits = Vec::new();
+    for lit in string_literals(call) {
+        let mut rest = lit.as_str();
+        while let Some(at) = rest.find('{') {
+            if rest[at..].starts_with("{{") {
+                rest = &rest[at + 2..];
+                continue;
+            }
+            let inner = &rest[at + 1..];
+            let Some(close) = inner.find('}') else { break };
+            let name = inner[..close].split(':').next().unwrap_or_default().trim();
+            if CONTENT_FIELDS.contains(&name) {
+                hits.push(name.to_owned());
+            }
+            rest = &inner[close..];
+        }
+    }
+    hits
+}
+
+/// The one inline capture allowed (N136): the helper's stderr pass-through, cut to 2000 chars and redacted by the
+/// log layer (`qrtz-helper-bridge` `process.rs` `emit_stderr_line`).
+const INLINE_ALLOWED: &[(&str, &str)] = &[("qrtz-helper-bridge/src/process.rs", "text")];
+
 #[test]
 fn no_tracing_call_names_a_content_field() {
+    assert_eq!(inline_content_in(r#"tracing::warn!("bad {title} x")"#), ["title"]);
+    assert_eq!(
+        inline_content_in(r#"tracing::warn!(n = 1, "{text:?} and { prompt } and {{body}} and {id}")"#),
+        ["text", "prompt"]
+    );
+    assert!(inline_content_in(r#"tracing::info!(len = text.len(), "{len} chars")"#).is_empty());
     assert_eq!(content_fields_in(r#"tracing::info!(text = %t, "x")"#), ["text"]);
     assert_eq!(
         content_fields_in(r#"tracing::info!(%title, "a title = b")"#),
@@ -399,7 +459,13 @@ fn no_tracing_call_names_a_content_field() {
                         }
                     }
                     seen += 1;
-                    let hits = content_fields_in(&src[open..end]);
+                    let mut hits = content_fields_in(&src[open..end]);
+                    let unix = p.to_string_lossy().replace('\\', "/");
+                    hits.extend(inline_content_in(&src[open..end]).into_iter().filter(|h| {
+                        !INLINE_ALLOWED
+                            .iter()
+                            .any(|(file, name)| unix.ends_with(file) && h == name)
+                    }));
                     if !hits.is_empty() {
                         let line = src[..open].lines().count();
                         bad.push(format!("{}:{line}: {hits:?}", p.display()));
@@ -412,7 +478,7 @@ fn no_tracing_call_names_a_content_field() {
     assert!(seen > 100, "found only {seen} tracing calls");
     assert!(
         bad.is_empty(),
-        "tracing calls naming content fields:\n{}",
+        "tracing calls naming content fields (as a field, %/? shorthand or an inline {{capture}}):\n{}",
         bad.join("\n")
     );
 }
