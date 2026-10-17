@@ -197,6 +197,13 @@ export class TalkService {
   handle(m: HelperToHost) {
     switch (m.type) {
       case 'hello':
+        // A fresh helper process: a dictation started under the previous one is gone (the new one never saw our
+        // key-down, so no key-up or dictation.stopped will come). End it gracefully before configuring the new
+        // helper. Lines written before a process's first hello reach that same process, so a dictation started
+        // before any hello belongs to helper 1.
+        this.hellos++;
+        if (this.dictationHelper < this.hellos)
+          this.onHelperLost('helper restarted');
         void this.configure();
         return;
       case 'hotkey':
@@ -239,7 +246,7 @@ export class TalkService {
           this.view.id === m.id &&
           this.view.phase === 'listening'
         )
-          void this.endedByHelper(m);
+          void this.endedByHelper(m.id, m.text, m.durationMs, m.reason);
         return;
       }
       case 'permission.revoked':
@@ -302,6 +309,10 @@ export class TalkService {
     this.fail('another dictation is still running', { cancel: false });
   }
 
+  /** Helper processes seen (hellos), and which one serves the current dictation (T1). */
+  private hellos = 0;
+  private dictationHelper = 0;
+
   private active() {
     return !['idle', 'error'].includes(this.view.phase);
   }
@@ -360,6 +371,7 @@ export class TalkService {
   async start(): Promise<TalkView> {
     if (this.active()) return this.view;
     const id = randomUUID();
+    this.dictationHelper = Math.max(this.hellos, 1);
     const engine = this.resolveEngine();
     this.keyDownAt = this.now();
     this.firstPartialAt = undefined;
@@ -451,23 +463,50 @@ export class TalkService {
     this.pendingAudio = [];
   }
 
+  /**
+   * T1: the helper went away (supervisor down) or a new one said hello while a dictation was active. The helper
+   * that served it is gone, so no key-up, dictation.stopped or insert.result for it will arrive. Run the same
+   * graceful path as a helper-ended dictation (keep and insert what was heard; cloud text survives) with a
+   * helper-lost reason, and release every waiter for that id so nothing hangs. Idempotent; a no-op when idle.
+   */
+  onHelperLost(why: string) {
+    const id = this.view.id;
+    if (!id || !this.active()) return;
+    this.deps.log.warn('helper lost mid-dictation', {
+      why,
+      phase: this.view.phase,
+    });
+    this.viaPushKey = false;
+    const phase = this.view.phase;
+    // Waiters resolve with null: a start in flight fails, a stop in flight finishes from what was heard.
+    for (const k of [`started:${id}`, `stopped:${id}`, `insert:${id}`])
+      this.waiters.get(k)?.(null);
+    if (phase === 'listening')
+      void this.endedByHelper(
+        id,
+        '',
+        this.now() - this.keyDownAt,
+        'helper-lost',
+      );
+  }
+
   private async endedByHelper(
-    m: Extract<HelperToHost, { type: 'dictation.stopped' }>,
+    id: string,
+    text: string,
+    durationMs: number,
+    reason: 'permission-revoked' | 'mic-lost' | 'helper-lost' | undefined,
   ) {
-    const id = m.id;
     this.keyUpAt = this.now();
     this.set({ phase: 'finalizing', level: 0 });
-    await this.finish(
-      id,
-      m.text,
-      m.durationMs || this.keyUpAt - this.keyDownAt,
-    );
+    await this.finish(id, text, durationMs || this.keyUpAt - this.keyDownAt);
     this.set({
       phase: 'error',
       error:
-        m.reason === 'permission-revoked'
+        reason === 'permission-revoked'
           ? 'microphone access was turned off, so dictation stopped'
-          : 'the microphone went away, so dictation stopped',
+          : reason === 'helper-lost'
+            ? 'the capture helper restarted, so dictation stopped'
+            : 'the microphone went away, so dictation stopped',
       level: 0,
     });
   }

@@ -222,6 +222,11 @@ export function bootstrap() {
     },
   });
   config.onChange(() => void talk.configure().catch(() => {}));
+  // T1: a helper that goes down mid-dictation takes that dictation with it; end it gracefully (helper-lost).
+  helper.onStatus((s) => {
+    if (s.state !== 'running' && s.state !== 'starting')
+      talk.onHelperLost(s.lastError ?? s.state);
+  });
   helper.onLine((line) => {
     const r = parseHelperLine(line);
     if (!r.ok) return log.warn('bad helper line', { error: r.error });

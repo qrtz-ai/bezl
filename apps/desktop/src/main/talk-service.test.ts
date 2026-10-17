@@ -223,11 +223,11 @@ describe('TalkService', () => {
     await until(() => !!svc.state().last);
   });
 
-  // Hardening cycle 2, finding T1 (open, talk owner): TalkService has no helper-lost path. A helper restart mid
-  // push-to-talk (a crash, or NoteService restarting a helper that did not ack recording.stop while a dictation
-  // shares it) leaves the view in `listening`: the new helper never saw key-down, so no key-up arrives and the
-  // old dictation id is unknown to it. Pinned with it.fails: when the fix lands this flips red; drop `.fails`.
-  it.fails('T1 (known gap): a helper restart mid-dictation leaves listening without waiting for a key-up', async () => {
+  // Hardening cycle 2, finding T1 (fixed): a helper restart mid push-to-talk (a crash, or NoteService restarting a
+  // helper that did not ack recording.stop while a dictation shares it) used to leave the view in `listening`: the
+  // new helper never saw key-down, so no key-up arrives and the old dictation id is unknown to it. TalkService now
+  // ends the dictation gracefully on hello / supervisor down (helper-lost).
+  it('T1: a helper restart mid-dictation leaves listening without waiting for a key-up', async () => {
     const { svc } = setup();
     await svc.configure();
     svc.handle({ type: 'hotkey', action: 'down' });
@@ -241,6 +241,26 @@ describe('TalkService', () => {
       features: [],
     });
     await until(() => svc.state().phase !== 'listening', 1500);
+    await until(() => svc.state().phase === 'error');
+    expect(svc.state().error).toBe(
+      'the capture helper restarted, so dictation stopped',
+    );
+  });
+
+  it('T1: supervisor down mid-dictation keeps what was heard (helper-lost); idempotent', async () => {
+    const { svc } = setup();
+    await svc.configure();
+    await svc.start();
+    await until(() => svc.state().partial.split(' ').length >= 3);
+    svc.onHelperLost('crashed');
+    svc.onHelperLost('crashed'); // idempotent
+    await until(() => svc.state().phase === 'error');
+    expect(svc.state().error).toBe(
+      'the capture helper restarted, so dictation stopped',
+    );
+    expect(svc.state().last?.text.length).toBeGreaterThan(0);
+    svc.onHelperLost('crashed'); // idle/error: no-op
+    expect(svc.state().phase).toBe('error');
   });
 
   it('dictionary terms are applied; AI cleanup is used when fast', async () => {
