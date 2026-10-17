@@ -1,38 +1,78 @@
 # qrtz
 
-qrtz desktop app for macOS, built with Electron + Electron Forge (Vite + TypeScript).
+qrtz desktop app for macOS: an Electron shell hosting modular React "sub apps", all built on a shared design system.
 
 ## Requirements
 
-- Node.js >= 22.13 (required by Electron Forge 8)
-- npm >= 10.9
+- Node.js >= 22.13 and npm >= 10.9 (required by Electron Forge 8)
 
-## Development
+## Commands (run from the repo root)
 
 ```sh
 npm install
-npm start          # run the app with hot reload
-npm run lint       # oxlint + oxfmt check
+npm start          # run the desktop app (Vite HMR for the renderer)
+npm run lint       # oxlint + oxfmt check + workspace boundary check
 npm run lint:fix   # auto-fix lint/format
-npm run typecheck  # tsc --noEmit
+npm run typecheck  # tsc -b across all workspace projects
+npm run check      # lint + typecheck
+npm run package    # packaged app in apps/desktop/out/
+npm run make       # distributables in apps/desktop/out/make/ (.dmg + .zip on macOS)
 ```
 
-## Build & package
+> DMGs can only be built on macOS. On Linux, `npm run package` works but the DMG
+> maker is skipped. Code signing and notarization aren't set up yet.
 
-```sh
-npm run package    # packaged app in out/ for the current platform
-npm run make       # distributables in out/make/
+## Architecture
+
+```
+apps/
+  desktop/                 Electron shell: main, preload, React renderer host
+packages/
+  core/      @qrtz/core    sub-app contract + registry, shared types, typed IPC contract
+  ui/        @qrtz/ui      React design system: tokens, theme, Text, Button
+  features/
+    home/     @qrtz/feature-home      example sub app
+    settings/ @qrtz/feature-settings  example sub app (uses the IPC bridge)
+scripts/check-boundaries.mjs          enforces dependency rules
+docs/architecture.md                  research notes and rationale
 ```
 
-On macOS, `npm run make` produces a `.dmg` and a `.zip` of `qrtz.app`.
-To build only for mac explicitly: `npx electron-forge make --platform=darwin`.
+- **npm workspaces**, no build step for internal packages: each package exports its
+  TypeScript source and Vite compiles it into the shell bundle.
+- **TypeScript project references** (`tsconfig.base.json` plus `tsc -b`) give per-package
+  typechecking in dependency order.
+- **Dependency rules** (checked by `npm run lint`):
+  - `core` and `ui` depend on no other `@qrtz/*` package.
+  - Features may import only `@qrtz/core` and `@qrtz/ui`, never another feature or the shell.
+  - Only `apps/desktop` composes features.
+- **Sub apps** export a `defineSubApp({ manifest, load })`. The shell builds a
+  `SubAppRegistry` from them and renders the sidebar from `registry.list()`. Each sub
+  app's view is lazy-loaded (its own chunk).
+- **IPC** is typed end to end: channels are declared once in `@qrtz/core` (`IpcContract`).
+  The preload exposes only `window.qrtz.invoke` for allow-listed channels, and main
+  registers handlers with a typed `handle()` helper.
+- **Security:** `contextIsolation`, `sandbox`, no `nodeIntegration`, a strict CSP, and
+  hardened Electron fuses.
 
-> Note: DMGs can only be built on macOS. On Linux CI/dev boxes, `npm run package`
-> works but the DMG maker is skipped. Code signing / notarization is not set up yet.
+## How to add a sub app
 
-## Security defaults
+1. Copy an example: `cp -r packages/features/home packages/features/notes`.
+2. In `packages/features/notes/package.json`, set `"name": "@qrtz/feature-notes"`.
+3. In `src/index.ts`, set a unique manifest:
+   ```ts
+   export default defineSubApp({
+     manifest: { id: 'notes', name: 'Notes', icon: '✎', order: 10 },
+     load: () => import('./NotesView'),
+   });
+   ```
+   Rename the view component to match.
+4. Wire it into the shell:
+   - Add `"@qrtz/feature-notes": "*"` to `apps/desktop/package.json` dependencies.
+   - Add `{ "path": "../../packages/features/notes" }` to `apps/desktop/tsconfig.json` references.
+   - Add the same path to the root `tsconfig.json`.
+   - Add `notes` to the list in `apps/desktop/src/shell/subapps.ts`.
+5. Run `npm install && npm run check`. The new sub app appears in the sidebar.
 
-- `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`
-- Preload script (`src/preload.ts`) exposes a minimal API via `contextBridge`
-- Strict Content-Security-Policy in `index.html`
-- Electron fuses hardened in `forge.config.mts` (no RunAsNode, ASAR integrity, etc.)
+If a sub app needs the main process, add a channel to `IpcContract` in
+`packages/core/src/ipc.ts`, add it to `IPC_CHANNELS`, and handle it in
+`apps/desktop/src/ipc.ts`.

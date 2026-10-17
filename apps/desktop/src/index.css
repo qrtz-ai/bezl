@@ -1,0 +1,12 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+.drag-region {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 32px;
+  -webkit-app-region: drag;
+}

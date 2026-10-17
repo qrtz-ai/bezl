@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist-types",
+    "types": ["node"],
+    "allowJs": true
+  },
+  "include": ["src", "*.mts"],
+  "references": [
+    { "path": "../../packages/core" },
+    { "path": "../../packages/ui" },
+    { "path": "../../packages/features/home" },
+    { "path": "../../packages/features/settings" }
+  ]
+}
