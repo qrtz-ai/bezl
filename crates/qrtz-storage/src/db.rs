@@ -34,9 +34,17 @@ pub struct Db {
 
 impl Db {
     fn configure(mut conn: Connection) -> Result<Db> {
-        // Same pragmas as apps/desktop/src/worker/db.ts.
-        conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
+        // Same pragmas as apps/desktop/src/worker/db.ts. Connection-only pragmas first, then refuse a database from
+        // a newer app before anything writes to the file: switching to WAL rewrites the header (N19).
         conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;")?;
+        let (db, app) = (
+            crate::migrate::schema_version(&conn)?,
+            MIGRATIONS.iter().map(|m| m.version).max().unwrap_or(0),
+        );
+        if db > app {
+            return Err(StorageError::SchemaTooNew { db, app });
+        }
+        conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
         let report = migrate(&mut conn, MIGRATIONS)?;
         Ok(Db {
             conn,
