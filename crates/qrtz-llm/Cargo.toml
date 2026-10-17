@@ -1,0 +1,31 @@
+[package]
+name = "qrtz-llm"
+description = "qrtz meeting summaries: the OpenRouter (OpenAI-compatible), Anthropic and Google clients, the summary prompt, the on-device extractive fallback, and the summary/resummarize StepExecutor (port of packages/core/src/note/{llm,extractive,templates}.ts and the worker's note.stepSummary / note.resummarize)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+qrtz-model.workspace = true
+qrtz-storage.workspace = true
+qrtz-lifecycle = { workspace = true, features = ["runtime"] }
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+regex = "1"
+tokio = { version = "1", features = ["time", "sync"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+sha2 = "0.10"
+tokio = { version = "1", features = [
+  "rt",
+  "rt-multi-thread",
+  "macros",
+  "net",
+  "io-util",
+  "time",
+] }

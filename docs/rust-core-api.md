@@ -830,3 +830,20 @@ via `to_app_error_json`).
 | 4            | `qrtz-lifecycle` runtime + tier-2 vectors + `finalize` executor                                                                                              | F1–F15, R1–R3 scenarios pass against TS and Rust                                            |
 
 Every stage is small commits straight to `main`, never adds GitHub Actions workflows, and keeps the Electron build untouched.
+
+## 9. `qrtz-llm` (summary step, ADR 0042)
+
+`LlmSteps<E: DbExec>` is the `StepExecutor` for `summary` and `resummarize`. It delegates `finalize` and `index` to
+`inner`. Wire it in place of `CoreSteps`:
+
+```rust
+let core = Arc::new(CoreSteps { db: storage.clone() });
+let steps = Arc::new(qrtz_llm::LlmSteps::on_device(storage.clone(), core, Arc::new(now_ms)));
+```
+
+- `summary(id, Llm)`: today the on-device extractive summary (what TS does with no usable provider), saved; the
+  meeting is marked done. `Fallback{error}`: the same summary with `llmError` (≤ 500 UTF-16 units). `Skip`: done, no
+  summary. `resummarize(id, template)`: the template is stored first, then the summary is replaced.
+- DB errors keep the storage classification (busy / full disk retryable, N13); a missing meeting is `E_NOT_FOUND`.
+- Parity: `spec/vectors/llm/*.json`, written by `packages/core/src/note/llm.vectors.test.ts`, read by
+  `crates/qrtz-llm/tests/*.rs`.

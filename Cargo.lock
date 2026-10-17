@@ -3296,6 +3296,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "qrtz-llm"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "qrtz-lifecycle",
+ "qrtz-model",
+ "qrtz-storage",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "qrtz-model"
 version = "0.1.0"
 dependencies = [
