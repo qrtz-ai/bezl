@@ -186,7 +186,19 @@ pub fn silent_input_view(
 
 /// `lifecycleReducer`: the next state, or `None` when the event is not legal in this state (callers log and
 /// ignore).
+///
+/// N95 (ADR 0062): `asr_unavailable` is a reason for the `asr-unavailable` flag and never outlives it. Every path
+/// that drops the flag (speech ready, a helper loss or restore, a new recording, ...) drops the reason here, in one
+/// place, rather than in each arm.
 pub fn reduce(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> {
+    let mut n = reduce_flags(s, e)?;
+    if !n.degraded.contains(&Degradation::AsrUnavailable) {
+        n.asr_unavailable = None;
+    }
+    Some(n)
+}
+
+fn reduce_flags(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> {
     use LifecycleEvent as E;
     use RecordingPhase as P;
     match e {
@@ -470,6 +482,28 @@ pub fn reduce(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> 
                 error: Some(error.clone()),
                 ..s.clone()
             })
+        }
+        E::AsrUnavailable { reason, at } => {
+            let flag = E::Degraded {
+                flag: Degradation::AsrUnavailable,
+                at: *at,
+            };
+            match reduce_flags(s, &flag) {
+                Some(mut n) => {
+                    n.asr_unavailable = Some(*reason);
+                    Some(n)
+                }
+                // Already held: only the reason can change (a later failure says more about now).
+                None if is_capturing(s.phase)
+                    && s.degraded.contains(&Degradation::AsrUnavailable)
+                    && s.asr_unavailable != Some(*reason) =>
+                {
+                    let mut n = s.clone();
+                    n.asr_unavailable = Some(*reason);
+                    Some(n)
+                }
+                None => None,
+            }
         }
         E::SpeechReady => {
             // N42 (ADR 0046 §3b): speech-unavailable is scoped to the speech session that reported it.

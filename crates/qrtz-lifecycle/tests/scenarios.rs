@@ -611,6 +611,10 @@ fn view_json(v: &SessionView) -> Value {
     if !v.device_lost.is_empty() {
         j["deviceLost"] = json!(v.device_lost.iter().map(|d| d.as_str()).collect::<Vec<_>>());
     }
+    // N95 (ADR 0062): Rust only; absent = null in `diff`, so TS-oracle scenarios are unchanged.
+    if let Some(r) = v.asr_unavailable {
+        j["asrUnavailable"] = json!(r.as_str());
+    }
     j
 }
 
@@ -930,8 +934,13 @@ impl Run {
             })
         });
         let tombstones = live.rt.pending_deletes();
+        let mut view = view_json(&live.rt.session());
+        // N95: the TS oracle's `asr.unavailable` replayed as a speech failure has no reason to compare.
+        if self.speech {
+            view.as_object_mut().unwrap().remove("asrUnavailable");
+        }
         let mut snap = json!({
-            "view": view_json(&live.rt.session()),
+            "view": view,
             "live": live_t,
             "db": {"meetings": meetings, "segments": segments, "summaries": summaries, "notes": notes, "pipelines": pipelines, "session": session},
             "files": files,
@@ -1189,6 +1198,18 @@ fn run_one(file: &Path, speech: bool) -> Result<(), String> {
     if std::env::var_os("QRTZ_SCENARIO_DUMP").is_some() {
         let out = std::env::temp_dir().join(file.file_name().unwrap());
         std::fs::write(&out, serde_json::to_string_pretty(&got).unwrap()).unwrap();
+    }
+    // N94 (ADR 0062): once apps/desktop (the TS scenario oracle and its QRTZ_VECTORS_UPDATE) is gone, this runner
+    // writes `expect`. Never in the speech-event replay, which must match the file as it is. Review the diff.
+    if !speech && std::env::var_os("QRTZ_VECTORS_UPDATE").is_some() && diff(&got, &want, "").is_some() {
+        // `expect` is the last key (the TS writer's order): splice it so the script above keeps its bytes.
+        let text = std::fs::read_to_string(file).unwrap();
+        let at = text
+            .rfind("\n  \"expect\": ")
+            .expect("`expect` is the file's last key");
+        let body = serde_json::to_string_pretty(&got).unwrap().replace('\n', "\n  ");
+        std::fs::write(file, format!("{}\n  \"expect\": {body}\n}}\n", &text[..at])).unwrap();
+        return Ok(());
     }
     match diff(&got, &want, "") {
         Some(d) => Err(d),

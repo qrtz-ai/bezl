@@ -581,6 +581,20 @@
               ]
             }
           },
+          "asrUnavailable": {
+            "type": "string",
+            "enum": [
+              "not-installed",
+              "revoked",
+              "stale",
+              "crashed",
+              "start-failed",
+              "timeout",
+              "protocol-violations",
+              "network",
+              "cancelled"
+            ]
+          },
           "errorInfo": {
             "type": "object",
             "properties": {
@@ -1183,6 +1197,20 @@
               ]
             }
           },
+          "asrUnavailable": {
+            "type": "string",
+            "enum": [
+              "not-installed",
+              "revoked",
+              "stale",
+              "crashed",
+              "start-failed",
+              "timeout",
+              "protocol-violations",
+              "network",
+              "cancelled"
+            ]
+          },
           "errorInfo": {
             "type": "object",
             "properties": {
@@ -1775,6 +1803,20 @@
                 "transcript-gap"
               ]
             }
+          },
+          "asrUnavailable": {
+            "type": "string",
+            "enum": [
+              "not-installed",
+              "revoked",
+              "stale",
+              "crashed",
+              "start-failed",
+              "timeout",
+              "protocol-violations",
+              "network",
+              "cancelled"
+            ]
           },
           "errorInfo": {
             "type": "object",
@@ -3200,6 +3242,20 @@
                 "transcript-gap"
               ]
             }
+          },
+          "asrUnavailable": {
+            "type": "string",
+            "enum": [
+              "not-installed",
+              "revoked",
+              "stale",
+              "crashed",
+              "start-failed",
+              "timeout",
+              "protocol-violations",
+              "network",
+              "cancelled"
+            ]
           },
           "errorInfo": {
             "type": "object",
@@ -4827,6 +4883,20 @@
                 "transcript-gap"
               ]
             }
+          },
+          "asrUnavailable": {
+            "type": "string",
+            "enum": [
+              "not-installed",
+              "revoked",
+              "stale",
+              "crashed",
+              "start-failed",
+              "timeout",
+              "protocol-violations",
+              "network",
+              "cancelled"
+            ]
           },
           "errorInfo": {
             "type": "object",
@@ -6475,6 +6545,20 @@
                 "transcript-gap"
               ]
             }
+          },
+          "asrUnavailable": {
+            "type": "string",
+            "enum": [
+              "not-installed",
+              "revoked",
+              "stale",
+              "crashed",
+              "start-failed",
+              "timeout",
+              "protocol-violations",
+              "network",
+              "cancelled"
+            ]
           },
           "errorInfo": {
             "type": "object",

@@ -4,6 +4,7 @@ import { Meeting, MeetingPlatform, Segment } from './types';
 import { MeetingSummary } from './summary';
 import { MeetingNote } from './notes';
 import {
+  AsrUnavailableReason,
   Degradation,
   LifecycleError,
   PipelineView,
@@ -63,6 +64,8 @@ export const SessionView = z.object({
    * than "mic access revoked". Cleared by a reconnect. Omitted when none.
    */
   deviceLost: z.array(Degradation).optional(),
+  /** N95 (ADR 0062): why speech recognition is unavailable (`degraded` has `asr-unavailable`). Omitted when unknown. */
+  asrUnavailable: AsrUnavailableReason.optional(),
   /** Structured error (phase error, or a failed start that returned to idle/detected). */
   errorInfo: LifecycleError.optional(),
   /** Helper restart in progress mid-recording. */

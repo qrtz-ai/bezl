@@ -48,6 +48,23 @@ export const Degradation = z.enum([
 export type Degradation = z.infer<typeof Degradation>;
 
 /**
+ * N95 (ADR 0062): why `asr-unavailable` is set, when a speech session said (the Rust runtime only; the helper's own
+ * `asr.unavailable` carries no reason).
+ */
+export const AsrUnavailableReason = z.enum([
+  'not-installed',
+  'revoked',
+  'stale',
+  'crashed',
+  'start-failed',
+  'timeout',
+  'protocol-violations',
+  'network',
+  'cancelled',
+]);
+export type AsrUnavailableReason = z.infer<typeof AsrUnavailableReason>;
+
+/**
  * N29: a capture source the helper reported silent (`capture.silent`), live and transient: `capture.audible`, a
  * helper loss or the stop end it. Kept apart from `degraded[]` (sticky permission/ASR flags). `sinceMs` is meeting
  * time (the helper's part-relative value plus `partOffsetMs`).

@@ -383,6 +383,7 @@
         },
         "view": {
           "activeSpeaker": null,
+          "asrUnavailable": "crashed",
           "degraded": [
             "asr-unavailable"
           ],

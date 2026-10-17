@@ -76,6 +76,15 @@ kebab_enum!(Degradation {
     AxUnavailable = "ax-unavailable", TranscriptGap = "transcript-gap",
 });
 kebab_enum!(
+    /// N95 (ADR 0062): why the current part has no speech recognition, for the live notice. Set only with
+    /// `Degradation::AsrUnavailable`; the helper's own `asr.unavailable` report carries none (Electron parity).
+    AsrUnavailableReason {
+        NotInstalled = "not-installed", Revoked = "revoked", Stale = "stale", Crashed = "crashed",
+        StartFailed = "start-failed", Timeout = "timeout", ProtocolViolations = "protocol-violations",
+        Network = "network", Cancelled = "cancelled",
+    }
+);
+kebab_enum!(
     /// N29: a raw capture channel, as `capture.silent` / `capture.audible` name it (`CaptureSource` in protocol.ts).
     CaptureSource { System = "system", Mic = "mic" }
 );
@@ -374,6 +383,10 @@ pub struct RecordingState {
     /// N35: the `degraded` flags held only because a capture device failed; a reconnect drops them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub device_lost: Vec<Degradation>,
+    /// N95 (ADR 0062): why `degraded` holds `asr-unavailable`, when the speech session said; `None` whenever the
+    /// flag is not set (the reducer enforces it). Omitted when none, so older rows and the TS oracle are unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asr_unavailable: Option<AsrUnavailableReason>,
     /// N35: device failures of this recording, for the meeting record (omitted when none).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub device_failures: Vec<DeviceFailure>,
@@ -403,6 +416,7 @@ impl Default for RecordingState {
             silent_spans: Vec::new(),
             fallbacks: Vec::new(),
             device_lost: Vec::new(),
+            asr_unavailable: None,
             device_failures: Vec::new(),
             lost_spans: Vec::new(),
         }
@@ -461,6 +475,13 @@ pub enum LifecycleEvent {
     /// N42 (ADR 0046 §3b): the current part's speech session reached `ready`; an earlier session's
     /// "speech unavailable" no longer applies.
     SpeechReady,
+    /// N95 (ADR 0062): the current part's speech session failed: `Degraded {asr-unavailable}` plus the reason
+    /// (the latest one wins while the flag is held).
+    AsrUnavailable {
+        reason: AsrUnavailableReason,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        at: Option<EpochMs>,
+    },
     HelperLost {
         at: EpochMs,
         deadline_at: EpochMs,
@@ -751,6 +772,9 @@ pub struct SessionView {
     /// N35: the `degraded` flags a failed capture device set, not a permission (omitted when none).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub device_lost: Vec<Degradation>,
+    /// N95 (ADR 0062): why speech recognition is unavailable (`degraded` has `asr-unavailable`); omitted when unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asr_unavailable: Option<AsrUnavailableReason>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_info: Option<LifecycleError>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

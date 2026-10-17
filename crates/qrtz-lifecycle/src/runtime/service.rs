@@ -572,12 +572,30 @@ impl State {
             stop_reason: s.stop_reason,
             degraded: s.degraded.clone(),
             device_lost: s.device_lost.clone(),
+            asr_unavailable: s.asr_unavailable,
             error_info: s.error.clone(),
             reconnect: s.reconnect.clone(),
             pipeline: pipeline.map(to_view),
             silent,
             no_audio,
         }
+    }
+}
+
+/// N95: the speech engine's failure, as the session records it.
+fn asr_reason(r: qrtz_speech::FailReason) -> qrtz_model::AsrUnavailableReason {
+    use qrtz_model::AsrUnavailableReason as R;
+    use qrtz_speech::FailReason as F;
+    match r {
+        F::Crashed => R::Crashed,
+        F::ProtocolViolations => R::ProtocolViolations,
+        F::StartFailed => R::StartFailed,
+        F::Timeout => R::Timeout,
+        F::Cancelled => R::Cancelled,
+        F::NotInstalled => R::NotInstalled,
+        F::Revoked => R::Revoked,
+        F::Stale => R::Stale,
+        F::Network => R::Network,
     }
 }
 
@@ -694,6 +712,14 @@ impl Shared {
     fn persist_session(&self, s: RecordingState) {
         if !self.killed() {
             let _ = self.save_tx.send(s);
+        }
+    }
+
+    /// N95 (ADR 0062): `degrade(AsrUnavailable)` with the speech session's reason, for the live notice.
+    fn asr_unavailable(&self, reason: qrtz_model::AsrUnavailableReason) {
+        let at = Some(self.now());
+        if self.send(LifecycleEvent::AsrUnavailable { reason, at }) {
+            tracing::warn!(reason = reason.as_str(), "capture degraded: speech unavailable");
         }
     }
 
@@ -1281,14 +1307,14 @@ impl Shared {
             // N42: scoped to this part's session (helper-scoped flags also die at a helper loss).
             Sp::Failed { reason } => {
                 tracing::warn!(?reason, "speech session failed");
-                self.degrade(Degradation::AsrUnavailable);
+                self.asr_unavailable(asr_reason(reason));
             }
             Sp::Status {
                 phase: StatusPhase::Failed,
                 error,
             } => {
                 tracing::warn!(?error, "speech session status failed");
-                self.degrade(Degradation::AsrUnavailable);
+                self.asr_unavailable(qrtz_model::AsrUnavailableReason::StartFailed);
             }
             Sp::Status {
                 phase: StatusPhase::Ready,
