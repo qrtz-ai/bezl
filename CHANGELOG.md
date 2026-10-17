@@ -2,6 +2,8 @@
 
 ## Unreleased: helper mux + TCC revocation (H5/H6)
 
+- **Search finds words with apostrophes (Bozniak cycle 11, N46/N47; ADR 0038):** "don't", "O'Reilly", "l'équipe" and possessives ("Jared's" finds "Jared") now match in meeting search, the list filter and chat. Each word goes to SQLite FTS5 as a quoted phrase, so it is split by the same tokenizer as the index; Hindi and Thai words stay one phrase. Chat no longer drops the line it found for such a question. TS and Rust share `spec/stress/fts-queries.json`. No migration. Still open: a Chinese, Japanese or Thai word inside a longer run of text is not found (N48).
+
 - **Reconnect offsets ignore a wall-clock jump (Bozniak cycle 10, N45; ADR 0037):** `helper-lost` / `helper-restored` stamps come from a monotonic clock (`performance.now()` / `Clock::mono_ms`), so a laptop sleep or NTP step during a reconnect no longer slides the next part's transcript while the WAV pad stays capped at 35 s. Wall clock still owns `startedAt` / `stoppedAt` / live elapsed. Scenario `H7-clock-jump-during-reconnect` now expects a meeting-length file; `N45-multi-reconnect-clock-jump` covers two jumps. No migration, no protocol change.
 
 - **Audio and transcript line up after a reconnect (Bozniak cycle 9, H7/N44; ADR 0032):** finalize pads each helper-restart gap with silence, from the part offsets the session now keeps (`partOffsetsMs`, on the session and the pipeline context), so seeking to a transcript line plays that moment. One gap is padded at most 35 s. The stitch streams in 1 MiB chunks instead of loading every part. TS and Rust share `spec/stress/stitch-gaps.json`. Rows from older builds have no offsets and stitch end to end as before. No migration.
