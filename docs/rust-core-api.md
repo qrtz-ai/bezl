@@ -762,7 +762,8 @@ via `to_app_error_json`).
 7. **Deleting a meeting leaks its audio (confirmed).** Neither the worker `note.delete` (`repo.deleteMeeting`) nor
    the deferred-delete finalizer in `index.ts` removes `audio_path` or leftover `.p<n>.wav` parts. Rust will match TS
    (leave the files) for parity. I recommend fixing it on both sides at once: delete the WAV and its parts after the row
-   is gone. **Jared/Bobs: OK to fix?**
+   is gone. **Resolved (cycle 4, ADR 0016):** `note.delete` / `LifecycleStore::delete_meeting` return the files and
+   `NoteService.deleteMeeting` / `NoteRuntime::delete_meeting` remove them inside the recordings directory.
 8. **`note:list` paging with tombstones.** The shell filters pending deletes **after** the `limit+1` query, so a page
    can come back short and still look like it has more. I'll keep that unless we push the tombstone filter into
    storage (`ListQuery { exclude: Vec<String> }` is cheap to add).
