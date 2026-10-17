@@ -392,3 +392,15 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
 - Backup progress e2e: a 400 MB seeded recording shows the bar (percentage and step) and then the result.
 - README rewritten as a landing page: pitch, screenshots, Mac quickstart, what it does, architecture diagram, status, Mac verification, accounts table.
 - Side work: if you quit qrtz within 6 s of deleting a meeting, the delete is dropped (the safe direction).
+
+## Iteration 17 (2026-10-16)
+
+- Durable undoable deletes: main writes a tombstone (`pending-deletes.json`, written atomically) as soon as you confirm, and runs the delete after the 6 s undo window. Lists hide tombstoned meetings. If qrtz quits or crashes first, the delete is completed on the next launch once the worker is ready. Covered by `PendingDeletes` unit tests (timer, undo, too-late undo, recovery, failed delete keeps the tombstone, corrupt file) and an e2e test that quits inside the undo window.
+- `npm run screenshots` packages the app, runs the screenshot specs (under xvfb on Linux) and refreshes `docs/screenshots/`, including the new light variants. It fails if an expected image is missing.
+- Speaker fusion quality pass (`fusion.ts`, 7 new unit tests):
+  - AX placeholders ("Unknown", "Guest", "…", blank) end the previous speaker's interval but never vote, so unknown dial-ins stay unnamed instead of borrowing a neighbour's name.
+  - Names are normalized (whitespace, zero-width characters) and repeated names merge.
+  - Slot mapping now compensates for AX highlight lag (`lagMs`, default 300).
+  - Time where two people talk at once counts half, so someone who only interjects over another speaker can't take that speaker's name.
+  - Live naming keeps a segment's existing label when AX evidence covers less than 25% of it.
+- Fresh-clone check run again at the end (see the report).

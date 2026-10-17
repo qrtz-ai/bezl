@@ -1,19 +1,38 @@
 import type { ActiveSpeakerEvent, Segment, SpeakerTurn } from './types';
 
+/** AX placeholders that mean "someone, but we don't know who": they end the previous interval but never vote. */
+const UNKNOWN =
+  /^(|unknown|unknown speaker|participant|guest|someone|\.{2,}|…|-+|\?+)$/i;
+
+/** Normalizes an AX name (whitespace, zero-width chars); returns undefined for unknown placeholders. */
+export function normalizeSpeakerName(raw: string): string | undefined {
+  const n = raw
+    .replace(/[\u200b-\u200d\ufeff]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return UNKNOWN.test(n) ? undefined : n;
+}
+
 /**
  * Turns the AX active-speaker signal (a step function: name holds until next event)
- * into intervals ending at `endMs`.
+ * into intervals ending at `endMs`. Unknown/blank names end the previous interval and
+ * produce no interval of their own; repeated names are merged.
  */
 export function activeSpeakerIntervals(
   events: ActiveSpeakerEvent[],
   endMs: number,
 ) {
   const sorted = [...events].sort((a, b) => a.atMs - b.atMs);
-  return sorted.map((e, i) => ({
-    name: e.name,
-    startMs: e.atMs,
-    endMs: sorted[i + 1]?.atMs ?? endMs,
-  }));
+  const out: { name: string; startMs: number; endMs: number }[] = [];
+  sorted.forEach((e, i) => {
+    const name = normalizeSpeakerName(e.name);
+    const end = sorted[i + 1]?.atMs ?? endMs;
+    if (!name || end <= e.atMs) return;
+    const last = out.at(-1);
+    if (last && last.name === name && last.endMs === e.atMs) last.endMs = end;
+    else out.push({ name, startMs: e.atMs, endMs: end });
+  });
+  return out;
 }
 
 const overlap = (a0: number, a1: number, b0: number, b1: number) =>
@@ -27,15 +46,29 @@ const overlap = (a0: number, a1: number, b0: number, b1: number) =>
 export function mapSlotsToNames(
   turns: SpeakerTurn[],
   active: ActiveSpeakerEvent[],
-  opts: { endMs: number; minShare?: number } = { endMs: Infinity },
+  opts: {
+    endMs: number;
+    minShare?: number;
+    /** AX highlight lags speech; turn windows are shifted by this much (default 300 ms). */
+    lagMs?: number;
+  } = { endMs: Infinity },
 ): Map<string, string> {
-  const intervals = activeSpeakerIntervals(active, opts.endMs);
+  const lag = opts.lagMs ?? 300;
+  const intervals = activeSpeakerIntervals(active, opts.endMs + lag);
   const score = new Map<string, Map<string, number>>();
   const slotTotal = new Map<string, number>();
   for (const t of turns) {
     slotTotal.set(t.slot, (slotTotal.get(t.slot) ?? 0) + (t.endMs - t.startMs));
+    // Time where another slot talks at once is ambiguous (AX highlights only one person), so it counts half.
+    const others = turns.filter((u) => u.slot !== t.slot);
     for (const iv of intervals) {
-      const o = overlap(t.startMs, t.endMs, iv.startMs, iv.endMs);
+      const a0 = Math.max(t.startMs + lag, iv.startMs);
+      const a1 = Math.min(t.endMs + lag, iv.endMs);
+      if (a1 <= a0) continue;
+      let shared = 0;
+      for (const u of others)
+        shared += overlap(a0, a1, u.startMs + lag, u.endMs + lag);
+      const o = a1 - a0 - Math.min(a1 - a0, shared) / 2;
       if (!o) continue;
       const m = score.get(t.slot) ?? new Map<string, number>();
       m.set(iv.name, (m.get(iv.name) ?? 0) + o);
@@ -98,6 +131,8 @@ export function nameSegmentsFromAx(
   active: ActiveSpeakerEvent[],
   endMs: number,
   lagMs = 300,
+  /** Minimum share of the segment the winning name must cover; below it the segment keeps its label. */
+  minShare = 0.25,
 ): Segment[] {
   const ivs = activeSpeakerIntervals(
     active,
@@ -114,7 +149,11 @@ export function nameSegmentsFromAx(
       );
       if (o) votes.set(iv.name, (votes.get(iv.name) ?? 0) + o);
     }
-    const best = [...votes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-    return best ? { ...s, speakerName: best } : s;
+    const [best, ms] =
+      [...votes.entries()].sort((a, b) => b[1] - a[1])[0] ?? [];
+    const dur = Math.max(1, s.endMs - s.startMs);
+    return best && (ms ?? 0) / dur >= minShare
+      ? { ...s, speakerName: best }
+      : s;
   });
 }
