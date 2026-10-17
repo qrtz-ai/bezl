@@ -5,30 +5,32 @@
  * double release or a leaked subscription shows up as a negative/orphaned ref. Also runs the edge vectors in
  * spec/vectors/helper/arbiter-edges.json (reviewer-added; the Swift side should consume them too).
  */
-import fs from "node:fs";
-import path from "node:path";
-import { describe, expect, it } from "vitest";
+import fs from 'node:fs';
+import path from 'node:path';
+import { describe, expect, it } from 'vitest';
 import {
   arbiterStep,
   initialArbiterState,
   type HelperArbiterEvent,
   type HelperArbiterState,
   type HelperPermission,
-} from "./arbiter";
+} from './arbiter';
 
 const PERMS: HelperPermission[] = [
-  "microphone",
-  "screen-recording",
-  "accessibility",
+  'microphone',
+  'screen-recording',
+  'accessibility',
 ];
 const EVENTS: HelperArbiterEvent[] = [
-  { cmd: "recording.start" },
-  { cmd: "recording.stop" },
-  { cmd: "dictation.start" },
-  { cmd: "dictation.stop" },
-  { cmd: "dictation.cancel" },
+  { cmd: 'recording.start' },
+  { cmd: 'recording.stop' },
+  { cmd: 'dictation.start' },
+  { cmd: 'dictation.stop' },
+  { cmd: 'dictation.cancel' },
   ...PERMS.map((p) => ({ revoked: p })),
   ...PERMS.map((p) => ({ granted: p })),
+  { configure: { warmMic: true } },
+  { configure: { warmMic: false } },
   { helperLost: true as const },
 ];
 
@@ -36,6 +38,10 @@ const EVENTS: HelperArbiterEvent[] = [
 interface Model {
   recording: boolean;
   dictating: boolean;
+  /** Warm mic configured (dictation.configure warmMic). */
+  warm: boolean;
+  /** Dictation holds a mic ref: dictating or warm, with the mic usable (warm revives on re-grant). */
+  dictMic: boolean;
   /** Recording holds a mic ref: started with mic usable and no mic revoke since. */
   recMic: boolean;
   denied: Set<HelperPermission>;
@@ -46,6 +52,8 @@ interface Model {
 const initModel = (denied: HelperPermission[]): Model => ({
   recording: false,
   dictating: false,
+  warm: false,
+  dictMic: false,
   recMic: false,
   denied: new Set(denied),
   refs: {},
@@ -55,10 +63,10 @@ function expectedDegrade(
   p: HelperPermission,
   denied: Set<HelperPermission>,
 ): string {
-  if (p === "accessibility") return "ax-unavailable";
-  const other = p === "microphone" ? "screen-recording" : "microphone";
-  if (denied.has(other)) return "audio-unavailable";
-  return p === "microphone" ? "no-mic" : "mic-only";
+  if (p === 'accessibility') return 'ax-unavailable';
+  const other = p === 'microphone' ? 'screen-recording' : 'microphone';
+  if (denied.has(other)) return 'audio-unavailable';
+  return p === 'microphone' ? 'no-mic' : 'mic-only';
 }
 
 /** Spec transition. Returns expected decision and the expected effect set. */
@@ -68,64 +76,94 @@ function modelStep(
 ): { m: Model; decision: string; effects: string[] } {
   const n: Model = { ...m, denied: new Set(m.denied), refs: { ...m.refs } };
   const fx: string[] = [];
-  if ("helperLost" in e) {
-    if (m.dictating) fx.push("dictation.stop:helper-lost");
-    // Process is gone: the hub dies with it, so every ref is released implicitly.
+  if ('helperLost' in e) {
+    if (m.dictating) fx.push('dictation.stop:helper-lost');
+    if (m.recording) fx.push('recording.lost');
+    // Process is gone: every held ref is released explicitly so host-side refcounts balance.
+    if (m.recMic) fx.push('mic.unsubscribe:recording');
+    if (m.dictMic) fx.push('mic.unsubscribe:dictation');
     return {
       m: { ...initModel([...m.denied]) },
-      decision: "accept",
+      decision: 'accept',
       effects: fx,
     };
   }
-  if ("granted" in e) {
-    n.denied.delete(e.granted); // never resubscribes a running recording, never clears degradations
-    return { m: n, decision: "accept", effects: [] };
+  if ('configure' in e) {
+    n.warm = e.configure.warmMic;
+    const want = (n.warm || m.dictating) && !m.denied.has('microphone');
+    // Turning warm off mid-dictation keeps the reader until the dictation ends.
+    if (want && !m.dictMic) fx.push('mic.subscribe:dictation');
+    if (!want && m.dictMic) fx.push('mic.unsubscribe:dictation');
+    n.dictMic = want || (m.dictMic && m.dictating);
+    return { m: n, decision: 'accept', effects: fx };
   }
-  if ("revoked" in e) {
-    if (m.denied.has(e.revoked)) return { m, decision: "ignore", effects: [] };
+  if ('granted' in e) {
+    n.denied.delete(e.granted); // never resubscribes a running recording, never clears degradations
+    if (
+      e.granted === 'microphone' &&
+      m.denied.has('microphone') &&
+      m.warm &&
+      !m.dictMic
+    ) {
+      n.dictMic = true; // a warm mic comes back by itself
+      return { m: n, decision: 'accept', effects: ['mic.subscribe:dictation'] };
+    }
+    return { m: n, decision: 'accept', effects: [] };
+  }
+  if ('revoked' in e) {
+    if (m.denied.has(e.revoked)) return { m, decision: 'ignore', effects: [] };
     n.denied.add(e.revoked);
-    if (e.revoked === "microphone") {
+    if (e.revoked === 'microphone') {
       if (m.dictating) {
-        fx.push(
-          "dictation.stop:permission-revoked",
-          "mic.unsubscribe:dictation",
-        );
+        fx.push('dictation.stop:permission-revoked');
         n.dictating = false;
       }
+      if (m.dictMic) {
+        fx.push('mic.unsubscribe:dictation');
+        n.dictMic = false;
+      }
       if (m.recMic) {
-        fx.push("mic.unsubscribe:recording");
+        fx.push('mic.unsubscribe:recording');
         n.recMic = false;
       }
     }
     if (m.recording) fx.push(`degrade:${expectedDegrade(e.revoked, m.denied)}`);
-    return { m: n, decision: "accept", effects: fx };
+    return { m: n, decision: 'accept', effects: fx };
   }
   switch (e.cmd) {
-    case "recording.start":
-      if (m.recording) return { m, decision: "ignore", effects: [] };
+    case 'recording.start':
+      if (m.recording) return { m, decision: 'ignore', effects: [] };
       n.recording = true;
-      n.recMic = !m.denied.has("microphone");
-      if (n.recMic) fx.push("mic.subscribe:recording");
-      return { m: n, decision: "accept", effects: fx };
-    case "recording.stop":
-      if (!m.recording) return { m, decision: "ignore", effects: [] };
-      if (m.recMic) fx.push("mic.unsubscribe:recording");
+      n.recMic = !m.denied.has('microphone');
+      if (n.recMic) fx.push('mic.subscribe:recording');
+      return { m: n, decision: 'accept', effects: fx };
+    case 'recording.stop':
+      if (!m.recording) return { m, decision: 'ignore', effects: [] };
+      if (m.recMic) fx.push('mic.unsubscribe:recording');
       n.recording = false;
       n.recMic = false;
-      return { m: n, decision: "accept", effects: fx };
-    case "dictation.start":
-      if (m.dictating) return { m, decision: "ignore", effects: [] };
-      if (m.denied.has("microphone"))
-        return { m, decision: "refuse", effects: [] };
+      return { m: n, decision: 'accept', effects: fx };
+    case 'dictation.start':
+      if (m.dictating) return { m, decision: 'ignore', effects: [] };
+      if (m.denied.has('microphone'))
+        return { m, decision: 'refuse', effects: [] };
       n.dictating = true;
-      return { m: n, decision: "accept", effects: ["mic.subscribe:dictation"] };
-    default:
-      if (!m.dictating) return { m, decision: "ignore", effects: [] };
-      n.dictating = false;
+      n.dictMic = true;
+      // A warm reader is reused, not subscribed twice.
       return {
         m: n,
-        decision: "accept",
-        effects: ["mic.unsubscribe:dictation"],
+        decision: 'accept',
+        effects: m.dictMic ? [] : ['mic.subscribe:dictation'],
+      };
+    default:
+      if (!m.dictating) return { m, decision: 'ignore', effects: [] };
+      n.dictating = false;
+      if (m.warm && m.dictMic) return { m: n, decision: 'accept', effects: [] };
+      n.dictMic = false;
+      return {
+        m: n,
+        decision: 'accept',
+        effects: m.dictMic ? ['mic.unsubscribe:dictation'] : [],
       };
   }
 }
@@ -137,11 +175,11 @@ function applyRefs(
   ctx: string,
 ) {
   for (const f of effects) {
-    const [k, who] = f.split(":");
-    if (k === "mic.subscribe") {
+    const [k, who] = f.split(':');
+    if (k === 'mic.subscribe') {
       expect(refs[who!] ?? 0, `double subscribe ${who} @ ${ctx}`).toBe(0);
       refs[who!] = 1;
-    } else if (k === "mic.unsubscribe") {
+    } else if (k === 'mic.unsubscribe') {
       expect(refs[who!] ?? 0, `release without ref ${who} @ ${ctx}`).toBe(1);
       refs[who!] = 0;
     }
@@ -160,27 +198,27 @@ function checkStep(
   expect([...r.effects].sort(), `effects @ ${ctx}`).toEqual(
     [...x.effects].sort(),
   );
-  if (r.decision !== "accept") {
+  if (r.decision !== 'accept') {
     expect(r.state, `non-accept must not change state @ ${ctx}`).toEqual(s);
     expect(r.effects).toEqual([]);
     expect(r.reason, `ignored/refused needs a reason @ ${ctx}`).toBeTruthy();
   }
   const refs = { ...m.refs };
-  if ("helperLost" in e) for (const k of Object.keys(refs)) refs[k] = 0;
-  else applyRefs(refs, r.effects, ctx);
+  applyRefs(refs, r.effects, ctx);
   x.m.refs = refs;
   // Invariants on the arbiter's state.
   const st = r.state;
   expect(st.recording).toBe(x.m.recording);
   expect(st.dictating).toBe(x.m.dictating);
+  expect(st.warm).toBe(x.m.warm);
   expect(new Set(st.denied)).toEqual(x.m.denied);
   expect(new Set(st.mic).size, `dup mic subscriber @ ${ctx}`).toBe(
     st.mic.length,
   );
   expect(new Set(st.mic)).toEqual(
     new Set([
-      ...(x.m.recMic ? ["recording"] : []),
-      ...(x.m.dictating ? ["dictation"] : []),
+      ...(x.m.recMic ? ['recording'] : []),
+      ...(x.m.dictMic ? ['dictation'] : []),
     ]),
   );
   // Effect-replayed refcount must equal the arbiter's subscriber list (no leak, no orphan).
@@ -188,21 +226,28 @@ function checkStep(
     new Set(st.mic),
   );
   // Confinement: nobody reads the mic while it is denied.
-  if (st.denied.includes("microphone"))
+  if (st.denied.includes('microphone'))
     expect(st.mic, `mic read while denied @ ${ctx}`).toEqual([]);
   expect(r.mux).toBe(
-    st.mic.includes("recording") && st.mic.includes("dictation"),
+    st.mic.includes('recording') && st.mic.includes('dictation'),
   );
   return { r, m: x.m };
 }
 
 const key = (s: HelperArbiterState, m: Model) =>
-  JSON.stringify([s, [...m.denied].sort(), m.recMic, m.refs]);
+  JSON.stringify([
+    s,
+    [...m.denied].sort(),
+    m.recMic,
+    m.dictMic,
+    m.warm,
+    m.refs,
+  ]);
 const subsets = <T>(xs: T[]): T[][] =>
   xs.reduce<T[][]>((a, x) => [...a, ...a.map((y) => [...y, x])], [[]]);
 
-describe("helper arbiter: independent reference model", () => {
-  it("agrees with the spec model on every reachable state x event (all sequence lengths)", () => {
+describe('helper arbiter: independent reference model', () => {
+  it('agrees with the spec model on every reachable state x event (all sequence lengths)', () => {
     let explored = 0;
     for (const init of subsets(PERMS)) {
       const seen = new Set<string>();
@@ -229,7 +274,7 @@ describe("helper arbiter: independent reference model", () => {
     expect(explored).toBeGreaterThan(1000);
   });
 
-  it("seeded random length-8 sequences hold the same properties", () => {
+  it('seeded random length-8 sequences hold the same properties', () => {
     let seed = 0x5eed;
     const rnd = (n: number) =>
       (seed = (seed * 1103515245 + 12345) & 0x7fffffff) % n;
@@ -245,7 +290,7 @@ describe("helper arbiter: independent reference model", () => {
           s,
           m,
           e,
-          `${JSON.stringify(init)} ${trace.join(" ")}`,
+          `${JSON.stringify(init)} ${trace.join(' ')}`,
         );
         s = out.r.state;
         m = out.m;
@@ -258,9 +303,9 @@ const edges = JSON.parse(
   fs.readFileSync(
     path.resolve(
       __dirname,
-      "../../../../spec/vectors/helper/arbiter-edges.json",
+      '../../../../spec/vectors/helper/arbiter-edges.json',
     ),
-    "utf8",
+    'utf8',
   ),
 ) as {
   cases: {
@@ -270,7 +315,7 @@ const edges = JSON.parse(
   }[];
 };
 
-describe("helper arbiter: edge vectors (spec/vectors/helper/arbiter-edges.json)", () => {
+describe('helper arbiter: edge vectors (spec/vectors/helper/arbiter-edges.json)', () => {
   for (const c of edges.cases)
     it(c.name, () => {
       let s = initialArbiterState(c.initialDenied);

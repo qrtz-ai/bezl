@@ -800,6 +800,9 @@
           "type": {
             "type": "string",
             "const": "recording.stop"
+          },
+          "audioPath": {
+            "type": "string"
           }
         },
         "required": [

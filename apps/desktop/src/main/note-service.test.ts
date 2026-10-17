@@ -643,6 +643,29 @@ describe('NoteService lifecycle (integration with mock helper + real worker hand
     );
   });
 
+  it('H6: a start the helper answers with recording.busy fails fast and only stops its own file', async () => {
+    let sent = false;
+    const r = rig({
+      beforeWrite: (type, _m, note) => {
+        if (type !== 'recording.start' || sent) return;
+        sent = true;
+        note.handle({
+          type: 'error',
+          code: 'recording.busy',
+          message: 'a recording is already running',
+          fatal: false,
+        });
+      },
+    });
+    await detected(r);
+    const t0 = Date.now();
+    await expect(r.note.start()).rejects.toThrow(
+      /still busy with another recording/,
+    );
+    expect(Date.now() - t0).toBeLessThan(1000);
+    expect(r.note.view().phase).not.toBe('recording');
+  });
+
   it('C5: a step never runs if its start could not be persisted (durability barrier), then retries', async () => {
     const r = rig();
     await detected(r);

@@ -31,23 +31,51 @@ Rules (the arbiter's `cmd` events):
 
 1. `recording.*` and `dictation.*` are independent sessions. Starting or stopping one never starts, stops or restarts the other.
 2. Each kind is single-instance. A second `recording.start` while recording, or `dictation.start` while dictating, is
-   **ignored** (it is not queued). The helper logs `"<cmd> while already-recording|already-dictating; ignored"`. Stops
-   and cancels when nothing is running are no-ops (`not-recording` / `not-dictating`). `dictation.stop` and `cancel`
-   with a stale id are no-ops too.
+   **ignored** (it is not queued) and answered with
+   `error{code: "recording.busy" | "dictation.busy", fatal: false}`, so a host waiting for `started` fails at once
+   instead of timing out (and a later `stop` for that id can't hang). Stops and cancels when nothing is running are
+   no-ops (`not-recording` / `not-dictating`). `dictation.stop` and `cancel` with a stale id are no-ops too.
+   `recording.stop` takes an optional `audioPath`: when it names a file other than the one being recorded, the stop is
+   ignored (logged). The host sends the path on every cleanup stop (a stale `recording.started{A}`, a start timeout),
+   so a late ack for an abandoned start never stops the recording that replaced it.
 3. Shared mic tap (`MicHub`). The physical mic (one `AVAudioEngine` input tap) starts on the first reader and stops on
    the last. Readers are `recording` (the capture source's mic leg, mixed with system audio and echo-gated) and `dictation`.
    Every reader gets every block. When both are running, the helper logs `mux: recording and dictation share the mic tap`.
-   The warm mic keeps a `dictation` reader subscribed between dictations. The arbiter models only active sessions.
+   The warm mic keeps a `dictation` reader subscribed between dictations (see Warm mic below).
+   The device start is race-safe: `source.start` runs outside the hub lock, a subscribe during it just joins, and if
+   every reader left (or the tap was dropped) by the time it returns, the hub stops the device again.
 4. Recognisers are not shared. A dictation uses its own recogniser instances (`dictationTranscribers`), so its text
    never appears in the meeting transcript and vice versa. The meeting WAV is unaffected by dictation.
 5. `dictation.start` is **refused** with `error{code: "dictation.mic", message: "microphone access denied"}` when the
    microphone is denied. A recording can still start without the mic (system audio only).
-6. When the helper is lost, every session ends. The host already treats a running dictation as failed when the helper
+6. When the helper is lost, every session ends. The arbiter's `helperLost` releases everything explicitly:
+   `dictation.stop:helper-lost`, `recording.lost`, and `mic.unsubscribe:<who>` for each reader, so refcounts balance. The host already treats a running dictation as failed when the helper
    restarts, and the recording follows the reconnect lifecycle (`recording-lifecycle.md`).
+
+### The arbiter is enforcing
+
+The helper carries out exactly the `mic.subscribe` / `mic.unsubscribe` effects the arbiter returns, on commands,
+`dictation.configure`, revocations and re-grants alike, so the arbiter's `mic` list is the hub's reader list:
+
+- `mic.subscribe:dictation` / `mic.unsubscribe:dictation` attach and detach the dictation engine's reader. The engine
+  never opens or closes the mic by itself when it runs under the controller.
+- `mic.subscribe:recording` permits the capture source's gated hub view (`micHub.view("recording", gated: true)`). If
+  the arbiter did not subscribe the recording (mic denied at start), that view's `start` is skipped and the device is
+  never opened. `mic.unsubscribe:recording` withdraws the permit and the reader.
+
+### Warm mic
+
+`dictation.configure{warmMic}` is an arbiter event, and the state carries a `warm` flag:
+
+- Warm on with the mic usable subscribes the `dictation` reader (the pre-roll fills). `dictation.start` reuses it, and
+  `dictation.stop` / `cancel` keep it. Warm off releases it, or at the end of the current dictation if one is running.
+- A mic revoke drops the reader (and the hub's device) but keeps `warm`. After `dropAll` with no dictation running,
+  the engine is told `micDropped()`, so it forgets the dead reader. When the mic is granted again, the arbiter
+  resubscribes the warm reader, so the next dictation hears audio. A re-grant never resubscribes a running recording.
 
 ## Permission revocation (H5)
 
-While a recording or dictation is running, the helper re-reads TCC every `permissionPollMs` (2 s by default) and diffs
+While a recording or dictation is running, or the warm mic is on (even with nothing running), the helper re-reads TCC every `permissionPollMs` (2 s by default) and diffs
 it against the last snapshot. A granted → denied transition emits:
 
 ```json
@@ -75,11 +103,15 @@ On the host side:
 
 ## Tests
 
-- Shared vectors (10 cases, 49 steps): `packages/core/src/helper/arbiter.test.ts`, `ArbiterTests.testSharedVectors`.
+- Shared vectors (13 cases): `packages/core/src/helper/arbiter.test.ts`, `ArbiterTests.testSharedVectors`. Edge vectors
+  (`spec/vectors/helper/arbiter-edges.json`) are replayed by `arbiter-model.test.ts` (an independent model, run
+  exhaustively over reachable states, including warm/configure) and by `ArbiterTests.testEdgeVectors`.
 - Swift: `ArbiterTests`. Covers `MicHub` refcount and fan-out, mux through `HelperController`, mic revoked mid-mux, and
-  accessibility revoked during dictation.
+  accessibility revoked during dictation, the warm mic after a revoke and re-grant, busy errors and a mismatched stop
+  path, the gated recording view with the mic denied, and an unsubscribe racing the device start.
 - Mock helper (child protocol): `packages/core/src/helper/mock-concurrency.test.ts`.
-- Host: `note-service.test.ts` (live `mic-only` → `audio-unavailable`, `no-mic`) and `talk-service.test.ts` (graceful stop, then refusal).
+- Host: `note-service.test.ts` (live `mic-only` → `audio-unavailable`, `no-mic`, `recording.busy`) and `talk-service.test.ts`
+  (graceful stop, then refusal, `dictation.busy`).
 - e2e: `e2e/permissions.spec.ts`. Uses `QRTZ_MOCK_REVOKE="screen-recording@800,microphone@2000"` to revoke TCC that
   many ms after the first capture.
 - On a real Mac: see `mac-verify.md` (revoking in System Settings mid-capture, and two readers on one input device).

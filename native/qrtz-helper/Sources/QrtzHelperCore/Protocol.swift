@@ -61,7 +61,8 @@ public enum HostMessage: Equatable, Sendable {
     case permissionsRequest(OsPermission)
     case shutdown
     case recordingStart(audioPath: String)
-    case recordingStop
+    /// audioPath (optional): only stop the recording writing this file; a stop for any other path is ignored.
+    case recordingStop(audioPath: String? = nil)
     /// Privacy pause: audio is replaced by silence (timeline stays aligned) and nothing reaches the recogniser.
     case recordingPause
     case recordingResume
@@ -252,7 +253,8 @@ extension HostMessage {
         case .permissionsRequest(let p): return .object(["type": s("permissions.request"), "permission": s(p.rawValue)])
         case .shutdown: return .object(["type": s("shutdown")])
         case .recordingStart(let p): return .object(["type": s("recording.start"), "audioPath": s(p)])
-        case .recordingStop: return .object(["type": s("recording.stop")])
+        case .recordingStop(let p):
+            return p.map { .object(["type": s("recording.stop"), "audioPath": s($0)]) } ?? .object(["type": s("recording.stop")])
         case .recordingPause: return .object(["type": s("recording.pause")])
         case .recordingResume: return .object(["type": s("recording.resume")])
         case .dictationConfigure(let warm, let pre, let stream, let key):
@@ -273,7 +275,7 @@ extension HostMessage {
         case "permissions.request": self = .permissionsRequest(try f.enumValue("permission", OsPermission.self))
         case "shutdown": self = .shutdown
         case "recording.start": self = .recordingStart(audioPath: try f.str("audioPath"))
-        case "recording.stop": self = .recordingStop
+        case "recording.stop": self = .recordingStop(audioPath: try f.optStr("audioPath"))
         case "recording.pause": self = .recordingPause
         case "recording.resume": self = .recordingResume
         case "dictation.configure":

@@ -75,7 +75,21 @@ export function createMockHelper(
   const admit = (e: HelperArbiterEvent) => {
     const r = arbiterStep(arb, e);
     arb = r.state;
-    if (r.decision === 'ignore')
+    if (r.decision === 'ignore' && r.reason === 'already-recording')
+      emit({
+        type: 'error',
+        code: 'recording.busy',
+        message: 'a recording is already running',
+        fatal: false,
+      });
+    else if (r.decision === 'ignore' && r.reason === 'already-dictating')
+      emit({
+        type: 'error',
+        code: 'dictation.busy',
+        message: 'a dictation is already running',
+        fatal: false,
+      });
+    else if (r.decision === 'ignore')
       emit({
         type: 'log',
         level: 'warn',
@@ -343,6 +357,7 @@ export function createMockHelper(
             preRollMs: m.preRollMs,
             warmMic: m.warmMic,
           };
+          admit({ configure: { warmMic: m.warmMic } });
           return;
         case 'dictation.start':
           if (admit({ cmd: 'dictation.start' }).decision !== 'accept') return;
@@ -378,6 +393,15 @@ export function createMockHelper(
           );
         }
         case 'recording.stop':
+          // A stop aimed at another file (stale-start cleanup racing a newer recording) is ignored.
+          if (m.audioPath && arb.recording && m.audioPath !== audioPath) {
+            emit({
+              type: 'log',
+              level: 'warn',
+              msg: `recording.stop for ${m.audioPath} while recording ${audioPath}; ignored`,
+            });
+            return;
+          }
           if (admit({ cmd: 'recording.stop' }).decision !== 'accept') return;
           paused = false;
           clearScript();

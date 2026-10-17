@@ -13,6 +13,8 @@ final class MutablePerms: PermissionsProvider, @unchecked Sendable {
 final class ArbiterTests: XCTestCase {
     static let vectors = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         .appendingPathComponent("../../../../spec/vectors/helper/arbiter.json").standardized
+    static let edges = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        .appendingPathComponent("../../../../spec/vectors/helper/arbiter-edges.json").standardized
 
     private func perm(_ s: String) -> OsPermission { OsPermission(rawValue: s)! }
 
@@ -21,6 +23,7 @@ final class ArbiterTests: XCTestCase {
         if let c = o["cmd"]?.string { return .cmd(c) }
         if let p = o["revoked"]?.string { return .revoked(perm(p)) }
         if let p = o["granted"]?.string { return .granted(perm(p)) }
+        if let c = o["configure"]?.object { return .configure(warmMic: c["warmMic"]!.bool!) }
         return .helperLost
     }
 
@@ -28,15 +31,27 @@ final class ArbiterTests: XCTestCase {
         let o = v.object!
         var s = ArbiterState(denied: o["denied"]!.array!.map { perm($0.string!) })
         s.recording = o["recording"]!.bool!; s.dictating = o["dictating"]!.bool!
+        s.warm = o["warm"]!.bool!
         s.mic = o["mic"]!.array!.map { $0.string! }
         return s
     }
 
     /// Same vectors as packages/core/src/helper/arbiter.test.ts: the TS and Swift arbiters cannot drift.
     func testSharedVectors() throws {
-        let root = try JSONValue.parse(String(contentsOf: Self.vectors, encoding: .utf8))
+        let steps = try replay(Self.vectors, expectCases: 13)
+        XCTAssertGreaterThan(steps, 40)
+    }
+
+    /// Bozniak's edge vectors (spec/vectors/helper/arbiter-edges.json), also replayed by arbiter-model.test.ts.
+    func testEdgeVectors() throws {
+        let steps = try replay(Self.edges, expectCases: nil)
+        XCTAssertGreaterThan(steps, 0)
+    }
+
+    private func replay(_ url: URL, expectCases: Int?) throws -> Int {
+        let root = try JSONValue.parse(String(contentsOf: url, encoding: .utf8))
         let cases = root.object!["cases"]!.array!
-        XCTAssertEqual(cases.count, 10)
+        if let n = expectCases { XCTAssertEqual(cases.count, n) }
         var steps = 0
         for c in cases {
             let co = c.object!
@@ -54,7 +69,7 @@ final class ArbiterTests: XCTestCase {
                 s = r.state; steps += 1
             }
         }
-        XCTAssertGreaterThan(steps, 40)
+        return steps
     }
 
     func testMicHubRefcountsAndFansOut() throws {
@@ -96,12 +111,12 @@ final class ArbiterTests: XCTestCase {
         XCTAssertTrue(st.recording && st.dictating)
         XCTAssertTrue(out.value.contains(.log(level: .info, msg: "mux: recording and dictation share the mic tap")))
         await c.handle(.dictationStart(id: "d2"))
-        XCTAssertTrue(out.value.contains(.log(level: .warn, msg: "dictation.start while already-dictating; ignored")))
+        XCTAssertTrue(out.value.contains(.error(code: "dictation.busy", message: "a dictation is already running", fatal: false)))
         mic.cb?([Float](repeating: 0.1, count: 1600))
         await c.handle(.dictationStop(id: "d1"))
         XCTAssertTrue(out.value.contains { if case .dictationStopped("d1", _, _, nil) = $0 { true } else { false } })
         XCTAssertEqual(hub.subscribers, ["recording"]); XCTAssertEqual(mic.stops, 0, "meeting keeps the tap")
-        await c.handle(.recordingStop)
+        await c.handle(.recordingStop())
         XCTAssertTrue(out.value.contains { if case .recordingStopped = $0 { true } else { false } })
         try? FileManager.default.removeItem(atPath: path)
     }
@@ -132,7 +147,7 @@ final class ArbiterTests: XCTestCase {
         XCTAssertTrue(out.value.contains(.permissionRevoked(permission: .screenRecording, atMs: 0)))
         await c.checkPermissions()
         XCTAssertEqual(out.value.filter { if case .permissionRevoked = $0 { true } else { false } }.count, 2, "revocations fire once")
-        await c.handle(.recordingStop)
+        await c.handle(.recordingStop())
         try? FileManager.default.removeItem(atPath: path)
     }
 
@@ -151,4 +166,103 @@ final class ArbiterTests: XCTestCase {
         XCTAssertEqual(st.denied, [])
         await c.handle(.dictationStop(id: "d1"))
     }
+
+    private func tmp(_ n: String) -> String { FileManager.default.temporaryDirectory.appendingPathComponent("\(n)-\(UUID()).wav").path }
+
+    /// Bug 1: configure warm, record, revoke the mic with no dictation, re-grant: the next dictation must hear.
+    func testWarmMicHearsAgainAfterRevokeAndRegrant() async throws {
+        let out = Box<[HelperMessage]>([]), mic = FakeMic(), hub = MicHub(source: mic), perms = MutablePerms()
+        let c = controller(perms, hub, out)
+        await c.handle(.dictationConfigure(warmMic: true, preRollMs: 300, streamAudio: false, pushKey: ""))
+        XCTAssertEqual(hub.subscribers, ["dictation"])
+        let path = tmp("warm")
+        await c.handle(.recordingStart(audioPath: path))
+        perms.set(.microphone, .denied)
+        await c.checkPermissions()
+        XCTAssertEqual(hub.subscribers, []); XCTAssertFalse(hub.isRunning)
+        var running = await c.dictation.isMicRunning
+        XCTAssertFalse(running, "engine forgot the dropped reader")
+        perms.set(.microphone, .granted)
+        await c.checkPermissions()
+        running = await c.dictation.isMicRunning
+        XCTAssertTrue(running); XCTAssertEqual(hub.subscribers, ["dictation"], "warm reader is back, recording is not resubscribed")
+        await c.handle(.dictationStart(id: "d1"))
+        XCTAssertNotNil(mic.cb, "device is open again")
+        mic.cb?([Float](repeating: 0.1, count: 1600))
+        try await Task.sleep(nanoseconds: 100_000_000)  // samples hop through the engine's ordered stream
+        await c.handle(.dictationStop(id: "d1"))
+        XCTAssertTrue(out.value.contains { if case .dictationStopped("d1", let text, _, nil) = $0 { text == "hello world" } else { false } }, "dictation heard audio")
+        XCTAssertEqual(hub.subscribers, ["dictation"], "warm mic keeps the reader after stop")
+        await c.handle(.dictationConfigure(warmMic: false, preRollMs: 300, streamAudio: false, pushKey: ""))
+        XCTAssertEqual(hub.subscribers, [])
+        await c.handle(.recordingStop())
+        try? FileManager.default.removeItem(atPath: path)
+    }
+
+    /// Bug 2: a second recording.start answers recording.busy; a stop for another file is ignored.
+    func testRecordingBusyAndMismatchedStopPath() async throws {
+        let out = Box<[HelperMessage]>([]), hub = MicHub(source: FakeMic())
+        let c = controller(MutablePerms(), hub, out)
+        let a = tmp("a"), b = tmp("b")
+        await c.handle(.recordingStart(audioPath: a))
+        await c.handle(.recordingStart(audioPath: b))
+        XCTAssertTrue(out.value.contains(.error(code: "recording.busy", message: "a recording is already running", fatal: false)))
+        await c.handle(.recordingStop(audioPath: b))
+        var rec = await c.isRecording
+        XCTAssertTrue(rec, "stale stop for another path does not kill the real recording")
+        await c.handle(.recordingStop(audioPath: a))
+        rec = await c.isRecording
+        XCTAssertFalse(rec)
+        XCTAssertTrue(out.value.contains { if case .recordingStopped(a, _) = $0 { true } else { false } })
+        for p in [a, b] { try? FileManager.default.removeItem(atPath: p) }
+    }
+
+    /// Bug 3: with the mic denied the arbiter does not subscribe the recording, so its gated hub view is skipped.
+    func testRecordingWithMicDeniedNeverOpensTheMic() async throws {
+        let out = Box<[HelperMessage]>([]), mic = FakeMic(), hub = MicHub(source: mic), perms = MutablePerms()
+        perms.set(.microphone, .denied)
+        let view = hub.view("recording", gated: true)
+        let c = controller(perms, hub, out, audio: [FakeAudio("sck")])
+        let path = tmp("denied")
+        await c.handle(.recordingStart(audioPath: path))
+        try view.start { _ in }
+        XCTAssertEqual(mic.starts, 0); XCTAssertEqual(hub.subscribers, [])
+        await c.handle(.recordingStop())
+        perms.set(.microphone, .granted)
+        await c.checkPermissions()
+        await c.handle(.recordingStart(audioPath: path))
+        try view.start { _ in }
+        XCTAssertEqual(hub.subscribers, ["recording"], "permitted once the arbiter subscribed it")
+        await c.handle(.recordingStop())
+        XCTAssertEqual(hub.subscribers, [])
+        try? FileManager.default.removeItem(atPath: path)
+    }
+
+    /// Bug 4: an unsubscribe while source.start is still running must not leave the device on.
+    func testMicHubUnsubscribeDuringStartStopsTheDevice() throws {
+        let mic = SlowMic(), hub = MicHub(source: mic)
+        let done = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async { try? hub.subscribe("dictation") { _ in }; done.signal() }
+        mic.entered.wait()
+        hub.unsubscribe("dictation")
+        mic.release.signal()
+        done.wait()
+        XCTAssertFalse(hub.isRunning); XCTAssertEqual(mic.stops.value, 1, "orphaned start is stopped")
+        // Resubscribe during start keeps it running.
+        DispatchQueue.global().async { try? hub.subscribe("dictation") { _ in }; done.signal() }
+        mic.entered.wait()
+        hub.unsubscribe("dictation")
+        try hub.subscribe("recording") { _ in }
+        mic.release.signal()
+        done.wait()
+        XCTAssertTrue(hub.isRunning); XCTAssertEqual(mic.stops.value, 1)
+        XCTAssertEqual(mic.starts.value, 2, "no second device start while one was in flight")
+    }
+}
+
+final class SlowMic: MicSource, @unchecked Sendable {
+    let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
+    let starts = Box<Int>(0), stops = Box<Int>(0)
+    func start(onSamples: @escaping @Sendable ([Float]) -> Void) throws { starts.mutate { $0 += 1 }; entered.signal(); release.wait() }
+    func stop() { stops.mutate { $0 += 1 } }
 }

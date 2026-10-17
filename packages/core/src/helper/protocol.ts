@@ -144,7 +144,11 @@ export const HostToHelper = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('shutdown') }),
   z.object({ type: z.literal('recording.start'), audioPath: z.string() }),
-  z.object({ type: z.literal('recording.stop') }),
+  z.object({
+    type: z.literal('recording.stop'),
+    /** Only stop the recording writing this file; the helper ignores a stop for any other path. */
+    audioPath: z.string().optional(),
+  }),
   /** Privacy pause: the helper writes silence and transcribes nothing until resume. */
   z.object({ type: z.literal('recording.pause') }),
   z.object({ type: z.literal('recording.resume') }),

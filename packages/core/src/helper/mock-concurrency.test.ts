@@ -54,14 +54,35 @@ describe('mock helper: concurrent recording.* + dictation.* (mux)', () => {
     send({ type: 'dictation.start', id: 'b' });
     expect(of(got, 'recording.started')).toHaveLength(1);
     expect(of(got, 'dictation.started').map((m) => m.id)).toEqual(['a']);
-    expect(of(got, 'log').map((m) => m.msg)).toEqual(
-      expect.arrayContaining([
-        'recording.start while already-recording; ignored',
-        'dictation.start while already-dictating; ignored',
-      ]),
-    );
+    // Ignored starts are answered, so a host waiting for started{} never hangs.
+    expect(of(got, 'error')).toEqual([
+      {
+        type: 'error',
+        code: 'recording.busy',
+        message: 'a recording is already running',
+        fatal: false,
+      },
+      {
+        type: 'error',
+        code: 'dictation.busy',
+        message: 'a dictation is already running',
+        fatal: false,
+      },
+    ]);
     send({ type: 'dictation.cancel', id: 'b' });
     expect(of(got, 'dictation.stopped')).toHaveLength(0);
+    h.kill();
+  });
+
+  it('recording.stop with another audioPath is ignored; the matching path stops', () => {
+    const { h, got, send } = rig();
+    send({ type: 'recording.start', audioPath: '/tmp/b.wav' });
+    send({ type: 'recording.stop', audioPath: '/tmp/a.wav' });
+    expect(of(got, 'recording.stopped')).toHaveLength(0);
+    send({ type: 'recording.stop', audioPath: '/tmp/b.wav' });
+    expect(of(got, 'recording.stopped')).toEqual([
+      expect.objectContaining({ audioPath: '/tmp/b.wav' }),
+    ]);
     h.kill();
   });
 

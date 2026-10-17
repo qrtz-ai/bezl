@@ -47,7 +47,7 @@ final class ControllerTests: XCTestCase {
         XCTAssertNotNil(fallback.cb)
         await c.onSamples([Float](repeating: 0.2, count: 16_000))
         clock.mutate { $0 += 1000 }
-        await c.handle(.recordingStop)
+        await c.handle(.recordingStop())
         let msgs = out.value
         XCTAssertEqual(msgs.first.map { if case .hello = $0 { true } else { false } }, true)
         XCTAssertTrue(msgs.contains(.pong(id: "x")))
@@ -76,7 +76,7 @@ final class ControllerTests: XCTestCase {
         await c.onSamples([Float](repeating: 0.2, count: 16_000))
         XCTAssertEqual(asr.text, "Hello from the fake recogniser.")
         clock.mutate { $0 += 2000 }
-        await c.handle(.recordingStop)
+        await c.handle(.recordingStop())
         XCTAssertTrue(out.value.contains(.recordingStopped(audioPath: path, durationMs: 2000)))
         XCTAssertEqual(try HostMessage(json: HostMessage.recordingPause.json), .recordingPause)
     }

@@ -4,6 +4,7 @@
 
 - **Concurrent recording + dictation (mux):** a dictation runs during a meeting recording and both read the mic through one shared tap (`MicHub`). Each kind is single-instance (duplicate starts are ignored, not queued), and `dictation.start` is refused when the mic is denied. Spec: `docs/helper-protocol.md`, ADR 0004.
 - **Permission revoked mid-capture:** the helper polls TCC while capturing and emits `permission.revoked`. Recordings degrade live (new `no-mic` flag, plus `mic-only`, `audio-unavailable` and `ax-unavailable`) and keep running. Dictation stops gracefully, keeping and inserting what was heard. Onboarding no longer covers a running recording.
+- **Arbiter wiring fixes (review of 91d11bb):** the arbiter is now enforcing (the helper performs every mic effect, on commands too) and models the warm mic, so a warm mic no longer goes deaf after a revoke and re-grant. Ignored starts answer `error{recording.busy | dictation.busy}`. `recording.stop` takes an optional `audioPath`, so a late stale ack can't stop the real recording. `MicHub` stops a device whose start raced the last unsubscribe. A recording started with the mic denied never opens it. `helperLost` releases every reader. TCC is polled while the mic is warm.
 - One pure arbiter in TS and Swift with shared vectors (`spec/vectors/helper/arbiter.json`). Mock helper: `QRTZ_MOCK_REVOKE="microphone@1500"`.
 
 ## Unreleased: qrtz talk

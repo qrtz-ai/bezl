@@ -47,7 +47,7 @@ import type { WorkerClient } from './worker-client';
 
 interface Waiter {
   type: string;
-  resolve: (m: HelperToHost) => void;
+  resolve: (m: HelperToHost | null) => void;
   match?: (m: HelperToHost) => boolean;
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -86,6 +86,8 @@ export class NoteService {
   private waiters: Waiter[] = [];
   /** Audio path of the recording.start in flight (start or resume); acks for any other path are stale. */
   private pendingStartPath: string | null = null;
+  /** The helper answered our start with error{recording.busy}: another recording still owns it. */
+  private startRefusedBusy = false;
   private emitTimer: NodeJS.Timeout | null = null;
   private persisted = new Set<string>();
   private paused = false;
@@ -284,7 +286,8 @@ export class NoteService {
         ) {
           this.deps.log.warn('stale recording.started; stopping it');
           try {
-            this.send({ type: 'recording.stop' });
+            // With the path, so a late started{A} can never stop the recording that replaced it.
+            this.send({ type: 'recording.stop', audioPath: m.audioPath });
           } catch {
             /* helper gone */
           }
@@ -310,7 +313,16 @@ export class NoteService {
           code: m.code,
           message: m.message,
         });
-        if (m.code === 'asr.unavailable') this.degrade('asr-unavailable');
+        if (m.code === 'recording.busy' && this.pendingStartPath) {
+          // The start was ignored: fail it now instead of waiting out the ack timeout.
+          this.startRefusedBusy = true;
+          for (const w of this.waiters.slice())
+            if (w.type === 'recording.started') {
+              this.waiters.splice(this.waiters.indexOf(w), 1);
+              w.resolve(null);
+            }
+        } else if (m.code === 'asr.unavailable')
+          this.degrade('asr-unavailable');
         else if (m.code === 'audio.unavailable')
           this.degrade('audio-unavailable');
         break;
@@ -602,6 +614,7 @@ export class NoteService {
     });
     this.deps.bus.emit('note:changed', { id });
     this.pendingStartPath = audioPath;
+    this.startRefusedBusy = false;
     const acked = this.waitFor(
       'recording.started',
       RETRY_POLICIES.startAckMs * Math.max(this.scale, 0.2),
@@ -625,18 +638,30 @@ export class NoteService {
         this.machine.state.phase !== 'starting'
       )
         return this.view();
-      const error: LifecycleError = {
-        code: 'start-timeout',
-        message: 'The capture helper did not start recording. Try again.',
-        retryable: true,
-      };
+      const busy = this.startRefusedBusy;
+      this.startRefusedBusy = false;
+      const error: LifecycleError = busy
+        ? {
+            code: 'helper-busy',
+            message:
+              'The capture helper is still busy with another recording. Try again.',
+            retryable: true,
+          }
+        : {
+            code: 'start-timeout',
+            message: 'The capture helper did not start recording. Try again.',
+            retryable: true,
+          };
       try {
-        this.send({ type: 'recording.stop' });
+        // Only this attempt's file: never the recording that made the helper busy.
+        this.send({ type: 'recording.stop', audioPath });
       } catch {
         /* helper gone */
       }
       await this.abortStart(id, error);
-      throw new AppError('E_TIMEOUT', error.message, { retryable: true });
+      throw new AppError(busy ? 'E_UNAVAILABLE' : 'E_TIMEOUT', error.message, {
+        retryable: true,
+      });
     }
     if (
       this.machine.state.meetingId !== id ||

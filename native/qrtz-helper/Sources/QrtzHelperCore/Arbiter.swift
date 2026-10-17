@@ -9,6 +9,9 @@ import Foundation
 public struct ArbiterState: Equatable, Sendable {
     public var recording = false
     public var dictating = false
+    /// Warm mic (dictation.configure warmMic): the dictation reader stays subscribed between dictations.
+    /// Survives a mic revoke; the reader comes back on re-grant.
+    public var warm = false
     /// Who reads the shared mic tap ("recording", "dictation"), in subscription order.
     public var mic: [String] = []
     /// Revoked/denied permissions, in the order they were lost.
@@ -18,6 +21,7 @@ public struct ArbiterState: Equatable, Sendable {
 
 public enum ArbiterEvent: Equatable, Sendable {
     case cmd(String)  // recording.start|stop, dictation.start|stop|cancel
+    case configure(warmMic: Bool)
     case revoked(OsPermission)
     case granted(OsPermission)
     case helperLost
@@ -47,12 +51,23 @@ public enum SessionArbiter {
             ArbiterResult(state: st, decision: d, reason: reason, mux: st.mic.contains("recording") && st.mic.contains("dictation"), effects: fx)
         }
         let micOk = !s.denied.contains(.microphone)
+        let hasDict = s.mic.contains("dictation")
         var n = s
         switch e {
         case .helperLost:
-            return r(ArbiterState(denied: s.denied), "accept", s.dictating ? ["dictation.stop:helper-lost"] : [])
+            var fx: [String] = []
+            if s.dictating { fx.append("dictation.stop:helper-lost") }
+            if s.recording { fx.append("recording.lost") }
+            fx += s.mic.map { "mic.unsubscribe:\($0)" }
+            return r(ArbiterState(denied: s.denied), "accept", fx)
+        case .configure(let warm):
+            n.warm = warm
+            if warm && micOk && !hasDict { n.mic.append("dictation"); return r(n, "accept", ["mic.subscribe:dictation"]) }
+            if !warm && hasDict && !s.dictating { n.mic.removeAll { $0 == "dictation" }; return r(n, "accept", ["mic.unsubscribe:dictation"]) }
+            return r(n, "accept")
         case .granted(let p):
             n.denied.removeAll { $0 == p }
+            if p == .microphone && !micOk && s.warm && !hasDict { n.mic.append("dictation"); return r(n, "accept", ["mic.subscribe:dictation"]) }
             return r(n, "accept")
         case .revoked(let p):
             if s.denied.contains(p) { return r(s, "ignore", [], "unchanged") }
@@ -83,13 +98,15 @@ public enum SessionArbiter {
                 if s.dictating { return r(s, "ignore", [], "already-dictating") }
                 if !micOk { return r(s, "refuse", [], "microphone-denied") }
                 n.dictating = true
-                n.mic.removeAll { $0 == "dictation" }; n.mic.append("dictation")
+                if hasDict { return r(n, "accept") }  // reuse the warm reader
+                n.mic.append("dictation")
                 return r(n, "accept", ["mic.subscribe:dictation"])
             case "dictation.stop", "dictation.cancel":
                 if !s.dictating { return r(s, "ignore", [], "not-dictating") }
                 n.dictating = false
+                if s.warm && hasDict { return r(n, "accept") }  // warm mic keeps the reader
                 n.mic.removeAll { $0 == "dictation" }
-                return r(n, "accept", ["mic.unsubscribe:dictation"])
+                return r(n, "accept", hasDict ? ["mic.unsubscribe:dictation"] : [])
             default:
                 return r(s, "ignore", [], "unknown-command")
             }
@@ -104,23 +121,40 @@ public final class MicHub: @unchecked Sendable {
     private let lock = NSLock()
     private var subs: [(id: String, cb: @Sendable ([Float]) -> Void)] = []
     private var running = false
+    /// source.start is in flight (called outside the lock). Subscribes during it just join; unsubscribes during it
+    /// leave the device to the post-start check, which stops it again if nobody is subscribed any more.
+    private var starting = false
+    /// Gated readers may only attach while the arbiter has subscribed them (permit). A gated view whose start is
+    /// not permitted is skipped, so a recording started with the mic denied never opens the device.
+    private var gated: Set<String> = []
+    private var permits: Set<String> = []
     public init(source: MicSource) { self.source = source }
 
     public var subscribers: [String] { lock.lock(); defer { lock.unlock() }; return subs.map(\.id) }
     public var isRunning: Bool { lock.lock(); defer { lock.unlock() }; return running }
 
+    public func permit(_ id: String) { lock.lock(); permits.insert(id); lock.unlock() }
+    public func revokePermit(_ id: String) { lock.lock(); permits.remove(id); lock.unlock() }
+    func mayAttach(_ id: String) -> Bool { lock.lock(); defer { lock.unlock() }; return !gated.contains(id) || permits.contains(id) }
+
     public func subscribe(_ id: String, _ cb: @escaping @Sendable ([Float]) -> Void) throws {
         lock.lock()
         subs.removeAll { $0.id == id }
         subs.append((id, cb))
-        let needStart = !running
-        if needStart { running = true }
+        let needStart = !running && !starting
+        if needStart { starting = true }
         lock.unlock()
         guard needStart else { return }
         do { try source.start(onSamples: { [weak self] s in self?.fanOut(s) }) } catch {
-            lock.lock(); running = false; subs.removeAll { $0.id == id }; lock.unlock()
+            lock.lock(); starting = false; subs.removeAll { $0.id == id }; lock.unlock()
             throw error
         }
+        lock.lock()
+        starting = false
+        let orphan = subs.isEmpty  // everyone left (or the tap was dropped) while the device was starting
+        running = !orphan
+        lock.unlock()
+        if orphan { source.stop() }
     }
 
     public func unsubscribe(_ id: String) {
@@ -134,7 +168,7 @@ public final class MicHub: @unchecked Sendable {
 
     /// Microphone revoked: every reader loses the tap and the device stops.
     public func dropAll() {
-        lock.lock(); subs.removeAll(); let wasRunning = running; running = false; lock.unlock()
+        lock.lock(); subs.removeAll(); permits.removeAll(); let wasRunning = running; running = false; lock.unlock()
         if wasRunning { source.stop() }
     }
 
@@ -144,12 +178,19 @@ public final class MicHub: @unchecked Sendable {
     }
 
     /// A MicSource view for one reader, so existing consumers (DictationEngine, capture sources) stay unchanged.
-    public func view(_ id: String) -> MicSource { HubMic(hub: self, id: id) }
+    /// `gated`: the view only attaches while permitted (the controller permits "recording" on mic.subscribe:recording).
+    public func view(_ id: String, gated: Bool = false) -> MicSource {
+        if gated { lock.lock(); self.gated.insert(id); lock.unlock() }
+        return HubMic(hub: self, id: id)
+    }
 }
 
 final class HubMic: MicSource, @unchecked Sendable {
     let hub: MicHub; let id: String
     init(hub: MicHub, id: String) { self.hub = hub; self.id = id }
-    func start(onSamples: @escaping @Sendable ([Float]) -> Void) throws { try hub.subscribe(id, onSamples) }
+    func start(onSamples: @escaping @Sendable ([Float]) -> Void) throws {
+        guard hub.mayAttach(id) else { return }  // arbiter did not subscribe this reader (mic denied): skip
+        try hub.subscribe(id, onSamples)
+    }
     func stop() { hub.unsubscribe(id) }
 }

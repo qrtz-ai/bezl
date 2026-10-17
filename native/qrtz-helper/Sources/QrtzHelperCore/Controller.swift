@@ -103,7 +103,7 @@ public actor HelperController {
         self.lastPerms = st
         self.arbiter = ArbiterState(denied: OsPermission.allCases.filter { st[$0] == .denied })
         self.dictation = DictationEngine(mic: deps.dictationMic, transcribers: deps.dictationTranscribers,
-                                         inserter: deps.insertion.map { TextInserter(backend: $0) }, hotkeys: deps.hotkeys, send: send, now: now)
+                                         inserter: deps.insertion.map { TextInserter(backend: $0) }, hotkeys: deps.hotkeys, send: send, now: now, managedMic: true)
     }
     public let dictation: DictationEngine
 
@@ -129,41 +129,59 @@ public actor HelperController {
             await deps.permissions.request(p)
             send(.permissionsStatus(deps.permissions.status()))
         case .recordingStart(let path):
-            guard admit(.cmd("recording.start")) else { return }
+            guard await admit(.cmd("recording.start")) else { return }
             await startRecording(path)
-        case .recordingStop:
-            guard admit(.cmd("recording.stop")) else { return }
+        case .recordingStop(let path):
+            // A stop aimed at another file (the host's stale-start cleanup racing a newer recording) is ignored.
+            if let path, let rec = recording, rec.wav.url.path != path {
+                send(.log(level: .warn, msg: "recording.stop for \(path) while recording \(rec.wav.url.path); ignored")); return
+            }
+            guard await admit(.cmd("recording.stop")) else { return }
             await stopRecording()
         case .recordingPause: paused = true; send(.log(level: .info, msg: "capture paused"))
         case .recordingResume: paused = false; send(.log(level: .info, msg: "capture resumed"))
         case .shutdown: await shutdown()
         case .dictationConfigure(let warm, let pre, let stream, let key):
             await dictation.configure(warmMic: warm, preRollMs: pre, streamAudio: stream, pushKey: key)
+            _ = await admit(.configure(warmMic: warm))
+            watchPermissions()
         case .dictationStart(let id):
-            guard admit(.cmd("dictation.start")) else { return }
+            guard await admit(.cmd("dictation.start")) else { return }
             await dictation.start(id: id)
-            if await !dictation.isActive { arbiter.dictating = false; arbiter.mic.removeAll { $0 == "dictation" } }
+            // The engine could not start (no source): undo through the arbiter so the reader is released too.
+            if await !dictation.isActive { _ = await admit(.cmd("dictation.cancel")) }
             watchPermissions()
         case .dictationStop(let id):
-            guard await dictation.activeId == id, admit(.cmd("dictation.stop")) else { return }
+            guard await dictation.activeId == id else { return }
             await dictation.stop(id: id)
+            _ = await admit(.cmd("dictation.stop"))
         case .dictationCancel(let id):
-            guard await dictation.activeId == id, admit(.cmd("dictation.cancel")) else { return }
+            guard await dictation.activeId == id else { return }
             await dictation.cancel(id: id)
+            _ = await admit(.cmd("dictation.cancel"))
         case .insertText(let id, let text, let restore): await dictation.insert(id: id, text: text, restoreClipboard: restore)
         }
     }
 
     public func heartbeat() { send(.heartbeat(ts: now())) }
 
-    /// Runs a command through the arbiter. Ignored commands are logged; a refused dictation.start is an error.
-    private func admit(_ e: ArbiterEvent) -> Bool {
+    /// Runs an event through the arbiter and carries out its mic effects (the arbiter is enforcing: its `mic`
+    /// list is the hub's reader list). An ignored start answers error{recording.busy | dictation.busy}; a refused
+    /// dictation.start answers error{dictation.mic}; other ignored commands are logged.
+    @discardableResult
+    func admit(_ e: ArbiterEvent) async -> Bool {
         let r = SessionArbiter.step(arbiter, e)
         arbiter = r.state
+        await apply(r.effects)
         guard case .cmd(let c) = e else { return true }
         switch r.decision {
         case "ignore":
-            send(.log(level: .warn, msg: "\(c) while \(r.reason ?? "busy"); ignored")); return false
+            switch r.reason {
+            case "already-recording": send(.error(code: "recording.busy", message: "a recording is already running", fatal: false))
+            case "already-dictating": send(.error(code: "dictation.busy", message: "a dictation is already running", fatal: false))
+            default: send(.log(level: .warn, msg: "\(c) while \(r.reason ?? "busy"); ignored"))
+            }
+            return false
         case "refuse":
             send(.error(code: "dictation.mic", message: "microphone access denied", fatal: false)); return false
         default:
@@ -172,9 +190,26 @@ public actor HelperController {
         }
     }
 
-    /// H5: polls TCC while anything captures; stops by itself once idle.
+    private func apply(_ effects: [String]) async {
+        for fx in effects {
+            switch fx {
+            case "mic.subscribe:dictation": await dictation.attachMic()
+            case "mic.unsubscribe:dictation": await dictation.detachMic()
+            case "mic.subscribe:recording": deps.micHub?.permit("recording")
+            case "mic.unsubscribe:recording": deps.micHub?.revokePermit("recording"); deps.micHub?.unsubscribe("recording")
+            case "dictation.stop:permission-revoked": await dictation.abort(reason: .permissionRevoked)
+            default: break  // degrade:* is applied by the host; helper-lost/recording.lost never happen in-process
+            }
+        }
+    }
+
+    /// Anything holding (or wanting) the mic: a recording, a dictation, or the warm mic, even with nothing running,
+    /// so a revoke drops the warm reader promptly and a re-grant brings it back.
+    private var pollWanted: Bool { arbiter.recording || arbiter.dictating || arbiter.warm }
+
+    /// H5: polls TCC while anything captures or the mic is warm; stops by itself once idle.
     func watchPermissions() {
-        guard permWatch == nil, deps.permissionPollMs > 0, arbiter.recording || arbiter.dictating else { return }
+        guard permWatch == nil, deps.permissionPollMs > 0, pollWanted else { return }
         let ns = UInt64(deps.permissionPollMs) * 1_000_000
         permWatch = Task { [weak self] in
             while !Task.isCancelled {
@@ -186,7 +221,7 @@ public actor HelperController {
 
     private func pollPermissionsOnce() async -> Bool {
         await checkPermissions()
-        if arbiter.recording || arbiter.dictating { return true }
+        if pollWanted { return true }
         permWatch = nil
         return false
     }
@@ -201,16 +236,17 @@ public actor HelperController {
             let was = lastPerms[p], now = st[p]
             if now == .denied, was != .denied {
                 let r = SessionArbiter.step(arbiter, .revoked(p))
-                arbiter = r.state
-                guard r.decision == "accept" else { continue }
+                guard r.decision == "accept" else { arbiter = r.state; continue }
                 send(.permissionRevoked(permission: p, atMs: relativeMs()))
-                for fx in r.effects {
-                    if fx == "dictation.stop:permission-revoked" { await dictation.abort(reason: .permissionRevoked) }
-                    if fx.hasPrefix("mic.unsubscribe:") { deps.micHub?.unsubscribe(String(fx.dropFirst("mic.unsubscribe:".count))) }
+                arbiter = r.state
+                await apply(r.effects)
+                if p == .microphone {
+                    deps.micHub?.dropAll()
+                    // No session holds the engine's reader any more; make sure it forgets it (warm mic).
+                    if await !dictation.isActive { await dictation.micDropped() }
                 }
-                if p == .microphone { deps.micHub?.dropAll() }
             } else if now == .granted, was == .denied {
-                arbiter = SessionArbiter.step(arbiter, .granted(p)).state
+                await admit(.granted(p))
             }
         }
     }

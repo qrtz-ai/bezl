@@ -9,8 +9,8 @@ func makePlatformDeps(version: String) -> HelperDeps {
     var features = ["ax", "ax.observer"]
     // H6 mux: one AVAudioEngine mic tap shared by meeting capture and dictation.
     let micHub = MicHub(source: DictationMicSource())
-    if #available(macOS 14.2, *) { audio.append(CoreAudioTapSource(mic: micHub.view("recording"))); features.append("audio.process-tap") }
-    audio.append(ScreenCaptureKitSource(mic: micHub.view("recording"))); features.append("audio.screencapturekit")
+    if #available(macOS 14.2, *) { audio.append(CoreAudioTapSource(mic: micHub.view("recording", gated: true))); features.append("audio.process-tap") }
+    audio.append(ScreenCaptureKitSource(mic: micHub.view("recording", gated: true))); features.append("audio.screencapturekit")
     features.append("audio.echo-gate")
     features += ["talk.mic", "talk.insert.ax", "talk.insert.paste", "talk.hotkey", "helper.mux", "permissions.watch"]
     features.append("audio.aec.localvqe")

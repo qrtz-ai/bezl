@@ -99,6 +99,9 @@ public actor DictationEngine {
     var pushKey = ""
     var preRoll = PreRollBuffer(capacity: 16_000 * 300 / 1000)
     var micRunning = false
+    /// Set by HelperController: the session arbiter owns the mic lifecycle (attachMic/detachMic per its
+    /// mic.subscribe/unsubscribe:dictation effects) and configure/start/stop never touch the mic themselves.
+    let managedMic: Bool
     var micIn: AsyncStream<[Float]>.Continuation?
     var consumer: Task<Void, Never>?
 
@@ -107,7 +110,8 @@ public actor DictationEngine {
     var tick: Task<Void, Never>?
 
     public init(mic: MicSource?, transcribers: [StreamingTranscriber], inserter: TextInserter?, hotkeys: HotkeyMonitor?,
-                send: @escaping @Sendable (HelperMessage) -> Void, now: @escaping @Sendable () -> Double) {
+                send: @escaping @Sendable (HelperMessage) -> Void, now: @escaping @Sendable () -> Double, managedMic: Bool = false) {
+        self.managedMic = managedMic
         self.mic = mic; self.transcribers = transcribers; self.inserter = inserter; self.hotkeys = hotkeys; self.send = send; self.now = now
     }
 
@@ -129,6 +133,7 @@ public actor DictationEngine {
                 }
             }
         }
+        guard !managedMic else { return }
         if warmMic { startMic() } else if session == nil { stopMic() }
     }
 
@@ -147,6 +152,14 @@ public actor DictationEngine {
         }
     }
 
+    /// Arbiter effect mic.subscribe:dictation.
+    public func attachMic() { startMic() }
+    /// Arbiter effect mic.unsubscribe:dictation.
+    public func detachMic() { stopMic() }
+    /// The shared tap was dropped under us (microphone revoked): forget the reader so the next attach really
+    /// re-subscribes. Without this a warm mic stays `micRunning` with no reader and dictation hears nothing.
+    public func micDropped() { stopMic() }
+
     func stopMic() {
         guard micRunning else { return }
         mic?.stop(); micRunning = false; _ = preRoll.drain()
@@ -164,7 +177,7 @@ public actor DictationEngine {
         let pre = preRoll.drain()
         session = s
         send(.dictationStarted(id: id, preRollMs: Double(pre.count) * 1000 / 16_000))
-        startMic()
+        if !managedMic { startMic() }
         if !pre.isEmpty { await feed(pre) }
         tick = Task { [weak self] in
             while !Task.isCancelled {
@@ -219,7 +232,7 @@ public actor DictationEngine {
             for e in s.segmenter.flush(cumulative: text, nowMs: now() - s.startMs) { send(.dictationAsr(id: s.id, event: e)) }
         }
         session = nil
-        if !warmMic { stopMic() }
+        if !warmMic && !managedMic { stopMic() }
         send(.dictationStopped(id: id, text: text, durationMs: Double(s.samples) * 1000 / 16_000))
     }
 
@@ -228,7 +241,7 @@ public actor DictationEngine {
         tick?.cancel(); tick = nil
         _ = await s.transcriber?.finish()
         session = nil
-        if !warmMic { stopMic() }
+        if !warmMic && !managedMic { stopMic() }
         send(.dictationStopped(id: id, text: "", durationMs: 0))
     }
 

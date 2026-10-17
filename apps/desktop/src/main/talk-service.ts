@@ -256,6 +256,14 @@ export class TalkService {
             message: m.message,
           });
           if (m.code === 'dictation.mic' && this.active()) this.fail(m.message);
+          // Our start was ignored because another dictation still owns the helper: fail now, and release any
+          // waiter so a stop for this id can never hang on a dictation.stopped that will not come.
+          if (m.code === 'dictation.busy' && this.active() && this.view.id) {
+            const id = this.view.id;
+            this.waiters.get(`started:${id}`)?.(null);
+            this.waiters.get(`stopped:${id}`)?.(null);
+            this.fail('another dictation is still running');
+          }
         }
         return;
     }

@@ -145,6 +145,26 @@ describe('TalkService', () => {
     await until(() => /microphone access denied/.test(svc.state().error ?? ''));
   });
 
+  it('H6: a start the helper answers with dictation.busy fails at once instead of hanging', async () => {
+    const { svc } = setup();
+    await svc.configure();
+    const p = svc.start();
+    svc.handle({
+      type: 'error',
+      code: 'dictation.busy',
+      message: 'a dictation is already running',
+      fatal: false,
+    });
+    await p;
+    expect(svc.state()).toMatchObject({
+      phase: 'error',
+      error: 'another dictation is still running',
+    });
+    // A stop now returns immediately (nothing to wait for).
+    await svc.stop();
+    expect(svc.state().phase).toBe('error');
+  });
+
   it('dictionary terms are applied; AI cleanup is used when fast', async () => {
     const { svc } = setup({ llm: async () => fakeCleanupLlm('fake') });
     svc.setDictionary([{ term: 'qrtz', aliases: ['cue arts'] }]);
