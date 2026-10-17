@@ -399,8 +399,44 @@ impl<'a> NoteRepo<'a> {
 
     /// Indexed transcript lines with their vectors (one meeting, or all).
     pub fn vector_sources(&self, model: &str, meeting_id: Option<&str>) -> Result<Vec<VectorSource>> {
-        let map = |r: &Row| {
-            Ok(VectorSource {
+        let mut out = Vec::new();
+        self.for_each_vector_source(model, meeting_id, |r| {
+            out.push(r);
+            true
+        })?;
+        Ok(out)
+    }
+
+    /// [`Self::vector_sources`] one row at a time, in the same order, without collecting them: chat across
+    /// meetings looks at every indexed line, and holding all of them (vector, text and title per line, about
+    /// 1.6 KB each at 384 dimensions) is hundreds of MB on a large library (N80, ADR 0052). `f` returns `false`
+    /// to stop.
+    pub fn for_each_vector_source(
+        &self,
+        model: &str,
+        meeting_id: Option<&str>,
+        mut f: impl FnMut(VectorSource) -> bool,
+    ) -> Result<()> {
+        const BASE: &str =
+            "SELECT s.meeting_id AS meetingId, m.title AS title, m.started_at AS startedAt, s.start_ms AS startMs,
+                  COALESCE(s.speaker_name, s.speaker) AS speaker, s.text AS text, v.vec AS vec
+           FROM segment_vectors v JOIN segments s ON s.rowid = v.segment_rowid JOIN meetings m ON m.id = s.meeting_id
+           WHERE v.model = ?";
+        let mut st;
+        let mut rows = match meeting_id {
+            Some(id) => {
+                st = self
+                    .conn
+                    .prepare_cached(&format!("{BASE} AND v.meeting_id = ?"))?;
+                st.query(params![model, id])?
+            }
+            None => {
+                st = self.conn.prepare_cached(BASE)?;
+                st.query([model])?
+            }
+        };
+        while let Some(r) = rows.next()? {
+            let row = VectorSource {
                 meeting_id: string(r, "meetingId")?,
                 title: string(r, "title")?,
                 started_at: i64_(r, "startedAt")?,
@@ -408,22 +444,12 @@ impl<'a> NoteRepo<'a> {
                 speaker: opt_string(r, "speaker")?,
                 text: string(r, "text")?,
                 vec: blob(r, "vec")?,
-            })
-        };
-        const BASE: &str =
-            "SELECT s.meeting_id AS meetingId, m.title AS title, m.started_at AS startedAt, s.start_ms AS startMs,
-                  COALESCE(s.speaker_name, s.speaker) AS speaker, s.text AS text, v.vec AS vec
-           FROM segment_vectors v JOIN segments s ON s.rowid = v.segment_rowid JOIN meetings m ON m.id = s.meeting_id
-           WHERE v.model = ?";
-        match meeting_id {
-            Some(id) => collect(
-                self.conn,
-                &format!("{BASE} AND v.meeting_id = ?"),
-                params![model, id],
-                map,
-            ),
-            None => collect(self.conn, BASE, [model], map),
+            };
+            if !f(row) {
+                break;
+            }
         }
+        Ok(())
     }
 
     /// Rename a speaker in one meeting (merge = rename onto an existing name). Returns lines changed.

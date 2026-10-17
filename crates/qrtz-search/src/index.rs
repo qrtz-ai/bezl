@@ -80,7 +80,16 @@ pub async fn index_vectors<E: DbExec>(
             .into_iter()
             .zip(vecs)
             .filter(|(b, _)| stop.is_none_or(|s| !s(&b.meeting_id)))
-            .map(|(b, v)| {
+            .map(|(b, mut v)| {
+                if v.iter().any(|x| !x.is_finite()) {
+                    // A NaN/inf vector (a zero-norm line in a model that divides by the norm) would rank
+                    // arbitrarily forever; store a zero vector so the line is indexed but never similar (N79).
+                    tracing::warn!(
+                        rowid = b.rowid,
+                        "embedder returned a non-finite vector; stored as zero"
+                    );
+                    v.iter_mut().for_each(|x| *x = 0.0);
+                }
                 (
                     VectorRow {
                         rowid: b.rowid,
