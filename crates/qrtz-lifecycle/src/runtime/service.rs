@@ -383,7 +383,7 @@ struct State {
     pipeline_timers: HashMap<String, AbortHandle>,
     /// Undo-window timers of scheduled deletes (TS `PendingDeletes.timers`), keyed by meeting, with the
     /// schedule's generation. The entry is the claim on the delete: the timer's delete runs only if it still
-    /// finds its own generation here, and an undo restores only if it removes the entry first (N51, ADR 0040).
+    /// finds its own generation here, and an undo restores only if it removes the entry first (N51, ADR 0041).
     delete_timers: HashMap<String, (u64, Option<AbortHandle>)>,
     delete_gen: u64,
     /// Per meeting, the `{id}:{step}:{attempts}` whose backoff timer already fired (N12: never wait on the wall
