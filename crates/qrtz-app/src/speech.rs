@@ -52,12 +52,14 @@ impl HelperAttach {
     }
     /// The `speech.attach` line for a session: a dictation by id, a recording by its audio path (bound with
     /// `bind_recording`; an unbound recording session falls back to its id).
-    pub fn attach_line(&self, spec: &SessionSpec, channels: &[Channel]) -> Value {
+    /// N96: a recording session must have been bound to its file by the host (`bind_recording`); an unbound one
+    /// fails closed (`None`) instead of naming a file from the session id: only the host names the file.
+    pub fn attach_line(&self, spec: &SessionSpec, channels: &[Channel]) -> Option<Value> {
         let target = match spec.kind {
             SessionKind::Dictation => json!({"kind": "dictation", "id": spec.session_id}),
             _ => {
-                let path = self.recordings.lock().unwrap().remove(&spec.session_id);
-                json!({"kind": "recording", "audioPath": path.unwrap_or_else(|| spec.session_id.clone())})
+                let path = self.recordings.lock().unwrap().remove(&spec.session_id)?;
+                json!({"kind": "recording", "audioPath": path})
             }
         };
         let chans: Vec<&str> = channels
@@ -67,7 +69,9 @@ impl HelperAttach {
                 Channel::System => "system",
             })
             .collect();
-        json!({"type": "speech.attach", "sessionId": spec.session_id, "target": target, "channels": chans})
+        Some(
+            json!({"type": "speech.attach", "sessionId": spec.session_id, "target": target, "channels": chans}),
+        )
     }
 }
 
@@ -96,7 +100,12 @@ impl AudioAttach for HelperAttach {
             return fail(SpeechError::Module("no capture helper".into()));
         };
         let channels: Vec<Channel> = fds.iter().map(|(c, _)| *c).collect();
-        let line = match encode_host_message(&self.attach_line(spec, &channels)) {
+        let Some(msg) = self.attach_line(spec, &channels) else {
+            return fail(SpeechError::Module(
+                "speech.attach: recording session not bound to a file".into(),
+            ));
+        };
+        let line = match encode_host_message(&msg) {
             Ok(l) => l,
             Err(e) => return fail(SpeechError::Module(format!("speech.attach: {e}"))),
         };
@@ -204,8 +213,9 @@ fn now_ms() -> u64 {
 pub fn fail_reason(e: &SpeechError) -> FailReason {
     match e {
         SpeechError::NotInstalled => FailReason::NotInstalled,
-        SpeechError::Denied(_) | SpeechError::RevocationExpired => FailReason::Revoked,
-        SpeechError::Stale { .. } => FailReason::Stale,
+        SpeechError::Denied(_) => FailReason::Revoked,
+        // N96: an expired revocation list is "connect to update", like a stale one (not a revoked release).
+        SpeechError::RevocationExpired | SpeechError::Stale { .. } => FailReason::Stale,
         _ => FailReason::StartFailed,
     }
 }
@@ -442,5 +452,41 @@ mod tests {
         // No helper: refused, and nothing is left registered for the id.
         assert!(a.attach(&spec("s2"), vec![]).await.is_err());
         assert!(a.waiters.lock().unwrap().is_empty());
+    }
+
+    /// N96: a recording session the host never bound to a file is refused (no file named from the session id);
+    /// a bound one names exactly the host's file, once.
+    #[tokio::test]
+    async fn an_unbound_recording_session_fails_closed() {
+        let a = HelperAttach::new(None);
+        let mut rec = spec("rec-1-1");
+        rec.kind = SessionKind::Recording;
+        assert_eq!(a.attach_line(&rec, &[Channel::Mic]), None);
+        a.bind_recording("rec-1-1", "/data/recordings/x.wav");
+        let l = a.attach_line(&rec, &[Channel::Mic, Channel::System]).unwrap();
+        assert_eq!(
+            l["target"],
+            json!({"kind": "recording", "audioPath": "/data/recordings/x.wav"})
+        );
+        assert_eq!(
+            a.attach_line(&rec, &[Channel::Mic]),
+            None,
+            "the binding is used once"
+        );
+        assert!(a.attach(&rec, vec![]).await.is_err());
+        assert!(a.waiters.lock().unwrap().is_empty());
+    }
+
+    /// N96: an expired revocation list asks to connect (stale), it is not a revoked release.
+    #[test]
+    fn an_expired_revocation_list_reads_as_stale() {
+        assert!(matches!(
+            fail_reason(&SpeechError::RevocationExpired),
+            FailReason::Stale
+        ));
+        assert!(matches!(
+            fail_reason(&SpeechError::Denied("x".into())),
+            FailReason::Revoked
+        ));
     }
 }
