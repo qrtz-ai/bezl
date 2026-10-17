@@ -21,7 +21,7 @@ pub use contract::{
 pub use qrtz_speech;
 pub use service::{
     Clipboard, Clock, HelperSink, IdSource, RandomIds, SystemClock, TalkDeps, TalkEvents, TalkService,
-    Timeouts,
+    Timeouts, MSG_LATE_FINAL,
 };
 pub use speech::{HelperAsrSpeech, TalkValidator};
 pub use store::{FsIo, StoreIo};

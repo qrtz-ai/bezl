@@ -103,6 +103,9 @@ pub struct HelperOpts {
     pub insert_delay_ms: u64,
     /// Send `dictation.stopped` this much later (a slow mic teardown / final flush in the helper).
     pub stopped_delay_ms: u64,
+    /// N124: the helper's final has this many words past its last partial (the release tail and the recogniser's
+    /// last chunk, which only its end-of-stream flush emits).
+    pub final_tail_words: usize,
 }
 
 struct HState {
@@ -116,6 +119,8 @@ struct HState {
     opts: HelperOpts,
     /// The mock module (the on-device engine) when `opts.module` is set.
     speech: Option<MockSpeech>,
+    /// Every `dictation.stopped` text the helper sent (or will send, when delayed).
+    finals: Vec<String>,
 }
 
 pub fn heard_text(n: usize) -> String {
@@ -147,6 +152,7 @@ impl MockHelper {
                 sent: vec![],
                 seq: 0,
                 speech: opts.module.as_ref().map(|(p, v)| MockSpeech::installed(*p, v)),
+                finals: vec![],
                 opts,
             }),
             out: OnceLock::new(),
@@ -209,6 +215,10 @@ impl MockHelper {
     }
     pub fn sent(&self) -> Vec<Value> {
         self.st.lock().unwrap().sent.clone()
+    }
+    /// The helper's real final texts, in order.
+    pub fn finals(&self) -> Vec<String> {
+        self.st.lock().unwrap().finals.clone()
     }
     pub fn sent_of(&self, ty: &str) -> Vec<Value> {
         self.sent().into_iter().filter(|m| m["type"] == ty).collect()
@@ -408,7 +418,8 @@ impl HelperSink for SinkHandle {
                     );
                     st.active = None;
                     if ty == "dictation.stop" {
-                        let text = heard_text(st.heard);
+                        let text = heard_text(st.heard + st.opts.final_tail_words);
+                        st.finals.push(text.clone());
                         let delay = st.opts.stopped_delay_ms;
                         drop(st);
                         let line =
@@ -480,6 +491,8 @@ impl Default for RigOpts {
             timeouts: Timeouts {
                 started: 500,
                 stopped: 500,
+                stopped_per_audio_s: 0,
+                stopped_max: 500,
                 insert: 300,
                 final_ms: 300,
             },

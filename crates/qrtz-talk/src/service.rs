@@ -102,8 +102,15 @@ impl IdSource for RandomIds {
 pub struct Timeouts {
     /// `dictation.start` → `dictation.started`.
     pub started: u64,
-    /// `dictation.stop` → `dictation.stopped`.
+    /// `dictation.stop` → `dictation.stopped`: the floor. The helper keeps the mic ~250 ms past the release (the
+    /// tail), then drains what is buffered and flushes the recogniser's last chunk (N124, ADR 0081), so this must
+    /// cover tail + ≥ 1.5 s of flush. The real wait is [`Timeouts::stopped_for`]: longer for a longer dictation.
     pub stopped: u64,
+    /// Extra `dictation.stop` → `dictation.stopped` time per second of dictated audio (a recogniser that fell behind
+    /// real time has that much backlog to work through before its final).
+    pub stopped_per_audio_s: u64,
+    /// Cap of [`Timeouts::stopped_for`] (a helper that never answers still ends the dictation).
+    pub stopped_max: u64,
     /// `insert.text` → `insert.result`.
     pub insert: u64,
     /// On-device flush → its last finals.
@@ -114,11 +121,48 @@ impl Default for Timeouts {
         Self {
             started: 3000,
             stopped: 3000,
+            stopped_per_audio_s: 100,
+            stopped_max: 20_000,
             insert: 2500,
             final_ms: 1500,
         }
     }
 }
+
+impl Timeouts {
+    /// N124: how long to wait for the helper's real final after the release of a dictation of `audio_ms`. Never less
+    /// than `stopped` (tail + flush), plus `stopped_per_audio_s` per second of audio for the recogniser's backlog,
+    /// capped at `stopped_max` (but never below `stopped`).
+    pub fn stopped_for(&self, audio_ms: f64) -> u64 {
+        let secs = if audio_ms.is_finite() {
+            (audio_ms.max(0.0) / 1000.0).ceil() as u64
+        } else {
+            0
+        };
+        let scaled = self
+            .stopped
+            .saturating_add(secs.saturating_mul(self.stopped_per_audio_s));
+        scaled.min(self.stopped_max.max(self.stopped))
+    }
+}
+
+/// N124: a dictation whose `dictation.stopped` didn't come within [`Timeouts::stopped_for`]. It went ahead with what
+/// the recogniser had shown; the helper's real final may still come, and is then kept, never dropped (ADR 0081).
+#[derive(Debug, Clone, PartialEq)]
+enum Late {
+    /// `finish` (cleanup, insert, history) is still running.
+    Pending,
+    /// The final arrived while `finish` was running: applied when it ends.
+    Text(String),
+    /// `finish` is done: a final now is applied at once.
+    Done,
+}
+
+/// At most this many dictations wait for a late final (each is one release that timed out).
+const MAX_LATE: usize = 8;
+/// What a history entry says when its pasted text was cut short and the full text came later.
+pub const MSG_LATE_FINAL: &str =
+    "the pasted text was cut short: the full text came after the wait and is saved here";
 
 pub struct TalkDeps {
     pub helper: Arc<dyn HelperSink>,
@@ -179,6 +223,8 @@ struct Inner {
     first_partial: Option<f64>,
     waiters: HashMap<String, oneshot::Sender<Option<Value>>>,
     attempt: Option<Attempt>,
+    /// N124: dictations whose real final may still arrive after the stop wait ran out.
+    late: HashMap<String, Late>,
 }
 
 struct Shared {
@@ -231,6 +277,7 @@ impl TalkService {
                 first_partial: None,
                 waiters: HashMap::new(),
                 attempt: None,
+                late: HashMap::new(),
             }),
             pending_press: AtomicBool::new(false),
         }))
@@ -394,6 +441,8 @@ impl TalkService {
                 let lost = {
                     let mut g = self.lock();
                     g.hellos += 1;
+                    // N124: a new helper process sends no final for the old one's dictations.
+                    g.late.clear();
                     g.dictation_helper < g.hellos
                 };
                 if lost {
@@ -447,10 +496,19 @@ impl TalkService {
             "dictation.stopped" => {
                 let id = s(m, "id");
                 let key = format!("stopped:{id}");
-                let g = self.lock();
-                if g.waiters.contains_key(&key) {
+                let mut g = self.lock();
+                if let Some(tx) = g.waiters.remove(&key) {
+                    if let Err(Some(m)) = tx.send(Some(m.clone())) {
+                        // N124: the stop wait ran out a moment ago and hasn't taken its lock yet: this is a late
+                        // final, kept for when it goes ahead (it registers the dictation as late, keeping this).
+                        g.late.insert(id.clone(), Late::Text(bound_final(&s(&m, "text"))));
+                    }
+                    return;
+                }
+                // N124: the real final of a dictation that already went ahead on what was shown. Kept, never dropped.
+                if g.late.contains_key(&id) {
                     drop(g);
-                    return self.resolve(&key, m.clone());
+                    return self.late_final(&id, bound_final(&s(m, "text")));
                 }
                 // H5: the helper ended the dictation itself. Keep and insert what was heard, then say why.
                 let reason = s(m, "reason");
@@ -562,6 +620,8 @@ impl TalkService {
             }
         }
         self.0.pending_press.store(false, Ordering::SeqCst);
+        // No late final will come from a helper that is gone (N124). A `finish` still running ends as it is.
+        g.late.clear();
         let Some(id) = g.view.id.clone().filter(|_| g.view.active()) else {
             return;
         };
@@ -864,11 +924,33 @@ impl TalkService {
             (id, rx)
         };
         self.send(json!({"type": "dictation.stop", "id": id}));
-        let stopped = self
-            .wait(format!("stopped:{id}"), rx, self.deps().timeouts.stopped)
-            .await;
-        let (text, dur) = {
+        // N124: wait for the helper's real final (its tail, drain and recogniser flush), scaled to the dictation's
+        // length; only past that bound does the dictation go ahead on what was shown so far.
+        let (helper, wait_ms) = {
             let g = self.lock();
+            (
+                g.dictation_helper,
+                self.deps().timeouts.stopped_for(g.key_up - g.key_down),
+            )
+        };
+        let r = tokio::time::timeout(Duration::from_millis(wait_ms), rx).await;
+        let (text, dur) = {
+            let mut g = self.lock();
+            // Under the same lock as the waiter's removal, so a final landing right at the bound is either the
+            // waiter's or a late one, never neither.
+            g.waiters.remove(&format!("stopped:{id}"));
+            let timed_out = r.is_err();
+            let stopped = r.ok().and_then(|r| r.ok()).flatten();
+            if timed_out && g.dictation_helper == helper && g.hellos <= helper && g.late.len() < MAX_LATE {
+                // Timed out (a lost helper releases the waiter with nothing instead, and sends no final) and the
+                // helper is still the one that ran it, so its final may still come: keep it when it does.
+                tracing::warn!(
+                    wait_ms,
+                    "no final from the helper in time; going ahead with what was shown"
+                );
+                // A final that raced the bound may already be here (`helper_line`): keep it.
+                g.late.entry(id.clone()).or_insert(Late::Pending);
+            }
             (
                 stopped
                     .as_ref()
@@ -939,6 +1021,86 @@ impl TalkService {
     /// times, first partial) is captured before that, and its end only sets `last` on a view that isn't its own.
     /// Returns whether the view was still this dictation's at the end.
     async fn finish(&self, id: String, local_text: String, duration_ms: f64) -> bool {
+        let own = self.finish_inner(id.clone(), local_text, duration_ms).await;
+        // N124: a real final that came while this dictation was being inserted is applied now; one still to come is
+        // applied when it arrives.
+        let stashed = {
+            let mut g = self.lock();
+            match g.late.remove(&id) {
+                Some(Late::Text(t)) => Some(t),
+                Some(Late::Pending) => {
+                    g.late.insert(id.clone(), Late::Done);
+                    None
+                }
+                Some(Late::Done) | None => None,
+            }
+        };
+        if let Some(t) = stashed {
+            self.apply_late(&id, t);
+        }
+        own
+    }
+
+    /// N124: the helper's `dictation.stopped` for a dictation that already went ahead (its stop wait ran out).
+    fn late_final(&self, id: &str, text: String) {
+        let done = {
+            let mut g = self.lock();
+            match g.late.get(id) {
+                Some(Late::Pending) | Some(Late::Text(_)) => {
+                    g.late.insert(id.to_owned(), Late::Text(text.clone()));
+                    false
+                }
+                Some(Late::Done) => {
+                    g.late.remove(id);
+                    true
+                }
+                None => return,
+            }
+        };
+        if done {
+            self.apply_late(id, text);
+        }
+    }
+
+    /// N124 (ADR 0081): the full text replaces the shorter one in the dictation's history entry (raw and cleaned),
+    /// which says the paste was cut short; nothing is typed again (the user may be typing elsewhere by now). With no
+    /// entry (history off, or nothing was shown so nothing was kept) the full text goes to the clipboard instead, the
+    /// same "never lose the words" rule as a failed insert.
+    fn apply_late(&self, id: &str, text: String) {
+        let text = text.trim().to_owned();
+        if text.is_empty() {
+            return;
+        }
+        let cfg = self.cfg();
+        let mut g = self.lock();
+        let dictionary = g.store.dictionary.clone();
+        let Some(pos) = g.store.history.iter().position(|e| e.id == id) else {
+            drop(g);
+            tracing::warn!("late final with no history entry; copied to the clipboard");
+            let cleaned = cleanup_dictation(&text, &dictionary, cfg.auto_cleanup);
+            self.deps().clipboard.write(&cleaned.text);
+            return;
+        };
+        if g.store.history[pos].raw.trim() == text {
+            return;
+        }
+        let cleaned = cleanup_dictation(&text, &dictionary, cfg.auto_cleanup);
+        tracing::warn!("late final replaced a cut-short dictation in history");
+        let e = &mut g.store.history[pos];
+        e.raw = text;
+        e.text = cleaned.text;
+        e.cleanup = cleaned.method;
+        e.error = Some(MSG_LATE_FINAL.to_owned());
+        let entry = e.clone();
+        if g.view.last.as_ref().map(|l| l.id.as_str()) == Some(id) {
+            g.view.last = Some(entry);
+        }
+        self.save(&g);
+        self.deps().events.emit("talk:history-changed", json!({"id": id}));
+        self.emit_view(&g);
+    }
+
+    async fn finish_inner(&self, id: String, local_text: String, duration_ms: f64) -> bool {
         let t = self.deps().timeouts;
         let local_rx = {
             let mut g = self.lock();
