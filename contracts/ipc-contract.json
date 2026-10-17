@@ -8401,11 +8401,7 @@
       "logLevel": "info",
       "app": {
         "menuBarIcon": true,
-        "launchAtLogin": false,
-        "autoUpdateCheck": true
-      },
-      "telemetry": {
-        "crashReports": false
+        "launchAtLogin": false
       },
       "note": {
         "autoDetectMeetings": true,
@@ -8479,29 +8475,11 @@
             "launchAtLogin": {
               "default": false,
               "type": "boolean"
-            },
-            "autoUpdateCheck": {
-              "default": true,
-              "type": "boolean"
             }
           },
           "required": [
             "menuBarIcon",
-            "launchAtLogin",
-            "autoUpdateCheck"
-          ],
-          "additionalProperties": false
-        },
-        "telemetry": {
-          "type": "object",
-          "properties": {
-            "crashReports": {
-              "default": false,
-              "type": "boolean"
-            }
-          },
-          "required": [
-            "crashReports"
+            "launchAtLogin"
           ],
           "additionalProperties": false
         },
@@ -8701,7 +8679,6 @@
         "theme",
         "logLevel",
         "app",
-        "telemetry",
         "note",
         "talk",
         "speech",

@@ -83,12 +83,17 @@ describe('config', () => {
       },
       speech: { cloud: 'elevenlabs', speakerMode: 'accurate' },
       privacy: { localOnly: true, excludedApps: ['Slack'] },
+      app: { autoUpdateCheck: false, launchAtLogin: true },
+      telemetry: { crashReports: true },
     };
     const c = loadConfig(old);
     const has = (o: object, k: string) => k in o;
     expect(has(c.talk, 'engine') || has(c.talk, 'autoFailover')).toBe(false);
     expect(has(c.note, 'llmProvider') || has(c.note, 'llmModel')).toBe(false);
     expect(has(c.speech, 'cloud') || has(c.privacy, 'localOnly')).toBe(false);
+    // ADR 0078: the dead update-check and crash-report settings are gone too.
+    expect(has(c.app, 'autoUpdateCheck') || has(c, 'telemetry')).toBe(false);
+    expect(c.app.launchAtLogin).toBe(true);
     expect(c.talk.showPill).toBe(false);
     expect(c.talk.pushKey).toBe('right-option');
     expect(c.note.autoSummarize).toBe(false);

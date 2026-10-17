@@ -16,12 +16,7 @@ export const ConfigSchema = z.object({
       menuBarIcon: z.boolean().default(true),
       /** Open qrtz when you log in (macOS/Windows login item). */
       launchAtLogin: z.boolean().default(false),
-      /** Check for updates in the background (packaged builds). */
-      autoUpdateCheck: z.boolean().default(true),
     })
-    .prefault({}),
-  telemetry: z
-    .object({ crashReports: z.boolean().default(false) })
     .prefault({}),
   note: z
     .object({

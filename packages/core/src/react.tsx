@@ -47,8 +47,11 @@ export function useQrtzEvent<E extends EventName>(
 /**
  * Speech module setup (onboarding and the settings "speech" section): live status from `speech:status`
  * events and the actions. Needs `speech.read` (+ `speech.manage` to act).
+ *
+ * ADR 0078: opening a screen never goes online. `speech:check` (the release list) runs only from `check()`,
+ * which the user starts; `_opts` is accepted for older callers and ignored.
  */
-export function useSpeechSetup({ check = true }: { check?: boolean } = {}) {
+export function useSpeechSetup(_opts: { check?: boolean } = {}) {
   const client = useQrtz();
   const [speech, setSpeech] = useState<SpeechSetupStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,18 +59,12 @@ export function useSpeechSetup({ check = true }: { check?: boolean } = {}) {
     let live = true;
     const fail = (e: Error) => live && setError(e.message);
     client.invoke('speech:status').then((s) => live && setSpeech(s), fail);
-    // The newest release's size for "download · 340 mb"; offline just leaves it unknown.
-    if (check)
-      client.invoke('speech:check').then(
-        (s) => live && setSpeech(s),
-        () => {},
-      );
     const offs = [client.on('speech:status', (s) => setSpeech(s))];
     return () => {
       live = false;
       offs.forEach((off) => off());
     };
-  }, [client, check]);
+  }, [client]);
   const act =
     <T,>(p: () => Promise<T>, set: (v: T) => void) =>
     () => {
@@ -82,5 +79,7 @@ export function useSpeechSetup({ check = true }: { check?: boolean } = {}) {
     pause: act(() => client.invoke('speech:pause'), setSpeech),
     resume: act(() => client.invoke('speech:resume'), setSpeech),
     remove: act(() => client.invoke('speech:delete'), setSpeech),
+    /** The user asked to check for a newer speech module (the only time a screen looks online). */
+    check: act(() => client.invoke('speech:check'), setSpeech),
   };
 }

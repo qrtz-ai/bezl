@@ -109,6 +109,8 @@ test('first run → record → review walkthrough', async ({ page }) => {
       ).__qrtzMock.calls,
   );
   expect(calls.some((c) => c.channel === 'secrets:set')).toBe(false);
+  // ADR 0078: opening onboarding never looks online; speech:check runs only when the user asks.
+  expect(calls.some((c) => c.channel === 'speech:check')).toBe(false);
 
   await expect(page.getByTestId('onboarding-done')).toBeVisible();
   await page.getByTestId('onboarding-finish').click();
@@ -200,6 +202,19 @@ test('settings speech section: re-download, delete', async ({ page }) => {
   await expect(sec.getByTestId('speech-installed')).toHaveText(
     'speech 1.0.0 · 412 mb',
   );
+  // ADR 0078: opening settings doesn't check for a speech update; the button does.
+  const checks = () =>
+    page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            __qrtzMock: { calls: { channel: string }[] };
+          }
+        ).__qrtzMock.calls.filter((c) => c.channel === 'speech:check').length,
+    );
+  expect(await checks()).toBe(0);
+  await sec.getByTestId('speech-check').click();
+  await expect.poll(checks).toBe(1);
   await sec.getByTestId('speech-redownload').click();
   await expect(sec.getByTestId('speech-progress')).toBeVisible();
   await expect(sec.getByTestId('speech-installed')).toBeVisible({

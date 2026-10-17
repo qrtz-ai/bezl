@@ -102,7 +102,6 @@ export default function SettingsView() {
   const appCfg = (cfg?.app ?? {}) as {
     menuBarIcon?: boolean;
     launchAtLogin?: boolean;
-    autoUpdateCheck?: boolean;
   };
   const patchApp = (p: Record<string, unknown>) => {
     setCfg((prev) =>
@@ -362,6 +361,7 @@ export default function SettingsView() {
           onPause={setup.pause}
           onResume={setup.resume}
           onDelete={setup.remove}
+          onCheck={setup.check}
         />
         {toggle(
           'update speech automatically',
@@ -446,13 +446,6 @@ export default function SettingsView() {
           appCfg.launchAtLogin,
           false,
           (v) => void patchApp({ launchAtLogin: v }),
-        )}
-        {toggle(
-          'check for updates',
-          'auto-update-check',
-          appCfg.autoUpdateCheck,
-          true,
-          (v) => void patchApp({ autoUpdateCheck: v }),
         )}
       </SettingsSection>
       <SettingsSection title="backup" data-testid="backup-card">

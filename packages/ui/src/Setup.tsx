@@ -51,6 +51,7 @@ export function SpeechSetupPanel({
   onPause,
   onResume,
   onDelete,
+  onCheck,
   'data-testid': testId = 'speech-setup',
 }: {
   status: SpeechSetupView | null;
@@ -60,6 +61,8 @@ export function SpeechSetupPanel({
   onPause: () => void;
   onResume: () => void;
   onDelete?: () => void;
+  /** Settings: "check for updates", started by the user (ADR 0078: nothing checks on its own). */
+  onCheck?: () => void;
   'data-testid'?: string;
 }) {
   if (!status)
@@ -193,6 +196,17 @@ export function SpeechSetupPanel({
               >
                 re-download
               </Button>
+              {onCheck ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon="refresh"
+                  onClick={onCheck}
+                  data-testid="speech-check"
+                >
+                  check for updates
+                </Button>
+              ) : null}
               {onDelete ? (
                 <Button
                   size="sm"

@@ -56,7 +56,8 @@ pub fn deep_merge(base: &Value, patch: &Value) -> Value {
 /// - the Note sub app was called Memo: stored `memo: {...}` moves to `note` (keys under `note` win).
 ///
 /// The removed cloud settings (ADR 0076: `talk.engine`, `talk.autoFailover`, `note.llmProvider`, `note.llmModel`,
-/// `speech.cloud`, `privacy.localOnly`; ADR 0067's `talk.engine: "deepgram"`) need no migration: they are no longer
+/// `speech.cloud`, `privacy.localOnly`; ADR 0067's `talk.engine: "deepgram"`; ADR 0078's dead `app.autoUpdateCheck`
+/// and `telemetry.crashReports`) need no migration: they are no longer
 /// in the schema, so loading strips them like any unknown key and every other setting is kept.
 pub fn migrate_legacy(raw: &Value) -> (Value, bool) {
     let Some(o) = raw.as_object() else {
@@ -191,7 +192,9 @@ mod tests {
                          "note": {"llmProvider": "openrouter", "llmModel": "anthropic/claude-haiku-5.5",
                                   "autoSummarize": false},
                          "speech": {"cloud": "elevenlabs", "speakerMode": "accurate"},
-                         "privacy": {"localOnly": true, "excludedApps": ["Slack"]}});
+                         "privacy": {"localOnly": true, "excludedApps": ["Slack"]},
+                         "app": {"autoUpdateCheck": false, "launchAtLogin": true},
+                         "telemetry": {"crashReports": true}});
         assert!(!migrate_legacy(&old).1);
         let cfg = load_config(Some(&old));
         for (sec, k) in [
@@ -201,9 +204,13 @@ mod tests {
             ("note", "llmModel"),
             ("speech", "cloud"),
             ("privacy", "localOnly"),
+            ("app", "autoUpdateCheck"),
         ] {
             assert!(cfg[sec].get(k).is_none(), "{sec}.{k} in {cfg}");
         }
+        // ADR 0078: the dead update-check and crash-report settings are gone too.
+        assert!(cfg.get("telemetry").is_none(), "{cfg}");
+        assert_eq!(cfg["app"]["launchAtLogin"], true, "{cfg}");
         assert_eq!(cfg["talk"]["showPill"], false, "{cfg}");
         assert_eq!(cfg["talk"]["pushKey"], "right-option", "{cfg}");
         assert_eq!(cfg["note"]["autoSummarize"], false, "{cfg}");
