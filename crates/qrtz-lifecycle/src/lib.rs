@@ -5,8 +5,14 @@
 //! in, persists every accepted state and broadcasts the derived views. Behaviour, including the TS quirks kept
 //! for parity, is pinned by the shared vectors in `spec/vectors/lifecycle` (run by vitest and `cargo test`).
 
+pub mod fusion;
+pub(crate) mod js;
 mod pipeline;
+#[cfg(feature = "runtime")]
+pub mod runtime;
 mod session;
+pub mod transcript;
+pub mod wav;
 
 pub use pipeline::{
     new_pipeline, next_runnable_step, pipeline_settled, pipeline_step, pipeline_usable, progress_label,

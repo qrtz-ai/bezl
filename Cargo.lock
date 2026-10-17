@@ -797,9 +797,18 @@ dependencies = [
 name = "qrtz-lifecycle"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "indexmap",
+ "qrtz-lifecycle",
  "qrtz-model",
+ "qrtz-storage",
+ "rusqlite",
  "serde",
  "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
