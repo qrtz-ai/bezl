@@ -1,0 +1,282 @@
+import { z } from 'zod';
+import { AppError } from '../errors';
+import type { Segment } from './types';
+import { MeetingSummary } from './summary';
+import { extractiveSummary } from './extractive';
+
+export type ChatMessage = {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+};
+export type FetchLike = (
+  url: string,
+  init: {
+    method: string;
+    headers: Record<string, string>;
+    body: string;
+    signal?: AbortSignal;
+  },
+) => Promise<{
+  ok: boolean;
+  status: number;
+  json(): Promise<unknown>;
+  text(): Promise<string>;
+}>;
+
+export interface LlmProvider {
+  readonly id: string;
+  complete(
+    messages: ChatMessage[],
+    opts?: { json?: boolean; signal?: AbortSignal },
+  ): Promise<string>;
+}
+
+export type ProviderId =
+  | 'openai'
+  | 'anthropic'
+  | 'google'
+  | 'openrouter'
+  | 'ollama'
+  | 'nvidia';
+
+export const PROVIDER_DEFAULTS: Record<
+  ProviderId,
+  { baseUrl: string; model: string; secret?: string }
+> = {
+  openai: {
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-4.1-mini',
+    secret: 'llm.openai',
+  },
+  openrouter: {
+    baseUrl: 'https://openrouter.ai/api/v1',
+    model: 'openai/gpt-4.1-mini',
+    secret: 'llm.openrouter',
+  },
+  nvidia: {
+    baseUrl: 'https://integrate.api.nvidia.com/v1',
+    model: 'nvidia/llama-3.3-nemotron-super-49b-v1',
+    secret: 'asr.nvidia',
+  },
+  ollama: { baseUrl: 'http://127.0.0.1:11434/v1', model: 'llama3.2' },
+  anthropic: {
+    baseUrl: 'https://api.anthropic.com/v1',
+    model: 'claude-sonnet-4-5',
+    secret: 'llm.anthropic',
+  },
+  google: {
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    model: 'gemini-2.5-flash',
+    secret: 'llm.google',
+  },
+};
+
+async function post(
+  fetchFn: FetchLike,
+  url: string,
+  headers: Record<string, string>,
+  body: unknown,
+  signal?: AbortSignal,
+) {
+  const res = await fetchFn(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+    ...(signal ? { signal } : {}),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new AppError(
+      'E_PROVIDER',
+      `LLM HTTP ${res.status}: ${t.slice(0, 200)}`,
+      { retryable: res.status >= 500 || res.status === 429 },
+    );
+  }
+  return res.json();
+}
+
+/** OpenAI Chat Completions–compatible (OpenAI, OpenRouter, NVIDIA NIM, Groq, Ollama, LM Studio...). */
+export function openAiCompatible(o: {
+  id: string;
+  fetch: FetchLike;
+  baseUrl: string;
+  apiKey?: string;
+  model: string;
+}): LlmProvider {
+  return {
+    id: o.id,
+    async complete(messages, opts) {
+      const j = (await post(
+        o.fetch,
+        `${o.baseUrl}/chat/completions`,
+        o.apiKey ? { authorization: `Bearer ${o.apiKey}` } : {},
+        {
+          model: o.model,
+          messages,
+          temperature: 0.2,
+          ...(opts?.json ? { response_format: { type: 'json_object' } } : {}),
+        },
+        opts?.signal,
+      )) as { choices?: { message?: { content?: string } }[] };
+      return j.choices?.[0]?.message?.content ?? '';
+    },
+  };
+}
+
+export function anthropic(o: {
+  fetch: FetchLike;
+  apiKey: string;
+  model: string;
+  baseUrl?: string;
+}): LlmProvider {
+  return {
+    id: 'anthropic',
+    async complete(messages, opts) {
+      const system = messages
+        .filter((m) => m.role === 'system')
+        .map((m) => m.content)
+        .join('\n');
+      const j = (await post(
+        o.fetch,
+        `${o.baseUrl ?? PROVIDER_DEFAULTS.anthropic.baseUrl}/messages`,
+        { 'x-api-key': o.apiKey, 'anthropic-version': '2023-06-01' },
+        {
+          model: o.model,
+          max_tokens: 2048,
+          system,
+          messages: messages.filter((m) => m.role !== 'system'),
+        },
+        opts?.signal,
+      )) as { content?: { type: string; text?: string }[] };
+      return j.content?.find((c) => c.type === 'text')?.text ?? '';
+    },
+  };
+}
+
+export function google(o: {
+  fetch: FetchLike;
+  apiKey: string;
+  model: string;
+  baseUrl?: string;
+}): LlmProvider {
+  return {
+    id: 'google',
+    async complete(messages, opts) {
+      const system = messages
+        .filter((m) => m.role === 'system')
+        .map((m) => m.content)
+        .join('\n');
+      const j = (await post(
+        o.fetch,
+        `${o.baseUrl ?? PROVIDER_DEFAULTS.google.baseUrl}/models/${o.model}:generateContent`,
+        { 'x-goog-api-key': o.apiKey },
+        {
+          systemInstruction: { parts: [{ text: system }] },
+          contents: messages
+            .filter((m) => m.role !== 'system')
+            .map((m) => ({
+              role: m.role === 'assistant' ? 'model' : 'user',
+              parts: [{ text: m.content }],
+            })),
+          generationConfig: opts?.json
+            ? { responseMimeType: 'application/json' }
+            : {},
+        },
+        opts?.signal,
+      )) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+      return (
+        j.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ??
+        ''
+      );
+    },
+  };
+}
+
+/** Builds a provider from config + key. Returns null when no usable provider is configured. */
+export function createProvider(
+  id: ProviderId | 'none',
+  o: { fetch: FetchLike; apiKey?: string; model?: string; baseUrl?: string },
+): LlmProvider | null {
+  if (id === 'none') return null;
+  const d = PROVIDER_DEFAULTS[id];
+  const model = o.model || d.model;
+  const baseUrl = o.baseUrl || d.baseUrl;
+  if (d.secret && !o.apiKey) return null;
+  if (id === 'anthropic')
+    return anthropic({ fetch: o.fetch, apiKey: o.apiKey!, model, baseUrl });
+  if (id === 'google')
+    return google({ fetch: o.fetch, apiKey: o.apiKey!, model, baseUrl });
+  return openAiCompatible({
+    id,
+    fetch: o.fetch,
+    baseUrl,
+    model,
+    ...(o.apiKey ? { apiKey: o.apiKey } : {}),
+  });
+}
+
+export function formatTranscriptForPrompt(
+  segments: Segment[],
+  maxChars = 60_000,
+): string {
+  const lines = segments.map((s) => {
+    const t = Math.floor(s.startMs / 1000);
+    const ts = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+    return `[${ts}] ${s.speakerName ?? s.speaker ?? 'Speaker'}: ${s.text}`;
+  });
+  let out = lines.join('\n');
+  if (out.length > maxChars)
+    out = out.slice(0, maxChars / 2) + '\n…\n' + out.slice(-maxChars / 2);
+  return out;
+}
+
+export function buildSummaryPrompt(
+  title: string,
+  segments: Segment[],
+): ChatMessage[] {
+  return [
+    {
+      role: 'system',
+      content:
+        'You summarize meeting transcripts. Reply with ONLY a JSON object: {"summary": string (3-6 sentences), "actionItems": [{"text": string, "owner"?: string}], "qa": [{"question": string, "answer": string, "askedBy"?: string}]}. Use speaker names from the transcript. Do not invent facts.',
+    },
+    {
+      role: 'user',
+      content: `Meeting: ${title}\n\nTranscript:\n${formatTranscriptForPrompt(segments)}`,
+    },
+  ];
+}
+
+const LlmSummaryJson = MeetingSummary.omit({ provider: true });
+
+/** Parses a model reply that should be JSON (tolerates code fences / leading prose). */
+export function parseSummaryReply(
+  text: string,
+): z.infer<typeof LlmSummaryJson> {
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start < 0 || end <= start)
+    throw new AppError('E_PROVIDER', 'LLM reply had no JSON object');
+  return LlmSummaryJson.parse(JSON.parse(text.slice(start, end + 1)));
+}
+
+/** LLM summary with automatic fallback to the local extractive summarizer. Never throws. */
+export async function summarizeMeeting(
+  title: string,
+  segments: Segment[],
+  provider: LlmProvider | null,
+  onError?: (e: unknown) => void,
+): Promise<MeetingSummary> {
+  if (provider && segments.length) {
+    try {
+      const reply = await provider.complete(
+        buildSummaryPrompt(title, segments),
+        { json: true },
+      );
+      return { ...parseSummaryReply(reply), provider: provider.id };
+    } catch (e) {
+      onError?.(e);
+    }
+  }
+  return extractiveSummary(segments);
+}

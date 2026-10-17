@@ -32,7 +32,7 @@ test('boots, renders sidebar, and talks to main + worker over typed IPC', async 
     path: path.join(__dirname, '..', 'test-results', 'home.png'),
   });
   await win.getByTestId('nav-settings').click();
-  await expect(win.getByText(/Database: ok · schema v1 · FTS5 on/)).toBeVisible(
+  await expect(win.getByText(/Database: ok · schema v2 · FTS5 on/)).toBeVisible(
     { timeout: 15_000 },
   );
   await expect(win.getByText(/Native helper: running/)).toBeVisible();

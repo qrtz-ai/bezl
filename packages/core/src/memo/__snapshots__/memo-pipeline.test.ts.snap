@@ -1,0 +1,51 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`markdown export > matches golden output 1`] = `
+"# Weekly Product Sync
+
+- **When:** 2026-10-16 22:00 UTC
+- **Platform:** Zoom
+- **Duration:** 0:36
+- **Participants:** Ada Lovelace, Grace Hopper, Alan Turing
+
+## Summary
+
+Ada Lovelace: Welcome everyone, this is our weekly product sync for the qrtz desktop launch. Alan Turing: The summary pipeline works offline with the extractive fallback and supports any LLM provider. Ada Lovelace: Perfect, let's ship the desktop launch next week.
+
+## Action items
+
+- [ ] Grace, can you write the onboarding copy for accessibility permissions by Friday? — _Grace Hopper_
+- [ ] Yes, I'll draft the onboarding copy tomorrow. — _Grace Hopper_
+- [ ] I will benchmark parakeet streaming latency on the M4 before the launch. — _Alan Turing_
+- [ ] Perfect, let's ship the desktop launch next week. — _Ada Lovelace_
+
+## Q&A
+
+**Q (Ada Lovelace):** What is the status of the summary pipeline?  
+**A:** The summary pipeline works offline with the extractive fallback and supports any LLM provider.
+
+**Q (Ada Lovelace):** Grace, can you write the onboarding copy for accessibility permissions by Friday?  
+**A:** Yes, I'll draft the onboarding copy tomorrow.
+
+## Transcript
+
+**[0:00] Ada Lovelace:** Welcome everyone, this is our weekly product sync for the qrtz desktop launch.
+
+**[0:04] Grace Hopper:** The memo recorder now captures system audio and the live transcript runs on the neural engine.
+
+**[0:10] Ada Lovelace:** Great. What is the status of the summary pipeline?
+
+**[0:13] Alan Turing:** The summary pipeline works offline with the extractive fallback and supports any LLM provider.
+
+**[0:19] Ada Lovelace:** Grace, can you write the onboarding copy for accessibility permissions by Friday?
+
+**[0:24] Grace Hopper:** Yes, I'll draft the onboarding copy tomorrow.
+
+**[0:28] Alan Turing:** I will benchmark parakeet streaming latency on the M4 before the launch.
+
+**[0:33] Ada Lovelace:** Perfect, let's ship the desktop launch next week. Thanks all.
+
+---
+_Exported from qrtz Memo · summary by extractive_
+"
+`;

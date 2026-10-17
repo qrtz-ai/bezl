@@ -29,6 +29,7 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
 - **Next:** M1.3 (inputs).
 
 ## 2026-10-16 ~17:42–17:48 PT: iteration 3 (M2.1, M2.5, M2.6, pulled forward because they're pure TS)
+
 - `@qrtz/core/memo`:
   - Zod domain types: Meeting, Segment, AsrEvent, ActiveSpeakerEvent, SpeakerTurn, caption and chat events.
   - `TranscriptAssembler`: partials are replaced and finals sorted; late partials and empty finals are ignored.

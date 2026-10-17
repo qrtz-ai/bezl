@@ -5,23 +5,50 @@ import {
 } from './protocol';
 import type { ChildHandle, Clock } from './supervisor';
 import { systemClock } from './supervisor';
+import {
+  FIXTURE_DURATION_MS,
+  STANDUP_FIXTURE,
+  fixtureActiveSpeakers,
+  fixtureAsrEvents,
+  fixturePostResult,
+} from '../memo/fixtures';
+
+export interface MockHelperOptions {
+  clock?: Clock;
+  heartbeatMs?: number;
+  os?: string;
+  /** Play a scripted meeting (AX detection + ASR stream + post-processing). */
+  scenario?: 'standup';
+  /** Time scale for the scenario (0.05 = 20× faster than real time). */
+  speed?: number;
+  /** Delay before the meeting is "detected" (ms, real). */
+  detectAfterMs?: number;
+}
 
 /**
  * In-process TypeScript stand-in for the Swift helper. Speaks the same JSON-lines protocol.
- * Used in tests and on non-macOS hosts (dev on Linux).
+ * Used in tests, on non-macOS hosts, and for the Playwright e2e (scenario: 'standup').
  */
 export function createMockHelper(
-  opts: { clock?: Clock; heartbeatMs?: number; os?: string } = {},
-): ChildHandle & {
-  crash(code?: number): void;
-} {
+  opts: MockHelperOptions = {},
+): ChildHandle & { crash(code?: number): void } {
   const clock = opts.clock ?? systemClock;
+  const speed = opts.speed ?? 1;
   const lineCbs: ((l: string) => void)[] = [];
   const exitCbs: ((c: number | null, s: string | null) => void)[] = [];
   let alive = true;
   let hb: unknown = null;
+  let scriptTimers: unknown[] = [];
+  let audioPath = '';
+  const granted = opts.scenario ? 'granted' : 'unsupported';
   const emit = (m: HelperToHost) => {
     if (alive) for (const cb of lineCbs) cb(JSON.stringify(m));
+  };
+  const at = (ms: number, fn: () => void) =>
+    scriptTimers.push(clock.setTimeout(fn, ms));
+  const clearScript = () => {
+    for (const t of scriptTimers) clock.clearTimeout(t);
+    scriptTimers = [];
   };
   const beat = () => {
     emit({ type: 'heartbeat', ts: clock.now() });
@@ -31,24 +58,84 @@ export function createMockHelper(
     if (!alive) return;
     alive = false;
     if (hb) clock.clearTimeout(hb);
+    clearScript();
     for (const cb of exitCbs) cb(code, signal);
   };
+  const permissions = (): HelperToHost => ({
+    type: 'permissions.status',
+    status: {
+      accessibility: granted,
+      'screen-recording': granted,
+      microphone: granted,
+    },
+  });
+
   clock.setTimeout(() => {
     emit({
       type: 'hello',
       protocol: HELPER_PROTOCOL_VERSION,
       helperVersion: 'mock',
       os: opts.os ?? 'mock',
-      features: ['mock'],
+      features: [
+        'mock',
+        ...(opts.scenario ? [`scenario:${opts.scenario}`] : []),
+      ],
     });
     beat();
+    if (opts.scenario === 'standup') {
+      clock.setTimeout(() => {
+        emit({
+          type: 'ax.participants',
+          names: [...STANDUP_FIXTURE.participants],
+        });
+        emit({ type: 'meeting.detected', ...STANDUP_FIXTURE.meeting });
+      }, opts.detectAfterMs ?? 300);
+    }
   }, 0);
+
+  const startScript = () => {
+    const asr = fixtureAsrEvents();
+    // Spread partials evenly between utterance start and its final.
+    const finalsAt = new Map(
+      STANDUP_FIXTURE.lines.map(([, , end], i) => [`u${i}`, end]),
+    );
+    const counts = new Map<string, number>();
+    for (const e of asr)
+      counts.set(e.utteranceId, (counts.get(e.utteranceId) ?? 0) + 1);
+    const seen = new Map<string, number>();
+    for (const e of asr) {
+      const n = (seen.get(e.utteranceId) ?? 0) + 1;
+      seen.set(e.utteranceId, n);
+      const end = finalsAt.get(e.utteranceId) ?? e.startMs;
+      const t =
+        e.kind === 'final'
+          ? end
+          : e.startMs +
+            ((end - e.startMs) * n) / (counts.get(e.utteranceId)! + 0.5);
+      at(t * speed, () => emit({ type: 'asr', event: e }));
+    }
+    for (const a of fixtureActiveSpeakers())
+      at(a.atMs * speed, () => emit({ type: 'ax.activeSpeaker', ...a }));
+    for (let t = 0; t < FIXTURE_DURATION_MS; t += 500)
+      at(t * speed, () =>
+        emit({
+          type: 'audio.level',
+          rms: 0.2 + 0.6 * Math.abs(Math.sin(t / 700)),
+        }),
+      );
+  };
+
   return {
     onLine: (cb) => void lineCbs.push(cb),
     onExit: (cb) => void exitCbs.push(cb),
     write(line) {
-      const parsed = HostToHelper.safeParse(JSON.parse(line));
-      if (!parsed.success)
+      let parsed;
+      try {
+        parsed = HostToHelper.safeParse(JSON.parse(line));
+      } catch {
+        parsed = undefined;
+      }
+      if (!parsed?.success)
         return emit({
           type: 'error',
           code: 'E_PROTOCOL',
@@ -56,20 +143,37 @@ export function createMockHelper(
           fatal: false,
         });
       const m = parsed.data;
-      if (m.type === 'ping') emit({ type: 'pong', id: m.id });
-      else if (
-        m.type === 'permissions.check' ||
-        m.type === 'permissions.request'
-      )
-        emit({
-          type: 'permissions.status',
-          status: {
-            accessibility: 'unsupported',
-            'screen-recording': 'unsupported',
-            microphone: 'unsupported',
-          },
-        });
-      else if (m.type === 'shutdown') die(0, null);
+      switch (m.type) {
+        case 'ping':
+          return emit({ type: 'pong', id: m.id });
+        case 'permissions.check':
+        case 'permissions.request':
+          return emit(permissions());
+        case 'shutdown':
+          return die(0, null);
+        case 'recording.start':
+          audioPath = m.audioPath;
+          emit({ type: 'recording.started', audioPath });
+          if (opts.scenario) startScript();
+          return;
+        case 'recording.stop':
+          clearScript();
+          return emit({
+            type: 'recording.stopped',
+            audioPath,
+            durationMs: opts.scenario ? FIXTURE_DURATION_MS : 0,
+          });
+        case 'post.run':
+          emit({ type: 'post.progress', stage: 'asr', progress: 0.5 });
+          clock.setTimeout(() => {
+            const r = opts.scenario
+              ? fixturePostResult()
+              : { segments: [], turns: [] };
+            emit({ type: 'post.progress', stage: 'diarization', progress: 1 });
+            emit({ type: 'post.result', audioPath: m.audioPath, ...r });
+          }, 50);
+          return;
+      }
     },
     kill: () => die(null, 'SIGTERM'),
     crash: (code = 1) => die(code, null),

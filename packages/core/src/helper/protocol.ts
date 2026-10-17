@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { OsPermission } from '../capabilities';
+import { AsrEvent, MeetingPlatform, Segment, SpeakerTurn } from '../memo/types';
 
 /**
  * Wire protocol between the app (host) and the native Swift helper (`qrtz-helper`).
@@ -40,6 +41,52 @@ export const HelperToHost = z.discriminatedUnion('type', [
     message: z.string(),
     fatal: z.boolean().default(false),
   }),
+  // --- memo (AX + audio + ASR) ---
+  z.object({
+    type: z.literal('meeting.detected'),
+    key: z.string(),
+    title: z.string(),
+    platform: MeetingPlatform,
+    app: z.string(),
+  }),
+  z.object({ type: z.literal('meeting.ended'), key: z.string() }),
+  z.object({ type: z.literal('ax.participants'), names: z.array(z.string()) }),
+  z.object({
+    type: z.literal('ax.activeSpeaker'),
+    atMs: z.number(),
+    name: z.string(),
+  }),
+  z.object({
+    type: z.literal('ax.caption'),
+    atMs: z.number(),
+    speaker: z.string().optional(),
+    text: z.string(),
+  }),
+  z.object({
+    type: z.literal('ax.chat'),
+    atMs: z.number(),
+    author: z.string(),
+    text: z.string(),
+  }),
+  z.object({ type: z.literal('audio.level'), rms: z.number().min(0).max(1) }),
+  z.object({ type: z.literal('asr'), event: AsrEvent }),
+  z.object({ type: z.literal('recording.started'), audioPath: z.string() }),
+  z.object({
+    type: z.literal('recording.stopped'),
+    audioPath: z.string(),
+    durationMs: z.number(),
+  }),
+  z.object({
+    type: z.literal('post.progress'),
+    stage: z.enum(['asr', 'diarization']),
+    progress: z.number(),
+  }),
+  z.object({
+    type: z.literal('post.result'),
+    audioPath: z.string(),
+    segments: z.array(Segment),
+    turns: z.array(SpeakerTurn),
+  }),
 ]);
 export type HelperToHost = z.infer<typeof HelperToHost>;
 
@@ -51,6 +98,14 @@ export const HostToHelper = z.discriminatedUnion('type', [
     permission: OsPermission,
   }),
   z.object({ type: z.literal('shutdown') }),
+  z.object({ type: z.literal('recording.start'), audioPath: z.string() }),
+  z.object({ type: z.literal('recording.stop') }),
+  z.object({
+    type: z.literal('post.run'),
+    audioPath: z.string(),
+    asrModel: z.string(),
+    diarization: z.string(),
+  }),
 ]);
 export type HostToHelper = z.infer<typeof HostToHelper>;
 

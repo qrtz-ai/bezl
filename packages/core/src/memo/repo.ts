@@ -1,0 +1,273 @@
+import type { SqlDb } from '../db/migrate';
+import type { Meeting, Segment } from './types';
+import { MeetingSummary } from './summary';
+
+export interface MeetingRow extends Meeting {
+  durationMs?: number;
+}
+
+export interface SearchHit {
+  meetingId: string;
+  title: string;
+  startedAt: number;
+  snippet: string;
+  startMs?: number;
+}
+
+type Row = Record<string, unknown>;
+const toMeeting = (r: Row): MeetingRow => ({
+  id: String(r.id),
+  title: String(r.title),
+  platform: r.platform as Meeting['platform'],
+  startedAt: Number(r.started_at),
+  ...(r.ended_at == null ? {} : { endedAt: Number(r.ended_at) }),
+  status: r.status as Meeting['status'],
+  participants: JSON.parse(String(r.participants ?? '[]')) as string[],
+  ...(r.audio_path == null ? {} : { audioPath: String(r.audio_path) }),
+  ...(r.duration_ms == null ? {} : { durationMs: Number(r.duration_ms) }),
+});
+const toSegment = (r: Row): Segment => ({
+  id: String(r.id),
+  startMs: Number(r.start_ms),
+  endMs: Number(r.end_ms),
+  text: String(r.text),
+  source: r.source as Segment['source'],
+  ...(r.speaker == null ? {} : { speaker: String(r.speaker) }),
+  ...(r.speaker_name == null ? {} : { speakerName: String(r.speaker_name) }),
+  ...(r.confidence == null ? {} : { confidence: Number(r.confidence) }),
+});
+
+/**
+ * Turns free text into a safe FTS5 query: each word becomes a quoted prefix term (AND-ed).
+ * Strips FTS syntax so user input can never produce a query error or injection.
+ */
+export function toFtsQuery(input: string): string | null {
+  const words = input
+    .toLowerCase()
+    .normalize('NFKC')
+    .split(/[^\p{L}\p{N}']+/u)
+    .map((w) => w.replace(/'/g, ''))
+    .filter(Boolean)
+    .slice(0, 8);
+  if (!words.length) return null;
+  return words.map((w) => `"${w}"*`).join(' ');
+}
+
+export class MemoRepo {
+  constructor(private readonly db: SqlDb) {}
+
+  tx<T>(fn: () => T): T {
+    this.db.exec('BEGIN');
+    try {
+      const r = fn();
+      this.db.exec('COMMIT');
+      return r;
+    } catch (e) {
+      this.db.exec('ROLLBACK');
+      throw e;
+    }
+  }
+
+  upsertMeeting(m: MeetingRow): void {
+    this.db
+      .prepare(
+        `INSERT INTO meetings (id,title,platform,started_at,ended_at,status,participants,audio_path,duration_ms)
+         VALUES (?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(id) DO UPDATE SET title=excluded.title, platform=excluded.platform, ended_at=excluded.ended_at,
+           status=excluded.status, participants=excluded.participants, audio_path=excluded.audio_path, duration_ms=excluded.duration_ms`,
+      )
+      .run(
+        m.id,
+        m.title,
+        m.platform,
+        m.startedAt,
+        m.endedAt ?? null,
+        m.status,
+        JSON.stringify(m.participants ?? []),
+        m.audioPath ?? null,
+        m.durationMs ?? null,
+      );
+  }
+
+  setStatus(id: string, status: Meeting['status']): void {
+    this.db.prepare('UPDATE meetings SET status=? WHERE id=?').run(status, id);
+  }
+
+  getMeeting(id: string): MeetingRow | undefined {
+    const r = this.db.prepare('SELECT * FROM meetings WHERE id=?').get(id) as
+      | Row
+      | undefined;
+    return r ? toMeeting(r) : undefined;
+  }
+
+  listMeetings(limit = 100): MeetingRow[] {
+    return (
+      this.db
+        .prepare('SELECT * FROM meetings ORDER BY started_at DESC LIMIT ?')
+        .all(limit) as Row[]
+    ).map(toMeeting);
+  }
+
+  deleteMeeting(id: string): void {
+    this.tx(() => {
+      const r = this.db
+        .prepare('SELECT rowid AS r FROM meetings WHERE id=?')
+        .get(id) as { r: number } | undefined;
+      if (r) this.db.prepare('DELETE FROM meetings_fts WHERE rowid=?').run(r.r);
+      this.db.prepare('DELETE FROM segments WHERE meeting_id=?').run(id);
+      this.db.prepare('DELETE FROM meetings WHERE id=?').run(id);
+    });
+  }
+
+  /** Replaces all segments of one source for a meeting (idempotent re-processing). */
+  replaceSegments(
+    meetingId: string,
+    source: Segment['source'],
+    segs: Segment[],
+  ): void {
+    this.tx(() => {
+      this.db
+        .prepare('DELETE FROM segments WHERE meeting_id=? AND source=?')
+        .run(meetingId, source);
+      const ins = this.db.prepare(
+        'INSERT INTO segments (id,meeting_id,source,start_ms,end_ms,speaker,speaker_name,text,confidence) VALUES (?,?,?,?,?,?,?,?,?)',
+      );
+      for (const s of segs)
+        ins.run(
+          s.id,
+          meetingId,
+          source,
+          Math.round(s.startMs),
+          Math.round(s.endMs),
+          s.speaker ?? null,
+          s.speakerName ?? null,
+          s.text,
+          s.confidence ?? null,
+        );
+    });
+  }
+
+  appendSegment(meetingId: string, s: Segment): void {
+    this.db
+      .prepare(
+        `INSERT INTO segments (id,meeting_id,source,start_ms,end_ms,speaker,speaker_name,text,confidence) VALUES (?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(meeting_id, source, id) DO UPDATE SET text=excluded.text, end_ms=excluded.end_ms, speaker_name=excluded.speaker_name`,
+      )
+      .run(
+        s.id,
+        meetingId,
+        s.source,
+        Math.round(s.startMs),
+        Math.round(s.endMs),
+        s.speaker ?? null,
+        s.speakerName ?? null,
+        s.text,
+        s.confidence ?? null,
+      );
+  }
+
+  /** Post-processed transcript if present, else live. */
+  getSegments(meetingId: string): Segment[] {
+    const post = this.db
+      .prepare(
+        "SELECT * FROM segments WHERE meeting_id=? AND source='post' ORDER BY start_ms",
+      )
+      .all(meetingId) as Row[];
+    const rows = post.length
+      ? post
+      : (this.db
+          .prepare(
+            "SELECT * FROM segments WHERE meeting_id=? AND source='live' ORDER BY start_ms",
+          )
+          .all(meetingId) as Row[]);
+    return rows.map(toSegment);
+  }
+
+  saveSummary(meetingId: string, s: MeetingSummary, now = Date.now()): void {
+    this.tx(() => {
+      this.db
+        .prepare(
+          'INSERT INTO summaries (meeting_id,provider,json,created_at) VALUES (?,?,?,?) ON CONFLICT(meeting_id) DO UPDATE SET provider=excluded.provider, json=excluded.json, created_at=excluded.created_at',
+        )
+        .run(meetingId, s.provider, JSON.stringify(s), now);
+      const m = this.getMeeting(meetingId);
+      const rowid = this.meetingRowid(meetingId);
+      this.db.prepare('DELETE FROM meetings_fts WHERE rowid=?').run(rowid);
+      this.db
+        .prepare('INSERT INTO meetings_fts(rowid,title,summary) VALUES (?,?,?)')
+        .run(
+          rowid,
+          m?.title ?? '',
+          [s.summary, ...s.actionItems.map((a) => a.text)].join('\n'),
+        );
+    });
+  }
+
+  private meetingRowid(id: string): number {
+    return Number(
+      (
+        this.db
+          .prepare('SELECT rowid AS r FROM meetings WHERE id=?')
+          .get(id) as { r: number }
+      ).r,
+    );
+  }
+
+  getSummary(meetingId: string): MeetingSummary | undefined {
+    const r = this.db
+      .prepare('SELECT json FROM summaries WHERE meeting_id=?')
+      .get(meetingId) as { json: string } | undefined;
+    return r ? MeetingSummary.parse(JSON.parse(r.json)) : undefined;
+  }
+
+  /** Full-text search across transcripts, titles and summaries. One best hit per meeting. */
+  search(input: string, limit = 50): SearchHit[] {
+    const q = toFtsQuery(input);
+    if (!q) return [];
+    const segHits = this.db
+      .prepare(
+        `SELECT s.meeting_id AS meetingId, m.title AS title, m.started_at AS startedAt, s.start_ms AS startMs,
+                snippet(segments_fts, 0, '[', ']', '…', 12) AS snippet, bm25(segments_fts) AS rank
+         FROM segments_fts JOIN segments s ON s.rowid = segments_fts.rowid JOIN meetings m ON m.id = s.meeting_id
+         WHERE segments_fts MATCH ? ORDER BY rank LIMIT 500`,
+      )
+      .all(q) as (SearchHit & { rank: number })[];
+    const metaHits = this.db
+      .prepare(
+        `SELECT m.id AS meetingId, m.title AS title, m.started_at AS startedAt,
+                snippet(meetings_fts, -1, '[', ']', '…', 12) AS snippet, bm25(meetings_fts) AS rank
+         FROM meetings_fts JOIN meetings m ON m.rowid = meetings_fts.rowid WHERE meetings_fts MATCH ? ORDER BY rank LIMIT 100`,
+      )
+      .all(q) as (SearchHit & { rank: number })[];
+    // Also match titles of meetings without a summary yet.
+    const titleHits = (
+      this.db
+        .prepare('SELECT id, title, started_at FROM meetings')
+        .all() as Row[]
+    )
+      .filter(
+        (r) =>
+          input.trim() &&
+          String(r.title).toLowerCase().includes(input.trim().toLowerCase()),
+      )
+      .map((r) => ({
+        meetingId: String(r.id),
+        title: String(r.title),
+        startedAt: Number(r.started_at),
+        snippet: String(r.title),
+        rank: -1e9,
+      }));
+    const best = new Map<string, SearchHit & { rank: number }>();
+    for (const h of [...titleHits, ...metaHits, ...segHits]) {
+      const cur = best.get(h.meetingId);
+      if (!cur || h.rank < cur.rank) best.set(h.meetingId, h);
+    }
+    return [...best.values()]
+      .sort((a, b) => a.rank - b.rank)
+      .slice(0, limit)
+      .map(({ rank: _r, ...h }) => ({
+        ...h,
+        startMs: h.startMs == null ? undefined : Number(h.startMs),
+      }));
+  }
+}
