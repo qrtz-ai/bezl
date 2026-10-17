@@ -1,0 +1,31 @@
+# Rust side of the Electron → Tauri 2 migration (docs/tauri-migration.md).
+# crates/* are UI-free; apps/desktop-tauri/src-tauri is the thin Tauri shell.
+# Ownership: qrtz-storage and qrtz-lifecycle belong to the core-crates track; qrtz-ipc,
+# qrtz-helper-bridge, qrtz-app and the shell belong to the shell track.
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+license = "LicenseRef-Proprietary"
+publish = false
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+jsonschema = { version = "0.33", default-features = false }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "process", "io-util", "fs"] }
+async-trait = "0.1"
+tracing = "0.1"
+rand = "0.8"
+tempfile = "3"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "unwind"
+strip = true

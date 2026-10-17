@@ -151,3 +151,7 @@ out/
 test-results/
 playwright-report/
 review-out/
+
+# Rust / Tauri
+target/
+apps/desktop-tauri/src-tauri/gen/schemas/
