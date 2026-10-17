@@ -426,6 +426,17 @@ mod linux {
             if entry < 0 {
                 return Err(std::io::Error::last_os_error());
             }
+            // The ruleset fd may sit inside 0..7+n too: move it up before the targets are placed.
+            let ruleset = match &self.ruleset {
+                Some(rs) => {
+                    let fd = libc::fcntl(rs.as_raw_fd(), libc::F_DUPFD_CLOEXEC, n + 16);
+                    if fd < 0 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    fd
+                }
+                None => -1,
+            };
             // 2. Place them (dup2 clears close-on-exec on the target).
             for i in 0..self.scratch.len() {
                 if libc::dup2(self.scratch[i], i as RawFd) < 0 {
@@ -445,10 +456,8 @@ mod linux {
             if libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0 {
                 return Err(std::io::Error::last_os_error());
             }
-            if let Some(rs) = &self.ruleset {
-                if libc::syscall(SYS_LANDLOCK_RESTRICT_SELF, rs.as_raw_fd(), 0u32) < 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
+            if ruleset >= 0 && libc::syscall(SYS_LANDLOCK_RESTRICT_SELF, ruleset, 0u32) < 0 {
+                return Err(std::io::Error::last_os_error());
             }
             if let Some(f) = &mut self.seccomp {
                 f.patch_pid(libc::getpid() as u32);

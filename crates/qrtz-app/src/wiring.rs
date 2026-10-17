@@ -29,9 +29,11 @@ pub fn llm_config(cfg: &Value, base_url: Option<&str>) -> qrtz_llm::LlmConfig {
     }
 }
 
-/// The gates the vector backfill checks per meeting (N17 tombstones; Bozniak's N82 `busy` gate goes here too).
+/// The gates the vector backfill checks (N17 tombstones per meeting; N82/N86 `busy` before every meeting and
+/// batch: the shared [`crate::live::LiveWork`] counter).
 pub struct BackfillGates {
     pub tombstoned: Arc<dyn Fn(&str) -> bool + Send + Sync>,
+    pub busy: Arc<dyn Fn() -> bool + Send + Sync>,
 }
 
 /// The search side the shell keeps for its lifetime: the lazily loaded embedder (index step, chat retrieval) and
@@ -108,15 +110,28 @@ pub struct AppSink {
     pub shell: Arc<dyn ShellHooks>,
     pub config: SharedConfig,
     no_audio_for: Mutex<Option<String>>,
+    /// N86: held from `starting` through `stopping`.
+    pub live: Arc<crate::live::LiveWork>,
+    recording: crate::live::LiveLatch,
 }
 
 impl AppSink {
     pub fn new(events: Events, shell: Arc<dyn ShellHooks>, config: SharedConfig) -> Self {
+        Self::with_live(events, shell, config, crate::live::LiveWork::new())
+    }
+    pub fn with_live(
+        events: Events,
+        shell: Arc<dyn ShellHooks>,
+        config: SharedConfig,
+        live: Arc<crate::live::LiveWork>,
+    ) -> Self {
         Self {
             events,
             shell,
             config,
             no_audio_for: Mutex::new(None),
+            live,
+            recording: Default::default(),
         }
     }
     fn no_audio_edge(&self, view: &qrtz_model::SessionView) {
@@ -139,6 +154,12 @@ impl EventSink for AppSink {
     fn emit(&self, e: CoreEvent) {
         if let CoreEvent::Session(v) = &e {
             self.no_audio_edge(v);
+            use qrtz_model::RecordingPhase as P;
+            let live = matches!(
+                v.phase,
+                P::Starting | P::Recording | P::Reconnecting | P::Stopping
+            );
+            self.recording.set(&self.live, live);
         }
         match &e {
             CoreEvent::DetectedPrompt { title, platform } => self.shell.notify(Notice::MeetingDetected {
@@ -168,18 +189,20 @@ pub struct DevKnobs {
 impl DevKnobs {
     /// `QRTZ_RETRY_SCALE`, `QRTZ_FAULT_STEP`; ignored in release builds.
     pub fn from_env() -> Self {
-        if !cfg!(debug_assertions) && std::env::var("QRTZ_ALLOW_DEV_KNOBS").as_deref() != Ok("1") {
+        Self::from_vars(cfg!(debug_assertions), |k| std::env::var(k).ok())
+    }
+
+    /// N87: in a release build every knob (`QRTZ_LLM_BASE_URL` above all: it would send the API key and the
+    /// transcript to another host) is ignored unless `QRTZ_ALLOW_DEV_KNOBS=1` (the E2E harness).
+    pub fn from_vars(debug_build: bool, get: impl Fn(&str) -> Option<String>) -> Self {
+        if !debug_build && get("QRTZ_ALLOW_DEV_KNOBS").as_deref() != Some("1") {
             return Self::default();
         }
         Self {
-            retry_scale: std::env::var("QRTZ_RETRY_SCALE")
-                .ok()
-                .and_then(|v| v.parse().ok()),
-            fault_step: std::env::var("QRTZ_FAULT_STEP")
-                .ok()
-                .and_then(|v| serde_json::from_value(Value::String(v)).ok()),
-            llm_base_url: std::env::var("QRTZ_LLM_BASE_URL").ok().filter(|v| !v.is_empty()),
-            minilm_dir: std::env::var_os("QRTZ_MINILM_DIR").map(PathBuf::from),
+            retry_scale: get("QRTZ_RETRY_SCALE").and_then(|v| v.parse().ok()),
+            fault_step: get("QRTZ_FAULT_STEP").and_then(|v| serde_json::from_value(Value::String(v)).ok()),
+            llm_base_url: get("QRTZ_LLM_BASE_URL").filter(|v| !v.is_empty()),
+            minilm_dir: get("QRTZ_MINILM_DIR").map(PathBuf::from),
         }
     }
 }
@@ -206,6 +229,8 @@ pub struct Booted {
     pub db: StorageHandle,
     pub runtime: NoteRuntime,
     pub search: Arc<SearchHandles>,
+    /// N86: recordings, steps and dictations hold it; the backfill yields while it is held.
+    pub live: Arc<crate::live::LiveWork>,
 }
 
 /// Inputs to [`boot`].
@@ -267,14 +292,23 @@ pub fn boot(o: BootOptions) -> std::io::Result<Booted> {
         };
         Arc::new(qrtz_search::SearchSteps::new(db.clone(), llm, embedder.clone()))
     });
+    let live = crate::live::LiveWork::new();
+    let steps: Arc<dyn StepExecutor> = Arc::new(crate::live::BusySteps {
+        inner: steps,
+        live: live.clone(),
+    });
     let gates = BackfillGates {
         tombstoned: match o.pending_delete.clone() {
             Some(p) => Arc::new(move |id: &str| p.has(id)),
             None => Arc::new(|_: &str| false),
         },
+        busy: {
+            let l = live.clone();
+            Arc::new(move || l.busy())
+        },
     };
     let search = Arc::new(SearchHandles {
-        backfill: qrtz_search::Backfill::new(db.clone(), gates.tombstoned),
+        backfill: qrtz_search::Backfill::gated(db.clone(), gates.tombstoned, gates.busy),
         embedder,
         config: o.config.clone(),
         started: Default::default(),
@@ -283,7 +317,7 @@ pub fn boot(o: BootOptions) -> std::io::Result<Booted> {
         store: Arc::new(Store(db.clone())),
         steps,
         helper: o.helper,
-        events: Arc::new(AppSink::new(o.events, o.shell, o.config)),
+        events: Arc::new(AppSink::with_live(o.events, o.shell, o.config, live.clone())),
         config: Arc::new(move || runtime_config(&cfg.get())),
         clock: o.clock.unwrap_or_else(|| Arc::new(SystemClock)),
         ids: Arc::new(uuid_v4),
@@ -299,6 +333,7 @@ pub fn boot(o: BootOptions) -> std::io::Result<Booted> {
         db,
         runtime,
         search,
+        live,
     })
 }
 
@@ -330,6 +365,7 @@ pub struct BuiltApp {
     pub dirs: AppDirs,
     /// Call `search.start()` inside the tokio runtime after boot and `search.shutdown()` on quit.
     pub search: Arc<SearchHandles>,
+    pub live: Arc<crate::live::LiveWork>,
 }
 
 /// The default secret store for this platform (env overrides in front).
@@ -418,5 +454,27 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         db: booted.db,
         dirs: booted.dirs,
         search: booted.search,
+        live: booted.live,
     })
+}
+
+#[cfg(test)]
+mod knob_tests {
+    use super::DevKnobs;
+    #[test]
+    fn n87_release_builds_ignore_the_llm_base_url_unless_dev_knobs_are_allowed() {
+        let env = |allow: bool| {
+            move |k: &str| match k {
+                "QRTZ_LLM_BASE_URL" => Some("http://elsewhere.example".to_string()),
+                "QRTZ_ALLOW_DEV_KNOBS" if allow => Some("1".to_string()),
+                _ => None,
+            }
+        };
+        assert_eq!(DevKnobs::from_vars(false, env(false)).llm_base_url, None);
+        assert_eq!(
+            DevKnobs::from_vars(false, env(true)).llm_base_url.as_deref(),
+            Some("http://elsewhere.example")
+        );
+        assert!(DevKnobs::from_vars(true, env(false)).llm_base_url.is_some());
+    }
 }

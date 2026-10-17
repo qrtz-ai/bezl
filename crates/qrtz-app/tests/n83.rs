@@ -414,3 +414,79 @@ async fn the_boot_backfill_embeds_old_meetings_but_not_one_pending_delete() {
     a.search.shutdown();
     a.runtime.kill();
 }
+
+/// Counts embed calls.
+struct Counting(Arc<std::sync::atomic::AtomicUsize>);
+#[async_trait]
+impl Embedder for Counting {
+    fn id(&self) -> &str {
+        "fake-4d"
+    }
+    async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, LifecycleError> {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(texts.iter().map(|_| vec![0.5, 0.5, 0.5, 0.5]).collect())
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn n86_the_backfill_yields_to_a_live_recording() {
+    use std::sync::atomic::Ordering;
+    let tmp = tempfile::tempdir().unwrap();
+    let data = tmp.path().join("data");
+    let mock = MockLlm::default();
+    let base = mock.start().await;
+    // A library with an un-embedded meeting.
+    let old = {
+        let a = app(&data, &base, LazyEmbedder::none());
+        let r = Router::new(Shared(a.service.clone())).validate_responses(true);
+        a.service.start_helper();
+        a.runtime.recover().await.unwrap();
+        let (id, _) = record_one(&a, &r, "Old").await;
+        a.runtime.kill();
+        id
+    };
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let gate = Arc::new(tokio::sync::Notify::new());
+    let (g, c) = (gate.clone(), calls.clone());
+    let loader: qrtz_search::embedder::Loader = Box::new(move || {
+        let (g, c) = (g.clone(), c.clone());
+        Box::pin(async move {
+            g.notified().await;
+            Ok(Arc::new(Counting(c)) as Arc<dyn Embedder>)
+        })
+    });
+    let a = app(&data, &base, LazyEmbedder::new(loader));
+    let r = Router::new(Shared(a.service.clone())).validate_responses(true);
+    a.service.start_helper();
+    a.runtime.recover().await.unwrap();
+    a.search.start();
+    let rt = a.runtime.clone();
+    until("helper", || rt.session().helper.as_str() == "simulated").await;
+    call(&r, "note", "note:start", json!({"title": "Live"})).await;
+    assert!(a.live.busy(), "a recording holds the live-work counter");
+    // The model becomes ready mid-recording: the backfill must not embed anything until it stops.
+    gate.notify_one();
+    tokio::time::sleep(Duration::from_millis(2500)).await;
+    assert_eq!(calls.load(Ordering::SeqCst), 0, "no embed call while recording");
+    call(&r, "note", "note:stop", json!(null)).await;
+    let rt2 = a.runtime.clone();
+    until("done", || rt2.session().phase.as_str() == "done").await;
+    // Once idle (the steps release it too) the backfill runs and embeds the old meeting.
+    let db = a.db.clone();
+    let mut missing = vec![old.clone()];
+    for _ in 0..400 {
+        missing = db
+            .call(|db| db.notes().meetings_missing_vectors("fake-4d"))
+            .await
+            .unwrap();
+        if !missing.contains(&old) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert!(!missing.contains(&old), "embedded after the recording");
+    assert!(calls.load(Ordering::SeqCst) > 0);
+    assert!(!a.live.busy(), "nothing left holding it");
+    a.search.shutdown();
+    a.runtime.kill();
+}

@@ -17,7 +17,8 @@ pub use engine::{
     SpeechEngine, SpeechEvent, SpeechSession, StatusError,
 };
 pub use store::{
-    choose_engine, EngineChoice, Revocation, RollbackKind, SpeechAvailability, SpeechStore, StoreStatus,
+    choose_engine, App, CloudConsent, EngineChoice, Revocation, RollbackKind, SpeechAvailability,
+    SpeechStore, StoreStatus,
 };
 
 #[derive(Debug, thiserror::Error)]
