@@ -292,20 +292,7 @@ pub fn boot(o: BootOptions) -> std::io::Result<Booted> {
         }
         None => Arc::new(qrtz_llm::LlmSteps::on_device(db.clone(), core, now.clone())),
     };
-    let chat = Arc::new(crate::chat::NoteChat {
-        db: db.clone(),
-        embedder: embedder.clone(),
-        llm: llm_steps.clone(),
-    });
-    let steps = o.steps.unwrap_or_else(|| {
-        let llm: Arc<dyn StepExecutor> = llm_steps;
-        Arc::new(qrtz_search::SearchSteps::new(db.clone(), llm, embedder.clone()))
-    });
     let live = crate::live::LiveWork::new();
-    let steps: Arc<dyn StepExecutor> = Arc::new(crate::live::BusySteps {
-        inner: steps,
-        live: live.clone(),
-    });
     let gates = BackfillGates {
         tombstoned: match o.pending_delete.clone() {
             Some(p) => Arc::new(move |id: &str| p.has(id)),
@@ -316,8 +303,23 @@ pub fn boot(o: BootOptions) -> std::io::Result<Booted> {
             Arc::new(move || l.busy())
         },
     };
+    // N90/N93: chat never sees a meeting pending delete (same gate as the backfill).
+    let chat = Arc::new(crate::chat::NoteChat {
+        db: db.clone(),
+        embedder: embedder.clone(),
+        llm: llm_steps.clone(),
+        hidden: gates.tombstoned.clone(),
+    });
+    let steps = o.steps.unwrap_or_else(|| {
+        let llm: Arc<dyn StepExecutor> = llm_steps;
+        Arc::new(qrtz_search::SearchSteps::new(db.clone(), llm, embedder.clone()))
+    });
+    let steps: Arc<dyn StepExecutor> = Arc::new(crate::live::BusySteps {
+        inner: steps,
+        live: live.clone(),
+    });
     let search = Arc::new(SearchHandles {
-        backfill: qrtz_search::Backfill::gated(db.clone(), gates.tombstoned, gates.busy),
+        backfill: qrtz_search::Backfill::gated(db.clone(), gates.tombstoned.clone(), gates.busy),
         embedder,
         config: o.config.clone(),
         started: Default::default(),
@@ -361,6 +363,8 @@ pub struct AppBuild {
     pub storage_shell: Arc<dyn crate::storage_port::StorageShell>,
     /// `None` = file store (non-macOS) / Keychain (macOS) under the data dir.
     pub secrets: Option<Arc<dyn crate::secrets::SecretStore>>,
+    /// The speech module (store, spawn options, update server); `None` = not configured in this build.
+    pub speech: Option<crate::speech::SpeechSetup>,
     /// `None` = qrtz talk over the helper (data/talk.json).
     pub talk: Option<Arc<dyn crate::ports::TalkPort>>,
     pub steps: Option<Arc<dyn StepExecutor>>,
@@ -379,6 +383,8 @@ pub struct BuiltApp {
     pub live: Arc<crate::live::LiveWork>,
     /// N55: hands speech module audio fds to the helper (the on-device engine's `AudioAttach`).
     pub attach: Arc<crate::speech::HelperAttach>,
+    pub note_speech: Option<Arc<crate::speech::NoteSpeech>>,
+    pub speech: Option<crate::speech::SpeechSetup>,
 }
 
 /// The default secret store for this platform (env overrides in front).
@@ -420,6 +426,19 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         Some(s) => Arc::new(SupervisorHelper(s.clone())),
         None => Arc::new(NoHelper),
     };
+    // ADR 0046: the speech module's audio comes from the helper (N55); note parts get a module session each.
+    let attach = crate::speech::HelperAttach::new(supervisor.clone());
+    let note_speech = b
+        .speech
+        .as_ref()
+        .map(|s| crate::speech::NoteSpeech::new(s, attach.clone(), config.clone()));
+    let helper: Arc<dyn HelperPort> = match &note_speech {
+        Some(ns) => Arc::new(crate::speech::RoutedHelper {
+            inner: helper,
+            speech: ns.clone(),
+        }),
+        None => helper,
+    };
     // One tombstone store for the runtime (undo window) and backup import (skips meetings pending delete).
     let pending = Arc::new(qrtz_storage::PendingDeletes::new(&dirs.data));
     let secrets = b.secrets.unwrap_or_else(|| platform_secrets(&dirs.data));
@@ -436,6 +455,9 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         embedder: b.embedder,
         knobs: b.knobs,
     })?;
+    if let Some(ns) = &note_speech {
+        ns.set_runtime(booted.runtime.clone());
+    }
     let talk_shell = b.storage_shell.clone();
     let rt = booted.runtime.clone();
     let storage = crate::storage_port::SqliteStorage {
@@ -462,6 +484,11 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
                 shell: talk_shell,
                 config: config.clone(),
                 store_path: dirs.data.join("talk.json"),
+                local: b.speech.as_ref().map(|s| {
+                    let e = qrtz_speech::spawn::OnDeviceSpeech::new(s.store.clone(), s.opts.clone())
+                        .with_attach(attach.clone());
+                    Arc::new(e) as Arc<dyn qrtz_speech::SpeechEngine>
+                }),
             },
         ))),
     };
@@ -477,10 +504,23 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         events,
     });
     service.set_chat(booted.chat.clone());
-    let attach = crate::speech::HelperAttach::new(service.helper().cloned());
     {
-        let a = attach.clone();
-        service.set_speech_tap(Arc::new(move |m: &serde_json::Value| a.on_line(m)));
+        let (a, ns) = (attach.clone(), note_speech.clone());
+        service.set_speech_tap(Arc::new(move |m: &serde_json::Value| {
+            let ty = m["type"].as_str().unwrap_or_default();
+            if ty.starts_with("speech.") {
+                a.on_line(m);
+                return true;
+            }
+            match &ns {
+                Some(ns) => {
+                    ns.on_helper_line(m);
+                    // The module is note's only recogniser once speech is configured.
+                    ty == "asr"
+                }
+                None => false,
+            }
+        }));
     }
     Ok(BuiltApp {
         service,
@@ -490,6 +530,8 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         search: booted.search,
         live: booted.live,
         attach,
+        note_speech,
+        speech: b.speech,
     })
 }
 

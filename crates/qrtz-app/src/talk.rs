@@ -105,6 +105,9 @@ pub struct TalkWiring {
     pub shell: Arc<dyn crate::storage_port::StorageShell>,
     pub config: SharedConfig,
     pub store_path: PathBuf,
+    /// The on-device engine: the speech module with its audio from the helper; `None` = the helper's
+    /// `dictation.asr` lines (no module configured in this build).
+    pub local: Option<Arc<dyn qrtz_speech::SpeechEngine>>,
 }
 
 /// Build the service. The on-device engine is today's helper's `dictation.asr` lines until the qrtz speech
@@ -121,7 +124,7 @@ pub fn talk_service(w: TalkWiring) -> TalkService {
         ids: Arc::new(RandomIds),
         llm: Arc::new(NoLlm),
         connector: Arc::new(qrtz_talk::ws::TungsteniteConnector),
-        local: asr.clone(),
+        local: w.local.unwrap_or_else(|| asr.clone()),
         helper_asr: asr,
         config: Arc::new(move || config.get()),
         providers: Providers::default(),

@@ -70,6 +70,7 @@ fn app_with(
         storage_shell,
         secrets: None,
         talk: None,
+        speech: None,
         steps: None,
         embedder: Some(qrtz_search::LazyEmbedder::none()),
         knobs: DevKnobs {
@@ -117,8 +118,9 @@ async fn record_stop_process_list_export_with_the_mock_helper() {
     let r = Router::new(Shared(a.service.clone())).validate_responses(true);
     a.service.start_helper();
     a.runtime.recover().await.unwrap();
+    let svc = a.service.clone();
+    until("helper ok", || svc.helper_ready()).await;
     let rt = a.runtime.clone();
-    until("helper ok", || rt.session().helper.as_str() == "simulated").await;
 
     let s = call(&r, "note", "note:start", json!({"title": "Standup"})).await;
     assert_eq!(s["phase"], "recording", "{s}");
@@ -214,9 +216,10 @@ async fn notify_no_audio_off_suppresses_the_notice() {
     .await;
     a.service.start_helper();
     a.runtime.recover().await.unwrap();
-    let rt = a.runtime.clone();
-    until("helper", || rt.session().helper.as_str() == "simulated").await;
+    let svc = a.service.clone();
+    until("helper", || svc.helper_ready()).await;
     call(&r, "note", "note:start", json!({})).await;
+    let rt = a.runtime.clone();
     until("noAudio", || rt.session().no_audio).await;
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert!(shell.0.lock().unwrap().is_empty());
@@ -236,8 +239,8 @@ async fn mic_fails_at_start_in_the_started_chunk_degrades_the_session() {
     let r = Router::new(Shared(a.service.clone())).validate_responses(true);
     a.service.start_helper();
     a.runtime.recover().await.unwrap();
-    let rt = a.runtime.clone();
-    until("helper", || rt.session().helper.as_str() == "simulated").await;
+    let svc = a.service.clone();
+    until("helper", || svc.helper_ready()).await;
     let s = call(&r, "note", "note:start", json!({})).await;
     assert_eq!(s["phase"], "recording", "{s}");
     let rt2 = a.runtime.clone();
@@ -281,14 +284,15 @@ async fn backup_export_then_import_into_a_fresh_library() {
     let r = Router::new(Shared(a.service.clone())).validate_responses(true);
     a.service.start_helper();
     a.runtime.recover().await.unwrap();
-    let rt = a.runtime.clone();
-    until("helper", || rt.session().helper.as_str() == "simulated").await;
+    let svc = a.service.clone();
+    until("helper", || svc.helper_ready()).await;
     // Cancelled dialog: zeros, no file.
     let c = call(&r, "settings", "data:export-backup", json!(null)).await;
     assert_eq!(c, json!({"meetings": 0, "audioFiles": 0, "bytes": 0}));
     let s = call(&r, "note", "note:start", json!({"title": "Backup me"})).await;
     let id = s["meetingId"].as_str().unwrap().to_owned();
     call(&r, "note", "note:stop", json!(null)).await;
+    let rt = a.runtime.clone();
     until("done", || rt.session().phase.as_str() == "done").await;
 
     *paths.0.lock().unwrap() = Some(zip.clone());

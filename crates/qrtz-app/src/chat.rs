@@ -1,5 +1,5 @@
-//! note:chat (N89, ADR 0059): `qrtz_search::retrieve` (hybrid order when the model is ready, else
-//! `rank_sources(question, candidates, 24)`), then `LlmSteps::answer_chat` with the same provider config, keys and
+//! note:chat (N89, ADR 0059): `qrtz_search::retrieve_visible` with the tombstone gate (N90/N93, ADR 0060) and
+//! `Retrieval::into_sources` (hybrid order when the model is ready, else `rank_sources(question, candidates, 24)`), then `LlmSteps::answer_chat` with the same provider config, keys and
 //! `qrtz_llm::http_client()` as the summary. No provider, an error or a timeout gives the extractive answer with
 //! `llmError`.
 use crate::ports::ChatPort;
@@ -15,6 +15,8 @@ pub struct NoteChat {
     pub db: StorageHandle,
     pub embedder: Arc<qrtz_search::LazyEmbedder>,
     pub llm: Arc<qrtz_llm::LlmSteps<StorageHandle>>,
+    /// N90/N93: a meeting pending delete (in its undo window) is invisible to chat.
+    pub hidden: qrtz_search::HiddenFn,
 }
 
 fn app_error(e: LifecycleError) -> AppError {
@@ -33,12 +35,17 @@ impl ChatPort for NoteChat {
                 .map_err(|e| AppError::new(ErrorCode::Validation, format!("note:chat history: {e}")))?,
             _ => vec![],
         };
-        let r = qrtz_search::retrieve(&self.db, &self.embedder, &question, meeting_id)
-            .await
-            .map_err(app_error)?;
-        let sources = r
-            .ranked
-            .unwrap_or_else(|| qrtz_search::rank_sources(&question, &r.candidates, CHAT_PROMPT_SOURCES));
+        let r = qrtz_search::retrieve_visible(
+            &self.db,
+            &self.embedder,
+            &question,
+            meeting_id,
+            Some(self.hidden.clone()),
+        )
+        .await
+        .map_err(app_error)?;
+        let sources = r.into_sources(&question);
+        debug_assert!(sources.len() <= CHAT_PROMPT_SOURCES);
         let answer = self.llm.answer_chat(&question, &sources, &history).await;
         serde_json::to_value(answer).map_err(|e| AppError::new(ErrorCode::Internal, e.to_string()))
     }

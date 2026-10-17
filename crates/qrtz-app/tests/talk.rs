@@ -68,6 +68,7 @@ fn app(dir: &Path, clip: Arc<Clip>, helper: bool) -> BuiltApp {
         storage_shell: clip,
         secrets: None,
         talk: None,
+        speech: None,
         steps: None,
         embedder: Some(qrtz_search::LazyEmbedder::none()),
         knobs: DevKnobs::default(),
@@ -114,8 +115,8 @@ async fn a_dictation_through_the_tauri_backend_streams_inserts_and_lands_in_hist
     let r = Router::new(Shared(a.service.clone())).validate_responses(true);
     let mut bus = a.service.events.subscribe();
     a.service.start_helper();
-    let rt = a.runtime.clone();
-    until("helper", || rt.session().helper.as_str() == "simulated").await;
+    let svc = a.service.clone();
+    until("helper", || svc.helper_ready()).await;
     assert_eq!(call(&r, "talk:state", Value::Null).await["phase"], "idle");
 
     call(&r, "talk:start", Value::Null).await;

@@ -47,6 +47,7 @@ fn app(dir: &Path, helper: bool) -> BuiltApp {
         storage_shell: Arc::new(NoStorageShell),
         secrets: None,
         talk: None,
+        speech: None,
         steps: None,
         embedder: Some(qrtz_search::LazyEmbedder::none()),
         knobs: DevKnobs::default(),

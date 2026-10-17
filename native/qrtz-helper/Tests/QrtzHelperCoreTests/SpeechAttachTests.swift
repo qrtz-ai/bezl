@@ -134,6 +134,34 @@ final class SpeechAttachTests: XCTestCase {
         close(mic.r); close(sys.r)
     }
 
+    /// A part attached to the module is transcribed there only: the helper's own recogniser is not loaded or fed,
+    /// no `asr` line and no asr.unavailable; the module's channels get the capture and EOF at stop.
+    func testAnAttachedRecordingSkipsTheHelpersOwnRecogniser() async throws {
+        let (host, helper) = socketPair()
+        defer { close(host); close(helper) }
+        let out = Box<[HelperMessage]>([])
+        let asr = FakeASR()
+        let c = HelperController(
+            deps: HelperDeps(permissions: FakePerms(), meetings: nil, audio: [FakeAudio("sck")], transcribers: [asr], helperVersion: "t",
+                             os: "linux", features: [], speechFds: SocketFdReceiver(fd: helper)),
+            send: { m in out.mutate { $0.append(m) } }, now: { 0 })
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("qrtz-sp-\(UUID()).wav").path
+        let mic = makePipe(), sys = makePipe()
+        sendFds(host, "s1", [mic.w, sys.w])
+        await c.handle(.speechAttach(sessionId: "s1", target: .recording(audioPath: path), channels: [.mic, .system]))
+        XCTAssertTrue(out.value.contains(.speechAttached(sessionId: "s1")))
+        await c.handle(.recordingStart(audioPath: path))
+        await c.onSamples([Float](repeating: 0.2, count: 16_000))
+        await c.handle(.recordingStop())
+        XCTAssertEqual(asr.text, "", "the helper's recogniser was not fed")
+        XCTAssertFalse(out.value.contains { if case .asr = $0 { true } else { false } })
+        XCTAssertFalse(out.value.contains { if case .error(let code, _, _, _, _, _, _) = $0 { code == "asr.unavailable" } else { false } })
+        XCTAssertEqual(readAll(mic.r).count, 0, "EOF at stop (FakeAudio delivered no blocks)")
+        XCTAssertEqual(readAll(sys.r).count, 0)
+        close(mic.r); close(sys.r)
+        try? FileManager.default.removeItem(atPath: path)
+    }
+
     func testTheProtocolCarriesSpeechAttach() throws {
         let line = #"{"channels":["mic"],"sessionId":"d1","target":{"id":"d1","kind":"dictation"},"type":"speech.attach"}"#
         guard case .success(let m) = HostMessage.parse(line: line) else { return XCTFail("parse") }

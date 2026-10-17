@@ -350,11 +350,17 @@ public actor HelperController {
         recordingStartMs = rec.startMs
         recording = rec
 
-        for t in deps.transcribers {
-            do { try await t.prepare(); await t.reset(); rec.transcriber = t; send(.log(level: .info, msg: "asr: \(t.name)")); break }
-            catch { send(.log(level: .warn, msg: "asr \(t.name) unavailable: \(error)")) }
+        // ADR 0046 §1: a part the host attached to the speech module (speech.attach precedes recording.start) is
+        // transcribed there only; the helper's own recogniser is not loaded for it.
+        if speech.has(.recording(audioPath: rec.wav.url.path)) {
+            send(.log(level: .info, msg: "asr: speech module"))
+        } else {
+            for t in deps.transcribers {
+                do { try await t.prepare(); await t.reset(); rec.transcriber = t; send(.log(level: .info, msg: "asr: \(t.name)")); break }
+                catch { send(.log(level: .warn, msg: "asr \(t.name) unavailable: \(error)")) }
+            }
+            if rec.transcriber == nil { send(.error(code: "asr.unavailable", message: "no speech recogniser available; recording audio only", fatal: false)) }
         }
-        if rec.transcriber == nil { send(.error(code: "asr.unavailable", message: "no speech recogniser available; recording audio only", fatal: false)) }
 
         // Audio callbacks arrive on capture threads; funnel them through one ordered stream into the actor.
         let pipeline = MicPipeline(gate: EchoGate(context: deps.context), enhancer: deps.enhancer)

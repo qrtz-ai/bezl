@@ -168,6 +168,17 @@ impl Backend {
     }
 }
 
+fn baked_speech_var(k: &str) -> Option<&'static str> {
+    match k {
+        "QRTZ_SPEECH_URL" => option_env!("QRTZ_SPEECH_URL"),
+        "QRTZ_SPEECH_KEY_ID" => option_env!("QRTZ_SPEECH_KEY_ID"),
+        "QRTZ_SPEECH_KEY" => option_env!("QRTZ_SPEECH_KEY"),
+        "QRTZ_SPEECH_ROOT_KEY_ID" => option_env!("QRTZ_SPEECH_ROOT_KEY_ID"),
+        "QRTZ_SPEECH_ROOT_KEY" => option_env!("QRTZ_SPEECH_ROOT_KEY"),
+        _ => None,
+    }
+}
+
 pub fn setup(app: &mut tauri::App, started: Instant) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle().clone();
     let data = paths::data_dir(&handle);
@@ -187,10 +198,25 @@ pub fn setup(app: &mut tauri::App, started: Instant) -> Result<(), Box<dyn std::
     let storage_shell = Arc::new(TauriStorageShell(OnceLock::new()));
     let _ = storage_shell.0.set(handle.clone());
 
+    let version = app.package_info().version.to_string();
+    // The speech module source is baked in at compile time; a debug or E2E (QRTZ_ALLOW_DEV_KNOBS=1) build may
+    // point it elsewhere at run time (the mock bundle server).
+    let dev = cfg!(debug_assertions) || std::env::var("QRTZ_ALLOW_DEV_KNOBS").as_deref() == Ok("1");
+    let speech = qrtz_app::speech::SpeechSetup::from_vars(&data, &version, |k| {
+        let run = if dev { std::env::var(k).ok() } else { None };
+        run.or_else(|| baked_speech_var(k).map(str::to_owned))
+    })
+    .unwrap_or_else(|e| {
+        tracing::error!(err = %e, "speech module configuration");
+        None
+    });
+    if speech.is_none() {
+        tracing::warn!("no speech module configured in this build; transcripts use the helper's recogniser");
+    }
     let built = build_app(AppBuild {
         info: AppInfo {
             name: "qrtz".into(),
-            version: app.package_info().version.to_string(),
+            version,
             platform: platform().into(),
             arch: arch().into(),
             shell: format!("tauri {}", tauri::VERSION),
@@ -202,6 +228,7 @@ pub fn setup(app: &mut tauri::App, started: Instant) -> Result<(), Box<dyn std::
         storage_shell,
         secrets: None,
         talk: None,
+        speech,
         steps: None,
         embedder: None,
         knobs: DevKnobs::from_env(),

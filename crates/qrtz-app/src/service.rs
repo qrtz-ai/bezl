@@ -85,10 +85,12 @@ pub struct AppService {
     pub events: Events,
     chat: std::sync::OnceLock<Arc<dyn crate::ports::ChatPort>>,
     speech_tap: std::sync::OnceLock<SpeechTap>,
+    /// The last helper status every port has seen (`on_helper_status` finished), for readiness checks.
+    delivered: std::sync::Mutex<Option<HelperStatus>>,
 }
 
-/// Receives `speech.*` helper lines.
-pub type SpeechTap = Arc<dyn Fn(&Value) + Send + Sync>;
+/// Sees every valid helper line first; `true` = consumed (not routed to talk or the runtime).
+pub type SpeechTap = Arc<dyn Fn(&Value) -> bool + Send + Sync>;
 
 /// Helper → host message types that belong to qrtz talk; everything else goes to the recording runtime.
 pub fn is_talk_message(ty: &str) -> bool {
@@ -109,10 +111,12 @@ impl AppService {
             events: d.events,
             chat: std::sync::OnceLock::new(),
             speech_tap: std::sync::OnceLock::new(),
+            delivered: Default::default(),
         })
     }
     /// Plug in note:chat (set once by `build_app`; without it note:chat is `E_UNAVAILABLE`).
-    /// `speech.*` helper lines (`speech.attached` / `speech.attach.rejected`, N55) go here, nowhere else.
+    /// Speech routing sees every helper line first (`speech.attached` / `speech.attach.rejected`, N55; the
+    /// part boundaries for note speech; the helper's own `asr` lines are dropped once the module transcribes).
     pub fn set_speech_tap(&self, tap: SpeechTap) {
         let _ = self.speech_tap.set(tap);
     }
@@ -184,10 +188,8 @@ impl AppService {
                 if ty == "permissions.status" {
                     self.events.emit("permissions:changed", msg["status"].clone());
                 }
-                if ty.starts_with("speech.") {
-                    if let Some(t) = self.speech_tap.get() {
-                        t(&msg);
-                    }
+                if self.speech_tap.get().is_some_and(|t| t(&msg)) {
+                    // consumed by speech routing
                 } else if is_talk_message(ty) {
                     self.talk.helper_line(&msg);
                 } else if ty != "heartbeat" {
@@ -216,6 +218,17 @@ impl AppService {
         self.talk.helper_status(s);
         self.events
             .emit("helper:status", serde_json::to_value(s).unwrap());
+        *self.delivered.lock().unwrap_or_else(|p| p.into_inner()) = Some(s.clone());
+    }
+
+    /// N91: the helper is running and the runtime and talk have both been told so (the runtime's initial
+    /// `simulated` health is not readiness: the first `Stopped` → `Starting` → `Running` statuses come after it).
+    pub fn helper_ready(&self) -> bool {
+        self.delivered
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+            .is_some_and(|s| s.state == qrtz_helper_bridge::HelperState::Running)
     }
 
     fn set_config(&self, patch: &Value) -> Result<Value, AppError> {

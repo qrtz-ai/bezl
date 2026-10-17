@@ -156,6 +156,7 @@ fn app(dir: &Path, llm_base: &str, embedder: Arc<LazyEmbedder>) -> BuiltApp {
         storage_shell: Arc::new(NoStorageShell),
         secrets: None,
         talk: None,
+        speech: None,
         steps: None,
         embedder: Some(embedder),
         knobs: DevKnobs {
@@ -187,8 +188,8 @@ async fn until<F: Fn() -> bool>(what: &str, f: F) {
 
 /// Record with the mock helper (it finalizes one line), stop, wait for the pipeline to settle.
 async fn record_one(a: &BuiltApp, r: &Router<Shared>, title: &str) -> (String, Value) {
-    let rt = a.runtime.clone();
-    until("helper", || rt.session().helper.as_str() == "simulated").await;
+    let svc = a.service.clone();
+    until("helper", || svc.helper_ready()).await;
     let s = call(r, "note", "note:start", json!({"title": title})).await;
     let id = s["meetingId"].as_str().unwrap().to_owned();
     tokio::time::sleep(Duration::from_millis(1500)).await;
@@ -460,8 +461,8 @@ async fn n86_the_backfill_yields_to_a_live_recording() {
     a.service.start_helper();
     a.runtime.recover().await.unwrap();
     a.search.start();
-    let rt = a.runtime.clone();
-    until("helper", || rt.session().helper.as_str() == "simulated").await;
+    let svc = a.service.clone();
+    until("helper", || svc.helper_ready()).await;
     call(&r, "note", "note:start", json!({"title": "Live"})).await;
     assert!(a.live.busy(), "a recording holds the live-work counter");
     // The model becomes ready mid-recording: the backfill must not embed anything until it stops.
@@ -594,5 +595,72 @@ async fn note_chat_in_local_only_mode_sends_nothing() {
     let ans = call(&r, "note", "note:chat", json!({"question": "what was said?"})).await;
     assert_eq!(ans["provider"], "extractive", "{ans}");
     assert!(mock.seen().is_empty(), "nothing leaves the machine");
+    a.runtime.kill();
+}
+
+/// N90/N93 (ADR 0060): a meeting in its undo window is invisible to chat: no source from it, nothing from it in
+/// the request to OpenRouter, and a question scoped to it finds nothing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn note_chat_never_sees_a_meeting_pending_delete() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mock = MockLlm::default();
+    let base = mock.start().await;
+    for _ in 0..2 {
+        mock.push(completion(
+            &json!({"summary": "a greeting.", "actionItems": [], "qa": []}),
+        ));
+    }
+    mock.push(completion_text("hello."));
+    mock.push(completion_text("nothing."));
+    let a = app(&tmp.path().join("data"), &base, LazyEmbedder::none());
+    let r = Router::new(Shared(a.service.clone())).validate_responses(true);
+    a.service.start_helper();
+    a.runtime.recover().await.unwrap();
+    call(
+        &r,
+        "settings",
+        "secrets:set",
+        json!({"name": "llm.openrouter", "value": "sk-or-test"}),
+    )
+    .await;
+    let (kept, _) = record_one(&a, &r, "kept standup").await;
+    let (gone, _) = record_one(&a, &r, "gone offsite").await;
+    call(&r, "note", "note:delete", json!({"id": gone, "deferMs": 60_000})).await;
+
+    let ans = call(
+        &r,
+        "note",
+        "note:chat",
+        json!({"question": "what did the mock helper say?"}),
+    )
+    .await;
+    let srcs = ans["sources"].as_array().unwrap();
+    assert!(!srcs.is_empty(), "the kept meeting still answers: {ans}");
+    assert!(
+        srcs.iter().all(|s| s["meetingId"] == kept),
+        "only the kept meeting: {ans}"
+    );
+    let seen = mock.seen();
+    let body = &seen.last().unwrap().2;
+    assert!(
+        !body.contains("offsite") && !body.contains(&gone),
+        "nothing from it is sent: {body}"
+    );
+
+    let ans = call(
+        &r,
+        "note",
+        "note:chat",
+        json!({"question": "what did the mock helper say?", "meetingId": gone}),
+    )
+    .await;
+    assert_eq!(
+        ans["sources"],
+        json!([]),
+        "a question about it finds nothing: {ans}"
+    );
+    for (_, _, body) in mock.seen().iter().skip(2) {
+        assert!(!body.contains("offsite") && !body.contains(&gone), "{body}");
+    }
     a.runtime.kill();
 }
