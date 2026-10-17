@@ -1,0 +1,17 @@
+[package]
+name = "qrtz-model"
+description = "qrtz wire types shared by the Rust core and (via serde) the TS renderer. No IO."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+specta = { workspace = true, optional = true }
+
+[features]
+# TS type export after cutover (docs/rust-core-api.md §2). Off during the dual run: zod is the source of truth.
+specta = ["dep:specta"]
