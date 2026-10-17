@@ -2,6 +2,8 @@
 
 ## Unreleased: helper mux + TCC revocation (H5/H6)
 
+- **Search finds Chinese, Japanese and Thai words anywhere in a line (Bozniak cycle 12, N48; ADR 0039):** "会议" in "明天的会议很重要", "金曜日" in "会議は金曜日です" and "ประชุม" in "เริ่มประชุมกันเลย" now match in meeting search and the list filter, in transcripts, titles and summaries. Words in scripts written without spaces are matched as substrings; every other word still uses the FTS index, and searches without such a word run exactly as before. TS and Rust share `spec/stress/fts-substring.json`. No migration. Still open: chat questions in Chinese or Japanese (N49).
+
 - **Search finds words with apostrophes (Bozniak cycle 11, N46/N47; ADR 0038):** "don't", "O'Reilly", "l'équipe" and possessives ("Jared's" finds "Jared") now match in meeting search, the list filter and chat. Each word goes to SQLite FTS5 as a quoted phrase, so it is split by the same tokenizer as the index; Hindi and Thai words stay one phrase. Chat no longer drops the line it found for such a question. TS and Rust share `spec/stress/fts-queries.json`. No migration. Still open: a Chinese, Japanese or Thai word inside a longer run of text is not found (N48).
 
 - **Reconnect offsets ignore a wall-clock jump (Bozniak cycle 10, N45; ADR 0037):** `helper-lost` / `helper-restored` stamps come from a monotonic clock (`performance.now()` / `Clock::mono_ms`), so a laptop sleep or NTP step during a reconnect no longer slides the next part's transcript while the WAV pad stays capped at 35 s. Wall clock still owns `startedAt` / `stoppedAt` / live elapsed. Scenario `H7-clock-jump-during-reconnect` now expects a meeting-length file; `N45-multi-reconnect-clock-jump` covers two jumps. No migration, no protocol change.
