@@ -4,7 +4,7 @@ import { MeetingPlatform } from './types';
 /**
  * The single authoritative recording lifecycle (see docs/recording-lifecycle.md).
  *
- * Pure: reducers here own every legal transition. The runtime owner (main's MemoService) feeds events in,
+ * Pure: reducers here own every legal transition. The runtime owner (main's NoteService) feeds events in,
  * persists every accepted state through the worker (SQLite `lifecycle_state` / `pipeline_state`), and
  * broadcasts the derived SessionView / PipelineView over typed IPC. The renderer never infers state.
  */

@@ -72,12 +72,12 @@ export function MeetingDetail({
   const [now, setNow] = useState(0);
   const [exported, setExported] = useState<string | null>(null);
   const audio = useRef<HTMLAudioElement>(null);
-  const changed = useQrtzEvent('memo:changed');
+  const changed = useQrtzEvent('note:changed');
 
   useEffect(() => {
     let live = true;
     qrtz
-      .invoke('memo:get', { id })
+      .invoke('note:get', { id })
       .then((r) => {
         if (!live) return;
         setD(r);
@@ -97,7 +97,7 @@ export function MeetingDetail({
     setRetrying(true);
     setRetryError(null);
     qrtz
-      .invoke('memo:resummarize', { id })
+      .invoke('note:resummarize', { id })
       .then((s) => setD((prev) => (prev ? { ...prev, summary: s } : prev)))
       .catch((e: Error) => setRetryError(e.message))
       .finally(() => setRetrying(false));
@@ -111,7 +111,7 @@ export function MeetingDetail({
         prev ? { ...prev, meeting: { ...prev.meeting, template } } : prev,
       );
       qrtz
-        .invoke('memo:set-template', { id, template })
+        .invoke('note:set-template', { id, template })
         .then((s) => setD((prev) => (prev ? { ...prev, summary: s } : prev)))
         .catch((e: Error) => setRetryError(e.message))
         .finally(() => setRetrying(false));
@@ -209,7 +209,7 @@ export function MeetingDetail({
   if (!d) return <Spinner />;
   const { meeting, segments, summary } = d;
   const doExport = async (save: boolean) => {
-    const r = await qrtz.invoke('memo:export', { id, save });
+    const r = await qrtz.invoke('note:export', { id, save });
     setExported(
       save
         ? r.savedTo

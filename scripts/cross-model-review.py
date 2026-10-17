@@ -8,7 +8,7 @@ Key: $OPENROUTER_API_KEY or the file named by $QRTZ_OPENROUTER_KEY_FILE (default
 import json, os, pathlib, sys, urllib.error, urllib.request
 
 MODELS = sys.argv[1:] or ['nvidia/nemotron-3-ultra-550b-a55b:free', 'google/gemma-4-31b-it:free']
-FILES = ['docs/recording-lifecycle.md', 'packages/core/src/memo/lifecycle.ts', 'apps/desktop/src/main/memo-service.ts']
+FILES = ['docs/recording-lifecycle.md', 'packages/core/src/note/lifecycle.ts', 'apps/desktop/src/main/note-service.ts']
 key = os.environ.get('OPENROUTER_API_KEY') or pathlib.Path(
     os.environ.get('QRTZ_OPENROUTER_KEY_FILE', '/home/box/.secrets/openrouter_qrtz.key')).read_text().strip()
 body = '\n\n'.join(f'=== {f} ===\n{pathlib.Path(f).read_text()}' for f in FILES)

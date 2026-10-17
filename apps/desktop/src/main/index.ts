@@ -29,7 +29,7 @@ import { WorkerClient } from './worker-client';
 import { helperAvailability, spawnHelper } from './helper-process';
 import { hardenApp } from './security';
 import { registerIpc } from './ipc';
-import { MemoService } from './memo-service';
+import { NoteService } from './note-service';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -108,32 +108,32 @@ export function bootstrap() {
   helper.onStatus((s) => {
     bus.emit('helper:status', s);
     if (availability !== 'missing') {
-      if (s.state === 'running') memo.setHelperHealth(healthy);
+      if (s.state === 'running') note.setHelperHealth(healthy);
       else if (s.state !== 'starting')
-        memo.setHelperHealth('down', s.lastError ?? s.state);
+        note.setHelperHealth('down', s.lastError ?? s.state);
     }
     if (s.state === 'running') helperWasRunning = true;
     else if (helperWasRunning && s.state !== 'starting') {
       helperWasRunning = false;
-      memo.onHelperDown(s.lastError ?? s.state);
+      note.onHelperDown(s.lastError ?? s.state);
     }
-    if (s.state === 'failed') memo.onHelperFailed(s.lastError ?? 'failed');
+    if (s.state === 'failed') note.onHelperFailed(s.lastError ?? 'failed');
   });
   const recordingsDir = path.join(userData, 'recordings');
   const pendingDeletes = new PendingDeletes(
     userData,
     async (id) => {
-      await worker.call('memo.delete', { id });
+      await worker.call('note.delete', { id });
       log.info('deferred delete done', { id });
-      bus.emit('memo:changed', { id });
+      bus.emit('note:changed', { id });
     },
     (id, e) => log.warn('deferred delete failed', { id, err: String(e) }),
   );
-  const memo = new MemoService({
+  const note = new NoteService({
     helper,
     worker,
     bus,
-    log: log.child('memo'),
+    log: log.child('note'),
     secrets,
     config: () => config.get(),
     recordingsDir,
@@ -158,7 +158,7 @@ export function bootstrap() {
         silent: true,
       });
       n.on('click', () => {
-        void memo.start().catch(() => {});
+        void note.start().catch(() => {});
         const w = BrowserWindow.getAllWindows()[0];
         if (w) {
           w.show();
@@ -169,19 +169,19 @@ export function bootstrap() {
     },
   });
   if (availability === 'missing')
-    memo.setHelperHealth(
+    note.setHelperHealth(
       'missing',
       'The qrtz-helper binary is not in this build. Reinstall qrtz or build native/qrtz-helper.',
     );
-  else if (availability === 'simulated') memo.setHelperHealth('simulated');
+  else if (availability === 'simulated') note.setHelperHealth('simulated');
   helper.onLine((line) => {
     const r = parseHelperLine(line);
     if (!r.ok) return log.warn('bad helper line', { error: r.error });
     if (r.msg.type === 'log') log.child('helper')[r.msg.level](r.msg.msg);
     try {
-      memo.handle(r.msg);
+      note.handle(r.msg);
     } catch (e) {
-      log.warn('memo handler failed', { err: String(e) });
+      log.warn('note handler failed', { err: String(e) });
     }
   });
   config.onChange((c) => bus.emit('config:changed', c));
@@ -221,50 +221,50 @@ export function bootstrap() {
       },
       'secrets:list': () => secrets.list(),
       'db:health': () => worker.call('db.health', undefined),
-      'permissions:get': () => memo.getPermissions(),
+      'permissions:get': () => note.getPermissions(),
       'permissions:request': ({ permission }) =>
-        memo.requestPermission(permission),
-      'memo:session': () => memo.view(),
-      'memo:start': (req) => memo.start(req?.title),
-      'memo:stop': () => memo.stop(),
-      'memo:dismiss': () => memo.dismiss(),
-      'memo:pipeline': ({ id }) => memo.pipeline(id),
-      'memo:retry-step': ({ id, step }) => memo.retryStep(id, step),
-      'memo:live-transcript': (req) => memo.liveTranscript(req?.meetingId),
-      'memo:list': async (req) => {
-        const rows = await worker.call('memo.list', req);
+        note.requestPermission(permission),
+      'note:session': () => note.view(),
+      'note:start': (req) => note.start(req?.title),
+      'note:stop': () => note.stop(),
+      'note:dismiss': () => note.dismiss(),
+      'note:pipeline': ({ id }) => note.pipeline(id),
+      'note:retry-step': ({ id, step }) => note.retryStep(id, step),
+      'note:live-transcript': (req) => note.liveTranscript(req?.meetingId),
+      'note:list': async (req) => {
+        const rows = await worker.call('note.list', req);
         const gone = new Set(pendingDeletes.ids());
         return gone.size ? rows.filter((r) => !gone.has(r.meeting.id)) : rows;
       },
-      'memo:get': ({ id }) => worker.call('memo.get', { id }),
-      'memo:resummarize': ({ id }) => memo.resummarize(id),
-      'memo:chat': (req) => memo.chat(req),
-      'memo:set-auto-record': ({ enabled }) => ({
-        autoRecord: config.set({ memo: { autoRecord: enabled } }).memo
+      'note:get': ({ id }) => worker.call('note.get', { id }),
+      'note:resummarize': ({ id }) => note.resummarize(id),
+      'note:chat': (req) => note.chat(req),
+      'note:set-auto-record': ({ enabled }) => ({
+        autoRecord: config.set({ note: { autoRecord: enabled } }).note
           .autoRecord,
       }),
-      'memo:rename-speaker': async (req) => {
-        const r = await worker.call('memo.renameSpeaker', req);
-        bus.emit('memo:changed', { id: req.meetingId });
+      'note:rename-speaker': async (req) => {
+        const r = await worker.call('note.renameSpeaker', req);
+        bus.emit('note:changed', { id: req.meetingId });
         return r;
       },
-      'memo:delete': async ({ id, deferMs }) => {
+      'note:delete': async ({ id, deferMs }) => {
         if (deferMs) {
           pendingDeletes.schedule(id, deferMs);
-          bus.emit('memo:changed', { id });
+          bus.emit('note:changed', { id });
           return { ok: true as const };
         }
-        await worker.call('memo.delete', { id });
-        bus.emit('memo:changed', { id });
+        await worker.call('note.delete', { id });
+        bus.emit('note:changed', { id });
         return { ok: true as const };
       },
-      'memo:undo-delete': ({ id }) => {
+      'note:undo-delete': ({ id }) => {
         const restored = pendingDeletes.undo(id);
-        bus.emit('memo:changed', { id });
+        bus.emit('note:changed', { id });
         return { restored };
       },
-      'memo:export': async ({ id, save }) => {
-        const ex = await worker.call('memo.export', { id });
+      'note:export': async ({ id, save }) => {
+        const ex = await worker.call('note.export', { id });
         if (!save) {
           // Main-process clipboard: works even when the window isn't focused (navigator.clipboard doesn't).
           clipboard.writeText(ex.markdown);
@@ -284,23 +284,23 @@ export function bootstrap() {
         return { ...ex, ...(target ? { savedTo: target } : {}) };
       },
       'helper:status': () => helper.status,
-      'memo:add-note': async (req) => {
-        const n = await memo.addNote(req);
-        bus.emit('memo:changed', { id: n.meetingId });
+      'note:add-note': async (req) => {
+        const n = await note.addNote(req);
+        bus.emit('note:changed', { id: n.meetingId });
         return n;
       },
-      'memo:update-note': (req) => worker.call('memo.updateNote', req),
-      'memo:delete-note': (req) => worker.call('memo.deleteNote', req),
-      'memo:list-notes': async ({ meetingId }) => {
-        const id = meetingId ?? memo.view().meetingId;
-        return id ? worker.call('memo.listNotes', { meetingId: id }) : [];
+      'note:update-note': (req) => worker.call('note.updateNote', req),
+      'note:delete-note': (req) => worker.call('note.deleteNote', req),
+      'note:list-notes': async ({ meetingId }) => {
+        const id = meetingId ?? note.view().meetingId;
+        return id ? worker.call('note.listNotes', { meetingId: id }) : [];
       },
-      'memo:set-template': async ({ id, template }) => {
-        const r = await memo.setTemplate(id, template);
-        bus.emit('memo:changed', { id });
+      'note:set-template': async ({ id, template }) => {
+        const r = await note.setTemplate(id, template);
+        bus.emit('note:changed', { id });
         return r;
       },
-      'memo:pause': ({ paused }) => memo.pause(paused),
+      'note:pause': ({ paused }) => note.pause(paused),
       'hud:set-expanded': ({ expanded }) => {
         if (hud && !hud.isDestroyed()) {
           const [w] = hud.getSize();
@@ -414,7 +414,7 @@ export function bootstrap() {
             done: 1,
             total: 1,
           });
-          bus.emit('memo:changed', { id: '*' });
+          bus.emit('note:changed', { id: '*' });
           return { ...r, audioFiles: Object.keys(audioMap).length };
         } finally {
           fs.rmSync(workDir, { recursive: true, force: true });
@@ -500,14 +500,14 @@ export function bootstrap() {
     // e2e: a trace of every lifecycle phase main broadcast (transient ones like `reconnecting` included).
     const g = globalThis as { __qrtzPhases?: string[] };
     g.__qrtzPhases = [];
-    bus.on('memo:session', (v) => {
+    bus.on('note:session', (v) => {
       if (g.__qrtzPhases!.at(-1) !== v.phase) g.__qrtzPhases!.push(v.phase);
     });
   }
   let hudHide: NodeJS.Timeout | null = null;
-  bus.on('memo:session', (v) => {
+  bus.on('note:session', (v) => {
     const want =
-      config.get().memo.floatingHud &&
+      config.get().note.floatingHud &&
       [
         'starting',
         'recording',
@@ -543,14 +543,14 @@ export function bootstrap() {
     // After the worker is up: finish meetings a crash left behind (M5.1), then optional dev seed.
     const workerReady = worker.ready();
     void workerReady
-      .then(() => memo.recover())
+      .then(() => note.recover())
       .catch((e) => log.warn('startup recovery skipped', { err: String(e) }));
     if (process.env.QRTZ_DEV_SEED === 'many' && !app.isPackaged) {
       void workerReady
         .then(() =>
           worker.call('dev.seedMany', { count: 500, now: Date.now() }, 60_000),
         )
-        .then(() => bus.emit('memo:changed', { id: '*' }))
+        .then(() => bus.emit('note:changed', { id: '*' }))
         .catch((e) => log.warn('dev seed failed', { err: String(e) }));
     }
     if (process.env.QRTZ_DEV_SEED === 'large' && !app.isPackaged) {
@@ -567,7 +567,7 @@ export function bootstrap() {
           ),
         )
         .then(() =>
-          bus.emit('memo:changed', {
+          bus.emit('note:changed', {
             id: '00000000-0000-4000-8000-000000000120',
           }),
         )
@@ -575,7 +575,7 @@ export function bootstrap() {
     }
     void workerReady
       .then(() => pendingDeletes.recover())
-      .then(() => bus.emit('memo:changed', { id: '*' }));
+      .then(() => bus.emit('note:changed', { id: '*' }));
     helper.start();
     createWindow();
     // Menu bar item (macOS/Windows; Linux tray support varies by desktop, opt in with QRTZ_TRAY=1).
@@ -587,18 +587,18 @@ export function bootstrap() {
       if (!trayAllowed) return;
       if (on && !tray)
         tray = createTray({
-          getView: () => memo.view(),
+          getView: () => note.view(),
           onAction: (a) => {
             const w =
               BrowserWindow.getAllWindows().find((x) => x !== hud) ?? null;
             if (a === 'start')
-              void memo
+              void note
                 .start()
                 .catch((e) =>
                   log.warn('tray start failed', { err: String(e) }),
                 );
-            else if (a === 'stop') void memo.stop().catch(() => {});
-            else if (a === 'dismiss') memo.dismiss();
+            else if (a === 'stop') void note.stop().catch(() => {});
+            else if (a === 'dismiss') note.dismiss();
             else if (a === 'quit') app.quit();
             else if (w) {
               w.show();
@@ -613,7 +613,7 @@ export function bootstrap() {
     };
     syncTray(config.get().app.menuBarIcon);
     config.onChange((c) => syncTray(c.app.menuBarIcon));
-    bus.on('memo:session', () => tray?.update());
+    bus.on('note:session', () => tray?.update());
     app.on('before-quit', () => tray?.destroy());
     // Settings → Open at login (macOS/Windows login item; no-op elsewhere and in dev).
     const syncLogin = (on: boolean) => {
@@ -639,9 +639,9 @@ export function bootstrap() {
           log,
         ),
       );
-    // M6.2: ⌘⇧R starts/stops Memo recording from anywhere (e.g. while in Zoom/Meet).
+    // M6.2: ⌘⇧R starts/stops Note recording from anywhere (e.g. while in Zoom/Meet).
     const ok = globalShortcut.register('CommandOrControl+Shift+R', () => {
-      memo
+      note
         .toggle()
         .catch((e) => log.warn('shortcut toggle failed', { err: String(e) }));
     });
@@ -656,7 +656,7 @@ export function bootstrap() {
       try {
         const bound = globalShortcut.register(key, () => {
           try {
-            memo.pause();
+            note.pause();
           } catch {
             /* not recording */
           }

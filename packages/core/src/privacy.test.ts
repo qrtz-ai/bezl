@@ -10,7 +10,7 @@ describe('privacy', () => {
     expect(effectiveLlmProvider(lo)).toBe('none');
     expect(
       effectiveLlmProvider(
-        applyConfigPatch(lo, { memo: { llmProvider: 'ollama' } }),
+        applyConfigPatch(lo, { note: { llmProvider: 'ollama' } }),
       ),
     ).toBe('ollama');
   });

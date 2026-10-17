@@ -29,7 +29,7 @@ async function launch(extra: Record<string, string>) {
 
 test('2-hour meeting: list, detail, transcript and search stay fast', async () => {
   const { app, win } = await launch({ QRTZ_DEV_SEED: 'large' });
-  await win.getByTestId('nav-memo').click();
+  await win.getByTestId('nav-note').click();
   const item = win.getByTestId('meeting-item').filter({ hasText: 'All-hands' });
   await expect(item).toBeVisible({ timeout: 15_000 });
   let t = Date.now();
@@ -47,8 +47,8 @@ test('2-hour meeting: list, detail, transcript and search stay fast', async () =
     win.locator('[data-testid="transcript-segment"][data-active]'),
   ).toHaveCount(1);
   t = Date.now();
-  await win.getByTestId('memo-search-toggle').click();
-  const search = win.getByTestId('memo-search');
+  await win.getByTestId('note-search-toggle').click();
+  const search = win.getByTestId('note-search');
   await search.click();
   await search.pressSequentially('migration');
   await expect(search).toHaveValue('migration');
@@ -70,9 +70,9 @@ test('2-hour meeting: list, detail, transcript and search stay fast', async () =
 test('accessibility: no serious axe violations on main views', async () => {
   const { app, win } = await launch({});
   const bad: string[] = [];
-  await expect(win.getByTestId('memo')).toBeVisible();
-  bad.push(...(await axe(win, 'memo')));
-  for (const id of ['gallery', 'settings', 'memo']) {
+  await expect(win.getByTestId('note-app')).toBeVisible();
+  bad.push(...(await axe(win, 'note')));
+  for (const id of ['gallery', 'settings', 'note']) {
     await win.getByTestId(`nav-${id}`).click();
     await win.waitForTimeout(300);
     bad.push(...(await axe(win, id)));
@@ -83,6 +83,12 @@ test('accessibility: no serious axe violations on main views', async () => {
         .click();
       await win.waitForTimeout(300);
       bad.push(...(await axe(win, 'gallery')).map((v) => `light: ${v}`));
+      await win
+        .getByTestId('gallery-page')
+        .getByRole('tab', { name: 'Icons' })
+        .click();
+      await win.waitForTimeout(200);
+      bad.push(...(await axe(win, 'gallery')).map((v) => `icons: ${v}`));
     }
   }
   await win.keyboard.press('ControlOrMeta+k');
@@ -92,10 +98,10 @@ test('accessibility: no serious axe violations on main views', async () => {
   await app.close();
 });
 
-test('cold start: launch to first paint of memo under 1.5 s', async () => {
+test('cold start: launch to first paint of note under 1.5 s', async () => {
   const t0 = Date.now();
   const { app, win } = await launch({});
-  await expect(win.getByTestId('memo')).toBeVisible();
+  await expect(win.getByTestId('note-app')).toBeVisible();
   const coldMs = Date.now() - t0;
   const paint = await win.evaluate(
     () =>

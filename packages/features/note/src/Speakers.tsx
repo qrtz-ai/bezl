@@ -28,7 +28,7 @@ export function Speakers({
     if (!target || target === from) return setEditing(null);
     setError(null);
     qrtz
-      .invoke('memo:rename-speaker', { meetingId, from, to: target })
+      .invoke('note:rename-speaker', { meetingId, from, to: target })
       .then(() => setEditing(null))
       .catch((e: Error) => setError(e.message));
   };

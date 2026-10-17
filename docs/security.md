@@ -19,7 +19,7 @@ Status as of M0 (2026-10-16). Items marked ☐ are tracked in PLAN.md.
 - ☑ Event subscriptions are capability-checked in main. Events go only to sub apps that are allowed to receive them.
 - ☐ Capability scoping is defence-in-depth among first-party, compiled-in sub apps that share one renderer. Third-party sub apps would need their own `WebContentsView` and session (future).
 
-- ☑ Narrow channels for narrow needs: `memo:set-auto-record` (memo.record) instead of granting Memo `config.write`.
+- ☑ Narrow channels for narrow needs: `note:set-auto-record` (note.record) instead of granting Note `config.write`.
 
 ## Secrets and config
 

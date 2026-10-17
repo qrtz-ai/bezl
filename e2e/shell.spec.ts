@@ -21,23 +21,32 @@ test('command palette and component gallery', async () => {
   const win = await app.firstWindow();
   const errors: string[] = [];
   win.on('pageerror', (e) => errors.push(e.message));
-  await expect(win.getByTestId('nav-memo')).toHaveAttribute(
+  await expect(win.getByTestId('nav-note')).toHaveAttribute(
     'aria-current',
     'page',
   );
 
-  // First run: Memo is the home screen, an empty meeting list and one Record button.
-  await expect(win.getByTestId('memo')).toBeVisible();
+  // First run: Note is the home screen, an empty meeting list and one Record button.
+  await expect(win.getByTestId('note-app')).toBeVisible();
   await expect(win.getByTestId('empty-state').first()).toContainText(
     'No meetings',
   );
-  await expect(win.getByTestId('memo-record-manual')).toBeEnabled();
-  await win.screenshot({ path: path.join(shots, 'memo-first-run.png') });
+  await expect(win.getByTestId('note-record-manual')).toBeEnabled();
+  await expect(win.getByTestId('nav-note')).toHaveText('note');
+  // Icons are Feather SVGs, never glyph characters.
+  await expect(
+    win.getByTestId('note-record-manual').locator('svg[data-icon="circle"]'),
+  ).toHaveCount(1);
+  await expect(
+    win.getByTestId('note-search-toggle').locator('svg[data-icon="search"]'),
+  ).toHaveCount(1);
+  expect(await win.locator('body').innerText()).not.toMatch(/[■▶❚⌕↻✎☐●◎⚙▦]/);
+  await win.screenshot({ path: path.join(shots, 'note-first-run.png') });
 
   // ⌘K / Ctrl+K opens the palette; fuzzy filter + Enter navigates.
   await win.keyboard.press('ControlOrMeta+k');
   await expect(win.getByTestId('palette')).toBeVisible();
-  await expect(win.getByTestId('cmd-memo.start')).toBeVisible();
+  await expect(win.getByTestId('cmd-note.start')).toBeVisible();
   await win.screenshot({ path: path.join(shots, 'palette.png') });
   await win.getByTestId('palette-input').fill('gallery');
   await expect(win.getByTestId('cmd-nav.gallery')).toBeVisible();
@@ -75,14 +84,34 @@ test('command palette and component gallery', async () => {
     'false',
   );
 
+  // Icons page: every Feather icon by name, rendered as SVG at token sizes.
+  await win
+    .getByTestId('gallery-page')
+    .getByRole('tab', { name: 'Icons' })
+    .click();
+  await expect(win.getByTestId('gallery-icons')).toBeVisible();
+  await expect(win.getByTestId('gallery-icon-mic').locator('svg')).toHaveCount(
+    1,
+  );
+  expect(
+    await win.getByTestId('gallery-icons').locator('svg[data-icon]').count(),
+  ).toBeGreaterThan(15);
+  await expect(win.getByTestId('gallery-buttons')).toHaveCount(0);
+  await win.screenshot({ path: path.join(shots, 'gallery-icons.png') });
+  await win
+    .getByTestId('gallery-page')
+    .getByRole('tab', { name: 'Components' })
+    .click();
+  await expect(win.getByTestId('gallery-buttons')).toBeVisible();
+
   // Palette (⌘K) starts and stops a recording through shell-scoped IPC.
   await win.keyboard.press('ControlOrMeta+k');
   await win.getByTestId('palette-input').fill('start rec');
   await win.keyboard.press('Enter');
-  await expect(win.getByTestId('memo-hud')).toBeVisible({ timeout: 10_000 });
+  await expect(win.getByTestId('note-hud')).toBeVisible({ timeout: 10_000 });
   await win.keyboard.press('ControlOrMeta+k');
-  await expect(win.getByTestId('cmd-memo.stop')).toBeVisible();
-  await win.getByTestId('cmd-memo.stop').click();
+  await expect(win.getByTestId('cmd-note.stop')).toBeVisible();
+  await win.getByTestId('cmd-note.stop').click();
   await expect(win.getByTestId('toast').last()).toContainText(
     'Recording stopped',
   );

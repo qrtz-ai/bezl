@@ -22,14 +22,14 @@ const call = (subApp: string, channel: IpcChannel, payload?: unknown) =>
 
 describe('sub-app capability matrix', () => {
   it.each([
-    ['memo', 'memo:list', { query: 'x' }, true],
-    ['memo', 'memo:start', {}, true],
-    ['memo', 'permissions:request', { permission: 'microphone' }, true],
-    ['memo', 'secrets:set', { name: 'llm.openrouter', value: 'k' }, false],
-    ['memo', 'config:set', { patch: {} }, false],
-    ['gallery', 'memo:list', { query: '' }, false],
+    ['note', 'note:list', { query: 'x' }, true],
+    ['note', 'note:start', {}, true],
+    ['note', 'permissions:request', { permission: 'microphone' }, true],
+    ['note', 'secrets:set', { name: 'llm.openrouter', value: 'k' }, false],
+    ['note', 'config:set', { patch: {} }, false],
+    ['gallery', 'note:list', { query: '' }, false],
     ['settings', 'secrets:set', { name: 'llm.openrouter', value: 'k' }, true],
-    ['settings', 'memo:delete', { id: 'm' }, false],
+    ['settings', 'note:delete', { id: 'm' }, false],
   ] as const)(
     '%s → %s allowed=%s',
     async (subApp, channel, payload, allowed) => {
@@ -46,8 +46,8 @@ describe('sub-app capability matrix', () => {
       ).toBe(true);
     }
   });
-  it('validates memo payloads', async () => {
-    const r = await call('memo', 'memo:get', { id: 'x'.repeat(100) });
+  it('validates note payloads', async () => {
+    const r = await call('note', 'note:get', { id: 'x'.repeat(100) });
     expect(r.ok === false && r.error.code).toBe('E_VALIDATION');
   });
 });

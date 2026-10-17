@@ -6,7 +6,7 @@
 ┌──────────── Electron main (apps/desktop/src/main) ────────────┐
 │ IPC router (core/ipc): envelope → channel/version → capability │
 │   → zod request → handler → zod response                       │
-│ MemoService: session state machine, helper events → worker     │
+│ NoteService: session state machine, helper events → worker     │
 │ Supervisor ×2 (backoff, crash-loop breaker, heartbeat)          │
 │ ConfigStore · SecretStore (safeStorage) · tray · mini HUD       │
 │ auto-update scaffold (off until signed)                         │
@@ -14,7 +14,7 @@
         │ stdio NDJSON (zod)       │ utilityProcess RPC
 ┌───────▼────────┐        ┌────────▼───────────────────────────────┐
 │ qrtz-helper    │        │ worker (src/worker.ts + worker/*)       │
-│ Swift, macOS   │        │ node:sqlite + FTS5 · MemoRepo           │
+│ Swift, macOS   │        │ node:sqlite + FTS5 · NoteRepo           │
 │ AX detection,  │        │ finalize/recover/summary (LLM or        │
 │ Core Audio tap │        │ extractive) · chat retrieval (FTS +     │
 │ / SCK, LocalVQE│        │ on-device MiniLM embeddings, hybrid)    │
@@ -22,20 +22,20 @@
 │ streaming ASR  │        └─────────────────────────────────────────┘
 │ (TS mock off-  │
 │  Mac)          │        Renderer (sandboxed, CSP): shell + sub apps
-└────────────────┘        (memo, settings, gallery*) via @qrtz/ui
+└────────────────┘        (note, settings, gallery*) via @qrtz/ui
 ```
 
 - **Packages:**
-  - `@qrtz/core` holds the contracts and pure logic: the IPC contract and events, capabilities, the helper protocol and mock, the supervisor, config and secrets schemas, and the memo domain (transcript assembly, speaker fusion, summary, chat, embeddings ranking, repo, migrations).
+  - `@qrtz/core` holds the contracts and pure logic: the IPC contract and events, capabilities, the helper protocol and mock, the supervisor, config and secrets schemas, and the note domain (transcript assembly, speaker fusion, summary, chat, embeddings ranking, repo, migrations).
   - `@qrtz/ui` holds the design system.
   - `packages/features/*` are the sub apps. Each has a static manifest with capabilities and a lazy `load()`.
 - **Boundaries:**
   - `scripts/check-boundaries.mjs`: features import only core and ui. Renderer code can't import `electron` or `node:*`.
   - `scripts/check-swift.mjs`: catches duplicate Swift types and unbalanced `#if` blocks.
 - **Capabilities:**
-  - Each sub app manifest lists capabilities, for example `memo.read`, `memo.record`, `memo.write`, `config.write` and `secrets.write`.
+  - Each sub app manifest lists capabilities, for example `note.read`, `note.record`, `note.write`, `config.write` and `secrets.write`.
   - Main enforces them per call and per event subscription.
-  - Narrow channels exist so features don't need broad grants. For example, `memo:set-auto-record` needs only `memo.record`, not `config.write`.
+  - Narrow channels exist so features don't need broad grants. For example, `note:set-auto-record` needs only `note.record`, not `config.write`.
 - **Data:**
   - SQLite in userData holds meetings, segments (FTS5), summaries, meetings_fts and segment_vectors. Migrations live in core and are append-only.
   - Recordings are WAV files under `userData/recordings`, served to the renderer only through `qrtz-media://rec/<uuid>.wav`.

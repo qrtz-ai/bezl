@@ -26,7 +26,7 @@ export const STANDUP_FIXTURE = {
       'Grace Hopper',
       4400,
       9800,
-      'The memo recorder now captures system audio and the live transcript runs on the neural engine.',
+      'The note recorder now captures system audio and the live transcript runs on the neural engine.',
     ],
     [
       'Ada Lovelace',

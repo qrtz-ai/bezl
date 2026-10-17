@@ -60,12 +60,12 @@ const toLifecycleError = (
  * Runtime owner of the recording lifecycle (docs/recording-lifecycle.md).
  *
  * - Every transition goes through the pure `lifecycleReducer` (@qrtz/core) via `LifecycleMachine`.
- * - Every accepted transition is persisted (worker SQLite `lifecycle_state`) and broadcast as `memo:session`.
+ * - Every accepted transition is persisted (worker SQLite `lifecycle_state`) and broadcast as `note:session`.
  * - Post-processing is a per-meeting pipeline (finalize → summary → index) with retry/backoff, persisted after
- *   every step transition (`pipeline_state`) and broadcast as `memo:pipeline`; restarts resume it.
- * - The live transcript is streamed as `memo:transcript` deltas with a monotonically increasing `rev`.
+ *   every step transition (`pipeline_state`) and broadcast as `note:pipeline`; restarts resume it.
+ * - The live transcript is streamed as `note:transcript` deltas with a monotonically increasing `rev`.
  */
-export class MemoService {
+export class NoteService {
   readonly machine = new LifecycleMachine();
   private asr = new TranscriptAssembler();
   private active: ActiveSpeakerEvent[] = [];
@@ -116,7 +116,7 @@ export class MemoService {
       this.deps.log.info('lifecycle', { event: e.type, phase: s.phase });
       this.persistSession(s);
       // Transitions are broadcast synchronously so no phase is ever coalesced away (level/ASR are throttled).
-      this.deps.bus.emit('memo:session', this.view());
+      this.deps.bus.emit('note:session', this.view());
     });
     fs.mkdirSync(deps.recordingsDir, { recursive: true });
   }
@@ -137,7 +137,7 @@ export class MemoService {
 
   private persistPipeline(p: PipelineState) {
     this.pipelines.set(p.meetingId, p);
-    this.deps.bus.emit('memo:pipeline', toPipelineView(p));
+    this.deps.bus.emit('note:pipeline', toPipelineView(p));
     if (p.meetingId === this.machine.state.meetingId) this.emitSoon(0);
     return this.deps.worker
       .call('pipeline.save', { state: p, settled: pipelineSettled(p) })
@@ -206,7 +206,7 @@ export class MemoService {
           });
           break;
         }
-        const mc = this.deps.config().memo;
+        const mc = this.deps.config().note;
         if (
           mc.autoDetectMeetings &&
           (mc.autoRecord || mc.detectPrompt) &&
@@ -216,7 +216,7 @@ export class MemoService {
             platform: m.platform,
             app: m.app,
           });
-          if (this.deps.config().memo.autoRecord) {
+          if (this.deps.config().note.autoRecord) {
             this.deps.log.info('auto-record: starting');
             void this.start().catch((e) =>
               this.deps.log.warn('auto-record failed', { err: String(e) }),
@@ -292,7 +292,7 @@ export class MemoService {
     const p = RETRY_POLICIES.appendLive;
     for (let attempt = 1; ; attempt++) {
       try {
-        await this.deps.worker.call('memo.appendLive', { meetingId, segment });
+        await this.deps.worker.call('note.appendLive', { meetingId, segment });
         return;
       } catch (e) {
         if (attempt >= p.maxAttempts) {
@@ -343,7 +343,7 @@ export class MemoService {
     const append = this.liveSegments().filter((x) => !this.tSent.has(x.id));
     for (const a of append) this.tSent.add(a.id);
     const baseRev = this.tRev++;
-    this.deps.bus.emit('memo:transcript', {
+    this.deps.bus.emit('note:transcript', {
       meetingId,
       baseRev,
       rev: this.tRev,
@@ -419,7 +419,7 @@ export class MemoService {
       this.paused = next;
       this.deps.log.info(next ? 'capture paused' : 'capture resumed');
     }
-    this.deps.bus.emit('memo:session', this.view());
+    this.deps.bus.emit('note:session', this.view());
     return this.view();
   }
 
@@ -433,7 +433,7 @@ export class MemoService {
     const atMs =
       req.atMs ??
       (live && s.startedAt ? (s.stoppedAt ?? Date.now()) - s.startedAt : 0);
-    return this.deps.worker.call('memo.addNote', {
+    return this.deps.worker.call('note.addNote', {
       meetingId,
       text: req.text,
       atMs,
@@ -441,7 +441,7 @@ export class MemoService {
   }
 
   async setTemplate(id: string, template: string) {
-    return this.deps.worker.call('memo.resummarize', {
+    return this.deps.worker.call('note.resummarize', {
       id,
       template,
       llm: await this.llmParams(),
@@ -450,12 +450,12 @@ export class MemoService {
 
   private helperHealth: SessionView['helper'] = 'ok';
   private helperDetail: string | undefined;
-  /** Main reports helper availability/supervisor state; surfaced in the HUD, Memo and Home. */
+  /** Main reports helper availability/supervisor state; surfaced in the HUD, Note and Home. */
   setHelperHealth(h: SessionView['helper'], detail?: string): void {
     if (h === this.helperHealth && detail === this.helperDetail) return;
     this.helperHealth = h;
     this.helperDetail = detail;
-    this.deps.bus.emit('memo:session', this.view());
+    this.deps.bus.emit('note:session', this.view());
   }
 
   private speakerAt(ms: number) {
@@ -466,7 +466,7 @@ export class MemoService {
     if (this.emitTimer) return;
     this.emitTimer = setTimeout(() => {
       this.emitTimer = null;
-      this.deps.bus.emit('memo:session', this.view());
+      this.deps.bus.emit('note:session', this.view());
     }, delay);
   }
 
@@ -518,7 +518,7 @@ export class MemoService {
     this.helperCrashed = false;
     const audioPath = path.join(this.deps.recordingsDir, `${id}.wav`);
     const now = Date.now();
-    await this.deps.worker.call('memo.create', {
+    await this.deps.worker.call('note.create', {
       meeting: {
         id,
         title:
@@ -530,7 +530,7 @@ export class MemoService {
         status: 'recording',
         participants: this.participants,
         audioPath,
-        template: this.deps.config().memo.defaultTemplate,
+        template: this.deps.config().note.defaultTemplate,
       },
     });
     this.machine.send({
@@ -539,7 +539,7 @@ export class MemoService {
       at: now,
       audioPath,
     });
-    this.deps.bus.emit('memo:changed', { id });
+    this.deps.bus.emit('note:changed', { id });
     const acked = this.waitFor(
       'recording.started',
       RETRY_POLICIES.startAckMs * Math.max(this.scale, 0.2),
@@ -592,8 +592,8 @@ export class MemoService {
   private async abortStart(id: string, error: LifecycleError) {
     this.machine.send({ type: 'start-failed', error });
     // Nothing was captured: drop the empty meeting instead of leaving a broken row.
-    await this.deps.worker.call('memo.delete', { id }).catch(() => {});
-    this.deps.bus.emit('memo:changed', { id });
+    await this.deps.worker.call('note.delete', { id }).catch(() => {});
+    this.deps.bus.emit('note:changed', { id });
   }
 
   // ------------------------------------------------------------------ helper crash / reconnect
@@ -713,7 +713,7 @@ export class MemoService {
     for (const seg of this.asr.segments())
       if (!this.persisted.has(seg.id))
         await this.deps.worker
-          .call('memo.appendLive', { meetingId, segment: seg })
+          .call('note.appendLive', { meetingId, segment: seg })
           .then(() => this.persisted.add(seg.id))
           .catch(() => {});
     const endedAt = Date.now();
@@ -829,7 +829,7 @@ export class MemoService {
           if (step === 'summary' && p.steps.summary.status === 'failed') {
             // Out of attempts: the meeting still gets the on-device summary; the step stays failed + retryable.
             try {
-              await this.deps.worker.call('memo.stepSummary', {
+              await this.deps.worker.call('note.stepSummary', {
                 meetingId: id,
                 llm: await this.llmParams(),
                 fallback: { error: err.message },
@@ -849,11 +849,11 @@ export class MemoService {
           }
           if (step === 'finalize' && p.steps.finalize.status === 'failed')
             await this.deps.worker
-              .call('memo.fail', { meetingId: id })
+              .call('note.fail', { meetingId: id })
               .catch(() => {});
         }
         await this.persistPipeline(p);
-        this.deps.bus.emit('memo:changed', { id });
+        this.deps.bus.emit('note:changed', { id });
         this.syncSessionWithPipeline(p);
       }
     } finally {
@@ -874,11 +874,11 @@ export class MemoService {
       });
     }
     const manual = this.manualSteps.delete(`${p.meetingId}:${step}`);
-    const mc = this.deps.config().memo;
+    const mc = this.deps.config().note;
     switch (step) {
       case 'finalize':
         await this.deps.worker.call(
-          'memo.stepFinalize',
+          'note.stepFinalize',
           { meetingId: p.meetingId, ctx: p.ctx },
           60_000,
         );
@@ -886,7 +886,7 @@ export class MemoService {
       case 'summary':
         if (!mc.autoSummarize && !manual) {
           // Settings → Summarize after meetings is off: finish without a summary (Summarize button later).
-          await this.deps.worker.call('memo.stepSummary', {
+          await this.deps.worker.call('note.stepSummary', {
             meetingId: p.meetingId,
             llm: { provider: 'none' },
             skip: true,
@@ -894,7 +894,7 @@ export class MemoService {
           return true;
         }
         await this.deps.worker.call(
-          'memo.stepSummary',
+          'note.stepSummary',
           { meetingId: p.meetingId, llm: await this.llmParams() },
           120_000,
         );
@@ -902,7 +902,7 @@ export class MemoService {
       case 'index': {
         if (!mc.backgroundIndexing && !manual) return true; // Settings → Index for search off
         const r = await this.deps.worker.call(
-          'memo.stepIndex',
+          'note.stepIndex',
           { meetingId: p.meetingId },
           300_000,
         );
@@ -1005,7 +1005,7 @@ export class MemoService {
           if (p.steps[id].status === 'running')
             p.steps[id] = { ...p.steps[id], status: 'retrying' };
         this.pipelines.set(p.meetingId, p);
-        this.deps.bus.emit('memo:pipeline', toPipelineView(p));
+        this.deps.bus.emit('note:pipeline', toPipelineView(p));
       }
       // One at a time: a backlog after a long outage must not fire N LLM calls at once.
       void (async () => {
@@ -1021,10 +1021,10 @@ export class MemoService {
       this.readyResolve();
     }
     try {
-      const days = this.deps.config().memo.retainAudioDays;
+      const days = this.deps.config().note.retainAudioDays;
       if (days > 0) {
-        const p = await this.deps.worker.call('memo.pruneAudio', { days });
-        for (const id of p.pruned) this.deps.bus.emit('memo:changed', { id });
+        const p = await this.deps.worker.call('note.pruneAudio', { days });
+        for (const id of p.pruned) this.deps.bus.emit('note:changed', { id });
       }
     } catch (e) {
       this.deps.log.warn('audio prune failed', { err: String(e) });
@@ -1035,7 +1035,7 @@ export class MemoService {
 
   private async llmParams() {
     const full = this.deps.config();
-    const cfg = full.memo;
+    const cfg = full.note;
     // Privacy "local only": cloud providers are replaced by the on-device path (keys are never read).
     const provider = effectiveLlmProvider(full) as ProviderId | 'none';
     const secretName =
@@ -1059,7 +1059,7 @@ export class MemoService {
     history?: ChatTurn[];
   }) {
     return this.deps.worker.call(
-      'memo.chat',
+      'note.chat',
       { ...req, llm: await this.llmParams() },
       120_000,
     );
@@ -1074,15 +1074,15 @@ export class MemoService {
       // Route through the pipeline so retries/backoff/progress are tracked like any other step.
       await this.retryStep(id, 'summary');
       await this.waitSettled(id, 'summary');
-      const s = await this.deps.worker.call('memo.get', { id });
+      const s = await this.deps.worker.call('note.get', { id });
       return s.summary!;
     }
     const summary = await this.deps.worker.call(
-      'memo.resummarize',
+      'note.resummarize',
       { id, llm: await this.llmParams() },
       120_000,
     );
-    this.deps.bus.emit('memo:changed', { id });
+    this.deps.bus.emit('note:changed', { id });
     return summary;
   }
 

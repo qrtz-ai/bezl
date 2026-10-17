@@ -55,7 +55,7 @@ export function toFtsQuery(input: string): string | null {
   return words.map((w) => `"${w}"*`).join(' ');
 }
 
-export class MemoRepo {
+export class NoteRepo {
   constructor(private readonly db: SqlDb) {}
 
   tx<T>(fn: () => T): T {

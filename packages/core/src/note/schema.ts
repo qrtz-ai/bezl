@@ -1,10 +1,10 @@
 import type { Migration } from '../db/migrate';
 
-/** Memo tables. Appended to the app migration list (never edit once shipped). */
-export const memoMigrations: Migration[] = [
+/** Note tables. Appended to the app migration list (never edit once shipped). */
+export const noteMigrations: Migration[] = [
   {
     version: 2,
-    name: 'memo',
+    name: 'memo', // shipped migration name (pre-rename); never edit
     up: `
 CREATE TABLE meetings (
   id TEXT PRIMARY KEY,

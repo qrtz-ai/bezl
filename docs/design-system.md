@@ -50,7 +50,7 @@ handlers only. `scripts/check-ui-purity.mjs` (part of `npm run lint`) fails outs
   used as icons (■ ▶ ⌕ ✎ ⚙ …); keyboard symbols (⌘ ⇧ ⌥) and typography (… ·) are text and stay allowed
 
 Layout uses `Stack` (token gaps and padding only, semantic `as` for form/ul/li/nav/section).
-App and memo pieces: `AppFrame`, `TabBar`, `SplitView`, `Page`, `Toolbar`, `IconButton`, `Chip`,
+App and note pieces: `AppFrame`, `TabBar`, `SplitView`, `Page`, `Toolbar`, `IconButton`, `Chip`,
 `ListRow`/`MeetingRow`, `SettingsSection`/`SettingRow`, `TranscriptRow`/`TranscriptList`,
 `NotesEditor`, `SummaryBlock`, `ChatQuestion`/`ChatAnswer`/`Composer`, `RecordingBar`, `RecordDot`,
 `LevelMeter`, `StreamingTranscript`/`PipelineSteps`/`CaptureStatus`, `Banner`, `AudioPlayer`, `ActionMenu`, `ConfirmDialog`,
@@ -71,7 +71,7 @@ always carries an accessible `label`. `Button icon=`, `IconButton icon=`, `Empty
 
 ## Layout
 
-Tiny lowercase tabs along the bottom (`memo`, `settings`, plus `gallery` in dev builds), with the
-content taking the full window. Memo is two panes: the meeting list (Record button, search toggle,
+Tiny lowercase tabs along the bottom (`note`, `settings`, plus `gallery` in dev builds), with the
+content taking the full window. Note is two panes: the meeting list (Record button, search toggle,
 ask-all) on the left, the selected meeting on the right (summary first, then notes, transcript and
 ask one tab away). No explanatory copy: labels, glyphs and layout carry the UI.

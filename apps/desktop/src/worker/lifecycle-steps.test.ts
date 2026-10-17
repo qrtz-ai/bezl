@@ -34,14 +34,14 @@ describe('worker lifecycle steps', () => {
       const h = createWorkerHandlers(openDatabase(':memory:'), {
         fetch: failing(status),
       });
-      h['memo.create']({ meeting: meeting('m', 'processing') });
-      h['memo.appendLive']({ meetingId: 'm', segment: seg });
-      const err = await h['memo.stepSummary']({ meetingId: 'm', llm }).catch(
+      h['note.create']({ meeting: meeting('m', 'processing') });
+      h['note.appendLive']({ meetingId: 'm', segment: seg });
+      const err = await h['note.stepSummary']({ meetingId: 'm', llm }).catch(
         (e) => e,
       );
       expect(err.retryable ?? false).toBe(retryable);
-      expect(h['memo.get']({ id: 'm' }).meeting.status).toBe('processing');
-      expect(h['memo.get']({ id: 'm' }).summary).toBeUndefined();
+      expect(h['note.get']({ id: 'm' }).meeting.status).toBe('processing');
+      expect(h['note.get']({ id: 'm' }).summary).toBeUndefined();
     }
   });
 
@@ -49,14 +49,14 @@ describe('worker lifecycle steps', () => {
     const h = createWorkerHandlers(openDatabase(':memory:'), {
       fetch: failing(503),
     });
-    h['memo.create']({ meeting: meeting('m', 'processing') });
-    h['memo.appendLive']({ meetingId: 'm', segment: seg });
-    await h['memo.stepSummary']({
+    h['note.create']({ meeting: meeting('m', 'processing') });
+    h['note.appendLive']({ meetingId: 'm', segment: seg });
+    await h['note.stepSummary']({
       meetingId: 'm',
       llm,
       fallback: { error: 'LLM HTTP 503' },
     });
-    const m = h['memo.get']({ id: 'm' });
+    const m = h['note.get']({ id: 'm' });
     expect(m.meeting.status).toBe('done');
     expect(m.summary?.llmError).toBe('LLM HTTP 503');
   });
@@ -65,10 +65,10 @@ describe('worker lifecycle steps', () => {
     const h = createWorkerHandlers(openDatabase(':memory:'), {
       fetch: failing(500),
     });
-    h['memo.create']({ meeting: meeting('a', 'recording') });
-    h['memo.create']({ meeting: meeting('b', 'processing') });
-    h['memo.create']({ meeting: meeting('c', 'done') });
-    h['memo.appendLive']({ meetingId: 'a', segment: seg });
+    h['note.create']({ meeting: meeting('a', 'recording') });
+    h['note.create']({ meeting: meeting('b', 'processing') });
+    h['note.create']({ meeting: meeting('c', 'done') });
+    h['note.appendLive']({ meetingId: 'a', segment: seg });
     const ctx = {
       startedAt: 1,
       endedAt: 2,
@@ -77,10 +77,10 @@ describe('worker lifecycle steps', () => {
       active: [{ atMs: 0, name: 'Ada' }],
       helperCrashed: true,
     };
-    const r1 = h['memo.stepFinalize']({ meetingId: 'a', ctx });
-    const r2 = h['memo.stepFinalize']({ meetingId: 'a', ctx });
+    const r1 = h['note.stepFinalize']({ meetingId: 'a', ctx });
+    const r2 = h['note.stepFinalize']({ meetingId: 'a', ctx });
     expect(r1).toEqual(r2);
-    expect(h['memo.get']({ id: 'a' }).segments[0]?.speakerName).toBe('Ada');
+    expect(h['note.get']({ id: 'a' }).segments[0]?.speakerName).toBe('Ada');
     const p = newPipeline('a', 'crash-recovered', ctx, 5);
     h['pipeline.save']({ state: p, settled: false });
     expect(h['pipeline.get']({ id: 'a' })).toEqual(p);
@@ -91,7 +91,7 @@ describe('worker lifecycle steps', () => {
     h['pipeline.save']({ state: p, settled: true });
     expect(h['pipeline.listUnsettled']()).toEqual([]);
     // Deleting the meeting cascades the pipeline row; saving for a deleted meeting is a no-op.
-    h['memo.delete']({ id: 'a' });
+    h['note.delete']({ id: 'a' });
     expect(h['pipeline.get']({ id: 'a' })).toBeNull();
     expect(h['pipeline.save']({ state: p, settled: false })).toEqual({
       ok: false,

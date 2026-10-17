@@ -20,8 +20,8 @@ export function Onboarding({
   onDone: () => void;
 }) {
   return (
-    <Page width={480} data-testid="memo-onboarding">
-      <Heading cursor>Set up Memo</Heading>
+    <Page width={480} data-testid="note-onboarding">
+      <Heading cursor>Set up Note</Heading>
       <PermissionList
         items={(Object.keys(COPY) as OsPermission[]).map((p) => {
           const st = status[p] ?? 'unknown';

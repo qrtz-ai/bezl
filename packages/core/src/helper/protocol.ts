@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { OsPermission } from '../capabilities';
-import { AsrEvent, MeetingPlatform } from '../memo/types';
+import { AsrEvent, MeetingPlatform } from '../note/types';
 
 /**
  * Wire protocol between the app (host) and the native Swift helper (`qrtz-helper`).
@@ -41,7 +41,7 @@ export const HelperToHost = z.discriminatedUnion('type', [
     message: z.string(),
     fatal: z.boolean().default(false),
   }),
-  // --- memo (AX + audio + ASR) ---
+  // --- note (AX + audio + ASR) ---
   z.object({
     type: z.literal('meeting.detected'),
     key: z.string(),

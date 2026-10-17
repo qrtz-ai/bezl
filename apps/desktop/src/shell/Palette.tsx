@@ -7,7 +7,7 @@ import { filterCommands, type Command } from './filter';
 
 type Client = ReturnType<typeof shellClient>;
 const listMeetings = (c: Client, query: string) =>
-  c.invoke('memo:list', { query });
+  c.invoke('note:list', { query });
 
 /** ⌘K command palette: navigate sub apps, start/stop recording. */
 export function Palette({
@@ -28,7 +28,7 @@ export function Palette({
     if (!open) return;
     setQ('');
     setI(0);
-    client.invoke('memo:session').then(setSession, () => setSession(null));
+    client.invoke('note:session').then(setSession, () => setSession(null));
   }, [open, client]);
 
   const [meetings, setMeetings] = useState<
@@ -38,7 +38,7 @@ export function Palette({
     const query = q.trim();
     if (!open || query.length < 2) return setMeetings([]);
     const h = setTimeout(() => {
-      client.invoke('memo:list', { query }).then(
+      client.invoke('note:list', { query }).then(
         (r) => setMeetings(r.slice(0, 6)),
         () => setMeetings([]),
       );
@@ -52,24 +52,24 @@ export function Palette({
     );
     const rec: Command = recording
       ? {
-          id: 'memo.stop',
+          id: 'note.stop',
           title: 'Stop recording',
           hint: '⌘⇧R',
           icon: 'stop',
-          keywords: 'memo meeting end',
+          keywords: 'note meeting end',
           run: () =>
-            client.invoke('memo:stop').then(() => toast('Recording stopped')),
+            client.invoke('note:stop').then(() => toast('Recording stopped')),
         }
       : {
-          id: 'memo.start',
+          id: 'note.start',
           title: 'Start recording',
           hint: '⌘⇧R',
           icon: 'circle',
-          keywords: 'memo meeting record',
+          keywords: 'note meeting record',
           run: () =>
-            client.invoke('memo:start', {}).then(() => {
+            client.invoke('note:start', {}).then(() => {
               toast('Recording started', 'success');
-              onNavigate('memo');
+              onNavigate('note');
             }),
         };
     return [
@@ -93,7 +93,7 @@ export function Palette({
         ? hit.snippet.replace(/[[\]]/g, '').slice(0, 48)
         : 'Meeting',
       icon: 'mic',
-      run: () => requestNavigate({ app: 'memo', meetingId: meeting.id }),
+      run: () => requestNavigate({ app: 'note', meetingId: meeting.id }),
     })),
   ];
   const pick = (c: Command | undefined) => {

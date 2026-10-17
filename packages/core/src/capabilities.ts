@@ -9,9 +9,9 @@ export const Capability = z.enum([
   'db.read',
   'helper.status',
   'os.permissions',
-  'memo.record',
-  'memo.read',
-  'memo.write',
+  'note.record',
+  'note.read',
+  'note.write',
   'llm.invoke',
   'data.backup',
 ]);

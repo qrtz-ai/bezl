@@ -44,17 +44,17 @@ async function until(win: Page, fn: () => Promise<void>, timeout = 15_000) {
 }
 
 async function recordStandup(win: Page) {
-  await win.getByTestId('nav-memo').click();
-  await expect(win.getByTestId('memo-detected')).toBeVisible({
+  await win.getByTestId('nav-note').click();
+  await expect(win.getByTestId('note-detected')).toBeVisible({
     timeout: 10_000,
   });
-  await win.getByTestId('memo-record').click();
+  await win.getByTestId('note-record').click();
   await until(win, async () => {
     expect(await win.getByTestId('live-segment').count()).toBeGreaterThan(5);
   });
-  await win.getByTestId('memo-stop').click();
-  await expect(win.getByTestId('memo-done')).toBeVisible({ timeout: 20_000 });
-  await win.getByTestId('memo-open').click();
+  await win.getByTestId('note-stop').click();
+  await expect(win.getByTestId('note-done')).toBeVisible({ timeout: 20_000 });
+  await win.getByTestId('note-open').click();
   await win.getByTestId('tab-summary').click(); // transcript is the default tab
   await expect(win.getByTestId('detail-summary')).toBeVisible();
 }
@@ -123,7 +123,7 @@ test('chat per meeting and across meetings, speaker rename + merge', async () =>
   ).toHaveCount(1);
 
   // Across all meetings, citation opens the meeting.
-  await win.getByTestId('memo-ask-all').click();
+  await win.getByTestId('note-ask-all').click();
   await win.getByTestId('chat-input').fill('parakeet latency');
   await win.getByTestId('chat-send').click();
   await until(win, async () => {
@@ -145,23 +145,23 @@ test('detected meeting prompts; "Always record" persists and auto-starts next ti
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-auto-'));
   const env = { QRTZ_MOCK_SCENARIO: 'standup', QRTZ_MOCK_SPEED: '0.05' };
   let { app, win } = await launch(env, userData);
-  await win.getByTestId('nav-memo').click();
-  await expect(win.getByTestId('memo-detected')).toBeVisible({
+  await win.getByTestId('nav-note').click();
+  await expect(win.getByTestId('note-detected')).toBeVisible({
     timeout: 10_000,
   });
-  await win.getByTestId('memo-always-record').click();
-  await expect(win.getByTestId('memo-hud')).toBeVisible();
-  await win.getByTestId('memo-stop').click();
+  await win.getByTestId('note-always-record').click();
+  await expect(win.getByTestId('note-hud')).toBeVisible();
+  await win.getByTestId('note-stop').click();
   await app.close();
   const cfg = JSON.parse(
     fs.readFileSync(path.join(userData, 'config.json'), 'utf8'),
   );
-  expect(cfg.memo.autoRecord).toBe(true);
+  expect(cfg.note.autoRecord).toBe(true);
 
   ({ app, win } = await launch(env, userData));
-  await win.getByTestId('nav-memo').click();
-  await expect(win.getByTestId('memo-hud')).toBeVisible({ timeout: 10_000 }); // no prompt, recording started
-  await expect(win.getByTestId('memo-detected')).toHaveCount(0);
+  await win.getByTestId('nav-note').click();
+  await expect(win.getByTestId('note-hud')).toBeVisible({ timeout: 10_000 }); // no prompt, recording started
+  await expect(win.getByTestId('note-detected')).toHaveCount(0);
   await win.getByTestId('nav-settings').click();
   await expect(win.getByTestId('auto-record')).toHaveAttribute(
     'aria-checked',
@@ -174,23 +174,23 @@ test('detected meeting prompts; "Always record" persists and auto-starts next ti
   );
   await app.close();
   expect(
-    JSON.parse(fs.readFileSync(path.join(userData, 'config.json'), 'utf8')).memo
+    JSON.parse(fs.readFileSync(path.join(userData, 'config.json'), 'utf8')).note
       .autoRecord,
   ).toBe(false);
 });
 
 test('search results are paged', async () => {
   const { app, win, errors } = await launch({ QRTZ_DEV_SEED: 'many' });
-  await win.getByTestId('nav-memo').click();
+  await win.getByTestId('nav-note').click();
   await until(win, async () => {
     expect(await win.getByTestId('meeting-item').count()).toBe(100);
   });
-  await win.getByTestId('memo-search-toggle').click();
-  await win.getByTestId('memo-search').fill('roadmap');
+  await win.getByTestId('note-search-toggle').click();
+  await win.getByTestId('note-search').fill('roadmap');
   await until(win, async () => {
     expect(await win.getByTestId('search-snippet').count()).toBe(100);
   });
-  await win.getByTestId('memo-show-more').click();
+  await win.getByTestId('note-show-more').click();
   await until(win, async () => {
     expect(await win.getByTestId('search-snippet').count()).toBe(200);
   });

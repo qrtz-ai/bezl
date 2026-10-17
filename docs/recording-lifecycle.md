@@ -1,20 +1,20 @@
 # Recording lifecycle
 
-This is the contract for how a Memo recording starts, runs, stops and gets post-processed. If the code and
+This is the contract for how a Note recording starts, runs, stops and gets post-processed. If the code and
 this document disagree, the code is wrong.
 
-- **Pure logic:** `packages/core/src/memo/lifecycle.ts`. It holds the reducers, the retry policies and the
+- **Pure logic:** `packages/core/src/note/lifecycle.ts`. It holds the reducers, the retry policies and the
   transcript-delta reducer. Unit tests are in `lifecycle.test.ts`.
-- **Runtime owner:** `apps/desktop/src/main/memo-service.ts` (`MemoService`), in the Electron main process.
+- **Runtime owner:** `apps/desktop/src/main/note-service.ts` (`NoteService`), in the Electron main process.
   It is the only code that drives the helper, feeds events to the machine and runs pipelines.
 - **Durable store:** the worker's SQLite, migration 5. `lifecycle_state` holds the session snapshot and
   `pipeline_state` holds one row per meeting. The worker handlers are `lifecycle.*`, `pipeline.*` and
-  `memo.step*`.
-- **Renderer:** reads everything from typed IPC. Requests are `memo:session`, `memo:pipeline` and
-  `memo:live-transcript`; events are `memo:session`, `memo:pipeline`, `memo:transcript` and
-  `memo:changed`; the actions are `memo:start`, `memo:stop`, `memo:dismiss` and `memo:retry-step`. The
+  `note.step*`.
+- **Renderer:** reads everything from typed IPC. Requests are `note:session`, `note:pipeline` and
+  `note:live-transcript`; events are `note:session`, `note:pipeline`, `note:transcript` and
+  `note:changed`; the actions are `note:start`, `note:stop`, `note:dismiss` and `note:retry-step`. The
   renderer keeps no recording state of its own.
-- **Integration tests:** `apps/desktop/src/main/memo-service.test.ts` (real MemoService, Supervisor, mock
+- **Integration tests:** `apps/desktop/src/main/note-service.test.ts` (real NoteService, Supervisor, mock
   helper and worker handlers), `apps/desktop/src/worker/lifecycle-steps.test.ts`, and
   `e2e/lifecycle.spec.ts` (Playwright).
 
@@ -25,8 +25,8 @@ streamed finals are the transcript of record, and nothing re-transcribes after t
 
 | Process                                    | Owns                                                                                                                                                                         | Dies →                                                                                                   |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `qrtz-helper` (Swift; TS mock on Linux/CI) | AX observation (detection, participants, active speaker), audio capture (Core Audio process tap → ScreenCaptureKit → mic), echo gate/AEC, Parakeet streaming ASR, WAV writer | Supervisor restarts it with backoff; MemoService goes to `reconnecting` (see F3)                         |
-| main (`MemoService`)                       | the lifecycle machine, helper protocol, live transcript stream, post-processing pipelines, retry timers                                                                      | everything in-memory is lost; the persisted session + pipelines are recovered at next launch (see R1–R3) |
+| `qrtz-helper` (Swift; TS mock on Linux/CI) | AX observation (detection, participants, active speaker), audio capture (Core Audio process tap → ScreenCaptureKit → mic), echo gate/AEC, Parakeet streaming ASR, WAV writer | Supervisor restarts it with backoff; NoteService goes to `reconnecting` (see F3)                         |
+| main (`NoteService`)                       | the lifecycle machine, helper protocol, live transcript stream, post-processing pipelines, retry timers                                                                      | everything in-memory is lost; the persisted session + pipelines are recovered at next launch (see R1–R3) |
 | worker (utilityProcess)                    | SQLite (meetings, segments, summaries, vectors, lifecycle), WAV repair/stitch, LLM calls, embeddings                                                                         | WorkerClient rejects pending calls; the failing step retries with backoff                                |
 | renderer                                   | presentation only                                                                                                                                                            | reloads; re-fetches snapshots                                                                            |
 
@@ -34,7 +34,7 @@ streamed finals are the transcript of record, and nothing re-transcribes after t
 
 Owner: main. Persisted: every accepted transition (`lifecycle_state.session`), serialized so an older
 snapshot can never overwrite a newer one. Broadcast: every transition goes out synchronously as
-`memo:session`. Only the level meter and ASR updates are throttled, to 50–150 ms.
+`note:session`. Only the level meter and ASR updates are throttled, to 50–150 ms.
 
 ```mermaid
 stateDiagram-v2
@@ -87,36 +87,36 @@ stateDiagram-v2
 There is one pipeline per meeting (`pipeline_state`, keyed by meeting id, cascade-deleted with the meeting).
 It runs independently of the session, so a new recording can start while the previous meeting is still being
 summarized. The pipeline is persisted **before** each step starts and after it ends, and broadcast as
-`memo:pipeline` every time.
+`note:pipeline` every time.
 
 | Step     | Worker call                 | Idempotent because                                                                                                                                                 | Policy                                                                                                  | On exhaustion                                                                                                         |
 | -------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| finalize | `memo.stepFinalize`         | the stitch writes `main.stitch` then renames atomically and deletes parts after; WAV repair is a no-op on a good header; speaker fusion replaces the live segments | 3 attempts, 1 s → 2 s (×2, cap 16 s)                                                                    | meeting `failed`, session `error`, later steps stay `pending`, manual retry                                           |
-| summary  | `memo.stepSummary` (strict) | upsert of the one summary row                                                                                                                                      | 3 attempts, 2 s → 4 s → … cap 30 s; **non-retryable** (401/403/400, bad key) fails on the first attempt | on-device extractive summary saved with `llmError`, step `failed` with `fallback: true`, meeting `done`, manual retry |
-| index    | `memo.stepIndex`            | vectors keyed by segment rowid; `missingVectors` only picks unindexed lines                                                                                        | 3 attempts, 5 s → … cap 60 s                                                                            | step `failed` (chat falls back to full-text), manual retry; no embedder → `skipped`                                   |
+| finalize | `note.stepFinalize`         | the stitch writes `main.stitch` then renames atomically and deletes parts after; WAV repair is a no-op on a good header; speaker fusion replaces the live segments | 3 attempts, 1 s → 2 s (×2, cap 16 s)                                                                    | meeting `failed`, session `error`, later steps stay `pending`, manual retry                                           |
+| summary  | `note.stepSummary` (strict) | upsert of the one summary row                                                                                                                                      | 3 attempts, 2 s → 4 s → … cap 30 s; **non-retryable** (401/403/400, bad key) fails on the first attempt | on-device extractive summary saved with `llmError`, step `failed` with `fallback: true`, meeting `done`, manual retry |
+| index    | `note.stepIndex`            | vectors keyed by segment rowid; `missingVectors` only picks unindexed lines                                                                                        | 3 attempts, 5 s → … cap 60 s                                                                            | step `failed` (chat falls back to full-text), manual retry; no embedder → `skipped`                                   |
 
 Every delay has ±20% jitter (`retryDelay`), and `QRTZ_RETRY_SCALE` shrinks all of them for tests. Step
 statuses are `pending → running → (done | skipped | retrying → running … | failed)`. A manual retry
-(`memo:retry-step`) gives the step a fresh attempt budget and re-arms every step after it. `memo:resummarize`
+(`note:retry-step`) gives the step a fresh attempt budget and re-arms every step after it. `note:resummarize`
 (the existing "Retry" button and template changes) now routes through the same pipeline.
 
 ## Live transcript stream
 
-- **Snapshot:** `memo:live-transcript` returns `{meetingId, rev, segments[], partial}`.
-- **Deltas:** each `memo:transcript` event is `{meetingId, baseRev, rev, append[], partial}`, sent on every
+- **Snapshot:** `note:live-transcript` returns `{meetingId, rev, segments[], partial}`.
+- **Deltas:** each `note:transcript` event is `{meetingId, baseRev, rev, append[], partial}`, sent on every
   ASR partial or final.
 - **Renderer:** applies a delta only when `rev === baseRev + 1` (`applyTranscriptDelta`). If a delta is
   missing or belongs to another meeting, it fetches a new snapshot. The partial is the volatile hypothesis:
   it is replaced in place on every update and removed when its utterance finalizes.
 - **After a helper restart:** utterance ids become `p<part>-<id>` and timestamps are shifted by
   `partOffsetMs`, so segments from the two parts never collide and stay in meeting time.
-- **Persistence:** each final is written to the DB right away (`memo.appendLive`, an idempotent upsert),
+- **Persistence:** each final is written to the DB right away (`note.appendLive`, an idempotent upsert),
   so the transcript survives any crash. After stop, and after a restart, the meeting view reads the
-  persisted segments from `memo:get`.
+  persisted segments from `note:get`.
 
 ## Renderer
 
-- **Hooks.** `packages/features/memo/src/useRecording.ts` provides `useSession`, `usePipeline(id)` and
+- **Hooks.** `packages/features/note/src/useRecording.ts` provides `useSession`, `usePipeline(id)` and
   `useLiveTranscript(id)`. Each fetches a snapshot, subscribes, and refetches on a gap.
 - **Components.** The presentational pieces live in `@qrtz/ui` (`packages/ui/src/Lifecycle.tsx`):
   - `StreamingTranscript`: finals plus an italic volatile partial. It follows the newest line, scrolling up
@@ -137,7 +137,7 @@ statuses are `pending → running → (done | skipped | retrying → running …
 | F4  | Helper not back in 30 s or circuit open                 | timer / supervisor `failed`                               | stop with reason `helper-lost`; pipeline salvages persisted segments + repaired WAV parts                                                                               | `stopping` → `processing` → `done`, `stopReason: helper-lost`                       |
 | F5  | `recording.start` not acked in 5 s                      | `waitFor` timeout                                         | send `recording.stop`, delete the empty meeting row                                                                                                                     | back to idle/detected with `errorInfo.code = start-timeout` (retryable)             |
 | F6  | `recording.stop` not acked in 10 s                      | `waitFor` timeout                                         | finish from what is persisted, treat as crashed (duration from audio)                                                                                                   | normal processing                                                                   |
-| F7  | Live segment write fails (worker busy/restarting)       | `memo.appendLive` rejects                                 | 5 attempts, 250 ms ×2 (cap 4 s); then kept in memory and re-flushed at stop                                                                                             | none (transcript still shown live)                                                  |
+| F7  | Live segment write fails (worker busy/restarting)       | `note.appendLive` rejects                                 | 5 attempts, 250 ms ×2 (cap 4 s); then kept in memory and re-flushed at stop                                                                                             | none (transcript still shown live)                                                  |
 | F8  | No ASR available                                        | helper `error asr.unavailable`                            | audio still recorded                                                                                                                                                    | `degraded: asr-unavailable`                                                         |
 | F9  | No audio source                                         | helper `error audio.unavailable`                          | recording continues (AX, notes)                                                                                                                                         | `degraded: audio-unavailable`                                                       |
 | F10 | Finalize fails (disk, corrupt WAV, worker down)         | step throws                                               | finalize policy                                                                                                                                                         | step `retrying` → `failed`; session `error`; Retry                                  |
@@ -149,7 +149,7 @@ statuses are `pending → running → (done | skipped | retrying → running …
 
 ## Crash and restart recovery
 
-At startup, after the worker is ready, `MemoService.recover()` runs. `start()` waits for it to finish.
+At startup, after the worker is ready, `NoteService.recover()` runs. `start()` waits for it to finish.
 
 - **R1, the app died while capturing.** If `lifecycle_state.session` was `starting`, `recording`,
   `reconnecting` or `stopping`, a pipeline is created for its meeting with stop reason `crash-recovered`. It

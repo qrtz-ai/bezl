@@ -8,12 +8,12 @@ describe('palette fuzzy filter', () => {
     expect(fuzzyScore('gts', 'Go to Settings')).not.toBeNull();
     expect(fuzzyScore('xyz', 'Go to Settings')).toBeNull();
     const r = filterCommands(
-      [cmd('Go to Settings'), cmd('Start recording'), cmd('Go to Memo')],
+      [cmd('Go to Settings'), cmd('Start recording'), cmd('Go to Note')],
       'rec',
     );
     expect(r.map((c) => c.title)).toEqual(['Start recording']);
     expect(
-      filterCommands([cmd('Go to Memo'), cmd('Go to Gallery')], 'gal')[0]
+      filterCommands([cmd('Go to Note'), cmd('Go to Gallery')], 'gal')[0]
         ?.title,
     ).toBe('Go to Gallery');
     expect(filterCommands([cmd('a'), cmd('b')], '')).toHaveLength(2);

@@ -7,12 +7,12 @@ import {
   MeetingListItem,
   PermissionsStatus,
   SessionView,
-} from '../memo/contract';
-import { MeetingSummary } from '../memo/summary';
-import { LiveTranscript, PipelineView, StepId } from '../memo/lifecycle';
-import { ChatAnswer, ChatTurn } from '../memo/chat';
-import { MeetingNote } from '../memo/notes';
-import { SummaryTemplateId } from '../memo/templates';
+} from '../note/contract';
+import { MeetingSummary } from '../note/summary';
+import { LiveTranscript, PipelineView, StepId } from '../note/lifecycle';
+import { ChatAnswer, ChatTurn } from '../note/chat';
+import { MeetingNote } from '../note/notes';
+import { SummaryTemplateId } from '../note/templates';
 
 /** Bump when the envelope shape changes (not when a channel changes). */
 export const PROTOCOL_VERSION = 1;
@@ -110,54 +110,54 @@ export const ipcContract = {
     request: z.object({ permission: OsPermission }),
     response: PermissionsStatus,
   }),
-  'memo:session': defineChannel({
+  'note:session': defineChannel({
     version: 1,
-    capability: 'memo.read',
+    capability: 'note.read',
     request: z.void(),
     response: SessionView,
   }),
-  'memo:start': defineChannel({
+  'note:start': defineChannel({
     version: 1,
-    capability: 'memo.record',
+    capability: 'note.record',
     request: z.object({ title: z.string().max(200).optional() }).optional(),
     response: SessionView,
   }),
-  'memo:stop': defineChannel({
+  'note:stop': defineChannel({
     version: 1,
-    capability: 'memo.record',
+    capability: 'note.record',
     request: z.void(),
     response: SessionView,
   }),
   /** Post-processing state of one meeting (finalize → summary → index), or null if it never had one. */
-  'memo:pipeline': defineChannel({
+  'note:pipeline': defineChannel({
     version: 1,
-    capability: 'memo.read',
+    capability: 'note.read',
     request: z.object({ id: z.string() }),
     response: PipelineView.nullable(),
   }),
   /** Manual retry of one post-processing step (re-runs it and everything after it). */
-  'memo:retry-step': defineChannel({
+  'note:retry-step': defineChannel({
     version: 1,
-    capability: 'memo.write',
+    capability: 'note.write',
     request: z.object({ id: z.string(), step: StepId }),
     response: PipelineView,
   }),
-  /** Snapshot of the live transcript of the meeting being recorded; apply `memo:transcript` deltas on top. */
-  'memo:live-transcript': defineChannel({
+  /** Snapshot of the live transcript of the meeting being recorded; apply `note:transcript` deltas on top. */
+  'note:live-transcript': defineChannel({
     version: 1,
-    capability: 'memo.read',
+    capability: 'note.read',
     request: z.object({ meetingId: z.string().optional() }).optional(),
     response: LiveTranscript.nullable(),
   }),
-  'memo:dismiss': defineChannel({
+  'note:dismiss': defineChannel({
     version: 1,
-    capability: 'memo.record',
+    capability: 'note.record',
     request: z.void(),
     response: SessionView,
   }),
-  'memo:list': defineChannel({
+  'note:list': defineChannel({
     version: 1,
-    capability: 'memo.read',
+    capability: 'note.read',
     request: z.object({
       query: z.string().max(200).optional(),
       /** Page size (default 100). Up to limit+1 rows come back; the extra one signals more. */
@@ -166,15 +166,15 @@ export const ipcContract = {
     }),
     response: z.array(MeetingListItem),
   }),
-  'memo:get': defineChannel({
+  'note:get': defineChannel({
     version: 1,
-    capability: 'memo.read',
+    capability: 'note.read',
     request: z.object({ id: z.string().max(64) }),
     response: MeetingDetail,
   }),
-  'memo:export': defineChannel({
+  'note:export': defineChannel({
     version: 1,
-    capability: 'memo.read',
+    capability: 'note.read',
     request: z.object({
       id: z.string().max(64),
       save: z.boolean().default(false),
@@ -185,22 +185,22 @@ export const ipcContract = {
       savedTo: z.string().optional(),
     }),
   }),
-  'memo:resummarize': defineChannel({
+  'note:resummarize': defineChannel({
     version: 1,
-    capability: 'memo.write',
+    capability: 'note.write',
     request: z.object({ id: z.string().max(64) }),
     response: MeetingSummary,
   }),
-  /** Scoped config write so Memo's prompt can enable auto-record without the broad config.write capability. */
-  'memo:set-auto-record': defineChannel({
+  /** Scoped config write so Note's prompt can enable auto-record without the broad config.write capability. */
+  'note:set-auto-record': defineChannel({
     version: 1,
-    capability: 'memo.record',
+    capability: 'note.record',
     request: z.object({ enabled: z.boolean() }),
     response: z.object({ autoRecord: z.boolean() }),
   }),
-  'memo:chat': defineChannel({
+  'note:chat': defineChannel({
     version: 1,
-    capability: 'memo.read',
+    capability: 'note.read',
     request: z.object({
       question: z.string().min(1).max(2000),
       meetingId: z.string().max(64).optional(),
@@ -208,9 +208,9 @@ export const ipcContract = {
     }),
     response: ChatAnswer,
   }),
-  'memo:rename-speaker': defineChannel({
+  'note:rename-speaker': defineChannel({
     version: 1,
-    capability: 'memo.write',
+    capability: 'note.write',
     request: z.object({
       meetingId: z.string().max(64),
       from: z.string().min(1).max(120),
@@ -218,9 +218,9 @@ export const ipcContract = {
     }),
     response: z.object({ changed: z.number() }),
   }),
-  'memo:delete': defineChannel({
+  'note:delete': defineChannel({
     version: 1,
-    capability: 'memo.write',
+    capability: 'note.write',
     /** deferMs: undoable delete. A tombstone is written now and the delete runs after deferMs (or on next launch). */
     request: z.object({
       id: z.string().max(64),
@@ -228,16 +228,16 @@ export const ipcContract = {
     }),
     response: z.object({ ok: z.literal(true) }),
   }),
-  'memo:undo-delete': defineChannel({
+  'note:undo-delete': defineChannel({
     version: 1,
-    capability: 'memo.write',
+    capability: 'note.write',
     request: z.object({ id: z.string().max(64) }),
     response: z.object({ restored: z.boolean() }),
   }),
   /** Live notes. Without meetingId the note goes to the meeting being recorded, stamped at the current offset. */
-  'memo:add-note': defineChannel({
+  'note:add-note': defineChannel({
     version: 1,
-    capability: 'memo.record',
+    capability: 'note.record',
     request: z.object({
       meetingId: z.string().max(64).optional(),
       text: z.string().trim().min(1).max(4000),
@@ -245,45 +245,45 @@ export const ipcContract = {
     }),
     response: MeetingNote.extend({ meetingId: z.string() }),
   }),
-  'memo:update-note': defineChannel({
+  'note:update-note': defineChannel({
     version: 1,
-    capability: 'memo.write',
+    capability: 'note.write',
     request: z.object({
       id: z.string().max(64),
       text: z.string().trim().min(1).max(4000),
     }),
     response: z.object({ ok: z.boolean() }),
   }),
-  'memo:delete-note': defineChannel({
+  'note:delete-note': defineChannel({
     version: 1,
-    capability: 'memo.write',
+    capability: 'note.write',
     request: z.object({ id: z.string().max(64) }),
     response: z.object({ ok: z.boolean() }),
   }),
-  'memo:list-notes': defineChannel({
+  'note:list-notes': defineChannel({
     version: 1,
-    capability: 'memo.read',
+    capability: 'note.read',
     request: z.object({ meetingId: z.string().max(64).optional() }),
     response: z.array(MeetingNote),
   }),
   /** Store the meeting's template and re-run its summary with it. */
-  'memo:set-template': defineChannel({
+  'note:set-template': defineChannel({
     version: 1,
-    capability: 'memo.write',
+    capability: 'note.write',
     request: z.object({ id: z.string().max(64), template: SummaryTemplateId }),
     response: MeetingSummary,
   }),
   /** Floating mini HUD: grow to show the notes field, or collapse back to the strip. */
   'hud:set-expanded': defineChannel({
     version: 1,
-    capability: 'memo.record',
+    capability: 'note.record',
     request: z.object({ expanded: z.boolean() }),
     response: z.object({ expanded: z.boolean() }),
   }),
   /** Privacy pause/resume of capture while recording (omit `paused` to toggle). */
-  'memo:pause': defineChannel({
+  'note:pause': defineChannel({
     version: 1,
-    capability: 'memo.record',
+    capability: 'note.record',
     request: z.object({ paused: z.boolean().optional() }).default({}),
     response: SessionView,
   }),

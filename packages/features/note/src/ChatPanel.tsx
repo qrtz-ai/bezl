@@ -38,7 +38,7 @@ export function ChatPanel({
     setError(null);
     setTurns([...prior, { role: 'user', content: question }]);
     try {
-      const answer = await qrtz.invoke('memo:chat', {
+      const answer = await qrtz.invoke('note:chat', {
         question,
         ...(meetingId ? { meetingId } : {}),
         history: prior.map((x) => ({ role: x.role, content: x.content })),

@@ -32,9 +32,9 @@ const UNDO_MS = 6000;
 
 const PAGE = 100;
 
-export default function MemoView() {
+export default function NoteView() {
   const qrtz = useQrtz();
-  // Lifecycle state comes only from main (memo:session); the view never guesses.
+  // Lifecycle state comes only from main (note:session); the view never guesses.
   const session = useSession();
   const [perms, setPerms] = useState<PermissionsStatus | null>(null);
   const [onboarded, setOnboarded] = useState(false);
@@ -59,7 +59,7 @@ export default function MemoView() {
   useEffect(
     () =>
       onNavigateRequest((r) => {
-        if (r.app === 'memo' && r.meetingId)
+        if (r.app === 'note' && r.meetingId)
           setSelected(takePendingMeeting() ?? null);
       }),
     [],
@@ -78,7 +78,7 @@ export default function MemoView() {
     setHidden((h) => new Set(h).add(id));
     setSelected(null);
     qrtz
-      .invoke('memo:delete', { id, deferMs: UNDO_MS })
+      .invoke('note:delete', { id, deferMs: UNDO_MS })
       .catch((e: AppError) => {
         unhide(id);
         setError(e.message);
@@ -88,7 +88,7 @@ export default function MemoView() {
       action: {
         label: 'Undo',
         onClick: () => {
-          void qrtz.invoke('memo:undo-delete', { id }).then((r) => {
+          void qrtz.invoke('note:undo-delete', { id }).then((r) => {
             unhide(id);
             if (r.restored) setSelected(id);
           });
@@ -98,7 +98,7 @@ export default function MemoView() {
   };
   const visible = items.filter((i) => !hidden.has(i.meeting.id));
   const livePerms = useQrtzEvent('permissions:changed');
-  const changed = useQrtzEvent('memo:changed');
+  const changed = useQrtzEvent('note:changed');
 
   useEffect(() => {
     void qrtz.invoke('permissions:get').then(setPerms);
@@ -120,7 +120,7 @@ export default function MemoView() {
   const refresh = useCallback(() => {
     qrtz
       .invoke(
-        'memo:list',
+        'note:list',
         query ? { query, limit: PAGE * pages } : { limit: PAGE * pages },
       )
       .then((r) => {
@@ -135,7 +135,7 @@ export default function MemoView() {
     return () => clearTimeout(h);
   }, [refresh, changed, query]);
 
-  // Results arrive as memo:session events. Refused starts (permissions, ack timeout) are lifecycle state
+  // Results arrive as note:session events. Refused starts (permissions, ack timeout) are lifecycle state
   // (`errorInfo`, shown by CaptureStatus); only unexpected failures land in the generic error callout.
   const act = (p: Promise<SessionView>) =>
     p.catch((e: AppError) => {
@@ -162,7 +162,7 @@ export default function MemoView() {
     session.phase === 'processing';
   return (
     <SplitView
-      data-testid="memo"
+      data-testid="note-app"
       sidebar={
         <>
           <Toolbar
@@ -172,7 +172,7 @@ export default function MemoView() {
                   icon="search"
                   label="Search meetings"
                   pressed={searching}
-                  data-testid="memo-search-toggle"
+                  data-testid="note-search-toggle"
                   onClick={() => {
                     if (searching) setQuery('');
                     setSearching(!searching);
@@ -182,7 +182,7 @@ export default function MemoView() {
                   icon="ask"
                   label="Ask all meetings"
                   pressed={askAll && !selected}
-                  data-testid="memo-ask-all"
+                  data-testid="note-ask-all"
                   onClick={() => {
                     setAskAll(true);
                     setSelected(null);
@@ -194,8 +194,8 @@ export default function MemoView() {
             {busy ? null : (
               <Button
                 size="sm"
-                onClick={() => void act(qrtz.invoke('memo:start', {}))}
-                data-testid="memo-record-manual"
+                onClick={() => void act(qrtz.invoke('note:start', {}))}
+                data-testid="note-record-manual"
                 icon="circle"
               >
                 Record
@@ -211,7 +211,7 @@ export default function MemoView() {
                 setQuery(e.target.value);
                 setPages(1);
               }}
-              data-testid="memo-search"
+              data-testid="note-search"
               aria-label="Search meetings"
             />
           ) : null}
@@ -245,7 +245,7 @@ export default function MemoView() {
                   variant="ghost"
                   size="sm"
                   onClick={() => setPages((n) => n + 1)}
-                  data-testid="memo-show-more"
+                  data-testid="note-show-more"
                 >
                   More
                 </Button>
@@ -271,7 +271,7 @@ export default function MemoView() {
           <Callout
             tone="danger"
             title={error}
-            data-testid="memo-error"
+            data-testid="note-error"
             action={
               <Button variant="ghost" size="sm" onClick={() => setError(null)}>
                 Dismiss
@@ -282,19 +282,19 @@ export default function MemoView() {
         <CaptureStatus
           degraded={[]}
           error={session.errorInfo?.message ?? null}
-          onDismiss={() => void act(qrtz.invoke('memo:dismiss'))}
+          onDismiss={() => void act(qrtz.invoke('note:dismiss'))}
         />
         <Hud
           s={session}
-          onRecord={() => void act(qrtz.invoke('memo:start', {}))}
-          onStop={() => void act(qrtz.invoke('memo:stop'))}
-          onPause={() => void act(qrtz.invoke('memo:pause', {}))}
-          onDismiss={() => void act(qrtz.invoke('memo:dismiss'))}
+          onRecord={() => void act(qrtz.invoke('note:start', {}))}
+          onStop={() => void act(qrtz.invoke('note:stop'))}
+          onPause={() => void act(qrtz.invoke('note:pause', {}))}
+          onDismiss={() => void act(qrtz.invoke('note:dismiss'))}
           onAlways={() =>
             void act(
               qrtz
-                .invoke('memo:set-auto-record', { enabled: true })
-                .then(() => qrtz.invoke('memo:start', {})),
+                .invoke('note:set-auto-record', { enabled: true })
+                .then(() => qrtz.invoke('note:start', {})),
             )
           }
           onOpen={(id) => setSelected(id)}

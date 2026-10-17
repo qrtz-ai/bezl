@@ -6,10 +6,10 @@ This lists every user-facing flow and the tests that cover it. **e2e** means Pla
 | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | App boots; sidebar; typed IPC between main, worker and renderer                                                      | e2e `smoke.spec` · smoke (packaged build) · unit `router.test`, `ipc-capabilities.test`                                                               |
 | First-run onboarding → record → review                                                                               | e2e `screens.spec` "first run → record → review walkthrough"                                                                                          |
-| Permissions setup card (Mac only on Linux)                                                                           | e2e `shell.spec` (memo first run); onboarding shows only when a permission is missing                                                                 |
+| Permissions setup card (Mac only on Linux)                                                                           | e2e `shell.spec` (note first run); onboarding shows only when a permission is missing                                                                 |
 | Meeting detection prompt; "Always record" auto-start                                                                 | e2e `chat.spec` "detected meeting prompts…"                                                                                                           |
-| Record / live transcript / stop / summarize / search / export .md                                                    | e2e `memo.spec` "memo end-to-end…" · unit `memo-pipeline.test`                                                                                        |
-| Mini HUD: pause, resume, notes panel                                                                                 | e2e `memo.spec`, `notes-privacy.spec`                                                                                                                 |
+| Record / live transcript / stop / summarize / search / export .md                                                    | e2e `note.spec` "note end-to-end…" · unit `note-pipeline.test`                                                                                        |
+| Mini HUD: pause, resume, notes panel                                                                                 | e2e `note.spec`, `notes-privacy.spec`                                                                                                                 |
 | Live notes merged into summary; summary templates and re-run                                                         | e2e `notes-privacy.spec` "live notes + privacy pause…" · unit `notes-backup.test`                                                                     |
 | Copy Markdown to the clipboard                                                                                       | e2e `flows.spec` "delete a meeting and copy its Markdown"                                                                                             |
 | Delete a meeting (durable across restart)                                                                            | e2e `flows.spec`                                                                                                                                      |
@@ -46,13 +46,13 @@ This lists every user-facing flow and the tests that cover it. **e2e** means Pla
 
 | Toggle                   | Config key                 | Covered by                                                   |
 | ------------------------ | -------------------------- | ------------------------------------------------------------ |
-| Detect meetings          | `memo.autoDetectMeetings`  | unit `config.test`; e2e `notes-privacy.spec` (excluded apps) |
-| Record automatically     | `memo.autoRecord`          | e2e `chat.spec` (Always record → switch off)                 |
-| Ask to record            | `memo.detectPrompt`        | main `memo-service` gate                                     |
-| Floating HUD             | `memo.floatingHud`         | e2e `memo.spec` (mini HUD)                                   |
-| Delete old recordings    | `memo.retainAudioDays` > 0 | e2e `flows.spec` (settings persist)                          |
-| Summarize after meetings | `memo.autoSummarize`       | worker `memo.finalize` skips the summary when false          |
-| Index for search         | `memo.backgroundIndexing`  | main `memo-service` gate                                     |
+| Detect meetings          | `note.autoDetectMeetings`  | unit `config.test`; e2e `notes-privacy.spec` (excluded apps) |
+| Record automatically     | `note.autoRecord`          | e2e `chat.spec` (Always record → switch off)                 |
+| Ask to record            | `note.detectPrompt`        | main `note-service` gate                                     |
+| Floating HUD             | `note.floatingHud`         | e2e `note.spec` (mini HUD)                                   |
+| Delete old recordings    | `note.retainAudioDays` > 0 | e2e `flows.spec` (settings persist)                          |
+| Summarize after meetings | `note.autoSummarize`       | worker `note.finalize` skips the summary when false          |
+| Index for search         | `note.backgroundIndexing`  | main `note-service` gate                                     |
 | Menu bar icon            | `app.menuBarIcon`          | main `syncTray` (live)                                       |
 | Open at login            | `app.launchAtLogin`        | main `syncLogin` (packaged macOS/Windows)                    |
 | Check for updates        | `app.autoUpdateCheck`      | main gates `initAutoUpdates`                                 |

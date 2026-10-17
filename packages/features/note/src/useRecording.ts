@@ -20,8 +20,8 @@ export function useSession(): SessionView {
   );
   useEffect(() => {
     let alive = true;
-    const off = qrtz.on('memo:session', setS);
-    void qrtz.invoke('memo:session').then(
+    const off = qrtz.on('note:session', setS);
+    void qrtz.invoke('note:session').then(
       (v) => alive && setS(v),
       () => {},
     );
@@ -41,10 +41,10 @@ export function usePipeline(meetingId: string | null | undefined) {
     setP(null);
     if (!meetingId) return;
     let alive = true;
-    const off = qrtz.on('memo:pipeline', (v) => {
+    const off = qrtz.on('note:pipeline', (v) => {
       if (v.meetingId === meetingId) setP(v);
     });
-    void qrtz.invoke('memo:pipeline', { id: meetingId }).then(
+    void qrtz.invoke('note:pipeline', { id: meetingId }).then(
       (v) => alive && v && setP(v),
       () => {},
     );
@@ -57,7 +57,7 @@ export function usePipeline(meetingId: string | null | undefined) {
     (step: StepId) => {
       if (meetingId)
         void qrtz
-          .invoke('memo:retry-step', { id: meetingId, step })
+          .invoke('note:retry-step', { id: meetingId, step })
           .then(setP, () => {});
     },
     [qrtz, meetingId],
@@ -81,7 +81,7 @@ export function useLiveTranscript(
       if (fetching) return;
       fetching = true;
       void qrtz
-        .invoke('memo:live-transcript', { meetingId })
+        .invoke('note:live-transcript', { meetingId })
         .then(
           (snap) => {
             // Keep whichever is newer: deltas may have advanced past the snapshot while it was in flight.
@@ -92,7 +92,7 @@ export function useLiveTranscript(
         )
         .finally(() => (fetching = false));
     };
-    const off = qrtz.on('memo:transcript', (d) => {
+    const off = qrtz.on('note:transcript', (d) => {
       if (d.meetingId !== meetingId) return;
       const next = applyTranscriptDelta(cur, d);
       if (next) setT((cur = next));

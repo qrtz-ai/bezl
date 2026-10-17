@@ -15,20 +15,20 @@ export function Notes({
   compact?: boolean;
 }) {
   const qrtz = useQrtz();
-  const changed = useQrtzEvent('memo:changed');
+  const changed = useQrtzEvent('note:changed');
   const [notes, setNotes] = useState<MeetingNote[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     qrtz
-      .invoke('memo:list-notes', meetingId ? { meetingId } : {})
+      .invoke('note:list-notes', meetingId ? { meetingId } : {})
       .then(setNotes, () => {});
   }, [qrtz, meetingId]);
   useEffect(load, [load, changed]);
 
   const add = (text: string) => {
     qrtz
-      .invoke('memo:add-note', { text, ...(meetingId ? { meetingId } : {}) })
+      .invoke('note:add-note', { text, ...(meetingId ? { meetingId } : {}) })
       .then(() => {
         setError(null);
         load();
@@ -37,8 +37,8 @@ export function Notes({
   };
   const update = (id: string, text: string) => {
     const op = text
-      ? qrtz.invoke('memo:update-note', { id, text })
-      : qrtz.invoke('memo:delete-note', { id });
+      ? qrtz.invoke('note:update-note', { id, text })
+      : qrtz.invoke('note:delete-note', { id });
     void op.then(load, (e: Error) => setError(e.message));
   };
 

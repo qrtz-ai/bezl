@@ -66,7 +66,7 @@ export default function SettingsView() {
   };
   useEffect(refresh, [qrtz]);
   const h = live ?? helper;
-  const memoCfg = (cfg?.memo ?? {}) as {
+  const noteCfg = (cfg?.note ?? {}) as {
     llmProvider?: ProviderId | 'none';
     llmModel?: string;
     retainAudioDays?: number;
@@ -118,7 +118,7 @@ export default function SettingsView() {
       .then(setBackupMsg, (e: Error) => setBackupMsg(e.message))
       .finally(() => setBackupBusy(false));
   };
-  const provider = memoCfg.llmProvider ?? 'openrouter';
+  const provider = noteCfg.llmProvider ?? 'openrouter';
   const secretName =
     provider === 'none' ? undefined : PROVIDER_DEFAULTS[provider].secret;
   const hasKey =
@@ -127,7 +127,7 @@ export default function SettingsView() {
 
   const patch = (p: Record<string, unknown>) =>
     qrtz
-      .invoke('config:set', { patch: { memo: p } })
+      .invoke('config:set', { patch: { note: p } })
       .then(setCfg)
       .catch((e: Error) => setError(e.message));
 
@@ -157,9 +157,9 @@ export default function SettingsView() {
       .then(setCfg)
       .catch((e: Error) => setError(e.message));
   };
-  const patchMemo = (p: Record<string, unknown>) => {
+  const patchNote = (p: Record<string, unknown>) => {
     setCfg((prev) =>
-      prev ? { ...prev, memo: { ...(prev.memo as object), ...p } } : prev,
+      prev ? { ...prev, note: { ...(prev.note as object), ...p } } : prev,
     );
     return patch(p);
   };
@@ -179,7 +179,7 @@ export default function SettingsView() {
       />
     </SettingRow>
   );
-  const days = memoCfg.retainAudioDays ?? 0;
+  const days = noteCfg.retainAudioDays ?? 0;
 
   return (
     <Page data-testid="settings">
@@ -200,44 +200,44 @@ export default function SettingsView() {
         {toggle(
           'Detect meetings',
           'auto-detect',
-          memoCfg.autoDetectMeetings,
+          noteCfg.autoDetectMeetings,
           true,
-          (v) => void patchMemo({ autoDetectMeetings: v }),
+          (v) => void patchNote({ autoDetectMeetings: v }),
         )}
         {toggle(
           'Record automatically',
           'auto-record',
-          memoCfg.autoRecord,
+          noteCfg.autoRecord,
           false,
-          (v) => void patchMemo({ autoRecord: v }),
+          (v) => void patchNote({ autoRecord: v }),
         )}
         {toggle(
           'Ask to record',
           'detect-prompt',
-          memoCfg.detectPrompt,
+          noteCfg.detectPrompt,
           true,
-          (v) => void patchMemo({ detectPrompt: v }),
+          (v) => void patchNote({ detectPrompt: v }),
         )}
         {toggle(
           'Floating HUD',
           'floating-hud',
-          memoCfg.floatingHud,
+          noteCfg.floatingHud,
           true,
-          (v) => void patchMemo({ floatingHud: v }),
+          (v) => void patchNote({ floatingHud: v }),
         )}
         {toggle(
           'Delete old recordings',
           'retain-audio-on',
           days > 0,
           false,
-          (v) => void patchMemo({ retainAudioDays: v ? 30 : 0 }),
+          (v) => void patchNote({ retainAudioDays: v ? 30 : 0 }),
         )}
         {days > 0 ? (
           <SettingRow label="After">
             <Select
               value={String(days)}
               onChange={(e) =>
-                void patchMemo({ retainAudioDays: Number(e.target.value) })
+                void patchNote({ retainAudioDays: Number(e.target.value) })
               }
               data-testid="retain-audio"
             >
@@ -252,22 +252,22 @@ export default function SettingsView() {
         {toggle(
           'Summarize after meetings',
           'auto-summarize',
-          memoCfg.autoSummarize,
+          noteCfg.autoSummarize,
           true,
-          (v) => void patchMemo({ autoSummarize: v }),
+          (v) => void patchNote({ autoSummarize: v }),
         )}
         {toggle(
           'Index for search',
           'background-indexing',
-          memoCfg.backgroundIndexing,
+          noteCfg.backgroundIndexing,
           true,
-          (v) => void patchMemo({ backgroundIndexing: v }),
+          (v) => void patchNote({ backgroundIndexing: v }),
         )}
         <SettingRow label="Template">
           <Select
-            value={memoCfg.defaultTemplate ?? 'general'}
+            value={noteCfg.defaultTemplate ?? 'general'}
             onChange={(e) =>
-              void patchMemo({ defaultTemplate: e.target.value })
+              void patchNote({ defaultTemplate: e.target.value })
             }
             data-testid="default-template"
           >
@@ -281,7 +281,7 @@ export default function SettingsView() {
         <SettingRow label="Provider">
           <Select
             value={provider}
-            onChange={(e) => void patchMemo({ llmProvider: e.target.value })}
+            onChange={(e) => void patchNote({ llmProvider: e.target.value })}
             data-testid="llm-provider"
           >
             {PROVIDERS.map((p) => (
@@ -294,10 +294,10 @@ export default function SettingsView() {
         {provider !== 'none' ? (
           <Field label="Model">
             <Input
-              defaultValue={memoCfg.llmModel ?? ''}
+              defaultValue={noteCfg.llmModel ?? ''}
               placeholder={PROVIDER_DEFAULTS[provider].model}
               onBlur={(e) =>
-                void patchMemo({ llmModel: e.target.value.trim() })
+                void patchNote({ llmModel: e.target.value.trim() })
               }
             />
           </Field>

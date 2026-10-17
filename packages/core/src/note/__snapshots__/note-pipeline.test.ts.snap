@@ -31,7 +31,7 @@ Ada Lovelace: Welcome everyone, this is our weekly product sync for the qrtz des
 
 **[0:00] Ada Lovelace:** Welcome everyone, this is our weekly product sync for the qrtz desktop launch.
 
-**[0:04] Grace Hopper:** The memo recorder now captures system audio and the live transcript runs on the neural engine.
+**[0:04] Grace Hopper:** The note recorder now captures system audio and the live transcript runs on the neural engine.
 
 **[0:10] Ada Lovelace:** Great. What is the status of the summary pipeline?
 
@@ -46,6 +46,6 @@ Ada Lovelace: Welcome everyone, this is our weekly product sync for the qrtz des
 **[0:33] Ada Lovelace:** Perfect, let's ship the desktop launch next week. Thanks all.
 
 ---
-_Exported from qrtz Memo · summary by extractive_
+_Exported from qrtz note · summary by extractive_
 "
 `;

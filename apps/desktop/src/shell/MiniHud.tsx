@@ -27,8 +27,8 @@ function Hud() {
   const [s, setS] = useState<SessionView | null>(null);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
-    client.invoke('memo:session').then(setS, () => {});
-    const off = client.on('memo:session', setS);
+    client.invoke('note:session').then(setS, () => {});
+    const off = client.on('note:session', setS);
     const tick = setInterval(() => setNow(Date.now()), 500);
     return () => {
       off();
@@ -45,7 +45,7 @@ function Hud() {
     setExpanded(next);
     void client.invoke('hud:set-expanded', { expanded: next }).catch(() => {});
     if (next)
-      void client.invoke('memo:list-notes', {}).then(setNotes, () => {});
+      void client.invoke('note:list-notes', {}).then(setNotes, () => {});
   };
   useEffect(() => {
     if (!recording && expanded) toggle(false);
@@ -55,7 +55,7 @@ function Hud() {
     const text = draft.trim();
     if (!text) return;
     setDraft('');
-    client.invoke('memo:add-note', { text }).then(
+    client.invoke('note:add-note', { text }).then(
       (n) => setNotes((prev) => [...prev, n]),
       () => setDraft(text),
     );
@@ -99,7 +99,7 @@ function Hud() {
                 tone="record"
                 label="Stop recording"
                 data-testid="mini-hud-stop"
-                onClick={() => void client.invoke('memo:stop')}
+                onClick={() => void client.invoke('note:stop')}
               />
             ) : null}
           </NoDrag>

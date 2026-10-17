@@ -26,7 +26,7 @@ const pw = [
   'states',
   'themes',
   'flows',
-  'memo',
+  'note',
 ];
 const linux = process.platform === 'linux' && !process.env.DISPLAY;
 // screens.spec writes straight to docs/screenshots with QRTZ_DOC_SHOTS=1; the rest land in test-results.
@@ -38,8 +38,8 @@ sh(linux ? 'xvfb-run' : 'npx', linux ? ['-a', 'npx', ...pw] : pw, {
 const map = {
   'llm-error.png': 'llm-error.png',
   'helper-missing.png': 'helper-missing.png',
-  'themes/light-memo-list.png': 'memo-light.png',
-  'themes/light-memo-summary.png': 'meeting-summary-light.png',
+  'themes/light-note-list.png': 'note-light.png',
+  'themes/light-note-summary.png': 'meeting-summary-light.png',
   'themes/light-mini-hud.png': 'mini-hud-light.png',
   'mini-hud-notes.png': 'mini-hud.png',
   'backup-progress.png': 'backup-progress.png',

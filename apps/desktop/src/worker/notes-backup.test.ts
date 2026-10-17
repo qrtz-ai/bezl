@@ -20,7 +20,7 @@ function meeting(
   id: string,
   template?: string,
 ) {
-  h['memo.create']({
+  h['note.create']({
     meeting: {
       id,
       title: 'Acme pricing call',
@@ -37,7 +37,7 @@ function meeting(
     'The weather has been really nice lately around the office.',
   ];
   lines.forEach((text, i) =>
-    h['memo.appendLive']({
+    h['note.appendLive']({
       meetingId: id,
       segment: {
         id: `u${i}`,
@@ -56,17 +56,17 @@ describe('notes + templates', () => {
       fetch: noFetch,
     });
     meeting(h, 'm1');
-    h['memo.addNote']({
+    h['note.addNote']({
       meetingId: 'm1',
       text: 'Pilot budget 50k',
       atMs: 6200,
     });
-    const todo = h['memo.addNote']({
+    const todo = h['note.addNote']({
       meetingId: 'm1',
       text: 'TODO send the security questionnaire',
       atMs: 9000,
     });
-    const s = await h['memo.finalize']({
+    const s = await h['note.finalize']({
       meetingId: 'm1',
       endedAt: 1,
       durationMs: 15000,
@@ -79,19 +79,19 @@ describe('notes + templates', () => {
     expect(s.actionItems.map((a) => a.text)).toContain(
       'send the security questionnaire',
     );
-    const d = h['memo.get']({ id: 'm1' });
+    const d = h['note.get']({ id: 'm1' });
     expect(d.notes.map((n) => [n.atMs, n.text])).toEqual([
       [6200, 'Pilot budget 50k'],
       [9000, 'TODO send the security questionnaire'],
     ]);
-    expect(h['memo.export']({ id: 'm1' }).markdown).toContain(
+    expect(h['note.export']({ id: 'm1' }).markdown).toContain(
       '- [0:06] Pilot budget 50k',
     );
     expect(
-      h['memo.updateNote']({ id: todo.id, text: 'Send questionnaire' }).ok,
+      h['note.updateNote']({ id: todo.id, text: 'Send questionnaire' }).ok,
     ).toBe(true);
-    expect(h['memo.deleteNote']({ id: todo.id }).ok).toBe(true);
-    expect(h['memo.listNotes']({ meetingId: 'm1' })).toHaveLength(1);
+    expect(h['note.deleteNote']({ id: todo.id }).ok).toBe(true);
+    expect(h['note.listNotes']({ meetingId: 'm1' })).toHaveLength(1);
   });
 
   it('stores the template per meeting and re-runs with it', async () => {
@@ -99,7 +99,7 @@ describe('notes + templates', () => {
       fetch: noFetch,
     });
     meeting(h, 'm2', 'standup');
-    const first = await h['memo.finalize']({
+    const first = await h['note.finalize']({
       meetingId: 'm2',
       endedAt: 1,
       durationMs: 15000,
@@ -107,13 +107,13 @@ describe('notes + templates', () => {
       llm,
     });
     expect(first.template).toBe('standup');
-    const again = await h['memo.resummarize']({
+    const again = await h['note.resummarize']({
       id: 'm2',
       template: 'sales',
       llm,
     });
     expect(again.template).toBe('sales');
-    expect(h['memo.get']({ id: 'm2' }).meeting.template).toBe('sales');
+    expect(h['note.get']({ id: 'm2' }).meeting.template).toBe('sales');
   });
 
   it('puts notes and template guidance into the LLM prompt', () => {
@@ -145,8 +145,8 @@ describe('backup import', () => {
       fetch: noFetch,
     });
     meeting(a, 'm1');
-    a['memo.addNote']({ meetingId: 'm1', text: 'note', atMs: 1 });
-    await a['memo.finalize']({
+    a['note.addNote']({ meetingId: 'm1', text: 'note', atMs: 1 });
+    await a['note.finalize']({
       meetingId: 'm1',
       endedAt: 1,
       durationMs: 15000,
@@ -165,12 +165,12 @@ describe('backup import', () => {
       audioMap: { 'm1.wav': '/new/m1.wav' },
     });
     expect(r).toEqual({ imported: 1, skipped: 0 });
-    const d = b['memo.get']({ id: 'm1' });
+    const d = b['note.get']({ id: 'm1' });
     expect(d.segments).toHaveLength(3);
     expect(d.notes).toHaveLength(1);
     expect(d.summary?.provider).toBe('extractive');
     expect(d.meeting.audioPath).toBe('/new/m1.wav');
-    expect(b['memo.list']({ query: 'budget' }).length).toBe(1);
+    expect(b['note.list']({ query: 'budget' }).length).toBe(1);
     expect(b['data.importDb']({ path: snap, audioMap: {} })).toEqual({
       imported: 0,
       skipped: 1,
@@ -189,7 +189,7 @@ describe('auto-summarize toggle', () => {
       fetch: noFetch,
     });
     meeting(h, 'm9');
-    const s = await h['memo.finalize']({
+    const s = await h['note.finalize']({
       meetingId: 'm9',
       endedAt: 1,
       durationMs: 15000,
@@ -198,11 +198,11 @@ describe('auto-summarize toggle', () => {
       summarize: false,
     });
     expect(s).toBeNull();
-    const d = h['memo.get']({ id: 'm9' });
+    const d = h['note.get']({ id: 'm9' });
     expect(d.meeting.status).toBe('done');
     expect(d.summary).toBeFalsy();
     expect(d.segments).toHaveLength(3);
-    const later = await h['memo.resummarize']({ id: 'm9', llm });
+    const later = await h['note.resummarize']({ id: 'm9', llm });
     expect(later.summary.length).toBeGreaterThan(0);
   });
 });

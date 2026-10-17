@@ -424,6 +424,12 @@ qrtz v0.1.0 is feature-complete for the Memo MVP and green on Linux on every pus
 - Settings has 10 toggles for every automatic behavior, wired in main and the worker (tray live toggle, login item, update gate, detect-prompt gate, summarize and indexing gates).
 - OpenRouter free-tier fallback, covered by 4 unit tests, plus an opt-in live test. The live call was not run this session: `/home/box/.secrets/openrouter_qrtz.key` is not on the box (the reset wiped it).
 
+## Lifecycle merge, Feather icons, Memo → Note (2026-10-16)
+
+- Rebased the redesign onto the lifecycle commits (16297e0, c0884b1). `LiveTranscript` merged into their `StreamingTranscript` in `@qrtz/ui`; `PipelineSteps` and `CaptureStatus` restyled in token style. The test IDs `live-transcript`, `live-segment`, `live-partial`, `jump-to-live`, `pipeline-step-*`, `pipeline-retry-*` and `lifecycle-error` are kept, and the meeting view defaults to Transcript.
+- Feather icons through one `Icon` (size tokens), with every glyph replaced. Lint blocks icon libraries and glyph icons outside `@qrtz/ui`, and the gallery has an Icons page.
+- The sub app is **Note** (product name "qrtz note") everywhere: package, components, IPC, capabilities, settings key (with `memo` → `note` config migration) and tests. Historical entries in this file and in the v0.1.0 changelog still say Memo.
+
 ## Backlog for the next session (in priority order)
 
 1. **Mac verification** (`docs/mac-verify.md`): build the helper with Xcode, check the TCC prompts, real ScreenCaptureKit/Core Audio capture, FluidAudio ASR, diarization and echo cancellation on live Zoom and Meet, and the Keychain key path. Fix whatever the Mac compiler flags in `Sources/qrtz-helper/mac`.
@@ -432,5 +438,5 @@ qrtz v0.1.0 is feature-complete for the Memo MVP and green on Linux on every pus
 4. **Real AX captures:** replace the synthetic fixtures with `--dump-ax` captures and tune the `fusion.ts` settings (lag, minShare) against real speaker data.
 5. **Update feed:** choose a host (R2, S3 or GitHub Releases) and turn on `QRTZ_UPDATE_FEED_URL` for signed builds.
 6. **Dev dependencies:** swap or patch the `image-size` path in maker-dmg when upstream fixes it.
-7. **Live OpenRouter check:** put the key back at `/home/box/.secrets/openrouter_qrtz.key` and run `QRTZ_TEST_OPENROUTER=1 npx vitest run packages/core/src/memo/openrouter.test.ts`.
+7. **Live OpenRouter check:** put the key back at `/home/box/.secrets/openrouter_qrtz.key` and run `QRTZ_TEST_OPENROUTER=1 npx vitest run packages/core/src/note/openrouter.test.ts`.
 8. **Polish:** README screenshots from a Mac, onboarding copy, and a first-run model download progress indicator.

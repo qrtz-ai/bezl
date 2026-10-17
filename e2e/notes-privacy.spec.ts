@@ -42,17 +42,17 @@ async function until(win: Page, fn: () => Promise<void>, timeout = 20_000) {
 }
 
 async function recordAndFinish(win: Page, during?: () => Promise<void>) {
-  await win.getByTestId('nav-memo').click();
-  await expect(win.getByTestId('memo-detected')).toBeVisible({
+  await win.getByTestId('nav-note').click();
+  await expect(win.getByTestId('note-detected')).toBeVisible({
     timeout: 10_000,
   });
-  await win.getByTestId('memo-record').click();
-  await expect(win.getByTestId('memo-hud')).toBeVisible();
+  await win.getByTestId('note-record').click();
+  await expect(win.getByTestId('note-hud')).toBeVisible();
   if (during) await during();
   await until(win, async () => {
     expect(await win.getByTestId('live-segment').count()).toBeGreaterThan(1);
   });
-  await win.getByTestId('memo-stop').click();
+  await win.getByTestId('note-stop').click();
   await until(win, async () => {
     expect(
       await win.getByTestId('meeting-item').first().innerText(),
@@ -72,8 +72,8 @@ test('live notes + privacy pause in the HUD, notes merged into the summary, temp
   });
   await recordAndFinish(win, async () => {
     // Pause straight away: nothing is transcribed while paused.
-    await win.getByTestId('memo-pause').click();
-    await expect(win.getByTestId('memo-paused')).toBeVisible();
+    await win.getByTestId('note-pause').click();
+    await expect(win.getByTestId('note-paused')).toBeVisible();
     await win
       .getByTestId('note-input')
       .fill('Ask Grace about the launch checklist');
@@ -82,8 +82,8 @@ test('live notes + privacy pause in the HUD, notes merged into the summary, temp
     await expect(win.getByTestId('note-time').first()).toHaveText(/^0:0\d$/);
     await win.evaluate(() => new Promise((r) => setTimeout(r, 1500)));
     expect(await win.getByTestId('live-segment').count()).toBe(0);
-    await win.getByTestId('memo-pause').click();
-    await expect(win.getByTestId('memo-paused')).toHaveCount(0);
+    await win.getByTestId('note-pause').click();
+    await expect(win.getByTestId('note-paused')).toHaveCount(0);
     await win.getByTestId('note-input').fill('TODO send recap to the team');
     await win.getByTestId('note-add').click();
     await expect(win.getByTestId('note')).toHaveCount(2);
@@ -122,7 +122,7 @@ test('live notes + privacy pause in the HUD, notes merged into the summary, temp
   });
   await expect(summary).toContainText('send recap to everyone');
   await win.getByTestId('nav-settings').click();
-  await win.getByTestId('nav-memo').click();
+  await win.getByTestId('nav-note').click();
   await win.getByTestId('meeting-item').first().click();
   await win.getByTestId('tab-summary').click();
   await expect(win.getByTestId('summary-template')).toHaveValue('standup');
@@ -199,9 +199,9 @@ test('privacy: local-only never calls the cloud LLM; excluded apps are not detec
     { QRTZ_MOCK_SCENARIO: 'standup', QRTZ_MOCK_SPEED: '0.02' },
     ud,
   );
-  await second.win.getByTestId('nav-memo').click();
+  await second.win.getByTestId('nav-note').click();
   await second.win.evaluate(() => new Promise((r) => setTimeout(r, 2500)));
-  await expect(second.win.getByTestId('memo-detected')).toHaveCount(0);
+  await expect(second.win.getByTestId('note-detected')).toHaveCount(0);
   const log = fs.readFileSync(path.join(ud, 'logs', 'main.jsonl'), 'utf8');
   expect(log).toContain('meeting ignored (excluded app)');
   await second.app.close();
@@ -240,7 +240,7 @@ test('backup: export zip with checksums, import into a fresh profile, tampered z
   await expect(b.win.getByTestId('backup-result')).toContainText(
     'imported 0 meetings (1 already here',
   );
-  await b.win.getByTestId('nav-memo').click();
+  await b.win.getByTestId('nav-note').click();
   await b.win.getByTestId('meeting-item').first().click();
   await b.win.getByTestId('tab-summary').click(); // transcript is the default tab
   await expect(b.win.getByTestId('detail-summary')).toContainText(

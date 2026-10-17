@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import type { Capability } from '../capabilities';
 import { HelperStatus } from './contract';
-import { PermissionsStatus, SessionView } from '../memo/contract';
-import { LiveTranscriptDelta, PipelineView } from '../memo/lifecycle';
+import { PermissionsStatus, SessionView } from '../note/contract';
+import { LiveTranscriptDelta, PipelineView } from '../note/lifecycle';
 
 export interface EventDef<P extends z.ZodType = z.ZodType> {
   capability: Capability;
@@ -20,20 +20,20 @@ export const eventContract = {
     capability: 'config.read',
     payload: z.record(z.string(), z.unknown()),
   }),
-  'memo:session': defineEvent({
-    capability: 'memo.read',
+  'note:session': defineEvent({
+    capability: 'note.read',
     payload: SessionView,
   }),
-  'memo:pipeline': defineEvent({
-    capability: 'memo.read',
+  'note:pipeline': defineEvent({
+    capability: 'note.read',
     payload: PipelineView,
   }),
-  'memo:transcript': defineEvent({
-    capability: 'memo.read',
+  'note:transcript': defineEvent({
+    capability: 'note.read',
     payload: LiveTranscriptDelta,
   }),
-  'memo:changed': defineEvent({
-    capability: 'memo.read',
+  'note:changed': defineEvent({
+    capability: 'note.read',
     payload: z.object({ id: z.string() }),
   }),
   'data:backup-progress': defineEvent({

@@ -4,9 +4,9 @@
 
 | Home (light)                                       | Meeting summary                                                                                     |
 | -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| ![Memo](docs/screenshots/memo-light.png)           | ![Summary and action items](docs/screenshots/meeting-summary.png)                                   |
+| ![Note](docs/screenshots/note-light.png)           | ![Summary and action items](docs/screenshots/meeting-summary.png)                                   |
 | **Live recording**                                 | **Mini HUD with notes · Backup progress**                                                           |
-| ![Live transcript](docs/screenshots/memo-live.png) | ![Mini HUD](docs/screenshots/mini-hud.png) ![Backup progress](docs/screenshots/backup-progress.png) |
+| ![Live transcript](docs/screenshots/note-live.png) | ![Mini HUD](docs/screenshots/mini-hud.png) ![Backup progress](docs/screenshots/backup-progress.png) |
 
 These screenshots come from the e2e suite on Linux with the mock helper. Regenerate them with `npm run screenshots`, which packages the app, runs the screenshot specs and refreshes `docs/screenshots/`. Dark is the default theme; Light and System are in Settings → App → Theme. More are in [`docs/screenshots/`](docs/screenshots/), including light variants of the summary and mini HUD.
 
@@ -51,7 +51,7 @@ npm start                    # run the app with hot reload
 └──────────────────────┘   └───────────────────────────────────────┘
 ```
 
-- **Monorepo:** npm workspaces. `packages/core` holds the contracts, IPC schema, DB and pipeline. `packages/ui` is the design system (Geist Pixel type scale, tokens, light and dark themes) and owns every visual component, down to the split view, meeting row and HUD. Each sub-app (`packages/features/{memo,settings,gallery}`, gallery dev-only) declares the capabilities it needs and only composes `@qrtz/ui` with data and handlers. `apps/desktop` composes them behind tiny bottom tabs. `npm run lint` enforces the package boundaries, the type scale and the no-styling-outside-ui rule.
+- **Monorepo:** npm workspaces. `packages/core` holds the contracts, IPC schema, DB and pipeline. `packages/ui` is the design system (Geist Pixel type scale, tokens, light and dark themes) and owns every visual component, down to the split view, meeting row and HUD. Each sub-app (`packages/features/{note,settings,gallery}`, gallery dev-only) declares the capabilities it needs and only composes `@qrtz/ui` with data and handlers. `apps/desktop` composes them behind tiny bottom tabs. `npm run lint` enforces the package boundaries, the type scale and the no-styling-outside-ui rule.
 - **Security:** context isolation, sandbox, strict CSP, Electron fuses, and capability-checked channels. Secrets live only in safeStorage or env vars, and dev-only env vars are stripped from packaged builds. See [docs/security.md](docs/security.md).
 - **Docs:** [PLAN.md](PLAN.md) · [LOOP.md](LOOP.md) · [PROGRESS.md](PROGRESS.md) · [architecture](docs/architecture.md) · [design system](docs/design-system.md) · [tokens](docs/design-tokens.md) · [test matrix](docs/test-matrix.md) · [release](docs/release.md)
 
@@ -111,7 +111,7 @@ If a sub app needs the main process, add a channel to `IpcContract` in
 `packages/core/src/ipc.ts`, add it to `IPC_CHANNELS`, and handle it in
 `apps/desktop/src/ipc.ts`.
 
-## Memo (meeting recorder)
+## qrtz note (meeting recorder)
 
 - **Detection and metadata:** finds Zoom (app and web) and Google Meet (Chrome and Safari) through the macOS Accessibility tree, and reads the title, participants and active speaker.
 - **Live transcription:** on-device NVIDIA Parakeet streaming. The live transcript is final.
@@ -125,4 +125,4 @@ On Linux (and in tests) a TypeScript mock replaces the Swift helper. To watch a 
 QRTZ_MOCK_HELPER=1 QRTZ_MOCK_SCENARIO=standup QRTZ_MOCK_SPEED=0.1 npm start
 ```
 
-The full flow is covered by `e2e/memo.spec.ts` (`npm run package && xvfb-run -a npm run e2e`).
+The full flow is covered by `e2e/note.spec.ts` (`npm run package && xvfb-run -a npm run e2e`).

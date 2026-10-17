@@ -44,20 +44,20 @@ test('first run → record → review walkthrough', async () => {
   const errors: string[] = [];
   win.on('pageerror', (e) => errors.push(e.message));
 
-  await expect(win.getByTestId('memo')).toBeVisible();
-  await expect(win.getByTestId('memo-detected')).toBeVisible({
+  await expect(win.getByTestId('note-app')).toBeVisible();
+  await expect(win.getByTestId('note-detected')).toBeVisible({
     timeout: 10_000,
   });
-  await shot(win, 'memo-detected');
-  await win.getByTestId('memo-record').click();
+  await shot(win, 'note-detected');
+  await win.getByTestId('note-record').click();
   await expect(async () => {
     await win.evaluate(() => new Promise((r) => setTimeout(r, 50)));
     expect(await win.getByTestId('live-segment').count()).toBeGreaterThan(4);
   }).toPass({ timeout: 15_000 });
-  await shot(win, 'memo-live');
-  await win.getByTestId('memo-stop').click();
-  await expect(win.getByTestId('memo-done')).toBeVisible({ timeout: 20_000 });
-  await win.getByTestId('memo-open').click();
+  await shot(win, 'note-live');
+  await win.getByTestId('note-stop').click();
+  await expect(win.getByTestId('note-done')).toBeVisible({ timeout: 20_000 });
+  await win.getByTestId('note-open').click();
   await win.getByTestId('tab-summary').click(); // transcript is the default tab
   await expect(win.getByTestId('detail-summary')).toBeVisible();
   await shot(win, 'meeting-summary');

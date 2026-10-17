@@ -18,10 +18,10 @@ import {
 import { DatabaseSync } from 'node:sqlite';
 import { openDatabase } from '../worker/db';
 import { createWorkerHandlers } from '../worker/handlers';
-import { MemoService } from './memo-service';
+import { NoteService } from './note-service';
 import type { WorkerClient } from './worker-client';
 
-// Integration: the real MemoService + Supervisor + TS mock helper (standup scenario, real timers, fast) +
+// Integration: the real NoteService + Supervisor + TS mock helper (standup scenario, real timers, fast) +
 // the real worker handlers on a file DB. Covers every failure path of docs/recording-lifecycle.md.
 
 const nullLog = {
@@ -36,7 +36,7 @@ const nullLog = {
 
 type Handlers = ReturnType<typeof createWorkerHandlers>;
 interface Rig {
-  memo: MemoService;
+  note: NoteService;
   bus: EventBus;
   helper: Supervisor;
   db: DatabaseSync;
@@ -45,7 +45,7 @@ interface Rig {
   h: Handlers;
   sessions: SessionView[];
   pipelines: PipelineView[];
-  transcript: EventPayload<'memo:transcript'>[];
+  transcript: EventPayload<'note:transcript'>[];
   mocks: ReturnType<typeof createMockHelper>[];
   writes: { helper: number; type: string }[];
   failWorker: Set<string>;
@@ -142,9 +142,9 @@ function rig(
   const base = defaultConfig();
   const config: Config = {
     ...base,
-    memo: { ...base.memo, llmProvider: 'openrouter', autoRecord: false },
+    note: { ...base.note, llmProvider: 'openrouter', autoRecord: false },
   } as Config;
-  const memo = new MemoService({
+  const note = new NoteService({
     helper,
     worker,
     bus,
@@ -163,22 +163,22 @@ function rig(
     if (s.state === 'running') wasRunning = true;
     else if (wasRunning && s.state !== 'starting') {
       wasRunning = false;
-      memo.onHelperDown(s.lastError ?? s.state);
+      note.onHelperDown(s.lastError ?? s.state);
     }
-    if (s.state === 'failed') memo.onHelperFailed('failed');
+    if (s.state === 'failed') note.onHelperFailed('failed');
   });
   helper.onLine((line) => {
     const r = parseHelperLine(line);
-    if (r.ok) memo.handle(r.msg);
+    if (r.ok) note.handle(r.msg);
   });
   const sessions: SessionView[] = [];
   const pipelines: PipelineView[] = [];
-  const transcript: EventPayload<'memo:transcript'>[] = [];
-  bus.on('memo:session', (v) => sessions.push(v));
-  bus.on('memo:pipeline', (v) => pipelines.push(v));
-  bus.on('memo:transcript', (v) => transcript.push(v));
+  const transcript: EventPayload<'note:transcript'>[] = [];
+  bus.on('note:session', (v) => sessions.push(v));
+  bus.on('note:pipeline', (v) => pipelines.push(v));
+  bus.on('note:transcript', (v) => transcript.push(v));
   const r: Rig = {
-    memo,
+    note,
     bus,
     helper,
     db,
@@ -202,7 +202,7 @@ function rig(
     },
   };
   rigs.push(r);
-  void memo.recover();
+  void note.recover();
   if (!o.noStart) helper.start();
   return r;
 }
@@ -216,15 +216,15 @@ async function until(fn: () => boolean | Promise<boolean>, ms = 5000) {
   throw new Error('timed out waiting for condition');
 }
 
-const detected = (r: Rig) => until(() => r.memo.view().phase === 'detected');
-const finals = (r: Rig) => r.memo.liveTranscript()?.segments.length ?? 0;
+const detected = (r: Rig) => until(() => r.note.view().phase === 'detected');
+const finals = (r: Rig) => r.note.liveTranscript()?.segments.length ?? 0;
 
-describe('MemoService lifecycle (integration with mock helper + real worker handlers)', () => {
+describe('NoteService lifecycle (integration with mock helper + real worker handlers)', () => {
   it('happy path: streams partials then finals, stops, post-processes every step, persists', async () => {
     const r = rig();
     await detected(r);
-    await r.memo.start();
-    expect(r.memo.view().phase).toBe('recording');
+    await r.note.start();
+    expect(r.note.view().phase).toBe('recording');
     await until(() => finals(r) >= 3);
     // Partials streamed before finals, and finals replace their partial.
     const firstFinal = r.transcript.findIndex((d) => d.append.length);
@@ -236,16 +236,16 @@ describe('MemoService lifecycle (integration with mock helper + real worker hand
         (d, i) => i === 0 || d.baseRev === r.transcript[i - 1]!.rev,
       ),
     ).toBe(true);
-    await r.memo.stop();
-    await until(() => r.memo.view().phase === 'done');
-    const v = r.memo.view();
+    await r.note.stop();
+    await until(() => r.note.view().phase === 'done');
+    const v = r.note.view();
     expect(v.pipeline?.steps.finalize.status).toBe('done');
     expect(v.pipeline?.steps.summary.status).toBe('done');
     await until(() =>
-      ['done', 'skipped'].includes(r.memo.view().pipeline!.steps.index.status),
+      ['done', 'skipped'].includes(r.note.view().pipeline!.steps.index.status),
     );
     const id = v.meetingId!;
-    const m = await r.h['memo.get']({ id });
+    const m = await r.h['note.get']({ id });
     expect(m.meeting.status).toBe('done');
     expect(m.summary?.summary).toContain('STUB-AI');
     expect(m.segments.length).toBeGreaterThanOrEqual(3);
@@ -256,7 +256,7 @@ describe('MemoService lifecycle (integration with mock helper + real worker hand
   it('helper crash mid-recording: reconnects, resumes into a second WAV part, stitches it at finalize', async () => {
     const r = rig();
     await detected(r);
-    await r.memo.start();
+    await r.note.start();
     await until(() => finals(r) >= 2);
     const before = finals(r);
     r.mocks.at(-1)!.crash(1);
@@ -264,79 +264,79 @@ describe('MemoService lifecycle (integration with mock helper + real worker hand
     await until(() => r.sessions.some((s) => s.phase === 'reconnecting'));
     await until(
       () =>
-        r.memo.view().phase === 'recording' &&
-        r.memo.view().degraded.includes('transcript-gap'),
+        r.note.view().phase === 'recording' &&
+        r.note.view().degraded.includes('transcript-gap'),
     );
     await until(() => finals(r) > before + 2);
     // Segments from the second part are namespaced and shifted into meeting time.
-    const segs = r.memo.liveTranscript()!.segments;
+    const segs = r.note.liveTranscript()!.segments;
     const p1 = segs.filter((s) => s.id.startsWith('p1-'));
     expect(p1.length).toBeGreaterThan(0);
-    const offset = r.memo.machine.state.partOffsetMs;
+    const offset = r.note.machine.state.partOffsetMs;
     expect(offset).toBeGreaterThan(0);
     expect(Math.min(...p1.map((s) => s.startMs))).toBeGreaterThanOrEqual(
       offset,
     );
     // Fake audio for both parts (the TS mock does not write WAVs) to exercise stitching.
-    const parts = r.memo.machine.state.audioParts;
+    const parts = r.note.machine.state.audioParts;
     expect(parts).toHaveLength(2);
     for (const f of parts) writeWav(f, 1600);
-    await r.memo.stop();
-    await until(() => r.memo.view().phase === 'done');
+    await r.note.stop();
+    await until(() => r.note.view().phase === 'done');
     expect(fs.existsSync(parts[1]!)).toBe(false);
     expect(fs.statSync(parts[0]!).size).toBe(44 + 2 * 1600 * 2);
-    expect(r.memo.view().pipeline?.stopReason).toBe('manual');
+    expect(r.note.view().pipeline?.stopReason).toBe('manual');
   });
 
   it('a privacy pause survives a helper restart (the new helper is paused before resuming)', async () => {
     const r = rig();
     await detected(r);
-    await r.memo.start();
-    r.memo.pause(true);
+    await r.note.start();
+    r.note.pause(true);
     r.mocks.at(-1)!.crash(1);
     await until(
-      () => r.memo.view().phase === 'recording' && r.mocks.length === 2,
+      () => r.note.view().phase === 'recording' && r.mocks.length === 2,
     );
     const second = r.writes.filter((w) => w.helper === 1).map((w) => w.type);
     expect(second.indexOf('recording.pause')).toBeGreaterThan(
       second.indexOf('recording.start'),
     );
-    expect(r.memo.view().paused).toBe(true);
-    await r.memo.stop();
+    expect(r.note.view().paused).toBe(true);
+    await r.note.stop();
   });
 
   it('racing starts create exactly one meeting; detection during post-processing is accepted', async () => {
     const r = rig({ llmFail: true });
     await detected(r);
-    const results = await Promise.allSettled([r.memo.start(), r.memo.start()]);
+    const results = await Promise.allSettled([r.note.start(), r.note.start()]);
     expect(results.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
-    expect(r.h['memo.list']({})).toHaveLength(1);
+    expect(r.h['note.list']({})).toHaveLength(1);
     await until(() => finals(r) >= 1);
-    await r.memo.stop();
-    expect(r.memo.view().phase).toBe('processing');
-    r.memo.handle({
+    await r.note.stop();
+    expect(r.note.view().phase).toBe('processing');
+    r.note.handle({
       type: 'meeting.detected',
       key: 'next',
       title: 'Next',
       platform: 'zoom',
       app: 'Zoom',
     });
-    expect(r.memo.view().phase).toBe('detected');
-    await r.memo.start('Back to back');
-    expect(r.memo.view().phase).toBe('recording');
-    await r.memo.stop();
+    expect(r.note.view().phase).toBe('detected');
+    await r.note.start('Back to back');
+    expect(r.note.view().phase).toBe('recording');
+    await r.note.stop();
   });
 
   it('helper never comes back within the reconnect window: salvages with stop reason helper-lost', async () => {
     const r = rig();
     await detected(r);
-    await r.memo.start();
+    await r.note.start();
     await until(() => finals(r) >= 2);
     r.helper.stop(); // supervisor stops for good: nothing will restart it
-    r.memo.onHelperDown('killed');
-    await until(() => r.memo.view().phase === 'done', 8000);
-    expect(r.memo.view().stopReason).toBe('helper-lost');
-    const m = await r.h['memo.get']({ id: r.memo.view().meetingId! });
+    r.note.onHelperDown('killed');
+    await until(() => r.note.view().phase === 'done', 8000);
+    expect(r.note.view().stopReason).toBe('helper-lost');
+    const m = await r.h['note.get']({ id: r.note.view().meetingId! });
     expect(m.meeting.status).toBe('done');
     expect(m.segments.length).toBeGreaterThanOrEqual(2);
   });
@@ -346,19 +346,19 @@ describe('MemoService lifecycle (integration with mock helper + real worker hand
       permissions: { 'screen-recording': 'denied', microphone: 'denied' },
     });
     await detected(r);
-    await until(() => r.memo.getPermissions().microphone === 'denied');
-    await expect(r.memo.start()).rejects.toThrow(
+    await until(() => r.note.getPermissions().microphone === 'denied');
+    await expect(r.note.start()).rejects.toThrow(
       /Screen & System Audio Recording or Microphone/,
     );
-    const v = r.memo.view();
+    const v = r.note.view();
     expect(v.phase).toBe('detected');
     expect(v.errorInfo).toMatchObject({
       code: 'permission-denied',
       retryable: true,
     });
-    expect(r.h['memo.list']({})).toHaveLength(0);
-    r.memo.dismiss();
-    expect(r.memo.view().errorInfo).toBeUndefined();
+    expect(r.h['note.list']({})).toHaveLength(0);
+    r.note.dismiss();
+    expect(r.note.view().errorInfo).toBeUndefined();
   });
 
   it('screen recording denied but mic granted: records degraded mic-only; accessibility denied flags ax-unavailable', async () => {
@@ -366,36 +366,36 @@ describe('MemoService lifecycle (integration with mock helper + real worker hand
       permissions: { 'screen-recording': 'denied', accessibility: 'denied' },
     });
     await detected(r);
-    await until(() => r.memo.getPermissions()['screen-recording'] === 'denied');
-    await r.memo.start();
-    expect(r.memo.view().degraded).toEqual(
+    await until(() => r.note.getPermissions()['screen-recording'] === 'denied');
+    await r.note.start();
+    expect(r.note.view().degraded).toEqual(
       expect.arrayContaining(['mic-only', 'ax-unavailable']),
     );
-    await r.memo.stop();
+    await r.note.stop();
   });
 
   it('LLM failure: retries with backoff, falls back to the on-device summary, manual retry then succeeds', async () => {
     const r = rig({ llmFail: true });
     await detected(r);
-    await r.memo.start();
+    await r.note.start();
     await until(() => finals(r) >= 3);
-    await r.memo.stop();
-    await until(() => r.memo.view().phase === 'done');
-    const id = r.memo.view().meetingId!;
-    const s = r.memo.view().pipeline!.steps.summary;
+    await r.note.stop();
+    await until(() => r.note.view().phase === 'done');
+    const id = r.note.view().meetingId!;
+    const s = r.note.view().pipeline!.steps.summary;
     expect(s).toMatchObject({ status: 'failed', attempts: 3, fallback: true });
     expect(s.error?.message).toContain('503');
     expect(r.llm.calls).toBe(3);
     expect(r.pipelines.some((p) => p.steps.summary.status === 'retrying')).toBe(
       true,
     );
-    const m = await r.h['memo.get']({ id });
+    const m = await r.h['note.get']({ id });
     expect(m.summary?.llmError).toContain('503');
     expect(m.meeting.status).toBe('done');
     r.llm.fail = false;
-    await r.memo.retryStep(id, 'summary');
-    await until(() => r.memo.view().pipeline!.steps.summary.status === 'done');
-    expect((await r.h['memo.get']({ id })).summary?.summary).toContain(
+    await r.note.retryStep(id, 'summary');
+    await until(() => r.note.view().pipeline!.steps.summary.status === 'done');
+    expect((await r.h['note.get']({ id })).summary?.summary).toContain(
       'STUB-AI',
     );
   });
@@ -403,11 +403,11 @@ describe('MemoService lifecycle (integration with mock helper + real worker hand
   it('non-retryable LLM error (401) is not retried', async () => {
     const r = rig({ llmFail: true, llmStatus: 401 });
     await detected(r);
-    await r.memo.start();
+    await r.note.start();
     await until(() => finals(r) >= 1);
-    await r.memo.stop();
-    await until(() => r.memo.view().phase === 'done');
-    expect(r.memo.view().pipeline!.steps.summary).toMatchObject({
+    await r.note.stop();
+    await until(() => r.note.view().phase === 'done');
+    expect(r.note.view().pipeline!.steps.summary).toMatchObject({
       status: 'failed',
       attempts: 1,
     });
@@ -417,62 +417,62 @@ describe('MemoService lifecycle (integration with mock helper + real worker hand
   it('finalize keeps failing: meeting marked failed, session error, manual retry recovers it', async () => {
     const r = rig();
     await detected(r);
-    await r.memo.start();
+    await r.note.start();
     await until(() => finals(r) >= 1);
-    r.failWorker.add('memo.stepFinalize');
-    await r.memo.stop();
-    await until(() => r.memo.view().phase === 'error');
-    const id = r.memo.view().meetingId!;
-    expect(r.memo.view().pipeline!.steps.finalize).toMatchObject({
+    r.failWorker.add('note.stepFinalize');
+    await r.note.stop();
+    await until(() => r.note.view().phase === 'error');
+    const id = r.note.view().meetingId!;
+    expect(r.note.view().pipeline!.steps.finalize).toMatchObject({
       status: 'failed',
       attempts: 3,
     });
-    expect(r.memo.view().pipeline!.steps.summary.status).toBe('pending');
-    expect((await r.h['memo.get']({ id })).meeting.status).toBe('failed');
-    r.failWorker.delete('memo.stepFinalize');
-    await r.memo.retryStep(id, 'finalize');
-    await until(() => r.memo.view().pipeline!.steps.summary.status === 'done');
-    expect((await r.h['memo.get']({ id })).meeting.status).toBe('done');
+    expect(r.note.view().pipeline!.steps.summary.status).toBe('pending');
+    expect((await r.h['note.get']({ id })).meeting.status).toBe('failed');
+    r.failWorker.delete('note.stepFinalize');
+    await r.note.retryStep(id, 'finalize');
+    await until(() => r.note.view().pipeline!.steps.summary.status === 'done');
+    expect((await r.h['note.get']({ id })).meeting.status).toBe('done');
   });
 
   it('live segment persistence retries transient worker failures', async () => {
     const r = rig();
     await detected(r);
-    await r.memo.start();
-    r.failWorker.add('memo.appendLive');
+    await r.note.start();
+    r.failWorker.add('note.appendLive');
     await until(() => finals(r) >= 2);
-    setTimeout(() => r.failWorker.delete('memo.appendLive'), 5);
+    setTimeout(() => r.failWorker.delete('note.appendLive'), 5);
     await until(
       async () =>
-        (await r.h['memo.get']({ id: r.memo.view().meetingId! })).segments
+        (await r.h['note.get']({ id: r.note.view().meetingId! })).segments
           .length >= 2,
     );
-    await r.memo.stop();
+    await r.note.stop();
   });
 
   it('app restart mid post-processing: pipeline resumes from the persisted step, no duplicate work', async () => {
     const a = rig({ llmFail: true });
     await detected(a);
-    await a.memo.start();
+    await a.note.start();
     await until(() => finals(a) >= 3);
-    await a.memo.stop();
+    await a.note.stop();
     await until(
-      () => a.memo.view().pipeline?.steps.summary.status === 'retrying',
+      () => a.note.view().pipeline?.steps.summary.status === 'retrying',
     );
-    const id = a.memo.view().meetingId!;
+    const id = a.note.view().meetingId!;
     // "Crash": tear everything down while summary is between attempts.
     const dir = a.dir;
     a.close();
     rigs.splice(rigs.indexOf(a), 1);
     const b = rig({ dir, noStart: true });
-    await b.memo.ready;
+    await b.note.ready;
     await until(
       () => b.h['pipeline.get']({ id })?.steps.summary.status === 'done',
     );
     const p = b.h['pipeline.get']({ id })!;
     expect(p.steps.finalize).toMatchObject({ status: 'done', attempts: 1 });
     expect(p.steps.summary.attempts).toBeGreaterThanOrEqual(2);
-    expect((await b.h['memo.get']({ id })).summary?.summary).toContain(
+    expect((await b.h['note.get']({ id })).summary?.summary).toContain(
       'STUB-AI',
     );
   });
@@ -480,9 +480,9 @@ describe('MemoService lifecycle (integration with mock helper + real worker hand
   it('app killed mid-recording: next launch opens a crash-recovered pipeline from the persisted session', async () => {
     const a = rig();
     await detected(a);
-    await a.memo.start();
+    await a.note.start();
     await until(() => finals(a) >= 3);
-    const id = a.memo.view().meetingId!;
+    const id = a.note.view().meetingId!;
     await new Promise((res) => setTimeout(res, 50)); // let the session snapshot land
     const dir = a.dir;
     a.close();
@@ -492,8 +492,8 @@ describe('MemoService lifecycle (integration with mock helper + real worker hand
       () => b.h['pipeline.get']({ id })?.steps.summary.status === 'done',
     );
     expect(b.h['pipeline.get']({ id })?.stopReason).toBe('crash-recovered');
-    expect(b.memo.view().phase).toBe('idle');
-    const m = await b.h['memo.get']({ id });
+    expect(b.note.view().phase).toBe('idle');
+    const m = await b.h['note.get']({ id });
     expect(m.meeting.status).toBe('done');
     expect(m.segments.length).toBeGreaterThanOrEqual(3);
   });

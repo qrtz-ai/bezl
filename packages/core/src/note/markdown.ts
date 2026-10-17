@@ -89,7 +89,7 @@ export function meetingToMarkdown(
     );
   out.push(
     `---`,
-    `_Exported from qrtz Memo · summary by ${summary?.provider ?? 'n/a'}_`,
+    `_Exported from qrtz note · summary by ${summary?.provider ?? 'n/a'}_`,
     '',
   );
   return out.join('\n');

@@ -147,7 +147,7 @@ function Showcase({
   const [pi, setPi] = useState(0);
   const [on, setOn] = useState(true);
   const [tab, setTab] = useState<'one' | 'two' | 'three'>('one');
-  const [bar, setBar] = useState('memo');
+  const [bar, setBar] = useState('note');
   const [sel, setSel] = useState(0);
   const [notes, setNotes] = useState(NOTES);
   const [ask, setAsk] = useState('');
@@ -211,7 +211,7 @@ function Showcase({
                   <Code>{v}</Code>
                   <Text variant={v} truncate>
                     {v === 'code' || v === 'mono'
-                      ? '00:12:34 · memo.record()'
+                      ? '00:12:34 · note.record()'
                       : 'Meeting notes'}
                   </Text>
                   <Text variant="caption" muted>
@@ -374,7 +374,7 @@ function Showcase({
                     label="Example tabs"
                     testIdPrefix="gallery-tab"
                     items={[
-                      { id: 'memo', label: 'Memo' },
+                      { id: 'note', label: 'Note' },
                       { id: 'settings', label: 'Settings' },
                     ]}
                     active={bar}

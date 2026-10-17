@@ -28,12 +28,12 @@ test('helper crash mid-recording: reconnects, resumes, stitches audio, keeps tra
   const win = await app.firstWindow();
   const errors: string[] = [];
   win.on('pageerror', (e) => errors.push(e.message));
-  await win.getByTestId('nav-memo').click();
-  await expect(win.getByTestId('memo-detected')).toBeVisible({
+  await win.getByTestId('nav-note').click();
+  await expect(win.getByTestId('note-detected')).toBeVisible({
     timeout: 10_000,
   });
-  await win.getByTestId('memo-record').click();
-  await expect(win.getByTestId('memo-hud')).toBeVisible();
+  await win.getByTestId('note-record').click();
+  await expect(win.getByTestId('note-hud')).toBeVisible();
 
   // Helper dies ~0.9 s in, comes back, and capture resumes; then the user stops.
   await expect
@@ -45,8 +45,8 @@ test('helper crash mid-recording: reconnects, resumes, stitches audio, keeps tra
       { timeout: 15_000 },
     )
     .toContain('reconnecting');
-  await expect(win.getByTestId('memo-stop')).toBeVisible({ timeout: 15_000 });
-  await win.getByTestId('memo-stop').click();
+  await expect(win.getByTestId('note-stop')).toBeVisible({ timeout: 15_000 });
+  await win.getByTestId('note-stop').click();
   await expect(win.getByTestId('meeting-item').first()).not.toContainText(
     'recording',
     {

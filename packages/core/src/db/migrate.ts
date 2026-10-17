@@ -63,7 +63,7 @@ export function migrate(
   return { from, to: getSchemaVersion(db), applied };
 }
 
-import { memoMigrations } from '../memo/schema';
+import { noteMigrations } from '../note/schema';
 
 /** App migrations. Append only; never edit a shipped migration. */
 export const migrations: readonly Migration[] = [
@@ -72,5 +72,5 @@ export const migrations: readonly Migration[] = [
     name: 'kv',
     up: `CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL);`,
   },
-  ...memoMigrations,
+  ...noteMigrations,
 ];

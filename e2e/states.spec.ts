@@ -50,10 +50,10 @@ test('helper missing: clear notice, recording disabled, app still usable', async
     'capture helper missing',
   );
   await win.screenshot({ path: path.join(shots, 'helper-missing.png') });
-  await win.getByTestId('nav-memo').click();
+  await win.getByTestId('nav-note').click();
   await expect(win.getByTestId('helper-notice')).toBeVisible();
-  await win.getByTestId('memo-record-manual').click();
-  await expect(win.getByTestId('memo-error')).toContainText(
+  await win.getByTestId('note-record-manual').click();
+  await expect(win.getByTestId('note-error')).toContainText(
     'helper is missing',
   );
   await win.getByTestId('nav-settings').click();
@@ -99,15 +99,15 @@ test('LLM failure falls back to on-device summary, Retry gets the AI summary', a
     QRTZ_SECRET_OPENROUTER: 'sk-test-stub',
     QRTZ_LLM_BASE_URL: `http://127.0.0.1:${port}/api/v1`,
   });
-  await win.getByTestId('nav-memo').click();
-  await expect(win.getByTestId('memo-detected')).toBeVisible({
+  await win.getByTestId('nav-note').click();
+  await expect(win.getByTestId('note-detected')).toBeVisible({
     timeout: 10_000,
   });
-  await win.getByTestId('memo-record').click();
+  await win.getByTestId('note-record').click();
   await until(win, async () => {
     expect(await win.getByTestId('live-segment').count()).toBeGreaterThan(3);
   });
-  await win.getByTestId('memo-stop').click();
+  await win.getByTestId('note-stop').click();
   await until(win, async () => {
     expect(
       await win.getByTestId('meeting-item').first().innerText(),
@@ -135,21 +135,21 @@ test('LLM failure falls back to on-device summary, Retry gets the AI summary', a
 
 test('hundreds of meetings: paged list stays fast', async () => {
   const { app, win, errors } = await launch({ QRTZ_DEV_SEED: 'many' });
-  await win.getByTestId('nav-memo').click();
+  await win.getByTestId('nav-note').click();
   await until(win, async () => {
     expect(await win.getByTestId('meeting-item').count()).toBe(100);
   });
   const t = Date.now();
-  await win.getByTestId('memo-show-more').click();
+  await win.getByTestId('note-show-more').click();
   await until(win, async () => {
     expect(await win.getByTestId('meeting-item').count()).toBe(200);
   });
   const moreMs = Date.now() - t;
-  for (let i = 0; i < 3; i++) await win.getByTestId('memo-show-more').click();
+  for (let i = 0; i < 3; i++) await win.getByTestId('note-show-more').click();
   await until(win, async () => {
     expect(await win.getByTestId('meeting-item').count()).toBe(500);
   });
-  await expect(win.getByTestId('memo-show-more')).toHaveCount(0);
+  await expect(win.getByTestId('note-show-more')).toHaveCount(0);
   await win.getByTestId('meeting-item').last().click();
   await expect(
     win.getByRole('heading', { name: 'Sync #1', exact: true }),

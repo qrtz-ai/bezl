@@ -6,8 +6,8 @@ const LOCAL_PROVIDERS = new Set(['none', 'ollama']);
 /** The provider to actually use: local-only forces the on-device path for anything cloud-hosted. */
 export function effectiveLlmProvider(
   cfg: Config,
-): Config['memo']['llmProvider'] {
-  const p = cfg.memo.llmProvider;
+): Config['note']['llmProvider'] {
+  const p = cfg.note.llmProvider;
   return cfg.privacy.localOnly && !LOCAL_PROVIDERS.has(p) ? 'none' : p;
 }
 

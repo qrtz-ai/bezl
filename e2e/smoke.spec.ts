@@ -25,11 +25,11 @@ test('boots, renders sidebar, and talks to main + worker over typed IPC', async 
   const errors: string[] = [];
   win.on('pageerror', (e) => errors.push(e.message));
 
-  await expect(win.getByTestId('nav-memo')).toBeVisible();
-  await expect(win.getByTestId('memo')).toBeVisible();
+  await expect(win.getByTestId('nav-note')).toBeVisible();
+  await expect(win.getByTestId('note-app')).toBeVisible();
 
   await win.screenshot({
-    path: path.join(__dirname, '..', 'test-results', 'memo.png'),
+    path: path.join(__dirname, '..', 'test-results', 'note.png'),
   });
   await win.getByTestId('nav-settings').click();
   await expect(win.getByText(/Database: ok · schema v5 · FTS5 on/)).toBeVisible(

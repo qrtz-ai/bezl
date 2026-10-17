@@ -87,11 +87,11 @@ function llmStub() {
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-lc-'));
 async function record(win: Page) {
-  await win.getByTestId('nav-memo').click();
-  await expect(win.getByTestId('memo-detected')).toBeVisible({
+  await win.getByTestId('nav-note').click();
+  await expect(win.getByTestId('note-detected')).toBeVisible({
     timeout: 10_000,
   });
-  await win.getByTestId('memo-record').click();
+  await win.getByTestId('note-record').click();
 }
 const phases = (app: ElectronApplication) =>
   app.evaluate(
@@ -164,7 +164,7 @@ test('live transcript streams partials then finals, follows live, and is front a
   await until(win, async () =>
     expect(await win.getByTestId('live-segment').count()).toBe(8),
   );
-  await win.getByTestId('memo-stop').click();
+  await win.getByTestId('note-stop').click();
   await until(win, async () => {
     await expect(view).not.toHaveAttribute('data-live', '');
     expect(await win.getByTestId('transcript-segment').count()).toBe(8);
@@ -185,7 +185,7 @@ test('live transcript streams partials then finals, follows live, and is front a
 
   // After a restart the full transcript is still what the meeting opens on.
   const b = await launch(userData);
-  await b.win.getByTestId('nav-memo').click();
+  await b.win.getByTestId('nav-note').click();
   await b.win.getByTestId('meeting-item').first().click();
   await expect(b.win.getByTestId('detail-transcript')).toBeVisible();
   await until(b.win, async () =>
@@ -199,18 +199,18 @@ test('permission denied: start refused as lifecycle state, no meeting created', 
   const { app, win, errors } = await launch(tmp(), {
     QRTZ_MOCK_PERMISSIONS: 'screen-recording=denied,microphone=denied',
   });
-  await win.getByTestId('nav-memo').click();
+  await win.getByTestId('nav-note').click();
   await win.getByTestId('onboarding-continue').click();
-  await expect(win.getByTestId('memo-detected')).toBeVisible({
+  await expect(win.getByTestId('note-detected')).toBeVisible({
     timeout: 10_000,
   });
-  await win.getByTestId('memo-record').click();
+  await win.getByTestId('note-record').click();
   await expect(win.getByTestId('lifecycle-error')).toContainText(
     'Screen & System Audio Recording or Microphone',
   );
-  await expect(win.getByTestId('memo-detected')).toBeVisible(); // phase unchanged
+  await expect(win.getByTestId('note-detected')).toBeVisible(); // phase unchanged
   await expect(win.getByTestId('meeting-item')).toHaveCount(0);
-  await expect(win.getByTestId('memo-error')).toHaveCount(0); // not a generic error
+  await expect(win.getByTestId('note-error')).toHaveCount(0); // not a generic error
   await win.screenshot({
     path: path.join(shots, 'lifecycle-permission-denied.png'),
   });
@@ -231,7 +231,7 @@ test('LLM failure: summary retries with backoff, falls back on-device, manual st
   await until(win, async () =>
     expect(await win.getByTestId('live-segment').count()).toBeGreaterThan(3),
   );
-  await win.getByTestId('memo-stop').click();
+  await win.getByTestId('note-stop').click();
   const step = win.getByTestId('pipeline-step-summary');
   await until(win, async () =>
     expect(await step.getAttribute('data-status')).toBe('failed'),
@@ -273,7 +273,7 @@ test('app restart mid post-processing resumes the pipeline from the persisted st
   await until(a.win, async () =>
     expect(await a.win.getByTestId('live-segment').count()).toBeGreaterThan(3),
   );
-  await a.win.getByTestId('memo-stop').click();
+  await a.win.getByTestId('note-stop').click();
   await until(a.win, async () =>
     expect(
       await a.win
@@ -294,7 +294,7 @@ test('app restart mid post-processing resumes the pipeline from the persisted st
     QRTZ_LLM_BASE_URL: url,
     QRTZ_MOCK_SCENARIO: '',
   });
-  await b.win.getByTestId('nav-memo').click();
+  await b.win.getByTestId('nav-note').click();
   await b.win.getByTestId('meeting-item').first().click();
   await until(b.win, async () =>
     expect(await b.win.getByTestId('pipeline').count()).toBe(0),

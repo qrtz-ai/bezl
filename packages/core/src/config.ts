@@ -18,7 +18,7 @@ export const ConfigSchema = z.object({
   telemetry: z
     .object({ crashReports: z.boolean().default(false) })
     .prefault({}),
-  memo: z
+  note: z
     .object({
       autoDetectMeetings: z.boolean().default(true),
       /** Start recording as soon as a meeting is detected (no prompt). Off = show the "Record this meeting?" prompt. */
@@ -64,8 +64,29 @@ export type Config = z.infer<typeof ConfigSchema>;
 
 export const defaultConfig = (): Config => ConfigSchema.parse({});
 
+const isObj = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/**
+ * Renamed settings keys. The Note sub app was called Memo, so stored files have `memo: {...}`; it moves
+ * to `note` (keys already under `note` win). Returns the input unchanged when nothing needs migrating.
+ */
+export function migrateLegacyConfig(raw: unknown): {
+  raw: unknown;
+  migrated: boolean;
+} {
+  if (!isObj(raw) || !('memo' in raw)) return { raw, migrated: false };
+  const { memo, ...rest } = raw;
+  const note = {
+    ...(isObj(memo) ? memo : {}),
+    ...(isObj(rest.note) ? rest.note : {}),
+  };
+  return { raw: { ...rest, note }, migrated: true };
+}
+
 /** Parse untrusted stored config; falls back to defaults field-by-field rather than failing. */
-export function loadConfig(raw: unknown): Config {
+export function loadConfig(input: unknown): Config {
+  const { raw } = migrateLegacyConfig(input);
   const r = ConfigSchema.safeParse(raw ?? {});
   if (r.success) return r.data;
   // Drop invalid top-level keys and retry so one bad value doesn't reset everything.

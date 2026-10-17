@@ -40,7 +40,7 @@
     "@huggingface/transformers": "^4.3.1",
     "@qrtz/core": "*",
     "@qrtz/feature-gallery": "*",
-    "@qrtz/feature-memo": "*",
+    "@qrtz/feature-note": "*",
     "@qrtz/feature-settings": "*",
     "@qrtz/ui": "*",
     "electron-squirrel-startup": "^1.0.1",

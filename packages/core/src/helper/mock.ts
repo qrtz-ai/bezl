@@ -10,7 +10,7 @@ import {
   STANDUP_FIXTURE,
   fixtureActiveSpeakers,
   fixtureAsrEvents,
-} from '../memo/fixtures';
+} from '../note/fixtures';
 
 export interface MockHelperOptions {
   clock?: Clock;

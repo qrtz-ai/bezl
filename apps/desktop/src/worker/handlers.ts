@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import {
   AppError,
-  MemoRepo,
+  NoteRepo,
   createProvider,
   answerQuestion,
   blobToVec,
@@ -69,7 +69,7 @@ export function createWorkerHandlers(
     embedder?: () => Promise<Embedder | null>;
   },
 ) {
-  const repo = new MemoRepo(db);
+  const repo = new NoteRepo(db);
   let embedderBroken = false;
   const getEmbedder = async (): Promise<Embedder | null> => {
     if (!deps.embedder || embedderBroken) return null;
@@ -199,7 +199,7 @@ export function createWorkerHandlers(
      * Step 1, idempotent: stitch WAV parts (one per helper restart) into the first part, repair the header,
      * fuse AX speaker names into the live segments, record duration. Safe to re-run after a crash at any point.
      */
-    'memo.stepFinalize': (p: { meetingId: string; ctx: PipelineContext }) => {
+    'note.stepFinalize': (p: { meetingId: string; ctx: PipelineContext }) => {
       const m = need(p.meetingId);
       const [main, ...rest] = p.ctx.audioParts;
       let audioMs: number | undefined;
@@ -250,7 +250,7 @@ export function createWorkerHandlers(
      * pipeline retries with backoff. With `fallback`, saves the on-device extractive summary + the LLM error.
      * Either way a settled summary marks the meeting done.
      */
-    'memo.stepSummary': async (p: {
+    'note.stepSummary': async (p: {
       meetingId: string;
       llm: LlmParams;
       fallback?: { error: string };
@@ -277,7 +277,7 @@ export function createWorkerHandlers(
       return summary;
     },
     /** Step 3: embed this meeting's lines for semantic chat. `skipped` = no embedder on this machine. */
-    'memo.stepIndex': async (p: { meetingId: string }) => {
+    'note.stepIndex': async (p: { meetingId: string }) => {
       need(p.meetingId);
       const e = await getEmbedder();
       if (!e) return { indexed: 0, skipped: true };
@@ -287,17 +287,17 @@ export function createWorkerHandlers(
       };
     },
     'db.health': () => dbHealth(db),
-    'memo.create': (p: { meeting: MeetingRow }) => {
+    'note.create': (p: { meeting: MeetingRow }) => {
       repo.upsertMeeting(p.meeting);
       if (p.meeting.template)
         repo.setTemplate(p.meeting.id, p.meeting.template);
       return { ok: true };
     },
-    'memo.appendLive': (p: { meetingId: string; segment: Segment }) => {
+    'note.appendLive': (p: { meetingId: string; segment: Segment }) => {
       repo.appendSegment(p.meetingId, { ...p.segment, source: 'live' });
       return { ok: true };
     },
-    'memo.finalize': async (
+    'note.finalize': async (
       p: FinalizeParams,
     ): Promise<MeetingSummary | null> => {
       const m = need(p.meetingId);
@@ -338,7 +338,7 @@ export function createWorkerHandlers(
      * summarizing) are completed from what was persisted. The live transcript is final, so this is just the WAV
      * header repair plus the summary. Runs once at startup, before any new session can start.
      */
-    'memo.recover': async (p: {
+    'note.recover': async (p: {
       llm: FinalizeParams['llm'];
     }): Promise<{ recovered: string[]; failed: string[] }> => {
       const recovered: string[] = [];
@@ -376,7 +376,7 @@ export function createWorkerHandlers(
       return { recovered, failed };
     },
     /** M6.4 retention: delete audio of finished meetings older than `days` (transcripts and summaries stay). */
-    'memo.pruneAudio': (p: { days: number; now?: number }) => {
+    'note.pruneAudio': (p: { days: number; now?: number }) => {
       const pruned: string[] = [];
       if (!(p.days > 0)) return { pruned };
       const cutoff = (p.now ?? Date.now()) - p.days * 86_400_000;
@@ -444,12 +444,12 @@ export function createWorkerHandlers(
       repo.setStatus(p.id, 'done');
       return { segments: segments.length };
     },
-    'memo.fail': (p: { meetingId: string }) => {
+    'note.fail': (p: { meetingId: string }) => {
       repo.setStatus(p.meetingId, 'failed');
       return { ok: true };
     },
     /** Paged: callers ask for `limit` and get up to limit+1 rows; the extra row means "there's more". */
-    'memo.list': (p: {
+    'note.list': (p: {
       query?: string;
       limit?: number;
       offset?: number;
@@ -469,7 +469,7 @@ export function createWorkerHandlers(
           return meeting ? [{ meeting, hit }] : [];
         });
     },
-    'memo.get': (p: { id: string }) => {
+    'note.get': (p: { id: string }) => {
       const meeting = need(p.id);
       const summary = repo.getSummary(p.id);
       return {
@@ -479,7 +479,7 @@ export function createWorkerHandlers(
         notes: repo.getNotes(p.id),
       };
     },
-    'memo.export': (p: { id: string }) => {
+    'note.export': (p: { id: string }) => {
       const meeting = need(p.id);
       return {
         filename: exportFilename(meeting),
@@ -492,7 +492,7 @@ export function createWorkerHandlers(
       };
     },
     /** Re-run the summary (the "Retry" after an LLM failure). Keeps the old summary if this throws. */
-    'memo.resummarize': async (p: {
+    'note.resummarize': async (p: {
       id: string;
       llm: LlmParams;
       template?: string;
@@ -511,8 +511,8 @@ export function createWorkerHandlers(
       repo.saveSummary(p.id, summary);
       return summary;
     },
-    'memo.listNotes': (p: { meetingId: string }) => repo.getNotes(p.meetingId),
-    'memo.addNote': (p: { meetingId: string; text: string; atMs: number }) => {
+    'note.listNotes': (p: { meetingId: string }) => repo.getNotes(p.meetingId),
+    'note.addNote': (p: { meetingId: string; text: string; atMs: number }) => {
       need(p.meetingId);
       const note: MeetingNote = {
         id: randomUUID(),
@@ -523,10 +523,10 @@ export function createWorkerHandlers(
       repo.addNote(p.meetingId, note);
       return { ...note, meetingId: p.meetingId };
     },
-    'memo.updateNote': (p: { id: string; text: string }) => ({
+    'note.updateNote': (p: { id: string; text: string }) => ({
       ok: repo.updateNote(p.id, p.text),
     }),
-    'memo.deleteNote': (p: { id: string }) => ({ ok: repo.deleteNote(p.id) }),
+    'note.deleteNote': (p: { id: string }) => ({ ok: repo.deleteNote(p.id) }),
     /** Consistent online snapshot of the whole DB (for backups). */
     'data.snapshot': (p: { path: string }) => {
       fs.rmSync(p.path, { force: true });
@@ -567,7 +567,7 @@ export function createWorkerHandlers(
             'E_VALIDATION',
             `backup is from a newer qrtz (schema ${v})`,
           );
-        const srcRepo = new MemoRepo(src);
+        const srcRepo = new NoteRepo(src);
         let imported = 0;
         let skipped = 0;
         const hasNotes = v >= 4;
@@ -608,7 +608,7 @@ export function createWorkerHandlers(
      * Grounded chat. With `meetingId`: retrieval over that meeting's transcript; otherwise FTS retrieval across all
      * meetings. LLM (OpenRouter by default) answers from the excerpts; without a key, extractive quotes.
      */
-    'memo.chat': async (p: {
+    'note.chat': async (p: {
       question: string;
       meetingId?: string;
       history?: ChatTurn[];
@@ -672,14 +672,14 @@ export function createWorkerHandlers(
         : answerQuestion(p.question, candidates, provider, p.history ?? []);
     },
     /** Background: embed new transcript lines so chat retrieval is ready (no-op without an embedder). */
-    'memo.indexVectors': async (p: { cap?: number }) => {
+    'note.indexVectors': async (p: { cap?: number }) => {
       const e = await getEmbedder();
       return {
         indexed: e ? await indexVectors(e, p?.cap ?? 2000) : 0,
         model: e?.id ?? null,
       };
     },
-    'memo.renameSpeaker': (p: {
+    'note.renameSpeaker': (p: {
       meetingId: string;
       from: string;
       to: string;
@@ -687,7 +687,7 @@ export function createWorkerHandlers(
       need(p.meetingId);
       return { changed: repo.renameSpeaker(p.meetingId, p.from, p.to) };
     },
-    'memo.delete': (p: { id: string }) => {
+    'note.delete': (p: { id: string }) => {
       repo.deleteMeeting(p.id);
       return { ok: true };
     },

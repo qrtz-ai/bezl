@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { migrate, migrations } from '../db/migrate';
-import { MemoRepo, toFtsQuery } from './repo';
+import { NoteRepo, toFtsQuery } from './repo';
 import { extractiveSummary } from './extractive';
 import {
   createProvider,
@@ -165,12 +165,12 @@ describe('LLM layer', () => {
   });
 });
 
-describe('MemoRepo + FTS (DB integration)', () => {
+describe('NoteRepo + FTS (DB integration)', () => {
   const setup = () => {
     const db = new DatabaseSync(':memory:');
     db.exec('PRAGMA foreign_keys = ON');
     migrate(db, migrations);
-    const repo = new MemoRepo(db);
+    const repo = new NoteRepo(db);
     repo.upsertMeeting(meeting);
     repo.replaceSegments('m1', 'post', fused());
     repo.saveSummary('m1', extractiveSummary(fused()));

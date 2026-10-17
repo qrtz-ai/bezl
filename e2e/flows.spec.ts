@@ -18,14 +18,14 @@ async function launch(userData: string, extra: Record<string, string> = {}) {
     },
   });
   const win = await app.firstWindow();
-  await expect(win.getByTestId('nav-memo')).toBeVisible();
+  await expect(win.getByTestId('nav-note')).toBeVisible();
   return { app, win };
 }
 
 test('delete a meeting and copy its Markdown', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-flows-'));
   const { app, win } = await launch(dir, { QRTZ_DEV_SEED: 'many' });
-  await win.getByTestId('nav-memo').click();
+  await win.getByTestId('nav-note').click();
   const first = win
     .getByTestId('meeting-item')
     .filter({ hasText: 'Sync #500' });
@@ -65,7 +65,7 @@ test('delete a meeting and copy its Markdown', async () => {
   await app.close();
   // Deletion is durable.
   const again = await launch(dir);
-  await again.win.getByTestId('nav-memo').click();
+  await again.win.getByTestId('nav-note').click();
   await expect(again.win.getByTestId('meeting-item').first()).toContainText(
     'Sync #499',
   );
@@ -132,11 +132,11 @@ test('mini HUD follows the light theme', async () => {
   });
   await win.getByTestId('nav-settings').click();
   await win.getByTestId('theme').selectOption('light');
-  await win.getByTestId('nav-memo').click();
-  await expect(win.getByTestId('memo-detected')).toBeVisible({
+  await win.getByTestId('nav-note').click();
+  await expect(win.getByTestId('note-detected')).toBeVisible({
     timeout: 10_000,
   });
-  await win.getByTestId('memo-record').click();
+  await win.getByTestId('note-record').click();
   await expect
     .poll(() => app.windows().some((w) => w.url().endsWith('#hud')), {
       timeout: 10_000,
@@ -199,7 +199,7 @@ test('backup progress bar shows on a large seeded recording', async () => {
 test('quitting inside the undo window still deletes (tombstone completed on next launch)', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-flows-'));
   const { app, win } = await launch(dir, { QRTZ_DEV_SEED: 'many' });
-  await win.getByTestId('nav-memo').click();
+  await win.getByTestId('nav-note').click();
   const item = win.getByTestId('meeting-item').filter({ hasText: 'Sync #500' });
   await expect(item).toBeVisible({ timeout: 15_000 });
   await item.click();
@@ -219,7 +219,7 @@ test('quitting inside the undo window still deletes (tombstone completed on next
       timeout: 10_000,
     })
     .toEqual([]);
-  await again.win.getByTestId('nav-memo').click();
+  await again.win.getByTestId('nav-note').click();
   await expect(again.win.getByTestId('meeting-item').first()).toContainText(
     'Sync #499',
   );

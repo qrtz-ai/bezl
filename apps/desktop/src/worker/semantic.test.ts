@@ -53,7 +53,7 @@ async function setup(embedder?: () => Promise<Embedder | null>) {
     fetch: noFetch,
     ...(embedder ? { embedder } : {}),
   });
-  h['memo.create']({
+  h['note.create']({
     meeting: {
       id: 'm1',
       title: STANDUP_FIXTURE.meeting.title,
@@ -67,12 +67,12 @@ async function setup(embedder?: () => Promise<Embedder | null>) {
   for (const e of fixtureAsrEvents()) {
     a.push(e);
     if (e.kind === 'final')
-      h['memo.appendLive']({
+      h['note.appendLive']({
         meetingId: 'm1',
         segment: a.segments().find((s) => s.id === e.utteranceId)!,
       });
   }
-  await h['memo.finalize']({
+  await h['note.finalize']({
     meetingId: 'm1',
     endedAt: 1_760_000_036_500,
     durationMs: 36_500,
@@ -87,21 +87,21 @@ const PARAPHRASE = 'who prepares the wording for newcomers?'; // no shared terms
 describe('semantic chat retrieval (hybrid)', () => {
   it('finds paraphrased lines that full-text search misses', async () => {
     const lexical = await setup();
-    const a = await lexical['memo.chat']({
+    const a = await lexical['note.chat']({
       question: PARAPHRASE,
       llm: { provider: 'none' },
     });
     expect(a.sources).toEqual([]); // FTS alone: nothing
 
     const h = await setup(async () => fake);
-    const idx = await h['memo.indexVectors']({});
+    const idx = await h['note.indexVectors']({});
     expect(idx.indexed).toBeGreaterThan(0);
-    const b = await h['memo.chat']({
+    const b = await h['note.chat']({
       question: PARAPHRASE,
       llm: { provider: 'none' },
     });
     expect(b.sources[0]?.text.toLowerCase()).toContain('onboarding');
-    const c = await h['memo.chat']({
+    const c = await h['note.chat']({
       question: PARAPHRASE,
       meetingId: 'm1',
       llm: { provider: 'none' },
@@ -113,13 +113,13 @@ describe('semantic chat retrieval (hybrid)', () => {
     const h = await setup(async () => {
       throw new Error('model download failed');
     });
-    const a = await h['memo.chat']({
+    const a = await h['note.chat']({
       question: 'onboarding copy',
       meetingId: 'm1',
       llm: { provider: 'none' },
     });
     expect(a.sources[0]?.text.toLowerCase()).toContain('onboarding');
-    expect((await h['memo.indexVectors']({})).indexed).toBe(0);
+    expect((await h['note.indexVectors']({})).indexed).toBe(0);
   });
 
   // Real MiniLM via transformers.js; opt in (downloads ~23 MB): QRTZ_TEST_EMBEDDINGS=1 npm test
@@ -127,7 +127,7 @@ describe('semantic chat retrieval (hybrid)', () => {
     `real ${EMBED_MODEL} retrieves a paraphrase`,
     async () => {
       const h = await setup(transformersEmbedder('/tmp/qrtz-test-models'));
-      const b = await h['memo.chat']({
+      const b = await h['note.chat']({
         question: 'Who is preparing the text for new users?',
         llm: { provider: 'none' },
       });

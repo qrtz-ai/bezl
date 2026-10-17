@@ -474,12 +474,12 @@ export function RecordingBar({
       </Text>
       <LevelMeter level={level} />
       {speaker ? (
-        <Text variant="caption" muted data-testid="memo-active-speaker">
+        <Text variant="caption" muted data-testid="note-active-speaker">
           {speaker}
         </Text>
       ) : null}
       {paused ? (
-        <Text variant="caption" tone="warning" data-testid="memo-paused">
+        <Text variant="caption" tone="warning" data-testid="note-paused">
           paused
         </Text>
       ) : null}
@@ -490,7 +490,7 @@ export function RecordingBar({
             label={paused ? 'Resume' : 'Pause'}
             pressed={!!paused}
             onClick={onPause}
-            data-testid="memo-pause"
+            data-testid="note-pause"
           />
         ) : null}
         <IconButton
@@ -498,7 +498,7 @@ export function RecordingBar({
           label="Stop"
           tone="record"
           onClick={onStop}
-          data-testid="memo-stop"
+          data-testid="note-stop"
         />
       </div>
     </div>

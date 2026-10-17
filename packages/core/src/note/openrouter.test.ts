@@ -86,7 +86,7 @@ describe('OpenRouter free-tier fallback', () => {
 
 /**
  * Opt-in live check against the real OpenRouter API (one summary call). Off by default and in CI.
- *   QRTZ_TEST_OPENROUTER=1 npx vitest run packages/core/src/memo/openrouter.test.ts
+ *   QRTZ_TEST_OPENROUTER=1 npx vitest run packages/core/src/note/openrouter.test.ts
  * The key is read from QRTZ_OPENROUTER_KEY_FILE (default /home/box/.secrets/openrouter_qrtz.key) and
  * never printed.
  */

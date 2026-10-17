@@ -23,7 +23,7 @@ for (const mode of ['dark', 'light'] as const) {
       },
     });
     const win = await app.firstWindow();
-    await expect(win.getByTestId('nav-memo')).toBeVisible();
+    await expect(win.getByTestId('nav-note')).toBeVisible();
     await win.getByTestId('nav-settings').click();
     await win.getByTestId('theme').selectOption(mode);
     await expect(win.locator('html')).toHaveAttribute('data-theme', mode);
@@ -41,16 +41,16 @@ for (const mode of ['dark', 'light'] as const) {
       bad.push(...(await axe(win, `${mode}/${name}`)));
       console.log(`${mode}/${name} ok`);
     };
-    await win.getByTestId('nav-memo').click();
+    await win.getByTestId('nav-note').click();
     const item = win.getByTestId('meeting-item').first();
     await expect(item).toBeVisible({ timeout: 15_000 });
-    await check('memo-list');
+    await check('note-list');
     await item.click();
     await expect(win.getByTestId('tab-transcript')).toBeVisible();
-    await check('memo-summary');
+    await check('note-summary');
     await win.getByTestId('tab-transcript').click();
     await win.waitForTimeout(300);
-    await check('memo-transcript');
+    await check('note-transcript');
     await win.getByTestId('nav-gallery').click();
     await check('gallery');
     await win.getByTestId('nav-settings').click();

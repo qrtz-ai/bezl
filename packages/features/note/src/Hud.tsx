@@ -41,10 +41,10 @@ export function Hud({
   if (s.phase === 'detected')
     return (
       <Banner
-        data-testid="memo-detected"
+        data-testid="note-detected"
         actions={
           <>
-            <Button size="sm" onClick={onRecord} data-testid="memo-record">
+            <Button size="sm" onClick={onRecord} data-testid="note-record">
               Record
             </Button>
             <Button size="sm" variant="ghost" onClick={onDismiss}>
@@ -55,7 +55,7 @@ export function Hud({
                 size="sm"
                 variant="ghost"
                 onClick={onAlways}
-                data-testid="memo-always-record"
+                data-testid="note-always-record"
               >
                 Always
               </Button>
@@ -72,7 +72,7 @@ export function Hud({
   if (capturing) {
     const elapsed = s.startedAt ? now - s.startedAt : s.elapsedMs;
     return (
-      <Stack gap={4} data-testid="memo-hud">
+      <Stack gap={4} data-testid="note-hud">
         <RecordingBar
           clock={fmtClock(elapsed)}
           title={s.detected?.title ?? 'Recording'}
@@ -88,7 +88,7 @@ export function Hud({
   }
   if (s.phase === 'stopping' || s.phase === 'processing')
     return (
-      <Banner data-testid="memo-processing" actions={<Spinner size={14} />}>
+      <Banner data-testid="note-processing" actions={<Spinner size={14} />}>
         <Text>
           {s.phase === 'stopping' ? 'Stopping' : (s.progress ?? 'Summarizing')}…
         </Text>
@@ -97,14 +97,14 @@ export function Hud({
   if (s.phase === 'done')
     return (
       <Banner
-        data-testid="memo-done"
+        data-testid="note-done"
         actions={
           <>
             {s.meetingId ? (
               <Button
                 size="sm"
                 onClick={() => onOpen(s.meetingId!)}
-                data-testid="memo-open"
+                data-testid="note-open"
               >
                 Open
               </Button>
@@ -121,7 +121,7 @@ export function Hud({
   return (
     <Banner
       tone="danger"
-      data-testid="memo-error"
+      data-testid="note-error"
       actions={
         <Button size="sm" variant="ghost" onClick={onDismiss}>
           Dismiss
