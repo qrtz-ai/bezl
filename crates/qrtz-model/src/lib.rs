@@ -70,6 +70,10 @@ kebab_enum!(Degradation {
     AsrUnavailable = "asr-unavailable", AudioUnavailable = "audio-unavailable", MicOnly = "mic-only", NoMic = "no-mic",
     AxUnavailable = "ax-unavailable", TranscriptGap = "transcript-gap",
 });
+kebab_enum!(
+    /// N29: a raw capture channel, as `capture.silent` / `capture.audible` name it (`CaptureSource` in protocol.ts).
+    CaptureSource { System = "system", Mic = "mic" }
+);
 kebab_enum!(StepId { Finalize = "finalize", Summary = "summary", Index = "index" });
 kebab_enum!(StepStatus {
     Pending = "pending", Running = "running", Retrying = "retrying", Done = "done", Failed = "failed",
@@ -247,6 +251,58 @@ pub struct ReconnectInfo {
     pub deadline_at: EpochMs,
 }
 
+/// N29: a source the helper reported silent; live and transient (`SilentInput` in lifecycle.ts). `since_ms` is
+/// meeting time.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "camelCase")]
+pub struct SilentInput {
+    pub source: CaptureSource,
+    #[serde(deserialize_with = "de_ms")]
+    pub since_ms: Ms,
+}
+
+/// N29: a closed silent stretch, meeting time. `end_ms` is `None` only after a crash mid-stretch (it runs to the end
+/// of the recording).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "camelCase")]
+pub struct SilentSpan {
+    pub source: CaptureSource,
+    #[serde(deserialize_with = "de_ms")]
+    pub start_ms: Ms,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "de_ms_opt"
+    )]
+    pub end_ms: Option<Ms>,
+}
+
+/// H8: one audio source that failed to start (`capture.fallback`), meeting time.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureFallback {
+    pub from: String,
+    /// `null` (not omitted) when no source was left.
+    pub to: Option<String>,
+    pub reason: String,
+    #[serde(deserialize_with = "de_ms")]
+    pub at_ms: Ms,
+}
+
+/// What a recording's capture looked like, carried from the session to its pipeline (N29, H8).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureReport {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub silent_spans: Vec<SilentSpan>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fallbacks: Vec<CaptureFallback>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
@@ -275,6 +331,15 @@ pub struct RecordingState {
     /// Offset added to helper timestamps for the current part (ms since startedAt).
     #[serde(default, deserialize_with = "de_ms")]
     pub part_offset_ms: Ms,
+    /// N29: sources silent right now (omitted when none).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub silent: Vec<SilentInput>,
+    /// N29: closed silent stretches of this recording (omitted when none).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub silent_spans: Vec<SilentSpan>,
+    /// H8: capture sources that failed to start during this recording (omitted when none).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fallbacks: Vec<CaptureFallback>,
 }
 
 impl Default for RecordingState {
@@ -292,6 +357,9 @@ impl Default for RecordingState {
             error: None,
             audio_parts: Vec::new(),
             part_offset_ms: 0,
+            silent: Vec::new(),
+            silent_spans: Vec::new(),
+            fallbacks: Vec::new(),
         }
     }
 }
@@ -316,8 +384,28 @@ pub enum LifecycleEvent {
     StartFailed {
         error: LifecycleError,
     },
+    /// `at` (wall clock) closes a silent stretch of a source the flag takes away (N29).
     Degraded {
         flag: Degradation,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        at: Option<EpochMs>,
+    },
+    /// N29 `capture.silent`: `since_ms` is helper (part-relative) time.
+    InputSilent {
+        source: CaptureSource,
+        since_ms: Ms,
+    },
+    /// N29 `capture.audible`, stamped by the host.
+    InputAudible {
+        source: CaptureSource,
+        at: EpochMs,
+    },
+    /// H8 `capture.fallback`, stamped by the host. `to: None` is written as `null`.
+    CaptureFallback {
+        from: String,
+        to: Option<String>,
+        reason: String,
+        at: EpochMs,
     },
     HelperLost {
         at: EpochMs,
@@ -438,6 +526,9 @@ pub struct PipelineState {
     pub steps: PipelineSteps,
     pub ctx: PipelineContext,
     pub updated_at: EpochMs,
+    /// N29/H8: silent stretches and capture fallbacks of the recording (omitted when there were none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capture: Option<CaptureReport>,
 }
 
 /// What the renderer gets (`PipelineState` without `ctx`).
@@ -449,6 +540,9 @@ pub struct PipelineView {
     pub stop_reason: StopReason,
     pub steps: PipelineSteps,
     pub updated_at: EpochMs,
+    /// N29/H8: what the renderer shows about the recording's capture (silent stretches, fallbacks).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capture: Option<CaptureReport>,
 }
 
 // ------------------------------------------------------------------ live transcript (lifecycle.ts)
@@ -583,6 +677,12 @@ pub struct SessionView {
     pub reconnect: Option<ReconnectInfo>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pipeline: Option<PipelineView>,
+    /// N29: sources silent right now, while capturing (omitted when none).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub silent: Vec<SilentInput>,
+    /// N29: every source still delivered is silent ("no audio at all"); omitted when false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_audio: bool,
 }
 
 #[cfg(test)]

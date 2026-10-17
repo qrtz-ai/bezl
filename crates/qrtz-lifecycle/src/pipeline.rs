@@ -92,6 +92,7 @@ pub fn new_pipeline(
         stop_reason,
         ctx,
         updated_at: now,
+        capture: None,
         steps: PipelineSteps {
             finalize: StepState::pending(policies::FINALIZE.max_attempts),
             summary: StepState::pending(policies::SUMMARY.max_attempts),
@@ -225,6 +226,7 @@ pub fn to_view(p: &PipelineState) -> PipelineView {
         stop_reason: p.stop_reason,
         steps: p.steps.clone(),
         updated_at: p.updated_at,
+        capture: p.capture.clone(),
     }
 }
 

@@ -5,9 +5,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use qrtz_model::{
-    de_ms, de_ms_opt, AsrEvent, Degradation, EpochMs, LifecycleError, LiveTranscriptDelta, MeetingPlatform,
-    MeetingSummary, Ms, OsPermission, PermissionState, PermissionsStatus, PipelineContext, PipelineView,
-    SessionView,
+    de_ms, de_ms_opt, AsrEvent, CaptureSource, Degradation, EpochMs, LifecycleError, LiveTranscriptDelta,
+    MeetingPlatform, MeetingSummary, Ms, OsPermission, PermissionState, PermissionsStatus, PipelineContext,
+    PipelineView, SessionView,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -207,6 +207,24 @@ pub enum HelperInput {
     },
     #[serde(rename = "audio.level")]
     AudioLevel { rms: f64 },
+    /// N29: `source` has been under the silence floor since `since_ms` (helper, part-relative ms).
+    #[serde(rename = "capture.silent", rename_all = "camelCase")]
+    CaptureSilent {
+        source: CaptureSource,
+        #[serde(deserialize_with = "de_ms")]
+        since_ms: Ms,
+    },
+    /// N29: `source` is above the floor again.
+    #[serde(rename = "capture.audible")]
+    CaptureAudible { source: CaptureSource },
+    /// H8: a capture source failed to start; `to` is the one tried next, `None` (null) when none is left.
+    #[serde(rename = "capture.fallback")]
+    CaptureFallback {
+        from: String,
+        #[serde(default)]
+        to: Option<String>,
+        reason: String,
+    },
     #[serde(rename = "asr")]
     Asr { event: AsrEvent },
     #[serde(rename = "recording.started", rename_all = "camelCase")]
@@ -252,6 +270,9 @@ impl HelperInput {
             HelperInput::MeetingEnded { .. } => "meeting.ended",
             HelperInput::ActiveSpeaker { .. } => "ax.activeSpeaker",
             HelperInput::AudioLevel { .. } => "audio.level",
+            HelperInput::CaptureSilent { .. } => "capture.silent",
+            HelperInput::CaptureAudible { .. } => "capture.audible",
+            HelperInput::CaptureFallback { .. } => "capture.fallback",
             HelperInput::Asr { .. } => "asr",
             HelperInput::RecordingStarted { .. } => "recording.started",
             HelperInput::RecordingStopped { .. } => "recording.stopped",

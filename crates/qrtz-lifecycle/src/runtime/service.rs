@@ -22,9 +22,9 @@ use super::api::*;
 use crate::pipeline::max_retry_delay;
 use crate::transcript::TranscriptAssembler;
 use crate::{
-    can_start, initial_state, is_capturing, new_pipeline, next_runnable_step, pipeline_settled,
-    pipeline_step, pipeline_usable, policies, progress_label, resume_after_restart, retry_delay, to_view,
-    Machine, StepPatch,
+    can_start, capture_report, initial_state, is_capturing, new_pipeline, next_runnable_step,
+    pipeline_settled, pipeline_step, pipeline_usable, policies, progress_label, resume_after_restart,
+    retry_delay, silent_input_view, to_view, Machine, StepPatch,
 };
 
 /// Everything the runtime needs from the app.
@@ -457,6 +457,12 @@ impl State {
         let pipeline = s.meeting_id.as_ref().and_then(|id| self.pipelines.get(id));
         let live = is_capturing(s.phase);
         let started = s.started_at.filter(|v| *v != 0);
+        let denied = |k| self.permissions.get(&k) == Some(&PermissionState::Denied);
+        let (silent, no_audio) = silent_input_view(
+            s,
+            denied(OsPermission::Microphone),
+            denied(OsPermission::ScreenRecording),
+        );
         SessionView {
             phase: s.phase,
             detected: s.detected.clone(),
@@ -486,6 +492,8 @@ impl State {
             error_info: s.error.clone(),
             reconnect: s.reconnect.clone(),
             pipeline: pipeline.map(to_view),
+            silent,
+            no_audio,
         }
     }
 }
@@ -589,8 +597,10 @@ impl Shared {
         }
     }
 
+    /// Stamped with the wall clock, so a silent stretch of a source the flag takes away ends now (N29).
     fn degrade(&self, flag: Degradation) {
-        if self.send(LifecycleEvent::Degraded { flag }) {
+        let at = Some(self.now());
+        if self.send(LifecycleEvent::Degraded { flag, at }) {
             tracing::warn!(flag = flag.as_str(), "capture degraded");
         }
     }
@@ -916,6 +926,26 @@ impl Shared {
                     "audio.unavailable" => self.degrade(Degradation::AudioUnavailable),
                     _ => {}
                 }
+            }
+            HelperInput::CaptureSilent { source, since_ms } => {
+                // N29: live and transient (capture.audible, a helper loss or the stop end it); not a degradation.
+                if self.send(LifecycleEvent::InputSilent { source, since_ms }) {
+                    tracing::warn!(source = source.as_str(), since_ms, "capture silent");
+                    if self.view().no_audio {
+                        tracing::warn!("no audio from any capture source");
+                    }
+                }
+            }
+            HelperInput::CaptureAudible { source } => {
+                let at = self.now();
+                if self.send(LifecycleEvent::InputAudible { source, at }) {
+                    tracing::info!(source = source.as_str(), "capture audible");
+                }
+            }
+            HelperInput::CaptureFallback { from, to, reason } => {
+                // H8: kept on the session (then the meeting's pipeline); `to: null` = nothing left to capture.
+                let at = self.now();
+                self.send(LifecycleEvent::CaptureFallback { from, to, reason, at });
             }
             HelperInput::RecordingStopped { .. } | HelperInput::RecordingAborted { .. } => {}
         }
@@ -1581,7 +1611,7 @@ impl Shared {
             (g.active.clone(), g.helper_crashed)
         };
         let helper_dur = stopped.flatten().filter(|d| *d != 0);
-        let pipeline = new_pipeline(
+        let mut pipeline = new_pipeline(
             &meeting_id,
             reason,
             PipelineContext {
@@ -1594,6 +1624,8 @@ impl Shared {
             },
             ended_at,
         );
+        // N29/H8: silent stretches (closed at the stop) and capture fallbacks go to the meeting's pipeline.
+        pipeline.capture = capture_report(&st);
         self.persist_pipeline(pipeline).await;
         self.send(LifecycleEvent::Stopped { at: ended_at });
         self.emit_transcript(&meeting_id); // final rev: partial cleared
@@ -1904,8 +1936,10 @@ impl Shared {
                         active: Vec::new(),
                         helper_crashed: true,
                     };
-                    self.persist_pipeline(new_pipeline(&mid, StopReason::CrashRecovered, ctx, now))
-                        .await;
+                    // N29/H8: the session row carries the capture record; a stretch open at the crash keeps no end.
+                    let mut p = new_pipeline(&mid, StopReason::CrashRecovered, ctx, now);
+                    p.capture = capture_report(saved);
+                    self.persist_pipeline(p).await;
                     report.crash_recovered = Some(mid);
                 }
             }

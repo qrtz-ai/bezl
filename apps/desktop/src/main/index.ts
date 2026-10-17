@@ -240,14 +240,7 @@ export function bootstrap() {
     const r = parseHelperLine(line);
     if (!r.ok) return log.warn('bad helper line', { error: r.error });
     if (r.msg.type === 'log') log.child('helper')[r.msg.level](r.msg.msg);
-    // N29: wire only for now (the session degradation comes with the reducer); keep a trace in the log.
-    if (r.msg.type === 'capture.silent')
-      log.child('helper').warn('capture silent', {
-        source: r.msg.source,
-        sinceMs: r.msg.sinceMs,
-      });
-    if (r.msg.type === 'capture.audible')
-      log.child('helper').info('capture audible', { source: r.msg.source });
+    // N29 capture.silent / capture.audible: NoteService keeps them on the session and logs them.
     // H8: was a free-text warn line ("audio <from> failed: <reason>"); same surface, structured fields.
     if (r.msg.type === 'capture.fallback')
       log.child('helper').warn('capture fallback', {

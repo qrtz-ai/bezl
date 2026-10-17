@@ -815,6 +815,68 @@
               },
               "updatedAt": {
                 "type": "number"
+              },
+              "capture": {
+                "type": "object",
+                "properties": {
+                  "silentSpans": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "startMs": {
+                          "type": "number"
+                        },
+                        "endMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "startMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "fallbacks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "from": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "atMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "from",
+                        "to",
+                        "reason",
+                        "atMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
               }
             },
             "required": [
@@ -824,6 +886,33 @@
               "updatedAt"
             ],
             "additionalProperties": false
+          },
+          "silent": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "system",
+                    "mic"
+                  ]
+                },
+                "sinceMs": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "source",
+                "sinceMs"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "noAudio": {
+            "type": "boolean",
+            "const": true
           }
         },
         "required": [
@@ -1254,6 +1343,68 @@
               },
               "updatedAt": {
                 "type": "number"
+              },
+              "capture": {
+                "type": "object",
+                "properties": {
+                  "silentSpans": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "startMs": {
+                          "type": "number"
+                        },
+                        "endMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "startMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "fallbacks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "from": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "atMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "from",
+                        "to",
+                        "reason",
+                        "atMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
               }
             },
             "required": [
@@ -1263,6 +1414,33 @@
               "updatedAt"
             ],
             "additionalProperties": false
+          },
+          "silent": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "system",
+                    "mic"
+                  ]
+                },
+                "sinceMs": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "source",
+                "sinceMs"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "noAudio": {
+            "type": "boolean",
+            "const": true
           }
         },
         "required": [
@@ -1684,6 +1862,68 @@
               },
               "updatedAt": {
                 "type": "number"
+              },
+              "capture": {
+                "type": "object",
+                "properties": {
+                  "silentSpans": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "startMs": {
+                          "type": "number"
+                        },
+                        "endMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "startMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "fallbacks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "from": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "atMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "from",
+                        "to",
+                        "reason",
+                        "atMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
               }
             },
             "required": [
@@ -1693,6 +1933,33 @@
               "updatedAt"
             ],
             "additionalProperties": false
+          },
+          "silent": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "system",
+                    "mic"
+                  ]
+                },
+                "sinceMs": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "source",
+                "sinceMs"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "noAudio": {
+            "type": "boolean",
+            "const": true
           }
         },
         "required": [
@@ -1937,6 +2204,68 @@
               },
               "updatedAt": {
                 "type": "number"
+              },
+              "capture": {
+                "type": "object",
+                "properties": {
+                  "silentSpans": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "startMs": {
+                          "type": "number"
+                        },
+                        "endMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "startMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "fallbacks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "from": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "atMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "from",
+                        "to",
+                        "reason",
+                        "atMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
               }
             },
             "required": [
@@ -2188,6 +2517,68 @@
           },
           "updatedAt": {
             "type": "number"
+          },
+          "capture": {
+            "type": "object",
+            "properties": {
+              "silentSpans": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "system",
+                        "mic"
+                      ]
+                    },
+                    "startMs": {
+                      "type": "number"
+                    },
+                    "endMs": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "startMs"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "fallbacks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": "string"
+                    },
+                    "to": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "atMs": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "from",
+                    "to",
+                    "reason",
+                    "atMs"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": [
@@ -2702,6 +3093,68 @@
               },
               "updatedAt": {
                 "type": "number"
+              },
+              "capture": {
+                "type": "object",
+                "properties": {
+                  "silentSpans": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "startMs": {
+                          "type": "number"
+                        },
+                        "endMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "startMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "fallbacks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "from": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "atMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "from",
+                        "to",
+                        "reason",
+                        "atMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
               }
             },
             "required": [
@@ -2711,6 +3164,33 @@
               "updatedAt"
             ],
             "additionalProperties": false
+          },
+          "silent": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "system",
+                    "mic"
+                  ]
+                },
+                "sinceMs": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "source",
+                "sinceMs"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "noAudio": {
+            "type": "boolean",
+            "const": true
           }
         },
         "required": [
@@ -4166,6 +4646,68 @@
               },
               "updatedAt": {
                 "type": "number"
+              },
+              "capture": {
+                "type": "object",
+                "properties": {
+                  "silentSpans": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "startMs": {
+                          "type": "number"
+                        },
+                        "endMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "startMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "fallbacks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "from": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "atMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "from",
+                        "to",
+                        "reason",
+                        "atMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
               }
             },
             "required": [
@@ -4175,6 +4717,33 @@
               "updatedAt"
             ],
             "additionalProperties": false
+          },
+          "silent": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "system",
+                    "mic"
+                  ]
+                },
+                "sinceMs": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "source",
+                "sinceMs"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "noAudio": {
+            "type": "boolean",
+            "const": true
           }
         },
         "required": [
@@ -5587,6 +6156,68 @@
               },
               "updatedAt": {
                 "type": "number"
+              },
+              "capture": {
+                "type": "object",
+                "properties": {
+                  "silentSpans": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "startMs": {
+                          "type": "number"
+                        },
+                        "endMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "startMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "fallbacks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "from": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "atMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "from",
+                        "to",
+                        "reason",
+                        "atMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
               }
             },
             "required": [
@@ -5596,6 +6227,33 @@
               "updatedAt"
             ],
             "additionalProperties": false
+          },
+          "silent": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "system",
+                    "mic"
+                  ]
+                },
+                "sinceMs": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "source",
+                "sinceMs"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "noAudio": {
+            "type": "boolean",
+            "const": true
           }
         },
         "required": [
@@ -5822,6 +6480,68 @@
           },
           "updatedAt": {
             "type": "number"
+          },
+          "capture": {
+            "type": "object",
+            "properties": {
+              "silentSpans": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "system",
+                        "mic"
+                      ]
+                    },
+                    "startMs": {
+                      "type": "number"
+                    },
+                    "endMs": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "startMs"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "fallbacks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": "string"
+                    },
+                    "to": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "atMs": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "from",
+                    "to",
+                    "reason",
+                    "atMs"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": [

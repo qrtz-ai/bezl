@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MeetingPlatform } from './types';
+import { CaptureSource } from '../helper/protocol';
 
 /**
  * The single authoritative recording lifecycle (see docs/recording-lifecycle.md).
@@ -46,6 +47,52 @@ export const Degradation = z.enum([
 ]);
 export type Degradation = z.infer<typeof Degradation>;
 
+/**
+ * N29: a capture source the helper reported silent (`capture.silent`), live and transient: `capture.audible`, a
+ * helper loss or the stop end it. Kept apart from `degraded[]` (sticky permission/ASR flags). `sinceMs` is meeting
+ * time (the helper's part-relative value plus `partOffsetMs`).
+ */
+export const SilentInput = z.object({
+  source: CaptureSource,
+  sinceMs: z.number(),
+});
+export type SilentInput = z.infer<typeof SilentInput>;
+
+/**
+ * N29: a closed silent stretch of one source, meeting time. `endMs` is missing only when the app died while the
+ * source was silent (crash recovery: the stretch runs to the end of the recording).
+ */
+export const SilentSpan = z.object({
+  source: CaptureSource,
+  startMs: z.number(),
+  endMs: z.number().optional(),
+});
+export type SilentSpan = z.infer<typeof SilentSpan>;
+
+/** H8: one audio source that failed to start (`capture.fallback`), stamped in meeting time. */
+export const CaptureFallback = z.object({
+  from: z.string(),
+  to: z.string().nullable(),
+  reason: z.string(),
+  atMs: z.number(),
+});
+export type CaptureFallback = z.infer<typeof CaptureFallback>;
+
+/** What a recording's capture looked like, carried from the session to its pipeline (N29, H8). */
+export const CaptureReport = z.object({
+  silentSpans: z.array(SilentSpan).optional(),
+  fallbacks: z.array(CaptureFallback).optional(),
+});
+export type CaptureReport = z.infer<typeof CaptureReport>;
+
+/** Bounds on the capture record: a flapping source or a helper restart loop can't grow the session row. */
+export const CAPTURE_LIMITS = {
+  silentSpans: 256,
+  fallbacks: 8,
+  /** `capture.fallback.reason` is helper error text: kept to this many code points. */
+  reasonChars: 200,
+} as const;
+
 export const LifecycleError = z.object({
   code: z.string(),
   message: z.string(),
@@ -77,6 +124,12 @@ export const RecordingState = z.object({
   audioParts: z.array(z.string()).default([]),
   /** Offset added to helper timestamps for the current part (ms since startedAt). */
   partOffsetMs: z.number().default(0),
+  /** N29: sources silent right now (omitted when none). */
+  silent: z.array(SilentInput).optional(),
+  /** N29: closed silent stretches of this recording (omitted when none). */
+  silentSpans: z.array(SilentSpan).optional(),
+  /** H8: capture sources that failed to start during this recording (omitted when none). */
+  fallbacks: z.array(CaptureFallback).optional(),
 });
 export type RecordingState = z.infer<typeof RecordingState>;
 
@@ -91,7 +144,20 @@ export type LifecycleEvent =
     }
   | { type: 'start-acked' }
   | { type: 'start-failed'; error: LifecycleError }
-  | { type: 'degraded'; flag: Degradation }
+  /** `at` (wall clock) closes a silent stretch of a source the flag takes away (N29). */
+  | { type: 'degraded'; flag: Degradation; at?: number }
+  /** N29 `capture.silent`: `sinceMs` is helper (part-relative) time. */
+  | { type: 'input-silent'; source: CaptureSource; sinceMs: number }
+  /** N29 `capture.audible`, stamped by the host (the message carries no time). */
+  | { type: 'input-audible'; source: CaptureSource; at: number }
+  /** H8 `capture.fallback`, stamped by the host. */
+  | {
+      type: 'capture-fallback';
+      from: string;
+      to: string | null;
+      reason: string;
+      at: number;
+    }
   | { type: 'helper-lost'; at: number; deadlineAt: number }
   | { type: 'helper-restored'; at: number; audioPath: string }
   | { type: 'stop-requested'; reason: StopReason; at: number }
@@ -123,6 +189,107 @@ export const canStart = (p: RecordingPhase) =>
   p === 'processing' ||
   p === 'done' ||
   p === 'error';
+
+/** Sources a degradation takes away: their silence means nothing any more (N29). */
+const SOURCES_LOST: Partial<Record<Degradation, readonly CaptureSource[]>> = {
+  'mic-only': ['system'],
+  'no-mic': ['mic'],
+  'audio-unavailable': ['system', 'mic'],
+};
+
+/** True when `degraded[]` says the helper no longer delivers `source` (so it never reports it silent). */
+export const sourceLost = (
+  degraded: readonly Degradation[],
+  src: CaptureSource,
+) => degraded.some((d) => SOURCES_LOST[d]?.includes(src));
+
+/** Meeting-time ms of a wall-clock instant, never before `floor` (a clock that jumped back). */
+const meetingMs = (s: RecordingState, at: number, floor: number) =>
+  Math.max(floor, at - (s.startedAt ?? at));
+
+/** Sets or drops an optional array field: empty arrays are omitted (the persisted/IPC form stays as before). */
+function withList<K extends 'silent' | 'silentSpans' | 'fallbacks'>(
+  s: RecordingState,
+  k: K,
+  v: NonNullable<RecordingState[K]>,
+): RecordingState {
+  const { [k]: _old, ...rest } = s;
+  return (v.length ? { ...rest, [k]: v } : rest) as RecordingState;
+}
+
+/**
+ * Closes the silent stretches of `sources` (all when omitted) at wall clock `at`; they move from `silent` to
+ * `silentSpans` (capped). `at` undefined: zero-length (the end is unknown and the source is gone).
+ */
+function closeSilent(
+  s: RecordingState,
+  at: number | undefined,
+  sources?: readonly CaptureSource[],
+): RecordingState {
+  const open = s.silent ?? [];
+  const closing = open.filter((x) => !sources || sources.includes(x.source));
+  if (!closing.length) return s;
+  const spans = [...(s.silentSpans ?? [])];
+  for (const x of closing)
+    if (spans.length < CAPTURE_LIMITS.silentSpans)
+      spans.push({
+        source: x.source,
+        startMs: x.sinceMs,
+        endMs: at === undefined ? x.sinceMs : meetingMs(s, at, x.sinceMs),
+      });
+  return withList(
+    withList(
+      s,
+      'silent',
+      open.filter((x) => !closing.includes(x)),
+    ),
+    'silentSpans',
+    spans,
+  );
+}
+
+/** Code-point cut (same in Rust: `chars().take(n)`), so a cut never lands inside a surrogate pair. */
+export const cutChars = (v: string, n: number) =>
+  Array.from(v).slice(0, n).join('');
+
+/**
+ * N29/H8: the capture record a stopped recording hands to its pipeline. Silent stretches still open (the app died
+ * mid-stretch: crash recovery) are kept without an end. `undefined` when there is nothing to report.
+ */
+export function captureReport(s: RecordingState): CaptureReport | undefined {
+  const spans: SilentSpan[] = [
+    ...(s.silentSpans ?? []),
+    ...(s.silent ?? []).map((x) => ({ source: x.source, startMs: x.sinceMs })),
+  ].slice(0, CAPTURE_LIMITS.silentSpans);
+  const fallbacks = s.fallbacks ?? [];
+  if (!spans.length && !fallbacks.length) return undefined;
+  return {
+    ...(spans.length ? { silentSpans: spans } : {}),
+    ...(fallbacks.length ? { fallbacks } : {}),
+  };
+}
+
+/**
+ * N29: what the live view says about silent input. `noAudio`: every source the helper still delivers is silent
+ * ("no audio at all"). A source counts as delivered unless `degraded[]` took it away or its permission is denied
+ * (a recording started without the mic carries no flag for it).
+ */
+export function silentInputView(
+  s: RecordingState,
+  denied: { microphone?: boolean; screenRecording?: boolean } = {},
+): { silent?: SilentInput[]; noAudio?: true } {
+  const silent = isCapturing(s.phase) ? (s.silent ?? []) : [];
+  if (!silent.length) return {};
+  const delivered = (['system', 'mic'] as const).filter(
+    (src) =>
+      !sourceLost(s.degraded, src) &&
+      !(src === 'mic' ? denied.microphone : denied.screenRecording),
+  );
+  const all =
+    delivered.length > 0 &&
+    delivered.every((src) => silent.some((x) => x.source === src));
+  return { silent, ...(all ? { noAudio: true as const } : {}) };
+}
 
 /** Returns the next state, or null when the event is not legal in this state (callers log and ignore). */
 export function lifecycleReducer(
@@ -163,9 +330,58 @@ export function lifecycleReducer(
         error: e.error,
       };
     }
-    case 'degraded':
+    case 'degraded': {
       if (!isCapturing(s.phase) || s.degraded.includes(e.flag)) return null;
-      return { ...s, degraded: [...s.degraded, e.flag] };
+      // A source this flag takes away is no longer tracked by the helper: close its silent stretch now (N29).
+      const lost = SOURCES_LOST[e.flag];
+      const n = { ...s, degraded: [...s.degraded, e.flag] };
+      return lost ? closeSilent(n, e.at, lost) : n;
+    }
+    case 'input-silent': {
+      // Only while the helper is capturing; a duplicate (already silent) is idempotent; a source the helper no
+      // longer delivers (no-mic, mic-only, audio-unavailable) can't be silent.
+      if (s.phase !== 'starting' && s.phase !== 'recording') return null;
+      if ((s.silent ?? []).some((x) => x.source === e.source)) return null;
+      if (sourceLost(s.degraded, e.source)) return null;
+      return withList(s, 'silent', [
+        ...(s.silent ?? []),
+        {
+          source: e.source,
+          sinceMs: Math.max(0, Math.round(e.sinceMs) + s.partOffsetMs),
+        },
+      ]);
+    }
+    case 'input-audible':
+      // Audible without a prior silent is ignored.
+      if (s.phase !== 'starting' && s.phase !== 'recording') return null;
+      if (!(s.silent ?? []).some((x) => x.source === e.source)) return null;
+      return closeSilent(s, e.at, [e.source]);
+    case 'capture-fallback': {
+      if (!isCapturing(s.phase)) return null;
+      const list = s.fallbacks ?? [];
+      let n =
+        list.length < CAPTURE_LIMITS.fallbacks
+          ? withList(s, 'fallbacks', [
+              ...list,
+              {
+                from: cutChars(e.from, CAPTURE_LIMITS.reasonChars),
+                to:
+                  e.to === null
+                    ? null
+                    : cutChars(e.to, CAPTURE_LIMITS.reasonChars),
+                reason: cutChars(e.reason, CAPTURE_LIMITS.reasonChars),
+                atMs: meetingMs(s, e.at, 0),
+              },
+            ])
+          : s;
+      // No source left: nothing is captured (`error{audio.unavailable}` follows and is then a no-op).
+      if (e.to === null && !n.degraded.includes('audio-unavailable'))
+        n = closeSilent(
+          { ...n, degraded: [...n.degraded, 'audio-unavailable'] },
+          e.at,
+        );
+      return n === s ? null : n;
+    }
     case 'helper-lost':
       if (s.phase !== 'recording' && s.phase !== 'starting') {
         if (s.phase !== 'reconnecting') return null;
@@ -174,8 +390,10 @@ export function lifecycleReducer(
           reconnect: { ...s.reconnect!, attempt: s.reconnect!.attempt + 1 },
         };
       }
+      // The helper's silence trackers die with it: close every silent stretch at the loss (N29). The new helper
+      // reports afresh; the restart interval itself is the `transcript-gap`.
       return {
-        ...s,
+        ...closeSilent(s, e.at),
         phase: 'reconnecting',
         reconnect: { attempt: 1, since: e.at, deadlineAt: e.deadlineAt },
       };
@@ -195,7 +413,8 @@ export function lifecycleReducer(
     }
     case 'stop-requested': {
       if (!isCapturing(s.phase)) return null;
-      const { reconnect: _r, ...rest } = s;
+      // A source still silent at the stop: its stretch ends at the stop (N29).
+      const { reconnect: _r, ...rest } = closeSilent(s, e.at);
       return {
         ...rest,
         phase: 'stopping',
@@ -302,6 +521,8 @@ export const PipelineState = z.object({
   }),
   ctx: PipelineContext,
   updatedAt: z.number(),
+  /** N29/H8: silent stretches and capture fallbacks of the recording (omitted when there were none). */
+  capture: CaptureReport.optional(),
 });
 export type PipelineState = z.infer<typeof PipelineState>;
 /** What the renderer gets (ctx stays in main/worker). */

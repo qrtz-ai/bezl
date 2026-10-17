@@ -10,6 +10,8 @@ import {
   encodeHostMessage,
   isCapturing,
   canStart,
+  captureReport,
+  silentInputView,
   newPipeline,
   nextRunnableStep,
   pipelineSettled,
@@ -317,8 +319,9 @@ export class NoteService {
     });
   }
 
+  /** Stamped with the wall clock, so a silent stretch of a source the flag takes away ends now (N29). */
   private degrade(flag: Degradation) {
-    if (this.machine.send({ type: 'degraded', flag }))
+    if (this.machine.send({ type: 'degraded', flag, at: Date.now() }))
       this.deps.log.warn('capture degraded', { flag });
   }
 
@@ -416,6 +419,43 @@ export class NoteService {
       case 'audio.level':
         this.level = m.rms;
         this.emitSoon(150);
+        break;
+      case 'capture.silent':
+        // N29: live and transient (capture.audible, a helper loss or the stop end it); not a degradation.
+        if (
+          this.machine.send({
+            type: 'input-silent',
+            source: m.source,
+            sinceMs: m.sinceMs,
+          })
+        ) {
+          this.deps.log.warn('capture silent', {
+            source: m.source,
+            sinceMs: m.sinceMs,
+          });
+          if (this.view().noAudio)
+            this.deps.log.warn('no audio from any capture source');
+        }
+        break;
+      case 'capture.audible':
+        if (
+          this.machine.send({
+            type: 'input-audible',
+            source: m.source,
+            at: Date.now(),
+          })
+        )
+          this.deps.log.info('capture audible', { source: m.source });
+        break;
+      case 'capture.fallback':
+        // H8: kept on the session (then the meeting's pipeline); `to: null` = nothing left to capture.
+        this.machine.send({
+          type: 'capture-fallback',
+          from: m.from,
+          to: m.to,
+          reason: m.reason,
+          at: Date.now(),
+        });
         break;
       case 'asr':
         // `stopping` is accepted: the helper flushes the recogniser's last finals before recording.stopped.
@@ -669,6 +709,11 @@ export class NoteService {
       degraded: s.degraded,
       ...(s.reconnect ? { reconnect: s.reconnect } : {}),
       ...(pipeline ? { pipeline: toPipelineView(pipeline) } : {}),
+      // N29: sources silent right now, and `noAudio` when every source still delivered is silent.
+      ...silentInputView(s, {
+        microphone: this.permissions.microphone === 'denied',
+        screenRecording: this.permissions['screen-recording'] === 'denied',
+      }),
     };
   }
 
@@ -1092,7 +1137,9 @@ export class NoteService {
         await this.appendLive(meetingId, seg);
       }
     const endedAt = Date.now();
-    const pipeline = newPipeline(
+    // N29/H8: silent stretches (closed at the stop) and capture fallbacks go to the meeting's pipeline.
+    const capture = captureReport(st);
+    const base = newPipeline(
       meetingId,
       reason,
       {
@@ -1105,6 +1152,7 @@ export class NoteService {
       },
       endedAt,
     );
+    const pipeline = capture ? { ...base, capture } : base;
     await this.persistPipeline(pipeline);
     this.machine.send({ type: 'stopped', at: endedAt });
     this.emitTranscript(meetingId); // final rev: partial cleared
@@ -1386,21 +1434,22 @@ export class NoteService {
           this.deps.log.warn('app died mid-recording; recovering', {
             id: saved.meetingId,
           });
-          await this.persistPipeline(
-            newPipeline(
-              saved.meetingId,
-              'crash-recovered',
-              {
-                startedAt: saved.startedAt ?? now,
-                endedAt: saved.stoppedAt ?? now,
-                durationMs: 0, // finalize derives it from the repaired audio
-                audioParts: saved.audioParts,
-                active: [],
-                helperCrashed: true,
-              },
-              now,
-            ),
+          const p = newPipeline(
+            saved.meetingId,
+            'crash-recovered',
+            {
+              startedAt: saved.startedAt ?? now,
+              endedAt: saved.stoppedAt ?? now,
+              durationMs: 0, // finalize derives it from the repaired audio
+              audioParts: saved.audioParts,
+              active: [],
+              helperCrashed: true,
+            },
+            now,
           );
+          // N29/H8: the session row carries the capture record; a stretch open at the crash keeps no end.
+          const capture = captureReport(saved);
+          await this.persistPipeline(capture ? { ...p, capture } : p);
         }
       }
       for (const m of await this.deps.worker.call(

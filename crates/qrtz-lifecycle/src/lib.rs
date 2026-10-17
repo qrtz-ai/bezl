@@ -25,7 +25,10 @@ pub use pipeline::{
     progress_label, resume_after_restart, retry_delay, to_view, RetryPolicy, StepPatch, STEP_ORDER,
 };
 pub use qrtz_model as model;
-pub use session::{can_start, initial_state, is_capturing, reduce, Machine, CAPTURING};
+pub use session::{
+    can_start, capture_limits, capture_report, cut_chars, initial_state, is_capturing, reduce,
+    silent_input_view, source_lost, Machine, CAPTURING,
+};
 
 /// `RETRY_POLICIES` (lifecycle.ts). Delays are milliseconds before jitter and `QRTZ_RETRY_SCALE`.
 pub mod policies {

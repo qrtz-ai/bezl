@@ -42,6 +42,44 @@ fn compact(steps: &PipelineSteps) -> String {
         .join(" ")
 }
 
+/// `compactCapture` (TS runner): "" when absent.
+fn compact_capture(c: &Option<CaptureReport>) -> String {
+    let Some(c) = c else { return String::new() };
+    c.silent_spans
+        .iter()
+        .map(|x| {
+            format!(
+                "{}:{}-{}",
+                x.source.as_str(),
+                x.start_ms,
+                x.end_ms.map_or("?".to_string(), |e| e.to_string())
+            )
+        })
+        .chain(
+            c.fallbacks
+                .iter()
+                .map(|f| format!("fb:{}>{}@{}", f.from, f.to.as_deref().unwrap_or("-"), f.at_ms)),
+        )
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// `compactSilent` (TS runner): "" when nothing is silent.
+fn compact_silent(v: &SessionView) -> String {
+    if v.silent.is_empty() {
+        return String::new();
+    }
+    format!(
+        "s:{}{}",
+        v.silent
+            .iter()
+            .map(|x| format!("{}@{}", x.source.as_str(), x.since_ms))
+            .collect::<Vec<_>>()
+            .join(","),
+        if v.no_audio { "!" } else { "" }
+    )
+}
+
 fn perm_str(p: &PermissionsStatus) -> String {
     let g = |k| p.get(&k).map_or("unknown", |v: &PermissionState| v.as_str());
     format!(
@@ -125,6 +163,9 @@ impl EventSink for Life {
                     if v.paused { "paused".into() } else { "-".into() },
                     v.helper.as_str().into(),
                 ]
+                .into_iter()
+                .chain(Some(compact_silent(&v)).filter(|x| !x.is_empty()))
+                .collect::<Vec<_>>()
                 .join("|");
                 let mut last = self.last_session.lock().unwrap();
                 if *last != k {
@@ -133,7 +174,17 @@ impl EventSink for Life {
                 }
             }
             CoreEvent::Pipeline(v) => {
-                let k = format!("{} {}", v.stop_reason.as_str(), compact(&v.steps));
+                let cap = compact_capture(&v.capture);
+                let k = format!(
+                    "{} {}{}",
+                    v.stop_reason.as_str(),
+                    compact(&v.steps),
+                    if cap.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" [{cap}]")
+                    }
+                );
                 let l = t.pipelines.entry(v.meeting_id.clone()).or_default();
                 if l.last() != Some(&k) {
                     l.push(k);
@@ -398,6 +449,19 @@ async fn settle() {
 }
 
 fn view_json(v: &SessionView) -> Value {
+    let mut j = view_json_base(v);
+    if !v.silent.is_empty() {
+        j["silent"] = json!(v
+            .silent
+            .iter()
+            .map(|x| json!([x.source.as_str(), x.since_ms]))
+            .collect::<Vec<_>>());
+        j["noAudio"] = json!(v.no_audio);
+    }
+    j
+}
+
+fn view_json_base(v: &SessionView) -> Value {
     json!({
         "phase": v.phase.as_str(),
         "meetingId": v.meeting_id,
@@ -650,7 +714,7 @@ impl Run {
                 .into_iter()
                 .map(|r| {
                     let p: PipelineState = serde_json::from_str(r[1].as_str().unwrap()).unwrap();
-                    json!([
+                    let mut row = json!([
                         p.meeting_id,
                         r[2],
                         p.stop_reason.as_str(),
@@ -663,7 +727,13 @@ impl Run {
                             .map(|a| self.sh.rel(a))
                             .collect::<Vec<_>>(),
                         p.ctx.active.len(),
-                    ])
+                    ]);
+                    if p.capture.is_some() {
+                        row.as_array_mut()
+                            .unwrap()
+                            .push(json!(compact_capture(&p.capture)));
+                    }
+                    row
                 })
                 .collect();
         let session = all("SELECT json FROM lifecycle_state WHERE key='session'")

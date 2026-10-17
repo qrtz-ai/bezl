@@ -1,0 +1,272 @@
+{
+  "kind": "session",
+  "name": "N29 silent spans clamp a backward clock; mic-only closes the system stretch; both sources silent",
+  "from": "ADR 0025",
+  "initial": null,
+  "steps": [
+    {
+      "event": {
+        "type": "start-requested",
+        "meetingId": "m",
+        "at": 10000,
+        "audioPath": "/a"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/a"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 10000
+      }
+    },
+    {
+      "event": {
+        "type": "start-acked"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [],
+        "audioParts": [
+          "/a"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 10000
+      }
+    },
+    {
+      "event": {
+        "type": "input-silent",
+        "source": "mic",
+        "sinceMs": 2000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [],
+        "audioParts": [
+          "/a"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 10000,
+        "silent": [
+          {
+            "source": "mic",
+            "sinceMs": 2000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "input-audible",
+        "source": "mic",
+        "at": 9000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [],
+        "audioParts": [
+          "/a"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 10000,
+        "silentSpans": [
+          {
+            "source": "mic",
+            "startMs": 2000,
+            "endMs": 2000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "input-silent",
+        "source": "system",
+        "sinceMs": 60000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [],
+        "audioParts": [
+          "/a"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 10000,
+        "silentSpans": [
+          {
+            "source": "mic",
+            "startMs": 2000,
+            "endMs": 2000
+          }
+        ],
+        "silent": [
+          {
+            "source": "system",
+            "sinceMs": 60000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "input-silent",
+        "source": "mic",
+        "sinceMs": 60500
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [],
+        "audioParts": [
+          "/a"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 10000,
+        "silentSpans": [
+          {
+            "source": "mic",
+            "startMs": 2000,
+            "endMs": 2000
+          }
+        ],
+        "silent": [
+          {
+            "source": "system",
+            "sinceMs": 60000
+          },
+          {
+            "source": "mic",
+            "sinceMs": 60500
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "degraded",
+        "flag": "mic-only",
+        "at": 130000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "mic-only"
+        ],
+        "audioParts": [
+          "/a"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 10000,
+        "silent": [
+          {
+            "source": "mic",
+            "sinceMs": 60500
+          }
+        ],
+        "silentSpans": [
+          {
+            "source": "mic",
+            "startMs": 2000,
+            "endMs": 2000
+          },
+          {
+            "source": "system",
+            "startMs": 60000,
+            "endMs": 120000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "input-silent",
+        "source": "system",
+        "sinceMs": 70000
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "degraded",
+        "flag": "audio-unavailable"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "mic-only",
+          "audio-unavailable"
+        ],
+        "audioParts": [
+          "/a"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 10000,
+        "silentSpans": [
+          {
+            "source": "mic",
+            "startMs": 2000,
+            "endMs": 2000
+          },
+          {
+            "source": "system",
+            "startMs": 60000,
+            "endMs": 120000
+          },
+          {
+            "source": "mic",
+            "startMs": 60500,
+            "endMs": 60500
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "stop-requested",
+        "reason": "meeting-ended",
+        "at": 140000
+      },
+      "expect": {
+        "phase": "stopping",
+        "degraded": [
+          "mic-only",
+          "audio-unavailable"
+        ],
+        "audioParts": [
+          "/a"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 10000,
+        "silentSpans": [
+          {
+            "source": "mic",
+            "startMs": 2000,
+            "endMs": 2000
+          },
+          {
+            "source": "system",
+            "startMs": 60000,
+            "endMs": 120000
+          },
+          {
+            "source": "mic",
+            "startMs": 60500,
+            "endMs": 60500
+          }
+        ],
+        "stopReason": "meeting-ended",
+        "stoppedAt": 140000
+      }
+    }
+  ]
+}

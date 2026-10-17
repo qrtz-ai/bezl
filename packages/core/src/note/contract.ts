@@ -8,6 +8,7 @@ import {
   LifecycleError,
   PipelineView,
   RecordingPhase,
+  SilentInput,
   StopReason,
 } from './lifecycle';
 
@@ -65,6 +66,13 @@ export const SessionView = z.object({
     .optional(),
   /** Post-processing progress of the session's meeting, per step. */
   pipeline: PipelineView.optional(),
+  /**
+   * N29: capture sources silent right now while capturing (`sinceMs` is meeting time, so the UI can say "no audio
+   * from the mic since 12:03" with `startedAt + sinceMs`). Live and transient, unlike `degraded`. Omitted when none.
+   */
+  silent: z.array(SilentInput).optional(),
+  /** N29: every source the helper still delivers is silent ("no audio at all"). Omitted when false. */
+  noAudio: z.literal(true).optional(),
 });
 export type SessionView = z.infer<typeof SessionView>;
 

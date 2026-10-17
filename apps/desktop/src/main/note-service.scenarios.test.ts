@@ -67,6 +67,28 @@ interface Scenario {
   expect?: unknown;
 }
 
+/**
+ * N29/H8: the pipeline's capture record, compact ("" when absent, so older scenarios keep their trace):
+ * `mic:0-80000` silent spans (`?` = no end: crash mid-stretch), `fb:from>to@atMs` fallbacks (`>-` = to null).
+ */
+const compactCapture = (c: PipelineView['capture']) =>
+  c
+    ? [
+        ...(c.silentSpans ?? []).map(
+          (x) => `${x.source}:${x.startMs}-${x.endMs ?? '?'}`,
+        ),
+        ...(c.fallbacks ?? []).map(
+          (f) => `fb:${f.from}>${f.to ?? '-'}@${f.atMs}`,
+        ),
+      ].join(' ')
+    : '';
+
+/** N29: the live silent list in the session trace ("" when none): `s:mic@0,system@900` and `!` for noAudio. */
+const compactSilent = (v: SessionView) =>
+  v.silent?.length
+    ? `s:${v.silent.map((x) => `${x.source}@${x.sinceMs}`).join(',')}${v.noAudio ? '!' : ''}`
+    : '';
+
 const compactSteps = (p: { steps: PipelineView['steps'] }) =>
   (['finalize', 'summary', 'index'] as const)
     .map((k) => {
@@ -215,13 +237,15 @@ function run(sc: Scenario) {
         v.reconnect ? `r${v.reconnect.attempt}` : '-',
         v.paused ? 'paused' : '-',
         v.helper,
+        ...(compactSilent(v) ? [compactSilent(v)] : []),
       ].join('|');
       if (k !== last.session) trace.session.push((last.session = k));
     });
     bus.on('note:pipeline', (v: PipelineView) => {
       if (life.dead) return;
       const l = (trace.pipelines[v.meetingId] ??= []);
-      const k = `${v.stopReason} ${compactSteps(v)}`;
+      const cap = compactCapture(v.capture);
+      const k = `${v.stopReason} ${compactSteps(v)}${cap ? ` [${cap}]` : ''}`;
       if (l.at(-1) !== k) l.push(k);
     });
     bus.on('note:transcript', (d) => {
@@ -285,6 +309,12 @@ function run(sc: Scenario) {
     lines: v.lines.map((l) => [l.id, l.speaker ?? null, l.text, l.startMs]),
     partial: v.partial,
     pipeline: v.pipeline ? compactSteps(v.pipeline) : null,
+    ...(v.silent?.length
+      ? {
+          silent: v.silent.map((x) => [x.source, x.sinceMs]),
+          noAudio: !!v.noAudio,
+        }
+      : {}),
   });
 
   const snapshot = (life: Life) => {
@@ -303,6 +333,7 @@ function run(sc: Scenario) {
         p.ctx.helperCrashed,
         p.ctx.audioParts.map(rel),
         p.ctx.active.length,
+        ...(p.capture ? [compactCapture(p.capture)] : []),
       ];
     });
     const session = all(

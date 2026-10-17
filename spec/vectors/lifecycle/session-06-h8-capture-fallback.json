@@ -1,0 +1,592 @@
+{
+  "kind": "session",
+  "name": "H8 capture fallback: recorded with meeting time, to:null degrades audio-unavailable once, capped and cut",
+  "from": "ADR 0025",
+  "initial": null,
+  "steps": [
+    {
+      "event": {
+        "type": "capture-fallback",
+        "from": "core-audio-tap",
+        "to": "screencapturekit",
+        "reason": "idle",
+        "at": 0
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "start-requested",
+        "meetingId": "m",
+        "at": 5000,
+        "audioPath": "/a"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/a"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 5000
+      }
+    },
+    {
+      "event": {
+        "type": "input-silent",
+        "source": "system",
+        "sinceMs": 0
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/a"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 5000,
+        "silent": [
+          {
+            "source": "system",
+            "sinceMs": 0
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "capture-fallback",
+        "from": "core-audio-tap",
+        "to": "screencapturekit",
+        "reason": "tap creation failed (OSStatus 560947818) xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx🎤🎤🎤",
+        "at": 5100
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/a"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 5000,
+        "silent": [
+          {
+            "source": "system",
+            "sinceMs": 0
+          }
+        ],
+        "fallbacks": [
+          {
+            "from": "core-audio-tap",
+            "to": "screencapturekit",
+            "reason": "tap creation failed (OSStatus 560947818) xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "atMs": 100
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "capture-fallback",
+        "from": "screencapturekit",
+        "to": null,
+        "reason": "screen recording denied",
+        "at": 5200
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [
+          "audio-unavailable"
+        ],
+        "audioParts": [
+          "/a"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 5000,
+        "fallbacks": [
+          {
+            "from": "core-audio-tap",
+            "to": "screencapturekit",
+            "reason": "tap creation failed (OSStatus 560947818) xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "atMs": 100
+          },
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "screen recording denied",
+            "atMs": 200
+          }
+        ],
+        "silentSpans": [
+          {
+            "source": "system",
+            "startMs": 0,
+            "endMs": 200
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "degraded",
+        "flag": "audio-unavailable",
+        "at": 5300
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "input-silent",
+        "source": "mic",
+        "sinceMs": 0
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "start-acked"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "audio-unavailable"
+        ],
+        "audioParts": [
+          "/a"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 5000,
+        "fallbacks": [
+          {
+            "from": "core-audio-tap",
+            "to": "screencapturekit",
+            "reason": "tap creation failed (OSStatus 560947818) xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "atMs": 100
+          },
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "screen recording denied",
+            "atMs": 200
+          }
+        ],
+        "silentSpans": [
+          {
+            "source": "system",
+            "startMs": 0,
+            "endMs": 200
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "capture-fallback",
+        "from": "src0",
+        "to": "src1",
+        "reason": "r",
+        "at": 4000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "audio-unavailable"
+        ],
+        "audioParts": [
+          "/a"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 5000,
+        "silentSpans": [
+          {
+            "source": "system",
+            "startMs": 0,
+            "endMs": 200
+          }
+        ],
+        "fallbacks": [
+          {
+            "from": "core-audio-tap",
+            "to": "screencapturekit",
+            "reason": "tap creation failed (OSStatus 560947818) xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "atMs": 100
+          },
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "screen recording denied",
+            "atMs": 200
+          },
+          {
+            "from": "src0",
+            "to": "src1",
+            "reason": "r",
+            "atMs": 0
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "capture-fallback",
+        "from": "src1",
+        "to": "src2",
+        "reason": "r",
+        "at": 4000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "audio-unavailable"
+        ],
+        "audioParts": [
+          "/a"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 5000,
+        "silentSpans": [
+          {
+            "source": "system",
+            "startMs": 0,
+            "endMs": 200
+          }
+        ],
+        "fallbacks": [
+          {
+            "from": "core-audio-tap",
+            "to": "screencapturekit",
+            "reason": "tap creation failed (OSStatus 560947818) xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "atMs": 100
+          },
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "screen recording denied",
+            "atMs": 200
+          },
+          {
+            "from": "src0",
+            "to": "src1",
+            "reason": "r",
+            "atMs": 0
+          },
+          {
+            "from": "src1",
+            "to": "src2",
+            "reason": "r",
+            "atMs": 0
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "capture-fallback",
+        "from": "src2",
+        "to": "src3",
+        "reason": "r",
+        "at": 4000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "audio-unavailable"
+        ],
+        "audioParts": [
+          "/a"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 5000,
+        "silentSpans": [
+          {
+            "source": "system",
+            "startMs": 0,
+            "endMs": 200
+          }
+        ],
+        "fallbacks": [
+          {
+            "from": "core-audio-tap",
+            "to": "screencapturekit",
+            "reason": "tap creation failed (OSStatus 560947818) xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "atMs": 100
+          },
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "screen recording denied",
+            "atMs": 200
+          },
+          {
+            "from": "src0",
+            "to": "src1",
+            "reason": "r",
+            "atMs": 0
+          },
+          {
+            "from": "src1",
+            "to": "src2",
+            "reason": "r",
+            "atMs": 0
+          },
+          {
+            "from": "src2",
+            "to": "src3",
+            "reason": "r",
+            "atMs": 0
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "capture-fallback",
+        "from": "src3",
+        "to": "src4",
+        "reason": "r",
+        "at": 4000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "audio-unavailable"
+        ],
+        "audioParts": [
+          "/a"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 5000,
+        "silentSpans": [
+          {
+            "source": "system",
+            "startMs": 0,
+            "endMs": 200
+          }
+        ],
+        "fallbacks": [
+          {
+            "from": "core-audio-tap",
+            "to": "screencapturekit",
+            "reason": "tap creation failed (OSStatus 560947818) xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "atMs": 100
+          },
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "screen recording denied",
+            "atMs": 200
+          },
+          {
+            "from": "src0",
+            "to": "src1",
+            "reason": "r",
+            "atMs": 0
+          },
+          {
+            "from": "src1",
+            "to": "src2",
+            "reason": "r",
+            "atMs": 0
+          },
+          {
+            "from": "src2",
+            "to": "src3",
+            "reason": "r",
+            "atMs": 0
+          },
+          {
+            "from": "src3",
+            "to": "src4",
+            "reason": "r",
+            "atMs": 0
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "capture-fallback",
+        "from": "src4",
+        "to": "src5",
+        "reason": "r",
+        "at": 4000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "audio-unavailable"
+        ],
+        "audioParts": [
+          "/a"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 5000,
+        "silentSpans": [
+          {
+            "source": "system",
+            "startMs": 0,
+            "endMs": 200
+          }
+        ],
+        "fallbacks": [
+          {
+            "from": "core-audio-tap",
+            "to": "screencapturekit",
+            "reason": "tap creation failed (OSStatus 560947818) xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "atMs": 100
+          },
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "screen recording denied",
+            "atMs": 200
+          },
+          {
+            "from": "src0",
+            "to": "src1",
+            "reason": "r",
+            "atMs": 0
+          },
+          {
+            "from": "src1",
+            "to": "src2",
+            "reason": "r",
+            "atMs": 0
+          },
+          {
+            "from": "src2",
+            "to": "src3",
+            "reason": "r",
+            "atMs": 0
+          },
+          {
+            "from": "src3",
+            "to": "src4",
+            "reason": "r",
+            "atMs": 0
+          },
+          {
+            "from": "src4",
+            "to": "src5",
+            "reason": "r",
+            "atMs": 0
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "capture-fallback",
+        "from": "src5",
+        "to": "src6",
+        "reason": "r",
+        "at": 4000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "audio-unavailable"
+        ],
+        "audioParts": [
+          "/a"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 5000,
+        "silentSpans": [
+          {
+            "source": "system",
+            "startMs": 0,
+            "endMs": 200
+          }
+        ],
+        "fallbacks": [
+          {
+            "from": "core-audio-tap",
+            "to": "screencapturekit",
+            "reason": "tap creation failed (OSStatus 560947818) xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "atMs": 100
+          },
+          {
+            "from": "screencapturekit",
+            "to": null,
+            "reason": "screen recording denied",
+            "atMs": 200
+          },
+          {
+            "from": "src0",
+            "to": "src1",
+            "reason": "r",
+            "atMs": 0
+          },
+          {
+            "from": "src1",
+            "to": "src2",
+            "reason": "r",
+            "atMs": 0
+          },
+          {
+            "from": "src2",
+            "to": "src3",
+            "reason": "r",
+            "atMs": 0
+          },
+          {
+            "from": "src3",
+            "to": "src4",
+            "reason": "r",
+            "atMs": 0
+          },
+          {
+            "from": "src4",
+            "to": "src5",
+            "reason": "r",
+            "atMs": 0
+          },
+          {
+            "from": "src5",
+            "to": "src6",
+            "reason": "r",
+            "atMs": 0
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "capture-fallback",
+        "from": "src6",
+        "to": "src7",
+        "reason": "r",
+        "at": 4000
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "capture-fallback",
+        "from": "last",
+        "to": null,
+        "reason": "r",
+        "at": 6000
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "reset"
+      },
+      "expect": "rejected"
+    }
+  ]
+}

@@ -1,4 +1,15 @@
-use qrtz_model::{Degradation, LifecycleEvent, ReconnectInfo, RecordingPhase, RecordingState};
+use qrtz_model::{
+    CaptureFallback, CaptureReport, CaptureSource, Degradation, EpochMs, LifecycleEvent, Ms, ReconnectInfo,
+    RecordingPhase, RecordingState, SilentInput, SilentSpan,
+};
+
+/// Bounds on the capture record (`CAPTURE_LIMITS` in lifecycle.ts).
+pub mod capture_limits {
+    pub const SILENT_SPANS: usize = 256;
+    pub const FALLBACKS: usize = 8;
+    /// `capture.fallback` strings are kept to this many code points.
+    pub const REASON_CHARS: usize = 200;
+}
 
 /// `initialRecordingState()`.
 pub fn initial_state() -> RecordingState {
@@ -26,6 +37,99 @@ pub fn can_start(p: RecordingPhase) -> bool {
             | RecordingPhase::Done
             | RecordingPhase::Error
     )
+}
+
+/// Sources a degradation takes away: their silence means nothing any more (N29; `SOURCES_LOST`).
+fn sources_lost(flag: Degradation) -> &'static [CaptureSource] {
+    match flag {
+        Degradation::MicOnly => &[CaptureSource::System],
+        Degradation::NoMic => &[CaptureSource::Mic],
+        Degradation::AudioUnavailable => &[CaptureSource::System, CaptureSource::Mic],
+        _ => &[],
+    }
+}
+
+/// `sourceLost`: `degraded[]` says the helper no longer delivers `src`.
+pub fn source_lost(degraded: &[Degradation], src: CaptureSource) -> bool {
+    degraded.iter().any(|d| sources_lost(*d).contains(&src))
+}
+
+/// Meeting-time ms of a wall-clock instant, never before `floor`.
+fn meeting_ms(s: &RecordingState, at: EpochMs, floor: Ms) -> Ms {
+    (at - s.started_at.unwrap_or(at)).max(floor)
+}
+
+/// `closeSilent`: the silent stretches of `sources` (all when `None`) end at `at` (zero-length when `at` is `None`).
+fn close_silent(
+    mut s: RecordingState,
+    at: Option<EpochMs>,
+    sources: Option<&[CaptureSource]>,
+) -> RecordingState {
+    let hit = |x: &SilentInput| sources.is_none_or(|l| l.contains(&x.source));
+    let (closing, open): (Vec<SilentInput>, Vec<SilentInput>) =
+        std::mem::take(&mut s.silent).into_iter().partition(hit);
+    s.silent = open;
+    for x in closing {
+        if s.silent_spans.len() < capture_limits::SILENT_SPANS {
+            let end = at.map_or(x.since_ms, |at| meeting_ms(&s, at, x.since_ms));
+            s.silent_spans.push(SilentSpan {
+                source: x.source,
+                start_ms: x.since_ms,
+                end_ms: Some(end),
+            });
+        }
+    }
+    s
+}
+
+/// `cutChars`: a code-point cut (TS `Array.from(v).slice(0, n)`).
+pub fn cut_chars(v: &str, n: usize) -> String {
+    v.chars().take(n).collect()
+}
+
+/// `captureReport`: what a stopped recording hands to its pipeline; stretches still open keep no end.
+pub fn capture_report(s: &RecordingState) -> Option<CaptureReport> {
+    let mut spans = s.silent_spans.clone();
+    spans.extend(s.silent.iter().map(|x| SilentSpan {
+        source: x.source,
+        start_ms: x.since_ms,
+        end_ms: None,
+    }));
+    spans.truncate(capture_limits::SILENT_SPANS);
+    if spans.is_empty() && s.fallbacks.is_empty() {
+        return None;
+    }
+    Some(CaptureReport {
+        silent_spans: spans,
+        fallbacks: s.fallbacks.clone(),
+    })
+}
+
+/// `silentInputView`: the live `silent` list and `noAudio` (every source still delivered is silent). A source counts
+/// as delivered unless `degraded[]` took it away or its permission is denied.
+pub fn silent_input_view(
+    s: &RecordingState,
+    mic_denied: bool,
+    screen_denied: bool,
+) -> (Vec<SilentInput>, bool) {
+    if !is_capturing(s.phase) || s.silent.is_empty() {
+        return (Vec::new(), false);
+    }
+    let delivered: Vec<CaptureSource> = [CaptureSource::System, CaptureSource::Mic]
+        .into_iter()
+        .filter(|src| {
+            !source_lost(&s.degraded, *src)
+                && !match src {
+                    CaptureSource::Mic => mic_denied,
+                    CaptureSource::System => screen_denied,
+                }
+        })
+        .collect();
+    let all = !delivered.is_empty()
+        && delivered
+            .iter()
+            .all(|src| s.silent.iter().any(|x| x.source == *src));
+    (s.silent.clone(), all)
 }
 
 /// `lifecycleReducer`: the next state, or `None` when the event is not legal in this state (callers log and
@@ -92,13 +196,63 @@ pub fn reduce(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> 
                 ..initial_state()
             })
         }
-        E::Degraded { flag } => {
+        E::Degraded { flag, at } => {
             if !is_capturing(s.phase) || s.degraded.contains(flag) {
                 return None;
             }
             let mut n = s.clone();
             n.degraded.push(*flag);
+            // A source this flag takes away is no longer tracked by the helper: close its silent stretch (N29).
+            let lost = sources_lost(*flag);
+            Some(if lost.is_empty() {
+                n
+            } else {
+                close_silent(n, *at, Some(lost))
+            })
+        }
+        E::InputSilent { source, since_ms } => {
+            if !matches!(s.phase, P::Starting | P::Recording)
+                || s.silent.iter().any(|x| x.source == *source)
+                || source_lost(&s.degraded, *source)
+            {
+                return None;
+            }
+            let mut n = s.clone();
+            n.silent.push(SilentInput {
+                source: *source,
+                since_ms: (*since_ms + s.part_offset_ms).max(0),
+            });
             Some(n)
+        }
+        E::InputAudible { source, at } => {
+            if !matches!(s.phase, P::Starting | P::Recording) || !s.silent.iter().any(|x| x.source == *source)
+            {
+                return None;
+            }
+            Some(close_silent(s.clone(), Some(*at), Some(&[*source])))
+        }
+        E::CaptureFallback { from, to, reason, at } => {
+            if !is_capturing(s.phase) {
+                return None;
+            }
+            let mut n = s.clone();
+            let mut changed = false;
+            if n.fallbacks.len() < capture_limits::FALLBACKS {
+                n.fallbacks.push(CaptureFallback {
+                    from: cut_chars(from, capture_limits::REASON_CHARS),
+                    to: to.as_deref().map(|t| cut_chars(t, capture_limits::REASON_CHARS)),
+                    reason: cut_chars(reason, capture_limits::REASON_CHARS),
+                    at_ms: meeting_ms(s, *at, 0),
+                });
+                changed = true;
+            }
+            // No source left: nothing is captured (`error{audio.unavailable}` follows and is then a no-op).
+            if to.is_none() && !n.degraded.contains(&Degradation::AudioUnavailable) {
+                n.degraded.push(Degradation::AudioUnavailable);
+                n = close_silent(n, Some(*at), None);
+                changed = true;
+            }
+            changed.then_some(n)
         }
         E::HelperLost { at, deadline_at } => {
             if s.phase != P::Recording && s.phase != P::Starting {
@@ -115,6 +269,7 @@ pub fn reduce(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> 
                     ..s.clone()
                 });
             }
+            // The helper's silence trackers die with it: close every silent stretch at the loss (N29).
             Some(RecordingState {
                 phase: P::Reconnecting,
                 reconnect: Some(ReconnectInfo {
@@ -122,7 +277,7 @@ pub fn reduce(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> 
                     since: *at,
                     deadline_at: *deadline_at,
                 }),
-                ..s.clone()
+                ..close_silent(s.clone(), Some(*at), None)
             })
         }
         E::HelperRestored { at, audio_path } => {
@@ -144,12 +299,13 @@ pub fn reduce(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> 
             if !is_capturing(s.phase) {
                 return None;
             }
+            // A source still silent at the stop: its stretch ends at the stop (N29).
             Some(RecordingState {
                 reconnect: None,
                 phase: P::Stopping,
                 stop_reason: Some(*reason),
                 stopped_at: Some(*at),
-                ..s.clone()
+                ..close_silent(s.clone(), Some(*at), None)
             })
         }
         E::Stopped { .. } => {
