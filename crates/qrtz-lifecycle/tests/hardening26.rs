@@ -200,7 +200,7 @@ async fn n121_close_out_turns_before_the_ack_count_and_turns_after_the_stop_comp
     }
     // Stop: the diarizer is still busy after 3 s, so it is closed out: its tracker's open turn (system:1, up to the
     // audio it processed) is sent before `recording.stopped`. The host takes turns until the stop completes
-    // (phase stopping, ADR 0081), so close-out turns always count.
+    // (phase stopping, ADR 0082), so close-out turns always count.
     stop(&r, &wav, &[turn("system", 1, 28_000, 36_000)], &[]).await;
     // The cancelled model call returns later; if the helper's run guard ever let it through, the stop is over and
     // the meeting's turns are already in its pipeline: dropped.
