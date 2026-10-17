@@ -1,0 +1,22 @@
+[package]
+name = "qrtz-backup"
+description = "qrtz meeting export (Markdown) and backup zip export/import, file-format compatible with the Electron build (port of apps/desktop/src/main/backup.ts and packages/core/src/note/markdown.ts)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+qrtz-model.workspace = true
+qrtz-storage.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tempfile.workspace = true
+unicode-normalization.workspace = true
+regex = "1"
+sha2 = "0.10"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]

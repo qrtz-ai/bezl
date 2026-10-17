@@ -1,0 +1,300 @@
+{
+ "$comment": "Markdown export vectors. TS (packages/core/src/note/markdown.vectors.test.ts) is the oracle; crates/qrtz-backup/tests/markdown_vectors.rs must match filename and markdown byte for byte.",
+ "cases": [
+  {
+   "name": "minimal, no segments",
+   "meeting": {
+    "id": "m1",
+    "title": "Weekly sync",
+    "platform": "zoom",
+    "startedAt": 1760000000000,
+    "status": "done",
+    "participants": []
+   },
+   "segments": [],
+   "notes": [],
+   "expected": {
+    "filename": "2025-10-09-weekly-sync.md",
+    "markdown": "# Weekly sync\n\n- **When:** 2025-10-09 08:53 UTC\n- **Platform:** Zoom\n\n## Transcript\n\n---\n_Exported from qrtz note · summary by n/a_\n"
+   }
+  },
+  {
+   "name": "full: duration, participants, summary, actions with and without owner, Q&A, notes",
+   "meeting": {
+    "id": "m1",
+    "title": "Acme pricing call",
+    "platform": "google-meet",
+    "startedAt": 1760000000000,
+    "status": "done",
+    "participants": [
+     "Ada Lovelace",
+     "Bob"
+    ],
+    "durationMs": 3725400,
+    "endedAt": 1760003725400
+   },
+   "segments": [
+    {
+     "id": "s0",
+     "startMs": 0,
+     "endMs": 4000,
+     "text": "Thanks for joining.",
+     "source": "live",
+     "speakerName": "Ada Lovelace",
+     "speaker": "S1"
+    },
+    {
+     "id": "s1",
+     "startMs": 61500,
+     "endMs": 65500,
+     "text": "Budget is 50k.",
+     "source": "live",
+     "speaker": "S2"
+    },
+    {
+     "id": "s70",
+     "startMs": 4305000,
+     "endMs": 4309000,
+     "text": "Anything else?",
+     "source": "live"
+    }
+   ],
+   "summary": {
+    "summary": "We agreed on the pilot.\nNext step: security review.",
+    "actionItems": [
+     {
+      "text": "Send the questionnaire",
+      "owner": "Bob"
+     },
+     {
+      "text": "Book the follow-up"
+     },
+     {
+      "text": "Empty owner",
+      "owner": ""
+     }
+    ],
+    "qa": [
+     {
+      "question": "When does it start?",
+      "answer": "Next month.",
+      "askedBy": "Ada Lovelace"
+     },
+     {
+      "question": "Who pays?",
+      "answer": "Acme."
+     }
+    ],
+    "provider": "openrouter:anthropic/claude-haiku-5.5",
+    "template": "general"
+   },
+   "notes": [
+    {
+     "id": "n1",
+     "atMs": 6200,
+     "text": "Pilot budget 50k",
+     "createdAt": 1
+    },
+    {
+     "id": "n2",
+     "atMs": 3661000,
+     "text": "TODO *security*",
+     "createdAt": 2
+    }
+   ],
+   "expected": {
+    "filename": "2025-10-09-acme-pricing-call.md",
+    "markdown": "# Acme pricing call\n\n- **When:** 2025-10-09 08:53 UTC\n- **Platform:** Google Meet\n- **Duration:** 1:02:05\n- **Participants:** Ada Lovelace, Bob\n\n## Summary\n\nWe agreed on the pilot.\nNext step: security review.\n\n## Action items\n\n- [ ] Send the questionnaire — _Bob_\n- [ ] Book the follow-up\n- [ ] Empty owner\n\n## Q&A\n\n**Q (Ada Lovelace):** When does it start?  \n**A:** Next month.\n\n**Q:** Who pays?  \n**A:** Acme.\n\n## My notes\n\n- [0:06] Pilot budget 50k\n- [1:01:01] TODO \\*security\\*\n\n## Transcript\n\n**[0:00] Ada Lovelace:** Thanks for joining.\n\n**[1:01] S2:** Budget is 50k.\n\n**[1:11:45] Speaker:** Anything else?\n\n---\n_Exported from qrtz note · summary by openrouter:anthropic/claude-haiku-5.5_\n"
+   }
+  },
+  {
+   "name": "summary with no action items and no Q&A",
+   "meeting": {
+    "id": "m1",
+    "title": "Weekly sync",
+    "platform": "teams",
+    "startedAt": 1760000000000,
+    "status": "done",
+    "participants": [],
+    "durationMs": 59999
+   },
+   "segments": [
+    {
+     "id": "s1",
+     "startMs": 61500,
+     "endMs": 65500,
+     "text": "hello",
+     "source": "live"
+    }
+   ],
+   "summary": {
+    "summary": "Short.",
+    "actionItems": [],
+    "qa": [],
+    "provider": "extractive"
+   },
+   "notes": [],
+   "expected": {
+    "filename": "2025-10-09-weekly-sync.md",
+    "markdown": "# Weekly sync\n\n- **When:** 2025-10-09 08:53 UTC\n- **Platform:** Microsoft Teams\n- **Duration:** 0:59\n\n## Summary\n\nShort.\n\n## Action items\n\n_None._\n\n## Transcript\n\n**[1:01] Speaker:** hello\n\n---\n_Exported from qrtz note · summary by extractive_\n"
+   }
+  },
+  {
+   "name": "markdown metacharacters are escaped everywhere",
+   "meeting": {
+    "id": "m1",
+    "title": "# Q4 [draft] *plan* <v2> | a_b `x` \\ end",
+    "platform": "slack-huddle",
+    "startedAt": 1760000000000,
+    "status": "done",
+    "participants": [
+     "_under_",
+     "pipe|name",
+     "[x]"
+    ]
+   },
+   "segments": [
+    {
+     "id": "s2",
+     "startMs": 123000,
+     "endMs": 127000,
+     "text": "`code` **bold** <tag> #hash",
+     "source": "live",
+     "speakerName": "*Ann*"
+    }
+   ],
+   "summary": {
+    "summary": "[link](x) _em_",
+    "actionItems": [
+     {
+      "text": "a|b",
+      "owner": "<o>"
+     }
+    ],
+    "qa": [
+     {
+      "question": "#?",
+      "answer": "`a`",
+      "askedBy": "_q_"
+     }
+    ],
+    "provider": "p"
+   },
+   "notes": [
+    {
+     "id": "n",
+     "atMs": 0,
+     "text": "<b>",
+     "createdAt": 0
+    }
+   ],
+   "expected": {
+    "filename": "2025-10-09-q4-draft-plan-v2-a-b-x-end.md",
+    "markdown": "# \\# Q4 \\[draft\\] \\*plan\\* \\<v2\\> \\| a\\_b \\`x\\` \\\\ end\n\n- **When:** 2025-10-09 08:53 UTC\n- **Platform:** Slack huddle\n- **Participants:** \\_under\\_, pipe\\|name, \\[x\\]\n\n## Summary\n\n\\[link\\](x) \\_em\\_\n\n## Action items\n\n- [ ] a\\|b — _\\<o\\>_\n\n## Q&A\n\n**Q (\\_q\\_):** \\#?  \n**A:** \\`a\\`\n\n## My notes\n\n- [0:00] \\<b\\>\n\n## Transcript\n\n**[2:03] \\*Ann\\*:** \\`code\\` \\*\\*bold\\*\\* \\<tag\\> \\#hash\n\n---\n_Exported from qrtz note · summary by p_\n"
+   }
+  },
+  {
+   "name": "unicode title: accents, CJK, emoji, compatibility forms",
+   "meeting": {
+    "id": "m1",
+    "title": "Café résumé — 会议 🚀 ﬁnal Ｆｕｌｌ",
+    "platform": "webex",
+    "startedAt": 1760000000000,
+    "status": "done",
+    "participants": []
+   },
+   "segments": [
+    {
+     "id": "s3",
+     "startMs": 184500,
+     "endMs": 188500,
+     "text": "日本語のテキスト",
+     "source": "live",
+     "speakerName": ""
+    }
+   ],
+   "notes": [],
+   "expected": {
+    "filename": "2025-10-09-cafe-re-sume-会议-final-full.md",
+    "markdown": "# Café résumé — 会议 🚀 ﬁnal Ｆｕｌｌ\n\n- **When:** 2025-10-09 08:53 UTC\n- **Platform:** Webex\n\n## Transcript\n\n**[3:04] :** 日本語のテキスト\n\n---\n_Exported from qrtz note · summary by n/a_\n"
+   }
+  },
+  {
+   "name": "long title is cut at 60 slug characters",
+   "meeting": {
+    "id": "m1",
+    "title": "An extremely long meeting title that keeps going well past the sixty character limit",
+    "platform": "other",
+    "startedAt": 1760000000000,
+    "status": "done",
+    "participants": []
+   },
+   "segments": [],
+   "notes": [],
+   "expected": {
+    "filename": "2025-10-09-an-extremely-long-meeting-title-that-keeps-going-well-past-t.md",
+    "markdown": "# An extremely long meeting title that keeps going well past the sixty character limit\n\n- **When:** 2025-10-09 08:53 UTC\n- **Platform:** Meeting\n\n## Transcript\n\n---\n_Exported from qrtz note · summary by n/a_\n"
+   }
+  },
+  {
+   "name": "title with no letters or digits",
+   "meeting": {
+    "id": "m1",
+    "title": "!!! ??? ...",
+    "platform": "zoom",
+    "startedAt": 0,
+    "status": "done",
+    "participants": []
+   },
+   "segments": [],
+   "notes": [],
+   "expected": {
+    "filename": "1970-01-01-meeting.md",
+    "markdown": "# !!! ??? ...\n\n- **When:** 1970-01-01 00:00 UTC\n- **Platform:** Zoom\n\n## Transcript\n\n---\n_Exported from qrtz note · summary by n/a_\n"
+   }
+  },
+  {
+   "name": "leap day, before 1970, negative segment offset clamps",
+   "meeting": {
+    "id": "m1",
+    "title": "Leap",
+    "platform": "zoom",
+    "startedAt": 951782399999,
+    "status": "done",
+    "participants": [],
+    "durationMs": 0
+   },
+   "segments": [
+    {
+     "id": "s0",
+     "startMs": -500,
+     "endMs": 4000,
+     "text": "early",
+     "source": "live"
+    }
+   ],
+   "notes": [],
+   "expected": {
+    "filename": "2000-02-28-leap.md",
+    "markdown": "# Leap\n\n- **When:** 2000-02-28 23:59 UTC\n- **Platform:** Zoom\n- **Duration:** 0:00\n\n## Transcript\n\n**[0:00] Speaker:** early\n\n---\n_Exported from qrtz note · summary by n/a_\n"
+   }
+  },
+  {
+   "name": "year before 1970",
+   "meeting": {
+    "id": "m1",
+    "title": "Old",
+    "platform": "zoom",
+    "startedAt": -86400001,
+    "status": "done",
+    "participants": []
+   },
+   "segments": [],
+   "notes": [],
+   "expected": {
+    "filename": "1969-12-30-old.md",
+    "markdown": "# Old\n\n- **When:** 1969-12-30 23:59 UTC\n- **Platform:** Zoom\n\n## Transcript\n\n---\n_Exported from qrtz note · summary by n/a_\n"
+   }
+  }
+ ]
+}
