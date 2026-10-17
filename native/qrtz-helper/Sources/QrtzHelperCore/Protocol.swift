@@ -89,6 +89,10 @@ public enum HelperMessage: Equatable, Sendable {
     /// N55: the audio fds named by speech.attach were taken (see SpeechSinks).
     case speechAttached(sessionId: String)
     case speechAttachRejected(sessionId: String, reason: SpeechAttachReject)
+    /// ADR 0075: answers to summarize / summarize.check.
+    case summarizeResult(id: String, output: SummaryOutput)
+    case summarizeError(id: String, failure: SummarizeFailure)
+    case summarizeStatus(id: String, available: Bool, reason: SummarizeUnavailable?, contextTokens: Int?)
 }
 
 /// Host → helper.
@@ -113,6 +117,10 @@ public enum HostMessage: Equatable, Sendable {
     case insertText(id: String, text: String, restoreClipboard: Bool)
     /// ADR 0046 §1: the speech module's audio write ends wait on the speech socket (see SpeechSinks).
     case speechAttach(sessionId: String, target: SpeechTarget, channels: [CaptureSource])
+    /// ADR 0075: summarize a host-built, fenced prompt with the on-device model (see SummarizeService).
+    case summarize(id: String, stage: SummarizeStage, prompt: String)
+    case summarizeCancel(id: String)
+    case summarizeCheck(id: String)
 }
 
 // MARK: - Encoding helpers
@@ -243,6 +251,27 @@ extension HelperMessage {
             return obj("insert.result", o)
         case .speechAttached(let sid): return obj("speech.attached", ["sessionId": s(sid)])
         case .speechAttachRejected(let sid, let r): return obj("speech.attach.rejected", ["sessionId": s(sid), "reason": s(r.rawValue)])
+        case .summarizeResult(let id, let out):
+            let items: [JSONValue] = out.actionItems.map { a in
+                var o: [String: JSONValue] = ["text": s(a.text)]
+                if let owner = a.owner { o["owner"] = s(owner) }
+                return .object(o)
+            }
+            let qa: [JSONValue] = out.qa.map { q in
+                var o: [String: JSONValue] = ["question": s(q.question), "answer": s(q.answer)]
+                if let by = q.askedBy { o["askedBy"] = s(by) }
+                return .object(o)
+            }
+            return obj("summarize.result", ["id": s(id), "summary": s(out.summary), "actionItems": .array(items), "qa": .array(qa)])
+        case .summarizeError(let id, let f):
+            var o: [String: JSONValue] = ["id": s(id), "code": s(f.code.rawValue), "message": s(SummaryOutput.clean(f.message, SummarizeLimits.messageMax))]
+            if let r = f.reason { o["reason"] = s(r.rawValue) }
+            return obj("summarize.error", o)
+        case .summarizeStatus(let id, let available, let reason, let ctx):
+            var o: [String: JSONValue] = ["id": s(id), "available": .bool(available)]
+            if let reason { o["reason"] = s(reason.rawValue) }
+            if let ctx { o["contextTokens"] = n(Double(ctx)) }
+            return obj("summarize.status", o)
         }
     }
 
@@ -336,6 +365,30 @@ extension HelperMessage {
         case "speech.attached": self = .speechAttached(sessionId: try f.str("sessionId"))
         case "speech.attach.rejected":
             self = .speechAttachRejected(sessionId: try f.str("sessionId"), reason: try f.enumValue("reason", SpeechAttachReject.self))
+        case "summarize.result":
+            func arr(_ k: String) throws -> [Fields] {
+                guard let a = f.o[k]?.array else { throw ProtocolError("missing array \(k)") }
+                return try a.map { try Fields($0) }
+            }
+            let out = SummaryOutput(
+                summary: try f.str("summary"),
+                actionItems: try arr("actionItems").map { SummaryActionItem(text: try $0.str("text"), owner: try $0.optStr("owner")) },
+                qa: try arr("qa").map { SummaryQa(question: try $0.str("question"), answer: try $0.str("answer"), askedBy: try $0.optStr("askedBy")) })
+            guard out == out.capped else { throw ProtocolError("summarize.result out of bounds") }
+            self = .summarizeResult(id: try f.str("id"), output: out)
+        case "summarize.error":
+            let reason = try f.optStr("reason").map { r -> SummarizeUnavailable in
+                guard let v = SummarizeUnavailable(rawValue: r) else { throw ProtocolError("bad reason") }
+                return v
+            }
+            self = .summarizeError(id: try f.str("id"), failure: SummarizeFailure(try f.enumValue("code", SummarizeErrorCode.self), reason: reason, try f.str("message")))
+        case "summarize.status":
+            guard let a = f.o["available"]?.bool else { throw ProtocolError("missing available") }
+            let reason = try f.optStr("reason").map { r -> SummarizeUnavailable in
+                guard let v = SummarizeUnavailable(rawValue: r) else { throw ProtocolError("bad reason") }
+                return v
+            }
+            self = .summarizeStatus(id: try f.str("id"), available: a, reason: reason, contextTokens: try f.optNum("contextTokens").map { Int($0) })
         case let t: throw ProtocolError("unknown helper message type \(t)")
         }
     }
@@ -370,6 +423,10 @@ extension HostMessage {
             case .recording(let p): t = .object(["kind": s("recording"), "audioPath": s(p)])
             }
             return .object(["type": s("speech.attach"), "sessionId": s(sid), "target": t, "channels": .array(channels.map { s($0.rawValue) })])
+        case .summarize(let id, let stage, let prompt):
+            return .object(["type": s("summarize"), "id": s(id), "stage": s(stage.rawValue), "prompt": s(prompt)])
+        case .summarizeCancel(let id): return .object(["type": s("summarize.cancel"), "id": s(id)])
+        case .summarizeCheck(let id): return .object(["type": s("summarize.check"), "id": s(id)])
         }
     }
 
@@ -410,6 +467,13 @@ extension HostMessage {
             }
             guard (1...2).contains(chans.count) else { throw ProtocolError("bad channels") }
             self = .speechAttach(sessionId: try f.str("sessionId"), target: target, channels: chans)
+        case "summarize":
+            let id = try f.str("id"), prompt = try f.str("prompt")
+            guard (1...64).contains(id.count) else { throw ProtocolError("bad id") }
+            guard !prompt.isEmpty, prompt.utf16.count <= SummarizeLimits.promptMax else { throw ProtocolError("bad prompt") }
+            self = .summarize(id: id, stage: try f.enumValue("stage", SummarizeStage.self), prompt: prompt)
+        case "summarize.cancel": self = .summarizeCancel(id: try f.str("id"))
+        case "summarize.check": self = .summarizeCheck(id: try f.str("id"))
         case let t: throw ProtocolError("unknown host message type \(t)")
         }
     }

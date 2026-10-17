@@ -24,6 +24,10 @@ pub struct RuntimeConfig {
     pub default_template: String,
     pub excluded_apps: Vec<String>,
     pub retain_audio_days: u32,
+    /// The summary step's RPC timeout (TS `WorkerClient.call`, 120 s). Not a setting: the shell raises it when the
+    /// summary engine is on-device (ADR 0075: a long meeting is several model calls).
+    #[serde(skip)]
+    pub summary_timeout_ms: u64,
 }
 
 impl Default for RuntimeConfig {
@@ -38,6 +42,7 @@ impl Default for RuntimeConfig {
             default_template: "general".into(),
             excluded_apps: Vec::new(),
             retain_audio_days: 0,
+            summary_timeout_ms: super::service::SUMMARY_TIMEOUT_MS,
         }
     }
 }

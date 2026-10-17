@@ -55,17 +55,20 @@ async fn note_end_to_end_detect_record_live_transcript_summarize_search_export()
     assert_eq!(recs.len(), 1);
     assert!(std::fs::metadata(&recs[0]).unwrap().len() > 1_000_000);
 
-    // 3. Stop → extractive summary with action items (no key).
+    // 3. Stop → the on-device summary (ADR 0075: the helper's Apple Intelligence model; here the mock's) with the
+    //    action item it found.
     a.note("note:stop", Value::Null).await;
     a.until_phase("done").await;
     a.until_settled(&id).await;
     let d = a.note("note:get", json!({"id": id})).await;
     let sum = &d["summary"];
-    assert!(sum["actionItems"].as_array().unwrap().len() >= 3, "{sum}");
-    let text = sum.to_string();
-    assert!(text.contains("onboarding copy"), "{sum}");
-    assert!(text.contains("Grace Hopper"), "{sum}");
-    assert!(sum["provider"].as_str().unwrap().contains("extractive"), "{sum}");
+    assert_eq!(sum["provider"], "apple-intelligence", "{sum}");
+    assert_eq!(
+        sum["summary"], "mock on-device single summary of 8 fenced lines.",
+        "{sum}"
+    );
+    assert_eq!(sum["actionItems"][0]["owner"], "Alan Turing", "{sum}");
+    assert!(sum.get("llmError").is_none_or(Value::is_null), "{sum}");
     assert_eq!(d["notes"][0]["text"], "From the mini HUD", "{d}");
     assert!(d["notes"][0]["atMs"].is_number());
     // Transcript: 8 speaker-labelled lines.

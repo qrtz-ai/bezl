@@ -1,17 +1,24 @@
 //! Phase 5 port of e2e/lifecycle.spec.ts (docs/e2e-parity.md rows 14-17): live transcript partials → finals and
-//! after restart, permission denied, LLM failure → retries → fallback → manual retry, restart mid post-processing.
-//! The scripted helper plays the standup (examples/e2e_helper.rs); the provider is a local mock OpenRouter.
+//! after restart, permission denied, summary failure → retries → fallback → manual retry, restart mid
+//! post-processing. The scripted helper plays the standup and is the on-device model (examples/e2e_helper.rs,
+//! `QRTZ_MOCK_SUMMARIZE`; ADR 0075: summaries never leave the Mac).
 mod e2e_support;
 use e2e_support::*;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 
-fn stub_ai() -> String {
-    completion(&json!({
-        "summary": "STUB-AI: the team agreed to ship the beta on Friday.",
-        "actionItems": [],
-        "qa": []
-    }))
+/// `summarize` requests the on-device model got (`QRTZ_MOCK_SUMMARIZE_LOG`).
+fn attempts(log: &std::path::Path) -> usize {
+    std::fs::read_to_string(log)
+        .map(|s| s.lines().count())
+        .unwrap_or(0)
+}
+
+/// The model answers `busy` (retryable) while `busy` exists; every request is logged to `log`.
+fn busy_model(o: Opts, busy: &std::path::Path, log: &std::path::Path) -> Opts {
+    std::fs::write(busy, b"").unwrap();
+    o.env("QRTZ_MOCK_SUMMARIZE", &format!("busy-while:{}", busy.display()))
+        .env("QRTZ_MOCK_SUMMARIZE_LOG", log.to_str().unwrap())
 }
 
 async fn detected(a: &App) {
@@ -131,21 +138,16 @@ async fn permission_denied_refuses_the_start_as_lifecycle_state_and_creates_no_m
     a.quit().await;
 }
 
-/// lifecycle: the provider answers 503 → the summary retries (maxAttempts = 3 requests), fails with the on-device
-/// fallback and the 503; finalize is done; `note:retry-step summary` then gets the AI summary.
+/// lifecycle: the on-device model is busy → the summary retries (maxAttempts = 3 requests), fails with the
+/// extractive fallback and the error; finalize is done; once the model is free `note:retry-step summary` gets the
+/// on-device summary.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn llm_failure_retries_falls_back_on_device_and_a_manual_step_retry_succeeds() {
+async fn summary_failure_retries_falls_back_and_a_manual_step_retry_succeeds() {
     let tmp = tempfile::tempdir().unwrap();
-    let llm = MockHttp::start().await;
-    llm.always(overloaded());
+    let (busy, log) = (tmp.path().join("busy"), tmp.path().join("summarize.jsonl"));
     let a = App::launch(
         &tmp.path().join("data"),
-        Opts::default().standup("0.02").llm(&llm.base),
-    )
-    .await;
-    a.settings(
-        "secrets:set",
-        json!({"name": "llm.openrouter", "value": "sk-test-stub"}),
+        busy_model(Opts::default().standup("0.02"), &busy, &log),
     )
     .await;
     a.helper_ready().await;
@@ -158,19 +160,23 @@ async fn llm_failure_retries_falls_back_on_device_and_a_manual_step_retry_succee
     .await;
     a.note("note:stop", Value::Null).await;
     let p = a.until_step(&id, "summary", "failed").await;
-    assert_eq!(llm.hits(), 3, "maxAttempts");
+    assert_eq!(attempts(&log), 3, "maxAttempts");
     let step = &p["steps"]["summary"];
     assert_eq!(step["fallback"], true, "{p}");
     assert!(
-        step["error"]["message"].as_str().unwrap_or("").contains("503"),
+        step["error"]["message"].as_str().unwrap_or("").contains("busy"),
         "{p}"
     );
     assert_eq!(p["steps"]["finalize"]["status"], "done", "{p}");
-    // The meeting still has the on-device summary.
+    // The meeting still has the extractive summary, with the error to show.
     let d = a.note("note:get", json!({"id": id})).await;
     assert!(d["summary"]["summary"].is_string(), "{d}");
+    assert!(
+        d["summary"]["provider"].as_str().unwrap().contains("extractive"),
+        "{d}"
+    );
 
-    llm.always(stub_ai());
+    std::fs::remove_file(&busy).unwrap();
     a.note("note:retry-step", json!({"id": id, "step": "summary"}))
         .await;
     a.until_step(&id, "summary", "done").await;
@@ -182,10 +188,7 @@ async fn llm_failure_retries_falls_back_on_device_and_a_manual_step_retry_succee
         "{p}"
     );
     let d = a.note("note:get", json!({"id": id})).await;
-    assert!(
-        d["summary"]["summary"].as_str().unwrap().contains("STUB-AI"),
-        "{d}"
-    );
+    assert_eq!(d["summary"]["provider"], "apple-intelligence", "{d}");
     assert!(d["summary"].get("llmError").is_none_or(Value::is_null), "{d}");
     a.quit().await;
 }
@@ -196,16 +199,10 @@ async fn llm_failure_retries_falls_back_on_device_and_a_manual_step_retry_succee
 async fn app_restart_mid_post_processing_resumes_the_pipeline_from_the_persisted_step() {
     let tmp = tempfile::tempdir().unwrap();
     let data = tmp.path().join("data");
-    let llm = MockHttp::start().await;
-    llm.always(overloaded());
+    let (busy, log) = (tmp.path().join("busy"), tmp.path().join("summarize.jsonl"));
     let a = App::launch(
         &data,
-        Opts::default().standup("0.02").llm(&llm.base).retry_scale(1.0),
-    )
-    .await;
-    a.settings(
-        "secrets:set",
-        json!({"name": "llm.openrouter", "value": "sk-test-stub"}),
+        busy_model(Opts::default().standup("0.02").retry_scale(1.0), &busy, &log),
     )
     .await;
     a.helper_ready().await;
@@ -221,10 +218,14 @@ async fn app_restart_mid_post_processing_resumes_the_pipeline_from_the_persisted
     assert_eq!(p["steps"]["finalize"]["status"], "done", "{p}");
     let finalized_at = p["steps"]["finalize"]["finishedAt"].clone();
     a.quit().await; // between attempts
-    let before = llm.hits();
+    let before = attempts(&log);
 
-    llm.always(stub_ai());
-    let b = App::launch(&data, Opts::default().llm(&llm.base)).await;
+    std::fs::remove_file(&busy).unwrap();
+    let b = App::launch(
+        &data,
+        Opts::default().env("QRTZ_MOCK_SUMMARIZE_LOG", log.to_str().unwrap()),
+    )
+    .await;
     let p = b.until_settled(&id).await;
     assert_eq!(p["steps"]["summary"]["status"], "done", "{p}");
     assert_eq!(
@@ -232,11 +233,8 @@ async fn app_restart_mid_post_processing_resumes_the_pipeline_from_the_persisted
         "finalize redone: {p}"
     );
     let d = b.note("note:get", json!({"id": id})).await;
-    assert!(
-        d["summary"]["summary"].as_str().unwrap().contains("STUB-AI"),
-        "{d}"
-    );
-    assert_eq!(llm.hits(), before + 1, "resumed once");
+    assert_eq!(d["summary"]["provider"], "apple-intelligence", "{d}");
+    assert_eq!(attempts(&log), before + 1, "resumed once");
     let list = b.note("note:list", json!({})).await;
     assert_eq!(list[0]["meeting"]["status"], "done", "{list}");
     b.quit().await;

@@ -32,6 +32,9 @@
     "permission.revoked",
     "speech.attached",
     "speech.attach.rejected",
+    "summarize.result",
+    "summarize.error",
+    "summarize.status",
     "insert.result"
   ],
   "hostToHelperTypes": [
@@ -49,6 +52,9 @@
     "dictation.stop",
     "dictation.cancel",
     "speech.attach",
+    "summarize",
+    "summarize.cancel",
+    "summarize.check",
     "insert.text"
   ],
   "helperToHost": {
@@ -886,6 +892,158 @@
         "properties": {
           "type": {
             "type": "string",
+            "const": "summarize.result"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 4000
+          },
+          "actionItems": {
+            "maxItems": 12,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "maxLength": 400
+                },
+                "owner": {
+                  "type": "string",
+                  "maxLength": 80
+                }
+              },
+              "required": [
+                "text"
+              ]
+            }
+          },
+          "qa": {
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "question": {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                "answer": {
+                  "type": "string",
+                  "maxLength": 600
+                },
+                "askedBy": {
+                  "type": "string",
+                  "maxLength": 80
+                }
+              },
+              "required": [
+                "question",
+                "answer"
+              ]
+            }
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "summary",
+          "actionItems",
+          "qa"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "summarize.error"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "unavailable",
+              "context",
+              "guardrail",
+              "busy",
+              "cancelled",
+              "failed"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "apple-intelligence-off",
+              "device-not-eligible",
+              "model-not-ready",
+              "os-unsupported",
+              "unsupported"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 300
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "code",
+          "message"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "summarize.status"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "apple-intelligence-off",
+              "device-not-eligible",
+              "model-not-ready",
+              "os-unsupported",
+              "unsupported"
+            ]
+          },
+          "contextTokens": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "available"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
             "const": "insert.result"
           },
           "id": {
@@ -1200,6 +1358,75 @@
           "sessionId",
           "target",
           "channels"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "summarize"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "single",
+              "map",
+              "reduce"
+            ]
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40000
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "stage",
+          "prompt"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "summarize.cancel"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "summarize.check"
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "type",
+          "id"
         ]
       },
       {

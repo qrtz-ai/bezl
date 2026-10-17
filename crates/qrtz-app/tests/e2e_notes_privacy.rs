@@ -45,7 +45,20 @@ fn config(data: &std::path::Path) -> Value {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn live_notes_and_privacy_pause_notes_merged_into_the_summary_and_templates_re_run() {
     let tmp = tempfile::tempdir().unwrap();
-    let a = App::launch(&tmp.path().join("data"), Opts::default().standup("0.3")).await;
+    // ADR 0075: the summary is written on-device; the notes reach the model as the user's priorities.
+    let plog = tmp.path().join("summarize.jsonl");
+    let last_prompt = || {
+        let l = std::fs::read_to_string(&plog).unwrap_or_default();
+        let v: Value = serde_json::from_str(l.lines().last().unwrap_or("{}")).unwrap();
+        v["prompt"].as_str().unwrap_or_default().to_owned()
+    };
+    let a = App::launch(
+        &tmp.path().join("data"),
+        Opts::default()
+            .standup("0.3")
+            .env("QRTZ_MOCK_SUMMARIZE_LOG", plog.to_str().unwrap()),
+    )
+    .await;
     a.helper_ready().await;
     a.until_phase("detected").await;
     let s = a.note("note:start", json!({})).await;
@@ -98,23 +111,17 @@ async fn live_notes_and_privacy_pause_notes_merged_into_the_summary_and_template
     a.until_settled(&id).await;
 
     let d = a.note("note:get", json!({"id": id})).await;
-    let sum = d["summary"].to_string();
-    assert!(
-        sum.contains("Your notes: Ask Grace about the launch checklist; TODO send recap to the team."),
-        "{sum}"
-    );
-    let actions = d["summary"]["actionItems"].as_array().unwrap();
-    assert_eq!(
-        actions
-            .iter()
-            .filter(|x| x["text"]
-                .as_str()
-                .unwrap_or("")
-                .contains("send recap to the team"))
-            .count(),
-        1,
-        "{sum}"
-    );
+    assert_eq!(d["summary"]["provider"], "apple-intelligence", "{d}");
+    let p = last_prompt();
+    let notes_at = p.find("My notes").expect("notes in the prompt");
+    let fence_at = p.rfind("<transcript-").expect("fenced transcript");
+    assert!(notes_at < fence_at, "notes are outside the transcript fence: {p}");
+    for n in [
+        "Ask Grace about the launch checklist",
+        "TODO send recap to the team",
+    ] {
+        assert!(p[notes_at..fence_at].contains(n), "{n} in {p}");
+    }
 
     // Edit a note; the change is saved.
     a.note(
@@ -133,12 +140,15 @@ async fn live_notes_and_privacy_pause_notes_merged_into_the_summary_and_template
     let r = a
         .note("note:set-template", json!({"id": id, "template": "standup"}))
         .await;
-    assert!(r.to_string().contains("send recap to everyone"), "{r}");
+    assert_eq!(r["provider"], "apple-intelligence", "{r}");
+    let p = last_prompt();
+    assert!(p.starts_with("This is a standup."), "{p}");
+    assert!(p.contains("TODO send recap to everyone"), "{p}");
     a.quit().await;
     let b = App::launch(&tmp.path().join("data"), Opts::default()).await;
     let d = b.note("note:get", json!({"id": id})).await;
     assert_eq!(meeting_template(&d), "standup", "{d}");
-    assert!(d["summary"].to_string().contains("send recap to everyone"), "{d}");
+    assert_eq!(d["summary"]["template"], "standup", "{d}");
     b.quit().await;
 }
 
@@ -183,10 +193,8 @@ async fn privacy_local_only_never_calls_the_cloud_llm_and_excluded_apps_are_not_
     a.until_phase("detected").await; // zoom is not excluded
     let (id, _) = record_until(&a, None, |t| segments(t) > 1).await;
     let d = a.note("note:get", json!({"id": id})).await;
-    assert!(
-        d["summary"]["provider"].as_str().unwrap().contains("extractive"),
-        "{d}"
-    );
+    // ADR 0075: the summary is written on this Mac; the provider is never called.
+    assert_eq!(d["summary"]["provider"], "apple-intelligence", "{d}");
     assert!(d["summary"]["llmError"].is_null(), "{d}");
     assert_eq!(llm.hits(), 0);
     a.quit().await;
@@ -265,7 +273,9 @@ async fn backup_export_with_checksums_import_into_a_fresh_profile_and_a_tampered
         "{r}"
     );
     let d = b.note("note:get", json!({"id": id})).await;
-    assert!(d["summary"].to_string().contains("Your notes: backup me."), "{d}");
+    // The summary (on-device, ADR 0075) and the note came across with the meeting.
+    assert_eq!(d["summary"]["provider"], "apple-intelligence", "{d}");
+    assert!(d["notes"].to_string().contains("backup me"), "{d}");
     assert_eq!(std::fs::read_dir(bdir.join("recordings")).unwrap().count(), 1);
     b.quit().await;
 

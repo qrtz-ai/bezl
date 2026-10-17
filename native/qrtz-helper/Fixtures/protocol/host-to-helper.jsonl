@@ -16,3 +16,6 @@
 {"channels":["mic","system"],"sessionId":"/rec/m1-p1.wav","target":{"audioPath":"/rec/m1-p1.wav","kind":"recording"},"type":"speech.attach"}
 {"channels":["mic"],"sessionId":"d1","target":{"id":"d1","kind":"dictation"},"type":"speech.attach"}
 {"consumeFn":false,"preRollMs":0,"pushKey":"fn","streamAudio":false,"type":"dictation.configure","warmMic":false}
+{"id":"s1","prompt":"Meeting: standup\n\nTranscript:\n<transcript-0123456789abcdef>\n[0:01] maya: hi\n</transcript-0123456789abcdef>","stage":"single","type":"summarize"}
+{"id":"s1","type":"summarize.cancel"}
+{"id":"c1","type":"summarize.check"}

@@ -327,7 +327,9 @@ export function MeetingDetail({
             source={
               summary.provider === 'extractive'
                 ? 'on-device extractive'
-                : summary.provider
+                : summary.provider === 'apple-intelligence'
+                  ? 'on-device · apple intelligence'
+                  : summary.provider
             }
             toolbar={
               <Toolbar

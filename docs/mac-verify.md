@@ -66,6 +66,8 @@ bun start                      # tauri dev (or `bun run make` for the .app + .dm
 
 - [ ] With `bun run make`, `Contents/MacOS/qrtz-helper` is in the .app. In either build, Settings → System shows the helper as connected and not mock.
 - [ ] Join a Zoom or Meet call. qrtz offers to record, the floating HUD appears (top right, above Zoom), ⌘⇧R stops recording, and a summary appears.
+- [ ] The summary's source reads "on-device · apple intelligence" (ADR 0075; Apple Intelligence on in System Settings › Apple Intelligence & Siri). With Apple Intelligence off, the meeting shows "summary unavailable: apple intelligence is turned off…" with retry, and the transcript-based summary.
+- [ ] Helper only: `printf '{"type":"summarize.check","id":"c1"}\n' | .build/debug/qrtz-helper` (from `native/qrtz-helper`) answers `summarize.status` with `"available":true` and `"contextTokens":4096`.
 
 ## Known gaps
 

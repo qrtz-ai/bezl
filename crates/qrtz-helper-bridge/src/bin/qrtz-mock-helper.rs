@@ -38,6 +38,10 @@
 //!                                dictation: `dictation.started`, then every 150 ms a level + a growing
 //!                                `dictation.asr` partial; `dictation.stop` answers `dictation.stopped {text}`;
 //!                                `insert.text` answers `insert.result` (ok, method ax-selected-text).
+//!   QRTZ_MOCK_SUMMARIZE / QRTZ_MOCK_SUMMARIZE_LOG
+//!                                ADR 0075 on-device summaries: see `mock/summarize.rs`.
+#[path = "../../mock/summarize.rs"]
+mod mock_summarize;
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -371,6 +375,11 @@ fn main() {
             continue;
         };
         match msg["type"].as_str().unwrap_or_default() {
+            "summarize" | "summarize.check" | "summarize.cancel" => {
+                if let Some(reply) = mock_summarize::handle(&line, &msg) {
+                    say(reply);
+                }
+            }
             "ping" => say(json!({"type": "pong", "id": msg["id"]})),
             "permissions.check" | "permissions.request" => {
                 say(json!({"type": "permissions.status", "status": perms.lock().unwrap().clone()}))

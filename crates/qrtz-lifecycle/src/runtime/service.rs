@@ -2306,7 +2306,7 @@ impl Shared {
                 }
                 with_timeout(
                     "note.stepSummary",
-                    SUMMARY_TIMEOUT_MS,
+                    cfg.summary_timeout_ms,
                     steps.summary(id, SummaryRequest::Llm),
                 )
                 .await?;
@@ -2467,7 +2467,7 @@ impl Shared {
         }
         let summary = with_timeout(
             "note.resummarize",
-            SUMMARY_TIMEOUT_MS,
+            self.config().summary_timeout_ms,
             self.d.steps.resummarize(id.to_string(), None),
         )
         .await?;

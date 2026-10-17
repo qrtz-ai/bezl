@@ -82,9 +82,6 @@ impl MockLlm {
         });
         base
     }
-    fn push(&self, r: String) {
-        self.replies.lock().unwrap().push_back(r);
-    }
     fn seen(&self) -> Vec<(String, String, String)> {
         self.seen.lock().unwrap().clone()
     }
@@ -95,11 +92,6 @@ fn http(status: u16, ct: &str, body: &str) -> String {
         "HTTP/1.1 {status} X\r\ncontent-type: {ct}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
         body.len()
     )
-}
-
-fn completion(content: &Value) -> String {
-    let body = json!({"choices": [{"message": {"content": content.to_string()}}]}).to_string();
-    http(200, "application/json", &body)
 }
 
 fn mock_helper_bin() -> PathBuf {
@@ -197,21 +189,17 @@ async fn record_one(a: &BuiltApp, r: &Router<Shared>, title: &str) -> (String, V
     (id, p)
 }
 
+/// ADR 0075: the summary is written on this Mac (the helper's on-device model; here the mock helper's), even
+/// with a provider key saved: nothing reaches the provider. Search is full-text over the notes DB.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn an_openrouter_summary_through_the_tauri_backend_and_full_text_search() {
+async fn an_on_device_summary_through_the_tauri_backend_and_full_text_search() {
     let tmp = tempfile::tempdir().unwrap();
     let mock = MockLlm::default();
     let base = mock.start().await;
-    mock.push(completion(&json!({
-        "summary": "the team agreed to ship on friday.",
-        "actionItems": [{"text": "ship it", "owner": "bobs"}],
-        "qa": []
-    })));
     let a = app(&tmp.path().join("data"), &base);
     let r = Router::new(Shared(a.service.clone())).validate_responses(true);
     a.service.start_helper();
     a.runtime.recover().await.unwrap();
-    // The key the user saved in settings (the app's 0600 store) is what the provider gets.
     call(
         &r,
         "settings",
@@ -228,24 +216,16 @@ async fn an_openrouter_summary_through_the_tauri_backend_and_full_text_search() 
         "{p}"
     );
     let d = call(&r, "note", "note:get", json!({"id": id})).await;
-    assert_eq!(d["summary"]["provider"], "openrouter", "{d}");
-    assert_eq!(d["summary"]["summary"], "the team agreed to ship on friday.");
-    assert_eq!(d["summary"]["actionItems"][0]["text"], "ship it");
-    assert!(d["summary"].get("llmError").is_none_or(Value::is_null), "{d}");
-
-    let seen = mock.seen();
-    assert_eq!(seen.len(), 1, "one summary request");
-    let (line, head, body) = &seen[0];
-    assert!(line.starts_with("POST /chat/completions"), "{line}");
-    assert!(head.contains("authorization: bearer sk-or-test"), "{head}");
-    assert!(head.contains("x-title: qrtz"), "{head}");
-    let req: Value = serde_json::from_str(body).unwrap();
-    let prompt = req["messages"].to_string();
+    assert_eq!(d["summary"]["provider"], "apple-intelligence", "{d}");
     assert!(
-        prompt.contains("Hello from the mock helper."),
-        "the transcript is sent: {prompt}"
+        d["summary"]["summary"]
+            .as_str()
+            .unwrap()
+            .starts_with("mock on-device"),
+        "{d}"
     );
-    assert!(prompt.contains("<transcript-"), "inside the N69 fence");
+    assert!(d["summary"].get("llmError").is_none_or(Value::is_null), "{d}");
+    assert!(mock.seen().is_empty(), "no request to the provider");
 
     // Search is full-text over the notes DB (FTS): the transcript finds the meeting.
     let hits = call(&r, "note", "note:list", json!({"query": "mock helper"})).await;
@@ -253,60 +233,6 @@ async fn an_openrouter_summary_through_the_tauri_backend_and_full_text_search() 
         hits.as_array()
             .is_some_and(|h| h.iter().any(|m| m["meeting"]["id"] == id.as_str())),
         "{hits}"
-    );
-    a.runtime.kill();
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_provider_redirect_is_not_followed_and_the_summary_falls_back() {
-    let tmp = tempfile::tempdir().unwrap();
-    let mock = MockLlm::default();
-    let base = mock.start().await;
-    // N81 through the app: a 307 would re-POST the transcript and the key to the Location.
-    let elsewhere = MockLlm::default();
-    let other = elsewhere.start().await;
-    for _ in 0..8 {
-        mock.push(format!(
-            "HTTP/1.1 307 X\r\nlocation: {other}/chat/completions\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
-        ));
-    }
-    let a = app(&tmp.path().join("data"), &base);
-    let r = Router::new(Shared(a.service.clone())).validate_responses(true);
-    a.service.start_helper();
-    a.runtime.recover().await.unwrap();
-    call(
-        &r,
-        "settings",
-        "secrets:set",
-        json!({"name": "llm.openrouter", "value": "sk-or-test"}),
-    )
-    .await;
-    let (id, p) = record_one(&a, &r, "Redirected").await;
-    // A redirect is a configuration error: not retried, and the meeting still gets the extractive summary.
-    let sum = &p["steps"]["summary"];
-    assert_eq!(
-        (sum["status"].as_str(), sum["fallback"].as_bool()),
-        (Some("failed"), Some(true)),
-        "{p}"
-    );
-    assert_eq!(sum["error"]["code"], "E_PROVIDER");
-    assert_eq!(sum["error"]["retryable"], false);
-    assert!(sum["error"]["message"]
-        .as_str()
-        .unwrap()
-        .contains("redirect not followed"));
-    assert!(!sum.to_string().contains("sk-or-test"), "no key in the error");
-    let d = call(&r, "note", "note:get", json!({"id": id})).await;
-    assert!(d["summary"]["summary"].is_string(), "extractive fallback: {d}");
-    assert_ne!(d["summary"]["provider"], "openrouter", "{d}");
-    assert!(
-        elsewhere.seen().is_empty(),
-        "the redirect target never got the key or transcript"
-    );
-    // The index step is a no-op (full-text search needs none), never a failure.
-    assert!(
-        matches!(p["steps"]["index"]["status"].as_str(), Some("done" | "skipped")),
-        "{p}"
     );
     a.runtime.kill();
 }

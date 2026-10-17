@@ -21,12 +21,19 @@ func makePlatformDeps(version: String) -> HelperDeps {
     if #available(macOS 26.0, *) { asr.append(SpeechAnalyzerTranscriber()); features.append("asr.speechanalyzer") }
     #endif
 
+    // ADR 0075: on-device summaries (Apple Intelligence). Availability is checked per request.
+    #if canImport(FoundationModels)
+    features.append("summarize.foundation-models")
+    #endif
+
     let v = ProcessInfo.processInfo.operatingSystemVersion
-    return HelperDeps(
+    var deps = HelperDeps(
         permissions: MacPermissions(), meetings: AXMeetingSource(context: context), audio: audio, transcribers: asr,
         helperVersion: version, os: "macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)", features: features,
         context: context, enhancer: LocalVqeEnhancer(),
         dictationMic: micHub.view("dictation"), dictationTranscribers: dictationAsr(), insertion: MacInsertion(), hotkeys: MacHotkeys(), micHub: micHub)
+    deps.summarizer = FoundationModelsSummarizer()
+    return deps
 }
 
 /// Separate recogniser instances for qrtz talk so a dictation can run during a meeting recording.

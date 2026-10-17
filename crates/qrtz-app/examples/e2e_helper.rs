@@ -16,6 +16,9 @@
 //!                                header and exit(1) (the TS mock's once-per-app-run crash)
 //!   QRTZ_MOCK_DICTATION_STEP_MS=60
 //!   QRTZ_MOCK_HB_MS=200
+//!   QRTZ_MOCK_SUMMARIZE / QRTZ_MOCK_SUMMARIZE_LOG  ADR 0075 on-device summaries (`qrtz-helper-bridge/mock/summarize.rs`)
+#[path = "../../qrtz-helper-bridge/mock/summarize.rs"]
+mod mock_summarize;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::io::{BufRead, Write};
@@ -332,6 +335,11 @@ fn main() {
             continue;
         };
         match msg["type"].as_str().unwrap_or_default() {
+            "summarize" | "summarize.check" | "summarize.cancel" => {
+                if let Some(reply) = mock_summarize::handle(&line, &msg) {
+                    out.say(reply);
+                }
+            }
             "ping" => out.say(json!({"type": "pong", "id": msg["id"]})),
             "permissions.check" | "permissions.request" => {
                 out.say(json!({"type": "permissions.status", "status": *perms.lock().unwrap()}))

@@ -31,6 +31,36 @@ export const CAPTURE_SILENCE = { floorRms: 0.0003, afterMs: 60_000 } as const;
  */
 export const HELPER_PROTOCOL_VERSION = 1;
 
+/**
+ * ADR 0075: on-device summaries through the helper (Apple Intelligence, FoundationModels). Bounds on what the
+ * helper may send back; the Swift side caps to the same numbers and the Rust host re-checks them.
+ */
+export const SUMMARIZE_LIMITS = {
+  /** A prompt the host builds (title, notes, one fenced transcript part). */
+  promptMax: 40_000,
+  summaryMax: 4_000,
+  actionItemsMax: 12,
+  itemTextMax: 400,
+  nameMax: 80,
+  qaMax: 8,
+  questionMax: 300,
+  answerMax: 600,
+  messageMax: 300,
+} as const;
+const SL = SUMMARIZE_LIMITS;
+/** Why on-device summaries can't run (`SystemLanguageModel.Availability`, plus the build/OS cases). */
+export const SummarizeUnavailableReason = z.enum([
+  'apple-intelligence-off',
+  'device-not-eligible',
+  'model-not-ready',
+  'os-unsupported',
+  'unsupported',
+]);
+export type SummarizeUnavailableReason = z.infer<
+  typeof SummarizeUnavailableReason
+>;
+const SummarizeId = z.string().min(1).max(64);
+
 const PermissionState = z.enum([
   'granted',
   'denied',
@@ -227,6 +257,55 @@ export const HelperToHost = z.discriminatedUnion('type', [
       'unsupported',
     ]),
   }),
+  /** ADR 0075: the guided-generation result of one `summarize` request (schema-capped data only). */
+  z.object({
+    type: z.literal('summarize.result'),
+    id: SummarizeId,
+    summary: z.string().max(SL.summaryMax),
+    actionItems: z
+      .array(
+        z.object({
+          text: z.string().max(SL.itemTextMax),
+          owner: z.string().max(SL.nameMax).optional(),
+        }),
+      )
+      .max(SL.actionItemsMax),
+    qa: z
+      .array(
+        z.object({
+          question: z.string().max(SL.questionMax),
+          answer: z.string().max(SL.answerMax),
+          askedBy: z.string().max(SL.nameMax).optional(),
+        }),
+      )
+      .max(SL.qaMax),
+  }),
+  /**
+   * ADR 0075: a `summarize` request failed. `unavailable` carries the reason; `context` = the prompt is over the
+   * model's context window (the host splits the part and asks again); `guardrail` = the model refused.
+   */
+  z.object({
+    type: z.literal('summarize.error'),
+    id: SummarizeId,
+    code: z.enum([
+      'unavailable',
+      'context',
+      'guardrail',
+      'busy',
+      'cancelled',
+      'failed',
+    ]),
+    reason: SummarizeUnavailableReason.optional(),
+    message: z.string().max(SL.messageMax),
+  }),
+  /** ADR 0075: answer to `summarize.check`. */
+  z.object({
+    type: z.literal('summarize.status'),
+    id: SummarizeId,
+    available: z.boolean(),
+    reason: SummarizeUnavailableReason.optional(),
+    contextTokens: z.number().int().min(0).optional(),
+  }),
   z.object({
     type: z.literal('insert.result'),
     id: z.string(),
@@ -293,6 +372,21 @@ export const HostToHelper = z.discriminatedUnion('type', [
       .min(1)
       .max(2),
   }),
+  /**
+   * ADR 0075: summarize with the on-device model. `prompt` is the whole user prompt, built and N69-fenced by the
+   * host; the helper's instructions are fixed per `stage` (single = the whole meeting, map = one part, reduce =
+   * merge part summaries). Answered by `summarize.result` or `summarize.error` with the same id.
+   */
+  z.object({
+    type: z.literal('summarize'),
+    id: SummarizeId,
+    stage: z.enum(['single', 'map', 'reduce']),
+    prompt: z.string().min(1).max(SL.promptMax),
+  }),
+  /** ADR 0075: stop a running `summarize` (the host's deadline passed); answered by `summarize.error` cancelled. */
+  z.object({ type: z.literal('summarize.cancel'), id: SummarizeId }),
+  /** ADR 0075: is the on-device model available? Answered by `summarize.status`. */
+  z.object({ type: z.literal('summarize.check'), id: SummarizeId }),
   /** Insert text into the focused app: AX selected text, then AX value, then pasteboard + Cmd-V. */
   z.object({
     type: z.literal('insert.text'),

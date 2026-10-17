@@ -60,7 +60,10 @@ pub fn runtime_config(cfg: &Value) -> RuntimeConfig {
     if let Value::Object(o) = &mut note {
         o.insert("excludedApps".into(), cfg["privacy"]["excludedApps"].clone());
     }
-    serde_json::from_value(note).unwrap_or_default()
+    let mut rc: RuntimeConfig = serde_json::from_value(note).unwrap_or_default();
+    // ADR 0075: an on-device summary of a long meeting is many model calls.
+    rc.summary_timeout_ms = crate::summary::ON_DEVICE_SUMMARY_TIMEOUT_MS;
+    rc
 }
 
 /// The runtime's events → the IPC bus; the non-IPC ones → shell notifications. Also the one place the
@@ -179,13 +182,16 @@ pub struct BootOptions {
     pub shell: Arc<dyn ShellHooks>,
     pub config: SharedConfig,
     pub helper: Arc<dyn HelperPort>,
-    /// `None` = `LlmSteps` → `CoreSteps` (summary by the configured provider; finalize; index is a no-op).
+    /// `None` = `SummarySteps` → `CoreSteps` (ADR 0075: the summary on this Mac; finalize; index is a no-op).
     pub steps: Option<Arc<dyn StepExecutor>>,
     /// `None` = deferred deletes run at once (tests); the app passes `PendingDeletes::new(data dir)`.
     pub pending_delete: Option<Arc<qrtz_storage::PendingDeletes>>,
     pub clock: Option<Arc<dyn Clock>>,
     /// API keys for the summary provider (`None` = on-device summaries only).
     pub secrets: Option<Arc<dyn crate::secrets::SecretStore>>,
+    /// The on-device summary model (ADR 0075; the helper in the app). `None` = no on-device model: an on-device
+    /// summary attempt fails as unavailable (never a cloud call).
+    pub summarizer: Option<Arc<dyn crate::summary::OnDeviceModel>>,
     pub knobs: DevKnobs,
 }
 
@@ -202,24 +208,17 @@ pub fn boot(o: BootOptions) -> std::io::Result<Booted> {
             .map(|d| d.as_millis() as i64)
             .unwrap_or(0)
     });
-    // N83 (ADR 0042): LlmSteps (summary: the configured provider, extractive fallback) → CoreSteps (finalize;
-    // the index step is a no-op: search is full-text over the notes DB, no embeddings since the chat removal).
-    // Every LLM request goes through `qrtz_llm::http_client()` (no redirects, N81).
-    let core: Arc<dyn StepExecutor> = Arc::new(CoreSteps { db: db.clone() });
-    let llm_steps: Arc<dyn StepExecutor> = match o.secrets.clone() {
-        Some(sec) => {
-            let (c, base) = (cfg.clone(), o.knobs.llm_base_url.clone());
-            Arc::new(qrtz_llm::LlmSteps::new(
-                db.clone(),
-                core,
-                now.clone(),
-                Arc::new(move || llm_config(&c.get(), base.as_deref())),
-                Arc::new(move |n: &str| sec.get(n)),
-            ))
-        }
-        None => Arc::new(qrtz_llm::LlmSteps::on_device(db.clone(), core, now.clone())),
-    };
-    let steps = o.steps.unwrap_or(llm_steps);
+    // ADR 0075: summaries are on this Mac only (Apple Intelligence through the helper); no provider is called.
+    let steps = o.steps.unwrap_or_else(|| {
+        Arc::new(crate::summary::SummarySteps {
+            db: db.clone(),
+            inner: Arc::new(CoreSteps { db: db.clone() }),
+            now: now.clone(),
+            on_device: Arc::new(crate::summary::OnDeviceSummaries::new(
+                o.summarizer.unwrap_or_else(|| Arc::new(crate::summary::NoModel)),
+            )),
+        })
+    });
     let runtime = NoteRuntime::new(RuntimeDeps {
         store: Arc::new(Store(db.clone())),
         steps,
@@ -340,6 +339,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         pending_delete: Some(pending.clone()),
         clock: None,
         secrets: Some(secrets.clone()),
+        summarizer: Some(Arc::new(crate::summary::HelperModel::new(supervisor.clone()))),
         knobs: b.knobs.clone(),
     })?;
     if let Some(ns) = &note_speech {

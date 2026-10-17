@@ -16,6 +16,8 @@ pub mod speech;
 #[cfg(feature = "runtime")]
 pub mod storage_port;
 #[cfg(feature = "runtime")]
+pub mod summary;
+#[cfg(feature = "runtime")]
 pub mod talk;
 #[cfg(feature = "runtime")]
 pub mod wiring;

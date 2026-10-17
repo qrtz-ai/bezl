@@ -44,3 +44,8 @@
 {"source":"system","type":"capture.audible"}
 {"sessionId":"d1","type":"speech.attached"}
 {"reason":"not-fifo","sessionId":"d1","type":"speech.attach.rejected"}
+{"actionItems":[{"owner":"dev","text":"rerun the load test by friday"},{"text":"send the notes"}],"id":"s1","qa":[{"answer":"october 14","askedBy":"tom","question":"when is the launch?"}],"summary":"the team moved the launch to october 14.","type":"summarize.result"}
+{"code":"unavailable","id":"s2","message":"on-device model unavailable: apple-intelligence-off","reason":"apple-intelligence-off","type":"summarize.error"}
+{"code":"context","id":"s3","message":"over the context window","type":"summarize.error"}
+{"available":true,"contextTokens":4096,"id":"c1","type":"summarize.status"}
+{"available":false,"id":"c2","reason":"model-not-ready","type":"summarize.status"}

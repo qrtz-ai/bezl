@@ -104,6 +104,8 @@ public struct HelperDeps: Sendable {
     public var silence: SilenceConfig
     /// ADR 0046 §1 / N55: where the speech module's audio fds arrive (nil = the host passed no speech socket).
     public var speechFds: FdReceiver?
+    /// ADR 0075: the on-device summary model (nil = `summarize` answers unavailable/unsupported).
+    public var summarizer: OnDeviceSummarizer? = nil
     public init(permissions: PermissionsProvider, meetings: MeetingSource?, audio: [AudioSource], transcribers: [StreamingTranscriber], helperVersion: String, os: String, features: [String], context: MeetingContext = MeetingContext(), enhancer: MicEnhancer? = nil,
                 dictationMic: MicSource? = nil, dictationTranscribers: [StreamingTranscriber] = [], insertion: InsertionBackend? = nil, hotkeys: HotkeyMonitor? = nil,
                 micHub: MicHub? = nil, permissionPollMs: Int = 2000, silence: SilenceConfig = .default, speechFds: FdReceiver? = nil) {
@@ -166,7 +168,10 @@ public actor HelperController {
         self.dictation = DictationEngine(mic: deps.dictationMic, transcribers: deps.dictationTranscribers,
                                          inserter: deps.insertion.map { TextInserter(backend: $0) }, hotkeys: deps.hotkeys, send: send, now: now, managedMic: true,
                                          speech: speech)
+        self.summaries = SummarizeService(model: deps.summarizer, send: send)
     }
+    /// ADR 0075: summarize requests, off the message queue.
+    public let summaries: SummarizeService
     public let dictation: DictationEngine
     /// The speech module's audio sinks (recordings and dictations).
     public let speech = SpeechSinks()
@@ -231,6 +236,12 @@ public actor HelperController {
             } else {
                 send(.speechAttached(sessionId: sid))
             }
+        case .summarize(let id, let stage, let prompt): await summaries.start(id: id, stage: stage, prompt: prompt)
+        case .summarizeCancel(let id): await summaries.cancel(id: id)
+        case .summarizeCheck(let id):
+            // Availability can take a moment (model assets); answer off the queue too.
+            let svc = summaries
+            Task { await svc.check(id: id) }
         }
     }
 
