@@ -44,33 +44,30 @@ hides `pending_deletes()`, and the runtime (not the shell) emits `note:changed`.
 | 0   | This file, ownership split                                                                                                                                                                                                                                         | done  | (this)    |
 | 1   | `src-tauri` shell in the workspace; qrtz-app: NoteRuntimePort (all runtime channels), StoragePort over `StorageHandle`, EventSink (bus + OS notifications + no-audio hook), HelperPort over the supervisor, recover() at boot, AppDirs, file secrets 0600 on Linux | done  | (see log) |
 | 2   | Talk routing only (`talk:*` → `TalkPort`; dictation errors / `permission.revoked` reach talk; `config_changed` on config/secrets set). The service is Bozniak's `qrtz-talk`                                                                                        | done  | (see log) |
-| 2b  | ASR + diarization plan (Jared, 2026-10-17 07:17 PT), see below                                                                                                                                                                                                     | todo  |           |
+| 2b  | Cloud ASR + diarization, offline buffer + backfill (ADR 0044), see below                                                                                                                                                                                           | todo  |           |
 | 3   | Integrate Bozniak's `qrtz-llm`, `qrtz-search`, `qrtz-talk`, `qrtz-backup` behind StepExecutor / TalkPort / StoragePort when they land (markdown export done in phase 1)                                                                                            | todo  |           |
 | 4   | N38 (mock start reports in the `recording.started` chunk + e2e), N5 (`mux = mic.includes('recording') && state.dictating`, TS + Swift, vectors)                                                                                                                    | todo  |           |
 | 5   | E2E suite against the real Tauri app on Linux (WebKitWebDriver/tauri-driver + Rust mock helper): one equivalent per Electron scenario                                                                                                                              | todo  |           |
 | 6   | Move the renderer into `apps/desktop-tauri`, delete `apps/desktop` and the TS-only runtime; keep TS spec models + vectors                                                                                                                                          | todo  |           |
 | 7   | Memory: Tauri idle/recording vs the last Electron build (Linux); docs, README, ADR (Electron removed), CHANGELOG                                                                                                                                                   | todo  |           |
 
-## Phase 2b: on-device diarization + Nemotron ASR (Jared, 2026-10-17)
+## Phase 2b: cloud ASR + diarization, offline buffer and backfill (ADR 0044)
 
-- Speaker labels on every path: the Swift helper diarizes on-device with FluidAudio's Nemotron 3 Diarization
-  (Core ML), preset `low` by default, `fast32` selectable in settings. Two separate diarizer instances, one on
-  the system-audio channel and one on the mic channel (several people can share the room mic). Speaker ids stay
-  per channel (`system:s1`, `mic:s1`), never merged across channels. The dominant mic speaker defaults to the
-  name "me" (renameable); other mic speakers are named like room/system speakers. (Correction 07:22 PT: the mic
-  is not always one person.)
-- Diarizer timestamps are matched to words from any ASR (cloud or on-device); speakers attach to words ~1-3 s
-  after the words arrive (late binding, the transcript is not held back).
-- Cloud default stays ElevenLabs Scribe v2 Realtime (no diarization); the on-device layer covers it.
-- Offline fallback ASR: NVIDIA Nemotron 3 ASR English streaming
-  (`FluidInference/nemotron-speech-streaming-en-0.6b-coreml`, 560 ms chunks) replaces Parakeet.
-- Keep the existing speaker events and UI; update the helper protocol, docs, an ADR; tests with fake diarizer
-  output (Rust mock helper + attribution unit tests). Swift changes are Mac-only checks.
-- Ownership (07:21 PT): Bozniak now owns `qrtz-talk` (behind `TalkPort`) and `qrtz-backup` (export/backup);
-  qrtz-app only routes `talk:*`, `data:*-backup`. My parked talk WIP (cleanup port + TS-oracle vectors) is at
-  `/workspace/qrtz-talk-wip` on the box if useful.
-- Ownership: protocol, Swift helper, mock helper and the pure attribution module are Bobs; calling it from
-  `qrtz-lifecycle` fusion / transcript assembly is Bozniak's (coordinate here, don't edit their crate).
+History: 07:17 PT on-device FluidAudio diarization + Nemotron ASR; 07:22 PT mic diarized too; **07:26 PT replaced:
+no on-device models and no model downloads at all.** Current plan (ADR 0044):
+
+- Primary ASR + diarization: our cloud Nemotron server (`docs/research-nemotron-server.md`); secondary ElevenLabs
+  Scribe v2 Realtime (no diarization; AX fusion names speakers). One `StreamingProvider` trait shared with
+  Bozniak's `qrtz-talk`. Wire: WebSocket, PCM16 16 kHz binary frames, partial/final JSON.
+- Per-channel diarization (`mic:*`, `system:*`, never merged); dominant mic speaker defaults to "me".
+- Offline: keep recording, spool unsent frames (`data/asr-spool`, 0700/0600, atomic manifest), cap
+  `note.offlineBufferMb` (UI "offline buffer full"), retention `note.offlineBufferDays`; backfill lifecycle with
+  retry and crash recovery; fusion re-runs after late words; lostSpans/silences stay in meeting time.
+- Talk: clear offline error (Bozniak's qrtz-talk).
+- Mine: `crates/qrtz-asr`, helper protocol (`recording.audio`, ASR out of the helper), mocks, wiring, UI states.
+  Bozniak: runtime integration (backfill step, merge + fusion re-run, session flags), qrtz-talk.
+- Talk/backup ownership (07:21 PT): Bozniak owns `qrtz-talk` and `qrtz-backup`; qrtz-app only routes `talk:*` and
+  `data:*-backup`. My parked talk WIP (cleanup port + TS-oracle vectors) is at `/workspace/qrtz-talk-wip` on the box.
 
 ## Running the Tauri app on headless Linux
 
@@ -88,7 +85,7 @@ On Linux the tray is off unless `QRTZ_TRAY=1`.
 ## Mac-only checks (cannot run on the Linux box)
 
 - Swift helper changes compile and pass XCTest on macOS (see docs/mac-verify.md).
-- FluidAudio Nemotron 3 Diarization (`low`/`fast32`) and Nemotron 3 ASR streaming (560 ms) in the Swift helper: build, model download, latency, accuracy on a real call.
+- Swift helper without Parakeet/SpeechAnalyzer, streaming `recording.audio` frames (ADR 0044): build, CPU, frame timing on a real call.
 - Keychain secret store (`KeychainSecretStore`), TCC prompts, real capture, WKWebView rendering, tray/notifications.
 
 ## Log
@@ -98,3 +95,4 @@ On Linux the tray is off unless `QRTZ_TRAY=1`.
 - 2026-10-17 07:25 PT (Bozniak, hardening cycle 13): undo restores only a delete still inside its window (N51,
   `720ae3a`, ADR 0041; TS + Rust); port checklist of every hardening behaviour in `docs/architecture-review/talk-and-note.md` §21.1.
 - 2026-10-17 07:25 PT: talk + backup reassigned to Bozniak; talk WIP parked off-repo. Phase 2 = routing. N52 (Keychain index write error is returned + logged) done. Mic diarization correction recorded in Phase 2b.
+- 2026-10-17 07:40 PT: qrtz-backup wired per rust-core-api.md §9 (note:export via export_meeting, markdown.rs deleted; data:export-backup / data:import-backup with QRTZ_BACKUP_PATH or dialogs, throttled data:backup-progress, the runtime's PendingDeletes shared with import); qrtz-llm `LlmSteps::on_device` wired in place of CoreSteps for summary (N53). Boot tests: backup round trip into a fresh library, cancel paths, summary done.

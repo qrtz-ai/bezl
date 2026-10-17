@@ -18,8 +18,9 @@ this document disagree, the code is wrong.
   helper and worker handlers), `apps/desktop/src/worker/lifecycle-steps.test.ts`, and
   `e2e/lifecycle.spec.ts` (Playwright).
 
-Transcription is **live only**. Parakeet streaming runs in the helper (SpeechAnalyzer is the fallback). The
-streamed finals are the transcript of record, and nothing re-transcribes after the meeting.
+Transcription is **cloud streaming with late backfill** (ADR 0044, reversing "live only"): the host streams
+capture frames to the ASR provider (our Nemotron server, ElevenLabs second); while offline it spools the frames
+(capped, retained) and transcribes them when the network returns, in meeting time. No on-device models.
 
 ## Processes
 
