@@ -181,6 +181,31 @@ Each one that fails to start is reported as a structured message (this used to b
   Rust `qrtz-mock-helper`: `QRTZ_MOCK_FALLBACK="screen>mic,mic>"`, where an empty `to` is `null` and is followed by
   `error{audio.unavailable}`.
 
+## Capture degraded inside a source (N35)
+
+A source that started but lost part of its input inside the source (today: the in-source mic of the Core Audio
+tap or ScreenCaptureKit fails to start, device busy, a USB mic unplugged, an AVAudioEngine error) keeps recording
+the rest and says so, instead of only a stderr line:
+
+```json
+{
+  "type": "capture.degraded",
+  "degraded": ["no-mic"],
+  "reason": "mic unavailable, recording system audio only: device busy"
+}
+```
+
+- `degraded`: one or more of the `permission.revoked` values (`RevocationDegradation`). Only `no-mic` is sent
+  today. `reason`: the error text, at most 200 characters (zod `CAPTURE_DEGRADED_REASON_MAX`, the same bound the
+  host keeps of a `capture.fallback` reason); Swift cuts it on whole scalars before sending.
+- **Sticky until a reconnect**, like `permission.revoked` (N4): the host applies the flags and keeps them for the
+  rest of the recording; a resumed recording after a helper reconnect starts from the new helper's state. There is
+  no `capture.restored` for now (later addition: a source getting its mic back mid-recording).
+- **`no-mic` counts as a lost mic, like a revoke:** it closes any open mic silence stretch (N29) and the mic counts
+  as not delivering for `noAudio`, so the system channel going silent afterwards is "no audio". A later
+  `capture.silent{mic}` (or `capture.audible{mic}`) is ignored.
+- `capture.fallback` does not fit this: on the host, its `to: null` means no source is left (`audio-unavailable`).
+
 ## Permission revocation (H5)
 
 While a recording or dictation is running, or the warm mic is on (even with nothing running), the helper re-reads TCC every `permissionPollMs` (2 s by default) and diffs

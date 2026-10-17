@@ -29,6 +29,23 @@ public struct ProtocolError: Error, Equatable, CustomStringConvertible {
 
 /// Helper → host.
 public enum HelperMessage: Equatable, Sendable {
+    /// N35: zod `CAPTURE_DEGRADED_REASON_MAX` (UTF-16 units, like a JS string length).
+    public static let captureDegradedReasonMax = 200
+
+    /// Error text cut to `captureDegradedReasonMax` UTF-16 units on whole scalars, so the line always validates.
+    static func capReason(_ r: String) -> String {
+        guard r.utf16.count > captureDegradedReasonMax else { return r }
+        var out = String.UnicodeScalarView()
+        var n = 0
+        for u in r.unicodeScalars {
+            let w = u.utf16.count
+            if n + w > captureDegradedReasonMax { break }
+            out.append(u)
+            n += w
+        }
+        return String(out)
+    }
+
     case hello(protocol: Int, helperVersion: String, os: String, features: [String])
     case heartbeat(ts: Double)
     case pong(id: String)
@@ -65,6 +82,8 @@ public enum HelperMessage: Equatable, Sendable {
     case captureAudible(source: CaptureSource)
     /// H8: capture source `from` failed to start; `to` is tried next (nil: none left).
     case captureFallback(from: String, to: String?, reason: String)
+    /// N35: a source lost part of its input (today: its in-source mic) and records the rest. Sticky until a reconnect.
+    case captureDegraded(degraded: [RevocationDegradation], reason: String)
     case permissionRevoked(permission: OsPermission, atMs: Double, degraded: [RevocationDegradation]? = nil)
     case insertResult(id: String, method: InsertMethod, ok: Bool, app: String?, error: String?)
 }
@@ -205,6 +224,8 @@ extension HelperMessage {
         case .captureAudible(let src): return obj("capture.audible", ["source": s(src.rawValue)])
         case .captureFallback(let from, let to, let reason):
             return obj("capture.fallback", ["from": s(from), "to": to.map(s) ?? .null, "reason": s(reason)])
+        case .captureDegraded(let degraded, let reason):
+            return obj("capture.degraded", ["degraded": .array(degraded.map { s($0.rawValue) }), "reason": s(Self.capReason(reason))])
         case .permissionRevoked(let p, let at, let degraded):
             var o: [String: JSONValue] = ["permission": s(p.rawValue), "atMs": n(at)]
             if let degraded { o["degraded"] = .array(degraded.map { s($0.rawValue) }) }
@@ -282,6 +303,15 @@ extension HelperMessage {
             let from = try f.str("from")
             guard !from.isEmpty else { throw ProtocolError("empty from") }
             self = .captureFallback(from: from, to: to.string, reason: try f.str("reason"))
+        case "capture.degraded":
+            guard let a = f.o["degraded"]?.array, !a.isEmpty else { throw ProtocolError("bad degraded") }
+            let degraded = try a.map { x in
+                guard let r = x.string.flatMap(RevocationDegradation.init(rawValue:)) else { throw ProtocolError("bad degraded") }
+                return r
+            }
+            let reason = try f.str("reason")
+            guard reason.utf16.count <= Self.captureDegradedReasonMax else { throw ProtocolError("reason too long") }
+            self = .captureDegraded(degraded: degraded, reason: reason)
         case "permission.revoked":
             var degraded: [RevocationDegradation]?
             if let v = f.o["degraded"], v != .null {

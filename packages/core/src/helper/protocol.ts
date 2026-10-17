@@ -11,6 +11,9 @@ export const RevocationDegradation = z.enum([
 ]);
 export type RevocationDegradation = z.infer<typeof RevocationDegradation>;
 
+/** N35: `capture.degraded.reason` bound, the same 200 as the host keeps of a `capture.fallback` reason. */
+export const CAPTURE_DEGRADED_REASON_MAX = 200;
+
 /** N29: a raw capture channel, as `capture.silent` / `capture.audible` name it. */
 export const CaptureSource = z.enum(['system', 'mic']);
 export type CaptureSource = z.infer<typeof CaptureSource>;
@@ -128,6 +131,17 @@ export const HelperToHost = z.discriminatedUnion('type', [
     from: z.string().min(1),
     to: z.string().min(1).nullable(),
     reason: z.string(),
+  }),
+  z.object({
+    /**
+     * N35: a capture source started but lost part of its input inside the source (the in-source mic of the tap or
+     * SCK failed: device busy, unplugged, engine error); it keeps recording the rest. Sticky until a reconnect, like
+     * `permission.revoked` (N4); there is no `capture.restored` yet. Today only `no-mic` is sent. `reason` is the
+     * error text, at most CAPTURE_DEGRADED_REASON_MAX characters (the host's capture-fallback reason bound).
+     */
+    type: z.literal('capture.degraded'),
+    degraded: z.array(RevocationDegradation).min(1),
+    reason: z.string().max(CAPTURE_DEGRADED_REASON_MAX),
   }),
   z.object({ type: z.literal('asr'), event: AsrEvent }),
   z.object({ type: z.literal('recording.started'), audioPath: z.string() }),

@@ -44,6 +44,17 @@ final class ProtocolGoldenTests: XCTestCase {
         XCTAssertEqual(s.feed(Data(":2}\n".utf8)), ["{\"b\":2}"])
     }
 
+    func testCaptureDegradedReasonIsCappedOnEncode() throws {
+        // N35: a long error text is cut to 200 UTF-16 units on whole scalars, so the line still validates.
+        let long = String(repeating: "é", count: 150) + String(repeating: "🎤", count: 60)
+        let l = HelperMessage.captureDegraded(degraded: [.noMic], reason: long).line
+        guard case .captureDegraded(let d, let r) = try HelperMessage(json: try JSONValue.parse(l)) else { return XCTFail(l) }
+        XCTAssertEqual(d, [.noMic])
+        XCTAssertLessThanOrEqual(r.utf16.count, 200)
+        XCTAssertEqual(r.utf16.count, 150 + 2 * 25)
+        XCTAssertTrue(long.hasPrefix(r))
+    }
+
     func testPermissionsStatusAlwaysExhaustive() {
         let l = HelperMessage.permissionsStatus([.accessibility: .granted]).line
         XCTAssertEqual(l, #"{"status":{"accessibility":"granted","microphone":"not-determined","screen-recording":"not-determined"},"type":"permissions.status"}"#)

@@ -13,6 +13,10 @@ not json
 {"atMs":1,"degraded":"no-mic","permission":"microphone","type":"permission.revoked"}
 {"from":"core-audio-tap","reason":"x","type":"capture.fallback"}
 {"from":"","reason":"x","to":null,"type":"capture.fallback"}
+{"degraded":[],"reason":"x","type":"capture.degraded"}
+{"degraded":["no-mic"],"reason":"rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr","type":"capture.degraded"}
+{"degraded":["no-speaker"],"reason":"x","type":"capture.degraded"}
+{"degraded":["no-mic"],"type":"capture.degraded"}
 {"sinceMs":1,"source":"camera","type":"capture.silent"}
 {"sinceMs":-5,"source":"mic","type":"capture.silent"}
 {"source":"system","type":"capture.silent"}
