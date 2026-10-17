@@ -49,17 +49,18 @@ pub struct RuntimeDeps {
     /// Title of an untitled recording (TS `Recording ${new Date(now).toLocaleString()}`); the shell injects a
     /// localized one, [`utc_recording_title`] is the default.
     pub default_title: Arc<dyn Fn(EpochMs) -> String + Send + Sync>,
-    /// Meetings the user already deleted whose deferred delete has not run yet (undo tombstones). Recovery never
-    /// resumes their post-processing (N17; TS `pendingDelete`). `None`: no deferred deletes in this shell.
-    pub pending_delete: Option<PendingDelete>,
+    /// Undo tombstones: meetings the user already deleted whose deferred delete has not run yet (TS
+    /// `PendingDeletes`, same file). Recovery never resumes their post-processing (N17) and completes them once it
+    /// has run; [`NoteRuntime::schedule_delete`] writes them. `None`: no deferred deletes in this shell (a
+    /// scheduled delete then runs at once).
+    pub pending_delete: Option<Arc<PendingDeletes>>,
 }
 
 /// Refusal for deleting the meeting that is still recording or flushing (TS `DELETE_WHILE_RECORDING`).
 pub const DELETE_WHILE_RECORDING: &str =
     "This meeting is still recording. Stop the recording, then delete it.";
 
-/// [`RuntimeDeps::pending_delete`]: is this meeting's delete confirmed but not yet run?
-pub type PendingDelete = Arc<dyn Fn(&str) -> bool + Send + Sync>;
+pub use qrtz_storage::PendingDeletes;
 
 /// `Recording YYYY-MM-DD HH:MM` (UTC).
 pub fn utc_recording_title(now: EpochMs) -> String {
@@ -221,6 +222,35 @@ impl NoteRuntime {
         let (sh, id) = (self.sh.clone(), id.to_string());
         self.task(async move { sh.delete_meeting(&id).await }).await
     }
+    /// Throws E_VALIDATION ([`DELETE_WHILE_RECORDING`]) for the meeting being captured (starting, recording,
+    /// reconnecting) or still flushing its WAV (stopping); every other meeting can be deleted (TS
+    /// `assertDeletable`, ADR 0023). The shell checks it before it tombstones a delete too.
+    pub fn assert_deletable(&self, id: &str) -> Result<(), CoreError> {
+        self.sh.assert_deletable(id)
+    }
+    /// `note:delete {id, deferMs}` with an undo window (TS `index.ts` + `PendingDeletes.schedule`): refuses the
+    /// live meeting, writes the tombstone, emits `Changed{id}` (lists hide it now), and deletes when the window
+    /// ends. A quit or crash first leaves the tombstone for [`NoteRuntime::recover`]. With no tombstone store,
+    /// or `defer_ms == 0`, the delete runs now.
+    pub async fn schedule_delete(&self, id: &str, defer_ms: u64) -> Result<(), CoreError> {
+        let (sh, id) = (self.sh.clone(), id.to_string());
+        self.task(async move { sh.schedule_delete(&id, defer_ms).await })
+            .await
+    }
+    /// `note:undo-delete`: cancels a scheduled delete. `false`: too late, the delete already went through (or
+    /// none was scheduled). Emits `Changed{id}` either way, like the Electron handler.
+    pub fn undo_delete(&self, id: &str) -> bool {
+        self.sh.undo_delete(id)
+    }
+    /// Tombstoned meeting ids, which `note:list` hides until the delete runs or is undone.
+    pub fn pending_deletes(&self) -> Vec<String> {
+        self.sh
+            .d
+            .pending_delete
+            .as_ref()
+            .map(|p| p.ids())
+            .unwrap_or_default()
+    }
     /// Pipeline bookkeeping sizes `[pipelines, timers, served backoffs, manual flags]` (tests; N14).
     #[doc(hidden)]
     pub fn pipeline_debug(&self) -> [usize; 4] {
@@ -350,6 +380,8 @@ struct State {
     t_sent: HashSet<String>,
     pipelines: HashMap<String, PipelineState>,
     pipeline_timers: HashMap<String, AbortHandle>,
+    /// Undo-window timers of scheduled deletes (TS `PendingDeletes.timers`).
+    delete_timers: HashMap<String, AbortHandle>,
     /// Per meeting, the `{id}:{step}:{attempts}` whose backoff timer already fired (N12: never wait on the wall
     /// clock twice). One entry per meeting at most, dropped with the pipeline (N14).
     backoff_served: HashMap<String, String>,
@@ -401,6 +433,7 @@ impl State {
             t_sent: HashSet::new(),
             pipelines: HashMap::new(),
             pipeline_timers: HashMap::new(),
+            delete_timers: HashMap::new(),
             backoff_served: HashMap::new(),
             pipeline_running: HashSet::new(),
             start_in_flight: false,
@@ -1511,19 +1544,85 @@ impl Shared {
         self.emit(CoreEvent::Changed { id: id.to_string() });
     }
 
+    fn assert_deletable(&self, id: &str) -> Result<(), CoreError> {
+        let g = self.lock();
+        let s = g.machine.state();
+        if s.meeting_id.as_deref() == Some(id)
+            && (is_capturing(s.phase) || s.phase == RecordingPhase::Stopping)
+        {
+            return Err(CoreError::validation(DELETE_WHILE_RECORDING));
+        }
+        Ok(())
+    }
+
     /// User delete: forget the pipeline first so no retry timer races the delete, then rows, then audio (N15).
     async fn delete_meeting(self: &Arc<Self>, id: &str) -> Result<Vec<String>, CoreError> {
-        {
-            let g = self.lock();
-            let s = g.machine.state();
-            if s.meeting_id.as_deref() == Some(id)
-                && (is_capturing(s.phase) || s.phase == RecordingPhase::Stopping)
-            {
-                return Err(CoreError::validation(DELETE_WHILE_RECORDING));
-            }
-        }
+        self.assert_deletable(id)?;
         self.forget_pipeline(id);
         self.drop_meeting(id).await
+    }
+
+    async fn schedule_delete(self: &Arc<Self>, id: &str, defer_ms: u64) -> Result<(), CoreError> {
+        self.assert_deletable(id)?; // never tombstone the meeting being recorded either
+        let Some(pd) = self.d.pending_delete.clone().filter(|_| defer_ms > 0) else {
+            self.delete_meeting(id).await?;
+            self.emit(CoreEvent::Changed { id: id.to_string() });
+            return Ok(());
+        };
+        pd.add(id)
+            .map_err(|e| CoreError::internal(format!("could not record the pending delete: {e}")))?;
+        if let Some(t) = self.lock().delete_timers.remove(id) {
+            t.abort();
+        }
+        let mid = id.to_string();
+        let t = self.set_timeout(defer_ms as f64, move |sh| {
+            let s2 = sh.clone();
+            sh.spawn(async move { s2.complete_delete(&mid).await });
+        });
+        if let Some(t) = t {
+            self.lock().delete_timers.insert(id.to_string(), t);
+        }
+        self.emit(CoreEvent::Changed { id: id.to_string() });
+        Ok(())
+    }
+
+    fn undo_delete(&self, id: &str) -> bool {
+        let restored = match &self.d.pending_delete {
+            Some(pd) if pd.has(id) => {
+                if let Some(t) = self.lock().delete_timers.remove(id) {
+                    t.abort();
+                }
+                match pd.remove(id) {
+                    Ok(_) => true,
+                    Err(e) => {
+                        tracing::warn!(id, err = %e, "undo delete failed");
+                        false
+                    }
+                }
+            }
+            _ => false,
+        };
+        self.emit(CoreEvent::Changed { id: id.to_string() });
+        restored
+    }
+
+    /// The delete a tombstone stands for (TS `PendingDeletes.complete`): on success the tombstone goes and
+    /// `Changed{id}` is emitted; on failure it stays and is retried on the next launch.
+    async fn complete_delete(self: &Arc<Self>, id: &str) {
+        self.lock().delete_timers.remove(id);
+        let Some(pd) = self.d.pending_delete.clone() else {
+            return;
+        };
+        match self.delete_meeting(id).await {
+            Ok(_) => {
+                tracing::info!(id, "deferred delete done");
+                self.emit(CoreEvent::Changed { id: id.to_string() });
+                if let Err(e) = pd.remove(id) {
+                    tracing::warn!(id, err = %e, "deferred delete: tombstone not cleared");
+                }
+            }
+            Err(e) => tracing::warn!(id, err = %e.message, "deferred delete failed"),
+        }
     }
 
     /// Rows, then the files inside the recordings directory (no session or pipeline side effects).
@@ -2037,11 +2136,22 @@ impl Shared {
                 Err(e) => tracing::warn!(err = %e.message, "audio prune failed"),
             }
         }
+        // On launch, finish every delete a quit or crash interrupted (TS `pendingDeletes.recover()` on
+        // workerReady). Recovery above skipped these meetings, so none of their steps ran first (N17).
+        if let Some(pd) = self.d.pending_delete.clone() {
+            let ids = pd.ids();
+            for id in &ids {
+                self.complete_delete(id).await;
+            }
+            if !ids.is_empty() {
+                self.emit(CoreEvent::Changed { id: "*".into() });
+            }
+        }
         report
     }
 
     fn pending_delete(&self, id: &str) -> bool {
-        self.d.pending_delete.as_ref().is_some_and(|f| f(id))
+        self.d.pending_delete.as_ref().is_some_and(|p| p.has(id))
     }
 
     async fn recover_inner(self: Arc<Self>, report: &mut RecoverReport) -> Result<(), LifecycleError> {

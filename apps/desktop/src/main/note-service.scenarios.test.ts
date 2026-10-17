@@ -18,6 +18,7 @@ import {
 import { openDatabase } from '../worker/db';
 import { createWorkerHandlers } from '../worker/handlers';
 import { NoteService } from './note-service';
+import { PendingDeletes } from './pending-deletes';
 import type { WorkerClient } from './worker-client';
 
 // Tier-2 runtime scenarios (docs/rust-core-api.md §5): spec/scenarios/lifecycle/*.json drive the real
@@ -121,8 +122,6 @@ function run(sc: Scenario) {
     index: [],
   };
   const failing = new Set<string>();
-  /** Undo tombstones (`pendingDelete` op): deletes the user confirmed that have not run yet. */
-  const tombstones = new Set<string>();
   const base = defaultConfig();
   const config = {
     ...base,
@@ -197,9 +196,17 @@ function run(sc: Scenario) {
   interface Life {
     note: NoteService;
     dead: boolean;
+    bus: EventBus;
+    /** Undo tombstones, `<dir>/pending-deletes.json` (kept across restarts), wired as in index.ts. */
+    pd: PendingDeletes;
   }
   const boot = (): Life => {
-    const life: Life = { note: undefined as never, dead: false };
+    const life: Life = {
+      note: undefined as never,
+      dead: false,
+      bus: undefined as never,
+      pd: undefined as never,
+    };
     const worker = {
       async call(method: string, params: unknown) {
         if (life.dead) return never;
@@ -234,6 +241,11 @@ function run(sc: Scenario) {
       start() {},
     };
     const bus = new EventBus();
+    life.bus = bus;
+    life.pd = new PendingDeletes(dir, async (id) => {
+      await life.note.deleteMeeting(id);
+      bus.emit('note:changed', { id });
+    });
     const last = { session: '' };
     bus.on('note:session', (v: SessionView) => {
       if (life.dead) return;
@@ -291,9 +303,16 @@ function run(sc: Scenario) {
         trace.prompts.push(`${title}|${platform}`),
       retryScale: sc.retryScale ?? 1,
       ...(sc.faultStep ? { faultStep: sc.faultStep } : {}),
-      pendingDelete: (id) => tombstones.has(id),
+      pendingDelete: (id) => life.pd.has(id),
     });
-    void life.note.recover();
+    // index.ts on workerReady: recovery, then the deferred deletes a quit or crash interrupted (sequential here,
+    // as in the Rust runtime; recovery skips tombstoned meetings either way).
+    void (async () => {
+      await life.note.recover();
+      const gone = life.pd.ids();
+      await life.pd.recover();
+      if (gone.length) bus.emit('note:changed', { id: '*' });
+    })();
     return life;
   };
 
@@ -411,6 +430,7 @@ function run(sc: Scenario) {
             .sort()
             .map((f) => [f, fs.statSync(path.join(rec, f)).size])
         : [],
+      ...(life.pd.ids().length ? { tombstones: life.pd.ids() } : {}),
     };
   };
 
@@ -532,6 +552,34 @@ function run(sc: Scenario) {
                     r.removed.map((f) => path.basename(f)).sort(),
                 );
                 break;
+              case 'scheduleDelete': {
+                // index.ts `note:delete {id, deferMs}`.
+                const id = a.id as string;
+                const deferMs = a.deferMs as number | undefined;
+                record(
+                  label,
+                  (async () => {
+                    note.assertDeletable(id);
+                    if (deferMs) life.pd.schedule(id, deferMs);
+                    else await note.deleteMeeting(id);
+                    life.bus.emit('note:changed', { id });
+                    return null;
+                  })(),
+                  (v) => v,
+                );
+                break;
+              }
+              case 'undoDelete':
+                // index.ts `note:undo-delete`.
+                sync(
+                  () => {
+                    const restored = life.pd.undo(a.id as string);
+                    life.bus.emit('note:changed', { id: a.id as string });
+                    return restored;
+                  },
+                  (v) => v,
+                );
+                break;
               case 'pipeline':
                 record(
                   label,
@@ -599,7 +647,11 @@ function run(sc: Scenario) {
               outcomes[k]!.push(...(((op[k] as Outcome[]) ?? []) as Outcome[]));
             break;
           case 'pendingDelete':
-            tombstones.add(op.id as string);
+            // A tombstone a quit left behind (no undo timer).
+            fs.writeFileSync(
+              path.join(dir, 'pending-deletes.json'),
+              JSON.stringify([...new Set([...life.pd.ids(), op.id])]),
+            );
             break;
           case 'store':
             for (const m of (op.fail as string[]) ?? []) failing.add(m);

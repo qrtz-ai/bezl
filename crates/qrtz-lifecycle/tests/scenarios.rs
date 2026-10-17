@@ -128,8 +128,8 @@ struct Shared {
     trace: Mutex<Trace>,
     up: AtomicBool,
     failing: Mutex<HashSet<String>>,
-    /// Undo tombstones (`pendingDelete` op).
-    tombstones: Arc<Mutex<HashSet<String>>>,
+    /// The app data dir: undo tombstones live in `<dir>/pending-deletes.json` across restarts.
+    dir: PathBuf,
     outcomes: Mutex<HashMap<&'static str, VecDeque<String>>>,
 }
 
@@ -583,10 +583,7 @@ impl Run {
             retry_scale: self.sc["retryScale"].as_f64().unwrap_or(1.0),
             fault_step: self.sc["faultStep"].as_str().and_then(StepId::parse),
             default_title: Arc::new(utc_recording_title),
-            pending_delete: Some({
-                let t = self.sh.tombstones.clone();
-                Arc::new(move |id: &str| t.lock().unwrap().contains(id))
-            }),
+            pending_delete: Some(Arc::new(PendingDeletes::new(&self.sh.dir))),
         };
         let rt = NoteRuntime::new(deps);
         let r2 = rt.clone();
@@ -675,6 +672,23 @@ impl Run {
                     names.sort();
                     json!(names)
                 })
+            }
+            "scheduleDelete" => {
+                let id = s("id").unwrap();
+                let ms = a["deferMs"].as_u64().unwrap_or(0);
+                self.record(
+                    live,
+                    label,
+                    async move { rt.schedule_delete(&id, ms).await },
+                    |()| Value::Null,
+                )
+            }
+            "undoDelete" => {
+                let v = rt.undo_delete(a["id"].as_str().unwrap());
+                self.results
+                    .lock()
+                    .unwrap()
+                    .insert(label.into(), json!({"ok": v}));
             }
             "pipeline" => {
                 let id = s("id").unwrap();
@@ -795,12 +809,17 @@ impl Run {
                 "partial": lt.partial.map(|p| p.text),
             })
         });
-        json!({
+        let tombstones = live.rt.pending_deletes();
+        let mut snap = json!({
             "view": view_json(&live.rt.session()),
             "live": live_t,
             "db": {"meetings": meetings, "segments": segments, "summaries": summaries, "notes": notes, "pipelines": pipelines, "session": session},
             "files": files,
-        })
+        });
+        if !tombstones.is_empty() {
+            snap["tombstones"] = json!(tombstones);
+        }
+        snap
     }
 
     async fn exec(mut self) -> Value {
@@ -858,13 +877,10 @@ impl Run {
                         }
                     }
                 }
-                "pendingDelete" => {
-                    self.sh
-                        .tombstones
-                        .lock()
-                        .unwrap()
-                        .insert(op["id"].as_str().unwrap().to_string());
-                }
+                // A tombstone a quit left behind (no undo timer).
+                "pendingDelete" => PendingDeletes::new(&self.sh.dir)
+                    .add(op["id"].as_str().unwrap())
+                    .unwrap(),
                 "store" => {
                     let mut f = self.sh.failing.lock().unwrap();
                     for m in op["fail"].as_array().into_iter().flatten() {
@@ -998,7 +1014,7 @@ fn run_one(file: &Path) -> Result<(), String> {
                 trace: Mutex::new(Trace::default()),
                 up: AtomicBool::new(true),
                 failing: Mutex::new(HashSet::new()),
-                tombstones: Arc::new(Mutex::new(HashSet::new())),
+                dir: tmp.path().to_path_buf(),
                 outcomes: Mutex::new(HashMap::new()),
             }),
             db,

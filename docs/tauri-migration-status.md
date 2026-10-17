@@ -8,17 +8,17 @@ If a run is interrupted, the next one continues from this file. Keep it current.
 
 ## Ownership split
 
-| Area                                                                                                     | Owner   |
-| -------------------------------------------------------------------------------------------------------- | ------- |
-| `crates/qrtz-lifecycle`, `crates/qrtz-model`, `crates/qrtz-storage`                                      | Bozniak |
-| `qrtz-llm` (OpenRouter `anthropic/claude-haiku-5.5`, deadlines, capture-aware prompts, extractive fallback) | Bozniak |
-| `qrtz-search` (index, FTS, CJK/Thai, chat retrieval, MiniLM)                                             | Bozniak |
-| Pending-delete tombstones (`RuntimeDeps::pending_delete`) and `assert_deletable`                         | Bozniak |
-| `crates/qrtz-app` wiring (ports, EventSink, HelperPort, Store, recover, AppDirs, config, secrets)          | Bobs    |
-| `apps/desktop-tauri/src-tauri` shell (windows, tray, shortcuts, notifications, media protocol)            | Bobs    |
-| Rust talk service (ElevenLabs → Deepgram → on-device Parakeet via the helper; T1 helper-lost; busy ids)   | Bobs    |
-| `qrtz-helper-bridge`, helper protocol, mocks (N38), arbiter mux (N5)                                       | Bobs    |
-| E2E port to the real Tauri app; removing Electron; memory numbers; docs/ADR/CHANGELOG for the cutover    | Bobs    |
+| Area                                                                                                                                                                                                                                      | Owner   |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `crates/qrtz-lifecycle`, `crates/qrtz-model`, `crates/qrtz-storage`                                                                                                                                                                       | Bozniak |
+| `qrtz-llm` (OpenRouter `anthropic/claude-haiku-5.5`, deadlines, capture-aware prompts, extractive fallback)                                                                                                                               | Bozniak |
+| `qrtz-search` (index, FTS, CJK/Thai, chat retrieval, MiniLM)                                                                                                                                                                              | Bozniak |
+| Pending-delete tombstones (`RuntimeDeps::pending_delete`) and `assert_deletable`: **done** (`qrtz_storage::PendingDeletes`, `NoteRuntime::{schedule_delete, undo_delete, pending_deletes, assert_deletable}`; see rust-core-api.md §6 q8) | Bozniak |
+| `crates/qrtz-app` wiring (ports, EventSink, HelperPort, Store, recover, AppDirs, config, secrets)                                                                                                                                         | Bobs    |
+| `apps/desktop-tauri/src-tauri` shell (windows, tray, shortcuts, notifications, media protocol)                                                                                                                                            | Bobs    |
+| Rust talk service (ElevenLabs → Deepgram → on-device Parakeet via the helper; T1 helper-lost; busy ids)                                                                                                                                   | Bobs    |
+| `qrtz-helper-bridge`, helper protocol, mocks (N38), arbiter mux (N5)                                                                                                                                                                      | Bobs    |
+| E2E port to the real Tauri app; removing Electron; memory numbers; docs/ADR/CHANGELOG for the cutover                                                                                                                                     | Bobs    |
 
 Bozniak's pieces plug in behind the `StepExecutor` (summary/index/resummarize/chat) and `NoteRuntime` seams;
 qrtz-app never re-implements them. Until they land, the Tauri build uses `CoreSteps` (real finalize; summary
@@ -37,16 +37,16 @@ delete runs immediately.
 
 ## Phases
 
-| #   | Phase                                                                                                    | State | Commit |
-| --- | -------------------------------------------------------------------------------------------------------- | ----- | ------ |
-| 0   | This file, ownership split                                                                               | done  | (this) |
+| #   | Phase                                                                                                                                                                                                                                                              | State | Commit |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----- | ------ |
+| 0   | This file, ownership split                                                                                                                                                                                                                                         | done  | (this) |
 | 1   | `src-tauri` shell in the workspace; qrtz-app: NoteRuntimePort (all runtime channels), StoragePort over `StorageHandle`, EventSink (bus + OS notifications + no-audio hook), HelperPort over the supervisor, recover() at boot, AppDirs, file secrets 0600 on Linux | todo  |        |
-| 2   | Rust talk service (`qrtz-talk`): cloud streaming (ElevenLabs Scribe v2 Realtime, Deepgram), on-device via helper, history/dictionary 0600 with stale `.tmp` removal, T1 helper-lost on the T2 hooks | todo  |        |
-| 3   | Export markdown, backup zip export/import, chat + summaries through Bozniak's crates when they land        | todo  |        |
-| 4   | N38 (mock start reports in the `recording.started` chunk + e2e), N5 (`mux = mic.includes('recording') && state.dictating`, TS + Swift, vectors) | todo  |        |
-| 5   | E2E suite against the real Tauri app on Linux (WebKitWebDriver/tauri-driver + Rust mock helper): one equivalent per Electron scenario | todo  |        |
-| 6   | Move the renderer into `apps/desktop-tauri`, delete `apps/desktop` and the TS-only runtime; keep TS spec models + vectors | todo  |        |
-| 7   | Memory: Tauri idle/recording vs the last Electron build (Linux); docs, README, ADR (Electron removed), CHANGELOG | todo  |        |
+| 2   | Rust talk service (`qrtz-talk`): cloud streaming (ElevenLabs Scribe v2 Realtime, Deepgram), on-device via helper, history/dictionary 0600 with stale `.tmp` removal, T1 helper-lost on the T2 hooks                                                                | todo  |        |
+| 3   | Export markdown, backup zip export/import, chat + summaries through Bozniak's crates when they land                                                                                                                                                                | todo  |        |
+| 4   | N38 (mock start reports in the `recording.started` chunk + e2e), N5 (`mux = mic.includes('recording') && state.dictating`, TS + Swift, vectors)                                                                                                                    | todo  |        |
+| 5   | E2E suite against the real Tauri app on Linux (WebKitWebDriver/tauri-driver + Rust mock helper): one equivalent per Electron scenario                                                                                                                              | todo  |        |
+| 6   | Move the renderer into `apps/desktop-tauri`, delete `apps/desktop` and the TS-only runtime; keep TS spec models + vectors                                                                                                                                          | todo  |        |
+| 7   | Memory: Tauri idle/recording vs the last Electron build (Linux); docs, README, ADR (Electron removed), CHANGELOG                                                                                                                                                   | todo  |        |
 
 ## Mac-only checks (cannot run on the Linux box)
 

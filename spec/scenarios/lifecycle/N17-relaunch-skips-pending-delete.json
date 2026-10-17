@@ -1,6 +1,6 @@
 {
   "name": "N17-relaunch-skips-pending-delete",
-  "about": "Cycle 4 N17: the user deletes a meeting (undoable, tombstoned) while its summary is in flight and the app quits before the undo window ends. On relaunch recovery must not resume that meeting's post-processing (no cloud summary of a deleted meeting); the deferred delete then runs and removes rows and audio.",
+  "about": "Cycle 4 N17: the user deletes a meeting (undoable, tombstoned) while its summary is in flight and the app quits before the undo window ends. On relaunch recovery must not resume that meeting's post-processing (no cloud summary of a deleted meeting); the deferred delete then runs from the tombstone (PendingDeletes.recover) and removes rows and audio.",
   "script": [
     {
       "op": "helper",
@@ -81,18 +81,6 @@
     {
       "op": "snapshot",
       "label": "relaunched"
-    },
-    {
-      "op": "call",
-      "fn": "deleteMeeting",
-      "label": "deferred-delete",
-      "args": {
-        "id": "id1"
-      }
-    },
-    {
-      "op": "advance",
-      "ms": 50
     }
   ],
   "expect": {
@@ -128,7 +116,9 @@
       ],
       "changed": [
         "id1",
-        "id1"
+        "id1",
+        "id1",
+        "*"
       ],
       "permissions": [
         "granted|granted|granted"
@@ -147,11 +137,6 @@
           "phase": "processing",
           "meetingId": "id1"
         }
-      },
-      "deferred-delete": {
-        "ok": [
-          "id1.wav"
-        ]
       }
     },
     "snapshots": {
@@ -176,47 +161,17 @@
         },
         "live": null,
         "db": {
-          "meetings": [
-            [
-              "id1",
-              "Standup",
-              "other",
-              "processing",
-              1760000000000,
-              1760000000000,
-              4000,
-              "$REC/id1.wav",
-              "general"
-            ]
-          ],
+          "meetings": [],
           "segments": [],
           "summaries": [],
           "notes": [],
-          "pipelines": [
-            [
-              "id1",
-              0,
-              "manual",
-              "finalize:done/1 summary:running/1 index:pending/0",
-              4000,
-              false,
-              [
-                "$REC/id1.wav"
-              ],
-              0
-            ]
-          ],
+          "pipelines": [],
           "session": [
             "idle",
             null
           ]
         },
-        "files": [
-          [
-            "id1.wav",
-            12844
-          ]
-        ]
+        "files": []
       },
       "end": {
         "view": {

@@ -17,6 +17,7 @@ mod handle;
 mod lifecycle;
 mod migrate;
 mod notes;
+mod pending_deletes;
 mod row;
 
 pub use db::{Db, DbHealth, ImportReport};
@@ -26,4 +27,5 @@ pub use handle::StorageHandle;
 pub use lifecycle::LifecycleRepo;
 pub use migrate::{migrate, schema_version, Migration, MigrationReport, MIGRATIONS};
 pub use notes::{ListQuery, NoteRepo, SegmentHit, VectorRow, VectorSource, VectorTodo};
+pub use pending_deletes::{PendingDeletes, PENDING_DELETES_FILE};
 pub use qrtz_model as model;
