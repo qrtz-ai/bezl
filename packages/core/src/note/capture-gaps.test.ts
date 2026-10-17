@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildSummaryPrompt, captureGapsForPrompt } from './llm';
+import {
+  buildSummaryPrompt,
+  captureGapGuidance,
+  captureGapsForPrompt,
+} from './llm';
 import type { SilentSpan } from './lifecycle';
 
 const seg = {
@@ -55,9 +59,33 @@ describe('N29 capture gaps in the summary prompt', () => {
     const p = buildSummaryPrompt('T', [seg], {
       silentSpans: [{ source: 'system', startMs: 0, endMs: 2 * min }],
     });
-    expect(p[0]!.content).toContain('never summarize, guess or attribute');
+    // N34: a one-sided gap is not "nothing is known": the mic transcript there is real and is summarized.
+    expect(p[0]!.content).not.toContain('never summarize');
+    expect(p[0]!.content).toContain(
+      'the transcript lines in that stretch are real',
+    );
     expect(p[1]!.content).toContain(
       "Capture gaps:\n- 0:00–2:00: no audio from the other participants (the computer's sound)\n\nTranscript:",
     );
+  });
+
+  it('N34: only a no-audio-at-all stretch gets the never-summarize rule; a mixed recording gets both rules', () => {
+    const both = buildSummaryPrompt('T', [seg], {
+      silentSpans: [
+        { source: 'system', startMs: 0, endMs: 2 * min },
+        { source: 'mic', startMs: 0, endMs: 2 * min },
+      ],
+    });
+    expect(both[0]!.content).toContain('never summarize, guess or attribute');
+    expect(both[0]!.content).not.toContain('only one source');
+    const mixed = buildSummaryPrompt('T', [seg], {
+      silentSpans: [
+        { source: 'system', startMs: 0, endMs: 5 * min },
+        { source: 'mic', startMs: 3 * min, endMs: 5 * min },
+      ],
+    });
+    expect(mixed[0]!.content).toContain('never summarize, guess or attribute');
+    expect(mixed[0]!.content).toContain('only one source had no audio');
+    expect(captureGapGuidance([])).toBe('');
   });
 });

@@ -488,6 +488,13 @@ const subtractIv = (xs: Iv[], cut: Iv[]): Iv[] =>
     return parts;
   });
 
+/** N29: what each capture-gap line says. Only `both` is a stretch where nothing at all is known (N34). */
+export const GAP_LABELS = {
+  both: 'no audio at all (nothing was captured)',
+  system: "no audio from the other participants (the computer's sound)",
+  mic: "no audio from this user's microphone",
+} as const;
+
 /**
  * N29: the large capture gaps of a recording as prompt lines, in meeting order: stretches where both sources were
  * silent ("no audio at all"), then what is left of each source's own silence. A stretch with no end runs to
@@ -511,11 +518,7 @@ export function captureGapsForPrompt(
   const sys = of('system');
   const mic = of('mic');
   const both = mergeIv(intersectIv(sys, mic));
-  const label = {
-    both: 'no audio at all (nothing was captured)',
-    system: "no audio from the other participants (the computer's sound)",
-    mic: "no audio from this user's microphone",
-  } as const;
+  const label = GAP_LABELS;
   const big = ([a, b]: Iv) => b - a >= LARGE_CAPTURE_GAP_MS;
   const lines = [
     ...both.filter(big).map((iv) => [iv, label.both] as const),
@@ -529,6 +532,28 @@ export function captureGapsForPrompt(
   return lines
     .slice(0, MAX_GAP_LINES)
     .map(([[a, b], what]) => `- ${clock(a)}–${clock(b)}: ${what}`);
+}
+
+/**
+ * N34: what the model is told about the capture gaps. A stretch where both sources were silent is unknown: nothing may
+ * be summarized or attributed to it. A one-sided stretch is not: the other source was captured (the user presenting
+ * while the other participants are quiet is the common case, and meeting apps output digital silence then), so its
+ * transcript lines are real and are summarized as usual; only the silent side must not be guessed. Before, every
+ * listed stretch got the "nothing is known, never summarize" rule, which told the model to drop real speech.
+ */
+export function captureGapGuidance(gaps: readonly string[]): string {
+  if (!gaps.length) return '';
+  const none = gaps.some((l) => l.endsWith(GAP_LABELS.both));
+  const oneSided = gaps.some((l) => !l.endsWith(GAP_LABELS.both));
+  return (
+    ' Some stretches of the recording are listed under Capture gaps (timestamps match the transcript).' +
+    (none
+      ? ' Where it says no audio at all, nothing is known about what was said: never summarize, guess or attribute anything to that stretch; you may say that audio is missing for it.'
+      : '') +
+    (oneSided
+      ? ' Where only one source had no audio, the transcript lines in that stretch are real and come from the other source: summarize them as usual; just never guess what the silent side said.'
+      : '')
+  );
 }
 
 export function buildSummaryPrompt(
@@ -548,9 +573,7 @@ export function buildSummaryPrompt(
         (notes.length
           ? " The user took their own notes during the meeting (timestamps match the transcript). Treat them as the user's priorities: build the summary around them, expand each with details from the transcript, keep any to-dos from the notes as action items, and never contradict the transcript."
           : '') +
-        (gaps.length
-          ? ' Some stretches of the recording captured no audio (listed under Capture gaps, timestamps match the transcript). Nothing is known about what was said then: never summarize, guess or attribute anything to those stretches; you may say that audio is missing for them.'
-          : ''),
+        captureGapGuidance(gaps),
     },
     {
       role: 'user',
