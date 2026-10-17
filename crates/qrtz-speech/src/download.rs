@@ -37,6 +37,28 @@ impl DownloadControl {
     }
 }
 
+/// N100: true for an http(s) URL whose host really is loopback (`localhost`, `127.0.0.0/8`, `::1`), so
+/// `http://127.0.0.1.example.com` is not. A copy of `qrtz_llm::steps::is_loopback_url` (qrtz-llm depends on
+/// qrtz-lifecycle, which depends on this crate, so it can't be imported here); qrtz-app's
+/// `the_loopback_checks_agree` keeps the two identical.
+pub fn is_loopback_url(url: &str) -> bool {
+    let Ok(u) = reqwest::Url::parse(url) else {
+        return false;
+    };
+    if !matches!(u.scheme(), "http" | "https") || !u.username().is_empty() || u.password().is_some() {
+        return false;
+    }
+    match u.host_str() {
+        Some(h) if h.eq_ignore_ascii_case("localhost") => true,
+        Some(h) => h
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|a| a.is_loopback()),
+        None => false,
+    }
+}
+
 pub struct Downloader {
     client: reqwest::Client,
     base: String,
@@ -47,7 +69,8 @@ impl Downloader {
         let client = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(15))
             .read_timeout(std::time::Duration::from_secs(60))
-            .https_only(!base.starts_with("http://127.0.0.1") && !base.starts_with("http://localhost"))
+            // N100: plain http only to a real loopback host (not `http://127.0.0.1.example.com`).
+            .https_only(!is_loopback_url(base))
             .build()
             .expect("http client");
         Self {

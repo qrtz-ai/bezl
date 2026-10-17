@@ -241,7 +241,8 @@ impl SpeechManager {
                 me2.emit(installing);
             };
             let r = up.install_latest(force, &me.ctl, &on_progress).await;
-            me.running.store(false, Ordering::SeqCst);
+            // N101: `running` goes false last, after the marker and state are final, so a download/resume that
+            // starts in between can't have its fresh marker/state overwritten by this run's outcome.
             match r {
                 Ok(UpdateOutcome::Quarantined { .. }) => {
                     me.set_marker(None);
@@ -282,6 +283,7 @@ impl SpeechManager {
                     });
                 }
             }
+            me.running.store(false, Ordering::SeqCst);
         });
     }
 
@@ -469,7 +471,8 @@ impl SearchModel {
         let r = async {
             let client = reqwest::Client::builder()
                 .connect_timeout(Duration::from_secs(15))
-                .https_only(!self.base.starts_with("http://127.0.0.1"))
+                // N100: plain http only to a real loopback host (not `http://127.0.0.1.example.com`).
+                .https_only(!qrtz_llm::steps::is_loopback_url(&self.base))
                 .build()
                 .map_err(|e| e.to_string())?;
             crate::private_dir(&self.dir).map_err(|e| e.to_string())?;
@@ -514,6 +517,30 @@ impl SetupPort for Setup {
             "search:model-status" => Ok(self.model.status()),
             "search:model-download" => Ok(self.model.download(self.embedder.clone())),
             _ => Err(AppError::new(ErrorCode::UnknownChannel, channel.to_owned())),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// N100: the speech bundle and search model downloads allow plain http only to a real loopback host, and the
+    /// qrtz-speech copy of the check matches qrtz-llm's.
+    #[test]
+    fn the_loopback_checks_agree() {
+        for (url, loopback) in [
+            ("http://127.0.0.1:8080", true),
+            ("http://127.1", true),
+            ("http://localhost/x", true),
+            ("http://[::1]:9/", true),
+            ("http://127.0.0.1.example.com", false),
+            ("http://localhost.example.com", false),
+            ("http://user@127.0.0.1", false),
+            ("https://huggingface.co", false),
+            ("ftp://127.0.0.1", false),
+            ("not a url", false),
+        ] {
+            assert_eq!(qrtz_llm::steps::is_loopback_url(url), loopback, "{url}");
+            assert_eq!(qrtz_speech::download::is_loopback_url(url), loopback, "{url}");
         }
     }
 }
