@@ -20,3 +20,9 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
   - `params` must be optional.
 - **Note:** Playwright can't drive the fused, packaged app (the inspect fuse is off, by design). The e2e runs the production `.vite` build on the stock Electron binary.
 - **Next:** M0.9 e2e test, then M1.1 (tokens).
+
+## 2026-10-16 ~17:35–17:42 PT: iteration 2 (M1.1, M1.2)
+- **Tokens:** qrtz.ai neutral-dark palette, Geist/mono type, space, radii, motion and z-index, exposed as CSS vars (`--q-*`) plus global CSS (reset, focus ring, blink/spin/fade keyframes, underline motion, reduced-motion support).
+- **Primitives:** Heading (blinking `_` cursor, mono), Button (primary/secondary/ghost/danger, sm/md/lg, loading), Badge (qrtz.ai tinted style), Kbd, Spinner. Home has been restyled.
+- **Verified:** lint, typecheck, 36 tests, package and e2e all green. The e2e saves a screenshot to `test-results/home.png`.
+- **Next:** M1.3 (inputs).

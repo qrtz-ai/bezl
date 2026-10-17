@@ -1,23 +1,24 @@
-import { createContext, useContext, type ReactNode } from 'react';
-import { tokens, type Tokens } from './tokens';
+import {
+  createContext,
+  useContext,
+  useInsertionEffect,
+  type ReactNode,
+} from 'react';
+import { globalCss, tokens, type Tokens } from './tokens';
 
 const ThemeContext = createContext<Tokens>(tokens);
 
+/** Injects global CSS (vars, reset, keyframes) once and provides tokens to components. */
 export function ThemeProvider({ children }: { children: ReactNode }) {
+  useInsertionEffect(() => {
+    if (document.getElementById('q-global')) return;
+    const style = document.createElement('style');
+    style.id = 'q-global';
+    style.textContent = globalCss(tokens);
+    document.head.appendChild(style);
+  }, []);
   return (
-    <ThemeContext.Provider value={tokens}>
-      <div
-        style={{
-          height: '100%',
-          background: tokens.color.bg,
-          color: tokens.color.text,
-          fontFamily: tokens.font.family,
-          fontSize: tokens.font.size.md,
-        }}
-      >
-        {children}
-      </div>
-    </ThemeContext.Provider>
+    <ThemeContext.Provider value={tokens}>{children}</ThemeContext.Provider>
   );
 }
 

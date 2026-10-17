@@ -1,28 +1,83 @@
-import type { ButtonHTMLAttributes } from 'react';
+import type { ButtonHTMLAttributes, CSSProperties } from 'react';
 import { useTheme } from './theme';
+import { Spinner } from './Spinner';
+
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'ghost';
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  loading?: boolean;
 }
 
-export function Button({ variant = 'primary', style, ...rest }: ButtonProps) {
+export function Button({
+  variant = 'primary',
+  size = 'md',
+  loading,
+  disabled,
+  style,
+  children,
+  ...rest
+}: ButtonProps) {
   const t = useTheme();
-  const primary = variant === 'primary';
+  const v: Record<ButtonVariant, CSSProperties> = {
+    primary: {
+      background: t.color.primary,
+      color: t.color.primaryText,
+      borderColor: t.color.primary,
+    },
+    secondary: {
+      background: t.color.accent,
+      color: t.color.text,
+      borderColor: t.color.border,
+    },
+    ghost: {
+      background: 'transparent',
+      color: t.color.text,
+      borderColor: t.color.border,
+    },
+    danger: {
+      background: t.color.danger,
+      color: '#fff',
+      borderColor: t.color.danger,
+    },
+  };
+  const s: Record<ButtonSize, CSSProperties> = {
+    sm: { height: 28, padding: `0 ${t.space[3]}`, fontSize: t.font.size.sm },
+    md: { height: 34, padding: `0 ${t.space[4]}`, fontSize: t.font.size.md },
+    lg: { height: 40, padding: `0 ${t.space[5]}`, fontSize: t.font.size.md },
+  };
+  const off = disabled || loading;
   return (
     <button
       type="button"
+      disabled={off}
+      aria-busy={loading || undefined}
       {...rest}
-      style={{
-        cursor: 'pointer',
-        padding: `${t.space[2]} ${t.space[4]}`,
-        borderRadius: t.radius.sm,
-        border: `1px solid ${primary ? t.color.accent : t.color.border}`,
-        background: primary ? t.color.accent : 'transparent',
-        color: primary ? t.color.accentText : t.color.text,
-        fontFamily: 'inherit',
-        fontSize: t.font.size.md,
-        ...style,
-      }}
-    />
+      style={
+        {
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: t.space[2],
+          cursor: off ? 'not-allowed' : 'pointer',
+          opacity: off ? 0.55 : 1,
+          borderRadius: t.radius.md,
+          border: '1px solid',
+          fontFamily: 'inherit',
+          fontWeight: t.font.weight.medium,
+          whiteSpace: 'nowrap',
+          transition: `opacity ${t.motion.fast} ${t.motion.easeOut}, background ${t.motion.fast} ${t.motion.easeOut}`,
+          WebkitAppRegion: 'no-drag',
+          ...v[variant],
+          ...s[size],
+          ...style,
+        } as CSSProperties
+      }
+    >
+      {loading ? <Spinner size={14} /> : null}
+      {children}
+    </button>
   );
 }
