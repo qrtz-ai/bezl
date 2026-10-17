@@ -112,6 +112,10 @@ pub struct HelperOpts {
     /// A qrtz speech module as the on-device engine: (protocol, version). `None` = today's helper (its
     /// `dictation.asr` lines through `HelperAsrSpeech`).
     pub module: Option<(u32, String)>,
+    /// Answer `insert.text` this much later (a slow paste into a busy app).
+    pub insert_delay_ms: u64,
+    /// Send `dictation.stopped` this much later (a slow mic teardown / final flush in the helper).
+    pub stopped_delay_ms: u64,
 }
 
 struct HState {
@@ -206,6 +210,10 @@ impl MockHelper {
     }
     pub fn active(&self) -> Option<String> {
         self.st.lock().unwrap().active.clone()
+    }
+    /// The push key (`hotkey` down / up from the helper's tap).
+    pub fn key(&self, action: &str) {
+        self.deliver(json!({"type": "hotkey", "action": action}));
     }
     pub fn deliver(&self, m: Value) {
         if let Some(tx) = self.out.get() {
@@ -414,21 +422,37 @@ impl HelperSink for SinkHandle {
                     st.active = None;
                     if ty == "dictation.stop" {
                         let text = heard_text(st.heard);
+                        let delay = st.opts.stopped_delay_ms;
                         drop(st);
-                        me.deliver(
-                            json!({"type": "dictation.stopped", "id": id, "text": text, "durationMs": 1000}),
-                        );
+                        let line =
+                            json!({"type": "dictation.stopped", "id": id, "text": text, "durationMs": 1000});
+                        if delay == 0 {
+                            me.deliver(line);
+                        } else {
+                            tokio::spawn(async move {
+                                tokio::time::sleep(Duration::from_millis(delay)).await;
+                                me.deliver(line);
+                            });
+                        }
                     }
                 }
             }
             "insert.text" => {
-                let fails = st.opts.insert_fails;
+                let (fails, delay) = (st.opts.insert_fails, st.opts.insert_delay_ms);
                 drop(st);
-                me.deliver(if fails {
+                let line = if fails {
                     json!({"type": "insert.result", "id": id, "method": "none", "ok": false, "error": "no focused field"})
                 } else {
                     json!({"type": "insert.result", "id": id, "method": "ax-selected-text", "ok": true, "app": "Mock Editor"})
-                });
+                };
+                if delay == 0 {
+                    me.deliver(line);
+                } else {
+                    tokio::spawn(async move {
+                        tokio::time::sleep(Duration::from_millis(delay)).await;
+                        me.deliver(line);
+                    });
+                }
             }
             _ => {}
         }
@@ -459,6 +483,8 @@ pub struct RigOpts {
     pub config: Value,
     pub seed_store: Option<Vec<u8>>,
     pub timeouts: Timeouts,
+    /// The on-device engine's `start` (module spawn + handshake) takes this long.
+    pub local_start_delay_ms: u64,
 }
 impl Default for RigOpts {
     fn default() -> Self {
@@ -479,7 +505,27 @@ impl Default for RigOpts {
                 final_ms: 300,
                 check: 50,
             },
+            local_start_delay_ms: 0,
         }
+    }
+}
+
+/// An on-device engine whose `start` takes a while (the real one spawns the module process and handshakes).
+pub struct SlowStart {
+    pub inner: Arc<dyn qrtz_talk::qrtz_speech::SpeechEngine>,
+    pub delay_ms: u64,
+}
+#[async_trait::async_trait]
+impl qrtz_talk::qrtz_speech::SpeechEngine for SlowStart {
+    fn info(&self) -> qrtz_talk::qrtz_speech::EngineInfo {
+        self.inner.info()
+    }
+    async fn start(
+        &self,
+        spec: qrtz_talk::qrtz_speech::SessionSpec,
+    ) -> Result<Box<dyn qrtz_talk::qrtz_speech::SpeechSession>, qrtz_talk::qrtz_speech::SpeechError> {
+        tokio::time::sleep(Duration::from_millis(self.delay_ms)).await;
+        self.inner.start(spec).await
     }
 }
 
@@ -508,6 +554,14 @@ pub fn rig(o: RigOpts) -> Rig {
     let local: Arc<dyn qrtz_talk::qrtz_speech::SpeechEngine> = match &speech {
         Some(m) => Arc::new(m.clone()),
         None => helper_asr.clone(),
+    };
+    let local: Arc<dyn qrtz_talk::qrtz_speech::SpeechEngine> = if o.local_start_delay_ms > 0 {
+        Arc::new(SlowStart {
+            inner: local,
+            delay_ms: o.local_start_delay_ms,
+        })
+    } else {
+        local
     };
     let svc = TalkService::new(TalkDeps {
         helper: Arc::new(SinkHandle(helper.clone())),

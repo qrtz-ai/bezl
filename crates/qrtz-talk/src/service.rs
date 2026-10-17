@@ -23,6 +23,7 @@ use qrtz_speech::{Channel, FailReason, SessionKind, SessionSpec, SpeakerMode, Sp
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 use tokio::sync::oneshot;
@@ -198,6 +199,8 @@ struct Inner {
     hellos: u64,
     dictation_helper: u64,
     via_push_key: bool,
+    /// N111: the push key is physically down (last `hotkey` was `down`).
+    key_held: bool,
     key_down: f64,
     key_up: f64,
     first_partial: Option<f64>,
@@ -208,6 +211,9 @@ struct Inner {
 struct Shared {
     deps: TalkDeps,
     inner: Mutex<Inner>,
+    /// N110: the push key went down while the last dictation was still finalizing. The next dictation starts the
+    /// moment the view takes a start (checked in `emit_view`, under the state lock), unless the key goes up first.
+    pending_press: AtomicBool,
 }
 
 /// The service. Cheap to clone (one shared state); every method may be called from any tokio task.
@@ -246,12 +252,14 @@ impl TalkService {
                 hellos: 0,
                 dictation_helper: 0,
                 via_push_key: false,
+                key_held: false,
                 key_down: 0.0,
                 key_up: 0.0,
                 first_partial: None,
                 waiters: HashMap::new(),
                 attempt: None,
             }),
+            pending_press: AtomicBool::new(false),
         }))
     }
 
@@ -274,6 +282,11 @@ impl TalkService {
         self.deps()
             .events
             .emit("talk:state", serde_json::to_value(&g.view).unwrap_or(Value::Null));
+        // N110: a press held through the last dictation's finalizing starts the next one now.
+        if g.view.takes_a_start() && self.0.pending_press.swap(false, Ordering::SeqCst) {
+            let me = self.clone();
+            tokio::spawn(async move { me.start_inner(true).await });
+        }
     }
     fn save(&self, g: &Inner) {
         if let Err(e) = self
@@ -443,16 +456,32 @@ impl TalkService {
                 }
                 let action = s(m, "action");
                 let mut g = self.lock();
-                if action == "down" && !g.view.active() {
-                    g.via_push_key = true;
-                    drop(g);
-                    let me = self.clone();
-                    tokio::spawn(async move { me.start().await });
-                } else if action == "up" && g.via_push_key {
-                    g.via_push_key = false;
-                    drop(g);
-                    let me = self.clone();
-                    tokio::spawn(async move { me.stop().await });
+                if action == "down" {
+                    g.key_held = true;
+                    if g.view.takes_a_start() {
+                        g.via_push_key = true;
+                        drop(g);
+                        let me = self.clone();
+                        tokio::spawn(async move { me.start_inner(true).await });
+                    } else if g.view.phase == TalkPhase::Finalizing {
+                        // N110: the pill is already gone, so this press must not be dropped: start as soon as
+                        // the last dictation is past finalizing (`emit_view`), if the key is still down then.
+                        g.via_push_key = true;
+                        self.0.pending_press.store(true, Ordering::SeqCst);
+                    }
+                } else if action == "up" {
+                    g.key_held = false;
+                    if self.0.pending_press.swap(false, Ordering::SeqCst) {
+                        g.via_push_key = false;
+                        tracing::info!(
+                            "push key released before the last dictation finished; nothing started"
+                        );
+                    } else if g.via_push_key {
+                        g.via_push_key = false;
+                        drop(g);
+                        let me = self.clone();
+                        tokio::spawn(async move { me.stop().await });
+                    }
                 }
             }
             "dictation.started" => self.resolve(&format!("started:{}", s(m, "id")), m.clone()),
@@ -578,12 +607,26 @@ impl TalkService {
     /// what was heard, release every waiter for its id. Idempotent; a no-op when idle.
     pub fn helper_lost(&self, why: &str) {
         let mut g = self.lock();
+        // No insert result will come from a helper that is gone: release every outstanding insert, including an
+        // older dictation's still inserting behind a newer one (N110); its words go to the clipboard.
+        let inserts: Vec<String> = g
+            .waiters
+            .keys()
+            .filter(|k| k.starts_with("insert:"))
+            .cloned()
+            .collect();
+        for k in inserts {
+            if let Some(tx) = g.waiters.remove(&k) {
+                let _ = tx.send(None);
+            }
+        }
+        self.0.pending_press.store(false, Ordering::SeqCst);
         let Some(id) = g.view.id.clone().filter(|_| g.view.active()) else {
             return;
         };
         tracing::warn!(why, phase = ?g.view.phase, "helper lost mid-dictation");
         g.via_push_key = false;
-        for k in ["started", "stopped", "insert"] {
+        for k in ["started", "stopped"] {
             if let Some(tx) = g.waiters.remove(&format!("{k}:{id}")) {
                 let _ = tx.send(None);
             }
@@ -928,7 +971,12 @@ impl TalkService {
     }
 
     pub async fn start(&self) -> TalkView {
-        if self.lock().view.active() {
+        self.start_inner(false).await
+    }
+
+    /// `from_key`: started by the push key, so the key state decides when it stops (N111).
+    async fn start_inner(&self, from_key: bool) -> TalkView {
+        if !self.lock().view.takes_a_start() {
             return self.state();
         }
         let cfg = self.cfg();
@@ -957,7 +1005,7 @@ impl TalkService {
         };
         let started_rx = {
             let mut g = self.lock();
-            if g.view.active() {
+            if !g.view.takes_a_start() {
                 return g.view.clone();
             }
             g.dictation_helper = g.hellos.max(1);
@@ -975,6 +1023,9 @@ impl TalkService {
                 ),
                 ..TalkView::idle()
             };
+            if from_key {
+                g.via_push_key = true;
+            }
             g.attempt = Some(Attempt {
                 id: id.clone(),
                 arbiter: Arbiter::new(stall),
@@ -1017,8 +1068,20 @@ impl TalkService {
                     self.connect_cloud(a, dictionary);
                 }
                 self.emit_view(&g);
+                // N111: the key went up while the engine was starting (a tap shorter than the module spawn and
+                // handshake): its release found nothing listening yet, so stop now. After `dictation.start` was
+                // sent, so the helper sees start then stop.
+                let released = from_key && !g.key_held;
+                if released {
+                    g.via_push_key = false;
+                }
                 drop(g);
                 self.spawn_stall_check(id.clone());
+                if released {
+                    tracing::info!("push key released while the dictation was starting; stopping it");
+                    let me = self.clone();
+                    tokio::spawn(async move { me.stop().await });
+                }
             }
         }
         let started = self
@@ -1110,7 +1173,10 @@ impl TalkService {
                 g.key_up - g.key_down
             }
         };
-        self.finish(id.clone(), text, dur).await;
+        if !self.finish(id.clone(), text, dur).await {
+            // A newer dictation took the view while this one was inserting (N110): its error stays in history.
+            return;
+        }
         let mut g = self.lock();
         g.view.phase = TalkPhase::Error;
         g.view.error = Some(msg.to_owned());
@@ -1120,12 +1186,16 @@ impl TalkService {
     }
 
     /// Flush the cloud (if still in use), pick the text, then the on-device cleanup → insert → history.
-    async fn finish(&self, id: String, local_text: String, duration_ms: f64) {
+    ///
+    /// From `inserting` on, a newer dictation may own the view (N110): everything this one needs (start time, key
+    /// times, first partial) is captured before that, and its end only sets `last` on a view that isn't its own.
+    /// Returns whether the view was still this dictation's at the end.
+    async fn finish(&self, id: String, local_text: String, duration_ms: f64) -> bool {
         let t = self.deps().timeouts;
         let rx = {
             let mut g = self.lock();
             let Some(a) = g.attempt.as_mut().filter(|a| a.id == id) else {
-                return;
+                return g.view.id.as_deref() == Some(id.as_str());
             };
             let local = a.local.as_ref().map(|l| {
                 let (tx, rx) = oneshot::channel();
@@ -1168,7 +1238,7 @@ impl TalkService {
         let asr = {
             let mut g = self.lock();
             let Some(mut a) = g.attempt.take().filter(|a| a.id == id) else {
-                return;
+                return g.view.id.as_deref() == Some(id.as_str());
             };
             let cloud = if a.arbiter.using_cloud() {
                 cloud.or(Some(Err("cloud failed".into())))
@@ -1181,18 +1251,21 @@ impl TalkService {
                 // Auto-failover off: never substitute the on-device text for the cloud the user picked.
                 g.attempt = Some(a);
                 self.go_offline(&mut g);
-                return;
+                return true;
             }
             if let Some(r) = &asr.reason {
                 tracing::info!(reason = %r, "used on-device text");
             }
-            asr
+            // Still finalizing, so still this dictation's view and key times (no start is taken until inserting).
+            let times = (g.view.started_at, g.key_down, g.key_up, g.first_partial);
+            (asr, times)
         };
+        let (asr, (started_at, key_down, key_up, first_partial)) = asr;
         if asr.text.trim().is_empty() {
             let mut g = self.lock();
             g.view = g.view.idle_keeping();
             self.emit_view(&g);
-            return;
+            return true;
         }
         let cfg = self.cfg();
         let dictionary = {
@@ -1238,7 +1311,7 @@ impl TalkService {
             .unwrap_or(InsertMethod::None);
         let entry = TalkEntry {
             id: id.clone(),
-            at: g.view.started_at.unwrap_or_else(|| self.deps().clock.now_ms()),
+            at: started_at.unwrap_or_else(|| self.deps().clock.now_ms()),
             raw: asr.text.clone(),
             text: cleaned.text.clone(),
             cleanup: cleaned.method,
@@ -1249,10 +1322,10 @@ impl TalkService {
             app: insert.as_ref().and_then(|m| m["app"].as_str()).map(str::to_owned),
             duration_ms: duration_ms.max(0.0).round(),
             latency: Latency {
-                first_partial_ms: g.first_partial.map(|f| (f - g.key_down).max(0.0).round()),
-                final_ms: Some((final_at - g.key_up).max(0.0).round()),
+                first_partial_ms: first_partial.map(|f| (f - key_down).max(0.0).round()),
+                final_ms: Some((final_at - key_up).max(0.0).round()),
                 cleanup_ms: Some(cleanup_ms.max(0.0).round()),
-                inserted_ms: ok.then(|| (inserted_at - g.key_up).max(0.0).round()),
+                inserted_ms: ok.then(|| (inserted_at - key_up).max(0.0).round()),
             },
             error,
         };
@@ -1269,10 +1342,18 @@ impl TalkService {
             self.save(&g);
             self.deps().events.emit("talk:history-changed", json!({"id": id}));
         }
-        g.view = TalkView {
-            last: Some(entry),
-            ..TalkView::idle()
-        };
+        let own = g.view.id.as_deref() == Some(id.as_str());
+        if own {
+            g.view = TalkView {
+                last: Some(entry),
+                ..TalkView::idle()
+            };
+        } else {
+            // A newer dictation is listening: keep its view, show this one as the last. (If this insert outlived
+            // the whole newer dictation, this entry lands on top: accepted, P4, ADR 0074.)
+            g.view.last = Some(entry);
+        }
         self.emit_view(&g);
+        own
     }
 }

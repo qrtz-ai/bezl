@@ -226,6 +226,12 @@ impl TalkView {
     pub fn active(&self) -> bool {
         !matches!(self.phase, TalkPhase::Idle | TalkPhase::Error)
     }
+    /// A new dictation can start: nothing is listening or finalizing. `inserting` takes one (N110, ADR 0074): the
+    /// mic is closed and the text is final, so the insert finishes in the background while the next dictation
+    /// listens.
+    pub fn takes_a_start(&self) -> bool {
+        !matches!(self.phase, TalkPhase::Listening | TalkPhase::Finalizing)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
