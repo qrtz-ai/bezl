@@ -14,6 +14,7 @@ import { Tabs } from '../Tabs';
 import { Callout } from '../Callout';
 import { Card } from '../Card';
 import { EmptyState } from '../EmptyState';
+import { Icon, ICON_NAMES, type IconSize } from '../Icon';
 import {
   CaptureStatus,
   PipelineSteps,
@@ -151,6 +152,7 @@ function Showcase({
   const [notes, setNotes] = useState(NOTES);
   const [ask, setAsk] = useState('');
   const [chip, setChip] = useState(false);
+  const [page, setPage] = useState<'components' | 'icons'>('components');
   const meetings = ['Weekly Product Sync', 'Design review', '1:1 with Grace'];
   return (
     <div
@@ -174,601 +176,706 @@ function Showcase({
             onChange={setMode}
           />
         </div>
+        <div data-testid="gallery-page">
+          <Tabs
+            tabs={[
+              { id: 'components', label: 'Components' },
+              { id: 'icons', label: 'Icons' },
+            ]}
+            value={page}
+            onChange={setPage}
+          />
+        </div>
       </header>
 
-      <Section id="type" title="Typography">
-        <div
-          style={{ display: 'grid', gap: t.space[3], width: '100%' }}
-          data-testid="gallery-type-scale"
-        >
-          {TYPE_VARIANTS.map((v) => (
+      {page === 'icons' ? (
+        <IconsPage />
+      ) : (
+        <>
+          <Section id="type" title="Typography">
             <div
-              key={v}
-              data-testid="type-sample"
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '96px 1fr 180px',
-                gap: t.space[4],
-                alignItems: 'baseline',
-              }}
+              style={{ display: 'grid', gap: t.space[3], width: '100%' }}
+              data-testid="gallery-type-scale"
             >
-              <Code>{v}</Code>
-              <Text variant={v} truncate>
-                {v === 'code' || v === 'mono'
-                  ? '00:12:34 · memo.record()'
-                  : 'Meeting notes'}
-              </Text>
-              <Text variant="caption" muted>
-                {t.type[v].size} / {t.type[v].lineHeight}
-                {t.type[v].tracking !== '0em' ? ` / ${t.type[v].tracking}` : ''}
-              </Text>
-            </div>
-          ))}
-          <Stack gap={2}>
-            <Heading level={1}>Heading 1</Heading>
-            <Heading level={2}>Heading 2</Heading>
-            <Heading level={3}>Heading 3</Heading>
-            <Label>Label</Label>
-            <Label caps tone="muted">
-              Section label
-            </Label>
-            <Text>
-              Body with <Code>code</Code> and a <Link href="#type">link</Link>.
-            </Text>
-            <Stack dir="row" gap={4} wrap>
-              {(
-                ['default', 'muted', 'success', 'warning', 'danger'] as const
-              ).map((tone) => (
-                <Text key={tone} tone={tone}>
-                  {tone}
-                </Text>
-              ))}
-            </Stack>
-            <Code block>npm run lint</Code>
-          </Stack>
-        </div>
-      </Section>
-
-      <Section id="color" title="Color">
-        {Object.entries(t.color)
-          .filter(([k]) => k !== 'accentText')
-          .map(([k, v]) => (
-            <div key={k} style={{ display: 'grid', gap: 4, width: 96 }}>
-              <div
-                style={{
-                  height: 40,
-                  borderRadius: t.radius.md,
-                  background: v,
-                  border: `1px solid ${t.color.border}`,
-                }}
-              />
-              <Text variant="caption" truncate>
-                {k}
-              </Text>
-            </div>
-          ))}
-      </Section>
-
-      <Section id="buttons" title="Buttons">
-        <Button>Primary</Button>
-        <Button variant="secondary">Secondary</Button>
-        <Button variant="ghost">Ghost</Button>
-        <Button variant="danger">Danger</Button>
-        <Button size="sm">Small</Button>
-        <Button loading>Loading</Button>
-        <Button disabled>Disabled</Button>
-        <IconButton icon="⌕" label="Search" onClick={() => {}} />
-        <IconButton icon="■" label="Stop" tone="record" onClick={() => {}} />
-        <ActionMenu
-          label="More actions"
-          items={[
-            { label: 'Export .md', onSelect: () => {} },
-            { label: 'Delete', onSelect: () => {}, danger: true },
-          ]}
-        />
-        <Chip pressed={chip} onClick={() => setChip(!chip)}>
-          Grace
-        </Chip>
-      </Section>
-
-      <Section id="badges" title="Badges, Kbd, Spinner, Progress, Tooltip">
-        {(['neutral', 'primary', 'success', 'warning', 'danger'] as const).map(
-          (tone) => (
-            <Badge key={tone} tone={tone}>
-              {tone}
-            </Badge>
-          ),
-        )}
-        <span>
-          <Kbd>⌘</Kbd> <Kbd>K</Kbd>
-        </span>
-        <Spinner />
-        <div style={{ width: 160 }}>
-          <Progress value={0.6} label="Example progress" />
-        </div>
-        <Tooltip label="Start recording (⌘⇧R)">
-          <Button variant="ghost" size="sm">
-            Hover me
-          </Button>
-        </Tooltip>
-      </Section>
-
-      <Section id="inputs" title="Inputs">
-        <div
-          style={{
-            display: 'grid',
-            gap: t.space[3],
-            width: '100%',
-            gridTemplateColumns: '1fr 1fr',
-          }}
-        >
-          <Field label="Input">
-            <Input placeholder="Type here" />
-          </Field>
-          <Field label="Select">
-            <Select defaultValue="b">
-              <option value="a">Alpha</option>
-              <option value="b">Beta</option>
-            </Select>
-          </Field>
-          <Field label="TextArea">
-            <TextArea placeholder="Notes" />
-          </Field>
-          <Field label="Switch">
-            <Switch
-              checked={on}
-              onChange={setOn}
-              label={on ? 'On' : 'Off'}
-              showLabel
-            />
-          </Field>
-          <Composer
-            value={ask}
-            onChange={setAsk}
-            onSubmit={() => setAsk('')}
-            placeholder="Ask"
-            label="Gallery composer"
-          />
-        </div>
-      </Section>
-
-      <Section id="shell" title="App frame and tab bar">
-        <Frame height={140}>
-          <AppFrame
-            embedded
-            tabs={
-              <TabBar
-                label="Example tabs"
-                testIdPrefix="gallery-tab"
-                items={[
-                  { id: 'memo', label: 'Memo' },
-                  { id: 'settings', label: 'Settings' },
-                ]}
-                active={bar}
-                onSelect={setBar}
-              />
-            }
-          >
-            <Stack pad={4}>
-              <Text muted>{bar}</Text>
-            </Stack>
-          </AppFrame>
-        </Frame>
-      </Section>
-
-      <Section id="split" title="Split view, meeting rows, toolbar">
-        <Frame height={260}>
-          <SplitView
-            sidebar={
-              <>
-                <Toolbar
-                  end={
-                    <IconButton icon="⌕" label="Search" onClick={() => {}} />
-                  }
+              {TYPE_VARIANTS.map((v) => (
+                <div
+                  key={v}
+                  data-testid="type-sample"
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '96px 1fr 180px',
+                    gap: t.space[4],
+                    alignItems: 'baseline',
+                  }}
                 >
-                  <Button size="sm">● Record</Button>
-                </Toolbar>
-                <Stack as="ul" gap={0} aria-label="Example meetings">
-                  {meetings.map((m, i) => (
-                    <MeetingRow
-                      key={m}
-                      title={m}
-                      date={`Oct ${12 + i}`}
-                      selected={sel === i}
-                      onSelect={() => setSel(i)}
-                    />
+                  <Code>{v}</Code>
+                  <Text variant={v} truncate>
+                    {v === 'code' || v === 'mono'
+                      ? '00:12:34 · memo.record()'
+                      : 'Meeting notes'}
+                  </Text>
+                  <Text variant="caption" muted>
+                    {t.type[v].size} / {t.type[v].lineHeight}
+                    {t.type[v].tracking !== '0em'
+                      ? ` / ${t.type[v].tracking}`
+                      : ''}
+                  </Text>
+                </div>
+              ))}
+              <Stack gap={2}>
+                <Heading level={1}>Heading 1</Heading>
+                <Heading level={2}>Heading 2</Heading>
+                <Heading level={3}>Heading 3</Heading>
+                <Label>Label</Label>
+                <Label caps tone="muted">
+                  Section label
+                </Label>
+                <Text>
+                  Body with <Code>code</Code> and a{' '}
+                  <Link href="#type">link</Link>.
+                </Text>
+                <Stack dir="row" gap={4} wrap>
+                  {(
+                    [
+                      'default',
+                      'muted',
+                      'success',
+                      'warning',
+                      'danger',
+                    ] as const
+                  ).map((tone) => (
+                    <Text key={tone} tone={tone}>
+                      {tone}
+                    </Text>
                   ))}
                 </Stack>
-              </>
-            }
-          >
-            <Heading level={2}>{meetings[sel]}</Heading>
-          </SplitView>
-        </Frame>
-      </Section>
+                <Code block>npm run lint</Code>
+              </Stack>
+            </div>
+          </Section>
 
-      <Section id="nav" title="Tabs">
-        <Tabs
-          tabs={[
-            { id: 'one', label: 'Summary' },
-            { id: 'two', label: 'Notes' },
-            { id: 'three', label: 'Transcript' },
-          ]}
-          value={tab}
-          onChange={setTab}
-        />
-      </Section>
-
-      <Section id="meeting" title="Summary, notes, transcript">
-        <div style={{ display: 'grid', gap: t.space[6], width: '100%' }}>
-          <SummaryBlock
-            summary="Agreed to ship the beta on Friday; pricing moves to next week."
-            actionItems={[
-              { text: 'Send recap', owner: 'Jared' },
-              { text: 'Draft pricing page' },
-            ]}
-            qa={[{ question: 'When is the beta?', answer: 'Friday.' }]}
-            source="openrouter"
-          />
-          <NotesEditor
-            notes={notes}
-            onAdd={(text) =>
-              setNotes((n) => [
-                ...n,
-                { id: String(n.length + 1), time: '05:00', text },
-              ])
-            }
-            onUpdate={(id, text) =>
-              setNotes((n) =>
-                text
-                  ? n.map((x) => (x.id === id ? { ...x, text } : x))
-                  : n.filter((x) => x.id !== id),
-              )
-            }
-          />
-          <TranscriptList>
-            <TranscriptRow
-              time="00:41"
-              speaker="Grace"
-              text="Let's ship the beta Friday."
-              active
-              onSeek={() => {}}
-            />
-            <TranscriptRow
-              time="00:47"
-              speaker="Jared"
-              text="Works for me."
-              active={false}
-              onSeek={() => {}}
-            />
-          </TranscriptList>
-        </div>
-      </Section>
-
-      <Section id="chat" title="Chat">
-        <div style={{ display: 'grid', gap: t.space[3], width: '100%' }}>
-          <ChatQuestion>When is the beta?</ChatQuestion>
-          <ChatAnswer
-            text="Friday, per Grace."
-            sources={[
-              {
-                label: '[1] 00:41 · Grace',
-                title: "Let's ship the beta Friday.",
-                onOpen: () => {},
-              },
-            ]}
-            footer="openrouter"
-          />
-        </div>
-      </Section>
-
-      <Section id="hud" title="Recording HUD">
-        <div style={{ display: 'grid', gap: t.space[4], width: '100%' }}>
-          <Banner actions={<Button size="sm">Record</Button>}>
-            <Text>Weekly Product Sync</Text>
-            <Text variant="caption" muted>
-              Zoom
-            </Text>
-          </Banner>
-          <RecordingBar
-            clock="12:04"
-            title="Weekly Product Sync"
-            level={0.6}
-            speaker="Grace"
-            onPause={() => {}}
-            onStop={() => {}}
-          />
-          <StreamingTranscript
-            live
-            segments={[
-              {
-                id: '1',
-                startMs: 41000,
-                speaker: 'Grace',
-                text: "Let's ship the beta Friday.",
-              },
-              {
-                id: '2',
-                startMs: 47000,
-                speaker: 'Jared',
-                text: 'Works for me.',
-              },
-            ]}
-            partial={{ id: 'p', text: 'and pricing next' }}
-            maxHeight={160}
-            testId="gallery-live-transcript"
-          />
-          <CaptureStatus
-            reconnecting={{ attempt: 2, secondsLeft: 12 }}
-            degraded={[{ id: 'mic-only', label: 'Mic only' }]}
-            error="Microphone permission denied"
-            onDismiss={() => {}}
-          />
-          <PipelineSteps
-            testId="gallery-pipeline"
-            steps={[
-              {
-                id: 'finalize',
-                label: 'Transcript',
-                status: 'done',
-                attempts: 1,
-                maxAttempts: 3,
-              },
-              {
-                id: 'summary',
-                label: 'Summary',
-                status: 'failed',
-                attempts: 3,
-                maxAttempts: 3,
-                error: 'LLM HTTP 429',
-                fallback: true,
-              },
-              {
-                id: 'index',
-                label: 'Search index',
-                status: 'retrying',
-                attempts: 1,
-                maxAttempts: 3,
-              },
-            ]}
-            onRetry={() => {}}
-          />
-          <Stack dir="row" gap={3} align="center">
-            <RecordDot />
-            <LevelMeter level={0.4} />
-          </Stack>
-          <Frame height={56}>
-            <MiniHudFrame
-              strip={
-                <>
-                  <RecordDot />
-                  <StatusLines
-                    top="Grace · Recording"
-                    bottom="Ship it Friday."
+          <Section id="color" title="Color">
+            {Object.entries(t.color)
+              .filter(([k]) => k !== 'accentText')
+              .map(([k, v]) => (
+                <div key={k} style={{ display: 'grid', gap: 4, width: 96 }}>
+                  <div
+                    style={{
+                      height: 40,
+                      borderRadius: t.radius.md,
+                      background: v,
+                      border: `1px solid ${t.color.border}`,
+                    }}
                   />
-                  <NoDrag>
-                    <Text variant="mono">12:04</Text>
-                    <IconButton
-                      icon="■"
-                      tone="record"
-                      label="Stop recording"
-                      onClick={() => {}}
-                    />
-                  </NoDrag>
-                </>
-              }
+                  <Text variant="caption" truncate>
+                    {k}
+                  </Text>
+                </div>
+              ))}
+          </Section>
+
+          <Section id="buttons" title="Buttons">
+            <Button>Primary</Button>
+            <Button variant="secondary">Secondary</Button>
+            <Button variant="ghost">Ghost</Button>
+            <Button variant="danger">Danger</Button>
+            <Button size="sm">Small</Button>
+            <Button loading>Loading</Button>
+            <Button disabled>Disabled</Button>
+            <Button size="sm" icon="circle">
+              Record
+            </Button>
+            <IconButton icon="search" label="Search" onClick={() => {}} />
+            <IconButton
+              icon="stop"
+              label="Stop"
+              tone="record"
+              onClick={() => {}}
             />
-          </Frame>
-        </div>
-      </Section>
+            <ActionMenu
+              label="More actions"
+              items={[
+                { label: 'Export .md', onSelect: () => {} },
+                { label: 'Delete', onSelect: () => {}, danger: true },
+              ]}
+            />
+            <Chip pressed={chip} onClick={() => setChip(!chip)}>
+              Grace
+            </Chip>
+          </Section>
 
-      <Section id="settings" title="Settings rows, permissions">
-        <div style={{ display: 'grid', gap: t.space[4], width: '100%' }}>
-          <SettingsSection title="Recording">
-            <SettingRow label="Record automatically">
-              <Switch
-                checked={on}
-                onChange={setOn}
-                label="Record automatically"
+          <Section id="badges" title="Badges, Kbd, Spinner, Progress, Tooltip">
+            {(
+              ['neutral', 'primary', 'success', 'warning', 'danger'] as const
+            ).map((tone) => (
+              <Badge key={tone} tone={tone}>
+                {tone}
+              </Badge>
+            ))}
+            <span>
+              <Kbd>⌘</Kbd> <Kbd>K</Kbd>
+            </span>
+            <Spinner />
+            <div style={{ width: 160 }}>
+              <Progress value={0.6} label="Example progress" />
+            </div>
+            <Tooltip label="Start recording (⌘⇧R)">
+              <Button variant="ghost" size="sm">
+                Hover me
+              </Button>
+            </Tooltip>
+          </Section>
+
+          <Section id="inputs" title="Inputs">
+            <div
+              style={{
+                display: 'grid',
+                gap: t.space[3],
+                width: '100%',
+                gridTemplateColumns: '1fr 1fr',
+              }}
+            >
+              <Field label="Input">
+                <Input placeholder="Type here" />
+              </Field>
+              <Field label="Select">
+                <Select defaultValue="b">
+                  <option value="a">Alpha</option>
+                  <option value="b">Beta</option>
+                </Select>
+              </Field>
+              <Field label="TextArea">
+                <TextArea placeholder="Notes" />
+              </Field>
+              <Field label="Switch">
+                <Switch
+                  checked={on}
+                  onChange={setOn}
+                  label={on ? 'On' : 'Off'}
+                  showLabel
+                />
+              </Field>
+              <Composer
+                value={ask}
+                onChange={setAsk}
+                onSubmit={() => setAsk('')}
+                placeholder="Ask"
+                label="Gallery composer"
               />
-            </SettingRow>
-          </SettingsSection>
-          <PermissionList
-            items={[
-              { id: 'mic', label: 'Microphone', state: 'Granted' },
-              {
-                id: 'ax',
-                label: 'Accessibility',
-                state: '',
-                onGrant: () => {},
-              },
-            ]}
-          />
-        </div>
-      </Section>
+            </div>
+          </Section>
 
-      <Section id="overlays" title="Dialog, confirm, palette, toast">
-        <Button
-          variant="secondary"
-          onClick={() => setOpen(true)}
-          data-testid="gallery-open-dialog"
-        >
-          Open dialog
-        </Button>
-        <Button variant="secondary" onClick={() => setConfirm(true)}>
-          Confirm
-        </Button>
-        <Button variant="secondary" onClick={() => setPalette(true)}>
-          Palette
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={() => toast('Saved to Downloads', 'success')}
-          data-testid="gallery-toast"
-        >
-          Show toast
-        </Button>
-        <Dialog
-          open={open}
-          onClose={() => setOpen(false)}
-          title="Delete meeting?"
-        >
-          <div
-            style={{
-              padding: t.space[5],
-              display: 'flex',
-              gap: t.space[2],
-              justifyContent: 'flex-end',
-            }}
-          >
-            <Button variant="ghost" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="danger" onClick={() => setOpen(false)}>
-              Delete
-            </Button>
-          </div>
-        </Dialog>
-        <ConfirmDialog
-          open={confirm}
-          title="Delete this meeting?"
-          body="Weekly Product Sync"
-          confirmLabel="Delete"
-          onCancel={() => setConfirm(false)}
-          onConfirm={() => setConfirm(false)}
-        />
-        <CommandPalette
-          open={palette}
-          onClose={() => setPalette(false)}
-          query={pq}
-          onQuery={setPq}
-          results={[
-            { id: 'rec', title: 'Start recording', hint: '⌘⇧R' },
-            { id: 'set', title: 'Go to Settings' },
-          ].filter((r) => r.title.toLowerCase().includes(pq.toLowerCase()))}
-          index={pi}
-          onIndex={setPi}
-          onPick={() => setPalette(false)}
-        />
-      </Section>
+          <Section id="shell" title="App frame and tab bar">
+            <Frame height={140}>
+              <AppFrame
+                embedded
+                tabs={
+                  <TabBar
+                    label="Example tabs"
+                    testIdPrefix="gallery-tab"
+                    items={[
+                      { id: 'memo', label: 'Memo' },
+                      { id: 'settings', label: 'Settings' },
+                    ]}
+                    active={bar}
+                    onSelect={setBar}
+                  />
+                }
+              >
+                <Stack pad={4}>
+                  <Text muted>{bar}</Text>
+                </Stack>
+              </AppFrame>
+            </Frame>
+          </Section>
 
-      <Section id="callouts" title="Callout">
-        <div style={{ display: 'grid', gap: t.space[3], width: '100%' }}>
-          {(['info', 'warning', 'danger'] as const).map((tone) => (
-            <Callout
-              key={tone}
-              tone={tone}
-              title={`${tone[0]!.toUpperCase()}${tone.slice(1)}`}
+          <Section id="split" title="Split view, meeting rows, toolbar">
+            <Frame height={260}>
+              <SplitView
+                sidebar={
+                  <>
+                    <Toolbar
+                      end={
+                        <IconButton
+                          icon="search"
+                          label="Search"
+                          onClick={() => {}}
+                        />
+                      }
+                    >
+                      <Button size="sm" icon="circle">
+                        Record
+                      </Button>
+                    </Toolbar>
+                    <Stack as="ul" gap={0} aria-label="Example meetings">
+                      {meetings.map((m, i) => (
+                        <MeetingRow
+                          key={m}
+                          title={m}
+                          date={`Oct ${12 + i}`}
+                          selected={sel === i}
+                          onSelect={() => setSel(i)}
+                        />
+                      ))}
+                    </Stack>
+                  </>
+                }
+              >
+                <Heading level={2}>{meetings[sel]}</Heading>
+              </SplitView>
+            </Frame>
+          </Section>
+
+          <Section id="nav" title="Tabs">
+            <Tabs
+              tabs={[
+                { id: 'one', label: 'Summary' },
+                { id: 'two', label: 'Notes' },
+                { id: 'three', label: 'Transcript' },
+              ]}
+              value={tab}
+              onChange={setTab}
+            />
+          </Section>
+
+          <Section id="meeting" title="Summary, notes, transcript">
+            <div style={{ display: 'grid', gap: t.space[6], width: '100%' }}>
+              <SummaryBlock
+                summary="Agreed to ship the beta on Friday; pricing moves to next week."
+                actionItems={[
+                  { text: 'Send recap', owner: 'Jared' },
+                  { text: 'Draft pricing page' },
+                ]}
+                qa={[{ question: 'When is the beta?', answer: 'Friday.' }]}
+                source="openrouter"
+              />
+              <NotesEditor
+                notes={notes}
+                onAdd={(text) =>
+                  setNotes((n) => [
+                    ...n,
+                    { id: String(n.length + 1), time: '05:00', text },
+                  ])
+                }
+                onUpdate={(id, text) =>
+                  setNotes((n) =>
+                    text
+                      ? n.map((x) => (x.id === id ? { ...x, text } : x))
+                      : n.filter((x) => x.id !== id),
+                  )
+                }
+              />
+              <TranscriptList>
+                <TranscriptRow
+                  time="00:41"
+                  speaker="Grace"
+                  text="Let's ship the beta Friday."
+                  active
+                  onSeek={() => {}}
+                />
+                <TranscriptRow
+                  time="00:47"
+                  speaker="Jared"
+                  text="Works for me."
+                  active={false}
+                  onSeek={() => {}}
+                />
+              </TranscriptList>
+            </div>
+          </Section>
+
+          <Section id="chat" title="Chat">
+            <div style={{ display: 'grid', gap: t.space[3], width: '100%' }}>
+              <ChatQuestion>When is the beta?</ChatQuestion>
+              <ChatAnswer
+                text="Friday, per Grace."
+                sources={[
+                  {
+                    label: '[1] 00:41 · Grace',
+                    title: "Let's ship the beta Friday.",
+                    onOpen: () => {},
+                  },
+                ]}
+                footer="openrouter"
+              />
+            </div>
+          </Section>
+
+          <Section id="hud" title="Recording HUD">
+            <div style={{ display: 'grid', gap: t.space[4], width: '100%' }}>
+              <Banner actions={<Button size="sm">Record</Button>}>
+                <Text>Weekly Product Sync</Text>
+                <Text variant="caption" muted>
+                  Zoom
+                </Text>
+              </Banner>
+              <RecordingBar
+                clock="12:04"
+                title="Weekly Product Sync"
+                level={0.6}
+                speaker="Grace"
+                onPause={() => {}}
+                onStop={() => {}}
+              />
+              <StreamingTranscript
+                live
+                segments={[
+                  {
+                    id: '1',
+                    startMs: 41000,
+                    speaker: 'Grace',
+                    text: "Let's ship the beta Friday.",
+                  },
+                  {
+                    id: '2',
+                    startMs: 47000,
+                    speaker: 'Jared',
+                    text: 'Works for me.',
+                  },
+                ]}
+                partial={{ id: 'p', text: 'and pricing next' }}
+                maxHeight={160}
+                testId="gallery-live-transcript"
+              />
+              <CaptureStatus
+                reconnecting={{ attempt: 2, secondsLeft: 12 }}
+                degraded={[{ id: 'mic-only', label: 'Mic only' }]}
+                error="Microphone permission denied"
+                onDismiss={() => {}}
+              />
+              <PipelineSteps
+                testId="gallery-pipeline"
+                steps={[
+                  {
+                    id: 'finalize',
+                    label: 'Transcript',
+                    status: 'done',
+                    attempts: 1,
+                    maxAttempts: 3,
+                  },
+                  {
+                    id: 'summary',
+                    label: 'Summary',
+                    status: 'failed',
+                    attempts: 3,
+                    maxAttempts: 3,
+                    error: 'LLM HTTP 429',
+                    fallback: true,
+                  },
+                  {
+                    id: 'index',
+                    label: 'Search index',
+                    status: 'retrying',
+                    attempts: 1,
+                    maxAttempts: 3,
+                  },
+                ]}
+                onRetry={() => {}}
+              />
+              <Stack dir="row" gap={3} align="center">
+                <RecordDot />
+                <LevelMeter level={0.4} />
+              </Stack>
+              <Frame height={56}>
+                <MiniHudFrame
+                  strip={
+                    <>
+                      <RecordDot />
+                      <StatusLines
+                        top="Grace · Recording"
+                        bottom="Ship it Friday."
+                      />
+                      <NoDrag>
+                        <Text variant="mono">12:04</Text>
+                        <IconButton
+                          icon="stop"
+                          tone="record"
+                          label="Stop recording"
+                          onClick={() => {}}
+                        />
+                      </NoDrag>
+                    </>
+                  }
+                />
+              </Frame>
+            </div>
+          </Section>
+
+          <Section id="settings" title="Settings rows, permissions">
+            <div style={{ display: 'grid', gap: t.space[4], width: '100%' }}>
+              <SettingsSection title="Recording">
+                <SettingRow label="Record automatically">
+                  <Switch
+                    checked={on}
+                    onChange={setOn}
+                    label="Record automatically"
+                  />
+                </SettingRow>
+              </SettingsSection>
+              <PermissionList
+                items={[
+                  { id: 'mic', label: 'Microphone', state: 'Granted' },
+                  {
+                    id: 'ax',
+                    label: 'Accessibility',
+                    state: '',
+                    onGrant: () => {},
+                  },
+                ]}
+              />
+            </div>
+          </Section>
+
+          <Section id="overlays" title="Dialog, confirm, palette, toast">
+            <Button
+              variant="secondary"
+              onClick={() => setOpen(true)}
+              data-testid="gallery-open-dialog"
+            >
+              Open dialog
+            </Button>
+            <Button variant="secondary" onClick={() => setConfirm(true)}>
+              Confirm
+            </Button>
+            <Button variant="secondary" onClick={() => setPalette(true)}>
+              Palette
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => toast('Saved to Downloads', 'success')}
+              data-testid="gallery-toast"
+            >
+              Show toast
+            </Button>
+            <Dialog
+              open={open}
+              onClose={() => setOpen(false)}
+              title="Delete meeting?"
+            >
+              <div
+                style={{
+                  padding: t.space[5],
+                  display: 'flex',
+                  gap: t.space[2],
+                  justifyContent: 'flex-end',
+                }}
+              >
+                <Button variant="ghost" onClick={() => setOpen(false)}>
+                  Cancel
+                </Button>
+                <Button variant="danger" onClick={() => setOpen(false)}>
+                  Delete
+                </Button>
+              </div>
+            </Dialog>
+            <ConfirmDialog
+              open={confirm}
+              title="Delete this meeting?"
+              body="Weekly Product Sync"
+              confirmLabel="Delete"
+              onCancel={() => setConfirm(false)}
+              onConfirm={() => setConfirm(false)}
+            />
+            <CommandPalette
+              open={palette}
+              onClose={() => setPalette(false)}
+              query={pq}
+              onQuery={setPq}
+              results={[
+                { id: 'rec', title: 'Start recording', hint: '⌘⇧R' },
+                { id: 'set', title: 'Go to Settings' },
+              ].filter((r) => r.title.toLowerCase().includes(pq.toLowerCase()))}
+              index={pi}
+              onIndex={setPi}
+              onPick={() => setPalette(false)}
+            />
+          </Section>
+
+          <Section id="callouts" title="Callout">
+            <div style={{ display: 'grid', gap: t.space[3], width: '100%' }}>
+              {(['info', 'warning', 'danger'] as const).map((tone) => (
+                <Callout
+                  key={tone}
+                  tone={tone}
+                  title={`${tone[0]!.toUpperCase()}${tone.slice(1)}`}
+                  action={
+                    <Button size="sm" variant="secondary">
+                      Action
+                    </Button>
+                  }
+                />
+              ))}
+            </div>
+          </Section>
+
+          <Section id="cards" title="Card">
+            <Card padding={3}>
+              <Text>padding 3</Text>
+            </Card>
+            <Card padding={6}>
+              <Text>padding 6</Text>
+            </Card>
+          </Section>
+
+          <Section id="space" title="Spacing and radius">
+            {Object.entries(t.space).map(([k, v]) => (
+              <div
+                key={k}
+                style={{ display: 'grid', gap: 4, justifyItems: 'center' }}
+              >
+                <div
+                  style={{
+                    width: v,
+                    height: 16,
+                    minWidth: 1,
+                    background: t.color.textMuted,
+                    borderRadius: 2,
+                  }}
+                />
+                <Text variant="caption" muted>
+                  {k}
+                </Text>
+              </div>
+            ))}
+            {Object.entries(t.radius).map(([k, v]) => (
+              <div
+                key={k}
+                style={{ display: 'grid', gap: 4, justifyItems: 'center' }}
+              >
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    border: `1px solid ${t.color.borderStrong}`,
+                    borderRadius: v,
+                  }}
+                />
+                <Text variant="caption" muted>
+                  {k}
+                </Text>
+              </div>
+            ))}
+          </Section>
+
+          <Section id="motion" title="Motion">
+            <div style={{ display: 'grid', gap: t.space[3], width: '100%' }}>
+              <Stack dir="row">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setMoved((m) => !m)}
+                  data-testid="gallery-motion"
+                >
+                  Play
+                </Button>
+              </Stack>
+              {(['hover', 'enter', 'exit'] as const).map((speed) => (
+                <div
+                  key={speed}
+                  style={{ display: 'flex', gap: 12, alignItems: 'center' }}
+                >
+                  <Text variant="caption" muted style={{ width: 140 }}>
+                    {speed} · {t.motion[speed]}
+                  </Text>
+                  <div style={{ flex: 1, height: 8, position: 'relative' }}>
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: moved ? 'calc(100% - 8px)' : 0,
+                        width: 8,
+                        height: 8,
+                        borderRadius: 99,
+                        background: t.color.primary,
+                        transition: transition('left', speed, t),
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Section>
+
+          <Section id="focus" title="Focus ring">
+            <Button size="sm">Button</Button>
+            <Input aria-label="Focus demo input" placeholder="Input" />
+            <Link href="#focus">Link</Link>
+          </Section>
+
+          <Section id="empty" title="Empty state">
+            <EmptyState
+              icon="mic"
+              title="No meetings"
               action={
-                <Button size="sm" variant="secondary">
-                  Action
+                <Button size="sm" icon="circle">
+                  Record
                 </Button>
               }
             />
-          ))}
-        </div>
-      </Section>
+          </Section>
+        </>
+      )}
+    </div>
+  );
+}
 
-      <Section id="cards" title="Card">
-        <Card padding={3}>
-          <Text>padding 3</Text>
-        </Card>
-        <Card padding={6}>
-          <Text>padding 6</Text>
-        </Card>
-      </Section>
+const ICON_SIZES: IconSize[] = ['xs', 'sm', 'md', 'lg', 'xl'];
 
-      <Section id="space" title="Spacing and radius">
-        {Object.entries(t.space).map(([k, v]) => (
-          <div
-            key={k}
-            style={{ display: 'grid', gap: 4, justifyItems: 'center' }}
-          >
+/** Every Feather icon in the set, by name, plus the size scale and tones. */
+function IconsPage() {
+  const t = useTheme();
+  return (
+    <>
+      <Section id="icons" title="Icons (Feather)">
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+            gap: t.space[3],
+            width: '100%',
+          }}
+        >
+          {ICON_NAMES.map((n) => (
             <div
+              key={n}
+              data-testid={`gallery-icon-${n}`}
               style={{
-                width: v,
-                height: 16,
-                minWidth: 1,
-                background: t.color.textMuted,
-                borderRadius: 2,
+                display: 'flex',
+                alignItems: 'center',
+                gap: t.space[2],
+                padding: t.space[2],
+                border: `1px solid ${t.color.border}`,
+                borderRadius: t.radius.md,
               }}
-            />
-            <Text variant="caption" muted>
-              {k}
-            </Text>
-          </div>
-        ))}
-        {Object.entries(t.radius).map(([k, v]) => (
-          <div
-            key={k}
-            style={{ display: 'grid', gap: 4, justifyItems: 'center' }}
-          >
-            <div
-              style={{
-                width: 40,
-                height: 40,
-                border: `1px solid ${t.color.borderStrong}`,
-                borderRadius: v,
-              }}
-            />
-            <Text variant="caption" muted>
-              {k}
-            </Text>
-          </div>
-        ))}
-      </Section>
-
-      <Section id="motion" title="Motion">
-        <div style={{ display: 'grid', gap: t.space[3], width: '100%' }}>
-          <Stack dir="row">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setMoved((m) => !m)}
-              data-testid="gallery-motion"
             >
-              Play
-            </Button>
-          </Stack>
-          {(['hover', 'enter', 'exit'] as const).map((speed) => (
-            <div
-              key={speed}
-              style={{ display: 'flex', gap: 12, alignItems: 'center' }}
-            >
-              <Text variant="caption" muted style={{ width: 140 }}>
-                {speed} · {t.motion[speed]}
+              <Icon name={n} />
+              <Text variant="caption" muted truncate>
+                {n}
               </Text>
-              <div style={{ flex: 1, height: 8, position: 'relative' }}>
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: moved ? 'calc(100% - 8px)' : 0,
-                    width: 8,
-                    height: 8,
-                    borderRadius: 99,
-                    background: t.color.primary,
-                    transition: transition('left', speed, t),
-                  }}
-                />
-              </div>
             </div>
           ))}
         </div>
       </Section>
-
-      <Section id="focus" title="Focus ring">
-        <Button size="sm">Button</Button>
-        <Input aria-label="Focus demo input" placeholder="Input" />
-        <Link href="#focus">Link</Link>
+      <Section id="icon-sizes" title="Icon sizes">
+        {ICON_SIZES.map((sz) => (
+          <span
+            key={sz}
+            style={{ display: 'grid', justifyItems: 'center', gap: t.space[1] }}
+          >
+            <Icon name="mic" size={sz} />
+            <Text variant="caption" muted>
+              {sz} · {t.icon.size[sz]}
+            </Text>
+          </span>
+        ))}
       </Section>
-
-      <Section id="empty" title="Empty state">
-        <EmptyState
-          icon="◎"
-          title="No meetings"
-          action={<Button size="sm">● Record</Button>}
-        />
+      <Section id="icon-tones" title="Icon tones">
+        <Icon name="info" />
+        <Icon name="info" tone="muted" />
+        <Icon name="check" tone="success" />
+        <Icon name="alert" tone="warning" />
+        <Icon name="close" tone="danger" />
+        <Icon name="circle" tone="record" fill />
       </Section>
-    </div>
+    </>
   );
 }

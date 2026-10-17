@@ -1,5 +1,6 @@
 export * from './tokens';
 export * from './theme';
+export * from './Icon';
 export * from './Text';
 export * from './Heading';
 export * from './Button';

@@ -6,6 +6,7 @@ import {
 } from 'react';
 import { useTheme } from './theme';
 import { Text } from './Text';
+import { Icon, type IconName } from './Icon';
 import { transition, typeStyle, type Tokens } from './tokens';
 
 type Space = keyof Tokens['space'];
@@ -32,6 +33,7 @@ export function Stack({
   'aria-labelledby': labelledBy,
   'aria-live': ariaLive,
   'data-testid': testId,
+  'data-live': dataLive,
 }: {
   children?: ReactNode;
   dir?: 'row' | 'col';
@@ -52,6 +54,8 @@ export function Stack({
   'aria-labelledby'?: string;
   'aria-live'?: 'polite' | 'off';
   'data-testid'?: string;
+  /** Marks a live (recording) view for tests and assistive styling. */
+  'data-live'?: boolean;
 }) {
   const t = useTheme();
   const map = {
@@ -89,6 +93,7 @@ export function Stack({
       aria-labelledby={labelledBy}
       aria-live={ariaLive}
       data-testid={testId}
+      data-live={dataLive ? '' : undefined}
       {...(Tag === 'form'
         ? {
             onSubmit: (e: FormEvent) => {
@@ -310,7 +315,7 @@ export function IconButton({
   'data-testid': testId,
   'aria-expanded': expanded,
 }: {
-  icon: ReactNode;
+  icon: IconName;
   label: string;
   onClick: () => void;
   pressed?: boolean;
@@ -344,7 +349,7 @@ export function IconButton({
         transition: transition('background', 'hover', t),
       }}
     >
-      {icon}
+      <Icon name={icon} size="sm" fill={icon === 'stop'} />
     </button>
   );
 }

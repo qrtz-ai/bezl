@@ -169,7 +169,7 @@ export default function MemoView() {
             end={
               <>
                 <IconButton
-                  icon="⌕"
+                  icon="search"
                   label="Search meetings"
                   pressed={searching}
                   data-testid="memo-search-toggle"
@@ -179,7 +179,7 @@ export default function MemoView() {
                   }}
                 />
                 <IconButton
-                  icon="?"
+                  icon="ask"
                   label="Ask all meetings"
                   pressed={askAll && !selected}
                   data-testid="memo-ask-all"
@@ -196,8 +196,9 @@ export default function MemoView() {
                 size="sm"
                 onClick={() => void act(qrtz.invoke('memo:start', {}))}
                 data-testid="memo-record-manual"
+                icon="circle"
               >
-                ● Record
+                Record
               </Button>
             )}
           </Toolbar>

@@ -4,7 +4,7 @@ import { SubAppManifest } from '@qrtz/core';
 export const manifest = SubAppManifest.parse({
   id: 'settings',
   name: 'Settings',
-  icon: '⚙',
+  icon: 'settings',
   order: 1000,
   capabilities: [
     'app.info',

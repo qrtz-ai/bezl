@@ -4,7 +4,7 @@ import { SubAppManifest } from '@qrtz/core';
 export const manifest = SubAppManifest.parse({
   id: 'gallery',
   name: 'Gallery',
-  icon: '▦',
+  icon: 'grid',
   order: 900,
   capabilities: [],
 });

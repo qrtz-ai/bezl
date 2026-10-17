@@ -174,7 +174,7 @@ export function MeetingDetail({
     );
   if (isLive)
     return (
-      <Stack gap={3} data-testid="meeting-detail">
+      <Stack gap={3} data-testid="meeting-detail" data-live>
         <Heading level={2}>
           {d?.meeting.title ?? session.detected?.title ?? 'Recording'}
         </Heading>
@@ -357,7 +357,7 @@ export function MeetingDetail({
                       ))}
                     </Select>
                     <IconButton
-                      icon="↻"
+                      icon="refresh"
                       label={retrying ? 'Summarizing' : 'Re-run'}
                       onClick={retrySummary}
                       data-testid="summary-rerun"

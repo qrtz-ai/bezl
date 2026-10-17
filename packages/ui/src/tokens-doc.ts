@@ -60,6 +60,12 @@ export function tokensMarkdown(): string {
     'focus',
     'Global `:focus-visible` ring for every control (it beats inline `outline` and `all: unset`). Opt out only for programmatically focused containers with `data-q-no-ring`.',
   );
+  table(
+    'Icons',
+    tokens.icon,
+    'icon',
+    'Feather icons only, through `<Icon name size>` (or `icon=` on `Button`/`IconButton`/`EmptyState`). Sizes are px squares; the stroke is shared.',
+  );
   table('Z-index', tokens.z, 'z');
   out.push('', `_${Object.keys(vars).length} CSS variables in total._`, '');
   return out.join('\n');

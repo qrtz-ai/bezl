@@ -45,10 +45,14 @@ test('memo end-to-end: detect, record, live transcript, summarize, search, expor
   await expect(win.getByTestId('memo-active-speaker')).toBeVisible({
     timeout: 10_000,
   });
-  await expect(hud).toContainText('Grace Hopper', { timeout: 10_000 });
-  await expect(hud).toContainText("let's ship the desktop launch next week", {
-    timeout: 15_000,
-  });
+  const liveView = win.getByTestId('live-transcript');
+  await expect(liveView).toContainText('Grace Hopper', { timeout: 10_000 });
+  await expect(liveView).toContainText(
+    "let's ship the desktop launch next week",
+    {
+      timeout: 15_000,
+    },
+  );
   await win.screenshot({ path: path.join(shots, 'memo-live.png') });
 
   // M6.3: the floating always-on-top mini HUD window mirrors the live session.

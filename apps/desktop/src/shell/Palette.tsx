@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CommandPalette, useToast } from '@qrtz/ui';
+import { CommandPalette, isIconName, useToast } from '@qrtz/ui';
 import { requestNavigate, type SessionView } from '@qrtz/core';
 import { registry } from './subapps';
 import { shellClient } from './shellClient';
@@ -55,6 +55,7 @@ export function Palette({
           id: 'memo.stop',
           title: 'Stop recording',
           hint: '⌘⇧R',
+          icon: 'stop',
           keywords: 'memo meeting end',
           run: () =>
             client.invoke('memo:stop').then(() => toast('Recording stopped')),
@@ -63,6 +64,7 @@ export function Palette({
           id: 'memo.start',
           title: 'Start recording',
           hint: '⌘⇧R',
+          icon: 'circle',
           keywords: 'memo meeting record',
           run: () =>
             client.invoke('memo:start', {}).then(() => {
@@ -75,7 +77,7 @@ export function Palette({
       ...registry.list().map(({ manifest }) => ({
         id: `nav.${manifest.id}`,
         title: `Go to ${manifest.name}`,
-        hint: manifest.icon,
+        icon: manifest.icon,
         keywords: `open ${manifest.id}`,
         run: () => onNavigate(manifest.id),
       })),
@@ -90,6 +92,7 @@ export function Palette({
       hint: hit?.snippet
         ? hit.snippet.replace(/[[\]]/g, '').slice(0, 48)
         : 'Meeting',
+      icon: 'mic',
       run: () => requestNavigate({ app: 'memo', meetingId: meeting.id }),
     })),
   ];
@@ -112,6 +115,7 @@ export function Palette({
         id: c.id,
         title: c.title,
         ...(c.hint ? { hint: c.hint } : {}),
+        ...(isIconName(c.icon) ? { icon: c.icon } : {}),
         testId: `cmd-${c.id}`,
       }))}
       index={i}

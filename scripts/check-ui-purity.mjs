@@ -5,6 +5,8 @@
 //   - raw intrinsic JSX elements (<div>, <span>, <button>…); only <option>/<optgroup> inside <Select> are allowed
 //   - reading theme tokens to style things (useTheme, typeStyle, transition, globalCss)
 //   - CSS files, CSS imports, CSS-in-JS (styled-components, emotion, css``)
+//   - icon libraries (react-feather, feather-icons, any other icon set): use <Icon name> / icon= from @qrtz/ui
+//   - glyph or emoji characters used as icons (■ ▶ ⌕ ✎ ⚙ …): use a Feather icon name instead
 // Tests (*.test.ts[x]) are exempt: they may render fixtures.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -38,6 +40,34 @@ const rules = [
   { re: /import\s+['"][^'"]+\.(css|scss|sass|less)['"]/g, msg: 'CSS import' },
 ];
 
+const iconRules = [
+  {
+    re: /from\s+['"](react-feather|feather-icons|lucide-react|react-icons(\/[\w-]+)?|@heroicons\/[\w/-]+|@radix-ui\/react-icons)['"]/g,
+    msg: 'icon library import (use <Icon> / icon= from @qrtz/ui)',
+  },
+  {
+    re: /require\(\s*['"](react-feather|feather-icons)['"]\s*\)/g,
+    msg: 'icon library import (use <Icon> / icon= from @qrtz/ui)',
+  },
+];
+// Geometric/dingbat glyphs and emoji that stand in for icons. Keyboard symbols (⌘⇧⌥⌃) and typography
+// (… · — “ ”) are text, not icons, and stay allowed.
+const GLYPH_RE =
+  /[\u2190-\u21FF\u2300-\u2317\u2319-\u23FF\u2460-\u24FF\u25A0-\u25FF\u2600-\u27BF\u2B00-\u2BFF]|\p{Extended_Pictographic}/gu;
+const KEY_SYMBOLS = new Set([
+  '⌘',
+  '⇧',
+  '⌥',
+  '⌃',
+  '⌫',
+  '⏎',
+  '↩',
+  '→',
+  '←',
+  '↑',
+  '↓',
+]);
+
 const problems = [];
 const walk = (dir) => {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -61,6 +91,22 @@ function check(p, rel) {
     p.endsWith('.d.ts')
   )
     return;
+  {
+    const src = fs.readFileSync(p, 'utf8');
+    for (const r of iconRules)
+      for (const m of src.matchAll(r.re))
+        problems.push(`${rel}:${lineOf(src, m.index)}: ${r.msg}`);
+    if (/\.(tsx|jsx)$/.test(p) || /[\\/](shell|features)[\\/]/.test(p)) {
+      const code = src.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (c) =>
+        c.replace(/[^\n]/g, ' '),
+      );
+      for (const m of code.matchAll(GLYPH_RE))
+        if (!KEY_SYMBOLS.has(m[0]))
+          problems.push(
+            `${rel}:${lineOf(code, m.index)}: glyph "${m[0]}" used as an icon (use a Feather icon from @qrtz/ui)`,
+          );
+    }
+  }
   // Only renderer code can style anything; main/worker/preload have no DOM.
   if (!/\.(tsx|jsx)$/.test(p) && !/[\\/](shell|renderer)[\\/.]/.test(p)) return;
   const s = fs.readFileSync(p, 'utf8');

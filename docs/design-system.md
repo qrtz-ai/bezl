@@ -46,14 +46,28 @@ handlers only. `scripts/check-ui-purity.mjs` (part of `npm run lint`) fails outs
 - raw intrinsic JSX elements (`<div>`, `<span>`, `<button>`…); only `<option>`/`<optgroup>` are allowed
 - styling from tokens (`useTheme()`, `typeStyle()`, `transition()`, `globalCss()`)
 - stylesheets, CSS imports and CSS-in-JS
+- icon library imports (`react-feather`, `feather-icons`, `lucide-react`, …) and glyph/emoji characters
+  used as icons (■ ▶ ⌕ ✎ ⚙ …); keyboard symbols (⌘ ⇧ ⌥) and typography (… ·) are text and stay allowed
 
 Layout uses `Stack` (token gaps and padding only, semantic `as` for form/ul/li/nav/section).
 App and memo pieces: `AppFrame`, `TabBar`, `SplitView`, `Page`, `Toolbar`, `IconButton`, `Chip`,
 `ListRow`/`MeetingRow`, `SettingsSection`/`SettingRow`, `TranscriptRow`/`TranscriptList`,
 `NotesEditor`, `SummaryBlock`, `ChatQuestion`/`ChatAnswer`/`Composer`, `RecordingBar`, `RecordDot`,
-`LevelMeter`, `LiveTranscript`, `Banner`, `AudioPlayer`, `ActionMenu`, `ConfirmDialog`,
+`LevelMeter`, `StreamingTranscript`/`PipelineSteps`/`CaptureStatus`, `Banner`, `AudioPlayer`, `ActionMenu`, `ConfirmDialog`,
 `CommandPalette`, `PermissionList`, `MiniHudFrame`/`NoDrag`/`StatusLines`. Each has a gallery
 entry. The gallery itself is `@qrtz/ui/gallery`, mounted by the dev-only gallery sub app.
+
+## Icons (Feather)
+
+Every icon is a [Feather](https://feathericons.com) icon (`react-feather` 2.0.10, MIT) rendered by one
+component, `<Icon name size tone fill label>` in `@qrtz/ui`. Names are a curated semantic set
+(`ICONS` in `packages/ui/src/Icon.tsx`: `search`, `ask`, `stop`, `play`, `pause`, `more`, `edit`,
+`refresh`, `todo`, `mic`, `settings`, `grid`, `circle`, …); add a Feather glyph there before using it.
+Sizes come from `tokens.icon.size` (`xs` 12, `sm` 14, `md` 16, `lg` 20, `xl` 32 px) and every icon uses
+`tokens.icon.stroke` (2). Icons are decorative (`aria-hidden`) unless given a `label`; `IconButton`
+always carries an accessible `label`. `Button icon=`, `IconButton icon=`, `EmptyState icon=` and
+`CommandPalette` results take an icon name; sub-app manifests name theirs (`icon: 'mic'`). The gallery's
+**Icons** page lists every name, the size scale and the tones.
 
 ## Layout
 

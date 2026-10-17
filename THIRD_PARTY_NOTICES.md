@@ -16,15 +16,16 @@ cached in the user's Application Support folder.
 
 ## Native and runtime libraries
 
-| Component                                                              | Used for                                                                                                           | License                                                                                      |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| FluidAudio (github.com/FluidInference/FluidAudio, 0.17.x)              | Core ML ASR, diarization and VQE in the Swift helper                                                               | Apache-2.0                                                                                   |
-| Electron (includes Chromium and Node.js)                               | App runtime                                                                                                        | MIT (Chromium and Node notices ship in `LICENSES.chromium.html` inside the app bundle)       |
-| onnxruntime-node / onnxruntime-web / onnxruntime-common                | Embedding inference (native, with a WASM fallback)                                                                 | MIT, © Microsoft                                                                             |
-| @huggingface/transformers, @huggingface/tokenizers                     | Model loading and tokenization                                                                                     | Apache-2.0                                                                                   |
-| sharp                                                                  | Bundled only as a JS stub that transformers.js imports; the native libvips binaries (LGPL-3.0) are **not** shipped | Apache-2.0                                                                                   |
-| Geist Pixel (Square), from the `geist` npm package (vercel/geist-font) | The app's single UI font, bundled as `packages/ui/src/fonts/GeistPixel-Square.woff2`                               | SIL OFL-1.1, © 2023 Vercel with basement.studio (`packages/ui/src/fonts/OFL-GeistPixel.txt`) |
-| Apple frameworks (ScreenCaptureKit, Core Audio, Speech, Accessibility) | Capture and the AX speaker signal                                                                                  | Apple SDK terms (system frameworks, not redistributed)                                       |
+| Component                                                              | Used for                                                                                                           | License                                                                                         |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| FluidAudio (github.com/FluidInference/FluidAudio, 0.17.x)              | Core ML ASR, diarization and VQE in the Swift helper                                                               | Apache-2.0                                                                                      |
+| Electron (includes Chromium and Node.js)                               | App runtime                                                                                                        | MIT (Chromium and Node notices ship in `LICENSES.chromium.html` inside the app bundle)          |
+| onnxruntime-node / onnxruntime-web / onnxruntime-common                | Embedding inference (native, with a WASM fallback)                                                                 | MIT, © Microsoft                                                                                |
+| @huggingface/transformers, @huggingface/tokenizers                     | Model loading and tokenization                                                                                     | Apache-2.0                                                                                      |
+| sharp                                                                  | Bundled only as a JS stub that transformers.js imports; the native libvips binaries (LGPL-3.0) are **not** shipped | Apache-2.0                                                                                      |
+| Geist Pixel (Square), from the `geist` npm package (vercel/geist-font) | The app's single UI font, bundled as `packages/ui/src/fonts/GeistPixel-Square.woff2`                               | SIL OFL-1.1, © 2023 Vercel with basement.studio (`packages/ui/src/fonts/OFL-GeistPixel.txt`)    |
+| Feather icons (`react-feather` 2.0.10, feathericons.com)               | Every icon in the UI, through the `Icon` component in `@qrtz/ui`                                                   | MIT, © 2017 Carmelo Pullara (react-feather); icon artwork MIT, © 2013-2017 Cole Bemis (feather) |
+| Apple frameworks (ScreenCaptureKit, Core Audio, Speech, Accessibility) | Capture and the AX speaker signal                                                                                  | Apple SDK terms (system frameworks, not redistributed)                                          |
 
 ## npm production dependencies
 
@@ -69,10 +70,13 @@ Generated with `node scripts/third-party.mjs` (the dependency tree of `apps/desk
 | guid-typescript                  | 1.0.9                         | ISC               |
 | has-property-descriptors         | 1.0.2                         | MIT               |
 | is-url                           | 1.2.4                         | MIT               |
+| js-tokens                        | 4.0.0                         | MIT               |
 | long                             | 5.3.2                         | Apache-2.0        |
+| loose-envify                     | 1.4.0                         | MIT               |
 | matcher                          | 4.0.0                         | MIT               |
 | ms                               | 2.0.0                         | MIT               |
 | ms                               | 2.1.3                         | MIT               |
+| object-assign                    | 4.1.1                         | MIT               |
 | object-keys                      | 1.1.1                         | MIT               |
 | onnxruntime-common               | 1.30.0                        | MIT               |
 | onnxruntime-common               | 1.31.0-dev.20260911-2a43ec07e | MIT               |
@@ -80,9 +84,12 @@ Generated with `node scripts/third-party.mjs` (the dependency tree of `apps/desk
 | onnxruntime-web                  | 1.31.0-dev.20260914-8d85527a0 | MIT               |
 | pend                             | 1.2.0                         | MIT               |
 | platform                         | 1.3.6                         | MIT               |
+| prop-types                       | 15.8.1                        | MIT               |
 | protobufjs                       | 7.6.6                         | BSD-3-Clause      |
 | react                            | 19.3.1                        | MIT               |
 | react-dom                        | 19.3.1                        | MIT               |
+| react-feather                    | 2.0.10                        | MIT               |
+| react-is                         | 16.13.1                       | MIT               |
 | scheduler                        | 0.28.0                        | MIT               |
 | semver                           | 7.8.5                         | ISC               |
 | serialize-error                  | 8.1.0                         | MIT               |

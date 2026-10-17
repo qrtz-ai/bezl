@@ -2,6 +2,8 @@ export interface Command {
   id: string;
   title: string;
   hint?: string;
+  /** Feather icon name from @qrtz/ui ICONS. */
+  icon?: string;
   keywords?: string;
   run: () => void | Promise<unknown>;
 }

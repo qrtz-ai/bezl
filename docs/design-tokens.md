@@ -89,6 +89,19 @@ Global `:focus-visible` ring for every control (it beats inline `outline` and `a
 | `focus.offset` | `--q-focus-offset` | `2px` |
 | `focus.style` | `--q-focus-style` | `solid` |
 
+## Icons
+
+Feather icons only, through `<Icon name size>` (or `icon=` on `Button`/`IconButton`/`EmptyState`). Sizes are px squares; the stroke is shared.
+
+| Token | CSS variable | Value |
+|---|---|---|
+| `icon.size.xs` | `--q-icon-size-xs` | `12` |
+| `icon.size.sm` | `--q-icon-size-sm` | `14` |
+| `icon.size.md` | `--q-icon-size-md` | `16` |
+| `icon.size.lg` | `--q-icon-size-lg` | `20` |
+| `icon.size.xl` | `--q-icon-size-xl` | `32` |
+| `icon.stroke` | `--q-icon-stroke` | `2` |
+
 ## Z-index
 
 | Token | CSS variable | Value |
@@ -100,4 +113,4 @@ Global `:focus-visible` ring for every control (it beats inline `outline` and `a
 | `z.toast` | `--q-z-toast` | `60` |
 | `z.tooltip` | `--q-z-tooltip` | `70` |
 
-_90 CSS variables in total._
+_96 CSS variables in total._

@@ -85,7 +85,7 @@ function Hud() {
             </Text>
             {recording ? (
               <IconButton
-                icon="✎"
+                icon="edit"
                 label={expanded ? 'Hide notes' : 'Take a note'}
                 aria-expanded={expanded}
                 pressed={expanded}
@@ -95,7 +95,7 @@ function Hud() {
             ) : null}
             {recording ? (
               <IconButton
-                icon="■"
+                icon="stop"
                 tone="record"
                 label="Stop recording"
                 data-testid="mini-hud-stop"

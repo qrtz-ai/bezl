@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { useTheme } from './theme';
 import { Text } from './Text';
+import { Icon, type IconName } from './Icon';
 import { Button } from './Button';
 import { Input } from './Input';
 import { Dialog } from './Overlay';
@@ -248,12 +249,10 @@ export function SummaryBlock({
               style={{
                 display: 'flex',
                 gap: t.space[2],
-                alignItems: 'baseline',
+                alignItems: 'center',
               }}
             >
-              <Text aria-hidden muted>
-                ☐
-              </Text>
+              <Icon name="todo" size="sm" tone="muted" />
               <Text style={{ flex: 1 }}>{a.text}</Text>
               {a.owner ? (
                 <Text variant="caption" muted>
@@ -487,7 +486,7 @@ export function RecordingBar({
       <div style={{ marginLeft: 'auto', display: 'flex', gap: t.space[2] }}>
         {onPause ? (
           <IconButton
-            icon={paused ? '▶' : '❚❚'}
+            icon={paused ? 'play' : 'pause'}
             label={paused ? 'Resume' : 'Pause'}
             pressed={!!paused}
             onClick={onPause}
@@ -495,7 +494,7 @@ export function RecordingBar({
           />
         ) : null}
         <IconButton
-          icon="■"
+          icon="stop"
           label="Stop"
           tone="record"
           onClick={onStop}
@@ -592,7 +591,7 @@ export function ActionMenu({
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       <IconButton
-        icon="…"
+        icon="more"
         label={label}
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
@@ -712,7 +711,13 @@ export function CommandPalette({
   onClose: () => void;
   query: string;
   onQuery: (q: string) => void;
-  results: { id: string; title: string; hint?: string; testId?: string }[];
+  results: {
+    id: string;
+    title: string;
+    hint?: string;
+    icon?: IconName;
+    testId?: string;
+  }[];
   index: number;
   onIndex: (i: number) => void;
   onPick: (i: number) => void;
@@ -780,7 +785,17 @@ export function CommandPalette({
                 background: i === index ? t.color.accent : 'transparent',
               }}
             >
-              <Text truncate>{r.title}</Text>
+              <span
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: t.space[2],
+                  minWidth: 0,
+                }}
+              >
+                {r.icon ? <Icon name={r.icon} size="sm" tone="muted" /> : null}
+                <Text truncate>{r.title}</Text>
+              </span>
               {r.hint ? (
                 <Text variant="caption" muted truncate>
                   {r.hint}

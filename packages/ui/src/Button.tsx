@@ -2,6 +2,7 @@ import { typeStyle } from './tokens';
 import type { ButtonHTMLAttributes, CSSProperties } from 'react';
 import { useTheme } from './theme';
 import { Spinner } from './Spinner';
+import { Icon, type IconName } from './Icon';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'lg';
@@ -10,12 +11,15 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
   loading?: boolean;
+  /** Leading Feather icon. */
+  icon?: IconName;
 }
 
 export function Button({
   variant = 'primary',
   size = 'md',
   loading,
+  icon,
   disabled,
   style,
   children,
@@ -75,7 +79,15 @@ export function Button({
         } as CSSProperties
       }
     >
-      {loading ? <Spinner size={14} /> : null}
+      {loading ? (
+        <Spinner size={14} />
+      ) : icon ? (
+        <Icon
+          name={icon}
+          size="sm"
+          fill={icon === 'circle' || icon === 'stop'}
+        />
+      ) : null}
       {children}
     </button>
   );

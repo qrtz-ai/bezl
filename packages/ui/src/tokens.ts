@@ -109,6 +109,11 @@ export const tokens = {
     exit: '120ms',
     pulse: '1400ms',
   },
+  /** Feather icon sizes (px squares) and stroke; use <Icon size>, never raw numbers. */
+  icon: {
+    size: { xs: 12, sm: 14, md: 16, lg: 20, xl: 32 },
+    stroke: 2,
+  },
   /** One focus ring everywhere: keyboard focus shows a 2px ring in `color.ring`, offset 2px. */
   focus: { width: '2px', offset: '2px', style: 'solid' },
   z: { base: 0, sticky: 10, overlay: 40, dialog: 50, toast: 60, tooltip: 70 },

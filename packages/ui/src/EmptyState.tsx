@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useTheme } from './theme';
 import { Text } from './Text';
+import { Icon, type IconName } from './Icon';
 
 /** Quiet centered placeholder: optional glyph, one short title, optional action. No body copy. */
 export function EmptyState({
@@ -10,7 +11,7 @@ export function EmptyState({
 }: {
   title: string;
   action?: ReactNode;
-  icon?: string;
+  icon?: IconName;
 }) {
   const t = useTheme();
   return (
@@ -24,11 +25,7 @@ export function EmptyState({
         padding: t.space[12],
       }}
     >
-      {icon ? (
-        <Text variant="h2" muted aria-hidden>
-          {icon}
-        </Text>
-      ) : null}
+      {icon ? <Icon name={icon} size="xl" tone="muted" /> : null}
       <Text muted>{title}</Text>
       {action}
     </div>
