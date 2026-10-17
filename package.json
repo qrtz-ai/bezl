@@ -27,7 +27,7 @@
     "screenshots": "node scripts/screenshots.mjs",
     "gen:contracts": "QRTZ_UPDATE_CONTRACTS=1 vitest run apps/desktop/src/shared/contract-json.test.ts",
     "test:rust": "cargo test --workspace",
-    "check:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace"
+    "check:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo clippy -p qrtz-ipc -p qrtz-helper-bridge --all-targets -- -D warnings && cargo test --workspace"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
