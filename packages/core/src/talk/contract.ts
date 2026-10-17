@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-/** Where the words came from. Cloud engines stream over WebSocket; on-device is the helper's Parakeet. */
+/** Where the words came from. Cloud engines stream over WebSocket; on-device is the qrtz speech module behind the helper. */
 export const TalkEngineId = z.enum(['deepgram', 'elevenlabs', 'on-device']);
 export type TalkEngineId = z.infer<typeof TalkEngineId>;
 
@@ -55,6 +55,22 @@ export const TalkEntry = z.object({
 });
 export type TalkEntry = z.infer<typeof TalkEntry>;
 
+/** Why a dictation ended in `error` (machine-readable; `error` is the sentence shown). */
+export const TalkErrorKind = z.enum([
+  'offline',
+  'mic-denied',
+  'mic-did-not-start',
+  'busy',
+  'helper-lost',
+  'helper-unavailable',
+  'permission-revoked',
+  'mic-lost',
+  'speech-incompatible',
+  'speech-unavailable',
+  'speech-lost',
+]);
+export type TalkErrorKind = z.infer<typeof TalkErrorKind>;
+
 export const TalkView = z.object({
   phase: TalkPhase,
   id: z.string().optional(),
@@ -67,6 +83,7 @@ export const TalkView = z.object({
   engine: TalkEngineId.optional(),
   failover: z.boolean().optional(),
   error: z.string().optional(),
+  errorKind: TalkErrorKind.optional(),
   last: TalkEntry.optional(),
 });
 export type TalkView = z.infer<typeof TalkView>;

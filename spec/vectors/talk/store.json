@@ -1,0 +1,118 @@
+{
+  "about": "talk.json as both builds read and write it (apps/desktop/src/main/talk-service.ts load/save ⇄ crates/qrtz-talk/src/store.rs). Invalid entries are dropped one by one; `serialized` is JSON.stringify of what was kept. TS is the oracle: QRTZ_VECTORS_UPDATE=1 npx vitest run store.vectors.",
+  "file": {
+    "history": [
+      {
+        "id": "a1",
+        "at": 1760000000000,
+        "raw": "um so I think",
+        "text": "So I think.",
+        "cleanup": "rules",
+        "engine": "on-device",
+        "insert": "ax-selected-text",
+        "inserted": true,
+        "app": "Notes",
+        "durationMs": 1234.5,
+        "latency": {
+          "firstPartialMs": 180,
+          "finalMs": 40,
+          "cleanupMs": 2,
+          "insertedMs": 61
+        }
+      },
+      {
+        "id": "a2",
+        "at": 1760000001000,
+        "raw": "hello",
+        "text": "Hello.",
+        "cleanup": "llm",
+        "engine": "elevenlabs",
+        "failover": false,
+        "insert": "paste",
+        "inserted": true,
+        "durationMs": 900,
+        "latency": {}
+      },
+      {
+        "id": "a3",
+        "at": 1760000002000,
+        "raw": "x",
+        "text": "X.",
+        "cleanup": "off",
+        "engine": "deepgram",
+        "failover": true,
+        "insert": "none",
+        "inserted": false,
+        "durationMs": 10,
+        "latency": {
+          "finalMs": 1500
+        },
+        "error": "no focused field; copied to clipboard"
+      },
+      {
+        "id": "bad-engine",
+        "at": 1,
+        "raw": "",
+        "text": "",
+        "cleanup": "rules",
+        "engine": "a-model-name",
+        "insert": "none",
+        "inserted": false,
+        "durationMs": 0,
+        "latency": {}
+      },
+      {
+        "id": "missing-fields",
+        "at": 1
+      },
+      "not an object"
+    ],
+    "dictionary": [
+      {
+        "term": "  qrtz ",
+        "aliases": [
+          " cue arts",
+          "quartz"
+        ]
+      },
+      {
+        "term": "Deepgram"
+      },
+      {
+        "term": ""
+      },
+      {
+        "term": "toolong-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        "term": "many",
+        "aliases": [
+          "a",
+          "b",
+          "c",
+          "d",
+          "e",
+          "f",
+          "g",
+          "h",
+          "i",
+          "j",
+          "k"
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "history": [
+      "a1",
+      "a2",
+      "a3"
+    ],
+    "dictionary": [
+      "qrtz",
+      "Deepgram"
+    ],
+    "dropped": 6,
+    "serialized": "{\"history\":[{\"id\":\"a1\",\"at\":1760000000000,\"raw\":\"um so I think\",\"text\":\"So I think.\",\"cleanup\":\"rules\",\"engine\":\"on-device\",\"failover\":false,\"insert\":\"ax-selected-text\",\"inserted\":true,\"app\":\"Notes\",\"durationMs\":1234.5,\"latency\":{\"firstPartialMs\":180,\"finalMs\":40,\"cleanupMs\":2,\"insertedMs\":61}},{\"id\":\"a2\",\"at\":1760000001000,\"raw\":\"hello\",\"text\":\"Hello.\",\"cleanup\":\"llm\",\"engine\":\"elevenlabs\",\"failover\":false,\"insert\":\"paste\",\"inserted\":true,\"durationMs\":900,\"latency\":{}},{\"id\":\"a3\",\"at\":1760000002000,\"raw\":\"x\",\"text\":\"X.\",\"cleanup\":\"off\",\"engine\":\"deepgram\",\"failover\":true,\"insert\":\"none\",\"inserted\":false,\"durationMs\":10,\"latency\":{\"finalMs\":1500},\"error\":\"no focused field; copied to clipboard\"}],\"dictionary\":[{\"term\":\"qrtz\",\"aliases\":[\"cue arts\",\"quartz\"]},{\"term\":\"Deepgram\",\"aliases\":[]}]}"
+  }
+}

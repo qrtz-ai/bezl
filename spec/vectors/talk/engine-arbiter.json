@@ -1,0 +1,654 @@
+{
+  "about": "Cloud/on-device arbitration (packages/core/src/talk/asr.ts EngineArbiter ⇄ crates/qrtz-talk/src/arbiter.rs). Steps run in order at time `at` (ms); `finish` is the flush after dictation.stopped: cloud {ok} | {err} | null when the cloud is not in use. TS is the oracle: QRTZ_VECTORS_UPDATE=1 npx vitest run engine-arbiter.vectors.",
+  "cases": [
+    {
+      "name": "on-device only",
+      "stallMs": 1500,
+      "steps": [
+        {
+          "op": "localPartial",
+          "text": "hello",
+          "at": 100,
+          "expect": {
+            "usingCloud": false,
+            "engine": "on-device",
+            "view": [
+              "",
+              "hello"
+            ]
+          }
+        },
+        {
+          "op": "localFinal",
+          "text": "hello there",
+          "at": 300,
+          "expect": {
+            "usingCloud": false,
+            "engine": "on-device",
+            "view": [
+              "hello there",
+              ""
+            ]
+          }
+        },
+        {
+          "op": "localPartial",
+          "text": "how",
+          "at": 400,
+          "expect": {
+            "usingCloud": false,
+            "engine": "on-device",
+            "view": [
+              "hello there",
+              "how"
+            ]
+          }
+        }
+      ],
+      "finish": {
+        "local": "",
+        "cloud": null
+      },
+      "expect": {
+        "text": "hello there how",
+        "engine": "on-device",
+        "failover": false,
+        "reason": null
+      }
+    },
+    {
+      "name": "on-device stopped text wins over partials",
+      "stallMs": 1500,
+      "steps": [
+        {
+          "op": "localPartial",
+          "text": "hel",
+          "at": 100,
+          "expect": {
+            "usingCloud": false,
+            "engine": "on-device",
+            "view": [
+              "",
+              "hel"
+            ]
+          }
+        }
+      ],
+      "finish": {
+        "local": "hello world",
+        "cloud": null
+      },
+      "expect": {
+        "text": "hello world",
+        "engine": "on-device",
+        "failover": false,
+        "reason": null
+      }
+    },
+    {
+      "name": "cloud healthy wins",
+      "stallMs": 1500,
+      "steps": [
+        {
+          "op": "attach",
+          "engine": "elevenlabs",
+          "at": 0,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "",
+              ""
+            ]
+          }
+        },
+        {
+          "op": "localPartial",
+          "text": "hello",
+          "at": 100,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "",
+              ""
+            ]
+          }
+        },
+        {
+          "op": "cloud",
+          "committed": "",
+          "partial": "hello",
+          "at": 150,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "",
+              "hello"
+            ]
+          }
+        },
+        {
+          "op": "check",
+          "at": 2000,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "",
+              "hello"
+            ]
+          }
+        }
+      ],
+      "finish": {
+        "local": "hello",
+        "cloud": {
+          "ok": "Hello there."
+        }
+      },
+      "expect": {
+        "text": "Hello there.",
+        "engine": "elevenlabs",
+        "failover": false,
+        "reason": null
+      }
+    },
+    {
+      "name": "cloud empty final falls back to its live text",
+      "stallMs": 1500,
+      "steps": [
+        {
+          "op": "attach",
+          "engine": "elevenlabs",
+          "at": 0,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "",
+              ""
+            ]
+          }
+        },
+        {
+          "op": "cloud",
+          "committed": "hello",
+          "partial": "there",
+          "at": 150,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "hello",
+              "there"
+            ]
+          }
+        }
+      ],
+      "finish": {
+        "local": "hello there",
+        "cloud": {
+          "ok": "  "
+        }
+      },
+      "expect": {
+        "text": "hello there",
+        "engine": "elevenlabs",
+        "failover": false,
+        "reason": null
+      }
+    },
+    {
+      "name": "cloud empty with on-device words is a failure",
+      "stallMs": 1500,
+      "steps": [
+        {
+          "op": "attach",
+          "engine": "deepgram",
+          "at": 0,
+          "expect": {
+            "usingCloud": true,
+            "engine": "deepgram",
+            "view": [
+              "",
+              ""
+            ]
+          }
+        },
+        {
+          "op": "localPartial",
+          "text": "hello",
+          "at": 100,
+          "expect": {
+            "usingCloud": true,
+            "engine": "deepgram",
+            "view": [
+              "",
+              ""
+            ]
+          }
+        }
+      ],
+      "finish": {
+        "local": "hello",
+        "cloud": {
+          "ok": ""
+        }
+      },
+      "expect": {
+        "text": "hello",
+        "engine": "on-device",
+        "failover": true,
+        "reason": "cloud returned no text"
+      }
+    },
+    {
+      "name": "cloud and local both silent",
+      "stallMs": 1500,
+      "steps": [
+        {
+          "op": "attach",
+          "engine": "elevenlabs",
+          "at": 0,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "",
+              ""
+            ]
+          }
+        }
+      ],
+      "finish": {
+        "local": "",
+        "cloud": {
+          "ok": ""
+        }
+      },
+      "expect": {
+        "text": "",
+        "engine": "elevenlabs",
+        "failover": false,
+        "reason": null
+      }
+    },
+    {
+      "name": "cloud stalls while local hears",
+      "stallMs": 1500,
+      "steps": [
+        {
+          "op": "attach",
+          "engine": "elevenlabs",
+          "at": 0,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "",
+              ""
+            ]
+          }
+        },
+        {
+          "op": "localPartial",
+          "text": "one",
+          "at": 100,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "",
+              ""
+            ]
+          }
+        },
+        {
+          "op": "check",
+          "at": 1500,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "",
+              ""
+            ]
+          }
+        },
+        {
+          "op": "localPartial",
+          "text": "one two",
+          "at": 1600,
+          "expect": {
+            "usingCloud": false,
+            "engine": "on-device",
+            "view": [
+              "",
+              "one two"
+            ]
+          }
+        },
+        {
+          "op": "check",
+          "at": 1601,
+          "expect": {
+            "usingCloud": false,
+            "engine": "on-device",
+            "view": [
+              "",
+              "one two"
+            ]
+          }
+        }
+      ],
+      "finish": {
+        "local": "one two three",
+        "cloud": null
+      },
+      "expect": {
+        "text": "one two three",
+        "engine": "on-device",
+        "failover": true,
+        "reason": "cloud stream stalled"
+      }
+    },
+    {
+      "name": "stall needs local words first",
+      "stallMs": 1500,
+      "steps": [
+        {
+          "op": "attach",
+          "engine": "elevenlabs",
+          "at": 0,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "",
+              ""
+            ]
+          }
+        },
+        {
+          "op": "check",
+          "at": 5000,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "",
+              ""
+            ]
+          }
+        }
+      ],
+      "finish": {
+        "local": "",
+        "cloud": {
+          "ok": "late but fine"
+        }
+      },
+      "expect": {
+        "text": "late but fine",
+        "engine": "elevenlabs",
+        "failover": false,
+        "reason": null
+      }
+    },
+    {
+      "name": "cloud heard once never stalls",
+      "stallMs": 1500,
+      "steps": [
+        {
+          "op": "attach",
+          "engine": "elevenlabs",
+          "at": 0,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "",
+              ""
+            ]
+          }
+        },
+        {
+          "op": "localPartial",
+          "text": "one",
+          "at": 100,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "",
+              ""
+            ]
+          }
+        },
+        {
+          "op": "cloud",
+          "committed": "",
+          "partial": "one",
+          "at": 200,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "",
+              "one"
+            ]
+          }
+        },
+        {
+          "op": "check",
+          "at": 9000,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "",
+              "one"
+            ]
+          }
+        }
+      ],
+      "finish": {
+        "local": "one",
+        "cloud": {
+          "ok": "One."
+        }
+      },
+      "expect": {
+        "text": "One.",
+        "engine": "elevenlabs",
+        "failover": false,
+        "reason": null
+      }
+    },
+    {
+      "name": "socket error keeps the first reason",
+      "stallMs": 1500,
+      "steps": [
+        {
+          "op": "attach",
+          "engine": "elevenlabs",
+          "at": 0,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "",
+              ""
+            ]
+          }
+        },
+        {
+          "op": "cloud",
+          "committed": "hello",
+          "partial": "",
+          "at": 100,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "hello",
+              ""
+            ]
+          }
+        },
+        {
+          "op": "cloudError",
+          "error": "socket closed (1006)",
+          "at": 200,
+          "expect": {
+            "usingCloud": false,
+            "engine": "on-device",
+            "view": [
+              "",
+              ""
+            ]
+          }
+        },
+        {
+          "op": "cloudError",
+          "error": "second",
+          "at": 300,
+          "expect": {
+            "usingCloud": false,
+            "engine": "on-device",
+            "view": [
+              "",
+              ""
+            ]
+          }
+        },
+        {
+          "op": "localFinal",
+          "text": "hello there",
+          "at": 400,
+          "expect": {
+            "usingCloud": false,
+            "engine": "on-device",
+            "view": [
+              "hello there",
+              ""
+            ]
+          }
+        }
+      ],
+      "finish": {
+        "local": "",
+        "cloud": null
+      },
+      "expect": {
+        "text": "hello there",
+        "engine": "on-device",
+        "failover": true,
+        "reason": "socket closed (1006)"
+      }
+    },
+    {
+      "name": "late final",
+      "stallMs": 1500,
+      "steps": [
+        {
+          "op": "attach",
+          "engine": "elevenlabs",
+          "at": 0,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "",
+              ""
+            ]
+          }
+        },
+        {
+          "op": "cloud",
+          "committed": "a",
+          "partial": "b",
+          "at": 100,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "a",
+              "b"
+            ]
+          }
+        }
+      ],
+      "finish": {
+        "local": "a b c",
+        "cloud": {
+          "err": "cloud final timed out"
+        }
+      },
+      "expect": {
+        "text": "a b c",
+        "engine": "on-device",
+        "failover": true,
+        "reason": "cloud final timed out"
+      }
+    },
+    {
+      "name": "failover off (stall infinite)",
+      "stallMs": null,
+      "steps": [
+        {
+          "op": "attach",
+          "engine": "elevenlabs",
+          "at": 0,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "",
+              ""
+            ]
+          }
+        },
+        {
+          "op": "localPartial",
+          "text": "one",
+          "at": 100,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "",
+              ""
+            ]
+          }
+        },
+        {
+          "op": "check",
+          "at": 99999999,
+          "expect": {
+            "usingCloud": true,
+            "engine": "elevenlabs",
+            "view": [
+              "",
+              ""
+            ]
+          }
+        }
+      ],
+      "finish": {
+        "local": "one",
+        "cloud": {
+          "ok": "One."
+        }
+      },
+      "expect": {
+        "text": "One.",
+        "engine": "elevenlabs",
+        "failover": false,
+        "reason": null
+      }
+    }
+  ]
+}

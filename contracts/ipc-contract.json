@@ -5369,6 +5369,22 @@
           "error": {
             "type": "string"
           },
+          "errorKind": {
+            "type": "string",
+            "enum": [
+              "offline",
+              "mic-denied",
+              "mic-did-not-start",
+              "busy",
+              "helper-lost",
+              "helper-unavailable",
+              "permission-revoked",
+              "mic-lost",
+              "speech-incompatible",
+              "speech-unavailable",
+              "speech-lost"
+            ]
+          },
           "last": {
             "type": "object",
             "properties": {
@@ -5517,6 +5533,22 @@
           },
           "error": {
             "type": "string"
+          },
+          "errorKind": {
+            "type": "string",
+            "enum": [
+              "offline",
+              "mic-denied",
+              "mic-did-not-start",
+              "busy",
+              "helper-lost",
+              "helper-unavailable",
+              "permission-revoked",
+              "mic-lost",
+              "speech-incompatible",
+              "speech-unavailable",
+              "speech-lost"
+            ]
           },
           "last": {
             "type": "object",
@@ -5667,6 +5699,22 @@
           "error": {
             "type": "string"
           },
+          "errorKind": {
+            "type": "string",
+            "enum": [
+              "offline",
+              "mic-denied",
+              "mic-did-not-start",
+              "busy",
+              "helper-lost",
+              "helper-unavailable",
+              "permission-revoked",
+              "mic-lost",
+              "speech-incompatible",
+              "speech-unavailable",
+              "speech-lost"
+            ]
+          },
           "last": {
             "type": "object",
             "properties": {
@@ -5815,6 +5863,22 @@
           },
           "error": {
             "type": "string"
+          },
+          "errorKind": {
+            "type": "string",
+            "enum": [
+              "offline",
+              "mic-denied",
+              "mic-did-not-start",
+              "busy",
+              "helper-lost",
+              "helper-unavailable",
+              "permission-revoked",
+              "mic-lost",
+              "speech-incompatible",
+              "speech-unavailable",
+              "speech-lost"
+            ]
           },
           "last": {
             "type": "object",
@@ -7356,6 +7420,22 @@
           },
           "error": {
             "type": "string"
+          },
+          "errorKind": {
+            "type": "string",
+            "enum": [
+              "offline",
+              "mic-denied",
+              "mic-did-not-start",
+              "busy",
+              "helper-lost",
+              "helper-unavailable",
+              "permission-revoked",
+              "mic-lost",
+              "speech-incompatible",
+              "speech-unavailable",
+              "speech-lost"
+            ]
           },
           "last": {
             "type": "object",

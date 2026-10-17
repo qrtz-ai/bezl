@@ -1,0 +1,219 @@
+{
+  "dictionary": [
+    {
+      "term": "qrtz",
+      "aliases": [
+        "cue arts",
+        "quartz"
+      ]
+    },
+    {
+      "term": "Deepgram",
+      "aliases": [
+        "deep gram"
+      ]
+    },
+    {
+      "term": "C++",
+      "aliases": [
+        "see plus plus"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "raw": "um so I I think we should ship cue arts talk on friday",
+      "dict": true,
+      "expect": "So I think we should ship qrtz talk on friday."
+    },
+    {
+      "raw": "uh, hello there , how are you",
+      "dict": false,
+      "expect": "Hello there, how are you."
+    },
+    {
+      "raw": "first item new line second item new paragraph done",
+      "dict": false,
+      "expect": "First item\nSecond item\n\nDone."
+    },
+    {
+      "raw": "is it ready?",
+      "dict": false,
+      "expect": "Is it ready?"
+    },
+    {
+      "raw": "i think i can",
+      "dict": false,
+      "expect": "I think I can."
+    },
+    {
+      "raw": "",
+      "dict": false,
+      "expect": ""
+    },
+    {
+      "raw": "the the the cat sat",
+      "dict": false,
+      "expect": "The cat sat."
+    },
+    {
+      "raw": "Umm, hmm, well erm okay",
+      "dict": false,
+      "expect": "Well okay."
+    },
+    {
+      "raw": "so i said,hello.and then left",
+      "dict": false,
+      "expect": "So I said, hello. And then left."
+    },
+    {
+      "raw": "price is 3.50 dollars",
+      "dict": false,
+      "expect": "Price is 3.50 dollars."
+    },
+    {
+      "raw": "mhm yes uh-huh right",
+      "dict": false,
+      "expect": "Yes uh-huh right."
+    },
+    {
+      "raw": "I I I I",
+      "dict": false,
+      "expect": "I."
+    },
+    {
+      "raw": "hello world!",
+      "dict": false,
+      "expect": "Hello world!"
+    },
+    {
+      "raw": "café au lait",
+      "dict": false,
+      "expect": "Café au lait."
+    },
+    {
+      "raw": "ends with a number 42",
+      "dict": false,
+      "expect": "Ends with a number 42."
+    },
+    {
+      "raw": "quote \"hi\" there",
+      "dict": false,
+      "expect": "Quote \"hi\" there."
+    },
+    {
+      "raw": "new paragraph start here",
+      "dict": false,
+      "expect": "Start here."
+    },
+    {
+      "raw": "one,, two,,, three",
+      "dict": false,
+      "expect": "One, , two, , , three."
+    },
+    {
+      "raw": "this is quartz and Cue Arts and cue-arts",
+      "dict": true,
+      "expect": "This is qrtz and qrtz and qrtz."
+    },
+    {
+      "raw": "i'm sure i'd go",
+      "dict": false,
+      "expect": "I'm sure I'd go."
+    },
+    {
+      "raw": "ahh what was it",
+      "dict": false,
+      "expect": "What was it."
+    },
+    {
+      "raw": "we need the The plan",
+      "dict": false,
+      "expect": "We need the plan."
+    },
+    {
+      "raw": "  lots   of\tspaces  ",
+      "dict": false,
+      "expect": "Lots of spaces."
+    },
+    {
+      "raw": "question? answer. exclamation! next",
+      "dict": false,
+      "expect": "Question? Answer. Exclamation! Next."
+    },
+    {
+      "raw": "日本語のテキスト",
+      "dict": false,
+      "expect": "日本語のテキスト."
+    },
+    {
+      "raw": "hello 世界",
+      "dict": false,
+      "expect": "Hello 世界."
+    },
+    {
+      "raw": "I use see plus plus and deep gram daily",
+      "dict": true,
+      "expect": "I use see plus and Deepgram daily."
+    }
+  ],
+  "dictionaryOnly": [
+    {
+      "text": "Cue-Arts and QUARTZ",
+      "expect": "qrtz and qrtz"
+    },
+    {
+      "text": "quartzite stays",
+      "expect": "quartzite stays"
+    },
+    {
+      "text": "deep  gram, deep-gram",
+      "expect": "Deepgram, Deepgram"
+    },
+    {
+      "text": "see plus plus rocks",
+      "expect": "C++ rocks"
+    },
+    {
+      "text": "xquartz no",
+      "expect": "xquartz no"
+    }
+  ],
+  "plausible": [
+    {
+      "raw": "um hello world",
+      "out": "Hello, world!",
+      "expect": true
+    },
+    {
+      "raw": "hello",
+      "out": "Here is the cleaned text: hello",
+      "expect": false
+    },
+    {
+      "raw": "hello",
+      "out": "Sure! hello",
+      "expect": false
+    },
+    {
+      "raw": "hi",
+      "out": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "expect": false
+    },
+    {
+      "raw": "hi",
+      "out": "",
+      "expect": false
+    },
+    {
+      "raw": "hello",
+      "out": "cleaned: hello",
+      "expect": false
+    },
+    {
+      "raw": "hello",
+      "out": "Hello.",
+      "expect": true
+    }
+  ]
+}
