@@ -72,7 +72,8 @@ pub fn default_names(turns: &[SpeakerTurn]) -> IndexMap<String, String> {
     // First appearance order, and total speech per speaker.
     let mut total: IndexMap<&str, Ms> = IndexMap::new();
     for t in &sorted {
-        *total.entry(t.speaker.as_str()).or_insert(0) += t.end_ms - t.start_ms;
+        let e = total.entry(t.speaker.as_str()).or_insert(0);
+        *e = e.saturating_add(t.end_ms - t.start_ms);
     }
     let mut me: Option<(&str, Ms)> = None;
     for (s, ms) in &total {

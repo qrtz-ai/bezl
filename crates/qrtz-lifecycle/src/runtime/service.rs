@@ -91,6 +91,9 @@ const MAX_HELD_BEHIND_ACK: usize = 64;
 const MAX_SPEAKER_TURNS: usize = 50_000;
 /// A speaker's next turn this close to its last one extends it.
 const TURN_MERGE_GAP_MS: qrtz_model::Ms = 250;
+/// N122: a speaker turn ending later than this into its part is a bogus helper time (the contract only bounds it
+/// below), dropped rather than letting one turn cover, and win, every line of its channel.
+const MAX_TURN_END_MS: qrtz_model::Ms = 48 * 3_600_000;
 
 /// N37: the start (or resume) whose `recording.started` was read but not yet applied (port of `NoteService.acked`).
 struct Acked {
@@ -1058,7 +1061,7 @@ impl Shared {
                 // N43: only once the part's ack is applied (before it the helper's clock is not the part's).
                 if matches!(s.phase, RecordingPhase::Recording | RecordingPhase::Stopping) {
                     self.lock().active.push(ActiveSpeakerEvent {
-                        at_ms: at_ms + s.part_offset_ms,
+                        at_ms: at_ms.saturating_add(s.part_offset_ms), // N122
                         name,
                     });
                     self.emit_soon(50.0);
@@ -1376,21 +1379,23 @@ impl Shared {
             || s.meeting_id.is_none()
             || end_ms <= start_ms
             || start_ms < 0
+            || end_ms > MAX_TURN_END_MS
             || self.lock().paused
         {
             return;
         }
         let off = s.part_offset_ms;
+        // N122: `de_ms` saturates a huge helper number to i64::MAX; adding the part offset must not overflow.
         let t = SpeakerTurn {
             speaker,
-            start_ms: start_ms + off,
-            end_ms: end_ms + off,
+            start_ms: start_ms.saturating_add(off),
+            end_ms: end_ms.saturating_add(off),
         };
         let mut st = self.lock();
         let n = st.turns.len();
         match st.turns.last_mut() {
             // One voice talking on: extend its turn (bounded memory over a long meeting).
-            Some(l) if l.speaker == t.speaker && t.start_ms <= l.end_ms + TURN_MERGE_GAP_MS => {
+            Some(l) if l.speaker == t.speaker && t.start_ms <= l.end_ms.saturating_add(TURN_MERGE_GAP_MS) => {
                 l.end_ms = l.end_ms.max(t.end_ms);
             }
             _ if n >= MAX_SPEAKER_TURNS => {
@@ -2524,6 +2529,14 @@ impl Shared {
                     .set_template(id.to_string(), template.to_string())
                     .await?;
             }
+            // N120 (ADR 0080): an attempt already running read the old template before it was stored, and
+            // `retry_step` leaves a running step alone, so returning its result would be the old template's summary.
+            // Let that attempt settle, then re-run with the stored template.
+            if self.step_running(id, StepId::Summary) {
+                let budget = settle_budget_ms(StepId::Summary, self.config().summary_timeout_ms);
+                self.wait_settled(id, StepId::Summary, Duration::from_millis(budget))
+                    .await;
+            }
             return self
                 .clone()
                 .resummarize(id)
@@ -2540,6 +2553,16 @@ impl Shared {
         .await?;
         self.emit(CoreEvent::Changed { id: id.to_string() });
         Ok(summary)
+    }
+
+    /// `step` is executing right now (not pending, retrying or settled).
+    fn step_running(&self, id: &str, step: StepId) -> bool {
+        let st = self.lock();
+        st.pipeline_running.contains(id)
+            && st
+                .pipelines
+                .get(id)
+                .is_some_and(|p| p.steps.get(step).status == StepStatus::Running)
     }
 
     /// Polls until `step` is done/failed/skipped or `budget` passes (monotonic: a wall-clock jump can't cut it).
