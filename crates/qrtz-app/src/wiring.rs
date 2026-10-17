@@ -371,6 +371,18 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     let setup = Arc::new(crate::setup::Setup {
         speech: crate::setup::SpeechManager::with_local(b.speech.clone(), local_models, events.clone()),
     });
+    // ADR 0079 / N121: warm the just-downloaded models (`speech.warmAfterDownload`, on by default) so the first
+    // recording doesn't spend its diarizer backlog on the OS model compile.
+    if let Some(sup) = supervisor.clone() {
+        let cfg = config.clone();
+        setup.speech.on_installed(Arc::new(move || {
+            if cfg.get()["speech"]["warmAfterDownload"].as_bool().unwrap_or(true)
+                && !SupervisorHelper(sup.clone()).send(&HelperCommand::ModelsWarm)
+            {
+                tracing::warn!("models.warm: helper not running");
+            }
+        }));
+    }
     let service = crate::AppService::new(crate::AppDeps {
         info: b.info,
         config,

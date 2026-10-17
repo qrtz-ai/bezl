@@ -123,6 +123,9 @@ public enum HostMessage: Equatable, Sendable {
     /// ADR 0075: summarize a host-built, fenced prompt with the on-device model (see SummarizeService).
     case summarize(id: String, stage: SummarizeStage, prompt: String)
     case summarizeCancel(id: String)
+    /// ADR 0079 / N121: the host just installed the speech models: load each once (one at a time, then unload) so the
+    /// OS compiles and caches them now, not at the first recording. Ignored while a recording runs.
+    case modelsWarm
     case summarizeCheck(id: String)
 }
 
@@ -416,6 +419,7 @@ extension HostMessage {
         case .recordingAbort(let p): return .object(["type": s("recording.abort"), "audioPath": s(p)])
         case .recordingPause: return .object(["type": s("recording.pause")])
         case .recordingResume: return .object(["type": s("recording.resume")])
+        case .modelsWarm: return .object(["type": s("models.warm")])
         case .dictationConfigure(let warm, let pre, let stream, let key, let consume):
             var o: [String: JSONValue] = ["type": s("dictation.configure"), "warmMic": .bool(warm), "preRollMs": n(Double(pre)), "streamAudio": .bool(stream), "pushKey": s(key)]
             if let consume { o["consumeFn"] = .bool(consume) }
@@ -451,6 +455,7 @@ extension HostMessage {
         case "recording.abort": self = .recordingAbort(audioPath: try f.str("audioPath"))
         case "recording.pause": self = .recordingPause
         case "recording.resume": self = .recordingResume
+        case "models.warm": self = .modelsWarm
         case "dictation.configure":
             guard let warm = f.o["warmMic"]?.bool, let stream = f.o["streamAudio"]?.bool else { throw ProtocolError("missing bool") }
             if let c = f.o["consumeFn"], c.bool == nil { throw ProtocolError("consumeFn must be a bool") }

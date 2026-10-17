@@ -352,6 +352,9 @@ export const HostToHelper = z.discriminatedUnion('type', [
   /** Privacy pause: the helper writes silence and transcribes nothing until resume. */
   z.object({ type: z.literal('recording.pause') }),
   z.object({ type: z.literal('recording.resume') }),
+  /** ADR 0079 / N121: the speech models were just installed; load each once (one at a time) so the OS compiles
+   * them now, not at the first recording. Ignored while a recording runs. */
+  z.object({ type: z.literal('models.warm') }),
   /** Dictation settings: warm mic + pre-roll, cloud audio streaming, native push-to-talk key ('' = none). */
   z.object({
     type: z.literal('dictation.configure'),

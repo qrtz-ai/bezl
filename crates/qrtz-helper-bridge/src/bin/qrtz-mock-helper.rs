@@ -663,6 +663,7 @@ fn main() {
             }),
             "recording.pause" => paused.store(true, Ordering::SeqCst),
             "recording.resume" => paused.store(false, Ordering::SeqCst),
+            "models.warm" => say(json!({"type": "log", "level": "info", "msg": "models warmed: mock"})),
             "shutdown" => std::process::exit(0),
             _ => say(
                 json!({"type": "error", "code": "protocol.unknown", "message": "unknown message", "fatal": false}),

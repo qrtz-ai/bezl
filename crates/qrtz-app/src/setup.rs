@@ -99,6 +99,8 @@ pub struct SpeechManager {
     ctl: DownloadControl,
     running: AtomicBool,
     last_emit: Mutex<Option<Instant>>,
+    /// Runs after the local models finished installing (wiring: `models.warm` to the helper, ADR 0079 / N121).
+    on_installed: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
 }
 
 impl SpeechManager {
@@ -122,7 +124,13 @@ impl SpeechManager {
             ctl: DownloadControl::default(),
             running: AtomicBool::new(false),
             last_emit: Mutex::default(),
+            on_installed: Mutex::default(),
         })
+    }
+
+    /// Called once per completed local model download (not for a module bundle, not when already installed).
+    pub fn on_installed(&self, f: Arc<dyn Fn() + Send + Sync>) {
+        *self.on_installed.lock().unwrap() = Some(f);
     }
 
     fn marker_path(&self) -> Option<PathBuf> {
@@ -356,6 +364,10 @@ impl SpeechManager {
                     tracing::info!(version = local.version(), "speech models installed");
                     me.set_marker(None);
                     me.set_dl(Dl::idle());
+                    let hook = me.on_installed.lock().unwrap().clone();
+                    if let Some(f) = hook {
+                        f();
+                    }
                 }
                 Err(SpeechError::Paused) => {
                     me.set_marker(Some(Marker {

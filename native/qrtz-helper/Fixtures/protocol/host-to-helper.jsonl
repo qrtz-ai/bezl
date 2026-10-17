@@ -19,3 +19,4 @@
 {"id":"s1","prompt":"Meeting: standup\n\nTranscript:\n<transcript-0123456789abcdef>\n[0:01] maya: hi\n</transcript-0123456789abcdef>","stage":"single","type":"summarize"}
 {"id":"s1","type":"summarize.cancel"}
 {"id":"c1","type":"summarize.check"}
+{"type":"models.warm"}

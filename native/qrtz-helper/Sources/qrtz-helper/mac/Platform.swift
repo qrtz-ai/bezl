@@ -37,6 +37,7 @@ func makePlatformDeps(version: String) -> HelperDeps {
     deps.summarizer = FoundationModelsSummarizer()
     deps.systemTranscribers = [NemotronTranscriber()]
     deps.diarizers = [.mic: NemotronChannelDiarizer(), .system: NemotronChannelDiarizer()]
+    deps.modelWarmup = warmModels
     return deps
 }
 
@@ -50,4 +51,25 @@ private func dictationAsr() -> [StreamingTranscriber] {
 }
 
 func logErr(_ s: String) { FileHandle.standardError.write(Data("[qrtz-helper] \(s)\n".utf8)) }
+#endif
+
+#if os(macOS)
+/// `models.warm` (ADR 0079 / N121): each model loaded once and unloaded, one at a time (peak = one model), so Core ML
+/// compiles and caches them now. Fresh instances: nothing a recording or talk holds is touched.
+func warmModels() async -> String {
+    func ms(_ t: Date) -> Int { Int(Date().timeIntervalSince(t) * 1000) }
+    var parts: [String] = []
+    var t = Date()
+    let asr = NemotronTranscriber()
+    do { try await asr.prepare(); parts.append("asr \(ms(t)) ms") } catch { parts.append("asr unavailable: \(error)") }
+    await asr.unload()
+    t = Date()
+    let diar = NemotronChannelDiarizer()
+    do { try await diar.prepare(); parts.append("diarizer \(ms(t)) ms") } catch { parts.append("diarizer unavailable: \(error)") }
+    await diar.unload()
+    t = Date()
+    let vqe = LocalVqeEnhancer()
+    do { try await vqe.prepare(); parts.append("echo \(ms(t)) ms") } catch { parts.append("echo unavailable: \(error)") }
+    return "models warmed: " + parts.joined(separator: ", ")
+}
 #endif

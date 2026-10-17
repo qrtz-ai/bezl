@@ -141,6 +141,9 @@ pub enum HelperCommand {
 
     RecordingPause,
     RecordingResume,
+    /// ADR 0079 / N121: the speech models were just installed: the helper loads each once (one at a time, then
+    /// unloads) so the first recording doesn't pay the OS model compile. Ignored by the helper while recording.
+    ModelsWarm,
 }
 
 impl HelperCommand {
@@ -153,6 +156,7 @@ impl HelperCommand {
             HelperCommand::RecordingAbort { .. } => "recording.abort",
             HelperCommand::RecordingPause => "recording.pause",
             HelperCommand::RecordingResume => "recording.resume",
+            HelperCommand::ModelsWarm => "models.warm",
         }
     }
     pub fn to_json(&self) -> Value {

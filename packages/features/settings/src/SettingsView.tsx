@@ -383,6 +383,32 @@ export default function SettingsView() {
               .catch((e: Error) => setError(e.message));
           },
         )}
+        {toggle(
+          'get speech ready right after download',
+          'speech-warm-after-download',
+          (cfg?.speech as { warmAfterDownload?: boolean } | undefined)
+            ?.warmAfterDownload,
+          true,
+          (v) => {
+            setCfg((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    speech: {
+                      ...(prev.speech as object),
+                      warmAfterDownload: v,
+                    },
+                  }
+                : prev,
+            );
+            void qrtz
+              .invoke('config:set', {
+                patch: { speech: { warmAfterDownload: v } },
+              })
+              .then(setCfg)
+              .catch((e: Error) => setError(e.message));
+          },
+        )}
       </SettingsSection>
       <SettingsSection title="privacy" data-testid="privacy-card">
         <Text variant="caption" muted data-testid="offline-note">

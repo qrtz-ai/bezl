@@ -8369,7 +8369,8 @@
       },
       "speech": {
         "speakerMode": "fast",
-        "autoUpdate": true
+        "autoUpdate": true,
+        "warmAfterDownload": true
       },
       "onboarding": {
         "done": false
@@ -8568,11 +8569,16 @@
             "autoUpdate": {
               "default": true,
               "type": "boolean"
+            },
+            "warmAfterDownload": {
+              "default": true,
+              "type": "boolean"
             }
           },
           "required": [
             "speakerMode",
-            "autoUpdate"
+            "autoUpdate",
+            "warmAfterDownload"
           ],
           "additionalProperties": false
         },

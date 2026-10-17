@@ -11,6 +11,8 @@ final class NemotronChannelDiarizer: ChannelDiarizer, @unchecked Sendable {
     private let config = Nemotron3Config.fast32
     private let queue = DispatchQueue(label: "qrtz.diarizer", qos: .userInitiated)
     private var diarizer: Nemotron3Diarizer?
+    /// Its own lock (not the queue), so `abandon()` can flush while a model call still holds the queue (N121).
+    private let trackerLock = NSLock()
     private var tracker = TurnTracker()
 
     private func onQueue<T>(_ f: @escaping () -> T) async -> T {
@@ -25,11 +27,13 @@ final class NemotronChannelDiarizer: ChannelDiarizer, @unchecked Sendable {
         await onQueue { if self.diarizer == nil { self.diarizer = d } }
     }
 
-    func reset() async { await onQueue { self.diarizer?.reset(); self.tracker.reset() } }
+    func reset() async { await onQueue { self.diarizer?.reset(); self.trackerLock.withLock { self.tracker.reset() } } }
 
     private func turns(_ rs: [Nemotron3ChunkResult]) -> [DiarizedTurn] {
         var out: [DiarizedTurn] = []
-        for r in rs { out += tracker.feed(r.probabilities, frames: r.frameCount, speakers: r.numSpeakers) }
+        trackerLock.withLock {
+            for r in rs { out += tracker.feed(r.probabilities, frames: r.frameCount, speakers: r.numSpeakers) }
+        }
         return out
     }
 
@@ -46,10 +50,12 @@ final class NemotronChannelDiarizer: ChannelDiarizer, @unchecked Sendable {
             guard let d = self.diarizer else { return [] }
             var out: [DiarizedTurn] = []
             do { out = self.turns(try d.finishStream()) } catch { logErr("diarizer finish: \(error)") }
-            return out + self.tracker.flush()
+            return out + self.trackerLock.withLock { self.tracker.flush() }
         }
     }
 
-    func unload() async { await onQueue { self.diarizer = nil; self.tracker.reset() } }
+    func unload() async { await onQueue { self.diarizer = nil; self.trackerLock.withLock { self.tracker.reset() } } }
+
+    func abandon() -> [DiarizedTurn] { trackerLock.withLock { tracker.flush() } }
 }
 #endif

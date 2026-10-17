@@ -100,6 +100,15 @@ public struct HelperDeps: Sendable {
     public var systemTranscribers: [StreamingTranscriber] = []
     /// ADR 0079: one diarizer per raw channel, recordings only (never dictation), used with per-channel ASR.
     public var diarizers: [CaptureSource: ChannelDiarizer] = [:]
+    /// N121: audio (16 kHz samples) a channel's diarizer may have queued, unprocessed (a slow model call or a slow
+    /// load). Past it that diarizer stands down for the rest of the recording (turns already sent stay). 30 s.
+    public var diarizerBacklogSamples = 16_000 * 30
+    /// N121: how long the stop waits for the diarizers to process their queue before closing them out (their open
+    /// turns are still sent) so `recording.stopped` stays well inside the host's 10 s ack.
+    public var diarizerStopWaitMs: UInt64 = 3_000
+    /// ADR 0079 / N121 (`models.warm`): loads every speech model once, one at a time, and unloads it, so the first
+    /// recording after a download doesn't pay the OS model compile (about 50 s for the diarizer). Returns a summary.
+    public var modelWarmup: (@Sendable () async -> String)?
     public var helperVersion: String
     public var os: String
     public var features: [String]
@@ -187,14 +196,80 @@ public actor HelperController {
     struct AsrBlock { let mix: [Float]; let system: [Float]; let mic: [Float]; let paused: Bool }
 
     /// One channel's diarizer for one recording: its own stream and task, so a model call never holds up capture.
+    /// N121: the queue is bounded by `HelperDeps.diarizerBacklogSamples`; past it the run stands down (whole, never
+    /// by dropping blocks, so the turns it sent stay on the recording's timeline). After it stood down or closed out
+    /// nothing more is sent from it.
     final class DiarRun: @unchecked Sendable {
         let source: CaptureSource
+        let diarizer: ChannelDiarizer
         let input: AsyncStream<[Float]>.Continuation
-        let task: Task<Void, Never>
-        init(source: CaptureSource, input: AsyncStream<[Float]>.Continuation, task: Task<Void, Never>) {
-            self.source = source; self.input = input; self.task = task
+        let stream: AsyncStream<[Float]>
+        private let send: @Sendable (HelperMessage) -> Void
+        private let lock = NSLock()
+        private var queued = 0
+        private var active = true
+        private(set) var peakQueued = 0
+        var task: Task<Void, Never>?
+        init(source: CaptureSource, diarizer: ChannelDiarizer, send: @escaping @Sendable (HelperMessage) -> Void) {
+            self.source = source; self.diarizer = diarizer; self.send = send
+            (stream, input) = AsyncStream<[Float]>.makeStream()
+        }
+        var isActive: Bool { lock.withLock { active } }
+        /// Queues one block; false when that would pass `cap` (the run has then stood down and its stream ended).
+        func offer(_ s: [Float], cap: Int) -> Bool {
+            let ok: Bool = lock.withLock {
+                guard active else { return true }
+                if queued + s.count > cap { active = false; return false }
+                queued += s.count
+                peakQueued = max(peakQueued, queued)
+                input.yield(s)
+                return true
+            }
+            if !ok { input.finish() }
+            return ok
+        }
+        func took(_ n: Int) { lock.withLock { queued -= n } }
+        func emit(_ turns: [DiarizedTurn]) {
+            lock.withLock {
+                guard active else { return }
+                for t in turns { send(.diarizationSegment(source: source, speaker: t.speaker, startMs: t.startMs, endMs: t.endMs)) }
+            }
+        }
+        /// The run is over (finished, stood down or closed out): nothing more is sent.
+        func end() { lock.withLock { active = false } }
+        /// Stop gave up waiting: send the tracker's open turns once, then nothing.
+        func closeOut() {
+            lock.withLock {
+                guard active else { return }
+                active = false
+                for t in diarizer.abandon() { send(.diarizationSegment(source: source, speaker: t.speaker, startMs: t.startMs, endMs: t.endMs)) }
+            }
+            input.finish()
+            task?.cancel()
         }
     }
+
+    /// Fires once (whichever of a completion and a deadline comes first).
+    final class Once: @unchecked Sendable {
+        private let lock = NSLock()
+        private var done = false
+        func fire(_ f: () -> Void) { let first = lock.withLock { () -> Bool in defer { done = true }; return !done }; if first { f() } }
+    }
+
+    /// True if every run's task ended within `ms`.
+    static func waitAll(_ runs: [DiarRun], ms: UInt64) async -> Bool {
+        let tasks = runs.compactMap(\.task)
+        return await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+            let once = Once()
+            Task { for t in tasks { await t.value }; once.fire { c.resume(returning: true) } }
+            Task { try? await Task.sleep(nanoseconds: ms * 1_000_000); once.fire { c.resume(returning: false) } }
+        }
+    }
+
+    /// N121 test seam: each channel's largest diarizer queue (samples) in the last recording.
+    var lastDiarizerPeaks: [CaptureSource: Int] = [:]
+    /// A `models.warm` is running (a second one is ignored).
+    var warming = false
 
     /// At most this much audio waits for a loading recogniser (older audio is then left untranscribed).
     static let maxBacklogSamples = 16_000 * 180
@@ -254,6 +329,7 @@ public actor HelperController {
         case .recordingAbort(let path): await abortRecording(path)
         case .recordingPause: paused = true; send(.log(level: .info, msg: "capture paused"))
         case .recordingResume: paused = false; send(.log(level: .info, msg: "capture resumed"))
+        case .modelsWarm: await warmModels()
         case .shutdown: await shutdown()
         case .dictationConfigure(let warm, let pre, let stream, let key, let consume):
             await dictation.configure(warmMic: warm, preRollMs: pre, streamAudio: stream, pushKey: key, consumeFn: consume ?? true)
@@ -539,32 +615,56 @@ public actor HelperController {
         return perChannel
     }
 
+    /// `models.warm`: in the background, never next to a recording (memory: one model at a time, only while idle).
+    /// The task is returned for tests.
+    @discardableResult
+    func warmModels() async -> Task<Void, Never>? {
+        guard let warm = deps.modelWarmup else { return nil }
+        if recording != nil { send(.log(level: .info, msg: "models.warm skipped: recording")); return nil }
+        if warming { return nil }
+        warming = true
+        let send = self.send, dictation = self.dictation
+        return Task.detached { [weak self] in
+            send(.log(level: .info, msg: await warm()))
+            await self?.warmDone()
+            await dictation.prewarmIfKeyed()  // talk's own instance, now from the compiled cache
+        }
+    }
+
+    func warmDone() { warming = false }
+
     /// ADR 0079: one task per channel diarizer. It loads the model (local files only) while capture runs, then waits
     /// for the recogniser's mode: speakers only make sense with per-channel transcripts, so it stands down otherwise.
     func startDiarizers(_ rec: Recording, after prep: Task<Bool, Never>) {
         guard !deps.systemTranscribers.isEmpty else { return }
         let send = self.send
         for (source, d) in deps.diarizers.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
-            let (stream, input) = AsyncStream<[Float]>.makeStream()
-            let task = Task.detached {
+            let run = DiarRun(source: source, diarizer: d, send: send)
+            let stream = run.stream
+            run.task = Task.detached {
+                defer { run.end() }
                 do { try await d.prepare(); await d.reset() } catch {
                     send(.log(level: .warn, msg: "diarizer \(source.rawValue) unavailable: \(error)"))
-                    for await _ in stream {}
+                    run.end()
+                    for await s in stream { run.took(s.count) }
                     return
                 }
                 guard await prep.value else {
-                    for await _ in stream {}
+                    run.end()
+                    for await s in stream { run.took(s.count) }
                     await d.unload()
                     return
                 }
-                send(.log(level: .info, msg: "diarizer: \(d.name) (\(source.rawValue))"))
+                if run.isActive { send(.log(level: .info, msg: "diarizer: \(d.name) (\(source.rawValue))")) }
                 for await s in stream {
-                    for t in await d.append(s) { send(.diarizationSegment(source: source, speaker: t.speaker, startMs: t.startMs, endMs: t.endMs)) }
+                    run.took(s.count)
+                    if !run.isActive || Task.isCancelled { break }
+                    run.emit(await d.append(s))
                 }
-                for t in await d.finish() { send(.diarizationSegment(source: source, speaker: t.speaker, startMs: t.startMs, endMs: t.endMs)) }
+                if run.isActive && !Task.isCancelled { run.emit(await d.finish()) }
                 await d.unload()
             }
-            rec.diarRuns.append(DiarRun(source: source, input: input, task: task))
+            rec.diarRuns.append(run)
         }
     }
 
@@ -606,7 +706,9 @@ public actor HelperController {
         let sys = channels.map { $0.system.count == s.count ? $0.system : zero } ?? zero
         let mic = channels.map { $0.mic.flatMap { $0.count == s.count ? $0 : nil } ?? zero } ?? s
         // Diarizers hear the same timeline as the WAV (silence while paused).
-        for run in rec.diarRuns { run.input.yield(paused ? zero : (run.source == .mic ? mic : sys)) }
+        for run in rec.diarRuns where !run.offer(paused ? zero : (run.source == .mic ? mic : sys), cap: deps.diarizerBacklogSamples) {
+            send(.log(level: .warn, msg: "diarizer \(run.source.rawValue) fell \(deps.diarizerBacklogSamples / 16_000) s behind: no more speaker turns on this channel for this recording"))
+        }
         let b = AsrBlock(mix: s, system: sys, mic: mic, paused: paused)
         if rec.asrReady {
             await pushAsr(b, to: rec)
@@ -661,8 +763,15 @@ public actor HelperController {
             for e in rec.segmenter.flush(cumulative: text, nowMs: now() - rec.startMs) { send(.asr(e)) }
         }
         // Speaker turns flush before the stop ack, so the host has all of them when it finalizes.
+        // N121: only a few seconds; a run still busy is closed out (its open turns sent) and cancelled.
         for run in rec.diarRuns { run.input.finish() }
-        for run in rec.diarRuns { await run.task.value }
+        if !rec.diarRuns.isEmpty, !(await Self.waitAll(rec.diarRuns, ms: deps.diarizerStopWaitMs)) {
+            for run in rec.diarRuns where run.isActive {
+                send(.log(level: .warn, msg: "diarizer \(run.source.rawValue) still busy at stop: closed out"))
+                run.closeOut()
+            }
+        }
+        lastDiarizerPeaks = Dictionary(rec.diarRuns.map { ($0.source, $0.peakQueued) }, uniquingKeysWith: max)
         rec.diarRuns.removeAll()
         await unloadAsr(rec)
         recording = nil
@@ -692,7 +801,7 @@ public actor HelperController {
             recordingStartMs = nil
             rec.samplesIn?.finish()
             rec.consumer?.cancel()
-            for run in rec.diarRuns { run.input.finish(); run.task.cancel() }
+            for run in rec.diarRuns { run.end(); run.input.finish(); run.task?.cancel() }
             rec.diarRuns.removeAll()
             if rec.asrReady { Task { [weak self] in await self?.unloadAsr(rec) } }  // else prepareAsr unloads when done
             if let audio = rec.audio { Task.detached { await audio.stop() } }  // may be what is wedged: don't wait

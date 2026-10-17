@@ -25,6 +25,13 @@ public protocol ChannelDiarizer: AnyObject, Sendable {
     func finish() async -> [DiarizedTurn]
     /// Drops the model (the recording ended).
     func unload() async
+    /// N121: the stop can't wait for this diarizer any longer (a model call is still running). Returns the turns its
+    /// tracker has open up to the audio already processed, without touching the model; nothing is fed after this.
+    func abandon() -> [DiarizedTurn]
+}
+
+extension ChannelDiarizer {
+    public func abandon() -> [DiarizedTurn] { [] }
 }
 
 /// Frame probabilities (10 ms frames, `speakers` per frame, row-major) → closed turns, across chunk boundaries.

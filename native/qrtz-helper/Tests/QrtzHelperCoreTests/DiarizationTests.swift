@@ -121,3 +121,130 @@ final class PerChannelRecordingTests: XCTestCase {
         try? FileManager.default.removeItem(atPath: path)
     }
 }
+
+/// N121: a diarizer whose model calls (or load) are slower than real time. Each processed block becomes one turn
+/// starting where the previous one ended, so the turns sent show the audio was taken in order, without gaps.
+final class SlowDiarizer: ChannelDiarizer, @unchecked Sendable {
+    let name = "slow-diar"
+    let appendNs: UInt64, prepareNs: UInt64
+    let processed = Box<Int>(0)
+    let abandoned = Box<Int>(0)
+    init(appendNs: UInt64 = 0, prepareNs: UInt64 = 0) { self.appendNs = appendNs; self.prepareNs = prepareNs }
+    func prepare() async throws { if prepareNs > 0 { try? await Task.sleep(nanoseconds: prepareNs) } }
+    func reset() async {}
+    func append(_ s: [Float]) async -> [DiarizedTurn] {
+        if appendNs > 0 { try? await Task.sleep(nanoseconds: appendNs) }
+        let a = processed.value
+        processed.mutate { $0 += s.count }
+        return [DiarizedTurn(speaker: 0, startMs: Double(a) / 16, endMs: Double(a + s.count) / 16)]
+    }
+    func finish() async -> [DiarizedTurn] { [] }
+    func unload() async {}
+    func abandon() -> [DiarizedTurn] {
+        abandoned.mutate { $0 += 1 }
+        let p = processed.value
+        return p > 0 ? [DiarizedTurn(speaker: 1, startMs: 0, endMs: Double(p) / 16)] : []
+    }
+}
+
+final class DiarizerBacklogTests: XCTestCase {
+    func record(_ d: SlowDiarizer, seconds: Int, waitMs: UInt64, paceNs: UInt64 = 0) async -> (msgs: [HelperMessage], stopMs: Double, peak: Int, cap: Int) {
+        let out = Box<[HelperMessage]>([])
+        var deps = HelperDeps(permissions: FakePerms(), meetings: nil, audio: [FakeAudio("sck")],
+                              transcribers: [SlowASR("mic", words: "hi.", delayNs: 1_000_000)],
+                              helperVersion: "t", os: "linux", features: [])
+        deps.systemTranscribers = [SlowASR("sys", words: "yo.", delayNs: 1_000_000)]
+        deps.diarizers = [.mic: d]
+        deps.diarizerBacklogSamples = 16_000 * 5
+        deps.diarizerStopWaitMs = waitMs
+        let c = HelperController(deps: deps, send: { m in out.mutate { $0.append(m) } }, now: { 0 })
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("qrtz-n121-\(UUID()).wav").path
+        await c.handle(.recordingStart(audioPath: path))
+        let loud = [Float](repeating: 0.2, count: 16_000)
+        for _ in 0..<seconds {
+            await c.onSamples(loud, of: nil, channels: (system: loud, mic: loud))
+            if paceNs > 0 { try? await Task.sleep(nanoseconds: paceNs) }
+        }
+        let t = Date()
+        await c.handle(.recordingStop())
+        let stopMs = Date().timeIntervalSince(t) * 1000
+        let peak = await c.lastDiarizerPeaks[.mic] ?? -1
+        try? FileManager.default.removeItem(atPath: path)
+        return (out.value, stopMs, peak, deps.diarizerBacklogSamples)
+    }
+
+    func turns(_ msgs: [HelperMessage]) -> [(Int, Double, Double)] {
+        msgs.compactMap { if case .diarizationSegment(.mic, let s, let a, let b) = $0 { (s, a, b) } else { nil } }
+    }
+
+    func testASlowModelStandsTheChannelDownBoundedAndTheStopStaysInsideTheAck() async {
+        // 60 s of audio arrive at 33x real time; each 1 s block takes 100 ms to diarize, so the queue passes 5 s.
+        let d = SlowDiarizer(appendNs: 100_000_000)
+        let r = await record(d, seconds: 60, waitMs: 500, paceNs: 30_000_000)
+        XCTAssertLessThanOrEqual(r.peak, r.cap, "the queue never holds more than the cap")
+        XCTAssertGreaterThan(r.peak, 0)
+        XCTAssertTrue(r.msgs.contains { if case .log(.warn, let m) = $0 { m.contains("diarizer mic fell 5 s behind") } else { false } }, "\(r.msgs)")
+        XCTAssertLessThan(r.stopMs, 2_000, "recording.stopped well inside the host's 10 s ack")
+        XCTAssertTrue(r.msgs.contains { if case .recordingStopped = $0 { true } else { false } })
+        // Turns already sent stay, in order and without gaps (no block was dropped), and none come after the ack.
+        let sent = turns(r.msgs).filter { $0.0 == 0 }
+        XCTAssertFalse(sent.isEmpty)
+        for (i, t) in sent.enumerated() { XCTAssertEqual(t.1, Double(i) * 1000); XCTAssertEqual(t.2, Double(i + 1) * 1000) }
+        XCTAssertLessThan(sent.count, 60, "stood down before the end")
+        let stopped = r.msgs.firstIndex { if case .recordingStopped = $0 { true } else { false } }!
+        XCTAssertTrue(r.msgs[stopped...].allSatisfy { if case .diarizationSegment = $0 { false } else { true } })
+        // The model is still busy for a moment; nothing it finishes later is sent.
+        let after = r.msgs.count
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertEqual(turns(Array(r.msgs.prefix(after))).count, turns(r.msgs).count)
+    }
+
+    func testASlowLoadIsBoundedAndTheStopClosesItOut() async {
+        // The model takes 10 s to load: the queue fills to the cap, stands down, and stop doesn't wait for the load.
+        let d = SlowDiarizer(prepareNs: 10_000_000_000)
+        let r = await record(d, seconds: 20, waitMs: 300)
+        XCTAssertLessThanOrEqual(r.peak, r.cap)
+        XCTAssertLessThan(r.stopMs, 1_500, "stop waits for the diarizer at most diarizerStopWaitMs")
+        XCTAssertTrue(r.msgs.contains { if case .recordingStopped = $0 { true } else { false } })
+        XCTAssertTrue(turns(r.msgs).isEmpty, "nothing was processed, so no speaker turns")
+        XCTAssertEqual(d.processed.value, 0)
+    }
+
+    func testAStopThatOutwaitsTheModelSendsItsOpenTurnsOnce() async {
+        // Within the cap (4 s queued) but each block takes 400 ms: stop waits 300 ms, then closes the run out.
+        let d = SlowDiarizer(appendNs: 400_000_000)
+        let r = await record(d, seconds: 4, waitMs: 300)
+        XCTAssertLessThan(r.stopMs, 1_500)
+        XCTAssertEqual(d.abandoned.value, 1, "closed out once")
+        XCTAssertFalse(r.msgs.contains { if case .log(.warn, let m) = $0 { m.contains("fell") } else { false } }, "not stood down")
+        XCTAssertTrue(r.msgs.contains { if case .log(.warn, let m) = $0 { m.contains("still busy at stop") } else { false } })
+        let stopped = r.msgs.firstIndex { if case .recordingStopped = $0 { true } else { false } }!
+        XCTAssertTrue(r.msgs[stopped...].allSatisfy { if case .diarizationSegment = $0 { false } else { true } })
+    }
+}
+
+final class ModelsWarmTests: XCTestCase {
+    func testWarmRunsOnceInTheBackgroundAndNeverNextToARecording() async {
+        let out = Box<[HelperMessage]>([])
+        let runs = Box<Int>(0)
+        var deps = HelperDeps(permissions: FakePerms(), meetings: nil, audio: [FakeAudio("sck")], transcribers: [FakeASR()],
+                              helperVersion: "t", os: "linux", features: [])
+        deps.modelWarmup = { runs.mutate { $0 += 1 }; try? await Task.sleep(nanoseconds: 50_000_000); return "models warmed: test" }
+        let c = HelperController(deps: deps, send: { m in out.mutate { $0.append(m) } }, now: { 0 })
+        let first = await c.warmModels()
+        XCTAssertNotNil(first)
+        await c.handle(.modelsWarm)  // while the first runs: ignored
+        await first?.value
+        XCTAssertEqual(runs.value, 1)
+        XCTAssertTrue(out.value.contains(.log(level: .info, msg: "models warmed: test")))
+        // During a recording: skipped (no second model next to the recording's).
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("qrtz-warm-\(UUID()).wav").path
+        await c.handle(.recordingStart(audioPath: path))
+        let skipped = await c.warmModels()
+        XCTAssertNil(skipped)
+        XCTAssertTrue(out.value.contains(.log(level: .info, msg: "models.warm skipped: recording")))
+        await c.handle(.recordingStop())
+        XCTAssertEqual(runs.value, 1)
+        try? FileManager.default.removeItem(atPath: path)
+    }
+}

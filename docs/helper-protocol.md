@@ -156,6 +156,12 @@ diarizer reports finished speaker turns:
 - Host: held behind the start ack like `active.speaker`, then a speaker turn `mic:N` / `system:N` in meeting time
   for finalize's attribution (ADR 0058 §12). Ignored while paused or outside a recording.
 - Mock helper: `QRTZ_MOCK_DIARIZE=1`.
+- N121: each channel's queue is capped at 30 s of audio; past it that channel stands down for the recording (a
+  `log` warn says so). The stop waits at most 3 s for the diarizers, then sends their open turns and cancels them.
+
+Host → helper `{"type":"models.warm"}` (ADR 0079 / N121): sent once after the local speech models finish installing
+(`speech.warmAfterDownload`, default on). The helper loads each model once, one at a time, then unloads it, and logs
+`models warmed: …`. Ignored while recording or while a warm-up runs; an older helper logs it as an ignored line.
 
 ## Silent capture (N29)
 

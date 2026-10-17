@@ -75,6 +75,9 @@ export const ConfigSchema = z.object({
       speakerMode: z.enum(['fast', 'accurate']).default('fast'),
       /** Download and install signed speech updates in the background (never during a session). */
       autoUpdate: z.boolean().default(true),
+      /** Mac: right after the speech models download, load each once so the first recording starts with speaker
+       * labels instead of waiting for the system to prepare the models (ADR 0079). */
+      warmAfterDownload: z.boolean().default(true),
     })
     .prefault({}),
   /** First-run setup (welcome, permissions, speech download). */

@@ -100,6 +100,11 @@ async fn the_helper_models_download_pause_resume_verify_and_delete() {
     assert_eq!(mgr.check().await.unwrap()["latestBytes"], total);
     assert!(srv.faults.lock().unwrap().hits.is_empty());
 
+    let warmed = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let w = warmed.clone();
+    mgr.on_installed(Arc::new(move || {
+        w.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }));
     mgr.download(false).unwrap();
     until("progress into the big file", || {
         mgr.status()["download"]["done"].as_u64().unwrap() > 300 * 1024
@@ -122,6 +127,11 @@ async fn the_helper_models_download_pause_resume_verify_and_delete() {
     until("installed", || mgr.status()["installed"] == "1.0.0").await;
     let s = mgr.status();
     assert_eq!(s["download"]["state"], "idle");
+    // N121: the install hook (wiring: `models.warm`) ran once, after the pause and resume, not before.
+    until("install hook", || {
+        warmed.load(std::sync::atomic::Ordering::SeqCst) == 1
+    })
+    .await;
     assert!(s["bytes"].as_u64().unwrap() >= total);
     // Resumed from the .part, not from scratch.
     assert!(srv

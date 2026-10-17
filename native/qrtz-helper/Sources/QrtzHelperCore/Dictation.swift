@@ -146,6 +146,9 @@ public actor DictationEngine {
         if warmMic { startMic() } else if session == nil { stopMic() }
     }
 
+    /// `prewarm()` when a push key is set (after the models were downloaded and warmed).
+    public func prewarmIfKeyed() { if !pushKey.isEmpty { prewarm() } }
+
     /// Loads the first recogniser that can load, in the background.
     public func prewarm() {
         let ts = transcribers

@@ -11,6 +11,7 @@ describe('config', () => {
     expect(loadConfig(undefined).speech).toEqual({
       speakerMode: 'fast',
       autoUpdate: true,
+      warmAfterDownload: true,
     });
     // ADR 0046: the old model-named setting is dropped on load, the rest of `note` survives.
     const old = loadConfig({
