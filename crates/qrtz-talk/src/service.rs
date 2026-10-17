@@ -321,6 +321,8 @@ fn s(v: &Value, k: &str) -> String {
 }
 
 const MSG_BUSY: &str = "another dictation is still running";
+/// N142: the insert could not be sent (the capture helper is gone, restarting, or refused the line).
+const MSG_NO_HELPER_INSERT: &str = "the capture helper could not take the text, so it was not pasted";
 /// N134: the helper refused the start because no recogniser could take it (all busy finishing, or none loads).
 const MSG_ASR: &str = "speech recognition isn't ready yet; try again in a moment";
 const MSG_HOTKEY: &str = "the push-to-talk key isn't available; allow qrtz in system settings → privacy & \
@@ -1248,15 +1250,25 @@ impl TalkService {
                 self.emit_view(&g);
                 Self::waiter(&mut g, format!("insert:{id}"))
             };
-            self.send(json!({"type": "insert.text", "id": id, "text": cleaned.text, "restoreClipboard": cfg.restore_clipboard}));
-            insert = self.wait(format!("insert:{id}"), rx, t.insert).await;
+            // N142 (ADR 0089): a helper that is gone (it crashed while this dictation finalized) can't paste.
+            // Don't wait out the insert bound for an answer that won't come; the clipboard gets the words now.
+            let sent = self.send(json!({"type": "insert.text", "id": id, "text": cleaned.text, "restoreClipboard": cfg.restore_clipboard}));
+            if sent {
+                insert = self.wait(format!("insert:{id}"), rx, t.insert).await;
+            } else {
+                self.lock().waiters.remove(&format!("insert:{id}"));
+            }
             if insert.as_ref().map(|m| m["ok"] == true) != Some(true) {
                 // Never lose the words: leave them on the clipboard to paste by hand.
                 self.deps().clipboard.write(&cleaned.text);
                 let why = insert
                     .as_ref()
                     .and_then(|m| m["error"].as_str())
-                    .unwrap_or("insert timed out")
+                    .unwrap_or(if sent {
+                        "insert timed out"
+                    } else {
+                        MSG_NO_HELPER_INSERT
+                    })
                     .to_owned();
                 error = Some(format!("{why}; copied to clipboard"));
             }
