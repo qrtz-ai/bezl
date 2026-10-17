@@ -5,6 +5,7 @@ mod support;
 use async_trait::async_trait;
 use qrtz_speech::bundle::Manifest;
 use qrtz_speech::download::{DownloadControl, Downloader, Progress};
+use qrtz_speech::files::ModuleFiles;
 use qrtz_speech::update::{HealthCheck, UpdateOutcome, Updater};
 use qrtz_speech::{RollbackKind, SpeechError, SpeechStore};
 use std::os::unix::fs::PermissionsExt;
@@ -16,8 +17,10 @@ use support::*;
 struct Health(AtomicBool);
 #[async_trait]
 impl HealthCheck for Health {
-    async fn check(&self, dir: &Path, m: &Manifest) -> Result<(), String> {
-        assert!(dir.join(&m.entry).exists());
+    async fn check(&self, m: &Manifest, files: ModuleFiles) -> Result<(), String> {
+        assert_eq!(files.entry.path, m.entry);
+        assert_eq!(files.clip.path, m.health.clip);
+        assert!(files.models.iter().all(|f| f.path != m.entry));
         if self.0.load(Ordering::SeqCst) {
             Ok(())
         } else {
@@ -107,7 +110,8 @@ async fn installs_verifies_and_makes_it_read_only() {
     assert_eq!(last.done, last.total);
     let st = e.store.status(NOW);
     assert_eq!(st.current.as_deref(), Some("1.0.0"));
-    assert_eq!(st.engine["id"], "opaque-engine");
+    // N72: no engine metadata in the status.
+    assert!(!serde_json::to_string(&st).unwrap().contains("opaque-engine"));
     let root = e.store.root();
     assert_eq!(mode(root), 0o700);
     assert_eq!(mode(&root.join("current.json")), 0o600);
@@ -129,7 +133,10 @@ async fn installs_verifies_and_makes_it_read_only() {
     // First load after the install re-hashes, then the session is pinned.
     let pin = e.store.pin_session(NOW).unwrap();
     assert_eq!(pin.version, "1.0.0");
-    assert!(e.store.state().needs_rehash.is_empty());
+    // N73: opened, hashed fds; the module never gets a path.
+    let files = pin.open_files().unwrap();
+    assert_eq!(files.models.len(), 1);
+    assert_eq!(files.models[0].size, 4096);
 }
 
 #[tokio::test]
@@ -385,8 +392,8 @@ async fn three_failures_in_five_minutes_roll_back() {
     assert_eq!(e.store.record_failure(t + 7 * 60_000).unwrap(), None);
     let rb = e.store.record_failure(t + 8 * 60_000).unwrap().unwrap();
     assert_eq!(
-        (rb.from.as_str(), rb.to.as_deref(), rb.reason.as_str()),
-        ("1.1.0", Some("1.0.0"), "crash loop")
+        (rb.from.as_str(), rb.to.as_deref(), rb.kind),
+        ("1.1.0", Some("1.0.0"), RollbackKind::CrashLoop)
     );
 }
 
@@ -498,11 +505,11 @@ async fn a_tampered_install_fails_the_lazy_rehash_on_first_load() {
     std::fs::set_permissions(f.parent().unwrap(), std::fs::Permissions::from_mode(0o700)).unwrap();
     std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o600)).unwrap();
     std::fs::write(&f, b"tampered").unwrap();
-    assert!(matches!(
-        e.store.pin_session(NOW).unwrap_err(),
-        SpeechError::Checksum(_)
-    ));
-    assert_eq!(e.store.active_sessions(), 0, "a failed pin releases its hold");
+    // N73: what is opened is hashed on every load.
+    let pin = e.store.pin_session(NOW).unwrap();
+    assert!(matches!(pin.open_files().unwrap_err(), SpeechError::Checksum(_)));
+    drop(pin);
+    assert_eq!(e.store.active_sessions(), 0, "the pin is released");
 }
 
 #[tokio::test]
@@ -598,10 +605,13 @@ async fn c2_moving_the_clock_back_does_not_unexpire_the_list() {
     );
     // A list's own `issued` raises the mark: an old list cannot be made fresh by an early clock.
     let e2 = env().await;
-    let (d, s) = denylist_at(&e2.sk, "k1", 7, NOW + 30 * DAY, NOW + 37 * DAY, &[]);
+    let (d, s) = denylist_at(&e2.sk, "k1", 7, NOW + 5 * DAY, NOW + 6 * DAY, &[]);
     e2.store.apply_denylist(&d, &s, NOW).unwrap();
-    assert_eq!(e2.store.state().clock_hwm, NOW + 30 * DAY);
-    let (d8, s8) = denylist_at(&e2.sk, "k1", 8, NOW, NOW + 7 * DAY, &[]);
+    assert_eq!(e2.store.state().clock_hwm, NOW + 5 * DAY);
+    // N63: an `issued` beyond the skew bound is refused (it would push the mark into the future).
+    let (dfut, sfut) = denylist_at(&e2.sk, "k1", 9, NOW + 30 * DAY, NOW + 31 * DAY, &[]);
+    assert!(e2.store.apply_denylist(&dfut, &sfut, NOW).is_err());
+    let (d8, s8) = denylist_at(&e2.sk, "k1", 8, NOW, NOW + 3 * DAY, &[]);
     e2.store.apply_denylist(&d8, &s8, NOW).unwrap();
     assert!(
         !e2.store.denylist_fresh(NOW),
@@ -638,8 +648,8 @@ async fn c3_expired_means_no_install_update_or_rollback_except_a_crash_loop_to_a
     }
     let rb = e.store.record_failure(later + 2).unwrap().unwrap();
     assert_eq!(
-        (rb.to.as_deref(), rb.reason.as_str()),
-        (Some("1.0.0"), "crash loop")
+        (rb.to.as_deref(), rb.kind),
+        (Some("1.0.0"), RollbackKind::CrashLoop)
     );
 }
 
@@ -696,4 +706,74 @@ async fn c5_settings_shows_the_age_and_sessions_stop_after_90_days() {
     let (d, s) = denylist_at(&e.sk, "k1", 2, d91, d91 + 7 * DAY, &[]);
     e.store.apply_denylist(&d, &s, d91).unwrap();
     drop(e.store.pin_session(d91).unwrap());
+}
+
+#[tokio::test]
+async fn n73_a_symlink_in_an_installed_tree_is_never_followed() {
+    let e = env().await;
+    e.srv.publish(&bundle(&e.sk, "k1", "1.0.0", 4096));
+    e.install(false).await.unwrap();
+    let d = e.store.version_dir("1.0.0").join("engine");
+    std::fs::set_permissions(&d, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let w = d.join("weights.bin");
+    let real = e.store.root().join("real.bin");
+    std::fs::copy(&w, &real).unwrap();
+    std::fs::remove_file(&w).unwrap();
+    std::os::unix::fs::symlink(&real, &w).unwrap();
+    let pin = e.store.pin_session(NOW).unwrap();
+    assert!(matches!(pin.open_files().unwrap_err(), SpeechError::Invalid(_)));
+}
+
+#[tokio::test]
+async fn n74_a_pinned_version_is_not_swept_by_a_rollback() {
+    let e = env().await;
+    e.srv.publish(&bundle(&e.sk, "k1", "1.0.0", 4096));
+    e.install(false).await.unwrap();
+    e.srv.publish(&bundle(&e.sk, "k1", "1.1.0", 4096));
+    e.install(false).await.unwrap();
+    let pin = e.store.pin_session(NOW).unwrap();
+    assert!(matches!(
+        e.store.rollback(RollbackKind::User, NOW).unwrap_err(),
+        SpeechError::Busy
+    ));
+    assert!(pin.open_files().is_ok(), "the pinned tree is intact");
+}
+
+#[tokio::test]
+async fn n75_manifests_with_more_than_32_model_files_are_refused() {
+    let e = env().await;
+    let (sk, _) = key(1, "k1");
+    let mut files: Vec<serde_json::Value> = (0..33)
+        .map(|i| serde_json::json!({"path": format!("m/{i}.bin"), "size": 1, "sha256": sha(b"x")}))
+        .collect();
+    files.push(serde_json::json!({"path": "bin/qrtz-speech", "size": 1, "sha256": sha(b"x")}));
+    files.push(serde_json::json!({"path": "health/golden.pcm", "size": 1, "sha256": sha(b"x")}));
+    let m = serde_json::to_vec(&serde_json::json!({
+        "module": "qrtz-speech", "version": "1.0.0", "protocol": 1, "minApp": "0.1.0", "entry": "bin/qrtz-speech",
+        "files": files, "health": {"clip": "health/golden.pcm", "expected": "x"}, "keyId": "k1",
+    }))
+    .unwrap();
+    let sig = sign(&sk, &m);
+    assert!(qrtz_speech::bundle::verify_manifest(
+        &e.store.key(),
+        &m,
+        &sig,
+        &semver::Version::parse(APP).unwrap()
+    )
+    .is_err());
+}
+
+#[tokio::test]
+async fn n67_a_corrupt_state_with_no_good_copy_fails_closed() {
+    let e = env().await;
+    e.srv.publish(&bundle(&e.sk, "k1", "1.0.0", 4096));
+    e.install(false).await.unwrap();
+    std::fs::write(e.store.root().join("current.json"), b"{").unwrap();
+    std::fs::write(e.store.root().join("current.json.bak"), b"{").unwrap();
+    let (_, pk) = key(1, "k1");
+    let (_, rootpk) = key(9, "root");
+    assert!(matches!(
+        SpeechStore::open(e.store.root(), APP, pk, rootpk),
+        Err(SpeechError::StateCorrupt)
+    ));
 }

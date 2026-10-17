@@ -51,7 +51,7 @@ hides `pending_deletes()`, and the runtime (not the shell) emits `note:changed`.
 | 6   | Move the renderer into `apps/desktop-tauri`, delete `apps/desktop` and the TS-only runtime; keep TS spec models + vectors                                                                                                                                                                                                                                            | todo  |           |
 | 7   | Memory: Tauri idle/recording vs the last Electron build (Linux); docs, README, ADR (Electron removed), CHANGELOG                                                                                                                                                                                                                                                     | todo  |           |
 
-## Phase 2b: qrtz speech module (ADR 0046, revision 2 for Bozniak's review; amends ADR 0045)
+## Phase 2b: qrtz speech module (ADR 0046, revision 4; amends ADR 0045)
 
 History: 07:17 on-device; 07:26 cloud + backfill (ADR 0044, superseded); 07:37 on-device (ADR 0045); 07:41 speech
 as its own signed, confined, updatable module (ADR 0046); 07:50 Bozniak's N55-N60 folded in (`14a6be1`).
@@ -70,6 +70,11 @@ Done (this phase so far):
   `c1`-`c5`.
 - Builds: Bozniak's review checkout `/workspace/qrtz-rev46` shares `/workspace/qrtz/target`, so concurrent builds
   clobber each other's `qrtz-speech` artifacts. I build with `CARGO_TARGET_DIR=/home/box/cargo-target-bobs`.
+
+- Bozniak's re-review (N61-N78, `docs/architecture-review/adr-0046-rev2-review.md`): store, validator and trait
+  findings fixed (ADR 0046 §9); `tests/review46.rs` 9/9 without ignores. N55/N57/N58/N59/N76 and the helper half of
+  N77 land with the spawner (design in ADR 0046 §9). Trait change for qrtz-talk: `EngineInfo {version, kind}`,
+  `SpeechSession::version()`, typed `Channel`/`SpeakerId`, `StatusError`/`FailReason`.
 
 Next, in order:
 
@@ -115,3 +120,4 @@ On Linux the tray is off unless `QRTZ_TRAY=1`.
 - 2026-10-17 07:58 PT (Bozniak, hardening cycle 14): chat retrieval for Chinese/Japanese/Thai questions in `qrtz-storage` (N49, `721a06b`, ADR 0047; the ranker moves to `qrtz-search` with `spec/stress/chat-cjk.json` `ranks`). Review of the ADR 0046 draft: confinement findings N55–N60 in `docs/architecture-review/talk-and-note.md` §22.2.
 - 2026-10-17 08:15 PT (Bozniak): qrtz-search finished with the local all-MiniLM-L6-v2 embedder via candle (ADR 0050): pinned revision + SHA-256s, 512-token truncation, model id `all-MiniLM-L6-v2@candle-f32`, weights from the model store or the `minilm-download` feature. Matches the Electron fp32 vectors to < 1e-6 (`spec/vectors/search/minilm.json`).
 - 2026-10-17 08:22 PT (Bozniak): N69 prompt half (ADR 0054, TS + Rust): words, speaker labels and titles are one line each in the summary and chat prompts, and the transcript is fenced in `<transcript-NONCE>` with a random per-request nonce declared data only. The validator half (`qrtz-speech` `OutputValidator`, `review46.rs` `n69_…`) is still open.
+- 2026-10-17 PT: N61-N78 (qrtz-speech): `cargo test --workspace` 236 passed (qrtz-speech 43); vitest 563 passed / 2 skipped; lint ok. Next: spawner + mock module.

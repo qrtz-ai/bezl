@@ -9,7 +9,8 @@ use std::path::{Component, Path};
 pub const MAX_BUNDLE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 /// Manifest, signature, rotation and denylist documents are small.
 pub const MAX_META_BYTES: usize = 256 * 1024;
-pub const MAX_FILES: usize = 512;
+/// Entry + golden clip + at most `files::MAX_MODEL_FDS` model files (N75).
+pub const MAX_FILES: usize = crate::files::MAX_MODEL_FDS + 2;
 pub const MODULE_NAME: &str = "qrtz-speech";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -20,7 +21,7 @@ pub struct FileEntry {
     pub sha256: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Health {
     /// A bundled file: 16 kHz mono PCM16LE golden clip.
@@ -29,7 +30,7 @@ pub struct Health {
     pub expected: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Manifest {
     pub module: String,
@@ -204,7 +205,7 @@ pub fn verify_manifest(
     if m.total_size() > MAX_BUNDLE_BYTES {
         return Err(SpeechError::TooLarge);
     }
-    if m.file(&m.entry).is_none() || m.file(&m.health.clip).is_none() {
+    if m.entry == m.health.clip || m.file(&m.entry).is_none() || m.file(&m.health.clip).is_none() {
         return Err(SpeechError::Invalid("entry/health clip not in files".into()));
     }
     Ok(m)

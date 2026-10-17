@@ -90,7 +90,16 @@
               "failed"
             ]
           },
-          "error": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "load-failed",
+              "engine-failed",
+              "unsupported-audio",
+              "internal"
+            ]
+          },
+          "detail": {
             "type": "string",
             "maxLength": 500
           }
@@ -159,6 +168,7 @@
         "required": [
           "type",
           "utteranceId",
+          "channel",
           "final",
           "language",
           "words"

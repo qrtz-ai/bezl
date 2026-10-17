@@ -73,3 +73,86 @@ pub fn limit(name: &str) -> u64 {
         .as_u64()
         .unwrap_or_else(|| panic!("limit {name}"))
 }
+
+/// N78: the `start` message, with the language hint checked against the allowlist and fd numbers in the
+/// inherited range (7..7+n).
+pub fn start_message(
+    spec: &crate::engine::SessionSpec,
+    files: &[(String, i32, u64)],
+) -> Result<Value, String> {
+    if let Some(h) = &spec.language_hint {
+        if !protocol().languages.iter().any(|l| l == h) {
+            return Err(format!("language hint {h} not allowed"));
+        }
+    }
+    if files.len() > crate::files::MAX_MODEL_FDS {
+        return Err("too many model files".into());
+    }
+    for (i, (_, fd, _)) in files.iter().enumerate() {
+        if *fd != 7 + i as i32 {
+            return Err("model fds must be 7..7+n in order".into());
+        }
+    }
+    let mut v = serde_json::json!({
+        "type": "start",
+        "sessionId": spec.session_id,
+        "kind": match spec.kind { crate::engine::SessionKind::Recording => "recording", crate::engine::SessionKind::Dictation => "dictation" },
+        "channels": spec.channels.iter().map(|c| c.as_str()).collect::<Vec<_>>(),
+        "sampleRate": 16000,
+        "speakerMode": match spec.speaker_mode { crate::engine::SpeakerMode::Fast => "fast", crate::engine::SpeakerMode::Accurate => "accurate" },
+        "files": files.iter().map(|(p, fd, size)| serde_json::json!({"path": p, "fd": fd, "size": size})).collect::<Vec<_>>(),
+    });
+    if let Some(h) = &spec.language_hint {
+        v["languageHint"] = h.clone().into();
+    }
+    encode_host_to_speech(&v)?;
+    Ok(v)
+}
+
+/// N77: read one line, bounded **before** allocation: at most `max` bytes are buffered; a longer line is consumed
+/// and reported as `Err(TooLong)` without growing the buffer. `Ok(None)` at EOF.
+pub async fn read_bounded_line<R: tokio::io::AsyncBufRead + Unpin>(
+    r: &mut R,
+    max: usize,
+) -> std::io::Result<Option<Result<String, LineTooLong>>> {
+    use tokio::io::AsyncBufReadExt;
+    let mut out: Vec<u8> = Vec::new();
+    let mut too_long = false;
+    loop {
+        let buf = r.fill_buf().await?;
+        if buf.is_empty() {
+            return Ok(if out.is_empty() && !too_long {
+                None
+            } else if too_long {
+                Some(Err(LineTooLong))
+            } else {
+                Some(Ok(String::from_utf8_lossy(&out).into_owned()))
+            });
+        }
+        let (chunk, done) = match buf.iter().position(|b| *b == b'\n') {
+            Some(i) => (&buf[..i], Some(i + 1)),
+            None => (buf, None),
+        };
+        if !too_long {
+            if out.len() + chunk.len() > max {
+                too_long = true;
+                out.clear();
+                out.shrink_to_fit();
+            } else {
+                out.extend_from_slice(chunk);
+            }
+        }
+        let n = done.unwrap_or(buf.len());
+        r.consume(n);
+        if done.is_some() {
+            return Ok(Some(if too_long {
+                Err(LineTooLong)
+            } else {
+                Ok(String::from_utf8_lossy(&out).into_owned())
+            }));
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct LineTooLong;

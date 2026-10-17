@@ -1,30 +1,44 @@
-//! Module output is untrusted (ADR 0046 §3.5): schema, bounds, rate limit, per-channel monotonic timestamps that
-//! stay within the audio written so far, bounded speaker ids, a BCP-47 allowlist. A violating event is dropped;
-//! `violationsToFail` of them fail the session.
-use crate::engine::{SpeechEvent, SpeechWordOut, StatusPhase};
+//! Module output is untrusted (ADR 0046 §3.5 + review N68/N69/N78): schema, bounds, rate limit, per-channel
+//! monotonic timestamps within the audio written so far, channels of this session only, typed speaker ids, a
+//! BCP-47 allowlist, no control/bidi characters in text, fixed status codes, the session's own id and a duration
+//! within the audio. A violating event is dropped; `violationsToFail` of them fail the session.
+use crate::engine::{Channel, SpeakerId, SpeechEvent, SpeechWordOut, StatusError, StatusPhase};
 use crate::protocol::{limit, parse_speech_line, protocol};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 #[derive(Debug, PartialEq)]
 pub enum Verdict {
     Event(SpeechEvent),
-    /// Accepted but nothing for clients (hello after the handshake, rate-limited log, …).
+    /// Accepted but nothing for clients (log lines, a second hello).
     Ignore,
     Dropped(String),
     /// Too many violations: the host kills the module and fails the session.
     Fail(String),
 }
 
+/// N69: characters that could forge transcript lines or reorder text: C0/C1 controls (incl. CR/LF/TAB), line and
+/// paragraph separators, bidi embeddings/overrides/isolates and marks, BOM.
+pub fn forbidden_char(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{2028}' | '\u{2029}' | '\u{200E}' | '\u{200F}' | '\u{061C}' | '\u{FEFF}'
+        )
+        || ('\u{202A}'..='\u{202E}').contains(&c)
+        || ('\u{2066}'..='\u{2069}').contains(&c)
+}
+
 pub struct OutputValidator {
+    session_id: Option<String>,
+    channels: BTreeSet<Channel>,
     violations: u32,
-    /// Highest end time seen per channel (`None` key = words without a channel).
-    last_end: HashMap<Option<String>, u64>,
+    last_end: HashMap<Channel, u64>,
     window_start_ms: u64,
     window_count: u64,
     rate_warned: bool,
-    speakers: HashMap<String, std::collections::BTreeSet<String>>,
-    utterance_chars: HashMap<String, usize>,
+    speakers: HashMap<Channel, BTreeSet<u8>>,
+    open_utterances: BTreeSet<String>,
 }
 
 impl Default for OutputValidator {
@@ -34,15 +48,27 @@ impl Default for OutputValidator {
 }
 
 impl OutputValidator {
+    /// Both channels, any session id (tests and the health check).
     pub fn new() -> Self {
+        Self::build(None, &[Channel::Mic, Channel::System])
+    }
+
+    /// N68/N78: only this session's channels and id.
+    pub fn for_session(session_id: &str, channels: &[Channel]) -> Self {
+        Self::build(Some(session_id.to_owned()), channels)
+    }
+
+    fn build(session_id: Option<String>, channels: &[Channel]) -> Self {
         Self {
+            session_id,
+            channels: channels.iter().copied().collect(),
             violations: 0,
             last_end: HashMap::new(),
             window_start_ms: 0,
             window_count: 0,
             rate_warned: false,
             speakers: HashMap::new(),
-            utterance_chars: HashMap::new(),
+            open_utterances: BTreeSet::new(),
         }
     }
 
@@ -57,6 +83,17 @@ impl OutputValidator {
         } else {
             Verdict::Dropped(why)
         }
+    }
+
+    fn channel(&self, v: &Value) -> Result<Channel, String> {
+        let c = v["channel"]
+            .as_str()
+            .and_then(Channel::parse)
+            .ok_or("missing channel")?;
+        if !self.channels.contains(&c) {
+            return Err(format!("channel {} is not in this session", c.as_str()));
+        }
+        Ok(c)
     }
 
     /// `now_ms`: host clock for the rate limit. `audio_ms`: audio written to the module so far (meeting time).
@@ -87,8 +124,14 @@ impl OutputValidator {
                 if !protocol().languages.iter().any(|l| l == lang) {
                     return self.violate(format!("language {lang} not allowed"));
                 }
-                let channel = v["channel"].as_str().map(String::from);
+                let channel = match self.channel(&v) {
+                    Ok(c) => c,
+                    Err(e) => return self.violate(e),
+                };
                 let utt = v["utteranceId"].as_str().unwrap_or("").to_owned();
+                if utt.chars().any(forbidden_char) {
+                    return self.violate("control character in utterance id".into());
+                }
                 let mut words = Vec::new();
                 let mut prev_start = 0;
                 let mut chars = 0usize;
@@ -102,6 +145,9 @@ impl OutputValidator {
                     }
                     prev_start = s;
                     let text = w["text"].as_str().unwrap_or("").to_owned();
+                    if text.chars().any(forbidden_char) {
+                        return self.violate("control or bidi character in word text".into());
+                    }
                     chars += text.chars().count() + 1;
                     words.push(SpeechWordOut {
                         text,
@@ -113,8 +159,7 @@ impl OutputValidator {
                     return self.violate("utterance too long".into());
                 }
                 let fin = v["final"].as_bool().unwrap_or(false);
-                // Monotonic per channel across finals: a final may not start before the previous final ended
-                // (by more than one word of overlap, 500 ms, which streaming ASR produces at chunk edges).
+                // Monotonic per channel across finals (500 ms overlap tolerated at chunk edges).
                 let last = *self.last_end.get(&channel).unwrap_or(&0);
                 if let Some(first) = words.first() {
                     if first.start_ms + 500 < last {
@@ -123,12 +168,12 @@ impl OutputValidator {
                 }
                 if fin {
                     if let Some(lw) = words.last() {
-                        self.last_end.insert(channel.clone(), lw.end_ms.max(last));
+                        self.last_end.insert(channel, lw.end_ms.max(last));
                     }
-                    self.utterance_chars.remove(&utt);
+                    self.open_utterances.remove(&utt);
                 } else {
-                    self.utterance_chars.insert(utt.clone(), chars);
-                    if self.utterance_chars.len() > 64 {
+                    self.open_utterances.insert(utt.clone());
+                    if self.open_utterances.len() > 64 {
                         return self.violate("too many open utterances".into());
                     }
                 }
@@ -141,11 +186,17 @@ impl OutputValidator {
                 })
             }
             "speaker" => {
-                let ch = v["channel"].as_str().unwrap_or("").to_owned();
-                let sp = v["speaker"].as_str().unwrap_or("").to_owned();
-                if !sp.starts_with(&format!("{ch}:")) {
-                    return self.violate(format!("speaker {sp} is not on channel {ch}"));
-                }
+                let ch = match self.channel(&v) {
+                    Ok(c) => c,
+                    Err(e) => return self.violate(e),
+                };
+                let Some(sp) = SpeakerId::parse(v["speaker"].as_str().unwrap_or(""), ch) else {
+                    return self.violate(format!(
+                        "speaker {} is not on channel {}",
+                        v["speaker"],
+                        ch.as_str()
+                    ));
+                };
                 let (s, e) = (
                     v["startMs"].as_u64().unwrap_or(0),
                     v["endMs"].as_u64().unwrap_or(0),
@@ -153,13 +204,12 @@ impl OutputValidator {
                 if e < s || e > audio_ms + ahead {
                     return self.violate(format!("speaker span {s}..{e} (audio {audio_ms})"));
                 }
-                let set = self.speakers.entry(ch.clone()).or_default();
-                set.insert(sp.clone());
+                let set = self.speakers.entry(ch).or_default();
+                set.insert(sp.index());
                 if set.len() as u64 > limit("speakersPerChannel") {
                     return self.violate("too many speakers".into());
                 }
                 Verdict::Event(SpeechEvent::Speaker {
-                    channel: ch,
                     speaker: sp,
                     start_ms: s,
                     end_ms: e,
@@ -171,19 +221,30 @@ impl OutputValidator {
                     Some("ready") => StatusPhase::Ready,
                     _ => StatusPhase::Failed,
                 };
-                Verdict::Event(SpeechEvent::Status {
-                    phase,
-                    error: v["error"].as_str().map(String::from),
-                })
+                if let Some(d) = v["detail"].as_str() {
+                    tracing::info!(target: "qrtz_speech::module", "status detail: {}", d.escape_debug());
+                }
+                let error = v["code"]
+                    .as_str()
+                    .map(StatusError::parse)
+                    .or((phase == StatusPhase::Failed).then_some(StatusError::Internal));
+                Verdict::Event(SpeechEvent::Status { phase, error })
             }
-            "finished" => Verdict::Event(SpeechEvent::Finished {
-                duration_ms: v["durationMs"].as_u64().unwrap_or(0),
-            }),
+            "finished" => {
+                let id = v["sessionId"].as_str().unwrap_or("");
+                if self.session_id.as_deref().is_some_and(|s| s != id) {
+                    return self.violate("finished for another session".into());
+                }
+                let d = v["durationMs"].as_u64().unwrap_or(0);
+                if d > audio_ms + ahead {
+                    return self.violate(format!("duration {d} beyond the audio ({audio_ms})"));
+                }
+                Verdict::Event(SpeechEvent::Finished { duration_ms: d })
+            }
             "log" => {
-                tracing::debug!(target: "qrtz_speech::module", "{}", v["msg"].as_str().unwrap_or(""));
+                tracing::debug!(target: "qrtz_speech::module", "{}", v["msg"].as_str().unwrap_or("").escape_debug());
                 Verdict::Ignore
             }
-            // A second hello is not part of a session.
             _ => Verdict::Ignore,
         }
     }

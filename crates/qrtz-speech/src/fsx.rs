@@ -115,3 +115,37 @@ pub fn sha256_file(p: &Path) -> std::io::Result<(u64, String)> {
     }
     Ok((n, hex::encode(h.finalize())))
 }
+
+/// Atomically exchange two directories (same parent). Linux `renameat2(RENAME_EXCHANGE)`, macOS
+/// `renamex_np(RENAME_SWAP)`; elsewhere (or if the file system refuses) `Err(Unsupported)` and the caller uses a
+/// recoverable two-step rename.
+pub fn exchange(a: &Path, b: &Path) -> std::io::Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+    let ca = CString::new(a.as_os_str().as_bytes())?;
+    let cb = CString::new(b.as_os_str().as_bytes())?;
+    #[cfg(target_os = "linux")]
+    // SAFETY: valid nul-terminated paths.
+    let r = unsafe {
+        libc::renameat2(
+            libc::AT_FDCWD,
+            ca.as_ptr(),
+            libc::AT_FDCWD,
+            cb.as_ptr(),
+            libc::RENAME_EXCHANGE,
+        )
+    };
+    #[cfg(target_os = "macos")]
+    // SAFETY: valid nul-terminated paths.
+    let r = unsafe { libc::renamex_np(ca.as_ptr(), cb.as_ptr(), libc::RENAME_SWAP) };
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    let r = {
+        let _ = (&ca, &cb);
+        return Err(std::io::ErrorKind::Unsupported.into());
+    };
+    if r == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}

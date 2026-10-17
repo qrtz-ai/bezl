@@ -1,17 +1,17 @@
-//! Check → download → verify in staging → rename → health check → activate (ADR 0046 §4-5). Never swaps while a
-//! session runs: a ready update waits (`Busy`) and the caller retries when idle.
+//! Check → download → verify in staging → candidate → health check → promote (ADR 0046 §4-5). Never swaps while a
+//! session runs: a ready update waits (`Waiting`) and is promoted at the next idle pin or `activate`.
 use crate::bundle::{self, Manifest};
 use crate::download::{DownloadControl, Downloader, Progress};
+use crate::files::ModuleFiles;
 use crate::store::{Rollback, SpeechStore};
 use crate::SpeechError;
 use async_trait::async_trait;
-use std::path::Path;
 
 #[async_trait]
 pub trait HealthCheck: Send + Sync {
-    /// Spawn the candidate from `dir`, require the handshake (version, protocol, probes refused) and the golden
-    /// clip's words within tolerance.
-    async fn check(&self, dir: &Path, m: &Manifest) -> Result<(), String>;
+    /// Spawn the candidate from its opened, hashed files (N73) under full confinement, require the handshake
+    /// (version, protocol) and the host-side confinement checks, and the golden clip's words within tolerance.
+    async fn check(&self, m: &Manifest, files: ModuleFiles) -> Result<(), String>;
 }
 
 #[derive(Debug, PartialEq, serde::Serialize)]
@@ -24,8 +24,12 @@ pub enum UpdateOutcome {
         version: String,
         previous: Option<String>,
     },
-    /// Verified and committed, but a session is running; `activate` once idle.
+    /// Verified and health-checked, but a session is running; promoted once idle.
     Waiting {
+        version: String,
+    },
+    /// N64: the latest release is the version that crash-looped here; skipped until a newer one or a re-download.
+    Quarantined {
         version: String,
     },
     RolledBack(Rollback),
@@ -75,7 +79,7 @@ impl Updater<'_> {
         Ok((m, mb, sb))
     }
 
-    /// `force` re-downloads the current version (settings "re-download").
+    /// `force` = the user's "re-download" (also overrides a quarantine).
     pub async fn install_latest(
         &self,
         force: bool,
@@ -87,8 +91,8 @@ impl Updater<'_> {
                 return Ok(UpdateOutcome::RolledBack(rb));
             }
         }
+        // Condition 3: no install, update or re-download on an expired list.
         if !self.store.denylist_fresh((self.now_ms)()) {
-            // Condition 3: no install, update or re-download on an expired list.
             return Err(SpeechError::RevocationExpired);
         }
         let (m, mb, sb) = self.latest().await?;
@@ -96,23 +100,31 @@ impl Updater<'_> {
         if !force && st.current.as_deref() == Some(m.version.as_str()) {
             return Ok(UpdateOutcome::UpToDate { version: m.version });
         }
+        if !force && self.store.is_quarantined(&m.version) {
+            return Ok(UpdateOutcome::Quarantined { version: m.version });
+        }
         self.store.check_candidate(&m)?;
         let staging = self.store.stage_manifest(&m, &mb, &sb)?;
         self.dl.download_bundle(&m, &staging, ctl, on_progress).await?;
-        let m = self.store.commit_staged(&m.version)?;
-        let dir = self.store.version_dir(&m.version);
-        if let Err(e) = self.health.check(&dir, &m).await {
-            if st.current.as_deref() != Some(m.version.as_str()) {
-                self.store.discard(&m.version)?;
+        let cand = self.store.commit_staged(&m.version, (self.now_ms)())?;
+        let files = match cand.open_files() {
+            Ok(f) => f,
+            Err(e) => {
+                self.store.discard(cand)?;
+                return Err(e);
             }
+        };
+        if let Err(e) = self.health.check(&cand.manifest, files).await {
+            self.store.discard(cand)?;
             return Err(SpeechError::Health(e));
         }
-        match self.store.activate(&m.version, (self.now_ms)()) {
+        let version = cand.version.clone();
+        match self.store.promote(cand, (self.now_ms)()) {
             Ok(()) => Ok(UpdateOutcome::Installed {
-                version: m.version,
+                version,
                 previous: self.store.state().previous,
             }),
-            Err(SpeechError::Busy) => Ok(UpdateOutcome::Waiting { version: m.version }),
+            Err(SpeechError::Busy) => Ok(UpdateOutcome::Waiting { version }),
             Err(e) => Err(e),
         }
     }

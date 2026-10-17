@@ -1,8 +1,8 @@
 {"languages":["en"],"maxSpeakersPerChannel":8,"moduleVersion":"1.0.0","protocol":1,"type":"hello"}
 {"phase":"loading","type":"status"}
 {"phase":"ready","type":"status"}
-{"error":"model file failed to load","phase":"failed","type":"status"}
-{"final":false,"language":"en","type":"words","utteranceId":"u1","words":[{"endMs":560,"startMs":120,"text":"let's"}]}
+{"code":"load-failed","detail":"model file failed to load","phase":"failed","type":"status"}
+{"channel":"mic","final":false,"language":"en","type":"words","utteranceId":"u1","words":[{"endMs":560,"startMs":120,"text":"let's"}]}
 {"channel":"system","final":true,"language":"en-US","type":"words","utteranceId":"u1","words":[{"endMs":560,"startMs":120,"text":"let's"},{"endMs":900,"startMs":600,"text":"start"}]}
 {"channel":"mic","endMs":4200,"speaker":"mic:0","startMs":1800,"type":"speaker"}
 {"channel":"system","endMs":9100,"speaker":"system:1","startMs":5000,"type":"speaker"}

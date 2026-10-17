@@ -46,6 +46,14 @@ export const SPEECH_LANGUAGES = [
   'en-IN',
 ] as const;
 
+/** N78: module failures as fixed codes (no module text in the UI). */
+export const SpeechErrorCode = z.enum([
+  'load-failed',
+  'engine-failed',
+  'unsupported-audio',
+  'internal',
+]);
+
 export const SpeechWord = z.object({
   text: z.string().min(1).max(SPEECH_LIMITS.wordChars),
   startMs: Ms,
@@ -97,13 +105,16 @@ export const SpeechToHost = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('status'),
     phase: z.enum(['loading', 'ready', 'failed']),
-    error: z.string().max(SPEECH_LIMITS.logChars).optional(),
+    /** N78: a fixed code reaches the UI; `detail` is module free text, logged only, never shown. */
+    code: SpeechErrorCode.optional(),
+    detail: z.string().max(SPEECH_LIMITS.logChars).optional(),
   }),
   z.object({
     /** A partial replaces the previous partial of the utterance; a final closes it. */
     type: z.literal('words'),
     utteranceId: Id,
-    channel: SpeechChannel.optional(),
+    /** N68: required; must be one of the session's channels (checked by the host). */
+    channel: SpeechChannel,
     final: z.boolean(),
     language: Bcp47,
     words: z.array(SpeechWord).max(SPEECH_LIMITS.wordsPerEvent),

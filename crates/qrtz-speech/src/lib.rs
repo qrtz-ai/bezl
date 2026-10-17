@@ -3,13 +3,17 @@
 pub mod bundle;
 pub mod download;
 pub mod engine;
+pub mod files;
 pub mod fsx;
 pub mod protocol;
 pub mod store;
 pub mod update;
 pub mod validate;
 
-pub use engine::{Channel, SessionKind, SessionSpec, SpeakerMode, SpeechEngine, SpeechEvent, SpeechSession};
+pub use engine::{
+    Channel, EngineInfo, EngineKind, FailReason, SessionKind, SessionSpec, SpeakerId, SpeakerMode,
+    SpeechEngine, SpeechEvent, SpeechSession, StatusError,
+};
 pub use store::{Revocation, RollbackKind, SpeechStore, StoreStatus};
 
 #[derive(Debug, thiserror::Error)]
@@ -38,6 +42,8 @@ pub enum SpeechError {
     RevocationExpired,
     #[error("speech has not checked for revocations in {days} days; connect to keep using it")]
     Stale { days: u64 },
+    #[error("speech state is corrupt and has no good copy")]
+    StateCorrupt,
     #[error("a speech session is running")]
     Busy,
     #[error("download paused")]
