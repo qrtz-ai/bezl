@@ -2,6 +2,7 @@
 
 ## Unreleased: helper mux + TCC revocation (H5/H6)
 
+- **Structured capture fallback (H8):** when an audio source fails to start, the helper sends `capture.fallback {from, to, reason}` (`to: null` when no source is left) instead of a free-text log line. The host logs it as a warning like before. Zod, Swift, contracts, golden fixtures (2 valid, 2 invalid), mock helper option `captureFallback`.
 - **Tauri data dirs owner-only (N25 parity):** `qrtz-app` creates the app data dir and the recordings dir 0700 (`AppDirs::prepare`, `private_dir`: `DirBuilderExt::mode(0o700)` plus a chmod for a directory an older build made 0755), and the config store uses it for its directory. Tested under umask 022.
 - **Concurrent recording + dictation (mux):** a dictation runs during a meeting recording and both read the mic through one shared tap (`MicHub`). Each kind is single-instance (duplicate starts are ignored, not queued), and `dictation.start` is refused when the mic is denied. Spec: `docs/helper-protocol.md`, ADR 0004.
 - **Permission revoked mid-capture:** the helper polls TCC while capturing and emits `permission.revoked`. Recordings degrade live (new `no-mic` flag, plus `mic-only`, `audio-unavailable` and `ax-unavailable`) and keep running. Dictation stops gracefully, keeping and inserting what was heard. Onboarding no longer covers a running recording.

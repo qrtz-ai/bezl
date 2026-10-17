@@ -54,6 +54,11 @@ export interface MockHelperOptions {
    * recording.abort{audioPath} with recording.aborted (the default); `abort: 'wedged'` never answers it either.
    */
   wedgeStop?: { abort?: 'ok' | 'wedged' };
+  /**
+   * H8 fault injection: capture sources that fail to start on every recording.start. Each emits
+   * capture.fallback{from, to, reason} before recording.started, like the Swift helper walking its source list.
+   */
+  captureFallback?: { from: string; to: string | null; reason: string }[];
   /** Override reported TCC states (fault injection: denied permissions). */
   permissions?: Partial<
     Record<
@@ -378,6 +383,8 @@ export function createMockHelper(
           }
           armRevocations();
           audioPath = m.audioPath;
+          for (const f of opts.captureFallback ?? [])
+            emit({ type: 'capture.fallback', ...f });
           // Mirrors the Swift helper: capture problems are non-fatal errors, recording.started still follows.
           if (
             opts.permissions?.['screen-recording'] === 'denied' &&

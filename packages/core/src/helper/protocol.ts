@@ -94,6 +94,17 @@ export const HelperToHost = z.discriminatedUnion('type', [
     text: z.string(),
   }),
   z.object({ type: z.literal('audio.level'), rms: z.number().min(0).max(1) }),
+  z.object({
+    /**
+     * H8: a capture source failed to start and the helper moves on to the next one (Core Audio process tap →
+     * ScreenCaptureKit → …). `to` is the source tried next; null when none is left (`error{audio.unavailable}`
+     * follows). Informational: the host logs it; recording.started still follows.
+     */
+    type: z.literal('capture.fallback'),
+    from: z.string().min(1),
+    to: z.string().min(1).nullable(),
+    reason: z.string(),
+  }),
   z.object({ type: z.literal('asr'), event: AsrEvent }),
   z.object({ type: z.literal('recording.started'), audioPath: z.string() }),
   z.object({

@@ -302,13 +302,17 @@ public actor HelperController {
                 await self?.onSamples(mixed, of: rec)
             }
         }
-        for a in deps.audio {
+        for (i, a) in deps.audio.enumerated() {
             do {
                 try await a.start(onBlock: { b in samplesIn.yield(b) })
                 rec.audio = a
                 send(.log(level: .info, msg: "audio: \(a.name)"))
                 break
-            } catch { send(.log(level: .warn, msg: "audio \(a.name) failed: \(error)")) }
+            } catch {
+                // H8: structured, so the host can tell which source the recording fell back to and why.
+                let next = i + 1 < deps.audio.count ? deps.audio[i + 1].name : nil
+                send(.captureFallback(from: a.name, to: next, reason: "\(error)"))
+            }
         }
         if rec.audio == nil { send(.error(code: "audio.unavailable", message: "no audio source could start (check Screen & System Audio Recording and Microphone permissions)", fatal: false)) }
 

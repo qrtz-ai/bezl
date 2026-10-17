@@ -143,6 +143,10 @@ impl AppService {
         match parse_helper_line(line) {
             Ok(msg) => {
                 let ty = msg["type"].as_str().unwrap_or_default();
+                if ty == "capture.fallback" {
+                    // H8: structured capture fallback (was a free-text log line); same surface: a warn log.
+                    tracing::warn!(from = %msg["from"], to = %msg["to"], reason = %msg["reason"], "capture fallback");
+                }
                 if ty == "permissions.status" {
                     self.events.emit("permissions:changed", msg["status"].clone());
                 }

@@ -35,3 +35,5 @@
 {"atMs":2500,"permission":"screen-recording","type":"permission.revoked"}
 {"atMs":1500,"degraded":["no-mic"],"permission":"microphone","type":"permission.revoked"}
 {"atMs":3000,"degraded":[],"permission":"accessibility","type":"permission.revoked"}
+{"from":"core-audio-tap","reason":"tap creation failed (OSStatus 560947818)","to":"screencapturekit","type":"capture.fallback"}
+{"from":"screencapturekit","reason":"screen recording denied","to":null,"type":"capture.fallback"}

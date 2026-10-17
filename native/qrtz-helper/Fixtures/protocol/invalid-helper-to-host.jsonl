@@ -11,3 +11,5 @@ not json
 {"type":"recording.aborted"}
 {"atMs":1,"degraded":["transcript-gap"],"permission":"microphone","type":"permission.revoked"}
 {"atMs":1,"degraded":"no-mic","permission":"microphone","type":"permission.revoked"}
+{"from":"core-audio-tap","reason":"x","type":"capture.fallback"}
+{"from":"","reason":"x","to":null,"type":"capture.fallback"}

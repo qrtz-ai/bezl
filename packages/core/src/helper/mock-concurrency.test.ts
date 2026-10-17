@@ -3,7 +3,7 @@ import { createMockHelper } from './mock';
 import {
   encodeHostMessage,
   parseHelperLine,
-  type HelperToHost,
+  HelperToHost,
   type HostToHelper,
 } from './protocol';
 
@@ -146,6 +146,44 @@ describe('mock helper: concurrent recording.* + dictation.* (mux)', () => {
     send({ type: 'dictation.start', id: 'a' });
     expect(of(got, 'dictation.started')).toHaveLength(0);
     expect(of(got, 'error')[0]).toMatchObject({ code: 'dictation.mic' });
+    h.kill();
+  });
+});
+
+describe('mock helper: capture.fallback (H8)', () => {
+  it('scripted fallbacks are sent before recording.started and parse as the wire shape', async () => {
+    const { h, got, send } = rig({
+      captureFallback: [
+        {
+          from: 'core-audio-tap',
+          to: 'screencapturekit',
+          reason: 'tap failed',
+        },
+      ],
+    });
+    send({ type: 'recording.start', audioPath: '/tmp/fb.wav' });
+    const types = got.map((m) => m.type);
+    expect(types.indexOf('capture.fallback')).toBeLessThan(
+      types.indexOf('recording.started'),
+    );
+    expect(of(got, 'capture.fallback')).toEqual([
+      {
+        type: 'capture.fallback',
+        from: 'core-audio-tap',
+        to: 'screencapturekit',
+        reason: 'tap failed',
+      },
+    ]);
+    for (const m of of(got, 'capture.fallback'))
+      expect(HelperToHost.parse(m)).toEqual(m);
+    expect(
+      HelperToHost.safeParse({
+        type: 'capture.fallback',
+        from: 'x',
+        reason: 'y',
+      }).success,
+    ).toBe(false); // `to` is required (null = no source left)
+    send({ type: 'recording.stop' });
     h.kill();
   });
 });

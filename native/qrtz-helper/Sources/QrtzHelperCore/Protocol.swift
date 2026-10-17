@@ -59,6 +59,8 @@ public enum HelperMessage: Equatable, Sendable {
     case dictationStopped(id: String, text: String, durationMs: Double, reason: DictationStopReason? = nil)
     /// A TCC permission went granted → denied while capturing or dictating. `degraded` (N4): the arbiter's
     /// `degrade:*` effects, `[]` when not recording; nil only when parsing an older helper's line.
+    /// H8: capture source `from` failed to start; `to` is tried next (nil: none left).
+    case captureFallback(from: String, to: String?, reason: String)
     case permissionRevoked(permission: OsPermission, atMs: Double, degraded: [RevocationDegradation]? = nil)
     case insertResult(id: String, method: InsertMethod, ok: Bool, app: String?, error: String?)
 }
@@ -195,6 +197,8 @@ extension HelperMessage {
             var o: [String: JSONValue] = ["id": s(id), "text": s(text), "durationMs": n(d)]
             if let reason { o["reason"] = s(reason.rawValue) }
             return obj("dictation.stopped", o)
+        case .captureFallback(let from, let to, let reason):
+            return obj("capture.fallback", ["from": s(from), "to": to.map(s) ?? .null, "reason": s(reason)])
         case .permissionRevoked(let p, let at, let degraded):
             var o: [String: JSONValue] = ["permission": s(p.rawValue), "atMs": n(at)]
             if let degraded { o["degraded"] = .array(degraded.map { s($0.rawValue) }) }
@@ -261,6 +265,12 @@ extension HelperMessage {
                                          guard let v = DictationStopReason(rawValue: r) else { throw ProtocolError("bad reason \(r)") }
                                          return v
                                      })
+        case "capture.fallback":
+            guard let to = f.o["to"] else { throw ProtocolError("missing to") }
+            guard to == .null || !(to.string ?? "").isEmpty else { throw ProtocolError("bad to") }
+            let from = try f.str("from")
+            guard !from.isEmpty else { throw ProtocolError("empty from") }
+            self = .captureFallback(from: from, to: to.string, reason: try f.str("reason"))
         case "permission.revoked":
             var degraded: [RevocationDegradation]?
             if let v = f.o["degraded"], v != .null {

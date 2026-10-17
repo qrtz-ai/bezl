@@ -22,6 +22,25 @@ final class FakeAudio: AudioSource, @unchecked Sendable {
     func stop() async { cb = nil }
 }
 
+final class CaptureFallbackTests: XCTestCase {
+    /// H8: every source fails: one capture.fallback per source, the last with to = nil, then audio.unavailable.
+    func testLastSourceFailingFallsBackToNone() async throws {
+        let out = Box<[HelperMessage]>([])
+        let c = HelperController(
+            deps: HelperDeps(permissions: FakePerms(), meetings: nil, audio: [FakeAudio("tap", fails: true), FakeAudio("sck", fails: true)],
+                             transcribers: [FakeASR()], helperVersion: "t", os: "linux", features: []),
+            send: { m in out.mutate { $0.append(m) } }, now: { 0 })
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("qrtz-fb-\(UUID()).wav").path
+        await c.handle(.recordingStart(audioPath: path))
+        let fbs = out.value.filter { if case .captureFallback = $0 { true } else { false } }
+        XCTAssertEqual(fbs, [.captureFallback(from: "tap", to: "sck", reason: "denied"), .captureFallback(from: "sck", to: nil, reason: "denied")])
+        XCTAssertTrue(out.value.contains { if case .error(let code, _, _, _, _, _, _) = $0 { code == "audio.unavailable" } else { false } })
+        XCTAssertTrue(out.value.contains(.recordingStarted(audioPath: path)))
+        await c.handle(.recordingStop())
+        try? FileManager.default.removeItem(atPath: path)
+    }
+}
+
 final class FakeASR: StreamingTranscriber, @unchecked Sendable {
     let name = "fake"
     var text = ""
@@ -52,10 +71,14 @@ final class ControllerTests: XCTestCase {
         XCTAssertEqual(msgs.first.map { if case .hello = $0 { true } else { false } }, true)
         XCTAssertTrue(msgs.contains(.pong(id: "x")))
         XCTAssertTrue(msgs.contains(.recordingStarted(audioPath: path)))
+        // H8: the fallback is a structured message, before recording.started, naming the next source.
+        let fb = msgs.firstIndex(of: .captureFallback(from: "tap", to: "sck", reason: "denied"))
+        XCTAssertNotNil(fb)
+        XCTAssertLessThan(fb!, msgs.firstIndex(of: .recordingStarted(audioPath: path))!)
+        XCTAssertFalse(msgs.contains { if case .log(_, let m) = $0 { m.contains("tap failed") } else { false } }, "no log line any more")
         XCTAssertTrue(msgs.contains(.recordingStopped(audioPath: path, durationMs: 1000)))
         XCTAssertTrue(msgs.contains { if case .asr(.final(_, _, _, "Hello from the fake recogniser.", _)) = $0 { true } else { false } })
         XCTAssertTrue(msgs.contains { if case .audioLevel = $0 { true } else { false } })
-        XCTAssertTrue(msgs.contains(.log(level: .warn, msg: "audio tap failed: denied")))
         let isRec = await c.isRecording
         XCTAssertFalse(isRec)
     }

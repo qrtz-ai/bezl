@@ -135,6 +135,22 @@ The helper carries out exactly the `mic.subscribe` / `mic.unsubscribe` effects t
   the engine is told `micDropped()`, so it forgets the dead reader. When the mic is granted again, the arbiter
   resubscribes the warm reader, so the next dictation hears audio. A re-grant never resubscribes a running recording.
 
+## Capture fallback (H8)
+
+On `recording.start` the helper tries its audio sources in order (Core Audio process tap → ScreenCaptureKit → …).
+Each one that fails to start is reported as a structured message (this used to be a free-text `log` line):
+
+```json
+{ "type": "capture.fallback", "from": "core-audio-tap", "to": "screencapturekit", "reason": "tap creation failed (OSStatus 560947818)" }
+{ "type": "capture.fallback", "from": "screencapturekit", "to": null, "reason": "screen recording denied" }
+```
+
+- `from`: the source that failed (its `AudioSource.name`). `to`: the source tried next, `null` when none is left; then
+  `error{code: "audio.unavailable"}` follows. `reason`: the error text.
+- Sent before `recording.started`, which still follows. Informational: the host logs it as a warning
+  (`capture fallback {from, to, reason}`, Electron `index.ts` and `qrtz-app`), the same surface as the old log line.
+- Mock helper: `createMockHelper({ captureFallback: [{ from, to, reason }] })` emits them on every `recording.start`.
+
 ## Permission revocation (H5)
 
 While a recording or dictation is running, or the warm mic is on (even with nothing running), the helper re-reads TCC every `permissionPollMs` (2 s by default) and diffs

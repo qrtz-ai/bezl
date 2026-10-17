@@ -240,6 +240,13 @@ export function bootstrap() {
     const r = parseHelperLine(line);
     if (!r.ok) return log.warn('bad helper line', { error: r.error });
     if (r.msg.type === 'log') log.child('helper')[r.msg.level](r.msg.msg);
+    // H8: was a free-text warn line ("audio <from> failed: <reason>"); same surface, structured fields.
+    if (r.msg.type === 'capture.fallback')
+      log.child('helper').warn('capture fallback', {
+        from: r.msg.from,
+        to: r.msg.to,
+        reason: r.msg.reason,
+      });
     try {
       note.handle(r.msg);
       talk.handle(r.msg);
