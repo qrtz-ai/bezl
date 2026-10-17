@@ -1,0 +1,99 @@
+[
+ {
+  "meeting": {
+   "id": "m-a",
+   "title": "Weekly sync — Δ planning",
+   "platform": "zoom",
+   "startedAt": 1760000000000,
+   "endedAt": 1760003600000,
+   "status": "done",
+   "participants": [
+    "Ada",
+    "Bob"
+   ],
+   "durationMs": 3600000,
+   "template": "one-on-one"
+  },
+  "audio": {
+   "name": "m-a.wav",
+   "sha256": "6f02f3d8bc7f1693a65ef0dc6e09a43004aacf4df3bf4938c91096a4fa8a799d"
+  },
+  "segments": [
+   {
+    "id": "p1",
+    "startMs": 0,
+    "endMs": 9000,
+    "text": "Let's review the budget. Fifty thousand.",
+    "source": "post",
+    "speakerName": "Ada",
+    "confidence": 0.92
+   }
+  ],
+  "summary": {
+   "summary": "Budget agreed.",
+   "actionItems": [
+    {
+     "text": "Send numbers",
+     "owner": "Bob"
+    }
+   ],
+   "qa": [
+    {
+     "question": "How much?",
+     "answer": "50k",
+     "askedBy": "Ada"
+    }
+   ],
+   "provider": "extractive",
+   "template": "one-on-one"
+  },
+  "notes": [
+   {
+    "id": "n1",
+    "atMs": 6200,
+    "text": "Pilot 50k",
+    "createdAt": 1760000006200
+   }
+  ]
+ },
+ {
+  "meeting": {
+   "id": "m-b",
+   "title": "No audio here",
+   "platform": "teams",
+   "startedAt": 1760100000000,
+   "status": "done",
+   "participants": [],
+   "template": "general"
+  },
+  "audio": null,
+  "segments": [
+   {
+    "id": "b1",
+    "startMs": 0,
+    "endMs": 1000,
+    "text": "hi",
+    "source": "live"
+   }
+  ],
+  "summary": null,
+  "notes": []
+ },
+ {
+  "meeting": {
+   "id": "m-c",
+   "title": "Audio missing from the archive",
+   "platform": "other",
+   "startedAt": 1760200000000,
+   "status": "failed",
+   "participants": [
+    "Cy"
+   ],
+   "template": "general"
+  },
+  "audio": null,
+  "segments": [],
+  "summary": null,
+  "notes": []
+ }
+]

@@ -1,0 +1,104 @@
+[
+  {
+    "error": "Backup rejected: not a zip file",
+    "file": "not-a-zip.zip",
+    "stage": "read",
+    "why": "plain text"
+  },
+  {
+    "error": "Backup rejected:",
+    "file": "truncated.zip",
+    "stage": "read",
+    "why": "first half of a valid backup (no central directory)"
+  },
+  {
+    "error": "Backup rejected: manifest.json missing",
+    "file": "no-manifest.zip",
+    "stage": "read",
+    "why": "no manifest.json"
+  },
+  {
+    "error": "Backup rejected: manifest is invalid",
+    "file": "bad-manifest.zip",
+    "stage": "read",
+    "why": "manifest is not JSON"
+  },
+  {
+    "error": "Backup rejected: manifest is invalid",
+    "file": "wrong-format.zip",
+    "stage": "read",
+    "why": "format is not qrtz-backup"
+  },
+  {
+    "error": "Backup rejected: manifest.json missing",
+    "file": "huge-manifest.zip",
+    "stage": "read",
+    "why": "manifest over 16 MiB"
+  },
+  {
+    "error": "Backup rejected:",
+    "file": "zip-slip.zip",
+    "stage": "read",
+    "why": "traversal in an entry the manifest lists"
+  },
+  {
+    "error": "Backup rejected:",
+    "file": "audio-slip.zip",
+    "stage": "read",
+    "why": "audio/../ traversal"
+  },
+  {
+    "error": "Backup rejected:",
+    "file": "absolute-path.zip",
+    "stage": "read",
+    "why": "absolute entry name"
+  },
+  {
+    "error": "Backup rejected:",
+    "file": "backslash.zip",
+    "stage": "read",
+    "why": "backslash in an entry name"
+  },
+  {
+    "error": "Backup rejected: unexpected file evil.sh",
+    "file": "unexpected-entry.zip",
+    "stage": "read",
+    "why": "entry the manifest doesn't list"
+  },
+  {
+    "error": "Backup rejected: audio/a.wav failed its integrity check",
+    "file": "bad-hash.zip",
+    "stage": "read",
+    "why": "sha256 mismatch"
+  },
+  {
+    "error": "Backup rejected: audio/a.wav failed its integrity check",
+    "file": "size-mismatch.zip",
+    "stage": "read",
+    "why": "manifest size differs"
+  },
+  {
+    "error": "Backup rejected: database missing from manifest",
+    "file": "db-not-listed.zip",
+    "stage": "read",
+    "why": "no db/qrtz.db"
+  },
+  {
+    "error": "Backup rejected:",
+    "file": "bomb.zip",
+    "stage": "read",
+    "why": "entry inflates far past its declared size"
+  },
+  {
+    "error": "not a database",
+    "file": "corrupt-db.zip",
+    "stage": "import",
+    "why": "db entry passes its hash but is not SQLite"
+  },
+  {
+    "error": "backup is from a newer qrtz (schema 999)",
+    "file": "newer-schema.zip",
+    "stage": "import",
+    "why": "refused like 520f16a"
+  }
+]
