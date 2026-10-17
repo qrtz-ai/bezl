@@ -16,6 +16,7 @@ import {
   type Segment,
 } from '@qrtz/core';
 import { dbHealth } from './db';
+import { repairWav } from './wav-repair';
 
 export interface FinalizeParams {
   meetingId: string;
@@ -75,6 +76,58 @@ export function createWorkerHandlers(
       repo.saveSummary(p.meetingId, summary);
       repo.setStatus(p.meetingId, 'done');
       return summary;
+    },
+    /**
+     * M5.1 crash recovery: meetings left in `recording` (app/helper died mid-meeting) or `processing` (died while
+     * summarizing) are completed from what was persisted. The live transcript is final, so this is just the WAV
+     * header repair plus the summary. Runs once at startup, before any new session can start.
+     */
+    'memo.recover': async (p: {
+      llm: FinalizeParams['llm'];
+    }): Promise<{ recovered: string[]; failed: string[] }> => {
+      const recovered: string[] = [];
+      const failed: string[] = [];
+      const stuck = repo
+        .listMeetings(1000)
+        .filter((m) => m.status === 'recording' || m.status === 'processing');
+      for (const m of stuck) {
+        try {
+          const segments = repo.getSegments(m.id);
+          const audioMs = m.audioPath ? repairWav(m.audioPath) : undefined;
+          const durationMs =
+            m.durationMs ||
+            audioMs ||
+            Math.max(0, ...segments.map((s) => s.endMs));
+          repo.upsertMeeting({
+            ...m,
+            durationMs,
+            endedAt: m.endedAt ?? m.startedAt + durationMs,
+            status: 'processing',
+          });
+          const provider = createProvider(p.llm.provider, {
+            fetch: deps.fetch,
+            ...(p.llm.apiKey ? { apiKey: p.llm.apiKey } : {}),
+            ...(p.llm.model ? { model: p.llm.model } : {}),
+          });
+          const summary = await summarizeMeeting(
+            m.title,
+            segments,
+            provider,
+            (e) =>
+              deps.log?.('llm failed; using extractive fallback', {
+                err: String(e),
+              }),
+          );
+          repo.saveSummary(m.id, summary);
+          repo.setStatus(m.id, 'done');
+          recovered.push(m.id);
+        } catch (e) {
+          deps.log?.('recover failed', { id: m.id, err: String(e) });
+          repo.setStatus(m.id, 'failed');
+          failed.push(m.id);
+        }
+      }
+      return { recovered, failed };
     },
     'memo.fail': (p: { meetingId: string }) => {
       repo.setStatus(p.meetingId, 'failed');

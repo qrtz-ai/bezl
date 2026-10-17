@@ -87,6 +87,7 @@ export function bootstrap() {
     config: () => config.get(),
     recordingsDir,
   });
+  void memo.recover();
   helper.onLine((line) => {
     const r = parseHelperLine(line);
     if (!r.ok) return log.warn('bad helper line', { error: r.error });

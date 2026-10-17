@@ -1,0 +1,6 @@
+{"id":"p1","type":"ping"}
+{"type":"permissions.check"}
+{"permission":"screen-recording","type":"permissions.request"}
+{"type":"shutdown"}
+{"audioPath":"/tmp/rec/0b8e.wav","type":"recording.start"}
+{"type":"recording.stop"}

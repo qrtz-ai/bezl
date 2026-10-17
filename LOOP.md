@@ -32,3 +32,10 @@ Each iteration is one pass of: **read, pick, build, verify, commit, push, log.**
 - **Security defaults are non-negotiable:** contextIsolation, sandbox, no nodeIntegration,
   CSP, zod validation on every IPC boundary, and capability checks in main.
 - If a check breaks and can't be fixed in the iteration, revert the change rather than push red.
+
+## Swift helper checks (when native/ changes)
+
+- Linux toolchain (if missing): download `swift-6.1.2-RELEASE-ubuntu24.04.tar.gz` into /tmp and extract it there.
+- Then run `export PATH=/tmp/swift-6.1.2-RELEASE-ubuntu24.04/usr/bin:$PATH && npm run test:helper`.
+- After that build, `packages/core/src/helper/swift-helper.test.ts` drives the real binary over stdio (it is skipped when there's no build).
+- Protocol changes must update `native/qrtz-helper/Fixtures/protocol/*.jsonl`. Both sides' tests enforce full coverage.

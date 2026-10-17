@@ -12,6 +12,8 @@ import { writeFixtureWav } from './fixture-audio';
 
 /** Path of the bundled Swift helper (Contents/Resources/qrtz-helper in the .app). */
 export function helperBinaryPath(): string {
+  // QRTZ_HELPER_BIN points at any build (e.g. the Linux stub) to exercise the real stdio path.
+  if (process.env.QRTZ_HELPER_BIN) return process.env.QRTZ_HELPER_BIN;
   return app.isPackaged
     ? path.join(process.resourcesPath, 'qrtz-helper')
     : path.join(
@@ -27,7 +29,7 @@ export function helperBinaryPath(): string {
 }
 
 export const usingMockHelper = () =>
-  process.platform !== 'darwin' ||
+  (process.platform !== 'darwin' && !process.env.QRTZ_HELPER_BIN) ||
   process.env.QRTZ_MOCK_HELPER === '1' ||
   !fs.existsSync(helperBinaryPath());
 

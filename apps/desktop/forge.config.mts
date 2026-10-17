@@ -7,6 +7,15 @@ import { MakerDMG } from '@electron-forge/maker-dmg';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import fs from 'node:fs';
+import path from 'node:path';
+
+/** Swift helper built by `npm run build:helper` (macOS only). On Linux it is absent and the TS mock is used. */
+const helperBin = path.resolve(
+  import.meta.dirname,
+  '../../native/qrtz-helper/.build/release/qrtz-helper',
+);
+const extraResource = fs.existsSync(helperBin) ? [helperBin] : [];
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -15,6 +24,13 @@ const config: ForgeConfig = {
     executableName: 'qrtz',
     appBundleId: 'ai.qrtz.desktop',
     appCategoryType: 'public.app-category.productivity',
+    extraResource,
+    extendInfo: {
+      NSMicrophoneUsageDescription:
+        'qrtz records your side of meetings to transcribe them on-device.',
+      NSAudioCaptureUsageDescription:
+        'qrtz captures meeting audio to transcribe it on-device.',
+    },
   },
   rebuildConfig: {},
   makers: [

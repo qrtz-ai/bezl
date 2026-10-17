@@ -1,0 +1,20 @@
+{"features":["ax","audio.process-tap","asr.parakeet"],"helperVersion":"0.1.0","os":"macOS 15.5","protocol":1,"type":"hello"}
+{"ts":1760659200000,"type":"heartbeat"}
+{"id":"p1","type":"pong"}
+{"status":{"accessibility":"granted","microphone":"not-determined","screen-recording":"denied"},"type":"permissions.status"}
+{"level":"info","msg":"audio: core-audio-tap","type":"log"}
+{"code":"audio.unavailable","fatal":false,"message":"no audio source","type":"error"}
+{"app":"Zoom","key":"zoom-app:4242","platform":"zoom","title":"Zoom Meeting","type":"meeting.detected"}
+{"app":"Google Meet (Chrome)","key":"meet:abc-defg-hij","platform":"google-meet","title":"Weekly Product Sync","type":"meeting.detected"}
+{"key":"meet:abc-defg-hij","type":"meeting.ended"}
+{"names":["Ada Lovelace","Grace Hopper"],"type":"ax.participants"}
+{"atMs":1250,"name":"Grace Hopper","type":"ax.activeSpeaker"}
+{"atMs":2000,"speaker":"Ada Lovelace","text":"Let's start with the roadmap.","type":"ax.caption"}
+{"atMs":2100,"text":"(unattributed caption)","type":"ax.caption"}
+{"atMs":3000,"author":"Grace Hopper","text":"link in chat","type":"ax.chat"}
+{"rms":0.42,"type":"audio.level"}
+{"event":{"kind":"partial","startMs":0,"text":"let's start","utteranceId":"u1"},"type":"asr"}
+{"event":{"confidence":0.93,"endMs":2400,"kind":"final","startMs":0,"text":"Let's start with the roadmap.","utteranceId":"u1"},"type":"asr"}
+{"event":{"endMs":5000,"kind":"final","startMs":2500,"text":"Sounds good.","utteranceId":"u2"},"type":"asr"}
+{"audioPath":"/Users/j/Library/Application Support/qrtz/recordings/0b8e.wav","type":"recording.started"}
+{"audioPath":"/Users/j/Library/Application Support/qrtz/recordings/0b8e.wav","durationMs":61234.5,"type":"recording.stopped"}

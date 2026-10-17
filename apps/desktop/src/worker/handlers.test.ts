@@ -103,4 +103,46 @@ describe('worker handlers (DB + pipeline integration)', () => {
     });
     expect(() => h['memo.get']({ id: 'nope' })).toThrow(/not found/);
   });
+
+  it('M5.1: recovers meetings stuck in recording/processing (repairs the WAV, summarizes the live transcript)', async () => {
+    const fs = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const wav = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-rec-')),
+      'r.wav',
+    );
+    // 0-length header (helper killed mid-recording) + 2 s of 16 kHz 16-bit silence
+    const h = Buffer.alloc(44);
+    h.write('RIFF', 0, 'ascii');
+    h.write('WAVEfmt ', 8, 'ascii');
+    h.writeUInt32LE(16, 16);
+    h.writeUInt16LE(1, 20);
+    h.writeUInt16LE(1, 22);
+    h.writeUInt32LE(16_000, 24);
+    h.writeUInt32LE(32_000, 28);
+    h.writeUInt16LE(2, 32);
+    h.writeUInt16LE(16, 34);
+    h.write('data', 36, 'ascii');
+    fs.writeFileSync(wav, Buffer.concat([h, Buffer.alloc(64_000)]));
+
+    const h2 = createWorkerHandlers(openDatabase(':memory:'), {
+      fetch: noFetch,
+    });
+    seed(h2);
+    const m = h2['memo.get']({ id: 'm1' }).meeting;
+    h2['memo.create']({ meeting: { ...m, audioPath: wav } });
+    const r = await h2['memo.recover']({ llm: { provider: 'none' } });
+    expect(r).toEqual({ recovered: ['m1'], failed: [] });
+    const got = h2['memo.get']({ id: 'm1' });
+    expect(got.meeting.status).toBe('done');
+    expect(got.meeting.durationMs).toBe(2000);
+    expect(got.summary?.provider).toBe('extractive');
+    expect(fs.readFileSync(wav).readUInt32LE(40)).toBe(64_000);
+    // idempotent: nothing left to recover
+    expect(await h2['memo.recover']({ llm: { provider: 'none' } })).toEqual({
+      recovered: [],
+      failed: [],
+    });
+  });
 });

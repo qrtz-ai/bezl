@@ -5,7 +5,7 @@ import type { Logger } from '@qrtz/core';
 export function hardenApp(log: Logger, isTrustedUrl: (url: string) => boolean) {
   app.on('web-contents-created', (_e, contents) => {
     contents.setWindowOpenHandler(({ url }) => {
-      if (/^https:\/\//.test(url)) void shell.openExternal(url);
+      if (url.startsWith('https://')) void shell.openExternal(url);
       return { action: 'deny' };
     });
     contents.on('will-navigate', (e, url) => {

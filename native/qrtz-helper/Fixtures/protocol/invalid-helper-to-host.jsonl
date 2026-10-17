@@ -1,0 +1,6 @@
+{"type":"nope"}
+{"type":"audio.level","rms":2}
+{"type":"meeting.detected","key":"k","title":"t","platform":"skype","app":"a"}
+{"type":"permissions.status","status":{"accessibility":"granted"}}
+{"type":"asr","event":{"kind":"final","utteranceId":"u","startMs":0,"text":"x"}}
+not json

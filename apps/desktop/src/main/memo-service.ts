@@ -78,7 +78,7 @@ export class MemoService {
 
   /** Feed every parsed helper message here. */
   handle(m: HelperToHost) {
-    for (const w of [...this.waiters]) {
+    for (const w of this.waiters.slice()) {
       if (w.type === m.type) {
         this.waiters.splice(this.waiters.indexOf(w), 1);
         w.resolve(m);
@@ -264,6 +264,38 @@ export class MemoService {
     return this.view();
   }
 
+  private async llmParams() {
+    const cfg = this.deps.config().memo;
+    const provider = cfg.llmProvider as ProviderId | 'none';
+    const secretName =
+      provider === 'none' ? undefined : PROVIDER_DEFAULTS[provider].secret;
+    const apiKey = secretName
+      ? await this.deps.secrets.get(secretName)
+      : undefined;
+    return {
+      provider,
+      ...(cfg.llmModel ? { model: cfg.llmModel } : {}),
+      ...(apiKey ? { apiKey } : {}),
+    };
+  }
+
+  /** M5.1: finish meetings a crash left in recording/processing. Call once at startup. */
+  async recover(): Promise<void> {
+    try {
+      const r = await this.deps.worker.call(
+        'memo.recover',
+        { llm: await this.llmParams() },
+        300_000,
+      );
+      for (const id of [...r.recovered, ...r.failed])
+        this.deps.bus.emit('memo:changed', { id });
+      if (r.recovered.length || r.failed.length)
+        this.deps.log.info('recovered meetings', r);
+    } catch (e) {
+      this.deps.log.warn('recovery failed', { err: String(e) });
+    }
+  }
+
   private async postProcess(
     meetingId: string,
     startedAt: number,
@@ -275,15 +307,9 @@ export class MemoService {
     try {
       const stopped = await stoppedP;
       const durationMs = stopped?.durationMs || Date.now() - startedAt;
-      const cfg = this.deps.config().memo;
       this.progress = 'Summarizing';
       this.emitSoon(0);
-      const provider = cfg.llmProvider as ProviderId | 'none';
-      const secretName =
-        provider === 'none' ? undefined : PROVIDER_DEFAULTS[provider].secret;
-      const apiKey = secretName
-        ? await this.deps.secrets.get(secretName)
-        : undefined;
+      const llm = await this.llmParams();
       await this.deps.worker.call(
         'memo.finalize',
         {
@@ -292,11 +318,7 @@ export class MemoService {
           durationMs,
           audioPath: this.audioPath,
           active: this.active,
-          llm: {
-            provider,
-            ...(cfg.llmModel ? { model: cfg.llmModel } : {}),
-            ...(apiKey ? { apiKey } : {}),
-          },
+          llm,
         },
         120_000,
       );
