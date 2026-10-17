@@ -1,11 +1,13 @@
 //! qrtz speech (ADR 0046). The host side of the confined speech module: protocol + untrusted-output validation,
 //! the model-agnostic `SpeechEngine`, and the signed-bundle store/updater.
 pub mod bundle;
+pub mod confine;
 pub mod download;
 pub mod engine;
 pub mod files;
 pub mod fsx;
 pub mod protocol;
+pub mod spawn;
 pub mod store;
 pub mod update;
 pub mod validate;
@@ -44,6 +46,8 @@ pub enum SpeechError {
     RevocationExpired,
     #[error("speech has not checked for revocations in {days} days; connect to keep using it")]
     Stale { days: u64 },
+    #[error("speech cannot be confined here: {0}")]
+    Unconfined(String),
     #[error("speech state is corrupt and has no good copy")]
     StateCorrupt,
     #[error("a speech session is running")]

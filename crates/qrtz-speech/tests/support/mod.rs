@@ -228,3 +228,34 @@ impl Server {
         self.routes.lock().unwrap().insert(path.into(), bytes);
     }
 }
+
+/// A bundle whose entry is the mock module binary and whose one model file is its JSON config.
+pub fn mock_bundle(
+    sk: &SigningKey,
+    key_id: &str,
+    version: &str,
+    cfg: serde_json::Value,
+    expected: &str,
+) -> Bundle {
+    let entry = std::fs::read(env!("CARGO_BIN_EXE_qrtz-mock-speech")).unwrap();
+    let files = vec![
+        ("bin/qrtz-speech".to_string(), entry),
+        ("health/golden.pcm".to_string(), vec![0u8; 3200]),
+        ("engine/mock.json".to_string(), cfg.to_string().into_bytes()),
+    ];
+    let m = serde_json::json!({
+        "module": "qrtz-speech", "version": version, "protocol": 1, "minApp": "0.1.0",
+        "entry": "bin/qrtz-speech",
+        "files": files.iter().map(|(p, b)| serde_json::json!({"path": p, "size": b.len(), "sha256": sha(b)})).collect::<Vec<_>>(),
+        "health": {"clip": "health/golden.pcm", "expected": expected},
+        "keyId": key_id,
+    });
+    let manifest = serde_json::to_vec(&m).unwrap();
+    let sig = sign(sk, &manifest);
+    Bundle {
+        version: version.into(),
+        manifest,
+        sig,
+        files,
+    }
+}
