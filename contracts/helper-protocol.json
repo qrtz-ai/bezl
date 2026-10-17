@@ -17,7 +17,14 @@
     "audio.level",
     "asr",
     "recording.started",
-    "recording.stopped"
+    "recording.stopped",
+    "hotkey",
+    "dictation.started",
+    "dictation.level",
+    "dictation.asr",
+    "dictation.audio",
+    "dictation.stopped",
+    "insert.result"
   ],
   "hostToHelperTypes": [
     "ping",
@@ -27,7 +34,12 @@
     "recording.start",
     "recording.stop",
     "recording.pause",
-    "recording.resume"
+    "recording.resume",
+    "dictation.configure",
+    "dictation.start",
+    "dictation.stop",
+    "dictation.cancel",
+    "insert.text"
   ],
   "helperToHost": {
     "oneOf": [
@@ -447,6 +459,226 @@
           "audioPath",
           "durationMs"
         ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "hotkey"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "down",
+              "up"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "action"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "dictation.started"
+          },
+          "id": {
+            "type": "string"
+          },
+          "preRollMs": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "preRollMs"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "dictation.level"
+          },
+          "rms": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "required": [
+          "type",
+          "rms"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "dictation.asr"
+          },
+          "id": {
+            "type": "string"
+          },
+          "event": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "partial"
+                  },
+                  "utteranceId": {
+                    "type": "string"
+                  },
+                  "startMs": {
+                    "type": "number"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "utteranceId",
+                  "startMs",
+                  "text"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "final"
+                  },
+                  "utteranceId": {
+                    "type": "string"
+                  },
+                  "startMs": {
+                    "type": "number"
+                  },
+                  "endMs": {
+                    "type": "number"
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "confidence": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "utteranceId",
+                  "startMs",
+                  "endMs",
+                  "text"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "event"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "dictation.audio"
+          },
+          "id": {
+            "type": "string"
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "pcm16": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "seq",
+          "pcm16"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "dictation.stopped"
+          },
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "durationMs": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "text",
+          "durationMs"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "insert.result"
+          },
+          "id": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "ax-selected-text",
+              "ax-value",
+              "paste",
+              "none"
+            ]
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "app": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "method",
+          "ok"
+        ]
       }
     ]
   },
@@ -563,6 +795,108 @@
         },
         "required": [
           "type"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "dictation.configure"
+          },
+          "warmMic": {
+            "type": "boolean"
+          },
+          "preRollMs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2000
+          },
+          "streamAudio": {
+            "type": "boolean"
+          },
+          "pushKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "warmMic",
+          "preRollMs",
+          "streamAudio",
+          "pushKey"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "dictation.start"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "dictation.stop"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "dictation.cancel"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "insert.text"
+          },
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "restoreClipboard": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "text",
+          "restoreClipboard"
         ]
       }
     ]

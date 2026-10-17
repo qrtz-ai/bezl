@@ -4252,6 +4252,888 @@
         ],
         "additionalProperties": false
       }
+    },
+    "talk:state": {
+      "version": 1,
+      "capability": "talk.read",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "listening",
+              "finalizing",
+              "cleaning",
+              "inserting",
+              "error"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "text": {
+            "type": "string"
+          },
+          "partial": {
+            "type": "string"
+          },
+          "level": {
+            "type": "number"
+          },
+          "engine": {
+            "type": "string",
+            "enum": [
+              "deepgram",
+              "elevenlabs",
+              "on-device"
+            ]
+          },
+          "failover": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "last": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "at": {
+                "type": "number"
+              },
+              "raw": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "cleanup": {
+                "type": "string",
+                "enum": [
+                  "llm",
+                  "rules",
+                  "off"
+                ]
+              },
+              "engine": {
+                "type": "string",
+                "enum": [
+                  "deepgram",
+                  "elevenlabs",
+                  "on-device"
+                ]
+              },
+              "failover": {
+                "default": false,
+                "type": "boolean"
+              },
+              "insert": {
+                "type": "string",
+                "enum": [
+                  "ax-selected-text",
+                  "ax-value",
+                  "paste",
+                  "none"
+                ]
+              },
+              "inserted": {
+                "type": "boolean"
+              },
+              "app": {
+                "type": "string"
+              },
+              "durationMs": {
+                "type": "number"
+              },
+              "latency": {
+                "type": "object",
+                "properties": {
+                  "firstPartialMs": {
+                    "type": "number"
+                  },
+                  "finalMs": {
+                    "type": "number"
+                  },
+                  "cleanupMs": {
+                    "type": "number"
+                  },
+                  "insertedMs": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "at",
+              "raw",
+              "text",
+              "cleanup",
+              "engine",
+              "failover",
+              "insert",
+              "inserted",
+              "durationMs",
+              "latency"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "phase",
+          "text",
+          "partial",
+          "level"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "talk:start": {
+      "version": 1,
+      "capability": "talk.dictate",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "listening",
+              "finalizing",
+              "cleaning",
+              "inserting",
+              "error"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "text": {
+            "type": "string"
+          },
+          "partial": {
+            "type": "string"
+          },
+          "level": {
+            "type": "number"
+          },
+          "engine": {
+            "type": "string",
+            "enum": [
+              "deepgram",
+              "elevenlabs",
+              "on-device"
+            ]
+          },
+          "failover": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "last": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "at": {
+                "type": "number"
+              },
+              "raw": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "cleanup": {
+                "type": "string",
+                "enum": [
+                  "llm",
+                  "rules",
+                  "off"
+                ]
+              },
+              "engine": {
+                "type": "string",
+                "enum": [
+                  "deepgram",
+                  "elevenlabs",
+                  "on-device"
+                ]
+              },
+              "failover": {
+                "default": false,
+                "type": "boolean"
+              },
+              "insert": {
+                "type": "string",
+                "enum": [
+                  "ax-selected-text",
+                  "ax-value",
+                  "paste",
+                  "none"
+                ]
+              },
+              "inserted": {
+                "type": "boolean"
+              },
+              "app": {
+                "type": "string"
+              },
+              "durationMs": {
+                "type": "number"
+              },
+              "latency": {
+                "type": "object",
+                "properties": {
+                  "firstPartialMs": {
+                    "type": "number"
+                  },
+                  "finalMs": {
+                    "type": "number"
+                  },
+                  "cleanupMs": {
+                    "type": "number"
+                  },
+                  "insertedMs": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "at",
+              "raw",
+              "text",
+              "cleanup",
+              "engine",
+              "failover",
+              "insert",
+              "inserted",
+              "durationMs",
+              "latency"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "phase",
+          "text",
+          "partial",
+          "level"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "talk:stop": {
+      "version": 1,
+      "capability": "talk.dictate",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "listening",
+              "finalizing",
+              "cleaning",
+              "inserting",
+              "error"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "text": {
+            "type": "string"
+          },
+          "partial": {
+            "type": "string"
+          },
+          "level": {
+            "type": "number"
+          },
+          "engine": {
+            "type": "string",
+            "enum": [
+              "deepgram",
+              "elevenlabs",
+              "on-device"
+            ]
+          },
+          "failover": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "last": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "at": {
+                "type": "number"
+              },
+              "raw": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "cleanup": {
+                "type": "string",
+                "enum": [
+                  "llm",
+                  "rules",
+                  "off"
+                ]
+              },
+              "engine": {
+                "type": "string",
+                "enum": [
+                  "deepgram",
+                  "elevenlabs",
+                  "on-device"
+                ]
+              },
+              "failover": {
+                "default": false,
+                "type": "boolean"
+              },
+              "insert": {
+                "type": "string",
+                "enum": [
+                  "ax-selected-text",
+                  "ax-value",
+                  "paste",
+                  "none"
+                ]
+              },
+              "inserted": {
+                "type": "boolean"
+              },
+              "app": {
+                "type": "string"
+              },
+              "durationMs": {
+                "type": "number"
+              },
+              "latency": {
+                "type": "object",
+                "properties": {
+                  "firstPartialMs": {
+                    "type": "number"
+                  },
+                  "finalMs": {
+                    "type": "number"
+                  },
+                  "cleanupMs": {
+                    "type": "number"
+                  },
+                  "insertedMs": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "at",
+              "raw",
+              "text",
+              "cleanup",
+              "engine",
+              "failover",
+              "insert",
+              "inserted",
+              "durationMs",
+              "latency"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "phase",
+          "text",
+          "partial",
+          "level"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "talk:cancel": {
+      "version": 1,
+      "capability": "talk.dictate",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "listening",
+              "finalizing",
+              "cleaning",
+              "inserting",
+              "error"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "text": {
+            "type": "string"
+          },
+          "partial": {
+            "type": "string"
+          },
+          "level": {
+            "type": "number"
+          },
+          "engine": {
+            "type": "string",
+            "enum": [
+              "deepgram",
+              "elevenlabs",
+              "on-device"
+            ]
+          },
+          "failover": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "last": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "at": {
+                "type": "number"
+              },
+              "raw": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "cleanup": {
+                "type": "string",
+                "enum": [
+                  "llm",
+                  "rules",
+                  "off"
+                ]
+              },
+              "engine": {
+                "type": "string",
+                "enum": [
+                  "deepgram",
+                  "elevenlabs",
+                  "on-device"
+                ]
+              },
+              "failover": {
+                "default": false,
+                "type": "boolean"
+              },
+              "insert": {
+                "type": "string",
+                "enum": [
+                  "ax-selected-text",
+                  "ax-value",
+                  "paste",
+                  "none"
+                ]
+              },
+              "inserted": {
+                "type": "boolean"
+              },
+              "app": {
+                "type": "string"
+              },
+              "durationMs": {
+                "type": "number"
+              },
+              "latency": {
+                "type": "object",
+                "properties": {
+                  "firstPartialMs": {
+                    "type": "number"
+                  },
+                  "finalMs": {
+                    "type": "number"
+                  },
+                  "cleanupMs": {
+                    "type": "number"
+                  },
+                  "insertedMs": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "at",
+              "raw",
+              "text",
+              "cleanup",
+              "engine",
+              "failover",
+              "insert",
+              "inserted",
+              "durationMs",
+              "latency"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "phase",
+          "text",
+          "partial",
+          "level"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "talk:history": {
+      "version": 1,
+      "capability": "talk.read",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "at": {
+              "type": "number"
+            },
+            "raw": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            },
+            "cleanup": {
+              "type": "string",
+              "enum": [
+                "llm",
+                "rules",
+                "off"
+              ]
+            },
+            "engine": {
+              "type": "string",
+              "enum": [
+                "deepgram",
+                "elevenlabs",
+                "on-device"
+              ]
+            },
+            "failover": {
+              "default": false,
+              "type": "boolean"
+            },
+            "insert": {
+              "type": "string",
+              "enum": [
+                "ax-selected-text",
+                "ax-value",
+                "paste",
+                "none"
+              ]
+            },
+            "inserted": {
+              "type": "boolean"
+            },
+            "app": {
+              "type": "string"
+            },
+            "durationMs": {
+              "type": "number"
+            },
+            "latency": {
+              "type": "object",
+              "properties": {
+                "firstPartialMs": {
+                  "type": "number"
+                },
+                "finalMs": {
+                  "type": "number"
+                },
+                "cleanupMs": {
+                  "type": "number"
+                },
+                "insertedMs": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            },
+            "error": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "at",
+            "raw",
+            "text",
+            "cleanup",
+            "engine",
+            "failover",
+            "insert",
+            "inserted",
+            "durationMs",
+            "latency"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "talk:delete-entry": {
+      "version": 1,
+      "capability": "talk.write",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "required": [
+            "id"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "talk:clear-history": {
+      "version": 1,
+      "capability": "talk.write",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "talk:copy": {
+      "version": 1,
+      "capability": "talk.read",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "required": [
+            "id"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "talk:dictionary": {
+      "version": 1,
+      "capability": "talk.read",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "term": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "aliases": {
+              "default": [],
+              "maxItems": 10,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              }
+            }
+          },
+          "required": [
+            "term",
+            "aliases"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "talk:set-dictionary": {
+      "version": 1,
+      "capability": "talk.write",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "entries": {
+              "maxItems": 500,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "term": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "aliases": {
+                    "default": [],
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    }
+                  }
+                },
+                "required": [
+                  "term"
+                ]
+              }
+            }
+          },
+          "required": [
+            "entries"
+          ]
+        }
+      },
+      "response": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "term": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "aliases": {
+              "default": [],
+              "maxItems": 10,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              }
+            }
+          },
+          "required": [
+            "term",
+            "aliases"
+          ],
+          "additionalProperties": false
+        }
+      }
     }
   },
   "events": {
@@ -5077,6 +5959,166 @@
         "additionalProperties": false
       }
     },
+    "talk:state": {
+      "capability": "talk.read",
+      "payload": {
+        "type": "object",
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "listening",
+              "finalizing",
+              "cleaning",
+              "inserting",
+              "error"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "text": {
+            "type": "string"
+          },
+          "partial": {
+            "type": "string"
+          },
+          "level": {
+            "type": "number"
+          },
+          "engine": {
+            "type": "string",
+            "enum": [
+              "deepgram",
+              "elevenlabs",
+              "on-device"
+            ]
+          },
+          "failover": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "last": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "at": {
+                "type": "number"
+              },
+              "raw": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "cleanup": {
+                "type": "string",
+                "enum": [
+                  "llm",
+                  "rules",
+                  "off"
+                ]
+              },
+              "engine": {
+                "type": "string",
+                "enum": [
+                  "deepgram",
+                  "elevenlabs",
+                  "on-device"
+                ]
+              },
+              "failover": {
+                "default": false,
+                "type": "boolean"
+              },
+              "insert": {
+                "type": "string",
+                "enum": [
+                  "ax-selected-text",
+                  "ax-value",
+                  "paste",
+                  "none"
+                ]
+              },
+              "inserted": {
+                "type": "boolean"
+              },
+              "app": {
+                "type": "string"
+              },
+              "durationMs": {
+                "type": "number"
+              },
+              "latency": {
+                "type": "object",
+                "properties": {
+                  "firstPartialMs": {
+                    "type": "number"
+                  },
+                  "finalMs": {
+                    "type": "number"
+                  },
+                  "cleanupMs": {
+                    "type": "number"
+                  },
+                  "insertedMs": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "at",
+              "raw",
+              "text",
+              "cleanup",
+              "engine",
+              "failover",
+              "insert",
+              "inserted",
+              "durationMs",
+              "latency"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "phase",
+          "text",
+          "partial",
+          "level"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "talk:history-changed": {
+      "capability": "talk.read",
+      "payload": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      }
+    },
     "permissions:changed": {
       "capability": "os.permissions",
       "payload": {
@@ -5115,7 +6157,9 @@
         "config.read",
         "helper.status",
         "note.read",
-        "note.record"
+        "note.record",
+        "talk.read",
+        "talk.dictate"
       ]
     },
     {
@@ -5125,6 +6169,14 @@
         "note.record",
         "note.write",
         "os.permissions"
+      ]
+    },
+    {
+      "id": "talk",
+      "capabilities": [
+        "talk.read",
+        "talk.dictate",
+        "talk.write"
       ]
     },
     {
@@ -5169,6 +6221,23 @@
         "floatingHud": true,
         "retainAudioDays": 0,
         "defaultTemplate": "general"
+      },
+      "talk": {
+        "enabled": true,
+        "pushKey": "fn",
+        "toggleHotkey": "CommandOrControl+Shift+Space",
+        "warmMic": false,
+        "preRollMs": 300,
+        "engine": "auto",
+        "autoFailover": true,
+        "autoCleanup": true,
+        "aiCleanup": true,
+        "cleanupModel": "",
+        "cleanupTimeoutMs": 900,
+        "autoInsert": true,
+        "restoreClipboard": true,
+        "showPill": true,
+        "saveHistory": true
       },
       "privacy": {
         "localOnly": false,
@@ -5324,6 +6393,108 @@
           ],
           "additionalProperties": false
         },
+        "talk": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "default": true,
+              "type": "boolean"
+            },
+            "pushKey": {
+              "default": "fn",
+              "type": "string",
+              "enum": [
+                "fn",
+                "right-option",
+                "right-command",
+                "right-control",
+                ""
+              ]
+            },
+            "toggleHotkey": {
+              "default": "CommandOrControl+Shift+Space",
+              "type": "string",
+              "maxLength": 60
+            },
+            "warmMic": {
+              "default": false,
+              "type": "boolean"
+            },
+            "preRollMs": {
+              "default": 300,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2000
+            },
+            "engine": {
+              "default": "auto",
+              "type": "string",
+              "enum": [
+                "auto",
+                "deepgram",
+                "elevenlabs",
+                "on-device"
+              ]
+            },
+            "autoFailover": {
+              "default": true,
+              "type": "boolean"
+            },
+            "autoCleanup": {
+              "default": true,
+              "type": "boolean"
+            },
+            "aiCleanup": {
+              "default": true,
+              "type": "boolean"
+            },
+            "cleanupModel": {
+              "default": "",
+              "type": "string",
+              "maxLength": 120
+            },
+            "cleanupTimeoutMs": {
+              "default": 900,
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 10000
+            },
+            "autoInsert": {
+              "default": true,
+              "type": "boolean"
+            },
+            "restoreClipboard": {
+              "default": true,
+              "type": "boolean"
+            },
+            "showPill": {
+              "default": true,
+              "type": "boolean"
+            },
+            "saveHistory": {
+              "default": true,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled",
+            "pushKey",
+            "toggleHotkey",
+            "warmMic",
+            "preRollMs",
+            "engine",
+            "autoFailover",
+            "autoCleanup",
+            "aiCleanup",
+            "cleanupModel",
+            "cleanupTimeoutMs",
+            "autoInsert",
+            "restoreClipboard",
+            "showPill",
+            "saveHistory"
+          ],
+          "additionalProperties": false
+        },
         "privacy": {
           "type": "object",
           "properties": {
@@ -5362,6 +6533,7 @@
         "app",
         "telemetry",
         "note",
+        "talk",
         "privacy"
       ],
       "additionalProperties": false
