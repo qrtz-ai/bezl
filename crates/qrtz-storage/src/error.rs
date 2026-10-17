@@ -35,11 +35,20 @@ pub enum StorageError {
 }
 
 impl StorageError {
-    fn busy(&self) -> bool {
+    /// SQLite conditions a later attempt can outlive: busy, locked, I/O error, disk full. Same set as TS
+    /// `AppError.from` (BUSY 5, LOCKED 6, IOERR 10, FULL 13): a full disk at the end of a meeting leaves the
+    /// pipeline step retrying, not failed for good (cycle 3, N13).
+    fn transient(&self) -> bool {
         matches!(
             self,
             StorageError::Sqlite(rusqlite::Error::SqliteFailure(e, _))
-                if matches!(e.code, rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked)
+                if matches!(
+                    e.code,
+                    rusqlite::ErrorCode::DatabaseBusy
+                        | rusqlite::ErrorCode::DatabaseLocked
+                        | rusqlite::ErrorCode::SystemIoFailure
+                        | rusqlite::ErrorCode::DiskFull
+                )
         )
     }
 
@@ -52,13 +61,13 @@ impl StorageError {
             | StorageError::Validation(_)
             | StorageError::Corrupt(_) => "E_VALIDATION",
             StorageError::Closed => "E_UNAVAILABLE",
-            e if e.busy() => "E_UNAVAILABLE",
+            e if e.transient() => "E_UNAVAILABLE",
             _ => "E_INTERNAL",
         }
     }
 
-    /// Whether retrying can help (busy/locked DB, a restarting storage thread, a panicked task).
+    /// Whether retrying can help (busy/locked DB, I/O error, disk full, a restarting storage thread, a panicked task).
     pub fn retryable(&self) -> bool {
-        matches!(self, StorageError::Closed | StorageError::Panicked(_)) || self.busy()
+        matches!(self, StorageError::Closed | StorageError::Panicked(_)) || self.transient()
     }
 }

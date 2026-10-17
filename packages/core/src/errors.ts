@@ -63,6 +63,27 @@ export class AppError extends Error {
   static from(err: unknown): AppError {
     if (err instanceof AppError) return err;
     const message = err instanceof Error ? err.message : String(err);
+    if (transientSqlite(err))
+      return new AppError('E_UNAVAILABLE', message, {
+        cause: err,
+        retryable: true,
+      });
     return new AppError('E_INTERNAL', message, { cause: err });
   }
+}
+
+/**
+ * SQLite result codes a later attempt can outlive: BUSY 5, LOCKED 6, IOERR 10, FULL 13 (`errcode` is the extended
+ * code; the low byte is the primary one). A full disk at the end of a meeting must leave the pipeline step
+ * retrying, not failed for good (cycle 3, N13). Same set as qrtz-storage `StorageError::transient`.
+ */
+const TRANSIENT_SQLITE = new Set([5, 6, 10, 13]);
+function transientSqlite(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const e = err as { code?: unknown; errcode?: unknown };
+  return (
+    e.code === 'ERR_SQLITE_ERROR' &&
+    typeof e.errcode === 'number' &&
+    TRANSIENT_SQLITE.has(e.errcode & 0xff)
+  );
 }

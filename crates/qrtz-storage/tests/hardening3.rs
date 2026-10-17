@@ -107,3 +107,35 @@ fn import_that_hits_disk_full_mid_meeting_leaves_nothing_and_reimport_repairs() 
     assert_eq!((r.imported, r.skipped), (1, 0));
     assert_eq!(dst.notes().get_segments("long").unwrap().len(), 1_500);
 }
+
+#[test]
+fn disk_full_is_retryable_unavailable_like_ts() {
+    let db = Db::open_in_memory().unwrap();
+    db.notes().upsert_meeting(&meeting("m", "M", 1)).unwrap();
+    let pages = page_count(&db);
+    db.connection()
+        .execute_batch(&format!("PRAGMA max_page_count = {pages}"))
+        .unwrap();
+    let lines: Vec<_> = (0..500)
+        .map(|i| seg(&format!("s{i}"), i, &"words ".repeat(40)))
+        .collect();
+    let e = db
+        .notes()
+        .replace_segments("m", SegmentSource::Live, &lines)
+        .unwrap_err();
+    assert!(e.to_string().contains("full"), "{e}");
+    assert_eq!(e.code(), "E_UNAVAILABLE");
+    assert!(e.retryable());
+}
+
+#[test]
+fn sql_errors_stay_internal() {
+    let db = Db::open_in_memory().unwrap();
+    let e: qrtz_storage::StorageError = db
+        .connection()
+        .execute_batch("SELECT * FROM no_such_table")
+        .unwrap_err()
+        .into();
+    assert_eq!(e.code(), "E_INTERNAL");
+    assert!(!e.retryable());
+}

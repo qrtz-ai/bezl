@@ -1,6 +1,7 @@
 /**
  * Hardening cycle 3: NoteService host-side scenarios (real worker handlers, no helper needed).
- * N3 index deadline wiring, N9 template change routed through the pipeline, N12 wall clock jumping back.
+ * N3 index deadline wiring, N9 template change routed through the pipeline, N12 wall clock jumping back,
+ * N13 a full disk while the summary is saved.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -56,9 +57,15 @@ afterEach(() => {
   Date.now = realNow;
 });
 
-function rig(fetch: FetchLike) {
+function rig(
+  fetch: FetchLike,
+  hooks: {
+    after?: (method: string, params?: Record<string, unknown>) => void;
+  } = {},
+) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-h3-'));
-  const h = createWorkerHandlers(openDatabase(':memory:'), { fetch });
+  const db = openDatabase(':memory:');
+  const h = createWorkerHandlers(db, { fetch });
   const rpc: Rpc[] = [];
   const worker = {
     async call(method: string, params: unknown, timeoutMs?: number) {
@@ -69,10 +76,17 @@ function rig(fetch: FetchLike) {
       });
       const fn = (h as Record<string, (p: unknown) => unknown>)[method];
       if (!fn) throw new AppError('E_NOT_FOUND', method);
-      const r = await fn(
-        params === undefined ? undefined : JSON.parse(JSON.stringify(params)),
-      );
-      return r === undefined ? r : JSON.parse(JSON.stringify(r));
+      try {
+        const r = await fn(
+          params === undefined ? undefined : JSON.parse(JSON.stringify(params)),
+        );
+        return r === undefined ? r : JSON.parse(JSON.stringify(r));
+      } catch (e) {
+        // What worker.ts posts back: AppError.from(err).toJSON(), rebuilt by WorkerClient.
+        throw AppError.fromJSON(AppError.from(e).toJSON());
+      } finally {
+        hooks.after?.(method, params as Record<string, unknown> | undefined);
+      }
     },
   } as unknown as WorkerClient;
   const base = defaultConfig();
@@ -145,7 +159,7 @@ function rig(fetch: FetchLike) {
       )
     );
   };
-  return { h, note, rpc, bus, meeting, withPipeline, settled };
+  return { db, h, note, rpc, bus, meeting, withPipeline, settled };
 }
 
 async function until(fn: () => boolean, ms = 4000) {
@@ -231,5 +245,66 @@ describe('hardening 3: NoteService', () => {
     expect(skewed).toBe(true);
     expect(calls).toBe(2);
     expect(r.h['pipeline.get']({ id: 'm' })!.steps.summary.status).toBe('done');
+  });
+
+  it('N13: a full disk while the LLM summary is saved retries once space frees up (not failed + stuck processing)', async () => {
+    let calls = 0;
+    // A long summary: saving it needs new pages, which a full disk cannot give.
+    const bigReply = () =>
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  summary: 'We agreed on the launch plan. '.repeat(800),
+                  actionItems: [],
+                  qa: [],
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    let full = false;
+    const r = rig(
+      async () => {
+        calls++;
+        return bigReply();
+      },
+      {
+        after: (method) => {
+          // The disk frees up right after the failed save.
+          if (method === 'note.stepSummary' && full) {
+            full = false;
+            r.db.exec('PRAGMA max_page_count = 1073741823');
+          }
+        },
+      },
+    );
+    r.withPipeline('m');
+    const origStep = r.h['note.stepSummary'];
+    let first = true;
+    r.h['note.stepSummary'] = (p) => {
+      if (first && !p.fallback) {
+        first = false;
+        full = true;
+        const pages = (
+          r.db.prepare('PRAGMA page_count').get() as { page_count: number }
+        ).page_count;
+        r.db.exec(`PRAGMA max_page_count = ${pages}`);
+      }
+      return origStep(p);
+    };
+    await r.note.recover();
+    await until(() => r.settled('m'), 3000);
+    const p = r.h['pipeline.get']({ id: 'm' })!;
+    expect(p.steps.summary.status).toBe('done');
+    expect(p.steps.summary.fallback).toBeFalsy();
+    expect(calls).toBe(2);
+    const d = r.h['note.get']({ id: 'm' });
+    expect(d.summary?.provider).not.toBe('extractive');
+    expect(d.meeting.status).toBe('done');
   });
 });

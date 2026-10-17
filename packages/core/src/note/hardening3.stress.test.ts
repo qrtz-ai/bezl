@@ -1,8 +1,11 @@
 /**
  * Hardening cycle 3 stress scenarios (keep running on every `npm test`). See docs/hardening/LOG.md.
  * LLM transport after a 200 (N8), OpenRouter error bodies, malformed model replies; search across one huge
- * meeting (N10); nested atomic blocks (N11).
+ * meeting (N10); nested atomic blocks (N11); disk full / busy classified retryable (N13).
  */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import { AppError } from '../errors';
@@ -223,5 +226,70 @@ describe('hardening 3: repo.tx nests (N11)', () => {
     db.exec('PRAGMA max_page_count = 1073741823');
     repo.replaceSegments('m', 'live', big);
     expect(repo.getSegments('m')).toHaveLength(2_000);
+  });
+});
+
+describe('hardening 3: storage errors a later attempt can outlive are retryable (N13)', () => {
+  const thrown = (fn: () => unknown): unknown => {
+    try {
+      fn();
+    } catch (e) {
+      return e;
+    }
+    throw new Error('expected a throw');
+  };
+
+  it('disk full (SQLITE_FULL) → E_UNAVAILABLE, retryable', () => {
+    const { db, repo } = repoWith();
+    repo.upsertMeeting(meetingRow('m', 'M', 1));
+    const pages = (
+      db.prepare('PRAGMA page_count').get() as { page_count: number }
+    ).page_count;
+    db.exec(`PRAGMA max_page_count = ${pages}`);
+    const e = AppError.from(
+      thrown(() =>
+        repo.replaceSegments(
+          'm',
+          'live',
+          Array.from({ length: 500 }, (_, i) => ({
+            id: `s${i}`,
+            startMs: i,
+            endMs: i + 1,
+            text: 'words '.repeat(40),
+            source: 'live' as const,
+          })),
+        ),
+      ),
+    );
+    expect(e.message).toMatch(/full/);
+    expect(e.code).toBe('E_UNAVAILABLE');
+    expect(e.retryable).toBe(true);
+  });
+
+  it('a locked database (SQLITE_BUSY from a second connection) → E_UNAVAILABLE, retryable', () => {
+    const file = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-busy-')),
+      'x.db',
+    );
+    const a = new DatabaseSync(file);
+    migrate(a, migrations);
+    const b = new DatabaseSync(file);
+    b.exec('PRAGMA busy_timeout = 0');
+    a.exec('BEGIN IMMEDIATE');
+    const e = AppError.from(
+      thrown(() => new NoteRepo(b).upsertMeeting(meetingRow('m', 'M', 1))),
+    );
+    a.exec('ROLLBACK');
+    expect(e.code).toBe('E_UNAVAILABLE');
+    expect(e.retryable).toBe(true);
+  });
+
+  it('a constraint or SQL error stays E_INTERNAL, not retryable', () => {
+    const { db } = repoWith();
+    const e = AppError.from(
+      thrown(() => db.exec('SELECT * FROM no_such_table')),
+    );
+    expect(e.code).toBe('E_INTERNAL');
+    expect(e.retryable).toBe(false);
   });
 });
