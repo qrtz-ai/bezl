@@ -61,7 +61,7 @@ final class MicCapture: @unchecked Sendable {
 /// aggregate device whose IOProc delivers what every app is playing. Requires the "System Audio Recording" TCC grant
 /// (prompted on first use). Mic audio is mixed in. [MAC-VERIFY]
 @available(macOS 14.2, *)
-final class CoreAudioTapSource: AudioSource, @unchecked Sendable {
+final class CoreAudioTapSource: QrtzHelperCore.AudioSource, @unchecked Sendable {
     let name = "core-audio-tap"
     private var tapID = AudioObjectID(kAudioObjectUnknown)
     private var aggregateID = AudioObjectID(kAudioObjectUnknown)
@@ -178,7 +178,7 @@ final class LocalVqeEnhancer: MicEnhancer, @unchecked Sendable {
 }
 
 /// Fallback: ScreenCaptureKit audio-only stream of the main display (macOS 13+; needs Screen Recording). Mic mixed in.
-final class ScreenCaptureKitSource: NSObject, AudioSource, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
+final class ScreenCaptureKitSource: NSObject, QrtzHelperCore.AudioSource, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
     let name = "screencapturekit"
     private var stream: SCStream?
     private let queue = DispatchQueue(label: "qrtz.sck", qos: .userInteractive)

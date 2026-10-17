@@ -5,7 +5,7 @@ import QrtzHelperCore
 func makePlatformDeps(version: String) -> HelperDeps {
     // Shared between the AX layer (who is speaking, who am I) and the audio path (mic echo gate).
     let context = MeetingContext()
-    var audio: [AudioSource] = []
+    var audio: [QrtzHelperCore.AudioSource] = []
     var features = ["ax", "ax.observer"]
     // H6 mux: one AVAudioEngine mic tap shared by meeting capture and dictation.
     let micHub = MicHub(source: DictationMicSource())
