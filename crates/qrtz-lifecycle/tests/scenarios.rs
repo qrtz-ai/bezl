@@ -70,6 +70,8 @@ struct Shared {
     trace: Mutex<Trace>,
     up: AtomicBool,
     failing: Mutex<HashSet<String>>,
+    /// Undo tombstones (`pendingDelete` op).
+    tombstones: Arc<Mutex<HashSet<String>>>,
     outcomes: Mutex<HashMap<&'static str, VecDeque<String>>>,
 }
 
@@ -479,6 +481,10 @@ impl Run {
             retry_scale: self.sc["retryScale"].as_f64().unwrap_or(1.0),
             fault_step: self.sc["faultStep"].as_str().and_then(StepId::parse),
             default_title: Arc::new(utc_recording_title),
+            pending_delete: Some({
+                let t = self.sh.tombstones.clone();
+                Arc::new(move |id: &str| t.lock().unwrap().contains(id))
+            }),
         };
         let rt = NoteRuntime::new(deps);
         let r2 = rt.clone();
@@ -727,6 +733,13 @@ impl Run {
                         }
                     }
                 }
+                "pendingDelete" => {
+                    self.sh
+                        .tombstones
+                        .lock()
+                        .unwrap()
+                        .insert(op["id"].as_str().unwrap().to_string());
+                }
                 "store" => {
                     let mut f = self.sh.failing.lock().unwrap();
                     for m in op["fail"].as_array().into_iter().flatten() {
@@ -860,6 +873,7 @@ fn run_one(file: &Path) -> Result<(), String> {
                 trace: Mutex::new(Trace::default()),
                 up: AtomicBool::new(true),
                 failing: Mutex::new(HashSet::new()),
+                tombstones: Arc::new(Mutex::new(HashSet::new())),
                 outcomes: Mutex::new(HashMap::new()),
             }),
             db,

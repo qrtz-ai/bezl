@@ -143,6 +143,7 @@ export function bootstrap() {
     secrets,
     config: () => config.get(),
     recordingsDir,
+    pendingDelete: (id) => pendingDeletes.has(id),
     ...(process.env.QRTZ_RETRY_SCALE && !app.isPackaged
       ? { retryScale: Number(process.env.QRTZ_RETRY_SCALE) }
       : {}),

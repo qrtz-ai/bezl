@@ -82,6 +82,8 @@ function run(sc: Scenario) {
     index: [],
   };
   const failing = new Set<string>();
+  /** Undo tombstones (`pendingDelete` op): deletes the user confirmed that have not run yet. */
+  const tombstones = new Set<string>();
   const base = defaultConfig();
   const config = {
     ...base,
@@ -243,6 +245,7 @@ function run(sc: Scenario) {
         trace.prompts.push(`${title}|${platform}`),
       retryScale: sc.retryScale ?? 1,
       ...(sc.faultStep ? { faultStep: sc.faultStep } : {}),
+      pendingDelete: (id) => tombstones.has(id),
     });
     void life.note.recover();
     return life;
@@ -516,6 +519,9 @@ function run(sc: Scenario) {
           case 'steps':
             for (const k of ['finalize', 'summary', 'index'])
               outcomes[k]!.push(...(((op[k] as Outcome[]) ?? []) as Outcome[]));
+            break;
+          case 'pendingDelete':
+            tombstones.add(op.id as string);
             break;
           case 'store':
             for (const m of (op.fail as string[]) ?? []) failing.add(m);

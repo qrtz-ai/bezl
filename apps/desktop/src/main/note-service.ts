@@ -143,6 +143,11 @@ export class NoteService {
       retryScale?: number;
       /** Fault injection for e2e (unpackaged builds only): fail the first attempt of this step. */
       faultStep?: StepId;
+      /**
+       * Meetings the user already deleted whose deferred delete has not run yet (undo tombstones). Recovery
+       * never resumes their post-processing: no cloud summary of a deleted meeting after a relaunch (N17).
+       */
+      pendingDelete?: (id: string) => boolean;
     },
   ) {
     this.scale = deps.retryScale ?? 1;
@@ -1350,6 +1355,7 @@ export class NoteService {
       if (
         saved &&
         saved.meetingId &&
+        !this.deps.pendingDelete?.(saved.meetingId) &&
         (isCapturing(saved.phase) || saved.phase === 'stopping')
       ) {
         const existing = await this.deps.worker.call('pipeline.get', {
@@ -1380,6 +1386,7 @@ export class NoteService {
         'pipeline.orphans',
         undefined as never,
       )) {
+        if (this.deps.pendingDelete?.(m.id)) continue;
         await this.persistPipeline(
           newPipeline(
             m.id,
@@ -1400,10 +1407,12 @@ export class NoteService {
       if (saved && saved.phase !== 'idle')
         this.persistSession(this.machine.state);
       this.deps.bus.emit('note:session', this.view());
-      const pending = await this.deps.worker.call(
-        'pipeline.listUnsettled',
-        undefined as never,
-      );
+      const pending = (
+        await this.deps.worker.call(
+          'pipeline.listUnsettled',
+          undefined as never,
+        )
+      ).filter((p) => !this.deps.pendingDelete?.(p.meetingId));
       for (const raw of pending) {
         // A step caught mid-run by the crash is re-run (every step is idempotent); attempts are kept.
         const p = resumeAfterRestart(raw);

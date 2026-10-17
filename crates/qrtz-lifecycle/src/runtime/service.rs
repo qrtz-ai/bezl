@@ -49,7 +49,13 @@ pub struct RuntimeDeps {
     /// Title of an untitled recording (TS `Recording ${new Date(now).toLocaleString()}`); the shell injects a
     /// localized one, [`utc_recording_title`] is the default.
     pub default_title: Arc<dyn Fn(EpochMs) -> String + Send + Sync>,
+    /// Meetings the user already deleted whose deferred delete has not run yet (undo tombstones). Recovery never
+    /// resumes their post-processing (N17; TS `pendingDelete`). `None`: no deferred deletes in this shell.
+    pub pending_delete: Option<PendingDelete>,
 }
+
+/// [`RuntimeDeps::pending_delete`]: is this meeting's delete confirmed but not yet run?
+pub type PendingDelete = Arc<dyn Fn(&str) -> bool + Send + Sync>;
 
 /// `Recording YYYY-MM-DD HH:MM` (UTC).
 pub fn utc_recording_title(now: EpochMs) -> String {
@@ -1854,6 +1860,10 @@ impl Shared {
         report
     }
 
+    fn pending_delete(&self, id: &str) -> bool {
+        self.d.pending_delete.as_ref().is_some_and(|f| f(id))
+    }
+
     async fn recover_inner(self: Arc<Self>, report: &mut RecoverReport) -> Result<(), LifecycleError> {
         let saved = self.d.store.load_session().await?;
         let now = self.now();
@@ -1862,6 +1872,7 @@ impl Shared {
                 .meeting_id
                 .clone()
                 .filter(|_| is_capturing(saved.phase) || saved.phase == RecordingPhase::Stopping)
+                .filter(|id| !self.pending_delete(id))
             {
                 if self.d.store.get_pipeline(mid.clone()).await?.is_none() {
                     tracing::warn!(id = %mid, "app died mid-recording; recovering");
@@ -1880,6 +1891,9 @@ impl Shared {
             }
         }
         for m in self.d.store.orphans().await? {
+            if self.pending_delete(&m.id) {
+                continue;
+            }
             let ctx = PipelineContext {
                 started_at: m.started_at,
                 ended_at: m.ended_at.unwrap_or(now),
@@ -1898,7 +1912,8 @@ impl Shared {
             self.persist_session(s);
         }
         self.emit_session();
-        let pending = self.d.store.list_unsettled().await?;
+        let mut pending = self.d.store.list_unsettled().await?;
+        pending.retain(|p| !self.pending_delete(&p.meeting_id));
         for p in &pending {
             let p = resume_after_restart(p.clone());
             self.lock().pipelines.insert(p.meeting_id.clone(), p.clone());
