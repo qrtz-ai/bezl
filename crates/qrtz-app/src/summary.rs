@@ -297,7 +297,13 @@ pub struct OnDeviceSummaries {
     turn: tokio::sync::Mutex<()>,
     /// Map results of meetings that didn't finish, so a retry resumes (N114).
     cache: std::sync::Mutex<PartCache>,
+    /// N123: meetings whose delete is pending (tombstoned, undo window open). Their part summaries are never
+    /// read or written. `None`: deletes run at once.
+    pending_delete: Option<PendingDelete>,
 }
+
+/// Is this meeting id pending delete? (The app wires the runtime's tombstone store.)
+pub type PendingDelete = Arc<dyn Fn(&str) -> bool + Send + Sync>;
 
 /// A transcript piece already handled in an unfinished attempt.
 #[derive(Clone)]
@@ -307,29 +313,47 @@ enum Piece {
     Split,
 }
 
-/// Per meeting id: piece key → [`Piece`]. In memory only, bounded to [`CACHED_MEETINGS`], dropped on success.
+/// Per meeting id: piece key → [`Piece`]. In memory only, bounded to [`CACHED_MEETINGS`], dropped on success
+/// and on delete (N123).
 #[derive(Default)]
-struct PartCache(VecDeque<(String, HashMap<u64, Piece>)>);
+struct PartCache {
+    meetings: VecDeque<(String, HashMap<u64, Piece>)>,
+    /// How many times each meeting was deleted in this process (N123): an attempt that started before a delete
+    /// never writes the deleted meeting's pieces back.
+    deletes: HashMap<String, u64>,
+}
 
 impl PartCache {
+    fn deletes(&self, id: &str) -> u64 {
+        self.deletes.get(id).copied().unwrap_or(0)
+    }
     fn get(&self, id: &str, key: u64) -> Option<Piece> {
-        self.0
+        self.meetings
             .iter()
             .find(|(m, _)| m == id)
             .and_then(|(_, h)| h.get(&key).cloned())
     }
-    fn put(&mut self, id: &str, key: u64, p: Piece) {
-        if let Some((_, h)) = self.0.iter_mut().find(|(m, _)| m == id) {
+    /// Stores the piece unless the meeting was deleted since the attempt began (`deletes` then).
+    fn put(&mut self, id: &str, deletes: u64, key: u64, p: Piece) {
+        if self.deletes(id) != deletes {
+            return;
+        }
+        if let Some((_, h)) = self.meetings.iter_mut().find(|(m, _)| m == id) {
             h.insert(key, p);
             return;
         }
-        if self.0.len() >= CACHED_MEETINGS {
-            self.0.pop_front();
+        if self.meetings.len() >= CACHED_MEETINGS {
+            self.meetings.pop_front();
         }
-        self.0.push_back((id.to_string(), HashMap::from([(key, p)])));
+        self.meetings
+            .push_back((id.to_string(), HashMap::from([(key, p)])));
     }
     fn forget(&mut self, id: &str) {
-        self.0.retain(|(m, _)| m != id);
+        self.meetings.retain(|(m, _)| m != id);
+    }
+    fn deleted(&mut self, id: &str) {
+        self.forget(id);
+        *self.deletes.entry(id.to_string()).or_default() += 1;
     }
 }
 
@@ -373,7 +397,30 @@ impl OnDeviceSummaries {
             nonce: None,
             turn: tokio::sync::Mutex::new(()),
             cache: std::sync::Mutex::default(),
+            pending_delete: None,
         }
+    }
+
+    /// N123: never read or write the part summaries of a meeting this says is pending delete.
+    pub fn with_pending_delete(mut self, f: PendingDelete) -> Self {
+        self.pending_delete = Some(f);
+        self
+    }
+
+    /// N123: the meeting was deleted (or its delete scheduled): drop its part summaries, and make sure an attempt
+    /// still running for it doesn't store them again. A meeting with this id summarized later starts over.
+    pub fn forget(&self, id: &str) {
+        self.cache().deleted(id);
+    }
+
+    /// Meetings with cached part summaries (tests).
+    #[doc(hidden)]
+    pub fn cached_meetings(&self) -> usize {
+        self.cache().meetings.len()
+    }
+
+    fn pending_delete(&self, id: &str) -> bool {
+        self.pending_delete.as_ref().is_some_and(|f| f(id))
     }
 
     /// One meeting's budget from its part count (N114): every map call, about one reduce call per two parts and the
@@ -475,9 +522,17 @@ impl OnDeviceSummaries {
     ) -> Result<Vec<SummaryReply>, OnDeviceError> {
         let mut queue: VecDeque<(String, u32)> = parts.into_iter().map(|p| (p, 0)).collect();
         let mut done: Vec<SummaryReply> = Vec::new();
+        let deletes = self.cache().deletes(id);
         while let Some((body, depth)) = queue.pop_front() {
             let key = piece_key(&c.title, &body);
-            let cached = self.cache().get(id, key);
+            // N123: a meeting pending delete keeps nothing: no read, no write, and what it had is dropped.
+            let hidden = self.pending_delete(id);
+            let cached = if hidden {
+                self.cache().forget(id);
+                None
+            } else {
+                self.cache().get(id, key)
+            };
             match cached {
                 Some(Piece::Done(r)) => {
                     done.push(r);
@@ -497,13 +552,15 @@ impl OnDeviceSummaries {
             match self.call(stage, prompt, until).await {
                 Ok(r) => {
                     // A whole-meeting (single) reply carries the template's guidance: not reused.
-                    if stage == Stage::Map {
-                        self.cache().put(id, key, Piece::Done(r.clone()));
+                    if stage == Stage::Map && !self.pending_delete(id) {
+                        self.cache().put(id, deletes, key, Piece::Done(r.clone()));
                     }
                     done.push(r);
                 }
                 Err(OnDeviceError::Context) if depth < MAX_SPLITS => {
-                    self.cache().put(id, key, Piece::Split);
+                    if !self.pending_delete(id) {
+                        self.cache().put(id, deletes, key, Piece::Split);
+                    }
                     let (a, b) = halves(&body);
                     queue.push_front((b, depth + 1));
                     queue.push_front((a, depth + 1));

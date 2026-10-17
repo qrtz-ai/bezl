@@ -156,6 +156,9 @@ pub struct Booted {
     pub dirs: AppDirs,
     pub db: StorageHandle,
     pub runtime: NoteRuntime,
+    /// The on-device summary engine (`None` when the caller passed its own `steps`). `note:delete` forgets a
+    /// meeting's cached part summaries through it (N123).
+    pub summaries: Option<Arc<crate::summary::OnDeviceSummaries>>,
 }
 
 /// Inputs to [`boot`].
@@ -190,16 +193,27 @@ pub fn boot(o: BootOptions) -> std::io::Result<Booted> {
             .unwrap_or(0)
     });
     // ADR 0075: summaries are on this Mac only (Apple Intelligence through the helper); no provider is called.
-    let steps = o.steps.unwrap_or_else(|| {
-        Arc::new(crate::summary::SummarySteps {
-            db: db.clone(),
-            inner: Arc::new(CoreSteps { db: db.clone() }),
-            now: now.clone(),
-            on_device: Arc::new(crate::summary::OnDeviceSummaries::new(
+    let (steps, summaries) = match o.steps {
+        Some(s) => (s, None),
+        None => {
+            let mut e = crate::summary::OnDeviceSummaries::new(
                 o.summarizer.unwrap_or_else(|| Arc::new(crate::summary::NoModel)),
-            )),
-        })
-    });
+            );
+            // N123: the same tombstones `rt.pending_deletes()` lists (read here directly: the runtime owns this
+            // engine, so a closure over the runtime would be a reference cycle).
+            if let Some(pd) = o.pending_delete.clone() {
+                e = e.with_pending_delete(Arc::new(move |id: &str| pd.has(id)));
+            }
+            let e = Arc::new(e);
+            let steps: Arc<dyn StepExecutor> = Arc::new(crate::summary::SummarySteps {
+                db: db.clone(),
+                inner: Arc::new(CoreSteps { db: db.clone() }),
+                now: now.clone(),
+                on_device: e.clone(),
+            });
+            (steps, Some(e))
+        }
+    };
     let runtime = NoteRuntime::new(RuntimeDeps {
         store: Arc::new(Store(db.clone())),
         steps,
@@ -215,7 +229,12 @@ pub fn boot(o: BootOptions) -> std::io::Result<Booted> {
         default_title: Arc::new(utc_recording_title),
         pending_delete: o.pending_delete,
     });
-    Ok(Booted { dirs, db, runtime })
+    Ok(Booted {
+        dirs,
+        db,
+        runtime,
+        summaries,
+    })
 }
 
 /// Everything the Tauri shell (and the headless tests) need to assemble the app in one call.
@@ -355,7 +374,10 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     let service = crate::AppService::new(crate::AppDeps {
         info: b.info,
         config,
-        runtime: Arc::new(NoteRuntimePort::new(booted.runtime.clone(), availability)),
+        runtime: Arc::new(
+            NoteRuntimePort::new(booted.runtime.clone(), availability)
+                .forget_summaries_on_delete(booted.summaries.clone()),
+        ),
         storage: Arc::new(storage),
         talk,
         shell: b.shell,

@@ -11,6 +11,7 @@ use qrtz_model::{HelperHealth, OsPermission, StepId, StopReason};
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 /// What capture backend this run has (Electron `helperAvailability`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,6 +31,8 @@ pub struct NoteRuntimePort {
     pub runtime: NoteRuntime,
     availability: HelperAvailability,
     was_running: AtomicBool,
+    /// N123: `note:delete` (at once or scheduled) drops the meeting's cached part summaries here.
+    summaries: Option<Arc<crate::summary::OnDeviceSummaries>>,
 }
 
 impl NoteRuntimePort {
@@ -45,7 +48,14 @@ impl NoteRuntimePort {
             runtime,
             availability,
             was_running: AtomicBool::new(false),
+            summaries: None,
         }
+    }
+
+    /// N123: forget a deleted meeting's part summaries in this engine (the app's; `boot` returns it).
+    pub fn forget_summaries_on_delete(mut self, e: Option<Arc<crate::summary::OnDeviceSummaries>>) -> Self {
+        self.summaries = e;
+        self
     }
 }
 
@@ -89,6 +99,10 @@ impl RuntimePort for NoteRuntimePort {
                 let id: String = field(&p, "id")?;
                 let defer = p["deferMs"].as_f64().unwrap_or(0.0).max(0.0) as u64;
                 rt.schedule_delete(&id, defer).await.map_err(app_error)?;
+                // N123: deleted or tombstoned, its part summaries go now (an undo just summarizes from the start).
+                if let Some(e) = &self.summaries {
+                    e.forget(&id);
+                }
                 Ok(json!({ "ok": true }))
             }
             "note:undo-delete" => {
