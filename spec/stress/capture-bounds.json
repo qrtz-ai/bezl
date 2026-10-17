@@ -1,0 +1,20 @@
+{
+  "description": "Hardening cycle 6 stress: a capture source that flaps silent/audible for hours, a helper restart loop of capture fallbacks with huge error text. The session row and the capture report stay bounded, cuts are code-point safe, and the TS and Rust runtimes agree. Run by packages/core/src/note/lifecycle.hardening6.test.ts and crates/qrtz-lifecycle/tests/hardening6.rs.",
+  "startedAt": 1760000000000,
+  "flaps": 2000,
+  "periodMs": 61000,
+  "silentForMs": 400,
+  "source": "mic",
+  "fallbacks": 50,
+  "reasonUnit": "🎙️ device busy é ",
+  "reasonRepeat": 400,
+  "expect": {
+    "silentSpans": 256,
+    "first": { "source": "mic", "startMs": 0, "endMs": 400 },
+    "last": { "source": "mic", "startMs": 15555000, "endMs": 15555400 },
+    "fallbacks": 8,
+    "reasonCodePoints": 200,
+    "reportSpansWithOpen": 256,
+    "maxSessionJsonBytes": 40000
+  }
+}
