@@ -283,8 +283,33 @@ final class DictationTailTests: XCTestCase {
         for _ in 0..<6 { try? await Task.sleep(nanoseconds: 50_000_000); cb(level(5, 1360)) }
         await stop.value
         XCTAssertEqual(asr.lock.withLock { asr.appendsWhileFinishing }, 0)
-        XCTAssertEqual(stoppedText(out.value), "w1")
-        XCTAssertTrue(out.value.contains(.dictationStopped(id: "d1", text: "w1", durationMs: 560)))
+        // The first block the tap delivers after the release (the one it was filling) is in; the later ones aren't.
+        XCTAssertEqual(stoppedText(out.value), "w1 w5")
+        XCTAssertTrue(out.value.contains(.dictationStopped(id: "d1", text: "w1 w5", durationMs: (8960 + 1360) / 16)))
+    }
+
+    func testTheShortTailWaitsForTheBlockTheTapWasFillingAtTheRelease() async {
+        // 50 ms tail; the tap's next block comes 90 ms after the release (≈ one 85 ms block): it carries the end of
+        // the last word ("w7") and must reach the recogniser. Without the next-block wait it fell after the barrier.
+        for wait in [120, 0] {
+            let mic = FakeMic()
+            let (c, out) = controller(ChunkASR(), DictationTail(tailMs: 50, padMs: 640, nextBlockWaitMs: wait), mic: mic)
+            await c.handle(.dictationStart(id: "d1"))
+            guard let cb = mic.cb else { return XCTFail("mic attached") }
+            cb(level(1, 8960))
+            let t = Date()
+            let stop = Task { await c.handle(.dictationStop(id: "d1")) }
+            try? await Task.sleep(nanoseconds: 90_000_000)
+            cb(level(7, 1360))
+            await stop.value
+            let ms = Date().timeIntervalSince(t) * 1000
+            if wait > 0 {
+                XCTAssertEqual(stoppedText(out.value), "w1 w7")
+                XCTAssertLessThan(ms, 400, "release to stopped: tail + one block + pad/finish")
+            } else {
+                XCTAssertEqual(stoppedText(out.value), "w1", "the control: the block after the barrier is lost")
+            }
+        }
     }
 
     func testTheDrainLimitScalesToWhatIsQueued() async {

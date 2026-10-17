@@ -44,8 +44,9 @@ Rules (the arbiter's `cmd` events):
    is cleaned up and the retry succeeds. The host never stops a recording it is capturing itself. A refused
    dictation is not cancelled by its own id (the helper never ran it). Stops and cancels when nothing is running are
    no-ops (`not-recording` / `not-dictating`). `dictation.stop` and `cancel` with a stale id are no-ops too.
-   `dictation.stop` finishes the last words before answering (`DictationTail`). The mic keeps capturing for 250 ms
-   after the release. Then the blocks still queued in the mic stream are drained, waiting up to 300 ms plus 2 ms per
+   `dictation.stop` finishes the last words before answering (`DictationTail`). The mic keeps capturing for 50 ms
+   after the release, then waits (up to 120 ms, inside the drain limit) for the next block from the tap: the one it
+   was filling at the release. Then the blocks still queued in the mic stream are drained, waiting up to 300 ms plus 2 ms per
    ms queued. After the drain, nothing reaches the recogniser: later mic audio is the next dictation's pre-roll.
    Then 640 ms of silence is fed so Nemotron decodes the final partial 560 ms chunk, and the final text is awaited
    for 1.5 s plus 100 ms per second of dictation plus 1 ms per ms queued. Drain and finalize together stay within

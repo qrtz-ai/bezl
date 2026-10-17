@@ -51,7 +51,7 @@ fn the_stop_wait_covers_the_tail_and_flush_and_scales_with_the_dictation() {
         helper_tail: None,
         ..Timeouts::default()
     };
-    // Tail (~250 ms) + at least 1.5 s of flush, for any dictation.
+    // Tail (~50 ms, then up to one tap block) + at least 1.5 s of flush, for any dictation.
     assert!(t.stopped >= 1750, "{}", t.stopped);
     assert_eq!(t.stopped_for(0.0), t.stopped);
     assert_eq!(t.stopped_for(-5.0), t.stopped);

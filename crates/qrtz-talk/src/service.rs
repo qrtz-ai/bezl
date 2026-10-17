@@ -102,8 +102,8 @@ impl IdSource for RandomIds {
 pub struct Timeouts {
     /// `dictation.start` → `dictation.started`.
     pub started: u64,
-    /// `dictation.stop` → `dictation.stopped`: the floor. The helper keeps the mic ~250 ms past the release (the
-    /// tail), then drains what is buffered and flushes the recogniser's last chunk (N124, ADR 0081), so this must
+    /// `dictation.stop` → `dictation.stopped`: the floor. The helper keeps the mic ~50 ms past the release (the
+    /// tail, then up to one more tap block), then drains what is buffered and flushes the recogniser's last chunk (N124, ADR 0081), so this must
     /// cover tail + ≥ 1.5 s of flush. The real wait is [`Timeouts::stopped_for`]: longer for a longer dictation.
     pub stopped: u64,
     /// Extra `dictation.stop` → `dictation.stopped` time per second of dictated audio (a recogniser that fell behind
@@ -178,7 +178,7 @@ pub struct HelperTail {
 impl Default for HelperTail {
     fn default() -> Self {
         HelperTail {
-            tail_ms: 250,
+            tail_ms: 50,
             drain_timeout_ms: 300,
             pad_ms: 640,
             finalize_timeout_ms: 1500,

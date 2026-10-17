@@ -106,10 +106,14 @@ public struct DictationTail: Sendable, Equatable {
     /// The mic stream's backlog (audio captured, not yet handed to the recogniser) is capped here. Past it the mic
     /// stands down for the rest of the dictation (later audio dropped, `error{dictation.backlog}`), never silently.
     public var backlogCapMs: Int
-    public init(tailMs: Int = 250, drainTimeoutMs: Int = 300, padMs: Int = 640, finalizeTimeoutMs: Int = 1500,
-                maxWaitMs: Int = 20_000, backlogCapMs: Int = 20_000) {
+    /// Part of the drain (inside its limit): wait this long at most for the first mic block delivered after the
+    /// tail, so the block the tap was still filling at the release (~85 ms) is in before the barrier. The short tail
+    /// relies on this, and the pad protects the last word's decoding.
+    public var nextBlockWaitMs: Int
+    public init(tailMs: Int = 50, drainTimeoutMs: Int = 300, padMs: Int = 640, finalizeTimeoutMs: Int = 1500,
+                maxWaitMs: Int = 20_000, backlogCapMs: Int = 20_000, nextBlockWaitMs: Int = 120) {
         self.tailMs = tailMs; self.drainTimeoutMs = drainTimeoutMs; self.padMs = padMs; self.finalizeTimeoutMs = finalizeTimeoutMs
-        self.maxWaitMs = maxWaitMs; self.backlogCapMs = backlogCapMs
+        self.maxWaitMs = maxWaitMs; self.backlogCapMs = backlogCapMs; self.nextBlockWaitMs = nextBlockWaitMs
     }
     public func drainLimitMs(queuedMs: Int) -> Int { min(maxWaitMs, drainTimeoutMs + 2 * max(0, queuedMs)) }
     public func finalizeLimitMs(audioMs: Int, queuedMs: Int) -> Int {
@@ -134,7 +138,7 @@ final class FirstOf: @unchecked Sendable {
 /// is reported, so a recogniser that can't keep up never grows memory without bound or loses audio silently.
 final class MicBacklog: @unchecked Sendable {
     private let lock = NSLock()
-    private var queued = 0, dropped = 0, down = false
+    private var queued = 0, dropped = 0, down = false, yielded = 0
     let cap: Int
     init(cap: Int) { self.cap = cap }
     /// `ok`: yield it. `first`: this is the block that stood the mic down.
@@ -142,11 +146,13 @@ final class MicBacklog: @unchecked Sendable {
         lock.withLock {
             if down { dropped += n; return (false, false) }
             if queued + n > cap { down = true; dropped += n; return (false, true) }
-            queued += n; return (true, false)
+            queued += n; yielded += 1; return (true, false)
         }
     }
     func took(_ n: Int) { lock.withLock { queued -= n } }
     var queuedSamples: Int { lock.withLock { queued } }
+    /// Blocks the tap handed to the stream so far.
+    var yieldedBlocks: Int { lock.withLock { yielded } }
     var droppedSamples: Int { lock.withLock { dropped } }
     var stoodDown: Bool { lock.withLock { down } }
     func rearm() { lock.withLock { down = false; dropped = 0 } }
@@ -448,6 +454,10 @@ public actor DictationEngine {
     /// Waits (bounded) until the mic stream has handed over every block it had queued. False: it timed out.
     func drainMic(limitMs: Int) async -> Bool {
         guard let input = micIn, micRunning else { return true }
+        let start = ContinuousClock.now
+        if tail.nextBlockWaitMs > 0, limitMs > 0 { await nextBlock(limitMs: min(tail.nextBlockWaitMs, limitMs)) }
+        let used = start.duration(to: .now)
+        let limitMs = max(0, limitMs - Int(used.components.seconds) * 1000 - Int(used.components.attoseconds / 1_000_000_000_000_000))
         drainTimedOut = false
         await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
             drainWaiters.append(c)
@@ -460,6 +470,15 @@ public actor DictationEngine {
         return !drainTimedOut
     }
     var drainTimedOut = false
+
+    /// Waits (bounded; a timeout is not a failure) until the tap has yielded a block after this call, so that block
+    /// (the one it was filling at the release) is queued ahead of the drain barrier.
+    func nextBlock(limitMs: Int) async {
+        guard let bl = backlog else { return }
+        let seen = bl.yieldedBlocks
+        let deadline = ContinuousClock.now + .milliseconds(limitMs)
+        while bl.yieldedBlocks == seen, ContinuousClock.now < deadline { try? await Task.sleep(nanoseconds: 5_000_000) }
+    }
 
     func releaseDrainWaiters(_ ms: Int) {
         let w = drainWaiters; drainWaiters.removeAll()

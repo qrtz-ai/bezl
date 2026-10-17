@@ -51,8 +51,8 @@ fn the_host_copy_of_the_helper_tail_matches_dictation_swift() {
 }
 
 /// For every dictation length and every backlog it could have (queued ≤ captured), talk waits at least as long as
-/// the helper may take. Before: a 1 s dictation fully queued (helper 5150 ms) got 3100 ms, and anything past ~3 min
-/// hit the 20 s cap under the helper's 21.75 s.
+/// the helper may take. Before: a 1 s dictation fully queued (helper 4950 ms with the 50 ms tail, 5150 ms with the
+/// old 250 ms one) got 3100 ms, and anything past ~3 min hit the 20 s cap under the helper's 21.55 s (was 21.75 s).
 #[test]
 fn talk_never_gives_up_before_the_helper_does() {
     let t = Timeouts::default();
