@@ -1,6 +1,22 @@
 # Changelog
 
-## Unreleased: Tauri only
+## 0.2.0 (2026-10-17)
+
+### Highlights
+
+- **One native app:** qrtz is now a single Tauri 2 app with a Rust core. Electron is gone, and it uses about 240 MB less memory.
+- **Entirely offline:** no cloud speech, no cloud summaries, no API keys and no key storage. The only network use is downloading the signed speech models.
+- **New names:** dictation is **echo** and the meeting recorder is **nano**.
+- **On-device Nemotron with speaker labels:** nano transcribes your mic and the call separately with Nemotron 0.6B and labels who spoke. echo uses Nemotron too, without speaker labels, to stay fast.
+- **Apple Intelligence summaries:** meeting summaries, action items and Q&A are written on your Mac by Apple's on-device model, including meetings longer than 4 hours.
+- **Globe key fix:** holding fn for echo no longer switches your input language. You can turn this off in settings.
+- **echo is faster:** there's no AI cleanup step, and the popup stays up until your text is inserted.
+- **Chat removed:** the "ask" feature and its search model are gone. Search still uses full-text matching.
+- **bun:** `bun install && bun start`.
+
+### Details
+
+#### Tauri only
 
 - **Speaker labels on the Mac (ADR 0079):** recordings are transcribed with Nemotron (on-device) per channel, your mic and the call separately, and each channel is diarized, so the transcript says who spoke ("me", "speaker 1", or the call's names). Talk uses Nemotron too, without speaker labels, and stays loaded for a fast first press. The models (about 845 MB) download in onboarding or settings → speech, with progress, pause and resume; nothing downloads on first use anymore. Parakeet is gone, echo cancellation uses the downloaded model (or the echo gate without it), and the Apple speech backup is used only if macOS already has its assets.
 - **Talk fix:** pressing fn did nothing after the globe-key change. The globe blocker no longer reports the key itself; a separate listen-only watch does, like before, so blocking the globe action can't break push-to-talk. If qrtz can't watch the push key, it now says so instead of staying silent.
@@ -31,7 +47,7 @@
 - **The talk pill goes the instant you release the key:** the final text and the insert finish in the background. A failure (for example nothing could insert, so the text went to the clipboard) briefly shows the pill again with the error, or posts a notification when the pill is off.
 - **bun replaces npm:** `bun install && bun start`. `bun.lock`, bun workspaces; no separate Node needed.
 
-## Unreleased: helper mux + TCC revocation (H5/H6)
+#### helper mux + TCC revocation (H5/H6)
 
 - **Speakers per channel in recordings (Bozniak; ADR 0058 §12):** with the speech module, mic and system audio are diarized apart, and each line keeps its channel's speaker id (`mic:0`, `system:1`). The mic's main voice is "me" by default and can be renamed; another voice on the same mic is its own speaker, never folded into "me", and a mic line with no diarized voice gets no speaker. Everyone else is "speaker n" in order of first appearance; meeting-app (AX) names still name system speakers, never the mic. A rename survives a finalize retry. Meetings without diarization keep the AX-only names as before. No migration.
 
@@ -80,7 +96,7 @@
 - **Long meetings are summarized end to end (Bozniak cycle 5, N21):** over the prompt budget, the transcript is sent as evenly spaced windows of whole lines across the meeting, with `[… a–b not shown …]` markers, instead of only its first and last half hour. It never exceeds the budget. ADR 0022. More delete coverage: scenario `N24-delete-refused-starting-reconnecting`, and ADR 0023 records the refuse-not-discard decision. ADR 0024 proposes WAV gap padding (H7).
 - One pure arbiter in TS and Swift with shared vectors (`spec/vectors/helper/arbiter.json`). Mock helper: `QRTZ_MOCK_REVOKE="microphone@1500"`.
 
-## Unreleased: qrtz talk
+#### qrtz talk
 
 - **qrtz talk (dictation):** a new `talk` tab. Hold fn (configurable) or press ⌘⇧Space to dictate into any app. A floating pill that never takes focus shows the mic level and streaming text. When you let go, the text is finalized, cleaned up and inserted.
 - **Pluggable streaming ASR:** cloud WebSocket engines (ElevenLabs Scribe v2 Realtime, Deepgram Nova-3) are the primary when a key is saved in Settings (Keychain via safeStorage, never committed). The helper's on-device Parakeet stream always runs alongside, with automatic failover on socket error, a stalled stream, a late final or empty text. Settings → Talk → Speech engine (auto, ElevenLabs, Deepgram, on-device). Local-only privacy forces on-device.
@@ -90,7 +106,7 @@
 - **Toggles:** dictation, fall back to on-device, warm mic, clean up text, AI cleanup, insert into app, restore clipboard, floating pill and keep history.
 - Research and recommendation: `docs/research-talk.md`.
 
-## Unreleased: redesign
+#### redesign
 
 - **One font:** Geist Pixel (Square, OFL-1.1, bundled locally) for everything, on a pixel-grid type scale (display, h1, h2, h3, bodyLg, body, bodySm, caption, label, mono, code; nothing below 13.158px). Typography lives only in `@qrtz/ui`, through `Text`, `Heading`, `Label`, `Code`/`Mono` and `Link`.
 - **Layout:** the sidebar and Home dashboard are gone. Tiny bottom tabs (note, settings; gallery only in dev builds) sit under a full-window content area. Note has two panes: the meeting list with Record on the left, and the selected meeting on the right (transcript first; summary, notes and ask one tab away). Secondary actions are in a "more" menu, and search is behind a toggle and ⌘K.
