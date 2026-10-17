@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { build, type Rolldown } from 'vite';
 
-// ADR 0088: the HUD and the talk pill are their own pages. Their bundles must not pull in the shell, its
+// ADR 0090: the HUD and the talk pill are their own pages. Their bundles must not pull in the shell, its
 // router or any sub app, and every page carries the same dev CSP.
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 

@@ -5,7 +5,7 @@ Status as of M0 (2026-10-16). Items marked ☐ are tracked in PLAN.md.
 ## Renderer
 
 - ☑ `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`, `webSecurity: true`. The e2e test asserts there's no `require` in the renderer.
-- ☑ Strict CSP in `index.html`, `hud.html` and `pill.html` (`default-src 'self'; script-src 'self'`; the same meta on all three, ADR 0088).
+- ☑ Strict CSP in `index.html`, `hud.html` and `pill.html` (`default-src 'self'; script-src 'self'`; the same meta on all three, ADR 0090).
 - ☑ The preload exposes only `qrtzTransport.invoke/on`. There's no raw `ipcRenderer` and no Node APIs.
 - ☑ `window.open` is denied (https links go to the system browser), `will-navigate` is limited to the app origin, and `<webview>` is blocked.
 - ☑ All Chromium permission requests and checks are denied. Mic, screen and AX are owned by the native helper, not the renderer.

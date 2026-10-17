@@ -344,7 +344,7 @@ test('mini hud follows the light theme; notes toggle; axe', async ({
   await invoke(page, 'shell', 'note:start', {});
   await expect(page.getByTestId('mini-hud-clock')).toBeVisible();
   await expect(page.getByTestId('mini-hud-stop')).toBeVisible();
-  // Its own page (ADR 0088): no shell, tabs or sub apps.
+  // Its own page (ADR 0090): no shell, tabs or sub apps.
   await expect(
     page.locator('[data-subapp], [data-testid^="nav-"]'),
   ).toHaveCount(0);

@@ -1,5 +1,5 @@
 // HUD window entry (hud.html): the transport and the floating recording HUD only. No shell, registry or
-// sub apps (ADR 0088; window-bundles.test.ts checks the bundle).
+// sub apps (ADR 0090; window-bundles.test.ts checks the bundle).
 import { createRoot } from 'react-dom/client';
 import { installTransport } from './transport';
 import { MiniHudApp } from './shell/MiniHud';

@@ -1,5 +1,5 @@
 //! Window factory: main (index.html), HUD (hud.html) and talk pill (pill.html). Each window has its own page
-//! and entry, so the HUD and the pill never load the shell, its router or the sub apps (ADR 0088).
+//! and entry, so the HUD and the pill never load the shell, its router or the sub apps (ADR 0090).
 use crate::strings::{UI_APP, UI_HUD, UI_PILL};
 use tauri::{
     AppHandle, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
