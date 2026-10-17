@@ -18,3 +18,12 @@
 {"event":{"endMs":5000,"kind":"final","startMs":2500,"text":"Sounds good.","utteranceId":"u2"},"type":"asr"}
 {"audioPath":"/Users/j/Library/Application Support/qrtz/recordings/0b8e.wav","type":"recording.started"}
 {"audioPath":"/Users/j/Library/Application Support/qrtz/recordings/0b8e.wav","durationMs":61234.5,"type":"recording.stopped"}
+{"action":"down","type":"hotkey"}
+{"action":"up","type":"hotkey"}
+{"id":"d1","preRollMs":300,"type":"dictation.started"}
+{"rms":0.42,"type":"dictation.level"}
+{"event":{"kind":"partial","startMs":0,"text":"hello wor","utteranceId":"d1-0"},"id":"d1","type":"dictation.asr"}
+{"id":"d1","pcm16":"AAABAP//","seq":0,"type":"dictation.audio"}
+{"durationMs":1820,"id":"d1","text":"hello world","type":"dictation.stopped"}
+{"app":"Notes","id":"d1","method":"ax-selected-text","ok":true,"type":"insert.result"}
+{"error":"no focused text field","id":"d2","method":"none","ok":false,"type":"insert.result"}

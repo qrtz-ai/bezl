@@ -6,6 +6,14 @@ import { Heading } from '../Heading';
 import { Button } from '../Button';
 import { Badge } from '../Badge';
 import { Kbd } from '../Kbd';
+import {
+  DictionaryTerm,
+  LevelBars,
+  PlainList,
+  TalkHistoryRow,
+  TalkPill,
+  TermList,
+} from '../Talk';
 import { Spinner } from '../Spinner';
 import { Progress } from '../Progress';
 import { Field, Input, Select } from '../Input';
@@ -598,6 +606,49 @@ function Showcase({
                   }
                 />
               </Frame>
+            </div>
+          </Section>
+
+          <Section id="talk" title="Talk: pill, history, dictionary">
+            <div style={{ display: 'grid', gap: t.space[4], width: '100%' }}>
+              <LevelBars level={0.6} />
+              <TalkPill
+                inline
+                phase="listening"
+                level={0.5}
+                text="So I think we should"
+                partial="ship qrtz"
+              />
+              <TalkPill
+                inline
+                phase="cleaning"
+                level={0}
+                text="So I think we should ship qrtz talk"
+                partial=""
+              />
+              <TalkPill
+                inline
+                phase="error"
+                level={0}
+                text=""
+                partial=""
+                error="Microphone did not start"
+              />
+              <PlainList label="History">
+                <TalkHistoryRow
+                  text="I think we should ship qrtz talk on Friday."
+                  meta="10:42 PM · Notes · elevenlabs · 312 ms"
+                  onCopy={() => {}}
+                  onDelete={() => {}}
+                />
+              </PlainList>
+              <TermList>
+                <DictionaryTerm
+                  term="qrtz"
+                  aliases={['cue arts']}
+                  onRemove={() => {}}
+                />
+              </TermList>
             </div>
           </Section>
 

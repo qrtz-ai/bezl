@@ -57,6 +57,8 @@ export const SHELL_MANIFEST: SubAppManifest = {
     'helper.status',
     'note.read',
     'note.record',
+    'talk.read',
+    'talk.dictate',
   ],
   permissions: [],
 };

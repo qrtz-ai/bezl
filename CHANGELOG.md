@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased: qrtz talk
+
+- **qrtz talk (dictation):** a new `talk` tab. Hold fn (configurable) or press ⌘⇧Space to dictate into any app. A floating pill that never takes focus shows the mic level and streaming text. When you let go, the text is finalized, cleaned up and inserted.
+- **Pluggable streaming ASR:** cloud WebSocket engines (ElevenLabs Scribe v2 Realtime, Deepgram Nova-3) are the primary when a key is saved in Settings (Keychain via safeStorage, never committed). The helper's on-device Parakeet stream always runs alongside, with automatic failover on socket error, a stalled stream, a late final or empty text. Settings → Talk → Speech engine (auto, ElevenLabs, Deepgram, on-device). Local-only privacy forces on-device.
+- **Helper:** `dictation.*`, `insert.*` and `hotkey` protocol messages. The mic-only source has an optional warm mic and a pre-roll ring buffer, with its own recogniser instances so dictation works during a meeting. Insertion tries AX selected text, then an AX value splice, then pasteboard + Cmd-V and restores the clipboard. A native CGEvent-tap push-to-talk key monitor is included. Core logic is in `QrtzHelperCore/Dictation.swift` (tested on Linux); macOS pieces are in `mac/Talk.swift` [MAC-VERIFY].
+- **Cleanup:** an OpenRouter pass with a timeout (900 ms default) falls back to on-device rules (fillers, stutters, spoken "new line", capitalization, punctuation) and the personal dictionary. If insertion fails, the text is left on the clipboard.
+- **Latency:** each dictation records key-down → first partial, key-up → final, cleanup time and key-up → inserted (history meta and the `talk latency` log). Run `scripts/bench-talk-asr.mjs` to measure cloud engines with real keys.
+- **Toggles:** dictation, fall back to on-device, warm mic, clean up text, AI cleanup, insert into app, restore clipboard, floating pill and keep history.
+- Research and recommendation: `docs/research-talk.md`.
+
 ## Unreleased: redesign
 
 - **One font:** Geist Pixel (Square, OFL-1.1, bundled locally) for everything, on a pixel-grid type scale (display, h1, h2, h3, bodyLg, body, bodySm, caption, label, mono, code; nothing below 13.158px). Typography lives only in `@qrtz/ui`, through `Text`, `Heading`, `Label`, `Code`/`Mono` and `Link`.

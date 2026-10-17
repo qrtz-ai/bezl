@@ -1,0 +1,87 @@
+import { z } from 'zod';
+
+/** Where the words came from. Cloud engines stream over WebSocket; on-device is the helper's Parakeet. */
+export const TalkEngineId = z.enum(['deepgram', 'elevenlabs', 'on-device']);
+export type TalkEngineId = z.infer<typeof TalkEngineId>;
+
+export const TalkPhase = z.enum([
+  'idle',
+  /** Mic open, text streaming. */
+  'listening',
+  /** Key released; waiting for the engine's final text. */
+  'finalizing',
+  'cleaning',
+  'inserting',
+  'error',
+]);
+export type TalkPhase = z.infer<typeof TalkPhase>;
+
+export const InsertMethod = z.enum([
+  'ax-selected-text',
+  'ax-value',
+  'paste',
+  'none',
+]);
+export type InsertMethod = z.infer<typeof InsertMethod>;
+
+/** Milliseconds; every mark is optional because a dictation can end early. */
+export const TalkLatency = z.object({
+  /** Key-down → first partial on screen. */
+  firstPartialMs: z.number().optional(),
+  /** Key-up → final ASR text. */
+  finalMs: z.number().optional(),
+  /** Cleanup pass duration (LLM or rules). */
+  cleanupMs: z.number().optional(),
+  /** Key-up → text inserted into the focused app (the number users feel). */
+  insertedMs: z.number().optional(),
+});
+export type TalkLatency = z.infer<typeof TalkLatency>;
+
+export const TalkEntry = z.object({
+  id: z.string(),
+  at: z.number(),
+  raw: z.string(),
+  text: z.string(),
+  cleanup: z.enum(['llm', 'rules', 'off']),
+  engine: TalkEngineId,
+  /** True when the cloud engine failed and on-device text was used. */
+  failover: z.boolean().default(false),
+  insert: InsertMethod,
+  inserted: z.boolean(),
+  app: z.string().optional(),
+  durationMs: z.number(),
+  latency: TalkLatency,
+  error: z.string().optional(),
+});
+export type TalkEntry = z.infer<typeof TalkEntry>;
+
+export const TalkView = z.object({
+  phase: TalkPhase,
+  id: z.string().optional(),
+  startedAt: z.number().optional(),
+  /** Committed (final) text so far. */
+  text: z.string(),
+  /** Current unstable hypothesis after `text`. */
+  partial: z.string(),
+  level: z.number(),
+  engine: TalkEngineId.optional(),
+  failover: z.boolean().optional(),
+  error: z.string().optional(),
+  last: TalkEntry.optional(),
+});
+export type TalkView = z.infer<typeof TalkView>;
+
+export const DictionaryEntry = z.object({
+  /** How it should be written. */
+  term: z.string().trim().min(1).max(80),
+  /** What the recogniser tends to hear instead (optional). */
+  aliases: z.array(z.string().trim().min(1).max(80)).max(10).default([]),
+});
+export type DictionaryEntry = z.infer<typeof DictionaryEntry>;
+
+export const idleTalkView = (): TalkView => ({
+  phase: 'idle',
+  text: '',
+  partial: '',
+  level: 0,
+});

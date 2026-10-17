@@ -12,6 +12,10 @@ import {
   fixtureAsrEvents,
 } from '../note/fixtures';
 
+/** What the mock "hears" when you dictate (fillers + a stutter + a dictionary alias, so cleanup has work to do). */
+export const MOCK_DICTATION =
+  'um so I I think we should ship cue arts talk on friday';
+
 export interface MockHelperOptions {
   clock?: Clock;
   heartbeatMs?: number;
@@ -22,6 +26,10 @@ export interface MockHelperOptions {
   speed?: number;
   /** Delay before the meeting is "detected" (ms, real). */
   detectAfterMs?: number;
+  /** qrtz talk insertion outcome: AX works (default), only paste works, or nothing works. */
+  insert?: 'ax' | 'paste' | 'fail';
+  /** Dictation partial cadence (ms between scripted words). */
+  dictationStepMs?: number;
   /** Override reported TCC states (fault injection: denied permissions). */
   permissions?: Partial<
     Record<
@@ -65,6 +73,7 @@ export function createMockHelper(
     alive = false;
     if (hb) clock.clearTimeout(hb);
     clearScript();
+    stopDictTimers();
     for (const cb of exitCbs) cb(code, signal);
   };
   const permissions = (): HelperToHost => ({
@@ -135,6 +144,82 @@ export function createMockHelper(
       );
   };
 
+  // --- qrtz talk: scripted dictation (mic only) ---
+  let dict: {
+    id: string;
+    timers: unknown[];
+    words: number;
+    t0: number;
+  } | null = null;
+  let dictCfg = { streamAudio: false, preRollMs: 0, warmMic: false };
+  const DICTATION = MOCK_DICTATION.split(' ');
+  const stopDictTimers = () => {
+    for (const t of dict?.timers ?? []) clock.clearTimeout(t);
+  };
+  const startDictation = (id: string) => {
+    const step = opts.dictationStepMs ?? 60;
+    const d = { id, timers: [] as unknown[], words: 0, t0: clock.now() };
+    dict = d;
+    emit({
+      type: 'dictation.started',
+      id,
+      preRollMs: dictCfg.warmMic ? dictCfg.preRollMs : 0,
+    });
+    for (let i = 1; i <= DICTATION.length; i++)
+      d.timers.push(
+        clock.setTimeout(() => {
+          d.words = i;
+          emit({
+            type: 'dictation.asr',
+            id,
+            event: {
+              kind: 'partial',
+              utteranceId: `${id}-1`,
+              startMs: 0,
+              text: DICTATION.slice(0, i).join(' '),
+            },
+          });
+          emit({
+            type: 'dictation.level',
+            rms: 0.3 + 0.5 * Math.abs(Math.sin(i)),
+          });
+          if (dictCfg.streamAudio)
+            emit({
+              type: 'dictation.audio',
+              id,
+              seq: i - 1,
+              pcm16: 'AAAAAAAAAAA=',
+            });
+        }, i * step),
+      );
+  };
+  const stopDictation = (id: string, cancel: boolean) => {
+    if (!dict || dict.id !== id) return;
+    stopDictTimers();
+    const text = cancel
+      ? ''
+      : DICTATION.slice(0, Math.max(dict.words, 1)).join(' ');
+    if (!cancel)
+      emit({
+        type: 'dictation.asr',
+        id,
+        event: {
+          kind: 'final',
+          utteranceId: `${id}-1`,
+          startMs: 0,
+          endMs: clock.now() - dict.t0,
+          text,
+        },
+      });
+    emit({
+      type: 'dictation.stopped',
+      id,
+      text,
+      durationMs: cancel ? 0 : clock.now() - dict.t0,
+    });
+    dict = null;
+  };
+
   return {
     onLine: (cb) => void lineCbs.push(cb),
     onExit: (cb) => void exitCbs.push(cb),
@@ -183,6 +268,41 @@ export function createMockHelper(
         case 'recording.resume':
           paused = false;
           return;
+        case 'dictation.configure':
+          dictCfg = {
+            streamAudio: m.streamAudio,
+            preRollMs: m.preRollMs,
+            warmMic: m.warmMic,
+          };
+          return;
+        case 'dictation.start':
+          if (dict) return;
+          return startDictation(m.id);
+        case 'dictation.stop':
+          return stopDictation(m.id, false);
+        case 'dictation.cancel':
+          return stopDictation(m.id, true);
+        case 'insert.text': {
+          const mode = opts.insert ?? 'ax';
+          return emit(
+            mode === 'fail'
+              ? {
+                  type: 'insert.result',
+                  id: m.id,
+                  method: 'none',
+                  ok: false,
+                  app: 'Mock Editor',
+                  error: 'no focused text field',
+                }
+              : {
+                  type: 'insert.result',
+                  id: m.id,
+                  method: mode === 'ax' ? 'ax-selected-text' : 'paste',
+                  ok: true,
+                  app: 'Mock Editor',
+                },
+          );
+        }
         case 'recording.stop':
           paused = false;
           clearScript();

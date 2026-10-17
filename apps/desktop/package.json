@@ -41,6 +41,7 @@
     "@qrtz/core": "*",
     "@qrtz/feature-gallery": "*",
     "@qrtz/feature-note": "*",
+    "@qrtz/feature-talk": "*",
     "@qrtz/feature-settings": "*",
     "@qrtz/ui": "*",
     "electron-squirrel-startup": "^1.0.1",

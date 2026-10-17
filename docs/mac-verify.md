@@ -72,3 +72,13 @@ npm run package && open apps/desktop/out/qrtz-darwin-arm64/qrtz.app
 - **No real echo cancellation:** the echo gate is a heuristic. The upgrade path is FluidAudio LocalVQE AEC with the system tap as the far-end reference.
 - **Background Chrome tabs:** a Meet tab is only seen when it is the active tab in its window, because AX exposes only the active tab's web area.
 - **Captions:** captions need to be switched on in Zoom or Meet for `ax.caption`. The transcript itself comes from Parakeet and does not depend on them.
+
+## qrtz talk (dictation, 10 min)
+
+- [ ] `mac/Talk.swift` compiles (Linux can't type-check it). Two Parakeet instances are loaded (meeting + dictation), so check memory.
+- [ ] Hold **fn** in TextEdit and speak: the pill shows level and streaming text, and on release the text appears at the caret (`insert.result` method `ax-selected-text`).
+- [ ] Chrome/Slack/VS Code (Electron fields often ignore AX writes): text arrives via `paste`, and the clipboard you had before is restored.
+- [ ] Input Monitoring / Accessibility denied: a `dictation.hotkey` error is logged and ⌘⇧Space still works.
+- [ ] Warm mic on: the first word isn't clipped (pre-roll), and the mic indicator stays on as expected.
+- [ ] With an ElevenLabs or Deepgram key: the history meta shows the engine. Pull the network mid-dictation and it shows "on-device (fallback)".
+- [ ] Record `talk latency` log lines (firstPartialMs, finalMs, insertedMs) for each engine, and run `node scripts/bench-talk-asr.mjs speech16k.wav 5`. Put the numbers in docs/research-talk.md §2.

@@ -10,6 +10,7 @@ func makePlatformDeps(version: String) -> HelperDeps {
     if #available(macOS 14.2, *) { audio.append(CoreAudioTapSource()); features.append("audio.process-tap") }
     audio.append(ScreenCaptureKitSource()); features.append("audio.screencapturekit")
     features.append("audio.echo-gate")
+    features += ["talk.mic", "talk.insert.ax", "talk.insert.paste", "talk.hotkey"]
     features.append("audio.aec.localvqe")
 
     var asr: [StreamingTranscriber] = [ParakeetTranscriber()]
@@ -22,7 +23,17 @@ func makePlatformDeps(version: String) -> HelperDeps {
     return HelperDeps(
         permissions: MacPermissions(), meetings: AXMeetingSource(context: context), audio: audio, transcribers: asr,
         helperVersion: version, os: "macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)", features: features,
-        context: context, enhancer: LocalVqeEnhancer())
+        context: context, enhancer: LocalVqeEnhancer(),
+        dictationMic: DictationMicSource(), dictationTranscribers: dictationAsr(), insertion: MacInsertion(), hotkeys: MacHotkeys())
+}
+
+/// Separate recogniser instances for qrtz talk so a dictation can run during a meeting recording.
+private func dictationAsr() -> [StreamingTranscriber] {
+    var asr: [StreamingTranscriber] = [ParakeetTranscriber()]
+    #if compiler(>=6.2) && canImport(Speech)
+    if #available(macOS 26.0, *) { asr.append(SpeechAnalyzerTranscriber()) }
+    #endif
+    return asr
 }
 
 func logErr(_ s: String) { FileHandle.standardError.write(Data("[qrtz-helper] \(s)\n".utf8)) }

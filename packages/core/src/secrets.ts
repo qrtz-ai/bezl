@@ -6,6 +6,8 @@ export const SECRET_NAMES = [
   'llm.openrouter',
   'asr.nvidia',
   'hf.token',
+  'asr.deepgram',
+  'asr.elevenlabs',
 ] as const;
 export type SecretName = (typeof SECRET_NAMES)[number] | (string & {});
 

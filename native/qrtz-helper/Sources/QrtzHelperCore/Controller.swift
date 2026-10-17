@@ -46,7 +46,14 @@ public struct HelperDeps: Sendable {
     public var context: MeetingContext
     /// Optional AEC (LocalVQE on macOS); the echo gate is always the fallback.
     public var enhancer: MicEnhancer?
-    public init(permissions: PermissionsProvider, meetings: MeetingSource?, audio: [AudioSource], transcribers: [StreamingTranscriber], helperVersion: String, os: String, features: [String], context: MeetingContext = MeetingContext(), enhancer: MicEnhancer? = nil) {
+    /// qrtz talk: mic-only source, its own recogniser instances (so dictation works during a meeting), insertion, keys.
+    public var dictationMic: MicSource?
+    public var dictationTranscribers: [StreamingTranscriber]
+    public var insertion: InsertionBackend?
+    public var hotkeys: HotkeyMonitor?
+    public init(permissions: PermissionsProvider, meetings: MeetingSource?, audio: [AudioSource], transcribers: [StreamingTranscriber], helperVersion: String, os: String, features: [String], context: MeetingContext = MeetingContext(), enhancer: MicEnhancer? = nil,
+                dictationMic: MicSource? = nil, dictationTranscribers: [StreamingTranscriber] = [], insertion: InsertionBackend? = nil, hotkeys: HotkeyMonitor? = nil) {
+        self.dictationMic = dictationMic; self.dictationTranscribers = dictationTranscribers; self.insertion = insertion; self.hotkeys = hotkeys
         self.permissions = permissions; self.meetings = meetings; self.audio = audio; self.transcribers = transcribers
         self.helperVersion = helperVersion; self.os = os; self.features = features
         self.context = context; self.enhancer = enhancer
@@ -80,7 +87,10 @@ public actor HelperController {
 
     public init(deps: HelperDeps, send: @escaping @Sendable (HelperMessage) -> Void, now: @escaping @Sendable () -> Double) {
         self.deps = deps; self.send = send; self.now = now
+        self.dictation = DictationEngine(mic: deps.dictationMic, transcribers: deps.dictationTranscribers,
+                                         inserter: deps.insertion.map { TextInserter(backend: $0) }, hotkeys: deps.hotkeys, send: send, now: now)
     }
+    public let dictation: DictationEngine
 
     /// ms since recording start (or since helper start when idle). Used for every atMs/startMs on the wire.
     nonisolated public func relativeMs() -> Double {
@@ -108,6 +118,12 @@ public actor HelperController {
         case .recordingPause: paused = true; send(.log(level: .info, msg: "capture paused"))
         case .recordingResume: paused = false; send(.log(level: .info, msg: "capture resumed"))
         case .shutdown: await shutdown()
+        case .dictationConfigure(let warm, let pre, let stream, let key):
+            await dictation.configure(warmMic: warm, preRollMs: pre, streamAudio: stream, pushKey: key)
+        case .dictationStart(let id): await dictation.start(id: id)
+        case .dictationStop(let id): await dictation.stop(id: id)
+        case .dictationCancel(let id): await dictation.cancel(id: id)
+        case .insertText(let id, let text, let restore): await dictation.insert(id: id, text: text, restoreClipboard: restore)
         }
     }
 
@@ -205,6 +221,7 @@ public actor HelperController {
         guard !shuttingDown else { return }
         shuttingDown = true
         await stopRecording()
+        await dictation.shutdown()
         deps.meetings?.stop()
     }
 }

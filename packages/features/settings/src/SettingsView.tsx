@@ -180,6 +180,46 @@ export default function SettingsView() {
     </SettingRow>
   );
   const days = noteCfg.retainAudioDays ?? 0;
+  const talkCfg = (cfg?.talk ?? {}) as {
+    enabled?: boolean;
+    pushKey?: string;
+    toggleHotkey?: string;
+    warmMic?: boolean;
+    engine?: string;
+    autoFailover?: boolean;
+    autoCleanup?: boolean;
+    aiCleanup?: boolean;
+    autoInsert?: boolean;
+    restoreClipboard?: boolean;
+    showPill?: boolean;
+    saveHistory?: boolean;
+  };
+  const patchTalk = (p: Record<string, unknown>) => {
+    setCfg((prev) =>
+      prev ? { ...prev, talk: { ...(prev.talk as object), ...p } } : prev,
+    );
+    return qrtz
+      .invoke('config:set', { patch: { talk: p } })
+      .then(setCfg)
+      .catch((e: Error) => setError(e.message));
+  };
+  const asrEngine = talkCfg.engine ?? 'auto';
+  const asrSecret =
+    asrEngine === 'deepgram' || asrEngine === 'elevenlabs'
+      ? `asr.${asrEngine}`
+      : undefined;
+  const [asrKey, setAsrKey] = useState('');
+  const hasAsrKey = !!asrSecret && secrets.includes(asrSecret);
+  const saveAsrKey = async (value: string | null) => {
+    if (!asrSecret) return;
+    try {
+      await qrtz.invoke('secrets:set', { name: asrSecret, value });
+      setAsrKey('');
+      setSecrets(await qrtz.invoke('secrets:list'));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
 
   return (
     <Page data-testid="settings">
@@ -334,6 +374,132 @@ export default function SettingsView() {
             {msg}
           </Text>
         ) : null}
+      </SettingsSection>
+      <SettingsSection title="Talk" data-testid="talk-settings">
+        {toggle(
+          'Dictation',
+          'talk-enabled',
+          talkCfg.enabled,
+          true,
+          (v) => void patchTalk({ enabled: v }),
+        )}
+        <SettingRow label="Hold to talk">
+          <Select
+            value={talkCfg.pushKey ?? 'fn'}
+            onChange={(e) => void patchTalk({ pushKey: e.target.value })}
+            data-testid="talk-push-key"
+          >
+            <option value="fn">fn</option>
+            <option value="right-option">Right ⌥</option>
+            <option value="right-command">Right ⌘</option>
+            <option value="right-control">Right ⌃</option>
+            <option value="">Off</option>
+          </Select>
+        </SettingRow>
+        <Field label="Toggle shortcut">
+          <Input
+            key={talkCfg.toggleHotkey ?? ''}
+            defaultValue={
+              talkCfg.toggleHotkey ?? 'CommandOrControl+Shift+Space'
+            }
+            data-testid="talk-toggle-hotkey"
+            onBlur={(e) =>
+              void patchTalk({ toggleHotkey: e.target.value.trim() })
+            }
+          />
+        </Field>
+        <SettingRow label="Speech engine">
+          <Select
+            value={asrEngine}
+            onChange={(e) => void patchTalk({ engine: e.target.value })}
+            data-testid="talk-engine"
+          >
+            <option value="auto">Auto</option>
+            <option value="elevenlabs">ElevenLabs Scribe</option>
+            <option value="deepgram">Deepgram Nova-3</option>
+            <option value="on-device">On-device</option>
+          </Select>
+        </SettingRow>
+        {asrSecret ? (
+          <Field label="Engine key">
+            <Stack dir="row" gap={2}>
+              <Input
+                type="password"
+                value={asrKey}
+                onChange={(e) => setAsrKey(e.target.value)}
+                placeholder={hasAsrKey ? '•••••••• (saved)' : 'key'}
+                data-testid="talk-engine-key"
+              />
+              <Button
+                onClick={() => void saveAsrKey(asrKey.trim())}
+                disabled={!asrKey.trim()}
+              >
+                Save
+              </Button>
+              {hasAsrKey ? (
+                <Button variant="ghost" onClick={() => void saveAsrKey(null)}>
+                  Remove
+                </Button>
+              ) : null}
+            </Stack>
+          </Field>
+        ) : null}
+        {toggle(
+          'Fall back to on-device',
+          'talk-auto-failover',
+          talkCfg.autoFailover,
+          true,
+          (v) => void patchTalk({ autoFailover: v }),
+        )}
+        {toggle(
+          'Warm mic',
+          'talk-warm-mic',
+          talkCfg.warmMic,
+          false,
+          (v) => void patchTalk({ warmMic: v }),
+        )}
+        {toggle(
+          'Clean up text',
+          'talk-auto-cleanup',
+          talkCfg.autoCleanup,
+          true,
+          (v) => void patchTalk({ autoCleanup: v }),
+        )}
+        {toggle(
+          'AI cleanup',
+          'talk-ai-cleanup',
+          talkCfg.aiCleanup,
+          true,
+          (v) => void patchTalk({ aiCleanup: v }),
+        )}
+        {toggle(
+          'Insert into app',
+          'talk-auto-insert',
+          talkCfg.autoInsert,
+          true,
+          (v) => void patchTalk({ autoInsert: v }),
+        )}
+        {toggle(
+          'Restore clipboard',
+          'talk-restore-clipboard',
+          talkCfg.restoreClipboard,
+          true,
+          (v) => void patchTalk({ restoreClipboard: v }),
+        )}
+        {toggle(
+          'Floating pill',
+          'talk-show-pill',
+          talkCfg.showPill,
+          true,
+          (v) => void patchTalk({ showPill: v }),
+        )}
+        {toggle(
+          'Keep history',
+          'talk-save-history',
+          talkCfg.saveHistory,
+          true,
+          (v) => void patchTalk({ saveHistory: v }),
+        )}
       </SettingsSection>
       <SettingsSection title="Privacy" data-testid="privacy-card">
         {toggle(

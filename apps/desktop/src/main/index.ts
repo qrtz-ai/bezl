@@ -30,6 +30,9 @@ import { helperAvailability, spawnHelper } from './helper-process';
 import { hardenApp } from './security';
 import { registerIpc } from './ipc';
 import { NoteService } from './note-service';
+import { TalkService } from './talk-service';
+import { fakeCleanupLlm, fakeCloudWs } from './talk-dev';
+import { createProvider, type WsFactory } from '@qrtz/core';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -54,6 +57,9 @@ const DEV_ONLY_ENV = [
   'QRTZ_MOCK_CRASH_AFTER_MS',
   'QRTZ_MOCK_SCENARIO',
   'QRTZ_BACKUP_PATH',
+  'QRTZ_TALK_CLOUD',
+  'QRTZ_TALK_LLM',
+  'QRTZ_MOCK_INSERT',
 ];
 
 export function bootstrap() {
@@ -174,12 +180,55 @@ export function bootstrap() {
       'The qrtz-helper binary is not in this build. Reinstall qrtz or build native/qrtz-helper.',
     );
   else if (availability === 'simulated') note.setHelperHealth('simulated');
+  // qrtz talk (dictation). Cloud engines stream over WebSocket; the helper's on-device ASR is the fallback.
+  const nodeWs: WsFactory = (url, init) => {
+    const Ctor = (
+      globalThis as unknown as {
+        WebSocket: new (u: string, o?: unknown) => unknown;
+      }
+    ).WebSocket;
+    // undici's WebSocket accepts { protocols, headers } (needed for ElevenLabs' xi-api-key header).
+    const ws = new Ctor(url, {
+      ...(init.protocols ? { protocols: init.protocols } : {}),
+      ...(init.headers ? { headers: init.headers } : {}),
+    });
+    (ws as { binaryType: string }).binaryType = 'arraybuffer';
+    return ws as never;
+  };
+  const talk = new TalkService({
+    send: (m) => helper.send(encodeHostMessage(m)),
+    bus,
+    log: log.child('talk'),
+    config: () => config.get(),
+    secrets,
+    storePath: path.join(userData, 'talk.json'),
+    ws:
+      process.env.QRTZ_TALK_CLOUD && !app.isPackaged
+        ? fakeCloudWs(process.env.QRTZ_TALK_CLOUD)
+        : nodeWs,
+    writeClipboard: (t) => clipboard.writeText(t),
+    llm: async () => {
+      if (process.env.QRTZ_TALK_LLM && !app.isPackaged)
+        return fakeCleanupLlm(process.env.QRTZ_TALK_LLM);
+      const apiKey = await secrets.get('llm.openrouter');
+      const p = createProvider('openrouter', {
+        fetch: (u, i) => fetch(u, i),
+        ...(apiKey ? { apiKey } : {}),
+        ...(config.get().talk.cleanupModel
+          ? { model: config.get().talk.cleanupModel }
+          : {}),
+      });
+      return p ? (messages, signal) => p.complete(messages, { signal }) : null;
+    },
+  });
+  config.onChange(() => void talk.configure().catch(() => {}));
   helper.onLine((line) => {
     const r = parseHelperLine(line);
     if (!r.ok) return log.warn('bad helper line', { error: r.error });
     if (r.msg.type === 'log') log.child('helper')[r.msg.level](r.msg.msg);
     try {
       note.handle(r.msg);
+      talk.handle(r.msg);
     } catch (e) {
       log.warn('note handler failed', { err: String(e) });
     }
@@ -295,6 +344,16 @@ export function bootstrap() {
         const id = meetingId ?? note.view().meetingId;
         return id ? worker.call('note.listNotes', { meetingId: id }) : [];
       },
+      'talk:state': () => talk.state(),
+      'talk:start': () => talk.start(),
+      'talk:stop': () => talk.stop(),
+      'talk:cancel': () => talk.cancel(),
+      'talk:history': () => talk.history(),
+      'talk:delete-entry': ({ id }) => talk.deleteEntry(id),
+      'talk:clear-history': () => talk.clearHistory(),
+      'talk:copy': ({ id }) => talk.copy(id),
+      'talk:dictionary': () => talk.dictionary(),
+      'talk:set-dictionary': ({ entries }) => talk.setDictionary(entries),
       'note:set-template': async ({ id, template }) => {
         const r = await note.setTemplate(id, template);
         bus.emit('note:changed', { id });
@@ -456,6 +515,71 @@ export function bootstrap() {
   };
 
   // M6.3: floating, always-on-top mini HUD while recording (index.html#hud, shell-scoped IPC).
+  // qrtz talk: floating pill (index.html#pill) at the bottom centre while dictating. Never takes focus, so the
+  // text lands in the app you were typing in.
+  let pill: BrowserWindow | null = null;
+  const PILL_W = 360;
+  const PILL_H = 52;
+  const showPill = () => {
+    if (pill && !pill.isDestroyed()) return pill.showInactive();
+    const area = screen.getPrimaryDisplay().workArea;
+    pill = new BrowserWindow({
+      width: PILL_W,
+      height: PILL_H,
+      x: Math.round(area.x + (area.width - PILL_W) / 2),
+      y: area.y + area.height - PILL_H - 24,
+      frame: false,
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      focusable: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      transparent: true,
+      hasShadow: false,
+      show: false,
+      title: 'qrtz talk',
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.cjs'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        webSecurity: true,
+        spellcheck: false,
+      },
+    });
+    pill.setAlwaysOnTop(true, 'screen-saver');
+    pill.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    pill.setIgnoreMouseEvents(true);
+    pill.once('ready-to-show', () => pill?.showInactive());
+    pill.on('closed', () => (pill = null));
+    if (MAIN_WINDOW_VITE_DEV_SERVER_URL)
+      void pill.loadURL(`${MAIN_WINDOW_VITE_DEV_SERVER_URL}#pill`);
+    else
+      void pill.loadFile(path.join(rendererDir, 'index.html'), {
+        hash: 'pill',
+      });
+  };
+  let pillHide: NodeJS.Timeout | null = null;
+  bus.on('talk:state', (v) => {
+    const want = config.get().talk.showPill && v.phase !== 'idle';
+    if (want) {
+      if (pillHide) clearTimeout(pillHide);
+      pillHide = null;
+      showPill();
+    } else if (pill && !pillHide) {
+      pillHide = setTimeout(
+        () => {
+          pillHide = null;
+          pill?.hide();
+        },
+        v.phase === 'error' ? 2500 : 400,
+      );
+    }
+  });
+
   let hud: BrowserWindow | null = null;
   const HUD_H = 56;
   const HUD_EXPANDED_H = 220;
@@ -669,6 +793,30 @@ export function bootstrap() {
     };
     bindPause(config.get().privacy.pauseHotkey);
     config.onChange((c) => bindPause(c.privacy.pauseHotkey));
+    // qrtz talk toggle hotkey (press to start, press again to stop). Hold-to-talk comes from the helper's key monitor.
+    let talkKey = '';
+    const bindTalk = (key: string) => {
+      if (key === talkKey) return;
+      if (talkKey) globalShortcut.unregister(talkKey);
+      talkKey = '';
+      if (!key) return;
+      try {
+        const bound = globalShortcut.register(key, () => {
+          const s = talk.state().phase;
+          void (s === 'listening' ? talk.stop() : talk.start()).catch((e) =>
+            log.warn('talk hotkey failed', { err: String(e) }),
+          );
+        });
+        if (bound) talkKey = key;
+        else log.warn('talk shortcut unavailable', { key });
+      } catch (e) {
+        log.warn('invalid talk shortcut', { key, err: String(e) });
+      }
+    };
+    const talkHotkey = (c: ReturnType<typeof config.get>) =>
+      c.talk.enabled ? c.talk.toggleHotkey : '';
+    bindTalk(talkHotkey(config.get()));
+    config.onChange((c) => bindTalk(talkHotkey(c)));
     app.on('will-quit', () => globalShortcut.unregisterAll());
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

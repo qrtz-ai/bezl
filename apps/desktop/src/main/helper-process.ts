@@ -67,6 +67,9 @@ export function spawnHelper(): ChildHandle {
       ...(scenario ? { scenario } : {}),
       speed: Number(process.env.QRTZ_MOCK_SPEED ?? '0.05'),
       permissions: mockPermissions(),
+      ...(['ax', 'paste', 'fail'].includes(process.env.QRTZ_MOCK_INSERT ?? '')
+        ? { insert: process.env.QRTZ_MOCK_INSERT as 'ax' | 'paste' | 'fail' }
+        : {}),
     });
     return {
       ...mock,

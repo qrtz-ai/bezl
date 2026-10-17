@@ -6,3 +6,8 @@
 {"type":"recording.stop"}
 {"type":"recording.pause"}
 {"type":"recording.resume"}
+{"preRollMs":300,"pushKey":"fn","streamAudio":true,"type":"dictation.configure","warmMic":true}
+{"id":"d1","type":"dictation.start"}
+{"id":"d1","type":"dictation.stop"}
+{"id":"d1","type":"dictation.cancel"}
+{"id":"d1","restoreClipboard":true,"text":"Hello world.","type":"insert.text"}

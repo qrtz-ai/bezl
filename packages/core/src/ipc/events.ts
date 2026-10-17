@@ -3,6 +3,7 @@ import type { Capability } from '../capabilities';
 import { HelperStatus } from './contract';
 import { PermissionsStatus, SessionView } from '../note/contract';
 import { LiveTranscriptDelta, PipelineView } from '../note/lifecycle';
+import { TalkView } from '../talk/contract';
 
 export interface EventDef<P extends z.ZodType = z.ZodType> {
   capability: Capability;
@@ -44,6 +45,11 @@ export const eventContract = {
       done: z.number(),
       total: z.number(),
     }),
+  }),
+  'talk:state': defineEvent({ capability: 'talk.read', payload: TalkView }),
+  'talk:history-changed': defineEvent({
+    capability: 'talk.read',
+    payload: z.object({ id: z.string() }),
   }),
   'permissions:changed': defineEvent({
     capability: 'os.permissions',

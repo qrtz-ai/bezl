@@ -14,6 +14,10 @@ export const Capability = z.enum([
   'note.write',
   'llm.invoke',
   'data.backup',
+  /** qrtz talk: read dictation state/history, start/stop dictation, edit history + dictionary. */
+  'talk.read',
+  'talk.dictate',
+  'talk.write',
 ]);
 export type Capability = z.infer<typeof Capability>;
 

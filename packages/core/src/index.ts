@@ -34,3 +34,4 @@ export * from './note/templates';
 export * from './note/notes';
 export * from './note/lifecycle';
 export * from './ipc/tauri-transport';
+export * from './talk';

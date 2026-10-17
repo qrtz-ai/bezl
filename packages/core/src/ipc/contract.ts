@@ -13,6 +13,7 @@ import { LiveTranscript, PipelineView, StepId } from '../note/lifecycle';
 import { ChatAnswer, ChatTurn } from '../note/chat';
 import { MeetingNote } from '../note/notes';
 import { SummaryTemplateId } from '../note/templates';
+import { DictionaryEntry, TalkEntry, TalkView } from '../talk/contract';
 
 /** Bump when the envelope shape changes (not when a channel changes). */
 export const PROTOCOL_VERSION = 1;
@@ -310,6 +311,68 @@ export const ipcContract = {
       skipped: z.number(),
       audioFiles: z.number(),
     }),
+  }),
+  // --- qrtz talk ---
+  'talk:state': defineChannel({
+    version: 1,
+    capability: 'talk.read',
+    request: z.void(),
+    response: TalkView,
+  }),
+  'talk:start': defineChannel({
+    version: 1,
+    capability: 'talk.dictate',
+    request: z.void(),
+    response: TalkView,
+  }),
+  /** Stop listening, then finalize → clean up → insert. */
+  'talk:stop': defineChannel({
+    version: 1,
+    capability: 'talk.dictate',
+    request: z.void(),
+    response: TalkView,
+  }),
+  'talk:cancel': defineChannel({
+    version: 1,
+    capability: 'talk.dictate',
+    request: z.void(),
+    response: TalkView,
+  }),
+  'talk:history': defineChannel({
+    version: 1,
+    capability: 'talk.read',
+    request: z.void(),
+    response: z.array(TalkEntry),
+  }),
+  'talk:delete-entry': defineChannel({
+    version: 1,
+    capability: 'talk.write',
+    request: z.object({ id: z.string().max(64) }),
+    response: z.object({ ok: z.boolean() }),
+  }),
+  'talk:clear-history': defineChannel({
+    version: 1,
+    capability: 'talk.write',
+    request: z.void(),
+    response: z.object({ ok: z.boolean() }),
+  }),
+  'talk:copy': defineChannel({
+    version: 1,
+    capability: 'talk.read',
+    request: z.object({ id: z.string().max(64) }),
+    response: z.object({ ok: z.boolean() }),
+  }),
+  'talk:dictionary': defineChannel({
+    version: 1,
+    capability: 'talk.read',
+    request: z.void(),
+    response: z.array(DictionaryEntry),
+  }),
+  'talk:set-dictionary': defineChannel({
+    version: 1,
+    capability: 'talk.write',
+    request: z.object({ entries: z.array(DictionaryEntry).max(500) }),
+    response: z.array(DictionaryEntry),
   }),
 } as const satisfies Record<string, ChannelDef>;
 

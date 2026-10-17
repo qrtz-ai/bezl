@@ -7,6 +7,8 @@ public let helperProtocolVersion = 1
 public enum OsPermission: String, CaseIterable, Sendable { case accessibility, screenRecording = "screen-recording", microphone }
 public enum PermissionState: String, Sendable { case granted, denied, notDetermined = "not-determined", unsupported }
 public enum MeetingPlatform: String, Sendable { case zoom, googleMeet = "google-meet", teams, slackHuddle = "slack-huddle", webex, other }
+public enum InsertMethod: String, Sendable { case axSelectedText = "ax-selected-text", axValue = "ax-value", paste, none }
+public enum HotkeyAction: String, Sendable { case down, up }
 public enum LogLevel: String, Sendable { case debug, info, warn, error }
 
 public enum AsrEvent: Equatable, Sendable {
@@ -37,6 +39,14 @@ public enum HelperMessage: Equatable, Sendable {
     case asr(AsrEvent)
     case recordingStarted(audioPath: String)
     case recordingStopped(audioPath: String, durationMs: Double)
+    // talk (dictation)
+    case hotkey(HotkeyAction)
+    case dictationStarted(id: String, preRollMs: Double)
+    case dictationLevel(rms: Double)
+    case dictationAsr(id: String, event: AsrEvent)
+    case dictationAudio(id: String, seq: Int, pcm16: String)
+    case dictationStopped(id: String, text: String, durationMs: Double)
+    case insertResult(id: String, method: InsertMethod, ok: Bool, app: String?, error: String?)
 }
 
 /// Host → helper.
@@ -50,6 +60,11 @@ public enum HostMessage: Equatable, Sendable {
     /// Privacy pause: audio is replaced by silence (timeline stays aligned) and nothing reaches the recogniser.
     case recordingPause
     case recordingResume
+    case dictationConfigure(warmMic: Bool, preRollMs: Int, streamAudio: Bool, pushKey: String)
+    case dictationStart(id: String)
+    case dictationStop(id: String)
+    case dictationCancel(id: String)
+    case insertText(id: String, text: String, restoreClipboard: Bool)
 }
 
 // MARK: - Encoding helpers
@@ -147,6 +162,17 @@ extension HelperMessage {
         case .asr(let e): return obj("asr", ["event": e.json])
         case .recordingStarted(let p): return obj("recording.started", ["audioPath": s(p)])
         case .recordingStopped(let p, let d): return obj("recording.stopped", ["audioPath": s(p), "durationMs": n(d)])
+        case .hotkey(let a): return obj("hotkey", ["action": s(a.rawValue)])
+        case .dictationStarted(let id, let pre): return obj("dictation.started", ["id": s(id), "preRollMs": n(pre)])
+        case .dictationLevel(let rms): return obj("dictation.level", ["rms": n(min(1, max(0, rms)))])
+        case .dictationAsr(let id, let e): return obj("dictation.asr", ["id": s(id), "event": e.json])
+        case .dictationAudio(let id, let seq, let pcm): return obj("dictation.audio", ["id": s(id), "seq": n(Double(seq)), "pcm16": s(pcm)])
+        case .dictationStopped(let id, let text, let d): return obj("dictation.stopped", ["id": s(id), "text": s(text), "durationMs": n(d)])
+        case .insertResult(let id, let m, let ok, let app, let err):
+            var o: [String: JSONValue] = ["id": s(id), "method": s(m.rawValue), "ok": .bool(ok)]
+            if let app { o["app"] = s(app) }
+            if let err { o["error"] = s(err) }
+            return obj("insert.result", o)
         }
     }
 
@@ -184,6 +210,20 @@ extension HelperMessage {
             self = .asr(try AsrEvent(json: e))
         case "recording.started": self = .recordingStarted(audioPath: try f.str("audioPath"))
         case "recording.stopped": self = .recordingStopped(audioPath: try f.str("audioPath"), durationMs: try f.num("durationMs"))
+        case "hotkey": self = .hotkey(try f.enumValue("action", HotkeyAction.self))
+        case "dictation.started": self = .dictationStarted(id: try f.str("id"), preRollMs: try f.num("preRollMs"))
+        case "dictation.level":
+            let r = try f.num("rms")
+            guard (0...1).contains(r) else { throw ProtocolError("rms out of range") }
+            self = .dictationLevel(rms: r)
+        case "dictation.asr":
+            guard let e = f.o["event"] else { throw ProtocolError("missing event") }
+            self = .dictationAsr(id: try f.str("id"), event: try AsrEvent(json: e))
+        case "dictation.audio": self = .dictationAudio(id: try f.str("id"), seq: Int(try f.num("seq")), pcm16: try f.str("pcm16"))
+        case "dictation.stopped": self = .dictationStopped(id: try f.str("id"), text: try f.str("text"), durationMs: try f.num("durationMs"))
+        case "insert.result":
+            guard let ok = f.o["ok"]?.bool else { throw ProtocolError("missing ok") }
+            self = .insertResult(id: try f.str("id"), method: try f.enumValue("method", InsertMethod.self), ok: ok, app: try f.optStr("app"), error: try f.optStr("error"))
         case let t: throw ProtocolError("unknown helper message type \(t)")
         }
     }
@@ -200,6 +240,13 @@ extension HostMessage {
         case .recordingStop: return .object(["type": s("recording.stop")])
         case .recordingPause: return .object(["type": s("recording.pause")])
         case .recordingResume: return .object(["type": s("recording.resume")])
+        case .dictationConfigure(let warm, let pre, let stream, let key):
+            return .object(["type": s("dictation.configure"), "warmMic": .bool(warm), "preRollMs": n(Double(pre)), "streamAudio": .bool(stream), "pushKey": s(key)])
+        case .dictationStart(let id): return .object(["type": s("dictation.start"), "id": s(id)])
+        case .dictationStop(let id): return .object(["type": s("dictation.stop"), "id": s(id)])
+        case .dictationCancel(let id): return .object(["type": s("dictation.cancel"), "id": s(id)])
+        case .insertText(let id, let text, let restore):
+            return .object(["type": s("insert.text"), "id": s(id), "text": s(text), "restoreClipboard": .bool(restore)])
         }
     }
 
@@ -214,6 +261,15 @@ extension HostMessage {
         case "recording.stop": self = .recordingStop
         case "recording.pause": self = .recordingPause
         case "recording.resume": self = .recordingResume
+        case "dictation.configure":
+            guard let warm = f.o["warmMic"]?.bool, let stream = f.o["streamAudio"]?.bool else { throw ProtocolError("missing bool") }
+            self = .dictationConfigure(warmMic: warm, preRollMs: Int(try f.num("preRollMs")), streamAudio: stream, pushKey: try f.str("pushKey"))
+        case "dictation.start": self = .dictationStart(id: try f.str("id"))
+        case "dictation.stop": self = .dictationStop(id: try f.str("id"))
+        case "dictation.cancel": self = .dictationCancel(id: try f.str("id"))
+        case "insert.text":
+            guard let r = f.o["restoreClipboard"]?.bool else { throw ProtocolError("missing restoreClipboard") }
+            self = .insertText(id: try f.str("id"), text: try f.str("text"), restoreClipboard: r)
         case let t: throw ProtocolError("unknown host message type \(t)")
         }
     }

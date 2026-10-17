@@ -4,3 +4,5 @@
 {"type":"permissions.status","status":{"accessibility":"granted"}}
 {"type":"asr","event":{"kind":"final","utteranceId":"u","startMs":0,"text":"x"}}
 not json
+{"rms":1.5,"type":"dictation.level"}
+{"id":"d1","method":"telepathy","ok":true,"type":"insert.result"}

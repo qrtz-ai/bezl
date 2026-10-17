@@ -76,6 +76,47 @@ export const HelperToHost = z.discriminatedUnion('type', [
     audioPath: z.string(),
     durationMs: z.number(),
   }),
+  // --- talk (dictation: mic only) ---
+  /** Push-to-talk key from the helper's native key monitor (Electron shortcuts have no key-up). */
+  z.object({ type: z.literal('hotkey'), action: z.enum(['down', 'up']) }),
+  z.object({
+    type: z.literal('dictation.started'),
+    id: z.string(),
+    /** Audio from before the key press that was replayed from the warm-mic buffer. */
+    preRollMs: z.number(),
+  }),
+  z.object({
+    type: z.literal('dictation.level'),
+    rms: z.number().min(0).max(1),
+  }),
+  /** On-device streaming ASR for the dictation. */
+  z.object({
+    type: z.literal('dictation.asr'),
+    id: z.string(),
+    event: AsrEvent,
+  }),
+  /** 16 kHz mono PCM16 (base64) for a cloud streaming engine; only sent when streamAudio is on. */
+  z.object({
+    type: z.literal('dictation.audio'),
+    id: z.string(),
+    seq: z.number().int(),
+    pcm16: z.string(),
+  }),
+  z.object({
+    type: z.literal('dictation.stopped'),
+    id: z.string(),
+    /** Final on-device text ('' when no recogniser ran). */
+    text: z.string(),
+    durationMs: z.number(),
+  }),
+  z.object({
+    type: z.literal('insert.result'),
+    id: z.string(),
+    method: z.enum(['ax-selected-text', 'ax-value', 'paste', 'none']),
+    ok: z.boolean(),
+    app: z.string().optional(),
+    error: z.string().optional(),
+  }),
 ]);
 export type HelperToHost = z.infer<typeof HelperToHost>;
 
@@ -92,6 +133,24 @@ export const HostToHelper = z.discriminatedUnion('type', [
   /** Privacy pause: the helper writes silence and transcribes nothing until resume. */
   z.object({ type: z.literal('recording.pause') }),
   z.object({ type: z.literal('recording.resume') }),
+  /** Dictation settings: warm mic + pre-roll, cloud audio streaming, native push-to-talk key ('' = none). */
+  z.object({
+    type: z.literal('dictation.configure'),
+    warmMic: z.boolean(),
+    preRollMs: z.number().int().min(0).max(2000),
+    streamAudio: z.boolean(),
+    pushKey: z.string(),
+  }),
+  z.object({ type: z.literal('dictation.start'), id: z.string() }),
+  z.object({ type: z.literal('dictation.stop'), id: z.string() }),
+  z.object({ type: z.literal('dictation.cancel'), id: z.string() }),
+  /** Insert text into the focused app: AX selected text, then AX value, then pasteboard + Cmd-V. */
+  z.object({
+    type: z.literal('insert.text'),
+    id: z.string(),
+    text: z.string(),
+    restoreClipboard: z.boolean(),
+  }),
 ]);
 export type HostToHelper = z.infer<typeof HostToHelper>;
 

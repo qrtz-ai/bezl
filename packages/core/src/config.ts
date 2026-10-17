@@ -46,6 +46,41 @@ export const ConfigSchema = z.object({
         .default('general'),
     })
     .prefault({}),
+  talk: z
+    .object({
+      /** Global dictation (push-to-talk + toggle hotkeys, floating pill). */
+      enabled: z.boolean().default(true),
+      /** Hold-to-talk modifier key watched by the native helper ('' = none). */
+      pushKey: z
+        .enum(['fn', 'right-option', 'right-command', 'right-control', ''])
+        .default('fn'),
+      /** Press once to start, again to stop (Electron accelerator; '' = none). */
+      toggleHotkey: z.string().max(60).default('CommandOrControl+Shift+Space'),
+      /** Keep the mic open between dictations so the first word isn't clipped (mic indicator stays on). */
+      warmMic: z.boolean().default(false),
+      /** Audio kept from just before the key press (warm mic only). */
+      preRollMs: z.number().int().min(0).max(2000).default(300),
+      /** auto: best cloud engine with a key, else on-device. */
+      engine: z
+        .enum(['auto', 'deepgram', 'elevenlabs', 'on-device'])
+        .default('auto'),
+      /** Switch to the on-device stream automatically when the cloud stream fails. */
+      autoFailover: z.boolean().default(true),
+      /** Clean up dictated text (fillers, punctuation, formatting). */
+      autoCleanup: z.boolean().default(true),
+      /** Use the LLM for cleanup (OpenRouter); off = on-device rules only. */
+      aiCleanup: z.boolean().default(true),
+      cleanupModel: z.string().max(120).default(''),
+      cleanupTimeoutMs: z.number().int().min(100).max(10_000).default(900),
+      /** Type the text into the focused app when you let go. */
+      autoInsert: z.boolean().default(true),
+      /** Put your clipboard back after a paste-based insert. */
+      restoreClipboard: z.boolean().default(true),
+      /** Floating pill with the level and live text while dictating. */
+      showPill: z.boolean().default(true),
+      saveHistory: z.boolean().default(true),
+    })
+    .prefault({}),
   privacy: z
     .object({
       /** Never send audio, transcripts or notes to a cloud service: summaries/chat use the on-device fallback (or a local Ollama). */

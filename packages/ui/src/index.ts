@@ -18,3 +18,4 @@ export * from './Progress';
 export * from './Lifecycle';
 export * from './Layout';
 export * from './Meeting';
+export * from './Talk';
