@@ -833,20 +833,40 @@ Every stage is small commits straight to `main`, never adds GitHub Actions workf
 
 ## 9. `qrtz-llm` (summary step, ADR 0042)
 
-`LlmSteps<E: DbExec>` is the `StepExecutor` for `summary` and `resummarize`. It delegates `finalize` and `index` to
-`inner`. Wire it in place of `CoreSteps`:
+`LlmSteps<E: DbExec>` is the `StepExecutor` for `summary` and `resummarize`. It delegates `finalize` and `index`
+to `inner`. Wire it in place of `CoreSteps`:
 
 ```rust
 let core = Arc::new(CoreSteps { db: storage.clone() });
-let steps = Arc::new(qrtz_llm::LlmSteps::on_device(storage.clone(), core, Arc::new(now_ms)));
+let steps = Arc::new(qrtz_llm::LlmSteps::new(
+    storage.clone(),
+    core,
+    Arc::new(now_ms),
+    Arc::new(move || llm_config_from_settings()), // read per attempt
+    Arc::new(qrtz_llm::EnvOverride::process(move |n: &str| secret_store.get(n))),
+));
+// On-device only (no provider, no keys): qrtz_llm::LlmSteps::on_device(storage.clone(), core, Arc::new(now_ms))
 ```
 
-- `summary(id, Llm)`: today the on-device extractive summary (what TS does with no usable provider), saved; the
-  meeting is marked done. `Fallback{error}`: the same summary with `llmError` (≤ 500 UTF-16 units). `Skip`: done, no
-  summary. `resummarize(id, template)`: the template is stored first, then the summary is replaced.
+- `LlmConfig { provider, model, base_url, local_only }` maps `note.llmProvider` (default `openrouter`),
+  `note.llmModel` (empty: `anthropic/claude-haiku-5.5`, `OPENROUTER_DEFAULT_MODEL`), `QRTZ_LLM_BASE_URL` and
+  `privacy.localOnly` (cloud providers become on-device; keys are never read). Keys: `SecretSource::get("llm.openrouter")`
+  and the other `SECRET_NAMES`. `EnvOverride` gives `QRTZ_SECRET_*` precedence, like the Electron store.
+- `summary(id, Llm)`: strict, one attempt under `SUMMARY_DEADLINE_MS` (110 s, monotonic). On success the summary is
+  saved and the meeting marked done. A provider failure is returned with its retry class (5xx/429, transport, and every
+  after-200 failure are retryable; other 4xx are not), and a timeout is a retryable `E_TIMEOUT` with the request
+  dropped, so a late reply is never saved. With no usable provider (none, local-only, no key, or nothing to summarize)
+  the extractive summary is saved. `Fallback{error}`: the extractive summary with `llmError` (≤ 500 UTF-16 units).
+  `Skip`: done, no summary.
+- `resummarize(id, template)`: the template is stored first. Not strict: a provider failure saves the extractive
+  summary with `llmError`; a timeout saves nothing and the old summary stays. Status is unchanged.
+- The prompt lists capture gaps from `PipelineState.capture` (silent spans, plus lost spans as that source's
+  silence; only both silent is "no audio at all").
 - DB errors keep the storage classification (busy / full disk retryable, N13); a missing meeting is `E_NOT_FOUND`.
-- Parity: `spec/vectors/llm/*.json`, written by `packages/core/src/note/llm.vectors.test.ts`, read by
-  `crates/qrtz-llm/tests/*.rs`.
+- Keys never appear in logs or errors: `Secret` prints `***`, and error text that echoes a key is redacted.
+- Parity: `spec/vectors/llm/*.json` (prompt and exact request body, reply classification, reply parser, extractive),
+  written by `packages/core/src/note/llm.vectors.test.ts` and read by `crates/qrtz-llm/tests/*.rs`, plus a mock HTTP
+  server (`tests/common`).
 
 ## 9. `qrtz-backup`: Markdown export and backup zip (phase 3, done)
 
