@@ -147,6 +147,20 @@ impl Supervisor {
         }
         rx.await.unwrap_or(false)
     }
+    /// Sync, ordered enqueue (the runtime's `HelperPort::send` is sync): true if the helper is running right now.
+    /// The line goes through the same actor queue as [`Supervisor::send`], so order with other sends is kept.
+    pub fn try_send(&self, line: String) -> bool {
+        if self.status.borrow().state != HelperState::Running {
+            return false;
+        }
+        let (tx, _rx) = oneshot::channel();
+        self.cmd.send(Cmd::Send(line, tx)).is_ok()
+    }
+    /// `helper.stop(); helper.start()`: a fresh helper process (the old one may still hold a stuck writer).
+    pub fn restart(&self) {
+        let _ = self.cmd.send(Cmd::Stop);
+        let _ = self.cmd.send(Cmd::Start);
+    }
     /// Graceful quit: write `goodbye` (e.g. the `shutdown` message), wait up to `grace` for exit, then kill.
     pub async fn shutdown(&self, goodbye: String, grace: Duration) {
         let (tx, rx) = oneshot::channel();

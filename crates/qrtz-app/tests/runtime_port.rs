@@ -1,8 +1,8 @@
 //! `note:delete` through the app service onto the real qrtz-lifecycle `NoteRuntime` (feature "runtime"):
-//! the runtime deletes rows and audio, the service emits `note:changed`, the response stays `{ok: true}`, and the
+//! the runtime deletes rows and audio and emits `note:changed`, the response stays `{ok: true}`, and the
 //! meeting being recorded is refused with a clear E_VALIDATION (nothing removed, no event).
 use qrtz_app::ports::*;
-use qrtz_app::runtime_port::NoteRuntimePort;
+use qrtz_app::runtime_port::{HelperAvailability, NoteRuntimePort};
 use qrtz_app::secrets::MemorySecretStore;
 use qrtz_app::*;
 use qrtz_ipc::Router;
@@ -18,10 +18,6 @@ impl HelperPort for Helper {
     fn send(&self, cmd: &HelperCommand) -> bool {
         self.0.send(cmd.clone()).is_ok()
     }
-}
-struct NoEvents;
-impl EventSink for NoEvents {
-    fn emit(&self, _e: CoreEvent) {}
 }
 
 async fn call(r: &Router<Shared>, ch: &str, payload: Value) -> Value {
@@ -45,6 +41,8 @@ async fn note_delete_runs_the_runtime_delete_and_refuses_the_live_meeting() {
     let rec = dir.path().join("rec");
     let (tx, mut cmds) = tokio::sync::mpsc::unbounded_channel::<HelperCommand>();
     std::fs::create_dir_all(&rec).unwrap();
+    let events = Events::new();
+    let cfg: SharedConfig = ConfigStore::open(dir.path().join("c.json")).into();
     let db = InlineDb::new(Db::open(dir.path().join("qrtz.db")).unwrap());
     let rt = NoteRuntime::new(RuntimeDeps {
         store: Arc::new(Store(InlineDb(db.0.clone()))),
@@ -52,7 +50,11 @@ async fn note_delete_runs_the_runtime_delete_and_refuses_the_live_meeting() {
             db: InlineDb(db.0.clone()),
         }),
         helper: Arc::new(Helper(tx)),
-        events: Arc::new(NoEvents),
+        events: Arc::new(qrtz_app::wiring::AppSink::new(
+            events.clone(),
+            Arc::new(NoShell),
+            cfg.clone(),
+        )),
         config: Arc::new(RuntimeConfig::default),
         clock: Arc::new(SystemClock),
         ids: Arc::new(|| "m1".into()),
@@ -71,16 +73,14 @@ async fn note_delete_runs_the_runtime_delete_and_refuses_the_live_meeting() {
             arch: "x64".into(),
             shell: "tauri test".into(),
         },
-        config: ConfigStore::open(dir.path().join("c.json")),
+        config: cfg,
         secrets: Arc::new(MemorySecretStore::default()),
-        runtime: Arc::new(NoteRuntimePort {
-            runtime: rt.clone(),
-            rest: Arc::new(StubRuntime::default()),
-        }),
+        runtime: Arc::new(NoteRuntimePort::new(rt.clone(), HelperAvailability::Native)),
         storage: Arc::new(StubStorage),
         talk: Arc::new(StubTalk),
         shell: Arc::new(NoShell),
         helper: None,
+        events,
     });
     let r = Router::new(Shared(svc.clone()));
     let mut rx = svc.events.subscribe();
@@ -112,6 +112,7 @@ async fn note_delete_runs_the_runtime_delete_and_refuses_the_live_meeting() {
     std::fs::write(&wav, b"RIFF").unwrap();
 
     // The live meeting: refused, nothing removed, no event, still recording.
+    changed(&mut rx); // the start's own note:changed
     let refused = call(&r, "note:delete", json!({"id":"m1"})).await;
     assert_eq!(refused["error"]["code"], "E_VALIDATION");
     assert_eq!(refused["error"]["message"], DELETE_WHILE_RECORDING);
@@ -121,8 +122,9 @@ async fn note_delete_runs_the_runtime_delete_and_refuses_the_live_meeting() {
     assert!(changed(&mut rx).is_empty());
 
     rt.stop(StopReason::Manual).await.unwrap();
+    changed(&mut rx);
 
-    // Processing or done: the runtime deletes rows + audio; the service emits note:changed; `{ok: true}`.
+    // Processing or done: the runtime deletes rows + audio; the runtime emits note:changed; `{ok: true}`.
     let ok = call(&r, "note:delete", json!({"id":"m1"})).await;
     assert_eq!(ok["data"], json!({"ok": true}), "{ok}");
     assert!(!wav.exists(), "audio removed");

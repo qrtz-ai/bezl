@@ -151,17 +151,8 @@ impl ConfigStore {
         if self.file.as_os_str().is_empty() {
             return Ok(());
         }
-        if let Some(dir) = self.file.parent() {
-            crate::dirs::private_dir(dir)?; // N25: the app data dir is owner-only
-        }
-        let tmp = self.file.with_extension("json.tmp");
-        std::fs::write(&tmp, serde_json::to_string_pretty(&self.cfg)?)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))?;
-        }
-        std::fs::rename(&tmp, &self.file)
+        // N25 dir 0700 + T4 stale-tmp removal + 0600 atomic rename (shared with the secret store).
+        crate::secrets::write_private_atomic(&self.file, serde_json::to_string_pretty(&self.cfg)?.as_bytes())
     }
 
     /// Typed accessors the shell uses to apply toggles.

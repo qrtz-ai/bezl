@@ -1,0 +1,49 @@
+[package]
+name = "qrtz-desktop-tauri"
+description = "qrtz desktop app, Tauri 2 shell"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+default-run = "qrtz"
+
+[[bin]]
+name = "qrtz"
+path = "src/main.rs"
+
+[lib]
+name = "qrtz_desktop_tauri"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+qrtz-app = { path = "../../../crates/qrtz-app", features = ["runtime"] }
+qrtz-ipc = { path = "../../../crates/qrtz-ipc" }
+qrtz-helper-bridge = { path = "../../../crates/qrtz-helper-bridge" }
+qrtz-storage.workspace = true
+tauri = { version = "2", features = [
+  "tray-icon",
+  "image-png",
+  "macos-private-api",
+] }
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-dialog = "2"
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[features]
+# `tauri build` turns this on: serve the bundled ../dist over tauri:// instead of the Vite dev server.
+custom-protocol = ["tauri/custom-protocol"]

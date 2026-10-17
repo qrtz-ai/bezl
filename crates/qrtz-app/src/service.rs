@@ -46,20 +46,36 @@ impl Default for Events {
     }
 }
 
+/// The config store shared by the service (config:* channels) and the runtime/talk config readers.
+#[derive(Clone)]
+pub struct SharedConfig(pub Arc<Mutex<ConfigStore>>);
+impl SharedConfig {
+    pub fn get(&self) -> Value {
+        self.0.lock().unwrap_or_else(|p| p.into_inner()).get().clone()
+    }
+}
+impl From<ConfigStore> for SharedConfig {
+    fn from(c: ConfigStore) -> Self {
+        SharedConfig(Arc::new(Mutex::new(c)))
+    }
+}
+
 pub struct AppDeps {
     pub info: AppInfo,
-    pub config: ConfigStore,
+    pub config: SharedConfig,
     pub secrets: Arc<dyn SecretStore>,
     pub runtime: Arc<dyn RuntimePort>,
     pub storage: Arc<dyn StoragePort>,
     pub talk: Arc<dyn TalkPort>,
     pub shell: Arc<dyn ShellHooks>,
     pub helper: Option<Supervisor>,
+    /// The bus the runtime's EventSink also writes to (build it first, hand clones to both).
+    pub events: Events,
 }
 
 pub struct AppService {
     info: AppInfo,
-    config: Mutex<ConfigStore>,
+    config: SharedConfig,
     secrets: Arc<dyn SecretStore>,
     pub runtime: Arc<dyn RuntimePort>,
     pub storage: Arc<dyn StoragePort>,
@@ -78,19 +94,22 @@ impl AppService {
     pub fn new(d: AppDeps) -> Arc<Self> {
         Arc::new(Self {
             info: d.info,
-            config: Mutex::new(d.config),
+            config: d.config,
             secrets: d.secrets,
             runtime: d.runtime,
             storage: d.storage,
             talk: d.talk,
             shell: d.shell,
             helper: d.helper,
-            events: Events::new(),
+            events: d.events,
         })
     }
 
     pub fn config(&self) -> Value {
-        self.config.lock().unwrap().get().clone()
+        self.config.get()
+    }
+    pub fn shared_config(&self) -> SharedConfig {
+        self.config.clone()
     }
 
     pub fn helper(&self) -> Option<&Supervisor> {
@@ -175,7 +194,12 @@ impl AppService {
     }
 
     fn set_config(&self, patch: &Value) -> Result<Value, AppError> {
-        let next = self.config.lock().unwrap().set(patch)?;
+        let next = self
+            .config
+            .0
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .set(patch)?;
         self.events.emit("config:changed", next.clone());
         Ok(next)
     }
@@ -238,12 +262,6 @@ impl AppService {
 impl Handler for AppService {
     async fn handle(&self, channel: &str, payload: Value, _ctx: &CallContext) -> Result<Value, AppError> {
         match Self::owner(channel) {
-            Some("runtime") if channel == "note:delete" => {
-                let id = payload["id"].clone();
-                let r = self.runtime.call(channel, payload).await?;
-                self.events.emit("note:changed", json!({ "id": id }));
-                Ok(r)
-            }
             Some("runtime") => self.runtime.call(channel, payload).await,
             Some("storage") => self.storage.call(channel, payload).await,
             Some("talk") => self.talk.call(channel, payload).await,

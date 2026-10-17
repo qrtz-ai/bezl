@@ -56,13 +56,14 @@ fn app(cfg: &Path, helper: Option<Supervisor>) -> (Arc<AppService>, Router<Share
     let hud = Arc::new(Hud(AtomicBool::new(false)));
     let svc = AppService::new(AppDeps {
         info: info(),
-        config: ConfigStore::open(cfg),
+        config: ConfigStore::open(cfg).into(),
         secrets: Arc::new(MemorySecretStore::default()),
         runtime: Arc::new(StubRuntime::default()),
         storage: Arc::new(StubStorage),
         talk: Arc::new(StubTalk),
         shell: hud.clone(),
         helper,
+        events: Events::new(),
     });
     let router = Router::new(Shared(svc.clone()));
     (svc, router, hud)
@@ -376,13 +377,14 @@ fn hello_and_helper_status_reach_talk() {
     let dir = tempfile::tempdir().unwrap();
     let svc = AppService::new(AppDeps {
         info: info(),
-        config: ConfigStore::open(dir.path().join("config.json")),
+        config: ConfigStore::open(dir.path().join("config.json")).into(),
         secrets: Arc::new(MemorySecretStore::default()),
         runtime: Arc::new(Runtime(rt.clone())),
         storage: Arc::new(StubStorage),
         talk: Arc::new(Talk(talk.clone())),
         shell: Arc::new(NoShell),
         helper: None,
+        events: Events::new(),
     });
     svc.on_helper_line(
         r#"{"features":[],"helperVersion":"0.1.0","os":"macOS 15.5","protocol":1,"type":"hello"}"#,

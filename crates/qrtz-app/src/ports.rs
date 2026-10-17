@@ -19,6 +19,8 @@ pub const RUNTIME_CHANNELS: &[&str] = &[
     "note:dismiss",
     // The runtime owns the full delete (pipeline, rows, audio; refuses the meeting being recorded).
     "note:delete",
+    // Tombstones live in the runtime (N17).
+    "note:undo-delete",
     "note:pause",
     "note:pipeline",
     "note:retry-step",
@@ -37,7 +39,6 @@ pub const STORAGE_CHANNELS: &[&str] = &[
     "note:update-note",
     "note:delete-note",
     "note:rename-speaker",
-    "note:undo-delete",
     "note:export",
     "db:health",
     "data:export-backup",
@@ -85,9 +86,22 @@ pub trait TalkPort: Send + Sync {
     async fn toggle(&self) -> Result<Value, AppError>;
 }
 
+/// OS notifications the core asks the shell for. Not IPC events: the shell decides whether a window is focused
+/// (in-app UI covers that case) and what a click does.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Notice {
+    /// N29: every capture source of this meeting went silent (`noAudio` turned on) and `note.notifyNoAudio` is on.
+    /// Edge-triggered: once per meeting until `noAudio` clears.
+    NoAudio { meeting_id: String },
+    /// A meeting was detected and auto-record is off (`CoreEvent::DetectedPrompt`); a click starts recording.
+    MeetingDetected { title: String, platform: String },
+}
+
 /// Window-level effects owned by the Tauri shell.
 pub trait ShellHooks: Send + Sync {
     fn set_hud_expanded(&self, expanded: bool) -> bool;
+    /// Raise an OS notification (Tauri shell); headless builds ignore it.
+    fn notify(&self, _n: Notice) {}
 }
 
 pub struct NoShell;

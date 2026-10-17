@@ -4,7 +4,7 @@
 # qrtz-helper-bridge, qrtz-app and the shell belong to the shell track.
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "apps/desktop-tauri/src-tauri"]
 
 [workspace.package]
 version = "0.1.0"
