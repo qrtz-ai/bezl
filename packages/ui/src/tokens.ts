@@ -72,7 +72,7 @@ export const tokens = {
   },
   radius: { sm: '4px', md: '6px', lg: '8px', full: '9999px' },
   /**
-   * One family everywhere: Geist Pixel (Square), bundled locally from Vercel's `geist` 1.8.1 release (OFL-1.1).
+   * One family everywhere: Geist Pixel (Circle), bundled locally from Vercel's `geist` 1.8.1 release (OFL-1.1).
    * It ships one weight and draws on a 38/1000 em pixel grid, so sizes are multiples of 13.158px (one font
    * pixel = 0.5 CSS px = one device pixel on Retina). Hierarchy comes from size and color, never fake bold.
    */
