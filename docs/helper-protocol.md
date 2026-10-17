@@ -44,12 +44,22 @@ Rules (the arbiter's `cmd` events):
    is cleaned up and the retry succeeds. The host never stops a recording it is capturing itself. A refused
    dictation is not cancelled by its own id (the helper never ran it). Stops and cancels when nothing is running are
    no-ops (`not-recording` / `not-dictating`). `dictation.stop` and `cancel` with a stale id are no-ops too.
-   `dictation.stop` finishes the last words before answering (`DictationTail`): the mic keeps capturing for 250 ms
-   after the release, blocks still queued in the mic stream are drained (at most 300 ms), 640 ms of silence is fed so
-   Nemotron decodes the final partial 560 ms chunk, then its finalize runs for at most 1.5 s (past that, the partial
-   text is used and a warn is logged). `dictation.stopped` follows within 2.05 s, under the host's 3 s stop wait; the
-   pill stays up the whole time. `durationMs` counts captured audio only, not the pad. A second stop while stopping
-   is ignored; `dictation.cancel` during the tail answers `stopped{text: ""}` once.
+   `dictation.stop` finishes the last words before answering (`DictationTail`). The mic keeps capturing for 250 ms
+   after the release. Then the blocks still queued in the mic stream are drained, waiting up to 300 ms plus 2 ms per
+   ms queued. After the drain, nothing reaches the recogniser: later mic audio is the next dictation's pre-roll.
+   Then 640 ms of silence is fed so Nemotron decodes the final partial 560 ms chunk, and the final text is awaited
+   for 1.5 s plus 100 ms per second of dictation plus 1 ms per ms queued. Drain and finalize together stay within
+   20 s. With nothing queued, `dictation.stopped` follows within about 2 s, inside qrtz-talk's `stopped_for` wait
+   (N124). Only a recogniser still not done after its limit (hung) is given up on. Then the last polled partial is
+   sent (it is never read from the recogniser mid-finish), and that recogniser is skipped by later dictations until
+   its finish returns. The pill stays up the whole time. `durationMs` counts captured audio only, not the pad. A
+   second stop while stopping is ignored. `dictation.cancel` or a mic loss while stopping answers one
+   `stopped` (`text: ""`, or the text with the `reason`).
+   The mic stream's backlog is capped at 20 s. Past that, the mic stands down for the rest of that dictation: later
+   audio is dropped and counted, and `error{code: "dictation.backlog", fatal: false}` is sent once. Nothing is lost
+   silently. Known limit: pressing fn again before the previous dictation has finalized is refused
+   (`dictation.busy`, like any start while dictating). Its audio since the drain is kept as pre-roll, up to the
+   pre-roll length.
    `recording.stop` takes an optional `audioPath`: when it names a file other than the one being recorded, the stop is
    ignored (logged). The host sends the path on every cleanup stop (a stale `recording.started{A}`, a start timeout),
    so a late ack for an abandoned start never stops the recording that replaced it.

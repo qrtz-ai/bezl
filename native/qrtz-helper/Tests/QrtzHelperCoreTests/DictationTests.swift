@@ -135,17 +135,26 @@ final class DictationTests: XCTestCase {
 
 /// Like Nemotron: decodes only full 560 ms chunks (8960 samples). A chunk's words are its distinct non-zero levels
 /// (level 0.1·k = word "wk"). `finish()` drops a partial chunk: a streaming model that needs audio after a word.
+/// Counts any append that reaches it while a finish() runs (the shared-recogniser hazard).
 final class ChunkASR: StreamingTranscriber, @unchecked Sendable {
     let name = "chunk"
     let loadsInstantly = true
     let lock = NSLock()
     var buf: [Float] = []
     var words: [String] = []
-    let finishNs: UInt64
-    init(finishNs: UInt64 = 0) { self.finishNs = finishNs }
+    var finishing = false
+    var appendsWhileFinishing = 0
+    var appended = 0
+    var finishNs: UInt64
+    let appendNs: UInt64
+    init(finishNs: UInt64 = 0, appendNs: UInt64 = 0) { self.finishNs = finishNs; self.appendNs = appendNs }
     func prepare() async throws {}
     func append(_ s: [Float]) async {
+        lock.withLock { if finishing { appendsWhileFinishing += 1 } }
+        if appendNs > 0, s.contains(where: { $0 != 0 }) { try? await Task.sleep(nanoseconds: appendNs) }
         lock.withLock {
+            if finishing { appendsWhileFinishing += 1 }
+            appended += s.count
             buf += s
             while buf.count >= 8960 {
                 for v in buf.prefix(8960) where v > 0 {
@@ -158,8 +167,9 @@ final class ChunkASR: StreamingTranscriber, @unchecked Sendable {
     }
     func transcript() async -> String { lock.withLock { words.joined(separator: " ") } }
     func finish() async -> String {
-        if finishNs > 0 { try? await Task.sleep(nanoseconds: finishNs) }
-        return lock.withLock { buf.removeAll(); return words.joined(separator: " ") }
+        let ns = lock.withLock { finishing = true; return finishNs }
+        if ns > 0 { try? await Task.sleep(nanoseconds: ns) }
+        return lock.withLock { finishing = false; buf.removeAll(); return words.joined(separator: " ") }
     }
     func reset() async { lock.withLock { buf.removeAll(); words.removeAll() } }
 }
@@ -217,17 +227,95 @@ final class DictationTailTests: XCTestCase {
         XCTAssertEqual(stoppedText(out.value), "w1 w2 w3")
     }
 
-    func testASlowFinalizeIsBoundedAndUsesThePartial() async {
-        let asr = ChunkASR(finishNs: 5_000_000_000)
-        let (c, out) = controller(asr, DictationTail(tailMs: 0, padMs: 640, finalizeTimeoutMs: 200))
+    func testASlowFinalizeIsWaitedForNotReplacedByThePartial() async {
+        // A 400 ms finish against a 300 ms base: the limit scales with the dictation (+100 ms per second), so it is
+        // waited for and its final is sent, not the partial.
+        let asr = ChunkASR(finishNs: 400_000_000)
+        let (c, out) = controller(asr, DictationTail(tailMs: 0, padMs: 0, finalizeTimeoutMs: 300))
+        await c.handle(.dictationStart(id: "d1"))
+        for _ in 0..<4 { await c.dictation.onSamples(level(1, 8000)) }  // 2 s of dictation: limit 300 + 200 ms
+        await c.handle(.dictationStop(id: "d1"))
+        XCTAssertEqual(stoppedText(out.value), "w1")
+        XCTAssertFalse(out.value.contains { if case .log(.warn, let m) = $0 { m.contains("not ready") } else { false } })
+    }
+
+    func testAHungFinalizeSendsThePartialAndHoldsTheRecogniserUntilItFinishes() async {
+        let asr = ChunkASR(finishNs: 1_000_000_000)
+        let (c, out) = controller(asr, DictationTail(tailMs: 0, padMs: 640, finalizeTimeoutMs: 150))
         await c.handle(.dictationStart(id: "d1"))
         await c.dictation.onSamples(level(1, 8960))
         await c.dictation.onSamples(level(2, 4000))
+        try? await Task.sleep(nanoseconds: 250_000_000)  // a poll: the partial is "w1"
         let t = Date()
         await c.handle(.dictationStop(id: "d1"))
-        XCTAssertLessThan(Date().timeIntervalSince(t), 1.0)
-        XCTAssertEqual(stoppedText(out.value), "w1 w2", "the pad already decoded the last chunk; the partial has it")
-        XCTAssertTrue(out.value.contains { if case .log(.warn, let m) = $0 { m.contains("final text not ready") } else { false } })
+        XCTAssertLessThan(Date().timeIntervalSince(t), 0.6, "bounded: 150 ms + 0.8 s / 10")
+        XCTAssertEqual(stoppedText(out.value), "w1", "the last partial, read before the finish, not from the recogniser mid-finish")
+        XCTAssertTrue(out.value.contains { if case .log(.warn, let m) = $0 { m.contains("not ready") } else { false } })
+        // A re-press while that finish still runs never touches the recogniser: no reset, no append.
+        await c.handle(.dictationStart(id: "d2"))
+        await c.dictation.onSamples(level(3, 8960))
+        XCTAssertTrue(out.value.contains { if case .log(.warn, let m) = $0 { m.contains("still finishing") } else { false } })
+        await c.handle(.dictationStop(id: "d2"))
+        XCTAssertEqual(asr.lock.withLock { asr.appendsWhileFinishing }, 0)
+        // Once it returns, the next dictation has it again.
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        asr.lock.withLock { asr.finishNs = 0 }
+        out.mutate { $0.removeAll() }
+        await c.handle(.dictationStart(id: "d3"))
+        await c.dictation.onSamples(level(4, 8960))
+        await c.handle(.dictationStop(id: "d3"))
+        XCTAssertEqual(stoppedText(out.value), "w4")
+    }
+
+    func testNothingReachesTheRecogniserAfterTheDrain() async {
+        // Gap 1: the mic keeps delivering while finish() runs; those blocks go to the pre-roll, never append().
+        let mic = FakeMic()
+        let asr = ChunkASR(finishNs: 400_000_000)
+        let (c, out) = controller(asr, DictationTail(tailMs: 0, padMs: 640), mic: mic)
+        await c.handle(.dictationConfigure(warmMic: false, preRollMs: 300, streamAudio: false, pushKey: "", consumeFn: true))
+        await c.handle(.dictationStart(id: "d1"))
+        guard let cb = mic.cb else { return XCTFail("mic attached") }
+        cb(level(1, 8960))
+        let stop = Task { await c.handle(.dictationStop(id: "d1")) }
+        for _ in 0..<6 { try? await Task.sleep(nanoseconds: 50_000_000); cb(level(5, 1360)) }
+        await stop.value
+        XCTAssertEqual(asr.lock.withLock { asr.appendsWhileFinishing }, 0)
+        XCTAssertEqual(stoppedText(out.value), "w1")
+        XCTAssertTrue(out.value.contains(.dictationStopped(id: "d1", text: "w1", durationMs: 560)))
+    }
+
+    func testTheDrainLimitScalesToWhatIsQueued() async {
+        // The recogniser takes 60 ms per 85 ms block; 8 blocks queued at the release need ~480 ms, far past the
+        // 50 ms base, within 50 + 2 × 680 ms.
+        let mic = FakeMic()
+        let asr = ChunkASR(appendNs: 60_000_000)
+        let (c, out) = controller(asr, DictationTail(tailMs: 0, drainTimeoutMs: 50, padMs: 640), mic: mic)
+        await c.handle(.dictationStart(id: "d1"))
+        guard let cb = mic.cb else { return XCTFail("mic attached") }
+        for _ in 0..<8 { cb(level(6, 1360)) }
+        await c.handle(.dictationStop(id: "d1"))
+        XCTAssertFalse(out.value.contains { if case .log(.warn, let m) = $0 { m.contains("not drained") } else { false } })
+        XCTAssertTrue(out.value.contains(.dictationStopped(id: "d1", text: "w6", durationMs: 8 * 1360 / 16)))
+    }
+
+    func testABacklogPastTheCapStandsTheMicDownExplicitly() async {
+        // Gap 3: no silent bufferingNewest drop. 300 ms cap: 3 blocks queue, the 4th stands the mic down.
+        let mic = FakeMic()
+        let asr = ChunkASR(appendNs: 100_000_000)
+        let (c, out) = controller(asr, DictationTail(tailMs: 0, padMs: 0, backlogCapMs: 300), mic: mic)
+        await c.handle(.dictationStart(id: "d1"))
+        guard let cb = mic.cb else { return XCTFail("mic attached") }
+        for _ in 0..<20 { cb(level(1, 1360)) }
+        await c.handle(.dictationStop(id: "d1"))
+        let errs = out.value.filter { if case .error(let code, _, _, _, _, _, _) = $0 { code == "dictation.backlog" } else { false } }
+        XCTAssertEqual(errs.count, 1, "said once")
+        XCTAssertLessThanOrEqual(asr.lock.withLock { asr.appended }, 4800, "nothing past the cap reached the recogniser")
+        // The next dictation is re-armed.
+        out.mutate { $0.removeAll() }
+        await c.handle(.dictationStart(id: "d2"))
+        mic.cb?(level(2, 1360))  // a fresh tap callback (the cold mic was released after d1)
+        await c.handle(.dictationStop(id: "d2"))
+        XCTAssertTrue(out.value.contains(.dictationStopped(id: "d2", text: "", durationMs: 85)))
     }
 
     func testCancelDuringTheTailAnswersOnce() async {
@@ -242,6 +330,6 @@ final class DictationTailTests: XCTestCase {
     }
 
     func testTheBudgetFitsTheHostsStopWait() {
-        XCTAssertLessThan(DictationTail().budgetMs, 3000, "qrtz-talk waits 3000 ms for dictation.stopped")
+        XCTAssertLessThan(DictationTail().budgetMs(), 3000, "qrtz-talk waits 3000 ms for dictation.stopped")
     }
 }
