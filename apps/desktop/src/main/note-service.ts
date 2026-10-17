@@ -452,6 +452,25 @@ export class NoteService {
         )
           this.deps.log.info('capture audible', { source: m.source });
         break;
+      case 'capture.degraded':
+        // N35: a capture device failed inside a running source. Applied like a revoke (N4), but kept as a device
+        // failure: sticky until a reconnect, and on the meeting apart from permission revokes.
+        if (
+          this.machine.send({
+            type: 'capture-degraded',
+            degraded: m.degraded,
+            reason: m.reason,
+            at: Date.now(),
+          })
+        ) {
+          this.deps.log.warn('capture device failed', {
+            degraded: m.degraded,
+            reason: m.reason,
+          });
+          if (this.view().noAudio)
+            this.deps.log.warn('no audio from any capture source');
+        }
+        break;
       case 'capture.fallback':
         // H8: kept on the session (then the meeting's pipeline); `to: null` = nothing left to capture.
         this.machine.send({
@@ -712,6 +731,8 @@ export class NoteService {
       paused: s.phase === 'recording' && this.paused,
       ...(s.stopReason ? { stopReason: s.stopReason } : {}),
       degraded: s.degraded,
+      // N35: which of those a failed device set (not a permission), until the next reconnect.
+      ...(s.deviceLost?.length ? { deviceLost: s.deviceLost } : {}),
       ...(s.reconnect ? { reconnect: s.reconnect } : {}),
       ...(pipeline ? { pipeline: toPipelineView(pipeline) } : {}),
       // N29: sources silent right now, and `noAudio` when every source still delivered is silent.

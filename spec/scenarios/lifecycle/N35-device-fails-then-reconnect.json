@@ -1,0 +1,423 @@
+{
+  "name": "N35-device-fails-then-reconnect",
+  "about": "N35: a device failure is sticky until a reconnect; the new helper starts from its own state, so mic silence counts again. A failure after a revoke of the same source is ignored (the revoke owns it); only the device failure is on the meeting record.",
+  "script": [
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permissions.status",
+        "status": {
+          "accessibility": "granted",
+          "screen-recording": "granted",
+          "microphone": "granted"
+        }
+      }
+    },
+    {
+      "op": "call",
+      "fn": "start",
+      "label": "start",
+      "args": {
+        "title": "Standup"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.started",
+        "audioPath": "$REC/id1.wav"
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 1000
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "capture.degraded",
+        "degraded": [
+          "no-mic"
+        ],
+        "reason": "mic unavailable, recording system audio only: device busy"
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 1000
+    },
+    {
+      "op": "wav",
+      "file": "id1.wav",
+      "ms": 2000,
+      "broken": true
+    },
+    {
+      "op": "helperDown",
+      "reason": "exited"
+    },
+    {
+      "op": "advance",
+      "ms": 2000
+    },
+    {
+      "op": "helperUp"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.started",
+        "audioPath": "$REC/id1.p1.wav"
+      }
+    },
+    {
+      "op": "snapshot",
+      "label": "restored"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "capture.silent",
+        "source": "mic",
+        "sinceMs": 0
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 1000
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permission.revoked",
+        "permission": "microphone",
+        "atMs": 1000,
+        "degraded": [
+          "no-mic"
+        ]
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "capture.degraded",
+        "degraded": [
+          "no-mic"
+        ],
+        "reason": "after the revoke"
+      }
+    },
+    {
+      "op": "snapshot",
+      "label": "revoked"
+    },
+    {
+      "op": "wav",
+      "file": "id1.p1.wav",
+      "ms": 2000,
+      "broken": false
+    },
+    {
+      "op": "call",
+      "fn": "stop",
+      "label": "stop"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.stopped",
+        "audioPath": "$REC/id1.p1.wav",
+        "durationMs": 2000
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 100
+    }
+  ],
+  "expect": {
+    "trace": {
+      "session": [
+        "idle|-|-|-|-|-|ok",
+        "starting|id1|-|-|-|-|ok",
+        "recording|id1|-|-|-|-|ok",
+        "recording|id1|no-mic|-|-|-|ok|d:no-mic",
+        "reconnecting|id1|no-mic|-|r1|-|ok|d:no-mic",
+        "recording|id1|transcript-gap|-|-|-|ok",
+        "recording|id1|transcript-gap|-|-|-|ok|s:mic@4000",
+        "recording|id1|transcript-gap,no-mic|-|-|-|ok",
+        "stopping|id1|transcript-gap,no-mic|-|-|-|ok",
+        "processing|id1|transcript-gap,no-mic|-|-|-|ok",
+        "done|id1|transcript-gap,no-mic|-|-|-|ok"
+      ],
+      "pipelines": {
+        "id1": [
+          "manual finalize:pending/0 summary:pending/0 index:pending/0 [mic:4000-5000 dev:no-mic@1000]",
+          "manual finalize:running/1 summary:pending/0 index:pending/0 [mic:4000-5000 dev:no-mic@1000]",
+          "manual finalize:done/1 summary:pending/0 index:pending/0 [mic:4000-5000 dev:no-mic@1000]",
+          "manual finalize:done/1 summary:running/1 index:pending/0 [mic:4000-5000 dev:no-mic@1000]",
+          "manual finalize:done/1 summary:done/1 index:pending/0 [mic:4000-5000 dev:no-mic@1000]",
+          "manual finalize:done/1 summary:done/1 index:running/1 [mic:4000-5000 dev:no-mic@1000]",
+          "manual finalize:done/1 summary:done/1 index:done/1 [mic:4000-5000 dev:no-mic@1000]"
+        ]
+      },
+      "helper": [
+        "permissions.check",
+        "recording.start $REC/id1.wav",
+        "permissions.check",
+        "recording.start $REC/id1.p1.wav",
+        "recording.stop"
+      ],
+      "transcript": [
+        [
+          0,
+          1,
+          [],
+          null
+        ]
+      ],
+      "changed": [
+        "id1",
+        "id1",
+        "id1",
+        "id1"
+      ],
+      "permissions": [
+        "granted|granted|granted",
+        "granted|granted|denied"
+      ],
+      "prompts": []
+    },
+    "results": {
+      "start": {
+        "ok": {
+          "phase": "recording",
+          "meetingId": "id1"
+        }
+      },
+      "stop": {
+        "ok": {
+          "phase": "processing",
+          "meetingId": "id1"
+        }
+      }
+    },
+    "snapshots": {
+      "restored": {
+        "view": {
+          "phase": "recording",
+          "meetingId": "id1",
+          "startedAt": 1760000000000,
+          "elapsedMs": 4000,
+          "stopReason": null,
+          "degraded": [
+            "transcript-gap"
+          ],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": {
+          "meetingId": "id1",
+          "rev": 0,
+          "segments": [],
+          "partial": null
+        },
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "recording",
+              1760000000000,
+              null,
+              null,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "recording",
+            "id1"
+          ]
+        },
+        "files": [
+          [
+            "id1.wav",
+            64044
+          ]
+        ]
+      },
+      "revoked": {
+        "view": {
+          "phase": "recording",
+          "meetingId": "id1",
+          "startedAt": 1760000000000,
+          "elapsedMs": 5000,
+          "stopReason": null,
+          "degraded": [
+            "transcript-gap",
+            "no-mic"
+          ],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": {
+          "meetingId": "id1",
+          "rev": 0,
+          "segments": [],
+          "partial": null
+        },
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "recording",
+              1760000000000,
+              null,
+              null,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "recording",
+            "id1"
+          ]
+        },
+        "files": [
+          [
+            "id1.wav",
+            64044
+          ]
+        ]
+      },
+      "end": {
+        "view": {
+          "phase": "done",
+          "meetingId": "id1",
+          "startedAt": 1760000000000,
+          "elapsedMs": 5000,
+          "stopReason": "manual",
+          "degraded": [
+            "transcript-gap",
+            "no-mic"
+          ],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": "finalize:done/1 summary:done/1 index:done/1"
+        },
+        "live": {
+          "meetingId": "id1",
+          "rev": 1,
+          "segments": [],
+          "partial": null
+        },
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "done",
+              1760000000000,
+              1760000005000,
+              4000,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [],
+          "summaries": [
+            [
+              "id1",
+              "stub",
+              "STUB summary",
+              null
+            ]
+          ],
+          "notes": [],
+          "pipelines": [
+            [
+              "id1",
+              1,
+              "manual",
+              "finalize:done/1 summary:done/1 index:done/1",
+              2000,
+              true,
+              [
+                "$REC/id1.wav",
+                "$REC/id1.p1.wav"
+              ],
+              0,
+              "mic:4000-5000 dev:no-mic@1000"
+            ]
+          ],
+          "session": [
+            "done",
+            "id1"
+          ]
+        },
+        "files": [
+          [
+            "id1.wav",
+            128044
+          ]
+        ]
+      }
+    }
+  }
+}

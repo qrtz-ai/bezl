@@ -60,6 +60,17 @@ fn compact_capture(c: &Option<CaptureReport>) -> String {
                 .iter()
                 .map(|f| format!("fb:{}>{}@{}", f.from, f.to.as_deref().unwrap_or("-"), f.at_ms)),
         )
+        .chain(c.device_failures.iter().map(|d| {
+            format!(
+                "dev:{}@{}",
+                d.degraded
+                    .iter()
+                    .map(|x| x.as_str())
+                    .collect::<Vec<_>>()
+                    .join("+"),
+                d.at_ms
+            )
+        }))
         .collect::<Vec<_>>()
         .join(" ")
 }
@@ -165,6 +176,16 @@ impl EventSink for Life {
                 ]
                 .into_iter()
                 .chain(Some(compact_silent(&v)).filter(|x| !x.is_empty()))
+                .chain((!v.device_lost.is_empty()).then(|| {
+                    format!(
+                        "d:{}",
+                        v.device_lost
+                            .iter()
+                            .map(|d| d.as_str())
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    )
+                }))
                 .collect::<Vec<_>>()
                 .join("|");
                 let mut last = self.last_session.lock().unwrap();
@@ -457,6 +478,9 @@ fn view_json(v: &SessionView) -> Value {
             .map(|x| json!([x.source.as_str(), x.since_ms]))
             .collect::<Vec<_>>());
         j["noAudio"] = json!(v.no_audio);
+    }
+    if !v.device_lost.is_empty() {
+        j["deviceLost"] = json!(v.device_lost.iter().map(|d| d.as_str()).collect::<Vec<_>>());
     }
     j
 }
@@ -786,6 +810,14 @@ impl Run {
                         .replace("$REC", &self.sh.rec);
                     let v: Value = serde_json::from_str(&raw).unwrap();
                     live.rt.helper_json(&v);
+                }
+                // A line the host's parser must refuse (qrtz-app drops it): it never reaches the runtime.
+                "helperInvalid" => {
+                    let line = serde_json::to_string(&op["msg"]).unwrap();
+                    assert!(
+                        qrtz_helper_bridge::parse_helper_line(&line).is_err(),
+                        "helperInvalid accepted: {line}"
+                    );
                 }
                 "call" => self.call(&mut live, op, &label),
                 "advance" => tokio::time::sleep(Duration::from_millis(op["ms"].as_u64().unwrap())).await,

@@ -36,5 +36,7 @@ tokio = { workspace = true, features = ["test-util"] }
 async-trait.workspace = true
 qrtz-storage.workspace = true
 rusqlite.workspace = true
+# Scenario op `helperInvalid`: the production helper-line parser (contract schema).
+qrtz-helper-bridge = { path = "../qrtz-helper-bridge" }
 # `cargo test --workspace` builds the runtime tests without extra flags.
 qrtz-lifecycle = { path = ".", features = ["runtime"] }

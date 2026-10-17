@@ -58,6 +58,11 @@ export const SessionView = z.object({
   stopReason: StopReason.optional(),
   /** Capture is running but impaired (mic-only, no ASR, no AX, gap after a helper restart). */
   degraded: z.array(Degradation).default([]),
+  /**
+   * N35: the `degraded` flags a failed capture device set (`capture.degraded`), not a permission: "mic failed" rather
+   * than "mic access revoked". Cleared by a reconnect. Omitted when none.
+   */
+  deviceLost: z.array(Degradation).optional(),
   /** Structured error (phase error, or a failed start that returned to idle/detected). */
   errorInfo: LifecycleError.optional(),
   /** Helper restart in progress mid-recording. */

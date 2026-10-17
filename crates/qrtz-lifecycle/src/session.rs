@@ -1,12 +1,14 @@
 use qrtz_model::{
-    CaptureFallback, CaptureReport, CaptureSource, Degradation, EpochMs, LifecycleEvent, Ms, ReconnectInfo,
-    RecordingPhase, RecordingState, SilentInput, SilentSpan,
+    CaptureFallback, CaptureReport, CaptureSource, Degradation, DeviceFailure, EpochMs, LifecycleEvent, Ms,
+    ReconnectInfo, RecordingPhase, RecordingState, SilentInput, SilentSpan,
 };
 
 /// Bounds on the capture record (`CAPTURE_LIMITS` in lifecycle.ts).
 pub mod capture_limits {
     pub const SILENT_SPANS: usize = 256;
     pub const FALLBACKS: usize = 8;
+    /// N35: `capture.degraded` records kept per recording.
+    pub const DEVICE_FAILURES: usize = 8;
     /// `capture.fallback` strings are kept to this many code points.
     pub const REASON_CHARS: usize = 200;
 }
@@ -96,12 +98,13 @@ pub fn capture_report(s: &RecordingState) -> Option<CaptureReport> {
         end_ms: None,
     }));
     spans.truncate(capture_limits::SILENT_SPANS);
-    if spans.is_empty() && s.fallbacks.is_empty() {
+    if spans.is_empty() && s.fallbacks.is_empty() && s.device_failures.is_empty() {
         return None;
     }
     Some(CaptureReport {
         silent_spans: spans,
         fallbacks: s.fallbacks.clone(),
+        device_failures: s.device_failures.clone(),
     })
 }
 
@@ -197,8 +200,17 @@ pub fn reduce(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> 
             })
         }
         E::Degraded { flag, at } => {
-            if !is_capturing(s.phase) || s.degraded.contains(flag) {
+            if !is_capturing(s.phase) {
                 return None;
+            }
+            if s.degraded.contains(flag) {
+                // N35: a revoke of a flag a device failure set: the permission owns it now (it outlives a reconnect).
+                if !s.device_lost.contains(flag) {
+                    return None;
+                }
+                let mut n = s.clone();
+                n.device_lost.retain(|f| f != flag);
+                return Some(n);
             }
             let mut n = s.clone();
             n.degraded.push(*flag);
@@ -230,6 +242,43 @@ pub fn reduce(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> 
                 return None;
             }
             Some(close_silent(s.clone(), Some(*at), Some(&[*source])))
+        }
+        E::CaptureDegraded { degraded, reason, at } => {
+            // N35: applied like a revoke (N4), remembered as a device failure; only flags not already set count.
+            // Only while recording: the helper sends it after recording.started, so one before the ack is stray.
+            if s.phase != P::Recording {
+                return None;
+            }
+            let mut fresh: Vec<Degradation> = Vec::new();
+            for f in degraded {
+                if !s.degraded.contains(f) && !fresh.contains(f) {
+                    fresh.push(*f);
+                }
+            }
+            if fresh.is_empty() {
+                return None;
+            }
+            let mut n = s.clone();
+            n.degraded.extend(fresh.iter().copied());
+            n.device_lost.extend(fresh.iter().copied());
+            if n.device_failures.len() < capture_limits::DEVICE_FAILURES {
+                n.device_failures.push(DeviceFailure {
+                    degraded: fresh.clone(),
+                    reason: cut_chars(reason, capture_limits::REASON_CHARS),
+                    at_ms: meeting_ms(s, *at, 0),
+                });
+            }
+            let mut lost: Vec<CaptureSource> = Vec::new();
+            for src in fresh.iter().flat_map(|f| sources_lost(*f)) {
+                if !lost.contains(src) {
+                    lost.push(*src);
+                }
+            }
+            Some(if lost.is_empty() {
+                n
+            } else {
+                close_silent(n, Some(*at), Some(&lost))
+            })
         }
         E::CaptureFallback { from, to, reason, at } => {
             if !is_capturing(s.phase) {
@@ -290,6 +339,9 @@ pub fn reduce(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> 
             n.audio_parts.push(audio_path.clone());
             // Clamp: a backward clock jump must not invent negative meeting-time offsets.
             n.part_offset_ms = (*at - s.started_at.unwrap_or(*at)).max(0);
+            // N35: a device failure lasts until the reconnect: the new helper starts from its own state.
+            let lost = std::mem::take(&mut n.device_lost);
+            n.degraded.retain(|f| !lost.contains(f));
             if !n.degraded.contains(&Degradation::TranscriptGap) {
                 n.degraded.push(Degradation::TranscriptGap);
             }

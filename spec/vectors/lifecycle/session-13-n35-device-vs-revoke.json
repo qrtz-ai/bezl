@@ -1,0 +1,433 @@
+{
+  "kind": "session",
+  "name": "N35 capture.degraded vs permission.revoked: stray before the ack, a revoke first wins, a revoke after takes the flag over",
+  "from": "ADR 0028",
+  "initial": null,
+  "steps": [
+    {
+      "event": {
+        "type": "start-requested",
+        "meetingId": "m",
+        "at": 1000,
+        "audioPath": "/p0"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000
+      }
+    },
+    {
+      "event": {
+        "type": "capture-degraded",
+        "degraded": [
+          "no-mic"
+        ],
+        "reason": "before recording.started",
+        "at": 1500
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "start-acked"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000
+      }
+    },
+    {
+      "event": {
+        "type": "degraded",
+        "flag": "no-mic",
+        "at": 2000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "no-mic"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000
+      }
+    },
+    {
+      "event": {
+        "type": "capture-degraded",
+        "degraded": [
+          "no-mic"
+        ],
+        "reason": "after the revoke",
+        "at": 3000
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "capture-degraded",
+        "degraded": [
+          "mic-only",
+          "no-mic"
+        ],
+        "reason": "screen capture audio failed",
+        "at": 4000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "no-mic",
+          "mic-only"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceLost": [
+          "mic-only"
+        ],
+        "deviceFailures": [
+          {
+            "degraded": [
+              "mic-only"
+            ],
+            "reason": "screen capture audio failed",
+            "atMs": 3000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "degraded",
+        "flag": "mic-only",
+        "at": 5000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "no-mic",
+          "mic-only"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceFailures": [
+          {
+            "degraded": [
+              "mic-only"
+            ],
+            "reason": "screen capture audio failed",
+            "atMs": 3000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "degraded",
+        "flag": "mic-only",
+        "at": 5500
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "capture-degraded",
+        "degraded": [
+          "ax-unavailable"
+        ],
+        "reason": "ax device",
+        "at": 6000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "no-mic",
+          "mic-only",
+          "ax-unavailable"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceLost": [
+          "ax-unavailable"
+        ],
+        "deviceFailures": [
+          {
+            "degraded": [
+              "mic-only"
+            ],
+            "reason": "screen capture audio failed",
+            "atMs": 3000
+          },
+          {
+            "degraded": [
+              "ax-unavailable"
+            ],
+            "reason": "ax device",
+            "atMs": 5000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "helper-lost",
+        "at": 7000,
+        "deadlineAt": 37000
+      },
+      "expect": {
+        "phase": "reconnecting",
+        "degraded": [
+          "no-mic",
+          "mic-only",
+          "ax-unavailable"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceLost": [
+          "ax-unavailable"
+        ],
+        "deviceFailures": [
+          {
+            "degraded": [
+              "mic-only"
+            ],
+            "reason": "screen capture audio failed",
+            "atMs": 3000
+          },
+          {
+            "degraded": [
+              "ax-unavailable"
+            ],
+            "reason": "ax device",
+            "atMs": 5000
+          }
+        ],
+        "reconnect": {
+          "attempt": 1,
+          "since": 7000,
+          "deadlineAt": 37000
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "helper-restored",
+        "at": 9000,
+        "audioPath": "/p1"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "no-mic",
+          "mic-only",
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1"
+        ],
+        "partOffsetMs": 8000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceFailures": [
+          {
+            "degraded": [
+              "mic-only"
+            ],
+            "reason": "screen capture audio failed",
+            "atMs": 3000
+          },
+          {
+            "degraded": [
+              "ax-unavailable"
+            ],
+            "reason": "ax device",
+            "atMs": 5000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "capture-degraded",
+        "degraded": [
+          "ax-unavailable"
+        ],
+        "reason": "failed again on the new helper",
+        "at": 10000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "no-mic",
+          "mic-only",
+          "transcript-gap",
+          "ax-unavailable"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1"
+        ],
+        "partOffsetMs": 8000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceLost": [
+          "ax-unavailable"
+        ],
+        "deviceFailures": [
+          {
+            "degraded": [
+              "mic-only"
+            ],
+            "reason": "screen capture audio failed",
+            "atMs": 3000
+          },
+          {
+            "degraded": [
+              "ax-unavailable"
+            ],
+            "reason": "ax device",
+            "atMs": 5000
+          },
+          {
+            "degraded": [
+              "ax-unavailable"
+            ],
+            "reason": "failed again on the new helper",
+            "atMs": 9000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "helper-lost",
+        "at": 11000,
+        "deadlineAt": 41000
+      },
+      "expect": {
+        "phase": "reconnecting",
+        "degraded": [
+          "no-mic",
+          "mic-only",
+          "transcript-gap",
+          "ax-unavailable"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1"
+        ],
+        "partOffsetMs": 8000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceLost": [
+          "ax-unavailable"
+        ],
+        "deviceFailures": [
+          {
+            "degraded": [
+              "mic-only"
+            ],
+            "reason": "screen capture audio failed",
+            "atMs": 3000
+          },
+          {
+            "degraded": [
+              "ax-unavailable"
+            ],
+            "reason": "ax device",
+            "atMs": 5000
+          },
+          {
+            "degraded": [
+              "ax-unavailable"
+            ],
+            "reason": "failed again on the new helper",
+            "atMs": 9000
+          }
+        ],
+        "reconnect": {
+          "attempt": 1,
+          "since": 11000,
+          "deadlineAt": 41000
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "helper-restored",
+        "at": 12000,
+        "audioPath": "/p2"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "no-mic",
+          "mic-only",
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1",
+          "/p2"
+        ],
+        "partOffsetMs": 11000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceFailures": [
+          {
+            "degraded": [
+              "mic-only"
+            ],
+            "reason": "screen capture audio failed",
+            "atMs": 3000
+          },
+          {
+            "degraded": [
+              "ax-unavailable"
+            ],
+            "reason": "ax device",
+            "atMs": 5000
+          },
+          {
+            "degraded": [
+              "ax-unavailable"
+            ],
+            "reason": "failed again on the new helper",
+            "atMs": 9000
+          }
+        ]
+      }
+    }
+  ]
+}

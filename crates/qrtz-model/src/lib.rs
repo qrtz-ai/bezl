@@ -292,7 +292,19 @@ pub struct CaptureFallback {
     pub at_ms: Ms,
 }
 
-/// What a recording's capture looked like, carried from the session to its pipeline (N29, H8).
+/// N35: a capture device that failed inside a running source (`capture.degraded`): only the flags it newly took
+/// away, meeting time. Never written for a permission revoke (`DeviceFailure` in lifecycle.ts).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceFailure {
+    pub degraded: Vec<Degradation>,
+    pub reason: String,
+    #[serde(deserialize_with = "de_ms")]
+    pub at_ms: Ms,
+}
+
+/// What a recording's capture looked like, carried from the session to its pipeline (N29, H8, N35).
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[serde(rename_all = "camelCase")]
@@ -301,6 +313,8 @@ pub struct CaptureReport {
     pub silent_spans: Vec<SilentSpan>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fallbacks: Vec<CaptureFallback>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub device_failures: Vec<DeviceFailure>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -340,6 +354,12 @@ pub struct RecordingState {
     /// H8: capture sources that failed to start during this recording (omitted when none).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fallbacks: Vec<CaptureFallback>,
+    /// N35: the `degraded` flags held only because a capture device failed; a reconnect drops them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub device_lost: Vec<Degradation>,
+    /// N35: device failures of this recording, for the meeting record (omitted when none).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub device_failures: Vec<DeviceFailure>,
 }
 
 impl Default for RecordingState {
@@ -360,6 +380,8 @@ impl Default for RecordingState {
             silent: Vec::new(),
             silent_spans: Vec::new(),
             fallbacks: Vec::new(),
+            device_lost: Vec::new(),
+            device_failures: Vec::new(),
         }
     }
 }
@@ -398,6 +420,12 @@ pub enum LifecycleEvent {
     /// N29 `capture.audible`, stamped by the host.
     InputAudible {
         source: CaptureSource,
+        at: EpochMs,
+    },
+    /// N35 `capture.degraded`, stamped by the host.
+    CaptureDegraded {
+        degraded: Vec<Degradation>,
+        reason: String,
         at: EpochMs,
     },
     /// H8 `capture.fallback`, stamped by the host. `to: None` is written as `null`.
@@ -671,6 +699,9 @@ pub struct SessionView {
     pub stop_reason: Option<StopReason>,
     #[serde(default)]
     pub degraded: Vec<Degradation>,
+    /// N35: the `degraded` flags a failed capture device set, not a permission (omitted when none).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub device_lost: Vec<Degradation>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_info: Option<LifecycleError>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

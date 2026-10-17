@@ -80,6 +80,10 @@ const compactCapture = (c: PipelineView['capture']) =>
         ...(c.fallbacks ?? []).map(
           (f) => `fb:${f.from}>${f.to ?? '-'}@${f.atMs}`,
         ),
+        // N35: device failures, apart from permission revokes (which are not on the meeting record).
+        ...(c.deviceFailures ?? []).map(
+          (d) => `dev:${d.degraded.join('+')}@${d.atMs}`,
+        ),
       ].join(' ')
     : '';
 
@@ -238,6 +242,7 @@ function run(sc: Scenario) {
         v.paused ? 'paused' : '-',
         v.helper,
         ...(compactSilent(v) ? [compactSilent(v)] : []),
+        ...(v.deviceLost?.length ? [`d:${v.deviceLost.join(',')}`] : []),
       ].join('|');
       if (k !== last.session) trace.session.push((last.session = k));
     });
@@ -315,6 +320,7 @@ function run(sc: Scenario) {
           noAudio: !!v.noAudio,
         }
       : {}),
+    ...(v.deviceLost?.length ? { deviceLost: v.deviceLost } : {}),
   });
 
   const snapshot = (life: Life) => {
@@ -457,6 +463,15 @@ function run(sc: Scenario) {
                 `invalid helper message in ${sc.name}: ${JSON.stringify(op.msg)}`,
               );
             note.handle(r.msg);
+            break;
+          }
+          case 'helperInvalid': {
+            // A line the host's parser must refuse (as index.ts drops it): it never reaches NoteService.
+            const r = parseHelperLine(JSON.stringify(op.msg));
+            if (r.ok)
+              throw new Error(
+                `helperInvalid accepted in ${sc.name}: ${JSON.stringify(op.msg)}`,
+              );
             break;
           }
           case 'call': {

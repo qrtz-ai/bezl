@@ -217,6 +217,12 @@ pub enum HelperInput {
     /// N29: `source` is above the floor again.
     #[serde(rename = "capture.audible")]
     CaptureAudible { source: CaptureSource },
+    /// N35: a capture device failed inside a running source; applied like a revoke, sticky until a reconnect.
+    #[serde(rename = "capture.degraded")]
+    CaptureDegraded {
+        degraded: Vec<Degradation>,
+        reason: String,
+    },
     /// H8: a capture source failed to start; `to` is the one tried next, `None` (null) when none is left.
     #[serde(rename = "capture.fallback")]
     CaptureFallback {
@@ -273,6 +279,7 @@ impl HelperInput {
             HelperInput::CaptureSilent { .. } => "capture.silent",
             HelperInput::CaptureAudible { .. } => "capture.audible",
             HelperInput::CaptureFallback { .. } => "capture.fallback",
+            HelperInput::CaptureDegraded { .. } => "capture.degraded",
             HelperInput::Asr { .. } => "asr",
             HelperInput::RecordingStarted { .. } => "recording.started",
             HelperInput::RecordingStopped { .. } => "recording.stopped",

@@ -78,10 +78,23 @@ export const CaptureFallback = z.object({
 });
 export type CaptureFallback = z.infer<typeof CaptureFallback>;
 
-/** What a recording's capture looked like, carried from the session to its pipeline (N29, H8). */
+/**
+ * N35: a capture device that failed inside a running source (`capture.degraded`: the in-source mic of the tap or
+ * SCK went busy, was unplugged, engine error). Only the flags it newly took away, stamped in meeting time. Never
+ * written for a permission revoke, so the meeting can tell "the mic failed" from "mic access was revoked".
+ */
+export const DeviceFailure = z.object({
+  degraded: z.array(Degradation),
+  reason: z.string(),
+  atMs: z.number(),
+});
+export type DeviceFailure = z.infer<typeof DeviceFailure>;
+
+/** What a recording's capture looked like, carried from the session to its pipeline (N29, H8, N35). */
 export const CaptureReport = z.object({
   silentSpans: z.array(SilentSpan).optional(),
   fallbacks: z.array(CaptureFallback).optional(),
+  deviceFailures: z.array(DeviceFailure).optional(),
 });
 export type CaptureReport = z.infer<typeof CaptureReport>;
 
@@ -89,7 +102,9 @@ export type CaptureReport = z.infer<typeof CaptureReport>;
 export const CAPTURE_LIMITS = {
   silentSpans: 256,
   fallbacks: 8,
-  /** `capture.fallback.reason` is helper error text: kept to this many code points. */
+  /** N35: `capture.degraded` records kept per recording (each reconnect can fail the device again). */
+  deviceFailures: 8,
+  /** `capture.fallback.reason` / `capture.degraded.reason` are helper error text: kept to this many code points. */
   reasonChars: 200,
 } as const;
 
@@ -130,6 +145,14 @@ export const RecordingState = z.object({
   silentSpans: z.array(SilentSpan).optional(),
   /** H8: capture sources that failed to start during this recording (omitted when none). */
   fallbacks: z.array(CaptureFallback).optional(),
+  /**
+   * N35: the `degraded[]` flags held only because a capture device failed (`capture.degraded`), not a permission.
+   * Sticky like the rest until a reconnect: `helper-restored` drops them from `degraded[]` (the new helper starts
+   * from its own state). A later revoke of the same flag takes it over (it then stays). Omitted when none.
+   */
+  deviceLost: z.array(Degradation).optional(),
+  /** N35: device failures of this recording, for the meeting record (omitted when none). */
+  deviceFailures: z.array(DeviceFailure).optional(),
 });
 export type RecordingState = z.infer<typeof RecordingState>;
 
@@ -150,6 +173,13 @@ export type LifecycleEvent =
   | { type: 'input-silent'; source: CaptureSource; sinceMs: number }
   /** N29 `capture.audible`, stamped by the host (the message carries no time). */
   | { type: 'input-audible'; source: CaptureSource; at: number }
+  /** N35 `capture.degraded`, stamped by the host. */
+  | {
+      type: 'capture-degraded';
+      degraded: Degradation[];
+      reason: string;
+      at: number;
+    }
   /** H8 `capture.fallback`, stamped by the host. */
   | {
       type: 'capture-fallback';
@@ -208,11 +238,14 @@ const meetingMs = (s: RecordingState, at: number, floor: number) =>
   Math.max(floor, at - (s.startedAt ?? at));
 
 /** Sets or drops an optional array field: empty arrays are omitted (the persisted/IPC form stays as before). */
-function withList<K extends 'silent' | 'silentSpans' | 'fallbacks'>(
-  s: RecordingState,
-  k: K,
-  v: NonNullable<RecordingState[K]>,
-): RecordingState {
+function withList<
+  K extends
+    | 'silent'
+    | 'silentSpans'
+    | 'fallbacks'
+    | 'deviceLost'
+    | 'deviceFailures',
+>(s: RecordingState, k: K, v: NonNullable<RecordingState[K]>): RecordingState {
   const { [k]: _old, ...rest } = s;
   return (v.length ? { ...rest, [k]: v } : rest) as RecordingState;
 }
@@ -262,10 +295,13 @@ export function captureReport(s: RecordingState): CaptureReport | undefined {
     ...(s.silent ?? []).map((x) => ({ source: x.source, startMs: x.sinceMs })),
   ].slice(0, CAPTURE_LIMITS.silentSpans);
   const fallbacks = s.fallbacks ?? [];
-  if (!spans.length && !fallbacks.length) return undefined;
+  const deviceFailures = s.deviceFailures ?? [];
+  if (!spans.length && !fallbacks.length && !deviceFailures.length)
+    return undefined;
   return {
     ...(spans.length ? { silentSpans: spans } : {}),
     ...(fallbacks.length ? { fallbacks } : {}),
+    ...(deviceFailures.length ? { deviceFailures } : {}),
   };
 }
 
@@ -331,7 +367,17 @@ export function lifecycleReducer(
       };
     }
     case 'degraded': {
-      if (!isCapturing(s.phase) || s.degraded.includes(e.flag)) return null;
+      if (!isCapturing(s.phase)) return null;
+      if (s.degraded.includes(e.flag)) {
+        // N35: a revoke of a flag a device failure already set: the permission owns it now, so it outlives a
+        // reconnect. Anything else already set is a duplicate.
+        if (!s.deviceLost?.includes(e.flag)) return null;
+        return withList(
+          s,
+          'deviceLost',
+          s.deviceLost.filter((f) => f !== e.flag),
+        );
+      }
       // A source this flag takes away is no longer tracked by the helper: close its silent stretch now (N29).
       const lost = SOURCES_LOST[e.flag];
       const n = { ...s, degraded: [...s.degraded, e.flag] };
@@ -356,6 +402,35 @@ export function lifecycleReducer(
       if (s.phase !== 'starting' && s.phase !== 'recording') return null;
       if (!(s.silent ?? []).some((x) => x.source === e.source)) return null;
       return closeSilent(s, e.at, [e.source]);
+    case 'capture-degraded': {
+      // N35: applied like a revoke (N4), but remembered as a device failure. Only the flags not already set count:
+      // a duplicate, or a device failure after a revoke of the same source, changes nothing. Only while recording:
+      // the helper sends it after recording.started (a source that then fails to start is capture.fallback), so one
+      // that arrives before the ack (starting) or while reconnecting is a stray line and is ignored.
+      if (s.phase !== 'recording') return null;
+      const fresh = e.degraded.filter(
+        (f, i) => !s.degraded.includes(f) && e.degraded.indexOf(f) === i,
+      );
+      if (!fresh.length) return null;
+      const failures = s.deviceFailures ?? [];
+      let n = withList(
+        { ...s, degraded: [...s.degraded, ...fresh] },
+        'deviceLost',
+        [...(s.deviceLost ?? []), ...fresh],
+      );
+      if (failures.length < CAPTURE_LIMITS.deviceFailures)
+        n = withList(n, 'deviceFailures', [
+          ...failures,
+          {
+            degraded: fresh,
+            reason: cutChars(e.reason, CAPTURE_LIMITS.reasonChars),
+            atMs: meetingMs(s, e.at, 0),
+          },
+        ]);
+      // A source it takes away is no longer tracked: its silent stretch ends now; later silence of it is ignored.
+      const lost = [...new Set(fresh.flatMap((f) => SOURCES_LOST[f] ?? []))];
+      return lost.length ? closeSilent(n, e.at, lost) : n;
+    }
     case 'capture-fallback': {
       if (!isCapturing(s.phase)) return null;
       const list = s.fallbacks ?? [];
@@ -399,16 +474,18 @@ export function lifecycleReducer(
       };
     case 'helper-restored': {
       if (s.phase !== 'reconnecting') return null;
-      const { reconnect: _r, ...rest } = s;
+      // N35: a device failure lasts until the reconnect: the new helper starts from its own state.
+      const { reconnect: _r, deviceLost: lost = [], ...rest } = s;
+      const kept = s.degraded.filter((f) => !lost.includes(f));
       return {
         ...rest,
         phase: 'recording',
         audioParts: [...s.audioParts, e.audioPath],
         // Clamp: a backward clock jump must not invent negative meeting-time offsets.
         partOffsetMs: Math.max(0, e.at - (s.startedAt ?? e.at)),
-        degraded: s.degraded.includes('transcript-gap')
-          ? s.degraded
-          : [...s.degraded, 'transcript-gap'],
+        degraded: kept.includes('transcript-gap')
+          ? kept
+          : [...kept, 'transcript-gap'],
       };
     }
     case 'stop-requested': {

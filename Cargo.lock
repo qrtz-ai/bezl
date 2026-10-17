@@ -803,6 +803,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "indexmap",
+ "qrtz-helper-bridge",
  "qrtz-lifecycle",
  "qrtz-model",
  "qrtz-storage",

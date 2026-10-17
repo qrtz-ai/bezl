@@ -567,6 +567,20 @@
               ]
             }
           },
+          "deviceLost": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "asr-unavailable",
+                "audio-unavailable",
+                "mic-only",
+                "no-mic",
+                "ax-unavailable",
+                "transcript-gap"
+              ]
+            }
+          },
           "errorInfo": {
             "type": "object",
             "properties": {
@@ -869,6 +883,40 @@
                       "required": [
                         "from",
                         "to",
+                        "reason",
+                        "atMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "deviceFailures": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "degraded": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "asr-unavailable",
+                              "audio-unavailable",
+                              "mic-only",
+                              "no-mic",
+                              "ax-unavailable",
+                              "transcript-gap"
+                            ]
+                          }
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "atMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "degraded",
                         "reason",
                         "atMs"
                       ],
@@ -1095,512 +1143,7 @@
               ]
             }
           },
-          "errorInfo": {
-            "type": "object",
-            "properties": {
-              "code": {
-                "type": "string"
-              },
-              "message": {
-                "type": "string"
-              },
-              "retryable": {
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "code",
-              "message",
-              "retryable"
-            ],
-            "additionalProperties": false
-          },
-          "reconnect": {
-            "type": "object",
-            "properties": {
-              "attempt": {
-                "type": "number"
-              },
-              "since": {
-                "type": "number"
-              },
-              "deadlineAt": {
-                "type": "number"
-              }
-            },
-            "required": [
-              "attempt",
-              "since",
-              "deadlineAt"
-            ],
-            "additionalProperties": false
-          },
-          "pipeline": {
-            "type": "object",
-            "properties": {
-              "meetingId": {
-                "type": "string"
-              },
-              "stopReason": {
-                "type": "string",
-                "enum": [
-                  "manual",
-                  "meeting-ended",
-                  "helper-lost",
-                  "crash-recovered"
-                ]
-              },
-              "steps": {
-                "type": "object",
-                "properties": {
-                  "finalize": {
-                    "type": "object",
-                    "properties": {
-                      "status": {
-                        "type": "string",
-                        "enum": [
-                          "pending",
-                          "running",
-                          "retrying",
-                          "done",
-                          "failed",
-                          "skipped"
-                        ]
-                      },
-                      "attempts": {
-                        "type": "number"
-                      },
-                      "maxAttempts": {
-                        "type": "number"
-                      },
-                      "nextRetryAt": {
-                        "type": "number"
-                      },
-                      "error": {
-                        "type": "object",
-                        "properties": {
-                          "code": {
-                            "type": "string"
-                          },
-                          "message": {
-                            "type": "string"
-                          },
-                          "retryable": {
-                            "type": "boolean"
-                          }
-                        },
-                        "required": [
-                          "code",
-                          "message",
-                          "retryable"
-                        ],
-                        "additionalProperties": false
-                      },
-                      "fallback": {
-                        "type": "boolean"
-                      },
-                      "startedAt": {
-                        "type": "number"
-                      },
-                      "finishedAt": {
-                        "type": "number"
-                      }
-                    },
-                    "required": [
-                      "status",
-                      "attempts",
-                      "maxAttempts"
-                    ],
-                    "additionalProperties": false
-                  },
-                  "summary": {
-                    "type": "object",
-                    "properties": {
-                      "status": {
-                        "type": "string",
-                        "enum": [
-                          "pending",
-                          "running",
-                          "retrying",
-                          "done",
-                          "failed",
-                          "skipped"
-                        ]
-                      },
-                      "attempts": {
-                        "type": "number"
-                      },
-                      "maxAttempts": {
-                        "type": "number"
-                      },
-                      "nextRetryAt": {
-                        "type": "number"
-                      },
-                      "error": {
-                        "type": "object",
-                        "properties": {
-                          "code": {
-                            "type": "string"
-                          },
-                          "message": {
-                            "type": "string"
-                          },
-                          "retryable": {
-                            "type": "boolean"
-                          }
-                        },
-                        "required": [
-                          "code",
-                          "message",
-                          "retryable"
-                        ],
-                        "additionalProperties": false
-                      },
-                      "fallback": {
-                        "type": "boolean"
-                      },
-                      "startedAt": {
-                        "type": "number"
-                      },
-                      "finishedAt": {
-                        "type": "number"
-                      }
-                    },
-                    "required": [
-                      "status",
-                      "attempts",
-                      "maxAttempts"
-                    ],
-                    "additionalProperties": false
-                  },
-                  "index": {
-                    "type": "object",
-                    "properties": {
-                      "status": {
-                        "type": "string",
-                        "enum": [
-                          "pending",
-                          "running",
-                          "retrying",
-                          "done",
-                          "failed",
-                          "skipped"
-                        ]
-                      },
-                      "attempts": {
-                        "type": "number"
-                      },
-                      "maxAttempts": {
-                        "type": "number"
-                      },
-                      "nextRetryAt": {
-                        "type": "number"
-                      },
-                      "error": {
-                        "type": "object",
-                        "properties": {
-                          "code": {
-                            "type": "string"
-                          },
-                          "message": {
-                            "type": "string"
-                          },
-                          "retryable": {
-                            "type": "boolean"
-                          }
-                        },
-                        "required": [
-                          "code",
-                          "message",
-                          "retryable"
-                        ],
-                        "additionalProperties": false
-                      },
-                      "fallback": {
-                        "type": "boolean"
-                      },
-                      "startedAt": {
-                        "type": "number"
-                      },
-                      "finishedAt": {
-                        "type": "number"
-                      }
-                    },
-                    "required": [
-                      "status",
-                      "attempts",
-                      "maxAttempts"
-                    ],
-                    "additionalProperties": false
-                  }
-                },
-                "required": [
-                  "finalize",
-                  "summary",
-                  "index"
-                ],
-                "additionalProperties": false
-              },
-              "updatedAt": {
-                "type": "number"
-              },
-              "capture": {
-                "type": "object",
-                "properties": {
-                  "silentSpans": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "source": {
-                          "type": "string",
-                          "enum": [
-                            "system",
-                            "mic"
-                          ]
-                        },
-                        "startMs": {
-                          "type": "number"
-                        },
-                        "endMs": {
-                          "type": "number"
-                        }
-                      },
-                      "required": [
-                        "source",
-                        "startMs"
-                      ],
-                      "additionalProperties": false
-                    }
-                  },
-                  "fallbacks": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "from": {
-                          "type": "string"
-                        },
-                        "to": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        },
-                        "reason": {
-                          "type": "string"
-                        },
-                        "atMs": {
-                          "type": "number"
-                        }
-                      },
-                      "required": [
-                        "from",
-                        "to",
-                        "reason",
-                        "atMs"
-                      ],
-                      "additionalProperties": false
-                    }
-                  }
-                },
-                "additionalProperties": false
-              }
-            },
-            "required": [
-              "meetingId",
-              "stopReason",
-              "steps",
-              "updatedAt"
-            ],
-            "additionalProperties": false
-          },
-          "silent": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "source": {
-                  "type": "string",
-                  "enum": [
-                    "system",
-                    "mic"
-                  ]
-                },
-                "sinceMs": {
-                  "type": "number"
-                }
-              },
-              "required": [
-                "source",
-                "sinceMs"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "noAudio": {
-            "type": "boolean",
-            "const": true
-          }
-        },
-        "required": [
-          "phase",
-          "elapsedMs",
-          "participants",
-          "level",
-          "lines",
-          "partial",
-          "helper",
-          "paused",
-          "degraded"
-        ],
-        "additionalProperties": false
-      }
-    },
-    "note:stop": {
-      "version": 1,
-      "capability": "note.record",
-      "request": {
-        "void": true
-      },
-      "response": {
-        "type": "object",
-        "properties": {
-          "phase": {
-            "type": "string",
-            "enum": [
-              "idle",
-              "detected",
-              "starting",
-              "recording",
-              "reconnecting",
-              "stopping",
-              "processing",
-              "done",
-              "error"
-            ]
-          },
-          "detected": {
-            "type": "object",
-            "properties": {
-              "key": {
-                "type": "string"
-              },
-              "title": {
-                "type": "string"
-              },
-              "platform": {
-                "type": "string",
-                "enum": [
-                  "zoom",
-                  "google-meet",
-                  "teams",
-                  "slack-huddle",
-                  "webex",
-                  "other"
-                ]
-              },
-              "app": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "key",
-              "title",
-              "platform",
-              "app"
-            ],
-            "additionalProperties": false
-          },
-          "meetingId": {
-            "type": "string"
-          },
-          "startedAt": {
-            "type": "number"
-          },
-          "elapsedMs": {
-            "default": 0,
-            "type": "number"
-          },
-          "participants": {
-            "default": [],
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "activeSpeaker": {
-            "type": "string"
-          },
-          "level": {
-            "default": 0,
-            "type": "number"
-          },
-          "lines": {
-            "default": [],
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "speaker": {
-                  "type": "string"
-                },
-                "text": {
-                  "type": "string"
-                },
-                "startMs": {
-                  "type": "number"
-                }
-              },
-              "required": [
-                "id",
-                "text",
-                "startMs"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "partial": {
-            "default": "",
-            "type": "string"
-          },
-          "progress": {
-            "type": "string"
-          },
-          "error": {
-            "type": "string"
-          },
-          "helper": {
-            "default": "ok",
-            "type": "string",
-            "enum": [
-              "ok",
-              "simulated",
-              "missing",
-              "down"
-            ]
-          },
-          "helperDetail": {
-            "type": "string"
-          },
-          "paused": {
-            "default": false,
-            "type": "boolean"
-          },
-          "stopReason": {
-            "type": "string",
-            "enum": [
-              "manual",
-              "meeting-ended",
-              "helper-lost",
-              "crash-recovered"
-            ]
-          },
-          "degraded": {
-            "default": [],
+          "deviceLost": {
             "type": "array",
             "items": {
               "type": "string",
@@ -1916,6 +1459,607 @@
                       "required": [
                         "from",
                         "to",
+                        "reason",
+                        "atMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "deviceFailures": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "degraded": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "asr-unavailable",
+                              "audio-unavailable",
+                              "mic-only",
+                              "no-mic",
+                              "ax-unavailable",
+                              "transcript-gap"
+                            ]
+                          }
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "atMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "degraded",
+                        "reason",
+                        "atMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "meetingId",
+              "stopReason",
+              "steps",
+              "updatedAt"
+            ],
+            "additionalProperties": false
+          },
+          "silent": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "system",
+                    "mic"
+                  ]
+                },
+                "sinceMs": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "source",
+                "sinceMs"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "noAudio": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "phase",
+          "elapsedMs",
+          "participants",
+          "level",
+          "lines",
+          "partial",
+          "helper",
+          "paused",
+          "degraded"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "note:stop": {
+      "version": 1,
+      "capability": "note.record",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "detected",
+              "starting",
+              "recording",
+              "reconnecting",
+              "stopping",
+              "processing",
+              "done",
+              "error"
+            ]
+          },
+          "detected": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "platform": {
+                "type": "string",
+                "enum": [
+                  "zoom",
+                  "google-meet",
+                  "teams",
+                  "slack-huddle",
+                  "webex",
+                  "other"
+                ]
+              },
+              "app": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "title",
+              "platform",
+              "app"
+            ],
+            "additionalProperties": false
+          },
+          "meetingId": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "elapsedMs": {
+            "default": 0,
+            "type": "number"
+          },
+          "participants": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "activeSpeaker": {
+            "type": "string"
+          },
+          "level": {
+            "default": 0,
+            "type": "number"
+          },
+          "lines": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "speaker": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "startMs": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "id",
+                "text",
+                "startMs"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "partial": {
+            "default": "",
+            "type": "string"
+          },
+          "progress": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "helper": {
+            "default": "ok",
+            "type": "string",
+            "enum": [
+              "ok",
+              "simulated",
+              "missing",
+              "down"
+            ]
+          },
+          "helperDetail": {
+            "type": "string"
+          },
+          "paused": {
+            "default": false,
+            "type": "boolean"
+          },
+          "stopReason": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "meeting-ended",
+              "helper-lost",
+              "crash-recovered"
+            ]
+          },
+          "degraded": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "asr-unavailable",
+                "audio-unavailable",
+                "mic-only",
+                "no-mic",
+                "ax-unavailable",
+                "transcript-gap"
+              ]
+            }
+          },
+          "deviceLost": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "asr-unavailable",
+                "audio-unavailable",
+                "mic-only",
+                "no-mic",
+                "ax-unavailable",
+                "transcript-gap"
+              ]
+            }
+          },
+          "errorInfo": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "retryable": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "retryable"
+            ],
+            "additionalProperties": false
+          },
+          "reconnect": {
+            "type": "object",
+            "properties": {
+              "attempt": {
+                "type": "number"
+              },
+              "since": {
+                "type": "number"
+              },
+              "deadlineAt": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "attempt",
+              "since",
+              "deadlineAt"
+            ],
+            "additionalProperties": false
+          },
+          "pipeline": {
+            "type": "object",
+            "properties": {
+              "meetingId": {
+                "type": "string"
+              },
+              "stopReason": {
+                "type": "string",
+                "enum": [
+                  "manual",
+                  "meeting-ended",
+                  "helper-lost",
+                  "crash-recovered"
+                ]
+              },
+              "steps": {
+                "type": "object",
+                "properties": {
+                  "finalize": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "pending",
+                          "running",
+                          "retrying",
+                          "done",
+                          "failed",
+                          "skipped"
+                        ]
+                      },
+                      "attempts": {
+                        "type": "number"
+                      },
+                      "maxAttempts": {
+                        "type": "number"
+                      },
+                      "nextRetryAt": {
+                        "type": "number"
+                      },
+                      "error": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "retryable": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "code",
+                          "message",
+                          "retryable"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "fallback": {
+                        "type": "boolean"
+                      },
+                      "startedAt": {
+                        "type": "number"
+                      },
+                      "finishedAt": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "status",
+                      "attempts",
+                      "maxAttempts"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "summary": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "pending",
+                          "running",
+                          "retrying",
+                          "done",
+                          "failed",
+                          "skipped"
+                        ]
+                      },
+                      "attempts": {
+                        "type": "number"
+                      },
+                      "maxAttempts": {
+                        "type": "number"
+                      },
+                      "nextRetryAt": {
+                        "type": "number"
+                      },
+                      "error": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "retryable": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "code",
+                          "message",
+                          "retryable"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "fallback": {
+                        "type": "boolean"
+                      },
+                      "startedAt": {
+                        "type": "number"
+                      },
+                      "finishedAt": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "status",
+                      "attempts",
+                      "maxAttempts"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "index": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "pending",
+                          "running",
+                          "retrying",
+                          "done",
+                          "failed",
+                          "skipped"
+                        ]
+                      },
+                      "attempts": {
+                        "type": "number"
+                      },
+                      "maxAttempts": {
+                        "type": "number"
+                      },
+                      "nextRetryAt": {
+                        "type": "number"
+                      },
+                      "error": {
+                        "type": "object",
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "retryable": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "code",
+                          "message",
+                          "retryable"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "fallback": {
+                        "type": "boolean"
+                      },
+                      "startedAt": {
+                        "type": "number"
+                      },
+                      "finishedAt": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "status",
+                      "attempts",
+                      "maxAttempts"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "finalize",
+                  "summary",
+                  "index"
+                ],
+                "additionalProperties": false
+              },
+              "updatedAt": {
+                "type": "number"
+              },
+              "capture": {
+                "type": "object",
+                "properties": {
+                  "silentSpans": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "startMs": {
+                          "type": "number"
+                        },
+                        "endMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "startMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "fallbacks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "from": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "atMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "from",
+                        "to",
+                        "reason",
+                        "atMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "deviceFailures": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "degraded": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "asr-unavailable",
+                              "audio-unavailable",
+                              "mic-only",
+                              "no-mic",
+                              "ax-unavailable",
+                              "transcript-gap"
+                            ]
+                          }
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "atMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "degraded",
                         "reason",
                         "atMs"
                       ],
@@ -2263,6 +2407,40 @@
                       ],
                       "additionalProperties": false
                     }
+                  },
+                  "deviceFailures": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "degraded": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "asr-unavailable",
+                              "audio-unavailable",
+                              "mic-only",
+                              "no-mic",
+                              "ax-unavailable",
+                              "transcript-gap"
+                            ]
+                          }
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "atMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "degraded",
+                        "reason",
+                        "atMs"
+                      ],
+                      "additionalProperties": false
+                    }
                   }
                 },
                 "additionalProperties": false
@@ -2576,6 +2754,40 @@
                   ],
                   "additionalProperties": false
                 }
+              },
+              "deviceFailures": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "degraded": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "asr-unavailable",
+                          "audio-unavailable",
+                          "mic-only",
+                          "no-mic",
+                          "ax-unavailable",
+                          "transcript-gap"
+                        ]
+                      }
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "atMs": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "degraded",
+                    "reason",
+                    "atMs"
+                  ],
+                  "additionalProperties": false
+                }
               }
             },
             "additionalProperties": false
@@ -2832,6 +3044,20 @@
           },
           "degraded": {
             "default": [],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "asr-unavailable",
+                "audio-unavailable",
+                "mic-only",
+                "no-mic",
+                "ax-unavailable",
+                "transcript-gap"
+              ]
+            }
+          },
+          "deviceLost": {
             "type": "array",
             "items": {
               "type": "string",
@@ -3147,6 +3373,40 @@
                       "required": [
                         "from",
                         "to",
+                        "reason",
+                        "atMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "deviceFailures": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "degraded": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "asr-unavailable",
+                              "audio-unavailable",
+                              "mic-only",
+                              "no-mic",
+                              "ax-unavailable",
+                              "transcript-gap"
+                            ]
+                          }
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "atMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "degraded",
                         "reason",
                         "atMs"
                       ],
@@ -4398,6 +4658,20 @@
               ]
             }
           },
+          "deviceLost": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "asr-unavailable",
+                "audio-unavailable",
+                "mic-only",
+                "no-mic",
+                "ax-unavailable",
+                "transcript-gap"
+              ]
+            }
+          },
           "errorInfo": {
             "type": "object",
             "properties": {
@@ -4700,6 +4974,40 @@
                       "required": [
                         "from",
                         "to",
+                        "reason",
+                        "atMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "deviceFailures": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "degraded": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "asr-unavailable",
+                              "audio-unavailable",
+                              "mic-only",
+                              "no-mic",
+                              "ax-unavailable",
+                              "transcript-gap"
+                            ]
+                          }
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "atMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "degraded",
                         "reason",
                         "atMs"
                       ],
@@ -5908,6 +6216,20 @@
               ]
             }
           },
+          "deviceLost": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "asr-unavailable",
+                "audio-unavailable",
+                "mic-only",
+                "no-mic",
+                "ax-unavailable",
+                "transcript-gap"
+              ]
+            }
+          },
           "errorInfo": {
             "type": "object",
             "properties": {
@@ -6210,6 +6532,40 @@
                       "required": [
                         "from",
                         "to",
+                        "reason",
+                        "atMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "deviceFailures": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "degraded": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "asr-unavailable",
+                              "audio-unavailable",
+                              "mic-only",
+                              "no-mic",
+                              "ax-unavailable",
+                              "transcript-gap"
+                            ]
+                          }
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "atMs": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "degraded",
                         "reason",
                         "atMs"
                       ],
@@ -6534,6 +6890,40 @@
                   "required": [
                     "from",
                     "to",
+                    "reason",
+                    "atMs"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "deviceFailures": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "degraded": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "asr-unavailable",
+                          "audio-unavailable",
+                          "mic-only",
+                          "no-mic",
+                          "ax-unavailable",
+                          "transcript-gap"
+                        ]
+                      }
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "atMs": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "degraded",
                     "reason",
                     "atMs"
                   ],

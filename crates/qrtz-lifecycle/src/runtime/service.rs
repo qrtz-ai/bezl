@@ -489,6 +489,7 @@ impl State {
             paused: s.phase == RecordingPhase::Recording && self.paused,
             stop_reason: s.stop_reason,
             degraded: s.degraded.clone(),
+            device_lost: s.device_lost.clone(),
             error_info: s.error.clone(),
             reconnect: s.reconnect.clone(),
             pipeline: pipeline.map(to_view),
@@ -940,6 +941,22 @@ impl Shared {
                 let at = self.now();
                 if self.send(LifecycleEvent::InputAudible { source, at }) {
                     tracing::info!(source = source.as_str(), "capture audible");
+                }
+            }
+            HelperInput::CaptureDegraded { degraded, reason } => {
+                // N35: a capture device failed inside a running source: like a revoke (N4), kept as a device failure.
+                let at = self.now();
+                let flags: Vec<&str> = degraded.iter().map(|d| d.as_str()).collect();
+                let flags = flags.join(",");
+                if self.send(LifecycleEvent::CaptureDegraded {
+                    degraded,
+                    reason: reason.clone(),
+                    at,
+                }) {
+                    tracing::warn!(degraded = %flags, reason = %reason, "capture device failed");
+                    if self.view().no_audio {
+                        tracing::warn!("no audio from any capture source");
+                    }
                 }
             }
             HelperInput::CaptureFallback { from, to, reason } => {

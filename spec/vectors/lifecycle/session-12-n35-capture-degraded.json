@@ -1,0 +1,480 @@
+{
+  "kind": "session",
+  "name": "N35 capture.degraded: a device failure applied like a revoke, recorded apart, sticky until a reconnect",
+  "from": "ADR 0028",
+  "initial": null,
+  "steps": [
+    {
+      "event": {
+        "type": "capture-degraded",
+        "degraded": [
+          "no-mic"
+        ],
+        "reason": "idle",
+        "at": 500
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "start-requested",
+        "meetingId": "m",
+        "at": 1000,
+        "audioPath": "/p0"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000
+      }
+    },
+    {
+      "event": {
+        "type": "start-acked"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000
+      }
+    },
+    {
+      "event": {
+        "type": "input-silent",
+        "source": "mic",
+        "sinceMs": 500
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "silent": [
+          {
+            "source": "mic",
+            "sinceMs": 500
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "capture-degraded",
+        "degraded": [
+          "no-mic"
+        ],
+        "reason": "mic unavailable, recording system audio only: device busy",
+        "at": 61000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "no-mic"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceLost": [
+          "no-mic"
+        ],
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "mic unavailable, recording system audio only: device busy",
+            "atMs": 60000
+          }
+        ],
+        "silentSpans": [
+          {
+            "source": "mic",
+            "startMs": 500,
+            "endMs": 60000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "capture-degraded",
+        "degraded": [
+          "no-mic"
+        ],
+        "reason": "again",
+        "at": 62000
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "input-silent",
+        "source": "mic",
+        "sinceMs": 63000
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "input-audible",
+        "source": "mic",
+        "at": 64000
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "input-silent",
+        "source": "system",
+        "sinceMs": 2000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "no-mic"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceLost": [
+          "no-mic"
+        ],
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "mic unavailable, recording system audio only: device busy",
+            "atMs": 60000
+          }
+        ],
+        "silentSpans": [
+          {
+            "source": "mic",
+            "startMs": 500,
+            "endMs": 60000
+          }
+        ],
+        "silent": [
+          {
+            "source": "system",
+            "sinceMs": 2000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "capture-degraded",
+        "degraded": [
+          "no-mic",
+          "mic-only",
+          "mic-only"
+        ],
+        "reason": "mic engine error: éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+        "at": 70000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "no-mic",
+          "mic-only"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceLost": [
+          "no-mic",
+          "mic-only"
+        ],
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "mic unavailable, recording system audio only: device busy",
+            "atMs": 60000
+          },
+          {
+            "degraded": [
+              "mic-only"
+            ],
+            "reason": "mic engine error: éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+            "atMs": 69000
+          }
+        ],
+        "silentSpans": [
+          {
+            "source": "mic",
+            "startMs": 500,
+            "endMs": 60000
+          },
+          {
+            "source": "system",
+            "startMs": 2000,
+            "endMs": 69000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "helper-lost",
+        "at": 80000,
+        "deadlineAt": 110000
+      },
+      "expect": {
+        "phase": "reconnecting",
+        "degraded": [
+          "no-mic",
+          "mic-only"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceLost": [
+          "no-mic",
+          "mic-only"
+        ],
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "mic unavailable, recording system audio only: device busy",
+            "atMs": 60000
+          },
+          {
+            "degraded": [
+              "mic-only"
+            ],
+            "reason": "mic engine error: éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+            "atMs": 69000
+          }
+        ],
+        "silentSpans": [
+          {
+            "source": "mic",
+            "startMs": 500,
+            "endMs": 60000
+          },
+          {
+            "source": "system",
+            "startMs": 2000,
+            "endMs": 69000
+          }
+        ],
+        "reconnect": {
+          "attempt": 1,
+          "since": 80000,
+          "deadlineAt": 110000
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "capture-degraded",
+        "degraded": [
+          "ax-unavailable"
+        ],
+        "reason": "reconnecting",
+        "at": 81000
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "helper-restored",
+        "at": 90000,
+        "audioPath": "/p1"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1"
+        ],
+        "partOffsetMs": 89000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "mic unavailable, recording system audio only: device busy",
+            "atMs": 60000
+          },
+          {
+            "degraded": [
+              "mic-only"
+            ],
+            "reason": "mic engine error: éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+            "atMs": 69000
+          }
+        ],
+        "silentSpans": [
+          {
+            "source": "mic",
+            "startMs": 500,
+            "endMs": 60000
+          },
+          {
+            "source": "system",
+            "startMs": 2000,
+            "endMs": 69000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "input-silent",
+        "source": "mic",
+        "sinceMs": 1000
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1"
+        ],
+        "partOffsetMs": 89000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "mic unavailable, recording system audio only: device busy",
+            "atMs": 60000
+          },
+          {
+            "degraded": [
+              "mic-only"
+            ],
+            "reason": "mic engine error: éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+            "atMs": 69000
+          }
+        ],
+        "silentSpans": [
+          {
+            "source": "mic",
+            "startMs": 500,
+            "endMs": 60000
+          },
+          {
+            "source": "system",
+            "startMs": 2000,
+            "endMs": 69000
+          }
+        ],
+        "silent": [
+          {
+            "source": "mic",
+            "sinceMs": 90000
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "stop-requested",
+        "reason": "manual",
+        "at": 100000
+      },
+      "expect": {
+        "phase": "stopping",
+        "degraded": [
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1"
+        ],
+        "partOffsetMs": 89000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "deviceFailures": [
+          {
+            "degraded": [
+              "no-mic"
+            ],
+            "reason": "mic unavailable, recording system audio only: device busy",
+            "atMs": 60000
+          },
+          {
+            "degraded": [
+              "mic-only"
+            ],
+            "reason": "mic engine error: éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+            "atMs": 69000
+          }
+        ],
+        "silentSpans": [
+          {
+            "source": "mic",
+            "startMs": 500,
+            "endMs": 60000
+          },
+          {
+            "source": "system",
+            "startMs": 2000,
+            "endMs": 69000
+          },
+          {
+            "source": "mic",
+            "startMs": 90000,
+            "endMs": 99000
+          }
+        ],
+        "stopReason": "manual",
+        "stoppedAt": 100000
+      }
+    },
+    {
+      "event": {
+        "type": "capture-degraded",
+        "degraded": [
+          "no-mic"
+        ],
+        "reason": "stopping",
+        "at": 100500
+      },
+      "expect": "rejected"
+    }
+  ]
+}
