@@ -96,8 +96,8 @@ pub struct SessionSpec {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum EngineKind {
+    /// The signed module on this Mac (ADR 0046). qrtz has no other speech engine (ADR 0076).
     OnDevice,
-    Cloud,
 }
 
 /// Everything a client may know about an engine (N72).
@@ -154,8 +154,6 @@ pub enum FailReason {
     Revoked,
     /// The revocation list is past the 90-day cap.
     Stale,
-    /// A cloud engine's connection failed.
-    Network,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]

@@ -7,10 +7,7 @@ use qrtz_speech::bundle::Manifest;
 use qrtz_speech::download::{DownloadControl, Downloader, Progress};
 use qrtz_speech::files::ModuleFiles;
 use qrtz_speech::update::{HealthCheck, UpdateOutcome, Updater};
-use qrtz_speech::{
-    choose_engine, App, CloudConsent, EngineChoice, RollbackKind, SpeechAvailability, SpeechError,
-    SpeechStore,
-};
+use qrtz_speech::{choose_engine, EngineChoice, RollbackKind, SpeechAvailability, SpeechError, SpeechStore};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -793,7 +790,7 @@ async fn revoked_on_an_expired_list() -> (Env, u64) {
 }
 
 #[tokio::test]
-async fn r1_a_stopped_revoked_version_falls_back_to_cloud_or_says_unavailable() {
+async fn r1_a_stopped_revoked_version_says_unavailable() {
     let (e, later) = revoked_on_an_expired_list().await;
     let a = e.store.availability(later);
     assert_eq!(
@@ -803,18 +800,8 @@ async fn r1_a_stopped_revoked_version_falls_back_to_cloud_or_says_unavailable() 
             list_expired: true
         }
     );
-    let talk_cloud = CloudConsent {
-        talk: true,
-        ..Default::default()
-    };
     assert_eq!(
-        choose_engine(&a, talk_cloud, App::Talk),
-        EngineChoice::Cloud {
-            fallback_reason: "revoked".into()
-        }
-    );
-    assert_eq!(
-        choose_engine(&a, CloudConsent::default(), App::Talk),
+        choose_engine(&a),
         EngineChoice::Unavailable {
             reason: "revoked".into(),
             list_expired: true
@@ -829,11 +816,7 @@ async fn r1_a_stopped_revoked_version_falls_back_to_cloud_or_says_unavailable() 
     assert_eq!(e.store.state().current.as_deref(), Some("1.1.0"));
     assert_eq!(e.store.active_sessions(), 0);
     assert_eq!(
-        choose_engine(
-            &SpeechAvailability::NotInstalled,
-            CloudConsent::default(),
-            App::Note
-        ),
+        choose_engine(&SpeechAvailability::NotInstalled),
         EngineChoice::Unavailable {
             reason: "not-installed".into(),
             list_expired: false
@@ -900,47 +883,30 @@ async fn r4_a_running_session_on_a_revoked_version_ends_at_its_next_safe_point()
 }
 
 #[test]
-fn n84_cloud_consent_is_per_app_and_local_only_wins() {
-    let revoked = SpeechAvailability::Revoked {
-        version: "1.1.0".into(),
-        list_expired: false,
-    };
-    let unavailable = EngineChoice::Unavailable {
-        reason: "revoked".into(),
-        list_expired: false,
-    };
-    let cloud = EngineChoice::Cloud {
-        fallback_reason: "revoked".into(),
-    };
-    let talk_only = CloudConsent {
-        talk: true,
-        note: false,
-        local_only: false,
-    };
-    // The ElevenLabs talk opt-in never covers a meeting.
-    assert_eq!(choose_engine(&revoked, talk_only, App::Note), unavailable);
-    assert_eq!(choose_engine(&revoked, talk_only, App::Talk), cloud);
-    let both = CloudConsent {
-        talk: true,
-        note: true,
-        local_only: false,
-    };
-    assert_eq!(
-        choose_engine(&revoked, both, App::Note),
-        cloud,
-        "the note opt-in, recorded on the capture record"
-    );
-    // Local-only forces Unavailable whatever was opted into.
-    let local = CloudConsent {
-        local_only: true,
-        ..both
-    };
-    for app in [App::Talk, App::Note] {
-        assert_eq!(choose_engine(&revoked, local, app), unavailable);
+fn there_is_no_cloud_engine_a_module_that_is_not_ready_is_unavailable() {
+    // ADR 0076/0078 (was N84's per-app cloud consent): on-device or unavailable, nothing else.
+    for (a, reason, expired) in [
+        (
+            SpeechAvailability::Revoked {
+                version: "1.1.0".into(),
+                list_expired: false,
+            },
+            "revoked",
+            false,
+        ),
+        (SpeechAvailability::NotInstalled, "not-installed", false),
+        (SpeechAvailability::Stale { days: 91 }, "stale", true),
+    ] {
+        assert_eq!(
+            choose_engine(&a),
+            EngineChoice::Unavailable {
+                reason: reason.into(),
+                list_expired: expired
+            }
+        );
     }
-    // Ready on-device speech is used whatever the consent.
     let ready = SpeechAvailability::Ready {
         version: "1.0.0".into(),
     };
-    assert_eq!(choose_engine(&ready, both, App::Note), EngineChoice::OnDevice);
+    assert_eq!(choose_engine(&ready), EngineChoice::OnDevice);
 }

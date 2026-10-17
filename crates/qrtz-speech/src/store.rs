@@ -171,44 +171,12 @@ pub enum SpeechAvailability {
     },
 }
 
-/// Which app asks for speech (N84: consent is per app).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum App {
-    Talk,
-    Note,
-}
-
-/// The user's cloud consent (N84). The ElevenLabs opt-in in talk settings is `talk` only; it never covers a
-/// meeting (`note`), which has its own opt-in. `privacy.localOnly` overrides both.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct CloudConsent {
-    pub talk: bool,
-    pub note: bool,
-    pub local_only: bool,
-}
-
-impl CloudConsent {
-    pub fn allows(&self, app: App) -> bool {
-        !self.local_only
-            && match app {
-                App::Talk => self.talk,
-                App::Note => self.note,
-            }
-    }
-}
-
-/// The engine a talk session or a note recording uses (ADR 0046 §9.1, N84).
+/// The engine a talk session or a note recording uses (ADR 0046 §9.1). ADR 0076/0078: there is no cloud
+/// engine, so a module that isn't ready is "unavailable", never a fallback.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase", tag = "engine")]
 pub enum EngineChoice {
     OnDevice,
-    /// The user's cloud engine (ElevenLabs, host-side), only with that app's consent and never in local-only.
-    /// `fallback_reason` says why on-device speech is not used; a note recording records it on the capture record
-    /// and shows it live ("transcribing in the cloud: on-device speech unavailable").
-    Cloud {
-        fallback_reason: String,
-    },
     /// Speech unavailable: the UI says so (with the expired-list notice when `list_expired`). Capture does not
     /// start: never record silently with no transcript.
     Unavailable {
@@ -226,16 +194,11 @@ fn unavailable_reason(a: &SpeechAvailability) -> (&'static str, bool) {
     }
 }
 
-pub fn choose_engine(a: &SpeechAvailability, consent: CloudConsent, app: App) -> EngineChoice {
+pub fn choose_engine(a: &SpeechAvailability) -> EngineChoice {
     if let SpeechAvailability::Ready { .. } = a {
         return EngineChoice::OnDevice;
     }
     let (reason, list_expired) = unavailable_reason(a);
-    if consent.allows(app) {
-        return EngineChoice::Cloud {
-            fallback_reason: reason.into(),
-        };
-    }
     EngineChoice::Unavailable {
         reason: reason.into(),
         list_expired,

@@ -595,7 +595,6 @@ fn asr_reason(r: qrtz_speech::FailReason) -> qrtz_model::AsrUnavailableReason {
         F::NotInstalled => R::NotInstalled,
         F::Revoked => R::Revoked,
         F::Stale => R::Stale,
-        F::Network => R::Network,
     }
 }
 

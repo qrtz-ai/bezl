@@ -209,8 +209,7 @@ pub fn fail_error(r: FailReason) -> (TalkErrorKind, &'static str) {
         | FailReason::ProtocolViolations
         | FailReason::StartFailed
         | FailReason::Timeout
-        | FailReason::Cancelled
-        | FailReason::Network => (
+        | FailReason::Cancelled => (
             TalkErrorKind::SpeechLost,
             "qrtz speech stopped working, so dictation stopped",
         ),

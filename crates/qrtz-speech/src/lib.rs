@@ -2,6 +2,7 @@
 //! the model-agnostic `SpeechEngine`, and the signed-bundle store/updater.
 pub mod bundle;
 pub mod confine;
+#[cfg(feature = "net")]
 pub mod download;
 pub mod engine;
 pub mod files;
@@ -11,6 +12,7 @@ pub mod spawn;
 pub mod store;
 #[cfg(feature = "testkit")]
 pub mod testkit;
+#[cfg(feature = "net")]
 pub mod update;
 pub mod validate;
 
@@ -19,8 +21,7 @@ pub use engine::{
     SpeechEngine, SpeechEvent, SpeechSession, StatusError,
 };
 pub use store::{
-    choose_engine, App, CloudConsent, EngineChoice, Revocation, RollbackKind, SpeechAvailability,
-    SpeechStore, StoreStatus,
+    choose_engine, EngineChoice, Revocation, RollbackKind, SpeechAvailability, SpeechStore, StoreStatus,
 };
 
 #[derive(Debug, thiserror::Error)]

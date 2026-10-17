@@ -134,8 +134,8 @@ impl AudioAttach for HelperAttach {
 use qrtz_lifecycle::runtime::{HelperCommand, HelperPort, NoteRuntime};
 use qrtz_speech::spawn::{OnDeviceSpeech, SpawnOptions};
 use qrtz_speech::{
-    choose_engine, App, CloudConsent, EngineChoice, FailReason, SpeakerMode, SpeechEngine, SpeechEvent,
-    SpeechSession, SpeechStore,
+    choose_engine, EngineChoice, FailReason, SpeakerMode, SpeechEngine, SpeechEvent, SpeechSession,
+    SpeechStore,
 };
 use tokio::sync::mpsc;
 
@@ -256,14 +256,8 @@ impl NoteSpeech {
         let _ = self.runtime.set(rt);
     }
     pub fn choice(&self) -> EngineChoice {
-        // ADR 0076: qrtz is entirely offline, so there is no cloud consent to give (the old `privacy.localOnly` is
-        // stripped on load); a withdrawn module is "unavailable", never a cloud fallback.
-        let consent = CloudConsent {
-            talk: false,
-            note: false,
-            local_only: true,
-        };
-        choose_engine(&self.store.availability(now_ms()), consent, App::Note)
+        // ADR 0076/0078: qrtz is entirely offline; a withdrawn module is "unavailable", never a cloud fallback.
+        choose_engine(&self.store.availability(now_ms()))
     }
     pub fn active(&self) -> usize {
         self.sessions.lock().unwrap().len()
@@ -303,20 +297,11 @@ impl NoteSpeech {
                     );
                 }
             },
-            // Note has no cloud engine (consent.note is never set), so `Cloud` cannot come back; treat it alike.
             EngineChoice::Unavailable { reason, list_expired } => {
                 let r = match reason.as_str() {
                     "not-installed" => FailReason::NotInstalled,
                     _ if list_expired || list_expired_flag(&reason) => FailReason::Stale,
                     _ => FailReason::Revoked,
-                };
-                self.event(path, SpeechEvent::Failed { reason: r });
-            }
-            EngineChoice::Cloud { fallback_reason } => {
-                let r = if fallback_reason == "not-installed" {
-                    FailReason::NotInstalled
-                } else {
-                    FailReason::Revoked
                 };
                 self.event(path, SpeechEvent::Failed { reason: r });
             }

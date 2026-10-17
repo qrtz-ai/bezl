@@ -56,8 +56,13 @@ const NET_CRATES: &[&str] = &[
     "tauri-plugin-shell",
 ];
 
-/// The one allowed edge into NET_CRATES (ADR 0046 §4, ADR 0078).
+/// The one allowed edge into NET_CRATES (ADR 0046 §4, ADR 0078), behind qrtz-speech's `net` feature.
 const EXCEPTION: (&str, &str) = ("qrtz-speech", "reqwest");
+/// The feature that carries the exception, and the one crate allowed to enable it (ADR 0078 follow-up).
+const NET_FEATURE: &str = "net";
+const NET_FEATURE_USERS: &[&str] = &["qrtz-app"];
+/// Crates that use qrtz-speech without its network channel: built alone, they reach no network crate.
+const SPEECH_WITHOUT_NET: &[&str] = &["qrtz-speech", "qrtz-talk", "qrtz-lifecycle"];
 
 /// Core crates that must not reach any network crate even through qrtz-speech (they don't depend on it).
 const NET_FREE: &[&str] = &[
@@ -370,4 +375,109 @@ fn the_helper_has_no_cloud_model_and_no_network_entitlement() {
             assert!(!s.contains(k), "{}: {k}", f.display());
         }
     }
+}
+
+fn metadata() -> Value {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    let out = std::process::Command::new(cargo)
+        .current_dir(root())
+        .args(["metadata", "--format-version", "1", "--no-deps"])
+        .output()
+        .expect("cargo metadata");
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    serde_json::from_slice(&out.stdout).unwrap()
+}
+
+#[test]
+fn reqwest_is_behind_qrtz_speech_net_and_only_qrtz_app_turns_it_on() {
+    let m = metadata();
+    let pkgs = m["packages"].as_array().unwrap();
+    let speech = pkgs.iter().find(|p| p["name"] == EXCEPTION.0).unwrap();
+    let dep = speech["dependencies"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["name"] == EXCEPTION.1 && d["kind"].is_null())
+        .expect("qrtz-speech → reqwest");
+    assert_eq!(dep["optional"], true, "reqwest must be optional in qrtz-speech");
+    let net = speech["features"][NET_FEATURE]
+        .as_array()
+        .expect("qrtz-speech has a `net` feature");
+    assert!(net.iter().any(|f| f == "dep:reqwest"), "{net:?}");
+    for (name, f) in speech["features"].as_object().unwrap() {
+        if name != NET_FEATURE {
+            let f = f.as_array().unwrap();
+            assert!(
+                !f.iter().any(|x| x == "dep:reqwest" || x == NET_FEATURE),
+                "feature {name} pulls the network: {f:?}"
+            );
+        }
+    }
+    let mut users = vec![];
+    for p in pkgs {
+        for d in p["dependencies"].as_array().unwrap() {
+            // Normal (and build) edges only: qrtz-speech's own tests may use `net`.
+            if d["name"] != EXCEPTION.0 || d["kind"] == "dev" {
+                continue;
+            }
+            let on = d["features"].as_array().unwrap().iter().any(|f| f == NET_FEATURE)
+                || d["uses_default_features"] == true
+                    && speech["features"]["default"]
+                        .as_array()
+                        .is_some_and(|f| f.iter().any(|x| x == NET_FEATURE));
+            if on {
+                users.push(p["name"].as_str().unwrap().to_owned());
+            }
+        }
+    }
+    users.sort();
+    assert_eq!(users, NET_FEATURE_USERS, "crates that enable qrtz-speech/net");
+}
+
+#[test]
+fn qrtz_talk_and_qrtz_lifecycle_build_with_no_http_client() {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    for c in SPEECH_WITHOUT_NET {
+        // `cargo tree -p` resolves features for that crate alone (what its own build gets).
+        let out = std::process::Command::new(&cargo)
+            .current_dir(root())
+            .args([
+                "tree",
+                "-p",
+                c,
+                "-e",
+                "normal",
+                "--prefix",
+                "none",
+                "--all-features",
+            ])
+            .output()
+            .expect("cargo tree");
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let tree = String::from_utf8_lossy(&out.stdout);
+        let net: Vec<&str> = tree
+            .lines()
+            .filter(|l| {
+                let n = l.split_whitespace().next().unwrap_or("");
+                NET_CRATES.contains(&n)
+            })
+            .collect();
+        // qrtz-speech --all-features turns `net` on: its own build is checked without it below.
+        if *c == "qrtz-speech" {
+            continue;
+        }
+        assert!(net.is_empty(), "{c} reaches the network:\n{}", net.join("\n"));
+    }
+    let out = std::process::Command::new(&cargo)
+        .current_dir(root())
+        .args(["tree", "-p", "qrtz-speech", "-e", "normal", "--prefix", "none"])
+        .output()
+        .expect("cargo tree");
+    let tree = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !tree
+            .lines()
+            .any(|l| NET_CRATES.contains(&l.split_whitespace().next().unwrap_or(""))),
+        "qrtz-speech without `net` reaches the network:\n{tree}"
+    );
 }

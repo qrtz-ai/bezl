@@ -27,19 +27,23 @@ ed25519-dalek = "2"
 sha2 = "0.10"
 hex = "0.4"
 semver = "1"
-reqwest = { version = "0.12", default-features = false, features = [
+# ADR 0078: the one network client in qrtz, only with the `net` feature (qrtz-app's speech updates).
+reqwest = { version = "0.12", default-features = false, optional = true, features = [
   "rustls-tls",
   "stream",
 ] }
-futures-util = "0.3"
+futures-util = { version = "0.3", optional = true }
 libc = "0.2"
 
 [features]
 # `testkit`: signing toolkit + bundle server for tests (this crate's and qrtz-app's E2E).
 testkit = []
+# `net`: the signed module download and update channel (`download`, `update`; reqwest). ADR 0078: only qrtz-app
+# enables it, so qrtz-talk and qrtz-lifecycle build with no HTTP client.
+net = ["dep:reqwest", "dep:futures-util"]
 
 [dev-dependencies]
-qrtz-speech = { path = ".", features = ["testkit"] }
+qrtz-speech = { path = ".", features = ["testkit", "net"] }
 tempfile.workspace = true
 ed25519-dalek = "2"
 tokio = { version = "1", features = [

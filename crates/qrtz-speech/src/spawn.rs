@@ -560,6 +560,7 @@ pub struct ModuleHealth {
     pub opts: SpawnOptions,
 }
 
+#[cfg(feature = "net")]
 fn norm(s: &str) -> String {
     s.chars()
         .filter(|c| c.is_alphanumeric() || c.is_whitespace())
@@ -570,6 +571,7 @@ fn norm(s: &str) -> String {
         .join(" ")
 }
 
+#[cfg(feature = "net")]
 #[async_trait]
 impl crate::update::HealthCheck for ModuleHealth {
     async fn check(&self, m: &crate::bundle::Manifest, files: ModuleFiles) -> Result<(), String> {

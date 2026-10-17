@@ -26,7 +26,8 @@ qrtz-model = { workspace = true, optional = true }
 qrtz-backup = { workspace = true, optional = true }
 qrtz-llm = { path = "../qrtz-llm", optional = true }
 qrtz-talk = { path = "../qrtz-talk", optional = true }
-qrtz-speech = { path = "../qrtz-speech", optional = true }
+# ADR 0078: the only crate that enables `net` (the signed speech module download / update channel).
+qrtz-speech = { path = "../qrtz-speech", optional = true, features = ["net"] }
 rand.workspace = true
 unicode-normalization.workspace = true
 qrtz-ipc = { path = "../qrtz-ipc" }
@@ -46,7 +47,7 @@ tempfile.workspace = true
 qrtz-helper-bridge = { path = "../qrtz-helper-bridge" }
 qrtz-storage.workspace = true
 libc = "0.2"
-qrtz-speech = { path = "../qrtz-speech", features = ["testkit"] }
+qrtz-speech = { path = "../qrtz-speech", features = ["testkit", "net"] }
 ed25519-dalek = "2"
 # e2e_notes_privacy.rs reads the log (`meeting ignored (excluded app)`), as the Electron spec read logs/main.jsonl.
 tracing-subscriber = { version = "0.3", default-features = false, features = [
