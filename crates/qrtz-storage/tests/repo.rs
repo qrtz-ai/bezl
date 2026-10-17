@@ -26,7 +26,7 @@ fn fts_query_builders() {
         to_fts_query("Hello, World!").as_deref(),
         Some("\"hello\"* \"world\"*")
     );
-    assert_eq!(to_fts_query("O'Reilly").as_deref(), Some("\"oreilly\"*"));
+    assert_eq!(to_fts_query("O'Reilly").as_deref(), Some("\"o'reilly\"*")); // N46
     assert_eq!(to_fts_query("\"*()"), None);
     assert_eq!(to_fts_query("   "), None);
     assert_eq!(

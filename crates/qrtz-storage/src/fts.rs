@@ -10,16 +10,23 @@ fn norm(input: &str) -> String {
     input.to_lowercase().nfkc().collect()
 }
 
-/// `toFtsQuery`: words split on `[^\p{L}\p{N}']+`, apostrophes dropped, at most 8, AND-ed as `"w"*`.
-/// `None` when nothing searchable is left.
+/// `toFtsQuery`: words split on `[^\p{L}\p{N}\p{M}'\u{2019}]+`, a trailing possessive `'s` dropped, words without a
+/// letter or digit dropped, at most 8, AND-ed as `"w"*`. `None` when nothing searchable is left.
+///
+/// Apostrophes and combining marks stay inside the quoted term (N46, ADR 0038): FTS5 tokenizes a quoted string with
+/// the index's tokenizer, so `don't` is the phrase `don t*` and an Indic or Thai word stays one phrase.
 pub fn to_fts_query(input: &str) -> Option<String> {
     static SPLIT: OnceLock<Regex> = OnceLock::new();
-    let split = SPLIT.get_or_init(|| Regex::new(r"[^\p{L}\p{N}']+").unwrap());
+    static POSSESSIVE: OnceLock<Regex> = OnceLock::new();
+    static WORDY: OnceLock<Regex> = OnceLock::new();
+    let split = SPLIT.get_or_init(|| Regex::new(r"[^\p{L}\p{N}\p{M}'\x{2019}]+").unwrap());
+    let possessive = POSSESSIVE.get_or_init(|| Regex::new(r"['\x{2019}]s$").unwrap());
+    let wordy = WORDY.get_or_init(|| Regex::new(r"[\p{L}\p{N}]").unwrap());
     let n = norm(input);
     let words: Vec<String> = split
         .split(&n)
-        .map(|w| w.replace('\'', ""))
-        .filter(|w| !w.is_empty())
+        .map(|w| possessive.replace(w, "").into_owned())
+        .filter(|w| wordy.is_match(w))
         .take(8)
         .collect();
     if words.is_empty() {

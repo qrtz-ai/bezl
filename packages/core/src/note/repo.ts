@@ -43,14 +43,19 @@ const toSegment = (r: Row): Segment => ({
 /**
  * Turns free text into a safe FTS5 query: each word becomes a quoted prefix term (AND-ed).
  * Strips FTS syntax so user input can never produce a query error or injection.
+ *
+ * A word keeps its apostrophes and combining marks (N46, ADR 0038). Inside double quotes FTS5 runs the term through
+ * the same tokenizer as the index, so `don't` becomes the phrase `don t*` and matches the transcript, and a Hindi or
+ * Thai word stays one phrase instead of AND-ed fragments. A trailing possessive `'s` is dropped so `O'Reilly's`
+ * finds `O'Reilly`. Only `"` is special inside an FTS5 string, and the split removes it.
  */
 export function toFtsQuery(input: string): string | null {
   const words = input
     .toLowerCase()
     .normalize('NFKC')
-    .split(/[^\p{L}\p{N}']+/u)
-    .map((w) => w.replace(/'/g, ''))
-    .filter(Boolean)
+    .split(/[^\p{L}\p{N}\p{M}'\u2019]+/u)
+    .map((w) => w.replace(/['\u2019]s$/u, ''))
+    .filter((w) => /[\p{L}\p{N}]/u.test(w))
     .slice(0, 8);
   if (!words.length) return null;
   return words.map((w) => `"${w}"*`).join(' ');

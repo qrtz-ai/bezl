@@ -612,6 +612,9 @@
    },
    {
     "query": "émoji 🐛 bugs"
+   },
+   {
+    "query": "don't forget"
    }
   ],
   "details": [
@@ -680,7 +683,10 @@
    "日本語のテキスト",
    "émoji 🐛 bugs",
    "a'b'c",
-   "Ⅻ ①"
+   "Ⅻ ①",
+   "don't forget",
+   "नमस्ते",
+   "’s"
   ]
  }
 }

@@ -591,7 +591,32 @@
     }
    }
   ],
-  [],
+  [
+   {
+    "meeting": {
+     "id": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "platform": "zoom",
+     "startedAt": 1760000000000,
+     "endedAt": 1760003600000,
+     "status": "done",
+     "participants": [
+      "Ada Lovelace",
+      "Alan M. Turing"
+     ],
+     "audioPath": "/rec/a.wav",
+     "durationMs": 3600000,
+     "template": "general"
+    },
+    "hit": {
+     "meetingId": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "startedAt": 1760000000000,
+     "startMs": 22100,
+     "snippet": "Don't forget the [O'Reilly] contract."
+    }
+   }
+  ],
   [
    {
     "meeting": {
@@ -742,7 +767,33 @@
   [],
   [],
   [],
-  []
+  [],
+  [
+   {
+    "meeting": {
+     "id": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "platform": "zoom",
+     "startedAt": 1760000000000,
+     "endedAt": 1760003600000,
+     "status": "done",
+     "participants": [
+      "Ada Lovelace",
+      "Alan M. Turing"
+     ],
+     "audioPath": "/rec/a.wav",
+     "durationMs": 3600000,
+     "template": "general"
+    },
+    "hit": {
+     "meetingId": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "startedAt": 1760000000000,
+     "startMs": 22100,
+     "snippet": "[Don't] [forget] the O'Reilly contract."
+    }
+   }
+  ]
  ],
  "details": {
   "m-a": {
@@ -1324,16 +1375,19 @@
  },
  "ftsQueries": [
   "\"hello\"* \"world\"*",
-  "\"oreillys\"* \"café\"*",
+  "\"o'reilly\"* \"café\"*",
   "\"financials\"* \"xii\"* \"1\"*",
   null,
   "\"drop\"* \"table\"* \"x\"*",
   "\"one\"* \"two\"* \"three\"* \"four\"* \"five\"* \"six\"* \"seven\"* \"eight\"*",
   "\"σας\"*",
-  "\"i\"* \"stanbul\"*",
+  "\"i̇stanbul\"*",
   "\"日本語のテキスト\"*",
   "\"émoji\"* \"bugs\"*",
-  "\"abc\"*",
-  "\"xii\"* \"1\"*"
+  "\"a'b'c\"*",
+  "\"xii\"* \"1\"*",
+  "\"don't\"* \"forget\"*",
+  "\"नमस्ते\"*",
+  null
  ]
 }

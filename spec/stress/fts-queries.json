@@ -1,0 +1,159 @@
+{
+  "description": "Hardening cycle 11 (N46, ADR 0038): the search query builder (TS toFtsQuery = Rust to_fts_query) keeps apostrophes and combining marks inside each quoted prefix term, so FTS5 tokenizes the term with the index's own tokenizer ('porter unicode61', migration 0002). `matches` are the corpus indices a real SQLite FTS5 table returns for `query`. Run by packages/core/src/note/fts.hardening11.test.ts and crates/qrtz-storage/tests/hardening11.rs.",
+  "tokenize": "porter unicode61",
+  "corpus": [
+    "Don't forget the O'Reilly contract.",
+    "We won’t ship on Friday, it’s too risky",
+    "Jared's plan for the rollback is ready",
+    "Jared will demo on Monday",
+    "नमस्ते दोस्तों, आज की बैठक शुरू करते हैं",
+    "สวัสดีครับ เริ่มประชุมกันเลย",
+    "L'équipe a validé le café du matin",
+    "İstanbul office joins at 9",
+    "Rock'n'roll playlist for the offsite",
+    "The donut order is in",
+    "Café budget review"
+  ],
+  "cases": [
+    {
+      "input": "don't",
+      "query": "\"don't\"*",
+      "matches": [0]
+    },
+    {
+      "input": "Don't forget",
+      "query": "\"don't\"* \"forget\"*",
+      "matches": [0]
+    },
+    {
+      "input": "dont",
+      "query": "\"dont\"*",
+      "matches": []
+    },
+    {
+      "input": "O'Reilly",
+      "query": "\"o'reilly\"*",
+      "matches": [0]
+    },
+    {
+      "input": "o’reilly",
+      "query": "\"o’reilly\"*",
+      "matches": [0]
+    },
+    {
+      "input": "O'Reilly's contract",
+      "query": "\"o'reilly\"* \"contract\"*",
+      "matches": [0]
+    },
+    {
+      "input": "won't",
+      "query": "\"won't\"*",
+      "matches": [1]
+    },
+    {
+      "input": "won’t ship",
+      "query": "\"won’t\"* \"ship\"*",
+      "matches": [1]
+    },
+    {
+      "input": "it's risky",
+      "query": "\"it\"* \"risky\"*",
+      "matches": [1]
+    },
+    {
+      "input": "Jared's",
+      "query": "\"jared\"*",
+      "matches": [2, 3]
+    },
+    {
+      "input": "jared",
+      "query": "\"jared\"*",
+      "matches": [2, 3]
+    },
+    {
+      "input": "jared’s demo",
+      "query": "\"jared\"* \"demo\"*",
+      "matches": [3]
+    },
+    {
+      "input": "नमस्ते",
+      "query": "\"नमस्ते\"*",
+      "matches": [4]
+    },
+    {
+      "input": "बैठक",
+      "query": "\"बैठक\"*",
+      "matches": [4]
+    },
+    {
+      "input": "शुरू करते",
+      "query": "\"शुरू\"* \"करते\"*",
+      "matches": [4]
+    },
+    {
+      "input": "ประชุม",
+      "query": "\"ประชุม\"*",
+      "matches": []
+    },
+    {
+      "input": "l'équipe",
+      "query": "\"l'équipe\"*",
+      "matches": [6]
+    },
+    {
+      "input": "équipe",
+      "query": "\"équipe\"*",
+      "matches": [6]
+    },
+    {
+      "input": "İstanbul",
+      "query": "\"i̇stanbul\"*",
+      "matches": [7]
+    },
+    {
+      "input": "rock'n'roll",
+      "query": "\"rock'n'roll\"*",
+      "matches": [8]
+    },
+    {
+      "input": "don",
+      "query": "\"don\"*",
+      "matches": [0, 9]
+    },
+    {
+      "input": "'",
+      "query": null,
+      "matches": []
+    },
+    {
+      "input": "’s",
+      "query": null,
+      "matches": []
+    },
+    {
+      "input": "'s'",
+      "query": "\"'s'\"*",
+      "matches": [1, 2]
+    },
+    {
+      "input": "\"don't\"",
+      "query": "\"don't\"*",
+      "matches": [0]
+    },
+    {
+      "input": "don't*) OR (x",
+      "query": "\"don't\"* \"or\"* \"x\"*",
+      "matches": []
+    },
+    {
+      "input": "café",
+      "query": "\"café\"*",
+      "matches": [6, 10]
+    },
+    {
+      "input": "́",
+      "query": null,
+      "matches": []
+    }
+  ]
+}
