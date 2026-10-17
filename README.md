@@ -57,7 +57,7 @@ npm start                    # run the app with hot reload
 
 ## Status (2026-10-16)
 
-**Verified on Linux with the mock helper:** every user-facing flow in [docs/test-matrix.md](docs/test-matrix.md) has a test. Every push runs lint, typecheck, about 120 unit tests, the packaged smoke test, 23 Electron e2e tests (axe-clean in dark and light, cold start about 0.65 s) and 29 Swift tests. A fresh-clone check (`scripts/fresh-clone-check.sh`) proves it builds from scratch. Large libraries are covered too: 500 meetings, a 2-hour transcript, and a 400 MB backup with bounded memory.
+**Verified on Linux with the mock helper:** every user-facing flow in [docs/test-matrix.md](docs/test-matrix.md) has a test. Every push runs lint, typecheck, about 130 unit tests, the packaged smoke test, 24 Electron e2e tests (axe-clean in dark and light, cold start about 0.65 s) and 29 Swift tests. A fresh-clone check (`scripts/fresh-clone-check.sh`) proves it builds from scratch. Large libraries are covered too: 500 meetings, a 2-hour transcript, and a 400 MB backup with bounded memory.
 
 **Needs a Mac to verify** (about 10 minutes; see the checklist in [docs/mac-verify.md](docs/mac-verify.md)):
 
