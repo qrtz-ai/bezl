@@ -202,7 +202,7 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
 - First-run polish with screenshots.
 - Virtualize the meeting list once it holds hundreds of meetings.
 
-## 2026-10-16 ~18:25–19:05 PT: iteration 8 (error states, first-run polish, list scale, LLM stub test, Mac compile pass)
+## 2026-10-16 ~18:25–18:35 PT: iteration 8 (error states, first-run polish, list scale, LLM stub test, Mac compile pass)
 
 - Error states:
   - New `Callout` UI primitive (alert or status role).
