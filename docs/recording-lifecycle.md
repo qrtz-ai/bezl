@@ -100,6 +100,14 @@ are listed in `deviceLost` (on `SessionView` too). They are the one exception to
 recording": `helper-restored` removes them, unless a revoke of the same flag took them over in between. Each failure
 goes to `deviceFailures` and then `PipelineState.capture.deviceFailures`, apart from revokes.
 
+**Lost sources (N39, N40, ADR 0031).** `lostSpans [{source, startMs, endMs?}]` (meeting ms, ≤ 16, omitted when
+empty) records when the helper did not deliver a source at all. A stretch opens when a flag takes a source away
+(`degraded` with a time, `capture-degraded`, `capture-fallback{to: null}`) and that source has none open. It ends at
+`helper-restored` for a source the new `degraded[]` gives back (a device failure), or at `stop-requested`. A crash
+leaves it open. It goes to `PipelineState.capture.lostSpans`, and the summary counts it as that source's silence, so
+a lost mic plus quiet system audio is "no audio at all". A start with the mic denied flags `no-mic` right after
+`start-acked`, next to `mic-only` for a denied screen, so that mic is lost from 0.
+
 **Lines behind an ack (N37, ADR 0029).** `start-acked` / `helper-restored` are applied in the start's continuation,
 after the line that resolved its waiter. Lines from the same chunk that the new recording owns (`capture.degraded`,
 `asr`) are held behind the ack and replayed right after the transition, or dropped if the start does not take.

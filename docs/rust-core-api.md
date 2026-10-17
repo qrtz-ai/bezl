@@ -139,10 +139,12 @@ pub struct RecordingState {
     // N35 (ADR 0028): omitted when empty
     pub device_lost: Vec<Degradation>,       // degraded flags only a failed device set; helper-restored drops them
     pub device_failures: Vec<DeviceFailure>, // {degraded, reason, at_ms}, ≤ 8; never written for a revoke
+    pub lost_spans: Vec<SilentSpan>,         // N39 (ADR 0031): a source not delivered at all, ≤ 16; end_ms None = still lost
 }
 pub enum CaptureSource { System, Mic }
 pub struct CaptureReport { pub silent_spans: Vec<SilentSpan>, pub fallbacks: Vec<CaptureFallback>,
-                           pub device_failures: Vec<DeviceFailure> /* N35 */ }
+                           pub device_failures: Vec<DeviceFailure> /* N35 */,
+                           pub lost_spans: Vec<SilentSpan> /* N39 */ }
 #[serde(tag = "type", rename_all = "kebab-case", rename_all_fields = "camelCase")]
 pub enum LifecycleEvent {
     Detected { meeting: DetectedMeeting }, MeetingEnded { key: String },
