@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Capability } from '../capabilities';
 import { HelperStatus } from './contract';
+import { PermissionsStatus, SessionView } from '../memo/contract';
 
 export interface EventDef<P extends z.ZodType = z.ZodType> {
   capability: Capability;
@@ -17,6 +18,18 @@ export const eventContract = {
   'config:changed': defineEvent({
     capability: 'config.read',
     payload: z.record(z.string(), z.unknown()),
+  }),
+  'memo:session': defineEvent({
+    capability: 'memo.read',
+    payload: SessionView,
+  }),
+  'memo:changed': defineEvent({
+    capability: 'memo.read',
+    payload: z.object({ id: z.string() }),
+  }),
+  'permissions:changed': defineEvent({
+    capability: 'os.permissions',
+    payload: PermissionsStatus,
   }),
 } as const satisfies Record<string, EventDef>;
 

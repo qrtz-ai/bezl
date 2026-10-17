@@ -14,15 +14,9 @@ export const ConfigSchema = z.object({
       liveAsr: z
         .enum(['parakeet-eou-160ms', 'parakeet-unified-320ms', 'apple-speech'])
         .default('parakeet-unified-320ms'),
-      postAsr: z
-        .enum(['parakeet-unified-offline', 'parakeet-tdt-v3', 'nvidia-nim'])
-        .default('parakeet-unified-offline'),
-      diarization: z
-        .enum(['sortformer-v2.1', 'off'])
-        .default('sortformer-v2.1'),
       llmProvider: z
         .enum(['openai', 'anthropic', 'google', 'openrouter', 'ollama', 'none'])
-        .default('none'),
+        .default('openrouter'),
       llmModel: z.string().default(''),
     })
     .prefault({}),

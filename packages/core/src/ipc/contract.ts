@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import type { Capability } from '../capabilities';
 import { AppErrorJSON } from '../errors';
+import { OsPermission } from '../capabilities';
+import {
+  MeetingDetail,
+  MeetingListItem,
+  PermissionsStatus,
+  SessionView,
+} from '../memo/contract';
 
 /** Bump when the envelope shape changes (not when a channel changes). */
 export const PROTOCOL_VERSION = 1;
@@ -85,6 +92,73 @@ export const ipcContract = {
     capability: 'helper.status',
     request: z.void(),
     response: HelperStatus,
+  }),
+  'permissions:get': defineChannel({
+    version: 1,
+    capability: 'os.permissions',
+    request: z.void(),
+    response: PermissionsStatus,
+  }),
+  'permissions:request': defineChannel({
+    version: 1,
+    capability: 'os.permissions',
+    request: z.object({ permission: OsPermission }),
+    response: PermissionsStatus,
+  }),
+  'memo:session': defineChannel({
+    version: 1,
+    capability: 'memo.read',
+    request: z.void(),
+    response: SessionView,
+  }),
+  'memo:start': defineChannel({
+    version: 1,
+    capability: 'memo.record',
+    request: z.object({ title: z.string().max(200).optional() }).optional(),
+    response: SessionView,
+  }),
+  'memo:stop': defineChannel({
+    version: 1,
+    capability: 'memo.record',
+    request: z.void(),
+    response: SessionView,
+  }),
+  'memo:dismiss': defineChannel({
+    version: 1,
+    capability: 'memo.record',
+    request: z.void(),
+    response: SessionView,
+  }),
+  'memo:list': defineChannel({
+    version: 1,
+    capability: 'memo.read',
+    request: z.object({ query: z.string().max(200).optional() }),
+    response: z.array(MeetingListItem),
+  }),
+  'memo:get': defineChannel({
+    version: 1,
+    capability: 'memo.read',
+    request: z.object({ id: z.string().max(64) }),
+    response: MeetingDetail,
+  }),
+  'memo:export': defineChannel({
+    version: 1,
+    capability: 'memo.read',
+    request: z.object({
+      id: z.string().max(64),
+      save: z.boolean().default(false),
+    }),
+    response: z.object({
+      filename: z.string(),
+      markdown: z.string(),
+      savedTo: z.string().optional(),
+    }),
+  }),
+  'memo:delete': defineChannel({
+    version: 1,
+    capability: 'memo.write',
+    request: z.object({ id: z.string().max(64) }),
+    response: z.object({ ok: z.literal(true) }),
   }),
 } as const satisfies Record<string, ChannelDef>;
 

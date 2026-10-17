@@ -10,14 +10,13 @@ import {
   STANDUP_FIXTURE,
   fixtureActiveSpeakers,
   fixtureAsrEvents,
-  fixturePostResult,
 } from '../memo/fixtures';
 
 export interface MockHelperOptions {
   clock?: Clock;
   heartbeatMs?: number;
   os?: string;
-  /** Play a scripted meeting (AX detection + ASR stream + post-processing). */
+  /** Play a scripted meeting (AX detection + streaming ASR). */
   scenario?: 'standup';
   /** Time scale for the scenario (0.05 = 20× faster than real time). */
   speed?: number;
@@ -163,16 +162,6 @@ export function createMockHelper(
             audioPath,
             durationMs: opts.scenario ? FIXTURE_DURATION_MS : 0,
           });
-        case 'post.run':
-          emit({ type: 'post.progress', stage: 'asr', progress: 0.5 });
-          clock.setTimeout(() => {
-            const r = opts.scenario
-              ? fixturePostResult()
-              : { segments: [], turns: [] };
-            emit({ type: 'post.progress', stage: 'diarization', progress: 1 });
-            emit({ type: 'post.result', audioPath: m.audioPath, ...r });
-          }, 50);
-          return;
       }
     },
     kill: () => die(null, 'SIGTERM'),

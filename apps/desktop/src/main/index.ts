@@ -1,5 +1,7 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, dialog, net, protocol } from 'electron';
+import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
   EventBus,
   Supervisor,
@@ -15,6 +17,19 @@ import { WorkerClient } from './worker-client';
 import { spawnHelper } from './helper-process';
 import { hardenApp } from './security';
 import { registerIpc } from './ipc';
+import { MemoService } from './memo-service';
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'qrtz-media',
+    privileges: {
+      standard: true,
+      secure: true,
+      stream: true,
+      supportFetchAPI: true,
+    },
+  },
+]);
 
 export function bootstrap() {
   if (process.env.QRTZ_USER_DATA)
@@ -62,12 +77,25 @@ export function bootstrap() {
     logger: log.child('helper'),
   });
   helper.onStatus((s) => bus.emit('helper:status', s));
+  const recordingsDir = path.join(userData, 'recordings');
+  const memo = new MemoService({
+    helper,
+    worker,
+    bus,
+    log: log.child('memo'),
+    secrets,
+    config: () => config.get(),
+    recordingsDir,
+  });
   helper.onLine((line) => {
     const r = parseHelperLine(line);
     if (!r.ok) return log.warn('bad helper line', { error: r.error });
     if (r.msg.type === 'log') log.child('helper')[r.msg.level](r.msg.msg);
-    if (r.msg.type === 'hello')
-      helper.send(encodeHostMessage({ type: 'permissions.check' }));
+    try {
+      memo.handle(r.msg);
+    } catch (e) {
+      log.warn('memo handler failed', { err: String(e) });
+    }
   });
   config.onChange((c) => bus.emit('config:changed', c));
 
@@ -91,7 +119,37 @@ export function bootstrap() {
         return { ok: true as const };
       },
       'secrets:list': () => secrets.list(),
-      'db:health': () => worker.call('db.health'),
+      'db:health': () => worker.call('db.health', undefined),
+      'permissions:get': () => memo.getPermissions(),
+      'permissions:request': ({ permission }) =>
+        memo.requestPermission(permission),
+      'memo:session': () => memo.view(),
+      'memo:start': (req) => memo.start(req?.title),
+      'memo:stop': () => memo.stop(),
+      'memo:dismiss': () => memo.dismiss(),
+      'memo:list': (req) => worker.call('memo.list', req),
+      'memo:get': ({ id }) => worker.call('memo.get', { id }),
+      'memo:delete': async ({ id }) => {
+        await worker.call('memo.delete', { id });
+        bus.emit('memo:changed', { id });
+        return { ok: true as const };
+      },
+      'memo:export': async ({ id, save }) => {
+        const ex = await worker.call('memo.export', { id });
+        if (!save) return ex;
+        let target: string | undefined;
+        if (process.env.QRTZ_EXPORT_DIR)
+          target = path.join(process.env.QRTZ_EXPORT_DIR, ex.filename);
+        else {
+          const r = await dialog.showSaveDialog({
+            defaultPath: path.join(app.getPath('documents'), ex.filename),
+            filters: [{ name: 'Markdown', extensions: ['md'] }],
+          });
+          target = r.canceled ? undefined : r.filePath;
+        }
+        if (target) fs.writeFileSync(target, ex.markdown, 'utf8');
+        return { ...ex, ...(target ? { savedTo: target } : {}) };
+      },
       'helper:status': () => helper.status,
     },
   });
@@ -125,6 +183,16 @@ export function bootstrap() {
   };
 
   app.whenReady().then(() => {
+    // Serve recordings to the sandboxed renderer: qrtz-media://rec/<uuid>.wav, nothing else.
+    protocol.handle('qrtz-media', (req) => {
+      const name = decodeURIComponent(new URL(req.url).pathname.slice(1));
+      if (!/^[0-9a-f-]{36}\.wav$/.test(name))
+        return new Response('forbidden', { status: 403 });
+      return net.fetch(
+        pathToFileURL(path.join(recordingsDir, name)).toString(),
+        { headers: req.headers },
+      );
+    });
     worker.start();
     helper.start();
     createWindow();

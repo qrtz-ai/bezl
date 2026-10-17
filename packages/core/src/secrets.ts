@@ -33,3 +33,10 @@ export class MemorySecretStore implements SecretStore {
 /** Env override: QRTZ_SECRET_LLM_OPENAI etc. Useful for CI and headless runs. */
 export const envNameFor = (name: string) =>
   'QRTZ_SECRET_' + name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+
+/** Env names checked for a secret, e.g. QRTZ_SECRET_LLM_OPENROUTER and the short QRTZ_SECRET_OPENROUTER. */
+export const envNamesFor = (name: string): string[] => {
+  const names = [envNameFor(name)];
+  if (name.startsWith('llm.')) names.push(envNameFor(name.slice(4)));
+  return names;
+};

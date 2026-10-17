@@ -91,7 +91,7 @@ export class WorkerClient {
 
   call<M extends keyof WorkerMethods>(
     method: M,
-    params?: WorkerMethods[M]['params'],
+    params: WorkerMethods[M]['params'],
     timeoutMs = 10_000,
   ): Promise<WorkerMethods[M]['result']> {
     return new Promise((resolve, reject) => {

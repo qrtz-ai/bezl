@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { safeStorage } from 'electron';
-import { AppError, envNameFor, type SecretStore } from '@qrtz/core';
+import { AppError, envNamesFor, type SecretStore } from '@qrtz/core';
 
 /**
  * Secrets encrypted with Electron safeStorage (macOS Keychain-backed key).
@@ -30,7 +30,9 @@ export class SafeStorageSecretStore implements SecretStore {
   }
 
   async get(name: string): Promise<string | undefined> {
-    const env = process.env[envNameFor(name)];
+    const env = envNamesFor(name)
+      .map((n) => process.env[n])
+      .find(Boolean);
     if (env) return env;
     const enc = this.read()[name];
     if (!enc || !this.secure()) return undefined;

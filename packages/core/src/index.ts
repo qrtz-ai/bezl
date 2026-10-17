@@ -25,3 +25,4 @@ export * from './memo/markdown';
 export * from './memo/session';
 export * from './memo/fixtures';
 export * from './testing';
+export * from './memo/contract';

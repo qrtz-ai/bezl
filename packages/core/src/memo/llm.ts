@@ -50,7 +50,7 @@ export const PROVIDER_DEFAULTS: Record<
   },
   openrouter: {
     baseUrl: 'https://openrouter.ai/api/v1',
-    model: 'openai/gpt-4.1-mini',
+    model: 'google/gemini-2.5-flash',
     secret: 'llm.openrouter',
   },
   nvidia: {
@@ -102,6 +102,7 @@ export function openAiCompatible(o: {
   baseUrl: string;
   apiKey?: string;
   model: string;
+  extraHeaders?: Record<string, string>;
 }): LlmProvider {
   return {
     id: o.id,
@@ -109,7 +110,10 @@ export function openAiCompatible(o: {
       const j = (await post(
         o.fetch,
         `${o.baseUrl}/chat/completions`,
-        o.apiKey ? { authorization: `Bearer ${o.apiKey}` } : {},
+        {
+          ...o.extraHeaders,
+          ...(o.apiKey ? { authorization: `Bearer ${o.apiKey}` } : {}),
+        },
         {
           model: o.model,
           messages,
@@ -212,6 +216,14 @@ export function createProvider(
     baseUrl,
     model,
     ...(o.apiKey ? { apiKey: o.apiKey } : {}),
+    ...(id === 'openrouter'
+      ? {
+          extraHeaders: {
+            'HTTP-Referer': 'https://qrtz.ai',
+            'X-Title': 'qrtz',
+          },
+        }
+      : {}),
   });
 }
 

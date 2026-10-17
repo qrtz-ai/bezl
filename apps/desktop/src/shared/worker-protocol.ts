@@ -38,9 +38,12 @@ export const WorkerMessage = z.union([
 export type WorkerRequest = z.infer<typeof WorkerRequest>;
 export type WorkerMessage = z.infer<typeof WorkerMessage>;
 
-export interface WorkerMethods {
-  'db.health': {
-    params: void;
-    result: { ok: boolean; schemaVersion: number; fts5: boolean };
+import type { WorkerHandlers } from '../worker/handlers';
+
+/** Typed view of the worker's RPC surface, derived from the handler implementations. */
+export type WorkerMethods = {
+  [M in keyof WorkerHandlers]: {
+    params: Parameters<WorkerHandlers[M]>[0];
+    result: Awaited<ReturnType<WorkerHandlers[M]>>;
   };
-}
+};

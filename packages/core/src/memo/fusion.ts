@@ -87,3 +87,34 @@ export function labelSegments(
     return { ...s, speaker: best, ...(name ? { speakerName: name } : {}) };
   });
 }
+
+/**
+ * Live-only fusion: each segment takes the AX active speaker with the most overlap
+ * (AX highlight lags speech slightly, so the window is shifted by `lagMs`).
+ * Explicit names already on a segment are kept unless AX evidence exists.
+ */
+export function nameSegmentsFromAx(
+  segments: Segment[],
+  active: ActiveSpeakerEvent[],
+  endMs: number,
+  lagMs = 300,
+): Segment[] {
+  const ivs = activeSpeakerIntervals(
+    active,
+    Math.max(endMs, ...segments.map((s) => s.endMs + lagMs)),
+  );
+  return segments.map((s) => {
+    const votes = new Map<string, number>();
+    for (const iv of ivs) {
+      const o = overlap(
+        s.startMs + lagMs,
+        s.endMs + lagMs,
+        iv.startMs,
+        iv.endMs,
+      );
+      if (o) votes.set(iv.name, (votes.get(iv.name) ?? 0) + o);
+    }
+    const best = [...votes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    return best ? { ...s, speakerName: best } : s;
+  });
+}

@@ -8,6 +8,7 @@ export const Capability = z.enum([
   'secrets.write',
   'db.read',
   'helper.status',
+  'os.permissions',
   'memo.record',
   'memo.read',
   'memo.write',

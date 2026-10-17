@@ -1,7 +1,8 @@
 // Electron utilityProcess entry: owns SQLite and heavy jobs, off the main thread.
 import { AppError } from '@qrtz/core';
 import { WorkerRequest, type WorkerMessage } from './shared/worker-protocol';
-import { dbHealth, openDatabase } from './worker/db';
+import { openDatabase } from './worker/db';
+import { createWorkerHandlers } from './worker/handlers';
 
 const port = process.parentPort;
 const post = (m: WorkerMessage) => port.postMessage(JSON.stringify(m));
@@ -13,11 +14,15 @@ const log = (
 
 const dbFile = process.argv.at(-1) ?? ':memory:';
 const db = openDatabase(dbFile);
+const handlers = createWorkerHandlers(db, {
+  fetch: (url, init) => fetch(url, init),
+  log: (msg, f) => log('warn', msg, f as Record<string, unknown>),
+});
+const methods = handlers as unknown as Record<
+  string,
+  (params: unknown) => unknown
+>;
 log('info', 'worker ready', { dbFile });
-
-const methods: Record<string, (params: unknown) => unknown> = {
-  'db.health': () => dbHealth(db),
-};
 
 port.on('message', async (e: { data: unknown }) => {
   let req;
@@ -29,17 +34,20 @@ port.on('message', async (e: { data: unknown }) => {
     return log('warn', 'malformed request');
   }
   try {
-    const fn = methods[req.method];
+    const fn = Object.prototype.hasOwnProperty.call(methods, req.method)
+      ? methods[req.method]
+      : undefined;
     if (!fn)
       throw new AppError('E_NOT_FOUND', `Unknown worker method ${req.method}`);
     post({ kind: 'res', id: req.id, ok: true, data: await fn(req.params) });
   } catch (err) {
-    post({
-      kind: 'res',
-      id: req.id,
-      ok: false,
-      error: AppError.from(err).toJSON(),
-    });
+    const e2 = AppError.from(err);
+    if (e2.code === 'E_INTERNAL')
+      log('error', 'worker method failed', {
+        method: req.method,
+        err: String(err),
+      });
+    post({ kind: 'res', id: req.id, ok: false, error: e2.toJSON() });
   }
 });
 

@@ -16,7 +16,7 @@ import {
   fixtureActiveSpeakers,
   fixturePostResult,
 } from './fixtures';
-import { labelSegments, mapSlotsToNames } from './fusion';
+import { labelSegments, mapSlotsToNames, nameSegmentsFromAx } from './fusion';
 import { createMockHelper } from '../helper/mock';
 import {
   encodeHostMessage,
@@ -42,6 +42,20 @@ const meeting = {
   participants: [...STANDUP_FIXTURE.participants],
   durationMs: 36_500,
 };
+
+describe('live AX fusion', () => {
+  it('names live fixture segments from the lagging AX highlight', () => {
+    const live = fixturePostResult().segments.map((x) => ({
+      ...x,
+      source: 'live' as const,
+    }));
+    expect(
+      nameSegmentsFromAx(live, fixtureActiveSpeakers(), 40_000).map(
+        (x) => x.speakerName,
+      ),
+    ).toEqual(STANDUP_FIXTURE.lines.map((l) => l[0]));
+  });
+});
 
 describe('fusion on fixture', () => {
   it('names every post segment from AX active speaker', () => {
@@ -261,7 +275,7 @@ describe('session state machine', () => {
 });
 
 describe('mock helper scripted meeting (protocol integration)', () => {
-  it('detects, streams ASR + speakers, stops, and post-processes', () => {
+  it('detects, streams ASR + speakers, and stops', () => {
     const clock = new FakeClock();
     const h = createMockHelper({ clock, scenario: 'standup', speed: 0.01 });
     const got: HelperToHost[] = [];
@@ -281,16 +295,9 @@ describe('mock helper scripted meeting (protocol integration)', () => {
     expect(finals).toHaveLength(8);
     expect(got.some((m) => m.type === 'ax.activeSpeaker')).toBe(true);
     h.write(encodeHostMessage({ type: 'recording.stop' }));
-    h.write(
-      encodeHostMessage({
-        type: 'post.run',
-        audioPath: '/tmp/a.wav',
-        asrModel: 'x',
-        diarization: 'y',
-      }),
-    );
-    clock.advance(100);
-    const res = got.find((m) => m.type === 'post.result');
-    expect(res && res.type === 'post.result' && res.segments).toHaveLength(8);
+    expect(got.at(-1)).toMatchObject({
+      type: 'recording.stopped',
+      durationMs: 36_500,
+    });
   });
 });
