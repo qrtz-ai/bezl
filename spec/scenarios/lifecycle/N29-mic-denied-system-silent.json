@@ -1,6 +1,6 @@
 {
   "name": "N29-mic-denied-system-silent",
-  "about": "N29: a recording started with the microphone denied carries no flag for it, so system silence alone is 'no audio at all' (the view counts denied sources as not delivered).",
+  "about": "N29: a recording started with the microphone denied: system silence alone is 'no audio at all'. N40: the start now flags no-mic (like mic-only for the screen), so the meeting record has the mic lost from the start (lost:mic) and the summary agrees with the live view.",
   "script": [
     {
       "op": "helper",
@@ -78,20 +78,21 @@
         "idle|-|-|-|-|-|ok",
         "starting|id1|-|-|-|-|ok",
         "recording|id1|-|-|-|-|ok",
-        "recording|id1|-|-|-|-|ok|s:system@0!",
-        "stopping|id1|-|-|-|-|ok",
-        "processing|id1|-|-|-|-|ok",
-        "done|id1|-|-|-|-|ok"
+        "recording|id1|no-mic|-|-|-|ok",
+        "recording|id1|no-mic|-|-|-|ok|s:system@0!",
+        "stopping|id1|no-mic|-|-|-|ok",
+        "processing|id1|no-mic|-|-|-|ok",
+        "done|id1|no-mic|-|-|-|ok"
       ],
       "pipelines": {
         "id1": [
-          "manual finalize:pending/0 summary:pending/0 index:pending/0 [system:0-1000]",
-          "manual finalize:running/1 summary:pending/0 index:pending/0 [system:0-1000]",
-          "manual finalize:done/1 summary:pending/0 index:pending/0 [system:0-1000]",
-          "manual finalize:done/1 summary:running/1 index:pending/0 [system:0-1000]",
-          "manual finalize:done/1 summary:done/1 index:pending/0 [system:0-1000]",
-          "manual finalize:done/1 summary:done/1 index:running/1 [system:0-1000]",
-          "manual finalize:done/1 summary:done/1 index:done/1 [system:0-1000]"
+          "manual finalize:pending/0 summary:pending/0 index:pending/0 [system:0-1000 lost:mic:0-1000]",
+          "manual finalize:running/1 summary:pending/0 index:pending/0 [system:0-1000 lost:mic:0-1000]",
+          "manual finalize:done/1 summary:pending/0 index:pending/0 [system:0-1000 lost:mic:0-1000]",
+          "manual finalize:done/1 summary:running/1 index:pending/0 [system:0-1000 lost:mic:0-1000]",
+          "manual finalize:done/1 summary:done/1 index:pending/0 [system:0-1000 lost:mic:0-1000]",
+          "manual finalize:done/1 summary:done/1 index:running/1 [system:0-1000 lost:mic:0-1000]",
+          "manual finalize:done/1 summary:done/1 index:done/1 [system:0-1000 lost:mic:0-1000]"
         ]
       },
       "helper": [
@@ -140,7 +141,9 @@
           "startedAt": 1760000000000,
           "elapsedMs": 0,
           "stopReason": null,
-          "degraded": [],
+          "degraded": [
+            "no-mic"
+          ],
           "error": null,
           "paused": false,
           "progress": null,
@@ -197,7 +200,9 @@
           "startedAt": 1760000000000,
           "elapsedMs": 1000,
           "stopReason": "manual",
-          "degraded": [],
+          "degraded": [
+            "no-mic"
+          ],
           "error": null,
           "paused": false,
           "progress": null,
@@ -251,7 +256,7 @@
                 "$REC/id1.wav"
               ],
               0,
-              "system:0-1000"
+              "system:0-1000 lost:mic:0-1000"
             ]
           ],
           "session": [

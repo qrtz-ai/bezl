@@ -1441,6 +1441,10 @@ impl Shared {
         if perm(OsPermission::ScreenRecording) == PermissionState::Denied {
             self.degrade(Degradation::MicOnly);
         }
+        // N40: a start without mic access is a lost mic from the start (the record and the summary need it too).
+        if perm(OsPermission::Microphone) == PermissionState::Denied {
+            self.degrade(Degradation::NoMic);
+        }
         if perm(OsPermission::Accessibility) == PermissionState::Denied {
             self.degrade(Degradation::AxUnavailable);
         }

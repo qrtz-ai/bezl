@@ -1052,6 +1052,9 @@ export class NoteService {
     }
     this.machine.send({ type: 'start-acked' });
     if (p['screen-recording'] === 'denied') this.degrade('mic-only');
+    // N40: a start without mic access is a lost mic from the start (like mic-only for the screen), so the meeting
+    // record and the summary know nothing came from the mic, not only the live view (which reads permissions).
+    if (p.microphone === 'denied') this.degrade('no-mic');
     if (p.accessibility === 'denied') this.degrade('ax-unavailable');
     this.releaseHeld(audioPath, true);
     this.deps.log.info('recording started', { id });
