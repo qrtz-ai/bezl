@@ -34,6 +34,7 @@ import {
   RecordingState,
   extractiveSummary,
   type PipelineContext,
+  type SilentSpan,
 } from '@qrtz/core';
 import { dbHealth, freshOwnerOnlyFile } from './db';
 import { repairWav } from './wav-repair';
@@ -176,8 +177,28 @@ export function createWorkerHandlers(
         ...(m.template ? { template: m.template } : {}),
         strict,
         ...(signal ? { signal } : {}),
+        // N29: the recording's silent stretches (kept on its pipeline row), so the prompt can list capture gaps.
+        ...captureOf(m.id, m.durationMs),
       },
     );
+  /**
+   * N29: PipelineState.capture.silentSpans of a meeting ({} without a pipeline row or capture record), with the
+   * meeting length for a stretch with no end (the meeting row's, else the recording's).
+   */
+  const captureOf = (
+    id: string,
+    meetingMs: number | undefined,
+  ): { silentSpans?: SilentSpan[]; durationMs?: number } => {
+    const r = db
+      .prepare('SELECT json FROM pipeline_state WHERE meeting_id=?')
+      .get(id) as { json: string } | undefined;
+    const p = r ? PipelineState.safeParse(JSON.parse(r.json)) : undefined;
+    const silentSpans = p?.success ? p.data.capture?.silentSpans : undefined;
+    if (!p?.success || !silentSpans?.length) return {};
+    const durationMs = meetingMs || p.data.ctx.durationMs;
+    return { silentSpans, ...(durationMs ? { durationMs } : {}) };
+  };
+
   const need = (id: string) => {
     const m = repo.getMeeting(id);
     if (!m) throw new AppError('E_NOT_FOUND', `meeting ${id} not found`);

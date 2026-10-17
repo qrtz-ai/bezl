@@ -61,6 +61,47 @@ describe('worker lifecycle steps', () => {
     expect(m.summary?.llmError).toBe('LLM HTTP 503');
   });
 
+  it('stepSummary lists the recording silent stretches from its pipeline row as capture gaps (N29)', async () => {
+    const bodies: string[] = [];
+    const h = createWorkerHandlers(openDatabase(':memory:'), {
+      fetch: async (_url, init) => {
+        bodies.push(String(init.body));
+        return new Response('{"error":{"message":"x"}}', { status: 503 });
+      },
+    });
+    h['note.create']({ meeting: meeting('m', 'processing') });
+    h['note.appendLive']({ meetingId: 'm', segment: seg });
+    const ctx = {
+      startedAt: 1,
+      endedAt: 2,
+      durationMs: 600_000,
+      audioParts: [],
+      active: [],
+      helperCrashed: false,
+    };
+    h['pipeline.save']({
+      state: {
+        ...newPipeline('m', 'manual', ctx, 1),
+        capture: {
+          silentSpans: [
+            { source: 'mic', startMs: 60_000, endMs: 240_000 },
+            { source: 'system', startMs: 120_000 },
+          ],
+        },
+      },
+      settled: false,
+    });
+    await h['note.stepSummary']({ meetingId: 'm', llm }).catch(() => {});
+    expect(bodies).toHaveLength(1);
+    const prompt = JSON.stringify(JSON.parse(bodies[0]!).messages);
+    expect(prompt).toContain('Capture gaps:');
+    expect(prompt).toContain("1:00–2:00: no audio from this user's microphone");
+    expect(prompt).toContain('2:00–4:00: no audio at all');
+    expect(prompt).toContain(
+      '4:00–10:00: no audio from the other participants',
+    );
+  });
+
   it('stepFinalize is idempotent and pipeline rows round-trip; orphans exclude meetings with a pipeline', () => {
     const h = createWorkerHandlers(openDatabase(':memory:'), {
       fetch: failing(500),

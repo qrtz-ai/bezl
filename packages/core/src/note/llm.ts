@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { AppError } from '../errors';
 import type { Segment } from './types';
+import type { SilentSpan } from './lifecycle';
 import { MeetingSummary } from './summary';
 import { extractiveSummary } from './extractive';
 import { formatNotesForPrompt, type MeetingNote } from './notes';
@@ -16,6 +17,13 @@ export interface SummaryOptions {
    * retryable E_TIMEOUT, so a late reply can never be mistaken for a terminal provider error (ADR 0005).
    */
   signal?: AbortSignal;
+  /**
+   * N29: the recording's silent stretches (PipelineState.capture). Large ones are listed in the prompt as capture
+   * gaps, so the model says nothing about stretches nobody could hear instead of inventing content for them.
+   */
+  silentSpans?: SilentSpan[];
+  /** Meeting length, for a stretch with no end (the app died while it was silent). */
+  durationMs?: number;
 }
 
 export type ChatMessage = {
@@ -443,6 +451,86 @@ export function formatTranscriptForPrompt(
   return r;
 }
 
+/** N29: silent stretches shorter than this are not worth a prompt line (the helper reports after 60 s anyway). */
+export const LARGE_CAPTURE_GAP_MS = 60_000;
+const MAX_GAP_LINES = 20;
+
+type Iv = [number, number];
+const mergeIv = (xs: Iv[]): Iv[] => {
+  const out: Iv[] = [];
+  for (const [a, b] of [...xs].sort((x, y) => x[0] - y[0])) {
+    const last = out.at(-1);
+    if (last && a <= last[1]) last[1] = Math.max(last[1], b);
+    else out.push([a, b]);
+  }
+  return out;
+};
+const intersectIv = (xs: Iv[], ys: Iv[]): Iv[] =>
+  xs.flatMap(([a, b]) =>
+    ys
+      .map(([c, d]): Iv => [Math.max(a, c), Math.min(b, d)])
+      .filter(([x, y]) => y > x),
+  );
+const subtractIv = (xs: Iv[], cut: Iv[]): Iv[] =>
+  xs.flatMap(([a, b]) => {
+    let parts: Iv[] = [[a, b]];
+    for (const [c, d] of cut)
+      parts = parts.flatMap(([x, y]): Iv[] =>
+        d <= x || c >= y
+          ? [[x, y]]
+          : (
+              [
+                [x, c],
+                [d, y],
+              ] as Iv[]
+            ).filter(([p, q]) => q > p),
+      );
+    return parts;
+  });
+
+/**
+ * N29: the large capture gaps of a recording as prompt lines, in meeting order: stretches where both sources were
+ * silent ("no audio at all"), then what is left of each source's own silence. A stretch with no end runs to
+ * `durationMs` (dropped when that is unknown too). At most 20 lines.
+ */
+export function captureGapsForPrompt(
+  spans: readonly SilentSpan[],
+  durationMs?: number,
+): string[] {
+  const of = (src: SilentSpan['source']) =>
+    mergeIv(
+      spans
+        .filter((x) => x.source === src)
+        .flatMap((x): Iv[] => {
+          const end = x.endMs ?? durationMs;
+          return end === undefined || end <= x.startMs
+            ? []
+            : [[x.startMs, end]];
+        }),
+    );
+  const sys = of('system');
+  const mic = of('mic');
+  const both = mergeIv(intersectIv(sys, mic));
+  const label = {
+    both: 'no audio at all (nothing was captured)',
+    system: "no audio from the other participants (the computer's sound)",
+    mic: "no audio from this user's microphone",
+  } as const;
+  const big = ([a, b]: Iv) => b - a >= LARGE_CAPTURE_GAP_MS;
+  const lines = [
+    ...both.filter(big).map((iv) => [iv, label.both] as const),
+    ...subtractIv(sys, both)
+      .filter(big)
+      .map((iv) => [iv, label.system] as const),
+    ...subtractIv(mic, both)
+      .filter(big)
+      .map((iv) => [iv, label.mic] as const),
+  ].sort((x, y) => x[0][0] - y[0][0]);
+  return lines
+    .slice(0, MAX_GAP_LINES)
+    .map(([[a, b], what]) => `- ${clock(a)}–${clock(b)}: ${what}`);
+}
+
 export function buildSummaryPrompt(
   title: string,
   segments: Segment[],
@@ -450,6 +538,7 @@ export function buildSummaryPrompt(
 ): ChatMessage[] {
   const tpl = templateById(opts.template);
   const notes = (opts.notes ?? []).filter((n) => n.text.trim());
+  const gaps = captureGapsForPrompt(opts.silentSpans ?? [], opts.durationMs);
   return [
     {
       role: 'system',
@@ -458,6 +547,9 @@ export function buildSummaryPrompt(
         tpl.guidance +
         (notes.length
           ? " The user took their own notes during the meeting (timestamps match the transcript). Treat them as the user's priorities: build the summary around them, expand each with details from the transcript, keep any to-dos from the notes as action items, and never contradict the transcript."
+          : '') +
+        (gaps.length
+          ? ' Some stretches of the recording captured no audio (listed under Capture gaps, timestamps match the transcript). Nothing is known about what was said then: never summarize, guess or attribute anything to those stretches; you may say that audio is missing for them.'
           : ''),
     },
     {
@@ -465,6 +557,7 @@ export function buildSummaryPrompt(
       content:
         `Meeting: ${title}\n\n` +
         (notes.length ? `My notes:\n${formatNotesForPrompt(notes)}\n\n` : '') +
+        (gaps.length ? `Capture gaps:\n${gaps.join('\n')}\n\n` : '') +
         `Transcript:\n${formatTranscriptForPrompt(segments)}`,
     },
   ];
