@@ -1,0 +1,112 @@
+{
+  "name": "F5-helper-down-at-start",
+  "about": "F5: the helper is not running when start sends recording.start: the meeting is dropped and start fails with E_UNAVAILABLE.",
+  "script": [
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permissions.status",
+        "status": {
+          "accessibility": "granted",
+          "screen-recording": "granted",
+          "microphone": "granted"
+        }
+      }
+    },
+    {
+      "op": "helperDown"
+    },
+    {
+      "op": "helperHealth",
+      "health": "down",
+      "detail": "exited"
+    },
+    {
+      "op": "call",
+      "fn": "start",
+      "label": "start",
+      "args": {
+        "title": "T"
+      }
+    }
+  ],
+  "expect": {
+    "trace": {
+      "session": [
+        "idle|-|-|-|-|-|ok",
+        "idle|-|-|-|-|-|down",
+        "starting|id1|-|-|-|-|down",
+        "idle|-|-|E_UNAVAILABLE|-|-|down"
+      ],
+      "pipelines": {},
+      "helper": [
+        "permissions.check"
+      ],
+      "transcript": [],
+      "changed": [
+        "id1",
+        "id1"
+      ],
+      "permissions": [
+        "granted|granted|granted"
+      ],
+      "prompts": []
+    },
+    "results": {
+      "start": {
+        "err": [
+          "E_UNAVAILABLE",
+          "native helper is not running"
+        ]
+      }
+    },
+    "snapshots": {
+      "end": {
+        "view": {
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": [
+            "E_UNAVAILABLE",
+            true
+          ],
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "down",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "idle",
+            null
+          ]
+        },
+        "files": []
+      }
+    }
+  }
+}

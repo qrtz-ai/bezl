@@ -1,0 +1,90 @@
+{
+  "name": "detect-off",
+  "about": "Detection off: meeting.detected is ignored.",
+  "config": {
+    "autoDetectMeetings": false
+  },
+  "script": [
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permissions.status",
+        "status": {
+          "accessibility": "granted",
+          "screen-recording": "granted",
+          "microphone": "granted"
+        }
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "meeting.detected",
+        "key": "meet:1",
+        "title": "Design review",
+        "platform": "google-meet",
+        "app": "Chrome"
+      }
+    }
+  ],
+  "expect": {
+    "trace": {
+      "session": [
+        "idle|-|-|-|-|-|ok"
+      ],
+      "pipelines": {},
+      "helper": [
+        "permissions.check"
+      ],
+      "transcript": [],
+      "changed": [],
+      "permissions": [
+        "granted|granted|granted"
+      ],
+      "prompts": []
+    },
+    "results": {},
+    "snapshots": {
+      "end": {
+        "view": {
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": null
+        },
+        "files": []
+      }
+    }
+  }
+}

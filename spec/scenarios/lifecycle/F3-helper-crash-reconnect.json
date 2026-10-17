@@ -1,0 +1,653 @@
+{
+  "name": "F3-helper-crash-reconnect",
+  "about": "F3: the helper dies mid-recording, comes back within the window, resumes into part 1 (ids namespaced, offset applied, transcript-gap); finalize stitches both parts.",
+  "script": [
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permissions.status",
+        "status": {
+          "accessibility": "granted",
+          "screen-recording": "granted",
+          "microphone": "granted"
+        }
+      }
+    },
+    {
+      "op": "call",
+      "fn": "start",
+      "label": "start",
+      "args": {
+        "title": "Standup"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.started",
+        "audioPath": "$REC/id1.wav"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "ax.activeSpeaker",
+        "atMs": 0,
+        "name": "Ana"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "asr",
+        "event": {
+          "kind": "partial",
+          "utteranceId": "u1",
+          "startMs": 100,
+          "text": "hello"
+        }
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "asr",
+        "event": {
+          "kind": "final",
+          "utteranceId": "u1",
+          "startMs": 100,
+          "endMs": 1900,
+          "text": "hello everyone"
+        }
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 1000
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "ax.activeSpeaker",
+        "atMs": 2000,
+        "name": "Ben"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "asr",
+        "event": {
+          "kind": "final",
+          "utteranceId": "u2",
+          "startMs": 2100,
+          "endMs": 3900,
+          "text": "thanks ana"
+        }
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 1000
+    },
+    {
+      "op": "wav",
+      "file": "id1.wav",
+      "ms": 3000,
+      "broken": true
+    },
+    {
+      "op": "helperDown",
+      "reason": "exited"
+    },
+    {
+      "op": "snapshot",
+      "label": "reconnecting"
+    },
+    {
+      "op": "advance",
+      "ms": 2000
+    },
+    {
+      "op": "helperUp"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.started",
+        "audioPath": "$REC/id1.p1.wav"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "asr",
+        "event": {
+          "kind": "final",
+          "utteranceId": "u1",
+          "startMs": 0,
+          "endMs": 900,
+          "text": "after the gap"
+        }
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 1000
+    },
+    {
+      "op": "snapshot",
+      "label": "resumed"
+    },
+    {
+      "op": "wav",
+      "file": "id1.p1.wav",
+      "ms": 1000,
+      "broken": false
+    },
+    {
+      "op": "call",
+      "fn": "stop",
+      "label": "stop"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.stopped",
+        "audioPath": "$REC/id1.p1.wav",
+        "durationMs": 1000
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 100
+    }
+  ],
+  "expect": {
+    "trace": {
+      "session": [
+        "idle|-|-|-|-|-|ok",
+        "starting|id1|-|-|-|-|ok",
+        "recording|id1|-|-|-|-|ok",
+        "reconnecting|id1|-|-|r1|-|ok",
+        "recording|id1|transcript-gap|-|-|-|ok",
+        "stopping|id1|transcript-gap|-|-|-|ok",
+        "processing|id1|transcript-gap|-|-|-|ok",
+        "done|id1|transcript-gap|-|-|-|ok"
+      ],
+      "pipelines": {
+        "id1": [
+          "manual finalize:pending/0 summary:pending/0 index:pending/0",
+          "manual finalize:running/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:running/1 index:pending/0",
+          "manual finalize:done/1 summary:done/1 index:pending/0",
+          "manual finalize:done/1 summary:done/1 index:running/1",
+          "manual finalize:done/1 summary:done/1 index:done/1"
+        ]
+      },
+      "helper": [
+        "permissions.check",
+        "recording.start $REC/id1.wav",
+        "permissions.check",
+        "recording.start $REC/id1.p1.wav",
+        "recording.stop"
+      ],
+      "transcript": [
+        [
+          0,
+          1,
+          [],
+          "hello"
+        ],
+        [
+          1,
+          2,
+          [
+            "u1@Ana"
+          ],
+          null
+        ],
+        [
+          2,
+          3,
+          [
+            "u2@Ben"
+          ],
+          null
+        ],
+        [
+          3,
+          4,
+          [
+            "p1-u1@Ben"
+          ],
+          null
+        ],
+        [
+          4,
+          5,
+          [],
+          null
+        ]
+      ],
+      "changed": [
+        "id1",
+        "id1",
+        "id1",
+        "id1"
+      ],
+      "permissions": [
+        "granted|granted|granted"
+      ],
+      "prompts": []
+    },
+    "results": {
+      "start": {
+        "ok": {
+          "phase": "recording",
+          "meetingId": "id1"
+        }
+      },
+      "stop": {
+        "ok": {
+          "phase": "processing",
+          "meetingId": "id1"
+        }
+      }
+    },
+    "snapshots": {
+      "reconnecting": {
+        "view": {
+          "phase": "reconnecting",
+          "meetingId": "id1",
+          "startedAt": 1760000000000,
+          "elapsedMs": 2000,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": {
+            "attempt": 1,
+            "since": 1760000002000,
+            "deadlineAt": 1760000032000
+          },
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": "Ben",
+          "lines": [
+            [
+              "u1",
+              "Ana",
+              "hello everyone",
+              100
+            ],
+            [
+              "u2",
+              "Ben",
+              "thanks ana",
+              2100
+            ]
+          ],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": {
+          "meetingId": "id1",
+          "rev": 3,
+          "segments": [
+            [
+              "u1",
+              "Ana",
+              100,
+              1900
+            ],
+            [
+              "u2",
+              "Ben",
+              2100,
+              3900
+            ]
+          ],
+          "partial": null
+        },
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "recording",
+              1760000000000,
+              null,
+              null,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [
+            [
+              "id1",
+              "u1",
+              "live",
+              100,
+              1900,
+              "Ana",
+              "hello everyone"
+            ],
+            [
+              "id1",
+              "u2",
+              "live",
+              2100,
+              3900,
+              "Ben",
+              "thanks ana"
+            ]
+          ],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "reconnecting",
+            "id1"
+          ]
+        },
+        "files": [
+          [
+            "id1.wav",
+            96044
+          ]
+        ]
+      },
+      "resumed": {
+        "view": {
+          "phase": "recording",
+          "meetingId": "id1",
+          "startedAt": 1760000000000,
+          "elapsedMs": 5000,
+          "stopReason": null,
+          "degraded": [
+            "transcript-gap"
+          ],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": "Ben",
+          "lines": [
+            [
+              "u1",
+              "Ana",
+              "hello everyone",
+              100
+            ],
+            [
+              "u2",
+              "Ben",
+              "thanks ana",
+              2100
+            ],
+            [
+              "p1-u1",
+              "Ben",
+              "after the gap",
+              4000
+            ]
+          ],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": {
+          "meetingId": "id1",
+          "rev": 4,
+          "segments": [
+            [
+              "u1",
+              "Ana",
+              100,
+              1900
+            ],
+            [
+              "u2",
+              "Ben",
+              2100,
+              3900
+            ],
+            [
+              "p1-u1",
+              "Ben",
+              4000,
+              4900
+            ]
+          ],
+          "partial": null
+        },
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "recording",
+              1760000000000,
+              null,
+              null,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [
+            [
+              "id1",
+              "u1",
+              "live",
+              100,
+              1900,
+              "Ana",
+              "hello everyone"
+            ],
+            [
+              "id1",
+              "u2",
+              "live",
+              2100,
+              3900,
+              "Ben",
+              "thanks ana"
+            ],
+            [
+              "id1",
+              "p1-u1",
+              "live",
+              4000,
+              4900,
+              "Ben",
+              "after the gap"
+            ]
+          ],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "recording",
+            "id1"
+          ]
+        },
+        "files": [
+          [
+            "id1.wav",
+            96044
+          ]
+        ]
+      },
+      "end": {
+        "view": {
+          "phase": "done",
+          "meetingId": "id1",
+          "startedAt": 1760000000000,
+          "elapsedMs": 5000,
+          "stopReason": "manual",
+          "degraded": [
+            "transcript-gap"
+          ],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": "Ben",
+          "lines": [
+            [
+              "u1",
+              "Ana",
+              "hello everyone",
+              100
+            ],
+            [
+              "u2",
+              "Ben",
+              "thanks ana",
+              2100
+            ],
+            [
+              "p1-u1",
+              "Ben",
+              "after the gap",
+              4000
+            ]
+          ],
+          "partial": "",
+          "pipeline": "finalize:done/1 summary:done/1 index:done/1"
+        },
+        "live": {
+          "meetingId": "id1",
+          "rev": 5,
+          "segments": [
+            [
+              "u1",
+              "Ana",
+              100,
+              1900
+            ],
+            [
+              "u2",
+              "Ben",
+              2100,
+              3900
+            ],
+            [
+              "p1-u1",
+              "Ben",
+              4000,
+              4900
+            ]
+          ],
+          "partial": null
+        },
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "done",
+              1760000000000,
+              1760000005000,
+              4000,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [
+            [
+              "id1",
+              "u1",
+              "live",
+              100,
+              1900,
+              "Ana",
+              "hello everyone"
+            ],
+            [
+              "id1",
+              "u2",
+              "live",
+              2100,
+              3900,
+              "Ben",
+              "thanks ana"
+            ],
+            [
+              "id1",
+              "p1-u1",
+              "live",
+              4000,
+              4900,
+              "Ben",
+              "after the gap"
+            ]
+          ],
+          "summaries": [
+            [
+              "id1",
+              "stub",
+              "STUB summary",
+              null
+            ]
+          ],
+          "notes": [],
+          "pipelines": [
+            [
+              "id1",
+              1,
+              "manual",
+              "finalize:done/1 summary:done/1 index:done/1",
+              1000,
+              true,
+              [
+                "$REC/id1.wav",
+                "$REC/id1.p1.wav"
+              ],
+              2
+            ]
+          ],
+          "session": [
+            "done",
+            "id1"
+          ]
+        },
+        "files": [
+          [
+            "id1.wav",
+            128044
+          ]
+        ]
+      }
+    }
+  }
+}

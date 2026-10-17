@@ -1,0 +1,272 @@
+{
+  "name": "R1-crash-while-stopping",
+  "about": "R1 kill point: the app dies waiting for the stop ack.",
+  "script": [
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permissions.status",
+        "status": {
+          "accessibility": "granted",
+          "screen-recording": "granted",
+          "microphone": "granted"
+        }
+      }
+    },
+    {
+      "op": "call",
+      "fn": "start",
+      "label": "start",
+      "args": {
+        "title": "Standup"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.started",
+        "audioPath": "$REC/id1.wav"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "ax.activeSpeaker",
+        "atMs": 0,
+        "name": "Ana"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "asr",
+        "event": {
+          "kind": "partial",
+          "utteranceId": "u1",
+          "startMs": 100,
+          "text": "hello"
+        }
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "asr",
+        "event": {
+          "kind": "final",
+          "utteranceId": "u1",
+          "startMs": 100,
+          "endMs": 1900,
+          "text": "hello everyone"
+        }
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 1000
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "ax.activeSpeaker",
+        "atMs": 2000,
+        "name": "Ben"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "asr",
+        "event": {
+          "kind": "final",
+          "utteranceId": "u2",
+          "startMs": 2100,
+          "endMs": 3900,
+          "text": "thanks ana"
+        }
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 1000
+    },
+    {
+      "op": "call",
+      "fn": "stop",
+      "label": "stop"
+    },
+    {
+      "op": "restart"
+    },
+    {
+      "op": "advance",
+      "ms": 100
+    }
+  ],
+  "expect": {
+    "trace": {
+      "session": [
+        "idle|-|-|-|-|-|ok",
+        "starting|id1|-|-|-|-|ok",
+        "recording|id1|-|-|-|-|ok",
+        "stopping|id1|-|-|-|-|ok",
+        "idle|-|-|-|-|-|ok"
+      ],
+      "pipelines": {
+        "id1": [
+          "crash-recovered finalize:pending/0 summary:pending/0 index:pending/0",
+          "crash-recovered finalize:running/1 summary:pending/0 index:pending/0",
+          "crash-recovered finalize:done/1 summary:pending/0 index:pending/0",
+          "crash-recovered finalize:done/1 summary:running/1 index:pending/0",
+          "crash-recovered finalize:done/1 summary:done/1 index:pending/0",
+          "crash-recovered finalize:done/1 summary:done/1 index:running/1",
+          "crash-recovered finalize:done/1 summary:done/1 index:done/1"
+        ]
+      },
+      "helper": [
+        "permissions.check",
+        "recording.start $REC/id1.wav",
+        "recording.stop"
+      ],
+      "transcript": [
+        [
+          0,
+          1,
+          [],
+          "hello"
+        ],
+        [
+          1,
+          2,
+          [
+            "u1@Ana"
+          ],
+          null
+        ],
+        [
+          2,
+          3,
+          [
+            "u2@Ben"
+          ],
+          null
+        ]
+      ],
+      "changed": [
+        "id1",
+        "id1",
+        "id1",
+        "id1"
+      ],
+      "permissions": [
+        "granted|granted|granted"
+      ],
+      "prompts": []
+    },
+    "results": {
+      "start": {
+        "ok": {
+          "phase": "recording",
+          "meetingId": "id1"
+        }
+      },
+      "stop": "pending"
+    },
+    "snapshots": {
+      "end": {
+        "view": {
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "done",
+              1760000000000,
+              1760000002000,
+              3900,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [
+            [
+              "id1",
+              "u1",
+              "live",
+              100,
+              1900,
+              "Ana",
+              "hello everyone"
+            ],
+            [
+              "id1",
+              "u2",
+              "live",
+              2100,
+              3900,
+              "Ben",
+              "thanks ana"
+            ]
+          ],
+          "summaries": [
+            [
+              "id1",
+              "stub",
+              "STUB summary",
+              null
+            ]
+          ],
+          "notes": [],
+          "pipelines": [
+            [
+              "id1",
+              1,
+              "crash-recovered",
+              "finalize:done/1 summary:done/1 index:done/1",
+              0,
+              true,
+              [
+                "$REC/id1.wav"
+              ],
+              0
+            ]
+          ],
+          "session": [
+            "idle",
+            null
+          ]
+        },
+        "files": []
+      }
+    }
+  }
+}

@@ -699,6 +699,39 @@ the expected sequence of `note:session` phases, `note:pipeline` step statuses an
 one file per `note-service.test.ts` case. On the TS side, a small adapter drives `NoteService` with the mock
 helper and fake timers. This is the gate for removing the TS runtime at cutover.
 
+_Implemented (stage 4)._ `spec/scenarios/lifecycle/*.json` (50 files): `{name, about, config?, excludedApps?, random?,
+retryScale?, faultStep?, script, expect}`. Script ops: `helper` (a helper → host message; `$REC` = the recordings
+dir), `call` (`start`, `stop`, `toggle`, `dismiss`, `pause`, `retryStep`, `pipeline`, `addNote`, `resummarize`,
+`requestPermission`; the result lands in `expect.results[label]`, `"pending"` if it never settles), `advance` (ms),
+`helperDown` / `helperUp` / `helperFailed` / `helperHealth`, `steps` (queued `ok`/`fail`/`fatal`/`hang`/`skip`
+outcomes for finalize/summary/index, kept across restarts; finalize `ok` runs the real finalize), `store`
+(`fail`/`heal` worker methods), `wav` (write a PCM WAV, `broken` = unfinalized header), `db` (`deleteMeeting`,
+`seedMeeting`), `restart` (the process dies: timers and in-flight calls are dropped, the DB and recordings stay, a
+new runtime runs `recover`) and `snapshot`. `expect` = `trace` (per stream: deduped session keys, per-meeting
+pipeline step strings, helper commands, transcript deltas, `note:changed`, permissions, prompts), `results` and
+`snapshots` (view, live transcript, DB rows, recordings dir).
+
+- TS oracle: `apps/desktop/src/main/note-service.scenarios.test.ts` drives the real `NoteService` and worker
+  handlers on a file DB with vitest fake timers; `QRTZ_VECTORS_UPDATE=1` rewrites `expect`.
+- Rust: `crates/qrtz-lifecycle/tests/scenarios.rs` replays the same files against `NoteRuntime` on a paused
+  current-thread tokio runtime (`TokioClock`, `InlineDb`); `QRTZ_SCENARIO=<substring>` filters,
+  `QRTZ_SCENARIO_DUMP=1` writes what Rust produced to the temp dir.
+- Coverage: F1–F16, R1–R3, kill/restart while starting, recording, reconnecting, stopping, finalize running/backoff,
+  summary running/backoff, index running and after done; auto-record, detection prompt/excluded apps, pause across
+  a helper restart, racing starts, idempotent stop, stale acks, retry scale, fault injection, audio retention.
+- Observed TS behaviour the scenarios pin (and recording-lifecycle.md words differently): after a restart a
+  `retrying` step keeps its persisted `nextRetryAt`, so it runs when that passes, not at once (only `running` steps
+  are reset).
+
+**Runtime shape (as built).** `qrtz_lifecycle::runtime` (feature `runtime`; `cargo test --workspace` enables it via a
+self dev-dependency): `NoteRuntime::new(RuntimeDeps)` + `recover()`. State sits behind one short-lived lock that is
+never held across an `await`, and each TS method is ported line for line with its await points, so a
+current-thread runtime reproduces the TS event loop. The deps are `LifecycleStore` (`Store<StorageHandle>` in the
+app), `StepExecutor` (`CoreSteps`: real finalize; summary/index are stubs until qrtz-llm/qrtz-search), `HelperPort`
+(`send` → bool, `restart`), `EventSink` (`CoreEvent`), `Clock`, ids, random, `retry_scale`, `fault_step` and
+`default_title`. `kill()` simulates process death. Errors are `CoreError {code, message, retryable}` (AppError JSON
+via `to_app_error_json`).
+
 ## 6. Ambiguities in the TS source (need a decision from Bobs or Jared)
 
 1. **Port quirks I will copy unless told otherwise** (all covered by vectors):

@@ -1,0 +1,189 @@
+{
+  "name": "R3-orphans",
+  "about": "R3: legacy meetings stuck in recording/processing without a pipeline get a crash-recovered one.",
+  "script": [
+    {
+      "op": "db",
+      "seedMeeting": {
+        "id": "old1",
+        "title": "Legacy",
+        "platform": "zoom",
+        "startedAt": 1759990000000,
+        "status": "processing",
+        "participants": [],
+        "durationMs": 60000
+      }
+    },
+    {
+      "op": "db",
+      "seedMeeting": {
+        "id": "old2",
+        "title": "Legacy 2",
+        "platform": "other",
+        "startedAt": 1759990000000,
+        "endedAt": 1759990100000,
+        "status": "recording",
+        "participants": []
+      }
+    },
+    {
+      "op": "db",
+      "seedMeeting": {
+        "id": "old3",
+        "title": "Done",
+        "platform": "other",
+        "startedAt": 1759990000000,
+        "status": "done",
+        "participants": []
+      }
+    },
+    {
+      "op": "restart"
+    },
+    {
+      "op": "advance",
+      "ms": 100
+    }
+  ],
+  "expect": {
+    "trace": {
+      "session": [
+        "idle|-|-|-|-|-|ok",
+        "idle|-|-|-|-|-|ok"
+      ],
+      "pipelines": {
+        "old2": [
+          "crash-recovered finalize:pending/0 summary:pending/0 index:pending/0",
+          "crash-recovered finalize:running/1 summary:pending/0 index:pending/0",
+          "crash-recovered finalize:done/1 summary:pending/0 index:pending/0",
+          "crash-recovered finalize:done/1 summary:running/1 index:pending/0",
+          "crash-recovered finalize:done/1 summary:done/1 index:pending/0",
+          "crash-recovered finalize:done/1 summary:done/1 index:running/1",
+          "crash-recovered finalize:done/1 summary:done/1 index:done/1"
+        ],
+        "old1": [
+          "crash-recovered finalize:pending/0 summary:pending/0 index:pending/0",
+          "crash-recovered finalize:running/1 summary:pending/0 index:pending/0",
+          "crash-recovered finalize:done/1 summary:pending/0 index:pending/0",
+          "crash-recovered finalize:done/1 summary:running/1 index:pending/0",
+          "crash-recovered finalize:done/1 summary:done/1 index:pending/0",
+          "crash-recovered finalize:done/1 summary:done/1 index:running/1",
+          "crash-recovered finalize:done/1 summary:done/1 index:done/1"
+        ]
+      },
+      "helper": [],
+      "transcript": [],
+      "changed": [
+        "old2",
+        "old2",
+        "old2",
+        "old1",
+        "old1",
+        "old1"
+      ],
+      "permissions": [],
+      "prompts": []
+    },
+    "results": {},
+    "snapshots": {
+      "end": {
+        "view": {
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [
+            [
+              "old1",
+              "Legacy",
+              "zoom",
+              "done",
+              1759990000000,
+              1760000000000,
+              60000,
+              null,
+              "general"
+            ],
+            [
+              "old2",
+              "Legacy 2",
+              "other",
+              "done",
+              1759990000000,
+              1759990100000,
+              0,
+              null,
+              "general"
+            ],
+            [
+              "old3",
+              "Done",
+              "other",
+              "done",
+              1759990000000,
+              null,
+              null,
+              null,
+              "general"
+            ]
+          ],
+          "segments": [],
+          "summaries": [
+            [
+              "old1",
+              "stub",
+              "STUB summary",
+              null
+            ],
+            [
+              "old2",
+              "stub",
+              "STUB summary",
+              null
+            ]
+          ],
+          "notes": [],
+          "pipelines": [
+            [
+              "old1",
+              1,
+              "crash-recovered",
+              "finalize:done/1 summary:done/1 index:done/1",
+              60000,
+              true,
+              [],
+              0
+            ],
+            [
+              "old2",
+              1,
+              "crash-recovered",
+              "finalize:done/1 summary:done/1 index:done/1",
+              0,
+              true,
+              [],
+              0
+            ]
+          ],
+          "session": null
+        },
+        "files": []
+      }
+    }
+  }
+}

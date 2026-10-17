@@ -1,0 +1,118 @@
+{
+  "name": "request-permission",
+  "about": "permissions.request waits for the next permissions.status (or 5 s).",
+  "script": [
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permissions.status",
+        "status": {
+          "accessibility": "granted",
+          "screen-recording": "granted",
+          "microphone": "granted"
+        }
+      }
+    },
+    {
+      "op": "call",
+      "fn": "requestPermission",
+      "label": "req",
+      "args": {
+        "permission": "microphone"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permissions.status",
+        "status": {
+          "accessibility": "denied",
+          "screen-recording": "granted",
+          "microphone": "granted"
+        }
+      }
+    },
+    {
+      "op": "call",
+      "fn": "requestPermission",
+      "label": "req2",
+      "args": {
+        "permission": "accessibility"
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 5000
+    }
+  ],
+  "expect": {
+    "trace": {
+      "session": [
+        "idle|-|-|-|-|-|ok"
+      ],
+      "pipelines": {},
+      "helper": [
+        "permissions.check",
+        "permissions.request microphone",
+        "permissions.request accessibility"
+      ],
+      "transcript": [],
+      "changed": [],
+      "permissions": [
+        "granted|granted|granted",
+        "denied|granted|granted"
+      ],
+      "prompts": []
+    },
+    "results": {
+      "req": {
+        "ok": "denied|granted|granted"
+      },
+      "req2": {
+        "ok": "denied|granted|granted"
+      }
+    },
+    "snapshots": {
+      "end": {
+        "view": {
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": null
+        },
+        "files": []
+      }
+    }
+  }
+}

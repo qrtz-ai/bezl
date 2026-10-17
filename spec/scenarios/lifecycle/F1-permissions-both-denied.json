@@ -1,0 +1,148 @@
+{
+  "name": "F1-permissions-both-denied",
+  "about": "F1: screen recording and microphone denied: start is refused before any row exists; the error is state; dismiss clears it.",
+  "script": [
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permissions.status",
+        "status": {
+          "accessibility": "granted",
+          "screen-recording": "denied",
+          "microphone": "denied"
+        }
+      }
+    },
+    {
+      "op": "call",
+      "fn": "start",
+      "label": "start",
+      "args": {
+        "title": "X"
+      }
+    },
+    {
+      "op": "snapshot",
+      "label": "refused"
+    },
+    {
+      "op": "call",
+      "fn": "dismiss",
+      "label": "dismiss"
+    }
+  ],
+  "expect": {
+    "trace": {
+      "session": [
+        "idle|-|-|-|-|-|ok",
+        "idle|-|-|permission-denied|-|-|ok",
+        "idle|-|-|-|-|-|ok"
+      ],
+      "pipelines": {},
+      "helper": [
+        "permissions.check"
+      ],
+      "transcript": [],
+      "changed": [],
+      "permissions": [
+        "granted|denied|denied"
+      ],
+      "prompts": []
+    },
+    "results": {
+      "start": {
+        "err": [
+          "E_FORBIDDEN",
+          "Recording needs Screen & System Audio Recording or Microphone access. Grant one in System Settings › Privacy & Security, then try again."
+        ]
+      },
+      "dismiss": {
+        "ok": {
+          "phase": "idle",
+          "meetingId": null
+        }
+      }
+    },
+    "snapshots": {
+      "refused": {
+        "view": {
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": [
+            "permission-denied",
+            true
+          ],
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "idle",
+            null
+          ]
+        },
+        "files": []
+      },
+      "end": {
+        "view": {
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "idle",
+            null
+          ]
+        },
+        "files": []
+      }
+    }
+  }
+}

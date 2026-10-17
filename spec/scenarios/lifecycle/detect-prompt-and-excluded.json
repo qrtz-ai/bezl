@@ -1,0 +1,185 @@
+{
+  "name": "detect-prompt-and-excluded",
+  "about": "Detection with the prompt: a prompt is raised; an excluded app is ignored; meeting.ended clears the detection.",
+  "excludedApps": [
+    "slack"
+  ],
+  "script": [
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permissions.status",
+        "status": {
+          "accessibility": "granted",
+          "screen-recording": "granted",
+          "microphone": "granted"
+        }
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "meeting.detected",
+        "key": "slack:1",
+        "title": "Huddle",
+        "platform": "slack-huddle",
+        "app": "Slack"
+      }
+    },
+    {
+      "op": "snapshot",
+      "label": "ignored"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "meeting.detected",
+        "key": "meet:1",
+        "title": "Design review",
+        "platform": "google-meet",
+        "app": "Chrome"
+      }
+    },
+    {
+      "op": "snapshot",
+      "label": "detected"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "meeting.ended",
+        "key": "meet:1"
+      }
+    }
+  ],
+  "expect": {
+    "trace": {
+      "session": [
+        "idle|-|-|-|-|-|ok",
+        "detected|-|-|-|-|-|ok",
+        "idle|-|-|-|-|-|ok"
+      ],
+      "pipelines": {},
+      "helper": [
+        "permissions.check"
+      ],
+      "transcript": [],
+      "changed": [],
+      "permissions": [
+        "granted|granted|granted"
+      ],
+      "prompts": [
+        "Design review|google-meet"
+      ]
+    },
+    "results": {},
+    "snapshots": {
+      "ignored": {
+        "view": {
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": null
+        },
+        "files": []
+      },
+      "detected": {
+        "view": {
+          "phase": "detected",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "detected",
+            null
+          ]
+        },
+        "files": []
+      },
+      "end": {
+        "view": {
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "idle",
+            null
+          ]
+        },
+        "files": []
+      }
+    }
+  }
+}

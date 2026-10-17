@@ -6,6 +6,7 @@
     "docs/design-tokens.md",
     "contracts/*.json",
     "spec/vectors/**",
+    "spec/scenarios/**",
     "spec/fixtures/**"
   ]
 }

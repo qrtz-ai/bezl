@@ -1,0 +1,622 @@
+{
+  "name": "basic-record-stop-done",
+  "about": "Happy path: permissions, participants, live transcript with speakers, a live note, stop with ack, finalize (real, stitched WAV, speaker fusion) + summary + index done.",
+  "script": [
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permissions.status",
+        "status": {
+          "accessibility": "granted",
+          "screen-recording": "granted",
+          "microphone": "granted"
+        }
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "ax.participants",
+        "names": [
+          "Ana",
+          "Ben"
+        ]
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "audio.level",
+        "rms": 0.25
+      }
+    },
+    {
+      "op": "call",
+      "fn": "start",
+      "label": "start",
+      "args": {
+        "title": "Standup"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.started",
+        "audioPath": "$REC/id1.wav"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "ax.activeSpeaker",
+        "atMs": 0,
+        "name": "Ana"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "asr",
+        "event": {
+          "kind": "partial",
+          "utteranceId": "u1",
+          "startMs": 100,
+          "text": "hello"
+        }
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "asr",
+        "event": {
+          "kind": "final",
+          "utteranceId": "u1",
+          "startMs": 100,
+          "endMs": 1900,
+          "text": "hello everyone"
+        }
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 1000
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "ax.activeSpeaker",
+        "atMs": 2000,
+        "name": "Ben"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "asr",
+        "event": {
+          "kind": "final",
+          "utteranceId": "u2",
+          "startMs": 2100,
+          "endMs": 3900,
+          "text": "thanks ana"
+        }
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 1000
+    },
+    {
+      "op": "call",
+      "fn": "addNote",
+      "label": "note",
+      "args": {
+        "text": "decide on q3"
+      }
+    },
+    {
+      "op": "snapshot",
+      "label": "recording"
+    },
+    {
+      "op": "wav",
+      "file": "id1.wav",
+      "ms": 4000,
+      "broken": false
+    },
+    {
+      "op": "call",
+      "fn": "stop",
+      "label": "stop"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.stopped",
+        "audioPath": "$REC/id1.wav",
+        "durationMs": 4000
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 100
+    },
+    {
+      "op": "snapshot",
+      "label": "done"
+    },
+    {
+      "op": "call",
+      "fn": "pipeline",
+      "label": "pipe",
+      "args": {
+        "id": "id1"
+      }
+    },
+    {
+      "op": "call",
+      "fn": "dismiss",
+      "label": "dismiss"
+    }
+  ],
+  "expect": {
+    "trace": {
+      "session": [
+        "idle|-|-|-|-|-|ok",
+        "starting|id1|-|-|-|-|ok",
+        "recording|id1|-|-|-|-|ok",
+        "stopping|id1|-|-|-|-|ok",
+        "processing|id1|-|-|-|-|ok",
+        "done|id1|-|-|-|-|ok",
+        "idle|-|-|-|-|-|ok"
+      ],
+      "pipelines": {
+        "id1": [
+          "manual finalize:pending/0 summary:pending/0 index:pending/0",
+          "manual finalize:running/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:running/1 index:pending/0",
+          "manual finalize:done/1 summary:done/1 index:pending/0",
+          "manual finalize:done/1 summary:done/1 index:running/1",
+          "manual finalize:done/1 summary:done/1 index:done/1"
+        ]
+      },
+      "helper": [
+        "permissions.check",
+        "recording.start $REC/id1.wav",
+        "recording.stop"
+      ],
+      "transcript": [
+        [
+          0,
+          1,
+          [],
+          "hello"
+        ],
+        [
+          1,
+          2,
+          [
+            "u1@Ana"
+          ],
+          null
+        ],
+        [
+          2,
+          3,
+          [
+            "u2@Ben"
+          ],
+          null
+        ],
+        [
+          3,
+          4,
+          [],
+          null
+        ]
+      ],
+      "changed": [
+        "id1",
+        "id1",
+        "id1",
+        "id1"
+      ],
+      "permissions": [
+        "granted|granted|granted"
+      ],
+      "prompts": []
+    },
+    "results": {
+      "start": {
+        "ok": {
+          "phase": "recording",
+          "meetingId": "id1"
+        }
+      },
+      "note": {
+        "ok": [
+          "id2",
+          "id1",
+          2000,
+          "decide on q3"
+        ]
+      },
+      "stop": {
+        "ok": {
+          "phase": "processing",
+          "meetingId": "id1"
+        }
+      },
+      "pipe": {
+        "ok": "finalize:done/1 summary:done/1 index:done/1"
+      },
+      "dismiss": {
+        "ok": {
+          "phase": "idle",
+          "meetingId": null
+        }
+      }
+    },
+    "snapshots": {
+      "recording": {
+        "view": {
+          "phase": "recording",
+          "meetingId": "id1",
+          "startedAt": 1760000000000,
+          "elapsedMs": 2000,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [
+            "Ana",
+            "Ben"
+          ],
+          "activeSpeaker": "Ben",
+          "lines": [
+            [
+              "u1",
+              "Ana",
+              "hello everyone",
+              100
+            ],
+            [
+              "u2",
+              "Ben",
+              "thanks ana",
+              2100
+            ]
+          ],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": {
+          "meetingId": "id1",
+          "rev": 3,
+          "segments": [
+            [
+              "u1",
+              "Ana",
+              100,
+              1900
+            ],
+            [
+              "u2",
+              "Ben",
+              2100,
+              3900
+            ]
+          ],
+          "partial": null
+        },
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "recording",
+              1760000000000,
+              null,
+              null,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [
+            [
+              "id1",
+              "u1",
+              "live",
+              100,
+              1900,
+              "Ana",
+              "hello everyone"
+            ],
+            [
+              "id1",
+              "u2",
+              "live",
+              2100,
+              3900,
+              "Ben",
+              "thanks ana"
+            ]
+          ],
+          "summaries": [],
+          "notes": [
+            [
+              "id2",
+              "id1",
+              2000,
+              "decide on q3"
+            ]
+          ],
+          "pipelines": [],
+          "session": [
+            "recording",
+            "id1"
+          ]
+        },
+        "files": []
+      },
+      "done": {
+        "view": {
+          "phase": "done",
+          "meetingId": "id1",
+          "startedAt": 1760000000000,
+          "elapsedMs": 2000,
+          "stopReason": "manual",
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [
+            "Ana",
+            "Ben"
+          ],
+          "activeSpeaker": "Ben",
+          "lines": [
+            [
+              "u1",
+              "Ana",
+              "hello everyone",
+              100
+            ],
+            [
+              "u2",
+              "Ben",
+              "thanks ana",
+              2100
+            ]
+          ],
+          "partial": "",
+          "pipeline": "finalize:done/1 summary:done/1 index:done/1"
+        },
+        "live": {
+          "meetingId": "id1",
+          "rev": 4,
+          "segments": [
+            [
+              "u1",
+              "Ana",
+              100,
+              1900
+            ],
+            [
+              "u2",
+              "Ben",
+              2100,
+              3900
+            ]
+          ],
+          "partial": null
+        },
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "done",
+              1760000000000,
+              1760000002000,
+              4000,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [
+            [
+              "id1",
+              "u1",
+              "live",
+              100,
+              1900,
+              "Ana",
+              "hello everyone"
+            ],
+            [
+              "id1",
+              "u2",
+              "live",
+              2100,
+              3900,
+              "Ben",
+              "thanks ana"
+            ]
+          ],
+          "summaries": [
+            [
+              "id1",
+              "stub",
+              "STUB summary",
+              null
+            ]
+          ],
+          "notes": [
+            [
+              "id2",
+              "id1",
+              2000,
+              "decide on q3"
+            ]
+          ],
+          "pipelines": [
+            [
+              "id1",
+              1,
+              "manual",
+              "finalize:done/1 summary:done/1 index:done/1",
+              4000,
+              false,
+              [
+                "$REC/id1.wav"
+              ],
+              2
+            ]
+          ],
+          "session": [
+            "done",
+            "id1"
+          ]
+        },
+        "files": [
+          [
+            "id1.wav",
+            128044
+          ]
+        ]
+      },
+      "end": {
+        "view": {
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [
+            "Ana",
+            "Ben"
+          ],
+          "activeSpeaker": "Ben",
+          "lines": [
+            [
+              "u1",
+              "Ana",
+              "hello everyone",
+              100
+            ],
+            [
+              "u2",
+              "Ben",
+              "thanks ana",
+              2100
+            ]
+          ],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "done",
+              1760000000000,
+              1760000002000,
+              4000,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [
+            [
+              "id1",
+              "u1",
+              "live",
+              100,
+              1900,
+              "Ana",
+              "hello everyone"
+            ],
+            [
+              "id1",
+              "u2",
+              "live",
+              2100,
+              3900,
+              "Ben",
+              "thanks ana"
+            ]
+          ],
+          "summaries": [
+            [
+              "id1",
+              "stub",
+              "STUB summary",
+              null
+            ]
+          ],
+          "notes": [
+            [
+              "id2",
+              "id1",
+              2000,
+              "decide on q3"
+            ]
+          ],
+          "pipelines": [
+            [
+              "id1",
+              1,
+              "manual",
+              "finalize:done/1 summary:done/1 index:done/1",
+              4000,
+              false,
+              [
+                "$REC/id1.wav"
+              ],
+              2
+            ]
+          ],
+          "session": [
+            "idle",
+            null
+          ]
+        },
+        "files": [
+          [
+            "id1.wav",
+            128044
+          ]
+        ]
+      }
+    }
+  }
+}

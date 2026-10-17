@@ -1,0 +1,96 @@
+{
+  "name": "retain-audio-prune",
+  "about": "Audio retention: on startup audio of done meetings older than the window is deleted.",
+  "config": {
+    "retainAudioDays": 1
+  },
+  "script": [
+    {
+      "op": "db",
+      "seedMeeting": {
+        "id": "old1",
+        "title": "Old",
+        "platform": "other",
+        "startedAt": 1759000000000,
+        "endedAt": 1759000100000,
+        "status": "done",
+        "participants": [],
+        "audioPath": "$REC/old1.wav"
+      }
+    },
+    {
+      "op": "wav",
+      "file": "old1.wav",
+      "ms": 100,
+      "broken": false
+    },
+    {
+      "op": "restart"
+    },
+    {
+      "op": "advance",
+      "ms": 100
+    }
+  ],
+  "expect": {
+    "trace": {
+      "session": [
+        "idle|-|-|-|-|-|ok",
+        "idle|-|-|-|-|-|ok"
+      ],
+      "pipelines": {},
+      "helper": [],
+      "transcript": [],
+      "changed": [
+        "old1"
+      ],
+      "permissions": [],
+      "prompts": []
+    },
+    "results": {},
+    "snapshots": {
+      "end": {
+        "view": {
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [
+            [
+              "old1",
+              "Old",
+              "other",
+              "done",
+              1759000000000,
+              1759000100000,
+              null,
+              null,
+              "general"
+            ]
+          ],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": null
+        },
+        "files": []
+      }
+    }
+  }
+}
