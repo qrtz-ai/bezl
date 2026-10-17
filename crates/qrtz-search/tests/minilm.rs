@@ -184,3 +184,36 @@ async fn download_refuses_unpinned_bytes() {
         )
     );
 }
+
+/// N105: `load_pinned` reads each file once and checks those same bytes, so a file swapped after a status check
+/// (or a tampered copy) is refused by the load itself, and the tiny model loads when every hash matches.
+#[tokio::test]
+async fn n105_load_pinned_checks_the_bytes_it_loads() {
+    use sha2::{Digest, Sha256};
+    let dir = tempfile::tempdir().unwrap();
+    tiny_model(dir.path());
+    let h = |n: &str| format!("{:x}", Sha256::digest(std::fs::read(dir.path().join(n)).unwrap()));
+    let (c, t, m) = (h("config.json"), h("tokenizer.json"), h("model.safetensors"));
+    let files = [
+        ("config.json", c.as_str()),
+        ("tokenizer.json", t.as_str()),
+        ("model.safetensors", m.as_str()),
+    ];
+    qrtz_search::minilm::verify_files(dir.path(), &files).unwrap();
+    let ok = MiniLm::load_pinned(dir.path(), &files, "tiny").unwrap();
+    assert_eq!(ok.embed(&["the budget".to_string()]).await.unwrap()[0].len(), 16);
+    // Swapped after the check: a different tokenizer under the same name.
+    let tmp = dir.path().join("tok.tmp");
+    let mut other = std::fs::read(dir.path().join("tokenizer.json")).unwrap();
+    other.extend_from_slice(b" ");
+    std::fs::write(&tmp, other).unwrap();
+    std::fs::rename(&tmp, dir.path().join("tokenizer.json")).unwrap();
+    let e = MiniLm::load_pinned(dir.path(), &files, "tiny").err().unwrap();
+    assert!(e.starts_with("tokenizer.json: sha256 "), "{e}");
+    // A file the list does not pin is never loaded unchecked.
+    tiny_model(dir.path());
+    let e = MiniLm::load_pinned(dir.path(), &files[..2], "tiny")
+        .err()
+        .unwrap();
+    assert_eq!(e, "model.safetensors: not pinned");
+}

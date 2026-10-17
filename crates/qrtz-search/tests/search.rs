@@ -149,12 +149,16 @@ async fn index_deadline_keeps_saved_batches_and_the_retry_resumes() {
     assert_eq!(out.indexed, 72);
 }
 
+/// N104 (ADR 0068): a model that never finishes loading is waited for `INDEX_MODEL_WAIT_MS`, not the whole
+/// deadline; the step skips (the backfill embeds the meeting later) and the load keeps going.
 #[tokio::test(start_paused = true)]
-async fn the_deadline_covers_a_model_that_never_loads() {
+async fn a_model_that_never_loads_is_skipped_after_the_model_wait() {
     let db = db_with(&[("a", 1, lines(3, "budget"))]);
     let never = LazyEmbedder::new(Box::new(|| Box::pin(std::future::pending())));
-    let e = steps(&db, never.clone()).index("a".into()).await.unwrap_err();
-    assert_eq!(e.code, "E_TIMEOUT");
+    let t0 = tokio::time::Instant::now();
+    let out = steps(&db, never.clone()).index("a".into()).await.unwrap();
+    assert_eq!((out.indexed, out.skipped), (0, true));
+    assert_eq!(t0.elapsed(), Duration::from_millis(INDEX_MODEL_WAIT_MS));
     assert!(matches!(never.state(), EmbedderState::Loading));
 }
 

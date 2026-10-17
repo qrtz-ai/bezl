@@ -97,10 +97,11 @@ struct Acked {
     audio_path: String,
     held: Vec<HelperInput>,
 }
-/// TS `WorkerClient.call` timeouts of the step calls.
-const FINALIZE_TIMEOUT_MS: u64 = 60_000;
-const SUMMARY_TIMEOUT_MS: u64 = 120_000;
-const INDEX_TIMEOUT_MS: u64 = 300_000;
+/// TS `WorkerClient.call` timeouts of the step calls. Public so the executors' own deadlines can be pinned inside
+/// them (N3: `qrtz_llm::SUMMARY_DEADLINE_MS`, `qrtz_search::INDEX_DEADLINE_MS`).
+pub const FINALIZE_TIMEOUT_MS: u64 = 60_000;
+pub const SUMMARY_TIMEOUT_MS: u64 = 120_000;
+pub const INDEX_TIMEOUT_MS: u64 = 300_000;
 
 /// `degradationsForRevocation` (packages/core/src/helper/arbiter.ts). One Rust copy: the arbiter port's, pinned
 /// to spec/vectors/helper; this re-export keeps the old path (N6, ADR 0011).

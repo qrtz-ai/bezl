@@ -61,30 +61,159 @@ pub struct MiniLm {
 
 /// Checks a model directory against [`FILES`]. `Err` names the first file that is missing or differs.
 pub fn verify_dir(dir: &Path) -> Result<(), String> {
-    for (name, want) in FILES {
-        let bytes = std::fs::read(dir.join(name)).map_err(|e| format!("{name}: {e}"))?;
-        let got = format!("{:x}", Sha256::digest(&bytes));
-        if got != want {
-            return Err(format!("{name}: sha256 {got} is not the pinned {want}"));
-        }
+    verify_files(dir, &FILES)
+}
+
+/// [`verify_dir`] for any pinned file list (tests use small files with their own hashes). N105: each file is hashed
+/// as it streams (64 KiB at a time), never read whole, and a file already verified this run whose identity has not
+/// changed since (device, inode, size, mtime, ctime) is not hashed again, so the boot path (status, loader, load)
+/// hashes the 90 MB weights once instead of three times. Any write, replace or rename gives the file a new identity.
+pub fn verify_files(dir: &Path, files: &[(&str, &str)]) -> Result<(), String> {
+    for (name, want) in files {
+        verify_file(&dir.join(name), want).map_err(|e| format!("{name}: {e}"))?;
     }
     Ok(())
+}
+
+/// What identifies one version of a file on disk (unix: changes on every write, rename over or replace).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct FileId {
+    dev: u64,
+    ino: u64,
+    len: u64,
+    mtime: (i64, i64),
+    ctime: (i64, i64),
+}
+
+#[cfg(unix)]
+fn file_id(m: &std::fs::Metadata) -> Option<FileId> {
+    use std::os::unix::fs::MetadataExt;
+    Some(FileId {
+        dev: m.dev(),
+        ino: m.ino(),
+        len: m.len(),
+        mtime: (m.mtime(), m.mtime_nsec()),
+        ctime: (m.ctime(), m.ctime_nsec()),
+    })
+}
+
+#[cfg(not(unix))]
+fn file_id(_m: &std::fs::Metadata) -> Option<FileId> {
+    None // no stable identity: always hash
+}
+
+/// Files that matched their pinned hash this run: path → (identity, hash).
+fn verified() -> &'static Mutex<std::collections::HashMap<PathBuf, (FileId, String)>> {
+    static V: std::sync::OnceLock<Mutex<std::collections::HashMap<PathBuf, (FileId, String)>>> =
+        std::sync::OnceLock::new();
+    V.get_or_init(Default::default)
+}
+
+fn known_good(path: &Path, id: Option<FileId>, want: &str) -> bool {
+    id.is_some_and(|id| {
+        verified()
+            .lock()
+            .unwrap()
+            .get(path)
+            .is_some_and(|(i, h)| *i == id && h == want)
+    })
+}
+
+/// Remembers `path` as matching `want` if the open file `f` still has identity `id` (nothing wrote it meanwhile).
+fn remember(path: &Path, f: &std::fs::File, id: Option<FileId>, want: &str) {
+    let after = f.metadata().ok().as_ref().and_then(file_id);
+    if let (Some(id), Some(after)) = (id, after) {
+        if id == after {
+            verified()
+                .lock()
+                .unwrap()
+                .insert(path.to_path_buf(), (id, want.to_string()));
+        }
+    }
+}
+
+fn verify_file(path: &Path, want: &str) -> Result<(), String> {
+    use std::io::Read;
+    let mut f = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let id = f.metadata().ok().as_ref().and_then(file_id);
+    if known_good(path, id, want) {
+        return Ok(());
+    }
+    let mut hash = Sha256::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let n = f.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        hash.update(&buf[..n]);
+    }
+    let got = format!("{:x}", hash.finalize());
+    if got != want {
+        return Err(format!("sha256 {got} is not the pinned {want}"));
+    }
+    remember(path, &f, id, want);
+    Ok(())
+}
+
+/// Reads a pinned file once and checks the bytes it returns (N105: what is loaded is what was checked, no second
+/// read between a check and the load).
+fn read_pinned(path: &Path, want: &str) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    let mut f = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let id = f.metadata().ok().as_ref().and_then(file_id);
+    let mut bytes = Vec::with_capacity(id.map_or(0, |i| i.len as usize));
+    f.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    if !known_good(path, id, want) {
+        let got = format!("{:x}", Sha256::digest(&bytes));
+        if got != want {
+            return Err(format!("sha256 {got} is not the pinned {want}"));
+        }
+        remember(path, &f, id, want);
+    }
+    Ok(bytes)
 }
 
 impl MiniLm {
     /// Loads a verified model directory (blocking: run it off the async workers).
     pub fn load(dir: &Path) -> Result<MiniLm, String> {
-        verify_dir(dir)?;
-        Self::load_unverified(dir, MODEL_ID)
+        Self::load_pinned(dir, &FILES, MODEL_ID)
+    }
+
+    /// Loads `config.json`, `tokenizer.json` and `model.safetensors` from `dir`, each read once and checked against
+    /// its hash in `files` (tests pin a tiny model this way).
+    pub fn load_pinned(dir: &Path, files: &[(&str, &str)], id: &str) -> Result<MiniLm, String> {
+        let pinned = |name: &str| -> Result<Vec<u8>, String> {
+            let want = files
+                .iter()
+                .find(|(n, _)| *n == name)
+                .map(|(_, h)| *h)
+                .ok_or_else(|| format!("{name}: not pinned"))?;
+            read_pinned(&dir.join(name), want).map_err(|e| format!("{name}: {e}"))
+        };
+        Self::from_bytes(
+            &pinned("config.json")?,
+            &pinned("tokenizer.json")?,
+            pinned("model.safetensors")?,
+            id,
+        )
     }
 
     /// Any BERT directory with these three files, under `id` (tests use a tiny random model).
     pub fn load_unverified(dir: &Path, id: &str) -> Result<MiniLm, String> {
+        let read = |n: &str| std::fs::read(dir.join(n)).map_err(|e| format!("{n}: {e}"));
+        Self::from_bytes(
+            &read("config.json")?,
+            &read("tokenizer.json")?,
+            read("model.safetensors")?,
+            id,
+        )
+    }
+
+    fn from_bytes(config: &[u8], tokenizer: &[u8], weights: Vec<u8>, id: &str) -> Result<MiniLm, String> {
         let s = |e: &dyn std::fmt::Display| e.to_string();
-        let config: Config =
-            serde_json::from_slice(&std::fs::read(dir.join("config.json")).map_err(|e| s(&e))?)
-                .map_err(|e| s(&e))?;
-        let mut tokenizer = Tokenizer::from_file(dir.join("tokenizer.json")).map_err(|e| s(&e))?;
+        let config: Config = serde_json::from_slice(config).map_err(|e| s(&e))?;
+        let mut tokenizer = Tokenizer::from_bytes(tokenizer).map_err(|e| s(&e))?;
         tokenizer
             .with_truncation(Some(TruncationParams {
                 max_length: MAX_TOKENS,
@@ -95,7 +224,6 @@ impl MiniLm {
             strategy: PaddingStrategy::BatchLongest,
             ..Default::default()
         }));
-        let weights = std::fs::read(dir.join("model.safetensors")).map_err(|e| s(&e))?;
         let vb =
             VarBuilder::from_buffered_safetensors(weights, DType::F32, &Device::Cpu).map_err(|e| s(&e))?;
         let model = BertModel::load(vb, &config).map_err(|e| s(&e))?;
@@ -214,10 +342,13 @@ pub async fn download_files(
     tokio::fs::create_dir_all(dir).await.map_err(|e| e.to_string())?;
     for (name, want) in files {
         let path = dir.join(name);
-        if let Ok(b) = tokio::fs::read(&path).await {
-            if format!("{:x}", Sha256::digest(&b)) == *want {
-                continue;
-            }
+        // N105: streamed, not read whole.
+        let (p, w) = (path.clone(), want.to_string());
+        if tokio::task::spawn_blocking(move || verify_file(&p, &w))
+            .await
+            .is_ok_and(|r| r.is_ok())
+        {
+            continue;
         }
         let url = format!("{base}/{REPO}/resolve/{REVISION}/{name}");
         let part = dir.join(format!("{name}.part"));

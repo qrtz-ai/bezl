@@ -6,6 +6,10 @@
 //!   resumes where it stopped (`missing_vectors` is the cursor).
 //! - **No embedder** (none configured, or it failed to load): `{indexed: 0, skipped: true}` and the meeting is
 //!   searchable by full text only. The backfill embeds it once a model is ready.
+//! - **A model still loading (N104, ADR 0068):** the step waits at most [`INDEX_MODEL_WAIT_MS`] for the first load
+//!   to settle, then skips the same way. The load can include the first-run search-model download (90 MB), and
+//!   summary and index share one queue across meetings, so waiting the whole deadline (three attempts) would hold
+//!   every later meeting's summary behind a download.
 //! - **Only current lines are saved:** a vector is stored only if its line still exists with the embedded text
 //!   (`save_vectors_if_current`), so a delete or re-finalize during a batch never attaches it to another line.
 use std::sync::Arc;
@@ -26,6 +30,9 @@ pub const INDEX_DEADLINE_MS: u64 = 280_000;
 pub const BATCH: u32 = 64;
 /// Lines one index step embeds at most (TS: 100 000).
 pub const STEP_CAP: u32 = 100_000;
+/// N104: how long one index attempt waits for a model that is still loading before it skips (a local load takes
+/// a second or two; a download can take minutes). The backfill embeds a skipped meeting once the model is ready.
+pub const INDEX_MODEL_WAIT_MS: u64 = 15_000;
 
 pub(crate) fn deadline_error(what: &str) -> LifecycleError {
     LifecycleError {
@@ -136,6 +143,8 @@ pub struct SearchSteps<E: DbExec> {
     pub inner: Arc<dyn StepExecutor>,
     pub embedder: Arc<LazyEmbedder>,
     pub deadline: Duration,
+    /// N104: the longest wait for a model that is still loading ([`INDEX_MODEL_WAIT_MS`]).
+    pub model_wait: Duration,
 }
 
 impl<E: DbExec> SearchSteps<E> {
@@ -145,15 +154,27 @@ impl<E: DbExec> SearchSteps<E> {
             inner,
             embedder,
             deadline: Duration::from_millis(INDEX_DEADLINE_MS),
+            model_wait: Duration::from_millis(INDEX_MODEL_WAIT_MS),
         }
     }
 
     async fn index_inner(&self, id: String) -> Result<IndexOutcome, LifecycleError> {
-        let Some(e) = self.embedder.get().await else {
-            return Ok(IndexOutcome {
-                indexed: 0,
-                skipped: true,
-            });
+        let skipped = IndexOutcome {
+            indexed: 0,
+            skipped: true,
+        };
+        // N104: a model that is still loading (or downloading) is not waited for past `model_wait`; the load keeps
+        // going and the backfill embeds this meeting once it is ready.
+        let e = match tokio::time::timeout(self.model_wait, self.embedder.get()).await {
+            Ok(Some(e)) => e,
+            Ok(None) => return Ok(skipped),
+            Err(_) => {
+                tracing::info!(
+                    id = %id,
+                    "index: search model still loading; skipped, the backfill embeds this meeting when it is ready"
+                );
+                return Ok(skipped);
+            }
         };
         let indexed = index_vectors(&self.db, &e, STEP_CAP, Some(id), None).await?;
         Ok(IndexOutcome {
