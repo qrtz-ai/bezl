@@ -953,3 +953,66 @@ let r = qrtz_search::retrieve(&storage, &embedder, &question, meeting_id).await?
   by the backfill).
 - Parity: `spec/vectors/search/rank.json`, the `ranks` of `spec/stress/chat-cjk.json`, and
   `spec/vectors/search/minilm.json` (with `QRTZ_MINILM_DIR` set to the weights).
+
+## 11. `qrtz-talk`: dictation behind `TalkPort` (phase 2, done)
+
+Owner: Bozniak. ADR 0058, on ADR 0046 (`qrtz-speech`). Port of `apps/desktop/src/main/talk-service.ts`.
+
+```rust
+let talk = qrtz_talk::TalkService::new(TalkDeps {
+    helper: Arc<dyn HelperSink>,          // fn send(&self, &Value) -> bool   (false = helper not running)
+    events: Arc<dyn TalkEvents>,          // fn emit(&self, event: &str, payload: Value)  talk:state / talk:history-changed
+    secrets: Arc<dyn SecretSource>,       // fn get(&self, name) -> Option<String>   (keys never logged)
+    clipboard: Arc<dyn Clipboard>,        // fn write(&self, &str)
+    clock: Arc<dyn Clock>,                // now_ms (wall) + mono_ms;  SystemClock::default()
+    ids: Arc<dyn IdSource>,               // RandomIds
+    llm: Arc<dyn CleanupLlmSource>,       // async fn llm(&self) -> Option<Arc<dyn CleanupLlm>>;  NoLlm = rules only
+    connector: Arc<dyn WsConnector>,      // ws::TungsteniteConnector (cloud only, opt-in)
+    local: Arc<dyn qrtz_speech::SpeechEngine>,  // the on-device module engine (ADR 0046)
+    helper_asr: Arc<HelperAsrSpeech>,     // transitional: the helper's dictation.asr lines as an engine
+    config: Arc<dyn Fn() -> Value + Send + Sync>, // the full app config JSON
+    providers: Providers::default(),      // ElevenLabs / Deepgram endpoints
+    store_path: <data dir>/talk.json,     // same file and format as Electron
+    store_io: Arc::new(FsIo),
+    timeouts: Timeouts::default(),
+});
+
+talk.call(channel, payload).await -> Result<Value, AppError> // every talk:* channel in ipc-contract.json
+talk.toggle().await -> TalkView          // push-to-talk shortcut
+talk.helper_line(&msg)                   // dictation.*, hello, error{dictation.*}, permission.revoked
+talk.helper_status(running_or_starting: bool, why: &str)  // false while active → T1 helper-lost
+talk.configure()                         // config changed: warm mic / engine
+talk.state() / history() / dictionary() / set_dictionary(..) / delete_entry(id) / clear_history() / copy(id)
+talk.start().await / stop().await / cancel()
+```
+
+`TalkView.errorKind`: `offline` (cloud selected, unreachable, auto-failover off), `mic-denied`,
+`mic-did-not-start`, `busy`, `helper-lost`, `helper-unavailable`, `permission-revoked`, `mic-lost`,
+`speech-incompatible`, `speech-unavailable`, `speech-lost` (TS zod enum `TalkErrorKind`, same strings).
+
+Talk shows no `EngineInfo`, session version or `StoreStatus` (N72); the handshake is `SpeechEngine::start` before
+the mic opens (`Incompatible` → `speech-incompatible`; `NotInstalled`, `Denied` / `RevocationExpired`, `Stale`,
+`Busy` → `speech-unavailable`, or the user's enabled cloud engine). A session's `FailReason`: `NotInstalled` /
+`Revoked` / `Stale` → `speech-unavailable`; `Crashed` / `ProtocolViolations` / `StartFailed` / `Timeout` →
+`speech-lost`. A revoked running session ends at the engine's next safe point (ADR 0058 §5).
+
+Recording sessions: `NoteRuntime::speech_event(audio_path: Option<&str>, channels: &[Channel], event: SpeechEvent)`
+(feature `runtime`); `None` = the current part, `channels` = that session's `SessionSpec::channels` (words on any
+other channel are dropped: N68). Rules in ADR 0058 §11.
+
+### Wiring in qrtz-app (Bobs)
+
+1. `crates/qrtz-app/Cargo.toml`: `qrtz-talk = { path = "../qrtz-talk" }`.
+2. An adapter `struct Talk(qrtz_talk::TalkService)` implementing `TalkPort`:
+   `call` → `self.0.call(ch, p).await`; `helper_line` → `self.0.helper_line(m)`;
+   `helper_status(s)` → `self.0.helper_status(matches!(s.state, Running | Starting), s.last_error.as_deref().unwrap_or("helper stopped"))`;
+   `toggle` → `Ok(serde_json::to_value(self.0.toggle().await)?)`; `config_changed` → `self.0.configure()`.
+3. `HelperSink`: encode the line and `SupervisorHelper::try_send`; return `false` when it isn't running.
+4. `TalkEvents`: emit onto the validated event bus (`talk:state`, `talk:history-changed`).
+5. `SecretSource`: over `wiring::platform_secrets(data)` (`SecretStore::get`); names `asr.elevenlabs`, `asr.deepgram` (the TS names).
+6. `Clipboard`: the shell's clipboard; `config`: a closure over the config store's current JSON.
+7. `local`: your module engine (the `SpeechEngine` over the spawner) once it lands; until then `let h = Arc::new(HelperAsrSpeech::new()); local: h.clone(),
+   helper_asr: h`. Once it does, `local: Arc::new(<module engine>)` and keep any `helper_asr` instance.
+8. `store_path: dirs.data.join("talk.json")`, `store_io: Arc::new(FsIo)`, `connector: Arc::new(TungsteniteConnector)`.
+9. Recording: when the module engine runs a part's session, forward each event with
+   `note_runtime.speech_event(Some(&part_audio_path), &spec.channels, ev)` instead of the helper's `asr` lines.
