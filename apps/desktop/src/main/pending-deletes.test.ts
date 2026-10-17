@@ -60,4 +60,17 @@ describe('PendingDeletes', () => {
     fs.writeFileSync(path.join(d, 'pending-deletes.json'), '{nope');
     expect(pd.ids()).toEqual([]);
   });
+  it.skipIf(process.platform === 'win32')(
+    'writes the tombstone file owner-only, over a crash-left 0644 .tmp',
+    () => {
+      const d = dir();
+      const f = path.join(d, 'pending-deletes.json');
+      fs.writeFileSync(`${f}.tmp`, 'junk', { mode: 0o644 });
+      fs.writeFileSync(f, '[]', { mode: 0o644 });
+      new PendingDeletes(d, async () => {}).schedule('z', 60_000);
+      expect(fs.statSync(f).mode & 0o777).toBe(0o600);
+      expect(JSON.parse(fs.readFileSync(f, 'utf8'))).toEqual(['z']);
+      vi.clearAllTimers();
+    },
+  );
 });

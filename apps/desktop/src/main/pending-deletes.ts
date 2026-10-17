@@ -33,7 +33,9 @@ export class PendingDeletes {
   private write(ids: string[]) {
     const tmp = `${this.file}.tmp`;
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
-    fs.writeFileSync(tmp, JSON.stringify([...new Set(ids)]));
+    // Owner-only like the other app-data stores: a fresh .tmp (a crash-left one keeps its mode) renamed over.
+    fs.rmSync(tmp, { force: true });
+    fs.writeFileSync(tmp, JSON.stringify([...new Set(ids)]), { mode: 0o600 });
     fs.renameSync(tmp, this.file); // atomic: a crash never leaves a half-written tombstone file
   }
 
