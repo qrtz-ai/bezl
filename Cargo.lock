@@ -593,6 +593,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "qrtz-lifecycle"
+version = "0.1.0"
+dependencies = [
+ "qrtz-model",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "qrtz-model"
 version = "0.1.0"
 dependencies = [

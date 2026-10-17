@@ -77,6 +77,7 @@ kebab_enum!(StepStatus {
 });
 kebab_enum!(HelperHealth { Ok = "ok", Simulated = "simulated", Missing = "missing", Down = "down" });
 
+#[allow(clippy::derivable_impls)] // the enum comes from a macro
 impl Default for HelperHealth {
     fn default() -> Self {
         HelperHealth::Ok
