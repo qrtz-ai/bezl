@@ -95,15 +95,81 @@ impl<T> TopK<T> {
     }
 }
 
+/// Meetings chat must not see (N90, ADR 0060): a delete still in its undo window (tombstoned). The same shape as
+/// the backfill's tombstone gate, so the app passes one predicate to both.
+pub type HiddenFn = Arc<dyn Fn(&str) -> bool + Send + Sync>;
+
+/// Asks [`HiddenFn`] once per meeting id per question (the vector pass visits every indexed line).
+struct HiddenCache {
+    f: Option<HiddenFn>,
+    seen: HashMap<String, bool>,
+}
+
+impl HiddenCache {
+    fn new(f: Option<HiddenFn>) -> Self {
+        HiddenCache {
+            f,
+            seen: HashMap::new(),
+        }
+    }
+    fn hidden(&mut self, meeting_id: &str) -> bool {
+        let Some(f) = &self.f else {
+            return false;
+        };
+        if let Some(h) = self.seen.get(meeting_id) {
+            return *h;
+        }
+        let h = f(meeting_id);
+        self.seen.insert(meeting_id.to_string(), h);
+        h
+    }
+}
+
+/// [`retrieve_visible`] with nothing hidden.
 pub async fn retrieve<E: DbExec>(
     db: &E,
     embedder: &Arc<LazyEmbedder>,
     question: &str,
     meeting_id: Option<String>,
 ) -> Result<Retrieval, LifecycleError> {
+    retrieve_visible(db, embedder, question, meeting_id, None).await
+}
+
+/// Chat retrieval that never returns a line of a `hidden` meeting (N90): not as a full-text candidate, not as a
+/// similar line, and a question about a hidden meeting gets no lines at all. When hidden lines take full-text
+/// slots, the search is re-run with a larger limit (up to 4 times) so other meetings still fill
+/// [`FTS_CANDIDATES`]; with nothing hidden it is the same single query as before.
+pub async fn retrieve_visible<E: DbExec>(
+    db: &E,
+    embedder: &Arc<LazyEmbedder>,
+    question: &str,
+    meeting_id: Option<String>,
+    hidden: Option<HiddenFn>,
+) -> Result<Retrieval, LifecycleError> {
     let (q, m) = (question.to_string(), meeting_id.clone());
+    let h = hidden.clone();
     let candidates = db
         .run(move |db| match m {
+            Some(id) if h.as_ref().is_some_and(|f| f(&id)) => Ok(vec![]),
+            None if h.is_some() => {
+                let mut cache = HiddenCache::new(h);
+                let mut limit = FTS_CANDIDATES;
+                let mut tries = 0;
+                loop {
+                    let hits = db.notes().search_segments(&q, limit)?;
+                    let full = hits.len() as u32 >= limit;
+                    let mut kept: Vec<ChatSource> = hits
+                        .into_iter()
+                        .filter(|s| !cache.hidden(&s.meeting_id))
+                        .collect();
+                    tries += 1;
+                    if kept.len() as u32 >= FTS_CANDIDATES || !full || tries > 4 {
+                        kept.truncate(FTS_CANDIDATES as usize);
+                        break Ok(kept);
+                    }
+                    limit *= 2;
+                }
+            }
             Some(id) => {
                 let mt = db.notes().need(&id)?;
                 Ok(db
@@ -125,7 +191,7 @@ pub async fn retrieve<E: DbExec>(
         .await
         .map_err(lifecycle_error)?;
     let ranked = match embedder.ready() {
-        Some(e) => match semantic(db, &e, question, &candidates, meeting_id).await {
+        Some(e) => match semantic(db, &e, question, &candidates, meeting_id, hidden).await {
             Ok(r) => r,
             Err(err) => {
                 tracing::warn!(code = %err.code, err = %err.message, "semantic retrieval failed; using full-text");
@@ -143,6 +209,7 @@ async fn semantic<E: DbExec>(
     question: &str,
     candidates: &[ChatSource],
     meeting_id: Option<String>,
+    hidden: Option<HiddenFn>,
 ) -> Result<Option<Vec<ChatSource>>, LifecycleError> {
     let q = [question.to_string()];
     let embed = e.embed(&q);
@@ -161,8 +228,12 @@ async fn semantic<E: DbExec>(
         .run(move |db| {
             let mut found: HashMap<Key, VecSource> = HashMap::new();
             let mut extra = TopK::new(if across { EXTRA_LINES } else { 0 });
+            let mut cache = HiddenCache::new(hidden);
             db.notes()
                 .for_each_vector_source(&model, meeting_id.as_deref(), |r| {
+                    if cache.hidden(&r.meeting_id) {
+                        return true;
+                    }
                     let src = ChatSource {
                         meeting_id: r.meeting_id,
                         title: r.title,
