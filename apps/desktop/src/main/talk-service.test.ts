@@ -223,6 +223,26 @@ describe('TalkService', () => {
     await until(() => !!svc.state().last);
   });
 
+  // Hardening cycle 2, finding T1 (open, talk owner): TalkService has no helper-lost path. A helper restart mid
+  // push-to-talk (a crash, or NoteService restarting a helper that did not ack recording.stop while a dictation
+  // shares it) leaves the view in `listening`: the new helper never saw key-down, so no key-up arrives and the
+  // old dictation id is unknown to it. Pinned with it.fails: when the fix lands this flips red; drop `.fails`.
+  it.fails('T1 (known gap): a helper restart mid-dictation leaves listening without waiting for a key-up', async () => {
+    const { svc } = setup();
+    await svc.configure();
+    svc.handle({ type: 'hotkey', action: 'down' });
+    await until(() => svc.state().phase === 'listening');
+    // A fresh helper process announces itself; the dictation it was serving is gone.
+    svc.handle({
+      type: 'hello',
+      protocol: 1,
+      helperVersion: 'test',
+      os: 'test',
+      features: [],
+    });
+    await until(() => svc.state().phase !== 'listening', 1500);
+  });
+
   it('dictionary terms are applied; AI cleanup is used when fast', async () => {
     const { svc } = setup({ llm: async () => fakeCleanupLlm('fake') });
     svc.setDictionary([{ term: 'qrtz', aliases: ['cue arts'] }]);
