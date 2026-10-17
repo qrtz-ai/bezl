@@ -2,10 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- Tauri injects its own CSP from tauri.conf.json in builds; this one covers the dev server. -->
+    <!-- The dev server's CSP. Builds add tauri.conf.json's and both apply: media-src needs qrtz-media: (playback_csp.rs). -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost ws://localhost:1420; media-src 'self' asset: http://asset.localhost; img-src 'self' data: asset: http://asset.localhost; font-src 'self' data:"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost ws://localhost:1420; media-src 'self' qrtz-media: http://qrtz-media.localhost; img-src 'self' data: asset: http://asset.localhost; font-src 'self' data:"
     />
     <title>qrtz</title>
   </head>
