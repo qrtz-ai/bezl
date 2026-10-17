@@ -20,6 +20,8 @@ pub enum Reply {
     Delay(Duration, Box<Reply>),
     /// Never answers.
     Hang,
+    /// A redirect to `location`.
+    Redirect { status: u16, location: String },
 }
 
 impl Reply {
@@ -119,6 +121,14 @@ async fn serve(
                 let out = format!(
                     "HTTP/1.1 {status} X\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
                     body.len()
+                );
+                let _ = sock.write_all(out.as_bytes()).await;
+                let _ = sock.shutdown().await;
+                return;
+            }
+            Reply::Redirect { status, location } => {
+                let out = format!(
+                    "HTTP/1.1 {status} X\r\nlocation: {location}\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
                 );
                 let _ = sock.write_all(out.as_bytes()).await;
                 let _ = sock.shutdown().await;

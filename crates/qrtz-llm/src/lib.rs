@@ -12,7 +12,9 @@ pub mod templates;
 
 pub use extractive::{extractive_summary, split_sentences};
 pub use prompt::{build_summary_prompt, parse_summary_reply, SummaryOptions};
-pub use provider::{create_provider, needs_credits, LlmProvider, ProviderId, OPENROUTER_DEFAULT_MODEL};
+pub use provider::{
+    create_provider, http_client, needs_credits, LlmProvider, ProviderId, OPENROUTER_DEFAULT_MODEL,
+};
 pub use secrets::{EnvOverride, Secret, SecretSource};
 pub use steps::{LlmConfig, LlmSteps, SUMMARY_DEADLINE_MS};
 pub use templates::{template_by_id, SummaryTemplate, SUMMARY_TEMPLATES};

@@ -147,6 +147,37 @@ fn transport_error(e: &reqwest::Error, what: &str) -> LifecycleError {
     )
 }
 
+/// Largest reply body read after a 200 (a summary or chat answer is a few KB; ADR 0053, N81).
+pub const MAX_REPLY_BYTES: usize = 8 * 1024 * 1024;
+/// Largest error body read (only its first 200 characters are kept).
+pub const MAX_ERROR_BYTES: usize = 64 * 1024;
+
+/// The HTTP client every LLM call goes through. It never follows a redirect (N81, ADR 0053): a 3xx would re-send
+/// the transcript (307/308) and the `x-api-key` / `x-goog-api-key` header (reqwest strips only `authorization`
+/// across hosts) to wherever the `Location` points. A provider API that moves is a configuration error, reported
+/// as one.
+pub fn http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("TLS backend available")
+}
+
+/// Reads at most `cap` bytes of the body; `Ok(None)` when it is longer (the rest is never buffered).
+async fn read_capped(mut res: reqwest::Response, cap: usize) -> Result<Option<Vec<u8>>, reqwest::Error> {
+    if res.content_length().is_some_and(|n| n > cap as u64) {
+        return Ok(None);
+    }
+    let mut out = Vec::new();
+    while let Some(c) = res.chunk().await? {
+        if out.len() + c.len() > cap {
+            return Ok(None);
+        }
+        out.extend_from_slice(&c);
+    }
+    Ok(Some(out))
+}
+
 /// `post()`: one JSON POST, classified like TS.
 pub(crate) async fn post(
     client: &reqwest::Client,
@@ -165,7 +196,13 @@ pub(crate) async fn post(
         .map_err(|e| transport_error(&e.without_url(), "LLM network error"))?;
     let status = res.status().as_u16();
     if !res.status().is_success() {
-        let t = res.text().await.unwrap_or_default();
+        let redirect = res.status().is_redirection();
+        let t = read_capped(res, MAX_ERROR_BYTES)
+            .await
+            .ok()
+            .flatten()
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+            .unwrap_or_default();
         let mut detail = cut_utf16(&t, 200).to_string();
         if let Ok(j) = serde_json::from_str::<Value>(&t) {
             let m = match j.get("error") {
@@ -176,6 +213,14 @@ pub(crate) async fn post(
             if let Some(m) = m.filter(|m| !m.is_empty()) {
                 detail = cut_utf16(m, 200).to_string();
             }
+        }
+        if redirect {
+            // Not followed, and the target is not echoed (it reaches the renderer as `llmError`).
+            return Err(err(
+                "E_PROVIDER",
+                format!("LLM HTTP {status}: redirect not followed (check the provider's base URL)"),
+                false,
+            ));
         }
         let hint = match status {
             401 | 403 => " (check the API key in Settings)",
@@ -190,10 +235,16 @@ pub(crate) async fn post(
         ));
     }
     // The body is still on the wire after a 200: a reset mid-body stays retryable (N8).
-    let bytes = res
-        .bytes()
+    let bytes = read_capped(res, MAX_REPLY_BYTES)
         .await
-        .map_err(|e| transport_error(&e.without_url(), "LLM network error while reading the reply"))?;
+        .map_err(|e| transport_error(&e.without_url(), "LLM network error while reading the reply"))?
+        .ok_or_else(|| {
+            err(
+                "E_PROVIDER",
+                format!("LLM reply was over {} MiB", MAX_REPLY_BYTES >> 20),
+                false,
+            )
+        })?;
     let text = String::from_utf8_lossy(&bytes);
     // `Response.json()` decodes UTF-8 and drops a leading BOM.
     let text = text.strip_prefix('\u{FEFF}').unwrap_or(&text);

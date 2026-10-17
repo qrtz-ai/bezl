@@ -99,7 +99,7 @@ impl<E: DbExec> LlmSteps<E> {
             now,
             config: Arc::new(LlmConfig::none),
             secrets: None,
-            client: reqwest::Client::new(),
+            client: crate::provider::http_client(),
             deadline: Duration::from_millis(SUMMARY_DEADLINE_MS),
         }
     }
