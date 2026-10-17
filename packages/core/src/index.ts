@@ -27,3 +27,4 @@ export * from './memo/fixtures';
 export * from './testing';
 export * from './memo/contract';
 export * from './nav';
+export * from './memo/large';

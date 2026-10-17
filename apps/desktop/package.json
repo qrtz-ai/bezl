@@ -36,15 +36,16 @@
   },
   "dependencies": {
     "@qrtz/core": "*",
+    "@qrtz/feature-gallery": "*",
     "@qrtz/feature-home": "*",
+    "@qrtz/feature-memo": "*",
     "@qrtz/feature-settings": "*",
     "@qrtz/ui": "*",
     "electron-squirrel-startup": "^1.0.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "zod": "^4.6.7",
-    "@qrtz/feature-memo": "*",
-    "@qrtz/feature-gallery": "*"
+    "update-electron-app": "^3.3.0",
+    "zod": "^4.6.7"
   },
   "engines": {
     "node": ">=22.13.0"

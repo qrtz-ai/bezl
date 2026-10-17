@@ -111,6 +111,7 @@ export function Palette({
       <div data-testid="palette">
         <input
           data-testid="palette-input"
+          aria-label="Command or meeting search"
           value={q}
           placeholder="Type a command…"
           onChange={(e) => {
@@ -144,6 +145,7 @@ export function Palette({
         />
         <div
           role="listbox"
+          aria-label="Commands"
           style={{ padding: t.space[2], maxHeight: 340, overflow: 'auto' }}
         >
           {results.length === 0 ? (

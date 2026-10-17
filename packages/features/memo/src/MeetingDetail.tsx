@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Badge,
   Button,
@@ -10,7 +10,7 @@ import {
   Text,
   useTheme,
 } from '@qrtz/ui';
-import type { MeetingDetail as Detail } from '@qrtz/core';
+import type { MeetingDetail as Detail, Segment } from '@qrtz/core';
 import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
 import { PLATFORM_LABEL, fmtClock, fmtDate } from './format';
 
@@ -41,24 +41,32 @@ export function MeetingDetail({
     };
   }, [qrtz, id, changed]);
 
+  // Binary search: O(log n) per audio timeupdate even for multi-hour transcripts.
   const current = useMemo(() => {
     if (!d) return -1;
+    let lo = 0;
+    let hi = d.segments.length - 1;
     let idx = -1;
-    d.segments.forEach((s, i) => {
-      if (s.startMs <= now) idx = i;
-    });
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (d.segments[mid]!.startMs <= now) {
+        idx = mid;
+        lo = mid + 1;
+      } else hi = mid - 1;
+    }
     return idx;
   }, [d, now]);
 
-  if (!d) return <Spinner />;
-  const { meeting, segments, summary } = d;
-  const seek = (ms: number) => {
+  const seek = useCallback((ms: number) => {
     if (audio.current) {
       audio.current.currentTime = ms / 1000;
       void audio.current.play().catch(() => {});
     }
     setNow(ms);
-  };
+  }, []);
+
+  if (!d) return <Spinner />;
+  const { meeting, segments, summary } = d;
   const doExport = async (save: boolean) => {
     const r = await qrtz.invoke('memo:export', { id, save });
     if (!save) await navigator.clipboard?.writeText(r.markdown).catch(() => {});
@@ -204,40 +212,73 @@ export function MeetingDetail({
       ) : (
         <div
           data-testid="detail-transcript"
+          role="list"
+          aria-label="Transcript"
           style={{ display: 'grid', gap: 2 }}
         >
           {segments.map((s, i) => (
-            <div
-              key={s.id}
-              data-testid="transcript-segment"
-              data-active={i === current || undefined}
-              onClick={() => seek(s.startMs)}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '48px 1fr',
-                gap: 8,
-                padding: '6px 8px',
-                borderRadius: t.radius.md,
-                cursor: 'pointer',
-                background:
-                  i === current ? t.color.surfaceHover : 'transparent',
-              }}
-            >
-              <Text size="xs" muted mono>
-                {fmtClock(s.startMs)}
-              </Text>
-              <div>
-                <Text size="sm" weight={600}>
-                  {s.speakerName ?? s.speaker ?? 'Speaker'}
-                </Text>
-                <Text as="p" size="sm">
-                  {s.text}
-                </Text>
-              </div>
-            </div>
+            <SegmentRow key={s.id} s={s} active={i === current} onSeek={seek} />
           ))}
         </div>
       )}
     </div>
   );
 }
+
+/**
+ * One transcript line. Memoized so audio timeupdates re-render only the two rows whose `active` flips, and
+ * `content-visibility: auto` lets Chromium skip layout/paint for off-screen rows (native virtualization that
+ * keeps variable-height wrapped text and Ctrl+F working on 2-hour meetings).
+ */
+const SegmentRow = memo(function SegmentRow({
+  s,
+  active,
+  onSeek,
+}: {
+  s: Segment;
+  active: boolean;
+  onSeek: (ms: number) => void;
+}) {
+  const t = useTheme();
+  const who = s.speakerName ?? s.speaker ?? 'Speaker';
+  return (
+    <div
+      role="listitem"
+      tabIndex={0}
+      aria-current={active || undefined}
+      aria-label={`${fmtClock(s.startMs)} ${who}: ${s.text}`}
+      data-testid="transcript-segment"
+      data-active={active || undefined}
+      onClick={() => onSeek(s.startMs)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSeek(s.startMs);
+        }
+      }}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '48px 1fr',
+        gap: 8,
+        padding: '6px 8px',
+        borderRadius: t.radius.md,
+        cursor: 'pointer',
+        background: active ? t.color.surfaceHover : 'transparent',
+        contentVisibility: 'auto',
+        containIntrinsicSize: 'auto 56px',
+      }}
+    >
+      <Text size="xs" muted mono>
+        {fmtClock(s.startMs)}
+      </Text>
+      <div>
+        <Text size="sm" weight={600}>
+          {who}
+        </Text>
+        <Text as="p" size="sm">
+          {s.text}
+        </Text>
+      </div>
+    </div>
+  );
+});

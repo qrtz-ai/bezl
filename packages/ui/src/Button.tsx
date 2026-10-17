@@ -38,9 +38,9 @@ export function Button({
       borderColor: t.color.border,
     },
     danger: {
-      background: t.color.danger,
+      background: '#dc2626', // 4.8:1 with white text (WCAG AA)
       color: '#fff',
-      borderColor: t.color.danger,
+      borderColor: '#dc2626',
     },
   };
   const s: Record<ButtonSize, CSSProperties> = {

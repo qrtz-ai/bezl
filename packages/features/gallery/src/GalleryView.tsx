@@ -182,6 +182,7 @@ export default function GalleryView() {
           />
           <div
             role="listbox"
+            aria-label="Example meetings"
             style={{ display: 'grid', gap: 2, maxWidth: 360 }}
           >
             {['Weekly Product Sync', 'Design review', '1:1 with Grace'].map(

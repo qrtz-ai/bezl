@@ -2,6 +2,29 @@
 
 qrtz desktop app for macOS: an Electron shell hosting modular React "sub apps", all built on a shared design system.
 
+## Status (2026-10-16)
+
+**Works today (verified on Linux with the mock helper, lint/typecheck/unit/package/e2e green):**
+
+- Home dashboard: recent meetings, permission status, quick record.
+- Memo: auto-start on Zoom/Meet detection (mocked off-Mac), live streaming transcript (final, no re-transcription), summary (OpenRouter, or the extractive fallback without a key), FTS search, Markdown export, chat, retention, ⌘⇧R shortcut, mini HUD.
+- Fail-soft: if the helper is missing or crashes mid-meeting, the audio and transcript up to the crash are kept and the meeting is finalized (`e2e/crash.spec.ts`). Startup recovery finishes meetings a crash left behind.
+- Large meetings: a 2-hour, 1500-segment meeting opens in ~0.2 s, and search takes ~0.5 s (`e2e/large-a11y.spec.ts`).
+- Accessibility: no serious or critical axe violations (WCAG 2.1 AA) on Home, Memo, Gallery, Settings or the palette. Transcript rows can be operated by keyboard.
+- Swift helper core (protocol, DSP, echo pipeline with the LocalVQE → gate fallback): 27 tests pass on Linux.
+
+**Needs a Mac to verify (see docs/mac-verify.md):**
+
+- Real capture: ScreenCaptureKit / Core Audio system audio, the microphone, and the TCC permission prompts.
+- FluidAudio streaming ASR and LocalVQE echo cancellation on real Zoom (app and web) and Meet (Chrome and Safari) calls.
+- Building the helper with Xcode, plus signing, notarization and auto-update (the scaffold is in `src/main/updates.ts` and stays off until `QRTZ_AUTO_UPDATE=1` is set on a signed build).
+
+**Accounts / secrets needed:**
+
+- OpenRouter API key: `QRTZ_SECRET_OPENROUTER` or Settings (stored with safeStorage).
+- Apple Developer ID (signing, notarization, auto-update).
+- Optional: a Hugging Face token if model downloads are rate-limited.
+
 ## Requirements
 
 - Node.js >= 22.13 and npm >= 10.9 (required by Electron Forge 8)

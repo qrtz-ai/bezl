@@ -179,3 +179,25 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
   - The ⌘K palette now searches meetings with FTS through `memo:list`. Picking a result opens it in Memo via core `requestNavigate`/`takePendingMeeting`, so sub apps never import each other.
   - Home hints updated.
   - e2e covers palette meeting search after a restart.
+
+## 2026-10-16 ~18:05–18:25 PT: iteration 7 (Home, LocalVQE AEC, hardening)
+
+- Home dashboard: recent meetings, permission status, quick record. `nav.ts` handles cross-app navigation.
+- LocalVQE echo cancellation in MicPipeline, using system audio as the reference. Falls back permanently to EchoGate on any error. DSP.Aligner added. `QRTZ_AEC=0` disables it.
+- Fail-soft helper crash: salvages the WAV and the transcript. New `e2e/crash.spec.ts`. Mock fault injection with `QRTZ_MOCK_CRASH_AFTER_MS`.
+- Bug fix: startup recovery and the dev seed ran before the worker existed, so M5.1 recovery never ran in-app. Added `WorkerClient.ready()` and the startup jobs now await it.
+- Large meetings: transcript rows are memoized with `content-visibility`, plus a binary-search active row. Added the `dev.seedLarge` seed and a 2-hour e2e (open ~0.2 s, search ~0.5 s).
+- Accessibility: axe checks over CDP in e2e. Fixed html lang, unlabeled listboxes and inputs, and danger-button contrast.
+- Auto-update scaffold (update-electron-app). It stays off unless the build is packaged, the platform is macOS or Windows, and `QRTZ_AUTO_UPDATE=1` is set.
+- README Status section.
+
+### Side work
+
+- LocalVQE and real capture are only compiled and unit-tested via the Linux core. Real-call verification needs a Mac.
+- In e2e under xvfb, Chromium throttles renderer timers, so the search test pokes the page while polling.
+
+### Next
+
+- A full empty and error states sweep (Settings and chat errors).
+- First-run polish with screenshots.
+- Virtualize the meeting list once it holds hundreds of meetings.

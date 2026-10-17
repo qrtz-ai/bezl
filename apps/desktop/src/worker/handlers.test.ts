@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
+import { MeetingListItem } from '@qrtz/core';
 import {
   STANDUP_FIXTURE,
   fixtureActiveSpeakers,
@@ -182,5 +184,39 @@ describe('worker handlers (DB + pipeline integration)', () => {
     const got = h['memo.get']({ id: 'm1' });
     expect(got.meeting.audioPath).toBeUndefined();
     expect(got.segments).toHaveLength(8);
+  });
+
+  it('perf: a 2-hour meeting (1500 segments) seeds, summarizes, loads and searches within budget', async () => {
+    const h = createWorkerHandlers(openDatabase(':memory:'), {
+      fetch: noFetch,
+    });
+    let t = performance.now();
+    const r = await h['dev.seedLarge']({
+      id: 'big',
+      minutes: 120,
+      startedAt: 1_760_000_000_000,
+    });
+    const seedMs = performance.now() - t;
+    expect(r.segments).toBe(1500);
+    t = performance.now();
+    const got = h['memo.get']({ id: 'big' });
+    const getMs = performance.now() - t;
+    expect(got.segments).toHaveLength(1500);
+    expect(got.summary?.actionItems.length).toBeGreaterThan(0);
+    t = performance.now();
+    const hits = h['memo.list']({ query: 'migration plan' });
+    const searchMs = performance.now() - t;
+    const parsed = z.array(MeetingListItem).safeParse(hits);
+    expect(parsed.error?.issues ?? []).toEqual([]);
+    expect(hits.length).toBeGreaterThan(0);
+    t = performance.now();
+    const md = h['memo.export']({ id: 'big' }).markdown;
+    const exportMs = performance.now() - t;
+    expect(md.length).toBeGreaterThan(100_000);
+    // Generous CI budgets; typical numbers are ~10x lower.
+    expect(seedMs).toBeLessThan(5000);
+    expect(getMs).toBeLessThan(500);
+    expect(searchMs).toBeLessThan(200);
+    expect(exportMs).toBeLessThan(1000);
   });
 });

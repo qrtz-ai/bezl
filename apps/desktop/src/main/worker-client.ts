@@ -117,6 +117,23 @@ export class WorkerClient {
     });
   }
 
+  /** Resolves once the worker reports running (use before startup jobs; `call` fails fast otherwise). */
+  ready(timeoutMs = 15_000): Promise<void> {
+    if (this.supervisor.status.state === 'running') return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const t = setTimeout(() => {
+        off();
+        reject(new AppError('E_TIMEOUT', 'worker did not become ready'));
+      }, timeoutMs);
+      const off = this.supervisor.onStatus((s) => {
+        if (s.state !== 'running') return;
+        clearTimeout(t);
+        off();
+        resolve();
+      });
+    });
+  }
+
   start() {
     this.supervisor.start();
   }

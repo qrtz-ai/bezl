@@ -8,6 +8,7 @@ import {
   nameSegmentsFromAx,
   meetingToMarkdown,
   summarizeMeeting,
+  syntheticSegments,
   type ActiveSpeakerEvent,
   type FetchLike,
   type MeetingRow,
@@ -154,6 +155,35 @@ export function createWorkerHandlers(
         pruned.push(m.id);
       }
       return { pruned };
+    },
+    /** Dev/e2e only (main gates it on QRTZ_DEV_SEED and an unpackaged build): a long synthetic meeting. */
+    'dev.seedLarge': async (p: {
+      id: string;
+      minutes: number;
+      startedAt: number;
+    }) => {
+      const segments = syntheticSegments(p.minutes);
+      const durationMs = p.minutes * 60_000;
+      repo.upsertMeeting({
+        id: p.id,
+        title: `All-hands (${p.minutes} min)`,
+        platform: 'google-meet',
+        startedAt: p.startedAt,
+        endedAt: p.startedAt + durationMs,
+        durationMs,
+        status: 'processing',
+        participants: [...new Set(segments.map((s) => s.speakerName!))],
+      });
+      repo.replaceSegments(p.id, 'live', segments);
+      const summary = await summarizeMeeting(
+        `All-hands`,
+        segments,
+        null,
+        () => {},
+      );
+      repo.saveSummary(p.id, summary);
+      repo.setStatus(p.id, 'done');
+      return { segments: segments.length };
     },
     'memo.fail': (p: { meetingId: string }) => {
       repo.setStatus(p.meetingId, 'failed');

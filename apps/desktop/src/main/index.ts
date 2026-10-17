@@ -1,3 +1,4 @@
+import { initAutoUpdates } from './updates';
 import {
   app,
   BrowserWindow,
@@ -103,7 +104,6 @@ export function bootstrap() {
     config: () => config.get(),
     recordingsDir,
   });
-  void memo.recover();
   helper.onLine((line) => {
     const r = parseHelperLine(line);
     if (!r.ok) return log.warn('bad helper line', { error: r.error });
@@ -268,8 +268,44 @@ export function bootstrap() {
       );
     });
     worker.start();
+    // After the worker is up: finish meetings a crash left behind (M5.1), then optional dev seed.
+    const workerReady = worker.ready();
+    void workerReady
+      .then(() => memo.recover())
+      .catch((e) => log.warn('startup recovery skipped', { err: String(e) }));
+    if (
+      process.env.QRTZ_DEV_SEED === 'large' &&
+      (!app.isPackaged || !!process.env.QRTZ_USER_DATA)
+    ) {
+      void workerReady
+        .then(() =>
+          worker.call(
+            'dev.seedLarge',
+            {
+              id: '00000000-0000-4000-8000-000000000120',
+              minutes: 120,
+              startedAt: Date.now() - 3 * 3_600_000,
+            },
+            60_000,
+          ),
+        )
+        .then(() =>
+          bus.emit('memo:changed', {
+            id: '00000000-0000-4000-8000-000000000120',
+          }),
+        )
+        .catch((e) => log.warn('dev seed failed', { err: String(e) }));
+    }
     helper.start();
     createWindow();
+    void initAutoUpdates(
+      {
+        isPackaged: app.isPackaged,
+        platform: process.platform,
+        env: process.env,
+      },
+      log,
+    );
     // M6.2: ⌘⇧R starts/stops Memo recording from anywhere (e.g. while in Zoom/Meet).
     const ok = globalShortcut.register('CommandOrControl+Shift+R', () => {
       memo
