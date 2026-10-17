@@ -11,7 +11,7 @@ pub const PILL: &str = "pill";
 pub const HUD_W: f64 = 340.0;
 pub const HUD_H: f64 = 56.0;
 pub const HUD_EXPANDED_H: f64 = 220.0;
-const PILL_W: f64 = 360.0;
+const PILL_W: f64 = 240.0;
 const PILL_H: f64 = 52.0;
 
 fn url(view: &str) -> WebviewUrl {

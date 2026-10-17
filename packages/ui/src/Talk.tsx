@@ -4,37 +4,7 @@ import { transition, typeStyle } from './tokens';
 import { Text } from './Text';
 import { Icon } from './Icon';
 import { IconButton } from './Layout';
-
-/** Five-bar live mic level (qrtz talk pill). */
-export function LevelBars({ level }: { level: number }) {
-  const t = useTheme();
-  const shape = [0.45, 0.8, 1, 0.8, 0.45];
-  return (
-    <span
-      aria-hidden
-      data-testid="talk-level"
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 2,
-        height: 18,
-      }}
-    >
-      {shape.map((k, i) => (
-        <span
-          key={i}
-          style={{
-            width: 3,
-            height: `${Math.max(3, Math.round(18 * Math.min(1, level * k * 1.4)))}px`,
-            borderRadius: 2,
-            background: t.color.text,
-            transition: 'height 80ms linear',
-          }}
-        />
-      ))}
-    </span>
-  );
-}
+import { Waveform } from './Waveform';
 
 export type TalkPillPhase =
   | 'idle'
@@ -43,15 +13,23 @@ export type TalkPillPhase =
   | 'inserting'
   | 'error';
 
+/** Screen-reader status for each pill phase (the pill draws no words outside an error). */
+const PILL_STATUS: Record<TalkPillPhase, string> = {
+  idle: 'echo',
+  listening: 'listening',
+  finalizing: 'processing',
+  inserting: 'processing',
+  error: 'error',
+};
+
 /**
- * Floating dictation pill: level bars and the streaming text (committed + dimmed partial), one line, newest words
- * visible. Click-through window; purely informational.
+ * Floating dictation pill: a live waveform that follows the mic while listening and relaxes to a slow swell while
+ * the last words are processed. It never shows the transcript (Jared, 2026-10-17); the only words drawn are an
+ * error. Click-through window; purely informational.
  */
 export function TalkPill({
   phase,
   level,
-  text,
-  partial,
   error,
   inline,
 }: {
@@ -59,25 +37,27 @@ export function TalkPill({
   inline?: boolean;
   phase: TalkPillPhase;
   level: number;
-  text: string;
-  partial: string;
   error?: string;
 }) {
   const t = useTheme();
-  const busy = phase === 'finalizing' || phase === 'inserting';
+  const failed = phase === 'error';
+  const message = failed ? (error ?? 'something went wrong').toLowerCase() : '';
   return (
     <div
       data-testid="talk-pill"
       data-phase={phase}
       role="status"
       aria-live="polite"
+      aria-label={failed ? message : PILL_STATUS[phase]}
       style={{
         boxSizing: 'border-box',
         height: inline ? 44 : '100vh',
-        display: 'grid',
-        gridTemplateColumns: 'auto 1fr',
+        width: inline ? 220 : '100%',
+        maxWidth: '100%',
+        display: 'flex',
         alignItems: 'center',
-        gap: t.space[3],
+        justifyContent: 'center',
+        gap: t.space[2],
         padding: `0 ${t.space[4]}`,
         background: t.color.surface,
         border: `1px solid ${t.color.borderStrong}`,
@@ -85,43 +65,31 @@ export function TalkPill({
         overflow: 'hidden',
       }}
     >
-      {phase === 'error' ? (
-        <Icon name="alert" size="sm" />
-      ) : busy ? (
-        <span style={{ opacity: 0.7, display: 'inline-flex' }}>
-          <Icon name="more" size="sm" />
-        </span>
+      {failed ? (
+        <>
+          <Icon name="alert" size="sm" />
+          <span
+            data-testid="talk-pill-error"
+            style={{
+              minWidth: 0,
+              overflow: 'hidden',
+              whiteSpace: 'nowrap',
+              textOverflow: 'ellipsis',
+              ...typeStyle('bodySm', t),
+              color: t.color.text,
+            }}
+          >
+            {message}
+          </span>
+        </>
       ) : (
-        <LevelBars level={level} />
+        <Waveform
+          level={phase === 'listening' ? level : 0}
+          mode={phase === 'listening' ? 'live' : 'idle'}
+          width={160}
+          height={24}
+        />
       )}
-      <div
-        style={{
-          minWidth: 0,
-          overflow: 'hidden',
-          whiteSpace: 'nowrap',
-          direction: 'rtl',
-          textAlign: 'left',
-          ...typeStyle('body', t),
-        }}
-      >
-        <span
-          data-testid="talk-pill-text"
-          style={{ direction: 'ltr', unicodeBidi: 'plaintext' }}
-        >
-          {phase === 'error' ? (
-            error
-          ) : (
-            <>
-              {text}
-              {text && partial ? ' ' : ''}
-              <span style={{ color: t.color.textMuted }}>{partial}</span>
-              {!text && !partial ? (
-                <span style={{ color: t.color.textMuted }}>…</span>
-              ) : null}
-            </>
-          )}
-        </span>
-      </div>
     </div>
   );
 }

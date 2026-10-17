@@ -93,8 +93,6 @@ export default function TalkView() {
             inline
             phase={state.phase}
             level={state.level}
-            text={state.text}
-            partial={state.partial}
             {...(state.error ? { error: state.error } : {})}
           />
         </Stack>

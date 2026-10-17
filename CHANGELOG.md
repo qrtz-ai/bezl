@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **echo's popup is just a moving waveform:** it no longer shows your words while you talk. The wave follows your voice live and settles into a slow swell while echo finishes; errors still show in the popup. The popup is narrower (240 px).
 - **A meeting that starts during the post-download warm-up no longer compiles the speaker model twice (N137):** it waits for the warm-up's load and then uses the compiled model, so only one copy is in memory.
 - **echo always answers after you release fn (N131), and says so when it can't listen (N134):** a stuck speech recogniser can no longer hold the release open; echo inserts what it had shown. When no recogniser is ready, pressing fn now says "speech recognition isn't ready yet" right away instead of recording nothing.
 - **Playing a long meeting uses far less memory:** a recording is sent to the player a few MB at a time instead of all at once (a 2-hour meeting was about 230 MB).

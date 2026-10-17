@@ -9,12 +9,12 @@ import { Badge } from '../Badge';
 import { Kbd } from '../Kbd';
 import {
   DictionaryTerm,
-  LevelBars,
   PlainList,
   TalkHistoryRow,
   TalkPill,
   TermList,
 } from '../Talk';
+import { Waveform } from '../Waveform';
 import { Spinner } from '../Spinner';
 import { Progress } from '../Progress';
 import { Field, Input, Select } from '../Input';
@@ -672,28 +672,14 @@ function Showcase({
 
           <Section id="talk" title="echo: pill, history, dictionary">
             <div style={{ display: 'grid', gap: t.space[4], width: '100%' }}>
-              <LevelBars level={0.6} />
-              <TalkPill
-                inline
-                phase="listening"
-                level={0.5}
-                text="So I think we should"
-                partial="ship qrtz"
-              />
-              <TalkPill
-                inline
-                phase="finalizing"
-                level={0}
-                text="So I think we should ship qrtz echo"
-                partial=""
-              />
+              <Waveform level={0.6} />
+              <TalkPill inline phase="listening" level={0.5} />
+              <TalkPill inline phase="finalizing" level={0} />
               <TalkPill
                 inline
                 phase="error"
                 level={0}
-                text=""
-                partial=""
-                error="Microphone did not start"
+                error="microphone did not start"
               />
               <PlainList label="history">
                 <TalkHistoryRow
