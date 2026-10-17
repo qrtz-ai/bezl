@@ -98,7 +98,7 @@ pub trait TalkPort: Send + Sync {
     fn helper_status(&self, _s: &HelperStatus) {}
     /// Global dictation hotkey (push-to-talk down/up or toggle).
     async fn toggle(&self) -> Result<Value, AppError>;
-    /// `config:set` / `secrets:set` happened: re-read engine keys and push `dictation.configure` (Electron
+    /// `config:set` happened: push `dictation.configure` (Electron
     /// `config.onChange(() => talk.configure())`).
     fn config_changed(&self) {}
 }

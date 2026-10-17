@@ -32,12 +32,6 @@ async fn an_old_ai_cleanup_config_dictates_with_the_rules_and_inserts_on_release
         config: old_cleanup_config(true),
         ..Default::default()
     });
-    // An OpenRouter key saved for notes: talk never reads it.
-    r.secrets
-        .0
-        .lock()
-        .unwrap()
-        .insert("llm.openrouter".into(), "sk-or-not-real".into());
     let v = r.dictate(300).await;
     let e = v.last.expect("an entry");
     assert_eq!(e.cleanup, CleanupMethod::Rules);
@@ -56,8 +50,6 @@ async fn an_old_ai_cleanup_config_dictates_with_the_rules_and_inserts_on_release
     let ins = r.helper.sent_of("insert.text");
     assert_eq!(ins.len(), 1);
     assert_eq!(ins[0]["text"], e.text.as_str());
-    assert!(!r.everything_said().contains("sk-or-not-real"));
-    assert!(r.cloud.requests().is_empty());
 }
 
 #[tokio::test(start_paused = true)]

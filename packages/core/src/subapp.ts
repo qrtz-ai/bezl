@@ -59,7 +59,7 @@ export const SHELL_MANIFEST: SubAppManifest = {
     'note.record',
     'talk.read',
     'talk.dictate',
-    // First-run onboarding: permissions, the speech download, the optional OpenRouter key.
+    // First-run onboarding: permissions and the speech download.
     'os.permissions',
     'config.write',
     'secrets.write',

@@ -126,21 +126,21 @@ async fn app_channels_and_capabilities() {
             &r,
             "settings",
             "secrets:set",
-            json!({"name": "llm.openrouter", "value": "sk"})
+            json!({"name": "test.token", "value": "sk"})
         )
         .await["ok"],
         true
     );
     assert_eq!(
         call(&r, "settings", "secrets:list", Value::Null).await["data"],
-        json!(["llm.openrouter"])
+        json!(["test.token"])
     );
     assert_eq!(
         call(
             &r,
             "settings",
             "secrets:set",
-            json!({"name": "llm.openrouter", "value": null})
+            json!({"name": "test.token", "value": null})
         )
         .await["ok"],
         true
@@ -414,7 +414,7 @@ fn hello_and_helper_status_reach_talk() {
     let want = [HelperState::Backoff, HelperState::Running];
     assert_eq!(*talk.statuses.lock().unwrap(), want);
     assert_eq!(*rt.statuses.lock().unwrap(), want);
-    // config:set and secrets:set tell talk to re-configure.
+    // config:set tells talk to re-configure.
     let rt2 = tokio::runtime::Runtime::new().unwrap();
     rt2.block_on(async {
         use qrtz_ipc::{CallContext, Handler};
@@ -424,8 +424,6 @@ fn hello_and_helper_status_reach_talk() {
         };
         let patch = json!({"patch": {"talk": {"warmMic": true}}});
         svc.handle("config:set", patch, &ctx).await.unwrap();
-        let key = json!({"name": "asr.elevenlabs", "value": "k"});
-        svc.handle("secrets:set", key, &ctx).await.unwrap();
     });
-    assert_eq!(talk.configured.load(std::sync::atomic::Ordering::SeqCst), 2);
+    assert_eq!(talk.configured.load(std::sync::atomic::Ordering::SeqCst), 1);
 }

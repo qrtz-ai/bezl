@@ -1,7 +1,7 @@
 /**
  * Shared LLM vectors (spec/vectors/llm/*.json): the summary prompt (N21 strided excerpts and surrogate-safe cuts,
- * N29/N34/N39 capture gaps, notes, templates), the request body sent to OpenRouter, the provider reply
- * classification (N8: errors in a 200, HTML, bad shape), the reply parser and the on-device extractive fallback.
+ * N29/N34/N39 capture gaps, notes, templates), the reply parser and the extractive summary. The cloud request
+ * and reply vectors went with the cloud client (ADR 0076).
  * The Rust port (crates/qrtz-llm/tests/vectors.rs) runs the same files and must produce the same bytes.
  *
  * TS is the oracle: `QRTZ_VECTORS_UPDATE=1 bunx vitest run llm.vectors` rewrites every `expect`.
@@ -13,13 +13,10 @@ import { describe, expect, it } from 'vitest';
 import { AppError } from '../errors';
 import { extractiveSummary } from './extractive';
 import {
-  OPENROUTER_DEFAULT_MODEL,
   buildSummaryPrompt,
   captureGapsForPrompt,
-  createProvider,
   formatTranscriptForPrompt,
   parseSummaryReply,
-  type FetchLike,
 } from './llm';
 import type { Segment } from './types';
 
@@ -80,22 +77,8 @@ const load = (name: string) =>
 const save = (name: string, v: unknown) =>
   writeFileSync(file(name), `${JSON.stringify(v, null, 1)}\n`);
 
-/** Every request the provider makes, recorded instead of sent; replies with `reply`. */
-const recorder = (reply: { status: number; body: string; type?: string }) => {
-  const seen: { url: string; headers: Record<string, string>; body: string }[] =
-    [];
-  const fetch: FetchLike = async (url, init) => {
-    seen.push({ url, headers: init.headers, body: init.body });
-    return new Response(reply.body, {
-      status: reply.status,
-      headers: { 'content-type': reply.type ?? 'application/json' },
-    });
-  };
-  return { seen, fetch };
-};
-
 describe('shared LLM vectors (spec/vectors/llm)', () => {
-  it('prompts.json: buildSummaryPrompt, the OpenRouter request, formatTranscriptForPrompt, captureGapsForPrompt', async () => {
+  it('prompts.json: buildSummaryPrompt, formatTranscriptForPrompt, captureGapsForPrompt', () => {
     const v = load('prompts') as {
       prompts: {
         title: string;
@@ -119,18 +102,8 @@ describe('shared LLM vectors (spec/vectors/llm)', () => {
     };
     for (const c of v.prompts) {
       const msgs = buildSummaryPrompt(c.title, segsOf(c), c.opts);
-      const rec = recorder({
-        status: 200,
-        body: JSON.stringify({ choices: [{ message: { content: '{}' } }] }),
-      });
-      await createProvider('openrouter', {
-        fetch: rec.fetch,
-        apiKey: 'sk-or-test',
-      })!.complete(msgs, { json: true });
-      const req = rec.seen[0]!;
       const got = {
         messages: msgs.map((m) => ({ role: m.role, content: pin(m.content) })),
-        request: { url: req.url, headers: req.headers, body: pin(req.body) },
       };
       if (UPDATE) c.expect = got;
       else expect(got).toEqual(c.expect);
@@ -146,38 +119,6 @@ describe('shared LLM vectors (spec/vectors/llm)', () => {
       else expect(got).toEqual(c.expect);
     }
     if (UPDATE) save('prompts', v);
-    expect(OPENROUTER_DEFAULT_MODEL).toBe('anthropic/claude-haiku-5.5');
-  });
-
-  it('replies.json: provider reply classification (N8)', async () => {
-    const v = load('replies') as {
-      cases: {
-        status: number;
-        body: string;
-        contentType?: string;
-        expect?: unknown;
-      }[];
-    };
-    for (const c of v.cases) {
-      const rec = recorder({
-        status: c.status,
-        body: c.body,
-        ...(c.contentType ? { type: c.contentType } : {}),
-      });
-      const p = createProvider('openrouter', {
-        fetch: rec.fetch,
-        apiKey: 'sk-or-test',
-      })!;
-      let got: unknown;
-      try {
-        got = { ok: await p.complete([{ role: 'user', content: 'hi' }]) };
-      } catch (e) {
-        got = { err: errOf(e) };
-      }
-      if (UPDATE) c.expect = got;
-      else expect(got).toEqual(c.expect);
-    }
-    if (UPDATE) save('replies', v);
   });
 
   it('summary-replies.json: parseSummaryReply', () => {
@@ -197,7 +138,7 @@ describe('shared LLM vectors (spec/vectors/llm)', () => {
     if (UPDATE) save('summary-replies', v);
   });
 
-  it('extractive.json: the on-device fallback summary', () => {
+  it('extractive.json: the extractive summary (the fallback after the on-device model)', () => {
     const v = load('extractive') as {
       cases: {
         segments: Segment[];

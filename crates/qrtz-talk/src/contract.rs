@@ -3,8 +3,8 @@
 //! either build is read by the other (spec/fixtures/talk).
 use serde::{Deserialize, Serialize, Serializer};
 
-/// Where the words came from (`TalkEngineId`): the on-device qrtz speech module (through the helper; the
-/// default) or an opt-in cloud streaming provider ([`crate::provider`], run in the host process).
+/// Where the words came from (`TalkEngineId`). New dictations are always `on-device` (the qrtz speech module through
+/// the helper). `elevenlabs` is read only, from history entries written before the cloud engine was removed (ADR 0076).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Engine {
@@ -37,9 +37,6 @@ pub enum TalkPhase {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TalkErrorKind {
-    /// The chosen cloud provider is unreachable (or dropped / stalled) and automatic failover to the on-device
-    /// stream is off. With failover on (the default, as in Electron) the on-device text is used instead.
-    Offline,
     /// The helper refused the start: microphone access denied (`error{dictation.mic}`).
     MicDenied,
     /// The helper never acknowledged `dictation.start` in time.
@@ -56,7 +53,7 @@ pub enum TalkErrorKind {
     MicLost,
     /// The qrtz speech module speaks a protocol version this build doesn't support.
     SpeechIncompatible,
-    /// The qrtz speech module isn't installed / ready (and no cloud provider is picked).
+    /// The qrtz speech module isn't installed / ready, or was revoked or went stale: talk is unavailable (no cloud).
     SpeechUnavailable,
     /// The speech module crashed or kept sending invalid output mid-dictation (what was heard is kept).
     SpeechLost,
@@ -65,7 +62,6 @@ pub enum TalkErrorKind {
 impl TalkErrorKind {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Offline => "offline",
             Self::MicDenied => "mic-denied",
             Self::MicDidNotStart => "mic-did-not-start",
             Self::Busy => "busy",

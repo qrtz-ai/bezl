@@ -1,14 +1,18 @@
-/** Names of well-known secrets. Values never leave main/worker except to the provider. */
-export const SECRET_NAMES = [
-  'llm.openai',
-  'llm.anthropic',
-  'llm.google',
-  'llm.openrouter',
+/**
+ * Secret names no feature reads any more (crates/qrtz-app `RETIRED_SECRETS`): qrtz is entirely offline (ADR 0076),
+ * so the cloud keys are deleted at launch and `secrets:set` refuses them. No secret is in use today.
+ */
+export const RETIRED_SECRET_NAMES = [
+  'asr.deepgram',
+  'asr.elevenlabs',
   'asr.nvidia',
   'hf.token',
-  'asr.elevenlabs',
+  'llm.anthropic',
+  'llm.google',
+  'llm.openai',
+  'llm.openrouter',
 ] as const;
-export type SecretName = (typeof SECRET_NAMES)[number] | (string & {});
+export type SecretName = string;
 
 export interface SecretStore {
   get(name: SecretName): Promise<string | undefined>;

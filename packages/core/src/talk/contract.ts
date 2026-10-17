@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
-/** Where the words came from. Cloud engines stream over WebSocket; on-device is the qrtz speech module behind the helper. */
+/**
+ * Where the words came from: the qrtz speech module behind the helper (`on-device`). `elevenlabs` is read only, from
+ * history written before the cloud engine was removed (ADR 0076).
+ */
 export const TalkEngineId = z.enum(['elevenlabs', 'on-device']);
 export type TalkEngineId = z.infer<typeof TalkEngineId>;
 
@@ -53,7 +56,7 @@ export const TalkEntry = z.object({
   text: z.string(),
   cleanup: z.enum(['llm', 'rules', 'off']),
   engine: TalkEngineId,
-  /** True when the cloud engine failed and on-device text was used. */
+  /** Legacy (read only): the removed cloud engine failed and on-device text was used. Always false now. */
   failover: z.boolean().default(false),
   insert: InsertMethod,
   inserted: z.boolean(),
@@ -66,7 +69,6 @@ export type TalkEntry = z.infer<typeof TalkEntry>;
 
 /** Why a dictation ended in `error` (machine-readable; `error` is the sentence shown). */
 export const TalkErrorKind = z.enum([
-  'offline',
   'mic-denied',
   'mic-did-not-start',
   'busy',

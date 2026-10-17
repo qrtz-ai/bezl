@@ -1,12 +1,8 @@
-//! The shared LLM vectors (spec/vectors/llm, written by packages/core/src/note/llm.vectors.test.ts): byte-identical
-//! prompts and request bodies, the provider reply classification (N8) and the summary reply parser. Requests go to
-//! a local mock server, never the network.
-mod common;
-
+//! The shared summary vectors (spec/vectors/llm, written by packages/core/src/note/llm.vectors.test.ts):
+//! byte-identical prompts and the summary reply parser. No network (ADR 0076).
 use std::path::Path;
 
-use common::{Mock, Reply};
-use qrtz_llm::prompt::{capture_gaps_for_prompt, format_transcript_for_prompt, ChatMessage, Role};
+use qrtz_llm::prompt::{capture_gaps_for_prompt, format_transcript_for_prompt};
 use qrtz_llm::*;
 use qrtz_model::{LifecycleError, Segment, SilentSpan};
 use serde_json::{json, Value};
@@ -72,51 +68,20 @@ fn err_of(e: &LifecycleError) -> Value {
     json!([e.code, e.retryable, m])
 }
 
-fn openrouter(mock: &Mock) -> Box<dyn LlmProvider> {
-    create_provider(
-        &reqwest::Client::new(),
-        "openrouter",
-        Some(Secret::new("sk-or-test")),
-        None,
-        Some(&mock.base_url),
-    )
-    .unwrap()
-}
-
-#[tokio::test]
-async fn prompts_match_ts() {
-    assert_eq!(OPENROUTER_DEFAULT_MODEL, "anthropic/claude-haiku-5.5");
+#[test]
+fn prompts_match_ts() {
     let v = vectors("prompts.json");
-    let mock = Mock::start().await;
     let prompts = v["prompts"].as_array().unwrap();
     assert!(prompts.len() >= 11);
     for c in prompts {
         let opts: SummaryOptions = serde_json::from_value(c["opts"].clone()).unwrap();
         let msgs = build_summary_prompt(c["title"].as_str().unwrap(), &segs_of(c), &opts);
-        mock.push(Reply::content("{}"));
-        openrouter(&mock).complete(&msgs, true).await.unwrap();
-        let req = mock.seen().pop().unwrap();
         let got_msgs: Vec<Value> = msgs
             .iter()
             .map(|m| json!({"role": m.role, "content": pin(&m.content)}))
             .collect();
         let e = &c["expect"];
         assert_eq!(Value::Array(got_msgs), e["messages"], "{} messages", c["name"]);
-        assert_eq!(pin(&req.body), e["request"]["body"], "{} body", c["name"]);
-        let want_url = e["request"]["url"].as_str().unwrap();
-        assert_eq!(
-            req.path,
-            want_url.strip_prefix("https://openrouter.ai/api/v1").unwrap()
-        );
-        assert_eq!(req.method, "POST");
-        for (k, val) in e["request"]["headers"].as_object().unwrap() {
-            assert_eq!(
-                req.headers.get(&k.to_lowercase()).map(String::as_str),
-                val.as_str(),
-                "{} {k}",
-                c["name"]
-            );
-        }
     }
     for c in v["transcripts"].as_array().unwrap() {
         let got = format_transcript_for_prompt(&segs_of(c), c["maxChars"].as_u64().unwrap() as usize);
@@ -131,29 +96,6 @@ async fn prompts_match_ts() {
             serde_json::from_value(c.get("lost").cloned().unwrap_or(json!([]))).unwrap();
         let got = capture_gaps_for_prompt(&spans, c["durationMs"].as_i64(), &lost);
         assert_eq!(json!(got), c["expect"], "gaps {}", c["name"]);
-    }
-}
-
-#[tokio::test]
-async fn reply_classification_matches_ts() {
-    let v = vectors("replies.json");
-    let mock = Mock::start().await;
-    let p = openrouter(&mock);
-    let hi = [ChatMessage {
-        role: Role::User,
-        content: "hi".into(),
-    }];
-    for c in v["cases"].as_array().unwrap() {
-        mock.push(Reply::Full {
-            status: c["status"].as_u64().unwrap() as u16,
-            content_type: c["contentType"].as_str().unwrap_or("application/json").into(),
-            body: c["body"].as_str().unwrap().into(),
-        });
-        let got = match p.complete(&hi, false).await {
-            Ok(t) => json!({"ok": t}),
-            Err(e) => json!({"err": err_of(&e)}),
-        };
-        assert_eq!(got, c["expect"], "{}", c["name"]);
     }
 }
 

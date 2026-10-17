@@ -37,10 +37,6 @@ async fn module_words_drive_on_device_dictation() {
         r.speech.as_ref().unwrap().started(),
         [("t1".to_string(), "2.1.0".to_string())]
     );
-    assert!(
-        r.cloud.requests().is_empty(),
-        "the module path never touches the network"
-    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -67,13 +63,15 @@ async fn module_not_downloaded_is_typed() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn incompatible_module_with_cloud_selected_still_dictates_through_the_cloud() {
+async fn incompatible_module_with_an_old_cloud_pick_is_refused_with_no_fallback() {
     let mut o = with_module("9.0.0");
     o.helper.module = Some((SPEECH_PROTOCOL_VERSION + 1, "9.0.0".into()));
     o.config = json!({"talk": {"engine": "elevenlabs"}});
     let r = rig(o);
-    let v = r.dictate(400).await;
-    assert_eq!(v.last.unwrap().engine, Engine::Elevenlabs);
+    let v = r.svc.start().await;
+    assert_eq!(v.error_kind, Some(TalkErrorKind::SpeechIncompatible));
+    assert!(r.helper.sent_of("dictation.start").is_empty());
+    assert!(r.svc.history().is_empty());
 }
 
 #[tokio::test(start_paused = true)]
@@ -204,17 +202,17 @@ async fn module_crash_mid_dictation_ends_cleanly_and_keeps_heard_words() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn module_crash_with_cloud_in_use_keeps_the_cloud_dictation() {
+async fn module_crash_with_an_old_cloud_pick_ends_with_what_was_heard() {
     let mut o = with_module("2.1.0");
     o.config = json!({"talk": {"engine": "elevenlabs"}});
     let r = rig(o);
     start_and_hear(&r).await;
     r.helper.module_crash();
-    sleep(100).await;
-    assert_eq!(r.view().phase, TalkPhase::Listening);
-    r.svc.stop().await;
-    until(|| !r.view().active(), 2000).await;
-    assert_eq!(r.view().last.unwrap().engine, Engine::Elevenlabs);
+    until(|| r.view().phase == TalkPhase::Error, 2000).await;
+    assert_eq!(r.view().error_kind, Some(TalkErrorKind::SpeechLost));
+    let e = r.last_entry().expect("what was heard is kept");
+    assert_eq!(e.engine, Engine::OnDevice);
+    assert!(!e.raw.is_empty());
 }
 
 #[tokio::test(start_paused = true)]
@@ -316,13 +314,17 @@ async fn revoked_on_an_expired_list_never_rolls_back_and_says_unavailable() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn revoked_on_an_expired_list_falls_back_to_the_users_cloud_engine() {
+async fn revoked_on_an_expired_list_is_unavailable_with_no_cloud_fallback() {
+    // ADR 0076: even with an old config that picked ElevenLabs, a revoked module means talk is unavailable.
     let mut o = with_module("2.1.0");
     o.config = json!({"talk": {"engine": "elevenlabs"}});
     let r = revoked_on_an_expired_list(o);
-    let v = r.dictate(400).await;
-    assert!(v.error.is_none(), "{:?}", v.error);
-    assert_eq!(v.last.unwrap().engine, Engine::Elevenlabs);
+    let v = r.svc.start().await;
+    assert_eq!(v.phase, TalkPhase::Error);
+    assert_eq!(v.error_kind, Some(TalkErrorKind::SpeechUnavailable));
+    let msg = v.error.unwrap();
+    assert!(msg.contains("unavailable") && !msg.contains("cloud"), "{msg}");
+    assert!(r.helper.sent_of("dictation.start").is_empty());
     assert!(r.speech.as_ref().unwrap().started().is_empty());
 }
 

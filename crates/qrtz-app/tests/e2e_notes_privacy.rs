@@ -1,6 +1,6 @@
 //! Phase 5 port of e2e/notes-privacy.spec.ts (docs/e2e-parity.md rows 22–24): live notes + privacy pause, notes in
-//! the summary, note edit, template re-run; local-only never calls the cloud LLM (summary and chat), the privacy
-//! config persists, an excluded app is never detected; backup export with checksums, import into a fresh profile,
+//! the summary, note edit, template re-run; the privacy config persists (local-only went with ADR 0076: qrtz is
+//! entirely offline), an excluded app is never detected; backup export with checksums, import into a fresh profile,
 //! re-import skips, a tampered zip is rejected.
 mod e2e_support;
 use e2e_support::*;
@@ -161,42 +161,25 @@ fn meeting_template(d: &Value) -> String {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn privacy_local_only_never_calls_the_cloud_llm_and_excluded_apps_are_not_detected() {
+async fn privacy_config_persists_and_excluded_apps_are_not_detected() {
     log();
-    let llm = MockHttp::start().await;
-    llm.always(http(500, "application/json", "{}"));
     let tmp = tempfile::tempdir().unwrap();
     let data = tmp.path().join("data");
-    let a = App::launch(
-        &data,
-        Opts::default()
-            .standup("0.02")
-            .llm(&format!("{}/api/v1", llm.base)),
-    )
-    .await;
+    let a = App::launch(&data, Opts::default().standup("0.02")).await;
     a.helper_ready().await;
     a.settings(
-        "secrets:set",
-        json!({"name": "llm.openrouter", "value": "sk-test-stub"}),
-    )
-    .await;
-    a.settings(
         "config:set",
-        json!({"patch": {"privacy": {"localOnly": true, "pauseHotkey": "CommandOrControl+Alt+9",
+        json!({"patch": {"privacy": {"pauseHotkey": "CommandOrControl+Alt+9",
                                       "excludedApps": ["Safari", "webex"]}}}),
     )
     .await;
     assert_eq!(
         config(&data)["privacy"],
-        json!({"localOnly": true, "excludedApps": ["Safari", "webex"], "pauseHotkey": "CommandOrControl+Alt+9"})
+        json!({"excludedApps": ["Safari", "webex"], "pauseHotkey": "CommandOrControl+Alt+9"})
     );
     a.until_phase("detected").await; // zoom is not excluded
     let (id, _) = record_until(&a, None, |t| segments(t) > 1).await;
-    let d = a.note("note:get", json!({"id": id})).await;
-    // ADR 0075: the summary is written on this Mac; the provider is never called.
-    assert_eq!(d["summary"]["provider"], "apple-intelligence", "{d}");
-    assert!(d["summary"]["llmError"].is_null(), "{d}");
-    assert_eq!(llm.hits(), 0);
+    assert!(!id.is_empty());
     a.quit().await;
 
     // Excluded app: the Zoom meeting is never detected (no prompt); the log says why.

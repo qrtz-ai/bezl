@@ -1,5 +1,6 @@
-//! Phase 5 port of e2e/talk.spec.ts (docs/e2e-parity.md rows 34, 36–38; row 35, the cleanup timeout, is retired:
-//! talk has no LLM cleanup, `tests/talk.rs` `talk_never_calls_an_llm_even_with_an_openrouter_key`). The scripted helper plays the
+//! Phase 5 port of e2e/talk.spec.ts (docs/e2e-parity.md rows 34, 36, 38; row 35, the cleanup timeout, is retired:
+//! talk has no LLM cleanup; row 37, the cloud engine with failover, is retired with the cloud, ADR 0076: an old
+//! config that picked ElevenLabs dictates on-device). The scripted helper plays the
 //! TS mock's dictation ("um so I I think we should ship cue arts talk on friday", growing partials, insert.result).
 mod e2e_support;
 use e2e_support::*;
@@ -118,50 +119,29 @@ async fn talk_insertion_falls_back_to_paste_and_to_the_clipboard_when_nothing_ca
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn talk_cloud_engine_primary_with_automatic_failover_to_on_device_when_the_stream_dies() {
+async fn an_old_config_that_picked_elevenlabs_dictates_on_device() {
     let tmp = tempfile::tempdir().unwrap();
-    let a = App::launch(
-        &tmp.path().join("ok"),
-        Opts::default().helper(Helper::Scripted).talk_cloud("echo"),
+    let data = tmp.path().join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::write(
+        data.join("config.json"),
+        json!({"talk": {"engine": "elevenlabs", "autoFailover": false, "showPill": false}}).to_string(),
     )
-    .await;
+    .unwrap();
+    std::fs::write(data.join("secrets.json"), br#"{"asr.elevenlabs":"el-old"}"#).unwrap();
+    let a = App::launch(&data, Opts::default().helper(Helper::Scripted)).await;
     a.helper_ready().await;
-    a.settings(
-        "secrets:set",
-        json!({"name": "asr.elevenlabs", "value": "el-test-not-real"}),
-    )
-    .await;
-    a.settings("config:set", json!({"patch": {"talk": {"engine": "elevenlabs"}}}))
-        .await;
+    let cfg = a.settings("config:get", Value::Null).await;
+    assert!(cfg["talk"].get("engine").is_none(), "{cfg}");
+    assert_eq!(cfg["talk"]["showPill"], false, "the rest still loads: {cfg}");
+    assert_eq!(a.settings("secrets:list", Value::Null).await, json!([]));
     let e = a.dictate().await;
     assert_eq!(
         (e["engine"].clone(), e["failover"].clone()),
-        (json!("elevenlabs"), json!(false)),
+        (json!("on-device"), json!(false)),
         "{e}"
     );
     a.quit().await;
-
-    let b = App::launch(
-        &tmp.path().join("bad"),
-        Opts::default().helper(Helper::Scripted).talk_cloud("fail"),
-    )
-    .await;
-    b.helper_ready().await;
-    b.settings(
-        "secrets:set",
-        json!({"name": "asr.elevenlabs", "value": "el-test-not-real"}),
-    )
-    .await;
-    b.settings("config:set", json!({"patch": {"talk": {"engine": "elevenlabs"}}}))
-        .await;
-    let e = b.dictate().await;
-    // "on-device (fallback)".
-    assert_eq!(
-        (e["engine"].clone(), e["failover"].clone()),
-        (json!("on-device"), json!(true)),
-        "{e}"
-    );
-    b.quit().await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -174,7 +154,6 @@ async fn talk_settings_has_a_key_for_every_automatic_behavior_and_show_pill_off_
     let cfg = a.settings("config:get", Value::Null).await;
     for (k, on) in [
         ("enabled", true),
-        ("autoFailover", true),
         ("warmMic", false),
         ("autoCleanup", true),
         ("autoInsert", true),
@@ -185,26 +164,16 @@ async fn talk_settings_has_a_key_for_every_automatic_behavior_and_show_pill_off_
     ] {
         assert_eq!(cfg["talk"][k], on, "talk.{k}: {cfg}");
     }
-    assert_eq!(cfg["talk"]["engine"], "auto", "{cfg}");
-    // Picking ElevenLabs (the key field shows) and turning the pill off persist.
-    a.settings(
-        "config:set",
-        json!({"patch": {"talk": {"engine": "elevenlabs", "showPill": false}}}),
-    )
-    .await;
+    // Turning the pill off persists.
+    a.settings("config:set", json!({"patch": {"talk": {"showPill": false}}}))
+        .await;
     a.quit().await;
     let b = App::launch(&data, Opts::default().helper(Helper::Scripted)).await;
     b.helper_ready().await;
     let cfg = b.call("shell", "config:get", Value::Null).await;
-    assert_eq!(
-        (cfg["talk"]["engine"].clone(), cfg["talk"]["showPill"].clone()),
-        (json!("elevenlabs"), json!(false)),
-        "{cfg}"
-    );
+    assert_eq!(cfg["talk"]["showPill"], false, "{cfg}");
     // With the pill off a dictation still streams in the talk view (the shell's `policy::pill_wanted` reads
     // talk.showPill and opens no #pill window; that half is apps/desktop/src-tauri/src/policy.rs + renderer).
-    b.settings("config:set", json!({"patch": {"talk": {"engine": "on-device"}}}))
-        .await;
     b.talk("talk:start", Value::Null).await;
     b.until_talk("streams with the pill off", |v| talk_text(v).contains("so"))
         .await;

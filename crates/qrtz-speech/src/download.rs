@@ -38,9 +38,7 @@ impl DownloadControl {
 }
 
 /// N100: true for an http(s) URL whose host really is loopback (`localhost`, `127.0.0.0/8`, `::1`), so
-/// `http://127.0.0.1.example.com` is not. A copy of `qrtz_llm::steps::is_loopback_url` (qrtz-llm depends on
-/// qrtz-lifecycle, which depends on this crate, so it can't be imported here); qrtz-app's
-/// `the_loopback_checks_agree` keeps the two identical.
+/// `http://127.0.0.1.example.com` is not (qrtz-app's `the_loopback_check_is_strict`).
 pub fn is_loopback_url(url: &str) -> bool {
     let Ok(u) = reqwest::Url::parse(url) else {
         return false;

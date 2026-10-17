@@ -1,19 +1,14 @@
 //! Talk on the shared speech seam (`qrtz_speech::{SpeechEngine, SpeechSession, SpeechEvent}`, ADR 0046). Talk
-//! never names a model: the on-device engine is whatever `SpeechEngine` the host injects (the qrtz speech module),
-//! and the opt-in cloud provider is wrapped here as one more `SpeechEngine` that runs in the host process (the
-//! module stays network-less).
+//! never names a model: the on-device engine is whatever `SpeechEngine` the host injects (the qrtz speech module).
+//! There is no cloud engine (ADR 0076).
 //!
-//! - [`CloudSpeech`]: ElevenLabs (the one cloud engine) as a `SpeechEngine`.
 //! - [`HelperAsrSpeech`]: transitional. Today's helper still sends `dictation.asr`; this adapter turns those
 //!   lines into `SpeechEvent::Words` so the service has one path. It goes away with the helper's asr lines.
 //! - [`drive`]: runs one `SpeechSession` on a task (audio / finish / cancel in, events out).
 //! - [`TalkValidator`]: talk's own bounds on every event it consumes. The engine validates module lines
 //!   (`qrtz_speech::validate::OutputValidator`); this is defence in depth on what reaches the dictation view, the
-//!   clipboard and the focused app, and it covers the cloud adapter, whose frames never pass the module validator.
-use crate::contract::{DictionaryEntry, TalkErrorKind};
-use crate::provider::StreamingProvider;
-use crate::session::{self, ProviderSession, SessionEvent};
-use crate::ws::WsConnector;
+//!   clipboard and the focused app.
+use crate::contract::TalkErrorKind;
 use async_trait::async_trait;
 use qrtz_speech::engine::SpeechWordOut;
 use qrtz_speech::protocol::limit;
@@ -160,7 +155,7 @@ impl TalkValidator {
     }
 }
 
-/// Words from plain text (the cloud and today's helper give no per-word times): one span for the whole segment.
+/// Words from plain text (today's helper gives no per-word times): one span for the whole segment.
 pub fn words_of(text: &str, start_ms: u64, end_ms: u64) -> Vec<SpeechWordOut> {
     let max = limit("wordsPerEvent") as usize;
     text.split_whitespace()
@@ -198,14 +193,12 @@ pub fn start_error(e: &SpeechError) -> (TalkErrorKind, String) {
 
 const MSG_NOT_INSTALLED: &str = "qrtz speech isn't downloaded; download it in Settings";
 const MSG_REVOKED: &str =
-    "this qrtz speech version was withdrawn and can't be replaced until qrtz connects; \
-    connect to update it, or turn on a cloud engine in Settings";
+    "this qrtz speech version was withdrawn, so talk is unavailable until qrtz connects to update it";
 const MSG_STALE: &str =
-    "qrtz speech hasn't checked for updates in too long; connect to keep using it, or turn on a \
-    cloud engine in Settings";
+    "qrtz speech hasn't checked for updates in too long, so talk is unavailable until qrtz connects";
 
 /// Why an on-device session ended mid-dictation, as a dictation error. "Not installed", "revoked" and "stale" are
-/// `speech-unavailable` (fixable by the user: download, connect, or a cloud engine); a crash, a protocol violation,
+/// `speech-unavailable` (fixable by the user: download or connect); a crash, a protocol violation,
 /// a failed start or a timeout is `speech-lost`.
 pub fn fail_error(r: FailReason) -> (TalkErrorKind, &'static str) {
     match r {
@@ -221,16 +214,6 @@ pub fn fail_error(r: FailReason) -> (TalkErrorKind, &'static str) {
             TalkErrorKind::SpeechLost,
             "qrtz speech stopped working, so dictation stopped",
         ),
-    }
-}
-
-/// A cloud session's end as the arbiter's (log-only) reason.
-pub fn cloud_fail_text(r: FailReason) -> &'static str {
-    match r {
-        FailReason::Network => "cloud connection failed",
-        FailReason::Timeout => "cloud timed out",
-        FailReason::NotInstalled => "cloud engine not configured",
-        _ => "cloud failed",
     }
 }
 
@@ -306,124 +289,10 @@ pub fn drive(
     SessionCtl { tx }
 }
 
-// ------------------------------------------------------------------------------------------------ cloud
-
-/// An opt-in cloud provider as a `SpeechEngine`, in the host process. Committed segments become final `Words`,
-/// the hypothesis a partial; the flush's text beyond what was committed is a last final, then `Finished`.
-pub struct CloudSpeech {
-    pub provider: Arc<dyn StreamingProvider>,
-    pub key: Option<String>,
-    pub connector: Arc<dyn WsConnector>,
-    pub dictionary: Vec<DictionaryEntry>,
-}
-
-/// Engine version of the host-side adapters (audit only, never shown).
-const ADAPTER_VERSION: &str = env!("CARGO_PKG_VERSION");
-
-struct CloudSession {
-    session: ProviderSession,
-    rx: mpsc::Receiver<SpeechEvent>,
-}
-
-#[async_trait]
-impl SpeechSession for CloudSession {
-    fn version(&self) -> &str {
-        ADAPTER_VERSION
-    }
-    fn events(&mut self) -> &mut mpsc::Receiver<SpeechEvent> {
-        &mut self.rx
-    }
-    async fn push_audio(&mut self, _channel: Channel, pcm16: &[u8]) -> Result<(), SpeechError> {
-        self.session.push(pcm16.to_vec());
-        Ok(())
-    }
-    async fn finish(&mut self) -> Result<(), SpeechError> {
-        self.session.finish();
-        Ok(())
-    }
-    async fn cancel(&mut self) {
-        self.session.close();
-    }
-}
-
-#[async_trait]
-impl SpeechEngine for CloudSpeech {
-    fn info(&self) -> EngineInfo {
-        EngineInfo {
-            version: ADAPTER_VERSION.into(),
-            kind: EngineKind::Cloud,
-        }
-    }
-    async fn start(&self, spec: SessionSpec) -> Result<Box<dyn SpeechSession>, SpeechError> {
-        if !self.provider.configured(self.key.as_deref()) {
-            return Err(SpeechError::NotInstalled);
-        }
-        let (tx, rx) = mpsc::channel::<SpeechEvent>(512);
-        let ch = spec.channels.first().copied().unwrap_or(Channel::Mic);
-        let committed = Mutex::new((String::new(), 0u32));
-        let on: Arc<dyn Fn(SessionEvent) + Send + Sync> = Arc::new(move |ev| {
-            let words = |utt: String, fin: bool, text: &str| SpeechEvent::Words {
-                utterance_id: utt,
-                channel: ch,
-                is_final: fin,
-                language: "en".into(),
-                words: words_of(text, 0, 0),
-            };
-            let send = |e: SpeechEvent| {
-                let _ = tx.try_send(e);
-            };
-            match ev {
-                SessionEvent::Opened | SessionEvent::Inbound => {}
-                SessionEvent::Text {
-                    committed: c,
-                    partial,
-                } => {
-                    let mut g = lock(&committed);
-                    if c != g.0 {
-                        let seg = c.strip_prefix(g.0.as_str()).unwrap_or(&c).trim().to_owned();
-                        g.0 = c.clone();
-                        g.1 += 1;
-                        if !seg.is_empty() {
-                            send(words(format!("c{}", g.1), true, &seg));
-                        }
-                    }
-                    send(words(format!("c{}", g.1 + 1), false, &partial));
-                }
-                SessionEvent::Final(t) => {
-                    let mut g = lock(&committed);
-                    let tail = t
-                        .trim()
-                        .strip_prefix(g.0.trim())
-                        .unwrap_or(t.trim())
-                        .trim()
-                        .to_owned();
-                    g.1 += 1;
-                    if !tail.is_empty() {
-                        send(words(format!("c{}", g.1), true, &tail));
-                    }
-                    send(SpeechEvent::Finished { duration_ms: 0 });
-                }
-                SessionEvent::Failed(r) => {
-                    // Provider errors are redacted by the session; the detail stays in the log.
-                    tracing::warn!(reason = %r.chars().take(200).collect::<String>(), "cloud speech session failed");
-                    send(SpeechEvent::Failed {
-                        reason: FailReason::Network,
-                    })
-                }
-            }
-        });
-        let session = session::spawn(
-            self.connector.as_ref(),
-            self.provider.as_ref(),
-            self.key.clone(),
-            &self.dictionary,
-            on,
-        );
-        Ok(Box::new(CloudSession { session, rx }))
-    }
-}
-
 // ------------------------------------------------------------------------------------------------ today's helper
+
+/// Engine version of the host-side adapter (audit only, never shown).
+const ADAPTER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Transitional: today's helper recognises speech itself and sends `dictation.asr {id, event {kind, utteranceId,
 /// startMs, endMs?, text}}`. Each dictation id is a session; `finish` ends it (the helper's full text arrives with

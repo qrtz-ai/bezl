@@ -11,12 +11,10 @@ use qrtz_app::{AppInfo, Shared};
 use qrtz_helper_bridge::{ProcessSpawn, SupervisorOptions};
 use qrtz_ipc::Router;
 use serde_json::{json, Value};
-use std::collections::VecDeque;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 /// Default deadline for a condition (debug build, tests in parallel).
 pub const DEADLINE: Duration = Duration::from_secs(30);
@@ -147,21 +145,19 @@ impl StorageShell for RecStorage {
 pub struct Opts {
     pub helper: Helper,
     pub env: Vec<(String, String)>,
-    pub llm_base: Option<String>,
     pub retry_scale: f64,
+    /// `QRTZ_FAULT_STEP` (`DevKnobs::fault_step`): that step's first attempt per meeting fails.
+    pub fault_step: Option<qrtz_model::StepId>,
     pub talk: Option<Arc<dyn TalkPort>>,
-    /// `QRTZ_TALK_CLOUD=echo|fail` (`DevKnobs::talk_cloud`): the cloud talk engines are `qrtz_talk::mock::MockCloud`.
-    pub talk_cloud: Option<String>,
 }
 impl Default for Opts {
     fn default() -> Self {
         Self {
             helper: Helper::Mock,
             env: vec![],
-            llm_base: None,
             retry_scale: 0.001,
+            fault_step: None,
             talk: None,
-            talk_cloud: None,
         }
     }
 }
@@ -174,8 +170,8 @@ impl Opts {
         self.env.push((k.into(), v.into()));
         self
     }
-    pub fn llm(mut self, base: &str) -> Self {
-        self.llm_base = Some(base.into());
+    pub fn fault_step(mut self, s: qrtz_model::StepId) -> Self {
+        self.fault_step = Some(s);
         self
     }
     pub fn retry_scale(mut self, s: f64) -> Self {
@@ -184,10 +180,6 @@ impl Opts {
     }
     pub fn talk(mut self, t: Arc<dyn TalkPort>) -> Self {
         self.talk = Some(t);
-        self
-    }
-    pub fn talk_cloud(mut self, mode: &str) -> Self {
-        self.talk_cloud = Some(mode.into());
         self
     }
     /// The standup scenario at `speed` (scripted helper).
@@ -252,9 +244,7 @@ impl App {
             steps: None,
             knobs: DevKnobs {
                 retry_scale: Some(o.retry_scale),
-                llm_base_url: o.llm_base,
-                talk_cloud: o.talk_cloud,
-                ..Default::default()
+                fault_step: o.fault_step,
             },
         })
         .unwrap();
@@ -454,110 +444,6 @@ pub fn has_text(t: &Value, needle: &str) -> bool {
         s.iter()
             .any(|x| x["text"].as_str().unwrap_or("").contains(needle))
     })
-}
-
-// ---------------------------------------------------------------- mock HTTP (LLM) server
-
-/// One scripted HTTP/1.1 reply per connection (default: `fallback`); every request is recorded.
-#[derive(Clone)]
-pub struct MockHttp {
-    pub seen: Arc<Mutex<Vec<(String, String, String)>>>,
-    replies: Arc<Mutex<VecDeque<String>>>,
-    fallback: Arc<Mutex<String>>,
-    pub base: String,
-}
-
-pub fn http(status: u16, ct: &str, body: &str) -> String {
-    format!(
-        "HTTP/1.1 {status} X\r\ncontent-type: {ct}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
-        body.len()
-    )
-}
-
-pub fn completion(content: &Value) -> String {
-    let body =
-        json!({"choices": [{"message": {"role": "assistant", "content": content.to_string()}}]}).to_string();
-    http(200, "application/json", &body)
-}
-
-pub fn overloaded() -> String {
-    http(
-        503,
-        "application/json",
-        r#"{"error":{"message":"upstream overloaded"}}"#,
-    )
-}
-
-impl MockHttp {
-    pub async fn start() -> MockHttp {
-        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let me = MockHttp {
-            seen: Default::default(),
-            replies: Default::default(),
-            fallback: Arc::new(Mutex::new(http(
-                500,
-                "application/json",
-                r#"{"error":{"message":"no reply scripted"}}"#,
-            ))),
-            base: format!("http://{}", l.local_addr().unwrap()),
-        };
-        let m = me.clone();
-        tokio::spawn(async move {
-            while let Ok((mut s, _)) = l.accept().await {
-                let me = m.clone();
-                tokio::spawn(async move {
-                    let mut buf = Vec::new();
-                    let mut tmp = [0u8; 8192];
-                    let (head_end, len) = loop {
-                        let n = s.read(&mut tmp).await.unwrap_or(0);
-                        if n == 0 {
-                            return;
-                        }
-                        buf.extend_from_slice(&tmp[..n]);
-                        if let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
-                            let head = String::from_utf8_lossy(&buf[..i]).to_lowercase();
-                            let len = head
-                                .lines()
-                                .find_map(|l| l.strip_prefix("content-length:"))
-                                .and_then(|v| v.trim().parse::<usize>().ok())
-                                .unwrap_or(0);
-                            break (i + 4, len);
-                        }
-                    };
-                    while buf.len() < head_end + len {
-                        let n = s.read(&mut tmp).await.unwrap_or(0);
-                        if n == 0 {
-                            break;
-                        }
-                        buf.extend_from_slice(&tmp[..n]);
-                    }
-                    let head = String::from_utf8_lossy(&buf[..head_end]).to_string();
-                    let first = head.lines().next().unwrap_or("").to_string();
-                    let body = String::from_utf8_lossy(&buf[head_end..]).to_string();
-                    me.seen.lock().unwrap().push((first, head.to_lowercase(), body));
-                    let reply = me
-                        .replies
-                        .lock()
-                        .unwrap()
-                        .pop_front()
-                        .unwrap_or_else(|| me.fallback.lock().unwrap().clone());
-                    let _ = s.write_all(reply.as_bytes()).await;
-                    let _ = s.shutdown().await;
-                });
-            }
-        });
-        me
-    }
-    pub fn push(&self, r: String) {
-        self.replies.lock().unwrap().push_back(r);
-    }
-    /// The reply for every request without a scripted one.
-    pub fn always(&self, r: String) {
-        *self.fallback.lock().unwrap() = r;
-    }
-    pub fn hits(&self) -> usize {
-        self.seen.lock().unwrap().len()
-    }
 }
 
 // ---------------------------------------------------------------- seeding (QRTZ_DEV_SEED has no Rust port)

@@ -191,7 +191,7 @@ export function createMockBridge(): TauriBridge {
           steps.summary = step('failed', 3, {
             error: {
               code: 'E_PROVIDER',
-              message: 'LLM unavailable',
+              message: 'summary step failed',
               retryable: true,
             },
           });
@@ -200,12 +200,13 @@ export function createMockBridge(): TauriBridge {
             phase: 'error',
             errorInfo: {
               code: 'E_PROVIDER',
-              message: 'LLM unavailable',
+              message: 'summary step failed',
               retryable: true,
             },
           });
           return;
         }
+        // ADR 0075: the summary is written on this Mac (Apple Intelligence through the helper).
         steps.summary = step('done', 1);
         const d = details.get(id)!;
         d.summary = {
@@ -214,7 +215,7 @@ export function createMockBridge(): TauriBridge {
             { text: 'Write the release notes', owner: 'Ada Lovelace' },
           ],
           qa: [],
-          provider: 'extractive',
+          provider: 'apple-intelligence',
         };
         steps.index = step('done', 1);
         push();

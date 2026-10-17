@@ -15,20 +15,6 @@ use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-/// `llmParams`: `note.llmProvider` / `note.llmModel` / `privacy.localOnly`, read per attempt; the base URL is a dev
-/// knob only (it would redirect the key).
-pub fn llm_config(cfg: &Value, base_url: Option<&str>) -> qrtz_llm::LlmConfig {
-    qrtz_llm::LlmConfig {
-        provider: cfg["note"]["llmProvider"]
-            .as_str()
-            .unwrap_or("openrouter")
-            .to_string(),
-        model: cfg["note"]["llmModel"].as_str().unwrap_or("").to_string(),
-        base_url: base_url.map(String::from),
-        local_only: cfg["privacy"]["localOnly"].as_bool().unwrap_or(false),
-    }
-}
-
 /// `HelperPort` over the supervisor: ordered, sync enqueue; `false` when the helper isn't running.
 pub struct SupervisorHelper(pub Supervisor);
 impl HelperPort for SupervisorHelper {
@@ -125,10 +111,6 @@ impl EventSink for AppSink {
 pub struct DevKnobs {
     pub retry_scale: Option<f64>,
     pub fault_step: Option<StepId>,
-    /// `QRTZ_LLM_BASE_URL`: the LLM requests (with the API key) go to this host instead (tests, mock servers).
-    pub llm_base_url: Option<String>,
-    /// `QRTZ_TALK_CLOUD=echo|fail`: the cloud talk engines are `qrtz_talk::mock::MockCloud` (Echo or Refuse).
-    pub talk_cloud: Option<String>,
 }
 
 impl DevKnobs {
@@ -137,8 +119,7 @@ impl DevKnobs {
         Self::from_vars(cfg!(debug_assertions), |k| std::env::var(k).ok())
     }
 
-    /// N87: in a release build every knob (`QRTZ_LLM_BASE_URL` above all: it would send the API key and the
-    /// transcript to another host) is ignored unless `QRTZ_ALLOW_DEV_KNOBS=1` (the E2E harness).
+    /// N87: in a release build every knob is ignored unless `QRTZ_ALLOW_DEV_KNOBS=1` (the E2E harness).
     pub fn from_vars(debug_build: bool, get: impl Fn(&str) -> Option<String>) -> Self {
         if !debug_build && get("QRTZ_ALLOW_DEV_KNOBS").as_deref() != Some("1") {
             return Self::default();
@@ -146,8 +127,6 @@ impl DevKnobs {
         Self {
             retry_scale: get("QRTZ_RETRY_SCALE").and_then(|v| v.parse().ok()),
             fault_step: get("QRTZ_FAULT_STEP").and_then(|v| serde_json::from_value(Value::String(v)).ok()),
-            llm_base_url: get("QRTZ_LLM_BASE_URL").filter(|v| !v.is_empty()),
-            talk_cloud: get("QRTZ_TALK_CLOUD").filter(|v| v == "echo" || v == "fail"),
         }
     }
 }
@@ -187,8 +166,6 @@ pub struct BootOptions {
     /// `None` = deferred deletes run at once (tests); the app passes `PendingDeletes::new(data dir)`.
     pub pending_delete: Option<Arc<qrtz_storage::PendingDeletes>>,
     pub clock: Option<Arc<dyn Clock>>,
-    /// API keys for the summary provider (`None` = on-device summaries only).
-    pub secrets: Option<Arc<dyn crate::secrets::SecretStore>>,
     /// The on-device summary model (ADR 0075; the helper in the app). `None` = no on-device model: an on-device
     /// summary attempt fails as unavailable (never a cloud call).
     pub summarizer: Option<Arc<dyn crate::summary::OnDeviceModel>>,
@@ -338,7 +315,6 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         steps: b.steps,
         pending_delete: Some(pending.clone()),
         clock: None,
-        secrets: Some(secrets.clone()),
         summarizer: Some(Arc::new(crate::summary::HelperModel::new(supervisor.clone()))),
         knobs: b.knobs.clone(),
     })?;
@@ -366,11 +342,9 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
             crate::talk::TalkWiring {
                 helper: supervisor.clone(),
                 events: events.clone(),
-                secrets: secrets.clone(),
                 shell: talk_shell,
                 config: config.clone(),
                 store_path: dirs.data.join("talk.json"),
-                cloud: b.knobs.talk_cloud.clone(),
                 local: b.speech.as_ref().map(|s| {
                     let e = qrtz_speech::spawn::OnDeviceSpeech::new(s.store.clone(), s.opts.clone())
                         .with_attach(attach.clone());
@@ -428,43 +402,16 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
 mod knob_tests {
     use super::DevKnobs;
     #[test]
-    fn the_talk_cloud_knob_is_dev_only_and_validated() {
-        let env = |allow: bool, v: &'static str| {
-            move |k: &str| match k {
-                "QRTZ_TALK_CLOUD" => Some(v.to_string()),
-                "QRTZ_ALLOW_DEV_KNOBS" if allow => Some("1".to_string()),
-                _ => None,
-            }
-        };
-        assert_eq!(DevKnobs::from_vars(false, env(false, "echo")).talk_cloud, None);
-        assert_eq!(
-            DevKnobs::from_vars(false, env(true, "fail"))
-                .talk_cloud
-                .as_deref(),
-            Some("fail")
-        );
-        assert_eq!(
-            DevKnobs::from_vars(true, env(false, "echo"))
-                .talk_cloud
-                .as_deref(),
-            Some("echo")
-        );
-        assert_eq!(DevKnobs::from_vars(true, env(false, "bogus")).talk_cloud, None);
-    }
-    #[test]
-    fn n87_release_builds_ignore_the_llm_base_url_unless_dev_knobs_are_allowed() {
+    fn n87_release_builds_ignore_dev_knobs_unless_allowed() {
         let env = |allow: bool| {
             move |k: &str| match k {
-                "QRTZ_LLM_BASE_URL" => Some("http://elsewhere.example".to_string()),
+                "QRTZ_RETRY_SCALE" => Some("0.01".to_string()),
                 "QRTZ_ALLOW_DEV_KNOBS" if allow => Some("1".to_string()),
                 _ => None,
             }
         };
-        assert_eq!(DevKnobs::from_vars(false, env(false)).llm_base_url, None);
-        assert_eq!(
-            DevKnobs::from_vars(false, env(true)).llm_base_url.as_deref(),
-            Some("http://elsewhere.example")
-        );
-        assert!(DevKnobs::from_vars(true, env(false)).llm_base_url.is_some());
+        assert_eq!(DevKnobs::from_vars(false, env(false)).retry_scale, None);
+        assert_eq!(DevKnobs::from_vars(false, env(true)).retry_scale, Some(0.01));
+        assert_eq!(DevKnobs::from_vars(true, env(false)).retry_scale, Some(0.01));
     }
 }

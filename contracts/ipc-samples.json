@@ -27,8 +27,8 @@
     },
     "secrets:set": {
       "request": {
-        "name": "llm.openrouter",
-        "value": "sk-test"
+        "name": "test.token",
+        "value": "test-value"
       },
       "response": {
         "ok": true

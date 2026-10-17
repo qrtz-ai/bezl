@@ -14,8 +14,19 @@ pub trait SecretStore: Send + Sync {
     fn list(&self) -> Vec<String>;
 }
 
-/// Secret names no feature reads any more: `asr.deepgram` (Deepgram removed, ADR 0067).
-pub const RETIRED_SECRETS: &[&str] = &["asr.deepgram"];
+/// Secret names no feature reads any more: `asr.deepgram` (Deepgram removed, ADR 0067) and, since qrtz is
+/// entirely offline (ADR 0076), every cloud key: ElevenLabs talk, the summary providers (OpenRouter and the
+/// others), NVIDIA ASR and the Hugging Face token. `secrets:set` refuses them.
+pub const RETIRED_SECRETS: &[&str] = &[
+    "asr.deepgram",
+    "asr.elevenlabs",
+    "asr.nvidia",
+    "hf.token",
+    "llm.anthropic",
+    "llm.google",
+    "llm.openai",
+    "llm.openrouter",
+];
 
 /// Launch migration: delete a retired key the user once saved (from the file store or the Keychain), so it doesn't
 /// linger unused. Only names the store lists are touched (no Keychain lookup for a key that was never saved).

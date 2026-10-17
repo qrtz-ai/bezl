@@ -2,12 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Callout,
-  Field,
-  Input,
   OnboardingStep,
   PermissionList,
   SpeechSetupPanel,
-  Stack,
 } from '@qrtz/ui';
 import type { OsPermission, PermissionsStatus } from '@qrtz/core';
 import {
@@ -18,7 +15,7 @@ import {
 } from '@qrtz/core/react';
 import { shellClient } from './shellClient';
 
-const STEPS = 5;
+const STEPS = 4;
 const PERMISSIONS: { id: OsPermission; label: string }[] = [
   { id: 'microphone', label: 'microphone' },
   { id: 'screen-recording', label: 'system audio' },
@@ -30,7 +27,8 @@ const PERMISSION_STATE: Record<string, string> = {
   unknown: 'checking…',
 };
 
-/** First run (shell-owned, sub apps unmounted): welcome → permissions → speech → openrouter key → done. */
+/** First run (shell-owned, sub apps unmounted): welcome → permissions → speech → done. qrtz is
+ * entirely offline (ADR 0076), so there is no key step. */
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const client = useMemo(shellClient, []);
   return (
@@ -46,7 +44,6 @@ function Steps({ onDone }: { onDone: () => void }) {
   const [perms, setPerms] = useState<PermissionsStatus | null>(null);
   const livePerms = useQrtzEvent('permissions:changed');
   const setup = useSpeechSetup();
-  const [key, setKey] = useState('');
   const [error, setError] = useState<string | null>(null);
   const next = () => {
     setError(null);
@@ -73,16 +70,6 @@ function Steps({ onDone }: { onDone: () => void }) {
     void qrtz
       .invoke('config:set', { patch: { onboarding: { done: true } } })
       .then(onDone, (e: Error) => setError(e.message));
-  const saveKey = () =>
-    void qrtz
-      .invoke('secrets:set', { name: 'llm.openrouter', value: key.trim() })
-      .then(
-        () => {
-          setKey('');
-          next();
-        },
-        (e: Error) => setError(e.message),
-      );
 
   const problem = error ?? setup.error;
   const alert = problem ? (
@@ -167,50 +154,9 @@ function Steps({ onDone }: { onDone: () => void }) {
       </OnboardingStep>
     );
   }
-  if (step === 4)
-    return (
-      <OnboardingStep
-        step={4}
-        steps={STEPS}
-        title="summaries"
-        data-testid="onboarding-key"
-        actions={
-          <>
-            <Button
-              variant="ghost"
-              onClick={next}
-              data-testid="onboarding-skip"
-            >
-              skip
-            </Button>
-            <Button
-              disabled={!key.trim()}
-              onClick={saveKey}
-              data-testid="onboarding-save-key"
-            >
-              save
-            </Button>
-          </>
-        }
-      >
-        {error ? alert : null}
-        <Stack gap={2}>
-          <Field label="openrouter key (optional)">
-            <Input
-              type="password"
-              autoComplete="off"
-              placeholder="sk-or-…"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              data-testid="onboarding-key-input"
-            />
-          </Field>
-        </Stack>
-      </OnboardingStep>
-    );
   return (
     <OnboardingStep
-      step={5}
+      step={4}
       steps={STEPS}
       title="you're set"
       data-testid="onboarding-done"

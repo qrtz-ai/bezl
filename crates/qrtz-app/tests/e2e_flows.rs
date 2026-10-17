@@ -97,7 +97,7 @@ async fn settings_persist_across_restarts_and_the_api_key_is_saved_and_removed()
     .await;
     a.settings(
         "secrets:set",
-        json!({"name": "llm.openrouter", "value": "sk-test-not-real"}),
+        json!({"name": "test.token", "value": "sk-test-not-real"}),
     )
     .await;
     assert!(a
@@ -105,7 +105,7 @@ async fn settings_persist_across_restarts_and_the_api_key_is_saved_and_removed()
         .await
         .as_array()
         .unwrap()
-        .contains(&json!("llm.openrouter")));
+        .contains(&json!("test.token")));
     a.quit().await;
 
     let b = App::launch(&data, Opts::default()).await;
@@ -115,7 +115,7 @@ async fn settings_persist_across_restarts_and_the_api_key_is_saved_and_removed()
     assert_eq!(cfg["note"]["defaultTemplate"], "standup", "{cfg}");
     // "Key configured": the name is listed, the value never comes back over IPC.
     let names = b.settings("secrets:list", Value::Null).await;
-    assert_eq!(names, json!(["llm.openrouter"]));
+    assert_eq!(names, json!(["test.token"]));
     assert!(!cfg.to_string().contains("sk-test-not-real"));
     // On disk only in the 0600 secret store (Linux file store; Keychain on macOS is Mac-only).
     for e in walk(&data) {
@@ -131,8 +131,8 @@ async fn settings_persist_across_restarts_and_the_api_key_is_saved_and_removed()
             assert!(!has, "key leaked into {}", e.display());
         }
     }
-    // Remove → "Using extractive fallback".
-    b.settings("secrets:set", json!({"name": "llm.openrouter", "value": null}))
+    // Remove.
+    b.settings("secrets:set", json!({"name": "test.token", "value": null}))
         .await;
     assert_eq!(b.settings("secrets:list", Value::Null).await, json!([]));
     b.quit().await;

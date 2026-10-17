@@ -223,9 +223,9 @@ pub fn fail_reason(e: &SpeechError) -> FailReason {
 /// Step 9 / N84 for note: one module session per recording part (session id = the part's audio path, both
 /// channels), started and attached before the helper gets `recording.start` (so sample 0 is the part's start),
 /// every event forwarded with `NoteRuntime::speech_event(Some(path), channels, ev)`, finished after the helper's
-/// `recording.stopped` (all audio written, fds closed) and cancelled on `recording.aborted`. Note never uses a
-/// cloud engine (the ElevenLabs talk opt-in never covers note, ADR 0046 §9 / N84): when on-device speech is not
-/// available the part gets `Failed {NotInstalled | Revoked | Stale}` (speech-unavailable plus the expired-list
+/// `recording.stopped` (all audio written, fds closed) and cancelled on `recording.aborted`. There is no cloud
+/// engine at all (ADR 0076; note never had one, ADR 0046 §9 / N84): when on-device speech is not available the
+/// part gets `Failed {NotInstalled | Revoked | Stale}` (speech-unavailable plus the expired-list
 /// notice; the audio is still recorded, never silently).
 pub struct NoteSpeech {
     pub engine: Arc<dyn SpeechEngine>,
@@ -256,11 +256,12 @@ impl NoteSpeech {
         let _ = self.runtime.set(rt);
     }
     pub fn choice(&self) -> EngineChoice {
-        let cfg = self.config.get();
+        // ADR 0076: qrtz is entirely offline, so there is no cloud consent to give (the old `privacy.localOnly` is
+        // stripped on load); a withdrawn module is "unavailable", never a cloud fallback.
         let consent = CloudConsent {
             talk: false,
             note: false,
-            local_only: cfg["privacy"]["localOnly"].as_bool().unwrap_or(false),
+            local_only: true,
         };
         choose_engine(&self.store.availability(now_ms()), consent, App::Note)
     }

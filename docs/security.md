@@ -42,7 +42,7 @@ Status as of M0 (2026-10-16). Items marked ☐ are tracked in PLAN.md.
 
 ## Privacy controls (iteration 13)
 
-- **Local-only** (`privacy.localOnly`): `effectiveLlmProvider` maps every cloud provider to `none` before main reads any key, so summaries and chat stay on-device. Ollama on localhost stays allowed. Checked by e2e against a stub that must receive zero requests.
+- **Entirely offline** (ADR 0076): no cloud speech and no summary provider; summaries are Apple Intelligence on the Mac (ADR 0075). The only outbound requests are the signed speech-bundle downloads (qrtz-speech; plain http only to a real loopback host, N100). The old `privacy.localOnly` switch is gone, and saved cloud keys are deleted at launch.
 - **Pause** (`recording.pause` / `recording.resume`): the helper writes silence and doesn't feed the recogniser; main also drops in-flight ASR.
 - **Excluded apps**: detection events from listed apps or platforms are dropped in main (logged without the title).
 - **Backups**: entries are restricted to `db/qrtz.db` and `audio/<safe name>.wav`. Every byte is sha256-verified before anything is written. The imported DB is integrity-checked and schema-checked, then merged without overwriting. `QRTZ_BACKUP_PATH` (which skips the dialogs, for tests) is stripped in packaged builds.

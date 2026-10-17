@@ -53,9 +53,11 @@ pub fn deep_merge(base: &Value, patch: &Value) -> Value {
 }
 
 /// Legacy shapes, migrated before validation (and persisted once by [`ConfigStore::open`]):
-/// - the Note sub app was called Memo: stored `memo: {...}` moves to `note` (keys under `note` win);
-/// - `talk.engine: "deepgram"` (the Deepgram engine was removed) becomes `auto`, which is on-device unless the user
-///   picks ElevenLabs. Without this the whole `talk` section would fail the enum and reset to defaults.
+/// - the Note sub app was called Memo: stored `memo: {...}` moves to `note` (keys under `note` win).
+///
+/// The removed cloud settings (ADR 0076: `talk.engine`, `talk.autoFailover`, `note.llmProvider`, `note.llmModel`,
+/// `speech.cloud`, `privacy.localOnly`; ADR 0067's `talk.engine: "deepgram"`) need no migration: they are no longer
+/// in the schema, so loading strips them like any unknown key and every other setting is kept.
 pub fn migrate_legacy(raw: &Value) -> (Value, bool) {
     let Some(o) = raw.as_object() else {
         return (raw.clone(), false);
@@ -74,12 +76,6 @@ pub fn migrate_legacy(raw: &Value) -> (Value, bool) {
         };
         rest.insert("note".into(), note);
         changed = true;
-    }
-    if let Some(talk) = rest.get_mut("talk").and_then(Value::as_object_mut) {
-        if talk.get("engine").is_some_and(|e| e == "deepgram") {
-            talk.insert("engine".into(), Value::from("auto"));
-            changed = true;
-        }
     }
     (Value::Object(rest), changed)
 }
@@ -186,29 +182,36 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    /// Deepgram was removed: an old config that picked it still loads, keeps every other talk setting, and
-    /// falls back to `auto` (on-device unless ElevenLabs is picked); the migration is reported so it's persisted.
+    /// ADR 0076 (and ADR 0067): a config from before qrtz went fully offline loads. The cloud settings are dropped
+    /// (unknown keys), every other setting is kept, and nothing needs rewriting.
     #[test]
-    fn a_config_that_picked_deepgram_loads_and_falls_back_to_auto() {
-        let old = json!({"talk": {"engine": "deepgram", "showPill": false, "pushKey": "right-option"},
-                         "privacy": {"localOnly": true}});
-        let (m, changed) = migrate_legacy(&old);
-        assert!(changed);
+    fn an_old_cloud_config_loads_without_its_cloud_settings() {
+        let old = json!({"talk": {"engine": "deepgram", "autoFailover": false, "showPill": false,
+                                  "pushKey": "right-option"},
+                         "note": {"llmProvider": "openrouter", "llmModel": "anthropic/claude-haiku-5.5",
+                                  "autoSummarize": false},
+                         "speech": {"cloud": "elevenlabs", "speakerMode": "accurate"},
+                         "privacy": {"localOnly": true, "excludedApps": ["Slack"]}});
+        assert!(!migrate_legacy(&old).1);
         let cfg = load_config(Some(&old));
-        assert_eq!(cfg["talk"]["engine"], "auto", "{cfg}");
+        for (sec, k) in [
+            ("talk", "engine"),
+            ("talk", "autoFailover"),
+            ("note", "llmProvider"),
+            ("note", "llmModel"),
+            ("speech", "cloud"),
+            ("privacy", "localOnly"),
+        ] {
+            assert!(cfg[sec].get(k).is_none(), "{sec}.{k} in {cfg}");
+        }
         assert_eq!(cfg["talk"]["showPill"], false, "{cfg}");
         assert_eq!(cfg["talk"]["pushKey"], "right-option", "{cfg}");
-        assert_eq!(cfg["privacy"]["localOnly"], true, "{cfg}");
-        assert_eq!(m["talk"]["engine"], "auto");
-        // And it's written back once, so the next read needs no migration.
+        assert_eq!(cfg["note"]["autoSummarize"], false, "{cfg}");
+        assert_eq!(cfg["speech"]["speakerMode"], "accurate", "{cfg}");
+        assert_eq!(cfg["privacy"]["excludedApps"], json!(["Slack"]), "{cfg}");
         let dir = tempfile::tempdir().unwrap();
         let f = dir.path().join("config.json");
         std::fs::write(&f, old.to_string()).unwrap();
-        let s = ConfigStore::open(&f);
-        assert_eq!(s.get()["talk"]["engine"], "auto");
-        let back: Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
-        assert_eq!(back["talk"]["engine"], "auto", "{back}");
-        // An unrelated config is not rewritten.
-        assert!(!migrate_legacy(&json!({"talk": {"engine": "elevenlabs"}})).1);
+        assert_eq!(ConfigStore::open(&f).get(), &cfg);
     }
 }

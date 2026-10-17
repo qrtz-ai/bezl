@@ -259,9 +259,14 @@ impl AppService {
             }
             "secrets:set" => {
                 let name = p["name"].as_str().unwrap_or_default();
+                // ADR 0076: no cloud keys are stored any more (a removal of a lingering one is still allowed).
+                if p["value"].is_string() && crate::secrets::RETIRED_SECRETS.contains(&name) {
+                    return Err(AppError::new(
+                        ErrorCode::Validation,
+                        format!("{name} is no longer used: qrtz runs entirely on this computer"),
+                    ));
+                }
                 self.secrets.set(name, p["value"].as_str())?;
-                // A new or removed ASR key changes which talk engine a dictation uses.
-                self.talk.config_changed();
                 Ok(json!({"ok": true}))
             }
             "secrets:list" => Ok(json!(self.secrets.list())),

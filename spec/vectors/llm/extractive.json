@@ -1,5 +1,5 @@
 {
- "about": "extractiveSummary (extractive.ts): the on-device fallback summary. Run by TS (llm.vectors.test.ts) and Rust (crates/qrtz-llm/tests/vectors.rs). n54-*: random small transcripts (old-scan parity) and the output caps (50 transcript + 20 note action items, 30 Q&A; ADR 0048).",
+ "about": "extractiveSummary (extractive.ts): the extractive summary (the fallback after the on-device model, ADR 0075). Run by TS (llm.vectors.test.ts) and Rust (crates/qrtz-llm/tests/vectors.rs). n54-*: random small transcripts (old-scan parity) and the output caps (50 transcript + 20 note action items, 30 Q&A; ADR 0048).",
  "cases": [
   {
    "name": "empty",

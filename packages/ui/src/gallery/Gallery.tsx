@@ -516,7 +516,7 @@ function Showcase({
                   { text: 'Draft pricing page' },
                 ]}
                 qa={[{ question: 'When is the beta?', answer: 'Friday.' }]}
-                source="openrouter"
+                source="on-device"
               />
               <NotesEditor
                 notes={notes}
@@ -698,7 +698,7 @@ function Showcase({
               <PlainList label="history">
                 <TalkHistoryRow
                   text="I think we should ship qrtz talk on Friday."
-                  meta="10:42 PM · Notes · elevenlabs · 312 ms"
+                  meta="10:42 PM · Notes · on-device · 312 ms"
                   onCopy={() => {}}
                   onDelete={() => {}}
                 />

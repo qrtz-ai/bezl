@@ -383,10 +383,10 @@ impl SetupPort for Setup {
 
 #[cfg(test)]
 mod tests {
-    /// N100: the speech bundle download allows plain http only to a real loopback host, and the
-    /// qrtz-speech copy of the check matches qrtz-llm's.
+    /// N100: the speech bundle download allows plain http only to a real loopback host (qrtz-llm's copy went with
+    /// the cloud client, ADR 0076).
     #[test]
-    fn the_loopback_checks_agree() {
+    fn the_loopback_check_is_strict() {
         for (url, loopback) in [
             ("http://127.0.0.1:8080", true),
             ("http://127.1", true),
@@ -399,7 +399,6 @@ mod tests {
             ("ftp://127.0.0.1", false),
             ("not a url", false),
         ] {
-            assert_eq!(qrtz_llm::steps::is_loopback_url(url), loopback, "{url}");
             assert_eq!(qrtz_speech::download::is_loopback_url(url), loopback, "{url}");
         }
     }

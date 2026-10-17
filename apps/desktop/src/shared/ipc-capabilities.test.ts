@@ -25,10 +25,10 @@ describe('sub-app capability matrix', () => {
     ['note', 'note:list', { query: 'x' }, true],
     ['note', 'note:start', {}, true],
     ['note', 'permissions:request', { permission: 'microphone' }, true],
-    ['note', 'secrets:set', { name: 'llm.openrouter', value: 'k' }, false],
+    ['note', 'secrets:set', { name: 'test.token', value: 'k' }, false],
     ['note', 'config:set', { patch: {} }, false],
     ['gallery', 'note:list', { query: '' }, false],
-    ['settings', 'secrets:set', { name: 'llm.openrouter', value: 'k' }, true],
+    ['settings', 'secrets:set', { name: 'test.token', value: 'k' }, true],
     ['settings', 'note:delete', { id: 'm' }, false],
   ] as const)(
     '%s → %s allowed=%s',

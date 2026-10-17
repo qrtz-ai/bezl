@@ -150,7 +150,7 @@ async fn record_stop_process_list_export_with_the_mock_helper() {
     until("done", || rt2.session().phase.as_str() == "done").await;
     let p = call(&r, "note", "note:pipeline", json!({"id": id})).await;
     assert_eq!(p["steps"]["finalize"]["status"], "done", "{p}");
-    // ADR 0042: qrtz-llm's on-device summary step is wired, so the meeting is not summary-less (N53).
+    // ADR 0075: the summary step (SummarySteps, on this Mac) is wired, so the meeting is not summary-less (N53).
     assert_eq!(p["steps"]["summary"]["status"], "done", "{p}");
 
     let list = call(&r, "note", "note:list", json!({})).await;
@@ -169,7 +169,7 @@ async fn record_stop_process_list_export_with_the_mock_helper() {
         &r,
         "settings",
         "secrets:set",
-        json!({"name": "llm.openrouter", "value": "sk-test"}),
+        json!({"name": "test.token", "value": "sk-test"}),
     )
     .await;
     #[cfg(unix)]

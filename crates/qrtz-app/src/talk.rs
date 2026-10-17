@@ -1,13 +1,13 @@
 //! qrtz talk (crates/qrtz-talk, ADR 0058) behind [`TalkPort`]: the helper sink over the supervisor, the
-//! validated event bus, the app secret store, the shell clipboard and the config store.
+//! validated event bus, the shell clipboard and the config store. On-device only (ADR 0076).
 use crate::ports::TalkPort;
 use crate::service::{Events, SharedConfig};
 use async_trait::async_trait;
 use qrtz_helper_bridge::{encode_host_message, HelperState, HelperStatus, Supervisor};
 use qrtz_ipc::{AppError, ErrorCode};
 use qrtz_talk::{
-    Clipboard, HelperAsrSpeech, HelperSink, Providers, RandomIds, SecretSource, SystemClock, TalkDeps,
-    TalkEvents, TalkService, Timeouts,
+    Clipboard, HelperAsrSpeech, HelperSink, RandomIds, SystemClock, TalkDeps, TalkEvents, TalkService,
+    Timeouts,
 };
 use serde_json::Value;
 use std::path::PathBuf;
@@ -62,14 +62,6 @@ impl TalkEvents for TalkBus {
     }
 }
 
-/// The cloud engine key (`asr.elevenlabs`) from the app secret store.
-pub struct TalkSecrets(pub Arc<dyn crate::secrets::SecretStore>);
-impl SecretSource for TalkSecrets {
-    fn get(&self, name: &str) -> Option<String> {
-        self.0.get(name)
-    }
-}
-
 /// The main-process clipboard (works while unfocused), via the shell.
 pub struct TalkClipboard(pub Arc<dyn crate::storage_port::StorageShell>);
 impl Clipboard for TalkClipboard {
@@ -81,27 +73,12 @@ impl Clipboard for TalkClipboard {
 pub struct TalkWiring {
     pub helper: Option<Supervisor>,
     pub events: Events,
-    pub secrets: Arc<dyn crate::secrets::SecretStore>,
     pub shell: Arc<dyn crate::storage_port::StorageShell>,
     pub config: SharedConfig,
     pub store_path: PathBuf,
     /// The on-device engine: the speech module with its audio from the helper; `None` = the helper's
     /// `dictation.asr` lines (no module configured in this build).
     pub local: Option<Arc<dyn qrtz_speech::SpeechEngine>>,
-    /// Dev knob `QRTZ_TALK_CLOUD=echo|fail`: the cloud engines are `qrtz_talk::mock::MockCloud` (echo every
-    /// stream, or refuse every connection) instead of real WebSockets. `None` in production.
-    pub cloud: Option<String>,
-}
-
-/// The cloud WebSocket transport: real (tungstenite) unless the `talk_cloud` dev knob picks a mock.
-fn cloud_connector(knob: Option<&str>) -> Arc<dyn qrtz_talk::ws::WsConnector> {
-    use qrtz_talk::contract::Engine;
-    use qrtz_talk::mock::{MockCloud, MockMode};
-    match knob {
-        Some("echo") => Arc::new(MockCloud::new()),
-        Some("fail") => Arc::new(MockCloud::new().with(Engine::Elevenlabs, MockMode::Refuse)),
-        _ => Arc::new(qrtz_talk::ws::TungsteniteConnector),
-    }
 }
 
 /// Build the service. The on-device engine is today's helper's `dictation.asr` lines until the qrtz speech
@@ -112,29 +89,14 @@ pub fn talk_service(w: TalkWiring) -> TalkService {
     TalkService::new(TalkDeps {
         helper: Arc::new(TalkHelper(w.helper)),
         events: Arc::new(TalkBus(w.events)),
-        secrets: Arc::new(TalkSecrets(w.secrets)),
         clipboard: Arc::new(TalkClipboard(w.shell)),
         clock: Arc::new(SystemClock::default()),
         ids: Arc::new(RandomIds),
-        connector: cloud_connector(w.cloud.as_deref()),
         local: w.local.unwrap_or_else(|| asr.clone()),
         helper_asr: asr,
         config: Arc::new(move || config.get()),
-        providers: Providers::default(),
         store_path: w.store_path,
         store_io: Arc::new(qrtz_talk::FsIo),
         timeouts: Timeouts::default(),
     })
-}
-
-#[cfg(test)]
-mod cloud_knob_tests {
-    use super::cloud_connector;
-    #[test]
-    fn the_talk_cloud_knob_picks_the_connector() {
-        // Smoke: every value builds a connector (the mock behaviour itself is qrtz-talk's mock tests).
-        for k in [None, Some("echo"), Some("fail"), Some("other")] {
-            let _ = cloud_connector(k);
-        }
-    }
 }

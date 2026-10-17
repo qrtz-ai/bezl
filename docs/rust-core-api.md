@@ -833,69 +833,29 @@ via `to_app_error_json`).
 
 Every stage is small commits straight to `main`, never adds GitHub Actions workflows, and keeps the Electron build untouched.
 
-## 9. `qrtz-llm` (summary step, ADR 0042)
+## 9. `qrtz-llm` (summary helpers, ADR 0042 → ADR 0075/0076)
 
-`LlmSteps<E: DbExec>` is the `StepExecutor` for `summary` and `resummarize`. It delegates `finalize` and `index`
-to `inner`. Wire it in place of `CoreSteps`:
+qrtz is entirely offline (ADR 0076): the OpenRouter client (`provider.rs`), the key source (`secrets.rs`), reqwest
+and the `LlmSteps` executor are gone, and so is the chat answer (ADR 0072/0073). The summary step is qrtz-app's
+`SummarySteps` (`crates/qrtz-app/src/summary.rs`, ADR 0075: Apple Intelligence through the helper's `summarize`,
+retries, then the extractive summary with `llmError`). qrtz-llm keeps what it builds on:
 
 ```rust
-let core = Arc::new(CoreSteps { db: storage.clone() });
-let steps = Arc::new(qrtz_llm::LlmSteps::new(
-    storage.clone(),
-    core,
-    Arc::new(now_ms),
-    Arc::new(move || llm_config_from_settings()), // read per attempt
-    Arc::new(qrtz_llm::EnvOverride::process(move |n: &str| secret_store.get(n))),
-));
-// On-device only (no provider, no keys): qrtz_llm::LlmSteps::on_device(storage.clone(), core, Arc::new(now_ms))
+use qrtz_llm::{load_sync, Loaded};
+let m: Loaded = load_sync(&db, &id, Some("standup"))?; // title, segments, notes, template (stored first), capture
+let fallback = m.extractive().await;                      // on spawn_blocking; `extractive_sync()` inline
+let prompt = qrtz_llm::build_summary_prompt(&m.title, &m.segments, &m.opts);
+let reply = qrtz_llm::parse_summary_reply(&text)?;        // retryable E_PROVIDER on a malformed reply
 ```
 
-- `LlmConfig { provider, model, base_url, local_only }` maps `note.llmProvider` (default `openrouter`),
-  `note.llmModel` (empty: `anthropic/claude-haiku-5.5`, `OPENROUTER_DEFAULT_MODEL`), `QRTZ_LLM_BASE_URL` and
-  `privacy.localOnly` (cloud providers become on-device; keys are never read). Keys: `SecretSource::get("llm.openrouter")`
-  and the other `SECRET_NAMES`. `EnvOverride` gives `QRTZ_SECRET_*` precedence, like the Electron store.
-- `summary(id, Llm)`: strict, one attempt under `SUMMARY_DEADLINE_MS` (110 s, monotonic). On success the summary is
-  saved and the meeting marked done. A provider failure is returned with its retry class (5xx/429, transport, and every
-  after-200 failure are retryable; other 4xx are not), and a timeout is a retryable `E_TIMEOUT` with the request
-  dropped, so a late reply is never saved. With no usable provider (none, local-only, no key, or nothing to summarize)
-  the extractive summary is saved. `Fallback{error}`: the extractive summary with `llmError` (≤ 500 UTF-16 units).
-  `Skip`: done, no summary.
-- `resummarize(id, template)`: the template is stored first. Not strict: a provider failure saves the extractive
-  summary with `llmError`; a timeout saves nothing and the old summary stays. Status is unchanged.
-- The extractive summary caps its lists (50 transcript + 20 note action items, 30 Q&A; N54, ADR 0048) and runs on
-  `spawn_blocking`.
+- The extractive summary caps its lists (50 transcript + 20 note action items, 30 Q&A; N54, ADR 0048).
 - The prompt lists capture gaps from `PipelineState.capture` (silent spans, plus lost spans as that source's
   silence; only both silent is "no audio at all").
-- N69 (ADR 0054): transcript text, speaker labels and the title are one line each (`prompt_safe`: controls,
-  U+2028/2029 and bidi controls become spaces), and the transcript sits in a `<transcript-NONCE>` fence with a
-  random per-request nonce that the system prompt declares data only. `SummaryOptions.fence_nonce` pins it in tests.
-- DB errors keep the storage classification (busy / full disk retryable, N13); a missing meeting is `E_NOT_FOUND`.
-- Keys never appear in logs or errors: `Secret` prints `***`, and error text that echoes a key is redacted.
-- Parity: `spec/vectors/llm/*.json` (prompt and exact request body, reply classification, reply parser, extractive),
-  written by `packages/core/src/note/llm.vectors.test.ts` and read by `crates/qrtz-llm/tests/*.rs`, plus a mock HTTP
-  server (`tests/common`).
-
-### 9.1 `note:chat` answer (`qrtz_llm::chat`, N89, ADR 0059)
-
-> Removed from the app with the "ask" chat (ADR 0072): nothing calls `answer_chat` any more.
-
-```rust
-// Keep the concrete LlmSteps next to the dyn StepExecutor (same instance: same provider, keys, local-only, client).
-let llm_steps = Arc::new(qrtz_llm::LlmSteps::new(db.clone(), core, now, config_fn, secrets));   // or ::on_device
-let llm: Arc<dyn StepExecutor> = llm_steps.clone();
-// note:chat {question, meetingId?, history?}:
-let r = qrtz_search::retrieve(&db, &embedder, &question, meeting_id).await?;  // E_NOT_FOUND for an unknown meeting
-let sources = r.into_sources(&question);              // hybrid order, else rank_sources(q, candidates, 24)
-let answer = llm_steps.answer_chat(&question, &sources, &history).await;     // never Err
-Ok(serde_json::to_value(answer)?)                     // ChatAnswer {answer, sources, provider, llmError?}
-```
-
-- `history`: `Vec<qrtz_llm::ChatTurn>` deserialized from the request (`{role: "user"|"assistant", content}`); the
-  last 6 go into the prompt.
-- LLM when `provider()` gives one (the configured provider with its key; under local-only only `none` or loopback
-  Ollama), one attempt under 110 s, not JSON mode, no streaming. Otherwise, or on any LLM failure, the first 3
-  sources are quoted (`provider: "extractive"`, `llmError` when a provider was tried).
-- Parity: `spec/vectors/llm/chat.json` (prompts + request bodies, ChatAnswer shaping), `tests/n89.rs`.
+- N69 (ADR 0054): transcript text, speaker labels and the title are one line each (`prompt_safe`), and the
+  transcript sits in a `<transcript-NONCE>` fence with a random per-request nonce. `SummaryOptions.fence_nonce` pins
+  it in tests.
+- Parity: `spec/vectors/llm/{prompts,summary-replies,extractive}.json`, written by
+  `packages/core/src/note/llm.vectors.test.ts` and read by `crates/qrtz-llm/tests/*.rs`.
 
 ## 9. `qrtz-backup`: Markdown export and backup zip (phase 3, done)
 
@@ -983,22 +943,19 @@ let sources = r.into_sources(&question);  // r.ranked (hybrid, first 24) or rank
 
 ## 11. `qrtz-talk`: dictation behind `TalkPort` (phase 2, done)
 
-Owner: Bozniak. ADR 0058, on ADR 0046 (`qrtz-speech`). Port of `apps/desktop/src/main/talk-service.ts`.
+Owner: Bozniak. ADR 0058, on ADR 0046 (`qrtz-speech`). Port of `apps/desktop/src/main/talk-service.ts`. On-device
+only since ADR 0076: no cloud engine, no secrets, no WebSocket connector, no LLM cleanup.
 
 ```rust
 let talk = qrtz_talk::TalkService::new(TalkDeps {
     helper: Arc<dyn HelperSink>,          // fn send(&self, &Value) -> bool   (false = helper not running)
     events: Arc<dyn TalkEvents>,          // fn emit(&self, event: &str, payload: Value)  talk:state / talk:history-changed
-    secrets: Arc<dyn SecretSource>,       // fn get(&self, name) -> Option<String>   (keys never logged)
     clipboard: Arc<dyn Clipboard>,        // fn write(&self, &str)
     clock: Arc<dyn Clock>,                // now_ms (wall) + mono_ms;  SystemClock::default()
     ids: Arc<dyn IdSource>,               // RandomIds
-    llm: Arc<dyn CleanupLlmSource>,       // async fn llm(&self) -> Option<Arc<dyn CleanupLlm>>;  NoLlm = rules only
-    connector: Arc<dyn WsConnector>,      // ws::TungsteniteConnector (cloud only, opt-in)
     local: Arc<dyn qrtz_speech::SpeechEngine>,  // the on-device module engine (ADR 0046)
     helper_asr: Arc<HelperAsrSpeech>,     // transitional: the helper's dictation.asr lines as an engine
     config: Arc<dyn Fn() -> Value + Send + Sync>, // the full app config JSON
-    providers: Providers::default(),      // the ElevenLabs endpoint
     store_path: <data dir>/talk.json,     // same file and format as Electron
     store_io: Arc::new(FsIo),
     timeouts: Timeouts::default(),
@@ -1008,18 +965,18 @@ talk.call(channel, payload).await -> Result<Value, AppError> // every talk:* cha
 talk.toggle().await -> TalkView          // push-to-talk shortcut
 talk.helper_line(&msg)                   // dictation.*, hello, error{dictation.*}, permission.revoked
 talk.helper_status(running_or_starting: bool, why: &str)  // false while active → T1 helper-lost
-talk.configure()                         // config changed: warm mic / engine
+talk.configure()                         // config changed: warm mic
 talk.state() / history() / dictionary() / set_dictionary(..) / delete_entry(id) / clear_history() / copy(id)
 talk.start().await / stop().await / cancel()
 ```
 
-`TalkView.errorKind`: `offline` (cloud selected, unreachable, auto-failover off), `mic-denied`,
+`TalkView.errorKind`: `mic-denied`,
 `mic-did-not-start`, `busy`, `helper-lost`, `helper-unavailable`, `permission-revoked`, `mic-lost`,
 `speech-incompatible`, `speech-unavailable`, `speech-lost` (TS zod enum `TalkErrorKind`, same strings).
 
 Talk shows no `EngineInfo`, session version or `StoreStatus` (N72); the handshake is `SpeechEngine::start` before
 the mic opens (`Incompatible` → `speech-incompatible`; `NotInstalled`, `Denied` / `RevocationExpired`, `Stale`,
-`Busy` → `speech-unavailable`, or the user's enabled cloud engine). A session's `FailReason`: `NotInstalled` /
+`Busy` → `speech-unavailable`; there is no cloud fallback, ADR 0076). A session's `FailReason`: `NotInstalled` /
 `Revoked` / `Stale` → `speech-unavailable`; `Crashed` / `ProtocolViolations` / `StartFailed` / `Timeout` →
 `speech-lost`. A revoked running session ends at the engine's next safe point (ADR 0058 §5).
 
@@ -1037,10 +994,10 @@ finalize attributes per-channel speakers (`qrtz_lifecycle::speakers::attribute`;
    `toggle` → `Ok(serde_json::to_value(self.0.toggle().await)?)`; `config_changed` → `self.0.configure()`.
 3. `HelperSink`: encode the line and `SupervisorHelper::try_send`; return `false` when it isn't running.
 4. `TalkEvents`: emit onto the validated event bus (`talk:state`, `talk:history-changed`).
-5. `SecretSource`: over `wiring::platform_secrets(data)` (`SecretStore::get`); name `asr.elevenlabs` (the TS name; `asr.deepgram` went with the Deepgram engine).
+5. ~~`SecretSource`~~: gone with the cloud engine (ADR 0076); saved `asr.elevenlabs` / `asr.deepgram` keys are deleted at launch.
 6. `Clipboard`: the shell's clipboard; `config`: a closure over the config store's current JSON.
 7. `local`: your module engine (the `SpeechEngine` over the spawner) once it lands; until then `let h = Arc::new(HelperAsrSpeech::new()); local: h.clone(),
    helper_asr: h`. Once it does, `local: Arc::new(<module engine>)` and keep any `helper_asr` instance.
-8. `store_path: dirs.data.join("talk.json")`, `store_io: Arc::new(FsIo)`, `connector: Arc::new(TungsteniteConnector)`.
+8. `store_path: dirs.data.join("talk.json")`, `store_io: Arc::new(FsIo)`.
 9. Recording: when the module engine runs a part's session, forward each event with
    `note_runtime.speech_event(Some(&part_audio_path), &spec.channels, ev)` instead of the helper's `asr` lines.

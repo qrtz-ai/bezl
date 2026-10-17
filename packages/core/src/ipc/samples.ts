@@ -118,7 +118,7 @@ export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
     response: { theme: 'light' },
   },
   'secrets:set': {
-    request: { name: 'llm.openrouter', value: 'sk-test' },
+    request: { name: 'test.token', value: 'test-value' },
     response: { ok: true },
   },
   'secrets:list': { request: undefined, response: [] },

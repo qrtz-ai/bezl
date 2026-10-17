@@ -1,55 +1,26 @@
 //! ADR 0067: Deepgram is gone. State written while it existed still loads, in qrtz-talk on its own (without
-//! qrtz-app's `migrate_legacy`): a config that still says `talk.engine = deepgram` with its `asr.deepgram` key
-//! dictates on-device and never opens a socket; a talk.json history entry from Deepgram keeps its text and reads
-//! as `elevenlabs` (still cloud, `store::legacy_entry`); everything else in the file is kept.
+//! qrtz-app's `migrate_legacy`): a config that still says `talk.engine = deepgram` dictates on-device (talk has
+//! no cloud engine at all since ADR 0076); a talk.json history entry from Deepgram keeps its text and reads as
+//! `elevenlabs` (the read-only legacy cloud label, `store::legacy_entry`); everything else in the file is kept.
 mod common;
 use common::*;
 use qrtz_talk::store::{load, parse, FsIo, LoadOutcome};
 use qrtz_talk::*;
 use serde_json::{json, Value};
 
-const OLD_KEY: &str = "dg-old-key-not-real";
-
 #[tokio::test(start_paused = true)]
-async fn an_unmigrated_deepgram_pick_and_key_dictate_on_device_without_the_network() {
+async fn an_unmigrated_deepgram_pick_dictates_on_device() {
     let r = rig(RigOpts {
-        config: json!({"talk": {"engine": "deepgram", "autoFailover": false}}),
-        elevenlabs: false,
+        config: json!({"talk": {"engine": "deepgram", "autoFailover": false, "restoreClipboard": false}}),
         ..Default::default()
     });
-    r.secrets
-        .0
-        .lock()
-        .unwrap()
-        .insert("asr.deepgram".into(), OLD_KEY.into());
     let cfg = TalkConfig::from_app_config(&r.config.lock().unwrap());
-    assert!(!cfg.auto_failover, "the rest of the talk config still reads");
-    assert!(r.svc.resolve_cloud(&cfg).is_none());
+    assert!(!cfg.restore_clipboard, "the rest of the talk config still reads");
     assert_eq!(r.svc.resolve_engine(), Engine::OnDevice);
     let v = r.dictate(300).await;
-    assert!(r.cloud.requests().is_empty(), "no cloud connection");
     let e = v.last.expect("an entry");
     assert_eq!(e.engine, Engine::OnDevice);
     assert!(!e.failover);
-    assert!(!r.everything_said().contains(OLD_KEY));
-}
-
-#[tokio::test(start_paused = true)]
-async fn an_old_deepgram_key_never_unlocks_elevenlabs() {
-    // Picking ElevenLabs with only the old Deepgram key stored is "no key": on-device, no socket.
-    let r = rig(RigOpts {
-        config: json!({"talk": {"engine": "elevenlabs"}}),
-        elevenlabs: false,
-        ..Default::default()
-    });
-    r.secrets
-        .0
-        .lock()
-        .unwrap()
-        .insert("asr.deepgram".into(), OLD_KEY.into());
-    assert_eq!(r.svc.resolve_engine(), Engine::OnDevice);
-    r.dictate(300).await;
-    assert!(r.cloud.requests().is_empty());
 }
 
 #[test]

@@ -21,7 +21,7 @@ bun run build:helper         # Swift helper (AX, audio capture), release arm64
 bun start                    # tauri dev: the Rust core + the React renderer with hot reload
 ```
 
-- **AI summaries:** add an OpenRouter key in onboarding or settings (stored in the Keychain), or set `QRTZ_SECRET_OPENROUTER`. Without a key, qrtz uses its on-device summarizer.
+- **Summaries:** written on your Mac by Apple Intelligence (macOS 26+, ADR 0075). There is no key to add: qrtz is entirely offline (ADR 0076).
 - **Packaged app:** `bun run make` runs `tauri build` (`.app` + `.dmg`). Signing and notarization: [docs/release.md](docs/release.md).
 - **No Mac?** Everything except real capture runs on Linux with the Rust mock helper: `QRTZ_MOCK_HELPER=1 QRTZ_MOCK_SCENARIO=standup QRTZ_MOCK_SPEED=0.1 bun start`.
 
@@ -30,9 +30,9 @@ bun start                    # tauri dev: the Rust core + the React renderer wit
 - **Calendar-free auto-start:** detects Zoom (app and web) and Meet (Chrome and Safari) through the Accessibility tree. It reads the title, participants and active speaker, then asks whether to record or starts on its own if you chose "Always record".
 - **Live transcript:** on-device streaming ASR with speaker names, a floating mini HUD (pause, notes, stop), a ⌘⇧R toggle and a menu bar item.
 - **Live notes (Granola-style):** timestamped notes from the HUD or the Notes tab. They shape the summary, and TODOs become action items.
-- **After the call:** summary, action items and Q&A in five templates (General, 1:1, Standup, Sales, Interview). It uses OpenRouter, or Ollama or the extractive fallback when local-only is on.
+- **After the call:** summary, action items and Q&A in five templates (General, 1:1, Standup, Sales, Interview). Written on this Mac by Apple Intelligence; when it isn't available, a transcript-based summary with a retry.
 - **Your archive:** full-text search, speaker rename and merge, Markdown export, and delete with confirmation and Undo.
-- **Privacy:** pause capture (⌘⇧P), excluded apps, a "never send to the cloud" switch, and optional audio retention.
+- **Privacy:** pause capture (⌘⇧P), excluded apps and optional audio retention. Nothing leaves your Mac: the only network use is downloading signed speech updates.
 - **Backup:** one streamed zip with a sha256 manifest and a progress bar. Import verifies everything and never overwrites.
 - **Built to fail soft:** if the helper crashes, the audio and transcript are kept. LLM failures fall back to the on-device summary with a Retry button. Settings sections load independently.
 
@@ -67,12 +67,11 @@ bun start                    # tauri dev: the Rust core + the React renderer wit
 
 ## Accounts needed
 
-| Account                                                                        | Used for                                               | Status                                  |
-| ------------------------------------------------------------------------------ | ------------------------------------------------------ | --------------------------------------- |
-| Apple Developer ID (plus an app-specific password or API key for notarization) | Signing, notarization, auto-update                     | Needed before the first release         |
-| OpenRouter API key                                                             | Cloud summaries (`QRTZ_SECRET_OPENROUTER` or Settings) | Optional; on-device fallback without it |
-| Hugging Face token                                                             | Only if model downloads get rate-limited               | Optional                                |
-| Update-feed host (R2, S3 or GitHub Releases)                                   | `QRTZ_UPDATE_FEED_URL` at build time                   | Later; off by default                   |
+| Account                                                                        | Used for                                 | Status                          |
+| ------------------------------------------------------------------------------ | ---------------------------------------- | ------------------------------- |
+| Apple Developer ID (plus an app-specific password or API key for notarization) | Signing, notarization, auto-update       | Needed before the first release |
+| Hugging Face token                                                             | Only if model downloads get rate-limited | Optional                        |
+| Update-feed host (R2, S3 or GitHub Releases)                                   | `QRTZ_UPDATE_FEED_URL` at build time     | Later; off by default           |
 
 ## Commands
 
@@ -113,8 +112,8 @@ If a sub app needs the backend, add a channel to `ipcContract` in
 
 - **Detection and metadata:** finds Zoom (app and web) and Google Meet (Chrome and Safari) through the macOS Accessibility tree, and reads the title, participants and active speaker.
 - **Live transcription:** on-device streaming through the qrtz speech module, with speakers per channel.
-- **After the meeting:** an LLM writes the summary, action items and Q&A.
-- **LLM keys:** OpenRouter is the default. Set `QRTZ_SECRET_OPENROUTER` or add a key in Settings. Without a key, an on-device extractive summarizer is used.
+- **After the meeting:** Apple Intelligence on this Mac writes the summary, action items and Q&A.
+- **No keys, no cloud:** qrtz is entirely offline (ADR 0076). Saved cloud keys from older builds are deleted at launch.
 - **Storage and export:** local SQLite with full-text search, and Markdown export.
 
 On Linux (and in tests) the Rust mock helper replaces the Swift helper. To watch a scripted meeting:

@@ -1,22 +1,17 @@
 //! Test harness: a scripted helper (admission through the shared helper arbiter), a paused tokio clock, the
-//! in-process mock speech servers, recording sinks. Nothing here touches the network.
+//! in-process mock speech module, recording sinks. Nothing here touches the network.
 #![allow(dead_code)]
 use base64::Engine as _;
 use qrtz_lifecycle::{arbiter_step, ArbiterCmd, ArbiterEvent, ArbiterState, Configure, Decision};
 use qrtz_model::OsPermission;
-use qrtz_talk::mock::{MockCloud, MockSpeech};
+use qrtz_talk::mock::MockSpeech;
 use qrtz_talk::*;
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
-
-#[allow(unused_imports)]
-pub use qrtz_talk::mock::MockMode;
-pub const KEY_EL: &str = "el-secret-key-123";
 
 /// Paused tokio time as both clocks; wall = a fixed epoch + elapsed (jumps can be injected).
 pub struct TestClock {
@@ -45,14 +40,6 @@ pub struct SeqIds(AtomicU64);
 impl IdSource for SeqIds {
     fn next_id(&self) -> String {
         format!("t{}", self.0.fetch_add(1, Ordering::SeqCst) + 1)
-    }
-}
-
-#[derive(Default)]
-pub struct Secrets(pub Mutex<HashMap<String, String>>);
-impl SecretSource for Secrets {
-    fn get(&self, name: &str) -> Option<String> {
-        self.0.lock().unwrap().get(name).cloned()
     }
 }
 
@@ -463,10 +450,8 @@ impl HelperSink for SinkHandle {
 pub struct Rig {
     pub svc: TalkService,
     pub helper: Arc<MockHelper>,
-    pub cloud: MockCloud,
     pub events: Arc<Events>,
     pub clip: Arc<Clip>,
-    pub secrets: Arc<Secrets>,
     pub io: Arc<FaultyIo>,
     pub dir: tempfile::TempDir,
     pub store: PathBuf,
@@ -477,9 +462,6 @@ pub struct Rig {
 
 pub struct RigOpts {
     pub helper: HelperOpts,
-    pub cloud: MockCloud,
-    /// An ElevenLabs key in the secret store (the cloud still only runs when `talk.engine = elevenlabs`).
-    pub elevenlabs: bool,
     pub config: Value,
     pub seed_store: Option<Vec<u8>>,
     pub timeouts: Timeouts,
@@ -493,17 +475,13 @@ impl Default for RigOpts {
                 audio_every_ms: 50,
                 ..Default::default()
             },
-            cloud: MockCloud::new(),
-            elevenlabs: true,
             config: json!({}),
             seed_store: None,
             timeouts: Timeouts {
                 started: 500,
                 stopped: 500,
                 insert: 300,
-                stall: 400,
                 final_ms: 300,
-                check: 50,
             },
             local_start_delay_ms: 0,
         }
@@ -538,14 +516,6 @@ pub fn rig(o: RigOpts) -> Rig {
     let helper = MockHelper::new(o.helper);
     let events = Arc::new(Events::default());
     let clip = Arc::new(Clip::default());
-    let secrets = Arc::new(Secrets::default());
-    if o.elevenlabs {
-        secrets
-            .0
-            .lock()
-            .unwrap()
-            .insert("asr.elevenlabs".into(), KEY_EL.into());
-    }
     let io = Arc::new(FaultyIo::default());
     let config = Arc::new(Mutex::new(o.config));
     let cfg = config.clone();
@@ -566,15 +536,12 @@ pub fn rig(o: RigOpts) -> Rig {
     let svc = TalkService::new(TalkDeps {
         helper: Arc::new(SinkHandle(helper.clone())),
         events: events.clone(),
-        secrets: secrets.clone(),
         clipboard: clip.clone(),
         clock: Arc::new(TestClock::new()),
         ids: Arc::new(SeqIds::default()),
-        connector: Arc::new(o.cloud.clone()),
         local,
         helper_asr,
         config: Arc::new(move || cfg.lock().unwrap().clone()),
-        providers: Providers::default(),
         store_path: store.clone(),
         store_io: io.clone(),
         timeouts: o.timeouts,
@@ -583,10 +550,8 @@ pub fn rig(o: RigOpts) -> Rig {
     Rig {
         svc,
         helper,
-        cloud: o.cloud,
         events,
         clip,
-        secrets,
         io,
         dir,
         store,

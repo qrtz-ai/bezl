@@ -1,22 +1,14 @@
-//! Dictation scenarios against the scripted helper, the speech module seam and the mock cloud.
+//! Dictation scenarios against the scripted helper and the speech module seam.
 mod common;
 use common::*;
-use qrtz_talk::mock::{MockCloud, MOCK_DICTATION};
+use qrtz_talk::mock::MOCK_DICTATION;
 use qrtz_talk::*;
 use serde_json::json;
 
-fn el() -> serde_json::Value {
-    json!({"talk": {"engine": "elevenlabs"}})
-}
-
 #[tokio::test(start_paused = true)]
-async fn on_device_is_the_default_and_never_touches_the_network() {
-    let r = rig(RigOpts::default()); // an ElevenLabs key exists, but the cloud is opt-in
+async fn on_device_is_the_only_engine() {
+    let r = rig(RigOpts::default());
     let v = r.dictate(400).await;
-    assert!(
-        r.cloud.requests().is_empty(),
-        "no cloud connection without opting in"
-    );
     let e = v.last.expect("an entry");
     assert_eq!(e.engine, Engine::OnDevice);
     assert!(!e.failover);
@@ -28,124 +20,28 @@ async fn on_device_is_the_default_and_never_touches_the_network() {
     );
     assert_eq!(r.phases(), ["listening", "finalizing", "inserting", "idle"]);
     assert_eq!(r.svc.history().len(), 1);
+    // The helper never streams the mic to the host: there is no host-side (cloud) engine (ADR 0076).
+    assert!(r
+        .helper
+        .sent_of("dictation.configure")
+        .iter()
+        .all(|m| m["streamAudio"] == false));
 }
 
 #[tokio::test(start_paused = true)]
-async fn on_device_works_with_local_only_and_no_keys() {
+async fn an_old_cloud_config_still_dictates_on_device() {
+    // A config from before ADR 0076: ElevenLabs picked, failover off, local-only on. All of it is ignored.
     let r = rig(RigOpts {
-        elevenlabs: false,
-        config: json!({"privacy": {"localOnly": true}, "talk": {"engine": "elevenlabs"}}),
+        config: json!({"privacy": {"localOnly": true},
+                       "talk": {"engine": "elevenlabs", "autoFailover": false}}),
         ..Default::default()
     });
+    assert_eq!(r.svc.resolve_engine(), Engine::OnDevice);
     let v = r.dictate(300).await;
-    assert!(r.cloud.requests().is_empty());
-    assert_eq!(v.last.unwrap().engine, Engine::OnDevice);
-}
-
-#[tokio::test(start_paused = true)]
-async fn elevenlabs_when_selected_streams_in_host_and_wins() {
-    let r = rig(RigOpts {
-        config: el(),
-        ..Default::default()
-    });
-    let v = r.dictate(400).await;
-    assert_eq!(r.cloud.engines(), [Engine::Elevenlabs]);
-    assert!(
-        r.cloud.audio_frames(0) > 0,
-        "helper audio is forwarded to the cloud"
-    );
     let e = v.last.unwrap();
-    assert_eq!(e.engine, Engine::Elevenlabs);
+    assert_eq!(e.engine, Engine::OnDevice);
     assert!(!e.failover);
-    assert_eq!(e.raw, MOCK_DICTATION);
-    // The key is a header on the request only.
-    let req = &r.cloud.requests()[0];
-    assert!(req.headers.iter().any(|(k, v)| k == "xi-api-key" && v == KEY_EL));
-    assert!(!req.url.contains(KEY_EL));
-    assert!(!r.everything_said().contains(KEY_EL));
-    let real = qrtz_talk::ws::WsRequest {
-        url: req.url.clone(),
-        headers: req.headers.clone(),
-        protocols: vec![KEY_EL.into()],
-    };
-    assert!(
-        !format!("{real:?}").contains(KEY_EL),
-        "Debug of a request redacts headers and subprotocols"
-    );
-}
-
-#[tokio::test(start_paused = true)]
-async fn cloud_drop_mid_stream_fails_over_to_on_device() {
-    let r = rig(RigOpts {
-        config: el(),
-        cloud: MockCloud::new().with(Engine::Elevenlabs, MockMode::DropAfter(3)),
-        ..Default::default()
-    });
-    let v = r.dictate(600).await;
-    let e = v.last.expect("dictation still lands");
-    assert_eq!(e.engine, Engine::OnDevice);
-    assert!(e.failover);
-    assert!(e.inserted);
-    assert!(!e.raw.is_empty());
     assert!(v.error.is_none());
-}
-
-#[tokio::test(start_paused = true)]
-async fn cloud_down_at_start_fails_over_with_auto_failover() {
-    let r = rig(RigOpts {
-        config: el(),
-        cloud: MockCloud::new().with(Engine::Elevenlabs, MockMode::Refuse),
-        ..Default::default()
-    });
-    let v = r.dictate(400).await;
-    let e = v.last.unwrap();
-    assert_eq!(e.engine, Engine::OnDevice);
-    assert!(e.failover);
-}
-
-#[tokio::test(start_paused = true)]
-async fn cloud_down_without_failover_is_a_fast_typed_offline_error() {
-    let r = rig(RigOpts {
-        config: json!({"talk": {"engine": "elevenlabs", "autoFailover": false}}),
-        cloud: MockCloud::new().with(Engine::Elevenlabs, MockMode::Refuse),
-        ..Default::default()
-    });
-    let me = r.svc.clone();
-    tokio::spawn(async move { me.start().await });
-    until(|| r.view().phase == TalkPhase::Error, 200).await;
-    let v = r.view();
-    assert_eq!(v.error_kind, Some(TalkErrorKind::Offline));
-    assert!(!v.error.unwrap_or_default().contains(KEY_EL));
-    assert!(
-        r.helper.sent_of("dictation.cancel").len() == 1,
-        "the mic is released"
-    );
-    assert!(
-        r.svc.history().is_empty(),
-        "never substitutes on-device text for the cloud the user picked"
-    );
-    assert!(!r.everything_said().contains(KEY_EL));
-}
-
-#[tokio::test(start_paused = true)]
-async fn cloud_lost_mid_dictation_without_failover_keeps_heard_words_on_clipboard() {
-    let cloud = MockCloud::new();
-    let r = rig(RigOpts {
-        config: json!({"talk": {"engine": "elevenlabs", "autoFailover": false}}),
-        cloud: cloud.clone(),
-        ..Default::default()
-    });
-    let me = r.svc.clone();
-    tokio::spawn(async move { me.start().await });
-    until(|| !r.view().text.is_empty() || !r.view().partial.is_empty(), 1000).await;
-    sleep(200).await;
-    cloud.set_offline(true);
-    until(|| r.view().phase == TalkPhase::Error, 200).await;
-    assert_eq!(r.view().error_kind, Some(TalkErrorKind::Offline));
-    let clip = r.clip.0.lock().unwrap().clone();
-    assert_eq!(clip.len(), 1);
-    assert!(MOCK_DICTATION.starts_with(&clip[0]) && !clip[0].is_empty());
-    assert!(r.svc.history().is_empty());
 }
 
 #[tokio::test(start_paused = true)]
@@ -267,7 +163,7 @@ async fn warm_mic_is_configured_on_hello() {
     assert_eq!(last["consumeFn"], true, "talk.blockGlobeKey is on by default");
     assert_eq!(
         last["streamAudio"], false,
-        "no audio streaming without an opted-in cloud"
+        "no audio streaming: there is no host-side engine"
     );
     assert!(r.helper.arbiter().warm);
 }
@@ -325,15 +221,6 @@ async fn ipc_channels_round_trip() {
     );
     assert!(r.svc.history().is_empty());
     assert!(r.svc.call("talk:nope", json!({})).await.is_err());
-}
-
-#[test]
-fn provider_errors_are_redacted() {
-    let m = qrtz_talk::session::redact(
-        &format!("401 for key {KEY_EL} at wss://x?token={KEY_EL}"),
-        Some(KEY_EL),
-    );
-    assert!(!m.contains(KEY_EL));
 }
 
 #[tokio::test(start_paused = true)]

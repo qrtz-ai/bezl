@@ -1,16 +1,5 @@
 import type { Config } from './config';
 
-/** Cloud LLM providers; Ollama runs on this machine and stays allowed in local-only mode. */
-const LOCAL_PROVIDERS = new Set(['none', 'ollama']);
-
-/** The provider to actually use: local-only forces the on-device path for anything cloud-hosted. */
-export function effectiveLlmProvider(
-  cfg: Config,
-): Config['note']['llmProvider'] {
-  const p = cfg.note.llmProvider;
-  return cfg.privacy.localOnly && !LOCAL_PROVIDERS.has(p) ? 'none' : p;
-}
-
 /** True when a detected meeting's app/platform matches an excluded entry (case-insensitive). */
 export function isExcludedApp(
   cfg: Config,

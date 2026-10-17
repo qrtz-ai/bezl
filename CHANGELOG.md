@@ -2,6 +2,14 @@
 
 ## Unreleased: Tauri only
 
+- **qrtz is entirely offline (Jared's decision, ADR 0076):**
+  - ElevenLabs is gone. Talk is on-device only, and if speech is missing or withdrawn, talk and note say they're unavailable instead of using the cloud.
+  - OpenRouter and the other summary providers are gone. Summaries are Apple Intelligence on your Mac (ADR 0075).
+  - Removed from settings: the speech engine, "fall back to on-device", the summary provider, model and API key, and "local only" (everything is local now).
+  - Onboarding has no key step.
+  - Saved ElevenLabs, OpenRouter and other cloud keys are deleted at the next launch.
+  - Old settings files load and keep everything else.
+  - The only network use left is downloading signed speech updates.
 - **Summaries are written on your Mac, offline (Jared's decision, ADR 0075):** Apple Intelligence's on-device model (macOS 26+) writes every meeting summary through the helper; nothing goes to OpenRouter or any other service. Long meetings are summarized in parts and merged (the model reads about 4,000 tokens at a time; a 5,000-word meeting takes about 2 minutes on an M1 Pro). If Apple Intelligence is off, still downloading, or not available on this Mac, the meeting keeps the transcript-based summary and says what to do ("turn it on in system settings › apple intelligence & siri, then retry"), with a retry button. The summary source reads "on-device · apple intelligence".
 - **The "ask" chat is gone (Jared's decision, ADR 0072):** no more chat per meeting or across meetings, and no on-device search model (MiniLM) download, background indexing or their two settings. Search is full-text, as it always was underneath. Old settings files and databases load as before; a downloaded search model stays on disk unused.
 - **fn for talk no longer switches the input language (macOS):** while fn is the talk key, the helper's session event tap swallows the Fn/globe events, so macOS doesn't also run its globe action (input source, emoji picker). It's on by default and can be turned off in settings → talk ("fn only for talk", `talk.blockGlobeKey`). It needs Accessibility; with only Input Monitoring, talk still works and the globe action runs as before.

@@ -1,22 +1,17 @@
 //! The talk service: push-to-talk dictation. idle → listening → finalizing → inserting → idle (or
-//! error). On release the final ASR text gets the on-device cleanup only (no LLM: ADR 0071) and goes straight in. The helper opens the mic; the on-device engine (`qrtz_speech::SpeechEngine`, the qrtz speech module) is
-//! the default, so dictation works offline. An opt-in cloud provider (ElevenLabs) runs alongside when the user picks it, and
-//! the [`Arbiter`] fails over to the on-device text when it breaks; with auto-failover off an unreachable cloud
-//! ends the dictation at once with `errorKind: offline`. Every wait has a timeout so a dictation always ends.
+//! error). On release the final ASR text gets the on-device cleanup only (no LLM: ADR 0071) and goes straight in.
+//! The helper opens the mic; the on-device engine (`qrtz_speech::SpeechEngine`, the qrtz speech module) is the only
+//! engine, so talk never touches the network (ADR 0076): a missing, revoked or stale module makes talk unavailable
+//! (`speech-unavailable`), never a cloud fallback. Every wait has a timeout so a dictation always ends.
 //!
 //! Port of `apps/desktop/src/main/talk-service.ts` (busy ids 8eddeab, T1 2ea8a53, H5, T3/T4); ADR 0058.
-use crate::arbiter::Arbiter;
 use crate::cleanup::cleanup_dictation;
 use crate::config::TalkConfig;
 use crate::contract::*;
-use crate::provider::{ElevenLabsProvider, StreamingProvider};
 use crate::speech::{
-    bound_final, cloud_fail_text, drive, fail_error, max_rejects, start_error, CloudSpeech, HelperAsrSpeech,
-    SessionCtl, TalkValidator,
+    bound_final, drive, fail_error, max_rejects, start_error, HelperAsrSpeech, SessionCtl, TalkValidator,
 };
 use crate::store::{self, LoadOutcome, Store, StoreIo, MAX_HISTORY};
-use crate::ws::WsConnector;
-use base64::Engine as _;
 use qrtz_ipc::{AppError, ErrorCode};
 use qrtz_speech::engine::StatusPhase;
 use qrtz_speech::{Channel, FailReason, SessionKind, SessionSpec, SpeakerMode, SpeechEngine, SpeechEvent};
@@ -38,17 +33,13 @@ pub trait HelperSink: Send + Sync {
 pub trait TalkEvents: Send + Sync {
     fn emit(&self, event: &str, payload: Value);
 }
-/// API keys from qrtz-app's secret store. Values are only ever handed to a provider's request.
-pub trait SecretSource: Send + Sync {
-    fn get(&self, name: &str) -> Option<String>;
-}
 pub trait Clipboard: Send + Sync {
     fn write(&self, text: &str);
 }
 pub trait Clock: Send + Sync {
     /// Wall clock, epoch ms (`at`, `startedAt`, file names).
     fn now_ms(&self) -> f64;
-    /// Monotonic ms (latencies, durations, stall and timeout checks; immune to clock jumps).
+    /// Monotonic ms (latencies, durations and timeout checks; immune to clock jumps).
     fn mono_ms(&self) -> f64;
 }
 pub trait IdSource: Send + Sync {
@@ -106,18 +97,6 @@ impl IdSource for RandomIds {
     }
 }
 
-/// The cloud providers a user can opt into (`talk.engine`).
-pub struct Providers {
-    pub elevenlabs: Arc<dyn StreamingProvider>,
-}
-impl Default for Providers {
-    fn default() -> Self {
-        Self {
-            elevenlabs: Arc::new(ElevenLabsProvider::default()),
-        }
-    }
-}
-
 /// Timeouts (ms), the TS defaults; tests shrink them.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Timeouts {
@@ -127,12 +106,8 @@ pub struct Timeouts {
     pub stopped: u64,
     /// `insert.text` → `insert.result`.
     pub insert: u64,
-    /// Cloud silent this long while on-device already has words → failed over (auto-failover on).
-    pub stall: u64,
-    /// Cloud flush → final text.
+    /// On-device flush → its last finals.
     pub final_ms: u64,
-    /// Stall check period.
-    pub check: u64,
 }
 impl Default for Timeouts {
     fn default() -> Self {
@@ -140,9 +115,7 @@ impl Default for Timeouts {
             started: 3000,
             stopped: 3000,
             insert: 2500,
-            stall: 1500,
             final_ms: 1500,
-            check: 250,
         }
     }
 }
@@ -150,11 +123,9 @@ impl Default for Timeouts {
 pub struct TalkDeps {
     pub helper: Arc<dyn HelperSink>,
     pub events: Arc<dyn TalkEvents>,
-    pub secrets: Arc<dyn SecretSource>,
     pub clipboard: Arc<dyn Clipboard>,
     pub clock: Arc<dyn Clock>,
     pub ids: Arc<dyn IdSource>,
-    pub connector: Arc<dyn WsConnector>,
     /// The on-device engine (`qrtz_speech::SpeechEngine`: the qrtz speech module). Talk never knows the model.
     pub local: Arc<dyn SpeechEngine>,
     /// Today's helper's `dictation.asr` lines as a `SpeechEngine` (transitional; pass the same instance as
@@ -162,7 +133,6 @@ pub struct TalkDeps {
     pub helper_asr: Arc<HelperAsrSpeech>,
     /// The full app config JSON (read on every use).
     pub config: Arc<dyn Fn() -> Value + Send + Sync>,
-    pub providers: Providers,
     /// `<data dir>/talk.json` (the same file Electron used).
     pub store_path: PathBuf,
     pub store_io: Arc<dyn StoreIo>,
@@ -173,24 +143,27 @@ pub struct TalkDeps {
 
 struct Attempt {
     id: String,
-    arbiter: Arbiter,
-    /// The opt-in cloud provider and its key (`None` = on-device only).
-    cloud: Option<(Arc<dyn StreamingProvider>, Option<String>)>,
-    session: Option<SessionCtl>,
-    /// Cloud audio that arrived before its session was up (flushed on attach).
-    pending_audio: Vec<Vec<u8>>,
-    cloud_val: TalkValidator,
-    /// The on-device session (pinned by the engine to the module version it started on); `None` once it failed.
+    /// The on-device session (pinned by the engine to the module version it started on); `None` once it ended.
     local: Option<SessionCtl>,
     local_val: TalkValidator,
     local_done: Option<oneshot::Sender<()>>,
-    /// An on-device session is running or starting (the fallback exists).
-    local_wanted: bool,
-    cloud_finals: Vec<String>,
-    cloud_partial: String,
-    gen: u64,
-    auto_failover: bool,
-    final_tx: Option<oneshot::Sender<Result<String, String>>>,
+    finals: Vec<String>,
+    partial: String,
+}
+
+impl Attempt {
+    /// (committed, partial) as heard so far.
+    fn text(&self) -> (String, String) {
+        (self.finals.join(" ").trim().to_owned(), self.partial.clone())
+    }
+    fn live(&self) -> String {
+        let (c, p) = self.text();
+        join(&c, &p)
+    }
+}
+
+fn join(a: &str, b: &str) -> String {
+    format!("{a} {b}").trim().to_owned()
 }
 
 struct Inner {
@@ -224,8 +197,6 @@ fn s(v: &Value, k: &str) -> String {
     v[k].as_str().unwrap_or_default().to_owned()
 }
 
-const MSG_OFFLINE: &str =
-    "the cloud speech provider can't be reached and automatic failover is off, so dictation stopped";
 const MSG_BUSY: &str = "another dictation is still running";
 
 impl TalkService {
@@ -387,41 +358,19 @@ impl TalkService {
 
     // --------------------------------------------------------------------------------------------- engine
 
-    /// The cloud provider a new dictation streams to, if any. On-device is the default (`auto` and `on-device`);
-    /// a cloud engine only when picked explicitly, its key exists and local-only privacy is off. A picked engine
-    /// without a key falls back to on-device, like Electron's `resolveEngine`.
-    pub fn resolve_cloud(&self, cfg: &TalkConfig) -> Option<(Arc<dyn StreamingProvider>, Option<String>)> {
-        if cfg.local_only {
-            return None;
-        }
-        let p = &self.deps().providers;
-        let pr = match cfg.engine.as_str() {
-            "elevenlabs" => p.elevenlabs.clone(),
-            _ => return None,
-        };
-        let key = pr
-            .secret_name()
-            .and_then(|n| self.deps().secrets.get(n))
-            .filter(|k| !k.is_empty());
-        pr.configured(key.as_deref()).then_some((pr, key))
-    }
-
-    /// Which engine a new dictation uses.
+    /// Which engine a new dictation uses: always the on-device qrtz speech module (there is no cloud, ADR 0076).
     pub fn resolve_engine(&self) -> Engine {
-        self.resolve_cloud(&self.cfg())
-            .map(|(p, _)| p.engine())
-            .unwrap_or(Engine::OnDevice)
+        Engine::OnDevice
     }
 
     /// Push settings to the helper. Call on start, every helper hello and every config or secret change.
     pub fn configure(&self) {
         let cfg = self.cfg();
-        let stream = self.resolve_cloud(&cfg).is_some();
         self.send(json!({
             "type": "dictation.configure",
             "warmMic": cfg.enabled && cfg.warm_mic,
             "preRollMs": cfg.pre_roll_ms,
-            "streamAudio": stream,
+            "streamAudio": false, // the mic audio is only ever for a host-side engine; there is none
             "pushKey": if cfg.enabled { cfg.push_key.clone() } else { String::new() },
             "consumeFn": cfg.block_globe_key,
         }));
@@ -490,23 +439,6 @@ impl TalkService {
                 if g.view.phase == TalkPhase::Listening {
                     g.view.level = m["rms"].as_f64().unwrap_or(0.0);
                     self.emit_view(&g);
-                }
-            }
-            "dictation.audio" => {
-                let Ok(pcm) =
-                    base64::engine::general_purpose::STANDARD.decode(m["pcm16"].as_str().unwrap_or_default())
-                else {
-                    return;
-                };
-                let mut g = self.lock();
-                let Some(a) = g.attempt.as_mut().filter(|a| a.id == s(m, "id")) else {
-                    return;
-                };
-                match &a.session {
-                    Some(sess) => sess.push_audio(pcm),
-                    // The cloud session is still being set up: keep it (bounded: ~10 s at 16 kHz mono).
-                    None if a.cloud.is_some() && a.pending_audio.len() < 500 => a.pending_audio.push(pcm),
-                    None => {}
                 }
             }
             "dictation.stopped" => {
@@ -669,31 +601,25 @@ impl TalkService {
     fn refresh(&self, g: &mut Inner) {
         let now = self.mono();
         let Some(a) = g.attempt.as_ref() else { return };
-        let (c, p) = a.arbiter.view();
-        let (engine, failover) = (a.arbiter.engine(), a.arbiter.failover());
+        let (c, p) = a.text();
         if (!c.is_empty() || !p.is_empty()) && g.first_partial.is_none() {
             g.first_partial = Some(now);
         }
         g.view.text = c;
         g.view.partial = p;
-        g.view.engine = Some(engine);
-        g.view.failover = Some(failover);
+        g.view.engine = Some(Engine::OnDevice);
+        g.view.failover = Some(false);
         self.emit_view(g);
     }
 
-    // --------------------------------------------------------------------------------------------- cloud
+    // --------------------------------------------------------------------------------------------- speech
 
-    fn on_event(&self, id: &str, gen: u64, local: bool) -> Arc<dyn Fn(SpeechEvent) + Send + Sync> {
+    fn on_event(&self, id: &str) -> Arc<dyn Fn(SpeechEvent) + Send + Sync> {
         let me = Arc::downgrade(&self.0);
         let id = id.to_owned();
         Arc::new(move |ev| {
             if let Some(sh) = me.upgrade() {
-                let svc = TalkService(sh);
-                if local {
-                    svc.on_local(&id, ev)
-                } else {
-                    svc.on_cloud(&id, gen, ev)
-                }
+                TalkService(sh).on_local(&id, ev)
             }
         })
     }
@@ -708,52 +634,8 @@ impl TalkService {
         }
     }
 
-    /// The opt-in cloud engine, as one more `SpeechEngine` in the host (called under the state lock: the start
-    /// itself runs on a task; audio until then is kept in `pending_audio`).
-    fn connect_cloud(&self, a: &mut Attempt, dictionary: Vec<DictionaryEntry>) {
-        let Some((pr, key)) = a.cloud.clone() else { return };
-        a.gen += 1;
-        a.arbiter.attach_cloud(pr.engine());
-        let engine = CloudSpeech {
-            provider: pr,
-            key,
-            connector: self.deps().connector.clone(),
-            dictionary,
-        };
-        let (me, id, gen) = (self.clone(), a.id.clone(), a.gen);
-        let on = self.on_event(&id, gen, false);
-        tokio::spawn(async move {
-            match engine.start(Self::spec(&id)).await {
-                Ok(sess) => {
-                    let ctl = drive(sess, Channel::Mic, on);
-                    let mut g = me.lock();
-                    if let Some(a) = g
-                        .attempt
-                        .as_mut()
-                        .filter(|a| a.id == id && a.gen == gen && a.arbiter.using_cloud())
-                    {
-                        for pcm in a.pending_audio.drain(..) {
-                            ctl.push_audio(pcm);
-                        }
-                        a.session = Some(ctl);
-                    }
-                }
-                Err(e) => {
-                    let mut g = me.lock();
-                    if g.attempt.as_ref().is_some_and(|a| a.id == id && a.gen == gen) {
-                        me.cloud_failed(
-                            &mut g,
-                            Some(format!("cloud engine refused: {}", start_error(&e).1)),
-                        );
-                    }
-                }
-            }
-        });
-    }
-
     /// Validated on-device words, or the engine going away.
     fn on_local(&self, id: &str, ev: SpeechEvent) {
-        let now = self.mono();
         let mut g = self.lock();
         let Some(a) = g.attempt.as_mut().filter(|a| a.id == id) else {
             return;
@@ -761,16 +643,13 @@ impl TalkService {
         let failed = match &ev {
             SpeechEvent::Words { .. } => match a.local_val.words(&ev) {
                 Ok(h) => {
-                    let stalled = if h.is_final {
-                        a.arbiter.local_final(&h.text, now)
+                    if h.is_final {
+                        a.finals.push(h.text);
+                        a.partial.clear();
                     } else {
-                        a.arbiter.local_partial(&h.text, now)
-                    };
-                    if stalled {
-                        self.cloud_failed(&mut g, None);
-                    } else {
-                        self.refresh(&mut g);
+                        a.partial = h.text;
                     }
+                    self.refresh(&mut g);
                     None
                 }
                 Err(r) => {
@@ -801,8 +680,7 @@ impl TalkService {
         }
     }
 
-    /// The on-device session is gone mid-dictation. With the cloud carrying the dictation it continues; otherwise
-    /// it ends cleanly with what was heard: `speech-unavailable` when the module was revoked, went stale or isn't
+    /// The on-device session is gone mid-dictation: it ends cleanly with what was heard (no cloud fallback): `speech-unavailable` when the module was revoked, went stale or isn't
     /// installed (the engine ends a revoked session at its next safe point, after the utterance in flight), else
     /// `speech-lost` (crash, protocol violations).
     fn local_failed(&self, mut g: MutexGuard<'_, Inner>, id: &str, reason: FailReason) {
@@ -812,12 +690,11 @@ impl TalkService {
         };
         tracing::warn!(?reason, "on-device speech ended");
         a.local = None;
-        a.local_wanted = false;
         if let Some(tx) = a.local_done.take() {
             let _ = tx.send(());
         }
-        let heard = a.arbiter.local_live();
-        if a.arbiter.using_cloud() || g.view.phase != TalkPhase::Listening {
+        let heard = a.live();
+        if g.view.phase != TalkPhase::Listening {
             return;
         }
         let (id, dur) = (id.to_owned(), now - g.key_down);
@@ -827,109 +704,6 @@ impl TalkService {
         tokio::spawn(async move {
             let (kind, msg) = fail_error(reason);
             me.ended_by_helper(id, heard, dur, kind, msg).await
-        });
-    }
-
-    fn on_cloud(&self, id: &str, gen: u64, ev: SpeechEvent) {
-        let mut g = self.lock();
-        let Some(a) = g.attempt.as_mut().filter(|a| a.id == id && a.gen == gen) else {
-            return;
-        };
-        match &ev {
-            SpeechEvent::Words { .. } => match a.cloud_val.words(&ev) {
-                Ok(h) => {
-                    if h.is_final {
-                        if !h.text.is_empty() {
-                            a.cloud_finals.push(h.text);
-                        }
-                        a.cloud_partial.clear();
-                    } else {
-                        a.cloud_partial = h.text;
-                    }
-                    let committed = a.cloud_finals.join(" ");
-                    let partial = a.cloud_partial.clone();
-                    a.arbiter.cloud_update(&committed, &partial);
-                    if matches!(g.view.phase, TalkPhase::Listening | TalkPhase::Finalizing) {
-                        self.refresh(&mut g);
-                    }
-                }
-                Err(r) => {
-                    tracing::warn!(why = r.0, "rejected cloud speech output");
-                    if a.cloud_val.rejected >= max_rejects() {
-                        self.cloud_failed(&mut g, Some("invalid provider output".into()));
-                    }
-                }
-            },
-            SpeechEvent::Finished { .. } => {
-                a.session = None;
-                let text = a.cloud_finals.join(" ");
-                if let Some(tx) = a.final_tx.take() {
-                    let _ = tx.send(Ok(text));
-                }
-            }
-            SpeechEvent::Failed { reason } => {
-                let r = cloud_fail_text(*reason).to_owned();
-                self.cloud_failed(&mut g, Some(r))
-            }
-            SpeechEvent::Status { .. } | SpeechEvent::Speaker { .. } => {}
-        }
-    }
-
-    /// The cloud stream is unusable (error, drop, or stalled when `reason` is None). With auto-failover the
-    /// on-device text takes over (Electron's behaviour); without it the dictation ends now with `offline`.
-    fn cloud_failed(&self, g: &mut Inner, reason: Option<String>) {
-        let Some(a) = g.attempt.as_mut() else { return };
-        if let Some(r) = &reason {
-            a.arbiter.cloud_error(r);
-        }
-        let why = a.arbiter.fail_reason().unwrap_or("cloud failed").to_owned();
-        tracing::warn!(engine = ?a.arbiter.cloud_engine().map(|e| e.as_str()), reason = %why, "cloud speech failed");
-        a.session = None;
-        if let Some(tx) = a.final_tx.take() {
-            let _ = tx.send(Err(why));
-            return;
-        }
-        // No fallback when the user turned failover off, or when there is no on-device stream to fall back to.
-        if (!a.auto_failover || !a.local_wanted) && g.view.phase == TalkPhase::Listening {
-            return self.go_offline(g);
-        }
-        self.refresh(g);
-    }
-
-    /// Auto-failover off and the cloud is gone: stop the mic and fail fast. Words the cloud heard go to the
-    /// clipboard so nothing is lost.
-    fn go_offline(&self, g: &mut Inner) {
-        let heard = g
-            .attempt
-            .as_ref()
-            .map(|a| a.arbiter.cloud_live())
-            .unwrap_or_default();
-        let msg = if heard.is_empty() {
-            MSG_OFFLINE.to_owned()
-        } else {
-            self.deps().clipboard.write(&heard);
-            format!("{MSG_OFFLINE}; what was heard is on the clipboard")
-        };
-        self.fail(g, TalkErrorKind::Offline, &msg, true);
-    }
-
-    fn spawn_stall_check(&self, id: String) {
-        let me = Arc::downgrade(&self.0);
-        let every = self.deps().timeouts.check.max(1);
-        tokio::spawn(async move {
-            loop {
-                tokio::time::sleep(Duration::from_millis(every)).await;
-                let Some(sh) = me.upgrade() else { return };
-                let svc = TalkService(sh);
-                let now = svc.mono();
-                let mut g = svc.lock();
-                let Some(a) = g.attempt.as_mut().filter(|a| a.id == id) else {
-                    return;
-                };
-                if a.arbiter.check(now) {
-                    svc.cloud_failed(&mut g, None);
-                }
-            }
         });
     }
 
@@ -979,30 +753,18 @@ impl TalkService {
         if !self.lock().view.takes_a_start() {
             return self.state();
         }
-        let cfg = self.cfg();
-        let cloud = self.resolve_cloud(&cfg);
         let id = self.deps().ids.next_id();
         // The on-device session starts before the mic opens: `start()` is the engine's version handshake, so an
-        // incompatible or missing module is a typed refusal with the mic never touched (warm-mic pre-roll covers
-        // the spawn). With a cloud engine selected, the dictation goes ahead on the cloud alone.
+        // incompatible, missing, revoked or stale module is a typed refusal with the mic never touched (warm-mic
+        // pre-roll covers the spawn). There is no cloud to fall back to (ADR 0076).
         let local = match self.deps().local.start(Self::spec(&id)).await {
-            Ok(sess) => Some(sess),
+            Ok(sess) => sess,
             Err(e) => {
                 let (kind, msg) = start_error(&e);
-                if cloud.is_none() {
-                    return self.refuse(kind, &msg);
-                }
-                tracing::warn!(?kind, "on-device speech refused the session; cloud only");
-                None
+                return self.refuse(kind, &msg);
             }
         };
-        let local_ok = local.is_some();
         let now = self.deps().clock.now_ms();
-        let stall = if cfg.auto_failover {
-            self.deps().timeouts.stall as f64
-        } else {
-            f64::INFINITY
-        };
         let started_rx = {
             let mut g = self.lock();
             if !g.view.takes_a_start() {
@@ -1015,12 +777,7 @@ impl TalkService {
                 phase: TalkPhase::Listening,
                 id: Some(id.clone()),
                 started_at: Some(now),
-                engine: Some(
-                    cloud
-                        .as_ref()
-                        .map(|(p, _)| p.engine())
-                        .unwrap_or(Engine::OnDevice),
-                ),
+                engine: Some(Engine::OnDevice),
                 ..TalkView::idle()
             };
             if from_key {
@@ -1028,27 +785,14 @@ impl TalkService {
             }
             g.attempt = Some(Attempt {
                 id: id.clone(),
-                arbiter: Arbiter::new(stall),
-                cloud,
-                session: None,
-                pending_audio: Vec::new(),
-                cloud_val: TalkValidator::new(&[Channel::Mic]),
-                local: None,
+                local: Some(drive(local, Channel::Mic, self.on_event(&id))),
                 local_val: TalkValidator::new(&[Channel::Mic]),
                 local_done: None,
-                local_wanted: local_ok,
-                cloud_finals: Vec::new(),
-                cloud_partial: String::new(),
-                gen: 0,
-                auto_failover: cfg.auto_failover,
-                final_tx: None,
+                finals: Vec::new(),
+                partial: String::new(),
             });
-            if let (Some(sess), Some(a)) = (local, g.attempt.as_mut()) {
-                a.local = Some(drive(sess, Channel::Mic, self.on_event(&id, 0, true)));
-            }
             Self::waiter(&mut g, format!("started:{id}"))
         };
-        // Ask the helper first: the mic must open as early as possible; the socket connects in parallel.
         if !self.send(json!({"type": "dictation.start", "id": id})) {
             let mut g = self.lock();
             self.fail(
@@ -1063,10 +807,6 @@ impl TalkService {
             let mut g = self.lock();
             // The helper can answer at once (busy / mic denied): this attempt is already over.
             if g.view.id.as_deref() == Some(id.as_str()) && g.view.phase == TalkPhase::Listening {
-                let dictionary = g.store.dictionary.clone();
-                if let Some(a) = g.attempt.as_mut() {
-                    self.connect_cloud(a, dictionary);
-                }
                 self.emit_view(&g);
                 // N111: the key went up while the engine was starting (a tap shorter than the module spawn and
                 // handshake): its release found nothing listening yet, so stop now. After `dictation.start` was
@@ -1076,7 +816,6 @@ impl TalkService {
                     g.via_push_key = false;
                 }
                 drop(g);
-                self.spawn_stall_check(id.clone());
                 if released {
                     tracing::info!("push key released while the dictation was starting; stopping it");
                     let me = self.clone();
@@ -1185,83 +924,46 @@ impl TalkService {
         self.emit_view(&g);
     }
 
-    /// Flush the cloud (if still in use), pick the text, then the on-device cleanup → insert → history.
+    /// Flush the on-device session, pick the text, then the on-device cleanup → insert → history.
     ///
     /// From `inserting` on, a newer dictation may own the view (N110): everything this one needs (start time, key
     /// times, first partial) is captured before that, and its end only sets `last` on a view that isn't its own.
     /// Returns whether the view was still this dictation's at the end.
     async fn finish(&self, id: String, local_text: String, duration_ms: f64) -> bool {
         let t = self.deps().timeouts;
-        let rx = {
+        let local_rx = {
             let mut g = self.lock();
             let Some(a) = g.attempt.as_mut().filter(|a| a.id == id) else {
                 return g.view.id.as_deref() == Some(id.as_str());
             };
-            let local = a.local.as_ref().map(|l| {
+            a.local.as_ref().map(|l| {
                 let (tx, rx) = oneshot::channel();
                 a.local_done = Some(tx);
                 l.finish();
                 rx
-            });
-            let cloud = match (&a.session, a.arbiter.using_cloud()) {
-                (Some(sess), true) => {
-                    let (tx, rx) = oneshot::channel();
-                    a.final_tx = Some(tx);
-                    sess.finish();
-                    Some(rx)
-                }
-                _ => None,
-            };
-            (local, cloud)
+            })
         };
-        let (local_rx, rx) = rx;
-        // The on-device engine's last finals (bounded by the same flush timeout as the cloud).
-        let local_wait = async {
-            if let Some(l) = local_rx {
-                let _ = tokio::time::timeout(Duration::from_millis(t.final_ms), l).await;
-            }
-        };
-        let cloud_wait = async {
-            match rx {
-                Some(rx) => Some(
-                    match tokio::time::timeout(Duration::from_millis(t.final_ms), rx).await {
-                        Ok(Ok(r)) => r,
-                        Ok(Err(_)) => Err("cloud failed".into()),
-                        Err(_) => Err("cloud final timed out".into()),
-                    },
-                ),
-                None => None,
-            }
-        };
-        let ((), cloud) = tokio::join!(local_wait, cloud_wait);
+        // The on-device engine's last finals (bounded by the flush timeout).
+        if let Some(l) = local_rx {
+            let _ = tokio::time::timeout(Duration::from_millis(t.final_ms), l).await;
+        }
         let final_at = self.mono();
-        let asr = {
+        let text = {
             let mut g = self.lock();
-            let Some(mut a) = g.attempt.take().filter(|a| a.id == id) else {
+            let Some(a) = g.attempt.take().filter(|a| a.id == id) else {
                 return g.view.id.as_deref() == Some(id.as_str());
             };
-            let cloud = if a.arbiter.using_cloud() {
-                cloud.or(Some(Err("cloud failed".into())))
-            } else {
-                None
+            // The helper's full text from `dictation.stopped` wins; else what the session heard.
+            let text = match local_text.trim() {
+                "" => a.live(),
+                t => t.to_owned(),
             };
-            let had_cloud = a.arbiter.cloud_engine().is_some();
-            let asr = a.arbiter.finish(&local_text, cloud);
-            if had_cloud && !a.auto_failover && asr.engine == Engine::OnDevice {
-                // Auto-failover off: never substitute the on-device text for the cloud the user picked.
-                g.attempt = Some(a);
-                self.go_offline(&mut g);
-                return true;
-            }
-            if let Some(r) = &asr.reason {
-                tracing::info!(reason = %r, "used on-device text");
-            }
             // Still finalizing, so still this dictation's view and key times (no start is taken until inserting).
             let times = (g.view.started_at, g.key_down, g.key_up, g.first_partial);
-            (asr, times)
+            (text, times)
         };
-        let (asr, (started_at, key_down, key_up, first_partial)) = asr;
-        if asr.text.trim().is_empty() {
+        let (text, (started_at, key_down, key_up, first_partial)) = text;
+        if text.trim().is_empty() {
             let mut g = self.lock();
             g.view = g.view.idle_keeping();
             self.emit_view(&g);
@@ -1270,14 +972,14 @@ impl TalkService {
         let cfg = self.cfg();
         let dictionary = {
             let mut g = self.lock();
-            g.view.text = asr.text.clone();
+            g.view.text = text.clone();
             g.view.partial.clear();
-            g.view.engine = Some(asr.engine);
-            g.view.failover = Some(asr.failover);
+            g.view.engine = Some(Engine::OnDevice);
+            g.view.failover = Some(false);
             g.store.dictionary.clone()
         };
         let clean_at = self.mono();
-        let cleaned = cleanup_dictation(&asr.text, &dictionary, cfg.auto_cleanup);
+        let cleaned = cleanup_dictation(&text, &dictionary, cfg.auto_cleanup);
         let cleanup_ms = self.mono() - clean_at;
         let mut insert: Option<Value> = None;
         let mut error: Option<String> = None;
@@ -1312,11 +1014,11 @@ impl TalkService {
         let entry = TalkEntry {
             id: id.clone(),
             at: started_at.unwrap_or_else(|| self.deps().clock.now_ms()),
-            raw: asr.text.clone(),
+            raw: text.clone(),
             text: cleaned.text.clone(),
             cleanup: cleaned.method,
-            engine: asr.engine,
-            failover: asr.failover,
+            engine: Engine::OnDevice,
+            failover: false,
             insert: method,
             inserted: ok,
             app: insert.as_ref().and_then(|m| m["app"].as_str()).map(str::to_owned),

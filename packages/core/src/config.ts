@@ -1,6 +1,11 @@
 import { z } from 'zod';
 
-/** App configuration (non-secret). Every field has a default so old files keep loading. */
+/**
+ * App configuration (non-secret). Every field has a default so old files keep loading, and removed fields are
+ * stripped on load. qrtz is entirely offline (ADR 0076): the cloud settings (`note.llmProvider`, `note.llmModel`,
+ * `talk.engine`, `talk.autoFailover`, `speech.cloud`, `privacy.localOnly`) are gone; an old file that has them
+ * still loads, without them.
+ */
 export const ConfigSchema = z.object({
   schemaVersion: z.literal(1).default(1),
   theme: z.enum(['dark', 'light', 'system']).default('dark'),
@@ -29,10 +34,6 @@ export const ConfigSchema = z.object({
       notifyNoAudio: z.boolean().default(true),
       /** Summarize automatically when a meeting ends (off = Summarize button in the meeting). */
       autoSummarize: z.boolean().default(true),
-      llmProvider: z
-        .enum(['openai', 'anthropic', 'google', 'openrouter', 'ollama', 'none'])
-        .default('openrouter'),
-      llmModel: z.string().default(''),
       /** Show the floating always-on-top mini HUD while recording. */
       floatingHud: z.boolean().default(true),
       /** Delete recordings (audio only; transcript and summary stay) this many days after the meeting. 0 = keep. */
@@ -59,10 +60,6 @@ export const ConfigSchema = z.object({
       warmMic: z.boolean().default(false),
       /** Audio kept from just before the key press (warm mic only). */
       preRollMs: z.number().int().min(0).max(2000).default(300),
-      /** auto: on-device (the cloud is opt-in). ElevenLabs is the only cloud engine (Deepgram was removed). */
-      engine: z.enum(['auto', 'elevenlabs', 'on-device']).default('auto'),
-      /** Switch to the on-device stream automatically when the cloud stream fails. */
-      autoFailover: z.boolean().default(true),
       /** Clean up dictated text on the device (fillers, punctuation, the dictionary). There is no LLM cleanup:
        * the text goes in as soon as the key is released (an old `aiCleanup` / `cleanupModel` /
        * `cleanupTimeoutMs` is dropped on load). */
@@ -81,18 +78,14 @@ export const ConfigSchema = z.object({
     .object({
       /** Speaker labelling trade-off: fast (about 1 s behind) or accurate (about 3 s behind). */
       speakerMode: z.enum(['fast', 'accurate']).default('fast'),
-      /** Optional cloud words (host-side ElevenLabs adapter); speakers stay on-device. */
-      cloud: z.enum(['off', 'elevenlabs']).default('off'),
       /** Download and install signed speech updates in the background (never during a session). */
       autoUpdate: z.boolean().default(true),
     })
     .prefault({}),
-  /** First-run setup (welcome, permissions, speech download, optional OpenRouter key). */
+  /** First-run setup (welcome, permissions, speech download). */
   onboarding: z.object({ done: z.boolean().default(false) }).prefault({}),
   privacy: z
     .object({
-      /** Never send audio, transcripts or notes to a cloud service: summaries use the on-device fallback (or a local Ollama). */
-      localOnly: z.boolean().default(false),
       /** Meetings detected in these apps/platforms (e.g. "Safari", "zoom", "google-meet") are ignored. */
       excludedApps: z
         .array(z.string().trim().min(1).max(80))
@@ -112,9 +105,9 @@ const isObj = (v: unknown): v is Record<string, unknown> =>
 
 /**
  * Legacy settings (crates/qrtz-app `migrate_legacy` does the same). The Note sub app was called Memo, so stored
- * files have `memo: {...}`; it moves to `note` (keys already under `note` win). `talk.engine: 'deepgram'` (the
- * engine was removed) becomes `auto`, so the rest of `talk` survives. Returns the input unchanged when nothing
- * needs migrating.
+ * files have `memo: {...}`; it moves to `note` (keys already under `note` win). Removed settings (an old
+ * `talk.engine`, Deepgram's included) need nothing: the schema strips them. Returns the input unchanged when
+ * nothing needs migrating.
  */
 export function migrateLegacyConfig(raw: unknown): {
   raw: unknown;
@@ -130,10 +123,6 @@ export function migrateLegacyConfig(raw: unknown): {
       ...(isObj(rest.note) ? rest.note : {}),
     };
     out = { ...rest, note };
-    migrated = true;
-  }
-  if (isObj(out.talk) && out.talk.engine === 'deepgram') {
-    out = { ...out, talk: { ...out.talk, engine: 'auto' } };
     migrated = true;
   }
   return { raw: migrated ? out : raw, migrated };

@@ -206,53 +206,6 @@ async fn without_a_helper_a_dictation_fails_cleanly_and_holds_no_live_work() {
     assert_ne!(call(&r, "talk:state", Value::Null).await["phase"], "listening");
 }
 
-/// A one-reply-per-connection OpenRouter stand-in: records each request body, answers a chat completion.
-async fn mock_openrouter(reply: &'static str) -> (String, Arc<Mutex<Vec<String>>>) {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = format!("http://{}", l.local_addr().unwrap());
-    let seen = Arc::new(Mutex::new(Vec::new()));
-    let s2 = seen.clone();
-    tokio::spawn(async move {
-        while let Ok((mut s, _)) = l.accept().await {
-            let seen = s2.clone();
-            tokio::spawn(async move {
-                let mut buf = Vec::new();
-                let mut tmp = [0u8; 8192];
-                loop {
-                    let n = s.read(&mut tmp).await.unwrap_or(0);
-                    if n == 0 {
-                        return;
-                    }
-                    buf.extend_from_slice(&tmp[..n]);
-                    let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") else {
-                        continue;
-                    };
-                    let head = String::from_utf8_lossy(&buf[..i]).to_lowercase();
-                    let len = head
-                        .lines()
-                        .find_map(|l| l.strip_prefix("content-length:"))
-                        .and_then(|v| v.trim().parse::<usize>().ok())
-                        .unwrap_or(0);
-                    if buf.len() >= i + 4 + len {
-                        let body = String::from_utf8_lossy(&buf[i + 4..]).to_string();
-                        seen.lock().unwrap().push(format!("{head}\n\n{body}"));
-                        break;
-                    }
-                }
-                let body = json!({"choices": [{"message": {"content": reply}}]}).to_string();
-                let r = format!(
-                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
-                    body.len()
-                );
-                let _ = s.write_all(r.as_bytes()).await;
-                let _ = s.shutdown().await;
-            });
-        }
-    });
-    (base, seen)
-}
-
 async fn settings(r: &Router<Shared>, ch: &str, payload: Value) -> Value {
     let v = r
         .dispatch(json!({"v":1,"id":"s","channel":ch,"version":1,"subApp":"settings","payload":payload}))
@@ -271,12 +224,12 @@ async fn dictate_once(r: &Router<Shared>) -> Value {
     h[0].clone()
 }
 
-/// Jared: talk has no LLM cleanup (speed). With an OpenRouter key saved, a dictation still makes no request and
-/// the text goes in as soon as the key is released (on-device rules only: fillers, punctuation, dictionary).
+/// Jared: talk has no LLM cleanup (speed), and there is no LLM client at all (ADR 0076). The text goes in as soon
+/// as the key is released (on-device rules only: fillers, punctuation, dictionary).
 /// An old config that still has the removed `aiCleanup` / `cleanupModel` / `cleanupTimeoutMs` loads; those keys
 /// are dropped. Parity rows 34/35 (docs/e2e-parity.md) are retired by this.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn talk_never_calls_an_llm_even_with_an_openrouter_key() {
+async fn talk_cleans_up_on_device_and_old_llm_cleanup_settings_load() {
     let tmp = tempfile::tempdir().unwrap();
     let data = tmp.path().join("data");
     std::fs::create_dir_all(&data).unwrap();
@@ -287,16 +240,7 @@ async fn talk_never_calls_an_llm_even_with_an_openrouter_key() {
         .to_string(),
     )
     .unwrap();
-    let (base, seen) = mock_openrouter("Hello from the cleaned-up dictation.").await;
-    let a = app_with(
-        &data,
-        Arc::new(Clip::default()),
-        true,
-        DevKnobs {
-            llm_base_url: Some(base),
-            ..Default::default()
-        },
-    );
+    let a = app_with(&data, Arc::new(Clip::default()), true, DevKnobs::default());
     let r = Router::new(Shared(a.service.clone())).validate_responses(true);
     let cfg = settings(&r, "config:get", Value::Null).await;
     assert_eq!(
@@ -309,16 +253,8 @@ async fn talk_never_calls_an_llm_even_with_an_openrouter_key() {
     a.service.start_helper();
     let svc = a.service.clone();
     until("helper", || svc.helper_ready()).await;
-    settings(
-        &r,
-        "secrets:set",
-        json!({"name": "llm.openrouter", "value": "sk-or-talk"}),
-    )
-    .await;
     let e = dictate_once(&r).await;
-    assert_ne!(e["cleanup"], "llm", "{e}");
-    assert_ne!(e["text"], "Hello from the cleaned-up dictation.", "{e}");
-    assert!(seen.lock().unwrap().is_empty(), "talk sent an LLM request");
+    assert_eq!(e["cleanup"], "rules", "{e}");
     if let Some(h) = a.service.helper() {
         h.stop();
     }

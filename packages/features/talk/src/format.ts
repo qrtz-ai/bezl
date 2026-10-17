@@ -1,11 +1,12 @@
 import type { TalkEntry } from '@qrtz/core';
 
+/** `elevenlabs` only appears in history from before the cloud engine was removed (ADR 0076). */
 const ENGINE: Record<TalkEntry['engine'], string> = {
   elevenlabs: 'elevenlabs',
   'on-device': 'on-device',
 };
 
-/** "10:42 · Notes · elevenlabs · 412 ms" (latency = key-up → text in the app). */
+/** "10:42 · Notes · on-device · 412 ms" (latency = key-up → text in the app). */
 export function entryMeta(e: TalkEntry, locale?: string): string {
   const time = new Date(e.at).toLocaleTimeString(locale, {
     hour: 'numeric',

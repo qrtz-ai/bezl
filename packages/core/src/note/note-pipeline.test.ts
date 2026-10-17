@@ -4,10 +4,10 @@ import { migrate, migrations } from '../db/migrate';
 import { NoteRepo, toFtsQuery } from './repo';
 import { extractiveSummary } from './extractive';
 import {
-  createProvider,
   parseSummaryReply,
   summarizeMeeting,
-  type FetchLike,
+  type ChatMessage,
+  type Summarizer,
 } from './llm';
 import { exportFilename, meetingToMarkdown } from './markdown';
 import {
@@ -93,74 +93,51 @@ describe('extractive summary', () => {
   });
 });
 
-describe('LLM layer', () => {
+describe('summary layer (on-device only, ADR 0075/0076)', () => {
   const reply = {
     summary: 'S',
     actionItems: [{ text: 'Do X', owner: 'Ada' }],
     qa: [],
   };
-  const fakeFetch =
-    (body: unknown, ok = true): FetchLike =>
-    async () => ({
-      ok,
-      status: ok ? 200 : 500,
-      json: async () => body,
-      text: async () => 'err',
-    });
-  it('openai-compatible provider parses JSON reply', async () => {
-    const calls: { url: string; headers: Record<string, string> }[] = [];
-    const f: FetchLike = async (url, init) => {
-      calls.push({ url, headers: init.headers });
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          choices: [
-            {
-              message: {
-                content: '```json\n' + JSON.stringify(reply) + '\n```',
-              },
-            },
-          ],
-        }),
-        text: async () => '',
-      };
-    };
-    const p = createProvider('openai', { fetch: f, apiKey: 'sk-test' })!;
-    const s = await summarizeMeeting('t', fused(), p);
-    expect(s).toEqual({ ...reply, provider: 'openai', template: 'general' });
-    expect(calls[0]!.url).toBe('https://api.openai.com/v1/chat/completions');
-    expect(calls[0]!.headers.authorization).toBe('Bearer sk-test');
-  });
-  it('anthropic + google adapters', async () => {
-    const a = createProvider('anthropic', {
-      fetch: fakeFetch({
-        content: [{ type: 'text', text: JSON.stringify(reply) }],
+  const summarizer = (
+    answer: (m: ChatMessage[]) => Promise<string>,
+  ): Summarizer => ({ id: 'on-device', complete: answer });
+  it('parses the on-device reply (code fences tolerated)', async () => {
+    const seen: ChatMessage[][] = [];
+    const s = await summarizeMeeting(
+      't',
+      fused(),
+      summarizer(async (m) => {
+        seen.push(m);
+        return '```json\n' + JSON.stringify(reply) + '\n```';
       }),
-      apiKey: 'k',
-    })!;
-    expect((await summarizeMeeting('t', fused(), a)).provider).toBe(
-      'anthropic',
     );
-    const g = createProvider('google', {
-      fetch: fakeFetch({
-        candidates: [{ content: { parts: [{ text: JSON.stringify(reply) }] } }],
-      }),
-      apiKey: 'k',
-    })!;
-    expect((await summarizeMeeting('t', fused(), g)).provider).toBe('google');
+    expect(s).toEqual({ ...reply, provider: 'on-device', template: 'general' });
+    expect(seen[0]![0]!.role).toBe('system');
   });
-  it('falls back to extractive without key, on HTTP error, or on bad JSON', async () => {
-    expect(createProvider('openai', { fetch: fakeFetch({}) })).toBeNull();
-    const errs: unknown[] = [];
-    const bad = createProvider('openai', {
-      fetch: fakeFetch({}, false),
-      apiKey: 'k',
+  it('falls back to the extractive summary without a model or when it fails; strict rethrows', async () => {
+    expect((await summarizeMeeting('t', fused(), null)).provider).toBe(
+      'extractive',
+    );
+    const boom = summarizer(async () => {
+      throw new Error('helper gone');
     });
-    expect(
-      (await summarizeMeeting('t', fused(), bad, (e) => errs.push(e))).provider,
-    ).toBe('extractive');
-    expect(errs).toHaveLength(1);
+    const s = await summarizeMeeting('t', fused(), boom);
+    expect(s.provider).toBe('extractive');
+    expect(s.llmError).toBe('helper gone');
+    await expect(
+      summarizeMeeting('t', fused(), boom, { strict: true }),
+    ).rejects.toThrow('helper gone');
+    await expect(
+      summarizeMeeting(
+        't',
+        fused(),
+        summarizer(async () => 'no json'),
+        {
+          strict: true,
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'E_PROVIDER', retryable: true });
     expect(() => parseSummaryReply('no json here')).toThrow();
   });
 });

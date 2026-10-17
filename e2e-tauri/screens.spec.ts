@@ -99,12 +99,7 @@ test('first run → record → review walkthrough', async ({ page }) => {
   );
   await page.getByTestId('onboarding-continue').click();
 
-  // the optional openrouter key
-  await expect(page.getByTestId('onboarding-key')).toBeVisible();
-  await expect(page.getByTestId('onboarding-save-key')).toBeDisabled();
-  await page.getByTestId('onboarding-key-input').fill('sk-or-test');
-  await clean(page, 'onboarding-key');
-  await page.getByTestId('onboarding-save-key').click();
+  // ADR 0076: no key step; speech is the last step before done, and onboarding stores no secret.
   const calls = await page.evaluate(
     () =>
       (
@@ -113,7 +108,7 @@ test('first run → record → review walkthrough', async ({ page }) => {
         }
       ).__qrtzMock.calls,
   );
-  expect(calls).toContainEqual({ channel: 'secrets:set', subApp: 'shell' });
+  expect(calls.some((c) => c.channel === 'secrets:set')).toBe(false);
 
   await expect(page.getByTestId('onboarding-done')).toBeVisible();
   await page.getByTestId('onboarding-finish').click();
@@ -171,7 +166,6 @@ test('the download continues in the background after onboarding; note shows it',
   await page.getByTestId('onboarding-continue').click();
   await page.getByTestId('speech-download').click();
   await page.getByTestId('onboarding-continue').click();
-  await page.getByTestId('onboarding-skip').click();
   await page.getByTestId('onboarding-finish').click();
   await expect(page.getByTestId('speech-notice')).toContainText(
     'downloading speech',
@@ -346,7 +340,6 @@ test('talk: settings has a toggle for every automatic behaviour; each writes con
   await tab(page, 'settings').click();
   const keys: [string, string][] = [
     ['talk-enabled', 'enabled'],
-    ['talk-auto-failover', 'autoFailover'],
     ['talk-warm-mic', 'warmMic'],
     ['talk-auto-cleanup', 'autoCleanup'],
     ['talk-auto-insert', 'autoInsert'],

@@ -15,22 +15,8 @@ import {
   Switch,
   Text,
 } from '@qrtz/ui';
-import {
-  PROVIDER_DEFAULTS,
-  SUMMARY_TEMPLATES,
-  type IpcResponse,
-  type ProviderId,
-} from '@qrtz/core';
+import { SUMMARY_TEMPLATES, type IpcResponse } from '@qrtz/core';
 import { useQrtz, useQrtzEvent, useSpeechSetup } from '@qrtz/core/react';
-
-const PROVIDERS: { id: ProviderId | 'none'; label: string }[] = [
-  { id: 'openrouter', label: 'openrouter (recommended)' },
-  { id: 'openai', label: 'openai' },
-  { id: 'anthropic', label: 'anthropic' },
-  { id: 'google', label: 'google gemini' },
-  { id: 'ollama', label: 'ollama (local, no key)' },
-  { id: 'none', label: 'off (on-device extractive only)' },
-];
 
 export default function SettingsView() {
   const qrtz = useQrtz();
@@ -40,9 +26,6 @@ export default function SettingsView() {
     null,
   );
   const [cfg, setCfg] = useState<Record<string, unknown> | null>(null);
-  const [secrets, setSecrets] = useState<string[]>([]);
-  const [key, setKey] = useState('');
-  const [msg, setMsg] = useState<string | null>(null);
   const live = useQrtzEvent('helper:status');
   const backupProgress = useQrtzEvent('data:backup-progress');
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +44,6 @@ export default function SettingsView() {
       load(qrtz.invoke('db:health'), setDb, 'database'),
       load(qrtz.invoke('helper:status'), setHelper, 'helper'),
       load(qrtz.invoke('config:get'), setCfg, 'settings'),
-      load(qrtz.invoke('secrets:list'), setSecrets, 'keys'),
     ]).then(() => {
       if (fails.length) setError(fails.join(' · '));
     });
@@ -69,8 +51,6 @@ export default function SettingsView() {
   useEffect(refresh, [qrtz]);
   const h = live ?? helper;
   const noteCfg = (cfg?.note ?? {}) as {
-    llmProvider?: ProviderId | 'none';
-    llmModel?: string;
     retainAudioDays?: number;
     autoRecord?: boolean;
     autoDetectMeetings?: boolean;
@@ -81,7 +61,6 @@ export default function SettingsView() {
     defaultTemplate?: string;
   };
   const privacy = (cfg?.privacy ?? {}) as {
-    localOnly?: boolean;
     excludedApps?: string[];
     pauseHotkey?: string;
   };
@@ -120,31 +99,6 @@ export default function SettingsView() {
       .then(setBackupMsg, (e: Error) => setBackupMsg(e.message))
       .finally(() => setBackupBusy(false));
   };
-  const provider = noteCfg.llmProvider ?? 'openrouter';
-  const secretName =
-    provider === 'none' ? undefined : PROVIDER_DEFAULTS[provider].secret;
-  const hasKey =
-    !!secretName &&
-    secrets.some((s) => s === secretName || s.startsWith('QRTZ_SECRET_'));
-
-  const patch = (p: Record<string, unknown>) =>
-    qrtz
-      .invoke('config:set', { patch: { note: p } })
-      .then(setCfg)
-      .catch((e: Error) => setError(e.message));
-
-  const saveKey = async (value: string | null) => {
-    if (!secretName) return;
-    try {
-      await qrtz.invoke('secrets:set', { name: secretName, value });
-      setKey('');
-      setMsg(value ? 'key saved' : 'key removed');
-      setSecrets(await qrtz.invoke('secrets:list'));
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
   const appCfg = (cfg?.app ?? {}) as {
     menuBarIcon?: boolean;
     launchAtLogin?: boolean;
@@ -163,7 +117,10 @@ export default function SettingsView() {
     setCfg((prev) =>
       prev ? { ...prev, note: { ...(prev.note as object), ...p } } : prev,
     );
-    return patch(p);
+    return qrtz
+      .invoke('config:set', { patch: { note: p } })
+      .then(setCfg)
+      .catch((e: Error) => setError(e.message));
   };
   const toggle = (
     label: string,
@@ -188,8 +145,6 @@ export default function SettingsView() {
     blockGlobeKey?: boolean;
     toggleHotkey?: string;
     warmMic?: boolean;
-    engine?: string;
-    autoFailover?: boolean;
     autoCleanup?: boolean;
     autoInsert?: boolean;
     restoreClipboard?: boolean;
@@ -205,21 +160,6 @@ export default function SettingsView() {
       .then(setCfg)
       .catch((e: Error) => setError(e.message));
   };
-  const asrEngine = talkCfg.engine ?? 'auto';
-  const asrSecret = asrEngine === 'elevenlabs' ? 'asr.elevenlabs' : undefined;
-  const [asrKey, setAsrKey] = useState('');
-  const hasAsrKey = !!asrSecret && secrets.includes(asrSecret);
-  const saveAsrKey = async (value: string | null) => {
-    if (!asrSecret) return;
-    try {
-      await qrtz.invoke('secrets:set', { name: asrSecret, value });
-      setAsrKey('');
-      setSecrets(await qrtz.invoke('secrets:list'));
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
   return (
     <Page data-testid="settings">
       <Heading>settings</Heading>
@@ -317,62 +257,10 @@ export default function SettingsView() {
             ))}
           </Select>
         </SettingRow>
-        <SettingRow label="provider">
-          <Select
-            value={provider}
-            onChange={(e) => void patchNote({ llmProvider: e.target.value })}
-            data-testid="llm-provider"
-          >
-            {PROVIDERS.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label}
-              </option>
-            ))}
-          </Select>
-        </SettingRow>
-        {provider !== 'none' ? (
-          <Field label="model">
-            <Input
-              defaultValue={noteCfg.llmModel ?? ''}
-              placeholder={PROVIDER_DEFAULTS[provider].model}
-              onBlur={(e) =>
-                void patchNote({ llmModel: e.target.value.trim() })
-              }
-            />
-          </Field>
-        ) : null}
-        {secretName ? (
-          <Field label="api key">
-            <Stack dir="row" gap={2}>
-              <Input
-                type="password"
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-                placeholder={hasKey ? '•••••••• (saved)' : 'sk-…'}
-                data-testid="llm-key"
-              />
-              <Button
-                onClick={() => void saveKey(key.trim())}
-                disabled={!key.trim()}
-              >
-                save
-              </Button>
-              {hasKey ? (
-                <Button variant="ghost" onClick={() => void saveKey(null)}>
-                  remove
-                </Button>
-              ) : null}
-            </Stack>
-          </Field>
-        ) : null}
-        <Text variant="caption" muted>
-          {hasKey ? 'key configured' : 'using extractive fallback'}
+        <Text variant="caption" muted data-testid="summary-availability">
+          summaries are written on this mac by apple intelligence. nothing is
+          sent anywhere.
         </Text>
-        {msg ? (
-          <Text variant="caption" muted>
-            {msg}
-          </Text>
-        ) : null}
       </SettingsSection>
       <SettingsSection title="talk" data-testid="talk-settings">
         {toggle(
@@ -416,48 +304,6 @@ export default function SettingsView() {
             }
           />
         </Field>
-        <SettingRow label="speech engine">
-          <Select
-            value={asrEngine}
-            onChange={(e) => void patchTalk({ engine: e.target.value })}
-            data-testid="talk-engine"
-          >
-            <option value="auto">auto</option>
-            <option value="elevenlabs">elevenlabs scribe</option>
-            <option value="on-device">on-device</option>
-          </Select>
-        </SettingRow>
-        {asrSecret ? (
-          <Field label="engine key">
-            <Stack dir="row" gap={2}>
-              <Input
-                type="password"
-                value={asrKey}
-                onChange={(e) => setAsrKey(e.target.value)}
-                placeholder={hasAsrKey ? '•••••••• (saved)' : 'key'}
-                data-testid="talk-engine-key"
-              />
-              <Button
-                onClick={() => void saveAsrKey(asrKey.trim())}
-                disabled={!asrKey.trim()}
-              >
-                save
-              </Button>
-              {hasAsrKey ? (
-                <Button variant="ghost" onClick={() => void saveAsrKey(null)}>
-                  remove
-                </Button>
-              ) : null}
-            </Stack>
-          </Field>
-        ) : null}
-        {toggle(
-          'fall back to on-device',
-          'talk-auto-failover',
-          talkCfg.autoFailover,
-          true,
-          (v) => void patchTalk({ autoFailover: v }),
-        )}
         {toggle(
           'warm mic',
           'talk-warm-mic',
@@ -539,13 +385,10 @@ export default function SettingsView() {
         )}
       </SettingsSection>
       <SettingsSection title="privacy" data-testid="privacy-card">
-        {toggle(
-          'local only',
-          'local-only',
-          privacy.localOnly,
-          false,
-          (v) => void patchPrivacy({ localOnly: v }),
-        )}
+        <Text variant="caption" muted data-testid="offline-note">
+          qrtz runs entirely on this computer: audio, transcripts and notes
+          never leave it. it only goes online to download signed speech updates.
+        </Text>
         <Field label="never record in">
           <Input
             key={(privacy.excludedApps ?? []).join(',')}

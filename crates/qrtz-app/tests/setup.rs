@@ -315,15 +315,16 @@ async fn an_old_config_with_the_search_model_settings_loads_and_nothing_is_fetch
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_saved_deepgram_key_is_deleted_at_launch_and_other_keys_stay() {
-    // Deepgram was removed (ADR 0067): its key would otherwise sit in the store unused.
+async fn saved_cloud_keys_are_deleted_at_launch_and_other_keys_stay() {
+    // Deepgram was removed (ADR 0067) and qrtz is entirely offline (ADR 0076): those keys would otherwise sit in the
+    // store unused.
     let tmp = tempfile::tempdir().unwrap();
     let env = speech_env(tmp.path()).await;
     let data = tmp.path().join("data");
     std::fs::create_dir_all(&data).unwrap();
     std::fs::write(
         data.join("secrets.json"),
-        br#"{"asr.deepgram":"dg-old","asr.elevenlabs":"el-1","llm.openrouter":"sk-or-1"}"#,
+        br#"{"asr.deepgram":"dg-old","asr.elevenlabs":"el-1","llm.openrouter":"sk-or-1","llm.openai":"sk-1","test.token":"t-1"}"#,
     )
     .unwrap();
     let a = app(&data, &env);
@@ -335,10 +336,12 @@ async fn a_saved_deepgram_key_is_deleted_at_launch_and_other_keys_stay() {
         .iter()
         .filter_map(Value::as_str)
         .collect();
-    assert!(!names.contains(&"asr.deepgram"), "{names:?}");
+    assert_eq!(names, ["test.token"], "{names:?}");
     let file = std::fs::read_to_string(data.join("secrets.json")).unwrap();
-    assert!(!file.contains("dg-old"), "{file}");
-    assert!(file.contains("el-1") && file.contains("sk-or-1"), "{file}");
+    for gone in ["dg-old", "el-1", "sk-or-1", "sk-1"] {
+        assert!(!file.contains(gone), "{file}");
+    }
+    assert!(file.contains("t-1"), "{file}");
     assert_eq!(mode(&data.join("secrets.json")), 0o600);
     a.runtime.kill();
 }

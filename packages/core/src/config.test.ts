@@ -11,7 +11,6 @@ describe('config', () => {
   it('fills defaults', () => {
     expect(loadConfig(undefined).speech).toEqual({
       speakerMode: 'fast',
-      cloud: 'off',
       autoUpdate: true,
     });
     // ADR 0046: the old model-named setting is dropped on load, the rest of `note` survives.
@@ -38,12 +37,12 @@ describe('config', () => {
   });
   it('patches deeply and rejects invalid writes and prototype pollution', () => {
     const c = applyConfigPatch(defaultConfig(), {
-      note: { llmProvider: 'anthropic' },
+      note: { defaultTemplate: 'sales' },
     });
-    expect(c.note.llmProvider).toBe('anthropic');
+    expect(c.note.defaultTemplate).toBe('sales');
     expect(c.note.autoDetectMeetings).toBe(true);
     expect(() =>
-      applyConfigPatch(c, { note: { llmProvider: 'evil' } }),
+      applyConfigPatch(c, { note: { defaultTemplate: 'evil' } }),
     ).toThrow();
     applyConfigPatch(c, JSON.parse('{"__proto__":{"polluted":1}}'));
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
@@ -51,13 +50,13 @@ describe('config', () => {
   it('migrates the pre-rename memo settings to note (note keys win)', () => {
     const legacy = {
       theme: 'light',
-      memo: { autoRecord: true, retainAudioDays: 30, llmProvider: 'ollama' },
+      memo: { autoRecord: true, retainAudioDays: 30, detectPrompt: false },
     };
     const c = loadConfig(legacy);
     expect(c.theme).toBe('light');
     expect(c.note.autoRecord).toBe(true);
     expect(c.note.retainAudioDays).toBe(30);
-    expect(c.note.llmProvider).toBe('ollama');
+    expect(c.note.detectPrompt).toBe(false);
     expect('memo' in c).toBe(false);
     const both = loadConfig({
       memo: { autoRecord: true, floatingHud: false },
@@ -69,20 +68,33 @@ describe('config', () => {
     expect(migrateLegacyConfig(legacy).migrated).toBe(true);
   });
 
-  it('a config that picked the removed deepgram engine loads, keeps the rest of talk, and falls back to auto', () => {
+  it('ADR 0076: an old config with the cloud settings (deepgram/elevenlabs, openrouter, local-only) loads without them', () => {
     const old = {
-      talk: { engine: 'deepgram', showPill: false, pushKey: 'right-option' },
-      privacy: { localOnly: true },
+      talk: {
+        engine: 'deepgram',
+        autoFailover: false,
+        showPill: false,
+        pushKey: 'right-option',
+      },
+      note: {
+        llmProvider: 'openrouter',
+        llmModel: 'anthropic/claude-haiku-5.5',
+        autoSummarize: false,
+      },
+      speech: { cloud: 'elevenlabs', speakerMode: 'accurate' },
+      privacy: { localOnly: true, excludedApps: ['Slack'] },
     };
     const c = loadConfig(old);
-    expect(c.talk.engine).toBe('auto');
+    const has = (o: object, k: string) => k in o;
+    expect(has(c.talk, 'engine') || has(c.talk, 'autoFailover')).toBe(false);
+    expect(has(c.note, 'llmProvider') || has(c.note, 'llmModel')).toBe(false);
+    expect(has(c.speech, 'cloud') || has(c.privacy, 'localOnly')).toBe(false);
     expect(c.talk.showPill).toBe(false);
     expect(c.talk.pushKey).toBe('right-option');
-    expect(c.privacy.localOnly).toBe(true);
-    expect(migrateLegacyConfig(old).migrated).toBe(true);
-    expect(
-      migrateLegacyConfig({ talk: { engine: 'elevenlabs' } }).migrated,
-    ).toBe(false);
+    expect(c.note.autoSummarize).toBe(false);
+    expect(c.speech.speakerMode).toBe('accurate');
+    expect(c.privacy.excludedApps).toEqual(['Slack']);
+    expect(migrateLegacyConfig(old).migrated).toBe(false);
   });
 
   it('an old config with the removed talk ai cleanup settings loads without them', () => {
