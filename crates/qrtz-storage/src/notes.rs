@@ -6,7 +6,7 @@ use qrtz_model::{
 use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 
-use crate::fts::{js_trim, to_chat_fts_query, to_fts_query};
+use crate::fts::{js_trim, search_plan, substring_snippet, to_chat_fts_query, SearchPlan};
 use crate::row::{blob, i64_, opt_f64, opt_i64, opt_string, string};
 use crate::{Result, StorageError};
 
@@ -122,6 +122,15 @@ static TX_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(
 const SEARCH_SEGMENT_HITS_SQL: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../packages/core/src/note/sql/search_segment_hits.sql"
+));
+/// Substring transcript / summary hits of `search` for unsegmented-script terms (N48, ADR 0039); shared with TS.
+const SEARCH_SEGMENT_SUBSTR_SQL: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../packages/core/src/note/sql/search_segment_substr.sql"
+));
+const SEARCH_META_SUBSTR_SQL: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../packages/core/src/note/sql/search_meta_substr.sql"
 ));
 
 fn collect<T>(
@@ -574,9 +583,20 @@ impl<'a> NoteRepo<'a> {
     /// Tie-breaking matches TS exactly: title hits, then summary hits, then transcript hits, keeping the first
     /// strictly-better rank per meeting in insertion order, then a stable sort by rank.
     pub fn search(&self, input: &str, limit: u32) -> Result<Vec<SearchHit>> {
-        let Some(q) = to_fts_query(input) else {
+        let Some(plan) = search_plan(input) else {
             return Ok(vec![]);
         };
+        let (meta_hits, seg_hits) = if plan.substrings.is_empty() {
+            self.indexed_hits(plan.fts.as_deref().unwrap_or_default(), limit)?
+        } else {
+            self.substring_hits(&plan, limit)?
+        };
+        self.merge_hits(input, meta_hits, seg_hits, limit)
+    }
+
+    /// Summary and transcript hits through the FTS index (every term space-separated).
+    #[allow(clippy::type_complexity)]
+    fn indexed_hits(&self, q: &str, limit: u32) -> Result<(Vec<(SearchHit, f64)>, Vec<(SearchHit, f64)>)> {
         let hit = |r: &Row, with_start: bool| -> Result<(SearchHit, f64)> {
             Ok((
                 SearchHit {
@@ -605,6 +625,72 @@ impl<'a> NoteRepo<'a> {
             rusqlite::params![&q, limit],
             |r| hit(r, false),
         )?;
+        Ok((meta_hits, seg_hits))
+    }
+
+    /// `searchSubstrings` of repo.ts (N48, ADR 0039): terms from unsegmented scripts are matched as substrings, the
+    /// rest through the index. Hits rank 0 (after every title and bm25 hit), newest meetings first.
+    #[allow(clippy::type_complexity)]
+    fn substring_hits(
+        &self,
+        plan: &SearchPlan,
+        limit: u32,
+    ) -> Result<(Vec<(SearchHit, f64)>, Vec<(SearchHit, f64)>)> {
+        let terms =
+            serde_json::to_string(&plan.substrings).map_err(|e| StorageError::Corrupt(e.to_string()))?;
+        let seg_hits = collect(
+            self.conn,
+            SEARCH_SEGMENT_SUBSTR_SQL,
+            rusqlite::params![plan.fts.as_deref(), &terms, limit],
+            |r| {
+                Ok((
+                    SearchHit {
+                        meeting_id: string(r, "meetingId")?,
+                        title: string(r, "title")?,
+                        started_at: i64_(r, "startedAt")?,
+                        snippet: substring_snippet(&string(r, "text")?, &plan.substrings),
+                        start_ms: opt_i64(r, "startMs")?,
+                    },
+                    0.0,
+                ))
+            },
+        )?;
+        let meta_hits = collect(
+            self.conn,
+            SEARCH_META_SUBSTR_SQL,
+            rusqlite::params![plan.fts.as_deref(), &terms, limit],
+            |r| {
+                let summary = opt_string(r, "summary")?.unwrap_or_default();
+                let lower = summary.to_ascii_lowercase();
+                let in_summary = plan.substrings.iter().any(|t| lower.contains(t.as_str()));
+                let source = if in_summary {
+                    summary
+                } else {
+                    opt_string(r, "ftsTitle")?.unwrap_or_default()
+                };
+                Ok((
+                    SearchHit {
+                        meeting_id: string(r, "meetingId")?,
+                        title: string(r, "title")?,
+                        started_at: i64_(r, "startedAt")?,
+                        snippet: substring_snippet(&source, &plan.substrings),
+                        start_ms: None,
+                    },
+                    0.0,
+                ))
+            },
+        )?;
+        Ok((meta_hits, seg_hits))
+    }
+
+    /// Title hits first, then summary, then transcript; the first strictly better rank per meeting wins.
+    fn merge_hits(
+        &self,
+        input: &str,
+        meta_hits: Vec<(SearchHit, f64)>,
+        seg_hits: Vec<(SearchHit, f64)>,
+        limit: u32,
+    ) -> Result<Vec<SearchHit>> {
         // Also match titles of meetings without a summary yet.
         let needle = js_trim(input).to_lowercase();
         let title_hits = if needle.is_empty() {

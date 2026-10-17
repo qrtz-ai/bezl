@@ -21,7 +21,7 @@ mod row;
 
 pub use db::{Db, DbHealth, ImportReport};
 pub use error::{Result, StorageError};
-pub use fts::{to_chat_fts_query, to_fts_query};
+pub use fts::{search_plan, substring_snippet, to_chat_fts_query, to_fts_query, SearchPlan};
 pub use handle::StorageHandle;
 pub use lifecycle::LifecycleRepo;
 pub use migrate::{migrate, schema_version, Migration, MigrationReport, MIGRATIONS};

@@ -3,6 +3,8 @@ import type { Meeting, Segment } from './types';
 import { MeetingSummary } from './summary';
 import type { MeetingNote } from './notes';
 import SEARCH_SEGMENT_HITS_SQL from './sql/search_segment_hits.sql?raw';
+import SEARCH_SEGMENT_SUBSTR_SQL from './sql/search_segment_substr.sql?raw';
+import SEARCH_META_SUBSTR_SQL from './sql/search_meta_substr.sql?raw';
 
 export interface MeetingRow extends Meeting {
   durationMs?: number;
@@ -50,15 +52,94 @@ const toSegment = (r: Row): Segment => ({
  * finds `O'Reilly`. Only `"` is special inside an FTS5 string, and the split removes it.
  */
 export function toFtsQuery(input: string): string | null {
-  const words = input
+  const words = searchWords(input);
+  if (!words.length) return null;
+  return words.map((w) => `"${w}"*`).join(' ');
+}
+
+function searchWords(input: string): string[] {
+  return input
     .toLowerCase()
     .normalize('NFKC')
     .split(/[^\p{L}\p{N}\p{M}'\u2019]+/u)
     .map((w) => w.replace(/['\u2019]s$/u, ''))
     .filter((w) => /[\p{L}\p{N}]/u.test(w))
     .slice(0, 8);
+}
+
+/**
+ * Scripts written without spaces between words (Thai, Lao, Myanmar, Khmer, kana, Han). unicode61 indexes a run of
+ * them as one token, so only a word at the start of a run is found by the index (N48). Fixed code point ranges, not
+ * `\p{Script}`, so TS and Rust agree whatever Unicode version each ships. Same class as Rust `UNSEGMENTED`.
+ */
+const UNSEGMENTED =
+  /[\u0E00-\u0EFF\u1000-\u109F\u1780-\u17FF\u3005-\u3007\u3040-\u30FF\u31F0-\u31FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\u{20000}-\u{3134F}]/u;
+
+export interface SearchPlan {
+  /** FTS5 MATCH for the space-separated terms (same quoting as `toFtsQuery`), or null when every term is substring. */
+  fts: string | null;
+  /** Terms with a character from an unsegmented script, matched as substrings of the ASCII-lowercased text. */
+  substrings: string[];
+}
+
+/**
+ * How `search` runs a query (N48, ADR 0039). The words are `toFtsQuery`'s. A word with a Han, kana, Thai, Lao,
+ * Khmer or Myanmar character is matched as a substring; the rest stay FTS prefix terms; every term must match.
+ * With no substring term, `fts` is exactly `toFtsQuery(input)` and search takes the indexed path unchanged.
+ */
+export function searchPlan(input: string): SearchPlan | null {
+  const words = searchWords(input);
   if (!words.length) return null;
-  return words.map((w) => `"${w}"*`).join(' ');
+  const fts = words.filter((w) => !UNSEGMENTED.test(w));
+  return {
+    fts: fts.length ? fts.map((w) => `"${w}"*`).join(' ') : null,
+    substrings: words.filter((w) => UNSEGMENTED.test(w)),
+  };
+}
+
+/** SQLite `lower()` without ICU: ASCII only, so code point offsets stay put. */
+const asciiLower = (s: string) => s.replace(/[A-Z]/g, (c) => c.toLowerCase());
+
+/**
+ * Snippet for a substring hit, in the shape FTS5 `snippet(…, '[', ']', '…', …)` gives: up to 10 characters before
+ * the earliest term, the term in brackets, up to 20 after, `…` where the text was cut. Counted in code points so the
+ * Rust port (`substring_snippet`) gives the same string. With no occurrence, the first 30 characters.
+ */
+export function substringSnippet(
+  text: string,
+  terms: readonly string[],
+): string {
+  const chars = Array.from(text);
+  const lower = Array.from(asciiLower(text));
+  // Earliest occurrence of any term; at the same position the longer term.
+  let at = -1;
+  let len = 0;
+  for (const t of terms) {
+    const tc = Array.from(t);
+    for (let i = 0; i + tc.length <= lower.length; i++) {
+      if (at >= 0 && i > at) break;
+      if (tc.every((c, k) => lower[i + k] === c)) {
+        if (at < 0 || i < at || tc.length > len) {
+          at = i;
+          len = tc.length;
+        }
+        break;
+      }
+    }
+  }
+  if (at < 0)
+    return chars.length > 30 ? chars.slice(0, 30).join('') + '…' : text;
+  const from = Math.max(0, at - 10);
+  const to = Math.min(chars.length, at + len + 20);
+  return (
+    (from > 0 ? '…' : '') +
+    chars.slice(from, at).join('') +
+    '[' +
+    chars.slice(at, at + len).join('') +
+    ']' +
+    chars.slice(at + len, to).join('') +
+    (to < chars.length ? '…' : '')
+  );
 }
 
 let txSeq = 0;
@@ -433,8 +514,11 @@ export class NoteRepo {
 
   /** Full-text search across transcripts, titles and summaries. One best hit per meeting. */
   search(input: string, limit = 50): SearchHit[] {
-    const q = toFtsQuery(input);
-    if (!q) return [];
+    const plan = searchPlan(input);
+    if (!plan) return [];
+    if (plan.substrings.length)
+      return this.searchSubstrings(input, plan, limit);
+    const q = plan.fts!;
     // Best line per meeting in SQL, then the `limit` best meetings (sql/search_segment_hits.sql). It used to take the
     // 500 best *lines* and dedupe after: one long meeting full of a common word filled all 500 and hid every other
     // meeting that mentions it (cycle 3, N10).
@@ -448,6 +532,62 @@ export class NoteRepo {
          FROM meetings_fts JOIN meetings m ON m.rowid = meetings_fts.rowid WHERE meetings_fts MATCH ? ORDER BY rank LIMIT ?`,
       )
       .all(q, limit) as (SearchHit & { rank: number })[];
+    return this.mergeHits(input, metaHits, segHits, limit);
+  }
+
+  /**
+   * Search with a term from an unsegmented script (N48, ADR 0039): a substring scan instead of the index for those
+   * terms, the index for the rest. Hits rank 0, after every title (-1e9) and bm25 (< 0) hit, newest meetings first.
+   * Measured at about 60-180 ms for 500k lines, and only queries with such a term pay it.
+   */
+  private searchSubstrings(
+    input: string,
+    plan: SearchPlan,
+    limit: number,
+  ): SearchHit[] {
+    const terms = JSON.stringify(plan.substrings);
+    const segHits = (
+      this.db
+        .prepare(SEARCH_SEGMENT_SUBSTR_SQL)
+        .all(plan.fts, terms, limit) as Row[]
+    ).map((r) => ({
+      meetingId: String(r.meetingId),
+      title: String(r.title),
+      startedAt: Number(r.startedAt),
+      startMs: Number(r.startMs),
+      snippet: substringSnippet(String(r.text), plan.substrings),
+      rank: 0,
+    }));
+    const metaHits = (
+      this.db
+        .prepare(SEARCH_META_SUBSTR_SQL)
+        .all(plan.fts, terms, limit) as Row[]
+    ).map((r) => {
+      const summary = String(r.summary ?? '');
+      const inSummary = plan.substrings.some((t) =>
+        asciiLower(summary).includes(t),
+      );
+      return {
+        meetingId: String(r.meetingId),
+        title: String(r.title),
+        startedAt: Number(r.startedAt),
+        snippet: substringSnippet(
+          inSummary ? summary : String(r.ftsTitle ?? ''),
+          plan.substrings,
+        ),
+        rank: 0,
+      };
+    });
+    return this.mergeHits(input, metaHits, segHits, limit);
+  }
+
+  /** Title hits first, then summary, then transcript; the first strictly better rank per meeting wins. */
+  private mergeHits(
+    input: string,
+    metaHits: (SearchHit & { rank: number })[],
+    segHits: (SearchHit & { rank: number })[],
+    limit: number,
+  ): SearchHit[] {
     // Also match titles of meetings without a summary yet.
     const titleHits = (
       this.db

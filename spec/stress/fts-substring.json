@@ -1,0 +1,278 @@
+{
+  "description": "Hardening cycle 12 (N48, ADR 0039): search terms from scripts written without spaces (Han, kana, Thai, Lao, Khmer, Myanmar) are matched as substrings, the other terms stay FTS prefix terms, and every term must match. `plans` pins TS searchPlan = Rust search_plan; `snippets` pins substringSnippet = substring_snippet; `searches` runs NoteRepo.search / Notes::search on a migrated DB holding `meetings` (newest first by startedAt). Run by packages/core/src/note/fts.hardening12.test.ts and crates/qrtz-storage/tests/hardening12.rs.",
+  "plans": [
+    {
+      "input": "会议",
+      "fts": null,
+      "substrings": ["会议"]
+    },
+    {
+      "input": "budget 会议",
+      "fts": "\"budget\"*",
+      "substrings": ["会议"]
+    },
+    {
+      "input": "ประชุม",
+      "fts": null,
+      "substrings": ["ประชุม"]
+    },
+    {
+      "input": "Q3会议",
+      "fts": null,
+      "substrings": ["q3会议"]
+    },
+    {
+      "input": "会議 の 予定",
+      "fts": null,
+      "substrings": ["会議", "の", "予定"]
+    },
+    {
+      "input": "ｶｲｷﾞ",
+      "fts": null,
+      "substrings": ["カイギ"]
+    },
+    {
+      "input": "회의",
+      "fts": "\"회의\"*",
+      "substrings": []
+    },
+    {
+      "input": "don't forget",
+      "fts": "\"don't\"* \"forget\"*",
+      "substrings": []
+    },
+    {
+      "input": "\"会议\" OR *",
+      "fts": "\"or\"*",
+      "substrings": ["会议"]
+    },
+    {
+      "input": "%_会议",
+      "fts": null,
+      "substrings": ["会议"]
+    },
+    {
+      "input": "𠀋",
+      "fts": null,
+      "substrings": ["𠀋"]
+    },
+    {
+      "input": "  ***  ",
+      "fts": null,
+      "substrings": null
+    }
+  ],
+  "snippets": [
+    {
+      "text": "明天的会议很重要",
+      "terms": ["会议"],
+      "snippet": "明天的[会议]很重要"
+    },
+    {
+      "text": "我们先回顾上周的进展然后讨论明天的会议安排以及下个季度的预算问题和招聘计划还有其他事项",
+      "terms": ["会议"],
+      "snippet": "…的进展然后讨论明天的[会议]安排以及下个季度的预算问题和招聘计划还有…"
+    },
+    {
+      "text": "สวัสดีครับ เริ่มประชุมกันเลย",
+      "terms": ["ประชุม"],
+      "snippet": "…ครับ เริ่ม[ประชุม]กันเลย"
+    },
+    {
+      "text": "The Q3会议 moved",
+      "terms": ["q3会议"],
+      "snippet": "The [Q3会议] moved"
+    },
+    {
+      "text": "会議の予定",
+      "terms": ["予定", "会議"],
+      "snippet": "[会議]の予定"
+    },
+    {
+      "text": "𠀋𠀋 会议 😀",
+      "terms": ["会议"],
+      "snippet": "𠀋𠀋 [会议] 😀"
+    },
+    {
+      "text": "no match here at all, this line is long enough to be cut",
+      "terms": ["会议"],
+      "snippet": "no match here at all, this lin…"
+    }
+  ],
+  "meetings": [
+    {
+      "id": "zh",
+      "title": "周会",
+      "startedAt": 3000,
+      "segments": [
+        {
+          "id": "a",
+          "startMs": 1000,
+          "text": "大家好"
+        },
+        {
+          "id": "b",
+          "startMs": 2000,
+          "text": "明天的会议很重要 budget 要确认"
+        },
+        {
+          "id": "c",
+          "startMs": 3000,
+          "text": "会议纪要发群里"
+        }
+      ]
+    },
+    {
+      "id": "th",
+      "title": "Weekly sync",
+      "startedAt": 2000,
+      "segments": [
+        {
+          "id": "a",
+          "startMs": 500,
+          "text": "สวัสดีครับ เริ่มประชุมกันเลย"
+        }
+      ],
+      "summary": "ทีมตกลงเรื่องงบประมาณ"
+    },
+    {
+      "id": "ja",
+      "title": "定例ミーティング",
+      "startedAt": 1000,
+      "segments": [
+        {
+          "id": "a",
+          "startMs": 0,
+          "text": "明日の会議の予定を確認します"
+        }
+      ],
+      "summary": "来週の会議で予算を決める"
+    },
+    {
+      "id": "en",
+      "title": "Budget review",
+      "startedAt": 500,
+      "segments": [
+        {
+          "id": "a",
+          "startMs": 0,
+          "text": "The budget for the offsite is approved"
+        }
+      ]
+    }
+  ],
+  "searches": [
+    {
+      "input": "会议",
+      "hits": [
+        {
+          "meetingId": "zh",
+          "snippet": "明天的[会议]很重要 budget 要确认",
+          "startMs": 2000
+        }
+      ]
+    },
+    {
+      "input": "budget 会议",
+      "hits": [
+        {
+          "meetingId": "zh",
+          "snippet": "明天的[会议]很重要 budget 要确认",
+          "startMs": 2000
+        }
+      ]
+    },
+    {
+      "input": "会议纪要",
+      "hits": [
+        {
+          "meetingId": "zh",
+          "snippet": "[会议纪要]发群里",
+          "startMs": 3000
+        }
+      ]
+    },
+    {
+      "input": "ประชุม",
+      "hits": [
+        {
+          "meetingId": "th",
+          "snippet": "…ครับ เริ่ม[ประชุม]กันเลย",
+          "startMs": 500
+        }
+      ]
+    },
+    {
+      "input": "งบประมาณ",
+      "hits": [
+        {
+          "meetingId": "th",
+          "snippet": "…ตกลงเรื่อง[งบประมาณ]"
+        }
+      ]
+    },
+    {
+      "input": "会議",
+      "hits": [
+        {
+          "meetingId": "ja",
+          "snippet": "来週の[会議]で予算を決める"
+        }
+      ]
+    },
+    {
+      "input": "会議 予定",
+      "hits": [
+        {
+          "meetingId": "ja",
+          "snippet": "明日の[会議]の予定を確認します",
+          "startMs": 0
+        }
+      ]
+    },
+    {
+      "input": "ミーティング",
+      "hits": [
+        {
+          "meetingId": "ja",
+          "snippet": "定例ミーティング"
+        }
+      ]
+    },
+    {
+      "input": "周会",
+      "hits": [
+        {
+          "meetingId": "zh",
+          "snippet": "周会"
+        }
+      ]
+    },
+    {
+      "input": "budget",
+      "hits": [
+        {
+          "meetingId": "en",
+          "snippet": "Budget review"
+        },
+        {
+          "meetingId": "zh",
+          "snippet": "明天的会议很重要 [budget] 要确认",
+          "startMs": 2000
+        }
+      ]
+    },
+    {
+      "input": "会议 nothing",
+      "hits": []
+    },
+    {
+      "input": "%",
+      "hits": []
+    },
+    {
+      "input": "纪要 budget",
+      "hits": []
+    }
+  ]
+}

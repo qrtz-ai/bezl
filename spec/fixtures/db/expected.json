@@ -587,7 +587,29 @@
      "title": "1:1 Ada / Grace",
      "startedAt": 1760007200000,
      "startMs": 0,
-     "snippet": "[会議は金曜日です]"
+     "snippet": "[会議]は金曜日です"
+    }
+   }
+  ],
+  [
+   {
+    "meeting": {
+     "id": "m-b",
+     "title": "1:1 Ada / Grace",
+     "platform": "google-meet",
+     "startedAt": 1760007200000,
+     "status": "processing",
+     "participants": [
+      "Grace Hopper"
+     ],
+     "template": "one-on-one"
+    },
+    "hit": {
+     "meetingId": "m-b",
+     "title": "1:1 Ada / Grace",
+     "startedAt": 1760007200000,
+     "startMs": 0,
+     "snippet": "会議は[金曜日]です"
     }
    }
   ],
