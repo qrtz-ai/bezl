@@ -5,6 +5,7 @@ mod support;
 use qrtz_speech::confine::Confinement;
 use qrtz_speech::download::{DownloadControl, Downloader};
 use qrtz_speech::spawn::{ModuleHealth, ModuleSession, OnDeviceSpeech, SpawnOptions};
+use qrtz_speech::store::RollbackKind;
 use qrtz_speech::update::{UpdateOutcome, Updater};
 use qrtz_speech::{
     Channel, FailReason, SessionKind, SessionSpec, SpeakerMode, SpeechError, SpeechEvent, SpeechSession,
@@ -440,10 +441,20 @@ async fn three_crashing_sessions_roll_back_to_n_minus_1() {
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    assert_eq!(
-        e.store.state().current.as_deref(),
-        Some("1.0.0"),
-        "crash loop: back to the clean N-1"
+    // The third failure rolls back at once when it lands with no session pinned (`start` failed), or at the
+    // next pin when it lands while its own session still holds one (N66); which one is timing (a slow CI box
+    // gets the hello out before the crash). Either way the next session runs on the clean N-1.
+    let st = e.store.state();
+    assert!(
+        st.current.as_deref() == Some("1.0.0") || st.pending_rollback == Some(RollbackKind::CrashLoop),
+        "crash loop: back to the clean N-1 now or at the next pin: {st:?}"
     );
+    let s = e
+        .engine()
+        .start_module(spec("after", &[Channel::Mic]))
+        .await
+        .unwrap();
+    assert_eq!(s.version(), "1.0.0", "crash loop: back to the clean N-1");
+    assert_eq!(e.store.state().current.as_deref(), Some("1.0.0"));
     assert!(e.store.is_quarantined("1.1.0"));
 }
