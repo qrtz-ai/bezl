@@ -20,7 +20,7 @@ mod notes;
 mod pending_deletes;
 mod row;
 
-pub use db::{Db, DbHealth, ImportReport};
+pub use db::{Db, DbHealth, ImportHooks, ImportReport};
 pub use error::{Result, StorageError};
 pub use fts::{search_plan, substring_snippet, to_chat_fts_query, to_fts_query, SearchPlan};
 pub use handle::StorageHandle;

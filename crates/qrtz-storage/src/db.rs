@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use qrtz_model::SegmentSource;
+use qrtz_model::{Meeting, SegmentSource};
 use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 
@@ -136,6 +136,24 @@ impl Db {
         src: impl AsRef<Path>,
         audio_map: &HashMap<String, PathBuf>,
     ) -> Result<ImportReport> {
+        struct Map<'a>(&'a HashMap<String, PathBuf>);
+        impl ImportHooks for Map<'_> {
+            fn audio(&mut self, _m: &Meeting, base: &str) -> Result<Option<String>> {
+                Ok(self.0.get(base).map(|p| p.to_string_lossy().into_owned()))
+            }
+        }
+        self.import_from_with(src, &mut Map(audio_map))
+    }
+
+    /// [`Db::import_from`] with caller hooks (qrtz-backup): `skip` adds skip reasons on top of "id already
+    /// here", `audio` places a meeting's recording just before its transaction, and `rolled_back` undoes that
+    /// placement when the meeting's transaction fails, so a meeting lands whole (row, transcript, audio) or not
+    /// at all.
+    pub fn import_from_with(
+        &self,
+        src: impl AsRef<Path>,
+        hooks: &mut dyn ImportHooks,
+    ) -> Result<ImportReport> {
         let src = Db::open_readonly(src)?;
         let v = src.schema_version()?;
         if v > self.schema_version()? {
@@ -147,19 +165,23 @@ impl Db {
         let has_notes = v >= 4;
         let (mut imported, mut skipped) = (0, 0);
         for m in from.list_meetings(1_000_000, 0)? {
-            if to.get_meeting(&m.id)?.is_some() {
+            if to.get_meeting(&m.id)?.is_some() || hooks.skip(&m.id) {
                 skipped += 1;
                 continue;
             }
-            let audio = m.audio_path.as_ref().and_then(|p| {
-                let base = Path::new(p).file_name()?.to_string_lossy().into_owned();
-                audio_map.get(&base).map(|p| p.to_string_lossy().into_owned())
-            });
+            let base = m
+                .audio_path
+                .as_ref()
+                .and_then(|p| Some(Path::new(p).file_name()?.to_string_lossy().into_owned()));
+            let audio = match &base {
+                Some(b) => hooks.audio(&m, b)?,
+                None => None,
+            };
             let mut row = m.clone();
             row.audio_path = audio;
             // One meeting is one transaction: a failure mid-meeting must not leave a meeting row without its
             // transcript, because a re-import skips ids already present and would never repair it (N11).
-            to.tx(|| {
+            let r = to.tx(|| {
                 to.upsert_meeting(&row)?;
                 if let Some(t) = &m.template {
                     to.set_template(&m.id, t)?;
@@ -180,11 +202,27 @@ impl Db {
                     }
                 }
                 Ok(())
-            })?;
+            });
+            if let Err(e) = r {
+                hooks.rolled_back(&m);
+                return Err(e);
+            }
             imported += 1;
         }
         Ok(ImportReport { imported, skipped })
     }
+}
+
+/// Hooks for [`Db::import_from_with`].
+pub trait ImportHooks {
+    /// `true`: skip this meeting (counted as skipped) even though its id isn't in the database.
+    fn skip(&mut self, _id: &str) -> bool {
+        false
+    }
+    /// The meeting's recording (backup file name `base`): return the path to store, or None to drop it.
+    fn audio(&mut self, m: &Meeting, base: &str) -> Result<Option<String>>;
+    /// The meeting's transaction failed after `audio` ran: undo whatever `audio` placed.
+    fn rolled_back(&mut self, _m: &Meeting) {}
 }
 
 /// SQLite's companion files: the unix VFS creates them with the main file's mode.
