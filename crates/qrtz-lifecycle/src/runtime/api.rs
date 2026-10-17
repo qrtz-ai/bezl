@@ -384,8 +384,8 @@ pub struct AddNoteRequest {
 pub trait LifecycleStore: Send + Sync {
     /// `note.create`: upsert + template.
     async fn create_meeting(&self, m: qrtz_model::Meeting) -> StoreResult<()>;
-    /// `note.delete`.
-    async fn delete_meeting(&self, id: String) -> StoreResult<()>;
+    /// `note.delete`: drops the rows and returns the meeting's files for the host to remove (N15).
+    async fn delete_meeting(&self, id: String) -> StoreResult<Vec<String>>;
     /// `note.appendLive`: idempotent upsert of one live final.
     async fn append_live(&self, meeting_id: String, s: qrtz_model::Segment) -> StoreResult<()>;
     /// `note.fail`.

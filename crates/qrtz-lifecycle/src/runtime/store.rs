@@ -116,8 +116,13 @@ impl<E: DbExec> LifecycleStore for Store<E> {
         })
         .await
     }
-    async fn delete_meeting(&self, id: String) -> StoreResult<()> {
-        self.run(move |db| db.notes().delete_meeting(&id)).await
+    async fn delete_meeting(&self, id: String) -> StoreResult<Vec<String>> {
+        self.run(move |db| {
+            let files = db.notes().meeting_files(&id)?;
+            db.notes().delete_meeting(&id)?;
+            Ok(files)
+        })
+        .await
     }
     async fn append_live(&self, meeting_id: String, s: Segment) -> StoreResult<()> {
         self.run(move |db| {

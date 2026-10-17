@@ -116,8 +116,11 @@ export class NoteService {
   private tSent = new Set<string>();
   private pipelines = new Map<string, PipelineState>();
   private pipelineTimers = new Map<string, NodeJS.Timeout>();
-  /** `${id}:${step}:${attempts}` whose backoff timer already fired (N12: never wait on the wall clock twice). */
-  private backoffServed = new Set<string>();
+  /**
+   * Per meeting, the `${id}:${step}:${attempts}` whose backoff timer already fired (N12: never wait on the wall
+   * clock twice). One entry per meeting at most, dropped with the pipeline (N14).
+   */
+  private backoffServed = new Map<string, string>();
   private pipelineRunning = new Set<string>();
   private readyResolve!: () => void;
   /** Resolves once the persisted session was loaded and crash recovery queued (start waits on it). */
@@ -149,7 +152,13 @@ export class NoteService {
       // Transitions are broadcast synchronously so no phase is ever coalesced away (level/ASR are throttled).
       this.deps.bus.emit('note:session', this.view());
     });
-    fs.mkdirSync(deps.recordingsDir, { recursive: true });
+    // Owner-only: recordings are raw meeting audio (N18). chmod too, for a directory an older build created.
+    fs.mkdirSync(deps.recordingsDir, { recursive: true, mode: 0o700 });
+    try {
+      fs.chmodSync(deps.recordingsDir, 0o700);
+    } catch {
+      // Not ours to change (e.g. a mounted volume): keep going, the files are still the user's.
+    }
   }
 
   // ------------------------------------------------------------------ persistence
@@ -166,19 +175,87 @@ export class NoteService {
       );
   }
 
-  private persistPipeline(p: PipelineState) {
+  /**
+   * Saves the pipeline. `gone`: the worker refused because the meeting was deleted meanwhile; the caller must
+   * stop driving it (N16). `failed`: the save itself failed (retryable).
+   */
+  private persistPipeline(
+    p: PipelineState,
+  ): Promise<'saved' | 'gone' | 'failed'> {
     this.pipelines.set(p.meetingId, p);
     this.deps.bus.emit('note:pipeline', toPipelineView(p));
     if (p.meetingId === this.machine.state.meetingId) this.emitSoon(0);
     return this.deps.worker
       .call('pipeline.save', { state: p, settled: pipelineSettled(p) })
       .then(
-        () => true,
+        (r) => (r && r.ok === false ? 'gone' : 'saved'),
         (e) => {
           this.deps.log.warn('pipeline persist failed', { err: String(e) });
-          return false;
+          return 'failed' as const;
         },
       );
+  }
+
+  /**
+   * The meeting was deleted: drop every bit of host state for its pipeline (timer, served backoff, manual
+   * flags) so nothing runs or retries for it again (N14, N16). The session lets go of it too.
+   */
+  private forgetPipeline(id: string) {
+    const t = this.pipelineTimers.get(id);
+    if (t) clearTimeout(t);
+    this.pipelineTimers.delete(id);
+    this.pipelines.delete(id);
+    this.backoffServed.delete(id);
+    for (const k of this.manualSteps)
+      if (k.startsWith(`${id}:`)) this.manualSteps.delete(k);
+    const s = this.machine.state;
+    if (
+      s.meetingId === id &&
+      (s.phase === 'processing' || s.phase === 'error' || s.phase === 'done')
+    ) {
+      if (s.phase === 'processing')
+        this.machine.send({ type: 'processing-done' });
+      this.dismiss();
+    }
+  }
+
+  /**
+   * User delete (immediate, or the deferred one after its undo window): forget the pipeline first so no
+   * retry timer can race the delete, drop the rows, then remove the meeting's audio (N15). Only files inside
+   * the recordings directory are removed: the paths come from the DB, which a restored backup also wrote.
+   */
+  async deleteMeeting(id: string): Promise<{ removed: string[] }> {
+    this.forgetPipeline(id);
+    return this.dropMeeting(id);
+  }
+
+  /** Rows, then files (no session or pipeline side effects). */
+  private async dropMeeting(id: string): Promise<{ removed: string[] }> {
+    const r = await this.deps.worker.call('note.delete', { id });
+    const removed: string[] = [];
+    for (const f of meetingAudio(this.deps.recordingsDir, id, r.files ?? [])) {
+      if (!insideDir(this.deps.recordingsDir, f)) {
+        this.deps.log.warn('not removing audio outside recordings', { id });
+        continue;
+      }
+      try {
+        fs.rmSync(f, { force: true });
+        removed.push(f);
+      } catch (e) {
+        this.deps.log.warn('audio delete failed', { id, err: String(e) });
+      }
+    }
+    return { removed };
+  }
+
+  /** Pipeline sizes for tests and diagnostics (N14: nothing outlives a deleted meeting). */
+  pipelineDebug() {
+    return {
+      pipelines: this.pipelines.size,
+      timers: this.pipelineTimers.size,
+      backoffServed: this.backoffServed.size,
+      manualSteps: this.manualSteps.size,
+    };
   }
 
   // ------------------------------------------------------------------ helper I/O
@@ -819,8 +896,8 @@ export class NoteService {
 
   private async abortStart(id: string, error: LifecycleError) {
     this.machine.send({ type: 'start-failed', error });
-    // Nothing was captured: drop the empty meeting instead of leaving a broken row.
-    await this.deps.worker.call('note.delete', { id }).catch(() => {});
+    // Nothing was captured: drop the empty meeting (and any file the helper began) instead of a broken row.
+    await this.dropMeeting(id).catch(() => {});
     this.deps.bus.emit('note:changed', { id });
   }
 
@@ -1037,6 +1114,7 @@ export class NoteService {
     const t = this.pipelineTimers.get(id);
     if (t) clearTimeout(t);
     this.pipelineTimers.delete(id);
+    this.backoffServed.delete(id);
     p = pipelineStep(p, step, { kind: 'manual-retry', now: Date.now() });
     // A manual run always executes, even when Settings turned the automatic step off.
     this.manualSteps.add(`${id}:${step}`);
@@ -1059,7 +1137,8 @@ export class NoteService {
         // clock, so the wait is capped at the longest delay this attempt could have drawn, and once that timer
         // has fired the step runs: a clock that jumped back must not stall it for the size of the jump (N12).
         const backoff = `${id}:${step}:${cur.attempts}`;
-        const served = this.backoffServed.delete(backoff);
+        const served = this.backoffServed.get(id) === backoff;
+        this.backoffServed.delete(id);
         if (
           !served &&
           cur.status === 'retrying' &&
@@ -1074,7 +1153,7 @@ export class NoteService {
             id,
             setTimeout(() => {
               this.pipelineTimers.delete(id);
-              this.backoffServed.add(backoff);
+              this.backoffServed.set(id, backoff);
               void this.runPipeline(id);
             }, delay),
           );
@@ -1082,9 +1161,10 @@ export class NoteService {
         }
         p = pipelineStep(p, step, { kind: 'start', now: Date.now() });
         const started = await this.persistPipeline(p);
+        if (started === 'gone') return this.forgetPipeline(id);
         try {
           // Durability barrier: never run a step whose start is not on disk (a crash would re-run it blind).
-          if (!started)
+          if (started !== 'saved')
             throw new AppError(
               'E_UNAVAILABLE',
               'could not persist step start',
@@ -1149,7 +1229,8 @@ export class NoteService {
               .call('note.fail', { meetingId: id })
               .catch(() => {});
         }
-        await this.persistPipeline(p);
+        if ((await this.persistPipeline(p)) === 'gone')
+          return this.forgetPipeline(id);
         this.deps.bus.emit('note:changed', { id });
         this.syncSessionWithPipeline(p);
       }
@@ -1428,4 +1509,30 @@ function progressLabel(p: PipelineState | undefined): string {
   };
   if (!step || !s) return 'Finishing';
   return s.status === 'retrying' ? `${name[step]} (retrying)` : name[step];
+}
+
+/** True when `file` resolves to a path strictly inside `dir` (no `..` escape, no absolute elsewhere). */
+export function insideDir(dir: string, file: string): boolean {
+  const rel = path.relative(path.resolve(dir), path.resolve(file));
+  return !!rel && rel.split(path.sep)[0] !== '..' && !path.isAbsolute(rel);
+}
+
+/**
+ * The files to remove for a deleted meeting: the ones the DB listed plus any `<id>.wav` / `<id>.p<n>.wav` left in
+ * the recordings directory (a part written after the last pipeline save). Deduplicated.
+ */
+export function meetingAudio(
+  dir: string,
+  id: string,
+  listed: readonly string[],
+): string[] {
+  const out = new Set(listed.map((f) => path.resolve(f)));
+  const own = /^(.+?)(?:\.p\d+)?\.wav$/;
+  try {
+    for (const name of fs.readdirSync(dir))
+      if (own.exec(name)?.[1] === id) out.add(path.resolve(dir, name));
+  } catch {
+    // No recordings directory yet: nothing of this meeting on disk.
+  }
+  return [...out];
 }

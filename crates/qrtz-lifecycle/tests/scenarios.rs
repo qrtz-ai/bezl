@@ -197,7 +197,7 @@ impl LifecycleStore for FaultyStore {
     async fn create_meeting(&self, m: Meeting) -> StoreResult<()> {
         guarded!(self, "note.create", self.inner.create_meeting(m))
     }
-    async fn delete_meeting(&self, id: String) -> StoreResult<()> {
+    async fn delete_meeting(&self, id: String) -> StoreResult<Vec<String>> {
         guarded!(self, "note.delete", self.inner.delete_meeting(id))
     }
     async fn append_live(&self, meeting_id: String, s: Segment) -> StoreResult<()> {
@@ -549,6 +549,23 @@ impl Run {
                 );
                 self.record(live, label, async move { rt.retry_step(&id, step).await }, |p| {
                     json!(compact(&p.steps))
+                })
+            }
+            "deleteMeeting" => {
+                let id = s("id").unwrap();
+                self.record(live, label, async move { rt.delete_meeting(&id).await }, |r| {
+                    let mut names: Vec<String> = r
+                        .iter()
+                        .map(|f| {
+                            std::path::Path::new(f)
+                                .file_name()
+                                .unwrap()
+                                .to_string_lossy()
+                                .into_owned()
+                        })
+                        .collect();
+                    names.sort();
+                    json!(names)
                 })
             }
             "pipeline" => {

@@ -1,6 +1,6 @@
 {
   "name": "F14-meeting-deleted-mid-pipeline",
-  "about": "F14: the meeting is deleted while the summary waits out its backoff: the next attempt fails E_NOT_FOUND and nothing is written back.",
+  "about": "F14 (cycle 4: N16): the meeting is deleted behind the host's back (the worker row goes, e.g. another window or the deferred delete of an older build) while the summary waits out its backoff. The next attempt's start save is refused (pipeline.save ok:false), so the host forgets the pipeline: no E_NOT_FOUND attempts, no fallback, nothing written back, and the session lets go of the meeting.",
   "script": [
     {
       "op": "helper",
@@ -78,7 +78,8 @@
         "recording|id1|-|-|-|-|ok",
         "stopping|id1|-|-|-|-|ok",
         "processing|id1|-|-|-|-|ok",
-        "done|id1|-|-|-|-|ok"
+        "done|id1|-|-|-|-|ok",
+        "idle|-|-|-|-|-|ok"
       ],
       "pipelines": {
         "id1": [
@@ -87,10 +88,7 @@
           "manual finalize:done/1 summary:pending/0 index:pending/0",
           "manual finalize:done/1 summary:running/1 index:pending/0",
           "manual finalize:done/1 summary:retrying/1!E_UNAVAILABLE index:pending/0",
-          "manual finalize:done/1 summary:running/2!E_UNAVAILABLE index:pending/0",
-          "manual finalize:done/1 summary:failed/2!E_NOT_FOUND index:pending/0",
-          "manual finalize:done/1 summary:failed/2!E_NOT_FOUND index:running/1",
-          "manual finalize:done/1 summary:failed/2!E_NOT_FOUND index:failed/1!E_NOT_FOUND"
+          "manual finalize:done/1 summary:running/2!E_UNAVAILABLE index:pending/0"
         ]
       },
       "helper": [
@@ -107,8 +105,6 @@
         ]
       ],
       "changed": [
-        "id1",
-        "id1",
         "id1",
         "id1",
         "id1"
@@ -135,11 +131,11 @@
     "snapshots": {
       "end": {
         "view": {
-          "phase": "done",
-          "meetingId": "id1",
-          "startedAt": 1760000000000,
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
           "elapsedMs": 0,
-          "stopReason": "manual",
+          "stopReason": null,
           "degraded": [],
           "error": null,
           "paused": false,
@@ -150,14 +146,9 @@
           "activeSpeaker": null,
           "lines": [],
           "partial": "",
-          "pipeline": "finalize:done/1 summary:failed/2!E_NOT_FOUND index:failed/1!E_NOT_FOUND"
+          "pipeline": null
         },
-        "live": {
-          "meetingId": "id1",
-          "rev": 1,
-          "segments": [],
-          "partial": null
-        },
+        "live": null,
         "db": {
           "meetings": [],
           "segments": [],
@@ -165,8 +156,8 @@
           "notes": [],
           "pipelines": [],
           "session": [
-            "done",
-            "id1"
+            "idle",
+            null
           ]
         },
         "files": []

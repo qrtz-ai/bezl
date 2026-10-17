@@ -129,7 +129,7 @@ export function bootstrap() {
   const pendingDeletes = new PendingDeletes(
     userData,
     async (id) => {
-      await worker.call('note.delete', { id });
+      await note.deleteMeeting(id);
       log.info('deferred delete done', { id });
       bus.emit('note:changed', { id });
     },
@@ -308,7 +308,7 @@ export function bootstrap() {
           bus.emit('note:changed', { id });
           return { ok: true as const };
         }
-        await worker.call('note.delete', { id });
+        await note.deleteMeeting(id);
         bus.emit('note:changed', { id });
         return { ok: true as const };
       },

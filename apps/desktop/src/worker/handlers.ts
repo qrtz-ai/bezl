@@ -802,9 +802,11 @@ export function createWorkerHandlers(
       need(p.meetingId);
       return { changed: repo.renameSpeaker(p.meetingId, p.from, p.to) };
     },
+    /** Returns the meeting's files (recording + unstitched parts); the host removes them (N15). */
     'note.delete': (p: { id: string }) => {
+      const files = repo.meetingFiles(p.id);
       repo.deleteMeeting(p.id);
-      return { ok: true };
+      return { ok: true, files };
     },
   };
 }

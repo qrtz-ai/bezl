@@ -443,6 +443,14 @@ function run(sc: Scenario) {
                   compactSteps,
                 );
                 break;
+              case 'deleteMeeting':
+                record(
+                  label,
+                  note.deleteMeeting(a.id as string),
+                  (r: { removed: string[] }) =>
+                    r.removed.map((f) => path.basename(f)).sort(),
+                );
+                break;
               case 'pipeline':
                 record(
                   label,

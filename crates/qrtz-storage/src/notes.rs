@@ -406,8 +406,42 @@ impl<'a> NoteRepo<'a> {
         )
     }
 
+    /// Every file on disk that belongs to a meeting: its recording plus the WAV parts its post-processing record
+    /// still lists (a delete before finalize stitched them). Same as TS `NoteRepo.meetingFiles` (N15).
+    pub fn meeting_files(&self, id: &str) -> Result<Vec<String>> {
+        let mut files: Vec<String> = Vec::new();
+        let audio: Option<Option<String>> = self
+            .conn
+            .query_row("SELECT audio_path FROM meetings WHERE id=?", [id], |r| r.get(0))
+            .optional()?;
+        if let Some(Some(a)) = audio {
+            if !a.is_empty() {
+                files.push(a);
+            }
+        }
+        let json: Option<String> = self
+            .conn
+            .query_row("SELECT json FROM pipeline_state WHERE meeting_id=?", [id], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        if let Some(j) = json {
+            // An unreadable record lists nothing; the recording itself is still returned.
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&j) {
+                for f in v["ctx"]["audioParts"].as_array().into_iter().flatten() {
+                    if let Some(f) = f.as_str().filter(|f| !f.is_empty()) {
+                        if !files.iter().any(|x| x == f) {
+                            files.push(f.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        Ok(files)
+    }
+
     /// Deletes the meeting, its segments and its `meetings_fts` row; FK cascades take summaries, notes, vectors and
-    /// pipeline_state. Audio files are left on disk (TS parity; see docs/rust-core-api.md §6.7).
+    /// pipeline_state. The caller removes the files from [`NoteRepo::meeting_files`] (read them first; N15).
     pub fn delete_meeting(&self, id: &str) -> Result<()> {
         self.tx(|| {
             let rowid: Option<i64> = self

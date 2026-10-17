@@ -196,6 +196,17 @@ impl NoteRuntime {
     pub fn dismiss(&self) -> SessionView {
         self.sh.dismiss()
     }
+    /// User delete of a meeting (`note:delete`, or the deferred delete after its undo window): stops its
+    /// pipeline, drops the rows and removes its audio inside the recordings directory. Returns removed paths.
+    pub async fn delete_meeting(&self, id: &str) -> Result<Vec<String>, CoreError> {
+        let (sh, id) = (self.sh.clone(), id.to_string());
+        self.task(async move { sh.delete_meeting(&id).await }).await
+    }
+    /// Pipeline bookkeeping sizes `[pipelines, timers, served backoffs, manual flags]` (tests; N14).
+    #[doc(hidden)]
+    pub fn pipeline_debug(&self) -> [usize; 4] {
+        self.sh.pipeline_debug()
+    }
     /// Global shortcut / tray: stop when capturing, else start.
     pub async fn toggle(&self) -> Result<SessionView, CoreError> {
         let sh = self.sh.clone();
@@ -313,8 +324,9 @@ struct State {
     t_sent: HashSet<String>,
     pipelines: HashMap<String, PipelineState>,
     pipeline_timers: HashMap<String, AbortHandle>,
-    /// `{id}:{step}:{attempts}` whose backoff timer already fired (N12: never wait on the wall clock twice).
-    backoff_served: HashSet<String>,
+    /// Per meeting, the `{id}:{step}:{attempts}` whose backoff timer already fired (N12: never wait on the wall
+    /// clock twice). One entry per meeting at most, dropped with the pipeline (N14).
+    backoff_served: HashMap<String, String>,
     pipeline_running: HashSet<String>,
     start_in_flight: bool,
     helper_health: HelperHealth,
@@ -322,6 +334,15 @@ struct State {
     faults_fired: HashSet<String>,
     manual_steps: HashSet<String>,
     seq: u64,
+}
+
+/// Outcome of saving a pipeline record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Persisted {
+    Saved,
+    /// The meeting no longer exists (deleted meanwhile).
+    Gone,
+    Failed,
 }
 
 impl State {
@@ -352,7 +373,7 @@ impl State {
             t_sent: HashSet::new(),
             pipelines: HashMap::new(),
             pipeline_timers: HashMap::new(),
-            backoff_served: HashSet::new(),
+            backoff_served: HashMap::new(),
             pipeline_running: HashSet::new(),
             start_in_flight: false,
             helper_health: HelperHealth::Ok,
@@ -655,7 +676,8 @@ impl Shared {
     }
 
     /// `false` when the save failed (callers use it as the step-start durability barrier).
-    async fn persist_pipeline(self: &Arc<Self>, p: PipelineState) -> bool {
+    /// `Gone`: the store refused because the meeting was deleted meanwhile; stop driving it (N16).
+    async fn persist_pipeline(self: &Arc<Self>, p: PipelineState) -> Persisted {
         let current = {
             let mut st = self.lock();
             st.pipelines.insert(p.meeting_id.clone(), p.clone());
@@ -667,12 +689,51 @@ impl Shared {
         }
         let settled = pipeline_settled(&p);
         match self.d.store.save_pipeline(p, settled).await {
-            Ok(_) => true,
+            Ok(true) => Persisted::Saved,
+            Ok(false) => Persisted::Gone,
             Err(e) => {
                 tracing::warn!(err = %e.message, "pipeline persist failed");
-                false
+                Persisted::Failed
             }
         }
+    }
+
+    /// The meeting was deleted: drop every bit of host state for its pipeline (timer, served backoff, manual
+    /// flags) so nothing runs or retries for it again (N14, N16). The session lets go of it too.
+    fn forget_pipeline(&self, id: &str) {
+        let phase = {
+            let mut st = self.lock();
+            if let Some(t) = st.pipeline_timers.remove(id) {
+                t.abort();
+            }
+            st.pipelines.remove(id);
+            st.backoff_served.remove(id);
+            let prefix = format!("{id}:");
+            st.manual_steps.retain(|k| !k.starts_with(&prefix));
+            let s = st.machine.state();
+            (s.meeting_id.as_deref() == Some(id)).then_some(s.phase)
+        };
+        match phase {
+            Some(RecordingPhase::Processing) => {
+                self.send(LifecycleEvent::ProcessingDone);
+                self.dismiss();
+            }
+            Some(RecordingPhase::Error | RecordingPhase::Done) => {
+                self.dismiss();
+            }
+            _ => {}
+        }
+    }
+
+    /// Pipeline bookkeeping sizes (pipelines, timers, served backoffs, manual flags) for tests (N14).
+    fn pipeline_debug(&self) -> [usize; 4] {
+        let st = self.lock();
+        [
+            st.pipelines.len(),
+            st.pipeline_timers.len(),
+            st.backoff_served.len(),
+            st.manual_steps.len(),
+        ]
     }
 
     // ------------------------------------------------------------------ helper I/O
@@ -1284,9 +1345,35 @@ impl Shared {
 
     async fn abort_start(self: &Arc<Self>, id: &str, error: LifecycleError) {
         self.send(LifecycleEvent::StartFailed { error });
-        // Nothing was captured: drop the empty meeting instead of leaving a broken row.
-        let _ = self.d.store.delete_meeting(id.to_string()).await;
+        // Nothing was captured: drop the empty meeting (and any file the helper began) instead of a broken row.
+        let _ = self.drop_meeting(id).await;
         self.emit(CoreEvent::Changed { id: id.to_string() });
+    }
+
+    /// User delete: forget the pipeline first so no retry timer races the delete, then rows, then audio (N15).
+    async fn delete_meeting(self: &Arc<Self>, id: &str) -> Result<Vec<String>, CoreError> {
+        self.forget_pipeline(id);
+        self.drop_meeting(id).await
+    }
+
+    /// Rows, then the files inside the recordings directory (no session or pipeline side effects).
+    async fn drop_meeting(self: &Arc<Self>, id: &str) -> Result<Vec<String>, CoreError> {
+        let listed = self.d.store.delete_meeting(id.to_string()).await?;
+        let mut removed = Vec::new();
+        for f in meeting_audio(&self.d.recordings_dir, id, &listed) {
+            if !inside_dir(&self.d.recordings_dir, &f) {
+                tracing::warn!(id, "not removing audio outside recordings");
+                continue;
+            }
+            match std::fs::remove_file(&f) {
+                Ok(()) => removed.push(f.to_string_lossy().into_owned()),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    removed.push(f.to_string_lossy().into_owned())
+                }
+                Err(e) => tracing::warn!(id, err = %e, "audio delete failed"),
+            }
+        }
+        Ok(removed)
     }
 
     // ------------------------------------------------------------------ helper crash / reconnect
@@ -1532,6 +1619,7 @@ impl Shared {
             if let Some(t) = st.pipeline_timers.remove(id) {
                 t.abort();
             }
+            st.backoff_served.remove(id);
         }
         let p = pipeline_step(&p, step, StepPatch::ManualRetry { now: self.now() });
         // A manual run always executes, even when Settings turned the automatic step off.
@@ -1568,14 +1656,14 @@ impl Shared {
             // the wait is capped at the longest delay this attempt could have drawn, and once that timer fired the
             // step runs: a clock that jumped back must not stall it for the size of the jump (N12).
             let backoff = format!("{id}:{}:{}", step.as_str(), cur.attempts);
-            let served = self.lock().backoff_served.remove(&backoff);
+            let served = self.lock().backoff_served.remove(id).as_deref() == Some(backoff.as_str());
             if !served && cur.status == StepStatus::Retrying {
                 if let Some(at) = cur.next_retry_at.filter(|at| *at != 0 && *at > now) {
                     let cap = max_retry_delay(&policies::for_step(step), cur.attempts, self.scale()) as i64;
                     let mid = id.to_string();
                     let t = self.set_timeout((at - now).min(cap) as f64, move |sh| {
                         sh.lock().pipeline_timers.remove(&mid);
-                        sh.lock().backoff_served.insert(backoff);
+                        sh.lock().backoff_served.insert(mid.clone(), backoff);
                         let s2 = sh.clone();
                         sh.spawn(async move { s2.run_pipeline(mid).await });
                     });
@@ -1587,8 +1675,11 @@ impl Shared {
             }
             let p = pipeline_step(&p, step, StepPatch::Start { now: self.now() });
             let started = self.persist_pipeline(p.clone()).await;
+            if started == Persisted::Gone {
+                return self.forget_pipeline(id);
+            }
             // Durability barrier: never run a step whose start is not on disk (a crash would re-run it blind).
-            let r = if started {
+            let r = if started == Persisted::Saved {
                 self.clone().exec_step(&p, step).await
             } else {
                 Err(CoreError::unavailable("could not persist step start"))
@@ -1648,7 +1739,9 @@ impl Shared {
                 }
             };
             p.meeting_id = id.to_string();
-            self.persist_pipeline(p.clone()).await;
+            if self.persist_pipeline(p.clone()).await == Persisted::Gone {
+                return self.forget_pipeline(id);
+            }
             self.emit(CoreEvent::Changed { id: id.to_string() });
             self.sync_session_with_pipeline(&p);
         }
@@ -1854,6 +1947,59 @@ impl Shared {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
     }
+}
+
+/// True when `file` resolves lexically to a path strictly inside `dir` (no `..` escape). TS `insideDir`.
+pub fn inside_dir(dir: &std::path::Path, file: &std::path::Path) -> bool {
+    use std::path::Component;
+    let norm = |p: &std::path::Path| {
+        let mut out: Vec<std::ffi::OsString> = Vec::new();
+        for c in p.components() {
+            match c {
+                Component::ParentDir => {
+                    out.pop();
+                }
+                Component::CurDir => {}
+                c => out.push(c.as_os_str().to_owned()),
+            }
+        }
+        out
+    };
+    if !file.is_absolute() || !dir.is_absolute() {
+        return false;
+    }
+    let (d, f) = (norm(dir), norm(file));
+    f.len() > d.len() && f.starts_with(&d)
+}
+
+/// Files to remove for a deleted meeting: those the DB listed plus any `<id>.wav` / `<id>.p<n>.wav` in the
+/// recordings directory. TS `meetingAudio`.
+pub fn meeting_audio(dir: &std::path::Path, id: &str, listed: &[String]) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    let mut add = |p: PathBuf| {
+        if !out.contains(&p) {
+            out.push(p);
+        }
+    };
+    for f in listed {
+        add(PathBuf::from(f));
+    }
+    if let Ok(rd) = std::fs::read_dir(dir) {
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            let Some(stem) = name.strip_suffix(".wav") else {
+                continue;
+            };
+            let base = match stem.rsplit_once(".p") {
+                Some((b, n)) if !n.is_empty() && n.bytes().all(|c| c.is_ascii_digit()) => b,
+                _ => stem,
+            };
+            if base == id {
+                add(dir.join(&name));
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]

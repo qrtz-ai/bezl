@@ -288,6 +288,32 @@ export class NoteRepo {
     ).map(toMeeting);
   }
 
+  /**
+   * Every file on disk that belongs to a meeting: its recording plus the WAV parts its post-processing record
+   * still lists (a delete before finalize stitched them). Deleting the meeting must remove these too (N15).
+   */
+  meetingFiles(id: string): string[] {
+    const files = new Set<string>();
+    const m = this.db
+      .prepare('SELECT audio_path AS a FROM meetings WHERE id=?')
+      .get(id) as { a: string | null } | undefined;
+    if (m?.a) files.add(m.a);
+    const p = this.db
+      .prepare('SELECT json FROM pipeline_state WHERE meeting_id=?')
+      .get(id) as { json: string } | undefined;
+    if (p) {
+      try {
+        const parts = (JSON.parse(p.json) as { ctx?: { audioParts?: unknown } })
+          .ctx?.audioParts;
+        if (Array.isArray(parts))
+          for (const f of parts) if (typeof f === 'string' && f) files.add(f);
+      } catch {
+        // An unreadable record lists nothing; the recording itself is still returned.
+      }
+    }
+    return [...files];
+  }
+
   deleteMeeting(id: string): void {
     this.tx(() => {
       const r = this.db
