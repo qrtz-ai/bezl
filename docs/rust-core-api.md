@@ -132,6 +132,7 @@ pub struct RecordingState {
     pub reconnect: Option<ReconnectInfo>, pub error: Option<LifecycleError>,
     pub audio_parts: Vec<String>,            // default []
     pub part_offset_ms: Ms,                  // default 0
+    pub part_offsets_ms: Option<Vec<Ms>>,    // H7 (ADR 0032): parallel to audio_parts once a part was added
     // N29/H8 (ADR 0025): all omitted when empty
     pub silent: Vec<SilentInput>,            // {source, since_ms} silent right now
     pub silent_spans: Vec<SilentSpan>,       // {source, start_ms, end_ms?} closed stretches, meeting ms, ≤ 256
@@ -165,7 +166,10 @@ pub struct StepState { pub status: StepStatus, pub attempts: u32, pub max_attemp
     pub started_at: Option<EpochMs>, pub finished_at: Option<EpochMs> }
 pub struct ActiveSpeakerEvent { pub at_ms: Ms, pub name: String }
 pub struct PipelineContext { pub started_at: EpochMs, pub ended_at: EpochMs, pub duration_ms: Ms,
-    pub audio_parts: Vec<String>, pub active: Vec<ActiveSpeakerEvent>, pub helper_crashed: bool }
+    pub audio_parts: Vec<String>, pub part_offsets_ms: Option<Vec<Ms>> /* H7 */,
+    pub active: Vec<ActiveSpeakerEvent>, pub helper_crashed: bool }
+// qrtz_lifecycle::wav (H7/N41/N44, ADRs 0032-0033): stitch_parts(parts, offsets_ms: Option<&[i64]>) pads each gap
+// (gap_pad_bytes, capped at STITCH_MAX_GAP_MS = 35 000), streams, and commits via `<main>.stitched`.
 pub struct PipelineSteps { pub finalize: StepState, pub summary: StepState, pub index: StepState }
 pub struct PipelineState { pub meeting_id: String, pub stop_reason: StopReason, pub steps: PipelineSteps,
     pub ctx: PipelineContext, pub updated_at: EpochMs,

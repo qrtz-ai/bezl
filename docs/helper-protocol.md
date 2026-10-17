@@ -177,9 +177,22 @@ Each one that fails to start is reported as a structured message (this used to b
   (ADR 0025): `RecordingState.fallbacks` and later `PipelineState.capture.fallbacks` `[{from, to, reason, atMs}]`,
   capped at 8. `to: null` degrades `audio-unavailable` at once, so the following `audio.unavailable` error is a
   no-op.
+- **Per helper, not per recording (N42, ADR 0034):** `capture.fallback{to: null}`, `error{audio.unavailable}` and
+  `error{asr.unavailable}` are sent at every part's start, a resumed part too. The host drops `audio-unavailable` and
+  `asr-unavailable` at `helper-lost`, and the new helper's reports (arriving while the host is `reconnecting`) set
+  them again for its part. A helper must keep sending them on each start; a source that comes back mid-part without a
+  restart has no message yet (a `capture.restored` would be the protocol addition).
 - Mock helper: `createMockHelper({ captureFallback: [{ from, to, reason }] })` emits them on every `recording.start`.
   Rust `qrtz-mock-helper`: `QRTZ_MOCK_FALLBACK="screen>mic,mic>"`, where an empty `to` is `null` and is followed by
   `error{audio.unavailable}`.
+
+## Speaker events and the part clock (N43)
+
+`ax.activeSpeaker{atMs, name}` carries helper time: ms since the running recording started, or since the helper
+started when none runs. The host places it in meeting time (`atMs + partOffsetMs`) only once the part's
+`recording.started` is applied: in `recording` and `stopping`. One in the same stdout chunk as the ack is held and
+replayed with the new offset (like `asr`, ADR 0029). Before the first ack and while reconnecting it is ignored
+(ADR 0035).
 
 ## Capture degraded inside a source (N35)
 

@@ -74,16 +74,17 @@ stateDiagram-v2
 | done         | meeting usable (transcript final, summary saved)             | no            | meeting view; index may still be running                        |
 | error        | finalize failed for good                                     | no            | error + "Retry" on the failed step                              |
 
-`degraded[]` can be set while capturing. It is never cleared within one recording:
+`degraded[]` can be set while capturing. It is never cleared within one recording, except for device failures (below)
+and the helper's own start reports (`asr-unavailable`, `audio-unavailable`; N42, ADR 0034), which end at `helper-lost`:
 
-| Flag                | Source                                                                            | Effect                                                                          |
-| ------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `mic-only`          | screen-recording denied at start, or revoked mid-recording (`permission.revoked`) | only the local mic is captured                                                  |
-| `no-mic`            | microphone revoked mid-recording (`permission.revoked`)                           | only system audio (the other side of the call) is captured                      |
-| `ax-unavailable`    | accessibility denied at start or revoked mid-recording                            | no detection/participants/speaker names                                         |
-| `asr-unavailable`   | helper `error{code: asr.unavailable}`                                             | audio only, no live transcript                                                  |
-| `audio-unavailable` | helper `error{code: audio.unavailable}`                                           | nothing captured (the start is refused up front if both permissions are denied) |
-| `transcript-gap`    | helper restarted mid-recording                                                    | the restart interval is missing                                                 |
+| Flag                | Source                                                                             | Effect                                                                          |
+| ------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `mic-only`          | screen-recording denied at start, or revoked mid-recording (`permission.revoked`)  | only the local mic is captured                                                  |
+| `no-mic`            | microphone revoked mid-recording (`permission.revoked`)                            | only system audio (the other side of the call) is captured                      |
+| `ax-unavailable`    | accessibility denied at start or revoked mid-recording                             | no detection/participants/speaker names                                         |
+| `asr-unavailable`   | helper `error{code: asr.unavailable}` (each part's start; ends at `helper-lost`)   | audio only, no live transcript                                                  |
+| `audio-unavailable` | helper `error{code: audio.unavailable}` (each part's start; ends at `helper-lost`) | nothing captured (the start is refused up front if both permissions are denied) |
+| `transcript-gap`    | helper restarted mid-recording                                                     | the restart interval is missing                                                 |
 
 **Silent input (N29, ADR 0025)** is separate from `degraded[]` because it clears. After `capture.silent{source}`
 (60 s under ≈ −70 dBFS), `silent[]` holds `{source, sinceMs}` until `capture.audible{source}`. `SessionView` has
@@ -110,7 +111,17 @@ a lost mic plus quiet system audio is "no audio at all". A start with the mic de
 
 **Lines behind an ack (N37, ADR 0029).** `start-acked` / `helper-restored` are applied in the start's continuation,
 after the line that resolved its waiter. Lines from the same chunk that the new recording owns (`capture.degraded`,
-`asr`) are held behind the ack and replayed right after the transition, or dropped if the start does not take.
+`asr`, and since N43 `ax.activeSpeaker`) are held behind the ack and replayed right after the transition, or dropped
+if the start does not take. A speaker event outside `recording` / `stopping` is ignored (ADR 0035): before the ack
+the helper's clock is not the part's.
+
+**Helper start reports (N42, ADR 0034).** The helper sends `error{asr.unavailable}`, `capture.fallback{to: null}` and
+`error{audio.unavailable}` at every part's start, before `recording.started`. So `asr-unavailable` and
+`audio-unavailable` belong to the helper that sent them: `helper-lost` (also while reconnecting) removes them and
+ends the lost stretches they held open. The next helper's reports arrive while `reconnecting` and apply to its part.
+
+**Part offsets (H7, ADR 0032).** `partOffsetsMs` (parallel to `audioParts`, written by the first `helper-restored`,
+omitted for one part) goes to `PipelineContext.partOffsetsMs` at the stop and at R1 recovery.
 
 ## Post-processing pipeline
 
@@ -119,11 +130,11 @@ It runs independently of the session, so a new recording can start while the pre
 summarized. The pipeline is persisted **before** each step starts and after it ends, and broadcast as
 `note:pipeline` every time.
 
-| Step     | Worker call                 | Idempotent because                                                                                                                                                 | Policy                                                                                                  | On exhaustion                                                                                                         |
-| -------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| finalize | `note.stepFinalize`         | the stitch writes `main.stitch` then renames atomically and deletes parts after; WAV repair is a no-op on a good header; speaker fusion replaces the live segments | 3 attempts, 1 s → 2 s (×2, cap 16 s)                                                                    | meeting `failed`, session `error`, later steps stay `pending`, manual retry                                           |
-| summary  | `note.stepSummary` (strict) | upsert of the one summary row                                                                                                                                      | 3 attempts, 2 s → 4 s → … cap 30 s; **non-retryable** (401/403/400, bad key) fails on the first attempt | on-device extractive summary saved with `llmError`, step `failed` with `fallback: true`, meeting `done`, manual retry |
-| index    | `note.stepIndex`            | vectors keyed by segment rowid; `missingVectors` only picks unindexed lines                                                                                        | 3 attempts, 5 s → … cap 60 s                                                                            | step `failed` (chat falls back to full-text), manual retry; no embedder → `skipped`                                   |
+| Step     | Worker call                 | Idempotent because                                                                                                                                                                                                                                                                         | Policy                                                                                                  | On exhaustion                                                                                                         |
+| -------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| finalize | `note.stepFinalize`         | the stitch writes `main.stitch` (pads each reconnect gap, H7), renames it to `main.stitched` (commit), deletes the parts, then renames over `main`; a re-run that finds `.stitched` only finishes (N41); WAV repair is a no-op on a good header; speaker fusion replaces the live segments | 3 attempts, 1 s → 2 s (×2, cap 16 s)                                                                    | meeting `failed`, session `error`, later steps stay `pending`, manual retry                                           |
+| summary  | `note.stepSummary` (strict) | upsert of the one summary row                                                                                                                                                                                                                                                              | 3 attempts, 2 s → 4 s → … cap 30 s; **non-retryable** (401/403/400, bad key) fails on the first attempt | on-device extractive summary saved with `llmError`, step `failed` with `fallback: true`, meeting `done`, manual retry |
+| index    | `note.stepIndex`            | vectors keyed by segment rowid; `missingVectors` only picks unindexed lines                                                                                                                                                                                                                | 3 attempts, 5 s → … cap 60 s                                                                            | step `failed` (chat falls back to full-text), manual retry; no embedder → `skipped`                                   |
 
 Every delay has ±20% jitter (`retryDelay`), and `QRTZ_RETRY_SCALE` shrinks all of them for tests. Step
 statuses are `pending → running → (done | skipped | retrying → running … | failed)`. A manual retry
@@ -218,5 +229,7 @@ At startup, after the worker is ready, `NoteService.recover()` runs. `start()` w
 
 - Speaker activity (`active[]`) is kept in memory until stop. After an R1 crash, names come only from the
   live per-segment speaker stamped at append time.
-- The WAV parts from a helper restart are stitched end to end. The gap is not padded with silence, so
-  playback after the gap runs early by the length of the gap. The transcript timestamps are correct.
+- The WAV parts from a helper restart are stitched with each reconnect gap as zero PCM (H7, ADR 0032), so audio
+  time matches transcript time. One gap's pad is capped at 35 s (reconnect window + start ack): a wall clock that
+  jumps forward during a reconnect (a sleep) moves the next part's transcript by the jump, but the audio only by the
+  cap (N45, open). A session row from an older build has no offsets and stitches end to end.
