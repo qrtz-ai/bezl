@@ -153,3 +153,50 @@ describe('hardening 9: stitched audio keeps meeting time across reconnect gaps (
     ]);
   });
 });
+
+describe('hardening 9: a stitch interrupted at any step finishes without duplicating audio (N41)', () => {
+  /** The stitched bytes for two parts with a 1 s gap, from a clean run in its own dir. */
+  const reference = () => {
+    const d = tmp();
+    const ps = files(d, 2);
+    writePart(ps[0]!, 32000, 1);
+    writePart(ps[1]!, 16000, 2);
+    stitchParts(ps, [0, 2000]);
+    return fs.readFileSync(ps[0]!);
+  };
+  const setup = () => {
+    const d = tmp();
+    const ps = files(d, 2) as [string, string];
+    writePart(ps[0], 32000, 1);
+    writePart(ps[1], 16000, 2);
+    return { d, ps };
+  };
+
+  it('died after the commit, before the parts were removed: finishes, the part is not appended twice', () => {
+    const want = reference();
+    const { d, ps } = setup();
+    fs.writeFileSync(`${ps[0]}.stitched`, want);
+    expect(stitchParts(ps, [0, 2000])).toBe(2500);
+    expect(fs.readFileSync(ps[0]).equals(want)).toBe(true);
+    expect(fs.readdirSync(d)).toEqual(['m.wav']);
+  });
+
+  it('died after the parts were removed, before the final rename: finishes from .stitched', () => {
+    const want = reference();
+    const { d, ps } = setup();
+    fs.rmSync(ps[1]);
+    fs.writeFileSync(`${ps[0]}.stitched`, want);
+    expect(stitchParts(ps, [0, 2000])).toBe(2500);
+    expect(fs.readFileSync(ps[0]).equals(want)).toBe(true);
+    expect(fs.readdirSync(d)).toEqual(['m.wav']);
+  });
+
+  it('died while writing .stitch: starts over and overwrites the partial temp', () => {
+    const want = reference();
+    const { d, ps } = setup();
+    fs.writeFileSync(`${ps[0]}.stitch`, Buffer.alloc(9999, 7));
+    expect(stitchParts(ps, [0, 2000])).toBe(2500);
+    expect(fs.readFileSync(ps[0]).equals(want)).toBe(true);
+    expect(fs.readdirSync(d)).toEqual(['m.wav']);
+  });
+});

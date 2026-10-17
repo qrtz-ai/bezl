@@ -2155,8 +2155,13 @@ pub fn meeting_audio(dir: &std::path::Path, id: &str, listed: &[String]) -> Vec<
     if let Ok(rd) = std::fs::read_dir(dir) {
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
-            // `<id>.wav`, `<id>.p<n>.wav`, and a `<id>.wav.stitch` an interrupted finalize left (N28).
-            let Some(stem) = name.strip_suffix(".stitch").unwrap_or(&name).strip_suffix(".wav") else {
+            // `<id>.wav`, `<id>.p<n>.wav`, and a `<id>.wav.stitch` / `.stitched` an interrupted finalize left
+            // (N28, N41).
+            let bare = name
+                .strip_suffix(".stitched")
+                .or_else(|| name.strip_suffix(".stitch"))
+                .unwrap_or(&name);
+            let Some(stem) = bare.strip_suffix(".wav") else {
                 continue;
             };
             let base = match stem.rsplit_once(".p") {

@@ -80,13 +80,25 @@ describe('hardening 5: a failed stitch leaves no temp file (N28)', () => {
     expect(fs.existsSync(part)).toBe(false);
   });
 
-  it('a meeting delete also takes a leftover <id>.wav.stitch, never another meeting’s', () => {
+  it('a meeting delete also takes a leftover <id>.wav.stitch / .stitched (N41), never another meeting’s', () => {
     const d = tmp();
-    for (const f of ['m.wav', 'm.wav.stitch', 'm.p2.wav', 'mm.wav.stitch'])
+    for (const f of [
+      'm.wav',
+      'm.wav.stitch',
+      'm.wav.stitched',
+      'm.p2.wav',
+      'mm.wav.stitch',
+      'mm.wav.stitched',
+    ])
       fs.writeFileSync(path.join(d, f), '');
     const got = meetingAudio(d, 'm', [])
       .map((f) => path.basename(f))
       .sort();
-    expect(got).toEqual(['m.p2.wav', 'm.wav', 'm.wav.stitch']);
+    expect(got).toEqual([
+      'm.p2.wav',
+      'm.wav',
+      'm.wav.stitch',
+      'm.wav.stitched',
+    ]);
   });
 });

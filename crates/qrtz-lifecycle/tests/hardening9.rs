@@ -176,3 +176,52 @@ fn disk_full_while_padding_keeps_the_first_part_and_retries() {
         vec![(1, 32000), (0, 64000), (2, 32000)]
     );
 }
+
+/// N41 (ADR 0033): the stitched bytes for two parts with a 1 s gap, from a clean run in its own dir.
+fn reference(sp: &Value) -> Vec<u8> {
+    let d = tempfile::tempdir().unwrap();
+    let ps = files(d.path(), 2);
+    write_part(&ps[0], sp, 32000, 1);
+    write_part(&ps[1], sp, 16000, 2);
+    stitch_parts(&strs(&ps), Some(&[0, 2000])).unwrap();
+    fs::read(&ps[0]).unwrap()
+}
+
+fn names(d: &Path) -> Vec<String> {
+    let mut v: Vec<String> = fs::read_dir(d)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    v.sort();
+    v
+}
+
+#[test]
+fn interrupted_stitch_finishes_without_duplicating_audio() {
+    let sp = spec();
+    let want = reference(&sp);
+    // 0: died after the commit, before the parts were removed; 1: after the parts were removed, before the final
+    // rename; 2: while writing `.stitch` (a partial temp).
+    for stage in 0..3 {
+        let d = tempfile::tempdir().unwrap();
+        let ps = files(d.path(), 2);
+        write_part(&ps[0], &sp, 32000, 1);
+        write_part(&ps[1], &sp, 16000, 2);
+        let main = ps[0].to_string_lossy().into_owned();
+        match stage {
+            0 => fs::write(format!("{main}.stitched"), &want).unwrap(),
+            1 => {
+                fs::remove_file(&ps[1]).unwrap();
+                fs::write(format!("{main}.stitched"), &want).unwrap();
+            }
+            _ => fs::write(format!("{main}.stitch"), vec![7u8; 9999]).unwrap(),
+        }
+        assert_eq!(
+            stitch_parts(&strs(&ps), Some(&[0, 2000])).unwrap(),
+            Some(2500),
+            "stage {stage}"
+        );
+        assert_eq!(fs::read(&ps[0]).unwrap(), want, "stage {stage}");
+        assert_eq!(names(d.path()), vec!["m.wav"], "stage {stage}");
+    }
+}

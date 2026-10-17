@@ -48,7 +48,14 @@ fn failed_stitch_leaves_no_temp_and_retries() {
 #[test]
 fn meeting_audio_takes_a_leftover_stitch_temp() {
     let d = tempfile::tempdir().unwrap();
-    for f in ["m.wav", "m.wav.stitch", "m.p2.wav", "mm.wav.stitch"] {
+    for f in [
+        "m.wav",
+        "m.wav.stitch",
+        "m.wav.stitched",
+        "m.p2.wav",
+        "mm.wav.stitch",
+        "mm.wav.stitched",
+    ] {
         std::fs::write(d.path().join(f), b"").unwrap();
     }
     let mut got: Vec<String> = meeting_audio(d.path(), "m", &[])
@@ -56,5 +63,5 @@ fn meeting_audio_takes_a_leftover_stitch_temp() {
         .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
         .collect();
     got.sort();
-    assert_eq!(got, vec!["m.p2.wav", "m.wav", "m.wav.stitch"]);
+    assert_eq!(got, vec!["m.p2.wav", "m.wav", "m.wav.stitch", "m.wav.stitched"]);
 }

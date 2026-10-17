@@ -89,10 +89,22 @@ fn write_zeros(out: &mut fs::File, n: u64) -> std::io::Result<()> {
 /// H7: with `offsets_ms` (one per part, meeting time, `PipelineContext::part_offsets_ms`) each later part is
 /// preceded by the zero PCM of its reconnect gap ([`gap_pad_bytes`]). Without (older rows): back to back.
 /// N44: streamed (copy + chunks), constant memory. N28: a failed stitch removes its temp, the first part intact.
+/// N41 (ADR 0033), crash-safe in three steps: write `<main>.stitch`; rename it to `<main>.stitched` (commit); remove
+/// the parts; rename `.stitched` over the first part. A re-run that finds `.stitched` only finishes the last two.
 pub fn stitch_parts(parts: &[String], offsets_ms: Option<&[i64]>) -> std::io::Result<Option<i64>> {
     let Some((main, rest)) = parts.split_first() else {
         return Ok(None);
     };
+    let done = format!("{main}.stitched");
+    // N41: an earlier run committed its stitch and died before the parts were gone or the result was in place. The
+    // parts are already in it, so only finish: appending them again would duplicate their audio.
+    if Path::new(&done).exists() {
+        for f in rest {
+            let _ = fs::remove_file(f);
+        }
+        fs::rename(&done, main)?;
+        return Ok(repair_wav(main));
+    }
     repair_wav(main);
     let offsets = offsets_ms.filter(|o| o.len() == parts.len());
     let extra: Vec<(&String, Option<i64>)> = rest
@@ -124,7 +136,8 @@ pub fn stitch_parts(parts: &[String], offsets_ms: Option<&[i64]>) -> std::io::Re
                 }
             }
             drop(out);
-            fs::rename(&tmp, main)
+            // N41: the commit point: from here on the parts are in `.stitched`.
+            fs::rename(&tmp, &done)
         })();
         if let Err(e) = stitched {
             // N28: a failed stitch (disk full, unreadable part) must not leave a meeting-sized `.stitch` behind.
@@ -134,6 +147,8 @@ pub fn stitch_parts(parts: &[String], offsets_ms: Option<&[i64]>) -> std::io::Re
         for (f, _) in &extra {
             let _ = fs::remove_file(f);
         }
+        // Atomic: either the old main (and `.stitched`) or the stitched one.
+        fs::rename(&done, main)?;
     }
     Ok(repair_wav(main))
 }

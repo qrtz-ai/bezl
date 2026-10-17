@@ -128,6 +128,8 @@ function appendPcm(out: number, src: string, pos: number): number {
  *
  * N44: streamed (copy + 1 MiB chunks), so a three-hour meeting never sits in the worker's memory.
  * N28: a failed stitch (disk full, unreadable part) removes its temp and keeps the first part intact.
+ * N41 (ADR 0033), crash-safe in three steps: write `<main>.stitch`; rename it to `<main>.stitched` (commit); remove
+ * the parts; rename `.stitched` over the first part. A re-run that finds `.stitched` only finishes the last two.
  */
 export function stitchParts(
   parts: readonly string[],
@@ -135,6 +137,14 @@ export function stitchParts(
 ): number | undefined {
   const [main, ...rest] = parts;
   if (!main) return undefined;
+  const done = `${main}.stitched`;
+  // N41: an earlier run committed its stitch and died before the parts were gone or the result was in place. The
+  // parts are already in it, so only finish: appending them again would duplicate their audio.
+  if (fs.existsSync(done)) {
+    for (const f of rest) fs.rmSync(f, { force: true });
+    fs.renameSync(done, main);
+    return repairWav(main);
+  }
   repairWav(main);
   const offsets = offsetsMs?.length === parts.length ? offsetsMs : undefined;
   const extra = rest
@@ -161,13 +171,14 @@ export function stitchParts(
       } finally {
         fs.closeSync(out);
       }
-      fs.renameSync(tmp, main); // atomic: either the old main or the stitched one
+      fs.renameSync(tmp, done); // N41: the commit point: from here on the parts are in `.stitched`
     } catch (e) {
       // N28: a failed stitch (disk full, unreadable part) must not leave a meeting-sized `.stitch` behind.
       fs.rmSync(tmp, { force: true });
       throw e;
     }
     for (const x of extra) fs.rmSync(x.f, { force: true });
+    fs.renameSync(done, main); // atomic: either the old main (and `.stitched`) or the stitched one
   }
   return repairWav(main);
 }

@@ -1716,8 +1716,8 @@ export function meetingAudio(
   listed: readonly string[],
 ): string[] {
   const out = new Set(listed.map((f) => path.resolve(f)));
-  // `<id>.wav`, `<id>.p<n>.wav`, and a `<id>.wav.stitch` an interrupted finalize left (N28).
-  const own = /^(.+?)(?:\.p\d+)?\.wav(?:\.stitch)?$/;
+  // `<id>.wav`, `<id>.p<n>.wav`, and a `<id>.wav.stitch` / `.stitched` an interrupted finalize left (N28, N41).
+  const own = /^(.+?)(?:\.p\d+)?\.wav(?:\.stitch(?:ed)?)?$/;
   try {
     for (const name of fs.readdirSync(dir))
       if (own.exec(name)?.[1] === id) out.add(path.resolve(dir, name));
