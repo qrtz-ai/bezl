@@ -1,0 +1,35 @@
+{
+  "$comment": "Shipped migrations, shared by TS (packages/core/src/db/migrate.ts) and Rust (crates/qrtz-storage). Append only: add a row with the new file; never edit a shipped row or file. Numbers go to whoever commits first.",
+  "migrations": [
+    {
+      "version": 1,
+      "name": "kv",
+      "file": "packages/core/src/db/sql/0001_kv.sql",
+      "sha256": "550e576d97a1d4c68bdda98ad7a428e924db4dee447b755d2159af95b1a9f3ba"
+    },
+    {
+      "version": 2,
+      "name": "memo",
+      "file": "packages/core/src/db/sql/0002_memo.sql",
+      "sha256": "025bd1ccb114fcb5cbe8d842f351056137e2fbb397eab35f8ef0f1d32b84ad96"
+    },
+    {
+      "version": 3,
+      "name": "segment_vectors",
+      "file": "packages/core/src/db/sql/0003_segment_vectors.sql",
+      "sha256": "ebdf1d0c8fb2cb073c91b92f693a51a06bcf3519363290238652410dc7ca9926"
+    },
+    {
+      "version": 4,
+      "name": "notes_templates",
+      "file": "packages/core/src/db/sql/0004_notes_templates.sql",
+      "sha256": "3cd4a0af48af5cc07ae4b032a970ec12d43e13fc6cb7647d838376062797da7d"
+    },
+    {
+      "version": 5,
+      "name": "recording_lifecycle",
+      "file": "packages/core/src/db/sql/0005_recording_lifecycle.sql",
+      "sha256": "6df15435ba2e8bc4cf0d530d8682bfc17239d11e47c4abdc19ef41f9410a5a23"
+    }
+  ]
+}

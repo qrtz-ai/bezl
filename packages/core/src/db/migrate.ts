@@ -64,13 +64,18 @@ export function migrate(
 }
 
 import { noteMigrations } from '../note/schema';
+import kv from './sql/0001_kv.sql?raw';
 
-/** App migrations. Append only; never edit a shipped migration. */
+/**
+ * App migrations. Append only; never edit a shipped migration. The SQL lives in ./sql/NNNN_<name>.sql and is
+ * shared byte-for-byte with the Rust core (crates/qrtz-storage). Numbers go to whoever commits first.
+ * Never run a plain VACUUM: meetings_fts is keyed by the implicit meetings.rowid, which VACUUM may renumber.
+ */
 export const migrations: readonly Migration[] = [
   {
     version: 1,
     name: 'kv',
-    up: `CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL);`,
+    up: kv,
   },
   ...noteMigrations,
 ];
