@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Playing a long meeting uses far less memory:** a recording is sent to the player a few MB at a time instead of all at once (a 2-hour meeting was about 230 MB).
 - **Starting a recording stops the post-download model warm-up (N127)**, so no extra speech model stays loaded during the meeting.
 - **A stood-down speaker channel is no longer silent (N126, protocol):** when speaker labelling stops for a channel (too far behind, or its model didn't load), the helper sends the turn it had open and a `diarization.unavailable {source, atMs, reason}` line.
 - **Back-to-back meetings keep their speaker labels (N125):** a meeting that starts while the previous one's speaker model is still busy no longer loses speaker labels for the whole meeting.
