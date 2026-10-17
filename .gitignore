@@ -155,3 +155,6 @@ review-out/
 # Rust / Tauri
 target/
 apps/desktop/src-tauri/gen/schemas/
+
+# Tauri sidecar copied by scripts/build-helper.mjs (macOS)
+apps/desktop/src-tauri/binaries/

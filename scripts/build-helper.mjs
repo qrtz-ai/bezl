@@ -78,4 +78,14 @@ if (process.platform !== 'darwin') {
   );
   process.exit(0);
 }
-process.exit(run(['build', '-c', 'release', '--arch', 'arm64']));
+if (run(['build', '-c', 'release', '--arch', 'arm64'])) process.exit(1);
+// Tauri's externalBin (tauri.macos.conf.json) wants the sidecar at src-tauri/binaries/qrtz-helper-<target triple>;
+// `cargo build` / `tauri dev` fail in the build script without it.
+const built = path.join(dir, '.build/arm64-apple-macosx/release/qrtz-helper');
+const binDir = path.resolve(import.meta.dirname, '../apps/desktop/src-tauri/binaries');
+fs.mkdirSync(binDir, { recursive: true });
+const dest = path.join(binDir, 'qrtz-helper-aarch64-apple-darwin');
+fs.copyFileSync(built, dest);
+fs.chmodSync(dest, 0o755);
+console.log(`[build:helper] ${path.relative(process.cwd(), dest)}`);
+process.exit(0);

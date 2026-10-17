@@ -11,8 +11,8 @@
     "bun": ">=1.4.0"
   },
   "scripts": {
-    "start": "bun run --cwd apps/desktop start",
-    "make": "bun run --cwd apps/desktop make",
+    "start": "bun run build:helper && bun run --cwd apps/desktop start",
+    "make": "bun run build:helper && bun run --cwd apps/desktop make",
     "lint": "oxlint && oxfmt --check && bun scripts/check-boundaries.mjs && bun scripts/check-typography.mjs && bun scripts/check-ui-purity.mjs && bun scripts/check-titles.mjs && bun scripts/check-swift.mjs",
     "lint:fix": "oxlint --fix && oxfmt --write",
     "typecheck": "tsc -b && tsc -p tsconfig.test.json",
