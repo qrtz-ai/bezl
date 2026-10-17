@@ -34,6 +34,7 @@ export class ConfigStore {
   private persist() {
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
     const tmp = `${this.file}.tmp`;
+    fs.rmSync(tmp, { force: true }); // a crash-left .tmp would keep its old mode (T4)
     fs.writeFileSync(tmp, JSON.stringify(this.cfg, null, 2), { mode: 0o600 });
     fs.renameSync(tmp, this.file);
   }

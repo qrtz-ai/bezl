@@ -117,7 +117,9 @@ export class TalkService {
     try {
       fs.mkdirSync(path.dirname(this.deps.storePath), { recursive: true });
       const tmp = `${this.deps.storePath}.tmp`;
-      // Owner-only like config and secrets: history holds everything the user dictated (T3).
+      // Owner-only like config and secrets: history holds everything the user dictated (T3). A `.tmp` a crash
+      // left is removed first: the mode only applies when the write creates the file (T4).
+      fs.rmSync(tmp, { force: true });
       fs.writeFileSync(tmp, JSON.stringify(this.store), { mode: 0o600 });
       fs.renameSync(tmp, this.deps.storePath);
     } catch (e) {
