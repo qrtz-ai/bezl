@@ -10,7 +10,7 @@ async function open(page: Page, query = '') {
   });
   await page.goto(`/?dev=1&${query}`);
   await expect(
-    page.getByRole('button', { name: 'note', exact: true }),
+    page.getByRole('button', { name: 'nano', exact: true }),
   ).toBeVisible();
   return errors;
 }
@@ -38,7 +38,7 @@ test('boots the shared shell over the Tauri transport with no errors', async ({
   page,
 }) => {
   const errors = await open(page);
-  for (const tab of ['note', 'talk', 'settings'])
+  for (const tab of ['nano', 'echo', 'settings'])
     await expect(
       page.getByRole('button', { name: tab, exact: true }),
     ).toBeVisible();

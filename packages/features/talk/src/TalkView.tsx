@@ -68,7 +68,7 @@ export default function TalkView() {
   return (
     <Page data-testid="talk">
       <Stack dir="row" align="center" justify="between">
-        <Heading>talk</Heading>
+        <Heading>echo</Heading>
         <Stack dir="row" gap={2} align="center">
           <Text variant="caption" muted>
             hold <Kbd>fn</Kbd> or <Kbd>⌘⇧Space</Kbd>

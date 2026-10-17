@@ -19,7 +19,7 @@ const STEPS = 4;
 const PERMISSIONS: { id: OsPermission; label: string }[] = [
   { id: 'microphone', label: 'microphone' },
   { id: 'screen-recording', label: 'system audio' },
-  { id: 'accessibility', label: 'accessibility (talk)' },
+  { id: 'accessibility', label: 'accessibility (echo)' },
 ];
 const PERMISSION_STATE: Record<string, string> = {
   granted: 'allowed',

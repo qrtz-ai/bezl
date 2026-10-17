@@ -262,7 +262,7 @@ export default function SettingsView() {
           sent anywhere.
         </Text>
       </SettingsSection>
-      <SettingsSection title="talk" data-testid="talk-settings">
+      <SettingsSection title="echo" data-testid="talk-settings">
         {toggle(
           'dictation',
           'talk-enabled',
@@ -270,7 +270,7 @@ export default function SettingsView() {
           true,
           (v) => void patchTalk({ enabled: v }),
         )}
-        <SettingRow label="hold to talk">
+        <SettingRow label="hold to dictate">
           <Select
             value={talkCfg.pushKey ?? 'fn'}
             onChange={(e) => void patchTalk({ pushKey: e.target.value })}
@@ -285,7 +285,7 @@ export default function SettingsView() {
         </SettingRow>
         {(talkCfg.pushKey ?? 'fn') === 'fn'
           ? toggle(
-              'fn only for talk (no input switch or emoji)',
+              'fn only for echo (no input switch or emoji)',
               'talk-block-globe',
               talkCfg.blockGlobeKey,
               true,

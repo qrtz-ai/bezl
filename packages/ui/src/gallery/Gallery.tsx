@@ -441,7 +441,7 @@ function Showcase({
                     label="example tabs"
                     testIdPrefix="gallery-tab"
                     items={[
-                      { id: 'note', label: 'note' },
+                      { id: 'note', label: 'nano' },
                       { id: 'settings', label: 'settings' },
                     ]}
                     active={bar}
@@ -670,7 +670,7 @@ function Showcase({
             </div>
           </Section>
 
-          <Section id="talk" title="talk: pill, history, dictionary">
+          <Section id="talk" title="echo: pill, history, dictionary">
             <div style={{ display: 'grid', gap: t.space[4], width: '100%' }}>
               <LevelBars level={0.6} />
               <TalkPill
@@ -684,7 +684,7 @@ function Showcase({
                 inline
                 phase="finalizing"
                 level={0}
-                text="So I think we should ship qrtz talk"
+                text="So I think we should ship qrtz echo"
                 partial=""
               />
               <TalkPill
@@ -697,7 +697,7 @@ function Showcase({
               />
               <PlainList label="history">
                 <TalkHistoryRow
-                  text="I think we should ship qrtz talk on Friday."
+                  text="I think we should ship qrtz echo on Friday."
                   meta="10:42 PM · Notes · on-device · 312 ms"
                   onCopy={() => {}}
                   onDelete={() => {}}
