@@ -13,7 +13,7 @@ the tokens are derived from the site's Tailwind/shadcn class names and its visua
 - **Surfaces:** `border border-border rounded-lg p-6` cards. Thin 1px borders and no
   heavy shadows.
 - **Badges:** `px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary border
-border-primary/20 rounded`.
+  border-primary/20 rounded`.
 - **Motion:** an underline that scales in from the left (`h-0.5 bg-primary origin-left`)
   on hover, and a blinking caret. The feel is fast and minimal, using about 150–200 ms
   ease-out transitions.

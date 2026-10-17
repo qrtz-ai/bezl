@@ -1,11 +1,11 @@
 {
   "name": "@qrtz/desktop",
   "productName": "qrtz",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "qrtz desktop app (Electron, macOS)",
   "keywords": [],
-  "license": "MIT",
+  "license": "UNLICENSED",
   "author": "qrtz-ai",
   "main": ".vite/build/main.cjs",
   "scripts": {

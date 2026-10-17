@@ -404,3 +404,24 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
   - Time where two people talk at once counts half, so someone who only interjects over another speaker can't take that speaker's name.
   - Live naming keeps a segment's existing label when AX evidence covers less than 25% of it.
 - Fresh-clone check run again at the end (see the report).
+
+## Iteration 18: v0.1.0 production-readiness sweep (2026-10-16)
+
+- `npm audit --omit=dev`: 0 vulnerabilities. Dev: vitest 3→5 and oxfmt 0.41→0.73 clear the critical tinypool advisories, and the tree was reformatted with the new oxfmt. One high advisory remains: `image-size` under `@electron-forge/maker-dmg` → appdmg. It's macOS build time only, only parses our own icon, and has no upstream fix.
+- `LICENSE` is proprietary (all rights reserved), and every package's `license` is now `UNLICENSED`, replacing the leftover scaffold "MIT". Jared should confirm this.
+- `THIRD_PARTY_NOTICES.md` covers the models (Parakeet EOU under the NVIDIA Open Model License; Parakeet 0.6B and Sortformer v2 under CC-BY-4.0; MiniLM under Apache-2.0), FluidAudio (Apache-2.0), onnxruntime (MIT), Electron and transformers.js, plus a generated table of npm production dependencies (`scripts/third-party.mjs`). Models download at runtime and are not bundled. The packaged app ships only a JS stub of sharp, not the LGPL libvips binaries.
+- `CHANGELOG.md` v0.1.0; all packages bumped to 0.1.0; tag `v0.1.0` pushed (tag only, no GitHub release).
+
+## Closing summary
+
+qrtz v0.1.0 is feature-complete for the Memo MVP and green on Linux on every push. That covers lint, typecheck, about 130 unit tests, the packaged smoke test, 24 Electron e2e tests (axe-clean in dark and light), 29 Swift tests, and a from-scratch fresh-clone check. Everything that touches real macOS capture is built but unverified on hardware.
+
+## Backlog for the next session (in priority order)
+
+1. **Mac verification** (`docs/mac-verify.md`): build the helper with Xcode, check the TCC prompts, real ScreenCaptureKit/Core Audio capture, FluidAudio ASR, diarization and echo cancellation on live Zoom and Meet, and the Keychain key path. Fix whatever the Mac compiler flags in `Sources/qrtz-helper/mac`.
+2. **Signed release:** get the Apple Developer ID and notarization credentials, run `scripts/release-mac.sh`, and smoke-test the notarized DMG on a clean Mac.
+3. **Model licensing:** confirm the LocalVQE license on its model card. Show model attributions in Settings → About (the NVIDIA Open Model License and CC-BY-4.0 require attribution).
+4. **Real AX captures:** replace the synthetic fixtures with `--dump-ax` captures and tune the `fusion.ts` settings (lag, minShare) against real speaker data.
+5. **Update feed:** choose a host (R2, S3 or GitHub Releases) and turn on `QRTZ_UPDATE_FEED_URL` for signed builds.
+6. **Dev dependencies:** swap or patch the `image-size` path in maker-dmg when upstream fixes it.
+7. **Polish:** README screenshots from a Mac, onboarding copy, and a first-run model download progress indicator.

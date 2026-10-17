@@ -83,16 +83,14 @@ export function Palette({
 
   const results = [
     ...filterCommands(commands, q),
-    ...meetings.map(
-      ({ meeting, hit }): Command => ({
-        id: `meeting.${meeting.id}`,
-        title: meeting.title,
-        hint: hit?.snippet
-          ? hit.snippet.replace(/[[\]]/g, '').slice(0, 48)
-          : 'Meeting',
-        run: () => requestNavigate({ app: 'memo', meetingId: meeting.id }),
-      }),
-    ),
+    ...meetings.map(({ meeting, hit }): Command => ({
+      id: `meeting.${meeting.id}`,
+      title: meeting.title,
+      hint: hit?.snippet
+        ? hit.snippet.replace(/[[\]]/g, '').slice(0, 48)
+        : 'Meeting',
+      run: () => requestNavigate({ app: 'memo', meetingId: meeting.id }),
+    })),
   ];
   const pick = (c: Command | undefined) => {
     if (!c) return;
