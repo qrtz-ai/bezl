@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { safeStorage } from 'electron';
 import { AppError, envNamesFor, type SecretStore } from '@qrtz/core';
 
@@ -50,7 +51,21 @@ export class SafeStorageSecretStore implements SecretStore {
         );
       all[name] = safeStorage.encryptString(value).toString('base64');
     }
-    fs.writeFileSync(this.file, JSON.stringify(all), { mode: 0o600 });
+    this.write(all);
+  }
+
+  /**
+   * Atomic and owner-only (N30, N33): written to a fresh `.tmp` (a crash-left one is removed first, since an existing
+   * file keeps its mode, T4) and renamed over the store. Writing in place truncated the store first, so a crash or a
+   * full disk mid-write left it empty or cut and `read()` then returned `{}`: every saved key was gone. It also kept
+   * the 0644 mode an older build gave the file. The rename replaces the inode, so the store ends up 0600 either way.
+   */
+  private write(all: Record<string, string>) {
+    fs.mkdirSync(path.dirname(this.file), { recursive: true });
+    const tmp = `${this.file}.tmp`;
+    fs.rmSync(tmp, { force: true });
+    fs.writeFileSync(tmp, JSON.stringify(all), { mode: 0o600 });
+    fs.renameSync(tmp, this.file);
   }
 
   async list(): Promise<string[]> {
