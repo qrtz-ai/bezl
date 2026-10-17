@@ -145,4 +145,42 @@ describe('worker handlers (DB + pipeline integration)', () => {
       failed: [],
     });
   });
+
+  it('M6.4: prunes audio of finished meetings past retention, keeps transcript', async () => {
+    const fs = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const wav = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-ret-')),
+      'a.wav',
+    );
+    fs.writeFileSync(wav, 'x');
+    const h = createWorkerHandlers(openDatabase(':memory:'), {
+      fetch: noFetch,
+    });
+    seed(h);
+    await h['memo.finalize']({
+      meetingId: 'm1',
+      endedAt: 1_760_000_036_500,
+      durationMs: 36_500,
+      audioPath: wav,
+      active: [],
+      llm: { provider: 'none' },
+    });
+    expect(h['memo.pruneAudio']({ days: 0 }).pruned).toEqual([]);
+    expect(
+      h['memo.pruneAudio']({ days: 30, now: 1_760_000_036_500 + 86_400_000 })
+        .pruned,
+    ).toEqual([]);
+    expect(
+      h['memo.pruneAudio']({
+        days: 30,
+        now: 1_760_000_036_500 + 31 * 86_400_000,
+      }).pruned,
+    ).toEqual(['m1']);
+    expect(fs.existsSync(wav)).toBe(false);
+    const got = h['memo.get']({ id: 'm1' });
+    expect(got.meeting.audioPath).toBeUndefined();
+    expect(got.segments).toHaveLength(8);
+  });
 });

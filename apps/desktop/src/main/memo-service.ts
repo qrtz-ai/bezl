@@ -264,6 +264,11 @@ export class MemoService {
     return this.view();
   }
 
+  /** Global shortcut: start recording when idle/detected, stop when recording. */
+  async toggle(): Promise<SessionView> {
+    return this.view().phase === 'recording' ? this.stop() : this.start();
+  }
+
   private async llmParams() {
     const cfg = this.deps.config().memo;
     const provider = cfg.llmProvider as ProviderId | 'none';
@@ -291,6 +296,11 @@ export class MemoService {
         this.deps.bus.emit('memo:changed', { id });
       if (r.recovered.length || r.failed.length)
         this.deps.log.info('recovered meetings', r);
+      const days = this.deps.config().memo.retainAudioDays;
+      if (days > 0) {
+        const p = await this.deps.worker.call('memo.pruneAudio', { days });
+        for (const id of p.pruned) this.deps.bus.emit('memo:changed', { id });
+      }
     } catch (e) {
       this.deps.log.warn('recovery failed', { err: String(e) });
     }

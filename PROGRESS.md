@@ -87,3 +87,51 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
 - M4.1–M4.5 (Swift helper: stdio, AX for Zoom and Meet, audio taps, FluidAudio streaming) [MAC-VERIFY].
 - M5.1 (resume summaries stuck in processing).
 - M6.1 (gallery and the remaining components).
+
+## 2026-10-16 ~17:48–18:25 PT: iteration 5 (M4 Swift helper, M5.1, part of M6)
+
+- **M4: `native/qrtz-helper` (SwiftPM, Swift 6, macOS 14+).**
+  - **QrtzHelperCore (Foundation-only):**
+    - Protocol mirror with an integral-number JSON encoder.
+    - `MeetingClassifier` and `MeetingTracker` (4 s grace), covering Zoom.app, Zoom web, and Meet in Chrome and Safari (with a title fallback). Arc, Edge, Brave and Teams are best-effort.
+    - `AXNode` snapshot model, `AXScraper` (participants panel, "X is speaking", Captions / Live Transcript region) and `ScrapeDiffer` (settled captions only).
+    - `UtteranceSegmenter` (cumulative transcript → partial and final `asr`), WAV writer, resampler, mixer.
+    - `HelperController` actor with ordered audio and ordered host-message streams. Audio and ASR backends are tried in order, with fallback.
+  - **Executable `mac/`:**
+    - **AX:** windows are polled every second and AXObserver notifications trigger a debounced scrape. Chromium gets `AXManualAccessibility`. Snapshots are bounded by depth and node count. `--dump-ax` records fixtures.
+    - **Permissions:** Accessibility, Screen Recording, Microphone.
+    - **Audio:** a Core Audio process tap on a private aggregate device plus the AVAudioEngine mic, with ScreenCaptureKit as the fallback.
+    - **ASR:** FluidAudio `StreamingUnifiedAsrManager` (Parakeet Unified streaming), with SpeechAnalyzer as the fallback (macOS 26, `#if compiler(>=6.2)`).
+  - **Linux:** a stub executable (protocol only, no backends).
+- **Verification on Linux (Swift 6.1.2 toolchain in /tmp):**
+  - `swift build` and 19 XCTest cases are green.
+  - The shared golden fixtures `Fixtures/protocol/*.jsonl` round-trip byte-for-byte in Swift and validate with zod in TS. Both sides enforce full message-type coverage and reject invalid fixtures.
+  - `swift-helper.test.ts` spawns the real Swift binary and drives a ping, record and shutdown sequence over stdio.
+  - The `mac/` files are syntax-checked only (`swift-format lint`, `swiftc -parse`). [MAC-VERIFY]
+- **Packaging:**
+  - `npm run build:helper` (macOS: release arm64; elsewhere a no-op) and `npm run test:helper`.
+  - Forge `extraResource` includes the helper when it has been built. Info.plist has mic and audio-capture usage strings. `entitlements.mac.plist` added.
+  - `QRTZ_HELPER_BIN` overrides the helper path.
+- **M5.1:** at startup, `memo.recover` finishes meetings stuck in `recording` or `processing`. It repairs the WAV header (helper killed), derives the duration and summarizes. Integration-tested.
+- **M6 (partial):**
+  - ⌘⇧R global shortcut toggles recording.
+  - Audio retention setting (`memo.retainAudioDays`) with a Settings selector; `memo.pruneAudio` runs at startup. Tested.
+- **Lint:** the two remaining warnings are fixed, so lint is clean.
+- **Verified:** lint ✓, typecheck ✓, vitest 78 ✓, Swift tests 19 ✓, package ✓, e2e 2/2 ✓.
+
+### Side work
+
+- **macOS:** the whole `mac/` layer needs a first compile and run on a Mac (Xcode 16+). The FluidAudio API was checked against its current source (v0.17.7); the AX heuristics are modelled, not recorded. [MAC-VERIFY]
+- **Captions:** Meet and Zoom only expose captions in AX when captions are switched on in the meeting. The helper does not toggle them.
+- **Chrome tabs:** a Meet tab in Chrome is found only when it is the window's active tab, because AX exposes only the active tab's web area.
+- **System audio TCC:** the process tap uses its own permission ("System Audio Recording Only"), which has no public preflight. Onboarding shows Screen Recording, and the first recording triggers the system-audio prompt.
+- **Echo:** without headphones, the mic picks up the remote side again. Echo cancellation (FluidAudio LocalVQE) is a later item.
+
+### Next
+
+- **MAC-VERIFY pass:** build, fix compile errors, record real AX fixtures with `--dump-ax`.
+- M5.3 signing and notarization (needs an Apple Developer ID).
+- M6.1 gallery and remaining components.
+- M6.2 palette.
+- M6.3 floating HUD.
+- M6.5 chat.

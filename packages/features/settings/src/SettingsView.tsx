@@ -62,6 +62,7 @@ export default function SettingsView() {
   const memoCfg = (cfg?.memo ?? {}) as {
     llmProvider?: ProviderId | 'none';
     llmModel?: string;
+    retainAudioDays?: number;
   };
   const provider = memoCfg.llmProvider ?? 'openrouter';
   const secretName =
@@ -97,6 +98,23 @@ export default function SettingsView() {
       <Heading>Settings</Heading>
       <Card padding={4} style={{ display: 'grid', gap: 12 }}>
         <Text weight={600}>AI summaries</Text>
+        <Field
+          label="Keep recordings"
+          hint="Transcripts and summaries are kept. Only the audio is deleted."
+        >
+          <Select
+            value={String(memoCfg.retainAudioDays ?? 0)}
+            onChange={(e) =>
+              void patch({ retainAudioDays: Number(e.target.value) })
+            }
+            data-testid="retain-audio"
+          >
+            <option value="0">Forever</option>
+            <option value="7">7 days</option>
+            <option value="30">30 days</option>
+            <option value="90">90 days</option>
+          </Select>
+        </Field>
         <Text muted size="sm">
           After a meeting, Memo sends the transcript to this provider for a
           summary, action items and Q&amp;A. Without a key it uses the on-device

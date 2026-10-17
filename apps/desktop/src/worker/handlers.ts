@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
 import {
   AppError,
@@ -128,6 +129,26 @@ export function createWorkerHandlers(
         }
       }
       return { recovered, failed };
+    },
+    /** M6.4 retention: delete audio of finished meetings older than `days` (transcripts and summaries stay). */
+    'memo.pruneAudio': (p: { days: number; now?: number }) => {
+      const pruned: string[] = [];
+      if (!(p.days > 0)) return { pruned };
+      const cutoff = (p.now ?? Date.now()) - p.days * 86_400_000;
+      for (const m of repo.listMeetings(100_000)) {
+        if (m.status !== 'done' || !m.audioPath) continue;
+        if ((m.endedAt ?? m.startedAt) > cutoff) continue;
+        try {
+          fs.rmSync(m.audioPath, { force: true });
+        } catch (e) {
+          deps.log?.('prune failed', { id: m.id, err: String(e) });
+          continue;
+        }
+        const { audioPath: _gone, ...rest } = m;
+        repo.upsertMeeting(rest);
+        pruned.push(m.id);
+      }
+      return { pruned };
     },
     'memo.fail': (p: { meetingId: string }) => {
       repo.setStatus(p.meetingId, 'failed');

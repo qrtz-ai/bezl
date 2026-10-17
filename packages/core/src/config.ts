@@ -18,6 +18,8 @@ export const ConfigSchema = z.object({
         .enum(['openai', 'anthropic', 'google', 'openrouter', 'ollama', 'none'])
         .default('openrouter'),
       llmModel: z.string().default(''),
+      /** Delete recordings (audio only; transcript and summary stay) this many days after the meeting. 0 = keep. */
+      retainAudioDays: z.number().int().min(0).max(3650).default(0),
     })
     .prefault({}),
 });

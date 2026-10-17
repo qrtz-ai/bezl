@@ -1,4 +1,11 @@
-import { app, BrowserWindow, dialog, net, protocol } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  globalShortcut,
+  net,
+  protocol,
+} from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -197,6 +204,14 @@ export function bootstrap() {
     worker.start();
     helper.start();
     createWindow();
+    // M6.2: ⌘⇧R starts/stops Memo recording from anywhere (e.g. while in Zoom/Meet).
+    const ok = globalShortcut.register('CommandOrControl+Shift+R', () => {
+      memo
+        .toggle()
+        .catch((e) => log.warn('shortcut toggle failed', { err: String(e) }));
+    });
+    if (!ok) log.warn('global shortcut CommandOrControl+Shift+R unavailable');
+    app.on('will-quit', () => globalShortcut.unregisterAll());
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
