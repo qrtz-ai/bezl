@@ -1,0 +1,153 @@
+{
+ "about": "parseSummaryReply (llm.ts): the model's text to the stored summary fields. Run by TS and Rust. Validator text after 'did not match the summary shape: ' / 'was not JSON: ' is replaced by '…' on both sides.",
+ "cases": [
+  {
+   "name": "plain",
+   "text": "{\"summary\": \"S\", \"actionItems\": [{\"text\": \"a\", \"owner\": \"Ana\"}], \"qa\": [{\"question\": \"q\", \"answer\": \"a\", \"askedBy\": \"Ben\"}]}",
+   "expect": {
+    "ok": {
+     "summary": "S",
+     "actionItems": [
+      {
+       "text": "a",
+       "owner": "Ana"
+      }
+     ],
+     "qa": [
+      {
+       "question": "q",
+       "answer": "a",
+       "askedBy": "Ben"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "fenced-prose",
+   "text": "Here you go:\n```json\n{\"summary\":\"S\",\"actionItems\":[],\"qa\":[]}\n```\nThanks",
+   "expect": {
+    "ok": {
+     "summary": "S",
+     "actionItems": [],
+     "qa": []
+    }
+   }
+  },
+  {
+   "name": "extra-keys-stripped",
+   "text": "{\"summary\": \"S\", \"actionItems\": [{\"text\": \"a\", \"due\": \"mon\"}], \"qa\": [], \"provider\": \"evil\", \"llmError\": \"x\", \"template\": \"sales\", \"mood\": \"good\"}",
+   "expect": {
+    "ok": {
+     "summary": "S",
+     "actionItems": [
+      {
+       "text": "a"
+      }
+     ],
+     "qa": [],
+     "template": "sales"
+    }
+   }
+  },
+  {
+   "name": "no-object",
+   "text": "I cannot help with that.",
+   "expect": {
+    "err": [
+     "E_PROVIDER",
+     true,
+     "LLM reply had no JSON object"
+    ]
+   }
+  },
+  {
+   "name": "brace-order",
+   "text": "} nope {",
+   "expect": {
+    "err": [
+     "E_PROVIDER",
+     true,
+     "LLM reply had no JSON object"
+    ]
+   }
+  },
+  {
+   "name": "bad-json",
+   "text": "{\"summary\": \"S\",}",
+   "expect": {
+    "err": [
+     "E_PROVIDER",
+     true,
+     "LLM reply did not match the summary shape: …"
+    ]
+   }
+  },
+  {
+   "name": "missing-qa",
+   "text": "{\"summary\": \"S\", \"actionItems\": []}",
+   "expect": {
+    "err": [
+     "E_PROVIDER",
+     true,
+     "LLM reply did not match the summary shape: …"
+    ]
+   }
+  },
+  {
+   "name": "null-owner",
+   "text": "{\"summary\": \"S\", \"actionItems\": [{\"text\": \"a\", \"owner\": null}], \"qa\": []}",
+   "expect": {
+    "err": [
+     "E_PROVIDER",
+     true,
+     "LLM reply did not match the summary shape: …"
+    ]
+   }
+  },
+  {
+   "name": "summary-number",
+   "text": "{\"summary\": 3, \"actionItems\": [], \"qa\": []}",
+   "expect": {
+    "err": [
+     "E_PROVIDER",
+     true,
+     "LLM reply did not match the summary shape: …"
+    ]
+   }
+  },
+  {
+   "name": "template-number",
+   "text": "{\"summary\": \"S\", \"actionItems\": [], \"qa\": [], \"template\": 1}",
+   "expect": {
+    "err": [
+     "E_PROVIDER",
+     true,
+     "LLM reply did not match the summary shape: …"
+    ]
+   }
+  },
+  {
+   "name": "nested-braces",
+   "text": "pre {\"summary\":\"a {b} c\",\"actionItems\":[],\"qa\":[]} post } tail",
+   "expect": {
+    "err": [
+     "E_PROVIDER",
+     true,
+     "LLM reply did not match the summary shape: …"
+    ]
+   }
+  },
+  {
+   "name": "array",
+   "text": "[{\"summary\":\"S\",\"actionItems\":[],\"qa\":[]}]",
+   "expect": {
+    "ok": {
+     "summary": "S",
+     "actionItems": [],
+     "qa": []
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,343 @@
+{
+ "about": "extractiveSummary (extractive.ts): the on-device fallback summary. Run by TS (llm.vectors.test.ts) and Rust (crates/qrtz-llm/tests/vectors.rs).",
+ "cases": [
+  {
+   "name": "empty",
+   "segments": [],
+   "opts": {},
+   "expect": {
+    "summary": "No speech was transcribed.",
+    "actionItems": [],
+    "qa": [],
+    "provider": "extractive",
+    "template": "general"
+   }
+  },
+  {
+   "name": "standup",
+   "segments": [
+    {
+     "id": "u0",
+     "startMs": 0,
+     "endMs": 900,
+     "text": "Morning all. Yesterday I finished the parser and the tests. Today I am working on the importer.",
+     "source": "live",
+     "speakerName": "Ana Diaz"
+    },
+    {
+     "id": "u1",
+     "startMs": 1000,
+     "endMs": 1900,
+     "text": "Ben, can you review the importer today? It is blocked on the schema.",
+     "source": "live",
+     "speakerName": "Ana Diaz"
+    },
+    {
+     "id": "u2",
+     "startMs": 2000,
+     "endMs": 2900,
+     "text": "Sure. I'll review it by tomorrow.",
+     "source": "live",
+     "speakerName": "Ben Ode"
+    },
+    {
+     "id": "u3",
+     "startMs": 3000,
+     "endMs": 3900,
+     "text": "What is the timeline for the release?",
+     "source": "live",
+     "speakerName": "Chloé Ng"
+    },
+    {
+     "id": "u4",
+     "startMs": 4000,
+     "endMs": 4900,
+     "text": "We decided the release ships next week after the review.",
+     "source": "live",
+     "speakerName": "Ana Diaz"
+    }
+   ],
+   "opts": {
+    "template": "standup"
+   },
+   "expect": {
+    "summary": "Ana Diaz: Yesterday I finished the parser and the tests. Ana Diaz: Today I am working on the importer. Ana Diaz: We decided the release ships next week after the review.",
+    "actionItems": [
+     {
+      "text": "Ben, can you review the importer today?",
+      "owner": "Ben Ode"
+     },
+     {
+      "text": "I'll review it by tomorrow.",
+      "owner": "Ben Ode"
+     }
+    ],
+    "qa": [
+     {
+      "question": "Ben, can you review the importer today?",
+      "answer": "Sure.",
+      "askedBy": "Ana Diaz"
+     },
+     {
+      "question": "What is the timeline for the release?",
+      "answer": "We decided the release ships next week after the review.",
+      "askedBy": "Chloé Ng"
+     }
+    ],
+    "provider": "extractive",
+    "template": "standup"
+   }
+  },
+  {
+   "name": "notes-lead",
+   "segments": [
+    {
+     "id": "u0",
+     "startMs": 0,
+     "endMs": 900,
+     "text": "The budget for the pilot is fifty thousand. Pricing depends on seats and the contract term.",
+     "source": "live",
+     "speakerName": "Sam"
+    },
+    {
+     "id": "u1",
+     "startMs": 1000,
+     "endMs": 1900,
+     "text": "Our main pain is onboarding time for new staff members.",
+     "source": "live",
+     "speakerName": "Kim"
+    }
+   ],
+   "opts": {
+    "template": "sales",
+    "notes": [
+     {
+      "id": "n1",
+      "atMs": 0,
+      "text": "budget 50k.;",
+      "createdAt": 1
+     },
+     {
+      "id": "n2",
+      "atMs": 10,
+      "text": "- [ ] send pricing deck",
+      "createdAt": 2
+     },
+     {
+      "id": "n3",
+      "atMs": 20,
+      "text": "We need to follow up with Kim",
+      "createdAt": 3
+     },
+     {
+      "id": "n4",
+      "atMs": 30,
+      "text": "   ",
+      "createdAt": 4
+     }
+    ]
+   },
+   "expect": {
+    "summary": "Your notes: budget 50k; - [ ] send pricing deck; We need to follow up with Kim. Sam: The budget for the pilot is fifty thousand. Sam: Pricing depends on seats and the contract term. Kim: Our main pain is onboarding time for new staff members.",
+    "actionItems": [
+     {
+      "text": "send pricing deck"
+     },
+     {
+      "text": "We need to follow up with Kim"
+     }
+    ],
+    "qa": [],
+    "provider": "extractive",
+    "template": "sales"
+   }
+  },
+  {
+   "name": "no-speakers-questions",
+   "segments": [
+    {
+     "id": "u0",
+     "startMs": 0,
+     "endMs": 900,
+     "text": "Is this on? Hello there everyone listening today.",
+     "source": "live"
+    },
+    {
+     "id": "u1",
+     "startMs": 1000,
+     "endMs": 1900,
+     "text": "Yes it works fine for everyone listening today.",
+     "source": "live"
+    },
+    {
+     "id": "u2",
+     "startMs": 2000,
+     "endMs": 2900,
+     "text": "Could you share the screen please",
+     "source": "live"
+    }
+   ],
+   "opts": {},
+   "expect": {
+    "summary": "Hello there everyone listening today. Yes it works fine for everyone listening today. Could you share the screen please",
+    "actionItems": [
+     {
+      "text": "Could you share the screen please"
+     }
+    ],
+    "qa": [],
+    "provider": "extractive",
+    "template": "general"
+   }
+  },
+  {
+   "name": "unicode-and-case",
+   "segments": [
+    {
+     "id": "u0",
+     "startMs": 0,
+     "endMs": 900,
+     "text": "Das Meeting über Größe und Maße war lang. Wir müssen die Größe prüfen!",
+     "source": "live",
+     "speakerName": "Jürgen"
+    },
+    {
+     "id": "u1",
+     "startMs": 1000,
+     "endMs": 1900,
+     "text": "ſtill, I WILL check the KELVIN numbers. Let's move on.",
+     "source": "live",
+     "speakerName": "Ana"
+    },
+    {
+     "id": "u2",
+     "startMs": 2000,
+     "endMs": 2900,
+     "text": "日本語のテキストです。 next sentence here with words and nbsp.",
+     "source": "live",
+     "speakerName": "Ken"
+    }
+   ],
+   "opts": {
+    "maxSentences": 2
+   },
+   "expect": {
+    "summary": "Jürgen: Das Meeting über Größe und Maße war lang. Ken: 日本語のテキストです。 next sentence here with words and nbsp.",
+    "actionItems": [
+     {
+      "text": "ſtill, I WILL check the KELVIN numbers.",
+      "owner": "Ana"
+     },
+     {
+      "text": "Let's move on.",
+      "owner": "Ana"
+     }
+    ],
+    "qa": [],
+    "provider": "extractive",
+    "template": "general"
+   }
+  },
+  {
+   "name": "named-owner",
+   "segments": [
+    {
+     "id": "u0",
+     "startMs": 0,
+     "endMs": 900,
+     "text": "Maria, could you prepare the quarterly report draft?",
+     "source": "live",
+     "speakerName": "Lee"
+    },
+    {
+     "id": "u1",
+     "startMs": 1000,
+     "endMs": 1900,
+     "text": "Ok.",
+     "source": "live",
+     "speakerName": "Maria Gomez"
+    },
+    {
+     "id": "u2",
+     "startMs": 2000,
+     "endMs": 2900,
+     "text": "Tom, will you check the build?",
+     "source": "live",
+     "speakerName": "Lee"
+    }
+   ],
+   "opts": {},
+   "expect": {
+    "summary": "Maria Gomez: Ok.",
+    "actionItems": [
+     {
+      "text": "Maria, could you prepare the quarterly report draft?",
+      "owner": "Maria Gomez"
+     },
+     {
+      "text": "Tom, will you check the build?",
+      "owner": "Tom"
+     }
+    ],
+    "qa": [
+     {
+      "question": "Maria, could you prepare the quarterly report draft?",
+      "answer": "Ok.",
+      "askedBy": "Lee"
+     }
+    ],
+    "provider": "extractive",
+    "template": "general"
+   }
+  },
+  {
+   "name": "speaker-fallback",
+   "segments": [
+    {
+     "id": "u0",
+     "startMs": 0,
+     "endMs": 900,
+     "text": "I will draft the plan document tonight for review.",
+     "source": "live",
+     "speaker": "S1"
+    },
+    {
+     "id": "u1",
+     "startMs": 1000,
+     "endMs": 1900,
+     "text": "Nice work on the plan document for review.",
+     "source": "live",
+     "speakerName": ""
+    },
+    {
+     "id": "u2",
+     "startMs": 2000,
+     "endMs": 2900,
+     "text": "Need to ship.  Must test.\tOk!",
+     "source": "live"
+    }
+   ],
+   "opts": {
+    "template": "interview"
+   },
+   "expect": {
+    "summary": "S1: I will draft the plan document tonight for review. Nice work on the plan document for review. Need to ship.",
+    "actionItems": [
+     {
+      "text": "I will draft the plan document tonight for review.",
+      "owner": "S1"
+     },
+     {
+      "text": "Need to ship."
+     },
+     {
+      "text": "Must test."
+     }
+    ],
+    "qa": [],
+    "provider": "extractive",
+    "template": "interview"
+   }
+  }
+ ]
+}

@@ -1,0 +1,1215 @@
+{
+ "about": "buildSummaryPrompt (llm.ts) and formatTranscriptForPrompt / captureGapsForPrompt, run by TS (llm.vectors.test.ts) and Rust (crates/qrtz-llm/tests/vectors.rs). Segments are inline or generated (`gen`: segment i has startMs i*stepMs, speakerName speakers[i % n] (null: none), text texts[i % n] repeated `repeat` times plus ' #i'). An expectation longer than 4000 chars is stored as {length (UTF-16 units), sha256 (UTF-8), head, tail}.",
+ "prompts": [
+  {
+   "name": "basic",
+   "title": "Standup",
+   "segments": [
+    {
+     "id": "u0",
+     "startMs": 0,
+     "endMs": 900,
+     "text": "Morning all. Let's start with the roadmap.",
+     "source": "live",
+     "speakerName": "Ana Diaz"
+    },
+    {
+     "id": "u1",
+     "startMs": 4200,
+     "endMs": 5100,
+     "text": "We ship on Friday.",
+     "source": "live",
+     "speakerName": "Ben Ode"
+    },
+    {
+     "id": "u2",
+     "startMs": 61500,
+     "endMs": 62400,
+     "text": "Can you send the notes?",
+     "source": "live",
+     "speakerName": "Ana Diaz"
+    }
+   ],
+   "opts": {},
+   "expect": {
+    "messages": [
+     {
+      "role": "system",
+      "content": "You summarize meeting transcripts. Reply with ONLY a JSON object: {\"summary\": string (3-6 sentences), \"actionItems\": [{\"text\": string, \"owner\"?: string}], \"qa\": [{\"question\": string, \"answer\": string, \"askedBy\"?: string}]}. Use speaker names from the transcript. Do not invent facts. Summarize the key points and decisions."
+     },
+     {
+      "role": "user",
+      "content": "Meeting: Standup\n\nTranscript:\n[0:00] Ana Diaz: Morning all. Let's start with the roadmap.\n[0:04] Ben Ode: We ship on Friday.\n[1:01] Ana Diaz: Can you send the notes?"
+     }
+    ],
+    "request": {
+     "url": "https://openrouter.ai/api/v1/chat/completions",
+     "headers": {
+      "content-type": "application/json",
+      "HTTP-Referer": "https://qrtz.ai",
+      "X-Title": "qrtz",
+      "authorization": "Bearer sk-or-test"
+     },
+     "body": "{\"model\":\"anthropic/claude-haiku-5.5\",\"messages\":[{\"role\":\"system\",\"content\":\"You summarize meeting transcripts. Reply with ONLY a JSON object: {\\\"summary\\\": string (3-6 sentences), \\\"actionItems\\\": [{\\\"text\\\": string, \\\"owner\\\"?: string}], \\\"qa\\\": [{\\\"question\\\": string, \\\"answer\\\": string, \\\"askedBy\\\"?: string}]}. Use speaker names from the transcript. Do not invent facts. Summarize the key points and decisions.\"},{\"role\":\"user\",\"content\":\"Meeting: Standup\\n\\nTranscript:\\n[0:00] Ana Diaz: Morning all. Let's start with the roadmap.\\n[0:04] Ben Ode: We ship on Friday.\\n[1:01] Ana Diaz: Can you send the notes?\"}],\"temperature\":0.2,\"response_format\":{\"type\":\"json_object\"}}"
+    }
+   }
+  },
+  {
+   "name": "notes-template",
+   "title": "Daily",
+   "segments": [
+    {
+     "id": "u0",
+     "startMs": 0,
+     "endMs": 900,
+     "text": "Morning all. Let's start with the roadmap.",
+     "source": "live",
+     "speakerName": "Ana Diaz"
+    },
+    {
+     "id": "u1",
+     "startMs": 4200,
+     "endMs": 5100,
+     "text": "We ship on Friday.",
+     "source": "live",
+     "speakerName": "Ben Ode"
+    },
+    {
+     "id": "u2",
+     "startMs": 61500,
+     "endMs": 62400,
+     "text": "Can you send the notes?",
+     "source": "live",
+     "speakerName": "Ana Diaz"
+    }
+   ],
+   "opts": {
+    "template": "standup",
+    "notes": [
+     {
+      "id": "n1",
+      "atMs": 5000,
+      "text": "Ship Friday",
+      "createdAt": 1
+     },
+     {
+      "id": "n2",
+      "atMs": 3700000,
+      "text": "  ",
+      "createdAt": 2
+     },
+     {
+      "id": "n3",
+      "atMs": 3725000,
+      "text": "TODO: book demo",
+      "createdAt": 3
+     }
+    ]
+   },
+   "expect": {
+    "messages": [
+     {
+      "role": "system",
+      "content": "You summarize meeting transcripts. Reply with ONLY a JSON object: {\"summary\": string (3-6 sentences), \"actionItems\": [{\"text\": string, \"owner\"?: string}], \"qa\": [{\"question\": string, \"answer\": string, \"askedBy\"?: string}]}. Use speaker names from the transcript. Do not invent facts. This is a standup. In the summary, list per person: done since last time, doing next, blockers. Keep it terse. Action items are blockers needing follow-up. The user took their own notes during the meeting (timestamps match the transcript). Treat them as the user's priorities: build the summary around them, expand each with details from the transcript, keep any to-dos from the notes as action items, and never contradict the transcript."
+     },
+     {
+      "role": "user",
+      "content": "Meeting: Daily\n\nMy notes:\n[0:05] Ship Friday\n[1:02:05] TODO: book demo\n\nTranscript:\n[0:00] Ana Diaz: Morning all. Let's start with the roadmap.\n[0:04] Ben Ode: We ship on Friday.\n[1:01] Ana Diaz: Can you send the notes?"
+     }
+    ],
+    "request": {
+     "url": "https://openrouter.ai/api/v1/chat/completions",
+     "headers": {
+      "content-type": "application/json",
+      "HTTP-Referer": "https://qrtz.ai",
+      "X-Title": "qrtz",
+      "authorization": "Bearer sk-or-test"
+     },
+     "body": "{\"model\":\"anthropic/claude-haiku-5.5\",\"messages\":[{\"role\":\"system\",\"content\":\"You summarize meeting transcripts. Reply with ONLY a JSON object: {\\\"summary\\\": string (3-6 sentences), \\\"actionItems\\\": [{\\\"text\\\": string, \\\"owner\\\"?: string}], \\\"qa\\\": [{\\\"question\\\": string, \\\"answer\\\": string, \\\"askedBy\\\"?: string}]}. Use speaker names from the transcript. Do not invent facts. This is a standup. In the summary, list per person: done since last time, doing next, blockers. Keep it terse. Action items are blockers needing follow-up. The user took their own notes during the meeting (timestamps match the transcript). Treat them as the user's priorities: build the summary around them, expand each with details from the transcript, keep any to-dos from the notes as action items, and never contradict the transcript.\"},{\"role\":\"user\",\"content\":\"Meeting: Daily\\n\\nMy notes:\\n[0:05] Ship Friday\\n[1:02:05] TODO: book demo\\n\\nTranscript:\\n[0:00] Ana Diaz: Morning all. Let's start with the roadmap.\\n[0:04] Ben Ode: We ship on Friday.\\n[1:01] Ana Diaz: Can you send the notes?\"}],\"temperature\":0.2,\"response_format\":{\"type\":\"json_object\"}}"
+    }
+   }
+  },
+  {
+   "name": "unknown-template-speakers",
+   "title": "x",
+   "segments": [
+    {
+     "id": "u0",
+     "startMs": 0,
+     "endMs": 900,
+     "text": "one",
+     "source": "live",
+     "speaker": "spk1"
+    },
+    {
+     "id": "u1",
+     "startMs": 1000,
+     "endMs": 1900,
+     "text": "two",
+     "source": "live"
+    },
+    {
+     "id": "u2",
+     "startMs": 4501000,
+     "endMs": 4501900,
+     "text": "three",
+     "source": "live",
+     "speakerName": ""
+    }
+   ],
+   "opts": {
+    "template": "nope"
+   },
+   "expect": {
+    "messages": [
+     {
+      "role": "system",
+      "content": "You summarize meeting transcripts. Reply with ONLY a JSON object: {\"summary\": string (3-6 sentences), \"actionItems\": [{\"text\": string, \"owner\"?: string}], \"qa\": [{\"question\": string, \"answer\": string, \"askedBy\"?: string}]}. Use speaker names from the transcript. Do not invent facts. Summarize the key points and decisions."
+     },
+     {
+      "role": "user",
+      "content": "Meeting: x\n\nTranscript:\n[0:00] spk1: one\n[0:01] Speaker: two\n[75:01] : three"
+     }
+    ],
+    "request": {
+     "url": "https://openrouter.ai/api/v1/chat/completions",
+     "headers": {
+      "content-type": "application/json",
+      "HTTP-Referer": "https://qrtz.ai",
+      "X-Title": "qrtz",
+      "authorization": "Bearer sk-or-test"
+     },
+     "body": "{\"model\":\"anthropic/claude-haiku-5.5\",\"messages\":[{\"role\":\"system\",\"content\":\"You summarize meeting transcripts. Reply with ONLY a JSON object: {\\\"summary\\\": string (3-6 sentences), \\\"actionItems\\\": [{\\\"text\\\": string, \\\"owner\\\"?: string}], \\\"qa\\\": [{\\\"question\\\": string, \\\"answer\\\": string, \\\"askedBy\\\"?: string}]}. Use speaker names from the transcript. Do not invent facts. Summarize the key points and decisions.\"},{\"role\":\"user\",\"content\":\"Meeting: x\\n\\nTranscript:\\n[0:00] spk1: one\\n[0:01] Speaker: two\\n[75:01] : three\"}],\"temperature\":0.2,\"response_format\":{\"type\":\"json_object\"}}"
+    }
+   }
+  },
+  {
+   "name": "gaps-mixed",
+   "title": "Gaps",
+   "segments": [
+    {
+     "id": "u0",
+     "startMs": 0,
+     "endMs": 900,
+     "text": "Morning all. Let's start with the roadmap.",
+     "source": "live",
+     "speakerName": "Ana Diaz"
+    },
+    {
+     "id": "u1",
+     "startMs": 4200,
+     "endMs": 5100,
+     "text": "We ship on Friday.",
+     "source": "live",
+     "speakerName": "Ben Ode"
+    },
+    {
+     "id": "u2",
+     "startMs": 61500,
+     "endMs": 62400,
+     "text": "Can you send the notes?",
+     "source": "live",
+     "speakerName": "Ana Diaz"
+    }
+   ],
+   "opts": {
+    "silentSpans": [
+     {
+      "source": "mic",
+      "startMs": 120000,
+      "endMs": 600000
+     },
+     {
+      "source": "system",
+      "startMs": 300000,
+      "endMs": 720000
+     },
+     {
+      "source": "system",
+      "startMs": 1200000,
+      "endMs": 1230000
+     },
+     {
+      "source": "mic",
+      "startMs": 1800000
+     }
+    ],
+    "durationMs": 2100000
+   },
+   "expect": {
+    "messages": [
+     {
+      "role": "system",
+      "content": "You summarize meeting transcripts. Reply with ONLY a JSON object: {\"summary\": string (3-6 sentences), \"actionItems\": [{\"text\": string, \"owner\"?: string}], \"qa\": [{\"question\": string, \"answer\": string, \"askedBy\"?: string}]}. Use speaker names from the transcript. Do not invent facts. Summarize the key points and decisions. Some stretches of the recording are listed under Capture gaps (timestamps match the transcript). Where it says no audio at all, nothing is known about what was said: never summarize, guess or attribute anything to that stretch; you may say that audio is missing for it. Where only one source had no audio, the transcript lines in that stretch are real and come from the other source: summarize them as usual; just never guess what the silent side said."
+     },
+     {
+      "role": "user",
+      "content": "Meeting: Gaps\n\nCapture gaps:\n- 2:00–5:00: no audio from this user's microphone\n- 5:00–10:00: no audio at all (nothing was captured)\n- 10:00–12:00: no audio from the other participants (the computer's sound)\n- 30:00–35:00: no audio from this user's microphone\n\nTranscript:\n[0:00] Ana Diaz: Morning all. Let's start with the roadmap.\n[0:04] Ben Ode: We ship on Friday.\n[1:01] Ana Diaz: Can you send the notes?"
+     }
+    ],
+    "request": {
+     "url": "https://openrouter.ai/api/v1/chat/completions",
+     "headers": {
+      "content-type": "application/json",
+      "HTTP-Referer": "https://qrtz.ai",
+      "X-Title": "qrtz",
+      "authorization": "Bearer sk-or-test"
+     },
+     "body": "{\"model\":\"anthropic/claude-haiku-5.5\",\"messages\":[{\"role\":\"system\",\"content\":\"You summarize meeting transcripts. Reply with ONLY a JSON object: {\\\"summary\\\": string (3-6 sentences), \\\"actionItems\\\": [{\\\"text\\\": string, \\\"owner\\\"?: string}], \\\"qa\\\": [{\\\"question\\\": string, \\\"answer\\\": string, \\\"askedBy\\\"?: string}]}. Use speaker names from the transcript. Do not invent facts. Summarize the key points and decisions. Some stretches of the recording are listed under Capture gaps (timestamps match the transcript). Where it says no audio at all, nothing is known about what was said: never summarize, guess or attribute anything to that stretch; you may say that audio is missing for it. Where only one source had no audio, the transcript lines in that stretch are real and come from the other source: summarize them as usual; just never guess what the silent side said.\"},{\"role\":\"user\",\"content\":\"Meeting: Gaps\\n\\nCapture gaps:\\n- 2:00–5:00: no audio from this user's microphone\\n- 5:00–10:00: no audio at all (nothing was captured)\\n- 10:00–12:00: no audio from the other participants (the computer's sound)\\n- 30:00–35:00: no audio from this user's microphone\\n\\nTranscript:\\n[0:00] Ana Diaz: Morning all. Let's start with the roadmap.\\n[0:04] Ben Ode: We ship on Friday.\\n[1:01] Ana Diaz: Can you send the notes?\"}],\"temperature\":0.2,\"response_format\":{\"type\":\"json_object\"}}"
+    }
+   }
+  },
+  {
+   "name": "gaps-lost-mic",
+   "title": "Lost",
+   "segments": [
+    {
+     "id": "u0",
+     "startMs": 0,
+     "endMs": 900,
+     "text": "Morning all. Let's start with the roadmap.",
+     "source": "live",
+     "speakerName": "Ana Diaz"
+    },
+    {
+     "id": "u1",
+     "startMs": 4200,
+     "endMs": 5100,
+     "text": "We ship on Friday.",
+     "source": "live",
+     "speakerName": "Ben Ode"
+    },
+    {
+     "id": "u2",
+     "startMs": 61500,
+     "endMs": 62400,
+     "text": "Can you send the notes?",
+     "source": "live",
+     "speakerName": "Ana Diaz"
+    }
+   ],
+   "opts": {
+    "silentSpans": [
+     {
+      "source": "system",
+      "startMs": 180000,
+      "endMs": 540000
+     }
+    ],
+    "lostSpans": [
+     {
+      "source": "mic",
+      "startMs": 120000
+     }
+    ],
+    "durationMs": 600000
+   },
+   "expect": {
+    "messages": [
+     {
+      "role": "system",
+      "content": "You summarize meeting transcripts. Reply with ONLY a JSON object: {\"summary\": string (3-6 sentences), \"actionItems\": [{\"text\": string, \"owner\"?: string}], \"qa\": [{\"question\": string, \"answer\": string, \"askedBy\"?: string}]}. Use speaker names from the transcript. Do not invent facts. Summarize the key points and decisions. Some stretches of the recording are listed under Capture gaps (timestamps match the transcript). Where it says no audio at all, nothing is known about what was said: never summarize, guess or attribute anything to that stretch; you may say that audio is missing for it. Where only one source had no audio, the transcript lines in that stretch are real and come from the other source: summarize them as usual; just never guess what the silent side said."
+     },
+     {
+      "role": "user",
+      "content": "Meeting: Lost\n\nCapture gaps:\n- 2:00–3:00: no audio from this user's microphone\n- 3:00–9:00: no audio at all (nothing was captured)\n- 9:00–10:00: no audio from this user's microphone\n\nTranscript:\n[0:00] Ana Diaz: Morning all. Let's start with the roadmap.\n[0:04] Ben Ode: We ship on Friday.\n[1:01] Ana Diaz: Can you send the notes?"
+     }
+    ],
+    "request": {
+     "url": "https://openrouter.ai/api/v1/chat/completions",
+     "headers": {
+      "content-type": "application/json",
+      "HTTP-Referer": "https://qrtz.ai",
+      "X-Title": "qrtz",
+      "authorization": "Bearer sk-or-test"
+     },
+     "body": "{\"model\":\"anthropic/claude-haiku-5.5\",\"messages\":[{\"role\":\"system\",\"content\":\"You summarize meeting transcripts. Reply with ONLY a JSON object: {\\\"summary\\\": string (3-6 sentences), \\\"actionItems\\\": [{\\\"text\\\": string, \\\"owner\\\"?: string}], \\\"qa\\\": [{\\\"question\\\": string, \\\"answer\\\": string, \\\"askedBy\\\"?: string}]}. Use speaker names from the transcript. Do not invent facts. Summarize the key points and decisions. Some stretches of the recording are listed under Capture gaps (timestamps match the transcript). Where it says no audio at all, nothing is known about what was said: never summarize, guess or attribute anything to that stretch; you may say that audio is missing for it. Where only one source had no audio, the transcript lines in that stretch are real and come from the other source: summarize them as usual; just never guess what the silent side said.\"},{\"role\":\"user\",\"content\":\"Meeting: Lost\\n\\nCapture gaps:\\n- 2:00–3:00: no audio from this user's microphone\\n- 3:00–9:00: no audio at all (nothing was captured)\\n- 9:00–10:00: no audio from this user's microphone\\n\\nTranscript:\\n[0:00] Ana Diaz: Morning all. Let's start with the roadmap.\\n[0:04] Ben Ode: We ship on Friday.\\n[1:01] Ana Diaz: Can you send the notes?\"}],\"temperature\":0.2,\"response_format\":{\"type\":\"json_object\"}}"
+    }
+   }
+  },
+  {
+   "name": "gaps-one-sided-only",
+   "title": "Present",
+   "segments": [
+    {
+     "id": "u0",
+     "startMs": 0,
+     "endMs": 900,
+     "text": "Morning all. Let's start with the roadmap.",
+     "source": "live",
+     "speakerName": "Ana Diaz"
+    },
+    {
+     "id": "u1",
+     "startMs": 4200,
+     "endMs": 5100,
+     "text": "We ship on Friday.",
+     "source": "live",
+     "speakerName": "Ben Ode"
+    },
+    {
+     "id": "u2",
+     "startMs": 61500,
+     "endMs": 62400,
+     "text": "Can you send the notes?",
+     "source": "live",
+     "speakerName": "Ana Diaz"
+    }
+   ],
+   "opts": {
+    "silentSpans": [
+     {
+      "source": "system",
+      "startMs": 0,
+      "endMs": 900000
+     }
+    ]
+   },
+   "expect": {
+    "messages": [
+     {
+      "role": "system",
+      "content": "You summarize meeting transcripts. Reply with ONLY a JSON object: {\"summary\": string (3-6 sentences), \"actionItems\": [{\"text\": string, \"owner\"?: string}], \"qa\": [{\"question\": string, \"answer\": string, \"askedBy\"?: string}]}. Use speaker names from the transcript. Do not invent facts. Summarize the key points and decisions. Some stretches of the recording are listed under Capture gaps (timestamps match the transcript). Where only one source had no audio, the transcript lines in that stretch are real and come from the other source: summarize them as usual; just never guess what the silent side said."
+     },
+     {
+      "role": "user",
+      "content": "Meeting: Present\n\nCapture gaps:\n- 0:00–15:00: no audio from the other participants (the computer's sound)\n\nTranscript:\n[0:00] Ana Diaz: Morning all. Let's start with the roadmap.\n[0:04] Ben Ode: We ship on Friday.\n[1:01] Ana Diaz: Can you send the notes?"
+     }
+    ],
+    "request": {
+     "url": "https://openrouter.ai/api/v1/chat/completions",
+     "headers": {
+      "content-type": "application/json",
+      "HTTP-Referer": "https://qrtz.ai",
+      "X-Title": "qrtz",
+      "authorization": "Bearer sk-or-test"
+     },
+     "body": "{\"model\":\"anthropic/claude-haiku-5.5\",\"messages\":[{\"role\":\"system\",\"content\":\"You summarize meeting transcripts. Reply with ONLY a JSON object: {\\\"summary\\\": string (3-6 sentences), \\\"actionItems\\\": [{\\\"text\\\": string, \\\"owner\\\"?: string}], \\\"qa\\\": [{\\\"question\\\": string, \\\"answer\\\": string, \\\"askedBy\\\"?: string}]}. Use speaker names from the transcript. Do not invent facts. Summarize the key points and decisions. Some stretches of the recording are listed under Capture gaps (timestamps match the transcript). Where only one source had no audio, the transcript lines in that stretch are real and come from the other source: summarize them as usual; just never guess what the silent side said.\"},{\"role\":\"user\",\"content\":\"Meeting: Present\\n\\nCapture gaps:\\n- 0:00–15:00: no audio from the other participants (the computer's sound)\\n\\nTranscript:\\n[0:00] Ana Diaz: Morning all. Let's start with the roadmap.\\n[0:04] Ben Ode: We ship on Friday.\\n[1:01] Ana Diaz: Can you send the notes?\"}],\"temperature\":0.2,\"response_format\":{\"type\":\"json_object\"}}"
+    }
+   }
+  },
+  {
+   "name": "gaps-open-no-duration",
+   "title": "Open",
+   "segments": [
+    {
+     "id": "u0",
+     "startMs": 0,
+     "endMs": 900,
+     "text": "Morning all. Let's start with the roadmap.",
+     "source": "live",
+     "speakerName": "Ana Diaz"
+    },
+    {
+     "id": "u1",
+     "startMs": 4200,
+     "endMs": 5100,
+     "text": "We ship on Friday.",
+     "source": "live",
+     "speakerName": "Ben Ode"
+    },
+    {
+     "id": "u2",
+     "startMs": 61500,
+     "endMs": 62400,
+     "text": "Can you send the notes?",
+     "source": "live",
+     "speakerName": "Ana Diaz"
+    }
+   ],
+   "opts": {
+    "silentSpans": [
+     {
+      "source": "system",
+      "startMs": 0
+     }
+    ]
+   },
+   "expect": {
+    "messages": [
+     {
+      "role": "system",
+      "content": "You summarize meeting transcripts. Reply with ONLY a JSON object: {\"summary\": string (3-6 sentences), \"actionItems\": [{\"text\": string, \"owner\"?: string}], \"qa\": [{\"question\": string, \"answer\": string, \"askedBy\"?: string}]}. Use speaker names from the transcript. Do not invent facts. Summarize the key points and decisions."
+     },
+     {
+      "role": "user",
+      "content": "Meeting: Open\n\nTranscript:\n[0:00] Ana Diaz: Morning all. Let's start with the roadmap.\n[0:04] Ben Ode: We ship on Friday.\n[1:01] Ana Diaz: Can you send the notes?"
+     }
+    ],
+    "request": {
+     "url": "https://openrouter.ai/api/v1/chat/completions",
+     "headers": {
+      "content-type": "application/json",
+      "HTTP-Referer": "https://qrtz.ai",
+      "X-Title": "qrtz",
+      "authorization": "Bearer sk-or-test"
+     },
+     "body": "{\"model\":\"anthropic/claude-haiku-5.5\",\"messages\":[{\"role\":\"system\",\"content\":\"You summarize meeting transcripts. Reply with ONLY a JSON object: {\\\"summary\\\": string (3-6 sentences), \\\"actionItems\\\": [{\\\"text\\\": string, \\\"owner\\\"?: string}], \\\"qa\\\": [{\\\"question\\\": string, \\\"answer\\\": string, \\\"askedBy\\\"?: string}]}. Use speaker names from the transcript. Do not invent facts. Summarize the key points and decisions.\"},{\"role\":\"user\",\"content\":\"Meeting: Open\\n\\nTranscript:\\n[0:00] Ana Diaz: Morning all. Let's start with the roadmap.\\n[0:04] Ben Ode: We ship on Friday.\\n[1:01] Ana Diaz: Can you send the notes?\"}],\"temperature\":0.2,\"response_format\":{\"type\":\"json_object\"}}"
+    }
+   }
+  },
+  {
+   "name": "long-plain",
+   "title": "All-hands",
+   "gen": {
+    "count": 3000,
+    "stepMs": 4000,
+    "speakers": [
+     "Ana Diaz",
+     "Ben Ode",
+     null,
+     "Chloé Ng"
+    ],
+    "texts": [
+     "We reviewed the hiring plan and agreed on two roles",
+     "Latency is down to 160 ms on the parakeet model",
+     "Next week we demo the dashboard to the customer",
+     "I'll follow up with legal about the contract"
+    ]
+   },
+   "opts": {},
+   "expect": {
+    "messages": [
+     {
+      "role": "system",
+      "content": "You summarize meeting transcripts. Reply with ONLY a JSON object: {\"summary\": string (3-6 sentences), \"actionItems\": [{\"text\": string, \"owner\"?: string}], \"qa\": [{\"question\": string, \"answer\": string, \"askedBy\"?: string}]}. Use speaker names from the transcript. Do not invent facts. Summarize the key points and decisions."
+     },
+     {
+      "role": "user",
+      "content": {
+       "length": 59676,
+       "sha256": "d6f7c2a8c2ed38c0f4da91b067aa2a62aa112e826234d8fd3f8932848175bea7",
+       "head": "Meeting: All-hands\n\nTranscript:\n[0:00] Ana Diaz: We reviewed the hiring plan and agreed on two roles",
+       "tail": "ashboard to the customer #2998\n[199:56] Chloé Ng: I'll follow up with legal about the contract #2999"
+      }
+     }
+    ],
+    "request": {
+     "url": "https://openrouter.ai/api/v1/chat/completions",
+     "headers": {
+      "content-type": "application/json",
+      "HTTP-Referer": "https://qrtz.ai",
+      "X-Title": "qrtz",
+      "authorization": "Bearer sk-or-test"
+     },
+     "body": {
+      "length": 61023,
+      "sha256": "ba62b7669b7433046d78b1cffc6c9840e691b048356a958425f88db580de8f11",
+      "head": "{\"model\":\"anthropic/claude-haiku-5.5\",\"messages\":[{\"role\":\"system\",\"content\":\"You summarize meeting ",
+      "tail": "p with legal about the contract #2999\"}],\"temperature\":0.2,\"response_format\":{\"type\":\"json_object\"}}"
+     }
+    }
+   }
+  },
+  {
+   "name": "long-emoji",
+   "title": "Emoji",
+   "gen": {
+    "count": 2500,
+    "stepMs": 3000,
+    "speakers": [
+     "Ana",
+     "Ben"
+    ],
+    "texts": [
+     "ship it 🚀🚀 then celebrate 🎉",
+     "日本語の会議メモ、次回は金曜日",
+     "👩🏽‍💻 pairing on the 🐛 fix"
+    ]
+   },
+   "opts": {
+    "notes": [
+     {
+      "id": "n1",
+      "atMs": 60000,
+      "text": "🚀 launch",
+      "createdAt": 1
+     }
+    ]
+   },
+   "expect": {
+    "messages": [
+     {
+      "role": "system",
+      "content": "You summarize meeting transcripts. Reply with ONLY a JSON object: {\"summary\": string (3-6 sentences), \"actionItems\": [{\"text\": string, \"owner\"?: string}], \"qa\": [{\"question\": string, \"answer\": string, \"askedBy\"?: string}]}. Use speaker names from the transcript. Do not invent facts. Summarize the key points and decisions. The user took their own notes during the meeting (timestamps match the transcript). Treat them as the user's priorities: build the summary around them, expand each with details from the transcript, keep any to-dos from the notes as action items, and never contradict the transcript."
+     },
+     {
+      "role": "user",
+      "content": {
+       "length": 59778,
+       "sha256": "544b85203f7ed456c95840d26c5ee9affccab50ae0fef044d9e286ed05b0ef1a",
+       "head": "Meeting: Emoji\n\nMy notes:\n[1:00] 🚀 launch\n\nTranscript:\n[0:00] Ana: ship it 🚀🚀 then celebrate 🎉 #0\n[0",
+       "tail": " #2497\n[124:54] Ana: 👩🏽‍💻 pairing on the 🐛 fix #2498\n[124:57] Ben: ship it 🚀🚀 then celebrate 🎉 #2499"
+      }
+     }
+    ],
+    "request": {
+     "url": "https://openrouter.ai/api/v1/chat/completions",
+     "headers": {
+      "content-type": "application/json",
+      "HTTP-Referer": "https://qrtz.ai",
+      "X-Title": "qrtz",
+      "authorization": "Bearer sk-or-test"
+     },
+     "body": {
+      "length": 61926,
+      "sha256": "120008a579f8479496751dd56cef3bea2a2c40dcaf7d2ac006bd102ae2cefa6e",
+      "head": "{\"model\":\"anthropic/claude-haiku-5.5\",\"messages\":[{\"role\":\"system\",\"content\":\"You summarize meeting ",
+      "tail": "en: ship it 🚀🚀 then celebrate 🎉 #2499\"}],\"temperature\":0.2,\"response_format\":{\"type\":\"json_object\"}}"
+     }
+    }
+   }
+  },
+  {
+   "name": "one-huge-line",
+   "title": "Huge",
+   "gen": {
+    "count": 1,
+    "stepMs": 1000,
+    "speakers": [
+     "Ana"
+    ],
+    "texts": [
+     "a😀"
+    ],
+    "repeat": 40000
+   },
+   "opts": {},
+   "expect": {
+    "messages": [
+     {
+      "role": "system",
+      "content": "You summarize meeting transcripts. Reply with ONLY a JSON object: {\"summary\": string (3-6 sentences), \"actionItems\": [{\"text\": string, \"owner\"?: string}], \"qa\": [{\"question\": string, \"answer\": string, \"askedBy\"?: string}]}. Use speaker names from the transcript. Do not invent facts. Summarize the key points and decisions."
+     },
+     {
+      "role": "user",
+      "content": {
+       "length": 8563,
+       "sha256": "8d136896346ebbca31ea53f379f55a6b53f251cb8b70a829a78621389ec6707c",
+       "head": "Meeting: Huge\n\nTranscript:\n[0:00] Ana: a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a",
+       "tail": "😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a"
+      }
+     }
+    ],
+    "request": {
+     "url": "https://openrouter.ai/api/v1/chat/completions",
+     "headers": {
+      "content-type": "application/json",
+      "HTTP-Referer": "https://qrtz.ai",
+      "X-Title": "qrtz",
+      "authorization": "Bearer sk-or-test"
+     },
+     "body": {
+      "length": 9075,
+      "sha256": "8de3dc0042c486a2003ccb5f8926f1fb9f052634c50705c7e47923456af8bcc7",
+      "head": "{\"model\":\"anthropic/claude-haiku-5.5\",\"messages\":[{\"role\":\"system\",\"content\":\"You summarize meeting ",
+      "tail": "a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a😀a\"}],\"temperature\":0.2,\"response_format\":{\"type\":\"json_object\"}}"
+     }
+    }
+   }
+  },
+  {
+   "name": "empty",
+   "title": "Empty",
+   "segments": [],
+   "opts": {},
+   "expect": {
+    "messages": [
+     {
+      "role": "system",
+      "content": "You summarize meeting transcripts. Reply with ONLY a JSON object: {\"summary\": string (3-6 sentences), \"actionItems\": [{\"text\": string, \"owner\"?: string}], \"qa\": [{\"question\": string, \"answer\": string, \"askedBy\"?: string}]}. Use speaker names from the transcript. Do not invent facts. Summarize the key points and decisions."
+     },
+     {
+      "role": "user",
+      "content": "Meeting: Empty\n\nTranscript:\n"
+     }
+    ],
+    "request": {
+     "url": "https://openrouter.ai/api/v1/chat/completions",
+     "headers": {
+      "content-type": "application/json",
+      "HTTP-Referer": "https://qrtz.ai",
+      "X-Title": "qrtz",
+      "authorization": "Bearer sk-or-test"
+     },
+     "body": "{\"model\":\"anthropic/claude-haiku-5.5\",\"messages\":[{\"role\":\"system\",\"content\":\"You summarize meeting transcripts. Reply with ONLY a JSON object: {\\\"summary\\\": string (3-6 sentences), \\\"actionItems\\\": [{\\\"text\\\": string, \\\"owner\\\"?: string}], \\\"qa\\\": [{\\\"question\\\": string, \\\"answer\\\": string, \\\"askedBy\\\"?: string}]}. Use speaker names from the transcript. Do not invent facts. Summarize the key points and decisions.\"},{\"role\":\"user\",\"content\":\"Meeting: Empty\\n\\nTranscript:\\n\"}],\"temperature\":0.2,\"response_format\":{\"type\":\"json_object\"}}"
+    }
+   }
+  }
+ ],
+ "transcripts": [
+  {
+   "name": "mid-60",
+   "gen": {
+    "count": 200,
+    "stepMs": 20000,
+    "speakers": [
+     "Ana",
+     "Ben",
+     "Cy"
+    ],
+    "texts": [
+     "short line",
+     "a somewhat longer line with more words in it 🎈",
+     "x"
+    ]
+   },
+   "maxChars": 60,
+   "expect": "[0:00] Ana\n[… 0:20–66:00 not shown …]\n[66:20] Be"
+  },
+  {
+   "name": "mid-200",
+   "gen": {
+    "count": 200,
+    "stepMs": 20000,
+    "speakers": [
+     "Ana",
+     "Ben",
+     "Cy"
+    ],
+    "texts": [
+     "short line",
+     "a somewhat longer line with more words in it 🎈",
+     "x"
+    ]
+   },
+   "maxChars": 200,
+   "expect": "[0:00] Ana: short line #0\n[… 0:20–66:00 not shown …]\n[66:20] Ben: a somewhat longer line with more words in it 🎈 #199"
+  },
+  {
+   "name": "mid-500",
+   "gen": {
+    "count": 200,
+    "stepMs": 20000,
+    "speakers": [
+     "Ana",
+     "Ben",
+     "Cy"
+    ],
+    "texts": [
+     "short line",
+     "a somewhat longer line with more words in it 🎈",
+     "x"
+    ]
+   },
+   "maxChars": 500,
+   "expect": "[0:00] Ana: short line #0\n[0:20] Ben: a somewhat longer line with more words in it 🎈 #1\n[0:40] Cy: x #2\n[1:00] Ana: short line #3\n[1:20] Ben: a somewhat longer line with more words in it 🎈 #4\n[1:40] Cy: x #5\n[… 2:00–64:20 not shown …]\n[64:40] Cy: x #194\n[65:00] Ana: short line #195\n[65:20] Ben: a somewhat longer line with more words in it 🎈 #196\n[65:40] Cy: x #197\n[66:00] Ana: short line #198\n[66:20] Ben: a somewhat longer line with more words in it 🎈 #199"
+  },
+  {
+   "name": "mid-1000",
+   "gen": {
+    "count": 200,
+    "stepMs": 20000,
+    "speakers": [
+     "Ana",
+     "Ben",
+     "Cy"
+    ],
+    "texts": [
+     "short line",
+     "a somewhat longer line with more words in it 🎈",
+     "x"
+    ]
+   },
+   "maxChars": 1000,
+   "expect": "[0:00] Ana: short line #0\n[0:20] Ben: a somewhat longer line with more words in it 🎈 #1\n[0:40] Cy: x #2\n[1:00] Ana: short line #3\n[1:20] Ben: a somewhat longer line with more words in it 🎈 #4\n[1:40] Cy: x #5\n[2:00] Ana: short line #6\n[2:20] Ben: a somewhat longer line with more words in it 🎈 #7\n[2:40] Cy: x #8\n[3:00] Ana: short line #9\n[3:20] Ben: a somewhat longer line with more words in it 🎈 #10\n[3:40] Cy: x #11\n[4:00] Ana: short line #12\n[… 4:20–62:20 not shown …]\n[62:40] Cy: x #188\n[63:00] Ana: short line #189\n[63:20] Ben: a somewhat longer line with more words in it 🎈 #190\n[63:40] Cy: x #191\n[64:00] Ana: short line #192\n[64:20] Ben: a somewhat longer line with more words in it 🎈 #193\n[64:40] Cy: x #194\n[65:00] Ana: short line #195\n[65:20] Ben: a somewhat longer line with more words in it 🎈 #196\n[65:40] Cy: x #197\n[66:00] Ana: short line #198\n[66:20] Ben: a somewhat longer line with more words in it 🎈 #199"
+  },
+  {
+   "name": "mid-4000",
+   "gen": {
+    "count": 200,
+    "stepMs": 20000,
+    "speakers": [
+     "Ana",
+     "Ben",
+     "Cy"
+    ],
+    "texts": [
+     "short line",
+     "a somewhat longer line with more words in it 🎈",
+     "x"
+    ]
+   },
+   "maxChars": 4000,
+   "expect": "[0:00] Ana: short line #0\n[0:20] Ben: a somewhat longer line with more words in it 🎈 #1\n[0:40] Cy: x #2\n[1:00] Ana: short line #3\n[1:20] Ben: a somewhat longer line with more words in it 🎈 #4\n[1:40] Cy: x #5\n[2:00] Ana: short line #6\n[2:20] Ben: a somewhat longer line with more words in it 🎈 #7\n[2:40] Cy: x #8\n[3:00] Ana: short line #9\n[3:20] Ben: a somewhat longer line with more words in it 🎈 #10\n[3:40] Cy: x #11\n[4:00] Ana: short line #12\n[4:20] Ben: a somewhat longer line with more words in it 🎈 #13\n[4:40] Cy: x #14\n[5:00] Ana: short line #15\n[5:20] Ben: a somewhat longer line with more words in it 🎈 #16\n[5:40] Cy: x #17\n[6:00] Ana: short line #18\n[6:20] Ben: a somewhat longer line with more words in it 🎈 #19\n[6:40] Cy: x #20\n[7:00] Ana: short line #21\n[7:20] Ben: a somewhat longer line with more words in it 🎈 #22\n[7:40] Cy: x #23\n[8:00] Ana: short line #24\n[8:20] Ben: a somewhat longer line with more words in it 🎈 #25\n[8:40] Cy: x #26\n[9:00] Ana: short line #27\n[9:20] Ben: a somewhat longer line with more words in it 🎈 #28\n[9:40] Cy: x #29\n[10:00] Ana: short line #30\n[10:20] Ben: a somewhat longer line with more words in it 🎈 #31\n[10:40] Cy: x #32\n[11:00] Ana: short line #33\n[11:20] Ben: a somewhat longer line with more words in it 🎈 #34\n[11:40] Cy: x #35\n[12:00] Ana: short line #36\n[12:20] Ben: a somewhat longer line with more words in it 🎈 #37\n[12:40] Cy: x #38\n[13:00] Ana: short line #39\n[13:20] Ben: a somewhat longer line with more words in it 🎈 #40\n[13:40] Cy: x #41\n[14:00] Ana: short line #42\n[14:20] Ben: a somewhat longer line with more words in it 🎈 #43\n[14:40] Cy: x #44\n[15:00] Ana: short line #45\n[15:20] Ben: a somewhat longer line with more words in it 🎈 #46\n[15:40] Cy: x #47\n[16:00] Ana: short line #48\n[16:20] Ben: a somewhat longer line with more words in it 🎈 #49\n[16:40] Cy: x #50\n[17:00] Ana: short line #51\n[17:20] Ben: a somewhat longer line with more words in it 🎈 #52\n[17:40] Cy: x #53\n[… 18:00–49:20 not shown …]\n[49:40] Cy: x #149\n[50:00] Ana: short line #150\n[50:20] Ben: a somewhat longer line with more words in it 🎈 #151\n[50:40] Cy: x #152\n[51:00] Ana: short line #153\n[51:20] Ben: a somewhat longer line with more words in it 🎈 #154\n[51:40] Cy: x #155\n[52:00] Ana: short line #156\n[52:20] Ben: a somewhat longer line with more words in it 🎈 #157\n[52:40] Cy: x #158\n[53:00] Ana: short line #159\n[53:20] Ben: a somewhat longer line with more words in it 🎈 #160\n[53:40] Cy: x #161\n[54:00] Ana: short line #162\n[54:20] Ben: a somewhat longer line with more words in it 🎈 #163\n[54:40] Cy: x #164\n[55:00] Ana: short line #165\n[55:20] Ben: a somewhat longer line with more words in it 🎈 #166\n[55:40] Cy: x #167\n[56:00] Ana: short line #168\n[56:20] Ben: a somewhat longer line with more words in it 🎈 #169\n[56:40] Cy: x #170\n[57:00] Ana: short line #171\n[57:20] Ben: a somewhat longer line with more words in it 🎈 #172\n[57:40] Cy: x #173\n[58:00] Ana: short line #174\n[58:20] Ben: a somewhat longer line with more words in it 🎈 #175\n[58:40] Cy: x #176\n[59:00] Ana: short line #177\n[59:20] Ben: a somewhat longer line with more words in it 🎈 #178\n[59:40] Cy: x #179\n[60:00] Ana: short line #180\n[60:20] Ben: a somewhat longer line with more words in it 🎈 #181\n[60:40] Cy: x #182\n[61:00] Ana: short line #183\n[61:20] Ben: a somewhat longer line with more words in it 🎈 #184\n[61:40] Cy: x #185\n[62:00] Ana: short line #186\n[62:20] Ben: a somewhat longer line with more words in it 🎈 #187\n[62:40] Cy: x #188\n[63:00] Ana: short line #189\n[63:20] Ben: a somewhat longer line with more words in it 🎈 #190\n[63:40] Cy: x #191\n[64:00] Ana: short line #192\n[64:20] Ben: a somewhat longer line with more words in it 🎈 #193\n[64:40] Cy: x #194\n[65:00] Ana: short line #195\n[65:20] Ben: a somewhat longer line with more words in it 🎈 #196\n[65:40] Cy: x #197\n[66:00] Ana: short line #198\n[66:20] Ben: a somewhat longer line with more words in it 🎈 #199"
+  },
+  {
+   "name": "mid-7500",
+   "gen": {
+    "count": 200,
+    "stepMs": 20000,
+    "speakers": [
+     "Ana",
+     "Ben",
+     "Cy"
+    ],
+    "texts": [
+     "short line",
+     "a somewhat longer line with more words in it 🎈",
+     "x"
+    ]
+   },
+   "maxChars": 7500,
+   "expect": {
+    "length": 7478,
+    "sha256": "61e80b16d6c760b95cd5ae8f146e6a7fe48bda4d95fa45311a0ccf4d6c0b5c7e",
+    "head": "[0:00] Ana: short line #0\n[0:20] Ben: a somewhat longer line with more words in it 🎈 #1\n[0:40] Cy: x",
+    "tail": "x #197\n[66:00] Ana: short line #198\n[66:20] Ben: a somewhat longer line with more words in it 🎈 #199"
+   }
+  },
+  {
+   "name": "mid-14999",
+   "gen": {
+    "count": 200,
+    "stepMs": 20000,
+    "speakers": [
+     "Ana",
+     "Ben",
+     "Cy"
+    ],
+    "texts": [
+     "short line",
+     "a somewhat longer line with more words in it 🎈",
+     "x"
+    ]
+   },
+   "maxChars": 14999,
+   "expect": {
+    "length": 7478,
+    "sha256": "61e80b16d6c760b95cd5ae8f146e6a7fe48bda4d95fa45311a0ccf4d6c0b5c7e",
+    "head": "[0:00] Ana: short line #0\n[0:20] Ben: a somewhat longer line with more words in it 🎈 #1\n[0:40] Cy: x",
+    "tail": "x #197\n[66:00] Ana: short line #198\n[66:20] Ben: a somewhat longer line with more words in it 🎈 #199"
+   }
+  },
+  {
+   "name": "mid-15000",
+   "gen": {
+    "count": 200,
+    "stepMs": 20000,
+    "speakers": [
+     "Ana",
+     "Ben",
+     "Cy"
+    ],
+    "texts": [
+     "short line",
+     "a somewhat longer line with more words in it 🎈",
+     "x"
+    ]
+   },
+   "maxChars": 15000,
+   "expect": {
+    "length": 7478,
+    "sha256": "61e80b16d6c760b95cd5ae8f146e6a7fe48bda4d95fa45311a0ccf4d6c0b5c7e",
+    "head": "[0:00] Ana: short line #0\n[0:20] Ben: a somewhat longer line with more words in it 🎈 #1\n[0:40] Cy: x",
+    "tail": "x #197\n[66:00] Ana: short line #198\n[66:20] Ben: a somewhat longer line with more words in it 🎈 #199"
+   }
+  },
+  {
+   "name": "mid-22500",
+   "gen": {
+    "count": 200,
+    "stepMs": 20000,
+    "speakers": [
+     "Ana",
+     "Ben",
+     "Cy"
+    ],
+    "texts": [
+     "short line",
+     "a somewhat longer line with more words in it 🎈",
+     "x"
+    ]
+   },
+   "maxChars": 22500,
+   "expect": {
+    "length": 7478,
+    "sha256": "61e80b16d6c760b95cd5ae8f146e6a7fe48bda4d95fa45311a0ccf4d6c0b5c7e",
+    "head": "[0:00] Ana: short line #0\n[0:20] Ben: a somewhat longer line with more words in it 🎈 #1\n[0:40] Cy: x",
+    "tail": "x #197\n[66:00] Ana: short line #198\n[66:20] Ben: a somewhat longer line with more words in it 🎈 #199"
+   }
+  },
+  {
+   "name": "mid-52500",
+   "gen": {
+    "count": 200,
+    "stepMs": 20000,
+    "speakers": [
+     "Ana",
+     "Ben",
+     "Cy"
+    ],
+    "texts": [
+     "short line",
+     "a somewhat longer line with more words in it 🎈",
+     "x"
+    ]
+   },
+   "maxChars": 52500,
+   "expect": {
+    "length": 7478,
+    "sha256": "61e80b16d6c760b95cd5ae8f146e6a7fe48bda4d95fa45311a0ccf4d6c0b5c7e",
+    "head": "[0:00] Ana: short line #0\n[0:20] Ben: a somewhat longer line with more words in it 🎈 #1\n[0:40] Cy: x",
+    "tail": "x #197\n[66:00] Ana: short line #198\n[66:20] Ben: a somewhat longer line with more words in it 🎈 #199"
+   }
+  },
+  {
+   "name": "mid-60000",
+   "gen": {
+    "count": 200,
+    "stepMs": 20000,
+    "speakers": [
+     "Ana",
+     "Ben",
+     "Cy"
+    ],
+    "texts": [
+     "short line",
+     "a somewhat longer line with more words in it 🎈",
+     "x"
+    ]
+   },
+   "maxChars": 60000,
+   "expect": {
+    "length": 7478,
+    "sha256": "61e80b16d6c760b95cd5ae8f146e6a7fe48bda4d95fa45311a0ccf4d6c0b5c7e",
+    "head": "[0:00] Ana: short line #0\n[0:20] Ben: a somewhat longer line with more words in it 🎈 #1\n[0:40] Cy: x",
+    "tail": "x #197\n[66:00] Ana: short line #198\n[66:20] Ben: a somewhat longer line with more words in it 🎈 #199"
+   }
+  },
+  {
+   "name": "tail-huge-500",
+   "gen": {
+    "count": 3,
+    "stepMs": 1000,
+    "speakers": [
+     "Ana"
+    ],
+    "texts": [
+     "b😀"
+    ],
+    "repeat": 3000
+   },
+   "maxChars": 500,
+   "expect": "[0:00] Ana: b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b\n[… 0:01–0:01 not shown …]\n[0:02] Ana: b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b😀b"
+  },
+  {
+   "name": "two-lines-cut",
+   "segments": [
+    {
+     "id": "u0",
+     "startMs": 0,
+     "endMs": 900,
+     "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "source": "live"
+    },
+    {
+     "id": "u1",
+     "startMs": 1000,
+     "endMs": 1900,
+     "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+     "source": "live"
+    }
+   ],
+   "maxChars": 100,
+   "expect": "[0:00] Speaker: xxxxxxxxxxxxxx\n[0:01] Speaker: yyyyyyyyyyyyyy"
+  },
+  {
+   "name": "fits-exactly",
+   "segments": [
+    {
+     "id": "u0",
+     "startMs": 0,
+     "endMs": 900,
+     "text": "hello",
+     "source": "live"
+    }
+   ],
+   "maxChars": 21,
+   "expect": "[0:00] Speaker: hello"
+  },
+  {
+   "name": "one-over",
+   "segments": [
+    {
+     "id": "u0",
+     "startMs": 0,
+     "endMs": 900,
+     "text": "hello",
+     "source": "live"
+    }
+   ],
+   "maxChars": 20,
+   "expect": "["
+  },
+  {
+   "name": "emoji-boundary",
+   "segments": [
+    {
+     "id": "u0",
+     "startMs": 0,
+     "endMs": 900,
+     "text": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+     "source": "live"
+    }
+   ],
+   "maxChars": 17,
+   "expect": "["
+  },
+  {
+   "name": "emoji-boundary-2",
+   "segments": [
+    {
+     "id": "u0",
+     "startMs": 0,
+     "endMs": 900,
+     "text": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+     "source": "live"
+    }
+   ],
+   "maxChars": 18,
+   "expect": "["
+  }
+ ],
+ "gaps": [
+  {
+   "name": "over-20",
+   "spans": [
+    {
+     "source": "mic",
+     "startMs": 0,
+     "endMs": 120000
+    },
+    {
+     "source": "mic",
+     "startMs": 180000,
+     "endMs": 300000
+    },
+    {
+     "source": "mic",
+     "startMs": 360000,
+     "endMs": 480000
+    },
+    {
+     "source": "mic",
+     "startMs": 540000,
+     "endMs": 660000
+    },
+    {
+     "source": "mic",
+     "startMs": 720000,
+     "endMs": 840000
+    },
+    {
+     "source": "mic",
+     "startMs": 900000,
+     "endMs": 1020000
+    },
+    {
+     "source": "mic",
+     "startMs": 1080000,
+     "endMs": 1200000
+    },
+    {
+     "source": "mic",
+     "startMs": 1260000,
+     "endMs": 1380000
+    },
+    {
+     "source": "mic",
+     "startMs": 1440000,
+     "endMs": 1560000
+    },
+    {
+     "source": "mic",
+     "startMs": 1620000,
+     "endMs": 1740000
+    },
+    {
+     "source": "mic",
+     "startMs": 1800000,
+     "endMs": 1920000
+    },
+    {
+     "source": "mic",
+     "startMs": 1980000,
+     "endMs": 2100000
+    },
+    {
+     "source": "mic",
+     "startMs": 2160000,
+     "endMs": 2280000
+    },
+    {
+     "source": "mic",
+     "startMs": 2340000,
+     "endMs": 2460000
+    },
+    {
+     "source": "mic",
+     "startMs": 2520000,
+     "endMs": 2640000
+    },
+    {
+     "source": "mic",
+     "startMs": 2700000,
+     "endMs": 2820000
+    },
+    {
+     "source": "mic",
+     "startMs": 2880000,
+     "endMs": 3000000
+    },
+    {
+     "source": "mic",
+     "startMs": 3060000,
+     "endMs": 3180000
+    },
+    {
+     "source": "mic",
+     "startMs": 3240000,
+     "endMs": 3360000
+    },
+    {
+     "source": "mic",
+     "startMs": 3420000,
+     "endMs": 3540000
+    },
+    {
+     "source": "mic",
+     "startMs": 3600000,
+     "endMs": 3720000
+    },
+    {
+     "source": "mic",
+     "startMs": 3780000,
+     "endMs": 3900000
+    },
+    {
+     "source": "mic",
+     "startMs": 3960000,
+     "endMs": 4080000
+    },
+    {
+     "source": "mic",
+     "startMs": 4140000,
+     "endMs": 4260000
+    },
+    {
+     "source": "mic",
+     "startMs": 4320000,
+     "endMs": 4440000
+    }
+   ],
+   "expect": [
+    "- 0:00–2:00: no audio from this user's microphone",
+    "- 3:00–5:00: no audio from this user's microphone",
+    "- 6:00–8:00: no audio from this user's microphone",
+    "- 9:00–11:00: no audio from this user's microphone",
+    "- 12:00–14:00: no audio from this user's microphone",
+    "- 15:00–17:00: no audio from this user's microphone",
+    "- 18:00–20:00: no audio from this user's microphone",
+    "- 21:00–23:00: no audio from this user's microphone",
+    "- 24:00–26:00: no audio from this user's microphone",
+    "- 27:00–29:00: no audio from this user's microphone",
+    "- 30:00–32:00: no audio from this user's microphone",
+    "- 33:00–35:00: no audio from this user's microphone",
+    "- 36:00–38:00: no audio from this user's microphone",
+    "- 39:00–41:00: no audio from this user's microphone",
+    "- 42:00–44:00: no audio from this user's microphone",
+    "- 45:00–47:00: no audio from this user's microphone",
+    "- 48:00–50:00: no audio from this user's microphone",
+    "- 51:00–53:00: no audio from this user's microphone",
+    "- 54:00–56:00: no audio from this user's microphone",
+    "- 57:00–59:00: no audio from this user's microphone"
+   ]
+  },
+  {
+   "name": "merge-overlap",
+   "spans": [
+    {
+     "source": "mic",
+     "startMs": 0,
+     "endMs": 60000
+    },
+    {
+     "source": "mic",
+     "startMs": 30000,
+     "endMs": 120000
+    },
+    {
+     "source": "system",
+     "startMs": 90000,
+     "endMs": 300000
+    }
+   ],
+   "expect": [
+    "- 0:00–1:30: no audio from this user's microphone",
+    "- 2:00–5:00: no audio from the other participants (the computer's sound)"
+   ]
+  },
+  {
+   "name": "zero-and-negative",
+   "spans": [
+    {
+     "source": "mic",
+     "startMs": 300000,
+     "endMs": 300000
+    },
+    {
+     "source": "system",
+     "startMs": 300000,
+     "endMs": 240000
+    }
+   ],
+   "durationMs": 600000,
+   "expect": []
+  },
+  {
+   "name": "both-lost",
+   "spans": [],
+   "lost": [
+    {
+     "source": "mic",
+     "startMs": 60000
+    },
+    {
+     "source": "system",
+     "startMs": 120000
+    }
+   ],
+   "durationMs": 1200000,
+   "expect": [
+    "- 1:00–2:00: no audio from this user's microphone",
+    "- 2:00–20:00: no audio at all (nothing was captured)"
+   ]
+  },
+  {
+   "name": "N42-reconnect",
+   "spans": [
+    {
+     "source": "system",
+     "startMs": 0,
+     "endMs": 240000
+    },
+    {
+     "source": "mic",
+     "startMs": 0,
+     "endMs": 240000
+    }
+   ],
+   "lost": [
+    {
+     "source": "mic",
+     "startMs": 240000,
+     "endMs": 360000
+    }
+   ],
+   "durationMs": 600000,
+   "expect": [
+    "- 0:00–4:00: no audio at all (nothing was captured)",
+    "- 4:00–6:00: no audio from this user's microphone"
+   ]
+  }
+ ]
+}
