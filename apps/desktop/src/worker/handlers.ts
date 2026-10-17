@@ -30,6 +30,10 @@ import {
   type Segment,
   type MeetingNote,
   getSchemaVersion,
+  PipelineState,
+  RecordingState,
+  extractiveSummary,
+  type PipelineContext,
 } from '@qrtz/core';
 import { dbHealth } from './db';
 import { repairWav } from './wav-repair';
@@ -105,6 +109,7 @@ export function createWorkerHandlers(
     segments: Segment[],
     llm: LlmParams,
     errMsg: string,
+    strict = false,
   ) =>
     summarizeMeeting(
       m.title,
@@ -119,6 +124,7 @@ export function createWorkerHandlers(
       {
         notes: repo.getNotes(m.id),
         ...(m.template ? { template: m.template } : {}),
+        strict,
       },
     );
   const need = (id: string) => {
@@ -127,6 +133,151 @@ export function createWorkerHandlers(
     return m;
   };
   return {
+    // ---- durable recording lifecycle (docs/recording-lifecycle.md) ----
+    'lifecycle.saveSession': (p: { state: RecordingState }) => {
+      db.prepare(
+        `INSERT INTO lifecycle_state (key,json,updated_at) VALUES ('session',?,?)
+         ON CONFLICT(key) DO UPDATE SET json=excluded.json, updated_at=excluded.updated_at`,
+      ).run(JSON.stringify(p.state), Date.now());
+      return { ok: true };
+    },
+    'lifecycle.loadSession': (): RecordingState | null => {
+      const r = db
+        .prepare(`SELECT json FROM lifecycle_state WHERE key='session'`)
+        .get() as { json: string } | undefined;
+      if (!r) return null;
+      const parsed = RecordingState.safeParse(JSON.parse(r.json));
+      return parsed.success ? parsed.data : null;
+    },
+    'pipeline.save': (p: { state: PipelineState; settled: boolean }) => {
+      if (!repo.getMeeting(p.state.meetingId)) return { ok: false }; // deleted meanwhile
+      db.prepare(
+        `INSERT INTO pipeline_state (meeting_id,json,settled,updated_at) VALUES (?,?,?,?)
+         ON CONFLICT(meeting_id) DO UPDATE SET json=excluded.json, settled=excluded.settled, updated_at=excluded.updated_at`,
+      ).run(
+        p.state.meetingId,
+        JSON.stringify(p.state),
+        p.settled ? 1 : 0,
+        p.state.updatedAt,
+      );
+      return { ok: true };
+    },
+    'pipeline.get': (p: { id: string }): PipelineState | null => {
+      const r = db
+        .prepare('SELECT json FROM pipeline_state WHERE meeting_id=?')
+        .get(p.id) as { json: string } | undefined;
+      if (!r) return null;
+      const parsed = PipelineState.safeParse(JSON.parse(r.json));
+      return parsed.success ? parsed.data : null;
+    },
+    'pipeline.listUnsettled': (): PipelineState[] =>
+      (
+        db
+          .prepare(
+            'SELECT json FROM pipeline_state WHERE settled=0 ORDER BY updated_at',
+          )
+          .all() as {
+          json: string;
+        }[]
+      ).flatMap((r) => {
+        const parsed = PipelineState.safeParse(JSON.parse(r.json));
+        return parsed.success ? [parsed.data] : [];
+      }),
+    /** Meetings stuck in recording/processing that have no pipeline row (pre-lifecycle crashes). */
+    'pipeline.orphans': (): MeetingRow[] =>
+      repo
+        .listByStatus(['recording', 'processing'])
+        .filter(
+          (m) =>
+            !db
+              .prepare('SELECT 1 FROM pipeline_state WHERE meeting_id=?')
+              .get(m.id),
+        ),
+    /**
+     * Step 1, idempotent: stitch WAV parts (one per helper restart) into the first part, repair the header,
+     * fuse AX speaker names into the live segments, record duration. Safe to re-run after a crash at any point.
+     */
+    'memo.stepFinalize': (p: { meetingId: string; ctx: PipelineContext }) => {
+      const m = need(p.meetingId);
+      const [main, ...rest] = p.ctx.audioParts;
+      let audioMs: number | undefined;
+      if (main) {
+        repairWav(main);
+        const extra = rest.filter((f) => fs.existsSync(f));
+        if (extra.length && fs.existsSync(main)) {
+          for (const f of extra) repairWav(f);
+          const tmp = `${main}.stitch`;
+          const out = fs.openSync(tmp, 'w');
+          try {
+            fs.writeSync(out, fs.readFileSync(main));
+            for (const f of extra) {
+              const b = fs.readFileSync(f);
+              if (b.length > 44) fs.writeSync(out, b, 44, b.length - 44);
+            }
+          } finally {
+            fs.closeSync(out);
+          }
+          fs.renameSync(tmp, main); // atomic: either the old main or the stitched one
+          for (const f of extra) fs.rmSync(f, { force: true });
+        }
+        audioMs = repairWav(main);
+      }
+      const segs = repo.getSegments(p.meetingId);
+      const durationMs =
+        (p.ctx.helperCrashed && audioMs) ||
+        p.ctx.durationMs ||
+        audioMs ||
+        Math.max(0, ...segs.map((s) => s.endMs));
+      repo.upsertMeeting({
+        ...m,
+        endedAt: p.ctx.endedAt,
+        durationMs,
+        status: 'processing',
+        ...(main && fs.existsSync(main) ? { audioPath: main } : {}),
+      });
+      if (p.ctx.active.length)
+        repo.replaceSegments(
+          p.meetingId,
+          'live',
+          nameSegmentsFromAx(segs, p.ctx.active, durationMs),
+        );
+      return { durationMs, segments: segs.length };
+    },
+    /**
+     * Step 2. Strict: provider failures throw (AppError.retryable says whether a retry can help) and the
+     * pipeline retries with backoff. With `fallback`, saves the on-device extractive summary + the LLM error.
+     * Either way a settled summary marks the meeting done.
+     */
+    'memo.stepSummary': async (p: {
+      meetingId: string;
+      llm: LlmParams;
+      fallback?: { error: string };
+    }): Promise<MeetingSummary> => {
+      const m = need(p.meetingId);
+      const segments = repo.getSegments(p.meetingId);
+      const summary = p.fallback
+        ? {
+            ...extractiveSummary(segments, {
+              notes: repo.getNotes(m.id),
+              ...(m.template ? { template: m.template } : {}),
+            }),
+            llmError: p.fallback.error.slice(0, 500),
+          }
+        : await summarize(m, segments, p.llm, 'llm attempt failed', true);
+      repo.saveSummary(p.meetingId, summary);
+      repo.setStatus(p.meetingId, 'done');
+      return summary;
+    },
+    /** Step 3: embed this meeting's lines for semantic chat. `skipped` = no embedder on this machine. */
+    'memo.stepIndex': async (p: { meetingId: string }) => {
+      need(p.meetingId);
+      const e = await getEmbedder();
+      if (!e) return { indexed: 0, skipped: true };
+      return {
+        indexed: await indexVectors(e, 100_000, p.meetingId),
+        skipped: false,
+      };
+    },
     'db.health': () => dbHealth(db),
     'memo.create': (p: { meeting: MeetingRow }) => {
       repo.upsertMeeting(p.meeting);

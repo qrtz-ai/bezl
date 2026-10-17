@@ -9,6 +9,7 @@ import {
   SessionView,
 } from '../memo/contract';
 import { MeetingSummary } from '../memo/summary';
+import { LiveTranscript, PipelineView, StepId } from '../memo/lifecycle';
 import { ChatAnswer, ChatTurn } from '../memo/chat';
 import { MeetingNote } from '../memo/notes';
 import { SummaryTemplateId } from '../memo/templates';
@@ -126,6 +127,27 @@ export const ipcContract = {
     capability: 'memo.record',
     request: z.void(),
     response: SessionView,
+  }),
+  /** Post-processing state of one meeting (finalize → summary → index), or null if it never had one. */
+  'memo:pipeline': defineChannel({
+    version: 1,
+    capability: 'memo.read',
+    request: z.object({ id: z.string() }),
+    response: PipelineView.nullable(),
+  }),
+  /** Manual retry of one post-processing step (re-runs it and everything after it). */
+  'memo:retry-step': defineChannel({
+    version: 1,
+    capability: 'memo.write',
+    request: z.object({ id: z.string(), step: StepId }),
+    response: PipelineView,
+  }),
+  /** Snapshot of the live transcript of the meeting being recorded; apply `memo:transcript` deltas on top. */
+  'memo:live-transcript': defineChannel({
+    version: 1,
+    capability: 'memo.read',
+    request: z.object({ meetingId: z.string().optional() }).optional(),
+    response: LiveTranscript.nullable(),
   }),
   'memo:dismiss': defineChannel({
     version: 1,

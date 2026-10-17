@@ -10,7 +10,6 @@ import {
   type FetchLike,
 } from './llm';
 import { exportFilename, meetingToMarkdown } from './markdown';
-import { SessionMachine, sessionReducer } from './session';
 import {
   STANDUP_FIXTURE,
   fixtureActiveSpeakers,
@@ -243,34 +242,6 @@ describe('markdown export', () => {
     expect(md).toContain('- [ ] ');
     expect(md).toContain('**[0:04] Grace Hopper:**');
     expect(exportFilename(meeting)).toBe('2026-10-16-weekly-product-sync.md');
-  });
-});
-
-describe('session state machine', () => {
-  const d = { key: 'k', title: 't', platform: 'zoom' as const, app: 'zoom.us' };
-  it('walks the happy path and rejects illegal transitions', () => {
-    const m = new SessionMachine();
-    expect(m.send({ type: 'stop', at: 1 })).toBe(false);
-    expect(m.send({ type: 'detected', meeting: d })).toBe(true);
-    expect(m.send({ type: 'start', meetingId: 'm', at: 5 })).toBe(true);
-    expect(m.send({ type: 'detected', meeting: d })).toBe(false);
-    expect(m.send({ type: 'reset' })).toBe(false);
-    expect(m.send({ type: 'stop', at: 9 })).toBe(true);
-    expect(m.state).toMatchObject({
-      phase: 'processing',
-      startedAt: 5,
-      stoppedAt: 9,
-      meetingId: 'm',
-    });
-    expect(m.send({ type: 'processed' })).toBe(true);
-    expect(m.send({ type: 'reset' })).toBe(true);
-  });
-  it('drops a detected meeting when it ends before recording', () => {
-    const s = sessionReducer(
-      { phase: 'detected', detected: d },
-      { type: 'meeting-ended', key: 'k' },
-    );
-    expect(s).toEqual({ phase: 'idle' });
   });
 });
 

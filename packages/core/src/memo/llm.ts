@@ -9,6 +9,8 @@ import { templateById } from './templates';
 export interface SummaryOptions {
   notes?: MeetingNote[];
   template?: string;
+  /** Rethrow provider failures instead of falling back (the lifecycle pipeline owns retry + fallback). */
+  strict?: boolean;
 }
 
 export type ChatMessage = {
@@ -323,6 +325,7 @@ export async function summarizeMeeting(
       return { ...parseSummaryReply(reply), provider: provider.id, template };
     } catch (e) {
       onError?.(e);
+      if (opts.strict) throw e;
       const msg = e instanceof Error ? e.message : String(e);
       return {
         ...extractiveSummary(segments, opts),

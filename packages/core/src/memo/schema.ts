@@ -85,4 +85,23 @@ CREATE INDEX notes_meeting ON notes(meeting_id, at_ms);
 ALTER TABLE meetings ADD COLUMN template TEXT NOT NULL DEFAULT 'general';
 `,
   },
+  {
+    version: 5,
+    // Durable recording lifecycle: the live session snapshot and per-meeting post-processing pipelines.
+    name: 'recording_lifecycle',
+    up: `
+CREATE TABLE lifecycle_state (
+  key TEXT PRIMARY KEY,
+  json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE pipeline_state (
+  meeting_id TEXT PRIMARY KEY REFERENCES meetings(id) ON DELETE CASCADE,
+  json TEXT NOT NULL,
+  settled INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX pipeline_unsettled ON pipeline_state(settled);
+`,
+  },
 ];

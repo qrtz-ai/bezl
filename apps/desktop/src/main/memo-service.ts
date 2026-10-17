@@ -3,19 +3,38 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   AppError,
-  SessionMachine,
+  LifecycleMachine,
+  RETRY_POLICIES,
   TranscriptAssembler,
   encodeHostMessage,
+  isCapturing,
+  canStart,
+  newPipeline,
+  nextRunnableStep,
+  pipelineSettled,
+  pipelineStep,
+  pipelineUsable,
+  retryDelay,
+  toPipelineView,
   type ActiveSpeakerEvent,
   type Config,
+  type Degradation,
   type EventBus,
   type HelperToHost,
   type HostToHelper,
+  type LifecycleError,
+  type LiveSegment,
+  type LiveTranscript,
   type Logger,
   type PermissionsStatus,
+  type PipelineState,
+  type PipelineView,
   type ProviderId,
+  type RecordingState,
   type SecretStore,
   type SessionView,
+  type StepId,
+  type StopReason,
   type Supervisor,
   PROVIDER_DEFAULTS,
   effectiveLlmProvider,
@@ -24,14 +43,34 @@ import {
 } from '@qrtz/core';
 import type { WorkerClient } from './worker-client';
 
-/** Orchestrates a meeting: helper events → session state → worker persistence → summary. */
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const toLifecycleError = (
+  e: unknown,
+  fallbackCode = 'E_INTERNAL',
+): LifecycleError => {
+  const a = AppError.from(e);
+  return {
+    code: a.code || fallbackCode,
+    message: a.message,
+    retryable: a.retryable ?? true,
+  };
+};
+
+/**
+ * Runtime owner of the recording lifecycle (docs/recording-lifecycle.md).
+ *
+ * - Every transition goes through the pure `lifecycleReducer` (@qrtz/core) via `LifecycleMachine`.
+ * - Every accepted transition is persisted (worker SQLite `lifecycle_state`) and broadcast as `memo:session`.
+ * - Post-processing is a per-meeting pipeline (finalize → summary → index) with retry/backoff, persisted after
+ *   every step transition (`pipeline_state`) and broadcast as `memo:pipeline`; restarts resume it.
+ * - The live transcript is streamed as `memo:transcript` deltas with a monotonically increasing `rev`.
+ */
 export class MemoService {
-  readonly machine = new SessionMachine();
+  readonly machine = new LifecycleMachine();
   private asr = new TranscriptAssembler();
   private active: ActiveSpeakerEvent[] = [];
   private participants: string[] = [];
   private level = 0;
-  private progress: string | undefined;
   private permissions: PermissionsStatus = {
     accessibility: 'unknown',
     'screen-recording': 'unknown',
@@ -39,9 +78,21 @@ export class MemoService {
   };
   private waiters: { type: string; resolve: (m: HelperToHost) => void }[] = [];
   private emitTimer: NodeJS.Timeout | null = null;
-  private audioPath = '';
   private persisted = new Set<string>();
+  private paused = false;
   private helperCrashed = false;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  /** Live transcript stream state. */
+  private tRev = 0;
+  private tSent = new Set<string>();
+  private pipelines = new Map<string, PipelineState>();
+  private pipelineTimers = new Map<string, NodeJS.Timeout>();
+  private pipelineRunning = new Set<string>();
+  private readyResolve!: () => void;
+  /** Resolves once the persisted session was loaded and crash recovery queued (start waits on it). */
+  readonly ready = new Promise<void>((r) => (this.readyResolve = r));
+  private saveChain: Promise<unknown> = Promise.resolve();
+  private readonly scale: number;
 
   constructor(
     private readonly deps: {
@@ -54,15 +105,54 @@ export class MemoService {
       recordingsDir: string;
       /** A meeting was detected and auto-record is off: prompt the user (OS notification when unfocused). */
       onDetectedPrompt?: (title: string, platform: string) => void;
+      /** Multiplies every retry delay/timeout (tests: QRTZ_RETRY_SCALE=0.01). */
+      retryScale?: number;
+      /** Fault injection for e2e (unpackaged builds only): fail the first attempt of this step. */
+      faultStep?: StepId;
     },
   ) {
-    this.machine.onChange(() => this.emitSoon(0));
+    this.scale = deps.retryScale ?? 1;
+    this.machine.onChange((s, e) => {
+      this.deps.log.info('lifecycle', { event: e.type, phase: s.phase });
+      this.persistSession(s);
+      // Transitions are broadcast synchronously so no phase is ever coalesced away (level/ASR are throttled).
+      this.deps.bus.emit('memo:session', this.view());
+    });
     fs.mkdirSync(deps.recordingsDir, { recursive: true });
   }
 
+  // ------------------------------------------------------------------ persistence
+
+  private persistSession(s: RecordingState) {
+    // Serialized so an older snapshot never lands after a newer one.
+    const snapshot: RecordingState = s;
+    this.saveChain = this.saveChain
+      .then(() =>
+        this.deps.worker.call('lifecycle.saveSession', { state: snapshot }),
+      )
+      .catch((e) =>
+        this.deps.log.warn('session persist failed', { err: String(e) }),
+      );
+  }
+
+  private persistPipeline(p: PipelineState) {
+    this.pipelines.set(p.meetingId, p);
+    this.deps.bus.emit('memo:pipeline', toPipelineView(p));
+    if (p.meetingId === this.machine.state.meetingId) this.emitSoon(0);
+    return this.deps.worker
+      .call('pipeline.save', { state: p, settled: pipelineSettled(p) })
+      .catch((e) =>
+        this.deps.log.warn('pipeline persist failed', { err: String(e) }),
+      );
+  }
+
+  // ------------------------------------------------------------------ helper I/O
+
   private send(m: HostToHelper) {
     if (!this.deps.helper.send(encodeHostMessage(m)))
-      throw new AppError('E_UNAVAILABLE', 'native helper is not running');
+      throw new AppError('E_UNAVAILABLE', 'native helper is not running', {
+        retryable: true,
+      });
   }
 
   private waitFor<T extends HelperToHost['type']>(
@@ -82,6 +172,11 @@ export class MemoService {
     });
   }
 
+  private degrade(flag: Degradation) {
+    if (this.machine.send({ type: 'degraded', flag }))
+      this.deps.log.warn('capture degraded', { flag });
+  }
+
   /** Feed every parsed helper message here. */
   handle(m: HelperToHost) {
     for (const w of this.waiters.slice()) {
@@ -94,6 +189,7 @@ export class MemoService {
     switch (m.type) {
       case 'hello':
         this.send({ type: 'permissions.check' });
+        if (s.phase === 'reconnecting') void this.resumeAfterRestart();
         break;
       case 'permissions.status':
         this.permissions = { ...this.permissions, ...m.status };
@@ -127,13 +223,13 @@ export class MemoService {
         }
         break;
       case 'meeting.ended':
-        if (s.phase === 'recording' && s.detected?.key === m.key)
-          void this.stop().catch(() => {});
+        if (isCapturing(s.phase) && s.detected?.key === m.key)
+          void this.stop('meeting-ended').catch(() => {});
         else this.machine.send({ type: 'meeting-ended', key: m.key });
         break;
       case 'ax.activeSpeaker':
-        if (s.phase === 'recording') {
-          this.active.push({ atMs: m.atMs, name: m.name });
+        if (isCapturing(s.phase)) {
+          this.active.push({ atMs: m.atMs + s.partOffsetMs, name: m.name });
           this.emitSoon();
         }
         break;
@@ -144,39 +240,119 @@ export class MemoService {
       case 'asr':
         // Paused: drop anything still in flight from the helper (it stops feeding the recogniser too).
         if (s.phase !== 'recording' || !s.meetingId || this.paused) break;
-        this.asr.push(m.event);
-        if (m.event.kind === 'final') {
-          const seg = this.asr
-            .segments()
-            .find((x) => x.id === m.event.utteranceId);
-          const speaker = this.active
-            .filter((a) => a.atMs <= m.event.startMs + 1500)
-            .at(-1)?.name;
-          if (seg && !this.persisted.has(seg.id)) {
-            this.persisted.add(seg.id);
-            void this.deps.worker
-              .call('memo.appendLive', {
-                meetingId: s.meetingId,
-                segment: {
-                  ...seg,
-                  ...(speaker ? { speakerName: speaker } : {}),
-                },
-              })
-              .catch((e) =>
-                this.deps.log.warn('appendLive failed', { err: String(e) }),
-              );
-          }
-        }
-        this.emitSoon();
+        this.onAsr(s, m.event);
         break;
       case 'error':
         this.deps.log.warn('helper error', {
           code: m.code,
           message: m.message,
         });
+        if (m.code === 'asr.unavailable') this.degrade('asr-unavailable');
+        else if (m.code === 'audio.unavailable')
+          this.degrade('audio-unavailable');
         break;
     }
   }
+
+  private onAsr(
+    s: RecordingState,
+    ev: Extract<HelperToHost, { type: 'asr' }>['event'],
+  ) {
+    // Each helper (re)start restarts its clock and utterance ids: shift into meeting time, namespace ids.
+    const part = s.audioParts.length - 1;
+    const e = {
+      ...ev,
+      utteranceId: part > 0 ? `p${part}-${ev.utteranceId}` : ev.utteranceId,
+      startMs: ev.startMs + s.partOffsetMs,
+      ...(ev.kind === 'final' ? { endMs: ev.endMs + s.partOffsetMs } : {}),
+    } as typeof ev;
+    this.asr.push(e);
+    if (e.kind === 'final') {
+      const seg = this.asr.segments().find((x) => x.id === e.utteranceId);
+      const speaker = this.speakerAt(e.startMs);
+      if (seg && !this.persisted.has(seg.id)) {
+        this.persisted.add(seg.id);
+        void this.appendLive(s.meetingId!, {
+          ...seg,
+          ...(speaker ? { speakerName: speaker } : {}),
+        });
+      }
+    }
+    this.emitTranscript(s.meetingId!);
+    this.emitSoon();
+  }
+
+  /** Persist a final segment with retry (idempotent upsert on (meeting, source, id)). */
+  private async appendLive(
+    meetingId: string,
+    segment: ReturnType<TranscriptAssembler['segments']>[number],
+  ) {
+    const p = RETRY_POLICIES.appendLive;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await this.deps.worker.call('memo.appendLive', { meetingId, segment });
+        return;
+      } catch (e) {
+        if (attempt >= p.maxAttempts) {
+          // Not lost: still in the in-memory assembler; finalize re-flushes everything before it runs.
+          this.deps.log.error('appendLive gave up; will flush at finalize', {
+            err: String(e),
+          });
+          this.persisted.delete(segment.id);
+          return;
+        }
+        await sleep(retryDelay(p, attempt, Math.random, this.scale));
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------ live transcript stream
+
+  private liveSegments(): LiveSegment[] {
+    return this.asr.segments().map((seg) => {
+      const speaker = this.speakerAt(seg.startMs);
+      return {
+        id: seg.id,
+        text: seg.text,
+        startMs: seg.startMs,
+        endMs: seg.endMs,
+        ...(speaker ? { speaker } : {}),
+      };
+    });
+  }
+  private livePartial(): LiveTranscript['partial'] {
+    const p = this.asr.livePartials().at(-1);
+    return p ? { id: p.utteranceId, text: p.text, startMs: p.startMs } : null;
+  }
+
+  /** Snapshot for the meeting being recorded (or null). Renderer fetches this, then applies deltas. */
+  liveTranscript(meetingId?: string): LiveTranscript | null {
+    const s = this.machine.state;
+    if (!s.meetingId || (meetingId && meetingId !== s.meetingId)) return null;
+    return {
+      meetingId: s.meetingId,
+      rev: this.tRev,
+      segments: this.liveSegments(),
+      partial: isCapturing(s.phase) ? this.livePartial() : null,
+    };
+  }
+
+  private emitTranscript(meetingId: string) {
+    const append = this.liveSegments().filter((x) => !this.tSent.has(x.id));
+    for (const a of append) this.tSent.add(a.id);
+    const baseRev = this.tRev++;
+    this.deps.bus.emit('memo:transcript', {
+      meetingId,
+      baseRev,
+      rev: this.tRev,
+      append,
+      partial: isCapturing(this.machine.state.phase)
+        ? this.livePartial()
+        : null,
+    });
+  }
+
+  // ------------------------------------------------------------------ views
 
   getPermissions() {
     return this.permissions;
@@ -190,17 +366,11 @@ export class MemoService {
 
   view(): SessionView {
     const s = this.machine.state;
-    const lines = this.asr
-      .segments()
+    const lines = this.liveSegments()
       .slice(-6)
-      .map((seg) => ({
-        id: seg.id,
-        text: seg.text,
-        startMs: seg.startMs,
-        ...(this.speakerAt(seg.startMs)
-          ? { speaker: this.speakerAt(seg.startMs)! }
-          : {}),
-      }));
+      .map(({ endMs: _e, ...l }) => l);
+    const pipeline = s.meetingId ? this.pipelines.get(s.meetingId) : undefined;
+    const live = isCapturing(s.phase);
     return {
       phase: s.phase,
       ...(s.detected ? { detected: s.detected } : {}),
@@ -213,18 +383,29 @@ export class MemoService {
         : {}),
       level: s.phase === 'recording' ? this.level : 0,
       lines,
-      partial: this.asr.livePartials().at(-1)?.text ?? '',
-      ...(this.progress && s.phase === 'processing'
-        ? { progress: this.progress }
+      partial: live ? (this.livePartial()?.text ?? '') : '',
+      ...(s.phase === 'processing'
+        ? { progress: progressLabel(pipeline) }
         : {}),
-      ...(s.error ? { error: s.error } : {}),
+      ...(s.error ? { error: s.error.message, errorInfo: s.error } : {}),
       helper: this.helperHealth,
       ...(this.helperDetail ? { helperDetail: this.helperDetail } : {}),
       paused: s.phase === 'recording' && this.paused,
+      ...(s.stopReason ? { stopReason: s.stopReason } : {}),
+      degraded: s.degraded,
+      ...(s.reconnect ? { reconnect: s.reconnect } : {}),
+      ...(pipeline ? { pipeline: toPipelineView(pipeline) } : {}),
     };
   }
 
-  private paused = false;
+  /** Pipeline of any meeting (live session or a past one). */
+  async pipeline(id: string): Promise<PipelineView | null> {
+    const p =
+      this.pipelines.get(id) ??
+      (await this.deps.worker.call('pipeline.get', { id }));
+    return p ? toPipelineView(p) : null;
+  }
+
   /** Privacy pause/resume while recording (hotkey, HUD). Omit `want` to toggle. */
   pause(want?: boolean): SessionView {
     const s = this.machine.state;
@@ -287,22 +468,53 @@ export class MemoService {
     }, delay);
   }
 
+  // ------------------------------------------------------------------ start
+
+  private startInFlight = false;
   async start(title?: string): Promise<SessionView> {
+    // Two starts racing (hotkey double-press, auto-record + click) must not create two meetings.
+    if (this.startInFlight)
+      throw new AppError('E_VALIDATION', 'already starting');
+    this.startInFlight = true;
+    try {
+      return await this.startInner(title);
+    } finally {
+      this.startInFlight = false;
+    }
+  }
+
+  private async startInner(title?: string): Promise<SessionView> {
+    await this.ready;
     if (this.helperHealth === 'missing')
       throw new AppError(
         'E_UNAVAILABLE',
         'Recording is unavailable: the native capture helper is missing from this build.',
       );
     const s = this.machine.state;
-    if (s.phase === 'recording' || s.phase === 'processing')
+    if (!canStart(s.phase))
       throw new AppError('E_VALIDATION', 'already recording');
+    // Permission gate: with neither system audio nor microphone there is nothing to capture.
+    const p = this.permissions;
+    if (p['screen-recording'] === 'denied' && p.microphone === 'denied') {
+      const error: LifecycleError = {
+        code: 'permission-denied',
+        message:
+          'Recording needs Screen & System Audio Recording or Microphone access. Grant one in System Settings › Privacy & Security, then try again.',
+        retryable: true,
+      };
+      // Surface it as state (not only a rejected promise) so every window renders the same thing.
+      this.setIdleError(error);
+      throw new AppError('E_FORBIDDEN', error.message);
+    }
     const id = randomUUID();
     this.asr = new TranscriptAssembler();
     this.active = [];
     this.persisted.clear();
+    this.tSent.clear();
+    this.tRev = 0;
     this.paused = false;
-    this.progress = undefined;
-    this.audioPath = path.join(this.deps.recordingsDir, `${id}.wav`);
+    this.helperCrashed = false;
+    const audioPath = path.join(this.deps.recordingsDir, `${id}.wav`);
     const now = Date.now();
     await this.deps.worker.call('memo.create', {
       meeting: {
@@ -315,63 +527,494 @@ export class MemoService {
         startedAt: now,
         status: 'recording',
         participants: this.participants,
-        audioPath: this.audioPath,
+        audioPath,
         template: this.deps.config().memo.defaultTemplate,
       },
     });
-    this.send({ type: 'recording.start', audioPath: this.audioPath });
-    this.machine.send({ type: 'start', meetingId: id, at: now });
+    this.machine.send({
+      type: 'start-requested',
+      meetingId: id,
+      at: now,
+      audioPath,
+    });
     this.deps.bus.emit('memo:changed', { id });
+    const acked = this.waitFor(
+      'recording.started',
+      RETRY_POLICIES.startAckMs * Math.max(this.scale, 0.2),
+    );
+    try {
+      this.send({ type: 'recording.start', audioPath });
+    } catch (e) {
+      if (this.machine.state.phase === 'starting') {
+        await this.abortStart(id, toLifecycleError(e));
+        throw e;
+      }
+      return this.view();
+    }
+    if (!(await acked)) {
+      // The helper may have died meanwhile: then `reconnecting` owns the meeting, do not delete it.
+      if (
+        this.machine.state.meetingId !== id ||
+        this.machine.state.phase !== 'starting'
+      )
+        return this.view();
+      const error: LifecycleError = {
+        code: 'start-timeout',
+        message: 'The capture helper did not start recording. Try again.',
+        retryable: true,
+      };
+      try {
+        this.send({ type: 'recording.stop' });
+      } catch {
+        /* helper gone */
+      }
+      await this.abortStart(id, error);
+      throw new AppError('E_TIMEOUT', error.message, { retryable: true });
+    }
+    if (
+      this.machine.state.meetingId !== id ||
+      this.machine.state.phase !== 'starting'
+    )
+      return this.view(); // helper crashed during start: reconnect path owns it now
+    this.machine.send({ type: 'start-acked' });
+    if (p['screen-recording'] === 'denied') this.degrade('mic-only');
+    if (p.accessibility === 'denied') this.degrade('ax-unavailable');
     this.deps.log.info('recording started', { id });
     return this.view();
   }
 
-  async stop(): Promise<SessionView> {
-    const s = this.machine.state;
-    if (s.phase !== 'recording' || !s.meetingId)
-      throw new AppError('E_VALIDATION', 'not recording');
-    const meetingId = s.meetingId;
-    const startedAt = s.startedAt ?? Date.now();
-    let stopped = this.waitFor('recording.stopped', 10_000);
-    try {
-      this.send({ type: 'recording.stop' });
-    } catch {
-      // Helper is down: finish from what's persisted rather than failing the stop.
-      this.helperCrashed = true;
-      stopped = Promise.resolve(null);
-    }
-    this.paused = false;
-    this.machine.send({ type: 'stop', at: Date.now() });
-    void this.postProcess(meetingId, startedAt, stopped);
-    return this.view();
+  private setIdleError(error: LifecycleError) {
+    this.machine.send({ type: 'rejected', error });
   }
 
+  private async abortStart(id: string, error: LifecycleError) {
+    this.machine.send({ type: 'start-failed', error });
+    // Nothing was captured: drop the empty meeting instead of leaving a broken row.
+    await this.deps.worker.call('memo.delete', { id }).catch(() => {});
+    this.deps.bus.emit('memo:changed', { id });
+  }
+
+  // ------------------------------------------------------------------ helper crash / reconnect
+
   /**
-   * The helper process went away (crash, kill, failed restart). If we were recording, finish the meeting from what
-   * is already persisted: live segments are in the DB, audio is on disk (header repaired by the worker). Never
-   * leaves a session stuck in `recording`.
+   * The helper went away (crash, kill, heartbeat timeout). While capturing, keep the meeting open in
+   * `reconnecting`: the supervisor restarts the helper with backoff and `hello` resumes into a new WAV part.
+   * If it is not back within the reconnect window (or the supervisor gives up), stop with `helper-lost` and
+   * post-process what was captured.
    */
   onHelperDown(reason: string): void {
     const s = this.machine.state;
-    if (s.phase !== 'recording' || !s.meetingId) return;
-    this.deps.log.warn('helper went away mid-recording; salvaging', { reason });
+    if (!isCapturing(s.phase) || !s.meetingId) return;
     this.helperCrashed = true;
+    const now = Date.now();
+    const window = RETRY_POLICIES.helperReconnectWindowMs * this.scale;
+    this.deps.log.warn('helper went away mid-recording; reconnecting', {
+      reason,
+    });
+    this.machine.send({
+      type: 'helper-lost',
+      at: now,
+      deadlineAt: now + window,
+    });
+    if (!this.reconnectTimer)
+      this.reconnectTimer = setTimeout(() => {
+        this.reconnectTimer = null;
+        if (this.machine.state.phase === 'reconnecting')
+          void this.giveUpReconnect('reconnect window elapsed');
+      }, window);
+  }
+
+  /** Supervisor circuit breaker opened (too many restarts): stop reconnecting now. */
+  onHelperFailed(reason: string): void {
+    if (this.machine.state.phase === 'reconnecting')
+      void this.giveUpReconnect(reason);
+  }
+
+  private async giveUpReconnect(reason: string) {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.deps.log.warn('helper did not come back; salvaging', { reason });
+    await this.stop('helper-lost').catch((e) =>
+      this.deps.log.error('salvage stop failed', { err: String(e) }),
+    );
+  }
+
+  private async resumeAfterRestart() {
+    const s = this.machine.state;
+    if (s.phase !== 'reconnecting' || !s.meetingId) return;
+    const part = s.audioParts.length;
+    const audioPath = path.join(
+      this.deps.recordingsDir,
+      `${s.meetingId}.p${part}.wav`,
+    );
+    const acked = this.waitFor(
+      'recording.started',
+      RETRY_POLICIES.startAckMs * Math.max(this.scale, 0.2),
+    );
+    try {
+      this.send({ type: 'recording.start', audioPath });
+      if (this.paused) this.send({ type: 'recording.pause' });
+    } catch {
+      return; // went down again; the next hello retries
+    }
+    if (!(await acked) || this.machine.state.phase !== 'reconnecting') return;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    // A fresh helper starts unpaused: re-apply a privacy pause before anything is transcribed.
+    if (this.paused) {
+      try {
+        this.send({ type: 'recording.pause' });
+      } catch {
+        /* down again; next hello retries */
+      }
+    }
+    this.machine.send({ type: 'helper-restored', at: Date.now(), audioPath });
+    this.deps.log.info('recording resumed after helper restart', { part });
+  }
+
+  // ------------------------------------------------------------------ stop
+
+  async stop(reason: StopReason = 'manual'): Promise<SessionView> {
+    const s = this.machine.state;
+    if (!isCapturing(s.phase) || !s.meetingId)
+      throw new AppError('E_VALIDATION', 'not recording');
     const meetingId = s.meetingId;
     const startedAt = s.startedAt ?? Date.now();
-    this.machine.send({ type: 'stop', at: Date.now() });
-    this.progress = 'Recovering after helper crash';
-    void this.postProcess(meetingId, startedAt, Promise.resolve(null));
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    const wasLive = s.phase !== 'reconnecting';
+    this.machine.send({ type: 'stop-requested', reason, at: Date.now() });
+    let stopped: Extract<HelperToHost, { type: 'recording.stopped' }> | null =
+      null;
+    if (wasLive) {
+      const p = this.waitFor(
+        'recording.stopped',
+        RETRY_POLICIES.stopAckMs * Math.max(this.scale, 0.2),
+      );
+      try {
+        this.send({ type: 'recording.stop' });
+        stopped = await p;
+      } catch {
+        this.helperCrashed = true; // helper down: finish from what's persisted
+      }
+    } else {
+      // Giving up a reconnect: a helper that came back late may have opened a part; never leave it capturing.
+      try {
+        this.send({ type: 'recording.stop' });
+      } catch {
+        /* still down */
+      }
+    }
+    this.paused = false;
+    const st = this.machine.state;
+    // Flush any final segment whose live append gave up.
+    for (const seg of this.asr.segments())
+      if (!this.persisted.has(seg.id))
+        await this.deps.worker
+          .call('memo.appendLive', { meetingId, segment: seg })
+          .then(() => this.persisted.add(seg.id))
+          .catch(() => {});
+    const endedAt = Date.now();
+    const pipeline = newPipeline(
+      meetingId,
+      reason,
+      {
+        startedAt,
+        endedAt,
+        durationMs: stopped?.durationMs || endedAt - startedAt,
+        audioParts: st.audioParts,
+        active: this.active,
+        helperCrashed: this.helperCrashed || !stopped,
+      },
+      endedAt,
+    );
+    await this.persistPipeline(pipeline);
+    this.machine.send({ type: 'stopped', at: endedAt });
+    this.emitTranscript(meetingId); // final rev: partial cleared
+    void this.runPipeline(meetingId);
+    return this.view();
   }
 
   dismiss(): SessionView {
-    this.machine.send({ type: 'reset' });
+    if (!this.machine.send({ type: 'reset' }))
+      this.machine.send({ type: 'clear-error' });
     return this.view();
   }
 
   /** Global shortcut: start recording when idle/detected, stop when recording. */
   async toggle(): Promise<SessionView> {
-    return this.view().phase === 'recording' ? this.stop() : this.start();
+    return isCapturing(this.machine.state.phase) ? this.stop() : this.start();
   }
+
+  // ------------------------------------------------------------------ post-processing pipeline
+
+  /** User action: retry one failed step (and everything after it). */
+  async retryStep(id: string, step: StepId): Promise<PipelineView> {
+    let p =
+      this.pipelines.get(id) ??
+      (await this.deps.worker.call('pipeline.get', { id }));
+    if (!p)
+      throw new AppError('E_NOT_FOUND', `no post-processing record for ${id}`);
+    if (this.pipelineRunning.has(id) && p.steps[step].status === 'running')
+      return toPipelineView(p);
+    const t = this.pipelineTimers.get(id);
+    if (t) clearTimeout(t);
+    this.pipelineTimers.delete(id);
+    p = pipelineStep(p, step, { kind: 'manual-retry', now: Date.now() });
+    await this.persistPipeline(p);
+    void this.runPipeline(id);
+    return toPipelineView(p);
+  }
+
+  private async runPipeline(id: string): Promise<void> {
+    if (this.pipelineRunning.has(id)) return;
+    this.pipelineRunning.add(id);
+    try {
+      for (;;) {
+        let p = this.pipelines.get(id);
+        if (!p) return;
+        const step = nextRunnableStep(p);
+        if (!step) break;
+        const cur = p.steps[step];
+        if (
+          cur.status === 'retrying' &&
+          cur.nextRetryAt &&
+          cur.nextRetryAt > Date.now()
+        ) {
+          // Wait out the backoff (timer survives in-memory; a restart resumes immediately).
+          const delay = cur.nextRetryAt - Date.now();
+          this.pipelineTimers.set(
+            id,
+            setTimeout(() => {
+              this.pipelineTimers.delete(id);
+              void this.runPipeline(id);
+            }, delay),
+          );
+          return;
+        }
+        p = pipelineStep(p, step, { kind: 'start', now: Date.now() });
+        await this.persistPipeline(p);
+        try {
+          const skipped = await this.execStep(p, step);
+          p = pipelineStep(this.pipelines.get(id)!, step, {
+            kind: skipped ? 'skip' : 'success',
+            now: Date.now(),
+          });
+        } catch (e) {
+          const err = toLifecycleError(e);
+          const latest = this.pipelines.get(id)!;
+          const policy = RETRY_POLICIES[step];
+          p = pipelineStep(latest, step, {
+            kind: 'failure',
+            now: Date.now(),
+            error: err,
+            delayMs: retryDelay(
+              policy,
+              latest.steps[step].attempts,
+              Math.random,
+              this.scale,
+            ),
+          });
+          this.deps.log.warn('pipeline step failed', {
+            id,
+            step,
+            attempt: latest.steps[step].attempts,
+            status: p.steps[step].status,
+            err: err.message,
+          });
+          if (step === 'summary' && p.steps.summary.status === 'failed') {
+            // Out of attempts: the meeting still gets the on-device summary; the step stays failed + retryable.
+            try {
+              await this.deps.worker.call('memo.stepSummary', {
+                meetingId: id,
+                llm: await this.llmParams(),
+                fallback: { error: err.message },
+              });
+              p = {
+                ...p,
+                steps: {
+                  ...p.steps,
+                  summary: { ...p.steps.summary, fallback: true },
+                },
+              };
+            } catch (fe) {
+              this.deps.log.error('fallback summary failed', {
+                err: String(fe),
+              });
+            }
+          }
+          if (step === 'finalize' && p.steps.finalize.status === 'failed')
+            await this.deps.worker
+              .call('memo.fail', { meetingId: id })
+              .catch(() => {});
+        }
+        await this.persistPipeline(p);
+        this.deps.bus.emit('memo:changed', { id });
+        this.syncSessionWithPipeline(p);
+      }
+    } finally {
+      this.pipelineRunning.delete(id);
+    }
+  }
+
+  /** Returns true when the step was skipped (nothing to do on this machine). */
+  private async execStep(p: PipelineState, step: StepId): Promise<boolean> {
+    if (
+      this.deps.faultStep === step &&
+      !this.faultsFired.has(`${p.meetingId}:${step}`)
+    ) {
+      // Fault injection (e2e, unpackaged only): fail this step's first attempt.
+      this.faultsFired.add(`${p.meetingId}:${step}`);
+      throw new AppError('E_UNAVAILABLE', `injected ${step} failure`, {
+        retryable: true,
+      });
+    }
+    switch (step) {
+      case 'finalize':
+        await this.deps.worker.call(
+          'memo.stepFinalize',
+          { meetingId: p.meetingId, ctx: p.ctx },
+          60_000,
+        );
+        return false;
+      case 'summary':
+        await this.deps.worker.call(
+          'memo.stepSummary',
+          { meetingId: p.meetingId, llm: await this.llmParams() },
+          120_000,
+        );
+        return false;
+      case 'index': {
+        const r = await this.deps.worker.call(
+          'memo.stepIndex',
+          { meetingId: p.meetingId },
+          300_000,
+        );
+        return r.skipped;
+      }
+    }
+  }
+  private faultsFired = new Set<string>();
+
+  /** The session's own meeting: processing → done once usable, → error if finalize failed for good. */
+  private syncSessionWithPipeline(p: PipelineState) {
+    const s = this.machine.state;
+    if (s.meetingId !== p.meetingId || s.phase !== 'processing') return;
+    if (pipelineUsable(p)) this.machine.send({ type: 'processing-done' });
+    else if (p.steps.finalize.status === 'failed')
+      this.machine.send({
+        type: 'processing-failed',
+        error: p.steps.finalize.error ?? {
+          code: 'E_INTERNAL',
+          message: 'post-processing failed',
+          retryable: true,
+        },
+      });
+  }
+
+  // ------------------------------------------------------------------ restart recovery
+
+  /**
+   * Startup: (1) a session persisted mid-capture means the app died while recording → open a pipeline for it
+   * (stop reason crash-recovered); (2) resume every unsettled pipeline; (3) adopt orphaned pre-lifecycle
+   * meetings stuck in recording/processing. Idempotent: running it twice resumes, never duplicates.
+   */
+  async recover(): Promise<void> {
+    try {
+      const saved = await this.deps.worker.call(
+        'lifecycle.loadSession',
+        undefined as never,
+      );
+      const now = Date.now();
+      if (
+        saved &&
+        saved.meetingId &&
+        (isCapturing(saved.phase) || saved.phase === 'stopping')
+      ) {
+        const existing = await this.deps.worker.call('pipeline.get', {
+          id: saved.meetingId,
+        });
+        if (!existing) {
+          this.deps.log.warn('app died mid-recording; recovering', {
+            id: saved.meetingId,
+          });
+          await this.persistPipeline(
+            newPipeline(
+              saved.meetingId,
+              'crash-recovered',
+              {
+                startedAt: saved.startedAt ?? now,
+                endedAt: saved.stoppedAt ?? now,
+                durationMs: 0, // finalize derives it from the repaired audio
+                audioParts: saved.audioParts,
+                active: [],
+                helperCrashed: true,
+              },
+              now,
+            ),
+          );
+        }
+      }
+      for (const m of await this.deps.worker.call(
+        'pipeline.orphans',
+        undefined as never,
+      )) {
+        await this.persistPipeline(
+          newPipeline(
+            m.id,
+            'crash-recovered',
+            {
+              startedAt: m.startedAt,
+              endedAt: m.endedAt ?? now,
+              durationMs: m.durationMs ?? 0,
+              audioParts: m.audioPath ? [m.audioPath] : [],
+              active: [],
+              helperCrashed: true,
+            },
+            now,
+          ),
+        );
+      }
+      // The session itself always restarts idle (nothing is capturing after a restart).
+      if (saved && saved.phase !== 'idle')
+        this.persistSession(this.machine.state);
+      const pending = await this.deps.worker.call(
+        'pipeline.listUnsettled',
+        undefined as never,
+      );
+      for (const p of pending) {
+        // A step caught mid-run by the crash is re-run (every step is idempotent); attempts are kept.
+        for (const id of ['finalize', 'summary', 'index'] as const)
+          if (p.steps[id].status === 'running')
+            p.steps[id] = { ...p.steps[id], status: 'retrying' };
+        this.pipelines.set(p.meetingId, p);
+        this.deps.bus.emit('memo:pipeline', toPipelineView(p));
+      }
+      // One at a time: a backlog after a long outage must not fire N LLM calls at once.
+      void (async () => {
+        for (const p of pending) await this.runPipeline(p.meetingId);
+      })();
+      if (pending.length)
+        this.deps.log.info('resuming post-processing', {
+          count: pending.length,
+        });
+    } catch (e) {
+      this.deps.log.warn('recovery failed', { err: String(e) });
+    } finally {
+      this.readyResolve();
+    }
+    try {
+      const days = this.deps.config().memo.retainAudioDays;
+      if (days > 0) {
+        const p = await this.deps.worker.call('memo.pruneAudio', { days });
+        for (const id of p.pruned) this.deps.bus.emit('memo:changed', { id });
+      }
+    } catch (e) {
+      this.deps.log.warn('audio prune failed', { err: String(e) });
+    }
+  }
+
+  // ------------------------------------------------------------------ LLM
 
   private async llmParams() {
     const full = this.deps.config();
@@ -407,6 +1050,16 @@ export class MemoService {
 
   /** Retry the summary for one meeting (after an LLM failure or a provider/key change). */
   async resummarize(id: string) {
+    const p =
+      this.pipelines.get(id) ??
+      (await this.deps.worker.call('pipeline.get', { id }));
+    if (p && p.steps.finalize.status === 'done') {
+      // Route through the pipeline so retries/backoff/progress are tracked like any other step.
+      await this.retryStep(id, 'summary');
+      await this.waitSettled(id, 'summary');
+      const s = await this.deps.worker.call('memo.get', { id });
+      return s.summary!;
+    }
     const summary = await this.deps.worker.call(
       'memo.resummarize',
       { id, llm: await this.llmParams() },
@@ -416,69 +1069,24 @@ export class MemoService {
     return summary;
   }
 
-  /** M5.1: finish meetings a crash left in recording/processing. Call once at startup. */
-  async recover(): Promise<void> {
-    try {
-      const r = await this.deps.worker.call(
-        'memo.recover',
-        { llm: await this.llmParams() },
-        300_000,
-      );
-      for (const id of [...r.recovered, ...r.failed])
-        this.deps.bus.emit('memo:changed', { id });
-      if (r.recovered.length || r.failed.length)
-        this.deps.log.info('recovered meetings', r);
-      const days = this.deps.config().memo.retainAudioDays;
-      if (days > 0) {
-        const p = await this.deps.worker.call('memo.pruneAudio', { days });
-        for (const id of p.pruned) this.deps.bus.emit('memo:changed', { id });
-      }
-    } catch (e) {
-      this.deps.log.warn('recovery failed', { err: String(e) });
+  private async waitSettled(id: string, step: StepId) {
+    for (let i = 0; i < 2400; i++) {
+      const st = this.pipelines.get(id)?.steps[step].status;
+      if (st === 'done' || st === 'failed' || st === 'skipped') return;
+      await sleep(50);
     }
   }
+}
 
-  private async postProcess(
-    meetingId: string,
-    startedAt: number,
-    stoppedP: Promise<Extract<
-      HelperToHost,
-      { type: 'recording.stopped' }
-    > | null>,
-  ) {
-    try {
-      const stopped = await stoppedP;
-      const durationMs = stopped?.durationMs || Date.now() - startedAt;
-      this.progress = 'Summarizing';
-      this.emitSoon(0);
-      const llm = await this.llmParams();
-      await this.deps.worker.call(
-        'memo.finalize',
-        {
-          meetingId,
-          endedAt: Date.now(),
-          durationMs,
-          audioPath: this.audioPath,
-          active: this.active,
-          llm,
-          ...(this.helperCrashed ? { helperCrashed: true } : {}),
-        },
-        120_000,
-      );
-      this.helperCrashed = false;
-      this.machine.send({ type: 'processed' });
-      this.deps.log.info('meeting processed', { id: meetingId });
-      // Warm the semantic chat index in the background (no-op if the embedder is unavailable).
-      void this.deps.worker
-        .call('memo.indexVectors', { cap: 10_000 }, 300_000)
-        .catch(() => {});
-    } catch (e) {
-      this.deps.log.error('post-processing failed', { err: e });
-      await this.deps.worker.call('memo.fail', { meetingId }).catch(() => {});
-      this.machine.send({ type: 'failed', error: AppError.from(e).message });
-    } finally {
-      this.deps.bus.emit('memo:changed', { id: meetingId });
-      this.emitSoon(0);
-    }
-  }
+function progressLabel(p: PipelineState | undefined): string {
+  if (!p) return 'Finishing';
+  const step = nextRunnableStep(p);
+  const s = step ? p.steps[step] : undefined;
+  const name = {
+    finalize: 'Saving transcript',
+    summary: 'Summarizing',
+    index: 'Indexing',
+  };
+  if (!step || !s) return 'Finishing';
+  return s.status === 'retrying' ? `${name[step]} (retrying)` : name[step];
 }

@@ -117,6 +117,7 @@ export function bootstrap() {
       helperWasRunning = false;
       memo.onHelperDown(s.lastError ?? s.state);
     }
+    if (s.state === 'failed') memo.onHelperFailed(s.lastError ?? 'failed');
   });
   const recordingsDir = path.join(userData, 'recordings');
   const pendingDeletes = new PendingDeletes(
@@ -136,6 +137,17 @@ export function bootstrap() {
     secrets,
     config: () => config.get(),
     recordingsDir,
+    ...(process.env.QRTZ_RETRY_SCALE && !app.isPackaged
+      ? { retryScale: Number(process.env.QRTZ_RETRY_SCALE) }
+      : {}),
+    ...(process.env.QRTZ_FAULT_STEP && !app.isPackaged
+      ? {
+          faultStep: process.env.QRTZ_FAULT_STEP as
+            | 'finalize'
+            | 'summary'
+            | 'index',
+        }
+      : {}),
     onDetectedPrompt: (title, platform) => {
       // The in-app HUD prompt is always shown; when qrtz isn't focused, also raise an OS notification.
       if (BrowserWindow.getFocusedWindow() || !Notification.isSupported())
@@ -216,6 +228,9 @@ export function bootstrap() {
       'memo:start': (req) => memo.start(req?.title),
       'memo:stop': () => memo.stop(),
       'memo:dismiss': () => memo.dismiss(),
+      'memo:pipeline': ({ id }) => memo.pipeline(id),
+      'memo:retry-step': ({ id, step }) => memo.retryStep(id, step),
+      'memo:live-transcript': (req) => memo.liveTranscript(req?.meetingId),
       'memo:list': async (req) => {
         const rows = await worker.call('memo.list', req);
         const gone = new Set(pendingDeletes.ids());
@@ -477,11 +492,25 @@ export function bootstrap() {
     else
       void hud.loadFile(path.join(rendererDir, 'index.html'), { hash: 'hud' });
   };
+  if (!app.isPackaged) {
+    // e2e: a trace of every lifecycle phase main broadcast (transient ones like `reconnecting` included).
+    const g = globalThis as { __qrtzPhases?: string[] };
+    g.__qrtzPhases = [];
+    bus.on('memo:session', (v) => {
+      if (g.__qrtzPhases!.at(-1) !== v.phase) g.__qrtzPhases!.push(v.phase);
+    });
+  }
   let hudHide: NodeJS.Timeout | null = null;
   bus.on('memo:session', (v) => {
     const want =
       config.get().memo.floatingHud &&
-      (v.phase === 'recording' || v.phase === 'processing');
+      [
+        'starting',
+        'recording',
+        'reconnecting',
+        'stopping',
+        'processing',
+      ].includes(v.phase);
     if (want) {
       if (hudHide) clearTimeout(hudHide);
       hudHide = null;

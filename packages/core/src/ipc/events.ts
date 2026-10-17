@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { Capability } from '../capabilities';
 import { HelperStatus } from './contract';
 import { PermissionsStatus, SessionView } from '../memo/contract';
+import { LiveTranscriptDelta, PipelineView } from '../memo/lifecycle';
 
 export interface EventDef<P extends z.ZodType = z.ZodType> {
   capability: Capability;
@@ -22,6 +23,14 @@ export const eventContract = {
   'memo:session': defineEvent({
     capability: 'memo.read',
     payload: SessionView,
+  }),
+  'memo:pipeline': defineEvent({
+    capability: 'memo.read',
+    payload: PipelineView,
+  }),
+  'memo:transcript': defineEvent({
+    capability: 'memo.read',
+    payload: LiveTranscriptDelta,
   }),
   'memo:changed': defineEvent({
     capability: 'memo.read',

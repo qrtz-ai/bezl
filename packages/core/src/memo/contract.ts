@@ -3,20 +3,20 @@ import { OsPermission } from '../capabilities';
 import { Meeting, MeetingPlatform, Segment } from './types';
 import { MeetingSummary } from './summary';
 import { MeetingNote } from './notes';
+import {
+  Degradation,
+  LifecycleError,
+  PipelineView,
+  RecordingPhase,
+  StopReason,
+} from './lifecycle';
 
 export const MeetingWithDuration = Meeting.extend({
   durationMs: z.number().optional(),
 });
 
 export const SessionView = z.object({
-  phase: z.enum([
-    'idle',
-    'detected',
-    'recording',
-    'processing',
-    'done',
-    'error',
-  ]),
+  phase: RecordingPhase,
   detected: z
     .object({
       key: z.string(),
@@ -54,6 +54,17 @@ export const SessionView = z.object({
   helperDetail: z.string().optional(),
   /** Capture paused by the user (privacy hotkey): nothing is transcribed, audio is silence. */
   paused: z.boolean().default(false),
+  stopReason: StopReason.optional(),
+  /** Capture is running but impaired (mic-only, no ASR, no AX, gap after a helper restart). */
+  degraded: z.array(Degradation).default([]),
+  /** Structured error (phase error, or a failed start that returned to idle/detected). */
+  errorInfo: LifecycleError.optional(),
+  /** Helper restart in progress mid-recording. */
+  reconnect: z
+    .object({ attempt: z.number(), since: z.number(), deadlineAt: z.number() })
+    .optional(),
+  /** Post-processing progress of the session's meeting, per step. */
+  pipeline: PipelineView.optional(),
 });
 export type SessionView = z.infer<typeof SessionView>;
 

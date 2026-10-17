@@ -3,12 +3,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-// Fail-soft: the native helper dies mid-meeting. The transcript captured so far and the audio on disk must
-// survive, the WAV header is repaired, and the meeting still gets a summary (no session stuck in "recording").
+// Fail-soft: the native helper dies mid-meeting. The supervisor restarts it and the recording resumes into a
+// second WAV part (docs/recording-lifecycle.md F3); at stop, the parts are stitched + header-repaired and the
+// meeting gets a summary. Nothing is lost from before the crash and the session never sticks in "recording".
 const appDir = path.join(__dirname, '..', 'apps', 'desktop');
 const shots = path.join(__dirname, '..', 'test-results');
 
-test('helper crash mid-recording salvages audio + transcript', async () => {
+test('helper crash mid-recording: reconnects, resumes, stitches audio, keeps transcript', async () => {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-crash-'));
   const env: Record<string, string> = {
     ...(process.env as Record<string, string>),
@@ -34,7 +35,18 @@ test('helper crash mid-recording salvages audio + transcript', async () => {
   await win.getByTestId('memo-record').click();
   await expect(win.getByTestId('memo-hud')).toBeVisible();
 
-  // Helper dies ~0.9 s in. The session must not stay in "recording".
+  // Helper dies ~0.9 s in, comes back, and capture resumes; then the user stops.
+  await expect
+    .poll(
+      async () =>
+        (await app.evaluate(
+          () => (globalThis as { __qrtzPhases?: string[] }).__qrtzPhases ?? [],
+        )) as string[],
+      { timeout: 15_000 },
+    )
+    .toContain('reconnecting');
+  await expect(win.getByTestId('memo-stop')).toBeVisible({ timeout: 15_000 });
+  await win.getByTestId('memo-stop').click();
   await expect(win.getByTestId('meeting-item').first()).not.toContainText(
     'recording',
     {
@@ -47,12 +59,11 @@ test('helper crash mid-recording salvages audio + transcript', async () => {
   });
   await win.getByTestId('tab-transcript').click();
   const segs = await win.getByTestId('transcript-segment').count();
-  expect(segs).toBeGreaterThan(0); // captured before the crash
-  expect(segs).toBeLessThan(8); // ...and not the lines after it
+  expect(segs).toBeGreaterThan(0); // captured before the crash, plus whatever came after the resume
   await win.screenshot({ path: path.join(shots, 'crash-salvaged.png') });
 
   const recs = fs.readdirSync(path.join(userData, 'recordings'));
-  expect(recs).toHaveLength(1);
+  expect(recs).toHaveLength(1); // the resumed part was stitched into the first and removed
   const wav = fs.readFileSync(path.join(userData, 'recordings', recs[0]!));
   expect(wav.readUInt32LE(40)).toBe(wav.length - 44); // header repaired
   expect(wav.length).toBeGreaterThan(100_000);

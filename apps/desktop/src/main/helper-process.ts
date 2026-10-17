@@ -46,6 +46,18 @@ export const usingMockHelper = () =>
  * Spawns the real helper on macOS; otherwise the TS mock. QRTZ_MOCK_SCENARIO=standup makes the mock
  * play a scripted meeting (and write fixture audio) — used by the e2e test and Linux dev.
  */
+let crashInjected = false;
+/** QRTZ_MOCK_PERMISSIONS="screen-recording=denied,microphone=denied" (e2e fault injection). */
+function mockPermissions() {
+  const out: Record<string, 'granted' | 'denied' | 'unsupported'> = {};
+  for (const kv of (process.env.QRTZ_MOCK_PERMISSIONS ?? '').split(',')) {
+    const [k, v] = kv.split('=');
+    if (k && (v === 'granted' || v === 'denied' || v === 'unsupported'))
+      out[k.trim()] = v;
+  }
+  return out;
+}
+
 export function spawnHelper(): ChildHandle {
   if (usingMockHelper()) {
     const scenario =
@@ -54,6 +66,7 @@ export function spawnHelper(): ChildHandle {
       os: process.platform,
       ...(scenario ? { scenario } : {}),
       speed: Number(process.env.QRTZ_MOCK_SPEED ?? '0.05'),
+      permissions: mockPermissions(),
     });
     return {
       ...mock,
@@ -62,7 +75,8 @@ export function spawnHelper(): ChildHandle {
         const crashAfter = Number(process.env.QRTZ_MOCK_CRASH_AFTER_MS ?? 0);
         if (m.success && m.data.type === 'recording.start' && scenario) {
           const audioPath = m.data.audioPath;
-          if (crashAfter > 0) {
+          if (crashAfter > 0 && !crashInjected) {
+            crashInjected = true; // once per app run: the restarted helper must be able to resume
             // Fault injection (e2e): the helper dies mid-meeting, leaving a WAV with an unfinalized header
             // holding the first half of the fixture audio.
             setTimeout(() => {

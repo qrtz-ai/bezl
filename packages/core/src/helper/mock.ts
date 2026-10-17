@@ -22,6 +22,13 @@ export interface MockHelperOptions {
   speed?: number;
   /** Delay before the meeting is "detected" (ms, real). */
   detectAfterMs?: number;
+  /** Override reported TCC states (fault injection: denied permissions). */
+  permissions?: Partial<
+    Record<
+      'accessibility' | 'screen-recording' | 'microphone',
+      'granted' | 'denied' | 'unsupported'
+    >
+  >;
 }
 
 /**
@@ -66,6 +73,7 @@ export function createMockHelper(
       accessibility: granted,
       'screen-recording': granted,
       microphone: granted,
+      ...opts.permissions,
     },
   });
 
@@ -155,6 +163,17 @@ export function createMockHelper(
           return die(0, null);
         case 'recording.start':
           audioPath = m.audioPath;
+          // Mirrors the Swift helper: capture problems are non-fatal errors, recording.started still follows.
+          if (
+            opts.permissions?.['screen-recording'] === 'denied' &&
+            opts.permissions?.microphone === 'denied'
+          )
+            emit({
+              type: 'error',
+              code: 'audio.unavailable',
+              message: 'no audio source could start',
+              fatal: false,
+            });
           emit({ type: 'recording.started', audioPath });
           if (opts.scenario) startScript();
           return;
