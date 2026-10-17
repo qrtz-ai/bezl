@@ -2,5 +2,5 @@
   "singleQuote": true,
   "printWidth": 80,
   "sortPackageJson": false,
-  "ignorePatterns": ["docs/design-tokens.md"]
+  "ignorePatterns": ["docs/design-tokens.md", "contracts/*.json"]
 }

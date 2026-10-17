@@ -33,3 +33,4 @@ export * from './privacy';
 export * from './note/templates';
 export * from './note/notes';
 export * from './note/lifecycle';
+export * from './ipc/tauri-transport';
