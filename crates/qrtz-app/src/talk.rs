@@ -1,7 +1,5 @@
 //! qrtz talk (crates/qrtz-talk, ADR 0058) behind [`TalkPort`]: the helper sink over the supervisor, the
-//! validated event bus, the app secret store, the shell clipboard and the config store. While a dictation is
-//! live (any phase but idle/error) it holds the shared [`LiveWork`] counter so background indexing yields (N86).
-use crate::live::{LiveLatch, LiveWork};
+//! validated event bus, the app secret store, the shell clipboard and the config store.
 use crate::ports::TalkPort;
 use crate::service::{Events, SharedConfig};
 use async_trait::async_trait;
@@ -56,28 +54,11 @@ impl HelperSink for TalkHelper {
     }
 }
 
-/// `talk:state` / `talk:history-changed` onto the validated bus; holds live work while a dictation runs.
-pub struct TalkBus {
-    pub events: Events,
-    pub live: Arc<LiveWork>,
-    latch: LiveLatch,
-}
-impl TalkBus {
-    pub fn new(events: Events, live: Arc<LiveWork>) -> Self {
-        Self {
-            events,
-            live,
-            latch: LiveLatch::default(),
-        }
-    }
-}
+/// `talk:state` / `talk:history-changed` onto the validated bus.
+pub struct TalkBus(pub Events);
 impl TalkEvents for TalkBus {
     fn emit(&self, event: &str, payload: Value) {
-        if event == "talk:state" {
-            let busy = !matches!(payload["phase"].as_str(), Some("idle" | "error") | None);
-            self.latch.set(&self.live, busy);
-        }
-        self.events.emit(event, payload);
+        self.0.emit(event, payload);
     }
 }
 
@@ -100,7 +81,6 @@ impl Clipboard for TalkClipboard {
 pub struct TalkWiring {
     pub helper: Option<Supervisor>,
     pub events: Events,
-    pub live: Arc<LiveWork>,
     pub secrets: Arc<dyn crate::secrets::SecretStore>,
     pub shell: Arc<dyn crate::storage_port::StorageShell>,
     pub config: SharedConfig,
@@ -131,7 +111,7 @@ pub fn talk_service(w: TalkWiring) -> TalkService {
     let config = w.config;
     TalkService::new(TalkDeps {
         helper: Arc::new(TalkHelper(w.helper)),
-        events: Arc::new(TalkBus::new(w.events, w.live)),
+        events: Arc::new(TalkBus(w.events)),
         secrets: Arc::new(TalkSecrets(w.secrets)),
         clipboard: Arc::new(TalkClipboard(w.shell)),
         clock: Arc::new(SystemClock::default()),

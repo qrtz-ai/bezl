@@ -30,11 +30,6 @@ export interface SpeechSetupView {
   };
 }
 
-export interface SearchModelView {
-  state: 'missing' | 'downloading' | 'loading' | 'ready' | 'error';
-  error?: string;
-}
-
 /** 1.2 gb · 340 mb · 12 kb (lowercase, brand rule). */
 export function formatBytes(n: number): string {
   if (n <= 0) return '0 mb';
@@ -211,61 +206,6 @@ export function SpeechSetupPanel({
               ) : null}
             </Stack>
           ) : null}
-        </Stack>
-      ) : null}
-    </Stack>
-  );
-}
-
-/** The on-device search model: download when missing, retry on error. */
-export function SearchModelRow({
-  status,
-  onDownload,
-}: {
-  status: SearchModelView | null;
-  onDownload: () => void;
-}) {
-  const s = status?.state;
-  return (
-    <Stack
-      dir="row"
-      gap={3}
-      align="center"
-      justify="between"
-      data-testid="search-model"
-    >
-      <Text>search model</Text>
-      {s === 'downloading' || s === 'loading' ? (
-        <Stack dir="row" gap={2} align="center">
-          <Spinner label={s === 'loading' ? 'loading' : 'downloading'} />
-          <Text variant="caption" muted>
-            {s === 'loading' ? 'loading…' : 'downloading…'}
-          </Text>
-        </Stack>
-      ) : s === 'ready' ? (
-        <Text variant="caption" muted data-testid="search-model-ready">
-          ready
-        </Text>
-      ) : s ? (
-        <Stack dir="row" gap={2} align="center">
-          {s === 'error' ? (
-            <Text
-              variant="caption"
-              tone="danger"
-              data-testid="search-model-error"
-            >
-              {status?.error ?? "couldn't download the search model"}
-            </Text>
-          ) : null}
-          <Button
-            size="sm"
-            variant="secondary"
-            icon={s === 'error' ? 'refresh' : 'download'}
-            onClick={onDownload}
-            data-testid="search-model-download"
-          >
-            {s === 'error' ? 'retry' : 'download'}
-          </Button>
         </Stack>
       ) : null}
     </Stack>

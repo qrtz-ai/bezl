@@ -15,10 +15,8 @@ runtime = [
   "dep:qrtz-model",
   "dep:qrtz-backup",
   "dep:qrtz-llm",
-  "dep:qrtz-search",
   "dep:qrtz-talk",
   "dep:qrtz-speech",
-  "dep:reqwest",
 ]
 
 [dependencies]
@@ -27,14 +25,7 @@ qrtz-storage = { workspace = true, optional = true }
 qrtz-model = { workspace = true, optional = true }
 qrtz-backup = { workspace = true, optional = true }
 qrtz-llm = { path = "../qrtz-llm", optional = true }
-qrtz-search = { path = "../qrtz-search", optional = true, features = [
-  "minilm-download",
-] }
 qrtz-talk = { path = "../qrtz-talk", optional = true }
-# The search model download (Hugging Face redirects to its CDN; https only).
-reqwest = { version = "0.12", default-features = false, features = [
-  "rustls-tls",
-], optional = true }
 qrtz-speech = { path = "../qrtz-speech", optional = true }
 rand.workspace = true
 unicode-normalization.workspace = true
@@ -54,7 +45,6 @@ tokio = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true
 qrtz-helper-bridge = { path = "../qrtz-helper-bridge" }
 qrtz-storage.workspace = true
-qrtz-search = { path = "../qrtz-search" }
 libc = "0.2"
 qrtz-speech = { path = "../qrtz-speech", features = ["testkit"] }
 ed25519-dalek = "2"

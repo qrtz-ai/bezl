@@ -45,8 +45,6 @@ import {
 import {
   ActionMenu,
   Banner,
-  ChatAnswer,
-  ChatQuestion,
   CommandPalette,
   Composer,
   ConfirmDialog,
@@ -63,12 +61,7 @@ import {
   TranscriptRow,
   type NoteItem,
 } from '../Meeting';
-import {
-  SearchModelRow,
-  SpeechNotice,
-  SpeechSetupPanel,
-  type SpeechSetupView,
-} from '../Setup';
+import { SpeechNotice, SpeechSetupPanel, type SpeechSetupView } from '../Setup';
 
 const speechView = (
   download: SpeechSetupView['download'],
@@ -398,9 +391,6 @@ function Showcase({
                 onOpenSettings={noop}
               />
             </div>
-            <div style={{ width: 320 }}>
-              <SearchModelRow status={{ state: 'missing' }} onDownload={noop} />
-            </div>
           </Section>
 
           <Section id="inputs" title="inputs">
@@ -560,25 +550,6 @@ function Showcase({
                   onSeek={() => {}}
                 />
               </TranscriptList>
-            </div>
-          </Section>
-
-          <Section id="chat" title="chat">
-            <div style={{ display: 'grid', gap: t.space[3], width: '100%' }}>
-              {/* check-titles-ignore: sample user content */}
-              <ChatQuestion>When is the beta?</ChatQuestion>
-              <ChatAnswer
-                text="Friday, per Grace."
-                sources={[
-                  {
-                    // check-titles-ignore: sample user content
-                    label: '[1] 00:41 · Grace', // check-titles-ignore
-                    title: "Let's ship the beta Friday.",
-                    onOpen: () => {},
-                  },
-                ]}
-                footer="openrouter"
-              />
             </div>
           </Section>
 

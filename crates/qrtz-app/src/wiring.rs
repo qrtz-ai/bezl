@@ -29,45 +29,6 @@ pub fn llm_config(cfg: &Value, base_url: Option<&str>) -> qrtz_llm::LlmConfig {
     }
 }
 
-/// The gates the vector backfill checks (N17 tombstones per meeting; N82/N86 `busy` before every meeting and
-/// batch: the shared [`crate::live::LiveWork`] counter).
-pub struct BackfillGates {
-    pub tombstoned: Arc<dyn Fn(&str) -> bool + Send + Sync>,
-    pub busy: Arc<dyn Fn() -> bool + Send + Sync>,
-}
-
-/// The search side the shell keeps for its lifetime: the lazily loaded embedder (index step, chat retrieval) and
-/// the background backfill (spawned by [`SearchHandles::start`], cancelled by [`SearchHandles::shutdown`]).
-pub struct SearchHandles {
-    pub embedder: Arc<qrtz_search::LazyEmbedder>,
-    pub backfill: Arc<qrtz_search::Backfill<StorageHandle>>,
-    config: SharedConfig,
-    started: std::sync::atomic::AtomicBool,
-}
-
-/// How long a failed backfill pass waits before the next one.
-pub const BACKFILL_RETRY: std::time::Duration = std::time::Duration::from_secs(60);
-
-impl SearchHandles {
-    /// Start loading the model and spawn the backfill (once; needs the tokio runtime). Off when
-    /// `note.backgroundIndexing` is false (the index step after each meeting still runs).
-    pub fn start(&self) {
-        if self.started.swap(true, std::sync::atomic::Ordering::SeqCst) {
-            return;
-        }
-        self.embedder.start();
-        if self.config.get()["note"]["backgroundIndexing"].as_bool() == Some(false) {
-            return;
-        }
-        let (b, e) = (self.backfill.clone(), self.embedder.clone());
-        tokio::spawn(async move { b.run(e, BACKFILL_RETRY).await });
-    }
-    /// Quit: the backfill stops at its next meeting / batch boundary.
-    pub fn shutdown(&self) {
-        self.backfill.cancel();
-    }
-}
-
 /// `HelperPort` over the supervisor: ordered, sync enqueue; `false` when the helper isn't running.
 pub struct SupervisorHelper(pub Supervisor);
 impl HelperPort for SupervisorHelper {
@@ -110,28 +71,15 @@ pub struct AppSink {
     pub shell: Arc<dyn ShellHooks>,
     pub config: SharedConfig,
     no_audio_for: Mutex<Option<String>>,
-    /// N86: held from `starting` through `stopping`.
-    pub live: Arc<crate::live::LiveWork>,
-    recording: crate::live::LiveLatch,
 }
 
 impl AppSink {
     pub fn new(events: Events, shell: Arc<dyn ShellHooks>, config: SharedConfig) -> Self {
-        Self::with_live(events, shell, config, crate::live::LiveWork::new())
-    }
-    pub fn with_live(
-        events: Events,
-        shell: Arc<dyn ShellHooks>,
-        config: SharedConfig,
-        live: Arc<crate::live::LiveWork>,
-    ) -> Self {
         Self {
             events,
             shell,
             config,
             no_audio_for: Mutex::new(None),
-            live,
-            recording: Default::default(),
         }
     }
     fn no_audio_edge(&self, view: &qrtz_model::SessionView) {
@@ -154,12 +102,6 @@ impl EventSink for AppSink {
     fn emit(&self, e: CoreEvent) {
         if let CoreEvent::Session(v) = &e {
             self.no_audio_edge(v);
-            use qrtz_model::RecordingPhase as P;
-            let live = matches!(
-                v.phase,
-                P::Starting | P::Recording | P::Reconnecting | P::Stopping
-            );
-            self.recording.set(&self.live, live);
         }
         match &e {
             CoreEvent::DetectedPrompt { title, platform } => self.shell.notify(Notice::MeetingDetected {
@@ -182,10 +124,6 @@ pub struct DevKnobs {
     pub fault_step: Option<StepId>,
     /// `QRTZ_LLM_BASE_URL`: the LLM requests (with the API key) go to this host instead (tests, mock servers).
     pub llm_base_url: Option<String>,
-    /// `QRTZ_MINILM_DIR`: the MiniLM model directory (default `<data>/models/all-MiniLM-L6-v2`).
-    pub minilm_dir: Option<PathBuf>,
-    /// `QRTZ_MINILM_BASE`: where the search model downloads from (default Hugging Face; tests use a local server).
-    pub minilm_base: Option<String>,
     /// `QRTZ_TALK_CLOUD=echo|fail`: the cloud talk engines are `qrtz_talk::mock::MockCloud` (Echo or Refuse).
     pub talk_cloud: Option<String>,
 }
@@ -206,8 +144,6 @@ impl DevKnobs {
             retry_scale: get("QRTZ_RETRY_SCALE").and_then(|v| v.parse().ok()),
             fault_step: get("QRTZ_FAULT_STEP").and_then(|v| serde_json::from_value(Value::String(v)).ok()),
             llm_base_url: get("QRTZ_LLM_BASE_URL").filter(|v| !v.is_empty()),
-            minilm_dir: get("QRTZ_MINILM_DIR").map(PathBuf::from),
-            minilm_base: get("QRTZ_MINILM_BASE").filter(|v| !v.is_empty()),
             talk_cloud: get("QRTZ_TALK_CLOUD").filter(|v| v == "echo" || v == "fail"),
         }
     }
@@ -234,11 +170,6 @@ pub struct Booted {
     pub dirs: AppDirs,
     pub db: StorageHandle,
     pub runtime: NoteRuntime,
-    pub search: Arc<SearchHandles>,
-    /// N86: recordings, steps and dictations hold it; the backfill yields while it is held.
-    pub live: Arc<crate::live::LiveWork>,
-    /// note:chat (retrieval + the configured provider).
-    pub chat: Arc<crate::chat::NoteChat>,
 }
 
 /// Inputs to [`boot`].
@@ -248,15 +179,13 @@ pub struct BootOptions {
     pub shell: Arc<dyn ShellHooks>,
     pub config: SharedConfig,
     pub helper: Arc<dyn HelperPort>,
-    /// `None` = `CoreSteps` (real finalize; summary/index until qrtz-llm / qrtz-search plug in).
+    /// `None` = `LlmSteps` → `CoreSteps` (summary by the configured provider; finalize; index is a no-op).
     pub steps: Option<Arc<dyn StepExecutor>>,
     /// `None` = deferred deletes run at once (tests); the app passes `PendingDeletes::new(data dir)`.
     pub pending_delete: Option<Arc<qrtz_storage::PendingDeletes>>,
     pub clock: Option<Arc<dyn Clock>>,
     /// API keys for the summary provider (`None` = on-device summaries only).
     pub secrets: Option<Arc<dyn crate::secrets::SecretStore>>,
-    /// `None` = MiniLM from the model dir (full-text only until it is there).
-    pub embedder: Option<Arc<qrtz_search::LazyEmbedder>>,
     pub knobs: DevKnobs,
 }
 
@@ -273,19 +202,11 @@ pub fn boot(o: BootOptions) -> std::io::Result<Booted> {
             .map(|d| d.as_millis() as i64)
             .unwrap_or(0)
     });
-    let embedder = o.embedder.unwrap_or_else(|| {
-        let dir = o
-            .knobs
-            .minilm_dir
-            .clone()
-            .unwrap_or_else(|| dirs.data.join("models").join("all-MiniLM-L6-v2"));
-        qrtz_search::LazyEmbedder::new(qrtz_search::minilm::loader(dir))
-    });
-    // N83 (ADR 0042, 0049): SearchSteps (index) → LlmSteps (summary: the configured provider, extractive fallback)
-    // → CoreSteps (finalize). Every LLM request goes through `qrtz_llm::http_client()` (no redirects, N81).
-    // The same LlmSteps (config, keys, `http_client()`) answers note:chat (N89, ADR 0059).
+    // N83 (ADR 0042): LlmSteps (summary: the configured provider, extractive fallback) → CoreSteps (finalize;
+    // the index step is a no-op: search is full-text over the notes DB, no embeddings since the chat removal).
+    // Every LLM request goes through `qrtz_llm::http_client()` (no redirects, N81).
     let core: Arc<dyn StepExecutor> = Arc::new(CoreSteps { db: db.clone() });
-    let llm_steps: Arc<qrtz_llm::LlmSteps<StorageHandle>> = match o.secrets.clone() {
+    let llm_steps: Arc<dyn StepExecutor> = match o.secrets.clone() {
         Some(sec) => {
             let (c, base) = (cfg.clone(), o.knobs.llm_base_url.clone());
             Arc::new(qrtz_llm::LlmSteps::new(
@@ -298,43 +219,12 @@ pub fn boot(o: BootOptions) -> std::io::Result<Booted> {
         }
         None => Arc::new(qrtz_llm::LlmSteps::on_device(db.clone(), core, now.clone())),
     };
-    let live = crate::live::LiveWork::new();
-    let gates = BackfillGates {
-        tombstoned: match o.pending_delete.clone() {
-            Some(p) => Arc::new(move |id: &str| p.has(id)),
-            None => Arc::new(|_: &str| false),
-        },
-        busy: {
-            let l = live.clone();
-            Arc::new(move || l.busy())
-        },
-    };
-    // N90/N93: chat never sees a meeting pending delete (same gate as the backfill).
-    let chat = Arc::new(crate::chat::NoteChat {
-        db: db.clone(),
-        embedder: embedder.clone(),
-        llm: llm_steps.clone(),
-        hidden: gates.tombstoned.clone(),
-    });
-    let steps = o.steps.unwrap_or_else(|| {
-        let llm: Arc<dyn StepExecutor> = llm_steps;
-        Arc::new(qrtz_search::SearchSteps::new(db.clone(), llm, embedder.clone()))
-    });
-    let steps: Arc<dyn StepExecutor> = Arc::new(crate::live::BusySteps {
-        inner: steps,
-        live: live.clone(),
-    });
-    let search = Arc::new(SearchHandles {
-        backfill: qrtz_search::Backfill::gated(db.clone(), gates.tombstoned.clone(), gates.busy),
-        embedder,
-        config: o.config.clone(),
-        started: Default::default(),
-    });
+    let steps = o.steps.unwrap_or(llm_steps);
     let runtime = NoteRuntime::new(RuntimeDeps {
         store: Arc::new(Store(db.clone())),
         steps,
         helper: o.helper,
-        events: Arc::new(AppSink::with_live(o.events, o.shell, o.config, live.clone())),
+        events: Arc::new(AppSink::new(o.events, o.shell, o.config)),
         config: Arc::new(move || runtime_config(&cfg.get())),
         clock: o.clock.unwrap_or_else(|| Arc::new(SystemClock)),
         ids: Arc::new(uuid_v4),
@@ -345,14 +235,7 @@ pub fn boot(o: BootOptions) -> std::io::Result<Booted> {
         default_title: Arc::new(utc_recording_title),
         pending_delete: o.pending_delete,
     });
-    Ok(Booted {
-        dirs,
-        db,
-        runtime,
-        search,
-        live,
-        chat,
-    })
+    Ok(Booted { dirs, db, runtime })
 }
 
 /// Everything the Tauri shell (and the headless tests) need to assemble the app in one call.
@@ -374,8 +257,6 @@ pub struct AppBuild {
     /// `None` = qrtz talk over the helper (data/talk.json).
     pub talk: Option<Arc<dyn crate::ports::TalkPort>>,
     pub steps: Option<Arc<dyn StepExecutor>>,
-    /// `None` = MiniLM from the model dir.
-    pub embedder: Option<Arc<qrtz_search::LazyEmbedder>>,
     pub knobs: DevKnobs,
 }
 
@@ -384,14 +265,11 @@ pub struct BuiltApp {
     pub runtime: NoteRuntime,
     pub db: StorageHandle,
     pub dirs: AppDirs,
-    /// Call `search.start()` inside the tokio runtime after boot and `search.shutdown()` on quit.
-    pub search: Arc<SearchHandles>,
-    pub live: Arc<crate::live::LiveWork>,
     /// N55: hands speech module audio fds to the helper (the on-device engine's `AudioAttach`).
     pub attach: Arc<crate::speech::HelperAttach>,
     pub note_speech: Option<Arc<crate::speech::NoteSpeech>>,
     pub speech: Option<crate::speech::SpeechSetup>,
-    /// Onboarding / settings "speech": the module download and the search model. Call
+    /// Onboarding / settings "speech": the module download. Call
     /// `setup.speech.resume_pending()` inside the tokio runtime after boot (a download a quit cut short resumes).
     pub setup: Arc<crate::setup::Setup>,
 }
@@ -451,24 +329,6 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     // One tombstone store for the runtime (undo window) and backup import (skips meetings pending delete).
     let pending = Arc::new(qrtz_storage::PendingDeletes::new(&dirs.data));
     let secrets = b.secrets.unwrap_or_else(|| platform_secrets(&dirs.data));
-    // The search model (ADR 0050): downloaded first when missing and `note.searchModelDownload` is on, then loaded.
-    let model = crate::setup::SearchModel::new(
-        b.knobs
-            .minilm_dir
-            .clone()
-            .unwrap_or_else(|| dirs.data.join("models").join("all-MiniLM-L6-v2")),
-        b.knobs
-            .minilm_base
-            .clone()
-            .unwrap_or_else(|| qrtz_search::minilm::HF_BASE.to_string()),
-        events.clone(),
-    );
-    let embedder = b.embedder.unwrap_or_else(|| {
-        let allow = config.get()["note"]["searchModelDownload"]
-            .as_bool()
-            .unwrap_or(true);
-        qrtz_search::LazyEmbedder::new(model.loader(allow))
-    });
     let booted = boot(BootOptions {
         data_dir: dirs.data.clone(),
         events: events.clone(),
@@ -479,7 +339,6 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         pending_delete: Some(pending.clone()),
         clock: None,
         secrets: Some(secrets.clone()),
-        embedder: Some(embedder.clone()),
         knobs: b.knobs.clone(),
     })?;
     if let Some(ns) = &note_speech {
@@ -506,7 +365,6 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
             crate::talk::TalkWiring {
                 helper: supervisor.clone(),
                 events: events.clone(),
-                live: booted.live.clone(),
                 secrets: secrets.clone(),
                 shell: talk_shell,
                 config: config.clone(),
@@ -522,9 +380,6 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     };
     let setup = Arc::new(crate::setup::Setup {
         speech: crate::setup::SpeechManager::new(b.speech.clone(), events.clone()),
-        model,
-        embedder,
-        config: config.clone(),
     });
     let service = crate::AppService::new(crate::AppDeps {
         info: b.info,
@@ -537,7 +392,6 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         helper: supervisor,
         events,
     });
-    service.set_chat(booted.chat.clone());
     service.set_setup(setup.clone());
     {
         let (a, ns) = (attach.clone(), note_speech.clone());
@@ -562,8 +416,6 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         runtime: booted.runtime,
         db: booted.db,
         dirs: booted.dirs,
-        search: booted.search,
-        live: booted.live,
         attach,
         note_speech,
         speech: b.speech,

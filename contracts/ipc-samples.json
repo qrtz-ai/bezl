@@ -360,24 +360,6 @@
         "autoRecord": true
       }
     },
-    "note:chat": {
-      "request": {
-        "question": "What did we agree?"
-      },
-      "response": {
-        "answer": "Ship the beta on Friday [1].",
-        "sources": [
-          {
-            "meetingId": "00000000-0000-4000-8000-000000000001",
-            "title": "Weekly Product Sync",
-            "startedAt": 1760659200000,
-            "startMs": 0,
-            "text": "Ship it Friday."
-          }
-        ],
-        "provider": "extractive"
-      }
-    },
     "note:rename-speaker": {
       "request": {
         "meetingId": "00000000-0000-4000-8000-000000000001",
@@ -734,21 +716,6 @@
           "total": 0
         }
       }
-    },
-    "search:model-status": {
-      "request": null,
-      "response": {
-        "state": "ready"
-      },
-      "idle": {
-        "state": "missing"
-      }
-    },
-    "search:model-download": {
-      "request": null,
-      "response": {
-        "state": "downloading"
-      }
     }
   },
   "events": {
@@ -844,9 +811,6 @@
         "done": 100000000,
         "total": 412000000
       }
-    },
-    "search:model-status": {
-      "state": "missing"
     }
   }
 }

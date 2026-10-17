@@ -29,10 +29,6 @@ export const ConfigSchema = z.object({
       notifyNoAudio: z.boolean().default(true),
       /** Summarize automatically when a meeting ends (off = Summarize button in the meeting). */
       autoSummarize: z.boolean().default(true),
-      /** Build semantic-search embeddings in the background after meetings. */
-      backgroundIndexing: z.boolean().default(true),
-      /** Download the on-device search model when it is missing (off = full-text search only). */
-      searchModelDownload: z.boolean().default(true),
       llmProvider: z
         .enum(['openai', 'anthropic', 'google', 'openrouter', 'ollama', 'none'])
         .default('openrouter'),
@@ -95,7 +91,7 @@ export const ConfigSchema = z.object({
   onboarding: z.object({ done: z.boolean().default(false) }).prefault({}),
   privacy: z
     .object({
-      /** Never send audio, transcripts or notes to a cloud service: summaries/chat use the on-device fallback (or a local Ollama). */
+      /** Never send audio, transcripts or notes to a cloud service: summaries use the on-device fallback (or a local Ollama). */
       localOnly: z.boolean().default(false),
       /** Meetings detected in these apps/platforms (e.g. "Safari", "zoom", "google-meet") are ignored. */
       excludedApps: z

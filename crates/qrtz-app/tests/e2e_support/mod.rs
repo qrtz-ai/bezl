@@ -3,7 +3,6 @@
 //! driven through the IPC router like the renderer, with a real helper child process and local mock servers.
 //! Every wait polls a condition against a deadline; nothing sleeps for a fixed time to let work finish.
 #![allow(dead_code)]
-use async_trait::async_trait;
 use qrtz_app::ports::{Notice, ShellHooks, TalkPort};
 use qrtz_app::runtime_port::HelperAvailability;
 use qrtz_app::storage_port::StorageShell;
@@ -11,8 +10,6 @@ use qrtz_app::wiring::{build_app, AppBuild, BuiltApp, DevKnobs};
 use qrtz_app::{AppInfo, Shared};
 use qrtz_helper_bridge::{ProcessSpawn, SupervisorOptions};
 use qrtz_ipc::Router;
-use qrtz_model::LifecycleError;
-use qrtz_search::{Embedder, LazyEmbedder};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::future::Future;
@@ -147,24 +144,11 @@ impl StorageShell for RecStorage {
     }
 }
 
-/// A deterministic 4-d embedder (vectors exist, so the hybrid path runs without the 23 MB model).
-pub struct FakeEmbedder;
-#[async_trait]
-impl Embedder for FakeEmbedder {
-    fn id(&self) -> &str {
-        "fake-4d"
-    }
-    async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, LifecycleError> {
-        Ok(texts.iter().map(|_| vec![0.5, 0.5, 0.5, 0.5]).collect())
-    }
-}
-
 pub struct Opts {
     pub helper: Helper,
     pub env: Vec<(String, String)>,
     pub llm_base: Option<String>,
     pub retry_scale: f64,
-    pub embedder: Option<Arc<LazyEmbedder>>,
     pub talk: Option<Arc<dyn TalkPort>>,
     /// `QRTZ_TALK_CLOUD=echo|fail` (`DevKnobs::talk_cloud`): the cloud talk engines are `qrtz_talk::mock::MockCloud`.
     pub talk_cloud: Option<String>,
@@ -176,7 +160,6 @@ impl Default for Opts {
             env: vec![],
             llm_base: None,
             retry_scale: 0.001,
-            embedder: None,
             talk: None,
             talk_cloud: None,
         }
@@ -197,10 +180,6 @@ impl Opts {
     }
     pub fn retry_scale(mut self, s: f64) -> Self {
         self.retry_scale = s;
-        self
-    }
-    pub fn embedder(mut self, e: Arc<LazyEmbedder>) -> Self {
-        self.embedder = Some(e);
         self
     }
     pub fn talk(mut self, t: Arc<dyn TalkPort>) -> Self {
@@ -271,7 +250,6 @@ impl App {
             talk: o.talk,
             speech: None,
             steps: None,
-            embedder: Some(o.embedder.unwrap_or_else(LazyEmbedder::none)),
             knobs: DevKnobs {
                 retry_scale: Some(o.retry_scale),
                 llm_base_url: o.llm_base,
@@ -283,7 +261,6 @@ impl App {
         let r = Router::new(Shared(app.service.clone())).validate_responses(true);
         app.service.start_helper();
         let _ = app.runtime.recover().await;
-        app.search.start();
         app.service.events.emit("note:changed", json!({"id": "*"}));
         App {
             data: data.to_path_buf(),
@@ -420,7 +397,6 @@ impl App {
             return;
         }
         self.quit = true;
-        self.app.search.shutdown();
         if let Some(h) = self.app.service.helper() {
             let bye =
                 qrtz_helper_bridge::encode_host_message(&json!({"type": "shutdown"})).unwrap_or_default();
@@ -433,7 +409,6 @@ impl App {
 impl Drop for App {
     fn drop(&mut self) {
         if !self.quit {
-            self.app.search.shutdown();
             if let Some(h) = self.app.service.helper() {
                 h.stop();
             }

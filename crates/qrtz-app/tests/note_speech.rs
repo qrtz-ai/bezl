@@ -52,7 +52,6 @@ fn app(dir: &Path, env: &SpeechEnv) -> BuiltApp {
         }),
         talk: None,
         steps: None,
-        embedder: Some(qrtz_search::LazyEmbedder::none()),
         knobs: DevKnobs {
             retry_scale: Some(0.001),
             ..Default::default()

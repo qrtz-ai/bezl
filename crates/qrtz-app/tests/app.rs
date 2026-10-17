@@ -182,9 +182,10 @@ async fn stub_ports_answer_idle_and_refuse_actions_honestly() {
         call(&r, "settings", "db:health", Value::Null).await["data"]["ok"],
         false
     );
+    // The "ask" chat is gone (Jared): its channel is not in the contract any more.
     assert_eq!(
-        call(&r, "note", "note:chat", json!({"question": "q"})).await["error"]["code"],
-        "E_UNAVAILABLE"
+        call(&r, "note", "note:chat", json!({"question": "q"})).await["ok"],
+        false
     );
 }
 

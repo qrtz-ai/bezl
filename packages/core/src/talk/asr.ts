@@ -1,4 +1,4 @@
-import type { DictionaryEntry, TalkEngineId } from './contract';
+import type { TalkEngineId } from './contract';
 
 /**
  * Cloud streaming ASR for qrtz talk. Both engines are true real-time WebSocket streams with incremental partials;

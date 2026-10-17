@@ -1,7 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import {
-  SearchModelRow,
   SpeechNotice,
   SpeechSetupPanel,
   formatBytes,
@@ -114,16 +113,5 @@ describe('speech setup', () => {
       />,
     );
     expect(missing).toContain('speech isn&#x27;t downloaded');
-  });
-
-  it('search model: download, progress, retry', () => {
-    const r = (state: 'missing' | 'loading' | 'ready' | 'error') =>
-      renderToStaticMarkup(
-        <SearchModelRow status={{ state }} onDownload={noop} />,
-      );
-    expect(r('missing')).toContain('data-testid="search-model-download"');
-    expect(r('loading')).toContain('loading…');
-    expect(r('ready')).toContain('data-testid="search-model-ready"');
-    expect(r('error')).toContain('retry');
   });
 });

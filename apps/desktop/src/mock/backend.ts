@@ -2,9 +2,9 @@
 // the same `TauriBridge` the real app uses, routes through the real TS router with the real manifests
 // (capability + zod checks), and plays a scripted meeting: start → streamed transcript (partials replaced by
 // finals) → stop → finalize/summary/index → done. Query params inject faults:
-//   ?mockFail=start-permission | summary-once | speech-once | model-once   ?seed=1 (one finished meeting)
+//   ?mockFail=start-permission | summary-once | speech-once   ?seed=1 (one finished meeting)
 //   ?mockSpeed=<ms per tick>   ?onboarding=1 (first run: onboarding not done, speech not downloaded)
-//   ?mockSpeech=missing | installed (default installed, or missing with onboarding=1)   ?mockModel=missing | ready
+//   ?mockSpeech=missing | installed (default installed, or missing with onboarding=1)
 //   ?mockPerms=denied (every OS permission starts not-determined)   ?theme=light | dark | system
 import {
   AppError,
@@ -78,10 +78,6 @@ export function createMockBridge(): TauriBridge {
   };
   let speechTimer: ReturnType<typeof setInterval> | undefined;
   let speechFailed = false;
-  let model: Json = {
-    state: params.get('mockModel') ?? (firstRun ? 'missing' : 'ready'),
-  };
-  let modelFailed = false;
   let perms: Json =
     params.get('mockPerms') === 'denied'
       ? {
@@ -129,11 +125,6 @@ export function createMockBridge(): TauriBridge {
       }
       setSpeech({ state: 'downloading', done, total: SPEECH_BYTES });
     }, tickMs);
-  };
-  const setModel = (m: Json) => {
-    model = m;
-    emit('search:model-status', model);
-    return model as never;
   };
 
   const emit = (event: EventName, payload: unknown) => {
@@ -356,24 +347,6 @@ export function createMockBridge(): TauriBridge {
         { state: 'idle', done: 0, total: 0 },
         { installed: null, bytes: 0 },
       );
-    },
-    'search:model-status': () => model as never,
-    'search:model-download': () => {
-      if (model.state === 'ready') return model as never;
-      const r = setModel({ state: 'downloading' });
-      later(tickMs * 2, () => {
-        if (fail === 'model-once' && !modelFailed) {
-          modelFailed = true;
-          setModel({
-            state: 'error',
-            error: "couldn't download the search model",
-          });
-          return;
-        }
-        setModel({ state: 'loading' });
-        later(tickMs, () => setModel({ state: 'ready' }));
-      });
-      return r;
     },
     'note:session': () => session as never,
     'note:dismiss': () => {

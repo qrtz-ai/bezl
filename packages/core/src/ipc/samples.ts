@@ -43,7 +43,6 @@ const speechDownloading = {
     total: 412_000_000,
   },
 };
-const searchModelMissing = { state: 'missing' as const };
 export const SAMPLE_MEETING_ID = '00000000-0000-4000-8000-000000000001';
 const meeting = {
   id: SAMPLE_MEETING_ID,
@@ -200,22 +199,6 @@ export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
     request: { enabled: true },
     response: { autoRecord: true },
   },
-  'note:chat': {
-    request: { question: 'What did we agree?' },
-    response: {
-      answer: 'Ship the beta on Friday [1].',
-      sources: [
-        {
-          meetingId: SAMPLE_MEETING_ID,
-          title: meeting.title,
-          startedAt: T0,
-          startMs: 0,
-          text: 'Ship it Friday.',
-        },
-      ],
-      provider: 'extractive',
-    },
-  },
   'note:rename-speaker': {
     request: { meetingId: SAMPLE_MEETING_ID, from: 'Speaker 1', to: 'Ada' },
     response: { changed: 3 },
@@ -303,14 +286,6 @@ export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
   },
   'speech:resume': { request: undefined, response: speechDownloading },
   'speech:delete': { request: undefined, response: speechNone },
-  'search:model-status': {
-    request: undefined,
-    response: { state: 'ready' },
-  },
-  'search:model-download': {
-    request: undefined,
-    response: { state: 'downloading' },
-  },
 };
 
 export const eventSamples: { [E in EventName]: EventPayload<E> } = {
@@ -331,7 +306,6 @@ export const eventSamples: { [E in EventName]: EventPayload<E> } = {
   'talk:history-changed': { id: 't1' },
   'permissions:changed': unknownPermissions,
   'speech:status': speechDownloading,
-  'search:model-status': searchModelMissing,
 };
 
 /** Idle answers per channel (what an empty backend says); a channel absent here has no idle answer. */
@@ -349,5 +323,4 @@ export const idleResponses: Partial<Record<IpcChannel, unknown>> = {
   'talk:history': [],
   'talk:dictionary': [],
   'speech:status': { ...speechNone, configured: false },
-  'search:model-status': searchModelMissing,
 };

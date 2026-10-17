@@ -143,8 +143,6 @@ pub struct Backend {
     pill: Linger,
     flash: Flash,
     hotkeys: Mutex<Vec<(String, &'static str)>>,
-    /// Embedder + vector backfill (N83): started after recovery, cancelled on quit.
-    search: Arc<qrtz_app::wiring::SearchHandles>,
 }
 
 fn platform() -> &'static str {
@@ -238,7 +236,6 @@ pub fn setup(app: &mut tauri::App, started: Instant) -> Result<(), Box<dyn std::
         talk: None,
         speech,
         steps: None,
-        embedder: None,
         knobs: DevKnobs::from_env(),
     })?;
     let service = built.service.clone();
@@ -254,7 +251,6 @@ pub fn setup(app: &mut tauri::App, started: Instant) -> Result<(), Box<dyn std::
         pill: Linger::default(),
         flash: Flash::default(),
         hotkeys: Mutex::default(),
-        search: built.search.clone(),
     });
 
     pump_events(&handle);
@@ -267,14 +263,11 @@ pub fn setup(app: &mut tauri::App, started: Instant) -> Result<(), Box<dyn std::
     // Startup recovery (R1–R3 + audio retention): finish what a crash left behind. start() waits for it.
     let runtime = built.runtime.clone();
     let svc = service.clone();
-    let search = built.search.clone();
     tauri::async_runtime::spawn(async move {
         match runtime.recover().await {
             Ok(r) => tracing::info!(report = ?r, "startup recovery"),
             Err(e) => tracing::warn!(err = %e.message, "startup recovery skipped"),
         }
-        // The model loads and the backfill runs after recovery, so neither competes with a crash's leftovers.
-        search.start();
         svc.events.emit("note:changed", json!({"id": "*"}));
     });
 
@@ -520,7 +513,6 @@ pub fn forget_webview(app: &AppHandle, label: &str) {
 /// Graceful helper shutdown on quit.
 pub fn shutdown(app: &AppHandle) {
     if let Some(b) = app.try_state::<Backend>() {
-        b.search.shutdown();
         if let Some(h) = b.service.helper() {
             let h = h.clone();
             let bye =

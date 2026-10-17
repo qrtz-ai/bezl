@@ -31,7 +31,7 @@ impl ShellHooks for Shell {
     fn notify(&self, _n: Notice) {}
 }
 
-fn app(dir: &Path, env: &SpeechEnv, minilm_base: Option<String>, embedder: bool) -> BuiltApp {
+fn app(dir: &Path, env: &SpeechEnv) -> BuiltApp {
     build_app(AppBuild {
         info: AppInfo {
             name: "qrtz".into(),
@@ -56,10 +56,8 @@ fn app(dir: &Path, env: &SpeechEnv, minilm_base: Option<String>, embedder: bool)
         }),
         talk: None,
         steps: None,
-        embedder: (!embedder).then(qrtz_search::LazyEmbedder::none),
         knobs: DevKnobs {
             retry_scale: Some(0.001),
-            minilm_base,
             ..Default::default()
         },
     })
@@ -129,7 +127,7 @@ async fn speech_downloads_with_progress_pauses_resumes_and_deletes() {
     let b = padded(&env, "1.0.0");
     env.srv.publish(&b);
     throttle(&env, "1.0.0", true);
-    let a = app(&tmp.path().join("data"), &env, None, false);
+    let a = app(&tmp.path().join("data"), &env);
     let r = Router::new(Shared(a.service.clone())).validate_responses(true);
     let mut ev = a.service.events.subscribe();
 
@@ -198,7 +196,7 @@ async fn a_download_a_quit_cut_short_resumes_on_the_next_launch_and_a_user_pause
     throttle(&env, "1.0.0", true);
     let data = tmp.path().join("data");
     {
-        let a = app(&data, &env, None, false);
+        let a = app(&data, &env);
         let r = Router::new(Shared(a.service.clone())).validate_responses(true);
         call(&r, "speech:download", json!({})).await;
         until("progress", async || {
@@ -222,7 +220,7 @@ async fn a_download_a_quit_cut_short_resumes_on_the_next_launch_and_a_user_pause
     };
     let before = hits(&env);
     {
-        let a = app(&data, &env, None, false);
+        let a = app(&data, &env);
         let r = Router::new(Shared(a.service.clone())).validate_responses(true);
         a.setup.speech.resume_pending();
         tokio::time::sleep(Duration::from_millis(300)).await;
@@ -235,7 +233,7 @@ async fn a_download_a_quit_cut_short_resumes_on_the_next_launch_and_a_user_pause
     let marker = env.store.root().join("download.json");
     std::fs::write(&marker, br#"{"force":false,"paused":false}"#).unwrap();
     throttle(&env, "1.0.0", false);
-    let a = app(&data, &env, None, false);
+    let a = app(&data, &env);
     let r = Router::new(Shared(a.service.clone())).validate_responses(true);
     a.setup.speech.resume_pending();
     until("installed after relaunch", async || {
@@ -267,7 +265,7 @@ async fn a_damaged_download_is_an_error_with_retry() {
         .unwrap()
         .corrupt
         .insert(format!("1.0.0/{PAD}"));
-    let a = app(&tmp.path().join("data"), &env, None, false);
+    let a = app(&tmp.path().join("data"), &env);
     let r = Router::new(Shared(a.service.clone())).validate_responses(true);
     call(&r, "speech:download", json!({})).await;
     until("error", async || {
@@ -289,62 +287,29 @@ async fn a_damaged_download_is_an_error_with_retry() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn the_search_model_download_failing_leaves_search_full_text_only() {
-    let tmp = tempfile::tempdir().unwrap();
-    let env = speech_env(tmp.path()).await; // serves no model files: every fetch is a 404
-    let a = app(&tmp.path().join("data"), &env, Some(env.srv.base.clone()), true);
-    let r = Router::new(Shared(a.service.clone())).validate_responses(true);
-    assert_eq!(
-        call(&r, "search:model-status", json!(null)).await["state"],
-        "missing"
-    );
-    a.search.start();
-    until("embedder settled", async || {
-        matches!(a.search.embedder.state(), qrtz_search::EmbedderState::Unavailable)
-    })
-    .await;
-    let s = call(&r, "search:model-status", json!(null)).await;
-    assert_eq!(s["state"], "error", "{s}");
-    assert_eq!(s["error"], "couldn't download the search model");
-    let model_dir = tmp.path().join("data/models/all-MiniLM-L6-v2");
-    assert_eq!(mode(&model_dir), 0o700);
-    // Retry from settings: still failing, still an error (and never a panic or a hang).
-    call(&r, "search:model-download", json!(null)).await;
-    until("retry settled", async || {
-        call(&r, "search:model-status", json!(null)).await["state"] == "error"
-    })
-    .await;
-    a.search.shutdown();
-    a.runtime.kill();
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn with_search_model_download_off_nothing_is_fetched() {
+async fn an_old_config_with_the_search_model_settings_loads_and_nothing_is_fetched() {
+    // The "ask" chat and its on-device search model are gone (search is full-text): the old keys are dropped
+    // and the model is never downloaded.
     let tmp = tempfile::tempdir().unwrap();
     let env = speech_env(tmp.path()).await;
     let data = tmp.path().join("data");
     std::fs::create_dir_all(&data).unwrap();
     std::fs::write(
         data.join("config.json"),
-        br#"{"note":{"searchModelDownload":false}}"#,
+        br#"{"note":{"searchModelDownload":true,"backgroundIndexing":true,"autoSummarize":false}}"#,
     )
     .unwrap();
-    let a = app(&data, &env, Some(env.srv.base.clone()), true);
+    let a = app(&data, &env);
     let r = Router::new(Shared(a.service.clone())).validate_responses(true);
-    a.search.start();
-    until("embedder settled", async || {
-        matches!(a.search.embedder.state(), qrtz_search::EmbedderState::Unavailable)
-    })
-    .await;
-    assert_eq!(
-        call(&r, "search:model-status", json!(null)).await["state"],
-        "missing"
-    );
+    let cfg = a.service.config();
+    assert_eq!(cfg["note"]["autoSummarize"], false, "{cfg}");
+    assert!(cfg["note"].get("searchModelDownload").is_none(), "{cfg}");
+    assert!(cfg["note"].get("backgroundIndexing").is_none(), "{cfg}");
+    let _ = call(&r, "speech:status", json!(null)).await;
     let hits = env.srv.faults.lock().unwrap().hits.clone();
     assert!(
         hits.keys().all(|k| k.starts_with("denylist")),
         "no model fetch: {hits:?}"
     );
-    a.search.shutdown();
     a.runtime.kill();
 }

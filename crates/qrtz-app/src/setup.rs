@@ -1,10 +1,9 @@
-//! Speech and search-model setup (ADR 0046 §7, ADR 0061): what onboarding and the settings "speech" section show
+//! Speech setup (ADR 0046 §7, ADR 0061): what onboarding and the settings "speech" section show
 //! and do. The speech module downloads in the background with pause, resume and retry, survives a quit (a
 //! marker file in the speech store resumes it on the next launch, from the `.part` files), checks for the newest
-//! release, re-downloads and deletes. The on-device search model downloads once when missing. No engine or model
-//! names leave this module: a version, a size and a state.
+//! release, re-downloads and deletes. No engine or model names leave this module: a version, a size and a state.
 use crate::ports::SetupPort;
-use crate::service::{Events, SharedConfig};
+use crate::service::Events;
 use crate::speech::SpeechSetup;
 use async_trait::async_trait;
 use qrtz_ipc::{AppError, ErrorCode};
@@ -361,147 +360,10 @@ impl SpeechManager {
     }
 }
 
-// ------------------------------------------------------------------------------------------------ search model
-
-/// The on-device search model (ADR 0050): downloaded once into the model store when missing and
-/// `note.searchModelDownload` is on. The embedder loads it at launch; one fetched later from settings or onboarding
-/// is loaded at once with `LazyEmbedder::reload` (ADR 0064): `ready` only once the new model serves.
-pub struct SearchModel {
-    pub dir: PathBuf,
-    pub base: String,
-    events: Events,
-    st: Mutex<(&'static str, Option<String>)>,
-    running: AtomicBool,
-    /// `Some(ok)` once a download attempt settled (`None` while none has).
-    done: tokio::sync::watch::Sender<Option<bool>>,
-}
-
-impl SearchModel {
-    pub fn new(dir: PathBuf, base: String, events: Events) -> Arc<Self> {
-        let ok = qrtz_search::minilm::verify_dir(&dir).is_ok();
-        Arc::new(Self {
-            dir,
-            base,
-            events,
-            st: Mutex::new((if ok { "ready" } else { "missing" }, None)),
-            running: AtomicBool::new(false),
-            done: tokio::sync::watch::Sender::new(ok.then_some(true)),
-        })
-    }
-
-    pub fn status(&self) -> Value {
-        let (state, error) = self.st.lock().unwrap().clone();
-        let mut v = json!({"state": state});
-        if let Some(e) = error {
-            v["error"] = json!(e);
-        }
-        v
-    }
-
-    fn set(&self, state: &'static str, error: Option<String>) {
-        *self.st.lock().unwrap() = (state, error);
-        self.events.emit("search:model-status", self.status());
-    }
-
-    /// The embedder's loader: a missing model is downloaded first (when allowed), then loaded. A failure leaves
-    /// search full-text only for this run.
-    pub fn loader(self: &Arc<Self>, allow_download: bool) -> qrtz_search::embedder::Loader {
-        let me = self.clone();
-        Box::new(move || {
-            let me = me.clone();
-            Box::pin(async move {
-                if qrtz_search::minilm::verify_dir(&me.dir).is_err() {
-                    if !allow_download {
-                        return Err("search model not downloaded".to_string());
-                    }
-                    me.run().await?;
-                }
-                let r = (qrtz_search::minilm::loader(me.dir.clone()))().await;
-                match &r {
-                    Ok(_) => me.set("ready", None),
-                    Err(e) => {
-                        tracing::warn!(err = %e, "search model load failed");
-                        me.set("error", Some("couldn't load the search model".into()));
-                    }
-                }
-                r
-            })
-        })
-    }
-
-    /// Settings/onboarding "download": fetch the model, then reload the embedder so it serves at once (the
-    /// status goes `downloading` → `loading` → `ready`, or `error`).
-    pub fn download(self: &Arc<Self>, embedder: Arc<qrtz_search::LazyEmbedder>) -> Value {
-        if self.st.lock().unwrap().0 != "ready" && !self.running.load(Ordering::SeqCst) {
-            let me = self.clone();
-            tokio::spawn(async move {
-                if me.run().await.is_ok() && !embedder.reload().await {
-                    // The loader already said why (load error); a loaderless build has nothing to reload.
-                    if me.st.lock().unwrap().0 != "error" {
-                        me.set("error", Some("couldn't load the search model".into()));
-                    }
-                }
-            });
-        }
-        let mut v = self.status();
-        if self.running.load(Ordering::SeqCst) {
-            v["state"] = json!("downloading");
-        }
-        v
-    }
-
-    async fn run(&self) -> Result<(), String> {
-        if self.running.swap(true, Ordering::SeqCst) {
-            // Another caller is downloading: wait for it.
-            let mut rx = self.done.subscribe();
-            rx.mark_unchanged();
-            let r = rx
-                .wait_for(|d| d.is_some())
-                .await
-                .map(|d| *d == Some(true))
-                .unwrap_or(false);
-            return if r {
-                Ok(())
-            } else {
-                Err("search model download failed".into())
-            };
-        }
-        self.done.send_replace(None);
-        self.set("downloading", None);
-        let r = async {
-            let client = reqwest::Client::builder()
-                .connect_timeout(Duration::from_secs(15))
-                // N100: plain http only to a real loopback host (not `http://127.0.0.1.example.com`).
-                .https_only(!qrtz_llm::steps::is_loopback_url(&self.base))
-                .build()
-                .map_err(|e| e.to_string())?;
-            crate::private_dir(&self.dir).map_err(|e| e.to_string())?;
-            qrtz_search::minilm::download(&client, &self.base, &self.dir).await
-        }
-        .await;
-        self.running.store(false, Ordering::SeqCst);
-        match &r {
-            Ok(()) => {
-                self.done.send_replace(Some(true));
-                self.set("loading", None);
-            }
-            Err(e) => {
-                self.done.send_replace(Some(false));
-                tracing::warn!(err = %e, "search model download failed");
-                self.set("error", Some("couldn't download the search model".into()));
-            }
-        }
-        r
-    }
-}
-
 // ------------------------------------------------------------------------------------------------ port
 
 pub struct Setup {
     pub speech: Arc<SpeechManager>,
-    pub model: Arc<SearchModel>,
-    pub embedder: Arc<qrtz_search::LazyEmbedder>,
-    pub config: SharedConfig,
 }
 
 #[async_trait]
@@ -514,8 +376,6 @@ impl SetupPort for Setup {
             "speech:pause" => Ok(self.speech.pause()),
             "speech:resume" => self.speech.resume(),
             "speech:delete" => self.speech.delete(),
-            "search:model-status" => Ok(self.model.status()),
-            "search:model-download" => Ok(self.model.download(self.embedder.clone())),
             _ => Err(AppError::new(ErrorCode::UnknownChannel, channel.to_owned())),
         }
     }
@@ -523,7 +383,7 @@ impl SetupPort for Setup {
 
 #[cfg(test)]
 mod tests {
-    /// N100: the speech bundle and search model downloads allow plain http only to a real loopback host, and the
+    /// N100: the speech bundle download allows plain http only to a real loopback host, and the
     /// qrtz-speech copy of the check matches qrtz-llm's.
     #[test]
     fn the_loopback_checks_agree() {

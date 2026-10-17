@@ -74,7 +74,6 @@ fn app_with(dir: &Path, clip: Arc<Clip>, helper: bool, knobs: DevKnobs) -> Built
         talk: None,
         speech: None,
         steps: None,
-        embedder: Some(qrtz_search::LazyEmbedder::none()),
         knobs,
     })
     .unwrap()
@@ -126,9 +125,6 @@ async fn a_dictation_through_the_tauri_backend_streams_inserts_and_lands_in_hist
     call(&r, "talk:start", Value::Null).await;
     let v = until_phase(&r, "listening").await;
     assert!(v["id"].is_string(), "{v}");
-    // N86: a live dictation holds the live-work counter (background indexing yields).
-    let live = a.live.clone();
-    until("live work held", || live.busy()).await;
     // The mock's growing partials stream into the view.
     let mut partial = String::new();
     for _ in 0..200 {
@@ -147,7 +143,6 @@ async fn a_dictation_through_the_tauri_backend_streams_inserts_and_lands_in_hist
 
     call(&r, "talk:stop", Value::Null).await;
     until_phase(&r, "idle").await;
-    until("live work released", || !live.busy()).await;
 
     let h = call(&r, "talk:history", Value::Null).await;
     let entries = h.as_array().expect("history list");
@@ -209,7 +204,6 @@ async fn without_a_helper_a_dictation_fails_cleanly_and_holds_no_live_work() {
     assert!(v["ok"] == false || phase == "error" || phase == "idle", "{v}");
     tokio::time::sleep(Duration::from_millis(200)).await;
     assert_ne!(call(&r, "talk:state", Value::Null).await["phase"], "listening");
-    assert!(!a.live.busy());
 }
 
 /// A one-reply-per-connection OpenRouter stand-in: records each request body, answers a chat completion.

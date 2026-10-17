@@ -12,7 +12,7 @@ import { Icon, type IconName } from './Icon';
 import { Button } from './Button';
 import { Input } from './Input';
 import { Dialog } from './Overlay';
-import { IconButton, Chip } from './Layout';
+import { IconButton } from './Layout';
 import { transition, typeStyle } from './tokens';
 
 /** One transcript line (memoized; content-visibility keeps 2-hour transcripts fast). */
@@ -281,66 +281,7 @@ export function SummaryBlock({
   );
 }
 
-/** Chat transcript pieces. */
-export function ChatQuestion({ children }: { children: ReactNode }) {
-  return (
-    <Text variant="label" data-testid="chat-question">
-      {children}
-    </Text>
-  );
-}
-
-export function ChatAnswer({
-  text,
-  sources,
-  notice,
-  footer,
-}: {
-  text: string;
-  sources: { label: string; title: string; onOpen: () => void }[];
-  notice?: ReactNode;
-  footer?: string;
-}) {
-  const t = useTheme();
-  return (
-    <div
-      data-testid="chat-answer"
-      style={{
-        display: 'grid',
-        gap: t.space[2],
-        padding: t.space[3],
-        border: `1px solid ${t.color.border}`,
-        borderRadius: t.radius.lg,
-      }}
-    >
-      {notice}
-      <Text as="p" style={{ whiteSpace: 'pre-wrap' }}>
-        {text}
-      </Text>
-      {sources.length ? (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: t.space[1] }}>
-          {sources.map((s, i) => (
-            <Chip
-              key={i}
-              onClick={s.onOpen}
-              title={s.title}
-              data-testid="chat-source"
-            >
-              {s.label}
-            </Chip>
-          ))}
-        </div>
-      ) : null}
-      {footer ? (
-        <Text variant="caption" muted>
-          {footer}
-        </Text>
-      ) : null}
-    </div>
-  );
-}
-
-/** One-line input + submit button (chat, search). */
+/** One-line input + submit button. */
 export function Composer({
   value,
   onChange,

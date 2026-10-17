@@ -10,11 +10,10 @@ import {
 } from '../note/contract';
 import { MeetingSummary } from '../note/summary';
 import { LiveTranscript, PipelineView, StepId } from '../note/lifecycle';
-import { ChatAnswer, ChatTurn } from '../note/chat';
 import { MeetingNote } from '../note/notes';
 import { SummaryTemplateId } from '../note/templates';
 import { DictionaryEntry, TalkEntry, TalkView } from '../talk/contract';
-import { SearchModelStatus, SpeechSetupStatus } from '../speech/setup';
+import { SpeechSetupStatus } from '../speech/setup';
 
 /** Bump when the envelope shape changes (not when a channel changes). */
 export const PROTOCOL_VERSION = 1;
@@ -200,16 +199,6 @@ export const ipcContract = {
     request: z.object({ enabled: z.boolean() }),
     response: z.object({ autoRecord: z.boolean() }),
   }),
-  'note:chat': defineChannel({
-    version: 1,
-    capability: 'note.read',
-    request: z.object({
-      question: z.string().min(1).max(2000),
-      meetingId: z.string().max(64).optional(),
-      history: z.array(ChatTurn).max(20).optional(),
-    }),
-    response: ChatAnswer,
-  }),
   'note:rename-speaker': defineChannel({
     version: 1,
     capability: 'note.write',
@@ -375,7 +364,7 @@ export const ipcContract = {
     request: z.object({ entries: z.array(DictionaryEntry).max(500) }),
     response: z.array(DictionaryEntry),
   }),
-  // --- qrtz speech setup (ADR 0046 §7) and the search model ---
+  // --- qrtz speech setup (ADR 0046 §7) ---
   'speech:status': defineChannel({
     version: 1,
     capability: 'speech.read',
@@ -414,18 +403,6 @@ export const ipcContract = {
     capability: 'speech.manage',
     request: z.void(),
     response: SpeechSetupStatus,
-  }),
-  'search:model-status': defineChannel({
-    version: 1,
-    capability: 'speech.read',
-    request: z.void(),
-    response: SearchModelStatus,
-  }),
-  'search:model-download': defineChannel({
-    version: 1,
-    capability: 'speech.manage',
-    request: z.void(),
-    response: SearchModelStatus,
   }),
 } as const satisfies Record<string, ChannelDef>;
 

@@ -597,7 +597,7 @@ channel handler is a one-liner onto these crates:
 | `data:import-backup`                        | unzip/verify (shell) + `db.import_from(path, audio_map)`                                                                                                                                                                       | `note:changed {id:"*"}`                                                        |
 | _global shortcut / tray toggle_             | `runtime.toggle()`                                                                                                                                                                                                             | as start/stop                                                                  |
 
-**Not in these crates (IPC wiring is qrtz-app):** `note:chat` answer is `qrtz_llm::chat` / retrieval `qrtz_search::retrieve`; app still stubs until wired. `note:set-auto-record` / `config:*` / `secrets:*` /
+**Not in these crates (IPC wiring is qrtz-app):** `note:chat` was removed with the "ask" chat (ADR 0072). `note:set-auto-record` / `config:*` / `secrets:*` /
 `app:get-info` / `helper:status` / `hud:set-expanded` (shell), and the `talk:*` channels (talk worker; its
 contract isn't on `main` yet).
 
@@ -877,6 +877,8 @@ let steps = Arc::new(qrtz_llm::LlmSteps::new(
 
 ### 9.1 `note:chat` answer (`qrtz_llm::chat`, N89, ADR 0059)
 
+> Removed from the app with the "ask" chat (ADR 0072): nothing calls `answer_chat` any more.
+
 ```rust
 // Keep the concrete LlmSteps next to the dyn StepExecutor (same instance: same provider, keys, local-only, client).
 let llm_steps = Arc::new(qrtz_llm::LlmSteps::new(db.clone(), core, now, config_fn, secrets));   // or ::on_device
@@ -947,6 +949,9 @@ entry is a SQLite error ("file is not a database"); a newer schema is `Validatio
 6. E2E: `QRTZ_BACKUP_PATH` / `QRTZ_EXPORT_DIR` drive the existing Electron specs unchanged.
 
 ## 10. `qrtz-search` (index step, backfill, chat retrieval, local MiniLM; ADRs 0049, 0050)
+
+> Since ADR 0072 the app does not use this crate: search is full-text (`NotesRepo::search`, qrtz-storage), the index
+> step is `CoreSteps`' no-op, and there is no embedder, model download or backfill.
 
 ```rust
 // Local all-MiniLM-L6-v2 (feature `minilm`, default). `dir` holds config.json, tokenizer.json, model.safetensors

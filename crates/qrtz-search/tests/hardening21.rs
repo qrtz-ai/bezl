@@ -1,5 +1,6 @@
 //! Cycle 21: the search-model download is bounded (N99) and a panicking embedder load does not wedge reloads
 //! (N102). Every server here is a local scripted socket; nothing touches the network.
+#![cfg_attr(not(feature = "minilm-download"), allow(unused_imports))]
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::sync::atomic::{AtomicUsize, Ordering};

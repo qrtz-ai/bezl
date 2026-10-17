@@ -31,7 +31,6 @@ import {
 import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
 import { PLATFORM_LABEL, fmtClock, fmtDate } from './format';
 import { captureNoticeLines, liveCaptureStatus } from './capture';
-import { ChatPanel } from './ChatPanel';
 import { Speakers } from './Speakers';
 import { Notes } from './Notes';
 import {
@@ -50,7 +49,7 @@ export function MeetingDetail({
   id: string;
   /** Asks the parent to delete (after the user confirmed); the parent offers Undo. */
   onDelete: (title: string) => void;
-  /** Open on the transcript at this moment (e.g. from a chat citation). */
+  /** Open on the transcript at this moment. */
   seekTo?: { ms: number; nonce: number };
 }) {
   const qrtz = useQrtz();
@@ -61,7 +60,7 @@ export function MeetingDetail({
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
   // The transcript is front and center: it is the default view during and after a recording.
-  const [tab, setTab] = useState<'summary' | 'notes' | 'transcript' | 'ask'>(
+  const [tab, setTab] = useState<'summary' | 'notes' | 'transcript'>(
     'transcript',
   );
   const session = useSession();
@@ -310,20 +309,11 @@ export function MeetingDetail({
           { id: 'transcript', label: 'transcript' },
           { id: 'summary', label: 'summary' },
           { id: 'notes', label: 'notes' },
-          { id: 'ask', label: 'ask' },
         ]}
         value={tab}
         onChange={setTab}
       />
-      {tab === 'ask' ? (
-        <ChatPanel
-          meetingId={id}
-          onOpenSource={(_m, ms) => {
-            setTab('transcript');
-            seek(ms);
-          }}
-        />
-      ) : tab === 'notes' ? (
+      {tab === 'notes' ? (
         <Notes meetingId={id} />
       ) : tab === 'summary' ? (
         summary ? (

@@ -49,7 +49,6 @@ fn app(dir: &Path, helper: bool) -> BuiltApp {
         talk: None,
         speech: None,
         steps: None,
-        embedder: Some(qrtz_search::LazyEmbedder::none()),
         knobs: DevKnobs::default(),
     })
     .unwrap()

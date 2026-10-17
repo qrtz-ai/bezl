@@ -83,7 +83,6 @@ pub struct AppService {
     shell: Arc<dyn ShellHooks>,
     helper: Option<Supervisor>,
     pub events: Events,
-    chat: std::sync::OnceLock<Arc<dyn crate::ports::ChatPort>>,
     setup: std::sync::OnceLock<Arc<dyn crate::ports::SetupPort>>,
     speech_tap: std::sync::OnceLock<SpeechTap>,
     /// The last helper status every port has seen (`on_helper_status` finished), for readiness checks.
@@ -110,25 +109,20 @@ impl AppService {
             shell: d.shell,
             helper: d.helper,
             events: d.events,
-            chat: std::sync::OnceLock::new(),
             setup: std::sync::OnceLock::new(),
             speech_tap: std::sync::OnceLock::new(),
             delivered: Default::default(),
         })
     }
-    /// Plug in note:chat (set once by `build_app`; without it note:chat is `E_UNAVAILABLE`).
     /// Speech routing sees every helper line first (`speech.attached` / `speech.attach.rejected`, N55; the
     /// part boundaries for note speech; the helper's own `asr` lines are dropped once the module transcribes).
     pub fn set_speech_tap(&self, tap: SpeechTap) {
         let _ = self.speech_tap.set(tap);
     }
-    /// Plug in speech/search-model setup (set once by `build_app`; without it the status channels answer their idle
+    /// Plug in speech setup (set once by `build_app`; without it the status channels answer their idle
     /// samples and the actions are `E_UNAVAILABLE`).
     pub fn set_setup(&self, setup: Arc<dyn crate::ports::SetupPort>) {
         let _ = self.setup.set(setup);
-    }
-    pub fn set_chat(&self, chat: Arc<dyn crate::ports::ChatPort>) {
-        let _ = self.chat.set(chat);
     }
 
     pub fn config(&self) -> Value {
@@ -281,13 +275,6 @@ impl AppService {
                     .set_hud_expanded(p["expanded"].as_bool().unwrap_or(false));
                 Ok(json!({"expanded": e}))
             }
-            "note:chat" => match self.chat.get() {
-                Some(c) => c.chat(p).await,
-                None => Err(
-                    AppError::new(ErrorCode::Unavailable, "chat is not available in this build")
-                        .retryable(false),
-                ),
-            },
             _ => Err(no_handler(channel)),
         }
     }

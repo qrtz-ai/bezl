@@ -189,15 +189,6 @@ async fn privacy_local_only_never_calls_the_cloud_llm_and_excluded_apps_are_not_
     );
     assert!(d["summary"]["llmError"].is_null(), "{d}");
     assert_eq!(llm.hits(), 0);
-    // Chat stays on-device too.
-    let ans = a
-        .note(
-            "note:chat",
-            json!({"question": "What did we decide about the launch?", "meetingId": id}),
-        )
-        .await;
-    assert!(ans["llmError"].is_null(), "{ans}");
-    assert_eq!(llm.hits(), 0);
     a.quit().await;
 
     // Excluded app: the Zoom meeting is never detected (no prompt); the log says why.

@@ -31,7 +31,7 @@ bun start                    # tauri dev: the Rust core + the React renderer wit
 - **Live transcript:** on-device streaming ASR with speaker names, a floating mini HUD (pause, notes, stop), a ⌘⇧R toggle and a menu bar item.
 - **Live notes (Granola-style):** timestamped notes from the HUD or the Notes tab. They shape the summary, and TODOs become action items.
 - **After the call:** summary, action items and Q&A in five templates (General, 1:1, Standup, Sales, Interview). It uses OpenRouter, or Ollama or the extractive fallback when local-only is on.
-- **Your archive:** full-text and semantic search (on-device MiniLM), chat with one meeting or all of them (citations jump to the moment), speaker rename and merge, Markdown export, and delete with confirmation and Undo.
+- **Your archive:** full-text search, speaker rename and merge, Markdown export, and delete with confirmation and Undo.
 - **Privacy:** pause capture (⌘⇧P), excluded apps, a "never send to the cloud" switch, and optional audio retention.
 - **Backup:** one streamed zip with a sha256 manifest and a progress bar. Import verifies everything and never overwrites.
 - **Built to fail soft:** if the helper crashes, the audio and transcript are kept. LLM failures fall back to the on-device summary with a Retry button. Settings sections load independently.
@@ -42,7 +42,7 @@ bun start                    # tauri dev: the Rust core + the React renderer wit
 ┌──────────── Tauri 2 shell (apps/desktop/src-tauri) ────────────┐   JSON lines + fds   ┌──── qrtz-helper (Swift) ────┐
 │ qrtz-app: capability-checked IPC router (contracts/*.json)      │ ◀──────────────────▶ │ AX · ScreenCaptureKit /      │
 │ qrtz-lifecycle · qrtz-storage (SQLite+FTS5) · qrtz-llm ·        │                      │ Core Audio taps · echo gate  │
-│ qrtz-search (MiniLM via candle) · qrtz-talk · qrtz-backup       │                      └──────────────┬───────────────┘
+│ qrtz-talk · qrtz-backup                                         │                      └──────────────┬───────────────┘
 └──────┬──────────────────────────────────────┬──────────────────┘                     PCM over FIFOs │
        │ invoke / events                      │ spawn, confined (Landlock+seccomp / sandbox)        ▼
 ┌──────▼───────────────┐              ┌───────▼──────────────────────────────────────────────────────────┐
@@ -67,12 +67,12 @@ bun start                    # tauri dev: the Rust core + the React renderer wit
 
 ## Accounts needed
 
-| Account                                                                        | Used for                                                        | Status                                  |
-| ------------------------------------------------------------------------------ | --------------------------------------------------------------- | --------------------------------------- |
-| Apple Developer ID (plus an app-specific password or API key for notarization) | Signing, notarization, auto-update                              | Needed before the first release         |
-| OpenRouter API key                                                             | Cloud summaries and chat (`QRTZ_SECRET_OPENROUTER` or Settings) | Optional; on-device fallback without it |
-| Hugging Face token                                                             | Only if model downloads get rate-limited                        | Optional                                |
-| Update-feed host (R2, S3 or GitHub Releases)                                   | `QRTZ_UPDATE_FEED_URL` at build time                            | Later; off by default                   |
+| Account                                                                        | Used for                                               | Status                                  |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------ | --------------------------------------- |
+| Apple Developer ID (plus an app-specific password or API key for notarization) | Signing, notarization, auto-update                     | Needed before the first release         |
+| OpenRouter API key                                                             | Cloud summaries (`QRTZ_SECRET_OPENROUTER` or Settings) | Optional; on-device fallback without it |
+| Hugging Face token                                                             | Only if model downloads get rate-limited               | Optional                                |
+| Update-feed host (R2, S3 or GitHub Releases)                                   | `QRTZ_UPDATE_FEED_URL` at build time                   | Later; off by default                   |
 
 ## Commands
 

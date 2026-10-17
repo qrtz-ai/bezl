@@ -4,7 +4,6 @@ import {
   Callout,
   CaptureStatus,
   EmptyState,
-  Heading,
   IconButton,
   Input,
   MeetingRow,
@@ -25,7 +24,6 @@ import { requestNavigate } from '@qrtz/core';
 import { Hud } from './Hud';
 import { isCapturingPhase, useSession } from './useRecording';
 import { MeetingDetail } from './MeetingDetail';
-import { ChatPanel } from './ChatPanel';
 import { fmtDate } from './format';
 
 const UNDO_MS = 6000;
@@ -41,10 +39,6 @@ export default function NoteView() {
   const [searching, setSearching] = useState(false);
   // Paging: render PAGE meetings at a time; "Show more" grows the window (list stays cheap with hundreds).
   const [pages, setPages] = useState(1);
-  const [askAll, setAskAll] = useState(false);
-  const [seekTo, setSeekTo] = useState<{ ms: number; nonce: number } | null>(
-    null,
-  );
   const [hasMore, setHasMore] = useState(false);
   const [items, setItems] = useState<
     {
@@ -103,10 +97,7 @@ export default function NoteView() {
     ? session.meetingId
     : undefined;
   useEffect(() => {
-    if (liveId) {
-      setSelected(liveId);
-      setAskAll(false);
-    }
+    if (liveId) setSelected(liveId);
   }, [liveId]);
 
   const refresh = useCallback(() => {
@@ -157,16 +148,6 @@ export default function NoteView() {
                     setSearching(!searching);
                   }}
                 />
-                <IconButton
-                  icon="ask"
-                  label="ask all meetings"
-                  pressed={askAll && !selected}
-                  data-testid="note-ask-all"
-                  onClick={() => {
-                    setAskAll(true);
-                    setSelected(null);
-                  }}
-                />
               </>
             }
           >
@@ -215,10 +196,7 @@ export default function NoteView() {
                   }
                   {...(hit ? { snippet: hit.snippet } : {})}
                   selected={selected === meeting.id}
-                  onSelect={() => {
-                    setSelected(meeting.id);
-                    setSeekTo(null);
-                  }}
+                  onSelect={() => setSelected(meeting.id)}
                 />
               ))
             )}
@@ -282,21 +260,10 @@ export default function NoteView() {
           }
           onOpen={(id) => setSelected(id)}
         />
-        {askAll && !selected ? (
-          <Stack gap={3} data-testid="ask-all">
-            <Heading level={2}>ask</Heading>
-            <ChatPanel
-              onOpenSource={(m, ms) => {
-                setSelected(m);
-                setSeekTo({ ms, nonce: Date.now() });
-              }}
-            />
-          </Stack>
-        ) : selected ? (
+        {selected ? (
           <MeetingDetail
             id={selected}
             onDelete={(title) => requestDelete(selected, title)}
-            {...(seekTo ? { seekTo } : {})}
           />
         ) : isCapturingPhase(session.phase) ? null : (
           <EmptyState title="no meeting selected" />

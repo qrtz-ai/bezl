@@ -72,7 +72,6 @@ fn app_with(
         talk: None,
         speech: None,
         steps: None,
-        embedder: Some(qrtz_search::LazyEmbedder::none()),
         knobs: DevKnobs {
             retry_scale: Some(0.001),
             ..Default::default()

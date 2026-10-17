@@ -198,9 +198,7 @@ test('note and talk point to settings while speech is not downloaded', async ({
   });
 });
 
-test('settings speech section: re-download, delete, search model with retry', async ({
-  page,
-}) => {
+test('settings speech section: re-download, delete', async ({ page }) => {
   const errors = watch(page);
   await page.goto('/?dev=1&mockSpeed=40');
   await tab(page, 'settings').click();
@@ -215,15 +213,6 @@ test('settings speech section: re-download, delete, search model with retry', as
   });
   await sec.getByTestId('speech-delete').click();
   await expect(sec.getByTestId('speech-download')).toBeVisible();
-  // the search model: missing → download fails once → retry → ready (reloaded, no restart)
-  await page.goto('/?dev=1&mockFail=model-once&mockSpeed=40&mockModel=missing');
-  await tab(page, 'settings').click();
-  await page.getByTestId('search-model-download').click();
-  await expect(page.getByTestId('search-model-error')).toBeVisible();
-  await page.getByTestId('search-model-download').click();
-  await expect(page.getByTestId('search-model-ready')).toBeVisible({
-    timeout: 10_000,
-  });
   await clean(page, 'settings-speech');
   expect(errors).toEqual([]);
 });

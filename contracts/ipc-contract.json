@@ -4196,109 +4196,6 @@
         "additionalProperties": false
       }
     },
-    "note:chat": {
-      "version": 1,
-      "capability": "note.read",
-      "request": {
-        "optional": false,
-        "schema": {
-          "type": "object",
-          "properties": {
-            "question": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000
-            },
-            "meetingId": {
-              "type": "string",
-              "maxLength": 64
-            },
-            "history": {
-              "maxItems": 20,
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "role": {
-                    "type": "string",
-                    "enum": [
-                      "user",
-                      "assistant"
-                    ]
-                  },
-                  "content": {
-                    "type": "string",
-                    "maxLength": 8000
-                  }
-                },
-                "required": [
-                  "role",
-                  "content"
-                ]
-              }
-            }
-          },
-          "required": [
-            "question"
-          ]
-        }
-      },
-      "response": {
-        "type": "object",
-        "properties": {
-          "answer": {
-            "type": "string"
-          },
-          "sources": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "meetingId": {
-                  "type": "string"
-                },
-                "title": {
-                  "type": "string"
-                },
-                "startedAt": {
-                  "type": "number"
-                },
-                "startMs": {
-                  "type": "number"
-                },
-                "speaker": {
-                  "type": "string"
-                },
-                "text": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "meetingId",
-                "title",
-                "startedAt",
-                "startMs",
-                "text"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "provider": {
-            "type": "string"
-          },
-          "llmError": {
-            "type": "string",
-            "maxLength": 500
-          }
-        },
-        "required": [
-          "answer",
-          "sources",
-          "provider"
-        ],
-        "additionalProperties": false
-      }
-    },
     "note:rename-speaker": {
       "version": 1,
       "capability": "note.write",
@@ -7013,64 +6910,6 @@
         ],
         "additionalProperties": false
       }
-    },
-    "search:model-status": {
-      "version": 1,
-      "capability": "speech.read",
-      "request": {
-        "void": true
-      },
-      "response": {
-        "type": "object",
-        "properties": {
-          "state": {
-            "type": "string",
-            "enum": [
-              "missing",
-              "downloading",
-              "loading",
-              "ready",
-              "error"
-            ]
-          },
-          "error": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "state"
-        ],
-        "additionalProperties": false
-      }
-    },
-    "search:model-download": {
-      "version": 1,
-      "capability": "speech.manage",
-      "request": {
-        "void": true
-      },
-      "response": {
-        "type": "object",
-        "properties": {
-          "state": {
-            "type": "string",
-            "enum": [
-              "missing",
-              "downloading",
-              "loading",
-              "ready",
-              "error"
-            ]
-          },
-          "error": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "state"
-        ],
-        "additionalProperties": false
-      }
     }
   },
   "events": {
@@ -8507,31 +8346,6 @@
         ],
         "additionalProperties": false
       }
-    },
-    "search:model-status": {
-      "capability": "speech.read",
-      "payload": {
-        "type": "object",
-        "properties": {
-          "state": {
-            "type": "string",
-            "enum": [
-              "missing",
-              "downloading",
-              "loading",
-              "ready",
-              "error"
-            ]
-          },
-          "error": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "state"
-        ],
-        "additionalProperties": false
-      }
     }
   },
   "manifests": [
@@ -8609,8 +8423,6 @@
         "detectPrompt": true,
         "notifyNoAudio": true,
         "autoSummarize": true,
-        "backgroundIndexing": true,
-        "searchModelDownload": true,
         "llmProvider": "openrouter",
         "llmModel": "",
         "floatingHud": true,
@@ -8732,14 +8544,6 @@
               "default": true,
               "type": "boolean"
             },
-            "backgroundIndexing": {
-              "default": true,
-              "type": "boolean"
-            },
-            "searchModelDownload": {
-              "default": true,
-              "type": "boolean"
-            },
             "llmProvider": {
               "default": "openrouter",
               "type": "string",
@@ -8784,8 +8588,6 @@
             "detectPrompt",
             "notifyNoAudio",
             "autoSummarize",
-            "backgroundIndexing",
-            "searchModelDownload",
             "llmProvider",
             "llmModel",
             "floatingHud",

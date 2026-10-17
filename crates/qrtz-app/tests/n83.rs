@@ -1,7 +1,6 @@
-//! N83: the Tauri backend runs the full step chain, SearchSteps (index) → LlmSteps (the configured provider) →
-//! CoreSteps, end to end through `build_app` and the router with the Rust mock helper. The provider is a local
+//! N83: the Tauri backend runs the full step chain, LlmSteps (the configured provider) → CoreSteps (finalize;
+//! index is a no-op since search is full-text), end to end through `build_app` and the router with the Rust mock helper. The provider is a local
 //! mock OpenRouter (never the real network) reached through the `QRTZ_LLM_BASE_URL` dev knob.
-use async_trait::async_trait;
 use qrtz_app::ports::{Notice, ShellHooks};
 use qrtz_app::runtime_port::HelperAvailability;
 use qrtz_app::storage_port::NoStorageShell;
@@ -9,8 +8,6 @@ use qrtz_app::wiring::{build_app, AppBuild, BuiltApp, DevKnobs};
 use qrtz_app::{AppInfo, Shared};
 use qrtz_helper_bridge::{ProcessSpawn, SupervisorOptions};
 use qrtz_ipc::Router;
-use qrtz_model::LifecycleError;
-use qrtz_search::{Embedder, LazyEmbedder};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -105,18 +102,6 @@ fn completion(content: &Value) -> String {
     http(200, "application/json", &body)
 }
 
-/// A deterministic 4-d embedder (the index step and the backfill write vectors with its id).
-struct Fake;
-#[async_trait]
-impl Embedder for Fake {
-    fn id(&self) -> &str {
-        "fake-4d"
-    }
-    async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, LifecycleError> {
-        Ok(texts.iter().map(|_| vec![0.5, 0.5, 0.5, 0.5]).collect())
-    }
-}
-
 fn mock_helper_bin() -> PathBuf {
     let exe = std::env::current_exe().unwrap();
     let p = exe.parent().unwrap().parent().unwrap().join("qrtz-mock-helper");
@@ -137,7 +122,7 @@ fn mock_helper_bin() -> PathBuf {
     p
 }
 
-fn app(dir: &Path, llm_base: &str, embedder: Arc<LazyEmbedder>) -> BuiltApp {
+fn app(dir: &Path, llm_base: &str) -> BuiltApp {
     build_app(AppBuild {
         info: AppInfo {
             name: "qrtz".into(),
@@ -158,7 +143,6 @@ fn app(dir: &Path, llm_base: &str, embedder: Arc<LazyEmbedder>) -> BuiltApp {
         talk: None,
         speech: None,
         steps: None,
-        embedder: Some(embedder),
         knobs: DevKnobs {
             retry_scale: Some(0.001),
             llm_base_url: Some(llm_base.into()),
@@ -214,7 +198,7 @@ async fn record_one(a: &BuiltApp, r: &Router<Shared>, title: &str) -> (String, V
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn an_openrouter_summary_and_the_index_step_through_the_tauri_backend() {
+async fn an_openrouter_summary_through_the_tauri_backend_and_full_text_search() {
     let tmp = tempfile::tempdir().unwrap();
     let mock = MockLlm::default();
     let base = mock.start().await;
@@ -223,15 +207,10 @@ async fn an_openrouter_summary_and_the_index_step_through_the_tauri_backend() {
         "actionItems": [{"text": "ship it", "owner": "bobs"}],
         "qa": []
     })));
-    let a = app(
-        &tmp.path().join("data"),
-        &base,
-        LazyEmbedder::ready_with(Arc::new(Fake)),
-    );
+    let a = app(&tmp.path().join("data"), &base);
     let r = Router::new(Shared(a.service.clone())).validate_responses(true);
     a.service.start_helper();
     a.runtime.recover().await.unwrap();
-    a.search.start();
     // The key the user saved in settings (the app's 0600 store) is what the provider gets.
     call(
         &r,
@@ -243,7 +222,11 @@ async fn an_openrouter_summary_and_the_index_step_through_the_tauri_backend() {
 
     let (id, p) = record_one(&a, &r, "Ship review").await;
     assert_eq!(p["steps"]["summary"]["status"], "done", "{p}");
-    assert_eq!(p["steps"]["index"]["status"], "done", "{p}");
+    // No embeddings since the "ask" chat went: the index step is a no-op, never a failure.
+    assert!(
+        matches!(p["steps"]["index"]["status"].as_str(), Some("done" | "skipped")),
+        "{p}"
+    );
     let d = call(&r, "note", "note:get", json!({"id": id})).await;
     assert_eq!(d["summary"]["provider"], "openrouter", "{d}");
     assert_eq!(d["summary"]["summary"], "the team agreed to ship on friday.");
@@ -264,14 +247,13 @@ async fn an_openrouter_summary_and_the_index_step_through_the_tauri_backend() {
     );
     assert!(prompt.contains("<transcript-"), "inside the N69 fence");
 
-    // The index step wrote vectors with the embedder's id: nothing is left for the backfill.
-    let missing =
-        a.db.call(|db| db.notes().meetings_missing_vectors("fake-4d"))
-            .await
-            .unwrap();
-    assert!(missing.is_empty(), "{missing:?}");
-    a.search.shutdown();
-    assert!(a.search.backfill.is_cancelled());
+    // Search is full-text over the notes DB (FTS): the transcript finds the meeting.
+    let hits = call(&r, "note", "note:list", json!({"query": "mock helper"})).await;
+    assert!(
+        hits.as_array()
+            .is_some_and(|h| h.iter().any(|m| m["meeting"]["id"] == id.as_str())),
+        "{hits}"
+    );
     a.runtime.kill();
 }
 
@@ -288,7 +270,7 @@ async fn a_provider_redirect_is_not_followed_and_the_summary_falls_back() {
             "HTTP/1.1 307 X\r\nlocation: {other}/chat/completions\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
         ));
     }
-    let a = app(&tmp.path().join("data"), &base, LazyEmbedder::none());
+    let a = app(&tmp.path().join("data"), &base);
     let r = Router::new(Shared(a.service.clone())).validate_responses(true);
     a.service.start_helper();
     a.runtime.recover().await.unwrap();
@@ -321,7 +303,7 @@ async fn a_provider_redirect_is_not_followed_and_the_summary_falls_back() {
         elsewhere.seen().is_empty(),
         "the redirect target never got the key or transcript"
     );
-    // No embedder: the index step is skipped, never failed (full-text search still works).
+    // The index step is a no-op (full-text search needs none), never a failure.
     assert!(
         matches!(p["steps"]["index"]["status"].as_str(), Some("done" | "skipped")),
         "{p}"
@@ -334,7 +316,7 @@ async fn local_only_never_calls_the_provider() {
     let tmp = tempfile::tempdir().unwrap();
     let mock = MockLlm::default();
     let base = mock.start().await;
-    let a = app(&tmp.path().join("data"), &base, LazyEmbedder::none());
+    let a = app(&tmp.path().join("data"), &base);
     let r = Router::new(Shared(a.service.clone())).validate_responses(true);
     a.service.start_helper();
     a.runtime.recover().await.unwrap();
@@ -357,310 +339,5 @@ async fn local_only_never_calls_the_provider() {
     let d = call(&r, "note", "note:get", json!({"id": id})).await;
     assert_ne!(d["summary"]["provider"], "openrouter", "{d}");
     assert!(mock.seen().is_empty(), "no request in local-only mode");
-    a.runtime.kill();
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn the_boot_backfill_embeds_old_meetings_but_not_one_pending_delete() {
-    let tmp = tempfile::tempdir().unwrap();
-    let data = tmp.path().join("data");
-    let mock = MockLlm::default();
-    let base = mock.start().await;
-    // First run: no model yet, so nothing is embedded.
-    let (keep, gone) = {
-        let a = app(&data, &base, LazyEmbedder::none());
-        let r = Router::new(Shared(a.service.clone())).validate_responses(true);
-        a.service.start_helper();
-        a.runtime.recover().await.unwrap();
-        let (keep, _) = record_one(&a, &r, "Keep").await;
-        let (gone, _) = record_one(&a, &r, "Gone").await;
-        a.runtime.kill();
-        (keep, gone)
-    };
-    // Next boot: the model finishes loading only after "Gone" went into its undo window.
-    let gate = Arc::new(tokio::sync::Notify::new());
-    let g = gate.clone();
-    let loader: qrtz_search::embedder::Loader = Box::new(move || {
-        let g = g.clone();
-        Box::pin(async move {
-            g.notified().await;
-            Ok(Arc::new(Fake) as Arc<dyn Embedder>)
-        })
-    });
-    let a = app(&data, &base, LazyEmbedder::new(loader));
-    let r = Router::new(Shared(a.service.clone())).validate_responses(true);
-    a.service.start_helper();
-    a.runtime.recover().await.unwrap();
-    a.search.start();
-    call(&r, "note", "note:delete", json!({"id": gone, "deferMs": 60_000})).await;
-    gate.notify_one();
-    let db = a.db.clone();
-    let mut missing = vec![];
-    for _ in 0..400 {
-        missing = db
-            .call(|db| db.notes().meetings_missing_vectors("fake-4d"))
-            .await
-            .unwrap();
-        if !missing.contains(&keep) {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-    assert!(!missing.contains(&keep), "the old meeting was embedded");
-    assert_eq!(
-        missing,
-        vec![gone],
-        "a meeting in its undo window is not embedded (N17)"
-    );
-    a.search.shutdown();
-    a.runtime.kill();
-}
-
-/// Counts embed calls.
-struct Counting(Arc<std::sync::atomic::AtomicUsize>);
-#[async_trait]
-impl Embedder for Counting {
-    fn id(&self) -> &str {
-        "fake-4d"
-    }
-    async fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, LifecycleError> {
-        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        Ok(texts.iter().map(|_| vec![0.5, 0.5, 0.5, 0.5]).collect())
-    }
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn n86_the_backfill_yields_to_a_live_recording() {
-    use std::sync::atomic::Ordering;
-    let tmp = tempfile::tempdir().unwrap();
-    let data = tmp.path().join("data");
-    let mock = MockLlm::default();
-    let base = mock.start().await;
-    // A library with an un-embedded meeting.
-    let old = {
-        let a = app(&data, &base, LazyEmbedder::none());
-        let r = Router::new(Shared(a.service.clone())).validate_responses(true);
-        a.service.start_helper();
-        a.runtime.recover().await.unwrap();
-        let (id, _) = record_one(&a, &r, "Old").await;
-        a.runtime.kill();
-        id
-    };
-    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let gate = Arc::new(tokio::sync::Notify::new());
-    let (g, c) = (gate.clone(), calls.clone());
-    let loader: qrtz_search::embedder::Loader = Box::new(move || {
-        let (g, c) = (g.clone(), c.clone());
-        Box::pin(async move {
-            g.notified().await;
-            Ok(Arc::new(Counting(c)) as Arc<dyn Embedder>)
-        })
-    });
-    let a = app(&data, &base, LazyEmbedder::new(loader));
-    let r = Router::new(Shared(a.service.clone())).validate_responses(true);
-    a.service.start_helper();
-    a.runtime.recover().await.unwrap();
-    a.search.start();
-    let svc = a.service.clone();
-    until("helper", || svc.helper_ready()).await;
-    call(&r, "note", "note:start", json!({"title": "Live"})).await;
-    assert!(a.live.busy(), "a recording holds the live-work counter");
-    // The model becomes ready mid-recording: the backfill must not embed anything until it stops.
-    gate.notify_one();
-    tokio::time::sleep(Duration::from_millis(2500)).await;
-    assert_eq!(calls.load(Ordering::SeqCst), 0, "no embed call while recording");
-    call(&r, "note", "note:stop", json!(null)).await;
-    let rt2 = a.runtime.clone();
-    until("done", || rt2.session().phase.as_str() == "done").await;
-    // Once idle (the steps release it too) the backfill runs and embeds the old meeting.
-    let db = a.db.clone();
-    let mut missing = vec![old.clone()];
-    for _ in 0..400 {
-        missing = db
-            .call(|db| db.notes().meetings_missing_vectors("fake-4d"))
-            .await
-            .unwrap();
-        if !missing.contains(&old) {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-    assert!(!missing.contains(&old), "embedded after the recording");
-    assert!(calls.load(Ordering::SeqCst) > 0);
-    assert!(!a.live.busy(), "nothing left holding it");
-    a.search.shutdown();
-    a.runtime.kill();
-}
-
-fn completion_text(content: &str) -> String {
-    let body = json!({"choices": [{"message": {"content": content}}]}).to_string();
-    http(200, "application/json", &body)
-}
-
-/// N89 (ADR 0059): note:chat through the Tauri backend: retrieval over the recorded transcript, then the same
-/// OpenRouter provider (key, `http_client()`) as the summary; the excerpts sit in the N69 fence.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn note_chat_answers_from_the_transcript_through_openrouter() {
-    let tmp = tempfile::tempdir().unwrap();
-    let mock = MockLlm::default();
-    let base = mock.start().await;
-    mock.push(completion(
-        &json!({"summary": "a greeting.", "actionItems": [], "qa": []}),
-    ));
-    mock.push(completion_text("  the mock helper said hello.  "));
-    let a = app(&tmp.path().join("data"), &base, LazyEmbedder::none());
-    let r = Router::new(Shared(a.service.clone())).validate_responses(true);
-    a.service.start_helper();
-    a.runtime.recover().await.unwrap();
-    call(
-        &r,
-        "settings",
-        "secrets:set",
-        json!({"name": "llm.openrouter", "value": "sk-or-test"}),
-    )
-    .await;
-    let (id, _) = record_one(&a, &r, "Greeting").await;
-    let ans = call(
-        &r,
-        "note",
-        "note:chat",
-        json!({
-            "question": "what did the mock helper say?",
-            "meetingId": id,
-            "history": [
-                {"role": "user", "content": "who spoke?"},
-                {"role": "assistant", "content": "the mock helper."}
-            ]
-        }),
-    )
-    .await;
-    assert_eq!(ans["answer"], "the mock helper said hello.", "{ans}");
-    assert_eq!(ans["provider"], "openrouter", "{ans}");
-    assert!(ans.get("llmError").is_none_or(Value::is_null), "{ans}");
-    let srcs = ans["sources"].as_array().unwrap();
-    assert!(
-        srcs.iter().any(|s| s["text"] == "Hello from the mock helper."),
-        "{ans}"
-    );
-    let seen = mock.seen();
-    assert_eq!(seen.len(), 2, "summary + chat");
-    let (line, head, body) = &seen[1];
-    assert!(line.starts_with("POST /chat/completions"), "{line}");
-    assert!(head.contains("authorization: bearer sk-or-test"), "{head}");
-    let msgs = serde_json::from_str::<Value>(body).unwrap()["messages"].to_string();
-    assert!(msgs.contains("<excerpts-"), "N69 fence: {msgs}");
-    assert!(msgs.contains("Hello from the mock helper."), "{msgs}");
-    assert!(msgs.contains("what did the mock helper say?"), "{msgs}");
-    assert!(msgs.contains("who spoke?"), "history is sent: {msgs}");
-
-    // A provider failure answers extractively with llmError (never an IPC error).
-    mock.push(http(
-        500,
-        "application/json",
-        r#"{"error":{"message":"upstream down"}}"#,
-    ));
-    let ans = call(&r, "note", "note:chat", json!({"question": "hello?"})).await;
-    assert!(ans["llmError"].is_string(), "{ans}");
-    assert!(
-        !ans["answer"].as_str().unwrap_or("").contains("sk-or-test"),
-        "{ans}"
-    );
-    a.runtime.kill();
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn note_chat_in_local_only_mode_sends_nothing() {
-    let tmp = tempfile::tempdir().unwrap();
-    let mock = MockLlm::default();
-    let base = mock.start().await;
-    let a = app(&tmp.path().join("data"), &base, LazyEmbedder::none());
-    let r = Router::new(Shared(a.service.clone())).validate_responses(true);
-    a.service.start_helper();
-    a.runtime.recover().await.unwrap();
-    call(
-        &r,
-        "settings",
-        "secrets:set",
-        json!({"name": "llm.openrouter", "value": "sk-or-test"}),
-    )
-    .await;
-    call(
-        &r,
-        "settings",
-        "config:set",
-        json!({"patch": {"privacy": {"localOnly": true}}}),
-    )
-    .await;
-    record_one(&a, &r, "Local").await;
-    let ans = call(&r, "note", "note:chat", json!({"question": "what was said?"})).await;
-    assert_eq!(ans["provider"], "extractive", "{ans}");
-    assert!(mock.seen().is_empty(), "nothing leaves the machine");
-    a.runtime.kill();
-}
-
-/// N90/N93 (ADR 0060): a meeting in its undo window is invisible to chat: no source from it, nothing from it in
-/// the request to OpenRouter, and a question scoped to it finds nothing.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn note_chat_never_sees_a_meeting_pending_delete() {
-    let tmp = tempfile::tempdir().unwrap();
-    let mock = MockLlm::default();
-    let base = mock.start().await;
-    for _ in 0..2 {
-        mock.push(completion(
-            &json!({"summary": "a greeting.", "actionItems": [], "qa": []}),
-        ));
-    }
-    mock.push(completion_text("hello."));
-    mock.push(completion_text("nothing."));
-    let a = app(&tmp.path().join("data"), &base, LazyEmbedder::none());
-    let r = Router::new(Shared(a.service.clone())).validate_responses(true);
-    a.service.start_helper();
-    a.runtime.recover().await.unwrap();
-    call(
-        &r,
-        "settings",
-        "secrets:set",
-        json!({"name": "llm.openrouter", "value": "sk-or-test"}),
-    )
-    .await;
-    let (kept, _) = record_one(&a, &r, "kept standup").await;
-    let (gone, _) = record_one(&a, &r, "gone offsite").await;
-    call(&r, "note", "note:delete", json!({"id": gone, "deferMs": 60_000})).await;
-
-    let ans = call(
-        &r,
-        "note",
-        "note:chat",
-        json!({"question": "what did the mock helper say?"}),
-    )
-    .await;
-    let srcs = ans["sources"].as_array().unwrap();
-    assert!(!srcs.is_empty(), "the kept meeting still answers: {ans}");
-    assert!(
-        srcs.iter().all(|s| s["meetingId"] == kept),
-        "only the kept meeting: {ans}"
-    );
-    let seen = mock.seen();
-    let body = &seen.last().unwrap().2;
-    assert!(
-        !body.contains("offsite") && !body.contains(&gone),
-        "nothing from it is sent: {body}"
-    );
-
-    let ans = call(
-        &r,
-        "note",
-        "note:chat",
-        json!({"question": "what did the mock helper say?", "meetingId": gone}),
-    )
-    .await;
-    assert_eq!(
-        ans["sources"],
-        json!([]),
-        "a question about it finds nothing: {ans}"
-    );
-    for (_, _, body) in mock.seen().iter().skip(2) {
-        assert!(!body.contains("offsite") && !body.contains(&gone), "{body}");
-    }
     a.runtime.kill();
 }

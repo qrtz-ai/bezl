@@ -7,7 +7,6 @@ import {
   Input,
   Page,
   Progress,
-  SearchModelRow,
   Select,
   SettingRow,
   SettingsSection,
@@ -79,9 +78,7 @@ export default function SettingsView() {
     notifyNoAudio?: boolean;
     floatingHud?: boolean;
     autoSummarize?: boolean;
-    backgroundIndexing?: boolean;
     defaultTemplate?: string;
-    searchModelDownload?: boolean;
   };
   const privacy = (cfg?.privacy ?? {}) as {
     localOnly?: boolean;
@@ -304,13 +301,6 @@ export default function SettingsView() {
           noteCfg.autoSummarize,
           true,
           (v) => void patchNote({ autoSummarize: v }),
-        )}
-        {toggle(
-          'index for search',
-          'background-indexing',
-          noteCfg.backgroundIndexing,
-          true,
-          (v) => void patchNote({ backgroundIndexing: v }),
         )}
         <SettingRow label="template">
           <Select
@@ -546,14 +536,6 @@ export default function SettingsView() {
               .then(setCfg)
               .catch((e: Error) => setError(e.message));
           },
-        )}
-        <SearchModelRow status={setup.model} onDownload={setup.downloadModel} />
-        {toggle(
-          'download the search model',
-          'search-model-auto',
-          noteCfg.searchModelDownload,
-          true,
-          (v) => void patchNote({ searchModelDownload: v }),
         )}
       </SettingsSection>
       <SettingsSection title="privacy" data-testid="privacy-card">

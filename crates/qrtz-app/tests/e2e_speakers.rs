@@ -1,12 +1,10 @@
 //! Phase 5 port of e2e/chat.spec.ts (docs/e2e-parity.md rows 19, 20; row 21 is in e2e_scale.rs): speaker rename and
-//! merge, per-meeting and cross-meeting chat (key-free, extractive with sources), N90 (a meeting pending delete is
-//! invisible to chat on every retrieval path), and the "Always record" setting.
+//! merge, full-text search hiding a meeting pending delete (N90), and the "Always record" setting. The spec's chat
+//! part went with the "ask" chat (ADR 0072).
 mod e2e_support;
 use e2e_support::*;
-use qrtz_search::LazyEmbedder;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
-use std::sync::Arc;
 
 fn speakers(d: &Value) -> BTreeSet<String> {
     d["segments"]
@@ -17,28 +15,23 @@ fn speakers(d: &Value) -> BTreeSet<String> {
         .collect()
 }
 
-fn cites(answer: &Value, id: &str) -> bool {
-    answer["sources"]
-        .as_array()
-        .is_some_and(|s| s.iter().any(|x| x["meetingId"] == id))
+fn finds(list: &Value, id: &str) -> bool {
+    list.as_array()
+        .is_some_and(|l| l.iter().any(|m| m["meeting"]["id"] == id))
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn chat_per_meeting_and_across_meetings_speaker_rename_merge_and_pending_delete_is_invisible() {
+async fn speaker_rename_merge_and_search_hides_a_meeting_pending_delete() {
     let tmp = tempfile::tempdir().unwrap();
-    // A ready (fake) embedder: the index step writes vectors, so chat runs the hybrid path (FTS + closest lines).
-    let a = App::launch(
-        &tmp.path().join("data"),
-        Opts::default()
-            .standup("0.02")
-            .embedder(LazyEmbedder::ready_with(Arc::new(FakeEmbedder))),
-    )
-    .await;
+    let a = App::launch(&tmp.path().join("data"), Opts::default().standup("0.02")).await;
     a.helper_ready().await;
     a.until_phase("detected").await;
-    // Stop only after the "parakeet latency" line the cross-meeting question needs.
+    // Stop only after the "parakeet latency" line the search needs.
     let (id, p) = record_until(&a, None, |t| segments(t) > 5 && has_text(t, "parakeet")).await;
-    assert_eq!(p["steps"]["index"]["status"], "done", "{p}");
+    assert!(
+        matches!(p["steps"]["index"]["status"].as_str(), Some("done" | "skipped")),
+        "{p}"
+    );
 
     // Speaker rename, then merge (a rename onto an existing name).
     let d = a.note("note:get", json!({"id": id})).await;
@@ -66,73 +59,15 @@ async fn chat_per_meeting_and_across_meetings_speaker_rename_merge_and_pending_d
     assert_eq!(merged.len(), before.len() - 1, "{merged:?}");
     assert!(!merged.contains(&other));
 
-    // Per-meeting Q&A: no key, extractive answer with sources from this meeting.
-    let ans = a
-        .note(
-            "note:chat",
-            json!({"question": "Who will write the onboarding copy?", "meetingId": id}),
-        )
-        .await;
-    assert!(
-        ans["answer"]
-            .as_str()
-            .unwrap()
-            .to_lowercase()
-            .contains("onboarding"),
-        "{ans}"
-    );
-    let srcs = ans["sources"].as_array().unwrap();
-    assert!(!srcs.is_empty(), "{ans}");
-    assert!(srcs.iter().all(|s| s["meetingId"] == json!(id)), "{ans}");
-    assert!(srcs[0]["startMs"].is_number(), "{ans}");
-    // A source opens the transcript at a segment of this meeting.
-    let at = srcs[0]["startMs"].as_u64().unwrap();
-    assert!(
-        d["segments"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|s| s["startMs"].as_u64() == Some(at)),
-        "source {at} is a segment start: {d}"
-    );
-
-    // Across all meetings: the citation is this meeting.
-    let all = a.note("note:chat", json!({"question": "parakeet latency"})).await;
-    assert!(
-        all["answer"]
-            .as_str()
-            .unwrap()
-            .to_lowercase()
-            .contains("parakeet"),
-        "{all}"
-    );
-    assert!(cites(&all, &id), "{all}");
-    assert_eq!(all["sources"][0]["title"], "Weekly Product Sync", "{all}");
-
-    // N90: inside the undo window the meeting is invisible to chat (full text, closest lines, and a question scoped to it).
+    // Full-text search finds the meeting by its transcript; inside the undo window it is invisible (N90).
+    let q = json!({"query": "parakeet latency"});
+    assert!(finds(&a.note("note:list", q.clone()).await, &id));
     a.note("note:delete", json!({"id": id, "deferMs": 60_000})).await;
-    let hid = a.note("note:chat", json!({"question": "parakeet latency"})).await;
-    assert!(
-        !cites(&hid, &id),
-        "pending delete leaked into cross-meeting chat: {hid}"
-    );
-    assert!(!hid.to_string().to_lowercase().contains("parakeet"), "{hid}");
-    let scoped = a
-        .raw(
-            "note",
-            "note:chat",
-            json!({"question": "Who will write the onboarding copy?", "meetingId": id}),
-        )
-        .await;
-    assert!(
-        scoped["ok"] == false || !cites(&scoped["data"], &id),
-        "pending delete leaked into scoped chat: {scoped}"
-    );
-    assert!(!scoped.to_string().contains("onboarding copy"), "{scoped}");
+    let hid = a.note("note:list", q.clone()).await;
+    assert!(!finds(&hid, &id), "pending delete leaked into search: {hid}");
     // Undo: visible again.
     a.note("note:undo-delete", json!({"id": id})).await;
-    let back = a.note("note:chat", json!({"question": "parakeet latency"})).await;
-    assert!(cites(&back, &id), "{back}");
+    assert!(finds(&a.note("note:list", q).await, &id));
     a.quit().await;
 }
 

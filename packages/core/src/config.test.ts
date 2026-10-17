@@ -98,6 +98,19 @@ describe('config', () => {
     for (const k of ['aiCleanup', 'cleanupModel', 'cleanupTimeoutMs'])
       expect(k in c.talk).toBe(false);
   });
+
+  it('an old config with the removed search model settings loads without them', () => {
+    const c = loadConfig({
+      note: {
+        searchModelDownload: false,
+        backgroundIndexing: false,
+        autoSummarize: false,
+      },
+    });
+    expect(c.note.autoSummarize).toBe(false);
+    for (const k of ['searchModelDownload', 'backgroundIndexing'])
+      expect(k in c.note).toBe(false);
+  });
 });
 
 describe('secrets', () => {

@@ -50,11 +50,3 @@ export const SpeechSetupStatus = z.object({
   }),
 });
 export type SpeechSetupStatus = z.infer<typeof SpeechSetupStatus>;
-
-/** The on-device search model (semantic search and chat retrieval). */
-export const SearchModelStatus = z.object({
-  /** `loading`: downloaded, the embedder is loading it (ADR 0064 reload); `ready` once it serves. */
-  state: z.enum(['missing', 'downloading', 'loading', 'ready', 'error']),
-  error: z.string().optional(),
-});
-export type SearchModelStatus = z.infer<typeof SearchModelStatus>;
