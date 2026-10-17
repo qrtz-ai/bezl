@@ -200,7 +200,19 @@ export class MemoService {
         ? { progress: this.progress }
         : {}),
       ...(s.error ? { error: s.error } : {}),
+      helper: this.helperHealth,
+      ...(this.helperDetail ? { helperDetail: this.helperDetail } : {}),
     };
+  }
+
+  private helperHealth: SessionView['helper'] = 'ok';
+  private helperDetail: string | undefined;
+  /** Main reports helper availability/supervisor state; surfaced in the HUD, Memo and Home. */
+  setHelperHealth(h: SessionView['helper'], detail?: string): void {
+    if (h === this.helperHealth && detail === this.helperDetail) return;
+    this.helperHealth = h;
+    this.helperDetail = detail;
+    this.deps.bus.emit('memo:session', this.view());
   }
 
   private speakerAt(ms: number) {
@@ -216,6 +228,11 @@ export class MemoService {
   }
 
   async start(title?: string): Promise<SessionView> {
+    if (this.helperHealth === 'missing')
+      throw new AppError(
+        'E_UNAVAILABLE',
+        'Recording is unavailable: the native capture helper is missing from this build.',
+      );
     const s = this.machine.state;
     if (s.phase === 'recording' || s.phase === 'processing')
       throw new AppError('E_VALIDATION', 'already recording');
@@ -305,7 +322,21 @@ export class MemoService {
       provider,
       ...(cfg.llmModel ? { model: cfg.llmModel } : {}),
       ...(apiKey ? { apiKey } : {}),
+      ...(process.env.QRTZ_LLM_BASE_URL
+        ? { baseUrl: process.env.QRTZ_LLM_BASE_URL }
+        : {}),
     };
+  }
+
+  /** Retry the summary for one meeting (after an LLM failure or a provider/key change). */
+  async resummarize(id: string) {
+    const summary = await this.deps.worker.call(
+      'memo.resummarize',
+      { id, llm: await this.llmParams() },
+      120_000,
+    );
+    this.deps.bus.emit('memo:changed', { id });
+    return summary;
   }
 
   /** M5.1: finish meetings a crash left in recording/processing. Call once at startup. */

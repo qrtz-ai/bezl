@@ -23,7 +23,7 @@ import { installCrashHandlers } from './crash';
 import { ConfigStore } from './config-store';
 import { SafeStorageSecretStore } from './secret-store';
 import { WorkerClient } from './worker-client';
-import { spawnHelper } from './helper-process';
+import { helperAvailability, spawnHelper } from './helper-process';
 import { hardenApp } from './security';
 import { registerIpc } from './ipc';
 import { MemoService } from './memo-service';
@@ -86,8 +86,15 @@ export function bootstrap() {
     logger: log.child('helper'),
   });
   let helperWasRunning = false;
+  const availability = helperAvailability();
+  const healthy = availability === 'native' ? 'ok' : availability;
   helper.onStatus((s) => {
     bus.emit('helper:status', s);
+    if (availability !== 'missing') {
+      if (s.state === 'running') memo.setHelperHealth(healthy);
+      else if (s.state !== 'starting')
+        memo.setHelperHealth('down', s.lastError ?? s.state);
+    }
     if (s.state === 'running') helperWasRunning = true;
     else if (helperWasRunning && s.state !== 'starting') {
       helperWasRunning = false;
@@ -104,6 +111,12 @@ export function bootstrap() {
     config: () => config.get(),
     recordingsDir,
   });
+  if (availability === 'missing')
+    memo.setHelperHealth(
+      'missing',
+      'The qrtz-helper binary is not in this build. Reinstall qrtz or build native/qrtz-helper.',
+    );
+  else if (availability === 'simulated') memo.setHelperHealth('simulated');
   helper.onLine((line) => {
     const r = parseHelperLine(line);
     if (!r.ok) return log.warn('bad helper line', { error: r.error });
@@ -146,6 +159,7 @@ export function bootstrap() {
       'memo:dismiss': () => memo.dismiss(),
       'memo:list': (req) => worker.call('memo.list', req),
       'memo:get': ({ id }) => worker.call('memo.get', { id }),
+      'memo:resummarize': ({ id }) => memo.resummarize(id),
       'memo:delete': async ({ id }) => {
         await worker.call('memo.delete', { id });
         bus.emit('memo:changed', { id });
@@ -273,6 +287,17 @@ export function bootstrap() {
     void workerReady
       .then(() => memo.recover())
       .catch((e) => log.warn('startup recovery skipped', { err: String(e) }));
+    if (
+      process.env.QRTZ_DEV_SEED === 'many' &&
+      (!app.isPackaged || !!process.env.QRTZ_USER_DATA)
+    ) {
+      void workerReady
+        .then(() =>
+          worker.call('dev.seedMany', { count: 500, now: Date.now() }, 60_000),
+        )
+        .then(() => bus.emit('memo:changed', { id: '*' }))
+        .catch((e) => log.warn('dev seed failed', { err: String(e) }));
+    }
     if (
       process.env.QRTZ_DEV_SEED === 'large' &&
       (!app.isPackaged || !!process.env.QRTZ_USER_DATA)

@@ -45,6 +45,12 @@ export const SessionView = z.object({
   partial: z.string().default(''),
   progress: z.string().optional(),
   error: z.string().optional(),
+  /**
+   * Native capture helper health: ok (real helper running), simulated (mock: Linux/dev, no real capture),
+   * missing (macOS build without the helper binary), down (crashed / restart failed).
+   */
+  helper: z.enum(['ok', 'simulated', 'missing', 'down']).default('ok'),
+  helperDetail: z.string().optional(),
 });
 export type SessionView = z.infer<typeof SessionView>;
 

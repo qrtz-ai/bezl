@@ -201,3 +201,33 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
 - A full empty and error states sweep (Settings and chat errors).
 - First-run polish with screenshots.
 - Virtualize the meeting list once it holds hundreds of meetings.
+
+## 2026-10-16 ~18:25–19:05 PT: iteration 8 (error states, first-run polish, list scale, LLM stub test, Mac compile pass)
+
+- Error states:
+  - New `Callout` UI primitive (alert or status role).
+  - LLM failure: the summary stores `llmError`, and the detail view shows "AI summary failed" with Retry (`memo:resummarize`). Provider errors show the provider's own message plus a hint for 401/403/429.
+  - Helper health in SessionView (ok, simulated, missing, down): a notice on Home and Memo, the record button is disabled, and `memo:start` returns a clear error. A macOS build without the helper binary is now reported as "missing" instead of quietly using the mock.
+  - Settings sections load independently, with a Retry callout. The meeting detail shows a load-error state with Try again instead of a spinner that never ends. Memo errors use a dismissible callout.
+- First run: once setup is complete and meetings exist, setup collapses to one line below Recent meetings. Settings now has a separate Recordings card. The screenshot walkthrough is `e2e/screens.spec.ts`, and the images are in `docs/screenshots/` and the README.
+- Meeting list: paged at 100 (`limit+1` signals there are more). Rows use content-visibility. A 500-meeting e2e loads the next page in about 0.1 s.
+  - Bug fixed: the list was silently capped at 100 meetings, so older ones were unreachable.
+  - Bug fixed: crash recovery only scanned the newest 1000 meetings; it now selects stuck meetings by status.
+- OpenRouter end to end without a key:
+  - vitest against a local OpenAI-compatible HTTP stub: auth header, X-Title, path, JSON parsing, a 429 fallback then a successful retry, and a non-JSON reply.
+  - e2e with `QRTZ_LLM_BASE_URL`: a 503 fallback, then Retry returns the AI summary.
+- Mac compile risk:
+  - Fixed a duplicate `LocalVqeEnhancer` class in `mac/Audio.swift`, which would have been a redeclaration error on Mac.
+  - FluidAudio is now pinned to 0.17.x. The LocalVQE and StreamingUnifiedAsrManager signatures were checked against the v0.17.7 sources.
+  - New `scripts/check-swift.mjs` (part of lint) flags duplicate types and unbalanced `#if` blocks in the Swift sources.
+
+### Side work
+
+- There is no chat UI yet, so "chat errors" have nothing to attach to. The LLM failure and retry path covers summaries. Chat should reuse `Callout` and the same retry pattern.
+- Electron ignores `setContentSize` under xvfb, so screenshots are 1024×640.
+
+### Next
+
+- Build on a Mac (docs/mac-verify.md), then real Zoom and Meet runs.
+- Chat over meeting transcripts.
+- Search results paging.

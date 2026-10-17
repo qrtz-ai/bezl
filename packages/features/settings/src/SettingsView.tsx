@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   Badge,
   Button,
+  Callout,
   Card,
   Field,
   Heading,
@@ -41,21 +42,21 @@ export default function SettingsView() {
 
   const refresh = () => {
     setError(null);
-    Promise.all([
-      qrtz.invoke('app:get-info'),
-      qrtz.invoke('db:health'),
-      qrtz.invoke('helper:status'),
-      qrtz.invoke('config:get'),
-      qrtz.invoke('secrets:list'),
-    ])
-      .then(([i, d, h, c, s]) => {
-        setInfo(i);
-        setDb(d);
-        setHelper(h);
-        setCfg(c);
-        setSecrets(s);
-      })
-      .catch((e: Error) => setError(e.message));
+    // Load each section independently so one failing call (e.g. the DB worker restarting) doesn't blank the page.
+    const fails: string[] = [];
+    const load = <T,>(p: Promise<T>, set: (v: T) => void, what: string) =>
+      p.then(set, (e: Error) => {
+        fails.push(`${what}: ${e.message}`);
+      });
+    void Promise.all([
+      load(qrtz.invoke('app:get-info'), setInfo, 'app info'),
+      load(qrtz.invoke('db:health'), setDb, 'database'),
+      load(qrtz.invoke('helper:status'), setHelper, 'helper'),
+      load(qrtz.invoke('config:get'), setCfg, 'settings'),
+      load(qrtz.invoke('secrets:list'), setSecrets, 'keys'),
+    ]).then(() => {
+      if (fails.length) setError(fails.join(' · '));
+    });
   };
   useEffect(refresh, [qrtz]);
   const h = live ?? helper;
@@ -97,7 +98,7 @@ export default function SettingsView() {
     <div style={{ display: 'grid', gap: 20, maxWidth: 640 }}>
       <Heading>Settings</Heading>
       <Card padding={4} style={{ display: 'grid', gap: 12 }}>
-        <Text weight={600}>AI summaries</Text>
+        <Text weight={600}>Recordings</Text>
         <Field
           label="Keep recordings"
           hint="Transcripts and summaries are kept. Only the audio is deleted."
@@ -115,6 +116,9 @@ export default function SettingsView() {
             <option value="90">90 days</option>
           </Select>
         </Field>
+      </Card>
+      <Card padding={4} style={{ display: 'grid', gap: 12 }}>
+        <Text weight={600}>AI summaries</Text>
         <Text muted size="sm">
           After a meeting, Memo sends the transcript to this provider for a
           summary, action items and Q&amp;A. Without a key it uses the on-device
@@ -215,7 +219,20 @@ export default function SettingsView() {
           </Button>
         </div>
       </Card>
-      {error ? <Text style={{ color: '#f87171' }}>{error}</Text> : null}
+      {error ? (
+        <Callout
+          tone="danger"
+          title="Some settings couldn't be loaded or saved"
+          data-testid="settings-error"
+          action={
+            <Button variant="secondary" size="sm" onClick={refresh}>
+              Retry
+            </Button>
+          }
+        >
+          {error}
+        </Callout>
+      ) : null}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
   PermissionsStatus,
   SessionView,
 } from '../memo/contract';
+import { MeetingSummary } from '../memo/summary';
 
 /** Bump when the envelope shape changes (not when a channel changes). */
 export const PROTOCOL_VERSION = 1;
@@ -132,7 +133,12 @@ export const ipcContract = {
   'memo:list': defineChannel({
     version: 1,
     capability: 'memo.read',
-    request: z.object({ query: z.string().max(200).optional() }),
+    request: z.object({
+      query: z.string().max(200).optional(),
+      /** Page size (default 100). Up to limit+1 rows come back; the extra one signals more. */
+      limit: z.number().int().min(1).max(1000).optional(),
+      offset: z.number().int().min(0).optional(),
+    }),
     response: z.array(MeetingListItem),
   }),
   'memo:get': defineChannel({
@@ -153,6 +159,12 @@ export const ipcContract = {
       markdown: z.string(),
       savedTo: z.string().optional(),
     }),
+  }),
+  'memo:resummarize': defineChannel({
+    version: 1,
+    capability: 'memo.write',
+    request: z.object({ id: z.string().max(64) }),
+    response: MeetingSummary,
   }),
   'memo:delete': defineChannel({
     version: 1,

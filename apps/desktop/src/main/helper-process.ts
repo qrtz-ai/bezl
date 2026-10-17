@@ -28,6 +28,15 @@ export function helperBinaryPath(): string {
       );
 }
 
+/** What capture backend this run has. `missing` = macOS without the bundled helper (broken install). */
+export function helperAvailability(): 'native' | 'simulated' | 'missing' {
+  if (process.env.QRTZ_SIMULATE_MISSING_HELPER === '1') return 'missing';
+  if (process.env.QRTZ_MOCK_HELPER === '1') return 'simulated';
+  if (process.platform === 'darwin' && !fs.existsSync(helperBinaryPath()))
+    return 'missing';
+  return usingMockHelper() ? 'simulated' : 'native';
+}
+
 export const usingMockHelper = () =>
   (process.platform !== 'darwin' && !process.env.QRTZ_HELPER_BIN) ||
   process.env.QRTZ_MOCK_HELPER === '1' ||

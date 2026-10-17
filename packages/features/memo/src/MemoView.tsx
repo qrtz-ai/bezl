@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Badge, Card, EmptyState, Input, Text, useTheme } from '@qrtz/ui';
+import {
+  Badge,
+  Button,
+  Callout,
+  Card,
+  EmptyState,
+  Input,
+  Text,
+  useTheme,
+} from '@qrtz/ui';
 import {
   AppError,
   SessionView,
@@ -13,6 +22,8 @@ import { MeetingDetail } from './MeetingDetail';
 import { Onboarding, needsOnboarding } from './Onboarding';
 import { fmtDate } from './format';
 
+const PAGE = 100;
+
 export default function MemoView() {
   const qrtz = useQrtz();
   const t = useTheme();
@@ -22,6 +33,9 @@ export default function MemoView() {
   const [perms, setPerms] = useState<PermissionsStatus | null>(null);
   const [onboarded, setOnboarded] = useState(false);
   const [query, setQuery] = useState('');
+  // Paging: render PAGE meetings at a time; "Show more" grows the window (list stays cheap with hundreds).
+  const [pages, setPages] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
   const [items, setItems] = useState<
     {
       meeting: { id: string; title: string; startedAt: number; status: string };
@@ -57,10 +71,14 @@ export default function MemoView() {
 
   const refresh = useCallback(() => {
     qrtz
-      .invoke('memo:list', { query })
-      .then(setItems)
+      .invoke('memo:list', query ? { query } : { limit: PAGE * pages })
+      .then((r) => {
+        const more = !query && r.length > PAGE * pages;
+        setHasMore(more);
+        setItems(more ? r.slice(0, PAGE * pages) : r);
+      })
       .catch((e: AppError) => setError(e.message));
-  }, [qrtz, query]);
+  }, [qrtz, query, pages]);
   useEffect(() => {
     const h = setTimeout(refresh, query ? 150 : 0);
     return () => clearTimeout(h);
@@ -92,6 +110,21 @@ export default function MemoView() {
       }}
     >
       <div style={{ display: 'grid', gap: 8 }}>
+        {session?.helper === 'missing' || session?.helper === 'down' ? (
+          <Callout
+            tone="danger"
+            data-testid="helper-notice"
+            title={
+              session.helper === 'missing'
+                ? 'Recording unavailable: capture helper missing'
+                : 'Capture helper stopped'
+            }
+          >
+            {session.helper === 'missing'
+              ? (session.helperDetail ?? 'Reinstall qrtz to restore recording.')
+              : `Recording paused; anything already captured was saved. qrtz is restarting it automatically.${session.helperDetail ? ` (${session.helperDetail})` : ''}`}
+          </Callout>
+        ) : null}
         <Hud
           s={session}
           onRecord={() => void act(qrtz.invoke('memo:start', {}))}
@@ -116,7 +149,20 @@ export default function MemoView() {
             </a>
           </Text>
         ) : null}
-        {error ? <Text style={{ color: t.color.danger }}>{error}</Text> : null}
+        {error ? (
+          <Callout
+            tone="danger"
+            title="Something went wrong"
+            data-testid="memo-error"
+            action={
+              <Button variant="ghost" size="sm" onClick={() => setError(null)}>
+                Dismiss
+              </Button>
+            }
+          >
+            {error}
+          </Callout>
+        ) : null}
       </div>
       <div
         style={{
@@ -160,6 +206,10 @@ export default function MemoView() {
                 selected={selected === meeting.id}
                 onClick={() => setSelected(meeting.id)}
                 data-testid="meeting-item"
+                style={{
+                  contentVisibility: 'auto',
+                  containIntrinsicSize: 'auto 72px',
+                }}
               >
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <Text
@@ -198,6 +248,16 @@ export default function MemoView() {
               </Card>
             ))
           )}
+          {hasMore ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPages((n) => n + 1)}
+              data-testid="memo-show-more"
+            >
+              Show {PAGE} more
+            </Button>
+          ) : null}
         </div>
         <div style={{ overflow: 'auto', minHeight: 0 }}>
           {selected ? (

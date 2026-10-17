@@ -8,7 +8,8 @@ import PackageDescription
 
 #if os(macOS)
 let platformDeps: [Package.Dependency] = [
-    .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.17.7")
+    // Pre-1.0: minor bumps may break API, so stay on 0.17.x (APIs checked against the v0.17.7 sources).
+    .package(url: "https://github.com/FluidInference/FluidAudio.git", .upToNextMinor(from: "0.17.7"))
 ]
 let execDeps: [Target.Dependency] = [
     "QrtzHelperCore",

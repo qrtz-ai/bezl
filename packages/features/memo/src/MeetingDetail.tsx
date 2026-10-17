@@ -9,6 +9,7 @@ import {
   Tabs,
   Text,
   useTheme,
+  Callout,
 } from '@qrtz/ui';
 import type { MeetingDetail as Detail, Segment } from '@qrtz/core';
 import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
@@ -24,6 +25,10 @@ export function MeetingDetail({
   const qrtz = useQrtz();
   const t = useTheme();
   const [d, setD] = useState<Detail | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
   const [tab, setTab] = useState<'summary' | 'transcript'>('summary');
   const [now, setNow] = useState(0);
   const [exported, setExported] = useState<string | null>(null);
@@ -34,12 +39,30 @@ export function MeetingDetail({
     let live = true;
     qrtz
       .invoke('memo:get', { id })
-      .then((r) => live && setD(r))
-      .catch(() => live && setD(null));
+      .then((r) => {
+        if (!live) return;
+        setD(r);
+        setLoadError(null);
+      })
+      .catch((e: Error) => {
+        if (!live) return;
+        setD(null);
+        setLoadError(e.message || 'Could not load this meeting.');
+      });
     return () => {
       live = false;
     };
-  }, [qrtz, id, changed]);
+  }, [qrtz, id, changed, reloadKey]);
+
+  const retrySummary = useCallback(() => {
+    setRetrying(true);
+    setRetryError(null);
+    qrtz
+      .invoke('memo:resummarize', { id })
+      .then((s) => setD((prev) => (prev ? { ...prev, summary: s } : prev)))
+      .catch((e: Error) => setRetryError(e.message))
+      .finally(() => setRetrying(false));
+  }, [qrtz, id]);
 
   // Binary search: O(log n) per audio timeupdate even for multi-hour transcripts.
   const current = useMemo(() => {
@@ -65,6 +88,24 @@ export function MeetingDetail({
     setNow(ms);
   }, []);
 
+  if (!d && loadError)
+    return (
+      <Callout
+        tone="danger"
+        title="Couldn't load this meeting"
+        data-testid="detail-load-error"
+        action={
+          <Button
+            variant="secondary"
+            onClick={() => setReloadKey((k) => k + 1)}
+          >
+            Try again
+          </Button>
+        }
+      >
+        {loadError}
+      </Callout>
+    );
   if (!d) return <Spinner />;
   const { meeting, segments, summary } = d;
   const doExport = async (save: boolean) => {
@@ -160,6 +201,25 @@ export function MeetingDetail({
             style={{ display: 'grid', gap: 16 }}
             data-testid="detail-summary"
           >
+            {summary.llmError ? (
+              <Callout
+                tone="warning"
+                title="AI summary failed. Showing the on-device summary instead."
+                data-testid="llm-error"
+                action={
+                  <Button
+                    variant="secondary"
+                    onClick={retrySummary}
+                    disabled={retrying}
+                    data-testid="llm-retry"
+                  >
+                    {retrying ? 'Retrying…' : 'Retry'}
+                  </Button>
+                }
+              >
+                {retryError ?? summary.llmError}
+              </Callout>
+            ) : null}
             <Card padding={4}>
               <Text as="p" style={{ lineHeight: 1.6 }}>
                 {summary.summary}

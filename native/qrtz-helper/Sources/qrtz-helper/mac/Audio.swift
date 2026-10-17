@@ -148,28 +148,6 @@ final class CoreAudioTapSource: AudioSource, @unchecked Sendable {
 }
 
 /// Echo cancellation for the mic using the system tap as far-end reference: FluidAudio LocalVQE (v1.3, 16 ms
-/// streaming hop, CPU). Models download once (~20 MB). Any load/inference error makes MicPipeline fall back to the
-/// AX/energy echo gate. Set QRTZ_AEC=0 to disable. [MAC-VERIFY: reference/mic clock alignment on target devices]
-final class LocalVqeEnhancer: MicEnhancer, @unchecked Sendable {
-    let name = "localvqe-v1.3"
-    private var stream: LocalVqeStream?
-
-    func prepare() async throws {
-        if ProcessInfo.processInfo.environment["QRTZ_AEC"] == "0" { throw AudioError("disabled by QRTZ_AEC=0") }
-        if stream != nil { return }
-        let vqe = try await LocalVqeManager(config: LocalVqeConfig(chunk: .realtime16ms))
-        stream = try await vqe.makeStream()
-    }
-
-    func enhance(mic: [Float], reference: [Float]) async throws -> [Float] {
-        guard let stream else { throw AudioError("LocalVQE not prepared") }
-        return try await stream.enhance(mic: mic, reference: reference)
-    }
-
-    func reset() async { try? await stream?.reset() }
-}
-
-/// Echo cancellation for the mic using the system tap as far-end reference: FluidAudio LocalVQE (v1.3, 16 ms
 /// streaming hop, CPU). Models download once. Any load/inference error makes MicPipeline fall back to the
 /// AX/energy echo gate. Set QRTZ_AEC=0 to disable. [MAC-VERIFY: reference/mic clock alignment on target devices]
 final class LocalVqeEnhancer: MicEnhancer, @unchecked Sendable {

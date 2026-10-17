@@ -20,13 +20,21 @@ import {
 import { dbHealth } from './db';
 import { repairWav } from './wav-repair';
 
+export interface LlmParams {
+  provider: ProviderId | 'none';
+  model?: string;
+  apiKey?: string;
+  /** Override for OpenAI-compatible endpoints (QRTZ_LLM_BASE_URL; tests use a local stub). */
+  baseUrl?: string;
+}
+
 export interface FinalizeParams {
   meetingId: string;
   endedAt: number;
   durationMs: number;
   audioPath?: string;
   active: ActiveSpeakerEvent[];
-  llm: { provider: ProviderId | 'none'; model?: string; apiKey?: string };
+  llm: LlmParams;
   /** The helper exited mid-recording; duration comes from the salvaged audio. */
   helperCrashed?: boolean;
 }
@@ -76,6 +84,7 @@ export function createWorkerHandlers(
         fetch: deps.fetch,
         ...(p.llm.apiKey ? { apiKey: p.llm.apiKey } : {}),
         ...(p.llm.model ? { model: p.llm.model } : {}),
+        ...(p.llm.baseUrl ? { baseUrl: p.llm.baseUrl } : {}),
       });
       const summary = await summarizeMeeting(m.title, segments, provider, (e) =>
         deps.log?.('llm failed; using extractive fallback', { err: String(e) }),
@@ -94,9 +103,7 @@ export function createWorkerHandlers(
     }): Promise<{ recovered: string[]; failed: string[] }> => {
       const recovered: string[] = [];
       const failed: string[] = [];
-      const stuck = repo
-        .listMeetings(1000)
-        .filter((m) => m.status === 'recording' || m.status === 'processing');
+      const stuck = repo.listByStatus(['recording', 'processing']);
       for (const m of stuck) {
         try {
           const segments = repo.getSegments(m.id);
@@ -115,6 +122,7 @@ export function createWorkerHandlers(
             fetch: deps.fetch,
             ...(p.llm.apiKey ? { apiKey: p.llm.apiKey } : {}),
             ...(p.llm.model ? { model: p.llm.model } : {}),
+            ...(p.llm.baseUrl ? { baseUrl: p.llm.baseUrl } : {}),
           });
           const summary = await summarizeMeeting(
             m.title,
@@ -157,6 +165,26 @@ export function createWorkerHandlers(
       return { pruned };
     },
     /** Dev/e2e only (main gates it on QRTZ_DEV_SEED and an unpackaged build): a long synthetic meeting. */
+    /** Dev/e2e only: many short finished meetings (meeting-list paging/perf). */
+    'dev.seedMany': (p: { count: number; now: number }) => {
+      const segs = syntheticSegments(1);
+      for (let i = 0; i < p.count; i++) {
+        const id = `00000000-0000-4000-9000-${String(i).padStart(12, '0')}`;
+        const startedAt = p.now - (i + 1) * 3_600_000;
+        repo.upsertMeeting({
+          id,
+          title: `Sync #${p.count - i}`,
+          platform: i % 2 ? 'zoom' : 'google-meet',
+          startedAt,
+          endedAt: startedAt + 60_000,
+          durationMs: 60_000,
+          status: 'done',
+          participants: ['Ada Lovelace', 'Alan Turing'],
+        });
+        repo.replaceSegments(id, 'live', segs);
+      }
+      return { count: p.count };
+    },
     'dev.seedLarge': async (p: {
       id: string;
       minutes: number;
@@ -189,11 +217,17 @@ export function createWorkerHandlers(
       repo.setStatus(p.meetingId, 'failed');
       return { ok: true };
     },
+    /** Paged: callers ask for `limit` and get up to limit+1 rows; the extra row means "there's more". */
     'memo.list': (p: {
       query?: string;
+      limit?: number;
+      offset?: number;
     }): { meeting: MeetingRow; hit?: SearchHit }[] => {
       const q = p?.query?.trim();
-      if (!q) return repo.listMeetings().map((meeting) => ({ meeting }));
+      if (!q)
+        return repo
+          .listMeetings((p?.limit ?? 100) + 1, p?.offset ?? 0)
+          .map((meeting) => ({ meeting }));
       return repo.search(q).flatMap((hit) => {
         const meeting = repo.getMeeting(hit.meetingId);
         return meeting ? [{ meeting, hit }] : [];
@@ -218,6 +252,27 @@ export function createWorkerHandlers(
           repo.getSummary(p.id),
         ),
       };
+    },
+    /** Re-run the summary (the "Retry" after an LLM failure). Keeps the old summary if this throws. */
+    'memo.resummarize': async (p: {
+      id: string;
+      llm: LlmParams;
+    }): Promise<MeetingSummary> => {
+      const m = need(p.id);
+      const provider = createProvider(p.llm.provider, {
+        fetch: deps.fetch,
+        ...(p.llm.apiKey ? { apiKey: p.llm.apiKey } : {}),
+        ...(p.llm.model ? { model: p.llm.model } : {}),
+        ...(p.llm.baseUrl ? { baseUrl: p.llm.baseUrl } : {}),
+      });
+      const summary = await summarizeMeeting(
+        m.title,
+        repo.getSegments(p.id),
+        provider,
+        (e) => deps.log?.('llm retry failed', { err: String(e) }),
+      );
+      repo.saveSummary(p.id, summary);
+      return summary;
     },
     'memo.delete': (p: { id: string }) => {
       repo.deleteMeeting(p.id);

@@ -86,9 +86,24 @@ async function post(
   });
   if (!res.ok) {
     const t = await res.text().catch(() => '');
+    // Providers return {"error":{"message":...}}; show that instead of raw JSON.
+    let detail = t.slice(0, 200);
+    try {
+      const j = JSON.parse(t) as { error?: { message?: unknown } | string };
+      const m = typeof j.error === 'string' ? j.error : j.error?.message;
+      if (typeof m === 'string' && m) detail = m.slice(0, 200);
+    } catch {
+      /* not JSON */
+    }
+    const hint =
+      res.status === 401 || res.status === 403
+        ? ' (check the API key in Settings)'
+        : res.status === 429
+          ? ' (rate limited; try again shortly)'
+          : '';
     throw new AppError(
       'E_PROVIDER',
-      `LLM HTTP ${res.status}: ${t.slice(0, 200)}`,
+      `LLM HTTP ${res.status}: ${detail}${hint}`,
       { retryable: res.status >= 500 || res.status === 429 },
     );
   }
@@ -259,7 +274,7 @@ export function buildSummaryPrompt(
   ];
 }
 
-const LlmSummaryJson = MeetingSummary.omit({ provider: true });
+const LlmSummaryJson = MeetingSummary.omit({ provider: true, llmError: true });
 
 /** Parses a model reply that should be JSON (tolerates code fences / leading prose). */
 export function parseSummaryReply(
@@ -288,6 +303,8 @@ export async function summarizeMeeting(
       return { ...parseSummaryReply(reply), provider: provider.id };
     } catch (e) {
       onError?.(e);
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ...extractiveSummary(segments), llmError: msg.slice(0, 500) };
     }
   }
   return extractiveSummary(segments);

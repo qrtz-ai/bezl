@@ -100,11 +100,25 @@ export class MemoRepo {
     return r ? toMeeting(r) : undefined;
   }
 
-  listMeetings(limit = 100): MeetingRow[] {
+  listMeetings(limit = 100, offset = 0): MeetingRow[] {
     return (
       this.db
-        .prepare('SELECT * FROM meetings ORDER BY started_at DESC LIMIT ?')
-        .all(limit) as Row[]
+        .prepare(
+          'SELECT * FROM meetings ORDER BY started_at DESC LIMIT ? OFFSET ?',
+        )
+        .all(limit, offset) as Row[]
+    ).map(toMeeting);
+  }
+
+  /** Meetings in the given states regardless of age (crash recovery must not miss old ones). */
+  listByStatus(statuses: string[]): MeetingRow[] {
+    if (!statuses.length) return [];
+    return (
+      this.db
+        .prepare(
+          `SELECT * FROM meetings WHERE status IN (${statuses.map(() => '?').join(',')}) ORDER BY started_at`,
+        )
+        .all(...statuses) as Row[]
     ).map(toMeeting);
   }
 

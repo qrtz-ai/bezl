@@ -13,5 +13,7 @@ export const MeetingSummary = z.object({
     }),
   ),
   provider: z.string(),
+  /** Set when the configured LLM failed and this is the extractive fallback; the UI offers a retry. */
+  llmError: z.string().max(500).optional(),
 });
 export type MeetingSummary = z.infer<typeof MeetingSummary>;

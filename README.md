@@ -10,6 +10,9 @@ qrtz desktop app for macOS: an Electron shell hosting modular React "sub apps", 
 - Memo: auto-start on Zoom/Meet detection (mocked off-Mac), live streaming transcript (final, no re-transcription), summary (OpenRouter, or the extractive fallback without a key), FTS search, Markdown export, chat, retention, ⌘⇧R shortcut, mini HUD.
 - Fail-soft: if the helper is missing or crashes mid-meeting, the audio and transcript up to the crash are kept and the meeting is finalized (`e2e/crash.spec.ts`). Startup recovery finishes meetings a crash left behind.
 - Large meetings: a 2-hour, 1500-segment meeting opens in ~0.2 s, and search takes ~0.5 s (`e2e/large-a11y.spec.ts`).
+- Error states: the capture helper missing or stopped (shown on Home and Memo, recording disabled), LLM failures (falls back to the on-device summary with a Retry button), Settings sections that load independently, and a meeting that fails to load (Try again).
+- Hundreds of meetings: the Memo list pages 100 at a time ("Show 100 more"). Crash recovery finds stuck meetings at any age.
+- OpenRouter path: proven end to end against a local OpenAI-compatible stub server (`apps/desktop/src/worker/llm-openrouter.test.ts` and `e2e/states.spec.ts`), without a key.
 - Accessibility: no serious or critical axe violations (WCAG 2.1 AA) on Home, Memo, Gallery, Settings or the palette. Transcript rows can be operated by keyboard.
 - Swift helper core (protocol, DSP, echo pipeline with the LocalVQE → gate fallback): 27 tests pass on Linux.
 
@@ -24,6 +27,18 @@ qrtz desktop app for macOS: an Electron shell hosting modular React "sub apps", 
 - OpenRouter API key: `QRTZ_SECRET_OPENROUTER` or Settings (stored with safeStorage).
 - Apple Developer ID (signing, notarization, auto-update).
 - Optional: a Hugging Face token if model downloads are rate-limited.
+
+## Screenshots
+
+These were captured by `e2e/screens.spec.ts` and `e2e/states.spec.ts` on Linux with the mock helper. Refresh them with `QRTZ_DOC_SHOTS=1 xvfb-run -a npx playwright test -c e2e/playwright.config.ts screens`.
+
+| First run                                                         | Live recording                                                          |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| ![Home on first run](docs/screenshots/home-first-run.png)         | ![Live transcript HUD](docs/screenshots/memo-live.png)                  |
+| **Meeting summary**                                               | **LLM failure with retry**                                              |
+| ![Summary and action items](docs/screenshots/meeting-summary.png) | ![AI summary failed callout with Retry](docs/screenshots/llm-error.png) |
+
+More screenshots in `docs/screenshots/`: home-with-meetings, meeting-transcript, memo-detected, settings, palette, helper-missing.
 
 ## Requirements
 

@@ -10,6 +10,7 @@ import {
   Spinner,
   Text,
   useTheme,
+  Callout,
 } from '@qrtz/ui';
 import {
   requestNavigate,
@@ -66,6 +67,7 @@ export default function HomeView() {
   const t = useTheme();
   const qrtz = useQrtz();
   const [recent, setRecent] = useState<Item[] | null>(null);
+  const [showSetup, setShowSetup] = useState(false);
   const [perms, setPerms] = useState<PermissionsStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -74,7 +76,7 @@ export default function HomeView() {
   const [session, setSession] = useState<SessionView | null>(null);
 
   const load = useCallback(() => {
-    qrtz.invoke('memo:list', {}).then(
+    qrtz.invoke('memo:list', { limit: 5 }).then(
       (r) => setRecent(r.slice(0, 5) as Item[]),
       (e: Error) => setError(e.message),
     );
@@ -98,6 +100,9 @@ export default function HomeView() {
   };
 
   const missing = perms ? PERMS.filter((p) => perms[p.id] !== 'granted') : [];
+  // Once everything is granted and meetings exist, setup collapses to one line below the meetings.
+  const settled = !!perms && missing.length === 0 && !!recent?.length;
+  const setupCollapsed = settled && !showSetup;
 
   return (
     <div
@@ -131,6 +136,7 @@ export default function HomeView() {
             <Button
               onClick={() => void record()}
               loading={busy}
+              disabled={s?.helper === 'missing'}
               data-testid="home-record"
             >
               Record now
@@ -142,6 +148,22 @@ export default function HomeView() {
           </Text>
         </div>
       </header>
+
+      {s?.helper === 'missing' || s?.helper === 'down' ? (
+        <Callout
+          tone="danger"
+          data-testid="helper-notice"
+          title={
+            s.helper === 'missing'
+              ? 'Recording unavailable: capture helper missing'
+              : 'Capture helper stopped'
+          }
+        >
+          {s.helper === 'missing'
+            ? (s.helperDetail ?? 'Reinstall qrtz to restore recording.')
+            : `Recording paused; anything already captured was saved. qrtz is restarting it automatically.${s.helperDetail ? ` (${s.helperDetail})` : ''}`}
+        </Callout>
+      ) : null}
 
       {error ? (
         <Card padding={4} role="alert" data-testid="home-error">
@@ -161,7 +183,7 @@ export default function HomeView() {
 
       <section
         aria-labelledby="perm-h"
-        style={{ display: 'grid', gap: t.space[3] }}
+        style={{ display: 'grid', gap: t.space[3], order: settled ? 2 : 0 }}
         data-testid="home-permissions"
       >
         <Text
@@ -178,63 +200,91 @@ export default function HomeView() {
               ? '· capture needs macOS'
               : `· ${PERMS.length - missing.length}/${PERMS.length}`}
         </Text>
-        <Card padding={3}>
-          {PERMS.map((p) => {
-            const st = perms?.[p.id];
-            const ok = st === 'granted';
-            return (
-              <div
-                key={p.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: t.space[3],
-                  padding: `${t.space[2]} ${t.space[2]}`,
-                }}
-              >
-                <span
-                  aria-hidden
+        {setupCollapsed ? (
+          <Card
+            padding={3}
+            style={{ display: 'flex', alignItems: 'center', gap: t.space[3] }}
+          >
+            <span
+              aria-hidden
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                background: t.color.success,
+              }}
+            />
+            <Text size="sm" style={{ flex: 1 }}>
+              All set: qrtz can hear both sides of your calls.
+            </Text>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowSetup(true)}
+              data-testid="home-setup-expand"
+            >
+              Details
+            </Button>
+          </Card>
+        ) : (
+          <Card padding={3}>
+            {PERMS.map((p) => {
+              const st = perms?.[p.id];
+              const ok = st === 'granted';
+              return (
+                <div
+                  key={p.id}
                   style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
-                    background: ok
-                      ? t.color.success
-                      : st === 'unsupported'
-                        ? t.color.textSubtle
-                        : t.color.warning,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: t.space[3],
+                    padding: `${t.space[2]} ${t.space[2]}`,
                   }}
-                />
-                <div style={{ flex: 1, display: 'grid' }}>
-                  <Text size="sm">{p.label}</Text>
-                  <Text size="xs" muted>
-                    {p.why}
-                  </Text>
+                >
+                  <span
+                    aria-hidden
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      background: ok
+                        ? t.color.success
+                        : st === 'unsupported'
+                          ? t.color.textSubtle
+                          : t.color.warning,
+                    }}
+                  />
+                  <div style={{ flex: 1, display: 'grid' }}>
+                    <Text size="sm">{p.label}</Text>
+                    <Text size="xs" muted>
+                      {p.why}
+                    </Text>
+                  </div>
+                  {!perms ? (
+                    <Spinner size={12} />
+                  ) : ok ? (
+                    <Badge tone="success">Granted</Badge>
+                  ) : st === 'unsupported' ? (
+                    <Badge tone="neutral">Mac only</Badge>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      aria-label={`Grant ${p.label}`}
+                      onClick={() =>
+                        void qrtz
+                          .invoke('permissions:request', { permission: p.id })
+                          .then(setPerms)
+                      }
+                    >
+                      Grant
+                    </Button>
+                  )}
                 </div>
-                {!perms ? (
-                  <Spinner size={12} />
-                ) : ok ? (
-                  <Badge tone="success">Granted</Badge>
-                ) : st === 'unsupported' ? (
-                  <Badge tone="neutral">Mac only</Badge>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    aria-label={`Grant ${p.label}`}
-                    onClick={() =>
-                      void qrtz
-                        .invoke('permissions:request', { permission: p.id })
-                        .then(setPerms)
-                    }
-                  >
-                    Grant
-                  </Button>
-                )}
-              </div>
-            );
-          })}
-        </Card>
+              );
+            })}
+          </Card>
+        )}
       </section>
 
       <section
