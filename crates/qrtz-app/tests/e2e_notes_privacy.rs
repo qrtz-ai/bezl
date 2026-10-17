@@ -137,10 +137,18 @@ async fn live_notes_and_privacy_pause_notes_merged_into_the_summary_and_template
 
     // Template: "general" by default; "standup" re-runs the summary and is stored with the meeting.
     assert_eq!(meeting_template(&d), "general", "{d}");
+    let before = a.until_settled(&id).await;
     let r = a
         .note("note:set-template", json!({"id": id, "template": "standup"}))
         .await;
     assert_eq!(r["provider"], "apple-intelligence", "{r}");
+    assert_eq!(r["template"], "standup", "{r}");
+    // N115: through the pipeline's summary step (one heavy step at a time), like resummarize.
+    let after = a.until_settled(&id).await;
+    assert_ne!(
+        after["steps"]["summary"]["finishedAt"], before["steps"]["summary"]["finishedAt"],
+        "{after}"
+    );
     let p = last_prompt();
     assert!(p.starts_with("This is a standup."), "{p}");
     assert!(p.contains("TODO send recap to everyone"), "{p}");

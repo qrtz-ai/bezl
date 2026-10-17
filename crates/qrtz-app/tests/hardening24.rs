@@ -1,5 +1,6 @@
 //! Hardening cycle 24: the on-device summary engine (ADR 0075) under stress, over fake models in paused time
-//! (no helper, no DB). Hung model, the meeting deadline vs the runtime timeout, a transcript far larger than the
+//! (no helper, no DB). Hung model, the meeting deadline vs the runtime timeout, 4 h+ meetings and resuming (N114),
+//! one meeting's turn on the model (N115), renumbered split labels (N117), a transcript far larger than the
 //! window, context splits that must keep every line exactly once, a fresh fence nonce per request (N69 in the
 //! map-reduce path), malformed / oversized results and error lines, and a guard that the app wires no network
 //! summary path (qrtz-llm's provider code is dormant: N118).
@@ -10,7 +11,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use qrtz_app::summary::{
     error_from_line, limits, reply_from_result, to_lifecycle, OnDeviceError, OnDeviceModel,
-    OnDeviceSummaries, Stage, CALL_TIMEOUT, ON_DEVICE_DEADLINE, ON_DEVICE_SUMMARY_TIMEOUT_MS,
+    OnDeviceSummaries, Stage, CALL_TIMEOUT, MAX_ON_DEVICE_DEADLINE, ON_DEVICE_DEADLINE,
+    ON_DEVICE_SUMMARY_TIMEOUT_MS, PROVIDER_ID,
 };
 use qrtz_llm::prompt::{SummaryOptions, SummaryReply};
 use qrtz_llm::steps::Loaded;
@@ -107,15 +109,159 @@ async fn a_model_that_never_answers_is_one_call_timeout_not_the_whole_runtime_bu
 
 #[tokio::test(start_paused = true)]
 async fn the_meeting_deadline_always_ends_inside_the_runtime_timeout() {
-    // N114: ~30 s per part (ADR 0075 measurements) and a ~6 h meeting (~46 parts): the deadline ends the attempt first.
+    // N114 (fixed): the deadline is sized from the part count, between the old 840 s and the cap, and the cap
+    // still ends inside the runtime's step timeout.
+    let e = OnDeviceSummaries::new(Model::new(Some(Duration::from_secs(1)), usize::MAX));
+    assert_eq!(e.deadline_for(0), ON_DEVICE_DEADLINE);
+    assert_eq!(e.deadline_for(1), ON_DEVICE_DEADLINE);
+    let mut last = Duration::ZERO;
+    for parts in [0, 1, 10, 28, 46, 100, 1_000, usize::MAX / 2] {
+        let d = e.deadline_for(parts);
+        assert!(d >= last, "monotonic");
+        assert!(d <= MAX_ON_DEVICE_DEADLINE, "{parts}: {d:?}");
+        last = d;
+    }
+    assert_eq!(e.deadline_for(1_000), MAX_ON_DEVICE_DEADLINE);
+    assert!(MAX_ON_DEVICE_DEADLINE < Duration::from_millis(ON_DEVICE_SUMMARY_TIMEOUT_MS));
+}
+
+/// A meeting of about `h` hours at the review's scale (~28 parts of 8,000 chars in ~4 h): one ~65-char line every
+/// 4 s.
+fn hours(h: usize) -> Loaded {
+    meeting(h * 900)
+}
+
+#[tokio::test(start_paused = true)]
+async fn meetings_of_four_and_six_hours_get_an_on_device_summary_in_one_attempt() {
+    // N114: at the measured ~30 s per call these took longer than the fixed 840 s and never finished.
+    for h in [4, 6] {
+        let m = Model::new(Some(Duration::from_secs(30)), usize::MAX);
+        let e = OnDeviceSummaries::new(m.clone());
+        let big = hours(h);
+        let parts = e.parts(&big).len();
+        assert!(parts >= 7 * h, "{h} h: {parts} parts");
+        let t0 = tokio::time::Instant::now();
+        let s = e.summarize(&big).await.expect("summarized");
+        assert_eq!(s.provider, PROVIDER_ID);
+        assert!(
+            t0.elapsed() > ON_DEVICE_DEADLINE,
+            "{h} h took {:?} (> the old deadline)",
+            t0.elapsed()
+        );
+        assert!(t0.elapsed() <= e.deadline_for(parts), "{h} h: {:?}", t0.elapsed());
+        let maps = m.calls().iter().filter(|c| c.0 == Stage::Map).count();
+        assert_eq!(maps, parts, "{h} h: each part once");
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_meeting_too_long_for_one_attempt_resumes_from_its_part_summaries() {
+    // N114: past the cap (here ~20 h at 30 s per call), an attempt ends at its deadline; the next attempt goes on
+    // from the parts already summarized instead of part 1, so every part reaches the model exactly once.
     let m = Model::new(Some(Duration::from_secs(30)), usize::MAX);
     let e = OnDeviceSummaries::new(m.clone());
-    let t0 = tokio::time::Instant::now();
-    let r = e.summarize(&meeting(6_000)).await;
-    assert_eq!(r.unwrap_err(), OnDeviceError::Timeout);
-    assert!(t0.elapsed() <= ON_DEVICE_DEADLINE, "{:?}", t0.elapsed());
-    assert!(ON_DEVICE_DEADLINE < Duration::from_millis(ON_DEVICE_SUMMARY_TIMEOUT_MS));
-    assert!(m.calls().len() <= (ON_DEVICE_DEADLINE.as_secs() / 30 + 1) as usize);
+    let big = hours(20);
+    let parts = e.parts(&big).len();
+    assert!(e.deadline_for(parts) == MAX_ON_DEVICE_DEADLINE, "{parts} parts");
+    let mut attempts = 0;
+    let s = loop {
+        attempts += 1;
+        assert!(attempts <= 3, "inside the summary policy's 3 attempts");
+        match e.summarize(&big).await {
+            Ok(s) => break s,
+            Err(err) => assert_eq!(err, OnDeviceError::Timeout),
+        }
+    };
+    assert!(attempts >= 2, "needed a resume: {attempts}");
+    assert!(!s.summary.is_empty());
+    let maps: Vec<String> = m
+        .calls()
+        .into_iter()
+        .filter(|c| c.0 == Stage::Map)
+        .map(|c| fenced(&c.1))
+        .collect();
+    let distinct: HashSet<&String> = maps.iter().collect();
+    // At most the one part a deadline cut short is sent again.
+    assert!(
+        maps.len() < parts + attempts,
+        "{} map calls for {parts} parts",
+        maps.len()
+    );
+    assert_eq!(distinct.len(), parts, "every part summarized");
+    // A finished meeting keeps nothing: summarizing it again starts from part 1.
+    let before = m.calls().len();
+    e.summarize(&big).await.ok();
+    let again = m.calls()[before..]
+        .iter()
+        .filter(|c| c.0 == Stage::Map && c.1.contains("utterance000000"))
+        .count();
+    assert_eq!(again, 1, "the cache was dropped on success");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_meeting_waiting_for_the_model_does_not_spend_its_call_timeout_or_deadline_waiting() {
+    // N115: two summaries at once (a template change during a pipeline summary). Each call takes 150 s, under
+    // the 180 s call timeout; the second meeting's wait for the first is not counted against it.
+    // The helper answers one request at a time (its queue), like `HelperModel` did with its own lock.
+    struct Queued(Arc<Model>, tokio::sync::Mutex<()>);
+    #[async_trait]
+    impl OnDeviceModel for Queued {
+        async fn summarize(&self, st: Stage, p: String) -> Result<SummaryReply, OnDeviceError> {
+            let _one = self.1.lock().await;
+            self.0.summarize(st, p).await
+        }
+    }
+    let m = Model::new(Some(Duration::from_secs(150)), usize::MAX);
+    let e = Arc::new(OnDeviceSummaries::new(Arc::new(Queued(
+        m.clone(),
+        tokio::sync::Mutex::new(()),
+    ))));
+    let (a, b) = (meeting(10), meeting(12));
+    let (ra, rb) = tokio::join!(e.summarize(&a), e.summarize(&b));
+    ra.expect("first");
+    rb.expect("second, after waiting its turn");
+    assert_eq!(m.calls().len(), 2);
+}
+
+#[tokio::test(start_paused = true)]
+async fn parts_are_renumbered_after_a_split() {
+    // N117: the model takes ~2,600-char prompts, so each ~8,000-char part splits; the accepted map prompts read
+    // "part 1 of …", "part 2 of …", … with every number once and in order, the last one "part n of n".
+    let m = Model::new(Some(Duration::from_millis(1)), 2_600);
+    let e = OnDeviceSummaries::new(m.clone());
+    e.summarize(&meeting(400)).await.expect("summarized");
+    let labels: Vec<(usize, usize)> = m
+        .calls()
+        .iter()
+        .filter(|(st, p)| *st == Stage::Map && p.chars().count() <= 2_600)
+        .map(|(_, p)| {
+            let at = p.find("Transcript, part ").expect("label") + "Transcript, part ".len();
+            let rest = &p[at..];
+            let (k, rest) = rest.split_once(" of ").unwrap();
+            let n = rest.split(':').next().unwrap();
+            (k.parse().unwrap(), n.parse().unwrap())
+        })
+        .collect();
+    assert!(labels.len() > e.parts(&meeting(400)).len(), "splits happened");
+    let ks: Vec<usize> = labels.iter().map(|l| l.0).collect();
+    assert_eq!(ks, (1..=labels.len()).collect::<Vec<_>>(), "{labels:?}");
+    assert_eq!(
+        labels.last().unwrap(),
+        &(labels.len(), labels.len()),
+        "{labels:?}"
+    );
+    // A one-part meeting that splits: "part 1 of 2", "part 2 of 2" (it was "part 1 of 2" twice).
+    let m = Model::new(Some(Duration::from_millis(1)), 1_000);
+    let e = OnDeviceSummaries::new(m.clone());
+    e.summarize(&meeting(12)).await.expect("summarized");
+    let maps: Vec<String> = m
+        .calls()
+        .iter()
+        .filter(|(st, p)| *st == Stage::Map && p.chars().count() <= 1_000)
+        .map(|(_, p)| p.clone())
+        .collect();
+    assert_eq!(maps.len(), 2, "{maps:?}");
+    assert!(maps[0].contains("part 1 of 2") && maps[1].contains("part 2 of 2"));
 }
 
 #[tokio::test(start_paused = true)]

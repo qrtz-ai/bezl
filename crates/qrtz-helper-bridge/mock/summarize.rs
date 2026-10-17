@@ -1,10 +1,12 @@
 //! ADR 0075: the mocks' on-device model, shared by `qrtz-mock-helper` and `qrtz-app/examples/e2e_helper.rs`
 //! (both pull it in with `#[path]`). Knob (env):
-//!   QRTZ_MOCK_SUMMARIZE=ok|unavailable:<reason>|context>N|guardrail|hang|busy-while:<path>
+//!   QRTZ_MOCK_SUMMARIZE=ok|unavailable:<reason>|context>N|guardrail|hang|hang-once:<path>|invalid|busy-while:<path>
 //!     ok (default): `summarize.result` built from the fenced lines (each line with " will " is an action item,
 //!     owner = speaker); unavailable:apple-intelligence-off etc.: `summarize.error` unavailable; context>N:
 //!     `context` for a prompt over N chars; guardrail: `guardrail`; hang: never answers (until
-//!     `summarize.cancel`); busy-while:<path>: `busy` (retryable) while `path` exists, then ok.
+//!     `summarize.cancel`); hang-once:<path>: the first request (no `path` yet) writes this process's pid to
+//!     `path` and hangs, every later one (also after a restart) is ok; invalid: a `summarize.result` that fails the
+//!     contract (`summary` is a number); busy-while:<path>: `busy` (retryable) while `path` exists, then ok.
 //!     `summarize.check` answers `summarize.status` to match.
 //!   QRTZ_MOCK_SUMMARIZE_LOG=path  every `summarize` request line is appended to `path` (tests read the prompts).
 use serde_json::{json, Value};
@@ -52,6 +54,17 @@ pub fn handle(line: &str, msg: &Value) -> Option<Value> {
             }
             if mode == "hang" {
                 return None;
+            }
+            if let Some(path) = mode.strip_prefix("hang-once:") {
+                if !std::path::Path::new(path).exists() {
+                    let _ = std::fs::write(path, std::process::id().to_string());
+                    return None;
+                }
+            }
+            if mode == "invalid" {
+                return Some(
+                    json!({"type": "summarize.result", "id": id, "summary": 7, "actionItems": [], "qa": []}),
+                );
             }
             if mode == "guardrail" {
                 return Some(

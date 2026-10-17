@@ -164,6 +164,13 @@ impl<E: DbExec> LifecycleStore for Store<E> {
     async fn get_summary(&self, meeting_id: String) -> StoreResult<Option<MeetingSummary>> {
         self.run(move |db| db.notes().get_summary(&meeting_id)).await
     }
+    async fn set_template(&self, meeting_id: String, template: String) -> StoreResult<()> {
+        self.run(move |db| {
+            db.notes().need(&meeting_id)?;
+            db.notes().set_template(&meeting_id, &template)
+        })
+        .await
+    }
     async fn save_session(&self, s: RecordingState, now: EpochMs) -> StoreResult<()> {
         self.run(move |db| db.lifecycle().save_session(&s, now)).await
     }

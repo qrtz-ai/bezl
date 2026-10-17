@@ -289,8 +289,7 @@ impl NoteRuntime {
     }
     pub async fn set_template(&self, id: &str, template: &str) -> Result<MeetingSummary, CoreError> {
         let (sh, id, t) = (self.sh.clone(), id.to_string(), template.to_string());
-        self.task(async move { Ok(sh.d.steps.resummarize(id, Some(t)).await?) })
-            .await
+        self.task(async move { sh.set_template(&id, &t).await }).await
     }
     pub fn live_transcript(&self, meeting_id: Option<&str>) -> Option<LiveTranscript> {
         self.sh.lock().live_transcript(&self.sh.d, meeting_id)
@@ -2475,6 +2474,36 @@ impl Shared {
         .await?;
         self.emit(CoreEvent::Changed { id: id.to_string() });
         Ok(Some(summary))
+    }
+
+    /// N115: once finalized, a template change re-summarizes through the pipeline like `resummarize` (one heavy
+    /// step at a time, so it never interleaves with another meeting's summary, with its retries and progress).
+    /// Before that, the step executor stores the template and summarizes directly, as before.
+    async fn set_template(self: Arc<Self>, id: &str, template: &str) -> Result<MeetingSummary, CoreError> {
+        let p = self.cached_or_stored(id).await?;
+        if p.is_some_and(|p| p.steps.finalize.status == StepStatus::Done) {
+            if !template.is_empty() {
+                self.d
+                    .store
+                    .set_template(id.to_string(), template.to_string())
+                    .await?;
+            }
+            return self
+                .clone()
+                .resummarize(id)
+                .await?
+                .ok_or_else(|| CoreError::internal("no summary after re-summarizing"));
+        }
+        let summary = with_timeout(
+            "note.setTemplate",
+            self.config().summary_timeout_ms,
+            self.d
+                .steps
+                .resummarize(id.to_string(), Some(template.to_string())),
+        )
+        .await?;
+        self.emit(CoreEvent::Changed { id: id.to_string() });
+        Ok(summary)
     }
 
     /// Polls until `step` is done/failed/skipped or `budget` passes (monotonic: a wall-clock jump can't cut it).

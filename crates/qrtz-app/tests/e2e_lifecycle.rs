@@ -239,3 +239,104 @@ async fn app_restart_mid_post_processing_resumes_the_pipeline_from_the_persisted
     assert_eq!(list[0]["meeting"]["status"], "done", "{list}");
     b.quit().await;
 }
+
+/// N113 (§12.23 a): the helper hangs on the summary and is killed mid-request. The request waits for the
+/// supervisor's restart and is resent once with a new id, so the meeting gets the real on-device summary in the
+/// same attempt (no extractive fallback, no `llmError`).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_helper_killed_mid_summary_is_waited_for_and_the_summary_is_resent_once() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mark, log) = (tmp.path().join("hung-pid"), tmp.path().join("summarize.jsonl"));
+    let a = App::launch(
+        &tmp.path().join("data"),
+        Opts::default()
+            .standup("0.02")
+            .env("QRTZ_MOCK_SUMMARIZE", &format!("hang-once:{}", mark.display()))
+            .env("QRTZ_MOCK_SUMMARIZE_LOG", log.to_str().unwrap()),
+    )
+    .await;
+    a.helper_ready().await;
+    detected(&a).await;
+    let s = a.note("note:start", json!({})).await;
+    let id = s["meetingId"].as_str().unwrap().to_owned();
+    wait("> 3 live lines", || async {
+        (segments(&a.note("note:live-transcript", json!({})).await) > 3).then_some(())
+    })
+    .await;
+    a.note("note:stop", Value::Null).await;
+    let pid = wait("the model hangs", || async {
+        std::fs::read_to_string(&mark).ok().filter(|p| !p.is_empty())
+    })
+    .await;
+    let st = std::process::Command::new("kill")
+        .args(["-9", pid.trim()])
+        .status()
+        .unwrap();
+    assert!(st.success());
+    let p = a.until_settled(&id).await;
+    assert_eq!(p["steps"]["summary"]["status"], "done", "{p}");
+    assert_ne!(p["steps"]["summary"]["fallback"], true, "{p}");
+    assert_eq!(
+        p["steps"]["summary"]["attempts"], 1,
+        "resent inside the attempt: {p}"
+    );
+    let d = a.note("note:get", json!({"id": id})).await;
+    assert_eq!(d["summary"]["provider"], "apple-intelligence", "{d}");
+    assert!(d["summary"].get("llmError").is_none_or(Value::is_null), "{d}");
+    let ids: Vec<String> = std::fs::read_to_string(&log)
+        .unwrap()
+        .lines()
+        .map(|l| {
+            serde_json::from_str::<Value>(l).unwrap()["id"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
+        .collect();
+    assert_eq!(ids.len(), 2, "the hung request, then one resend: {ids:?}");
+    assert_ne!(ids[0], ids[1], "the resend has a new id");
+    a.quit().await;
+}
+
+/// N116 (§12.23 c): an answer for our id that fails the helper contract fails the call at once with "invalid reply
+/// from the on-device model" (each attempt), not after the 180 s call timeout as "took too long".
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_contract_invalid_answer_fails_at_once_as_an_invalid_reply() {
+    let tmp = tempfile::tempdir().unwrap();
+    let log = tmp.path().join("summarize.jsonl");
+    let a = App::launch(
+        &tmp.path().join("data"),
+        Opts::default()
+            .standup("0.02")
+            .env("QRTZ_MOCK_SUMMARIZE", "invalid")
+            .env("QRTZ_MOCK_SUMMARIZE_LOG", log.to_str().unwrap()),
+    )
+    .await;
+    a.helper_ready().await;
+    detected(&a).await;
+    let s = a.note("note:start", json!({})).await;
+    let id = s["meetingId"].as_str().unwrap().to_owned();
+    wait("> 3 live lines", || async {
+        (segments(&a.note("note:live-transcript", json!({})).await) > 3).then_some(())
+    })
+    .await;
+    let t0 = std::time::Instant::now();
+    a.note("note:stop", Value::Null).await;
+    let p = a.until_step(&id, "summary", "failed").await;
+    assert!(
+        t0.elapsed() < std::time::Duration::from_secs(60),
+        "{:?}",
+        t0.elapsed()
+    );
+    assert_eq!(attempts(&log), 3, "maxAttempts");
+    let msg = p["steps"]["summary"]["error"]["message"].as_str().unwrap_or("");
+    assert!(msg.contains("invalid reply from the on-device model"), "{p}");
+    let d = a.note("note:get", json!({"id": id})).await;
+    assert!(
+        d["summary"]["llmError"]
+            .as_str()
+            .is_some_and(|e| e.contains("invalid reply")),
+        "{d}"
+    );
+    a.quit().await;
+}

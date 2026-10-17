@@ -461,6 +461,8 @@ pub trait LifecycleStore: Send + Sync {
         created_at: EpochMs,
         ids: IdGen,
     ) -> StoreResult<NoteWithMeeting>;
+    /// `note.setTemplate` alone (N115: a template change then re-summarizes through the pipeline).
+    async fn set_template(&self, meeting_id: String, template: String) -> StoreResult<()>;
     /// `note.get(...).summary`.
     async fn get_summary(&self, meeting_id: String) -> StoreResult<Option<MeetingSummary>>;
     /// `lifecycle.saveSession`.
@@ -487,6 +489,7 @@ pub const STORE_METHODS: &[&str] = &[
     "note.fail",
     "note.addNote",
     "note.get",
+    "note.setTemplate",
     "lifecycle.saveSession",
     "lifecycle.loadSession",
     "pipeline.save",

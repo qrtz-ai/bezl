@@ -313,6 +313,13 @@ impl LifecycleStore for FaultyStore {
     async fn get_summary(&self, meeting_id: String) -> StoreResult<Option<MeetingSummary>> {
         guarded!(self, "note.get", self.inner.get_summary(meeting_id))
     }
+    async fn set_template(&self, meeting_id: String, template: String) -> StoreResult<()> {
+        guarded!(
+            self,
+            "note.setTemplate",
+            self.inner.set_template(meeting_id, template)
+        )
+    }
     async fn save_session(&self, s: RecordingState, now: EpochMs) -> StoreResult<()> {
         guarded!(self, "lifecycle.saveSession", self.inner.save_session(s, now))
     }
