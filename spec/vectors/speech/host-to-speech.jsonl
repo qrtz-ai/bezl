@@ -1,0 +1,5 @@
+{"channels":["mic","system"],"files":[{"fd":7,"path":"engine/model.bin","size":1024}],"kind":"recording","sampleRate":16000,"sessionId":"s1","speakerMode":"fast","type":"start"}
+{"channels":["mic"],"files":[{"fd":7,"path":"engine/model.bin","size":1024}],"kind":"dictation","languageHint":"en-US","sampleRate":16000,"sessionId":"d1","speakerMode":"accurate","type":"start"}
+{"sessionId":"s1","type":"finish"}
+{"sessionId":"s1","type":"cancel"}
+{"type":"shutdown"}

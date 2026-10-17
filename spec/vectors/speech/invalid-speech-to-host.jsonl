@@ -1,0 +1,8 @@
+{"type":"nope"}
+{"type":"words","utteranceId":"u1","final":true,"language":"klingon-XX","words":[]}
+{"type":"words","utteranceId":"u1","final":true,"language":"en","words":[{"text":"","startMs":0,"endMs":1}]}
+{"type":"words","utteranceId":"u1","final":true,"language":"en","words":[{"text":"x","startMs":-1,"endMs":1}]}
+{"type":"speaker","channel":"mic","speaker":"mic:8","startMs":0,"endMs":1}
+{"type":"speaker","channel":"mic","speaker":"bob","startMs":0,"endMs":1}
+{"type":"hello","protocol":1,"moduleVersion":"latest","languages":[],"maxSpeakersPerChannel":8}
+{"type":"log","level":"info","msg":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}

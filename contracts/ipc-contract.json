@@ -7569,7 +7569,6 @@
         "notifyNoAudio": true,
         "autoSummarize": true,
         "backgroundIndexing": true,
-        "liveAsr": "parakeet-unified-320ms",
         "llmProvider": "openrouter",
         "llmModel": "",
         "floatingHud": true,
@@ -7592,6 +7591,11 @@
         "restoreClipboard": true,
         "showPill": true,
         "saveHistory": true
+      },
+      "speech": {
+        "speakerMode": "fast",
+        "cloud": "off",
+        "autoUpdate": true
       },
       "privacy": {
         "localOnly": false,
@@ -7689,15 +7693,6 @@
               "default": true,
               "type": "boolean"
             },
-            "liveAsr": {
-              "default": "parakeet-unified-320ms",
-              "type": "string",
-              "enum": [
-                "parakeet-eou-160ms",
-                "parakeet-unified-320ms",
-                "apple-speech"
-              ]
-            },
             "llmProvider": {
               "default": "openrouter",
               "type": "string",
@@ -7743,7 +7738,6 @@
             "notifyNoAudio",
             "autoSummarize",
             "backgroundIndexing",
-            "liveAsr",
             "llmProvider",
             "llmModel",
             "floatingHud",
@@ -7854,6 +7848,37 @@
           ],
           "additionalProperties": false
         },
+        "speech": {
+          "type": "object",
+          "properties": {
+            "speakerMode": {
+              "default": "fast",
+              "type": "string",
+              "enum": [
+                "fast",
+                "accurate"
+              ]
+            },
+            "cloud": {
+              "default": "off",
+              "type": "string",
+              "enum": [
+                "off",
+                "elevenlabs"
+              ]
+            },
+            "autoUpdate": {
+              "default": true,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "speakerMode",
+            "cloud",
+            "autoUpdate"
+          ],
+          "additionalProperties": false
+        },
         "privacy": {
           "type": "object",
           "properties": {
@@ -7893,6 +7918,7 @@
         "telemetry",
         "note",
         "talk",
+        "speech",
         "privacy"
       ],
       "additionalProperties": false

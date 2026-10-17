@@ -9,7 +9,17 @@ import { MemorySecretStore, envNameFor } from './secrets';
 
 describe('config', () => {
   it('fills defaults', () => {
-    expect(loadConfig(undefined).note.liveAsr).toBe('parakeet-unified-320ms');
+    expect(loadConfig(undefined).speech).toEqual({
+      speakerMode: 'fast',
+      cloud: 'off',
+      autoUpdate: true,
+    });
+    // ADR 0046: the old model-named setting is dropped on load, the rest of `note` survives.
+    const old = loadConfig({
+      note: { liveAsr: 'parakeet-unified-320ms', autoRecord: true },
+    });
+    expect('liveAsr' in old.note).toBe(false);
+    expect(old.note.autoRecord).toBe(true);
   });
   it('N29: the no-audio warning is on by default and can be turned off', () => {
     expect(defaultConfig().note.notifyNoAudio).toBe(true);

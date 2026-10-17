@@ -31,9 +31,6 @@ export const ConfigSchema = z.object({
       autoSummarize: z.boolean().default(true),
       /** Build semantic-search embeddings in the background after meetings. */
       backgroundIndexing: z.boolean().default(true),
-      liveAsr: z
-        .enum(['parakeet-eou-160ms', 'parakeet-unified-320ms', 'apple-speech'])
-        .default('parakeet-unified-320ms'),
       llmProvider: z
         .enum(['openai', 'anthropic', 'google', 'openrouter', 'ollama', 'none'])
         .default('openrouter'),
@@ -81,6 +78,17 @@ export const ConfigSchema = z.object({
       /** Floating pill with the level and live text while dictating. */
       showPill: z.boolean().default(true),
       saveHistory: z.boolean().default(true),
+    })
+    .prefault({}),
+  /** qrtz speech (ADR 0046). Model-agnostic: the engine and its models live inside the speech module. */
+  speech: z
+    .object({
+      /** Speaker labelling trade-off: fast (about 1 s behind) or accurate (about 3 s behind). */
+      speakerMode: z.enum(['fast', 'accurate']).default('fast'),
+      /** Optional cloud words (host-side ElevenLabs adapter); speakers stay on-device. */
+      cloud: z.enum(['off', 'elevenlabs']).default('off'),
+      /** Download and install signed speech updates in the background (never during a session). */
+      autoUpdate: z.boolean().default(true),
     })
     .prefault({}),
   privacy: z

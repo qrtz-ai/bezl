@@ -44,29 +44,43 @@ hides `pending_deletes()`, and the runtime (not the shell) emits `note:changed`.
 | 0   | This file, ownership split                                                                                                                                                                                                                                         | done  | (this)    |
 | 1   | `src-tauri` shell in the workspace; qrtz-app: NoteRuntimePort (all runtime channels), StoragePort over `StorageHandle`, EventSink (bus + OS notifications + no-audio hook), HelperPort over the supervisor, recover() at boot, AppDirs, file secrets 0600 on Linux | done  | (see log) |
 | 2   | Talk routing only (`talk:*` → `TalkPort`; dictation errors / `permission.revoked` reach talk; `config_changed` on config/secrets set). The service is Bozniak's `qrtz-talk`                                                                                        | done  | (see log) |
-| 2b  | On-device Nemotron ASR + per-channel diarization, models on demand (ADR 0045), see below                                                                                                                                                                           | todo  |           |
+| 2b  | qrtz speech module (ADR 0046): protocol + `qrtz-speech` store/updater done; spawner, helper, wiring, UI next                                                                                                                                                       | todo  |           |
 | 3   | Integrate Bozniak's `qrtz-llm`, `qrtz-search`, `qrtz-talk`, `qrtz-backup` behind StepExecutor / TalkPort / StoragePort when they land (markdown export done in phase 1)                                                                                            | todo  |           |
 | 4   | N38 (mock start reports in the `recording.started` chunk + e2e), N5 (`mux = mic.includes('recording') && state.dictating`, TS + Swift, vectors)                                                                                                                    | todo  |           |
 | 5   | E2E suite against the real Tauri app on Linux (WebKitWebDriver/tauri-driver + Rust mock helper): one equivalent per Electron scenario                                                                                                                              | todo  |           |
 | 6   | Move the renderer into `apps/desktop-tauri`, delete `apps/desktop` and the TS-only runtime; keep TS spec models + vectors                                                                                                                                          | todo  |           |
 | 7   | Memory: Tauri idle/recording vs the last Electron build (Linux); docs, README, ADR (Electron removed), CHANGELOG                                                                                                                                                   | todo  |           |
 
-## Phase 2b: on-device Nemotron ASR + per-channel diarization (ADR 0045)
+## Phase 2b: qrtz speech module (ADR 0046, revision 2 for Bozniak's review; amends ADR 0045)
 
-History: 07:17 PT on-device; 07:22 PT mic diarized too; 07:26 PT cloud server + offline backfill (ADR 0044);
-**07:37 PT back to on-device, ADR 0045 supersedes 0044** (no cloud server; no offline buffer/backfill, none built).
+History: 07:17 on-device; 07:26 cloud + backfill (ADR 0044, superseded); 07:37 on-device (ADR 0045); 07:41 speech
+as its own signed, confined, updatable module (ADR 0046); 07:50 Bozniak's N55-N60 folded in (`14a6be1`).
 
-- Helper: FluidAudio Nemotron Speech Streaming en 0.6B at 560 ms replaces Parakeet/SpeechAnalyzer; Nemotron 3
-  Diarization (`low`, `fast32` setting `note.diarizerPreset`), one instance per channel (mic, system), ids per
-  channel never merged; `diarization.segment` events in meeting time.
-- Host attribution in `crates/qrtz-speakers` (mine): channel with most diarized speech, then the dominant speaker;
-  dominant mic speaker = "me", others "speaker n"; AX names system speakers. Plugging it into the runtime's
-  fusion is Bozniak's.
-- Models load on recording/dictation start and unload when idle; download on first use into 0700 dirs with
-  `models.status` progress and `models.retry`.
-- ElevenLabs Scribe Realtime: optional `note.cloudAsr` (off by default), speakers still on-device (PCM streaming
-  to the host is a follow-up).
-- Talk/backup ownership (07:21 PT): Bozniak owns `qrtz-talk` and `qrtz-backup`; qrtz-app only routes them.
+Done (this phase so far):
+
+- `packages/core/src/speech/protocol.ts` (zod) -> `contracts/speech-protocol.json`; shared fixtures
+  `spec/vectors/speech/*.jsonl` (TS + Rust). Config `speech {speakerMode, cloud, autoUpdate}`; `note.liveAsr` gone
+  (old files load, the key is stripped).
+- `crates/qrtz-speech`: protocol + untrusted-output validator (bounds, rate, per-channel monotonic, speaker ids,
+  BCP-47 allowlist); `SpeechEngine` / `SpeechSession` / `SpeechEvent` (the trait `qrtz-talk` consumes); store +
+  updater (Ed25519 manifest, pinned key, root-signed + cross-signed rotation with seq/expiry, denylist with
+  seq/expiry, resumable size-limited download with pause, staging 0700 -> rename -> read-only versions, N/N-1,
+  anti-rollback, health check hook, no swap mid-session, crash-loop rollback, lazy re-hash). 21 tests against a mock
+  bundle server.
+
+Next, in order:
+
+1. Spawner (`OnDeviceSpeech`): per-file model fds, close_range / POSIX_SPAWN_CLOEXEC_DEFAULT, Landlock + seccomp on
+   Linux (refuse release modules without them), entitlements + code requirement + `sandbox_check` on macOS; the
+   golden-clip health check; `qrtz-mock-speech` (+ `/dev/fd` test, probe mode).
+2. Helper side: `speech.attach` / `speech.attached` / `speech.attach.rejected` over the socketpair (N55), in the Rust
+   mock helper and Swift (Mac-only); helper stops sending `asr`.
+3. qrtz-app: route `SpeechEvent` into note (N37/N43 hold behind the ack, N42 scoping, ADR 0046 §3b; the lifecycle
+   consumer is Bozniak's crate: I hand them the event shape) and talk (`SpeechEngine`); ElevenLabs host adapter.
+4. IPC + UI: onboarding (welcome, permissions, "qrtz speech" download with progress/pause/retry, OpenRouter key,
+   done), settings "speech" (version, size, update, re-download, delete), note/talk "speech downloading / not
+   downloaded" states; E2E with the mock server + mock module.
+5. Swift module (Mac-only): FluidAudio engine behind the protocol, App Sandbox, the Core ML-from-fds spike first.
 
 ## Running the Tauri app on headless Linux
 

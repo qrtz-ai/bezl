@@ -11,6 +11,7 @@ export * from './helper/protocol';
 export * from './helper/supervisor';
 export * from './helper/mock';
 export * from './helper/arbiter';
+export * from './speech/protocol';
 export * from './config';
 export * from './secrets';
 export * from './db/migrate';
