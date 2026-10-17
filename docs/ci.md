@@ -39,7 +39,9 @@ and `tauri.conf.json`, rename the CHANGELOG's unreleased section to `## X.Y.Z`, 
 
 ### Not yet: signing and notarization
 
-Builds are **unsigned** (Gatekeeper asks on first open: right-click → open). Signing and notarizing in CI need
+Builds are **unsigned**: a downloaded copy is quarantined and macOS may call it damaged; clear that with
+`xattr -dr com.apple.quarantine /Applications/qrtz.app`. Microphone and screen-audio permissions granted to an
+unsigned build don't carry over to the next build. Signing and notarizing in CI need
 these repository secrets, which the Tauri bundler reads from the environment of the `tauri build` step:
 
 | Secret                       | What                                                                           |
