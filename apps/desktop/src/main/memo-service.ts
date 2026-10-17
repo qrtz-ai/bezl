@@ -412,6 +412,10 @@ export class MemoService {
       this.helperCrashed = false;
       this.machine.send({ type: 'processed' });
       this.deps.log.info('meeting processed', { id: meetingId });
+      // Warm the semantic chat index in the background (no-op if the embedder is unavailable).
+      void this.deps.worker
+        .call('memo.indexVectors', { cap: 10_000 }, 300_000)
+        .catch(() => {});
     } catch (e) {
       this.deps.log.error('post-processing failed', { err: e });
       await this.deps.worker.call('memo.fail', { meetingId }).catch(() => {});

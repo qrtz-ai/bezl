@@ -53,7 +53,7 @@ export function Speakers({
             type="button"
             data-testid="speaker-chip"
             aria-pressed={editing === sp}
-            aria-label={`Rename or merge ${sp} (${n} lines)`}
+            aria-label={`${sp} · ${n}: rename or merge`}
             onClick={() => {
               setEditing(editing === sp ? null : sp);
               setName(sp);

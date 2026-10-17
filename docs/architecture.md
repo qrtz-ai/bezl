@@ -1,4 +1,55 @@
-# Architecture: research and rationale
+# Architecture
+
+## System overview (as built)
+
+```
+┌──────────── Electron main (apps/desktop/src/main) ────────────┐
+│ IPC router (core/ipc): envelope → channel/version → capability │
+│   → zod request → handler → zod response                       │
+│ MemoService: session state machine, helper events → worker     │
+│ Supervisor ×2 (backoff, crash-loop breaker, heartbeat)          │
+│ ConfigStore · SecretStore (safeStorage) · tray · mini HUD       │
+│ auto-update scaffold (off until signed)                         │
+└───────┬──────────────────────────┬─────────────────────────────┘
+        │ stdio NDJSON (zod)       │ utilityProcess RPC
+┌───────▼────────┐        ┌────────▼───────────────────────────────┐
+│ qrtz-helper    │        │ worker (src/worker.ts + worker/*)       │
+│ Swift, macOS   │        │ node:sqlite + FTS5 · MemoRepo           │
+│ AX detection,  │        │ finalize/recover/summary (LLM or        │
+│ Core Audio tap │        │ extractive) · chat retrieval (FTS +     │
+│ / SCK, LocalVQE│        │ on-device MiniLM embeddings, hybrid)    │
+│ AEC, Parakeet  │        │ export · retention                      │
+│ streaming ASR  │        └─────────────────────────────────────────┘
+│ (TS mock off-  │
+│  Mac)          │        Renderer (sandboxed, CSP): shell + sub apps
+└────────────────┘        (home, memo, gallery, settings) via @qrtz/ui
+```
+
+- **Packages:**
+  - `@qrtz/core` holds the contracts and pure logic: the IPC contract and events, capabilities, the helper protocol and mock, the supervisor, config and secrets schemas, and the memo domain (transcript assembly, speaker fusion, summary, chat, embeddings ranking, repo, migrations).
+  - `@qrtz/ui` holds the design system.
+  - `packages/features/*` are the sub apps. Each has a static manifest with capabilities and a lazy `load()`.
+- **Boundaries:**
+  - `scripts/check-boundaries.mjs`: features import only core and ui. Renderer code can't import `electron` or `node:*`.
+  - `scripts/check-swift.mjs`: catches duplicate Swift types and unbalanced `#if` blocks.
+- **Capabilities:**
+  - Each sub app manifest lists capabilities, for example `memo.read`, `memo.record`, `memo.write`, `config.write` and `secrets.write`.
+  - Main enforces them per call and per event subscription.
+  - Narrow channels exist so features don't need broad grants. For example, `memo:set-auto-record` needs only `memo.record`, not `config.write`.
+- **Data:**
+  - SQLite in userData holds meetings, segments (FTS5), summaries, meetings_fts and segment_vectors. Migrations live in core and are append-only.
+  - Recordings are WAV files under `userData/recordings`, served to the renderer only through `qrtz-media://rec/<uuid>.wav`.
+- **Fail-soft paths:**
+  - Helper crash: the live transcript and WAV are salvaged and the header repaired.
+  - Helper missing: shown in the UI and recording is disabled.
+  - LLM failure: extractive fallback, with retry.
+  - Embedder unavailable: full-text retrieval only.
+  - Worker restarts: requests fail fast and the UI shows retry.
+- **Dev/test-only hooks:**
+  - The variables are listed in `DEV_ONLY_ENV` in `main/index.ts` and stripped in packaged builds.
+  - `QRTZ_MOCK_HELPER`, `QRTZ_USER_DATA` and `QRTZ_EMBEDDINGS` are allowed for headless and diagnostic use.
+
+## Research and rationale
 
 ## What we looked at
 
@@ -44,6 +95,7 @@
 ## Possible later steps
 
 - Turborepo, once there are multiple apps or CI caching starts to matter.
-- Per-sub-app permissions in the manifest. The preload would scope IPC per feature.
+- Isolating sub apps in their own `WebContentsView` (capabilities are enforced in main today, but every sub app shares one renderer).
+- Bundling `@huggingface/transformers` and onnxruntime-node into the packaged app (asar-unpacked native addon). Today the packaged build falls back to full-text chat retrieval.
 - Moving sub apps to runtime-loaded plugins (separate bundles plus a versioned API), if
   third parties ever need to ship them.

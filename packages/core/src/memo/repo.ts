@@ -139,6 +139,60 @@ export class MemoRepo {
     }));
   }
 
+  /** Segments with no vector for `model` yet (optionally one meeting), oldest meetings last. */
+  missingVectors(model: string, limit: number, meetingId?: string) {
+    return (
+      this.db
+        .prepare(
+          `SELECT s.rowid AS rowid, s.meeting_id AS meetingId, s.text AS text FROM segments s
+           LEFT JOIN segment_vectors v ON v.segment_rowid = s.rowid AND v.model = ?
+           WHERE v.segment_rowid IS NULL ${meetingId ? 'AND s.meeting_id = ?' : ''}
+           ORDER BY s.rowid DESC LIMIT ?`,
+        )
+        .all(
+          ...(meetingId ? [model, meetingId, limit] : [model, limit]),
+        ) as Row[]
+    ).map((r) => ({
+      rowid: Number(r.rowid),
+      meetingId: String(r.meetingId),
+      text: String(r.text),
+    }));
+  }
+
+  saveVectors(
+    model: string,
+    rows: { rowid: number; meetingId: string; vec: Uint8Array }[],
+  ) {
+    this.tx(() => {
+      const st = this.db.prepare(
+        'INSERT OR REPLACE INTO segment_vectors (segment_rowid, meeting_id, model, vec) VALUES (?,?,?,?)',
+      );
+      for (const r of rows) st.run(r.rowid, r.meetingId, model, r.vec);
+    });
+  }
+
+  /** Indexed transcript lines with their vectors (one meeting, or all). */
+  vectorSources(model: string, meetingId?: string) {
+    return (
+      this.db
+        .prepare(
+          `SELECT s.meeting_id AS meetingId, m.title AS title, m.started_at AS startedAt, s.start_ms AS startMs,
+                  COALESCE(s.speaker_name, s.speaker) AS speaker, s.text AS text, v.vec AS vec
+           FROM segment_vectors v JOIN segments s ON s.rowid = v.segment_rowid JOIN meetings m ON m.id = s.meeting_id
+           WHERE v.model = ? ${meetingId ? 'AND v.meeting_id = ?' : ''}`,
+        )
+        .all(...(meetingId ? [model, meetingId] : [model])) as Row[]
+    ).map((r) => ({
+      meetingId: String(r.meetingId),
+      title: String(r.title),
+      startedAt: Number(r.startedAt),
+      startMs: Number(r.startMs),
+      ...(r.speaker == null ? {} : { speaker: String(r.speaker) }),
+      text: String(r.text),
+      vec: r.vec as Uint8Array,
+    }));
+  }
+
   /** Rename a speaker in one meeting (merge = rename onto an existing name). Returns lines changed. */
   renameSpeaker(meetingId: string, from: string, to: string): number {
     return this.tx(() => {

@@ -109,7 +109,10 @@ export function extractiveAnswer(
   question: string,
   sources: ChatSource[],
 ): ChatAnswer {
-  const top = rankSources(question, sources, 3);
+  return quoteAnswer(rankSources(question, sources, 3));
+}
+
+function quoteAnswer(top: ChatSource[]): ChatAnswer {
   if (!top.length)
     return {
       answer: "I couldn't find anything about that in your meetings.",
@@ -134,9 +137,17 @@ export async function answerQuestion(
   candidates: ChatSource[],
   provider: LlmProvider | null,
   history: ChatTurn[] = [],
+  /** Candidates are already ranked (hybrid retrieval); use their order instead of lexical ranking. */
+  preRanked = false,
 ): Promise<ChatAnswer> {
-  const sources = rankSources(question, candidates, 24);
-  if (!provider) return extractiveAnswer(question, candidates);
+  const sources = preRanked
+    ? candidates.slice(0, 24)
+    : rankSources(question, candidates, 24);
+  const fallback = () =>
+    preRanked
+      ? quoteAnswer(sources.slice(0, 3))
+      : extractiveAnswer(question, candidates);
+  if (!provider) return fallback();
   try {
     const answer = await provider.complete(
       buildChatPrompt(question, sources, history),
@@ -145,7 +156,7 @@ export async function answerQuestion(
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return {
-      ...extractiveAnswer(question, candidates),
+      ...fallback(),
       llmError: msg.slice(0, 500),
     };
   }

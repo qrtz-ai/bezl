@@ -1,4 +1,5 @@
 import { initAutoUpdates } from './updates';
+import { createTray } from './tray';
 import {
   app,
   BrowserWindow,
@@ -41,7 +42,20 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
+/**
+ * Test/dev hooks that must never steer a shipped build: fake data, fault injection, and redirecting the LLM
+ * request (which carries the API key) to another host. Stripped before the worker/helper inherit the env.
+ */
+const DEV_ONLY_ENV = [
+  'QRTZ_DEV_SEED',
+  'QRTZ_LLM_BASE_URL',
+  'QRTZ_SIMULATE_MISSING_HELPER',
+  'QRTZ_MOCK_CRASH_AFTER_MS',
+  'QRTZ_MOCK_SCENARIO',
+];
+
 export function bootstrap() {
+  if (app.isPackaged) for (const k of DEV_ONLY_ENV) delete process.env[k];
   if (process.env.QRTZ_USER_DATA)
     app.setPath('userData', process.env.QRTZ_USER_DATA);
   const userData = app.getPath('userData');
@@ -317,10 +331,7 @@ export function bootstrap() {
     void workerReady
       .then(() => memo.recover())
       .catch((e) => log.warn('startup recovery skipped', { err: String(e) }));
-    if (
-      process.env.QRTZ_DEV_SEED === 'many' &&
-      (!app.isPackaged || !!process.env.QRTZ_USER_DATA)
-    ) {
+    if (process.env.QRTZ_DEV_SEED === 'many' && !app.isPackaged) {
       void workerReady
         .then(() =>
           worker.call('dev.seedMany', { count: 500, now: Date.now() }, 60_000),
@@ -328,10 +339,7 @@ export function bootstrap() {
         .then(() => bus.emit('memo:changed', { id: '*' }))
         .catch((e) => log.warn('dev seed failed', { err: String(e) }));
     }
-    if (
-      process.env.QRTZ_DEV_SEED === 'large' &&
-      (!app.isPackaged || !!process.env.QRTZ_USER_DATA)
-    ) {
+    if (process.env.QRTZ_DEV_SEED === 'large' && !app.isPackaged) {
       void workerReady
         .then(() =>
           worker.call(
@@ -353,6 +361,29 @@ export function bootstrap() {
     }
     helper.start();
     createWindow();
+    // Menu bar item (macOS/Windows; Linux tray support varies by desktop, opt in with QRTZ_TRAY=1).
+    if (process.platform !== 'linux' || process.env.QRTZ_TRAY === '1') {
+      const tray = createTray({
+        getView: () => memo.view(),
+        onAction: (a) => {
+          const w =
+            BrowserWindow.getAllWindows().find((x) => x !== hud) ?? null;
+          if (a === 'start')
+            void memo
+              .start()
+              .catch((e) => log.warn('tray start failed', { err: String(e) }));
+          else if (a === 'stop') void memo.stop().catch(() => {});
+          else if (a === 'dismiss') memo.dismiss();
+          else if (a === 'quit') app.quit();
+          else if (w) {
+            w.show();
+            w.focus();
+          } else createWindow();
+        },
+      });
+      bus.on('memo:session', () => tray.update());
+      app.on('before-quit', () => tray.destroy());
+    }
     void initAutoUpdates(
       {
         isPackaged: app.isPackaged,

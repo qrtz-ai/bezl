@@ -5,6 +5,12 @@ import {
   MemoRepo,
   createProvider,
   answerQuestion,
+  blobToVec,
+  dot,
+  hybridRank,
+  vecToBlob,
+  type Embedder,
+  type VecSource,
   type ChatAnswer,
   type ChatSource,
   type ChatTurn,
@@ -46,9 +52,50 @@ export interface FinalizeParams {
 /** All worker RPC methods. Pure over a DB + fetch so they're integration-testable in Node. */
 export function createWorkerHandlers(
   db: DatabaseSync,
-  deps: { fetch: FetchLike; log?: (msg: string, f?: object) => void },
+  deps: {
+    fetch: FetchLike;
+    log?: (msg: string, f?: object) => void;
+    /** Lazy on-device embedder for semantic chat retrieval; null/throwing = full-text only (the fallback). */
+    embedder?: () => Promise<Embedder | null>;
+  },
 ) {
   const repo = new MemoRepo(db);
+  let embedderBroken = false;
+  const getEmbedder = async (): Promise<Embedder | null> => {
+    if (!deps.embedder || embedderBroken) return null;
+    try {
+      return await deps.embedder();
+    } catch (e) {
+      embedderBroken = true;
+      deps.log?.('embeddings unavailable; chat uses full-text retrieval', {
+        err: String(e),
+      });
+      return null;
+    }
+  };
+  /** Embed up to `cap` unindexed lines (one meeting or all), in batches. */
+  const indexVectors = async (e: Embedder, cap: number, meetingId?: string) => {
+    let done = 0;
+    while (done < cap) {
+      const batch = repo.missingVectors(
+        e.id,
+        Math.min(64, cap - done),
+        meetingId,
+      );
+      if (!batch.length) break;
+      const vecs = await e.embed(batch.map((b) => b.text));
+      repo.saveVectors(
+        e.id,
+        batch.map((b, i) => ({
+          rowid: b.rowid,
+          meetingId: b.meetingId,
+          vec: vecToBlob(vecs[i]!),
+        })),
+      );
+      done += batch.length;
+    }
+    return done;
+  };
   const need = (id: string) => {
     const m = repo.getMeeting(id);
     if (!m) throw new AppError('E_NOT_FOUND', `meeting ${id} not found`);
@@ -307,13 +354,56 @@ export function createWorkerHandlers(
           text: s.text,
         }));
       } else candidates = repo.searchSegments(p.question, 80);
+
+      // Hybrid (semantic + lexical) when the on-device embedder is available; otherwise lexical only.
+      let ranked: ChatSource[] | null = null;
+      const e = await getEmbedder();
+      if (e) {
+        try {
+          await indexVectors(e, p.meetingId ? 5000 : 2000, p.meetingId);
+          const [qvec] = await e.embed([p.question]);
+          const indexed: VecSource[] = repo
+            .vectorSources(e.id, p.meetingId)
+            .map((r) => ({ ...r, vec: blobToVec(r.vec) }));
+          const key = (s: ChatSource) =>
+            `${s.meetingId}|${s.startMs}|${s.text}`;
+          const byKey = new Map(indexed.map((s) => [key(s), s]));
+          let pool: VecSource[] = candidates.map((c) => byKey.get(key(c)) ?? c);
+          if (!p.meetingId) {
+            // Across meetings: add the semantically closest lines that full-text search missed.
+            const seen = new Set(pool.map(key));
+            const extra = indexed
+              .filter((s) => !seen.has(key(s)))
+              .map((s) => ({ s, sim: dot(qvec!, s.vec!) }))
+              .sort((a, b) => b.sim - a.sim)
+              .slice(0, 40)
+              .map((x) => x.s);
+            pool = [...pool, ...extra];
+          }
+          ranked = hybridRank(p.question, pool, qvec!, 24);
+        } catch (err) {
+          deps.log?.('semantic retrieval failed; using full-text', {
+            err: String(err),
+          });
+        }
+      }
       const provider = createProvider(p.llm.provider, {
         fetch: deps.fetch,
         ...(p.llm.apiKey ? { apiKey: p.llm.apiKey } : {}),
         ...(p.llm.model ? { model: p.llm.model } : {}),
         ...(p.llm.baseUrl ? { baseUrl: p.llm.baseUrl } : {}),
       });
-      return answerQuestion(p.question, candidates, provider, p.history ?? []);
+      return ranked
+        ? answerQuestion(p.question, ranked, provider, p.history ?? [], true)
+        : answerQuestion(p.question, candidates, provider, p.history ?? []);
+    },
+    /** Background: embed new transcript lines so chat retrieval is ready (no-op without an embedder). */
+    'memo.indexVectors': async (p: { cap?: number }) => {
+      const e = await getEmbedder();
+      return {
+        indexed: e ? await indexVectors(e, p?.cap ?? 2000) : 0,
+        model: e?.id ?? null,
+      };
     },
     'memo.renameSpeaker': (p: {
       meetingId: string;

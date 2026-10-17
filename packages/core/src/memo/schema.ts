@@ -52,4 +52,21 @@ CREATE TABLE summaries (
 CREATE VIRTUAL TABLE meetings_fts USING fts5(title, summary, tokenize='porter unicode61');
 `,
   },
+  {
+    version: 3,
+    // On-device embeddings for semantic chat retrieval.
+    name: 'segment_vectors',
+    up: `
+CREATE TABLE segment_vectors (
+  segment_rowid INTEGER PRIMARY KEY,
+  meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+  model TEXT NOT NULL,
+  vec BLOB NOT NULL
+);
+CREATE INDEX segment_vectors_meeting ON segment_vectors(meeting_id);
+CREATE TRIGGER segments_vec_ad AFTER DELETE ON segments BEGIN
+  DELETE FROM segment_vectors WHERE segment_rowid = old.rowid;
+END;
+`,
+  },
 ];

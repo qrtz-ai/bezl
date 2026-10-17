@@ -2,7 +2,10 @@
 import { AppError } from '@qrtz/core';
 import { WorkerRequest, type WorkerMessage } from './shared/worker-protocol';
 import { openDatabase } from './worker/db';
+import os from 'node:os';
+import path from 'node:path';
 import { createWorkerHandlers } from './worker/handlers';
+import { transformersEmbedder } from './worker/embedder';
 
 const port = process.parentPort;
 const post = (m: WorkerMessage) => port.postMessage(JSON.stringify(m));
@@ -17,6 +20,12 @@ const db = openDatabase(dbFile);
 const handlers = createWorkerHandlers(db, {
   fetch: (url, init) => fetch(url, init),
   log: (msg, f) => log('warn', msg, f as Record<string, unknown>),
+  embedder: transformersEmbedder(
+    process.env.QRTZ_MODELS_DIR ||
+      (dbFile === ':memory:'
+        ? os.tmpdir()
+        : path.join(path.dirname(dbFile), 'models')),
+  ),
 });
 const methods = handlers as unknown as Record<
   string,

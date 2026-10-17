@@ -28,6 +28,7 @@ test('first run → record → review walkthrough', async () => {
     QRTZ_MOCK_HELPER: '1',
     QRTZ_MOCK_SCENARIO: 'standup',
     QRTZ_MOCK_SPEED: '0.06',
+    QRTZ_TRAY: '1', // exercise the menu bar item (Linux tray is opt-in)
     QRTZ_DEVTOOLS: '0',
   };
   delete env.QRTZ_SECRET_OPENROUTER;

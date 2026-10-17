@@ -19,6 +19,7 @@ export * from './memo/fusion';
 export * from './memo/schema';
 export * from './memo/summary';
 export * from './memo/chat';
+export * from './memo/embeddings';
 export * from './memo/repo';
 export * from './memo/extractive';
 export * from './memo/llm';

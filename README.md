@@ -12,12 +12,16 @@ qrtz desktop app for macOS: an Electron shell hosting modular React "sub apps", 
 - Large meetings: a 2-hour, 1500-segment meeting opens in ~0.2 s, and search takes ~0.5 s (`e2e/large-a11y.spec.ts`).
 - Error states: the capture helper missing or stopped (shown on Home and Memo, recording disabled), LLM failures (falls back to the on-device summary with a Retry button), Settings sections that load independently, and a meeting that fails to load (Try again).
 - Chat: per-meeting Q&A (the Ask tab) and "Ask all meetings" (full-text retrieval across transcripts). Answers come from OpenRouter with citations when a key is set, or as extractive quotes without one. Clicking a citation jumps to that moment in the transcript.
+- Menu bar (tray) item: the recording state, with elapsed time in the menu bar, plus Start/Stop, Record this meeting / Not now, Open qrtz and Quit. Shown on macOS and Windows; opt in on Linux with `QRTZ_TRAY=1`.
+- Semantic chat retrieval: an on-device MiniLM model (transformers.js, ~23 MB, downloaded once) runs in the worker. It's combined with full-text search by rank fusion. If the model can't load, retrieval falls back to full-text only. In packaged builds it's full-text only until onnxruntime is bundled (see Status).
 - Calendar-free auto-start: a detected Zoom or Meet call shows a "Record?" prompt in the app, plus an OS notification when qrtz isn't focused. "Always record" (also in Settings) starts recording with no prompt.
 - Speaker rename and merge in meeting detail.
 - Hundreds of meetings: the Memo list pages 100 at a time ("Show 100 more"), and so do search results. Crash recovery finds stuck meetings at any age.
 - OpenRouter path: proven end to end against a local OpenAI-compatible stub server (`apps/desktop/src/worker/llm-openrouter.test.ts` and `e2e/states.spec.ts`), without a key.
 - Accessibility: no serious or critical axe violations (WCAG 2.1 AA) on Home, Memo, Gallery, Settings or the palette. Transcript rows can be operated by keyboard.
 - Swift helper core (protocol, DSP, echo pipeline with the LocalVQE → gate fallback): 27 tests pass on Linux.
+
+- Packaging gap: `@huggingface/transformers` and onnxruntime-node aren't in the packaged app yet, so packaged builds use full-text chat retrieval.
 
 **Needs a Mac to verify (see docs/mac-verify.md):**
 

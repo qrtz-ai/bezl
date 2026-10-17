@@ -7,6 +7,7 @@ import {
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { axe } from './axe';
 
 // Chat (per-meeting + across meetings, key-free extractive path), speaker rename/merge, auto-record prompt and
 // "always auto-record", and search-result paging.
@@ -61,6 +62,9 @@ test('chat per meeting and across meetings, speaker rename + merge', async () =>
   const { app, win, errors } = await launch({
     QRTZ_MOCK_SCENARIO: 'standup',
     QRTZ_MOCK_SPEED: '0.02',
+    // Semantic retrieval on (shared model cache). If the model can't load, chat falls back to full-text and still passes.
+    QRTZ_EMBEDDINGS: '1',
+    QRTZ_MODELS_DIR: path.join(os.tmpdir(), 'qrtz-e2e-models'),
   });
   await recordStandup(win);
 
@@ -107,6 +111,10 @@ test('chat per meeting and across meetings, speaker rename + merge', async () =>
   });
   await expect(win.getByTestId('chat-source').first()).toBeVisible();
   await win.screenshot({ path: path.join(shots, 'chat-meeting.png') });
+  const a11y = await axe(win, 'chat-meeting');
+  await win.getByTestId('speaker-chip').first().click(); // open the speaker editor
+  a11y.push(...(await axe(win, 'speaker-editor')));
+  await win.getByTestId('speaker-chip').first().click();
   await win.getByTestId('chat-source').first().click();
   await expect(win.getByTestId('detail-transcript')).toBeVisible();
   await expect(
@@ -123,6 +131,8 @@ test('chat per meeting and across meetings, speaker rename + merge', async () =>
     );
   });
   await win.screenshot({ path: path.join(shots, 'chat-all.png') });
+  a11y.push(...(await axe(win, 'chat-all')));
+  expect(a11y).toEqual([]);
   await win.getByTestId('chat-source').first().click();
   await expect(win.getByTestId('meeting-detail')).toBeVisible();
   await expect(win.getByTestId('detail-transcript')).toBeVisible();

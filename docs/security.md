@@ -19,12 +19,17 @@ Status as of M0 (2026-10-16). Items marked ☐ are tracked in PLAN.md.
 - ☑ Event subscriptions are capability-checked in main. Events go only to sub apps that are allowed to receive them.
 - ☐ Capability scoping is defence-in-depth among first-party, compiled-in sub apps that share one renderer. Third-party sub apps would need their own `WebContentsView` and session (future).
 
+- ☑ Narrow channels for narrow needs: `memo:set-auto-record` (memo.record) instead of granting Memo `config.write`.
+
 ## Secrets and config
 
 - ☑ Secrets use `safeStorage` (Keychain-backed on macOS). The file holds only ciphertext and is mode 0600.
 - ☑ On Linux, storing secrets is refused when the backend is `basic_text`.
 - ☑ Secret values never cross back to the renderer. `secrets:list` returns names only, and the logger redacts `*key*/*token*/*secret*` fields.
 - ☑ Config writes are zod-validated. Deep merge drops `__proto__`, `constructor` and `prototype` (tested).
+
+- ☑ Dev and test env hooks (`QRTZ_DEV_SEED`, `QRTZ_LLM_BASE_URL`, `QRTZ_SIMULATE_MISSING_HELPER`, `QRTZ_MOCK_CRASH_AFTER_MS`, `QRTZ_MOCK_SCENARIO`) are stripped at startup in packaged builds, before the worker and helper inherit the env. `QRTZ_LLM_BASE_URL` could otherwise send the API key to another host.
+- ☑ The embedding model is downloaded from Hugging Face into `userData/models`. Transcript text never leaves the device for embeddings (`QRTZ_EMBEDDINGS=0` disables them, `QRTZ_EMBEDDINGS_OFFLINE=1` forbids downloads).
 
 ## Processes
 

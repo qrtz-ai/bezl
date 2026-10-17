@@ -256,3 +256,29 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
 
 - Run an a11y axe pass over the chat and speaker editor.
 - Mac build and real-call verification.
+
+## 2026-10-16 ~18:38–18:44 PT: iteration 10 (a11y of chat, tray, semantic retrieval, self-review)
+
+- a11y: the axe helper was extracted to `e2e/axe.ts`. The chat spec now scans the Ask tab, the speaker editor and Ask-all. Fixed `label-content-name-mismatch` on speaker chips; the aria-label now starts with the visible text.
+- Tray: the pure `tray-model.ts` (unit-tested) covers icon, menu-bar title (elapsed time), tooltip and menu for each phase and helper state. `tray.ts` uses generated template PNG icons (data URLs, 1x/2x), updates on `memo:session` and ticks every second while recording. The screens e2e runs with `QRTZ_TRAY=1`.
+- Semantic retrieval:
+  - Migration 3 adds `segment_vectors`.
+  - Core `embeddings.ts` does reciprocal-rank fusion of lexical and cosine scores.
+  - The worker's `transformersEmbedder` lazily loads Xenova/all-MiniLM-L6-v2 q8 into `userData/models` (`QRTZ_EMBEDDINGS=0` disables it, `QRTZ_EMBEDDINGS_OFFLINE=1` forbids downloads).
+  - `memo.chat` indexes on demand. Across meetings it adds the 40 nearest lines that full-text search missed.
+  - Background `memo.indexVectors` runs after each meeting. If the embedder fails, retrieval falls back to full-text permanently and logs it.
+  - Tests: a fake concept embedder proves a paraphrase is found when FTS finds nothing, plus the fallback. A real MiniLM test is opt-in (`QRTZ_TEST_EMBEDDINGS=1`) and passes in about 1.4 s. The model was verified loading inside Electron's utilityProcess during e2e.
+- Self-review:
+  - Security drift fixed: dev hooks are now stripped in packaged builds (`DEV_ONLY_ENV`). This covers `QRTZ_LLM_BASE_URL`, which could otherwise send the API key elsewhere. The dev seeds are again unpackaged-only.
+  - Removed the dead `CaptionEvent` and `ChatEvent` schemas.
+  - `docs/architecture.md` has a new as-built system overview, and `docs/security.md` is updated. Migration names are consistent (`3_segment_vectors`).
+
+### Side work
+
+- Packaged builds don't include transformers.js or onnxruntime-node (the Forge Vite plugin ships only `.vite`), so packaged chat uses full-text retrieval. Fix: copy the module and asar-unpack the `.node` addon in forge `packageAfterCopy`. That needs a Mac check, since the darwin-arm64 onnxruntime binary has to be included.
+- Tray on Linux is opt-in, because tray support differs between desktops.
+
+### Next
+
+- Bundle onnxruntime for macOS (the packaging hook above).
+- Mac build and real-call verification.

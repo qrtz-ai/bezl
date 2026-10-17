@@ -37,17 +37,6 @@ export const SpeakerTurn = z.object({
 });
 export type SpeakerTurn = z.infer<typeof SpeakerTurn>;
 
-export const CaptionEvent = z.object({
-  atMs: z.number(),
-  speaker: z.string().optional(),
-  text: z.string(),
-});
-export const ChatEvent = z.object({
-  atMs: z.number(),
-  author: z.string(),
-  text: z.string(),
-});
-
 export const Meeting = z.object({
   id: z.string(),
   title: z.string(),
