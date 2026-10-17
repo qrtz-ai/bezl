@@ -175,6 +175,15 @@ impl Backend {
     }
 }
 
+/// One `QRTZ_SPEECH_*` value (the module URL and its signing and root keys). ADR 0078: only a debug build reads
+/// them from the environment; a release build uses what was baked in at compile time, and nothing else, even with
+/// `QRTZ_ALLOW_DEV_KNOBS=1` (that switch is for the E2E harness's test knobs, never for where code comes from or
+/// which keys it trusts).
+fn speech_var(k: &str, debug_build: bool, env: impl Fn(&str) -> Option<String>) -> Option<String> {
+    let run = if debug_build { env(k) } else { None };
+    run.or_else(|| baked_speech_var(k).map(str::to_owned))
+}
+
 fn baked_speech_var(k: &str) -> Option<&'static str> {
     match k {
         "QRTZ_SPEECH_URL" => option_env!("QRTZ_SPEECH_URL"),
@@ -206,12 +215,10 @@ pub fn setup(app: &mut tauri::App, started: Instant) -> Result<(), Box<dyn std::
     let _ = storage_shell.0.set(handle.clone());
 
     let version = app.package_info().version.to_string();
-    // The speech module source is baked in at compile time; a debug or E2E (QRTZ_ALLOW_DEV_KNOBS=1) build may
-    // point it elsewhere at run time (the mock bundle server).
-    let dev = cfg!(debug_assertions) || std::env::var("QRTZ_ALLOW_DEV_KNOBS").as_deref() == Ok("1");
+    // The speech module source is baked in at compile time; only a debug build may point it elsewhere at run
+    // time (the mock bundle server). ADR 0078: never a release build, whatever the environment says.
     let speech = qrtz_app::speech::SpeechSetup::from_vars(&data, &version, |k| {
-        let run = if dev { std::env::var(k).ok() } else { None };
-        run.or_else(|| baked_speech_var(k).map(str::to_owned))
+        speech_var(k, cfg!(debug_assertions), |k| std::env::var(k).ok())
     })
     .unwrap_or_else(|e| {
         tracing::error!(err = %e, "speech module configuration");
@@ -519,5 +526,59 @@ pub fn shutdown(app: &AppHandle) {
                 qrtz_helper_bridge::encode_host_message(&json!({"type": "shutdown"})).unwrap_or_default();
             tauri::async_runtime::block_on(h.shutdown(bye, std::time::Duration::from_millis(1500)));
         }
+    }
+}
+
+#[cfg(test)]
+mod speech_source_tests {
+    use super::{baked_speech_var, speech_var};
+
+    const VARS: [&str; 5] = [
+        "QRTZ_SPEECH_URL",
+        "QRTZ_SPEECH_KEY_ID",
+        "QRTZ_SPEECH_KEY",
+        "QRTZ_SPEECH_ROOT_KEY_ID",
+        "QRTZ_SPEECH_ROOT_KEY",
+    ];
+
+    /// An environment that sets every speech var to an attacker's value and turns the dev knobs on.
+    fn hostile(k: &str) -> Option<String> {
+        match k {
+            "QRTZ_ALLOW_DEV_KNOBS" => Some("1".into()),
+            _ => Some(format!("evil-{k}")),
+        }
+    }
+
+    #[test]
+    fn a_release_build_never_takes_the_speech_url_or_keys_from_the_environment() {
+        for k in VARS {
+            assert_eq!(
+                speech_var(k, false, hostile),
+                baked_speech_var(k).map(str::to_owned),
+                "{k}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_debug_build_may_point_speech_at_the_mock_server() {
+        for k in VARS {
+            assert_eq!(speech_var(k, true, hostile), Some(format!("evil-{k}")));
+            assert_eq!(
+                speech_var(k, true, |_| None),
+                baked_speech_var(k).map(str::to_owned)
+            );
+        }
+    }
+
+    #[test]
+    fn setup_reads_speech_vars_only_through_the_release_safe_resolver() {
+        // A guard against wiring the dev-knob switch back in: the speech source must follow `cfg!(debug_assertions)`
+        // alone.
+        let src = include_str!("backend.rs");
+        let setup = &src[src.find("SpeechSetup::from_vars").expect("speech setup")..];
+        let call = &setup[..setup.find("})").expect("end of the call")];
+        assert!(call.contains("speech_var(k, cfg!(debug_assertions)"), "{call}");
+        assert!(!call.contains("QRTZ_ALLOW_DEV_KNOBS"), "{call}");
     }
 }

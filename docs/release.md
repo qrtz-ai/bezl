@@ -29,14 +29,15 @@ The speech module source (download URL and the two pinned Ed25519 keys, hex) is 
 
 ## Checklist
 
-| Item                                                                            | Where                                                        | Status                     |
-| ------------------------------------------------------------------------------- | ------------------------------------------------------------ | -------------------------- |
-| Developer ID signing of the app and `qrtz-helper` (external bin)                | Tauri bundler (`APPLE_SIGNING_IDENTITY`)                     | ☐ needs certificate        |
-| Hardened runtime + entitlements (`device.audio-input`)                          | `apps/desktop/src-tauri/entitlements.mac.plist`              | ☑                          |
-| Usage strings: `NSMicrophoneUsageDescription`, `NSAudioCaptureUsageDescription` | `apps/desktop/src-tauri/Info.plist`                          | ☑                          |
-| Notarization + stapling                                                         | Tauri bundler (`APPLE_*` env)                                | ☐ needs credentials        |
-| Dev-only knobs ignored in release builds (N87)                                  | `DevKnobs::from_env` (`QRTZ_ALLOW_DEV_KNOBS=1` for E2E only) | ☑                          |
-| Speech module source baked in                                                   | `QRTZ_SPEECH_*` at build time                                | ☐ needs the release server |
-| System-audio and mic capture on a real Mac                                      | docs/mac-verify.md                                           | ☐ verify on hardware       |
-| App auto-update                                                                 | not wired (Tauri updater plugin is the follow-up)            | ☐                          |
-| Version bump + changelog                                                        | `apps/desktop/src-tauri/Cargo.toml`, `tauri.conf.json`       | ☐ per release              |
+| Item                                                                                                 | Where                                                        | Status                     |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | -------------------------- |
+| Developer ID signing of the app and `qrtz-helper` (external bin)                                     | Tauri bundler (`APPLE_SIGNING_IDENTITY`)                     | ☐ needs certificate        |
+| Hardened runtime + entitlements (`device.audio-input`)                                               | `apps/desktop/src-tauri/entitlements.mac.plist`              | ☑                          |
+| Usage strings: `NSMicrophoneUsageDescription`, `NSAudioCaptureUsageDescription`                      | `apps/desktop/src-tauri/Info.plist`                          | ☑                          |
+| Notarization + stapling                                                                              | Tauri bundler (`APPLE_*` env)                                | ☐ needs credentials        |
+| Dev-only knobs ignored in release builds (N87)                                                       | `DevKnobs::from_env` (`QRTZ_ALLOW_DEV_KNOBS=1` for E2E only) | ☑                          |
+| Speech module source baked in                                                                        | `QRTZ_SPEECH_*` at build time                                | ☐ needs the release server |
+| Release builds never read `QRTZ_SPEECH_*` at run time, even with `QRTZ_ALLOW_DEV_KNOBS=1` (ADR 0078) | `backend.rs` `speech_var` + `speech_source_tests`            | ☑                          |
+| System-audio and mic capture on a real Mac                                                           | docs/mac-verify.md                                           | ☐ verify on hardware       |
+| App auto-update                                                                                      | not wired (Tauri updater plugin is the follow-up)            | ☐                          |
+| Version bump + changelog                                                                             | `apps/desktop/src-tauri/Cargo.toml`, `tauri.conf.json`       | ☐ per release              |
