@@ -129,7 +129,7 @@ public actor HelperController {
             await deps.permissions.request(p)
             send(.permissionsStatus(deps.permissions.status()))
         case .recordingStart(let path):
-            guard await admit(.cmd("recording.start")) else { return }
+            guard await admit(.cmd("recording.start"), audioPath: path) else { return }
             await startRecording(path)
         case .recordingStop(let path):
             // A stop aimed at another file (the host's stale-start cleanup racing a newer recording) is ignored.
@@ -146,7 +146,7 @@ public actor HelperController {
             _ = await admit(.configure(warmMic: warm))
             watchPermissions()
         case .dictationStart(let id):
-            guard await admit(.cmd("dictation.start")) else { return }
+            guard await admit(.cmd("dictation.start"), id: id) else { return }
             await dictation.start(id: id)
             // The engine could not start (no source): undo through the arbiter so the reader is released too.
             if await !dictation.isActive { _ = await admit(.cmd("dictation.cancel")) }
@@ -166,10 +166,12 @@ public actor HelperController {
     public func heartbeat() { send(.heartbeat(ts: now())) }
 
     /// Runs an event through the arbiter and carries out its mic effects (the arbiter is enforcing: its `mic`
-    /// list is the hub's reader list). An ignored start answers error{recording.busy | dictation.busy}; a refused
-    /// dictation.start answers error{dictation.mic}; other ignored commands are logged.
+    /// list is the hub's reader list). An ignored start answers error{recording.busy | dictation.busy} naming both
+    /// the ignored start (`id` / `audioPath`) and the session that owns the helper (`activeId` / `activeAudioPath`),
+    /// so the host can tell its own start apart and clean up an orphan; a refused dictation.start answers
+    /// error{dictation.mic}; other ignored commands are logged.
     @discardableResult
-    func admit(_ e: ArbiterEvent) async -> Bool {
+    func admit(_ e: ArbiterEvent, id: String? = nil, audioPath: String? = nil) async -> Bool {
         let r = SessionArbiter.step(arbiter, e)
         arbiter = r.state
         await apply(r.effects)
@@ -177,8 +179,12 @@ public actor HelperController {
         switch r.decision {
         case "ignore":
             switch r.reason {
-            case "already-recording": send(.error(code: "recording.busy", message: "a recording is already running", fatal: false))
-            case "already-dictating": send(.error(code: "dictation.busy", message: "a dictation is already running", fatal: false))
+            case "already-recording":
+                send(.error(code: "recording.busy", message: "a recording is already running", fatal: false,
+                            audioPath: audioPath, activeAudioPath: recording?.wav.url.path))
+            case "already-dictating":
+                let active = await dictation.activeId
+                send(.error(code: "dictation.busy", message: "a dictation is already running", fatal: false, id: id, activeId: active))
             default: send(.log(level: .warn, msg: "\(c) while \(r.reason ?? "busy"); ignored"))
             }
             return false

@@ -2,7 +2,7 @@
   "about": "Reviewer-added edge vectors for the helper arbiter (H5/H6): refcount release after helper loss/revoke, ignored-duplicate then stop, re-grant mid-recording. Generated from arbiter.ts and independently checked by packages/core/src/helper/arbiter-model.test.ts. Swift ArbiterTests should consume this file too.",
   "cases": [
     {
-      "name": "stop after helper lost is a no-op and releases nothing",
+      "name": "helper lost releases everything; a later stop is a no-op",
       "initialDenied": [],
       "steps": [
         {

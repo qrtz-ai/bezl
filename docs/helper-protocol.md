@@ -31,9 +31,18 @@ Rules (the arbiter's `cmd` events):
 
 1. `recording.*` and `dictation.*` are independent sessions. Starting or stopping one never starts, stops or restarts the other.
 2. Each kind is single-instance. A second `recording.start` while recording, or `dictation.start` while dictating, is
-   **ignored** (it is not queued) and answered with
-   `error{code: "recording.busy" | "dictation.busy", fatal: false}`, so a host waiting for `started` fails at once
-   instead of timing out (and a later `stop` for that id can't hang). Stops and cancels when nothing is running are
+   **ignored** (it is not queued) and answered with a busy error that names both the ignored start and the session
+   that owns the helper:
+   `error{code: "dictation.busy", id, activeId, fatal: false}` and
+   `error{code: "recording.busy", audioPath, activeAudioPath, fatal: false}`, so a host waiting for `started` fails at
+   once instead of timing out (and a later `stop` for that id can't hang). The host acts on a busy only when `id` /
+   `audioPath` is its start in flight; a busy for any other start is logged and ignored, and it never cancels by its
+   current id when the busy names a different one. A busy whose active id / path equals the requested one is a
+   duplicate start of a running session: the host keeps it. If the active session is unknown to the host (it outlived
+   a host reload, or an abandoned attempt), the host sends `dictation.cancel{id: activeId}` or
+   `recording.stop{audioPath: activeAudioPath}` before failing the attempt (`helper-busy`, retryable), so the orphan
+   is cleaned up and the retry succeeds. The host never stops a recording it is capturing itself. A refused
+   dictation is not cancelled by its own id (the helper never ran it). Stops and cancels when nothing is running are
    no-ops (`not-recording` / `not-dictating`). `dictation.stop` and `cancel` with a stale id are no-ops too.
    `recording.stop` takes an optional `audioPath`: when it names a file other than the one being recorded, the stop is
    ignored (logged). The host sends the path on every cleanup stop (a stale `recording.started{A}`, a start timeout),
@@ -42,8 +51,10 @@ Rules (the arbiter's `cmd` events):
    the last. Readers are `recording` (the capture source's mic leg, mixed with system audio and echo-gated) and `dictation`.
    Every reader gets every block. When both are running, the helper logs `mux: recording and dictation share the mic tap`.
    The warm mic keeps a `dictation` reader subscribed between dictations (see Warm mic below).
-   The device start is race-safe: `source.start` runs outside the hub lock, a subscribe during it just joins, and if
-   every reader left (or the tap was dropped) by the time it returns, the hub stops the device again.
+   The device start is race-safe: `source.start` runs outside the hub lock, a subscribe during it joins and waits for
+   the outcome, and if every reader left (or the tap was dropped) by the time it returns, the hub stops the device
+   again. If `source.start` throws, every reader of that start (the starter and anyone who joined during it) is
+   detached and gets the same error, so nobody stays attached to a device that never opened.
 4. Recognisers are not shared. A dictation uses its own recogniser instances (`dictationTranscribers`), so its text
    never appears in the meeting transcript and vice versa. The meeting WAV is unaffected by dictation.
 5. `dictation.start` is **refused** with `error{code: "dictation.mic", message: "microphone access denied"}` when the
@@ -108,10 +119,14 @@ On the host side:
   exhaustively over reachable states, including warm/configure) and by `ArbiterTests.testEdgeVectors`.
 - Swift: `ArbiterTests`. Covers `MicHub` refcount and fan-out, mux through `HelperController`, mic revoked mid-mux, and
   accessibility revoked during dictation, the warm mic after a revoke and re-grant, busy errors and a mismatched stop
-  path, the gated recording view with the mic denied, and an unsubscribe racing the device start.
+  path, the gated recording view with the mic denied, an unsubscribe racing the device start, a failed device start
+  with a joiner (rethrown, detached), and the busy unlock paths (`dictation.busy{id, activeId}` then
+  `cancel{activeId}`; `recording.busy{audioPath, activeAudioPath}` then `stop{activeAudioPath}`).
 - Mock helper (child protocol): `packages/core/src/helper/mock-concurrency.test.ts`.
-- Host: `note-service.test.ts` (live `mic-only` → `audio-unavailable`, `no-mic`, `recording.busy`) and `talk-service.test.ts`
-  (graceful stop, then refusal, `dictation.busy`).
+- Host: `note-service.test.ts` (live `mic-only` → `audio-unavailable`, `no-mic`, `recording.busy`, an orphaned
+  recording A stopped by path so the retry starts, busy for another file ignored) and `talk-service.test.ts`
+  (graceful stop, then refusal, `dictation.busy`, a helper still running d1 after a host reload no longer locks
+  dictation out, busy for another id / a duplicate start ignored).
 - e2e: `e2e/permissions.spec.ts`. Uses `QRTZ_MOCK_REVOKE="screen-recording@800,microphone@2000"` to revoke TCC that
   many ms after the first capture.
 - On a real Mac: see `mac-verify.md` (revoking in System Settings mid-capture, and two readers on one input device).

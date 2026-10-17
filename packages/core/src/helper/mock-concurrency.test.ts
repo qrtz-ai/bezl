@@ -61,12 +61,16 @@ describe('mock helper: concurrent recording.* + dictation.* (mux)', () => {
         code: 'recording.busy',
         message: 'a recording is already running',
         fatal: false,
+        audioPath: '/tmp/y.wav',
+        activeAudioPath: '/tmp/x.wav',
       },
       {
         type: 'error',
         code: 'dictation.busy',
         message: 'a dictation is already running',
         fatal: false,
+        id: 'b',
+        activeId: 'a',
       },
     ]);
     send({ type: 'dictation.cancel', id: 'b' });

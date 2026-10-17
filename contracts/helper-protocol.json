@@ -189,6 +189,18 @@
           "fatal": {
             "default": false,
             "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "activeId": {
+            "type": "string"
+          },
+          "audioPath": {
+            "type": "string"
+          },
+          "activeAudioPath": {
+            "type": "string"
           }
         },
         "required": [

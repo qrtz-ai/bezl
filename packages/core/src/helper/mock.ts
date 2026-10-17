@@ -72,7 +72,11 @@ export function createMockHelper(
       .map(([k]) => k),
   );
   let revokeArmed = false;
-  const admit = (e: HelperArbiterEvent) => {
+  /** `start` names the ignored start, so a busy error can carry both its id/path and the active one. */
+  const admit = (
+    e: HelperArbiterEvent,
+    start: { id?: string; audioPath?: string } = {},
+  ) => {
     const r = arbiterStep(arb, e);
     arb = r.state;
     if (r.decision === 'ignore' && r.reason === 'already-recording')
@@ -81,6 +85,8 @@ export function createMockHelper(
         code: 'recording.busy',
         message: 'a recording is already running',
         fatal: false,
+        ...(start.audioPath ? { audioPath: start.audioPath } : {}),
+        ...(audioPath ? { activeAudioPath: audioPath } : {}),
       });
     else if (r.decision === 'ignore' && r.reason === 'already-dictating')
       emit({
@@ -88,6 +94,8 @@ export function createMockHelper(
         code: 'dictation.busy',
         message: 'a dictation is already running',
         fatal: false,
+        ...(start.id ? { id: start.id } : {}),
+        ...(dict ? { activeId: dict.id } : {}),
       });
     else if (r.decision === 'ignore')
       emit({
@@ -328,7 +336,11 @@ export function createMockHelper(
         case 'shutdown':
           return die(0, null);
         case 'recording.start':
-          if (admit({ cmd: 'recording.start' }).decision !== 'accept') return;
+          if (
+            admit({ cmd: 'recording.start' }, { audioPath: m.audioPath })
+              .decision !== 'accept'
+          )
+            return;
           armRevocations();
           audioPath = m.audioPath;
           // Mirrors the Swift helper: capture problems are non-fatal errors, recording.started still follows.
@@ -360,7 +372,11 @@ export function createMockHelper(
           admit({ configure: { warmMic: m.warmMic } });
           return;
         case 'dictation.start':
-          if (admit({ cmd: 'dictation.start' }).decision !== 'accept') return;
+          if (
+            admit({ cmd: 'dictation.start' }, { id: m.id }).decision !==
+            'accept'
+          )
+            return;
           armRevocations();
           return startDictation(m.id);
         case 'dictation.stop':

@@ -40,6 +40,18 @@ export const HelperToHost = z.discriminatedUnion('type', [
     code: z.string(),
     message: z.string(),
     fatal: z.boolean().default(false),
+    /**
+     * Set on `dictation.busy`: `id` is the dictation.start that was ignored, `activeId` the dictation that
+     * still owns the helper. The host acts only when `id` is its start in flight.
+     */
+    id: z.string().optional(),
+    activeId: z.string().optional(),
+    /**
+     * Set on `recording.busy`: `audioPath` is the recording.start that was ignored, `activeAudioPath` the
+     * file the running recording writes. The host acts only when `audioPath` is its start in flight.
+     */
+    audioPath: z.string().optional(),
+    activeAudioPath: z.string().optional(),
   }),
   // --- note (AX + audio + ASR) ---
   z.object({

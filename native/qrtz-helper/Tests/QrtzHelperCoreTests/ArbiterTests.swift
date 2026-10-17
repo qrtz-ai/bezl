@@ -111,7 +111,7 @@ final class ArbiterTests: XCTestCase {
         XCTAssertTrue(st.recording && st.dictating)
         XCTAssertTrue(out.value.contains(.log(level: .info, msg: "mux: recording and dictation share the mic tap")))
         await c.handle(.dictationStart(id: "d2"))
-        XCTAssertTrue(out.value.contains(.error(code: "dictation.busy", message: "a dictation is already running", fatal: false)))
+        XCTAssertTrue(out.value.contains(.error(code: "dictation.busy", message: "a dictation is already running", fatal: false, id: "d2", activeId: "d1")))
         mic.cb?([Float](repeating: 0.1, count: 1600))
         await c.handle(.dictationStop(id: "d1"))
         XCTAssertTrue(out.value.contains { if case .dictationStopped("d1", _, _, nil) = $0 { true } else { false } })
@@ -206,7 +206,7 @@ final class ArbiterTests: XCTestCase {
         let a = tmp("a"), b = tmp("b")
         await c.handle(.recordingStart(audioPath: a))
         await c.handle(.recordingStart(audioPath: b))
-        XCTAssertTrue(out.value.contains(.error(code: "recording.busy", message: "a recording is already running", fatal: false)))
+        XCTAssertTrue(out.value.contains(.error(code: "recording.busy", message: "a recording is already running", fatal: false, audioPath: b, activeAudioPath: a)))
         await c.handle(.recordingStop(audioPath: b))
         var rec = await c.isRecording
         XCTAssertTrue(rec, "stale stop for another path does not kill the real recording")
@@ -248,21 +248,112 @@ final class ArbiterTests: XCTestCase {
         mic.release.signal()
         done.wait()
         XCTAssertFalse(hub.isRunning); XCTAssertEqual(mic.stops.value, 1, "orphaned start is stopped")
-        // Resubscribe during start keeps it running.
+        // Resubscribe during start keeps it running (the joiner waits for the start in flight).
         DispatchQueue.global().async { try? hub.subscribe("dictation") { _ in }; done.signal() }
         mic.entered.wait()
         hub.unsubscribe("dictation")
-        try hub.subscribe("recording") { _ in }
+        let joined = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async { try? hub.subscribe("recording") { _ in }; joined.signal() }
+        waitUntil { hub.subscribers == ["recording"] }
         mic.release.signal()
-        done.wait()
+        done.wait(); joined.wait()
         XCTAssertTrue(hub.isRunning); XCTAssertEqual(mic.stops.value, 1)
         XCTAssertEqual(mic.starts.value, 2, "no second device start while one was in flight")
     }
+
+    /// Re-review 3: a reader that joins while source.start is in flight must not stay attached to a device that
+    /// never opened. It waits for the start, rethrows its error, and the hub is clean for the next start.
+    func testMicHubStartFailureDetachesAndRethrowsToJoiners() throws {
+        let mic = SlowMic(), hub = MicHub(source: mic)
+        mic.failNext.mutate { $0 = true }
+        let first = Box<Error?>(nil), joiner = Box<Error?>(nil)
+        let done = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            do { try hub.subscribe("dictation") { _ in } } catch { first.mutate { $0 = error } }
+            done.signal()
+        }
+        mic.entered.wait()
+        DispatchQueue.global().async {
+            do { try hub.subscribe("recording") { _ in } } catch { joiner.mutate { $0 = error } }
+            done.signal()
+        }
+        waitUntil { Set(hub.subscribers) == ["dictation", "recording"] }
+        mic.release.signal()
+        done.wait(); done.wait()
+        XCTAssertNotNil(first.value, "the starter sees the failure")
+        XCTAssertNotNil(joiner.value, "the joiner is told too, instead of believing it has a mic")
+        XCTAssertEqual(hub.subscribers, [], "nobody stays attached to a device that never opened")
+        XCTAssertFalse(hub.isRunning)
+        XCTAssertEqual(mic.starts.value, 1)
+        // The next subscribe starts the device afresh and works.
+        DispatchQueue.global().async { try? hub.subscribe("recording") { _ in }; done.signal() }
+        mic.entered.wait(); mic.release.signal(); done.wait()
+        XCTAssertTrue(hub.isRunning); XCTAssertEqual(hub.subscribers, ["recording"]); XCTAssertEqual(mic.starts.value, 2)
+    }
+
+    /// Re-review 1 (d1 lockout): the helper still runs d1 after a host reload. Each new start answers
+    /// dictation.busy{id, activeId: d1}; a cancel for the refused id is a no-op; the host's cancel{activeId}
+    /// frees the helper so the next start works. start{d1} while d1 runs names d1 as both ids and leaves it running.
+    func testDictationBusyNamesBothIdsAndCancelOfActiveIdUnlocks() async {
+        let out = Box<[HelperMessage]>([]), hub = MicHub(source: FakeMic())
+        let c = controller(MutablePerms(), hub, out, audio: [])
+        await c.handle(.dictationStart(id: "d1"))
+        await c.handle(.dictationStart(id: "d1"))
+        XCTAssertTrue(out.value.contains(.error(code: "dictation.busy", message: "a dictation is already running", fatal: false, id: "d1", activeId: "d1")))
+        var active = await c.dictation.activeId
+        XCTAssertEqual(active, "d1", "a duplicate start never disturbs the running dictation")
+        await c.handle(.dictationStart(id: "d2"))
+        XCTAssertTrue(out.value.contains(.error(code: "dictation.busy", message: "a dictation is already running", fatal: false, id: "d2", activeId: "d1")))
+        await c.handle(.dictationCancel(id: "d2"))
+        active = await c.dictation.activeId
+        XCTAssertEqual(active, "d1", "cancel for the refused id is a no-op (the old lockout)")
+        await c.handle(.dictationCancel(id: "d1"))  // the host cleans up the orphan named by activeId
+        active = await c.dictation.activeId
+        XCTAssertNil(active)
+        await c.handle(.dictationStart(id: "d3"))
+        XCTAssertTrue(out.value.contains { if case .dictationStarted("d3", _) = $0 { true } else { false } }, "retry succeeds")
+        XCTAssertFalse(out.value.contains(.error(code: "dictation.busy", message: "a dictation is already running", fatal: false, id: "d3", activeId: "d1")))
+        await c.handle(.dictationCancel(id: "d3"))
+    }
+
+    /// Re-review 2 (orphan recording): recording A outlives the host's view of it. start{B} answers
+    /// recording.busy{audioPath: B, activeAudioPath: A}; stop{B} leaves A running; stop{activeAudioPath} ends A,
+    /// and the retry of B starts.
+    func testRecordingBusyNamesActiveFileAndStoppingItUnlocks() async {
+        let out = Box<[HelperMessage]>([]), hub = MicHub(source: FakeMic())
+        let c = controller(MutablePerms(), hub, out)
+        let a = tmp("orphan-a"), b = tmp("orphan-b")
+        await c.handle(.recordingStart(audioPath: a))
+        await c.handle(.recordingStart(audioPath: b))
+        XCTAssertTrue(out.value.contains(.error(code: "recording.busy", message: "a recording is already running", fatal: false, audioPath: b, activeAudioPath: a)))
+        await c.handle(.recordingStop(audioPath: b))
+        var rec = await c.isRecording
+        XCTAssertTrue(rec, "the attempt's own cleanup stop does not end the orphan")
+        await c.handle(.recordingStop(audioPath: a))
+        XCTAssertTrue(out.value.contains { if case .recordingStopped(a, _) = $0 { true } else { false } })
+        await c.handle(.recordingStart(audioPath: b))
+        XCTAssertTrue(out.value.contains(.recordingStarted(audioPath: b)), "retry succeeds")
+        rec = await c.isRecording
+        XCTAssertTrue(rec)
+        await c.handle(.recordingStop(audioPath: b))
+        for p in [a, b] { try? FileManager.default.removeItem(atPath: p) }
+    }
+}
+
+/// Polls `cond` (the hub's lock is released while a joiner waits, so its getters stay usable).
+func waitUntil(timeout: TimeInterval = 5, _ cond: () -> Bool) {
+    let end = Date().addingTimeInterval(timeout)
+    while !cond() && Date() < end { usleep(1_000) }
+    XCTAssertTrue(cond(), "condition not reached in time")
 }
 
 final class SlowMic: MicSource, @unchecked Sendable {
+    struct Failed: Error {}
     let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
-    let starts = Box<Int>(0), stops = Box<Int>(0)
-    func start(onSamples: @escaping @Sendable ([Float]) -> Void) throws { starts.mutate { $0 += 1 }; entered.signal(); release.wait() }
+    let starts = Box<Int>(0), stops = Box<Int>(0), failNext = Box<Bool>(false)
+    func start(onSamples: @escaping @Sendable ([Float]) -> Void) throws {
+        starts.mutate { $0 += 1 }; entered.signal(); release.wait()
+        if failNext.value { failNext.mutate { $0 = false }; throw Failed() }
+    }
     func stop() { stops.mutate { $0 += 1 } }
 }

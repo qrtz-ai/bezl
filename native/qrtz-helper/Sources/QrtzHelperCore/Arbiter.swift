@@ -118,12 +118,18 @@ public enum SessionArbiter {
 /// The device starts on the first subscriber and stops on the last; every subscriber gets every block.
 public final class MicHub: @unchecked Sendable {
     let source: MicSource
-    private let lock = NSLock()
+    /// NSCondition so readers that join an in-flight source.start can wait for its outcome.
+    private let lock = NSCondition()
     private var subs: [(id: String, cb: @Sendable ([Float]) -> Void)] = []
     private var running = false
-    /// source.start is in flight (called outside the lock). Subscribes during it just join; unsubscribes during it
-    /// leave the device to the post-start check, which stops it again if nobody is subscribed any more.
+    /// source.start is in flight (called outside the lock). Subscribes during it join and wait for its outcome:
+    /// they return once the device runs, or rethrow the start's error (and are detached) if it never opened.
+    /// Unsubscribes during it leave the device to the post-start check, which stops it again if nobody is
+    /// subscribed any more.
     private var starting = false
+    /// Generation of the latest source.start, and the error it failed with (so joiners of that start rethrow it).
+    private var startGen = 0
+    private var startFailure: (gen: Int, error: Error)?
     /// Gated readers may only attach while the arbiter has subscribed them (permit). A gated view whose start is
     /// not permitted is skipped, so a recording started with the mic denied never opens the device.
     private var gated: Set<String> = []
@@ -141,18 +147,37 @@ public final class MicHub: @unchecked Sendable {
         lock.lock()
         subs.removeAll { $0.id == id }
         subs.append((id, cb))
-        let needStart = !running && !starting
-        if needStart { starting = true }
+        if running { lock.unlock(); return }
+        if starting {
+            // Join the start in flight; never report success for a device that has not opened.
+            let gen = startGen
+            while starting && startGen == gen { lock.wait() }
+            let failure = startFailure.flatMap { $0.gen == gen ? $0.error : nil }
+            lock.unlock()
+            if let failure { throw failure }
+            return
+        }
+        starting = true
+        startGen += 1
+        let gen = startGen
+        startFailure = nil
         lock.unlock()
-        guard needStart else { return }
         do { try source.start(onSamples: { [weak self] s in self?.fanOut(s) }) } catch {
-            lock.lock(); starting = false; subs.removeAll { $0.id == id }; lock.unlock()
+            lock.lock()
+            starting = false
+            // Every reader here subscribed for this start (subs is empty whenever the device is off and idle), so
+            // none of them may stay attached to a device that never opened; joiners rethrow the same error.
+            subs.removeAll()
+            startFailure = (gen, error)
+            lock.broadcast()
+            lock.unlock()
             throw error
         }
         lock.lock()
         starting = false
         let orphan = subs.isEmpty  // everyone left (or the tap was dropped) while the device was starting
         running = !orphan
+        lock.broadcast()
         lock.unlock()
         if orphan { source.stop() }
     }

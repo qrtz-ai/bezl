@@ -12,6 +12,7 @@ import {
   nullLogger,
   parseHelperLine,
   type Config,
+  type HostToHelper,
   type TalkView,
 } from '@qrtz/core';
 import { TalkService, type TalkDeps } from './talk-service';
@@ -58,10 +59,12 @@ function setup(
   const secrets = new MemorySecretStore();
   for (const [k, v] of Object.entries(o.secrets ?? {})) void secrets.set(k, v);
   const sent: string[] = [];
+  const sentMsgs: HostToHelper[] = [];
   const clipboard: string[] = [];
   const svc = new TalkService({
     send: (m) => {
       sent.push(m.type);
+      sentMsgs.push(m);
       helper.write(encodeHostMessage(m));
     },
     bus,
@@ -84,7 +87,7 @@ function setup(
     const r = parseHelperLine(l);
     if (r.ok) svc.handle(r.msg);
   });
-  return { svc, states, sent, clipboard, dir };
+  return { svc, states, sent, sentMsgs, clipboard, dir, helper };
 }
 
 describe('TalkService', () => {
@@ -146,14 +149,17 @@ describe('TalkService', () => {
   });
 
   it('H6: a start the helper answers with dictation.busy fails at once instead of hanging', async () => {
-    const { svc } = setup();
+    const { svc, sentMsgs } = setup();
     await svc.configure();
     const p = svc.start();
+    const id = svc.state().id!;
     svc.handle({
       type: 'error',
       code: 'dictation.busy',
       message: 'a dictation is already running',
       fatal: false,
+      id,
+      activeId: 'orphan',
     });
     await p;
     expect(svc.state()).toMatchObject({
@@ -163,6 +169,58 @@ describe('TalkService', () => {
     // A stop now returns immediately (nothing to wait for).
     await svc.stop();
     expect(svc.state().phase).toBe('error');
+    // The orphan is cancelled by its own id; the refused start is never cancelled (the helper never ran it).
+    const cancels = sentMsgs.filter((m) => m.type === 'dictation.cancel');
+    expect(cancels).toEqual([{ type: 'dictation.cancel', id: 'orphan' }]);
+  });
+
+  it('busy re-review: a helper still running d1 after a host reload no longer locks dictation out', async () => {
+    const { svc, sentMsgs, helper } = setup();
+    await svc.configure();
+    // The previous host started d1 and went away; this TalkService has never heard of it.
+    helper.write(encodeHostMessage({ type: 'dictation.start', id: 'd1' }));
+    await svc.start();
+    const d2 = sentMsgs.find((m) => m.type === 'dictation.start')!;
+    expect(svc.state()).toMatchObject({
+      phase: 'error',
+      error: 'another dictation is still running',
+    });
+    const cancels = sentMsgs.filter((m) => m.type === 'dictation.cancel');
+    expect(cancels).toEqual([{ type: 'dictation.cancel', id: 'd1' }]);
+    expect(cancels).not.toContainEqual({
+      type: 'dictation.cancel',
+      id: 'id' in d2 ? d2.id : '',
+    });
+    // The retry gets the helper: it listens and hears.
+    await svc.start();
+    expect(svc.state().phase).toBe('listening');
+    await until(() => svc.state().partial.split(' ').length >= 3);
+    await svc.stop();
+    await until(() => !!svc.state().last);
+    expect(svc.state().last?.text).toBeTruthy();
+  });
+
+  it('busy re-review: a busy for another start, or naming our own id as active, never fails the dictation', async () => {
+    const { svc, sentMsgs } = setup();
+    await svc.configure();
+    await svc.start();
+    const id = svc.state().id!;
+    const busy = (o: { id?: string; activeId?: string }) =>
+      svc.handle({
+        type: 'error',
+        code: 'dictation.busy',
+        message: 'a dictation is already running',
+        fatal: false,
+        ...o,
+      });
+    busy({ id: 'stale', activeId: id }); // a late answer to an older start
+    busy({}); // an old helper with no ids
+    busy({ id, activeId: id }); // a duplicate start{id} while id runs
+    expect(svc.state()).toMatchObject({ phase: 'listening', id });
+    expect(sentMsgs.filter((m) => m.type === 'dictation.cancel')).toEqual([]);
+    await until(() => svc.state().partial.split(' ').length >= 3);
+    await svc.stop();
+    await until(() => !!svc.state().last);
   });
 
   it('dictionary terms are applied; AI cleanup is used when fast', async () => {

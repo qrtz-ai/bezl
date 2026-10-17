@@ -8,6 +8,7 @@ import {
   Supervisor,
   createMockHelper,
   defaultConfig,
+  encodeHostMessage,
   parseHelperLine,
   type Config,
   type EventPayload,
@@ -47,7 +48,7 @@ interface Rig {
   pipelines: PipelineView[];
   transcript: EventPayload<'note:transcript'>[];
   mocks: ReturnType<typeof createMockHelper>[];
-  writes: { helper: number; type: string }[];
+  writes: { helper: number; type: string; msg: Record<string, unknown> }[];
   failWorker: Set<string>;
   llm: {
     fail: boolean;
@@ -86,7 +87,10 @@ function rig(
       type: string,
       m: ReturnType<typeof createMockHelper>,
       note: NoteService,
+      msg: Record<string, unknown>,
     ) => void;
+    /** Drops a helper→host line before the host sees it (simulates a host that never heard of it). */
+    dropLine?: (line: string) => boolean;
   } = {},
 ): Rig {
   const dir = o.dir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-lc-'));
@@ -144,7 +148,7 @@ function rig(
     },
   } as unknown as WorkerClient;
   const mocks: ReturnType<typeof createMockHelper>[] = [];
-  const writes: { helper: number; type: string }[] = [];
+  const writes: Rig['writes'] = [];
   const helper = new Supervisor({
     name: 'helper',
     baseDelayMs: 20,
@@ -161,9 +165,10 @@ function rig(
       mocks.push(m);
       const write = m.write.bind(m);
       m.write = (line: string) => {
-        const type = JSON.parse(line).type as string;
-        writes.push({ helper: mocks.indexOf(m), type });
-        o.beforeWrite?.(type, m, note);
+        const msg = JSON.parse(line) as Record<string, unknown>;
+        const type = msg.type as string;
+        writes.push({ helper: mocks.indexOf(m), type, msg });
+        o.beforeWrite?.(type, m, note, msg);
         write(line);
       };
       return m;
@@ -199,6 +204,7 @@ function rig(
     if (s.state === 'failed') note.onHelperFailed('failed');
   });
   helper.onLine((line) => {
+    if (o.dropLine?.(line)) return;
     const r = parseHelperLine(line);
     if (r.ok) note.handle(r.msg);
   });
@@ -646,7 +652,7 @@ describe('NoteService lifecycle (integration with mock helper + real worker hand
   it('H6: a start the helper answers with recording.busy fails fast and only stops its own file', async () => {
     let sent = false;
     const r = rig({
-      beforeWrite: (type, _m, note) => {
+      beforeWrite: (type, _m, note, msg) => {
         if (type !== 'recording.start' || sent) return;
         sent = true;
         note.handle({
@@ -654,6 +660,8 @@ describe('NoteService lifecycle (integration with mock helper + real worker hand
           code: 'recording.busy',
           message: 'a recording is already running',
           fatal: false,
+          audioPath: msg.audioPath as string,
+          activeAudioPath: '/elsewhere/orphan.wav',
         });
       },
     });
@@ -664,6 +672,64 @@ describe('NoteService lifecycle (integration with mock helper + real worker hand
     );
     expect(Date.now() - t0).toBeLessThan(1000);
     expect(r.note.view().phase).not.toBe('recording');
+    const own = r.writes.find((w) => w.type === 'recording.start')!.msg
+      .audioPath;
+    const stops = r.writes
+      .filter((w) => w.type === 'recording.stop')
+      .map((w) => w.msg.audioPath);
+    // The orphan named by activeAudioPath first, then this attempt's own file; never a bare stop.
+    expect(stops).toEqual(['/elsewhere/orphan.wav', own]);
+  });
+
+  it('busy re-review: an orphaned recording A is stopped by its path, so the retry starts', async () => {
+    const orphan = path.join(os.tmpdir(), `qrtz-orphan-${Date.now()}.wav`);
+    // The host never sees recording A's ack (it was started by a previous host process).
+    const r = rig({
+      dropLine: (l) => l.includes('recording.started') && l.includes(orphan),
+    });
+    await detected(r);
+    r.mocks[0]!.write(
+      encodeHostMessage({ type: 'recording.start', audioPath: orphan }),
+    );
+    await expect(r.note.start()).rejects.toThrow(
+      /still busy with another recording/,
+    );
+    expect(
+      r.writes
+        .filter((w) => w.type === 'recording.stop')
+        .map((w) => w.msg.audioPath),
+    ).toContain(orphan);
+    // Before the fix the orphan ran forever and every retry got helper-busy.
+    await r.note.start();
+    expect(r.note.view().phase).toBe('recording');
+    await r.note.stop();
+    fs.rmSync(orphan, { force: true });
+  });
+
+  it('busy re-review: a busy for another file (or with no file) never fails the start in flight', async () => {
+    let sent = false;
+    const r = rig({
+      beforeWrite: (type, _m, note) => {
+        if (type !== 'recording.start' || sent) return;
+        sent = true;
+        const busy = (o: { audioPath?: string }) =>
+          note.handle({
+            type: 'error',
+            code: 'recording.busy',
+            message: 'a recording is already running',
+            fatal: false,
+            activeAudioPath: '/elsewhere/a.wav',
+            ...o,
+          });
+        busy({ audioPath: '/elsewhere/older-attempt.wav' });
+        busy({});
+      },
+    });
+    await detected(r);
+    await r.note.start();
+    expect(r.note.view().phase).toBe('recording');
+    expect(r.writes.filter((w) => w.type === 'recording.stop')).toEqual([]);
+    await r.note.stop();
   });
 
   it('C5: a step never runs if its start could not be persisted (durability barrier), then retries', async () => {

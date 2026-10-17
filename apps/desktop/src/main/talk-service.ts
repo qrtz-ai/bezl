@@ -256,17 +256,50 @@ export class TalkService {
             message: m.message,
           });
           if (m.code === 'dictation.mic' && this.active()) this.fail(m.message);
-          // Our start was ignored because another dictation still owns the helper: fail now, and release any
-          // waiter so a stop for this id can never hang on a dictation.stopped that will not come.
-          if (m.code === 'dictation.busy' && this.active() && this.view.id) {
-            const id = this.view.id;
-            this.waiters.get(`started:${id}`)?.(null);
-            this.waiters.get(`stopped:${id}`)?.(null);
-            this.fail('another dictation is still running');
-          }
+          if (m.code === 'dictation.busy') this.onBusy(m);
         }
         return;
     }
+  }
+
+  /**
+   * error{dictation.busy, id, activeId}: the helper ignored dictation.start{id} because `activeId` owns it.
+   * Acts only when `id` is our start in flight (a stale busy for an older start never touches the current
+   * session). A busy naming our own id as active is a duplicate start: the dictation is running, keep it.
+   * Otherwise the active dictation is unknown to us (e.g. it survived a host reload): cancel it by its own id so
+   * the helper is free again, then fail this attempt without sending a cancel for it (the helper never ran it).
+   */
+  private onBusy(m: Extract<HelperToHost, { type: 'error' }>) {
+    const id = this.view.id;
+    if (!m.id || m.id !== id || this.view.phase !== 'listening') {
+      this.deps.log.warn('dictation.busy for another start; ignored', {
+        id: m.id,
+        current: id,
+      });
+      return;
+    }
+    if (m.activeId === id) {
+      this.waiters.get(`started:${id}`)?.({
+        type: 'dictation.started',
+        id,
+        preRollMs: 0,
+      });
+      return;
+    }
+    if (m.activeId) {
+      this.deps.log.warn('cancelling orphaned dictation', {
+        activeId: m.activeId,
+      });
+      try {
+        this.deps.send({ type: 'dictation.cancel', id: m.activeId });
+      } catch {
+        /* helper gone */
+      }
+    }
+    // Release any waiter so a stop for this id can never hang on a dictation.stopped that will not come.
+    this.waiters.get(`started:${id}`)?.(null);
+    this.waiters.get(`stopped:${id}`)?.(null);
+    this.fail('another dictation is still running', { cancel: false });
   }
 
   private active() {
@@ -340,6 +373,11 @@ export class TalkService {
     const startedP = this.wait(`started:${id}`, this.t.started);
     // Ask the helper first: the mic must open as early as possible; the socket connects in parallel.
     this.deps.send({ type: 'dictation.start', id });
+    // The helper can answer at once (busy / mic denied) and this attempt is already over: start nothing more.
+    if (this.view.id !== id || this.view.phase !== 'listening') {
+      await startedP;
+      return this.view;
+    }
     this.set({});
     const autoFailover = this.deps.config().talk.autoFailover;
     const arbiter = new EngineArbiter({
@@ -434,8 +472,8 @@ export class TalkService {
     });
   }
 
-  private fail(error: string) {
-    if (this.view.id)
+  private fail(error: string, opts: { cancel?: boolean } = {}) {
+    if (this.view.id && opts.cancel !== false)
       this.deps.send({ type: 'dictation.cancel', id: this.view.id });
     this.cleanupSession();
     this.set({ phase: 'error', error, level: 0 });

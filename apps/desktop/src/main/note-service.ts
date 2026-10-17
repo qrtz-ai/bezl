@@ -86,8 +86,11 @@ export class NoteService {
   private waiters: Waiter[] = [];
   /** Audio path of the recording.start in flight (start or resume); acks for any other path are stale. */
   private pendingStartPath: string | null = null;
-  /** The helper answered our start with error{recording.busy}: another recording still owns it. */
-  private startRefusedBusy = false;
+  /**
+   * The helper answered a start with error{recording.busy, audioPath}: another recording still owns it. Keyed by
+   * the refused attempt's audioPath, so a busy only ever fails the start it names.
+   */
+  private busyRefusals = new Map<string, { activeAudioPath?: string }>();
   private emitTimer: NodeJS.Timeout | null = null;
   private persisted = new Set<string>();
   private paused = false;
@@ -313,20 +316,67 @@ export class NoteService {
           code: m.code,
           message: m.message,
         });
-        if (m.code === 'recording.busy' && this.pendingStartPath) {
-          // The start was ignored: fail it now instead of waiting out the ack timeout.
-          this.startRefusedBusy = true;
-          for (const w of this.waiters.slice())
-            if (w.type === 'recording.started') {
-              this.waiters.splice(this.waiters.indexOf(w), 1);
-              w.resolve(null);
-            }
-        } else if (m.code === 'asr.unavailable')
-          this.degrade('asr-unavailable');
+        if (m.code === 'recording.busy') this.onBusy(s, m);
+        else if (m.code === 'asr.unavailable') this.degrade('asr-unavailable');
         else if (m.code === 'audio.unavailable')
           this.degrade('audio-unavailable');
         break;
     }
+  }
+
+  /**
+   * error{recording.busy, audioPath, activeAudioPath}: the helper ignored recording.start{audioPath} because the
+   * recording writing `activeAudioPath` owns it. Acts only on the start in flight. A busy naming that same file as
+   * active is a duplicate start of a recording that is running: treat it as the ack. If the active file is not one
+   * of ours (an orphan from before a reload or an abandoned attempt), stop it by its path before failing this
+   * attempt, so the retry can start; never stop a recording this service is capturing.
+   */
+  private onBusy(
+    s: RecordingState,
+    m: Extract<HelperToHost, { type: 'error' }>,
+  ) {
+    const path = m.audioPath;
+    if (!path || path !== this.pendingStartPath) {
+      this.deps.log.warn('recording.busy for another start; ignored', {
+        audioPath: path,
+      });
+      return;
+    }
+    if (m.activeAudioPath === path) {
+      this.resolveWaiters('recording.started', {
+        type: 'recording.started',
+        audioPath: path,
+      });
+      return;
+    }
+    const active = m.activeAudioPath;
+    const ours =
+      !!active && isCapturing(s.phase) && s.audioParts.includes(active);
+    if (active && !ours) {
+      this.deps.log.warn('stopping orphaned recording', { audioPath: active });
+      try {
+        this.send({ type: 'recording.stop', audioPath: active });
+      } catch {
+        /* helper gone */
+      }
+    }
+    // The start was ignored: fail it now instead of waiting out the ack timeout.
+    this.busyRefusals.set(path, active ? { activeAudioPath: active } : {});
+    this.resolveWaiters('recording.started', null, (w) =>
+      w.match ? w.match({ type: 'recording.started', audioPath: path }) : true,
+    );
+  }
+
+  private resolveWaiters(
+    type: string,
+    m: HelperToHost | null,
+    pick: (w: Waiter) => boolean = (w) => (m && w.match ? w.match(m) : true),
+  ) {
+    for (const w of this.waiters.slice())
+      if (w.type === type && pick(w)) {
+        this.waiters.splice(this.waiters.indexOf(w), 1);
+        w.resolve(m);
+      }
   }
 
   private onAsr(
@@ -614,7 +664,7 @@ export class NoteService {
     });
     this.deps.bus.emit('note:changed', { id });
     this.pendingStartPath = audioPath;
-    this.startRefusedBusy = false;
+    this.busyRefusals.delete(audioPath);
     const acked = this.waitFor(
       'recording.started',
       RETRY_POLICIES.startAckMs * Math.max(this.scale, 0.2),
@@ -638,8 +688,9 @@ export class NoteService {
         this.machine.state.phase !== 'starting'
       )
         return this.view();
-      const busy = this.startRefusedBusy;
-      this.startRefusedBusy = false;
+      // Only a busy that named this attempt's file counts; a busy for any other start never relabels it.
+      const busy = this.busyRefusals.has(audioPath);
+      this.busyRefusals.delete(audioPath);
       const error: LifecycleError = busy
         ? {
             code: 'helper-busy',
@@ -755,6 +806,7 @@ export class NoteService {
     }
     const ok = await acked;
     if (this.pendingStartPath === audioPath) this.pendingStartPath = null;
+    this.busyRefusals.delete(audioPath);
     if (!ok || this.machine.state.phase !== 'reconnecting') return;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
