@@ -10,6 +10,50 @@ use regex::Regex;
 use crate::js::{is_js_space, js_trim, u16len, JS_SPACE_CLASS};
 use crate::templates::template_by_id;
 
+/// N54 (ADR 0048): at most this many action items come from the transcript, then at most
+/// [`MAX_NOTE_ACTION_ITEMS`] from the notes; at most [`MAX_QA`] Q&A pairs (TS `MAX_ACTION_ITEMS`, ...).
+pub const MAX_ACTION_ITEMS: usize = 50;
+pub const MAX_NOTE_ACTION_ITEMS: usize = 20;
+pub const MAX_QA: usize = 30;
+
+/// `nextDifferent` (extractive.ts): for every position, the first entry at or after it that passes `ok`, and the
+/// first one after that with a different key. [`NextDifferent::at`] is then O(1).
+struct NextDifferent<K: PartialEq> {
+    keys: Vec<K>,
+    first: Vec<Option<usize>>,
+    second: Vec<Option<usize>>,
+}
+
+impl<K: PartialEq> NextDifferent<K> {
+    fn new(oks: &[bool], keys: Vec<K>) -> Self {
+        let n = oks.len();
+        let mut first = vec![None; n + 1];
+        let mut second = vec![None; n + 1];
+        for i in (0..n).rev() {
+            let f = first[i + 1];
+            if !oks[i] {
+                first[i] = f;
+                second[i] = second[i + 1];
+            } else {
+                first[i] = Some(i);
+                second[i] = match f {
+                    Some(f) if keys[f] == keys[i] => second[i + 1],
+                    _ => f,
+                };
+            }
+        }
+        NextDifferent { keys, first, second }
+    }
+    /// The first entry at or after `i` that passes `ok` and whose key differs from `k`.
+    fn at(&self, i: usize, k: &K) -> Option<usize> {
+        let f = *self.first.get(i)?;
+        match f {
+            Some(f) if self.keys[f] == *k => self.second[i],
+            _ => f,
+        }
+    }
+}
+
 const STOP_WORDS: &str = "a an the and or but if of to in on at for with is are was were be been it this that we you i they he she so just like yeah okay ok um uh do does did have has had not no yes our your my me us them from as by about can will would should could there here what when how who which";
 
 static STOP: LazyLock<HashSet<&'static str>> = LazyLock::new(|| STOP_WORDS.split(' ').collect());
@@ -165,28 +209,36 @@ pub fn extractive_summary(
         .collect::<Vec<_>>()
         .join(" ");
 
+    // The addressee of "Ana, can you …": the first speaker whose first name is Ana.
+    let mut by_first_name: HashMap<&str, &str> = HashMap::new();
+    for x in &sents {
+        if let Some(sp) = x.speaker.as_deref() {
+            by_first_name
+                .entry(sp.split(' ').next().unwrap_or(""))
+                .or_insert(sp);
+        }
+    }
+    let speaker_set: Vec<bool> = sents.iter().map(|x| x.speaker.is_some()).collect();
+    let next_speaker = NextDifferent::new(&speaker_set, sents.iter().map(|x| x.speaker.as_deref()).collect());
     let mut action_items = Vec::new();
     for s in &sents {
+        if action_items.len() >= MAX_ACTION_ITEMS {
+            break;
+        }
         if !ACTION_RE.is_match(&s.text) {
             continue;
         }
         let mut owner = s.speaker.clone();
         if ASK_RE.is_match(&s.text) {
             let full = NAMED_RE.captures(&s.text).map(|c| {
-                let named = c[1].to_string();
-                sents
-                    .iter()
-                    .find(|x| {
-                        x.speaker.as_deref().and_then(|sp| sp.split(' ').next()) == Some(named.as_str())
-                    })
-                    .and_then(|x| x.speaker.clone())
-                    .unwrap_or(named)
+                by_first_name
+                    .get(&c[1])
+                    .map_or_else(|| c[1].to_string(), |f| f.to_string())
             });
             owner = full.or_else(|| {
-                sents
-                    .iter()
-                    .find(|x| x.idx > s.idx && x.speaker.is_some() && x.speaker != s.speaker)
-                    .and_then(|x| x.speaker.clone())
+                next_speaker
+                    .at(s.idx + 1, &s.speaker.as_deref())
+                    .and_then(|i| sents[i].speaker.clone())
             });
         }
         action_items.push(ActionItem {
@@ -195,7 +247,11 @@ pub fn extractive_summary(
         });
     }
     // Notes phrased as tasks ("TODO …", "- [ ] …", or commitment phrasing) become action items too.
+    let from_transcript = action_items.len();
     for n in &notes {
+        if action_items.len() - from_transcript >= MAX_NOTE_ACTION_ITEMS {
+            break;
+        }
         let t = js_trim(&n.text);
         if let Some(c) = TASK_RE.captures(t) {
             action_items.push(ActionItem {
@@ -210,18 +266,31 @@ pub fn extractive_summary(
         }
     }
 
+    // The answer to a question: the first non-question of a later segment from another speaker (or none).
+    let mut seg_start = vec![sents.len(); segments.len() + 1];
+    for (i, x) in sents.iter().enumerate().rev() {
+        seg_start[x.seg] = i;
+    }
+    for g in (0..segments.len()).rev() {
+        seg_start[g] = seg_start[g].min(seg_start[g + 1]);
+    }
+    let not_question: Vec<bool> = sents.iter().map(|x| !x.text.ends_with('?')).collect();
+    let next_answer = NextDifferent::new(
+        &not_question,
+        sents.iter().map(|x| x.speaker.as_deref()).collect(),
+    );
     let mut qa = Vec::new();
     for s in &sents {
+        if qa.len() >= MAX_QA {
+            break;
+        }
         if !s.text.ends_with('?') {
             continue;
         }
-        if let Some(ans) = sents
-            .iter()
-            .find(|x| x.seg > s.seg && x.speaker != s.speaker && !x.text.ends_with('?'))
-        {
+        if let Some(a) = next_answer.at(seg_start[s.seg + 1], &s.speaker.as_deref()) {
             qa.push(QaItem {
                 question: s.text.clone(),
-                answer: ans.text.clone(),
+                answer: sents[a].text.clone(),
                 asked_by: s.speaker.clone(),
             });
         }

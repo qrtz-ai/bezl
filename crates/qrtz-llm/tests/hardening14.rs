@@ -1,6 +1,6 @@
 //! Hardening cycle 14: the on-device summary on a huge transcript (the Tauri build's only summary until OpenRouter
-//! lands, N53). The Q&A and the "can you" owner lookups scan the sentences per question, so a 3 h meeting is the case
-//! to bound. Same algorithm as TS `extractiveSummary`; the outputs are pinned by spec/vectors/llm/extractive.json.
+//! lands, N53). The Q&A and the "can you" owner lookups were scans per question (quadratic) and the outputs
+//! unbounded; N54 (ADR 0048) capped them and made the lookups one backward pass. Same algorithm as TS `extractiveSummary`; the outputs are pinned by spec/vectors/llm/extractive.json.
 use std::time::Instant;
 
 use qrtz_llm::extractive_summary;
@@ -39,7 +39,15 @@ fn three_hour_meeting_stays_bounded() {
         s.qa.len()
     );
     assert!(!s.summary.is_empty());
-    assert!(ms < 10_000, "{ms} ms");
+    // N54 (ADR 0048): capped outputs, one pass (was 2,160 action items and 3,240 Q&A pairs).
+    assert_eq!(
+        (s.action_items.len(), s.qa.len()),
+        (
+            qrtz_llm::extractive::MAX_ACTION_ITEMS,
+            qrtz_llm::extractive::MAX_QA
+        )
+    );
+    assert!(ms < 3_000, "{ms} ms");
 }
 
 /// Worst case for the Q&A scan: one speaker asking only questions, so no answer is ever found and every question
@@ -54,5 +62,5 @@ fn one_speaker_all_questions_stays_bounded() {
     let ms = t0.elapsed().as_millis();
     eprintln!("extractive worst case, 21 600 questions: {ms} ms");
     assert!(s.qa.is_empty());
-    assert!(ms < 30_000, "{ms} ms");
+    assert!(ms < 3_000, "{ms} ms"); // N54: was 6.5 s debug / 0.95 s release, quadratic
 }

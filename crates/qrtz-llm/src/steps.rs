@@ -138,7 +138,7 @@ impl<E: DbExec> LlmSteps<E> {
         let template = template_by_id(m.opts.template.as_deref()).id;
         let has_notes = m.opts.notes.iter().any(|n| !js_trim(&n.text).is_empty());
         let Some(p) = self.provider().filter(|_| !m.segments.is_empty() || has_notes) else {
-            return Ok(m.extractive());
+            return Ok(m.extractive().await);
         };
         let msgs = build_summary_prompt(&m.title, &m.segments, &m.opts);
         let attempt = async { parse_summary_reply(&p.complete(&msgs, true).await?) };
@@ -158,7 +158,7 @@ impl<E: DbExec> LlmSteps<E> {
                 if strict {
                     return Err(e);
                 }
-                let mut s = m.extractive();
+                let mut s = m.extractive().await;
                 s.llm_error = Some(cut_utf16(&e.message, 500).to_string());
                 Ok(s)
             }
@@ -200,13 +200,24 @@ pub struct Loaded {
 }
 
 impl Loaded {
-    pub fn extractive(&self) -> MeetingSummary {
+    pub fn extractive_sync(&self) -> MeetingSummary {
         extractive_summary(
             &self.segments,
             None,
             &self.opts.notes,
             self.opts.template.as_deref(),
         )
+    }
+    /// On a blocking thread, not the runtime's worker (N54: linear and capped, but a 3 h meeting is still work).
+    pub async fn extractive(&self) -> MeetingSummary {
+        let (segs, notes, tpl) = (
+            self.segments.clone(),
+            self.opts.notes.clone(),
+            self.opts.template.clone(),
+        );
+        tokio::task::spawn_blocking(move || extractive_summary(&segs, None, &notes, tpl.as_deref()))
+            .await
+            .expect("extractive summary panicked")
     }
 }
 
@@ -274,7 +285,7 @@ impl<E: DbExec> StepExecutor for LlmSteps<E> {
         let m = self.load(meeting_id.clone(), None).await?;
         let summary = match req {
             SummaryRequest::Fallback { error } => {
-                let mut s = m.extractive();
+                let mut s = m.extractive().await;
                 s.llm_error = Some(cut_utf16(&error, 500).to_string());
                 s
             }

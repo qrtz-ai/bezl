@@ -860,6 +860,8 @@ let steps = Arc::new(qrtz_llm::LlmSteps::new(
   `Skip`: done, no summary.
 - `resummarize(id, template)`: the template is stored first. Not strict: a provider failure saves the extractive
   summary with `llmError`; a timeout saves nothing and the old summary stays. Status is unchanged.
+- The extractive summary caps its lists (50 transcript + 20 note action items, 30 Q&A; N54, ADR 0048) and runs on
+  `spawn_blocking`.
 - The prompt lists capture gaps from `PipelineState.capture` (silent spans, plus lost spans as that source's
   silence; only both silent is "no audio at all").
 - DB errors keep the storage classification (busy / full disk retryable, N13); a missing meeting is `E_NOT_FOUND`.
