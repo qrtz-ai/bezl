@@ -44,6 +44,12 @@ Rules (the arbiter's `cmd` events):
    is cleaned up and the retry succeeds. The host never stops a recording it is capturing itself. A refused
    dictation is not cancelled by its own id (the helper never ran it). Stops and cancels when nothing is running are
    no-ops (`not-recording` / `not-dictating`). `dictation.stop` and `cancel` with a stale id are no-ops too.
+   `dictation.stop` finishes the last words before answering (`DictationTail`): the mic keeps capturing for 250 ms
+   after the release, blocks still queued in the mic stream are drained (at most 300 ms), 640 ms of silence is fed so
+   Nemotron decodes the final partial 560 ms chunk, then its finalize runs for at most 1.5 s (past that, the partial
+   text is used and a warn is logged). `dictation.stopped` follows within 2.05 s, under the host's 3 s stop wait; the
+   pill stays up the whole time. `durationMs` counts captured audio only, not the pad. A second stop while stopping
+   is ignored; `dictation.cancel` during the tail answers `stopped{text: ""}` once.
    `recording.stop` takes an optional `audioPath`: when it names a file other than the one being recorded, the stop is
    ignored (logged). The host sends the path on every cleanup stop (a stale `recording.started{A}`, a start timeout),
    so a late ack for an abandoned start never stops the recording that replaced it.

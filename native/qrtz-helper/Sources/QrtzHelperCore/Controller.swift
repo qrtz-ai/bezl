@@ -109,6 +109,8 @@ public struct HelperDeps: Sendable {
     /// ADR 0079 / N121 (`models.warm`): loads every speech model once, one at a time, and unloads it, so the first
     /// recording after a download doesn't pay the OS model compile (about 50 s for the diarizer). Returns a summary.
     public var modelWarmup: (@Sendable () async -> String)?
+    /// Echo: what the helper does between the key release and `dictation.stopped` (tail, drain, pad, finalize).
+    public var dictationTail = DictationTail()
     public var helperVersion: String
     public var os: String
     public var features: [String]
@@ -286,7 +288,7 @@ public actor HelperController {
         self.arbiter = ArbiterState(denied: OsPermission.allCases.filter { st[$0] == .denied })
         self.dictation = DictationEngine(mic: deps.dictationMic, transcribers: deps.dictationTranscribers,
                                          inserter: deps.insertion.map { TextInserter(backend: $0) }, hotkeys: deps.hotkeys, send: send, now: now, managedMic: true,
-                                         speech: speech)
+                                         speech: speech, tail: deps.dictationTail)
         self.summaries = SummarizeService(model: deps.summarizer, send: send)
     }
     /// ADR 0075: summarize requests, off the message queue.

@@ -3,7 +3,7 @@ import AVFoundation
 import Foundation
 import QrtzHelperCore
 
-/// `qrtz-helper --bench --mic a.aiff[,b.aiff…] [--system c.aiff[,…]]` (ADR 0079 verification on a Mac): runs the real
+/// `qrtz-helper --bench --mic a.aiff[,b.aiff…] [--system c.aiff[,…]] [--dictation d.aiff]` (ADR 0079 verification on a Mac): runs the real
 /// Nemotron transcribers and Nemotron 3 diarizers from `$QRTZ_MODELS_DIR` on audio files (several files per channel
 /// are joined with 0.5 s of silence, e.g. two `say` voices) and prints one JSON object: load times, per-channel text
 /// and speaker turns, real-time factor, talk latency (the mic clip fed at real time to a warm instance: first
@@ -92,6 +92,62 @@ enum Bench {
         ]
     }
 
+    static func trimTrailingSilence(_ s: [Float]) -> [Float] {
+        guard let last = s.lastIndex(where: { abs($0) > 0.01 }) else { return s }
+        return Array(s[...last])
+    }
+
+    /// Plays a clip at real time in 1360-sample blocks, then silence until stopped.
+    final class ClipMic: MicSource, @unchecked Sendable {
+        let clip: [Float]
+        private let lock = NSLock()
+        private var running = false
+        private(set) var clipDone = false
+        init(_ clip: [Float]) { self.clip = clip }
+        var done: Bool { lock.withLock { clipDone } }
+        func start(onSamples: @escaping @Sendable ([Float]) -> Void) throws {
+            lock.withLock { running = true }
+            let clip = self.clip
+            Thread {
+                var i = 0
+                let t0 = Date()
+                var n = 0
+                while self.lock.withLock({ self.running }) {
+                    let block: [Float]
+                    if i < clip.count { block = Array(clip[i..<min(i + 1360, clip.count)]); i += 1360 } else { block = [Float](repeating: 0, count: 1360) }
+                    onSamples(block)
+                    if i >= clip.count { self.lock.withLock { self.clipDone = true } }
+                    n += 1
+                    let next = t0.addingTimeInterval(Double(n) * 0.085)
+                    let wait = next.timeIntervalSinceNow
+                    if wait > 0 { Thread.sleep(forTimeInterval: wait) }
+                }
+            }.start()
+        }
+        func stop() { lock.withLock { running = false } }
+    }
+
+    static func echo(_ clip: [Float], _ asr: NemotronTranscriber, _ tail: DictationTail, _ label: String) async -> [String: Any] {
+        let out = OutBox()
+        let mic = ClipMic(clip)
+        let engine = DictationEngine(mic: mic, transcribers: [asr], inserter: nil, hotkeys: nil,
+                                     send: { out.add($0) }, now: { Date().timeIntervalSince1970 * 1000 }, tail: tail)
+        await engine.start(id: label)
+        while !mic.done { try? await Task.sleep(nanoseconds: 5_000_000) }
+        let released = Date()
+        await engine.stop(id: label)
+        let ms = (Date().timeIntervalSince(released) * 1000).rounded()
+        let text = out.all.compactMap { m -> String? in if case .dictationStopped(_, let t, _, _) = m { t } else { nil } }.first ?? ""
+        return ["tail": label, "releaseToStoppedMs": ms, "text": text]
+    }
+
+    final class OutBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var msgs: [HelperMessage] = []
+        func add(_ m: HelperMessage) { lock.withLock { msgs.append(m) } }
+        var all: [HelperMessage] { lock.withLock { msgs } }
+    }
+
     static func measure(_ args: [String]) async throws -> String {
         let micPaths = value(args, "--mic"), sysPaths = value(args, "--system")
         guard !micPaths.isEmpty else { throw Failure(description: "usage: --bench --mic a.aiff[,b.aiff] [--system c.aiff]") }
@@ -124,6 +180,19 @@ enum Bench {
             "audioMs": (Double(dictation.count) / 16).rounded(), "firstPartialMs": firstPartial ?? -1,
             "releaseToFinalMs": ms(since: released), "text": talkText,
         ] as [String: Any]
+
+        // Echo end to end through DictationEngine: a clip trimmed so its last word ends on its last sample, played at
+        // real time by a fake mic in ~85 ms blocks (like the tap), released exactly at its end; the mic keeps
+        // delivering room silence until the engine stops it. Before (no tail, no pad) vs the shipped DictationTail.
+        let dictClip = value(args, "--dictation")
+        if !dictClip.isEmpty {
+            let clip = trimTrailingSilence(try joined(dictClip))
+            var runs: [[String: Any]] = []
+            for (label, tail) in [("before", DictationTail(tailMs: 0, drainTimeoutMs: 0, padMs: 0)), ("after", DictationTail())] {
+                runs.append(await echo(clip, talk, tail, label))
+            }
+            r["echoTail"] = ["audioMs": (Double(clip.count) / 16).rounded(), "runs": runs] as [String: Any]
+        }
 
         // Note: two Nemotron instances and two diarizers, as in a recording.
         let micAsr = NemotronTranscriber(), sysAsr = NemotronTranscriber()

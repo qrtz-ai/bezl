@@ -86,6 +86,32 @@ public final class TextInserter: @unchecked Sendable {
     }
 }
 
+/// What happens between the key release (`dictation.stop`) and `dictation.stopped`, so the last words get in:
+/// people let go while the last syllable is still coming, the mic delivers in ~85 ms blocks that are still queued,
+/// and a streaming recogniser (Nemotron: 560 ms chunks) only decodes audio that has a full chunk after it.
+public struct DictationTail: Sendable, Equatable {
+    /// Keep capturing this long after the release (real audio: the end of the last word, the tap's latency).
+    public var tailMs: Int
+    /// Then wait at most this long for the mic blocks already queued to reach the recogniser.
+    public var drainTimeoutMs: Int
+    /// Then feed this much silence (≥ one recogniser chunk) so the last partial chunk is decoded, not left behind.
+    public var padMs: Int
+    /// Then wait at most this long for the recogniser's final text (else its latest partial is used).
+    public var finalizeTimeoutMs: Int
+    public init(tailMs: Int = 250, drainTimeoutMs: Int = 300, padMs: Int = 640, finalizeTimeoutMs: Int = 1500) {
+        self.tailMs = tailMs; self.drainTimeoutMs = drainTimeoutMs; self.padMs = padMs; self.finalizeTimeoutMs = finalizeTimeoutMs
+    }
+    /// Worst case from release to `dictation.stopped` (the host's stop wait must be longer: qrtz-talk waits 3000 ms).
+    public var budgetMs: Int { tailMs + drainTimeoutMs + finalizeTimeoutMs }
+}
+
+/// Fires once (whichever of a completion and a deadline comes first).
+final class FirstOf: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done = false
+    func fire(_ f: () -> Void) { let first = lock.withLock { () -> Bool in defer { done = true }; return !done }; if first { f() } }
+}
+
 /// One dictation at a time: mic → (pre-roll) → on-device ASR + optional PCM stream to the host.
 public actor DictationEngine {
     let mic: MicSource?
@@ -107,7 +133,10 @@ public actor DictationEngine {
     var micIn: AsyncStream<[Float]>.Continuation?
     var consumer: Task<Void, Never>?
 
-    struct Session { let id: String; let startMs: Double; var transcriber: StreamingTranscriber?; var seq = 0; let segmenter = UtteranceSegmenter(idPrefix: "d"); var samples = 0; var pendingLevel: [Float] = []; var lastLevelMs: Double = 0; var pendingPcm: [Float] = [] }
+    struct Session { let id: String; let startMs: Double; var transcriber: StreamingTranscriber?; var seq = 0; let segmenter = UtteranceSegmenter(idPrefix: "d"); var samples = 0; var pendingLevel: [Float] = []; var lastLevelMs: Double = 0; var pendingPcm: [Float] = []; var stopping = false }
+    public let tail: DictationTail
+    /// Waiting for the mic stream to deliver everything queued before a stop (an empty block is the barrier).
+    var drainWaiters: [CheckedContinuation<Void, Never>] = []
     var session: Session?
     var tick: Task<Void, Never>?
     /// ADR 0046 §1: the dictation's mic audio also goes to the speech module when one is attached.
@@ -115,8 +144,8 @@ public actor DictationEngine {
 
     public init(mic: MicSource?, transcribers: [StreamingTranscriber], inserter: TextInserter?, hotkeys: HotkeyMonitor?,
                 send: @escaping @Sendable (HelperMessage) -> Void, now: @escaping @Sendable () -> Double, managedMic: Bool = false,
-                speech: SpeechSinks? = nil) {
-        self.managedMic = managedMic; self.speech = speech
+                speech: SpeechSinks? = nil, tail: DictationTail = DictationTail()) {
+        self.managedMic = managedMic; self.speech = speech; self.tail = tail
         self.mic = mic; self.transcribers = transcribers; self.inserter = inserter; self.hotkeys = hotkeys; self.send = send; self.now = now
     }
 
@@ -211,7 +240,12 @@ public actor DictationEngine {
     }
 
     public func onSamples(_ s: [Float]) async {
-        guard !s.isEmpty else { return }
+        guard !s.isEmpty else {
+            // The drain barrier: every block queued before it has been fed.
+            let w = drainWaiters; drainWaiters.removeAll()
+            for c in w { c.resume() }
+            return
+        }
         if session == nil { preRoll.append(s); return }
         await feed(s)
     }
@@ -244,6 +278,13 @@ public actor DictationEngine {
     }
 
     public func stop(id: String) async {
+        guard let s0 = session, s0.id == id, !s0.stopping else { return }
+        session?.stopping = true
+        // 1. The tail: keep capturing (onSamples still feeds this session while we wait).
+        if tail.tailMs > 0 { try? await Task.sleep(nanoseconds: UInt64(tail.tailMs) * 1_000_000) }
+        guard session?.id == id else { return }  // cancelled or aborted meanwhile (that path answered)
+        // 2. Drain: the mic blocks still queued in the stream reach the recogniser.
+        await drainMic()
         guard var s = session, s.id == id else { return }
         tick?.cancel(); tick = nil
         if streamAudio, !s.pendingPcm.isEmpty {
@@ -252,13 +293,53 @@ public actor DictationEngine {
         }
         var text = ""
         if let tr = s.transcriber {
-            text = await tr.finish().trimmingCharacters(in: .whitespacesAndNewlines)
+            // 3. Pad and finalize: silence after the last word puts it in a full chunk; the final text is awaited.
+            text = await finalText(tr).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard session?.id == id else { return }
             for e in s.segmenter.flush(cumulative: text, nowMs: now() - s.startMs) { send(.dictationAsr(id: s.id, event: e)) }
         }
         session = nil
         speech?.end(.dictation(id: id))
         if !warmMic && !managedMic { stopMic() }
         send(.dictationStopped(id: id, text: text, durationMs: Double(s.samples) * 1000 / 16_000))
+    }
+
+    /// Waits (bounded) until the mic stream has handed over every block it had queued.
+    func drainMic() async {
+        guard let input = micIn, micRunning else { return }
+        let ms = tail.drainTimeoutMs
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            drainWaiters.append(c)
+            input.yield([])
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(ms) * 1_000_000)
+                await self?.releaseDrainWaiters()
+            }
+        }
+    }
+
+    func releaseDrainWaiters() {
+        let w = drainWaiters; drainWaiters.removeAll()
+        if !w.isEmpty { send(.log(level: .warn, msg: "dictation: mic queue not drained in \(tail.drainTimeoutMs) ms")) }
+        for c in w { c.resume() }
+    }
+
+    /// Silence pad, then the recogniser's final text within `finalizeTimeoutMs` (else its latest partial).
+    func finalText(_ tr: StreamingTranscriber) async -> String {
+        if tail.padMs > 0 { await tr.append([Float](repeating: 0, count: 16 * tail.padMs)) }
+        let ms = tail.finalizeTimeoutMs, send = self.send
+        return await withCheckedContinuation { (c: CheckedContinuation<String, Never>) in
+            let first = FirstOf()
+            Task { let t = await tr.finish(); first.fire { c.resume(returning: t) } }
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(ms) * 1_000_000)
+                let p = await tr.transcript()
+                first.fire {
+                    send(.log(level: .warn, msg: "dictation: \(tr.name) final text not ready in \(ms) ms; using the partial"))
+                    c.resume(returning: p)
+                }
+            }
+        }
     }
 
     public func cancel(id: String) async {

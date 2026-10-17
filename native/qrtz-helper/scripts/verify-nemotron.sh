@@ -53,8 +53,10 @@ mkdir -p "$CLIPS"
 say -v Samantha -o "$CLIPS/a.aiff" "Morning everyone. I pushed the fix for the login bug last night, and the tests are green now."
 say -v Daniel -o "$CLIPS/b.aiff" "Thanks. Can we also look at the export timing before Friday? It still takes about ten seconds."
 say -v Karen -o "$CLIPS/c.aiff" "Sure. I will profile the export today and send the numbers to the channel this afternoon."
+# Echo: the bench trims trailing silence, so the last word ("pineapple") ends on the clip's last sample.
+say -v Samantha -o "$CLIPS/d.aiff" "Please move the launch review to Thursday and add a note about pineapple"
 
 echo "== bench"
-QRTZ_MODELS_DIR="$MODELS" "$BIN" --bench --mic "$CLIPS/a.aiff,$CLIPS/b.aiff" --system "$CLIPS/c.aiff" \
+QRTZ_MODELS_DIR="$MODELS" "$BIN" --bench --mic "$CLIPS/a.aiff,$CLIPS/b.aiff" --system "$CLIPS/c.aiff" --dictation "$CLIPS/d.aiff" \
   | tee /tmp/qrtz-verify-report.json
 echo "report: /tmp/qrtz-verify-report.json"

@@ -132,3 +132,116 @@ final class DictationTests: XCTestCase {
         XCTAssertTrue(out.value.contains { if case .insertResult("a", .none, false, _, _) = $0 { true } else { false } })
     }
 }
+
+/// Like Nemotron: decodes only full 560 ms chunks (8960 samples). A chunk's words are its distinct non-zero levels
+/// (level 0.1·k = word "wk"). `finish()` drops a partial chunk: a streaming model that needs audio after a word.
+final class ChunkASR: StreamingTranscriber, @unchecked Sendable {
+    let name = "chunk"
+    let loadsInstantly = true
+    let lock = NSLock()
+    var buf: [Float] = []
+    var words: [String] = []
+    let finishNs: UInt64
+    init(finishNs: UInt64 = 0) { self.finishNs = finishNs }
+    func prepare() async throws {}
+    func append(_ s: [Float]) async {
+        lock.withLock {
+            buf += s
+            while buf.count >= 8960 {
+                for v in buf.prefix(8960) where v > 0 {
+                    let w = "w\(Int((v * 10).rounded()))"
+                    if words.last != w { words.append(w) }
+                }
+                buf.removeFirst(8960)
+            }
+        }
+    }
+    func transcript() async -> String { lock.withLock { words.joined(separator: " ") } }
+    func finish() async -> String {
+        if finishNs > 0 { try? await Task.sleep(nanoseconds: finishNs) }
+        return lock.withLock { buf.removeAll(); return words.joined(separator: " ") }
+    }
+    func reset() async { lock.withLock { buf.removeAll(); words.removeAll() } }
+}
+
+final class DictationTailTests: XCTestCase {
+    func controller(_ asr: StreamingTranscriber, _ tail: DictationTail, mic: FakeMic = FakeMic()) -> (HelperController, Box<[HelperMessage]>) {
+        let out = Box<[HelperMessage]>([])
+        var deps = HelperDeps(permissions: FakePerms(), meetings: nil, audio: [], transcribers: [], helperVersion: "t", os: "linux",
+                              features: [], dictationMic: mic, dictationTranscribers: [asr])
+        deps.dictationTail = tail
+        return (HelperController(deps: deps, send: { m in out.mutate { $0.append(m) } }, now: { 0 }), out)
+    }
+
+    func stoppedText(_ msgs: [HelperMessage]) -> String? {
+        msgs.compactMap { if case .dictationStopped(_, let t, _, _) = $0 { t } else { nil } }.first
+    }
+
+    func level(_ k: Int, _ n: Int) -> [Float] { [Float](repeating: Float(k) / 10, count: n) }
+
+    func testTheLastWordInTheFinalPartialChunkIsInTheFinalText() async {
+        // "w1" fills a chunk; "w2" (the last word) is only 250 ms: the final, partial chunk.
+        let asr = ChunkASR()
+        let (c, out) = controller(asr, DictationTail(tailMs: 0, padMs: 640))
+        await c.handle(.dictationStart(id: "d1"))
+        await c.dictation.onSamples(level(1, 8960))
+        await c.dictation.onSamples(level(2, 4000))
+        await c.handle(.dictationStop(id: "d1"))
+        XCTAssertEqual(stoppedText(out.value), "w1 w2", "the silence pad pushes the last partial chunk through")
+        XCTAssertTrue(out.value.contains(.dictationStopped(id: "d1", text: "w1 w2", durationMs: (8960 + 4000) / 16)),
+                      "the pad isn't counted as dictated audio")
+    }
+
+    func testWithoutThePadTheLastWordIsLost() async {
+        // The bug: release → finish() right away, the partial chunk never decoded.
+        let (c, out) = controller(ChunkASR(), DictationTail(tailMs: 0, padMs: 0))
+        await c.handle(.dictationStart(id: "d1"))
+        await c.dictation.onSamples(level(1, 8960))
+        await c.dictation.onSamples(level(2, 4000))
+        await c.handle(.dictationStop(id: "d1"))
+        XCTAssertEqual(stoppedText(out.value), "w1")
+    }
+
+    func testAudioAfterTheReleaseAndStillQueuedGetsIn() async {
+        // The mic keeps delivering after fn-up: blocks already queued and the tail (the end of the last word).
+        let mic = FakeMic()
+        let (c, out) = controller(ChunkASR(), DictationTail(tailMs: 200, padMs: 640), mic: mic)
+        await c.handle(.dictationStart(id: "d1"))
+        guard let cb = mic.cb else { return XCTFail("mic attached") }
+        cb(level(1, 8960))
+        for _ in 0..<5 { cb(level(2, 1360)) }  // queued in the mic stream when the stop arrives
+        let stop = Task { await c.handle(.dictationStop(id: "d1")) }
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        cb(level(3, 1360))  // arrives 80 ms after the release
+        await stop.value
+        XCTAssertEqual(stoppedText(out.value), "w1 w2 w3")
+    }
+
+    func testASlowFinalizeIsBoundedAndUsesThePartial() async {
+        let asr = ChunkASR(finishNs: 5_000_000_000)
+        let (c, out) = controller(asr, DictationTail(tailMs: 0, padMs: 640, finalizeTimeoutMs: 200))
+        await c.handle(.dictationStart(id: "d1"))
+        await c.dictation.onSamples(level(1, 8960))
+        await c.dictation.onSamples(level(2, 4000))
+        let t = Date()
+        await c.handle(.dictationStop(id: "d1"))
+        XCTAssertLessThan(Date().timeIntervalSince(t), 1.0)
+        XCTAssertEqual(stoppedText(out.value), "w1 w2", "the pad already decoded the last chunk; the partial has it")
+        XCTAssertTrue(out.value.contains { if case .log(.warn, let m) = $0 { m.contains("final text not ready") } else { false } })
+    }
+
+    func testCancelDuringTheTailAnswersOnce() async {
+        let (c, out) = controller(ChunkASR(), DictationTail(tailMs: 300))
+        await c.handle(.dictationStart(id: "d1"))
+        let stop = Task { await c.handle(.dictationStop(id: "d1")) }
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        await c.handle(.dictationCancel(id: "d1"))
+        await stop.value
+        XCTAssertEqual(out.value.filter { if case .dictationStopped = $0 { true } else { false } }.count, 1)
+        XCTAssertEqual(stoppedText(out.value), "")
+    }
+
+    func testTheBudgetFitsTheHostsStopWait() {
+        XCTAssertLessThan(DictationTail().budgetMs, 3000, "qrtz-talk waits 3000 ms for dictation.stopped")
+    }
+}
