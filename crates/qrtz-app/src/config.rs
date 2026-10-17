@@ -152,7 +152,7 @@ impl ConfigStore {
             return Ok(());
         }
         if let Some(dir) = self.file.parent() {
-            std::fs::create_dir_all(dir)?;
+            crate::dirs::private_dir(dir)?; // N25: the app data dir is owner-only
         }
         let tmp = self.file.with_extension("json.tmp");
         std::fs::write(&tmp, serde_json::to_string_pretty(&self.cfg)?)?;

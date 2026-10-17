@@ -29,5 +29,6 @@ tokio = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true
 qrtz-helper-bridge = { path = "../qrtz-helper-bridge" }
 qrtz-storage.workspace = true
+libc = "0.2"
 # `cargo test --workspace` builds the runtime adapter tests without extra flags.
 qrtz-app = { path = ".", features = ["runtime"] }
