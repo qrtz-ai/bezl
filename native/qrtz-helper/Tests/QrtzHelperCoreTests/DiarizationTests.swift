@@ -330,7 +330,10 @@ final class DiarizerRunScopeTests: XCTestCase {
         return HelperController(deps: deps, send: { m in out.mutate { $0.append(m) } }, now: { 0 })
     }
 
-    func waitFor(_ f: () -> Bool) async { for _ in 0..<200 where !f() { try? await Task.sleep(nanoseconds: 10_000_000) } }
+    func waitFor(_ f: @escaping @Sendable () -> Bool) async {
+        var n = 0
+        while n < 200, !f() { try? await Task.sleep(nanoseconds: 10_000_000); n += 1 }
+    }
 
     func path() -> String { FileManager.default.temporaryDirectory.appendingPathComponent("qrtz-n125-\(UUID()).wav").path }
 
