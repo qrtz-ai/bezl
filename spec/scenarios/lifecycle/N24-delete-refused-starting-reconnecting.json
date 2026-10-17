@@ -1,0 +1,579 @@
+{
+  "name": "N24-delete-refused-starting-reconnecting",
+  "about": "Cycle 5, extends N24-delete-while-recording (which covers recording and stopping): the delete is also refused while the meeting is starting and while it is reconnecting after a helper crash, and the refusal changes nothing: the reconnect part is still written, stitched and later removed with the meeting. Deleting a different, finished meeting while recording still works.",
+  "script": [
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permissions.status",
+        "status": {
+          "accessibility": "granted",
+          "screen-recording": "granted",
+          "microphone": "granted"
+        }
+      }
+    },
+    {
+      "op": "call",
+      "fn": "start",
+      "label": "start",
+      "args": {
+        "title": "Standup"
+      }
+    },
+    {
+      "op": "call",
+      "fn": "deleteMeeting",
+      "label": "delete-starting",
+      "args": {
+        "id": "id1"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.started",
+        "audioPath": "$REC/id1.wav"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "asr",
+        "event": {
+          "kind": "final",
+          "utteranceId": "u1",
+          "startMs": 100,
+          "endMs": 1900,
+          "text": "hello everyone"
+        }
+      }
+    },
+    {
+      "op": "wav",
+      "file": "id1.wav",
+      "ms": 2000,
+      "broken": true
+    },
+    {
+      "op": "call",
+      "fn": "deleteMeeting",
+      "label": "delete-recording",
+      "args": {
+        "id": "id1"
+      }
+    },
+    {
+      "op": "db",
+      "seedMeeting": {
+        "id": "old1",
+        "title": "Last week",
+        "platform": "zoom",
+        "startedAt": 1759990000000,
+        "endedAt": 1759990060000,
+        "status": "done",
+        "participants": [],
+        "durationMs": 60000,
+        "audioPath": "$REC/old1.wav"
+      }
+    },
+    {
+      "op": "wav",
+      "file": "old1.wav",
+      "ms": 100,
+      "broken": false
+    },
+    {
+      "op": "call",
+      "fn": "deleteMeeting",
+      "label": "delete-other-while-recording",
+      "args": {
+        "id": "old1"
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 50
+    },
+    {
+      "op": "snapshot",
+      "label": "after-refused-delete"
+    },
+    {
+      "op": "helperDown",
+      "reason": "exited"
+    },
+    {
+      "op": "call",
+      "fn": "deleteMeeting",
+      "label": "delete-reconnecting",
+      "args": {
+        "id": "id1"
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 500
+    },
+    {
+      "op": "helperUp"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.started",
+        "audioPath": "$REC/id1.p1.wav"
+      }
+    },
+    {
+      "op": "wav",
+      "file": "id1.p1.wav",
+      "ms": 500,
+      "broken": false
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "asr",
+        "event": {
+          "kind": "final",
+          "utteranceId": "u1",
+          "startMs": 0,
+          "endMs": 400,
+          "text": "after the gap"
+        }
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 100
+    },
+    {
+      "op": "call",
+      "fn": "stop",
+      "label": "stop"
+    },
+    {
+      "op": "call",
+      "fn": "deleteMeeting",
+      "label": "delete-stopping",
+      "args": {
+        "id": "id1"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.stopped",
+        "audioPath": "$REC/id1.p1.wav",
+        "durationMs": 500
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 200
+    },
+    {
+      "op": "snapshot",
+      "label": "done"
+    },
+    {
+      "op": "call",
+      "fn": "deleteMeeting",
+      "label": "delete-done",
+      "args": {
+        "id": "id1"
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 50
+    }
+  ],
+  "expect": {
+    "trace": {
+      "session": [
+        "idle|-|-|-|-|-|ok",
+        "starting|id1|-|-|-|-|ok",
+        "recording|id1|-|-|-|-|ok",
+        "reconnecting|id1|-|-|r1|-|ok",
+        "recording|id1|transcript-gap|-|-|-|ok",
+        "stopping|id1|transcript-gap|-|-|-|ok",
+        "processing|id1|transcript-gap|-|-|-|ok",
+        "done|id1|transcript-gap|-|-|-|ok",
+        "idle|-|-|-|-|-|ok"
+      ],
+      "pipelines": {
+        "id1": [
+          "manual finalize:pending/0 summary:pending/0 index:pending/0",
+          "manual finalize:running/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:running/1 index:pending/0",
+          "manual finalize:done/1 summary:done/1 index:pending/0",
+          "manual finalize:done/1 summary:done/1 index:running/1",
+          "manual finalize:done/1 summary:done/1 index:done/1"
+        ]
+      },
+      "helper": [
+        "permissions.check",
+        "recording.start $REC/id1.wav",
+        "permissions.check",
+        "recording.start $REC/id1.p1.wav",
+        "recording.stop"
+      ],
+      "transcript": [
+        [
+          0,
+          1,
+          [
+            "u1"
+          ],
+          null
+        ],
+        [
+          1,
+          2,
+          [
+            "p1-u1"
+          ],
+          null
+        ],
+        [
+          2,
+          3,
+          [],
+          null
+        ]
+      ],
+      "changed": [
+        "id1",
+        "id1",
+        "id1",
+        "id1"
+      ],
+      "permissions": [
+        "granted|granted|granted"
+      ],
+      "prompts": []
+    },
+    "results": {
+      "start": {
+        "ok": {
+          "phase": "recording",
+          "meetingId": "id1"
+        }
+      },
+      "delete-starting": {
+        "err": [
+          "E_VALIDATION",
+          "This meeting is still recording. Stop the recording, then delete it."
+        ]
+      },
+      "delete-recording": {
+        "err": [
+          "E_VALIDATION",
+          "This meeting is still recording. Stop the recording, then delete it."
+        ]
+      },
+      "delete-other-while-recording": {
+        "ok": [
+          "old1.wav"
+        ]
+      },
+      "delete-reconnecting": {
+        "err": [
+          "E_VALIDATION",
+          "This meeting is still recording. Stop the recording, then delete it."
+        ]
+      },
+      "stop": {
+        "ok": {
+          "phase": "processing",
+          "meetingId": "id1"
+        }
+      },
+      "delete-stopping": {
+        "err": [
+          "E_VALIDATION",
+          "This meeting is still recording. Stop the recording, then delete it."
+        ]
+      },
+      "delete-done": {
+        "ok": [
+          "id1.p1.wav",
+          "id1.wav"
+        ]
+      }
+    },
+    "snapshots": {
+      "after-refused-delete": {
+        "view": {
+          "phase": "recording",
+          "meetingId": "id1",
+          "startedAt": 1760000000000,
+          "elapsedMs": 50,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [
+            [
+              "u1",
+              null,
+              "hello everyone",
+              100
+            ]
+          ],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": {
+          "meetingId": "id1",
+          "rev": 1,
+          "segments": [
+            [
+              "u1",
+              null,
+              100,
+              1900
+            ]
+          ],
+          "partial": null
+        },
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "recording",
+              1760000000000,
+              null,
+              null,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [
+            [
+              "id1",
+              "u1",
+              "live",
+              100,
+              1900,
+              null,
+              "hello everyone"
+            ]
+          ],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "recording",
+            "id1"
+          ]
+        },
+        "files": [
+          [
+            "id1.wav",
+            64044
+          ]
+        ]
+      },
+      "done": {
+        "view": {
+          "phase": "done",
+          "meetingId": "id1",
+          "startedAt": 1760000000000,
+          "elapsedMs": 650,
+          "stopReason": "manual",
+          "degraded": [
+            "transcript-gap"
+          ],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [
+            [
+              "u1",
+              null,
+              "hello everyone",
+              100
+            ],
+            [
+              "p1-u1",
+              null,
+              "after the gap",
+              550
+            ]
+          ],
+          "partial": "",
+          "pipeline": "finalize:done/1 summary:done/1 index:done/1"
+        },
+        "live": {
+          "meetingId": "id1",
+          "rev": 3,
+          "segments": [
+            [
+              "u1",
+              null,
+              100,
+              1900
+            ],
+            [
+              "p1-u1",
+              null,
+              550,
+              950
+            ]
+          ],
+          "partial": null
+        },
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "done",
+              1760000000000,
+              1760000000650,
+              2500,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [
+            [
+              "id1",
+              "u1",
+              "live",
+              100,
+              1900,
+              null,
+              "hello everyone"
+            ],
+            [
+              "id1",
+              "p1-u1",
+              "live",
+              550,
+              950,
+              null,
+              "after the gap"
+            ]
+          ],
+          "summaries": [
+            [
+              "id1",
+              "stub",
+              "STUB summary",
+              null
+            ]
+          ],
+          "notes": [],
+          "pipelines": [
+            [
+              "id1",
+              1,
+              "manual",
+              "finalize:done/1 summary:done/1 index:done/1",
+              500,
+              true,
+              [
+                "$REC/id1.wav",
+                "$REC/id1.p1.wav"
+              ],
+              0
+            ]
+          ],
+          "session": [
+            "done",
+            "id1"
+          ]
+        },
+        "files": [
+          [
+            "id1.wav",
+            80044
+          ]
+        ]
+      },
+      "end": {
+        "view": {
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [
+            [
+              "u1",
+              null,
+              "hello everyone",
+              100
+            ],
+            [
+              "p1-u1",
+              null,
+              "after the gap",
+              550
+            ]
+          ],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "idle",
+            null
+          ]
+        },
+        "files": []
+      }
+    }
+  }
+}
