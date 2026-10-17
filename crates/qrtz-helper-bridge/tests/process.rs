@@ -152,6 +152,69 @@ async fn real_process_hello_ping_permissions_recording_shutdown() {
 }
 
 #[tokio::test]
+async fn real_process_scripted_capture_fallback_silent_audible() {
+    // N29 + H8 knobs of the Rust mock helper, for NoteRuntime integration runs.
+    let s = Supervisor::spawn(
+        fast(),
+        Arc::new(mock(&[
+            ("QRTZ_MOCK_FALLBACK", "screen>mic,mic>"),
+            ("QRTZ_MOCK_SILENT", "mic@50-500,system@250,junk@1"),
+        ])),
+    );
+    let mut rx = s.subscribe_lines();
+    s.start();
+    wait_state(&s, HelperState::Running).await;
+    let send = |v: Value| encode_host_message(&v).unwrap();
+    assert!(
+        s.send(send(
+            json!({"type": "recording.start", "audioPath": "/tmp/x.wav"})
+        ))
+        .await
+    );
+    // Wire order matters: fallbacks, then audio.unavailable, then recording.started.
+    let mut seen = vec![];
+    while seen.last().map(|v: &Value| v["type"].clone()) != Some(json!("recording.started")) {
+        let v = parse_helper_line(
+            &timeout(Duration::from_secs(10), rx.recv())
+                .await
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        if v["type"] != "heartbeat" && v["type"] != "hello" {
+            seen.push(v);
+        }
+    }
+    assert_eq!(seen.len(), 4, "{seen:?}");
+    assert_eq!(
+        seen[0],
+        json!({"type": "capture.fallback", "from": "screen", "to": "mic", "reason": "mock: source failed to start"})
+    );
+    assert_eq!(seen[1]["to"], Value::Null);
+    assert_eq!(seen[2]["code"], "audio.unavailable");
+    let silent = next_of(&mut rx, "capture.silent").await;
+    assert_eq!(
+        (silent["source"].as_str(), silent["sinceMs"].as_u64()),
+        (Some("mic"), Some(0))
+    );
+    assert_eq!(next_of(&mut rx, "capture.silent").await["source"], "system");
+    assert_eq!(next_of(&mut rx, "capture.audible").await["source"], "mic");
+    // A stop cancels the script of that recording: nothing scripted follows.
+    assert!(
+        s.send(send(
+            json!({"type": "recording.start", "audioPath": "/tmp/y.wav"})
+        ))
+        .await
+    );
+    next_of(&mut rx, "recording.started").await;
+    assert!(s.send(send(json!({"type": "recording.stop"}))).await);
+    next_of(&mut rx, "recording.stopped").await;
+    let late = timeout(Duration::from_millis(400), next_of(&mut rx, "capture.silent")).await;
+    assert!(late.is_err(), "scripted silence after stop: {late:?}");
+    s.stop();
+}
+
+#[tokio::test]
 async fn real_process_crash_restarts_and_recovers() {
     let dir = tempfile::tempdir().unwrap();
     let marker = dir.path().join("crashed");
