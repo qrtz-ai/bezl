@@ -16,6 +16,7 @@ import {
   pipelineUsable,
   retryDelay,
   toPipelineView,
+  resumeAfterRestart,
   type ActiveSpeakerEvent,
   type Config,
   type Degradation,
@@ -999,11 +1000,9 @@ export class NoteService {
         'pipeline.listUnsettled',
         undefined as never,
       );
-      for (const p of pending) {
+      for (const raw of pending) {
         // A step caught mid-run by the crash is re-run (every step is idempotent); attempts are kept.
-        for (const id of ['finalize', 'summary', 'index'] as const)
-          if (p.steps[id].status === 'running')
-            p.steps[id] = { ...p.steps[id], status: 'retrying' };
+        const p = resumeAfterRestart(raw);
         this.pipelines.set(p.meetingId, p);
         this.deps.bus.emit('note:pipeline', toPipelineView(p));
       }

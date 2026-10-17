@@ -10,6 +10,7 @@ import {
   pipelineSettled,
   pipelineStep,
   pipelineUsable,
+  resumeAfterRestart,
   retryDelay,
   type LifecycleEvent,
   type RecordingState,
@@ -269,5 +270,58 @@ describe('live transcript deltas', () => {
         partial: null,
       })?.segments,
     ).toHaveLength(1);
+  });
+});
+
+describe('hardening: clock skew, mid-recording degrade, quit mid-pipeline', () => {
+  it('helper restore with a backward clock jump clamps partOffsetMs to 0', () => {
+    const { s } = run([
+      { type: 'start-requested', meetingId: 'm', at: 10_000, audioPath: '/p0' },
+      { type: 'start-acked' },
+      { type: 'helper-lost', at: 12_000, deadlineAt: 42_000 },
+      // Wall clock jumped back before the restart ack (NTP / sleep / VM).
+      { type: 'helper-restored', at: 9_000, audioPath: '/p1' },
+    ]);
+    expect(s.partOffsetMs).toBe(0);
+    expect(s.degraded).toContain('transcript-gap');
+    expect(s.audioParts).toEqual(['/p0', '/p1']);
+  });
+
+  it('permission / audio loss mid-recording is accepted as degradation (not a stop)', () => {
+    const { s, accepted } = run([
+      { type: 'start-requested', meetingId: 'm', at: 0, audioPath: '/p' },
+      { type: 'start-acked' },
+      { type: 'degraded', flag: 'audio-unavailable' },
+      { type: 'degraded', flag: 'asr-unavailable' },
+    ]);
+    expect(accepted.slice(2)).toEqual([true, true]);
+    expect(s.phase).toBe('recording');
+    expect(s.degraded).toEqual(['audio-unavailable', 'asr-unavailable']);
+  });
+
+  it('resumeAfterRestart turns running steps into retrying and keeps attempts', () => {
+    let p = newPipeline('m', 'crash-recovered', ctx, 0);
+    p = pipelineStep(p, 'finalize', { kind: 'start', now: 5 });
+    expect(p.steps.finalize).toMatchObject({ status: 'running', attempts: 1 });
+    const r = resumeAfterRestart(p);
+    expect(r.steps.finalize).toMatchObject({
+      status: 'retrying',
+      attempts: 1,
+    });
+    expect(nextRunnableStep(r)).toBe('finalize');
+    // Already-done steps stay done; pending stay pending.
+    expect(r.steps.summary.status).toBe('pending');
+  });
+
+  it('quit mid-pipeline: running summary becomes retrying; finalize stays done', () => {
+    let p = newPipeline('m', 'manual', ctx, 0);
+    p = pipelineStep(p, 'finalize', { kind: 'start', now: 1 });
+    p = pipelineStep(p, 'finalize', { kind: 'success', now: 2 });
+    p = pipelineStep(p, 'summary', { kind: 'start', now: 3 });
+    const r = resumeAfterRestart(p);
+    expect(r.steps.finalize.status).toBe('done');
+    expect(r.steps.summary).toMatchObject({ status: 'retrying', attempts: 1 });
+    expect(nextRunnableStep(r)).toBe('summary');
+    expect(pipelineUsable(r)).toBe(false);
   });
 });

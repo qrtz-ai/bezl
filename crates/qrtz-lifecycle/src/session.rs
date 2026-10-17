@@ -133,7 +133,8 @@ pub fn reduce(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> 
             n.reconnect = None;
             n.phase = P::Recording;
             n.audio_parts.push(audio_path.clone());
-            n.part_offset_ms = at - s.started_at.unwrap_or(*at);
+            // Clamp: a backward clock jump must not invent negative meeting-time offsets.
+            n.part_offset_ms = (*at - s.started_at.unwrap_or(*at)).max(0);
             if !n.degraded.contains(&Degradation::TranscriptGap) {
                 n.degraded.push(Degradation::TranscriptGap);
             }
@@ -247,5 +248,31 @@ mod tests {
             .unwrap();
         assert_eq!(s.phase, RecordingPhase::Starting);
         assert!(is_capturing(s.phase) && !can_start(s.phase));
+    }
+
+    #[test]
+    fn helper_restore_with_backward_clock_clamps_part_offset() {
+        let mut m = Machine::default();
+        m.send(&LifecycleEvent::StartRequested {
+            meeting_id: "m".into(),
+            at: 10_000,
+            audio_path: "/p0".into(),
+        })
+        .unwrap();
+        m.send(&LifecycleEvent::StartAcked).unwrap();
+        m.send(&LifecycleEvent::HelperLost {
+            at: 12_000,
+            deadline_at: 42_000,
+        })
+        .unwrap();
+        let s = m
+            .send(&LifecycleEvent::HelperRestored {
+                at: 9_000,
+                audio_path: "/p1".into(),
+            })
+            .unwrap();
+        assert_eq!(s.part_offset_ms, 0);
+        assert!(s.degraded.contains(&Degradation::TranscriptGap));
+        assert_eq!(s.audio_parts, vec!["/p0".to_string(), "/p1".to_string()]);
     }
 }

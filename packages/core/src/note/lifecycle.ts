@@ -184,7 +184,8 @@ export function lifecycleReducer(
         ...rest,
         phase: 'recording',
         audioParts: [...s.audioParts, e.audioPath],
-        partOffsetMs: e.at - (s.startedAt ?? e.at),
+        // Clamp: a backward clock jump must not invent negative meeting-time offsets.
+        partOffsetMs: Math.max(0, e.at - (s.startedAt ?? e.at)),
         degraded: s.degraded.includes('transcript-gap')
           ? s.degraded
           : [...s.degraded, 'transcript-gap'],
@@ -471,6 +472,16 @@ export const toPipelineView = (p: PipelineState): PipelineView => {
   const { ctx: _c, ...v } = p;
   return v;
 };
+
+/** Crash recovery R2: a step caught mid-run becomes `retrying` (idempotent re-run); attempts are kept. */
+export function resumeAfterRestart(p: PipelineState): PipelineState {
+  const steps = { ...p.steps };
+  for (const id of STEP_ORDER) {
+    if (steps[id].status === 'running')
+      steps[id] = { ...steps[id], status: 'retrying' };
+  }
+  return { ...p, steps };
+}
 
 // ---------------------------------------------------------------- live transcript stream
 
