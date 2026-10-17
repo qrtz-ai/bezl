@@ -10,7 +10,7 @@ impl Handler for Echo {
     async fn handle(&self, channel: &str, payload: Value, _ctx: &CallContext) -> Result<Value, AppError> {
         match channel {
             "app:get-info" => Ok(info()),
-            "secrets:set" => Ok(json!({"ok": true})),
+            "config:set" => Ok(json!({})),
             "bad:output" => unreachable!(),
             _ => {
                 let _ = payload;
@@ -76,17 +76,17 @@ async fn rejects_like_the_ts_router() {
 #[tokio::test]
 async fn validates_request_payloads_with_issue_details() {
     let r = Router::new(Echo);
-    let env = json!({"v":1,"id":"r2","channel":"secrets:set","version":1,"subApp":"settings",
-        "payload":{"name":"BAD NAME","value":"v"}});
+    let env = json!({"v":1,"id":"r2","channel":"config:set","version":1,"subApp":"settings",
+        "payload":{"patch": 5}});
     let res = r.dispatch(env.clone()).await;
     assert_eq!(res["error"]["code"], "E_VALIDATION");
     assert!(res["error"]["details"]
         .as_array()
         .unwrap()
         .iter()
-        .any(|d| d["path"] == "name"));
+        .any(|d| d["path"] == "patch"));
     let mut ok = env;
-    ok["payload"]["name"] = json!("llm.openrouter");
+    ok["payload"]["patch"] = json!({});
     assert_eq!(r.dispatch(ok).await["ok"], true);
 }
 
@@ -152,20 +152,9 @@ async fn sub_app_capability_matrix() {
             json!({"permission": "microphone"}),
             true,
         ),
-        (
-            "note",
-            "secrets:set",
-            json!({"name": "llm.openrouter", "value": "k"}),
-            false,
-        ),
         ("note", "config:set", json!({"patch": {}}), false),
         ("gallery", "note:list", json!({"query": ""}), false),
-        (
-            "settings",
-            "secrets:set",
-            json!({"name": "llm.openrouter", "value": "k"}),
-            true,
-        ),
+        ("settings", "config:set", json!({"patch": {}}), true),
         ("settings", "note:delete", json!({"id": "m"}), false),
     ];
     for (sub, ch, payload, allowed) in cases {

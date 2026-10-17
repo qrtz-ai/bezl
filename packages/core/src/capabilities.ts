@@ -5,7 +5,6 @@ export const Capability = z.enum([
   'app.info',
   'config.read',
   'config.write',
-  'secrets.write',
   'db.read',
   'helper.status',
   'os.permissions',

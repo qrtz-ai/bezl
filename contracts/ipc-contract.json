@@ -207,63 +207,6 @@
         "additionalProperties": {}
       }
     },
-    "secrets:set": {
-      "version": 1,
-      "capability": "secrets.write",
-      "request": {
-        "optional": false,
-        "schema": {
-          "type": "object",
-          "properties": {
-            "name": {
-              "type": "string",
-              "pattern": "^[a-z0-9._-]+$"
-            },
-            "value": {
-              "anyOf": [
-                {
-                  "type": "string",
-                  "maxLength": 4096
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "required": [
-            "name",
-            "value"
-          ]
-        }
-      },
-      "response": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "type": "boolean",
-            "const": true
-          }
-        },
-        "required": [
-          "ok"
-        ],
-        "additionalProperties": false
-      }
-    },
-    "secrets:list": {
-      "version": 1,
-      "capability": "secrets.write",
-      "request": {
-        "void": true
-      },
-      "response": {
-        "type": "array",
-        "items": {
-          "type": "string"
-        }
-      }
-    },
     "db:health": {
       "version": 1,
       "capability": "db.read",
@@ -8351,7 +8294,6 @@
         "talk.dictate",
         "os.permissions",
         "config.write",
-        "secrets.write",
         "speech.read",
         "speech.manage"
       ]
@@ -8385,7 +8327,6 @@
         "app.info",
         "config.read",
         "config.write",
-        "secrets.write",
         "db.read",
         "helper.status",
         "data.backup",

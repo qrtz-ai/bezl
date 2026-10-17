@@ -99,7 +99,8 @@ test('first run → record → review walkthrough', async ({ page }) => {
   );
   await page.getByTestId('onboarding-continue').click();
 
-  // ADR 0076: no key step; speech is the last step before done, and onboarding stores no secret.
+  // ADR 0076: no key step; speech is the last step before done, and onboarding stores no secret (ADR 0078:
+  // there is no secrets channel at all).
   const calls = await page.evaluate(
     () =>
       (

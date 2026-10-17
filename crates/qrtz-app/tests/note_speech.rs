@@ -44,7 +44,6 @@ fn app(dir: &Path, env: &SpeechEnv) -> BuiltApp {
         supervisor: SupervisorOptions::default(),
         shell: Arc::new(Shell),
         storage_shell: Arc::new(NoStorageShell),
-        secrets: None,
         speech: Some(SpeechSetup {
             store: env.store.clone(),
             opts: env.opts.clone(),

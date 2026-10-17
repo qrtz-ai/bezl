@@ -3,7 +3,6 @@
 //! meeting being recorded is refused with a clear E_VALIDATION (nothing removed, no event).
 use qrtz_app::ports::*;
 use qrtz_app::runtime_port::{HelperAvailability, NoteRuntimePort};
-use qrtz_app::secrets::MemorySecretStore;
 use qrtz_app::*;
 use qrtz_ipc::Router;
 use qrtz_lifecycle::model::{RecordingPhase, StopReason};
@@ -74,7 +73,6 @@ async fn note_delete_runs_the_runtime_delete_and_refuses_the_live_meeting() {
             shell: "tauri test".into(),
         },
         config: cfg,
-        secrets: Arc::new(MemorySecretStore::default()),
         runtime: Arc::new(NoteRuntimePort::new(rt.clone(), HelperAvailability::Native)),
         storage: Arc::new(StubStorage),
         talk: Arc::new(StubTalk),

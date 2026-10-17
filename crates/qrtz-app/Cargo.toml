@@ -39,7 +39,8 @@ async-trait.workspace = true
 tracing.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
-keyring = { version = "3", features = ["apple-native"] }
+# ADR 0078: only to delete Keychain items an older build saved (qrtz stores no keys).
+security-framework = "3"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

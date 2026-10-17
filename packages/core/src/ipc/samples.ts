@@ -117,11 +117,6 @@ export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
     request: { patch: { theme: 'light' } },
     response: { theme: 'light' },
   },
-  'secrets:set': {
-    request: { name: 'test.token', value: 'test-value' },
-    response: { ok: true },
-  },
-  'secrets:list': { request: undefined, response: [] },
   'db:health': {
     request: undefined,
     response: { ok: true, schemaVersion: 5, fts5: true },
@@ -317,7 +312,6 @@ export const idleResponses: Partial<Record<IpcChannel, unknown>> = {
   'note:pipeline': null,
   'note:live-transcript': null,
   'permissions:get': unknownPermissions,
-  'secrets:list': [],
   'talk:state': talkIdle,
   'talk:cancel': talkIdle,
   'talk:history': [],

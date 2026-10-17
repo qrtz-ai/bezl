@@ -70,7 +70,6 @@ fn app_with(dir: &Path, clip: Arc<Clip>, helper: bool, knobs: DevKnobs) -> Built
         supervisor: SupervisorOptions::default(),
         shell: Arc::new(Shell),
         storage_shell: clip,
-        secrets: None,
         talk: None,
         speech: None,
         steps: None,

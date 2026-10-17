@@ -25,20 +25,6 @@
         "theme": "light"
       }
     },
-    "secrets:set": {
-      "request": {
-        "name": "test.token",
-        "value": "test-value"
-      },
-      "response": {
-        "ok": true
-      }
-    },
-    "secrets:list": {
-      "request": null,
-      "response": [],
-      "idle": []
-    },
     "db:health": {
       "request": null,
       "response": {

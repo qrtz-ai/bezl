@@ -23,9 +23,7 @@ Status as of M0 (2026-10-16). Items marked ☐ are tracked in PLAN.md.
 
 ## Secrets and config
 
-- ☑ Secrets use `safeStorage` (Keychain-backed on macOS). The file holds only ciphertext and is mode 0600.
-- ☑ On Linux, storing secrets is refused when the backend is `basic_text`.
-- ☑ Secret values never cross back to the renderer. `secrets:list` returns names only, and the logger redacts `*key*/*token*/*secret*` fields.
+- ☑ qrtz stores no keys (ADR 0078). There is no secret store, no `secrets:*` channel, no `secrets.write` capability and no `QRTZ_SECRET_*` env reader. At launch, Keychain items an older build saved (service `ai.qrtz.desktop`, listed in `secrets-index.json`) and any `secrets.json` are deleted; an item that can't be deleted keeps the index so the next launch retries. The logger still redacts `*key*/*token*/*secret*` fields.
 - ☑ Config writes are zod-validated. Deep merge drops `__proto__`, `constructor` and `prototype` (tested).
 
 - ☑ Dev and test env hooks (`QRTZ_DEV_SEED`, `QRTZ_LLM_BASE_URL`, `QRTZ_SIMULATE_MISSING_HELPER`, `QRTZ_MOCK_CRASH_AFTER_MS`, `QRTZ_MOCK_SCENARIO`) are stripped at startup in packaged builds, before the worker and helper inherit the env. `QRTZ_LLM_BASE_URL` could otherwise send the API key to another host.

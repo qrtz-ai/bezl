@@ -59,7 +59,6 @@ fn app(dir: &Path) -> BuiltApp {
         supervisor: SupervisorOptions::default(),
         shell: Arc::new(Shell),
         storage_shell: Arc::new(NoStorageShell),
-        secrets: None,
         talk: None,
         speech: None,
         steps: None,
@@ -117,7 +116,7 @@ async fn record_one(a: &BuiltApp, r: &Router<Shared>, title: &str) -> (String, V
 }
 
 /// ADR 0075/0076: the summary is written on this Mac (the helper's on-device model; here the mock helper's). An
-/// OpenRouter key saved by an old build is deleted at launch and `secrets:set` refuses it. Search is full-text
+/// OpenRouter key saved by an old build is deleted at launch, and there is no `secrets:set` (ADR 0078). Search is full-text
 /// over the notes DB.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_on_device_summary_through_the_tauri_backend_and_full_text_search() {
@@ -129,15 +128,14 @@ async fn an_on_device_summary_through_the_tauri_backend_and_full_text_search() {
     let r = Router::new(Shared(a.service.clone())).validate_responses(true);
     a.service.start_helper();
     a.runtime.recover().await.unwrap();
-    assert_eq!(call(&r, "settings", "secrets:list", json!(null)).await, json!([]));
+    assert!(!data.join("secrets.json").exists(), "deleted at launch");
     let v = r
         .dispatch(
             json!({"v":1,"id":"t","channel":"secrets:set","version":1,"subApp":"settings",
                          "payload":{"name": "llm.openrouter", "value": "sk-or-test"}}),
         )
         .await;
-    assert_eq!(v["ok"], false, "{v}");
-    assert_eq!(v["error"]["code"], "E_VALIDATION", "{v}");
+    assert_eq!(v["ok"], false, "no secrets channel: {v}");
 
     let (id, p) = record_one(&a, &r, "Ship review").await;
     assert_eq!(p["steps"]["summary"]["status"], "done", "{p}");

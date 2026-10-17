@@ -5,7 +5,6 @@ import {
   loadConfig,
   migrateLegacyConfig,
 } from './config';
-import { MemorySecretStore, envNameFor } from './secrets';
 
 describe('config', () => {
   it('fills defaults', () => {
@@ -127,16 +126,5 @@ describe('config', () => {
     expect(c.note.autoSummarize).toBe(false);
     for (const k of ['searchModelDownload', 'backgroundIndexing'])
       expect(k in c.note).toBe(false);
-  });
-});
-
-describe('secrets', () => {
-  it('memory store lists names only', async () => {
-    const s = new MemorySecretStore();
-    await s.set('llm.openai', 'sk-1');
-    expect(await s.list()).toEqual(['llm.openai']);
-    await s.set('llm.openai', null);
-    expect(await s.get('llm.openai')).toBeUndefined();
-    expect(envNameFor('llm.openai')).toBe('QRTZ_SECRET_LLM_OPENAI');
   });
 });

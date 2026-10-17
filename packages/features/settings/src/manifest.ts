@@ -10,7 +10,6 @@ export const manifest = SubAppManifest.parse({
     'app.info',
     'config.read',
     'config.write',
-    'secrets.write',
     'db.read',
     'helper.status',
     'data.backup',

@@ -306,8 +306,6 @@ export function createMockBridge(): TauriBridge {
       emit('config:changed', config);
       return { autoRecord: enabled };
     },
-    'secrets:list': () => [],
-    'secrets:set': () => ({ ok: true as const }),
     'db:health': () => ipcSamples['db:health'].response,
     'helper:status': () => ipcSamples['helper:status'].response,
     'permissions:get': () => perms as never,

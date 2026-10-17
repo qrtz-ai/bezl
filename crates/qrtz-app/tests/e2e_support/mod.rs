@@ -235,10 +235,6 @@ impl App {
             supervisor: SupervisorOptions::default(),
             shell: shell.clone(),
             storage_shell: storage.clone(),
-            // The file store without the env override: a developer's QRTZ_SECRET_* never leaks into a test.
-            secrets: Some(Arc::new(qrtz_app::secrets::FileSecretStore::new(
-                data.join("secrets.json"),
-            ))),
             talk: o.talk,
             speech: None,
             steps: None,

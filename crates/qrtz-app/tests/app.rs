@@ -1,7 +1,6 @@
 //! Headless integration: the real router + AppService + config file + a real helper child process (the Rust
 //! mock helper binary from qrtz-helper-bridge), no Tauri. Covers what main/ipc.ts + config-store did in Electron.
 use qrtz_app::ports::*;
-use qrtz_app::secrets::MemorySecretStore;
 use qrtz_app::*;
 use qrtz_helper_bridge::{ProcessSpawn, Supervisor, SupervisorOptions};
 use qrtz_ipc::{contract, Router};
@@ -57,7 +56,6 @@ fn app(cfg: &Path, helper: Option<Supervisor>) -> (Arc<AppService>, Router<Share
     let svc = AppService::new(AppDeps {
         info: info(),
         config: ConfigStore::open(cfg).into(),
-        secrets: Arc::new(MemorySecretStore::default()),
         runtime: Arc::new(StubRuntime::default()),
         storage: Arc::new(StubStorage),
         talk: Arc::new(StubTalk),
@@ -120,35 +118,11 @@ async fn app_channels_and_capabilities() {
         call(&r, "gallery", "note:list", json!({})).await["error"]["code"],
         "E_FORBIDDEN"
     );
-    // secrets: names only come back
-    assert_eq!(
-        call(
-            &r,
-            "settings",
-            "secrets:set",
-            json!({"name": "test.token", "value": "sk"})
-        )
-        .await["ok"],
-        true
-    );
-    assert_eq!(
-        call(&r, "settings", "secrets:list", Value::Null).await["data"],
-        json!(["test.token"])
-    );
-    assert_eq!(
-        call(
-            &r,
-            "settings",
-            "secrets:set",
-            json!({"name": "test.token", "value": null})
-        )
-        .await["ok"],
-        true
-    );
-    assert_eq!(
-        call(&r, "settings", "secrets:list", Value::Null).await["data"],
-        json!([])
-    );
+    // ADR 0078: qrtz keeps no keys, so there are no secrets channels.
+    for ch in ["secrets:set", "secrets:list"] {
+        let v = call(&r, "settings", ch, json!({"name": "test.token", "value": "sk"})).await;
+        assert_eq!(v["ok"], false, "{ch}: {v}");
+    }
 }
 
 #[tokio::test]
@@ -385,7 +359,6 @@ fn hello_and_helper_status_reach_talk() {
     let svc = AppService::new(AppDeps {
         info: info(),
         config: ConfigStore::open(dir.path().join("config.json")).into(),
-        secrets: Arc::new(MemorySecretStore::default()),
         runtime: Arc::new(Runtime(rt.clone())),
         storage: Arc::new(StubStorage),
         talk: Arc::new(Talk(talk.clone())),

@@ -83,10 +83,10 @@ async fn delete_a_meeting_with_undo_and_copy_its_markdown() {
     b.quit().await;
 }
 
-/// flows: settings persist across restarts; the API key is stored only in the owner-only secret store (never in
-/// the config or anywhere else under the data dir, never sent back); removing it returns to the extractive path.
+/// flows: settings persist across restarts. ADR 0078: there is no key to save (no secrets channel), and nothing
+/// under the data dir holds one.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn settings_persist_across_restarts_and_the_api_key_is_saved_and_removed() {
+async fn settings_persist_across_restarts_and_no_key_can_be_saved() {
     let tmp = tempfile::tempdir().unwrap();
     let data = tmp.path().join("data");
     let a = App::launch(&data, Opts::default()).await;
@@ -95,17 +95,14 @@ async fn settings_persist_across_restarts_and_the_api_key_is_saved_and_removed()
         json!({"patch": {"note": {"retainAudioDays": 90, "defaultTemplate": "standup"}, "theme": "light"}}),
     )
     .await;
-    a.settings(
-        "secrets:set",
-        json!({"name": "test.token", "value": "sk-test-not-real"}),
-    )
-    .await;
-    assert!(a
-        .settings("secrets:list", Value::Null)
-        .await
-        .as_array()
-        .unwrap()
-        .contains(&json!("test.token")));
+    let v = a
+        .raw(
+            "settings",
+            "secrets:set",
+            json!({"name": "test.token", "value": "sk-test-not-real"}),
+        )
+        .await;
+    assert_eq!(v["ok"], false, "{v}");
     a.quit().await;
 
     let b = App::launch(&data, Opts::default()).await;
@@ -113,28 +110,20 @@ async fn settings_persist_across_restarts_and_the_api_key_is_saved_and_removed()
     assert_eq!(cfg["theme"], "light", "{cfg}");
     assert_eq!(cfg["note"]["retainAudioDays"], 90, "{cfg}");
     assert_eq!(cfg["note"]["defaultTemplate"], "standup", "{cfg}");
-    // "Key configured": the name is listed, the value never comes back over IPC.
-    let names = b.settings("secrets:list", Value::Null).await;
-    assert_eq!(names, json!(["test.token"]));
-    assert!(!cfg.to_string().contains("sk-test-not-real"));
-    // On disk only in the 0600 secret store (Linux file store; Keychain on macOS is Mac-only).
     for e in walk(&data) {
+        assert!(
+            !e.file_name()
+                .is_some_and(|n| n == "secrets.json" || n == "secrets-index.json"),
+            "{}",
+            e.display()
+        );
         let txt = std::fs::read(&e).unwrap_or_default();
-        let has = String::from_utf8_lossy(&txt).contains("sk-test-not-real");
-        if e.file_name().is_some_and(|n| n == "secrets.json") {
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                assert_eq!(std::fs::metadata(&e).unwrap().permissions().mode() & 0o777, 0o600);
-            }
-        } else {
-            assert!(!has, "key leaked into {}", e.display());
-        }
+        assert!(
+            !String::from_utf8_lossy(&txt).contains("sk-test-not-real"),
+            "key in {}",
+            e.display()
+        );
     }
-    // Remove.
-    b.settings("secrets:set", json!({"name": "test.token", "value": null}))
-        .await;
-    assert_eq!(b.settings("secrets:list", Value::Null).await, json!([]));
     b.quit().await;
 }
 

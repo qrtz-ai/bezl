@@ -1,11 +1,13 @@
-//! Cycle 22: the owner-only atomic write behind secrets and config (N30, N33, N52, T4). Its TS tests were deleted
+//! Cycle 22: the owner-only atomic write behind the config (N30, N33, N52, T4), and (ADR 0078, which removed the
+//! secret store) the launch cleanup of keys an older build saved. Its TS tests were deleted
 //! with Electron (apps/desktop/src/main/secret-store.hardening6.test.ts, talk-service.hardening5.test.ts); before
 //! this file the Rust side only checked the mode of a freshly written `secrets.json`.
 #![cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
-use qrtz_app::secrets::{write_private_atomic, FileSecretStore, SecretStore};
+use qrtz_app::secrets::{drop_saved_keys, write_private_atomic, Dropped, Keychain, KEYCHAIN_SERVICE};
+use std::sync::Mutex;
 
 fn mode(p: &Path) -> u32 {
     std::fs::metadata(p).unwrap().permissions().mode() & 0o777
@@ -40,51 +42,90 @@ fn a_missing_parent_is_created_0700() {
 }
 
 /// A write that cannot complete (here the `.tmp` cannot be replaced, as on a full or read-only disk) returns the
-/// error and leaves every saved key as it was; once the obstacle is gone the next write succeeds.
+/// error and leaves the file as it was; once the obstacle is gone the next write succeeds.
 #[test]
-fn a_failed_write_keeps_every_saved_key_and_the_next_one_succeeds() {
+fn a_failed_write_keeps_the_file_and_the_next_one_succeeds() {
     let dir = tempfile::tempdir().unwrap();
-    let f = dir.path().join("secrets.json");
-    let store = FileSecretStore::new(f.clone());
-    store.set("test.a", Some("sk-or-1")).unwrap();
-    store.set("test.b", Some("el-2")).unwrap();
-    let blocker = dir.path().join("secrets.json.tmp");
+    let f = dir.path().join("config.json");
+    write_private_atomic(&f, b"{\"theme\":\"light\"}").unwrap();
+    let blocker = dir.path().join("config.json.tmp");
     std::fs::create_dir(&blocker).unwrap();
     std::fs::write(blocker.join("x"), b"x").unwrap();
-    assert!(store.set("test.c", Some("sk-3")).is_err());
-    assert_eq!(store.list(), ["test.a", "test.b"]);
-    assert_eq!(store.get("test.b").as_deref(), Some("el-2"));
+    assert!(write_private_atomic(&f, b"{}").is_err());
+    assert_eq!(std::fs::read(&f).unwrap(), b"{\"theme\":\"light\"}");
     std::fs::remove_dir_all(&blocker).unwrap();
-    store.set("test.c", Some("sk-3")).unwrap();
-    assert_eq!(store.list(), ["test.a", "test.b", "test.c"]);
+    write_private_atomic(&f, b"{}").unwrap();
+    assert_eq!(std::fs::read(&f).unwrap(), b"{}");
     assert_eq!(mode(&f), 0o600);
 }
 
-/// N106: a corrupt (or not owner-readable) `secrets.json` is not an empty store. A save fails with the reason and
-/// leaves the file byte for byte, so the keys in it aren't dropped by the next write; reads stay empty meanwhile.
-/// A missing file is still an empty store.
-#[test]
-fn a_corrupt_secrets_file_is_an_error_and_a_save_never_overwrites_it() {
-    let dir = tempfile::tempdir().unwrap();
-    let f = dir.path().join("secrets.json");
-    let store = FileSecretStore::new(f.clone());
-    assert!(store.list().is_empty());
-    let corrupt = b"{\"test.a\":\"keep-me\",\"test.b\":";
-    std::fs::write(&f, corrupt).unwrap();
-    let e = store.set("test.c", Some("new")).unwrap_err();
-    assert!(e.message.contains("corrupt"), "{}", e.message);
-    assert_eq!(std::fs::read(&f).unwrap(), corrupt);
-    assert!(store.list().is_empty());
-    assert_eq!(store.get("test.a"), None);
-    assert!(
-        store.set("test.a", None).is_err(),
-        "a removal doesn't rewrite it either"
-    );
-    assert_eq!(std::fs::read(&f).unwrap(), corrupt);
-    qrtz_app::secrets::drop_retired(&store);
-    assert_eq!(std::fs::read(&f).unwrap(), corrupt);
+/// A fake Keychain: records deletions; `fail` names an item it can't delete.
+#[derive(Default)]
+struct FakeKeychain {
+    deleted: Mutex<Vec<(String, String)>>,
+    fail: Option<&'static str>,
+}
 
-    std::fs::write(&f, br#"{"test.a":"keep-me"}"#).unwrap();
-    store.set("test.c", Some("new")).unwrap();
-    assert_eq!(store.list(), ["test.a", "test.c"]);
+impl Keychain for FakeKeychain {
+    fn delete(&self, service: &str, account: &str) -> Result<(), String> {
+        if self.fail == Some(account) {
+            return Err("denied".into());
+        }
+        self.deleted
+            .lock()
+            .unwrap()
+            .push((service.into(), account.into()));
+        Ok(())
+    }
+}
+
+/// ADR 0078: every key an older build saved is deleted at launch, whatever its name: the Keychain items its index
+/// lists (then the index), and `secrets.json` even when corrupt (N106's file: nothing reads it any more).
+#[test]
+fn every_saved_key_is_deleted_at_launch_and_a_corrupt_file_too() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    std::fs::write(d.join("secrets-index.json"), br#"["llm.openrouter","test.a"]"#).unwrap();
+    std::fs::write(d.join("secrets.json"), b"{\"test.a\":\"keep-me\",\"test.b\":").unwrap();
+    std::fs::write(d.join("secrets.json.tmp"), b"{").unwrap();
+    let kc = FakeKeychain::default();
+    let out = drop_saved_keys(d, &kc);
+    assert_eq!(
+        out,
+        Dropped {
+            keychain: vec!["llm.openrouter".into(), "test.a".into()],
+            file: true
+        }
+    );
+    assert_eq!(
+        *kc.deleted.lock().unwrap(),
+        [
+            (KEYCHAIN_SERVICE.to_owned(), "llm.openrouter".to_owned()),
+            (KEYCHAIN_SERVICE.to_owned(), "test.a".to_owned())
+        ]
+    );
+    for f in ["secrets-index.json", "secrets.json", "secrets.json.tmp"] {
+        assert!(!d.join(f).exists(), "{f}");
+    }
+    // Nothing left: the next launch does nothing (no Keychain call).
+    let kc = FakeKeychain::default();
+    assert_eq!(drop_saved_keys(d, &kc), Dropped::default());
+    assert!(kc.deleted.lock().unwrap().is_empty());
+}
+
+/// A Keychain item that can't be deleted keeps the index, so the next launch tries again; the others still go.
+#[test]
+fn a_keychain_item_that_cannot_be_deleted_is_retried_next_launch() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    std::fs::write(d.join("secrets-index.json"), br#"["a","b"]"#).unwrap();
+    let kc = FakeKeychain {
+        fail: Some("a"),
+        ..Default::default()
+    };
+    assert_eq!(drop_saved_keys(d, &kc).keychain, ["b"]);
+    assert!(d.join("secrets-index.json").exists());
+    let kc = FakeKeychain::default();
+    assert_eq!(drop_saved_keys(d, &kc).keychain, ["a", "b"]);
+    assert!(!d.join("secrets-index.json").exists());
 }

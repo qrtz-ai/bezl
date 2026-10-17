@@ -2,7 +2,6 @@
 //! rest to the runtime / storage / talk ports; a validated event bus; helper supervisor wiring.
 use crate::config::ConfigStore;
 use crate::ports::*;
-use crate::secrets::SecretStore;
 use async_trait::async_trait;
 use qrtz_helper_bridge::{encode_host_message, parse_helper_line, HelperStatus, Supervisor};
 use qrtz_ipc::{no_handler, validate_event, AppError, CallContext, ErrorCode, Handler};
@@ -63,7 +62,6 @@ impl From<ConfigStore> for SharedConfig {
 pub struct AppDeps {
     pub info: AppInfo,
     pub config: SharedConfig,
-    pub secrets: Arc<dyn SecretStore>,
     pub runtime: Arc<dyn RuntimePort>,
     pub storage: Arc<dyn StoragePort>,
     pub talk: Arc<dyn TalkPort>,
@@ -76,7 +74,6 @@ pub struct AppDeps {
 pub struct AppService {
     info: AppInfo,
     config: SharedConfig,
-    secrets: Arc<dyn SecretStore>,
     pub runtime: Arc<dyn RuntimePort>,
     pub storage: Arc<dyn StoragePort>,
     pub talk: Arc<dyn TalkPort>,
@@ -102,7 +99,6 @@ impl AppService {
         Arc::new(Self {
             info: d.info,
             config: d.config,
-            secrets: d.secrets,
             runtime: d.runtime,
             storage: d.storage,
             talk: d.talk,
@@ -257,19 +253,6 @@ impl AppService {
                 let cfg = self.set_config(&json!({"note": {"autoRecord": on}}))?;
                 Ok(json!({"autoRecord": cfg["note"]["autoRecord"]}))
             }
-            "secrets:set" => {
-                let name = p["name"].as_str().unwrap_or_default();
-                // ADR 0076: no cloud keys are stored any more (a removal of a lingering one is still allowed).
-                if p["value"].is_string() && crate::secrets::RETIRED_SECRETS.contains(&name) {
-                    return Err(AppError::new(
-                        ErrorCode::Validation,
-                        format!("{name} is no longer used: qrtz runs entirely on this computer"),
-                    ));
-                }
-                self.secrets.set(name, p["value"].as_str())?;
-                Ok(json!({"ok": true}))
-            }
-            "secrets:list" => Ok(json!(self.secrets.list())),
             "helper:status" => Ok(match &self.helper {
                 Some(h) => serde_json::to_value(h.status()).unwrap(),
                 None => json!({"state": "stopped", "restarts": 0}),

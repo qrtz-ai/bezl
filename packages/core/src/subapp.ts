@@ -62,7 +62,6 @@ export const SHELL_MANIFEST: SubAppManifest = {
     // First-run onboarding: permissions and the speech download.
     'os.permissions',
     'config.write',
-    'secrets.write',
     'speech.read',
     'speech.manage',
   ],

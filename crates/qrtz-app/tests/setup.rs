@@ -48,7 +48,6 @@ fn app(dir: &Path, env: &SpeechEnv) -> BuiltApp {
         supervisor: SupervisorOptions::default(),
         shell: Arc::new(Shell),
         storage_shell: Arc::new(NoStorageShell),
-        secrets: None,
         speech: Some(SpeechSetup {
             store: env.store.clone(),
             opts: env.opts.clone(),
@@ -315,33 +314,21 @@ async fn an_old_config_with_the_search_model_settings_loads_and_nothing_is_fetch
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn saved_cloud_keys_are_deleted_at_launch_and_other_keys_stay() {
-    // Deepgram was removed (ADR 0067) and qrtz is entirely offline (ADR 0076): those keys would otherwise sit in the
-    // store unused.
+async fn every_saved_key_is_deleted_at_launch() {
+    // ADR 0076/0078: qrtz is entirely offline and keeps no keys, so whatever an older build saved (cloud keys and
+    // any other) is deleted, along with a crash-left `.tmp`.
     let tmp = tempfile::tempdir().unwrap();
     let env = speech_env(tmp.path()).await;
     let data = tmp.path().join("data");
     std::fs::create_dir_all(&data).unwrap();
     std::fs::write(
         data.join("secrets.json"),
-        br#"{"asr.deepgram":"dg-old","asr.elevenlabs":"el-1","llm.openrouter":"sk-or-1","llm.openai":"sk-1","test.token":"t-1"}"#,
+        br#"{"asr.deepgram":"dg-old","asr.elevenlabs":"el-1","llm.openrouter":"sk-or-1","test.token":"t-1"}"#,
     )
     .unwrap();
+    std::fs::write(data.join("secrets.json.tmp"), b"{\"half").unwrap();
     let a = app(&data, &env);
-    let r = Router::new(Shared(a.service.clone())).validate_responses(true);
-    let names = call(&r, "secrets:list", json!(null)).await;
-    let names: Vec<&str> = names
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(Value::as_str)
-        .collect();
-    assert_eq!(names, ["test.token"], "{names:?}");
-    let file = std::fs::read_to_string(data.join("secrets.json")).unwrap();
-    for gone in ["dg-old", "el-1", "sk-or-1", "sk-1"] {
-        assert!(!file.contains(gone), "{file}");
-    }
-    assert!(file.contains("t-1"), "{file}");
-    assert_eq!(mode(&data.join("secrets.json")), 0o600);
+    assert!(!data.join("secrets.json").exists());
+    assert!(!data.join("secrets.json.tmp").exists());
     a.runtime.kill();
 }

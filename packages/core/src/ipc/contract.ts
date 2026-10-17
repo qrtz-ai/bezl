@@ -68,21 +68,6 @@ export const ipcContract = {
     request: z.object({ patch: z.record(z.string(), z.unknown()) }),
     response: z.record(z.string(), z.unknown()),
   }),
-  'secrets:set': defineChannel({
-    version: 1,
-    capability: 'secrets.write',
-    request: z.object({
-      name: z.string().regex(/^[a-z0-9._-]+$/),
-      value: z.string().max(4096).nullable(),
-    }),
-    response: z.object({ ok: z.literal(true) }),
-  }),
-  'secrets:list': defineChannel({
-    version: 1,
-    capability: 'secrets.write',
-    request: z.void(),
-    response: z.array(z.string()),
-  }),
   'db:health': defineChannel({
     version: 1,
     capability: 'db.read',

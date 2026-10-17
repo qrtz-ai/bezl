@@ -62,15 +62,15 @@ describe('IPC router', () => {
           id: 'x',
           name: 'x',
           icon: 'x',
-          capabilities: ['secrets.write'],
+          capabilities: ['config.write'],
         }),
-      handlers: { 'secrets:set': () => ({ ok: true as const }) },
+      handlers: { 'config:set': () => ({}) },
     });
     const r = await r2.dispatch({
       ...base,
-      channel: 'secrets:set',
+      channel: 'config:set',
       subApp: 'x',
-      payload: { name: 'BAD NAME', value: 'v' },
+      payload: { patch: 5 },
     });
     expect(r.ok === false && r.error.code).toBe('E_VALIDATION');
   });

@@ -10,7 +10,7 @@
   - OpenRouter and the other summary providers are gone. Summaries are Apple Intelligence on your Mac (ADR 0075).
   - Removed from settings: the speech engine, "fall back to on-device", the summary provider, model and API key, and "local only" (everything is local now).
   - Onboarding has no key step.
-  - Saved ElevenLabs, OpenRouter and other cloud keys are deleted at the next launch.
+  - Saved ElevenLabs, OpenRouter and other cloud keys are deleted at the next launch. qrtz has no key storage at all now (ADR 0078).
   - Old settings files load and keep everything else.
   - The only network use left is downloading signed speech updates.
 - **Talk:** if an earlier dictation couldn't be inserted while you were already dictating again, qrtz now tells you once you let go.

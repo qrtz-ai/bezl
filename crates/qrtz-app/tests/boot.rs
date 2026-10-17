@@ -68,7 +68,6 @@ fn app_with(
         supervisor: SupervisorOptions::default(),
         shell,
         storage_shell,
-        secrets: None,
         talk: None,
         speech: None,
         steps: None,
@@ -164,20 +163,12 @@ async fn record_stop_process_list_export_with_the_mock_helper() {
     let h = call(&r, "settings", "db:health", json!(null)).await;
     assert_eq!(h["ok"], true);
 
-    // Secrets and every data file are owner-only.
-    call(
-        &r,
-        "settings",
-        "secrets:set",
-        json!({"name": "test.token", "value": "sk-test"}),
-    )
-    .await;
+    // Every data file is owner-only.
     #[cfg(unix)]
     {
         assert_eq!(mode(&data), 0o700);
         assert_eq!(mode(&data.join("recordings")), 0o700);
         assert_eq!(mode(&data.join("qrtz.db")), 0o600);
-        assert_eq!(mode(&data.join("secrets.json")), 0o600);
     }
 
     // N17: a deferred delete hides it at once and can be undone; then delete for real.

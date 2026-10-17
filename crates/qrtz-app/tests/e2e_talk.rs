@@ -134,7 +134,10 @@ async fn an_old_config_that_picked_elevenlabs_dictates_on_device() {
     let cfg = a.settings("config:get", Value::Null).await;
     assert!(cfg["talk"].get("engine").is_none(), "{cfg}");
     assert_eq!(cfg["talk"]["showPill"], false, "the rest still loads: {cfg}");
-    assert_eq!(a.settings("secrets:list", Value::Null).await, json!([]));
+    assert!(
+        !data.join("secrets.json").exists(),
+        "the old key is deleted at launch"
+    );
     let e = a.dictate().await;
     assert_eq!(
         (e["engine"].clone(), e["failover"].clone()),

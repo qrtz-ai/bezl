@@ -240,7 +240,6 @@ pub fn setup(app: &mut tauri::App, started: Instant) -> Result<(), Box<dyn std::
         supervisor: SupervisorOptions::default(),
         shell,
         storage_shell,
-        secrets: None,
         talk: None,
         speech,
         steps: None,

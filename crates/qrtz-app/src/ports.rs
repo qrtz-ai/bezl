@@ -50,8 +50,6 @@ pub const APP_CHANNELS: &[&str] = &[
     "config:get",
     "config:set",
     "note:set-auto-record",
-    "secrets:set",
-    "secrets:list",
     "helper:status",
     "hud:set-expanded",
 ];

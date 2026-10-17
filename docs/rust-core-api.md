@@ -597,7 +597,7 @@ channel handler is a one-liner onto these crates:
 | `data:import-backup`                        | unzip/verify (shell) + `db.import_from(path, audio_map)`                                                                                                                                                                       | `note:changed {id:"*"}`                                                        |
 | _global shortcut / tray toggle_             | `runtime.toggle()`                                                                                                                                                                                                             | as start/stop                                                                  |
 
-**Not in these crates (IPC wiring is qrtz-app):** `note:chat` was removed with the "ask" chat (ADR 0072). `note:set-auto-record` / `config:*` / `secrets:*` /
+**Not in these crates (IPC wiring is qrtz-app):** `note:chat` was removed with the "ask" chat (ADR 0072). `note:set-auto-record` / `config:*` /
 `app:get-info` / `helper:status` / `hud:set-expanded` (shell), and the `talk:*` channels (talk worker; its
 contract isn't on `main` yet).
 

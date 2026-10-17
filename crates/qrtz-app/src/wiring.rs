@@ -226,8 +226,6 @@ pub struct AppBuild {
     pub supervisor: qrtz_helper_bridge::SupervisorOptions,
     pub shell: Arc<dyn ShellHooks>,
     pub storage_shell: Arc<dyn crate::storage_port::StorageShell>,
-    /// `None` = file store (non-macOS) / Keychain (macOS) under the data dir.
-    pub secrets: Option<Arc<dyn crate::secrets::SecretStore>>,
     /// The speech module (store, spawn options, update server); `None` = not configured in this build.
     pub speech: Option<crate::speech::SpeechSetup>,
     /// `None` = qrtz talk over the helper (data/talk.json).
@@ -248,24 +246,6 @@ pub struct BuiltApp {
     /// Onboarding / settings "speech": the module download. Call
     /// `setup.speech.resume_pending()` inside the tokio runtime after boot (a download a quit cut short resumes).
     pub setup: Arc<crate::setup::Setup>,
-}
-
-/// The default secret store for this platform (env overrides in front).
-pub fn platform_secrets(data: &std::path::Path) -> Arc<dyn crate::secrets::SecretStore> {
-    use crate::secrets::EnvOverride;
-    #[cfg(target_os = "macos")]
-    {
-        Arc::new(EnvOverride(crate::secrets::KeychainSecretStore::new(
-            "ai.qrtz.desktop",
-            data.join("secrets-index.json"),
-        )))
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        Arc::new(EnvOverride(crate::secrets::FileSecretStore::new(
-            data.join("secrets.json"),
-        )))
-    }
 }
 
 /// Assemble: dirs (0700) → config → DB (0600) → runtime → ports → service. Call `service.start_helper()` and
@@ -304,8 +284,8 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     };
     // One tombstone store for the runtime (undo window) and backup import (skips meetings pending delete).
     let pending = Arc::new(qrtz_storage::PendingDeletes::new(&dirs.data));
-    let secrets = b.secrets.unwrap_or_else(|| platform_secrets(&dirs.data));
-    crate::secrets::drop_retired(secrets.as_ref());
+    // ADR 0078: qrtz keeps no keys; delete any an older build saved (Keychain items, secrets.json).
+    crate::secrets::drop_saved_keys(&dirs.data, crate::secrets::platform_keychain().as_ref());
     let booted = boot(BootOptions {
         data_dir: dirs.data.clone(),
         events: events.clone(),
@@ -359,7 +339,6 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     let service = crate::AppService::new(crate::AppDeps {
         info: b.info,
         config,
-        secrets,
         runtime: Arc::new(NoteRuntimePort::new(booted.runtime.clone(), availability)),
         storage: Arc::new(storage),
         talk,

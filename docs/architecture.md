@@ -8,7 +8,7 @@
 │   → zod request → handler → zod response                       │
 │ NoteService: session state machine, helper events → worker     │
 │ Supervisor ×2 (backoff, crash-loop breaker, heartbeat)          │
-│ ConfigStore · SecretStore (safeStorage) · tray · mini HUD       │
+│ ConfigStore · tray · mini HUD                                   │
 │ auto-update scaffold (off until signed)                         │
 └───────┬──────────────────────────┬─────────────────────────────┘
         │ stdio NDJSON (zod)       │ utilityProcess RPC
@@ -26,14 +26,14 @@
 ```
 
 - **Packages:**
-  - `@qrtz/core` holds the contracts and pure logic: the IPC contract and events, capabilities, the helper protocol and mock, the supervisor, config and secrets schemas, and the note domain (transcript assembly, speaker fusion, summary, chat, embeddings ranking, repo, migrations).
+  - `@qrtz/core` holds the contracts and pure logic: the IPC contract and events, capabilities, the helper protocol and mock, the supervisor, the config schema, and the note domain (transcript assembly, speaker fusion, summary, chat, embeddings ranking, repo, migrations).
   - `@qrtz/ui` holds the design system.
   - `packages/features/*` are the sub apps. Each has a static manifest with capabilities and a lazy `load()`.
 - **Boundaries:**
   - `scripts/check-boundaries.mjs`: features import only core and ui. Renderer code can't import `electron` or `node:*`.
   - `scripts/check-swift.mjs`: catches duplicate Swift types and unbalanced `#if` blocks.
 - **Capabilities:**
-  - Each sub app manifest lists capabilities, for example `note.read`, `note.record`, `note.write`, `config.write` and `secrets.write`.
+  - Each sub app manifest lists capabilities, for example `note.read`, `note.record`, `note.write`, and `config.write`.
   - Main enforces them per call and per event subscription.
   - Narrow channels exist so features don't need broad grants. For example, `note:set-auto-record` needs only `note.record`, not `config.write`.
 - **Data:**

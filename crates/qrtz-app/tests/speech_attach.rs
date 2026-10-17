@@ -45,7 +45,6 @@ fn app(dir: &Path, helper: bool) -> BuiltApp {
         supervisor: SupervisorOptions::default(),
         shell: Arc::new(Shell),
         storage_shell: Arc::new(NoStorageShell),
-        secrets: None,
         talk: None,
         speech: None,
         steps: None,
