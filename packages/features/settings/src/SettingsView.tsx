@@ -73,6 +73,7 @@ export default function SettingsView() {
     autoRecord?: boolean;
     autoDetectMeetings?: boolean;
     detectPrompt?: boolean;
+    notifyNoAudio?: boolean;
     floatingHud?: boolean;
     autoSummarize?: boolean;
     backgroundIndexing?: boolean;
@@ -257,6 +258,13 @@ export default function SettingsView() {
           noteCfg.detectPrompt,
           true,
           (v) => void patchNote({ detectPrompt: v }),
+        )}
+        {toggle(
+          'warn when no audio',
+          'notify-no-audio',
+          noteCfg.notifyNoAudio,
+          true,
+          (v) => void patchNote({ notifyNoAudio: v }),
         )}
         {toggle(
           'floating hud',

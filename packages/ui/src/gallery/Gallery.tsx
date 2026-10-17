@@ -25,6 +25,7 @@ import { Card } from '../Card';
 import { EmptyState } from '../EmptyState';
 import { Icon, ICON_NAMES, type IconSize } from '../Icon';
 import {
+  CaptureNotice,
   CaptureStatus,
   PipelineSteps,
   StreamingTranscript,
@@ -555,6 +556,20 @@ function Showcase({
                 partial={{ id: 'p', text: 'and pricing next' }}
                 maxHeight={160}
                 testId="gallery-live-transcript"
+              />
+              <CaptureStatus
+                degraded={[]}
+                silent={[{ source: 'mic', since: '10:04' }]}
+              />
+              <CaptureStatus degraded={[]} noAudio />
+              <CaptureNotice
+                items={[
+                  { id: 's', text: 'no audio from mic 10:04–10:09' },
+                  {
+                    id: 'f',
+                    text: 'meeting audio tap failed, used screen capture',
+                  },
+                ]}
               />
               <CaptureStatus
                 reconnecting={{ attempt: 2, secondsLeft: 12 }}

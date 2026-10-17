@@ -182,6 +182,24 @@ export function bootstrap() {
       });
       n.show();
     },
+    onNoAudio: () => {
+      // N29: nothing is reaching the recording. The in-app badge covers a focused window; otherwise tell the OS.
+      if (BrowserWindow.getFocusedWindow() || !Notification.isSupported())
+        return;
+      const n = new Notification({
+        title: 'no audio is being recorded',
+        body: 'check your mic and meeting audio',
+        silent: true,
+      });
+      n.on('click', () => {
+        const w = BrowserWindow.getAllWindows()[0];
+        if (w) {
+          w.show();
+          w.focus();
+        }
+      });
+      n.show();
+    },
   });
   if (availability === 'missing')
     note.setHelperHealth(

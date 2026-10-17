@@ -145,6 +145,11 @@ export class NoteService {
       recordingsDir: string;
       /** A meeting was detected and auto-record is off: prompt the user (OS notification when unfocused). */
       onDetectedPrompt?: (title: string, platform: string) => void;
+      /**
+       * N29: every capture source just went silent (`noAudio` turned on) and `note.notifyNoAudio` is on. Fires once
+       * per silent stretch; the host decides whether to notify (only when the window is unfocused).
+       */
+      onNoAudio?: (meetingId: string) => void;
       /** Multiplies every retry delay/timeout (tests: QRTZ_RETRY_SCALE=0.01). */
       retryScale?: number;
       /** Fault injection for e2e (unpackaged builds only): fail the first attempt of this step. */
@@ -161,7 +166,7 @@ export class NoteService {
       this.deps.log.info('lifecycle', { event: e.type, phase: s.phase });
       this.persistSession(s);
       // Transitions are broadcast synchronously so no phase is ever coalesced away (level/ASR are throttled).
-      this.deps.bus.emit('note:session', this.view());
+      this.emitSession();
     });
     // Owner-only: recordings are raw meeting audio (N18). chmod too, for a directory an older build created.
     fs.mkdirSync(deps.recordingsDir, { recursive: true, mode: 0o700 });
@@ -736,7 +741,7 @@ export class NoteService {
       this.paused = next;
       this.deps.log.info(next ? 'capture paused' : 'capture resumed');
     }
-    this.deps.bus.emit('note:session', this.view());
+    this.emitSession();
     return this.view();
   }
 
@@ -792,18 +797,38 @@ export class NoteService {
     if (h === this.helperHealth && detail === this.helperDetail) return;
     this.helperHealth = h;
     this.helperDetail = detail;
-    this.deps.bus.emit('note:session', this.view());
+    this.emitSession();
   }
 
   private speakerAt(ms: number) {
     return this.active.filter((a) => a.atMs <= ms + 1500).at(-1)?.name;
   }
 
+  /** The meeting `onNoAudio` last fired for, until its `noAudio` clears (edge-triggered, one per stretch). */
+  private noAudioFor: string | null = null;
+
+  /** Broadcast the session view; also the one place the `noAudio` edge is seen (N29 notification hook). */
+  private emitSession() {
+    const v = this.view();
+    const key = v.noAudio && v.meetingId ? v.meetingId : null;
+    if (key && key !== this.noAudioFor) {
+      this.noAudioFor = key;
+      if (this.deps.config().note.notifyNoAudio !== false) {
+        try {
+          this.deps.onNoAudio?.(key);
+        } catch (err) {
+          this.deps.log.warn('no-audio hook failed', { err: String(err) });
+        }
+      }
+    } else if (!key) this.noAudioFor = null;
+    this.deps.bus.emit('note:session', v);
+  }
+
   private emitSoon(delay = 50) {
     if (this.emitTimer) return;
     this.emitTimer = setTimeout(() => {
       this.emitTimer = null;
-      this.deps.bus.emit('note:session', this.view());
+      this.emitSession();
     }, delay);
   }
 
@@ -1476,7 +1501,7 @@ export class NoteService {
       // The session itself always restarts idle (nothing is capturing after a restart).
       if (saved && saved.phase !== 'idle')
         this.persistSession(this.machine.state);
-      this.deps.bus.emit('note:session', this.view());
+      this.emitSession();
       const pending = (
         await this.deps.worker.call(
           'pipeline.listUnsettled',

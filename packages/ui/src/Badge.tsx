@@ -13,9 +13,13 @@ export type BadgeTone =
 export function Badge({
   children,
   tone = 'primary',
+  role,
+  'data-testid': testId,
 }: {
   children: ReactNode;
   tone?: BadgeTone;
+  role?: 'status' | 'alert';
+  'data-testid'?: string;
 }) {
   const t = useTheme();
   const c = {
@@ -27,6 +31,8 @@ export function Badge({
   }[tone];
   return (
     <span
+      data-testid={testId}
+      role={role}
       style={{
         display: 'inline-flex',
         alignItems: 'center',

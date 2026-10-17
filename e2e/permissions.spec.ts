@@ -107,7 +107,7 @@ test('H5: microphone revoked mid-dictation stops gracefully: text kept, reason s
   await app.close();
 });
 
-test('N29/N32: a silent capture source shows live and clears when it is audible again; all silent shows "No sound"', async () => {
+test('N29/N32: a silent capture source shows live and clears when it is audible again; all silent shows "no audio is being recorded"', async () => {
   const { app, win, errors } = await launch({
     ...meeting,
     QRTZ_MOCK_SILENT: 'mic@600-2500',
@@ -117,10 +117,10 @@ test('N29/N32: a silent capture source shows live and clears when it is audible 
     timeout: 10_000,
   });
   await win.getByTestId('note-record').click();
-  await expect(win.getByTestId('degraded-silent-mic')).toBeVisible({
+  await expect(win.getByTestId('capture-silent-mic')).toBeVisible({
     timeout: 10_000,
   });
-  await expect(win.getByTestId('degraded-silent-mic')).toBeHidden({
+  await expect(win.getByTestId('capture-silent-mic')).toBeHidden({
     timeout: 10_000,
   });
   await win.getByTestId('note-stop').click();
@@ -137,10 +137,10 @@ test('N29/N32: a silent capture source shows live and clears when it is audible 
     timeout: 10_000,
   });
   await second.win.getByTestId('note-record').click();
-  await expect(second.win.getByTestId('degraded-no-sound')).toBeVisible({
+  await expect(second.win.getByTestId('capture-no-audio')).toBeVisible({
     timeout: 10_000,
   });
-  await expect(second.win.getByTestId('degraded-silent-mic')).toHaveCount(0);
+  await expect(second.win.getByTestId('capture-silent-mic')).toHaveCount(0);
   await second.win.getByTestId('note-stop').click();
   await expect(second.win.getByTestId('note-stop')).toBeHidden({
     timeout: 10_000,

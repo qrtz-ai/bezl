@@ -2,6 +2,8 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useTheme } from './theme';
 import { Button } from './Button';
 import { Text, type TextTone } from './Text';
+import { Badge } from './Badge';
+import { Icon } from './Icon';
 
 /**
  * Recording-lifecycle presentation (docs/recording-lifecycle.md). Pure views: all state comes from props,
@@ -250,20 +252,36 @@ export function PipelineSteps({
   );
 }
 
-/** Capture health while recording: reconnecting, degraded modes, or a refused start. One line each. */
+/** A capture source the helper reports silent right now; `since` is the wall-clock time already formatted. */
+export interface SilentSourceBadge {
+  source: 'mic' | 'system';
+  since: string;
+}
+
+const SOURCE_LABEL = { mic: 'mic', system: 'system audio' } as const;
+
+/**
+ * Capture health while recording: reconnecting, silent sources (N29), degraded modes, or a refused start. One line
+ * each. `noAudio` (every source silent) replaces the per-source badges with one stronger badge.
+ */
 export function CaptureStatus({
   reconnecting,
   degraded,
+  silent = [],
+  noAudio = false,
   error,
   onDismiss,
 }: {
   reconnecting?: { attempt: number; secondsLeft: number } | null;
   degraded: { id: string; label: string }[];
+  silent?: SilentSourceBadge[];
+  noAudio?: boolean;
   error?: string | null;
   onDismiss?: () => void;
 }) {
   const t = useTheme();
-  if (!reconnecting && !degraded.length && !error) return null;
+  if (!reconnecting && !degraded.length && !silent.length && !noAudio && !error)
+    return null;
   return (
     <div
       style={{
@@ -283,6 +301,24 @@ export function CaptureStatus({
           {reconnecting.secondsLeft}s
         </Text>
       ) : null}
+      {noAudio ? (
+        <Badge tone="danger" role="alert" data-testid="capture-no-audio">
+          <Icon name="no-audio" size="sm" />
+          no audio is being recorded
+        </Badge>
+      ) : (
+        silent.map((s) => (
+          <Badge
+            key={s.source}
+            tone="warning"
+            role="status"
+            data-testid={`capture-silent-${s.source}`}
+          >
+            <Icon name="mic-off" size="sm" />
+            no audio from {SOURCE_LABEL[s.source]} since {s.since}
+          </Badge>
+        ))
+      )}
       {degraded.map((d) => (
         <Text
           key={d.id}
@@ -316,6 +352,43 @@ export function CaptureStatus({
           ) : null}
         </span>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * What a finished recording's capture looked like (N29 silent stretches, H8 source fallbacks): one short line per
+ * item, built by the feature from the saved pipeline capture record. Nothing when there is nothing to say.
+ */
+export function CaptureNotice({
+  items,
+}: {
+  items: { id: string; text: string; detail?: string }[];
+}) {
+  const t = useTheme();
+  if (!items.length) return null;
+  return (
+    <div
+      data-testid="capture-notice"
+      style={{ display: 'flex', flexDirection: 'column', gap: t.space[1] }}
+    >
+      {items.map((i) => (
+        <span
+          key={i.id}
+          data-testid={`capture-notice-${i.id}`}
+          title={i.detail}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: t.space[2],
+          }}
+        >
+          <Icon name="alert" size="sm" tone="warning" />
+          <Text variant="caption" muted>
+            {i.text}
+          </Text>
+        </span>
+      ))}
     </div>
   );
 }

@@ -11,6 +11,16 @@ describe('config', () => {
   it('fills defaults', () => {
     expect(loadConfig(undefined).note.liveAsr).toBe('parakeet-unified-320ms');
   });
+  it('N29: the no-audio warning is on by default and can be turned off', () => {
+    expect(defaultConfig().note.notifyNoAudio).toBe(true);
+    expect(
+      loadConfig({ note: { notifyNoAudio: false } }).note.notifyNoAudio,
+    ).toBe(false);
+    expect(
+      applyConfigPatch(defaultConfig(), { note: { notifyNoAudio: false } }).note
+        .notifyNoAudio,
+    ).toBe(false);
+  });
   it('keeps valid keys when one is invalid', () => {
     const c = loadConfig({ theme: 'neon', logLevel: 'debug' });
     expect(c.theme).toBe('dark');

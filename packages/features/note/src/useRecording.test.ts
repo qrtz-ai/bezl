@@ -1,20 +1,28 @@
 /**
  * Hardening cycle 6 (N32): the live view shows silent capture (N29). Before, `silent` / `noAudio` reached
- * note:session but no chip rendered them, so the user still found out after the meeting.
+ * note:session but nothing rendered them, so the user still found out after the meeting. The chips became the
+ * `CaptureStatus` silent / no-audio badges; `liveCaptureStatus` keeps the N32 rules.
  */
 import { describe, expect, it } from 'vitest';
 import { SessionView } from '@qrtz/core';
-import { captureChips } from './useRecording';
+import { liveCaptureStatus } from './capture';
 
 const view = (o: Partial<SessionView>) =>
-  SessionView.parse({ phase: 'recording', ...o });
-const ids = (o: Partial<SessionView>) => captureChips(view(o)).map((c) => c.id);
+  SessionView.parse({ phase: 'recording', startedAt: 0, ...o });
+const ids = (o: Partial<SessionView>) => {
+  const s = liveCaptureStatus(view(o));
+  return [
+    ...s.degraded.map((d) => d.id),
+    ...s.silent.map((x) => `silent-${x.source}`),
+    ...(s.noAudio ? ['no-audio'] : []),
+  ];
+};
 
-describe('captureChips (N32)', () => {
-  it('nothing silent, nothing degraded: no chips', () => {
+describe('liveCaptureStatus (N32)', () => {
+  it('nothing silent, nothing degraded: nothing', () => {
     expect(ids({})).toEqual([]);
   });
-  it('one silent source: a chip naming it, after the degradations', () => {
+  it('one silent source: a badge naming it, after the degradations', () => {
     expect(
       ids({
         degraded: ['ax-unavailable'],
@@ -22,10 +30,11 @@ describe('captureChips (N32)', () => {
       }),
     ).toEqual(['ax-unavailable', 'silent-mic']);
     expect(
-      captureChips(view({ silent: [{ source: 'system', sinceMs: 0 }] })),
-    ).toEqual([{ id: 'silent-system', label: 'No sound from system audio' }]);
+      liveCaptureStatus(view({ silent: [{ source: 'system', sinceMs: 0 }] }))
+        .silent[0]!.source,
+    ).toBe('system');
   });
-  it('every delivered source silent: one "No sound" chip instead of one per source', () => {
+  it('every delivered source silent: one no-audio badge instead of one per source', () => {
     expect(
       ids({
         silent: [
@@ -34,7 +43,7 @@ describe('captureChips (N32)', () => {
         ],
         noAudio: true,
       }),
-    ).toEqual(['no-sound']);
+    ).toEqual(['no-audio']);
     // mic-only + the mic silent: also no audio at all.
     expect(
       ids({
@@ -42,9 +51,9 @@ describe('captureChips (N32)', () => {
         silent: [{ source: 'mic', sinceMs: 0 }],
         noAudio: true,
       }),
-    ).toEqual(['mic-only', 'no-sound']);
+    ).toEqual(['mic-only', 'no-audio']);
   });
-  it('audio-unavailable already says it: no extra silence chip', () => {
+  it('audio-unavailable already says it: no extra silence badge', () => {
     expect(
       ids({
         degraded: ['audio-unavailable'],
@@ -53,7 +62,7 @@ describe('captureChips (N32)', () => {
       }),
     ).toEqual(['audio-unavailable']);
   });
-  it('every chip id is unique (React keys, test ids)', () => {
+  it('every id is unique (React keys, test ids)', () => {
     const all = ids({
       degraded: ['ax-unavailable', 'transcript-gap', 'asr-unavailable'],
       silent: [

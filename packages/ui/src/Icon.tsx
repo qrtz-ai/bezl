@@ -12,6 +12,7 @@ import {
   Info,
   MessageCircle,
   Mic,
+  MicOff,
   MoreHorizontal,
   Pause,
   Play,
@@ -20,6 +21,7 @@ import {
   Settings,
   Square,
   Trash2,
+  VolumeX,
   X,
   type Icon as FeatherIcon,
 } from 'react-feather';
@@ -45,6 +47,7 @@ export const ICONS = {
   info: Info,
   ask: MessageCircle,
   mic: Mic,
+  'mic-off': MicOff,
   more: MoreHorizontal,
   pause: Pause,
   play: Play,
@@ -54,6 +57,7 @@ export const ICONS = {
   stop: Square,
   todo: Square,
   trash: Trash2,
+  'no-audio': VolumeX,
 } satisfies Record<string, FeatherIcon>;
 
 export type IconName = keyof typeof ICONS;

@@ -50,6 +50,8 @@ interface Rig {
   mocks: ReturnType<typeof createMockHelper>[];
   writes: { helper: number; type: string; msg: Record<string, unknown> }[];
   failWorker: Set<string>;
+  /** N29: meeting ids `onNoAudio` fired for, in order. */
+  noAudio: string[];
   llm: {
     fail: boolean;
     status: number;
@@ -95,6 +97,14 @@ function rig(
     ) => void;
     /** Drops a helper→host line before the host sees it (simulates a host that never heard of it). */
     dropLine?: (line: string) => boolean;
+    /** N29: the mock's capture.silent / capture.audible script. */
+    silence?: Parameters<typeof createMockHelper>[0] extends infer P
+      ? P extends { silence?: infer Q }
+        ? Q
+        : never
+      : never;
+    /** `note.*` config overrides. */
+    noteConfig?: Partial<Config['note']>;
   } = {},
 ): Rig {
   const dir = o.dir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-lc-'));
@@ -167,6 +177,7 @@ function rig(
         ...(o.revoke ? { revoke: o.revoke } : {}),
         ...(o.failRecordingFile ? { failRecordingFile: true } : {}),
         ...(o.wedgeStop ? { wedgeStop: o.wedgeStop } : {}),
+        ...(o.silence ? { silence: o.silence } : {}),
       });
       mocks.push(m);
       const write = m.write.bind(m);
@@ -184,8 +195,14 @@ function rig(
   const base = defaultConfig();
   const config: Config = {
     ...base,
-    note: { ...base.note, llmProvider: 'openrouter', autoRecord: false },
+    note: {
+      ...base.note,
+      llmProvider: 'openrouter',
+      autoRecord: false,
+      ...o.noteConfig,
+    },
   } as Config;
+  const noAudio: string[] = [];
   const note = new NoteService({
     helper,
     worker,
@@ -199,6 +216,7 @@ function rig(
     config: () => config,
     recordingsDir: path.join(dir, 'recordings'),
     retryScale: 0.005,
+    onNoAudio: (id) => noAudio.push(id),
   });
   let wasRunning = false;
   helper.onStatus((s) => {
@@ -234,6 +252,7 @@ function rig(
     mocks,
     writes,
     failWorker,
+    noAudio,
     llm,
     close: () => {
       helper.stop();
@@ -932,3 +951,43 @@ function writeWav(file: string, samples: number) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, Buffer.concat([h, Buffer.alloc(samples * 2)]));
 }
+
+describe('NoteService no-audio hook (N29)', () => {
+  it('fires once when every source goes silent, not for one silent source', async () => {
+    const r = rig({
+      silence: [
+        { source: 'mic', afterMs: 40, audibleAfterMs: 500, sinceMs: 0 },
+        { source: 'system', afterMs: 120, audibleAfterMs: 400, sinceMs: 0 },
+      ],
+    });
+    await detected(r);
+    await r.note.start();
+    const id = r.note.view().meetingId!;
+    await until(() => r.sessions.some((v) => v.noAudio));
+    const firstSilent = r.sessions.findIndex((v) => v.silent?.length);
+    const firstNoAudio = r.sessions.findIndex((v) => v.noAudio);
+    expect(firstSilent).toBeLessThan(firstNoAudio);
+    expect(r.noAudio).toEqual([id]);
+    await until(
+      () =>
+        r.note.view().phase === 'recording' && !r.note.view().silent?.length,
+    );
+    expect(r.noAudio).toEqual([id]);
+    await r.note.stop();
+  });
+
+  it('note.notifyNoAudio off: noAudio still shows in the session, the hook never fires', async () => {
+    const r = rig({
+      noteConfig: { notifyNoAudio: false },
+      silence: [
+        { source: 'mic', afterMs: 20, sinceMs: 0 },
+        { source: 'system', afterMs: 20, sinceMs: 0 },
+      ],
+    });
+    await detected(r);
+    await r.note.start();
+    await until(() => !!r.note.view().noAudio);
+    expect(r.noAudio).toEqual([]);
+    await r.note.stop();
+  });
+});

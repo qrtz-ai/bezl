@@ -4,6 +4,7 @@ import {
   AudioPlayer,
   Button,
   Callout,
+  CaptureNotice,
   CaptureStatus,
   ConfirmDialog,
   PipelineSteps,
@@ -29,11 +30,11 @@ import {
 } from '@qrtz/core';
 import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
 import { PLATFORM_LABEL, fmtClock, fmtDate } from './format';
+import { captureNoticeLines, liveCaptureStatus } from './capture';
 import { ChatPanel } from './ChatPanel';
 import { Speakers } from './Speakers';
 import { Notes } from './Notes';
 import {
-  captureChips,
   STEP_LABELS,
   isCapturingPhase,
   useLiveTranscript,
@@ -192,7 +193,7 @@ export function MeetingDetail({
                 }
               : null
           }
-          degraded={captureChips(session)}
+          {...liveCaptureStatus(session)}
         />
         <StreamingTranscript
           live={session.phase !== 'stopping'}
@@ -261,6 +262,9 @@ export function MeetingDetail({
         <Text variant="caption" muted>
           {PLATFORM_LABEL[meeting.platform]} · {meta}
         </Text>
+        <CaptureNotice
+          items={captureNoticeLines(meeting.startedAt, pipeline?.capture)}
+        />
         {exported ? (
           <Text variant="caption" muted data-testid="export-result">
             {exported}

@@ -6942,6 +6942,7 @@
         "autoDetectMeetings": true,
         "autoRecord": false,
         "detectPrompt": true,
+        "notifyNoAudio": true,
         "autoSummarize": true,
         "backgroundIndexing": true,
         "liveAsr": "parakeet-unified-320ms",
@@ -7052,6 +7053,10 @@
               "default": true,
               "type": "boolean"
             },
+            "notifyNoAudio": {
+              "default": true,
+              "type": "boolean"
+            },
             "autoSummarize": {
               "default": true,
               "type": "boolean"
@@ -7111,6 +7116,7 @@
             "autoDetectMeetings",
             "autoRecord",
             "detectPrompt",
+            "notifyNoAudio",
             "autoSummarize",
             "backgroundIndexing",
             "liveAsr",

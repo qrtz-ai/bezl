@@ -25,6 +25,8 @@ export const ConfigSchema = z.object({
       autoRecord: z.boolean().default(false),
       /** Show the "Record this meeting?" prompt and notification when a meeting is detected. */
       detectPrompt: z.boolean().default(true),
+      /** OS notification when every capture source goes silent (session `noAudio`) while the window is unfocused. */
+      notifyNoAudio: z.boolean().default(true),
       /** Summarize automatically when a meeting ends (off = Summarize button in the meeting). */
       autoSummarize: z.boolean().default(true),
       /** Build semantic-search embeddings in the background after meetings. */
