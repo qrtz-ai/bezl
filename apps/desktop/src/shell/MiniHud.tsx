@@ -146,7 +146,7 @@ function Hud() {
   );
 }
 
-/** Root for the floating always-on-top recording window (index.html#hud). */
+/** Root for the floating always-on-top recording window (hud.html). */
 export function MiniHudApp() {
   const theme = useConfigTheme();
   return (

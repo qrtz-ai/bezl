@@ -323,15 +323,31 @@ for (const theme of ['dark', 'light'] as const) {
   });
 }
 
+test('the talk pill is its own page: the pill only, no shell or sub apps', async ({
+  page,
+}) => {
+  const errors = watch(page);
+  await page.goto('/pill.html?dev=1');
+  await expect(page.getByTestId('talk-pill')).toBeAttached();
+  await expect(
+    page.locator('[data-subapp], [data-testid^="nav-"]'),
+  ).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test('mini hud follows the light theme; notes toggle; axe', async ({
   page,
 }) => {
   const errors = watch(page);
-  await page.goto('/?dev=1&theme=light&mockSpeed=80#hud');
+  await page.goto('/hud.html?dev=1&theme=light&mockSpeed=80');
   await page.waitForFunction(() => !!window.qrtzTransport);
   await invoke(page, 'shell', 'note:start', {});
   await expect(page.getByTestId('mini-hud-clock')).toBeVisible();
   await expect(page.getByTestId('mini-hud-stop')).toBeVisible();
+  // Its own page (ADR 0088): no shell, tabs or sub apps.
+  await expect(
+    page.locator('[data-subapp], [data-testid^="nav-"]'),
+  ).toHaveCount(0);
   const bg = await page.evaluate(() => {
     const el = document.querySelector('[data-testid="mini-hud-clock"]')!;
     let n: Element | null = el;

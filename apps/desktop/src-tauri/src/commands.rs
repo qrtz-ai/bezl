@@ -63,7 +63,7 @@ mod tests {
 
     #[test]
     fn only_the_bundled_renderer_is_trusted() {
-        assert!(trusted_origin("tauri://localhost/index.html#hud"));
+        assert!(trusted_origin("tauri://localhost/hud.html"));
         assert!(trusted_origin("http://tauri.localhost/index.html"));
         assert!(trusted_origin("https://tauri.localhost/"));
         assert_eq!(trusted_origin("http://localhost:1420/"), cfg!(debug_assertions));

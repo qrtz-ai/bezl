@@ -1,5 +1,5 @@
-//! Window factory: main, HUD (#hud) and talk pill (#pill). All load the bundled renderer; the hash picks
-//! the view, exactly like the Electron build.
+//! Window factory: main (index.html), HUD (hud.html) and talk pill (pill.html). Each window has its own page
+//! and entry, so the HUD and the pill never load the shell, its router or the sub apps (ADR 0088).
 use crate::strings::{UI_APP, UI_HUD, UI_PILL};
 use tauri::{
     AppHandle, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
@@ -18,7 +18,7 @@ fn url(view: &str) -> WebviewUrl {
     WebviewUrl::App(if view.is_empty() {
         "index.html".into()
     } else {
-        format!("index.html#{view}").into()
+        format!("{view}.html").into()
     })
 }
 
@@ -149,5 +149,26 @@ pub fn show_pill(app: &AppHandle) {
             ));
         }
         Err(e) => tracing::error!(err = %e, "could not create pill"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::url;
+    use std::path::PathBuf;
+    use tauri::WebviewUrl;
+
+    fn page(view: &str) -> PathBuf {
+        match url(view) {
+            WebviewUrl::App(p) => p,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn each_window_loads_its_own_page() {
+        assert_eq!(page(""), PathBuf::from("index.html"));
+        assert_eq!(page(super::HUD), PathBuf::from("hud.html"));
+        assert_eq!(page(super::PILL), PathBuf::from("pill.html"));
     }
 }

@@ -28,7 +28,7 @@ function Pill() {
   );
 }
 
-/** Root for the floating dictation pill window (index.html#pill). */
+/** Root for the floating dictation pill window (pill.html). */
 export function TalkPillApp() {
   const theme = useConfigTheme();
   return (

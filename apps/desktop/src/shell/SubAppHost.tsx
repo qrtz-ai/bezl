@@ -7,28 +7,10 @@ import {
   type LazyExoticComponent,
   type ReactNode,
 } from 'react';
-import {
-  createClient,
-  type QrtzClient,
-  type QrtzTransport,
-  type SubApp,
-} from '@qrtz/core';
+import { createClient, type QrtzClient, type SubApp } from '@qrtz/core';
 import { Button, KeepAlive, Stack, Text } from '@qrtz/ui';
 import { QrtzClientProvider } from '@qrtz/core/react';
-
-export const noTransport: QrtzTransport = {
-  invoke: async (e) => ({
-    ok: false,
-    id: e.id,
-    error: {
-      name: 'AppError',
-      code: 'E_UNAVAILABLE',
-      message: 'Not running inside qrtz',
-      retryable: false,
-    },
-  }),
-  on: () => () => {},
-};
+import { noTransport } from './shellClient';
 
 class SubAppErrorBoundary extends Component<
   { name: string; children: ReactNode },

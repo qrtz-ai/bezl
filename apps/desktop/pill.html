@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- The dev server's CSP. Builds add tauri.conf.json's and both apply: media-src needs qrtz-media: (playback_csp.rs). -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost ws://localhost:1420; media-src 'self' qrtz-media: http://qrtz-media.localhost; img-src 'self' data:; font-src 'self' data:"
+    />
+    <title>qrtz pill</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/pill-main.tsx"></script>
+  </body>
+</html>

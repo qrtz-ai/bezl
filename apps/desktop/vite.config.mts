@@ -12,5 +12,9 @@ export default defineConfig({
     target: 'safari16',
     outDir: 'dist',
     emptyOutDir: true,
+    // One page per window (ADR 0088): the HUD and the pill never load the shell or its sub apps.
+    rollupOptions: {
+      input: { main: 'index.html', hud: 'hud.html', pill: 'pill.html' },
+    },
   },
 });
