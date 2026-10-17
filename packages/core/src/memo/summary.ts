@@ -13,6 +13,8 @@ export const MeetingSummary = z.object({
     }),
   ),
   provider: z.string(),
+  /** Template used to produce this summary. */
+  template: z.string().optional(),
   /** Set when the configured LLM failed and this is the extractive fallback; the UI offers a retry. */
   llmError: z.string().max(500).optional(),
 });

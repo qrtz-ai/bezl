@@ -137,6 +137,7 @@ export default function MemoView() {
           s={session}
           onRecord={() => void act(qrtz.invoke('memo:start', {}))}
           onStop={() => void act(qrtz.invoke('memo:stop'))}
+          onPause={() => void act(qrtz.invoke('memo:pause', {}))}
           onDismiss={() => void act(qrtz.invoke('memo:dismiss'))}
           onAlways={() =>
             void act(

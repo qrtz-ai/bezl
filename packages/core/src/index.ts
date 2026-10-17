@@ -30,3 +30,6 @@ export * from './testing';
 export * from './memo/contract';
 export * from './nav';
 export * from './memo/large';
+export * from './privacy';
+export * from './memo/templates';
+export * from './memo/notes';

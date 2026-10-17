@@ -7,8 +7,8 @@ describe('migrate', () => {
     const db = new DatabaseSync(':memory:');
     expect(migrate(db, migrations)).toMatchObject({
       from: 0,
-      to: 3,
-      applied: ['1_kv', '2_memo', '3_segment_vectors'],
+      to: 4,
+      applied: ['1_kv', '2_memo', '3_segment_vectors', '4_notes_templates'],
     });
     expect(migrate(db, migrations).applied).toEqual([]);
   });
@@ -16,11 +16,11 @@ describe('migrate', () => {
     const db = new DatabaseSync(':memory:');
     const ms: Migration[] = [
       ...migrations,
-      { version: 4, name: 'bad', up: 'CREATE TABLE t(x); NOT SQL' },
+      { version: 5, name: 'bad', up: 'CREATE TABLE t(x); NOT SQL' },
     ];
-    expect(() => migrate(db, ms)).toThrow(/4_bad/);
+    expect(() => migrate(db, ms)).toThrow(/5_bad/);
     expect(db.prepare('PRAGMA user_version').get()).toEqual({
-      user_version: 3,
+      user_version: 4,
     });
     expect(
       db.prepare("SELECT name FROM sqlite_master WHERE name='t'").get(),

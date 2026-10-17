@@ -92,6 +92,7 @@ export function createMockHelper(
     }
   }, 0);
 
+  let paused = false;
   const startScript = () => {
     const asr = fixtureAsrEvents();
     // Spread partials evenly between utterance start and its final.
@@ -111,7 +112,9 @@ export function createMockHelper(
           ? end
           : e.startMs +
             ((end - e.startMs) * n) / (counts.get(e.utteranceId)! + 0.5);
-      at(t * speed, () => emit({ type: 'asr', event: e }));
+      at(t * speed, () => {
+        if (!paused) emit({ type: 'asr', event: e });
+      });
     }
     for (const a of fixtureActiveSpeakers())
       at(a.atMs * speed, () => emit({ type: 'ax.activeSpeaker', ...a }));
@@ -119,7 +122,7 @@ export function createMockHelper(
       at(t * speed, () =>
         emit({
           type: 'audio.level',
-          rms: 0.2 + 0.6 * Math.abs(Math.sin(t / 700)),
+          rms: paused ? 0 : 0.2 + 0.6 * Math.abs(Math.sin(t / 700)),
         }),
       );
   };
@@ -155,7 +158,14 @@ export function createMockHelper(
           emit({ type: 'recording.started', audioPath });
           if (opts.scenario) startScript();
           return;
+        case 'recording.pause':
+          paused = true;
+          return;
+        case 'recording.resume':
+          paused = false;
+          return;
         case 'recording.stop':
+          paused = false;
           clearScript();
           return emit({
             type: 'recording.stopped',

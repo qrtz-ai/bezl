@@ -46,6 +46,8 @@ export const Meeting = z.object({
   participants: z.array(z.string()).default([]),
   status: z.enum(['recording', 'processing', 'done', 'failed']),
   audioPath: z.string().optional(),
+  /** Summary template id (see templates.ts); stored per meeting. */
+  template: z.string().optional(),
 });
 export type Meeting = z.infer<typeof Meeting>;
 

@@ -10,6 +10,8 @@ import {
 } from '../memo/contract';
 import { MeetingSummary } from '../memo/summary';
 import { ChatAnswer, ChatTurn } from '../memo/chat';
+import { MeetingNote } from '../memo/notes';
+import { SummaryTemplateId } from '../memo/templates';
 
 /** Bump when the envelope shape changes (not when a channel changes). */
 export const PROTOCOL_VERSION = 1;
@@ -199,6 +201,76 @@ export const ipcContract = {
     capability: 'memo.write',
     request: z.object({ id: z.string().max(64) }),
     response: z.object({ ok: z.literal(true) }),
+  }),
+  /** Live notes. Without meetingId the note goes to the meeting being recorded, stamped at the current offset. */
+  'memo:add-note': defineChannel({
+    version: 1,
+    capability: 'memo.record',
+    request: z.object({
+      meetingId: z.string().max(64).optional(),
+      text: z.string().trim().min(1).max(4000),
+      atMs: z.number().nonnegative().optional(),
+    }),
+    response: MeetingNote.extend({ meetingId: z.string() }),
+  }),
+  'memo:update-note': defineChannel({
+    version: 1,
+    capability: 'memo.write',
+    request: z.object({
+      id: z.string().max(64),
+      text: z.string().trim().min(1).max(4000),
+    }),
+    response: z.object({ ok: z.boolean() }),
+  }),
+  'memo:delete-note': defineChannel({
+    version: 1,
+    capability: 'memo.write',
+    request: z.object({ id: z.string().max(64) }),
+    response: z.object({ ok: z.boolean() }),
+  }),
+  'memo:list-notes': defineChannel({
+    version: 1,
+    capability: 'memo.read',
+    request: z.object({ meetingId: z.string().max(64).optional() }),
+    response: z.array(MeetingNote),
+  }),
+  /** Store the meeting's template and re-run its summary with it. */
+  'memo:set-template': defineChannel({
+    version: 1,
+    capability: 'memo.write',
+    request: z.object({ id: z.string().max(64), template: SummaryTemplateId }),
+    response: MeetingSummary,
+  }),
+  /** Privacy pause/resume of capture while recording (omit `paused` to toggle). */
+  'memo:pause': defineChannel({
+    version: 1,
+    capability: 'memo.record',
+    request: z.object({ paused: z.boolean().optional() }).default({}),
+    response: SessionView,
+  }),
+  /** Full backup: zip of a consistent DB snapshot + recordings + a sha256 manifest. */
+  'data:export-backup': defineChannel({
+    version: 1,
+    capability: 'data.backup',
+    request: z.object({}).default({}),
+    response: z.object({
+      savedTo: z.string().optional(),
+      meetings: z.number(),
+      audioFiles: z.number(),
+      bytes: z.number(),
+    }),
+  }),
+  /** Verifies the zip (manifest hashes, SQLite integrity, schema version) and merges meetings that aren't present. */
+  'data:import-backup': defineChannel({
+    version: 1,
+    capability: 'data.backup',
+    request: z.object({}).default({}),
+    response: z.object({
+      canceled: z.boolean().optional(),
+      imported: z.number(),
+      skipped: z.number(),
+      audioFiles: z.number(),
+    }),
   }),
 } as const satisfies Record<string, ChannelDef>;
 

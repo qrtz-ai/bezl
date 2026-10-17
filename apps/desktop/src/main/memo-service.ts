@@ -18,6 +18,8 @@ import {
   type SessionView,
   type Supervisor,
   PROVIDER_DEFAULTS,
+  effectiveLlmProvider,
+  isExcludedApp,
   type ChatTurn,
 } from '@qrtz/core';
 import type { WorkerClient } from './worker-client';
@@ -102,6 +104,12 @@ export class MemoService {
         this.emitSoon();
         break;
       case 'meeting.detected':
+        if (isExcludedApp(this.deps.config(), m)) {
+          this.deps.log.info('meeting ignored (excluded app)', {
+            platform: m.platform,
+          });
+          break;
+        }
         if (
           this.deps.config().memo.autoDetectMeetings &&
           this.machine.send({ type: 'detected', meeting: m })
@@ -134,7 +142,8 @@ export class MemoService {
         this.emitSoon(150);
         break;
       case 'asr':
-        if (s.phase !== 'recording' || !s.meetingId) break;
+        // Paused: drop anything still in flight from the helper (it stops feeding the recogniser too).
+        if (s.phase !== 'recording' || !s.meetingId || this.paused) break;
         this.asr.push(m.event);
         if (m.event.kind === 'final') {
           const seg = this.asr
@@ -211,7 +220,49 @@ export class MemoService {
       ...(s.error ? { error: s.error } : {}),
       helper: this.helperHealth,
       ...(this.helperDetail ? { helperDetail: this.helperDetail } : {}),
+      paused: s.phase === 'recording' && this.paused,
     };
+  }
+
+  private paused = false;
+  /** Privacy pause/resume while recording (hotkey, HUD). Omit `want` to toggle. */
+  pause(want?: boolean): SessionView {
+    const s = this.machine.state;
+    if (s.phase !== 'recording')
+      throw new AppError('E_VALIDATION', 'not recording');
+    const next = want ?? !this.paused;
+    if (next !== this.paused) {
+      this.send({ type: next ? 'recording.pause' : 'recording.resume' });
+      this.paused = next;
+      this.deps.log.info(next ? 'capture paused' : 'capture resumed');
+    }
+    this.deps.bus.emit('memo:session', this.view());
+    return this.view();
+  }
+
+  /** Live note: defaults to the meeting being recorded, stamped at the current recording offset. */
+  async addNote(req: { meetingId?: string; text: string; atMs?: number }) {
+    const s = this.machine.state;
+    const live = !req.meetingId || req.meetingId === s.meetingId;
+    const meetingId = req.meetingId ?? s.meetingId;
+    if (!meetingId)
+      throw new AppError('E_VALIDATION', 'no meeting is being recorded');
+    const atMs =
+      req.atMs ??
+      (live && s.startedAt ? (s.stoppedAt ?? Date.now()) - s.startedAt : 0);
+    return this.deps.worker.call('memo.addNote', {
+      meetingId,
+      text: req.text,
+      atMs,
+    });
+  }
+
+  async setTemplate(id: string, template: string) {
+    return this.deps.worker.call('memo.resummarize', {
+      id,
+      template,
+      llm: await this.llmParams(),
+    });
   }
 
   private helperHealth: SessionView['helper'] = 'ok';
@@ -249,6 +300,7 @@ export class MemoService {
     this.asr = new TranscriptAssembler();
     this.active = [];
     this.persisted.clear();
+    this.paused = false;
     this.progress = undefined;
     this.audioPath = path.join(this.deps.recordingsDir, `${id}.wav`);
     const now = Date.now();
@@ -264,6 +316,7 @@ export class MemoService {
         status: 'recording',
         participants: this.participants,
         audioPath: this.audioPath,
+        template: this.deps.config().memo.defaultTemplate,
       },
     });
     this.send({ type: 'recording.start', audioPath: this.audioPath });
@@ -287,6 +340,7 @@ export class MemoService {
       this.helperCrashed = true;
       stopped = Promise.resolve(null);
     }
+    this.paused = false;
     this.machine.send({ type: 'stop', at: Date.now() });
     void this.postProcess(meetingId, startedAt, stopped);
     return this.view();
@@ -320,8 +374,10 @@ export class MemoService {
   }
 
   private async llmParams() {
-    const cfg = this.deps.config().memo;
-    const provider = cfg.llmProvider as ProviderId | 'none';
+    const full = this.deps.config();
+    const cfg = full.memo;
+    // Privacy "local only": cloud providers are replaced by the on-device path (keys are never read).
+    const provider = effectiveLlmProvider(full) as ProviderId | 'none';
     const secretName =
       provider === 'none' ? undefined : PROVIDER_DEFAULTS[provider].secret;
     const apiKey = secretName

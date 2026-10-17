@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Badge, Button, Card, Spinner, Text, useTheme } from '@qrtz/ui';
 import type { SessionView } from '@qrtz/core';
 import { PLATFORM_LABEL, fmtClock } from './format';
+import { Notes } from './Notes';
 
 function useNow(active: boolean) {
   const [now, setNow] = useState(Date.now());
@@ -21,8 +22,10 @@ export function Hud({
   onDismiss,
   onAlways,
   onOpen,
+  onPause,
 }: {
   s: SessionView;
+  onPause?: () => void;
   onRecord: () => void;
   onStop: () => void;
   onDismiss: () => void;
@@ -118,7 +121,24 @@ export function Hud({
               speaking
             </Badge>
           ) : null}
+          {s.paused ? (
+            <Badge tone="warning">
+              <span data-testid="memo-paused">Paused · not capturing</span>
+            </Badge>
+          ) : null}
           <div style={{ flex: 1 }} />
+          {onPause ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onPause}
+              data-testid="memo-pause"
+              aria-pressed={s.paused}
+              title="Pause capture (privacy). Also available as a global shortcut, set in Settings."
+            >
+              {s.paused ? '▶ Resume' : '❚❚ Pause'}
+            </Button>
+          ) : null}
           <Button
             variant="danger"
             size="sm"
@@ -152,6 +172,7 @@ export function Hud({
             </Text>
           ) : null}
         </div>
+        <Notes compact />
       </Card>
     );
   }

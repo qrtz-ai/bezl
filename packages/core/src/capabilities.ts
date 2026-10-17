@@ -13,6 +13,7 @@ export const Capability = z.enum([
   'memo.read',
   'memo.write',
   'llm.invoke',
+  'data.backup',
 ]);
 export type Capability = z.infer<typeof Capability>;
 

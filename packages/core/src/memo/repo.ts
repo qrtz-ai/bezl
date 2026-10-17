@@ -1,6 +1,7 @@
 import type { SqlDb } from '../db/migrate';
 import type { Meeting, Segment } from './types';
 import { MeetingSummary } from './summary';
+import type { MeetingNote } from './notes';
 
 export interface MeetingRow extends Meeting {
   durationMs?: number;
@@ -25,6 +26,7 @@ const toMeeting = (r: Row): MeetingRow => ({
   participants: JSON.parse(String(r.participants ?? '[]')) as string[],
   ...(r.audio_path == null ? {} : { audioPath: String(r.audio_path) }),
   ...(r.duration_ms == null ? {} : { durationMs: Number(r.duration_ms) }),
+  ...(r.template == null ? {} : { template: String(r.template) }),
 });
 const toSegment = (r: Row): Segment => ({
   id: String(r.id),
@@ -87,6 +89,49 @@ export class MemoRepo {
         m.audioPath ?? null,
         m.durationMs ?? null,
       );
+  }
+
+  setTemplate(id: string, template: string): void {
+    this.db
+      .prepare('UPDATE meetings SET template=? WHERE id=?')
+      .run(template, id);
+  }
+
+  getNotes(meetingId: string): MeetingNote[] {
+    return (
+      this.db
+        .prepare(
+          'SELECT * FROM notes WHERE meeting_id=? ORDER BY at_ms, created_at',
+        )
+        .all(meetingId) as Row[]
+    ).map((r) => ({
+      id: String(r.id),
+      atMs: Number(r.at_ms),
+      text: String(r.text),
+      createdAt: Number(r.created_at),
+    }));
+  }
+
+  addNote(meetingId: string, n: MeetingNote): void {
+    this.db
+      .prepare(
+        'INSERT INTO notes (id,meeting_id,at_ms,text,created_at) VALUES (?,?,?,?,?)',
+      )
+      .run(n.id, meetingId, Math.round(n.atMs), n.text, n.createdAt);
+  }
+
+  updateNote(id: string, text: string): boolean {
+    const r = this.db
+      .prepare('UPDATE notes SET text=? WHERE id=?')
+      .run(text, id) as { changes: number | bigint };
+    return Number(r.changes) > 0;
+  }
+
+  deleteNote(id: string): boolean {
+    const r = this.db.prepare('DELETE FROM notes WHERE id=?').run(id) as {
+      changes: number | bigint;
+    };
+    return Number(r.changes) > 0;
   }
 
   setStatus(id: string, status: Meeting['status']): void {

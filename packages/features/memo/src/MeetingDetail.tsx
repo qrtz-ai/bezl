@@ -10,12 +10,19 @@ import {
   Text,
   useTheme,
   Callout,
+  Select,
 } from '@qrtz/ui';
-import type { MeetingDetail as Detail, Segment } from '@qrtz/core';
+import {
+  SUMMARY_TEMPLATES,
+  type MeetingDetail as Detail,
+  type Segment,
+  type SummaryTemplateId,
+} from '@qrtz/core';
 import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
 import { PLATFORM_LABEL, fmtClock, fmtDate } from './format';
 import { ChatPanel } from './ChatPanel';
 import { Speakers } from './Speakers';
+import { Notes } from './Notes';
 
 export function MeetingDetail({
   id,
@@ -34,7 +41,9 @@ export function MeetingDetail({
   const [reloadKey, setReloadKey] = useState(0);
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
-  const [tab, setTab] = useState<'summary' | 'transcript' | 'ask'>('summary');
+  const [tab, setTab] = useState<'summary' | 'notes' | 'transcript' | 'ask'>(
+    'summary',
+  );
   const [now, setNow] = useState(0);
   const [exported, setExported] = useState<string | null>(null);
   const audio = useRef<HTMLAudioElement>(null);
@@ -68,6 +77,22 @@ export function MeetingDetail({
       .catch((e: Error) => setRetryError(e.message))
       .finally(() => setRetrying(false));
   }, [qrtz, id]);
+
+  const changeTemplate = useCallback(
+    (template: SummaryTemplateId) => {
+      setRetrying(true);
+      setRetryError(null);
+      setD((prev) =>
+        prev ? { ...prev, meeting: { ...prev.meeting, template } } : prev,
+      );
+      qrtz
+        .invoke('memo:set-template', { id, template })
+        .then((s) => setD((prev) => (prev ? { ...prev, summary: s } : prev)))
+        .catch((e: Error) => setRetryError(e.message))
+        .finally(() => setRetrying(false));
+    },
+    [qrtz, id],
+  );
 
   // Binary search: O(log n) per audio timeupdate even for multi-hour transcripts.
   const current = useMemo(() => {
@@ -209,6 +234,7 @@ export function MeetingDetail({
       <Tabs
         tabs={[
           { id: 'summary', label: 'Summary' },
+          { id: 'notes', label: `Notes (${d?.notes?.length ?? 0})` },
           { id: 'transcript', label: `Transcript (${segments.length})` },
           { id: 'ask', label: 'Ask' },
         ]}
@@ -223,12 +249,51 @@ export function MeetingDetail({
             seek(ms);
           }}
         />
+      ) : tab === 'notes' ? (
+        <Notes meetingId={id} />
       ) : tab === 'summary' ? (
         summary ? (
           <div
             style={{ display: 'grid', gap: 16 }}
             data-testid="detail-summary"
           >
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <label htmlFor="summary-template">
+                <Text size="sm" muted>
+                  Template
+                </Text>
+              </label>
+              <Select
+                id="summary-template"
+                data-testid="summary-template"
+                value={d?.meeting.template ?? 'general'}
+                disabled={retrying}
+                onChange={(e) =>
+                  changeTemplate(e.target.value as SummaryTemplateId)
+                }
+                style={{ width: 180 }}
+              >
+                {SUMMARY_TEMPLATES.map((tp) => (
+                  <option key={tp.id} value={tp.id}>
+                    {tp.label}
+                  </option>
+                ))}
+              </Select>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={retrySummary}
+                disabled={retrying}
+                data-testid="summary-rerun"
+              >
+                {retrying ? 'Summarizing…' : 'Re-run'}
+              </Button>
+              {retryError && !summary.llmError ? (
+                <Text size="sm" style={{ color: t.color.danger }} role="alert">
+                  {retryError}
+                </Text>
+              ) : null}
+            </div>
             {summary.llmError ? (
               <Callout
                 tone="warning"

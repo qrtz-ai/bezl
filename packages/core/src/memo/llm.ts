@@ -3,6 +3,13 @@ import { AppError } from '../errors';
 import type { Segment } from './types';
 import { MeetingSummary } from './summary';
 import { extractiveSummary } from './extractive';
+import { formatNotesForPrompt, type MeetingNote } from './notes';
+import { templateById } from './templates';
+
+export interface SummaryOptions {
+  notes?: MeetingNote[];
+  template?: string;
+}
 
 export type ChatMessage = {
   role: 'system' | 'user' | 'assistant';
@@ -260,16 +267,26 @@ export function formatTranscriptForPrompt(
 export function buildSummaryPrompt(
   title: string,
   segments: Segment[],
+  opts: SummaryOptions = {},
 ): ChatMessage[] {
+  const tpl = templateById(opts.template);
+  const notes = (opts.notes ?? []).filter((n) => n.text.trim());
   return [
     {
       role: 'system',
       content:
-        'You summarize meeting transcripts. Reply with ONLY a JSON object: {"summary": string (3-6 sentences), "actionItems": [{"text": string, "owner"?: string}], "qa": [{"question": string, "answer": string, "askedBy"?: string}]}. Use speaker names from the transcript. Do not invent facts.',
+        'You summarize meeting transcripts. Reply with ONLY a JSON object: {"summary": string (3-6 sentences), "actionItems": [{"text": string, "owner"?: string}], "qa": [{"question": string, "answer": string, "askedBy"?: string}]}. Use speaker names from the transcript. Do not invent facts. ' +
+        tpl.guidance +
+        (notes.length
+          ? " The user took their own notes during the meeting (timestamps match the transcript). Treat them as the user's priorities: build the summary around them, expand each with details from the transcript, keep any to-dos from the notes as action items, and never contradict the transcript."
+          : ''),
     },
     {
       role: 'user',
-      content: `Meeting: ${title}\n\nTranscript:\n${formatTranscriptForPrompt(segments)}`,
+      content:
+        `Meeting: ${title}\n\n` +
+        (notes.length ? `My notes:\n${formatNotesForPrompt(notes)}\n\n` : '') +
+        `Transcript:\n${formatTranscriptForPrompt(segments)}`,
     },
   ];
 }
@@ -293,19 +310,25 @@ export async function summarizeMeeting(
   segments: Segment[],
   provider: LlmProvider | null,
   onError?: (e: unknown) => void,
+  opts: SummaryOptions = {},
 ): Promise<MeetingSummary> {
-  if (provider && segments.length) {
+  const template = templateById(opts.template).id;
+  const hasNotes = !!opts.notes?.some((n) => n.text.trim());
+  if (provider && (segments.length || hasNotes)) {
     try {
       const reply = await provider.complete(
-        buildSummaryPrompt(title, segments),
+        buildSummaryPrompt(title, segments, opts),
         { json: true },
       );
-      return { ...parseSummaryReply(reply), provider: provider.id };
+      return { ...parseSummaryReply(reply), provider: provider.id, template };
     } catch (e) {
       onError?.(e);
       const msg = e instanceof Error ? e.message : String(e);
-      return { ...extractiveSummary(segments), llmError: msg.slice(0, 500) };
+      return {
+        ...extractiveSummary(segments, opts),
+        llmError: msg.slice(0, 500),
+      };
     }
   }
-  return extractiveSummary(segments);
+  return extractiveSummary(segments, opts);
 }

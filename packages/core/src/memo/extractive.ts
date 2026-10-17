@@ -1,5 +1,7 @@
 import type { Segment } from './types';
 import type { MeetingSummary } from './summary';
+import type { MeetingNote } from './notes';
+import { templateById } from './templates';
 
 const STOP = new Set(
   'a an the and or but if of to in on at for with is are was were be been it this that we you i they he she so just like yeah okay ok um uh do does did have has had not no yes our your my me us them from as by about can will would should could there here what when how who which'.split(
@@ -27,8 +29,14 @@ const words = (s: string) => s.toLowerCase().match(/[\p{L}\p{N}']+/gu) ?? [];
  */
 export function extractiveSummary(
   segments: Segment[],
-  opts: { maxSentences?: number } = {},
+  opts: {
+    maxSentences?: number;
+    notes?: MeetingNote[];
+    template?: string;
+  } = {},
 ): MeetingSummary {
+  const tpl = templateById(opts.template);
+  const focus = new Set(tpl.focus);
   type Sent = { text: string; speaker?: string; idx: number; seg: number };
   const sents: Sent[] = [];
   segments.forEach((s, seg) =>
@@ -43,6 +51,12 @@ export function extractiveSummary(
       }),
     ),
   );
+  const notes = (opts.notes ?? []).filter((n) => n.text.trim());
+  const noteWords = new Set(
+    notes
+      .flatMap((n) => words(n.text))
+      .filter((w) => !STOP.has(w) && w.length > 2),
+  );
   const freq = new Map<string, number>();
   for (const s of sents)
     for (const w of words(s.text))
@@ -50,8 +64,11 @@ export function extractiveSummary(
   const score = (s: Sent) => {
     const ws = words(s.text).filter((w) => !STOP.has(w) && w.length > 2);
     if (ws.length < 3) return 0;
+    // Template focus words (e.g. "budget" for sales) and words the user wrote in their notes weigh more.
+    const boost = ws.filter((w) => focus.has(w) || noteWords.has(w)).length;
     return (
-      ws.reduce((a, w) => a + (freq.get(w) ?? 0), 0) / Math.sqrt(ws.length)
+      (ws.reduce((a, w) => a + (freq.get(w) ?? 0), 0) + boost * 3) /
+      Math.sqrt(ws.length)
     );
   };
   const max = opts.maxSentences ?? 3;
@@ -60,9 +77,14 @@ export function extractiveSummary(
     .sort((a, b) => score(b) - score(a) || a.idx - b.idx)
     .slice(0, max)
     .sort((a, b) => a.idx - b.idx);
-  const summary = top
+  const transcriptPart = top
     .map((s) => (s.speaker ? `${s.speaker}: ${s.text}` : s.text))
     .join(' ');
+  // The user's own notes lead the summary (they are what the user decided was important).
+  const notesPart = notes.length
+    ? `Your notes: ${notes.map((n) => n.text.trim().replace(/[.;]+$/, '')).join('; ')}.`
+    : '';
+  const summary = [notesPart, transcriptPart].filter(Boolean).join(' ');
 
   const actionItems: MeetingSummary['actionItems'] = [];
   for (const s of sents) {
@@ -80,6 +102,14 @@ export function extractiveSummary(
           ?.speaker;
     }
     actionItems.push({ text: s.text, ...(owner ? { owner } : {}) });
+  }
+
+  // Notes phrased as tasks ("TODO …", "- [ ] …", or commitment phrasing) become action items too.
+  for (const n of notes) {
+    const t = n.text.trim();
+    const m = /^(?:todo:?|- \[ \]|\[ \]|action:?|ai:)\s*(.+)$/i.exec(t);
+    if (m) actionItems.push({ text: m[1]!.trim() });
+    else if (ACTION_RE.test(t)) actionItems.push({ text: t });
   }
 
   const qa: MeetingSummary['qa'] = [];
@@ -100,5 +130,6 @@ export function extractiveSummary(
     actionItems,
     qa,
     provider: 'extractive',
+    template: tpl.id,
   };
 }

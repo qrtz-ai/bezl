@@ -44,7 +44,7 @@ describe('worker handlers (DB + pipeline integration)', () => {
     });
     expect(h['db.health']()).toEqual({
       ok: true,
-      schemaVersion: 3,
+      schemaVersion: 4,
       fts5: true,
     });
     seed(h);

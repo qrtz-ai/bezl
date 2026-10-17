@@ -14,12 +14,19 @@ qrtz desktop app for macOS: an Electron shell hosting modular React "sub apps", 
 - Chat: per-meeting Q&A (the Ask tab) and "Ask all meetings" (full-text retrieval across transcripts). Answers come from OpenRouter with citations when a key is set, or as extractive quotes without one. Clicking a citation jumps to that moment in the transcript.
 - Menu bar (tray) item: the recording state, with elapsed time in the menu bar, plus Start/Stop, Record this meeting / Not now, Open qrtz and Quit. Shown on macOS and Windows; opt in on Linux with `QRTZ_TRAY=1`.
 - Semantic chat retrieval: an on-device MiniLM model (transformers.js, ~23 MB, downloaded once) runs in the worker. It's combined with full-text search by rank fusion. If the model can't load, retrieval falls back to full-text only. Packaged builds bundle transformers.js with native onnxruntime-node, trimmed to the target platform. Where no native binary exists (Intel Macs), they use an onnxruntime-web WASM fallback that produces identical vectors. `npm run smoke:packaged` checks both backends against the packaged binary.
+- Live notes (Granola-style): jot notes in the live HUD or in a meeting's Notes tab. Each is saved with its recording timestamp. The AI summary is built around your notes plus the transcript; the on-device fallback leads with "Your notes: …" and turns TODO notes into action items. Notes are included in the Markdown export.
+- Summary templates: General, 1:1, Standup, Sales call and Interview. Set a default in Settings, change it per meeting from the Summary tab (which re-runs the summary), and the choice is stored with the meeting. Re-run is available any time.
+- Backup and restore: Settings → Backup exports one zip with a consistent DB snapshot, all recordings and a sha256 manifest. Import verifies every hash, SQLite integrity and the schema version, then merges meetings that aren't already present (it never overwrites). Tampered or foreign zips are rejected.
+- Privacy:
+  - Pause capture: a HUD button or a global shortcut (default ⌘⇧P, configurable). While paused, the helper writes silence so the audio stays aligned and transcribes nothing.
+  - Excluded apps or platforms are never detected or prompted.
+  - "Never send audio or transcripts to the cloud" forces local-only: on-device summaries and chat (Ollama allowed); cloud keys aren't read.
 - Calendar-free auto-start: a detected Zoom or Meet call shows a "Record?" prompt in the app, plus an OS notification when qrtz isn't focused. "Always record" (also in Settings) starts recording with no prompt.
 - Speaker rename and merge in meeting detail.
 - Hundreds of meetings: the Memo list pages 100 at a time ("Show 100 more"), and so do search results. Crash recovery finds stuck meetings at any age.
 - OpenRouter path: proven end to end against a local OpenAI-compatible stub server (`apps/desktop/src/worker/llm-openrouter.test.ts` and `e2e/states.spec.ts`), without a key.
 - Accessibility: no serious or critical axe violations (WCAG 2.1 AA) on Home, Memo, Gallery, Settings or the palette. Transcript rows can be operated by keyboard.
-- Swift helper core (protocol, DSP, echo pipeline with the LocalVQE → gate fallback): 28 tests pass on Linux.
+- Swift helper core (protocol, DSP, echo pipeline with the LocalVQE → gate fallback): 29 tests pass on Linux.
 - Meeting scrapers (participants, active speaker, self name, captions) are tested against 11 synthetic AX-tree fixtures (`native/qrtz-helper/Tests/QrtzHelperCoreTests/Fixtures/ax`):
   - Zoom app: gallery and speaker views, with and without captions.
   - Zoom web.

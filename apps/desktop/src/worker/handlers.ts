@@ -1,5 +1,7 @@
 import fs from 'node:fs';
-import type { DatabaseSync } from 'node:sqlite';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
 import {
   AppError,
   MemoRepo,
@@ -26,6 +28,8 @@ import {
   type MeetingSummary,
   type ProviderId,
   type Segment,
+  type MeetingNote,
+  getSchemaVersion,
 } from '@qrtz/core';
 import { dbHealth } from './db';
 import { repairWav } from './wav-repair';
@@ -96,6 +100,27 @@ export function createWorkerHandlers(
     }
     return done;
   };
+  const summarize = (
+    m: MeetingRow,
+    segments: Segment[],
+    llm: LlmParams,
+    errMsg: string,
+  ) =>
+    summarizeMeeting(
+      m.title,
+      segments,
+      createProvider(llm.provider, {
+        fetch: deps.fetch,
+        ...(llm.apiKey ? { apiKey: llm.apiKey } : {}),
+        ...(llm.model ? { model: llm.model } : {}),
+        ...(llm.baseUrl ? { baseUrl: llm.baseUrl } : {}),
+      }),
+      (e) => deps.log?.(errMsg, { err: String(e) }),
+      {
+        notes: repo.getNotes(m.id),
+        ...(m.template ? { template: m.template } : {}),
+      },
+    );
   const need = (id: string) => {
     const m = repo.getMeeting(id);
     if (!m) throw new AppError('E_NOT_FOUND', `meeting ${id} not found`);
@@ -105,6 +130,8 @@ export function createWorkerHandlers(
     'db.health': () => dbHealth(db),
     'memo.create': (p: { meeting: MeetingRow }) => {
       repo.upsertMeeting(p.meeting);
+      if (p.meeting.template)
+        repo.setTemplate(p.meeting.id, p.meeting.template);
       return { ok: true };
     },
     'memo.appendLive': (p: { meetingId: string; segment: Segment }) => {
@@ -131,14 +158,11 @@ export function createWorkerHandlers(
         durationMs,
       );
       repo.replaceSegments(p.meetingId, 'live', segments);
-      const provider = createProvider(p.llm.provider, {
-        fetch: deps.fetch,
-        ...(p.llm.apiKey ? { apiKey: p.llm.apiKey } : {}),
-        ...(p.llm.model ? { model: p.llm.model } : {}),
-        ...(p.llm.baseUrl ? { baseUrl: p.llm.baseUrl } : {}),
-      });
-      const summary = await summarizeMeeting(m.title, segments, provider, (e) =>
-        deps.log?.('llm failed; using extractive fallback', { err: String(e) }),
+      const summary = await summarize(
+        m,
+        segments,
+        p.llm,
+        'llm failed; using extractive fallback',
       );
       repo.saveSummary(p.meetingId, summary);
       repo.setStatus(p.meetingId, 'done');
@@ -169,20 +193,11 @@ export function createWorkerHandlers(
             endedAt: m.endedAt ?? m.startedAt + durationMs,
             status: 'processing',
           });
-          const provider = createProvider(p.llm.provider, {
-            fetch: deps.fetch,
-            ...(p.llm.apiKey ? { apiKey: p.llm.apiKey } : {}),
-            ...(p.llm.model ? { model: p.llm.model } : {}),
-            ...(p.llm.baseUrl ? { baseUrl: p.llm.baseUrl } : {}),
-          });
-          const summary = await summarizeMeeting(
-            m.title,
+          const summary = await summarize(
+            m,
             segments,
-            provider,
-            (e) =>
-              deps.log?.('llm failed; using extractive fallback', {
-                err: String(e),
-              }),
+            p.llm,
+            'llm failed; using extractive fallback',
           );
           repo.saveSummary(m.id, summary);
           repo.setStatus(m.id, 'done');
@@ -296,6 +311,7 @@ export function createWorkerHandlers(
         meeting,
         segments: repo.getSegments(p.id),
         ...(summary ? { summary } : {}),
+        notes: repo.getNotes(p.id),
       };
     },
     'memo.export': (p: { id: string }) => {
@@ -306,6 +322,7 @@ export function createWorkerHandlers(
           meeting,
           repo.getSegments(p.id),
           repo.getSummary(p.id),
+          repo.getNotes(p.id),
         ),
       };
     },
@@ -313,22 +330,114 @@ export function createWorkerHandlers(
     'memo.resummarize': async (p: {
       id: string;
       llm: LlmParams;
+      template?: string;
     }): Promise<MeetingSummary> => {
       const m = need(p.id);
-      const provider = createProvider(p.llm.provider, {
-        fetch: deps.fetch,
-        ...(p.llm.apiKey ? { apiKey: p.llm.apiKey } : {}),
-        ...(p.llm.model ? { model: p.llm.model } : {}),
-        ...(p.llm.baseUrl ? { baseUrl: p.llm.baseUrl } : {}),
-      });
-      const summary = await summarizeMeeting(
-        m.title,
+      if (p.template) {
+        repo.setTemplate(p.id, p.template);
+        m.template = p.template;
+      }
+      const summary = await summarize(
+        m,
         repo.getSegments(p.id),
-        provider,
-        (e) => deps.log?.('llm retry failed', { err: String(e) }),
+        p.llm,
+        'llm retry failed',
       );
       repo.saveSummary(p.id, summary);
       return summary;
+    },
+    'memo.listNotes': (p: { meetingId: string }) => repo.getNotes(p.meetingId),
+    'memo.addNote': (p: { meetingId: string; text: string; atMs: number }) => {
+      need(p.meetingId);
+      const note: MeetingNote = {
+        id: randomUUID(),
+        atMs: Math.max(0, Math.round(p.atMs)),
+        text: p.text,
+        createdAt: Date.now(),
+      };
+      repo.addNote(p.meetingId, note);
+      return { ...note, meetingId: p.meetingId };
+    },
+    'memo.updateNote': (p: { id: string; text: string }) => ({
+      ok: repo.updateNote(p.id, p.text),
+    }),
+    'memo.deleteNote': (p: { id: string }) => ({ ok: repo.deleteNote(p.id) }),
+    /** Consistent online snapshot of the whole DB (for backups). */
+    'data.snapshot': (p: { path: string }) => {
+      fs.rmSync(p.path, { force: true });
+      db.prepare('VACUUM INTO ?').run(p.path);
+      return {
+        meetings: Number(
+          (
+            db.prepare('SELECT count(*) AS n FROM meetings').get() as {
+              n: number;
+            }
+          ).n,
+        ),
+      };
+    },
+    /**
+     * Merges a verified backup DB: meetings whose id isn't present are copied with their transcript, summary
+     * and notes. Audio paths are rewritten through `audioMap` (backup file name → restored path).
+     */
+    'data.importDb': (p: {
+      path: string;
+      audioMap: Record<string, string>;
+    }) => {
+      const src = new DatabaseSync(p.path, { readOnly: true });
+      try {
+        const ok = (
+          src.prepare('PRAGMA integrity_check').get() as {
+            integrity_check: string;
+          }
+        ).integrity_check;
+        if (ok !== 'ok')
+          throw new AppError(
+            'E_VALIDATION',
+            `backup database is corrupt: ${ok}`,
+          );
+        const v = getSchemaVersion(src);
+        if (v > getSchemaVersion(db))
+          throw new AppError(
+            'E_VALIDATION',
+            `backup is from a newer qrtz (schema ${v})`,
+          );
+        const srcRepo = new MemoRepo(src);
+        let imported = 0;
+        let skipped = 0;
+        const hasNotes = v >= 4;
+        for (const m of srcRepo.listMeetings(1_000_000)) {
+          if (repo.getMeeting(m.id)) {
+            skipped++;
+            continue;
+          }
+          const audio = m.audioPath
+            ? p.audioMap[path.basename(m.audioPath)]
+            : undefined;
+          const { audioPath: _a, ...rest } = m;
+          {
+            // (replaceSegments/saveSummary open their own transactions; SQLite has no nested BEGIN.)
+            repo.upsertMeeting({
+              ...rest,
+              ...(audio ? { audioPath: audio } : {}),
+            });
+            if (m.template) repo.setTemplate(m.id, m.template);
+            const segs = srcRepo.getSegments(m.id);
+            for (const kind of ['live', 'post'] as const) {
+              const part = segs.filter((x) => x.source === kind);
+              if (part.length) repo.replaceSegments(m.id, kind, part);
+            }
+            const sum = srcRepo.getSummary(m.id);
+            if (sum) repo.saveSummary(m.id, sum);
+            if (hasNotes)
+              for (const n of srcRepo.getNotes(m.id)) repo.addNote(m.id, n);
+          }
+          imported++;
+        }
+        return { imported, skipped };
+      } finally {
+        src.close();
+      }
     },
     /**
      * Grounded chat. With `meetingId`: retrieval over that meeting's transcript; otherwise FTS retrieval across all

@@ -129,7 +129,7 @@ describe('LLM layer', () => {
     };
     const p = createProvider('openai', { fetch: f, apiKey: 'sk-test' })!;
     const s = await summarizeMeeting('t', fused(), p);
-    expect(s).toEqual({ ...reply, provider: 'openai' });
+    expect(s).toEqual({ ...reply, provider: 'openai', template: 'general' });
     expect(calls[0]!.url).toBe('https://api.openai.com/v1/chat/completions');
     expect(calls[0]!.headers.authorization).toBe('Bearer sk-test');
   });

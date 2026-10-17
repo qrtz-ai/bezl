@@ -334,3 +334,31 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
 ### Next
 
 - Mac: record real AX dumps, run the signed release, verify real calls.
+
+## 2026-10-16 ~18:53–19:25 PT: iteration 13 (live notes, templates, backup, privacy)
+
+- Migration 4 (`notes_templates`) adds the `notes` table (`at_ms` = recording offset) and `meetings.template`.
+- Live notes:
+  - `Notes.tsx` is used in the live HUD (compact) and the meeting detail's Notes tab: add with Enter, click to edit, empty to delete.
+  - `memo:add-note` without a meetingId targets the recording and is stamped by main.
+  - `summarizeMeeting(..., { notes, template })`: the LLM prompt includes "My notes" plus merge instructions. The extractive fallback leads with "Your notes: …", boosts note words, and turns TODO / `[ ]` notes into action items. The Markdown export has a "My notes" section.
+- Templates: `templates.ts` has General, 1:1, Standup, Sales call and Interview, each with LLM guidance and extractive focus words. Settings has a default; the detail view has a select (`memo:set-template` stores and re-runs) and Re-run. Summaries record the template they used.
+- Backup: `main/backup.ts` (adm-zip) writes a zip of a `VACUUM INTO` snapshot, the recordings and `manifest.json` (sha256 and size per file).
+  - Import rejects anything not listed, unsafe names, hash/size mismatches and corrupt entries.
+  - The worker's `data.importDb` runs `PRAGMA integrity_check` and a schema-version check, then merges meetings that aren't present (transcript, summary, notes, template; audio paths remapped).
+  - e2e: export, import into a fresh profile, re-import skips duplicates, a tampered zip is rejected.
+- Privacy:
+  - `config.privacy { localOnly, excludedApps, pauseHotkey }`. `effectiveLlmProvider` forces `none` for cloud providers in local-only mode (Ollama stays allowed); `isExcludedApp` filters detection.
+  - New helper protocol messages `recording.pause` / `recording.resume`, implemented in Swift (silence written, recogniser not fed; test added), the TS mock and the golden fixtures. Main also drops in-flight ASR while paused.
+  - The global pause shortcut is re-bound when the setting changes. There's a HUD Pause/Resume button.
+- Tests: unit (notes, templates, prompt, import merge, zip integrity, privacy helpers) and e2e (`e2e/notes-privacy.spec.ts`, 3 tests).
+
+### Side work
+
+- Backups are built in memory (adm-zip), which is fine for typical libraries. Multi-GB audio libraries should move to streaming (yazl/yauzl).
+- The floating mini HUD (56 px) has no notes field; notes live in the in-app HUD and the meeting detail. A future option is expanding the mini HUD on click.
+- The pause hotkey can't be pressed under xvfb, so the e2e covers the HUD button and saving the setting. The Swift test covers helper behavior.
+
+### Next
+
+- Mac verification of pause with real capture, and a streaming backup for large libraries.

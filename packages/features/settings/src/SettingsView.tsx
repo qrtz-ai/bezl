@@ -12,6 +12,7 @@ import {
 } from '@qrtz/ui';
 import {
   PROVIDER_DEFAULTS,
+  SUMMARY_TEMPLATES,
   type IpcResponse,
   type ProviderId,
 } from '@qrtz/core';
@@ -65,6 +66,47 @@ export default function SettingsView() {
     llmModel?: string;
     retainAudioDays?: number;
     autoRecord?: boolean;
+    defaultTemplate?: string;
+  };
+  const privacy = (cfg?.privacy ?? {}) as {
+    localOnly?: boolean;
+    excludedApps?: string[];
+    pauseHotkey?: string;
+  };
+  const [backupMsg, setBackupMsg] = useState<string | null>(null);
+  const [backupBusy, setBackupBusy] = useState(false);
+  const patchPrivacy = (p: Record<string, unknown>) => {
+    // Optimistic so the checkbox reflects the click immediately.
+    setCfg((prev) =>
+      prev ? { ...prev, privacy: { ...(prev.privacy as object), ...p } } : prev,
+    );
+    return qrtz
+      .invoke('config:set', { patch: { privacy: p } })
+      .then(setCfg)
+      .catch((e: Error) => setError(e.message));
+  };
+  const backup = (kind: 'export' | 'import') => {
+    setBackupBusy(true);
+    setBackupMsg(null);
+    const run =
+      kind === 'export'
+        ? qrtz
+            .invoke('data:export-backup', {})
+            .then((r) =>
+              r.savedTo
+                ? `Backed up ${r.meetings} meetings and ${r.audioFiles} recordings (${(r.bytes / 1e6).toFixed(1)} MB) to ${r.savedTo}.`
+                : 'Backup canceled.',
+            )
+        : qrtz
+            .invoke('data:import-backup', {})
+            .then((r) =>
+              r.canceled
+                ? 'Import canceled.'
+                : `Verified and imported ${r.imported} meetings (${r.skipped} already here, ${r.audioFiles} recordings).`,
+            );
+    void run
+      .then(setBackupMsg, (e: Error) => setBackupMsg(e.message))
+      .finally(() => setBackupBusy(false));
   };
   const provider = memoCfg.llmProvider ?? 'openrouter';
   const secretName =
@@ -132,6 +174,117 @@ export default function SettingsView() {
             <option value="90">90 days</option>
           </Select>
         </Field>
+        <Field
+          label="Default summary template"
+          hint="Change it per meeting in the meeting's Summary tab."
+        >
+          <Select
+            value={memoCfg.defaultTemplate ?? 'general'}
+            onChange={(e) => void patch({ defaultTemplate: e.target.value })}
+            data-testid="default-template"
+          >
+            {SUMMARY_TEMPLATES.map((tp) => (
+              <option key={tp.id} value={tp.id}>
+                {tp.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </Card>
+      <Card
+        padding={4}
+        style={{ display: 'grid', gap: 12 }}
+        data-testid="privacy-card"
+      >
+        <Text weight={600}>Privacy</Text>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <input
+            type="checkbox"
+            checked={!!privacy.localOnly}
+            onChange={(e) => void patchPrivacy({ localOnly: e.target.checked })}
+            data-testid="local-only"
+          />
+          <span>
+            <Text>Never send audio or transcripts to the cloud</Text>
+            <br />
+            <Text size="sm" muted>
+              Summaries and chat use the on-device summarizer (or Ollama on this
+              Mac). Cloud API keys are not used while this is on.
+            </Text>
+          </span>
+        </label>
+        {privacy.localOnly ? (
+          <Badge tone="success">
+            <span data-testid="local-only-badge">Local-only mode</span>
+          </Badge>
+        ) : null}
+        <Field
+          label="Never record meetings in"
+          hint="Comma-separated apps or platforms, e.g. Safari, zoom, google-meet."
+        >
+          <Input
+            key={(privacy.excludedApps ?? []).join(',')}
+            defaultValue={(privacy.excludedApps ?? []).join(', ')}
+            placeholder="None"
+            data-testid="excluded-apps"
+            onBlur={(e) =>
+              void patchPrivacy({
+                excludedApps: e.target.value
+                  .split(',')
+                  .map((x) => x.trim())
+                  .filter(Boolean),
+              })
+            }
+          />
+        </Field>
+        <Field
+          label="Pause capture shortcut"
+          hint="Global shortcut that pauses and resumes capture while recording. Leave empty to turn off."
+        >
+          <Input
+            key={privacy.pauseHotkey ?? ''}
+            defaultValue={privacy.pauseHotkey ?? 'CommandOrControl+Shift+P'}
+            data-testid="pause-hotkey"
+            onBlur={(e) =>
+              void patchPrivacy({ pauseHotkey: e.target.value.trim() })
+            }
+          />
+        </Field>
+      </Card>
+      <Card
+        padding={4}
+        style={{ display: 'grid', gap: 12 }}
+        data-testid="backup-card"
+      >
+        <Text weight={600}>Backup</Text>
+        <Text muted size="sm">
+          Export everything (database and recordings) to one zip with integrity
+          checksums. Importing verifies the zip and adds meetings that
+          aren&apos;t already here; nothing is overwritten.
+        </Text>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button
+            variant="secondary"
+            disabled={backupBusy}
+            onClick={() => backup('export')}
+            data-testid="backup-export"
+          >
+            Export backup…
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={backupBusy}
+            onClick={() => backup('import')}
+            data-testid="backup-import"
+          >
+            Import backup…
+          </Button>
+        </div>
+        {backupMsg ? (
+          <Text size="sm" muted data-testid="backup-result" role="status">
+            {backupMsg}
+          </Text>
+        ) : null}
       </Card>
       <Card padding={4} style={{ display: 'grid', gap: 12 }}>
         <Text weight={600}>AI summaries</Text>

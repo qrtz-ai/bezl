@@ -39,3 +39,10 @@ Status as of M0 (2026-10-16). Items marked ☐ are tracked in PLAN.md.
 - ☑ Crash reporting is local only (`uploadToServer: false`). The `CrashSink` hook is there for opt-in remote reporting.
 - ☐ Sign and notarize with the hardened runtime. Entitlements: `com.apple.security.device.audio-input` and screen capture usage strings (M4.7/M5.3). Wired: see docs/release.md and scripts/release-mac.sh; needs a Developer ID.
 - ☐ Sign the helper binary with the same Team ID. The app verifies the helper's code signature before spawning it (M4.7).
+
+## Privacy controls (iteration 13)
+
+- **Local-only** (`privacy.localOnly`): `effectiveLlmProvider` maps every cloud provider to `none` before main reads any key, so summaries and chat stay on-device. Ollama on localhost stays allowed. Checked by e2e against a stub that must receive zero requests.
+- **Pause** (`recording.pause` / `recording.resume`): the helper writes silence and doesn't feed the recogniser; main also drops in-flight ASR.
+- **Excluded apps**: detection events from listed apps or platforms are dropped in main (logged without the title).
+- **Backups**: entries are restricted to `db/qrtz.db` and `audio/<safe name>.wav`. Every byte is sha256-verified before anything is written. The imported DB is integrity-checked and schema-checked, then merged without overwriting. `QRTZ_BACKUP_PATH` (which skips the dialogs, for tests) is stripped in packaged builds.

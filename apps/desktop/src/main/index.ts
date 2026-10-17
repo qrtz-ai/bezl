@@ -1,4 +1,5 @@
 import { initAutoUpdates } from './updates';
+import { readBackup, writeBackup } from './backup';
 import { createTray } from './tray';
 import {
   app,
@@ -52,6 +53,7 @@ const DEV_ONLY_ENV = [
   'QRTZ_SIMULATE_MISSING_HELPER',
   'QRTZ_MOCK_CRASH_AFTER_MS',
   'QRTZ_MOCK_SCENARIO',
+  'QRTZ_BACKUP_PATH',
 ];
 
 export function bootstrap() {
@@ -226,6 +228,110 @@ export function bootstrap() {
         return { ...ex, ...(target ? { savedTo: target } : {}) };
       },
       'helper:status': () => helper.status,
+      'memo:add-note': async (req) => {
+        const n = await memo.addNote(req);
+        bus.emit('memo:changed', { id: n.meetingId });
+        return n;
+      },
+      'memo:update-note': (req) => worker.call('memo.updateNote', req),
+      'memo:delete-note': (req) => worker.call('memo.deleteNote', req),
+      'memo:list-notes': async ({ meetingId }) => {
+        const id = meetingId ?? memo.view().meetingId;
+        return id ? worker.call('memo.listNotes', { meetingId: id }) : [];
+      },
+      'memo:set-template': async ({ id, template }) => {
+        const r = await memo.setTemplate(id, template);
+        bus.emit('memo:changed', { id });
+        return r;
+      },
+      'memo:pause': ({ paused }) => memo.pause(paused),
+      'data:export-backup': async () => {
+        let target = process.env.QRTZ_BACKUP_PATH;
+        if (!target) {
+          const stamp = new Date()
+            .toISOString()
+            .slice(0, 16)
+            .replace(/[:T]/g, '-');
+          const r = await dialog.showSaveDialog({
+            defaultPath: path.join(
+              app.getPath('documents'),
+              `qrtz-backup-${stamp}.zip`,
+            ),
+            filters: [{ name: 'qrtz backup', extensions: ['zip'] }],
+          });
+          if (r.canceled || !r.filePath)
+            return { meetings: 0, audioFiles: 0, bytes: 0 };
+          target = r.filePath;
+        }
+        const snap = path.join(
+          app.getPath('temp'),
+          `qrtz-snapshot-${process.pid}.db`,
+        );
+        try {
+          const { meetings } = await worker.call('data.snapshot', {
+            path: snap,
+          });
+          const health = await worker.call('db.health', undefined);
+          const audioFiles = fs.existsSync(recordingsDir)
+            ? fs
+                .readdirSync(recordingsDir)
+                .filter((f) => f.endsWith('.wav'))
+                .map((f) => path.join(recordingsDir, f))
+            : [];
+          const r = writeBackup({
+            target,
+            dbSnapshot: snap,
+            audioFiles,
+            appVersion: app.getVersion(),
+            schemaVersion: health.schemaVersion,
+            meetings,
+          });
+          log.info('backup written', {
+            meetings,
+            audio: r.audioFiles,
+            bytes: r.bytes,
+          });
+          return {
+            savedTo: target,
+            meetings,
+            audioFiles: r.audioFiles,
+            bytes: r.bytes,
+          };
+        } finally {
+          fs.rmSync(snap, { force: true });
+        }
+      },
+      'data:import-backup': async () => {
+        let source = process.env.QRTZ_BACKUP_PATH;
+        if (!source) {
+          const r = await dialog.showOpenDialog({
+            properties: ['openFile'],
+            filters: [{ name: 'qrtz backup', extensions: ['zip'] }],
+          });
+          if (r.canceled || !r.filePaths[0])
+            return { canceled: true, imported: 0, skipped: 0, audioFiles: 0 };
+          source = r.filePaths[0];
+        }
+        const workDir = fs.mkdtempSync(
+          path.join(app.getPath('temp'), 'qrtz-import-'),
+        );
+        try {
+          const { dbPath, audioMap } = readBackup({
+            source,
+            workDir,
+            audioDir: recordingsDir,
+          });
+          const r = await worker.call('data.importDb', {
+            path: dbPath,
+            audioMap,
+          });
+          log.info('backup imported', r);
+          bus.emit('memo:changed', { id: '*' });
+          return { ...r, audioFiles: Object.keys(audioMap).length };
+        } finally {
+          fs.rmSync(workDir, { recursive: true, force: true });
+        }
+      },
     },
   });
 
@@ -404,6 +510,29 @@ export function bootstrap() {
         .catch((e) => log.warn('shortcut toggle failed', { err: String(e) }));
     });
     if (!ok) log.warn('global shortcut CommandOrControl+Shift+R unavailable');
+    // Privacy: pause/resume capture from anywhere. Re-registered when the setting changes.
+    let pauseKey = '';
+    const bindPause = (key: string) => {
+      if (key === pauseKey) return;
+      if (pauseKey) globalShortcut.unregister(pauseKey);
+      pauseKey = '';
+      if (!key) return;
+      try {
+        const bound = globalShortcut.register(key, () => {
+          try {
+            memo.pause();
+          } catch {
+            /* not recording */
+          }
+        });
+        if (bound) pauseKey = key;
+        else log.warn('pause shortcut unavailable', { key });
+      } catch (e) {
+        log.warn('invalid pause shortcut', { key, err: String(e) });
+      }
+    };
+    bindPause(config.get().privacy.pauseHotkey);
+    config.onChange((c) => bindPause(c.privacy.pauseHotkey));
     app.on('will-quit', () => globalShortcut.unregisterAll());
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { OsPermission } from '../capabilities';
 import { Meeting, MeetingPlatform, Segment } from './types';
 import { MeetingSummary } from './summary';
+import { MeetingNote } from './notes';
 
 export const MeetingWithDuration = Meeting.extend({
   durationMs: z.number().optional(),
@@ -51,6 +52,8 @@ export const SessionView = z.object({
    */
   helper: z.enum(['ok', 'simulated', 'missing', 'down']).default('ok'),
   helperDetail: z.string().optional(),
+  /** Capture paused by the user (privacy hotkey): nothing is transcribed, audio is silence. */
+  paused: z.boolean().default(false),
 });
 export type SessionView = z.infer<typeof SessionView>;
 
@@ -80,5 +83,6 @@ export const MeetingDetail = z.object({
   meeting: MeetingWithDuration,
   segments: z.array(Segment),
   summary: MeetingSummary.optional(),
+  notes: z.array(MeetingNote).default([]),
 });
 export type MeetingDetail = z.infer<typeof MeetingDetail>;

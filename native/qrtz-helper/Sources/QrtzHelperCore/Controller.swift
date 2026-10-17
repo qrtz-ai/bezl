@@ -61,6 +61,7 @@ public actor HelperController {
     private var recording: Recording?
     private var tick: Task<Void, Never>?
     private var shuttingDown = false
+    public private(set) var paused = false
     nonisolated(unsafe) private var recordingStartMs: Double?
 
     final class Recording: @unchecked Sendable {
@@ -104,6 +105,8 @@ public actor HelperController {
             send(.permissionsStatus(deps.permissions.status()))
         case .recordingStart(let path): await startRecording(path)
         case .recordingStop: await stopRecording()
+        case .recordingPause: paused = true; send(.log(level: .info, msg: "capture paused"))
+        case .recordingResume: paused = false; send(.log(level: .info, msg: "capture resumed"))
         case .shutdown: await shutdown()
         }
     }
@@ -161,6 +164,8 @@ public actor HelperController {
 
     func onSamples(_ s: [Float]) async {
         guard let rec = recording, !s.isEmpty else { return }
+        // Paused: keep the WAV timeline aligned with wall-clock (silence) but capture and transcribe nothing.
+        let s = paused ? [Float](repeating: 0, count: s.count) : s
         do { try rec.wav.append(s) } catch { send(.error(code: "recording.write", message: "\(error)", fatal: false)) }
         rec.pendingLevel += s
         let t = now()
@@ -169,7 +174,7 @@ public actor HelperController {
             rec.pendingLevel.removeAll(keepingCapacity: true)
             rec.lastLevelMs = t
         }
-        await rec.transcriber?.append(s)
+        if !paused { await rec.transcriber?.append(s) }
     }
 
     func pollTranscript() async {
@@ -190,6 +195,7 @@ public actor HelperController {
             for e in rec.segmenter.flush(cumulative: text, nowMs: now() - rec.startMs) { send(.asr(e)) }
         }
         recording = nil
+        paused = false
         do { try rec.wav.finish() } catch { send(.error(code: "recording.file", message: "\(error)", fatal: false)) }
         send(.recordingStopped(audioPath: rec.wav.url.path, durationMs: rec.wav.durationMs))
         recordingStartMs = nil

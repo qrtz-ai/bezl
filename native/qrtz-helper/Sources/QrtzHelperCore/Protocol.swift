@@ -47,6 +47,9 @@ public enum HostMessage: Equatable, Sendable {
     case shutdown
     case recordingStart(audioPath: String)
     case recordingStop
+    /// Privacy pause: audio is replaced by silence (timeline stays aligned) and nothing reaches the recogniser.
+    case recordingPause
+    case recordingResume
 }
 
 // MARK: - Encoding helpers
@@ -195,6 +198,8 @@ extension HostMessage {
         case .shutdown: return .object(["type": s("shutdown")])
         case .recordingStart(let p): return .object(["type": s("recording.start"), "audioPath": s(p)])
         case .recordingStop: return .object(["type": s("recording.stop")])
+        case .recordingPause: return .object(["type": s("recording.pause")])
+        case .recordingResume: return .object(["type": s("recording.resume")])
         }
     }
 
@@ -207,6 +212,8 @@ extension HostMessage {
         case "shutdown": self = .shutdown
         case "recording.start": self = .recordingStart(audioPath: try f.str("audioPath"))
         case "recording.stop": self = .recordingStop
+        case "recording.pause": self = .recordingPause
+        case "recording.resume": self = .recordingResume
         case let t: throw ProtocolError("unknown host message type \(t)")
         }
     }

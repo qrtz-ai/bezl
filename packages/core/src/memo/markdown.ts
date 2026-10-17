@@ -1,5 +1,6 @@
 import type { Meeting, Segment } from './types';
 import type { MeetingSummary } from './summary';
+import { clockLabel, type MeetingNote } from './notes';
 
 export const fmtClock = (ms: number) => {
   const t = Math.max(0, Math.floor(ms / 1000));
@@ -42,6 +43,7 @@ export function meetingToMarkdown(
   m: Meeting & { durationMs?: number },
   segments: Segment[],
   summary?: MeetingSummary,
+  notes: MeetingNote[] = [],
 ): string {
   const out: string[] = [];
   out.push(`# ${esc(m.title)}`, '');
@@ -73,6 +75,11 @@ export function meetingToMarkdown(
           '',
         );
     }
+  }
+  if (notes.length) {
+    out.push('## My notes', '');
+    for (const n of notes) out.push(`- [${clockLabel(n.atMs)}] ${esc(n.text)}`);
+    out.push('');
   }
   out.push('## Transcript', '');
   for (const s of segments)

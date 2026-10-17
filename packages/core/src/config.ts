@@ -24,6 +24,23 @@ export const ConfigSchema = z.object({
       /** Show the floating always-on-top mini HUD while recording. */
       floatingHud: z.boolean().default(true),
       retainAudioDays: z.number().int().min(0).max(3650).default(0),
+      /** Summary template for new meetings (per-meeting override in meeting detail). */
+      defaultTemplate: z
+        .enum(['general', 'one-on-one', 'standup', 'sales', 'interview'])
+        .default('general'),
+    })
+    .prefault({}),
+  privacy: z
+    .object({
+      /** Never send audio, transcripts or notes to a cloud service: summaries/chat use the on-device fallback (or a local Ollama). */
+      localOnly: z.boolean().default(false),
+      /** Meetings detected in these apps/platforms (e.g. "Safari", "zoom", "google-meet") are ignored. */
+      excludedApps: z
+        .array(z.string().trim().min(1).max(80))
+        .max(50)
+        .default([]),
+      /** Global shortcut that pauses/resumes capture while recording (Electron accelerator; "" = none). */
+      pauseHotkey: z.string().max(60).default('CommandOrControl+Shift+P'),
     })
     .prefault({}),
 });

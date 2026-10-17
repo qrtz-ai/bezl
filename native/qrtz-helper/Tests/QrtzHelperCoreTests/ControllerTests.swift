@@ -59,4 +59,25 @@ final class ControllerTests: XCTestCase {
         let isRec = await c.isRecording
         XCTAssertFalse(isRec)
     }
+
+    func testPauseSendsNothingToRecogniserButKeepsTimeline() async throws {
+        let out = Box<[HelperMessage]>([])
+        let clock = Box<Double>(0)
+        let asr = FakeASR()
+        let c = HelperController(
+            deps: HelperDeps(permissions: FakePerms(), meetings: nil, audio: [FakeAudio("sck")], transcribers: [asr], helperVersion: "t", os: "linux", features: []),
+            send: { m in out.mutate { $0.append(m) } }, now: { clock.value })
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("qrtz-\(UUID()).wav").path
+        await c.handle(.recordingStart(audioPath: path))
+        await c.handle(.recordingPause)
+        await c.onSamples([Float](repeating: 0.2, count: 16_000))
+        XCTAssertEqual(asr.text, "")
+        await c.handle(.recordingResume)
+        await c.onSamples([Float](repeating: 0.2, count: 16_000))
+        XCTAssertEqual(asr.text, "Hello from the fake recogniser.")
+        clock.mutate { $0 += 2000 }
+        await c.handle(.recordingStop)
+        XCTAssertTrue(out.value.contains(.recordingStopped(audioPath: path, durationMs: 2000)))
+        XCTAssertEqual(try HostMessage(json: HostMessage.recordingPause.json), .recordingPause)
+    }
 }
