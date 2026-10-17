@@ -47,9 +47,25 @@ pub async fn index_vectors<E: DbExec>(
     meeting_id: Option<String>,
     stop: Option<&StopFn>,
 ) -> Result<u32, LifecycleError> {
+    index_vectors_paused(db, e, cap, meeting_id, stop, None).await
+}
+
+/// [`index_vectors`] that also returns early, before starting a batch, while `pause()` is true (the backfill's busy
+/// gate, N82). Unlike `stop`, a pause never drops a batch that was already embedded: it is saved.
+pub async fn index_vectors_paused<E: DbExec>(
+    db: &E,
+    e: &Arc<dyn Embedder>,
+    cap: u32,
+    meeting_id: Option<String>,
+    stop: Option<&StopFn>,
+    pause: Option<&crate::backfill::BusyFn>,
+) -> Result<u32, LifecycleError> {
     let mut done = 0u32;
     let mut seen = 0u32;
     while seen < cap {
+        if pause.is_some_and(|p| p()) {
+            break;
+        }
         let (model, m) = (e.id().to_string(), meeting_id.clone());
         let want = BATCH.min(cap - seen);
         let mut batch = db

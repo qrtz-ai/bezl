@@ -10,8 +10,8 @@ pub mod minilm;
 pub mod rank;
 pub mod retrieve;
 
-pub use backfill::{Backfill, PassReport, BACKFILL_PASS_LINES};
+pub use backfill::{Backfill, BusyFn, PassReport, BACKFILL_PASS_LINES, BUSY_POLL};
 pub use embedder::{blob_to_vec, dot, vec_to_blob, Embedder, EmbedderState, LazyEmbedder};
-pub use index::{index_vectors, SearchSteps, INDEX_DEADLINE_MS};
+pub use index::{index_vectors, index_vectors_paused, SearchSteps, INDEX_DEADLINE_MS};
 pub use rank::{hybrid_rank, query_terms, rank_sources, ChatSource, VecSource};
 pub use retrieve::{retrieve, Retrieval};
