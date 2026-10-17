@@ -46,7 +46,11 @@ fn words(s: &str) -> usize {
 
 #[test]
 fn the_stop_wait_covers_the_tail_and_flush_and_scales_with_the_dictation() {
-    let t = Timeouts::default();
+    // The scaled part on its own (N130 adds the helper's worst case on top: tests/hardening27.rs).
+    let t = Timeouts {
+        helper_tail: None,
+        ..Timeouts::default()
+    };
     // Tail (~250 ms) + at least 1.5 s of flush, for any dictation.
     assert!(t.stopped >= 1750, "{}", t.stopped);
     assert_eq!(t.stopped_for(0.0), t.stopped);
@@ -159,6 +163,7 @@ fn short_wait() -> Timeouts {
         stopped: 500,
         stopped_per_audio_s: 0,
         stopped_max: 500,
+        helper_tail: None,
         ..Timeouts::default()
     }
 }

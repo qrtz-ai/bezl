@@ -493,6 +493,7 @@ impl Default for RigOpts {
                 stopped: 500,
                 stopped_per_audio_s: 0,
                 stopped_max: 500,
+                helper_tail: None,
                 insert: 300,
                 final_ms: 300,
             },

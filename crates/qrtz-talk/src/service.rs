@@ -109,8 +109,13 @@ pub struct Timeouts {
     /// Extra `dictation.stop` → `dictation.stopped` time per second of dictated audio (a recogniser that fell behind
     /// real time has that much backlog to work through before its final).
     pub stopped_per_audio_s: u64,
-    /// Cap of [`Timeouts::stopped_for`] (a helper that never answers still ends the dictation).
+    /// Cap of the scaled wait (a helper that never answers still ends the dictation). Never below the helper's own
+    /// worst case when `helper_tail` is set (N130).
     pub stopped_max: u64,
+    /// N130 (ADR 0084): the helper's release path (`DictationTail` in `QrtzHelperCore/Dictation.swift`). The helper
+    /// owns the stop deadline (it knows its backlog) and always answers inside it, with its own last partial at
+    /// worst; talk never gives up first. `None`: the scaled wait alone (test rigs with a mock helper).
+    pub helper_tail: Option<HelperTail>,
     /// `insert.text` → `insert.result`.
     pub insert: u64,
     /// On-device flush → its last finals.
@@ -123,6 +128,7 @@ impl Default for Timeouts {
             stopped: 3000,
             stopped_per_audio_s: 100,
             stopped_max: 20_000,
+            helper_tail: Some(HelperTail::default()),
             insert: 2500,
             final_ms: 1500,
         }
@@ -142,7 +148,78 @@ impl Timeouts {
         let scaled = self
             .stopped
             .saturating_add(secs.saturating_mul(self.stopped_per_audio_s));
-        scaled.min(self.stopped_max.max(self.stopped))
+        let scaled = scaled.min(self.stopped_max.max(self.stopped));
+        // N130: never shorter than the helper's own worst case for this dictation.
+        match &self.helper_tail {
+            Some(t) => scaled.max(t.host_wait_ms(audio_ms)),
+            None => scaled,
+        }
+    }
+}
+
+/// N130 (ADR 0084): the helper's `DictationTail` defaults and formulas (`QrtzHelperCore/Dictation.swift`; held equal
+/// by `tests/hardening27.rs`, which reads the Swift source). After `dictation.stop` the helper keeps capturing
+/// `tail_ms`, drains the mic blocks still queued (`drain_timeout_ms` + 2 ms per ms queued), pads `pad_ms` of
+/// silence, then waits for the recogniser's final (`finalize_timeout_ms` + 100 ms per second of audio + 1 ms per
+/// ms queued), drain + finalize within `max_wait_ms` (finalize never below its floor). What is queued at the release
+/// is at most the audio captured, so the host takes queued = audio: its bound is the helper's worst case for that
+/// dictation, not a guess that a backlogged recogniser outlasts (which pasted the last partial: the cut-off tail).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HelperTail {
+    pub tail_ms: u64,
+    pub drain_timeout_ms: u64,
+    pub pad_ms: u64,
+    pub finalize_timeout_ms: u64,
+    pub max_wait_ms: u64,
+    /// Host-side slack on top: the pad's own append on a slow recogniser, the line's trip and scheduling.
+    pub slack_ms: u64,
+}
+
+impl Default for HelperTail {
+    fn default() -> Self {
+        HelperTail {
+            tail_ms: 250,
+            drain_timeout_ms: 300,
+            pad_ms: 640,
+            finalize_timeout_ms: 1500,
+            max_wait_ms: 20_000,
+            slack_ms: 1500,
+        }
+    }
+}
+
+impl HelperTail {
+    /// `DictationTail.drainLimitMs(queuedMs:)`.
+    pub fn drain_limit_ms(&self, queued_ms: u64) -> u64 {
+        self.max_wait_ms
+            .min(self.drain_timeout_ms.saturating_add(queued_ms.saturating_mul(2)))
+    }
+    /// `DictationTail.finalizeLimitMs(audioMs:queuedMs:)`.
+    pub fn finalize_limit_ms(&self, audio_ms: u64, queued_ms: u64) -> u64 {
+        let want = self
+            .finalize_timeout_ms
+            .saturating_add(audio_ms / 10)
+            .saturating_add(queued_ms);
+        let left = self.max_wait_ms.saturating_sub(self.drain_limit_ms(queued_ms));
+        want.min(self.finalize_timeout_ms.max(left))
+    }
+    /// `DictationTail.budgetMs(audioMs:queuedMs:)`: release to `dictation.stopped` at most, as the helper counts it.
+    pub fn budget_ms(&self, audio_ms: u64, queued_ms: u64) -> u64 {
+        self.tail_ms
+            .saturating_add(self.drain_limit_ms(queued_ms))
+            .saturating_add(self.finalize_limit_ms(audio_ms, queued_ms))
+    }
+    /// The host's wait for a dictation of `audio_ms`: the helper's budget with everything still queued, plus the
+    /// pad and `slack_ms`.
+    pub fn host_wait_ms(&self, audio_ms: f64) -> u64 {
+        let a = if audio_ms.is_finite() {
+            audio_ms.max(0.0).ceil() as u64
+        } else {
+            0
+        };
+        self.budget_ms(a, a)
+            .saturating_add(self.pad_ms)
+            .saturating_add(self.slack_ms)
     }
 }
 
