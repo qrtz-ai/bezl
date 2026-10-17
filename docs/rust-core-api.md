@@ -595,7 +595,7 @@ channel handler is a one-liner onto these crates:
 | `data:import-backup`                        | unzip/verify (shell) + `db.import_from(path, audio_map)`                                                                                                                                                                       | `note:changed {id:"*"}`                                                        |
 | _global shortcut / tray toggle_             | `runtime.toggle()`                                                                                                                                                                                                             | as start/stop                                                                  |
 
-**Not in these crates:** `note:chat` (qrtz-llm/search), `note:set-auto-record` / `config:*` / `secrets:*` /
+**Not in these crates (IPC wiring is qrtz-app):** `note:chat` answer is `qrtz_llm::chat` / retrieval `qrtz_search::retrieve`; app still stubs until wired. `note:set-auto-record` / `config:*` / `secrets:*` /
 `app:get-info` / `helper:status` / `hud:set-expanded` (shell), and the `talk:*` channels (talk worker; its
 contract isn't on `main` yet).
 
@@ -872,6 +872,23 @@ let steps = Arc::new(qrtz_llm::LlmSteps::new(
 - Parity: `spec/vectors/llm/*.json` (prompt and exact request body, reply classification, reply parser, extractive),
   written by `packages/core/src/note/llm.vectors.test.ts` and read by `crates/qrtz-llm/tests/*.rs`, plus a mock HTTP
   server (`tests/common`).
+
+### Chat answer (N89, ADR 0059)
+
+Retrieval stays in qrtz-search. The answer half:
+
+```rust
+let r = qrtz_search::retrieve(&storage, &embedder, &question, meeting_id).await?;
+let sources = r.ranked.unwrap_or_else(|| qrtz_search::rank_sources(&question, &r.candidates, 24));
+let answer = llm_steps.answer_chat(&question, &sources, &history).await;
+// ChatAnswer { answer, sources, provider, llm_error? } — serde camelCase
+```
+
+Or without `LlmSteps`: `qrtz_llm::answer_question(&q, &sources, provider.as_deref(), &history, deadline)`.
+Prompt: `build_chat_prompt` (N69 `<excerpts-NONCE>` fence, N85 tag sanitizer). Deadline = `CHAT_DEADLINE_MS`
+(110 s). No provider / error / timeout → extractive top-3 quotes with `llmError`. Parity:
+`spec/vectors/llm/chat-prompts.json`.
+
 
 ## 9. `qrtz-backup`: Markdown export and backup zip (phase 3, done)
 
