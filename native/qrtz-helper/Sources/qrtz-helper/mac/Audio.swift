@@ -88,6 +88,11 @@ final class CoreAudioTapSource: AudioSource, @unchecked Sendable {
     }
 
     func start(onBlock: @escaping @Sendable (CaptureBlock) -> Void) async throws {
+        try await start(onBlock: onBlock, onDegraded: { _, _ in })
+    }
+
+    func start(onBlock: @escaping @Sendable (CaptureBlock) -> Void,
+               onDegraded: @escaping @Sendable (RevocationDegradation, String) -> Void) async throws {
         let desc = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
         desc.uuid = UUID()
         desc.muteBehavior = .unmuted
@@ -128,7 +133,8 @@ final class CoreAudioTapSource: AudioSource, @unchecked Sendable {
         do {
             try mic.start(onSamples: { [queue] s in queue.async { for b in aligner.pushMic(s) { onBlock(b) } } })
         } catch {
-            logErr("mic unavailable, recording system audio only: \(error)")
+            // N35: the source keeps recording system audio; the controller sends capture.degraded{no-mic}.
+            onDegraded(.noMic, "mic unavailable, recording system audio only: \(error)")
         }
     }
 
@@ -184,6 +190,11 @@ final class ScreenCaptureKitSource: NSObject, AudioSource, SCStreamOutput, SCStr
     private var onBlock: (@Sendable (CaptureBlock) -> Void)?
 
     func start(onBlock: @escaping @Sendable (CaptureBlock) -> Void) async throws {
+        try await start(onBlock: onBlock, onDegraded: { _, _ in })
+    }
+
+    func start(onBlock: @escaping @Sendable (CaptureBlock) -> Void,
+               onDegraded: @escaping @Sendable (RevocationDegradation, String) -> Void) async throws {
         self.onBlock = onBlock
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         guard let display = content.displays.first else { throw AudioError("no display for ScreenCaptureKit") }
@@ -205,7 +216,8 @@ final class ScreenCaptureKitSource: NSObject, AudioSource, SCStreamOutput, SCStr
         do {
             try mic.start(onSamples: { [queue] x in queue.async { for b in aligner.pushMic(x) { onBlock(b) } } })
         } catch {
-            logErr("mic unavailable, recording system audio only: \(error)")
+            // N35: the source keeps recording system audio; the controller sends capture.degraded{no-mic}.
+            onDegraded(.noMic, "mic unavailable, recording system audio only: \(error)")
         }
     }
 

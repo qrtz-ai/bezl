@@ -204,6 +204,11 @@ the rest and says so, instead of only a stderr line:
 - **`no-mic` counts as a lost mic, like a revoke:** it closes any open mic silence stretch (N29) and the mic counts
   as not delivering for `noAudio`, so the system channel going silent afterwards is "no audio". A later
   `capture.silent{mic}` (or `capture.audible{mic}`) is ignored.
+- Helper: a source reports through `AudioSource.start(onBlock:onDegraded:)` (`CoreAudioTapSource` and
+  `ScreenCaptureKitSource` when their mic start throws; this used to be a stderr-only line). The controller holds
+  reports made during `start` and sends them after `recording.started`; it sends each flag once per recording, only
+  while it is recording (nothing after its stop or abort), and drops the reports of a source that then failed to
+  start (its `capture.fallback` covers it).
 - `capture.fallback` does not fit this: on the host, its `to: null` means no source is left (`audio-unavailable`).
 
 ## Permission revocation (H5)

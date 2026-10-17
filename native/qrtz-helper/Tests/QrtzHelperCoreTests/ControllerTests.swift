@@ -104,3 +104,100 @@ final class ControllerTests: XCTestCase {
         XCTAssertEqual(try HostMessage(json: HostMessage.recordingPause.json), .recordingPause)
     }
 }
+
+/// N35: a source whose in-source mic fails (reports `no-mic`) and keeps recording system audio; `failsAfter` makes it
+/// throw after reporting, like a source that gives up entirely.
+final class MicFailingAudio: AudioSource, @unchecked Sendable {
+    let name: String; let failsAfter: Bool
+    var degrade: (@Sendable (RevocationDegradation, String) -> Void)?
+    init(_ name: String, failsAfter: Bool = false) { self.name = name; self.failsAfter = failsAfter }
+    func start(onBlock: @escaping @Sendable (CaptureBlock) -> Void) async throws {
+        XCTFail("the controller starts sources with onDegraded")
+    }
+    func start(onBlock: @escaping @Sendable (CaptureBlock) -> Void,
+               onDegraded: @escaping @Sendable (RevocationDegradation, String) -> Void) async throws {
+        degrade = onDegraded
+        onDegraded(.noMic, "mic unavailable, recording system audio only: device busy")
+        onDegraded(.noMic, "mic unavailable, recording system audio only: device busy")
+        if failsAfter { throw ProtocolError("denied") }
+    }
+    func stop() async {}
+}
+
+final class CaptureDegradedTests: XCTestCase {
+    private func run(_ audio: [AudioSource], _ body: (HelperController, String, Box<[HelperMessage]>) async throws -> Void) async throws {
+        let out = Box<[HelperMessage]>([])
+        let c = HelperController(
+            deps: HelperDeps(permissions: FakePerms(), meetings: nil, audio: audio, transcribers: [FakeASR()], helperVersion: "t", os: "linux", features: []),
+            send: { m in out.mutate { $0.append(m) } }, now: { 0 })
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("qrtz-deg-\(UUID()).wav").path
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        try await body(c, path, out)
+    }
+    private func degraded(_ ms: [HelperMessage]) -> [HelperMessage] {
+        ms.filter { if case .captureDegraded = $0 { true } else { false } }
+    }
+    private let expected = HelperMessage.captureDegraded(degraded: [.noMic], reason: "mic unavailable, recording system audio only: device busy")
+
+    /// The in-source mic failing at start: one capture.degraded{no-mic}, after recording.started, no stderr-only line.
+    func testInSourceMicFailureIsSentOnceAfterRecordingStarted() async throws {
+        let src = MicFailingAudio("tap")
+        try await run([src]) { c, path, out in
+            await c.handle(.recordingStart(audioPath: path))
+            let ms = out.value
+            XCTAssertEqual(degraded(ms), [expected])
+            XCTAssertLessThan(ms.firstIndex(of: .recordingStarted(audioPath: path))!, ms.firstIndex(of: expected)!)
+            // Later in the same recording: still once per recording.
+            src.degrade?(.noMic, "again")
+            try await Task.sleep(nanoseconds: 50_000_000)
+            XCTAssertEqual(degraded(out.value), [expected])
+            await c.handle(.recordingStop())
+            // After the stop: nothing (only while recording).
+            src.degrade?(.noMic, "late")
+            try await Task.sleep(nanoseconds: 50_000_000)
+            XCTAssertEqual(degraded(out.value), [expected])
+            // The next recording reports its own failure again.
+            await c.handle(.recordingStart(audioPath: path + ".2"))
+            XCTAssertEqual(degraded(out.value), [expected, expected])
+            await c.handle(.recordingStop())
+            try? FileManager.default.removeItem(atPath: path + ".2")
+        }
+    }
+
+    /// A source that reports then fails to start never degraded the recording: only its capture.fallback counts.
+    func testReportsOfASourceThatFailedToStartAreDropped() async throws {
+        let bad = MicFailingAudio("tap", failsAfter: true)
+        try await run([bad, FakeAudio("sck")]) { c, path, out in
+            await c.handle(.recordingStart(audioPath: path))
+            XCTAssertEqual(degraded(out.value), [])
+            XCTAssertTrue(out.value.contains(.captureFallback(from: "tap", to: "sck", reason: "denied")))
+            bad.degrade?(.noMic, "late")
+            try await Task.sleep(nanoseconds: 50_000_000)
+            XCTAssertEqual(degraded(out.value), [])
+            await c.handle(.recordingStop())
+        }
+    }
+
+    /// A late report for an aborted recording is dropped too.
+    func testNothingAfterAbort() async throws {
+        let src = MicFailingAudio("tap")
+        try await run([src]) { c, path, out in
+            await c.handle(.recordingStart(audioPath: path))
+            await c.handle(.recordingAbort(audioPath: path))
+            src.degrade?(.noMic, "late")
+            try await Task.sleep(nanoseconds: 50_000_000)
+            XCTAssertEqual(degraded(out.value), [expected])
+        }
+    }
+
+    /// A source without in-source inputs keeps working through the default `start(onBlock:onDegraded:)`.
+    func testPlainSourcesUseTheDefault() async throws {
+        let plain = FakeAudio("sck")
+        try await run([plain]) { c, path, out in
+            await c.handle(.recordingStart(audioPath: path))
+            XCTAssertNotNil(plain.cb)
+            XCTAssertEqual(degraded(out.value), [])
+            await c.handle(.recordingStop())
+        }
+    }
+}

@@ -19,7 +19,51 @@ public protocol AudioSource: AnyObject, Sendable {
     var name: String { get }
     /// Delivers aligned system + mic blocks (16 kHz mono). Echo handling and mixing happen in the controller.
     func start(onBlock: @escaping @Sendable (CaptureBlock) -> Void) async throws
+    /// N35: like `start(onBlock:)`, plus `onDegraded` for input the source lost inside itself while it keeps
+    /// recording the rest (its in-source mic failing: `no-mic` and the error text). May be called during `start` or
+    /// later; the controller turns it into `capture.degraded`, once per flag per recording and only while recording.
+    func start(onBlock: @escaping @Sendable (CaptureBlock) -> Void,
+               onDegraded: @escaping @Sendable (RevocationDegradation, String) -> Void) async throws
     func stop() async
+}
+
+public extension AudioSource {
+    /// Sources that cannot lose part of their input ignore `onDegraded`.
+    func start(onBlock: @escaping @Sendable (CaptureBlock) -> Void,
+               onDegraded: @escaping @Sendable (RevocationDegradation, String) -> Void) async throws {
+        try await start(onBlock: onBlock)
+    }
+}
+
+/// N35: collects a source's `onDegraded` reports. While the source is starting they are held (a source that then
+/// throws never degraded the recording, and `recording.started` must come first); once the recording is started
+/// they are handed straight to the controller.
+final class DegradationInbox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var held: [(RevocationDegradation, String)] = []
+    private var live: (@Sendable (RevocationDegradation, String) -> Void)?
+    private var closed = false
+
+    func post(_ d: RevocationDegradation, _ reason: String) {
+        lock.lock()
+        if closed { lock.unlock(); return }
+        if let live { lock.unlock(); live(d, reason); return }
+        held.append((d, reason))
+        lock.unlock()
+    }
+
+    /// The source failed to start: forget what it reported and ignore anything later.
+    func discard() { lock.lock(); held.removeAll(); closed = true; lock.unlock() }
+
+    /// The recording started on this source: return what was held, deliver later reports to `f`.
+    func goLive(_ f: @escaping @Sendable (RevocationDegradation, String) -> Void) -> [(RevocationDegradation, String)] {
+        lock.lock(); defer { lock.unlock() }
+        if closed { return [] }
+        live = f
+        let h = held
+        held.removeAll()
+        return h
+    }
 }
 
 /// A streaming recogniser that exposes one cumulative transcript.
@@ -95,6 +139,12 @@ public actor HelperController {
         var aborted = false
         /// N29: per-source silence on the raw (pre-mix) capture channels.
         var silence: SilenceTracker
+        /// N35: flags already sent as capture.degraded for this recording (once each).
+        var degradedSent: Set<RevocationDegradation> = []
+        /// N35: the started source's reports; closed when the recording ends.
+        var degradations: DegradationInbox?
+        /// N35: the stop (or abort) began; nothing about this recording's capture is reported any more.
+        var ending = false
         init(wav: WavWriter, startMs: Double, silence: SilenceConfig = .default) {
             self.wav = wav; self.startMs = startMs; self.silence = SilenceTracker(config: silence)
         }
@@ -310,12 +360,15 @@ public actor HelperController {
             }
         }
         for (i, a) in deps.audio.enumerated() {
+            let inbox = DegradationInbox()
             do {
-                try await a.start(onBlock: { b in samplesIn.yield(b) })
+                try await a.start(onBlock: { b in samplesIn.yield(b) }, onDegraded: { d, r in inbox.post(d, r) })
                 rec.audio = a
+                rec.degradations = inbox
                 send(.log(level: .info, msg: "audio: \(a.name)"))
                 break
             } catch {
+                inbox.discard()
                 // H8: structured, so the host can tell which source the recording fell back to and why.
                 let next = i + 1 < deps.audio.count ? deps.audio[i + 1].name : nil
                 send(.captureFallback(from: a.name, to: next, reason: "\(error)"))
@@ -324,6 +377,13 @@ public actor HelperController {
         if rec.audio == nil { send(.error(code: "audio.unavailable", message: "no audio source could start (check Screen & System Audio Recording and Microphone permissions)", fatal: false)) }
 
         send(.recordingStarted(audioPath: path))
+        if let inbox = rec.degradations {
+            let held = inbox.goLive { [weak self, weak rec] d, r in
+                guard let rec else { return }
+                Task { await self?.sourceDegraded(d, reason: r, of: rec) }
+            }
+            for (d, r) in held { sourceDegraded(d, reason: r, of: rec) }
+        }
         watchPermissions()
         tick = Task { [weak self] in
             while !Task.isCancelled {
@@ -331,6 +391,14 @@ public actor HelperController {
                 await self?.pollTranscript()
             }
         }
+    }
+
+    /// N35: a started source lost part of its input (its in-source mic). `capture.degraded` once per flag per
+    /// recording, and only for the current, live recording (not after its stop or abort).
+    func sourceDegraded(_ d: RevocationDegradation, reason: String, of owner: Recording) {
+        guard let rec = recording, owner === rec, !rec.ending, !rec.degradedSent.contains(d) else { return }
+        rec.degradedSent.insert(d)
+        send(.captureDegraded(degraded: [d], reason: reason))
     }
 
     /// N29: feed the raw channels (before echo gate and mix) to the recording's silence tracker. A mic channel the
@@ -367,6 +435,8 @@ public actor HelperController {
 
     func stopRecording() async {
         guard let rec = recording else { return }
+        rec.ending = true
+        rec.degradations?.discard()
         tick?.cancel(); tick = nil
         await rec.audio?.stop()
         if rec.aborted { return }  // N2: recording.abort tore it down while the source was stopping
@@ -397,6 +467,8 @@ public actor HelperController {
         await apply(r.effects)
         if let rec = recording, rec.wav.url.path == path {
             rec.aborted = true
+            rec.ending = true
+            rec.degradations?.discard()
             tick?.cancel(); tick = nil
             recording = nil
             paused = false
