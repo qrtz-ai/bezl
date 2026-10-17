@@ -66,12 +66,39 @@ impl LlmConfig {
         }
     }
     /// `effectiveLlmProvider`: local-only replaces cloud providers by the on-device path (keys are never read).
+    /// N87: Ollama counts as local only while its URL is loopback. A `base_url` override (`QRTZ_LLM_BASE_URL`)
+    /// naming another host would send the transcript off the machine, so local-only falls back to on-device.
     pub fn effective_provider(&self) -> &str {
-        if self.local_only && !matches!(self.provider.as_str(), "none" | "ollama") {
+        let local = match self.provider.as_str() {
+            "none" => true,
+            "ollama" => self.base_url.as_deref().is_none_or(is_loopback_url),
+            _ => false,
+        };
+        if self.local_only && !local {
             "none"
         } else {
             &self.provider
         }
+    }
+}
+
+/// N87: `http(s)://` to `localhost`, 127.0.0.0/8 or `[::1]`, with no userinfo. Anything unparsable is not loopback.
+pub fn is_loopback_url(url: &str) -> bool {
+    let Ok(u) = reqwest::Url::parse(url) else {
+        return false;
+    };
+    if !matches!(u.scheme(), "http" | "https") || !u.username().is_empty() || u.password().is_some() {
+        return false;
+    }
+    // The URL parser normalizes IPv4 forms (`127.1`, `0x7f.0.0.1`) and brackets IPv6 in `host_str`.
+    match u.host_str() {
+        Some(h) if h.eq_ignore_ascii_case("localhost") => true,
+        Some(h) => h
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|a| a.is_loopback()),
+        None => false,
     }
 }
 
