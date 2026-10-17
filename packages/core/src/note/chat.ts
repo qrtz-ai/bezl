@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import type { LlmProvider, ChatMessage } from './llm';
+import {
+  fenceBlock,
+  fenceNonce,
+  promptSafe,
+  type LlmProvider,
+  type ChatMessage,
+} from './llm';
 import { bigrams, CHAT_MAX_BIGRAMS, UNSEGMENTED } from './unsegmented';
 
 /** One retrieved transcript line given to the model (and cited back to the UI). */
@@ -103,23 +109,27 @@ export function buildChatPrompt(
   question: string,
   sources: ChatSource[],
   history: ChatTurn[] = [],
+  nonce: string = fenceNonce(),
 ): ChatMessage[] {
+  // N69: excerpts are one line each and fenced, so a transcript line can't pose as an instruction or excerpt.
   const ctx = sources
     .map(
       (s, i) =>
-        `[${i + 1}] (${s.title} @ ${ts(s.startMs)}) ${s.speaker ?? 'Speaker'}: ${s.text}`,
+        `[${i + 1}] (${promptSafe(s.title)} @ ${ts(s.startMs)}) ${promptSafe(s.speaker ?? 'Speaker')}: ${promptSafe(s.text)}`,
     )
     .join('\n');
+  const fence = fenceBlock('excerpts', ctx || '(none)', nonce, 'excerpt list');
   return [
     {
       role: 'system',
       content:
-        "You answer questions about the user's meetings using ONLY the numbered transcript excerpts provided. Cite excerpts inline like [2]. If the excerpts do not contain the answer, say you could not find it in the meetings. Be concise.",
+        "You answer questions about the user's meetings using ONLY the numbered transcript excerpts provided. Cite excerpts inline like [2]. If the excerpts do not contain the answer, say you could not find it in the meetings. Be concise." +
+        fence.rule,
     },
     ...history.slice(-6).map((h) => ({ role: h.role, content: h.content })),
     {
       role: 'user',
-      content: `Excerpts:\n${ctx || '(none)'}\n\nQuestion: ${question}`,
+      content: `Excerpts:\n${fence.block}\n\nQuestion: ${question}`,
     },
   ];
 }

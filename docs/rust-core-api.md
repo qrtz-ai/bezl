@@ -864,6 +864,9 @@ let steps = Arc::new(qrtz_llm::LlmSteps::new(
   `spawn_blocking`.
 - The prompt lists capture gaps from `PipelineState.capture` (silent spans, plus lost spans as that source's
   silence; only both silent is "no audio at all").
+- N69 (ADR 0054): transcript text, speaker labels and the title are one line each (`prompt_safe`: controls,
+  U+2028/2029 and bidi controls become spaces), and the transcript sits in a `<transcript-NONCE>` fence with a
+  random per-request nonce that the system prompt declares data only. `SummaryOptions.fence_nonce` pins it in tests.
 - DB errors keep the storage classification (busy / full disk retryable, N13); a missing meeting is `E_NOT_FOUND`.
 - Keys never appear in logs or errors: `Secret` prints `***`, and error text that echoes a key is redacted.
 - Parity: `spec/vectors/llm/*.json` (prompt and exact request body, reply classification, reply parser, extractive),
