@@ -45,7 +45,7 @@ pub fn stitch_parts(parts: &[String]) -> std::io::Result<Option<i64>> {
             repair_wav(f);
         }
         let tmp = format!("{main}.stitch");
-        {
+        let stitched = (|| -> std::io::Result<()> {
             let mut out = fs::File::create(&tmp)?;
             out.write_all(&fs::read(main)?)?;
             for f in &extra {
@@ -54,8 +54,14 @@ pub fn stitch_parts(parts: &[String]) -> std::io::Result<Option<i64>> {
                     out.write_all(&b[44..])?;
                 }
             }
+            drop(out);
+            fs::rename(&tmp, main)
+        })();
+        if let Err(e) = stitched {
+            // N28: a failed stitch (disk full, unreadable part) must not leave a meeting-sized `.stitch` behind.
+            let _ = fs::remove_file(&tmp);
+            return Err(e);
         }
-        fs::rename(&tmp, main)?;
         for f in &extra {
             let _ = fs::remove_file(f);
         }

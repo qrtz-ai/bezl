@@ -258,17 +258,23 @@ export function createWorkerHandlers(
         if (extra.length && fs.existsSync(main)) {
           for (const f of extra) repairWav(f);
           const tmp = `${main}.stitch`;
-          const out = fs.openSync(tmp, 'w');
           try {
-            fs.writeSync(out, fs.readFileSync(main));
-            for (const f of extra) {
-              const b = fs.readFileSync(f);
-              if (b.length > 44) fs.writeSync(out, b, 44, b.length - 44);
+            const out = fs.openSync(tmp, 'w');
+            try {
+              fs.writeSync(out, fs.readFileSync(main));
+              for (const f of extra) {
+                const b = fs.readFileSync(f);
+                if (b.length > 44) fs.writeSync(out, b, 44, b.length - 44);
+              }
+            } finally {
+              fs.closeSync(out);
             }
-          } finally {
-            fs.closeSync(out);
+            fs.renameSync(tmp, main); // atomic: either the old main or the stitched one
+          } catch (e) {
+            // N28: a failed stitch (disk full, unreadable part) must not leave a meeting-sized `.stitch` behind.
+            fs.rmSync(tmp, { force: true });
+            throw e;
           }
-          fs.renameSync(tmp, main); // atomic: either the old main or the stitched one
           for (const f of extra) fs.rmSync(f, { force: true });
         }
         audioMs = repairWav(main);
