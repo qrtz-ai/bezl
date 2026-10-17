@@ -44,14 +44,39 @@ fn signal_name(_: &std::process::ExitStatus) -> Option<String> {
 
 impl Spawn for ProcessSpawn {
     fn spawn(&self) -> std::io::Result<ChildIo> {
-        let mut child = Command::new(&self.program)
-            .args(&self.args)
+        let mut cmd = Command::new(&self.program);
+        cmd.args(&self.args)
             .envs(self.env.iter().cloned())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()?;
+            .kill_on_drop(true);
+        // ADR 0046 §1, N55: the speech socket's helper end at fd 3 (`QRTZ_SPEECH_FD=3`); the host keeps the other.
+        #[cfg(unix)]
+        let speech = {
+            use std::os::fd::AsRawFd;
+            let (host, helper) = crate::fdpass::socketpair()?;
+            let raw = helper.as_raw_fd();
+            cmd.env(
+                crate::fdpass::SPEECH_FD_ENV,
+                crate::fdpass::HELPER_SPEECH_FD.to_string(),
+            );
+            // SAFETY: only async-signal-safe dup2 runs between fork and exec; dup2 clears CLOEXEC on fd 3.
+            unsafe {
+                cmd.pre_exec(move || {
+                    if libc::dup2(raw, crate::fdpass::HELPER_SPEECH_FD) < 0 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    Ok(())
+                });
+            }
+            Some((host, helper))
+        };
+        #[cfg(not(unix))]
+        let speech: Option<(std::os::fd::OwnedFd, std::os::fd::OwnedFd)> = None;
+        let mut child = cmd.spawn()?;
+        // The helper end now lives in the child only.
+        let speech = speech.map(|(host, _helper)| host);
         let stdout = child.stdout.take().expect("piped stdout");
         let mut stdin = child.stdin.take().expect("piped stdin");
         let stderr = child.stderr.take().expect("piped stderr");
@@ -118,6 +143,7 @@ impl Spawn for ProcessSpawn {
             stdin: in_tx,
             exit: exit_rx,
             kill: kill_tx,
+            speech,
         })
     }
 }

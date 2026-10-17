@@ -13,3 +13,5 @@
 {"id":"d1","type":"dictation.stop"}
 {"id":"d1","type":"dictation.cancel"}
 {"id":"d1","restoreClipboard":true,"text":"Hello world.","type":"insert.text"}
+{"channels":["mic","system"],"sessionId":"/rec/m1-p1.wav","target":{"audioPath":"/rec/m1-p1.wav","kind":"recording"},"type":"speech.attach"}
+{"channels":["mic"],"sessionId":"d1","target":{"id":"d1","kind":"dictation"},"type":"speech.attach"}

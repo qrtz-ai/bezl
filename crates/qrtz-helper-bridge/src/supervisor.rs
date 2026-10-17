@@ -41,6 +41,8 @@ pub struct ChildIo {
     pub stdin: mpsc::UnboundedSender<String>,
     pub exit: oneshot::Receiver<ExitInfo>,
     pub kill: oneshot::Sender<()>,
+    /// The host end of the speech socket (ADR 0046 §1, N55): audio fds for `speech.attach` go out on it.
+    pub speech: Option<std::os::fd::OwnedFd>,
 }
 
 pub trait Spawn: Send + Sync + 'static {
@@ -81,6 +83,12 @@ enum Cmd {
     Start,
     Stop,
     Send(String, oneshot::Sender<bool>),
+    SendFds(
+        String,
+        Vec<u8>,
+        Vec<std::os::fd::OwnedFd>,
+        oneshot::Sender<std::io::Result<()>>,
+    ),
     Shutdown(String, Duration, oneshot::Sender<()>),
 }
 
@@ -156,6 +164,22 @@ impl Supervisor {
         let (tx, _rx) = oneshot::channel();
         self.cmd.send(Cmd::Send(line, tx)).is_ok()
     }
+    /// N55: send `fds` as one SCM_RIGHTS message (payload `tag`) on the running helper's speech socket, then
+    /// `line` on stdin, in order with other sends. The fds are dropped here once sent (the kernel holds the
+    /// in-flight copies); an error means nothing reached the helper.
+    pub async fn send_fds(
+        &self,
+        line: String,
+        tag: Vec<u8>,
+        fds: Vec<std::os::fd::OwnedFd>,
+    ) -> std::io::Result<()> {
+        let (tx, rx) = oneshot::channel();
+        if self.cmd.send(Cmd::SendFds(line, tag, fds, tx)).is_err() {
+            return Err(std::io::Error::other("helper supervisor gone"));
+        }
+        rx.await
+            .unwrap_or_else(|_| Err(std::io::Error::other("helper supervisor gone")))
+    }
     /// `helper.stop(); helper.start()`: a fresh helper process (the old one may still hold a stuck writer).
     pub fn restart(&self) {
         let _ = self.cmd.send(Cmd::Stop);
@@ -181,6 +205,7 @@ impl Supervisor {
 
 struct Running {
     stdin: mpsc::UnboundedSender<String>,
+    speech: Option<std::os::fd::OwnedFd>,
     kill: Option<oneshot::Sender<()>>,
 }
 
@@ -303,6 +328,21 @@ impl Actor {
                 };
                 let _ = reply.send(ok);
             }
+            Cmd::SendFds(line, tag, fds, reply) => {
+                let r = match (&self.child, self.state) {
+                    (Some(c), HelperState::Running) => match &c.speech {
+                        Some(sock) => crate::fdpass::send_fds(sock, &tag, &fds).and_then(|()| {
+                            c.stdin
+                                .send(line)
+                                .map_err(|_| std::io::Error::other("helper stdin closed"))
+                        }),
+                        None => Err(std::io::Error::other("helper has no speech socket")),
+                    },
+                    _ => Err(std::io::Error::other("helper not running")),
+                };
+                drop(fds);
+                let _ = reply.send(r);
+            }
             Cmd::Shutdown(goodbye, grace, reply) => {
                 self.wanted = false;
                 self.backoff_deadline = None;
@@ -346,6 +386,7 @@ impl Actor {
             Ok(io) => {
                 self.child = Some(Running {
                     stdin: io.stdin,
+                    speech: io.speech,
                     kill: Some(io.kill),
                 });
                 self.lines_rx = Some(io.lines);

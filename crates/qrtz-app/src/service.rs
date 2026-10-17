@@ -84,7 +84,11 @@ pub struct AppService {
     helper: Option<Supervisor>,
     pub events: Events,
     chat: std::sync::OnceLock<Arc<dyn crate::ports::ChatPort>>,
+    speech_tap: std::sync::OnceLock<SpeechTap>,
 }
+
+/// Receives `speech.*` helper lines.
+pub type SpeechTap = Arc<dyn Fn(&Value) + Send + Sync>;
 
 /// Helper → host message types that belong to qrtz talk; everything else goes to the recording runtime.
 pub fn is_talk_message(ty: &str) -> bool {
@@ -104,9 +108,14 @@ impl AppService {
             helper: d.helper,
             events: d.events,
             chat: std::sync::OnceLock::new(),
+            speech_tap: std::sync::OnceLock::new(),
         })
     }
     /// Plug in note:chat (set once by `build_app`; without it note:chat is `E_UNAVAILABLE`).
+    /// `speech.*` helper lines (`speech.attached` / `speech.attach.rejected`, N55) go here, nowhere else.
+    pub fn set_speech_tap(&self, tap: SpeechTap) {
+        let _ = self.speech_tap.set(tap);
+    }
     pub fn set_chat(&self, chat: Arc<dyn crate::ports::ChatPort>) {
         let _ = self.chat.set(chat);
     }
@@ -175,7 +184,11 @@ impl AppService {
                 if ty == "permissions.status" {
                     self.events.emit("permissions:changed", msg["status"].clone());
                 }
-                if is_talk_message(ty) {
+                if ty.starts_with("speech.") {
+                    if let Some(t) = self.speech_tap.get() {
+                        t(&msg);
+                    }
+                } else if is_talk_message(ty) {
                     self.talk.helper_line(&msg);
                 } else if ty != "heartbeat" {
                     // Talk also needs its own errors (dictation.busy / dictation.mic) and mic revocations; the

@@ -25,7 +25,10 @@ final class StdoutWriter: @unchecked Sendable {
 
 let out = StdoutWriter()
 let epochMs: @Sendable () -> Double = { Date().timeIntervalSince1970 * 1000 }
-let controller = HelperController(deps: makePlatformDeps(version: helperVersion), send: { out.write($0) }, now: epochMs)
+var platformDeps = makePlatformDeps(version: helperVersion)
+// ADR 0046 §1 / N55: the speech socket the host inherited to us (speech.attach fds arrive on it).
+platformDeps.speechFds = SocketFdReceiver.fromEnvironment()
+let controller = HelperController(deps: platformDeps, send: { out.write($0) }, now: epochMs)
 
 // Host messages are handled strictly in order on one consumer task.
 let (lines, linesIn) = AsyncStream<String>.makeStream()

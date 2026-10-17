@@ -86,6 +86,9 @@ public enum HelperMessage: Equatable, Sendable {
     case captureDegraded(degraded: [RevocationDegradation], reason: String)
     case permissionRevoked(permission: OsPermission, atMs: Double, degraded: [RevocationDegradation]? = nil)
     case insertResult(id: String, method: InsertMethod, ok: Bool, app: String?, error: String?)
+    /// N55: the audio fds named by speech.attach were taken (see SpeechSinks).
+    case speechAttached(sessionId: String)
+    case speechAttachRejected(sessionId: String, reason: SpeechAttachReject)
 }
 
 /// Host → helper.
@@ -107,6 +110,8 @@ public enum HostMessage: Equatable, Sendable {
     case dictationStop(id: String)
     case dictationCancel(id: String)
     case insertText(id: String, text: String, restoreClipboard: Bool)
+    /// ADR 0046 §1: the speech module's audio write ends wait on the speech socket (see SpeechSinks).
+    case speechAttach(sessionId: String, target: SpeechTarget, channels: [CaptureSource])
 }
 
 // MARK: - Encoding helpers
@@ -235,6 +240,8 @@ extension HelperMessage {
             if let app { o["app"] = s(app) }
             if let err { o["error"] = s(err) }
             return obj("insert.result", o)
+        case .speechAttached(let sid): return obj("speech.attached", ["sessionId": s(sid)])
+        case .speechAttachRejected(let sid, let r): return obj("speech.attach.rejected", ["sessionId": s(sid), "reason": s(r.rawValue)])
         }
     }
 
@@ -325,6 +332,9 @@ extension HelperMessage {
         case "insert.result":
             guard let ok = f.o["ok"]?.bool else { throw ProtocolError("missing ok") }
             self = .insertResult(id: try f.str("id"), method: try f.enumValue("method", InsertMethod.self), ok: ok, app: try f.optStr("app"), error: try f.optStr("error"))
+        case "speech.attached": self = .speechAttached(sessionId: try f.str("sessionId"))
+        case "speech.attach.rejected":
+            self = .speechAttachRejected(sessionId: try f.str("sessionId"), reason: try f.enumValue("reason", SpeechAttachReject.self))
         case let t: throw ProtocolError("unknown helper message type \(t)")
         }
     }
@@ -350,6 +360,13 @@ extension HostMessage {
         case .dictationCancel(let id): return .object(["type": s("dictation.cancel"), "id": s(id)])
         case .insertText(let id, let text, let restore):
             return .object(["type": s("insert.text"), "id": s(id), "text": s(text), "restoreClipboard": .bool(restore)])
+        case .speechAttach(let sid, let target, let channels):
+            let t: JSONValue
+            switch target {
+            case .dictation(let id): t = .object(["kind": s("dictation"), "id": s(id)])
+            case .recording(let p): t = .object(["kind": s("recording"), "audioPath": s(p)])
+            }
+            return .object(["type": s("speech.attach"), "sessionId": s(sid), "target": t, "channels": .array(channels.map { s($0.rawValue) })])
         }
     }
 
@@ -374,6 +391,20 @@ extension HostMessage {
         case "insert.text":
             guard let r = f.o["restoreClipboard"]?.bool else { throw ProtocolError("missing restoreClipboard") }
             self = .insertText(id: try f.str("id"), text: try f.str("text"), restoreClipboard: r)
+        case "speech.attach":
+            let t = try Fields(f.o["target"] ?? .null)
+            let target: SpeechTarget
+            switch try t.str("kind") {
+            case "dictation": target = .dictation(id: try t.str("id"))
+            case "recording": target = .recording(audioPath: try t.str("audioPath"))
+            case let k: throw ProtocolError("bad speech target \(k)")
+            }
+            let chans = try f.strs("channels").map { c -> CaptureSource in
+                guard let v = CaptureSource(rawValue: c) else { throw ProtocolError("bad channel") }
+                return v
+            }
+            guard (1...2).contains(chans.count) else { throw ProtocolError("bad channels") }
+            self = .speechAttach(sessionId: try f.str("sessionId"), target: target, channels: chans)
         case let t: throw ProtocolError("unknown host message type \(t)")
         }
     }

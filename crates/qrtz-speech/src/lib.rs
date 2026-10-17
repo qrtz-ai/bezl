@@ -9,6 +9,8 @@ pub mod fsx;
 pub mod protocol;
 pub mod spawn;
 pub mod store;
+#[cfg(feature = "testkit")]
+pub mod testkit;
 pub mod update;
 pub mod validate;
 

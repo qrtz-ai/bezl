@@ -108,10 +108,13 @@ public actor DictationEngine {
     struct Session { let id: String; let startMs: Double; var transcriber: StreamingTranscriber?; var seq = 0; let segmenter = UtteranceSegmenter(idPrefix: "d"); var samples = 0; var pendingLevel: [Float] = []; var lastLevelMs: Double = 0; var pendingPcm: [Float] = [] }
     var session: Session?
     var tick: Task<Void, Never>?
+    /// ADR 0046 §1: the dictation's mic audio also goes to the speech module when one is attached.
+    let speech: SpeechSinks?
 
     public init(mic: MicSource?, transcribers: [StreamingTranscriber], inserter: TextInserter?, hotkeys: HotkeyMonitor?,
-                send: @escaping @Sendable (HelperMessage) -> Void, now: @escaping @Sendable () -> Double, managedMic: Bool = false) {
-        self.managedMic = managedMic
+                send: @escaping @Sendable (HelperMessage) -> Void, now: @escaping @Sendable () -> Double, managedMic: Bool = false,
+                speech: SpeechSinks? = nil) {
+        self.managedMic = managedMic; self.speech = speech
         self.mic = mic; self.transcribers = transcribers; self.inserter = inserter; self.hotkeys = hotkeys; self.send = send; self.now = now
     }
 
@@ -210,6 +213,7 @@ public actor DictationEngine {
             }
         }
         session = sess
+        speech?.write(.dictation(id: sess.id), .mic, s)
         await sess.transcriber?.append(s)
     }
 
@@ -232,6 +236,7 @@ public actor DictationEngine {
             for e in s.segmenter.flush(cumulative: text, nowMs: now() - s.startMs) { send(.dictationAsr(id: s.id, event: e)) }
         }
         session = nil
+        speech?.end(.dictation(id: id))
         if !warmMic && !managedMic { stopMic() }
         send(.dictationStopped(id: id, text: text, durationMs: Double(s.samples) * 1000 / 16_000))
     }
@@ -241,6 +246,7 @@ public actor DictationEngine {
         tick?.cancel(); tick = nil
         _ = await s.transcriber?.finish()
         session = nil
+        speech?.end(.dictation(id: id))
         if !warmMic && !managedMic { stopMic() }
         send(.dictationStopped(id: id, text: "", durationMs: 0))
     }
@@ -256,6 +262,7 @@ public actor DictationEngine {
             for e in s.segmenter.flush(cumulative: text, nowMs: now() - s.startMs) { send(.dictationAsr(id: s.id, event: e)) }
         }
         session = nil
+        speech?.end(.dictation(id: s.id))
         stopMic()
         send(.dictationStopped(id: s.id, text: text, durationMs: Double(s.samples) * 1000 / 16_000, reason: reason))
     }

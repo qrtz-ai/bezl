@@ -55,6 +55,7 @@ impl Spawn for FakeSpawn {
             stdin: in_tx,
             exit: exit_rx,
             kill: kill_tx,
+            speech: None,
         })
     }
 }

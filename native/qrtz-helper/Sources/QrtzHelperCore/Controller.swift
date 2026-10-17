@@ -102,9 +102,12 @@ public struct HelperDeps: Sendable {
     public var permissionPollMs: Int
     /// N29: when a capture source counts as silent (`capture.silent` / `capture.audible`).
     public var silence: SilenceConfig
+    /// ADR 0046 §1 / N55: where the speech module's audio fds arrive (nil = the host passed no speech socket).
+    public var speechFds: FdReceiver?
     public init(permissions: PermissionsProvider, meetings: MeetingSource?, audio: [AudioSource], transcribers: [StreamingTranscriber], helperVersion: String, os: String, features: [String], context: MeetingContext = MeetingContext(), enhancer: MicEnhancer? = nil,
                 dictationMic: MicSource? = nil, dictationTranscribers: [StreamingTranscriber] = [], insertion: InsertionBackend? = nil, hotkeys: HotkeyMonitor? = nil,
-                micHub: MicHub? = nil, permissionPollMs: Int = 2000, silence: SilenceConfig = .default) {
+                micHub: MicHub? = nil, permissionPollMs: Int = 2000, silence: SilenceConfig = .default, speechFds: FdReceiver? = nil) {
+        self.speechFds = speechFds
         self.micHub = micHub; self.permissionPollMs = permissionPollMs; self.silence = silence
         self.dictationMic = dictationMic; self.dictationTranscribers = dictationTranscribers; self.insertion = insertion; self.hotkeys = hotkeys
         self.permissions = permissions; self.meetings = meetings; self.audio = audio; self.transcribers = transcribers
@@ -161,9 +164,12 @@ public actor HelperController {
         self.lastPerms = st
         self.arbiter = ArbiterState(denied: OsPermission.allCases.filter { st[$0] == .denied })
         self.dictation = DictationEngine(mic: deps.dictationMic, transcribers: deps.dictationTranscribers,
-                                         inserter: deps.insertion.map { TextInserter(backend: $0) }, hotkeys: deps.hotkeys, send: send, now: now, managedMic: true)
+                                         inserter: deps.insertion.map { TextInserter(backend: $0) }, hotkeys: deps.hotkeys, send: send, now: now, managedMic: true,
+                                         speech: speech)
     }
     public let dictation: DictationEngine
+    /// The speech module's audio sinks (recordings and dictations).
+    public let speech = SpeechSinks()
 
     /// ms since recording start (or since helper start when idle). Used for every atMs/startMs on the wire.
     nonisolated public func relativeMs() -> Double {
@@ -219,6 +225,12 @@ public actor HelperController {
             await dictation.cancel(id: id)
             _ = await admit(.cmd("dictation.cancel"))
         case .insertText(let id, let text, let restore): await dictation.insert(id: id, text: text, restoreClipboard: restore)
+        case .speechAttach(let sid, let target, let channels):
+            if let why = speech.accept(deps.speechFds, sessionId: sid, target: target, channels: channels) {
+                send(.speechAttachRejected(sessionId: sid, reason: why))
+            } else {
+                send(.speechAttached(sessionId: sid))
+            }
         }
     }
 
@@ -355,6 +367,7 @@ public actor HelperController {
         rec.consumer = Task { [weak self] in
             for await b in blocks {
                 await self?.trackSilence(b, of: rec)
+                await self?.feedSpeech(b, of: rec)
                 let mixed = await pipeline.process(b)
                 await self?.onSamples(mixed, of: rec)
             }
@@ -411,6 +424,17 @@ public actor HelperController {
         if let mic = b.mic, let m = rec.silence.update(.mic, rms: DSP.rms(mic), atMs: t) { send(m) }
     }
 
+    /// ADR 0046 §1: the raw channels (pre echo gate and mix) to the module, contiguous from the start: silence
+    /// while paused and for a mic the source does not deliver.
+    func feedSpeech(_ b: CaptureBlock, of owner: Recording) {
+        guard let rec = recording, owner === rec, !rec.aborted else { return }
+        let t = SpeechTarget.recording(audioPath: rec.wav.url.path)
+        guard speech.has(t) else { return }
+        let zero = [Float](repeating: 0, count: b.system.count)
+        speech.write(t, .system, paused ? zero : b.system)
+        speech.write(t, .mic, paused ? zero : (b.mic ?? zero))
+    }
+
     func onSamples(_ s: [Float], of owner: Recording? = nil) async {
         // Only the recording that captured these samples (an aborted one's late blocks never reach a newer file).
         guard let rec = recording, !s.isEmpty, owner == nil || owner === rec else { return }
@@ -442,6 +466,8 @@ public actor HelperController {
         if rec.aborted { return }  // N2: recording.abort tore it down while the source was stopping
         rec.samplesIn?.finish()
         await rec.consumer?.value
+        // Every captured block reached the module: close its audio (EOF ends its channels).
+        speech.end(.recording(audioPath: rec.wav.url.path))
         if rec.aborted { return }
         if let tail = rec.pipeline?.finish(), !tail.isEmpty { await onSamples(tail, of: rec) }
         if let tr = rec.transcriber {
@@ -465,6 +491,7 @@ public actor HelperController {
         let r = SessionArbiter.step(arbiter, .cmd("recording.abort", audioPath: path))
         arbiter = r.state
         await apply(r.effects)
+        speech.end(.recording(audioPath: path))
         if let rec = recording, rec.wav.url.path == path {
             rec.aborted = true
             rec.ending = true
@@ -488,6 +515,7 @@ public actor HelperController {
         await stopRecording()
         permWatch?.cancel(); permWatch = nil
         await dictation.shutdown()
+        speech.endAll()
         deps.meetings?.stop()
     }
 }

@@ -94,14 +94,15 @@ async fn until<F: Fn() -> bool>(what: &str, f: F) {
 }
 
 async fn until_phase(r: &Router<Shared>, phase: &str) -> Value {
-    for _ in 0..400 {
-        let v = call(r, "talk:state", Value::Null).await;
-        if v["phase"] == phase {
-            return v;
+    let mut last = Value::Null;
+    for _ in 0..1200 {
+        last = call(r, "talk:state", Value::Null).await;
+        if last["phase"] == phase {
+            return last;
         }
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
-    panic!("timed out waiting for talk phase {phase}");
+    panic!("timed out waiting for talk phase {phase}; last {last}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

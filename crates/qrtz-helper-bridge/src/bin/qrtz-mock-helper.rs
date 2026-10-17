@@ -18,6 +18,9 @@
 //!   QRTZ_MOCK_CRASH_ONCE=path    crash (exit 3) 100 ms after start unless `path` exists; creates it first
 //!   QRTZ_MOCK_GARBAGE=1          print one invalid line right after hello
 //!   QRTZ_MOCK_PERMISSIONS=microphone=denied,...
+//!   speech.attach (ADR 0046 §1, N55): receives the audio write ends on fd QRTZ_SPEECH_FD, checks them like the
+//!                                Swift helper (exact count, FIFO, write-only, session id) and writes 20 ms PCM16
+//!                                frames to them while the named capture runs; closes them when it ends (EOF).
 //!   QRTZ_MOCK_DICTATION="hello from qrtz talk"
 //!                                dictation: `dictation.started`, then every 150 ms a level + a growing
 //!                                `dictation.asr` partial; `dictation.stop` answers `dictation.stopped {text}`;
@@ -153,6 +156,8 @@ fn main() {
     let dictation_heard = Arc::new(AtomicU64::new(0));
 
     let mut dictation_id: Option<String> = None;
+
+    let live_targets: Arc<Mutex<std::collections::HashSet<String>>> = Default::default();
     let mut started = 0u64;
     for line in std::io::stdin().lock().lines() {
         let Ok(line) = line else { break };
@@ -228,10 +233,14 @@ fn main() {
                 say(
                     json!({"type": "asr", "event": {"kind": "final", "utteranceId": "u1", "text": "Hello from the mock helper.", "startMs": 0, "endMs": 1200}}),
                 );
+                live_targets.lock().unwrap().insert(format!("r:{path}"));
                 audio = Some(path);
             }
             "recording.stop" => {
                 generation.fetch_add(1, Ordering::SeqCst);
+                if let Some(p) = &audio {
+                    live_targets.lock().unwrap().remove(&format!("r:{p}"));
+                }
                 if let Some(p) = audio.take() {
                     say(json!({"type": "recording.stopped", "audioPath": p, "durationMs": now() - started}));
                 }
@@ -243,7 +252,33 @@ fn main() {
                     audio = None;
                     generation.fetch_add(1, Ordering::SeqCst);
                 }
+                live_targets.lock().unwrap().remove(&format!("r:{p}"));
                 say(json!({"type": "recording.aborted", "audioPath": p}));
+            }
+            "speech.attach" => {
+                let sid = msg["sessionId"].as_str().unwrap_or_default().to_owned();
+                let n = msg["channels"].as_array().map_or(0, Vec::len);
+                let key = match msg["target"]["kind"].as_str() {
+                    Some("dictation") => format!("d:{}", msg["target"]["id"].as_str().unwrap_or_default()),
+                    _ => format!("r:{}", msg["target"]["audioPath"].as_str().unwrap_or_default()),
+                };
+                let fd = env(qrtz_helper_bridge::fdpass::SPEECH_FD_ENV).and_then(|v| v.parse::<i32>().ok());
+                let r = match fd {
+                    None => Err("unsupported"),
+                    Some(fd) => {
+                        qrtz_helper_bridge::fdpass::accept_attach(fd, &sid, n, Duration::from_secs(2))
+                    }
+                };
+                match r {
+                    Err(reason) => {
+                        say(json!({"type": "speech.attach.rejected", "sessionId": sid, "reason": reason}))
+                    }
+                    Ok(fds) => {
+                        say(json!({"type": "speech.attached", "sessionId": sid}));
+                        let live = live_targets.clone();
+                        std::thread::spawn(move || write_audio(fds, key, live));
+                    }
+                }
             }
             "dictation.configure" => {}
             "dictation.start" => {
@@ -266,12 +301,17 @@ fn main() {
                     );
                 });
                 dictation_id = Some(msg["id"].as_str().unwrap_or_default().to_owned());
+                live_targets
+                    .lock()
+                    .unwrap()
+                    .insert(format!("d:{}", msg["id"].as_str().unwrap_or_default()));
             }
             ty @ ("dictation.stop" | "dictation.cancel") => {
                 let id = msg["id"].as_str().unwrap_or_default().to_owned();
                 if dictation_id.as_deref() == Some(id.as_str()) {
                     dictation_gen.fetch_add(1, Ordering::SeqCst);
                     dictation_id = None;
+                    live_targets.lock().unwrap().remove(&format!("d:{id}"));
                     if ty == "dictation.stop" {
                         let n = dictation_heard
                             .load(Ordering::SeqCst)
@@ -290,6 +330,39 @@ fn main() {
             _ => say(
                 json!({"type": "error", "code": "protocol.unknown", "message": "unknown message", "fatal": false}),
             ),
+        }
+    }
+}
+
+/// Write 20 ms PCM16 frames (a quiet tone) to the attached fds while `key` is live; the fds are O_NONBLOCK (the
+/// host set them, N77): a full pipe drops the frame, a closed reader ends the writer. Dropping the fds is the EOF.
+fn write_audio(
+    fds: Vec<std::os::fd::OwnedFd>,
+    key: String,
+    live: Arc<Mutex<std::collections::HashSet<String>>>,
+) {
+    use std::os::fd::AsRawFd;
+    let frame: Vec<u8> = (0..320)
+        .flat_map(|i| (((i as f32 * 0.1).sin() * 800.0) as i16).to_le_bytes())
+        .collect();
+    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    let mut seen = false;
+    loop {
+        std::thread::sleep(Duration::from_millis(20));
+        let on = live.lock().unwrap().contains(&key);
+        if on {
+            seen = true;
+        } else if seen || std::time::Instant::now() > deadline {
+            return;
+        } else {
+            continue;
+        }
+        for f in &fds {
+            // SAFETY: valid fd and buffer.
+            let n = unsafe { libc::write(f.as_raw_fd(), frame.as_ptr().cast(), frame.len()) };
+            if n < 0 && std::io::Error::last_os_error().raw_os_error() == Some(libc::EPIPE) {
+                return;
+            }
         }
     }
 }

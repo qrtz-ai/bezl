@@ -17,6 +17,7 @@ runtime = [
   "dep:qrtz-llm",
   "dep:qrtz-search",
   "dep:qrtz-talk",
+  "dep:qrtz-speech",
 ]
 
 [dependencies]
@@ -27,6 +28,7 @@ qrtz-backup = { workspace = true, optional = true }
 qrtz-llm = { path = "../qrtz-llm", optional = true }
 qrtz-search = { path = "../qrtz-search", optional = true }
 qrtz-talk = { path = "../qrtz-talk", optional = true }
+qrtz-speech = { path = "../qrtz-speech", optional = true }
 rand.workspace = true
 unicode-normalization.workspace = true
 qrtz-ipc = { path = "../qrtz-ipc" }
@@ -47,5 +49,7 @@ qrtz-helper-bridge = { path = "../qrtz-helper-bridge" }
 qrtz-storage.workspace = true
 qrtz-search = { path = "../qrtz-search" }
 libc = "0.2"
+qrtz-speech = { path = "../qrtz-speech", features = ["testkit"] }
+ed25519-dalek = "2"
 # `cargo test --workspace` builds the runtime adapter tests without extra flags.
 qrtz-app = { path = ".", features = ["runtime"] }

@@ -209,6 +209,24 @@ export const HelperToHost = z.discriminatedUnion('type', [
      */
     degraded: z.array(RevocationDegradation).optional(),
   }),
+  /** N55: the audio write ends named by speech.attach were received and checked (FIFO, write-only, exact count). */
+  z.object({
+    type: z.literal('speech.attached'),
+    sessionId: z.string().max(256),
+  }),
+  /** N55: refused; every received fd was closed and nothing is written. */
+  z.object({
+    type: z.literal('speech.attach.rejected'),
+    sessionId: z.string().max(256),
+    reason: z.enum([
+      'no-fds',
+      'count',
+      'not-fifo',
+      'not-write-only',
+      'session-mismatch',
+      'unsupported',
+    ]),
+  }),
   z.object({
     type: z.literal('insert.result'),
     id: z.string(),
@@ -254,6 +272,24 @@ export const HostToHelper = z.discriminatedUnion('type', [
   z.object({ type: z.literal('dictation.start'), id: z.string() }),
   z.object({ type: z.literal('dictation.stop'), id: z.string() }),
   z.object({ type: z.literal('dictation.cancel'), id: z.string() }),
+  /**
+   * ADR 0046 §1 / N55: the speech module's audio write ends, one per channel in this order, arrive as one
+   * SCM_RIGHTS message (payload = sessionId) on the speech socket (fd QRTZ_SPEECH_FD), sent just before this line.
+   * `target` names the capture that feeds them: a dictation by id or a recording by audioPath. The helper writes
+   * contiguous PCM16LE 16 kHz mono from that capture's start (silence while paused) and closes the fds when it ends.
+   */
+  z.object({
+    type: z.literal('speech.attach'),
+    sessionId: z.string().min(1).max(256),
+    target: z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('dictation'), id: z.string() }),
+      z.object({ kind: z.literal('recording'), audioPath: z.string() }),
+    ]),
+    channels: z
+      .array(z.enum(['mic', 'system']))
+      .min(1)
+      .max(2),
+  }),
   /** Insert text into the focused app: AX selected text, then AX value, then pasteboard + Cmd-V. */
   z.object({
     type: z.literal('insert.text'),

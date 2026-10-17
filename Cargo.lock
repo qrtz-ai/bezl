@@ -3947,6 +3947,7 @@ name = "qrtz-app"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "ed25519-dalek",
  "keyring",
  "libc",
  "qrtz-app",
@@ -3957,6 +3958,7 @@ dependencies = [
  "qrtz-llm",
  "qrtz-model",
  "qrtz-search",
+ "qrtz-speech",
  "qrtz-storage",
  "qrtz-talk",
  "rand 0.8.8",
@@ -4013,6 +4015,7 @@ name = "qrtz-helper-bridge"
 version = "0.1.0"
 dependencies = [
  "jsonschema",
+ "libc",
  "rand 0.8.8",
  "serde",
  "serde_json",
@@ -4114,6 +4117,7 @@ dependencies = [
  "hex",
  "jsonschema",
  "libc",
+ "qrtz-speech",
  "reqwest 0.12.28",
  "semver",
  "serde",

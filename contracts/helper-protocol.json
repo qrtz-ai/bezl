@@ -30,6 +30,8 @@
     "dictation.audio",
     "dictation.stopped",
     "permission.revoked",
+    "speech.attached",
+    "speech.attach.rejected",
     "insert.result"
   ],
   "hostToHelperTypes": [
@@ -46,6 +48,7 @@
     "dictation.start",
     "dictation.stop",
     "dictation.cancel",
+    "speech.attach",
     "insert.text"
   ],
   "helperToHost": {
@@ -837,6 +840,52 @@
         "properties": {
           "type": {
             "type": "string",
+            "const": "speech.attached"
+          },
+          "sessionId": {
+            "type": "string",
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "type",
+          "sessionId"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "speech.attach.rejected"
+          },
+          "sessionId": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "no-fds",
+              "count",
+              "not-fifo",
+              "not-write-only",
+              "session-mismatch",
+              "unsupported"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "sessionId",
+          "reason"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
             "const": "insert.result"
           },
           "id": {
@@ -1080,6 +1129,74 @@
         "required": [
           "type",
           "id"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "speech.attach"
+          },
+          "sessionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "target": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "dictation"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "recording"
+                  },
+                  "audioPath": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "audioPath"
+                ]
+              }
+            ]
+          },
+          "channels": {
+            "minItems": 1,
+            "maxItems": 2,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "mic",
+                "system"
+              ]
+            }
+          }
+        },
+        "required": [
+          "type",
+          "sessionId",
+          "target",
+          "channels"
         ]
       },
       {

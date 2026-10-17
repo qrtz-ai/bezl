@@ -11,6 +11,8 @@ pub mod runtime_port;
 pub mod secrets;
 pub mod service;
 #[cfg(feature = "runtime")]
+pub mod speech;
+#[cfg(feature = "runtime")]
 pub mod storage_port;
 #[cfg(feature = "runtime")]
 pub mod talk;

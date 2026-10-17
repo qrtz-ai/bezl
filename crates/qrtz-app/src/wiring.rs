@@ -377,6 +377,8 @@ pub struct BuiltApp {
     /// Call `search.start()` inside the tokio runtime after boot and `search.shutdown()` on quit.
     pub search: Arc<SearchHandles>,
     pub live: Arc<crate::live::LiveWork>,
+    /// N55: hands speech module audio fds to the helper (the on-device engine's `AudioAttach`).
+    pub attach: Arc<crate::speech::HelperAttach>,
 }
 
 /// The default secret store for this platform (env overrides in front).
@@ -475,6 +477,11 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         events,
     });
     service.set_chat(booted.chat.clone());
+    let attach = crate::speech::HelperAttach::new(service.helper().cloned());
+    {
+        let a = attach.clone();
+        service.set_speech_tap(Arc::new(move |m: &serde_json::Value| a.on_line(m)));
+    }
     Ok(BuiltApp {
         service,
         runtime: booted.runtime,
@@ -482,6 +489,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         dirs: booted.dirs,
         search: booted.search,
         live: booted.live,
+        attach,
     })
 }
 

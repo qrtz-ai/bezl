@@ -33,7 +33,12 @@ reqwest = { version = "0.12", default-features = false, features = [
 futures-util = "0.3"
 libc = "0.2"
 
+[features]
+# `testkit`: signing toolkit + bundle server for tests (this crate's and qrtz-app's E2E).
+testkit = []
+
 [dev-dependencies]
+qrtz-speech = { path = ".", features = ["testkit"] }
 tempfile.workspace = true
 ed25519-dalek = "2"
 tokio = { version = "1", features = [

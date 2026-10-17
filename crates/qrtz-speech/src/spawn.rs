@@ -240,15 +240,32 @@ impl Shared {
     }
 }
 
+/// Hands a session's audio write ends to whoever captures (the helper, `speech.attach`, N55). Resolves once the
+/// receiver acknowledged; the fds are consumed either way (the host keeps no copy).
+#[async_trait]
+pub trait AudioAttach: Send + Sync {
+    async fn attach(&self, spec: &SessionSpec, fds: Vec<(Channel, OwnedFd)>) -> Result<(), SpeechError>;
+}
+
 /// The engine over the installed module store.
 pub struct OnDeviceSpeech {
     pub store: Arc<SpeechStore>,
     pub opts: SpawnOptions,
+    /// `Some` = live sessions get their audio from the helper; `None` = the host pushes audio (tests, health).
+    pub attach: Option<Arc<dyn AudioAttach>>,
 }
 
 impl OnDeviceSpeech {
     pub fn new(store: Arc<SpeechStore>, opts: SpawnOptions) -> Self {
-        OnDeviceSpeech { store, opts }
+        OnDeviceSpeech {
+            store,
+            opts,
+            attach: None,
+        }
+    }
+    pub fn with_attach(mut self, attach: Arc<dyn AudioAttach>) -> Self {
+        self.attach = Some(attach);
+        self
     }
 }
 
@@ -515,7 +532,25 @@ impl SpeechEngine for OnDeviceSpeech {
         }
     }
     async fn start(&self, spec: SessionSpec) -> Result<Box<dyn SpeechSession>, SpeechError> {
-        Ok(Box::new(self.start_module(spec).await?))
+        let mut s = self.start_module(spec.clone()).await?;
+        if let Some(a) = &self.attach {
+            let (mut mic, mut system) = s.take_audio_fds();
+            let mut fds = vec![];
+            for ch in &spec.channels {
+                let fd = match ch {
+                    Channel::Mic => mic.take(),
+                    Channel::System => system.take(),
+                };
+                if let Some(fd) = fd {
+                    fds.push((*ch, fd));
+                }
+            }
+            if let Err(e) = a.attach(&spec, fds).await {
+                s.cancel().await;
+                return Err(e);
+            }
+        }
+        Ok(Box::new(s))
     }
 }
 
