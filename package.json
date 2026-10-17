@@ -27,7 +27,10 @@
     "screenshots": "node scripts/screenshots.mjs",
     "gen:contracts": "QRTZ_UPDATE_CONTRACTS=1 vitest run apps/desktop/src/shared/contract-json.test.ts",
     "test:rust": "cargo test --workspace",
-    "check:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo clippy -p qrtz-ipc -p qrtz-helper-bridge -p qrtz-app --all-targets -- -D warnings && cargo test --workspace"
+    "check:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo clippy -p qrtz-ipc -p qrtz-helper-bridge -p qrtz-app --all-targets -- -D warnings && cargo test --workspace",
+    "e2e:tauri": "playwright test -c e2e-tauri/playwright.config.ts",
+    "start:tauri": "npm run start -w @qrtz/desktop-tauri",
+    "make:tauri": "npm run make -w @qrtz/desktop-tauri"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
