@@ -613,7 +613,11 @@ export function buildSummaryPrompt(
   opts: SummaryOptions = {},
 ): ChatMessage[] {
   const tpl = templateById(opts.template);
-  const notes = (opts.notes ?? []).filter((n) => n.text.trim());
+  // N97: a note is one prompt line. Its text gets the same N69/N85 cleaning as the title and the transcript, so a
+  // pasted note cannot add lines that read as another section ("Capture gaps:", "Transcript:") or hide tag text.
+  const notes = (opts.notes ?? [])
+    .filter((n) => n.text.trim())
+    .map((n) => ({ ...n, text: promptSafe(n.text) }));
   const fence = fenceBlock(
     'transcript',
     formatTranscriptForPrompt(segments),

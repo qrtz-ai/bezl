@@ -377,7 +377,12 @@ pub fn build_summary_prompt(title: &str, segments: &[Segment], opts: &SummaryOpt
         .notes
         .iter()
         .filter(|n| !js_trim(&n.text).is_empty())
-        .cloned()
+        // N97 (ADR 0063): a note is one prompt line, cleaned like the title and the transcript (N69, N85), so a
+        // pasted note cannot add lines that read as another section or carry hidden tag text.
+        .map(|n| MeetingNote {
+            text: prompt_safe(&n.text),
+            ..n.clone()
+        })
         .collect();
     let gaps = capture_gaps_for_prompt(&opts.silent_spans, opts.duration_ms, &opts.lost_spans);
     let nonce = opts.fence_nonce.clone().unwrap_or_else(fence_nonce);
