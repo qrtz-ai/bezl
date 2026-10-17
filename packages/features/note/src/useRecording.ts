@@ -118,6 +118,7 @@ export const DEGRADED_LABELS: Record<SessionView['degraded'][number], string> =
     'asr-unavailable': 'No live transcription',
     'audio-unavailable': 'No audio',
     'mic-only': 'Mic only',
+    'no-mic': 'No mic',
     'ax-unavailable': 'No speaker names',
     'transcript-gap': 'Gap after reconnect',
   };

@@ -47,6 +47,20 @@ export const usingMockHelper = () =>
  * play a scripted meeting (and write fixture audio) — used by the e2e test and Linux dev.
  */
 let crashInjected = false;
+/** QRTZ_MOCK_REVOKE="microphone@1500,screen-recording@3000": revoke TCC mid-capture (H5 fault injection). */
+export function parseRevoke(v: string) {
+  return v
+    .split(',')
+    .map((kv) => kv.trim().split('@'))
+    .filter(
+      (x): x is ['microphone' | 'screen-recording' | 'accessibility', string] =>
+        ['microphone', 'screen-recording', 'accessibility'].includes(
+          x[0] ?? '',
+        ) && Number.isFinite(Number(x[1])),
+    )
+    .map(([permission, ms]) => ({ permission, afterMs: Number(ms) }));
+}
+
 /** QRTZ_MOCK_PERMISSIONS="screen-recording=denied,microphone=denied" (e2e fault injection). */
 function mockPermissions() {
   const out: Record<string, 'granted' | 'denied' | 'unsupported'> = {};
@@ -67,6 +81,9 @@ export function spawnHelper(): ChildHandle {
       ...(scenario ? { scenario } : {}),
       speed: Number(process.env.QRTZ_MOCK_SPEED ?? '0.05'),
       permissions: mockPermissions(),
+      ...(process.env.QRTZ_MOCK_REVOKE
+        ? { revoke: parseRevoke(process.env.QRTZ_MOCK_REVOKE) }
+        : {}),
       ...(['ax', 'paste', 'fail'].includes(process.env.QRTZ_MOCK_INSERT ?? '')
         ? { insert: process.env.QRTZ_MOCK_INSERT as 'ax' | 'paste' | 'fail' }
         : {}),

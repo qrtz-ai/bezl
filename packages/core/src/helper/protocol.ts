@@ -108,6 +108,21 @@ export const HelperToHost = z.discriminatedUnion('type', [
     /** Final on-device text ('' when no recogniser ran). */
     text: z.string(),
     durationMs: z.number(),
+    /**
+     * Set when the helper ended the dictation on its own (no dictation.stop from the host):
+     * `permission-revoked` (microphone access withdrawn mid-dictation) or `mic-lost` (the input device went away).
+     */
+    reason: z.enum(['permission-revoked', 'mic-lost']).optional(),
+  }),
+  z.object({
+    /**
+     * A TCC permission went from granted to denied while capturing or dictating (polled by the helper).
+     * The host degrades the recording live and the helper ends a dictation itself (docs/helper-protocol.md).
+     */
+    type: z.literal('permission.revoked'),
+    permission: OsPermission,
+    /** ms on the helper clock (recording-relative while recording, like other atMs fields). */
+    atMs: z.number(),
   }),
   z.object({
     type: z.literal('insert.result'),

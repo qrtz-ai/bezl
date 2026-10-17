@@ -1,0 +1,1028 @@
+{
+ "about": "Helper session arbiter vectors (H6 concurrency + H5 revocation). Consumed by packages/core/src/helper/arbiter.test.ts and native/qrtz-helper/Tests/QrtzHelperCoreTests/ArbiterTests.swift. Spec: docs/helper-protocol.md.",
+ "cases": [
+  {
+   "name": "mux: dictation during a recording shares the mic tap",
+   "initialDenied": [],
+   "steps": [
+    {
+     "event": {
+      "cmd": "recording.start"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.subscribe:recording"
+      ],
+      "state": {
+       "recording": true,
+       "dictating": false,
+       "mic": [
+        "recording"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.start"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": true,
+      "effects": [
+       "mic.subscribe:dictation"
+      ],
+      "state": {
+       "recording": true,
+       "dictating": true,
+       "mic": [
+        "recording",
+        "dictation"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.stop"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.unsubscribe:dictation"
+      ],
+      "state": {
+       "recording": true,
+       "dictating": false,
+       "mic": [
+        "recording"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "recording.stop"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.unsubscribe:recording"
+      ],
+      "state": {
+       "recording": false,
+       "dictating": false,
+       "mic": [],
+       "denied": []
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "mux: recording started during a dictation",
+   "initialDenied": [],
+   "steps": [
+    {
+     "event": {
+      "cmd": "dictation.start"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.subscribe:dictation"
+      ],
+      "state": {
+       "recording": false,
+       "dictating": true,
+       "mic": [
+        "dictation"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "recording.start"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": true,
+      "effects": [
+       "mic.subscribe:recording"
+      ],
+      "state": {
+       "recording": true,
+       "dictating": true,
+       "mic": [
+        "dictation",
+        "recording"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "recording.stop"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.unsubscribe:recording"
+      ],
+      "state": {
+       "recording": false,
+       "dictating": true,
+       "mic": [
+        "dictation"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.cancel"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.unsubscribe:dictation"
+      ],
+      "state": {
+       "recording": false,
+       "dictating": false,
+       "mic": [],
+       "denied": []
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "single instance: duplicates are ignored, not queued",
+   "initialDenied": [],
+   "steps": [
+    {
+     "event": {
+      "cmd": "recording.start"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.subscribe:recording"
+      ],
+      "state": {
+       "recording": true,
+       "dictating": false,
+       "mic": [
+        "recording"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "recording.start"
+     },
+     "expect": {
+      "decision": "ignore",
+      "reason": "already-recording",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": true,
+       "dictating": false,
+       "mic": [
+        "recording"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.start"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": true,
+      "effects": [
+       "mic.subscribe:dictation"
+      ],
+      "state": {
+       "recording": true,
+       "dictating": true,
+       "mic": [
+        "recording",
+        "dictation"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.start"
+     },
+     "expect": {
+      "decision": "ignore",
+      "reason": "already-dictating",
+      "mux": true,
+      "effects": [],
+      "state": {
+       "recording": true,
+       "dictating": true,
+       "mic": [
+        "recording",
+        "dictation"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.stop"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.unsubscribe:dictation"
+      ],
+      "state": {
+       "recording": true,
+       "dictating": false,
+       "mic": [
+        "recording"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.stop"
+     },
+     "expect": {
+      "decision": "ignore",
+      "reason": "not-dictating",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": true,
+       "dictating": false,
+       "mic": [
+        "recording"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "recording.stop"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.unsubscribe:recording"
+      ],
+      "state": {
+       "recording": false,
+       "dictating": false,
+       "mic": [],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "recording.stop"
+     },
+     "expect": {
+      "decision": "ignore",
+      "reason": "not-recording",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": false,
+       "dictating": false,
+       "mic": [],
+       "denied": []
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "dictation is refused when the microphone is denied",
+   "initialDenied": [
+    "microphone"
+   ],
+   "steps": [
+    {
+     "event": {
+      "cmd": "dictation.start"
+     },
+     "expect": {
+      "decision": "refuse",
+      "reason": "microphone-denied",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": false,
+       "dictating": false,
+       "mic": [],
+       "denied": [
+        "microphone"
+       ]
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "recording.start"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": true,
+       "dictating": false,
+       "mic": [],
+       "denied": [
+        "microphone"
+       ]
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.start"
+     },
+     "expect": {
+      "decision": "refuse",
+      "reason": "microphone-denied",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": true,
+       "dictating": false,
+       "mic": [],
+       "denied": [
+        "microphone"
+       ]
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "recording.stop"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": false,
+       "dictating": false,
+       "mic": [],
+       "denied": [
+        "microphone"
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "mic revoked mid-mux: dictation stops, recording degrades to system audio",
+   "initialDenied": [],
+   "steps": [
+    {
+     "event": {
+      "cmd": "recording.start"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.subscribe:recording"
+      ],
+      "state": {
+       "recording": true,
+       "dictating": false,
+       "mic": [
+        "recording"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.start"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": true,
+      "effects": [
+       "mic.subscribe:dictation"
+      ],
+      "state": {
+       "recording": true,
+       "dictating": true,
+       "mic": [
+        "recording",
+        "dictation"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "revoked": "microphone"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "dictation.stop:permission-revoked",
+       "mic.unsubscribe:recording",
+       "mic.unsubscribe:dictation",
+       "degrade:no-mic"
+      ],
+      "state": {
+       "recording": true,
+       "dictating": false,
+       "mic": [],
+       "denied": [
+        "microphone"
+       ]
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.stop"
+     },
+     "expect": {
+      "decision": "ignore",
+      "reason": "not-dictating",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": true,
+       "dictating": false,
+       "mic": [],
+       "denied": [
+        "microphone"
+       ]
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.start"
+     },
+     "expect": {
+      "decision": "refuse",
+      "reason": "microphone-denied",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": true,
+       "dictating": false,
+       "mic": [],
+       "denied": [
+        "microphone"
+       ]
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "recording.stop"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": false,
+       "dictating": false,
+       "mic": [],
+       "denied": [
+        "microphone"
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "screen revoked then mic revoked: mic-only, then audio-unavailable",
+   "initialDenied": [],
+   "steps": [
+    {
+     "event": {
+      "cmd": "recording.start"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.subscribe:recording"
+      ],
+      "state": {
+       "recording": true,
+       "dictating": false,
+       "mic": [
+        "recording"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "revoked": "screen-recording"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "degrade:mic-only"
+      ],
+      "state": {
+       "recording": true,
+       "dictating": false,
+       "mic": [
+        "recording"
+       ],
+       "denied": [
+        "screen-recording"
+       ]
+      }
+     }
+    },
+    {
+     "event": {
+      "revoked": "microphone"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.unsubscribe:recording",
+       "degrade:audio-unavailable"
+      ],
+      "state": {
+       "recording": true,
+       "dictating": false,
+       "mic": [],
+       "denied": [
+        "screen-recording",
+        "microphone"
+       ]
+      }
+     }
+    },
+    {
+     "event": {
+      "revoked": "microphone"
+     },
+     "expect": {
+      "decision": "ignore",
+      "reason": "unchanged",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": true,
+       "dictating": false,
+       "mic": [],
+       "denied": [
+        "screen-recording",
+        "microphone"
+       ]
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "recording.stop"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": false,
+       "dictating": false,
+       "mic": [],
+       "denied": [
+        "screen-recording",
+        "microphone"
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "accessibility revoked: dictation keeps going, recording loses AX",
+   "initialDenied": [],
+   "steps": [
+    {
+     "event": {
+      "cmd": "dictation.start"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.subscribe:dictation"
+      ],
+      "state": {
+       "recording": false,
+       "dictating": true,
+       "mic": [
+        "dictation"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "revoked": "accessibility"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": false,
+       "dictating": true,
+       "mic": [
+        "dictation"
+       ],
+       "denied": [
+        "accessibility"
+       ]
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "recording.start"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": true,
+      "effects": [
+       "mic.subscribe:recording"
+      ],
+      "state": {
+       "recording": true,
+       "dictating": true,
+       "mic": [
+        "dictation",
+        "recording"
+       ],
+       "denied": [
+        "accessibility"
+       ]
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.stop"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.unsubscribe:dictation"
+      ],
+      "state": {
+       "recording": true,
+       "dictating": false,
+       "mic": [
+        "recording"
+       ],
+       "denied": [
+        "accessibility"
+       ]
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "recording.stop"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.unsubscribe:recording"
+      ],
+      "state": {
+       "recording": false,
+       "dictating": false,
+       "mic": [],
+       "denied": [
+        "accessibility"
+       ]
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "revocation while idle changes nothing visible; re-grant allows dictation again",
+   "initialDenied": [],
+   "steps": [
+    {
+     "event": {
+      "revoked": "microphone"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": false,
+       "dictating": false,
+       "mic": [],
+       "denied": [
+        "microphone"
+       ]
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.start"
+     },
+     "expect": {
+      "decision": "refuse",
+      "reason": "microphone-denied",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": false,
+       "dictating": false,
+       "mic": [],
+       "denied": [
+        "microphone"
+       ]
+      }
+     }
+    },
+    {
+     "event": {
+      "granted": "microphone"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": false,
+       "dictating": false,
+       "mic": [],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.start"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.subscribe:dictation"
+      ],
+      "state": {
+       "recording": false,
+       "dictating": true,
+       "mic": [
+        "dictation"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.stop"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.unsubscribe:dictation"
+      ],
+      "state": {
+       "recording": false,
+       "dictating": false,
+       "mic": [],
+       "denied": []
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "helper lost mid-mux ends the dictation and resets",
+   "initialDenied": [],
+   "steps": [
+    {
+     "event": {
+      "cmd": "recording.start"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.subscribe:recording"
+      ],
+      "state": {
+       "recording": true,
+       "dictating": false,
+       "mic": [
+        "recording"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.start"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": true,
+      "effects": [
+       "mic.subscribe:dictation"
+      ],
+      "state": {
+       "recording": true,
+       "dictating": true,
+       "mic": [
+        "recording",
+        "dictation"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "helperLost": true
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "dictation.stop:helper-lost"
+      ],
+      "state": {
+       "recording": false,
+       "dictating": false,
+       "mic": [],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.stop"
+     },
+     "expect": {
+      "decision": "ignore",
+      "reason": "not-dictating",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": false,
+       "dictating": false,
+       "mic": [],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "recording.start"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.subscribe:recording"
+      ],
+      "state": {
+       "recording": true,
+       "dictating": false,
+       "mic": [
+        "recording"
+       ],
+       "denied": []
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "mic denied at start: recording runs without the mic tap, screen revoke means no audio",
+   "initialDenied": [
+    "microphone"
+   ],
+   "steps": [
+    {
+     "event": {
+      "cmd": "recording.start"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": true,
+       "dictating": false,
+       "mic": [],
+       "denied": [
+        "microphone"
+       ]
+      }
+     }
+    },
+    {
+     "event": {
+      "revoked": "screen-recording"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "degrade:audio-unavailable"
+      ],
+      "state": {
+       "recording": true,
+       "dictating": false,
+       "mic": [],
+       "denied": [
+        "microphone",
+        "screen-recording"
+       ]
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "recording.stop"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": false,
+       "dictating": false,
+       "mic": [],
+       "denied": [
+        "microphone",
+        "screen-recording"
+       ]
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

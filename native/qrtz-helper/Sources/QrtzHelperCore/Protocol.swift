@@ -5,6 +5,8 @@ import Foundation
 public let helperProtocolVersion = 1
 
 public enum OsPermission: String, CaseIterable, Sendable { case accessibility, screenRecording = "screen-recording", microphone }
+/// Why the helper ended a dictation on its own.
+public enum DictationStopReason: String, Sendable { case permissionRevoked = "permission-revoked", micLost = "mic-lost" }
 public enum PermissionState: String, Sendable { case granted, denied, notDetermined = "not-determined", unsupported }
 public enum MeetingPlatform: String, Sendable { case zoom, googleMeet = "google-meet", teams, slackHuddle = "slack-huddle", webex, other }
 public enum InsertMethod: String, Sendable { case axSelectedText = "ax-selected-text", axValue = "ax-value", paste, none }
@@ -45,7 +47,10 @@ public enum HelperMessage: Equatable, Sendable {
     case dictationLevel(rms: Double)
     case dictationAsr(id: String, event: AsrEvent)
     case dictationAudio(id: String, seq: Int, pcm16: String)
-    case dictationStopped(id: String, text: String, durationMs: Double)
+    /// reason is set only when the helper ended the dictation itself (see DictationStopReason).
+    case dictationStopped(id: String, text: String, durationMs: Double, reason: DictationStopReason? = nil)
+    /// A TCC permission went granted → denied while capturing or dictating.
+    case permissionRevoked(permission: OsPermission, atMs: Double)
     case insertResult(id: String, method: InsertMethod, ok: Bool, app: String?, error: String?)
 }
 
@@ -167,7 +172,11 @@ extension HelperMessage {
         case .dictationLevel(let rms): return obj("dictation.level", ["rms": n(min(1, max(0, rms)))])
         case .dictationAsr(let id, let e): return obj("dictation.asr", ["id": s(id), "event": e.json])
         case .dictationAudio(let id, let seq, let pcm): return obj("dictation.audio", ["id": s(id), "seq": n(Double(seq)), "pcm16": s(pcm)])
-        case .dictationStopped(let id, let text, let d): return obj("dictation.stopped", ["id": s(id), "text": s(text), "durationMs": n(d)])
+        case .dictationStopped(let id, let text, let d, let reason):
+            var o: [String: JSONValue] = ["id": s(id), "text": s(text), "durationMs": n(d)]
+            if let reason { o["reason"] = s(reason.rawValue) }
+            return obj("dictation.stopped", o)
+        case .permissionRevoked(let p, let at): return obj("permission.revoked", ["permission": s(p.rawValue), "atMs": n(at)])
         case .insertResult(let id, let m, let ok, let app, let err):
             var o: [String: JSONValue] = ["id": s(id), "method": s(m.rawValue), "ok": .bool(ok)]
             if let app { o["app"] = s(app) }
@@ -220,7 +229,13 @@ extension HelperMessage {
             guard let e = f.o["event"] else { throw ProtocolError("missing event") }
             self = .dictationAsr(id: try f.str("id"), event: try AsrEvent(json: e))
         case "dictation.audio": self = .dictationAudio(id: try f.str("id"), seq: Int(try f.num("seq")), pcm16: try f.str("pcm16"))
-        case "dictation.stopped": self = .dictationStopped(id: try f.str("id"), text: try f.str("text"), durationMs: try f.num("durationMs"))
+        case "dictation.stopped":
+            self = .dictationStopped(id: try f.str("id"), text: try f.str("text"), durationMs: try f.num("durationMs"),
+                                     reason: try f.optStr("reason").map { r in
+                                         guard let v = DictationStopReason(rawValue: r) else { throw ProtocolError("bad reason \(r)") }
+                                         return v
+                                     })
+        case "permission.revoked": self = .permissionRevoked(permission: try f.enumValue("permission", OsPermission.self), atMs: try f.num("atMs"))
         case "insert.result":
             guard let ok = f.o["ok"]?.bool else { throw ProtocolError("missing ok") }
             self = .insertResult(id: try f.str("id"), method: try f.enumValue("method", InsertMethod.self), ok: ok, app: try f.optStr("app"), error: try f.optStr("error"))

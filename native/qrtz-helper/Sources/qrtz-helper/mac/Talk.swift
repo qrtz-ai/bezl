@@ -8,7 +8,7 @@ import QrtzHelperCore
 // qrtz talk on macOS: mic-only capture, AX/pasteboard text insertion, and the native push-to-talk key monitor.
 // None of this compiles on Linux; the logic it plugs into (QrtzHelperCore/Dictation.swift) is tested there. [MAC-VERIFY]
 
-/// Mic only, through its own AVAudioEngine (independent of meeting capture, so dictation works mid-meeting).
+/// The physical mic (one AVAudioEngine input tap). Wrapped by MicHub so meeting capture and dictation share it (H6).
 final class DictationMicSource: MicSource, @unchecked Sendable {
     private var mic: MicCapture?
     func start(onSamples: @escaping @Sendable ([Float]) -> Void) throws {

@@ -93,7 +93,7 @@ async function post(
   body: unknown,
   signal?: AbortSignal,
 ) {
-  let res: Response;
+  let res: Awaited<ReturnType<FetchLike>>;
   try {
     res = await fetchFn(url, {
       method: 'POST',

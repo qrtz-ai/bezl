@@ -143,7 +143,12 @@ export default function NoteView() {
         setError(e.message);
     });
 
-  if (perms && needsOnboarding(perms) && !onboarded)
+  // A permission revoked mid-recording (H5) degrades the live view; it must not swap it for onboarding.
+  const busyRecording =
+    isCapturingPhase(session.phase) ||
+    session.phase === 'stopping' ||
+    session.phase === 'processing';
+  if (perms && needsOnboarding(perms) && !onboarded && !busyRecording)
     return (
       <Onboarding
         status={perms}

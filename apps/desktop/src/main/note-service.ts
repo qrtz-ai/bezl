@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  degradationsForRevocation,
   AppError,
   LifecycleMachine,
   RETRY_POLICIES,
@@ -220,6 +221,21 @@ export class NoteService {
         this.permissions = { ...this.permissions, ...m.status };
         this.deps.bus.emit('permissions:changed', this.permissions);
         break;
+      case 'permission.revoked': {
+        // H5: TCC withdrawn mid-capture. Degrade the running recording live (arbiter rules, shared with the
+        // helper) and reflect the new state in Settings/onboarding.
+        const denied = (
+          Object.keys(this.permissions) as (keyof PermissionsStatus)[]
+        ).filter((k) => this.permissions[k] === 'denied');
+        for (const f of degradationsForRevocation(m.permission, denied))
+          this.degrade(f);
+        this.permissions = { ...this.permissions, [m.permission]: 'denied' };
+        this.deps.bus.emit('permissions:changed', this.permissions);
+        this.deps.log.warn('permission revoked mid-capture', {
+          permission: m.permission,
+        });
+        break;
+      }
       case 'ax.participants':
         this.participants = m.names;
         this.emitSoon();

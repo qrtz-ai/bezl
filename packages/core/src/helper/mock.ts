@@ -4,6 +4,12 @@ import {
   type HelperToHost,
 } from './protocol';
 import type { ChildHandle, Clock } from './supervisor';
+import {
+  arbiterStep,
+  initialArbiterState,
+  type HelperArbiterEvent,
+  type HelperPermission,
+} from './arbiter';
 import { systemClock } from './supervisor';
 import {
   FIXTURE_DURATION_MS,
@@ -30,6 +36,11 @@ export interface MockHelperOptions {
   insert?: 'ax' | 'paste' | 'fail';
   /** Dictation partial cadence (ms between scripted words). */
   dictationStepMs?: number;
+  /**
+   * H5 fault injection: revoke a TCC permission `afterMs` (real ms) after the first capture (recording.start or
+   * dictation.start). Emits permission.revoked and applies the arbiter's effects like the Swift helper does.
+   */
+  revoke?: { permission: HelperPermission; afterMs: number }[];
   /** Override reported TCC states (fault injection: denied permissions). */
   permissions?: Partial<
     Record<
@@ -54,6 +65,56 @@ export function createMockHelper(
   let hb: unknown = null;
   let scriptTimers: unknown[] = [];
   let audioPath = '';
+  // H6/H5: same arbiter as the Swift helper (spec/vectors/helper/arbiter.json).
+  let arb = initialArbiterState(
+    (Object.entries(opts.permissions ?? {}) as [HelperPermission, string][])
+      .filter(([, v]) => v === 'denied')
+      .map(([k]) => k),
+  );
+  let revokeArmed = false;
+  const admit = (e: HelperArbiterEvent) => {
+    const r = arbiterStep(arb, e);
+    arb = r.state;
+    if (r.decision === 'ignore')
+      emit({
+        type: 'log',
+        level: 'warn',
+        msg: `${'cmd' in e ? e.cmd : 'event'} while ${r.reason}; ignored`,
+      });
+    if (r.decision === 'refuse')
+      emit({
+        type: 'error',
+        code: 'dictation.mic',
+        message: 'microphone access denied',
+        fatal: false,
+      });
+    if (r.decision === 'accept' && r.mux)
+      emit({
+        type: 'log',
+        level: 'info',
+        msg: 'mux: recording and dictation share the mic tap',
+      });
+    return r;
+  };
+  const armRevocations = () => {
+    if (revokeArmed) return;
+    revokeArmed = true;
+    for (const rv of opts.revoke ?? [])
+      at(rv.afterMs, () => {
+        const r = arbiterStep(arb, { revoked: rv.permission });
+        arb = r.state;
+        if (r.decision !== 'accept') return;
+        reported[rv.permission] = 'denied';
+        emit({
+          type: 'permission.revoked',
+          permission: rv.permission,
+          atMs: clock.now(),
+        });
+        if (r.effects.includes('dictation.stop:permission-revoked') && dict)
+          stopDictation(dict.id, false, 'permission-revoked');
+      });
+  };
+  const reported: Partial<Record<HelperPermission, 'denied'>> = {};
   const granted = opts.scenario ? 'granted' : 'unsupported';
   const emit = (m: HelperToHost) => {
     if (alive) for (const cb of lineCbs) cb(JSON.stringify(m));
@@ -83,6 +144,7 @@ export function createMockHelper(
       'screen-recording': granted,
       microphone: granted,
       ...opts.permissions,
+      ...reported,
     },
   });
 
@@ -193,7 +255,11 @@ export function createMockHelper(
         }, i * step),
       );
   };
-  const stopDictation = (id: string, cancel: boolean) => {
+  const stopDictation = (
+    id: string,
+    cancel: boolean,
+    reason?: 'permission-revoked',
+  ) => {
     if (!dict || dict.id !== id) return;
     stopDictTimers();
     const text = cancel
@@ -216,6 +282,7 @@ export function createMockHelper(
       id,
       text,
       durationMs: cancel ? 0 : clock.now() - dict.t0,
+      ...(reason ? { reason } : {}),
     });
     dict = null;
   };
@@ -247,6 +314,8 @@ export function createMockHelper(
         case 'shutdown':
           return die(0, null);
         case 'recording.start':
+          if (admit({ cmd: 'recording.start' }).decision !== 'accept') return;
+          armRevocations();
           audioPath = m.audioPath;
           // Mirrors the Swift helper: capture problems are non-fatal errors, recording.started still follows.
           if (
@@ -276,11 +345,16 @@ export function createMockHelper(
           };
           return;
         case 'dictation.start':
-          if (dict) return;
+          if (admit({ cmd: 'dictation.start' }).decision !== 'accept') return;
+          armRevocations();
           return startDictation(m.id);
         case 'dictation.stop':
+          if (dict?.id !== m.id) return;
+          admit({ cmd: 'dictation.stop' });
           return stopDictation(m.id, false);
         case 'dictation.cancel':
+          if (dict?.id !== m.id) return;
+          admit({ cmd: 'dictation.cancel' });
           return stopDictation(m.id, true);
         case 'insert.text': {
           const mode = opts.insert ?? 'ax';
@@ -304,6 +378,7 @@ export function createMockHelper(
           );
         }
         case 'recording.stop':
+          if (admit({ cmd: 'recording.stop' }).decision !== 'accept') return;
           paused = false;
           clearScript();
           return emit({

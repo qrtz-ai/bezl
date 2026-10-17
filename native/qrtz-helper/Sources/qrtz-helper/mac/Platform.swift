@@ -7,10 +7,12 @@ func makePlatformDeps(version: String) -> HelperDeps {
     let context = MeetingContext()
     var audio: [AudioSource] = []
     var features = ["ax", "ax.observer"]
-    if #available(macOS 14.2, *) { audio.append(CoreAudioTapSource()); features.append("audio.process-tap") }
-    audio.append(ScreenCaptureKitSource()); features.append("audio.screencapturekit")
+    // H6 mux: one AVAudioEngine mic tap shared by meeting capture and dictation.
+    let micHub = MicHub(source: DictationMicSource())
+    if #available(macOS 14.2, *) { audio.append(CoreAudioTapSource(mic: micHub.view("recording"))); features.append("audio.process-tap") }
+    audio.append(ScreenCaptureKitSource(mic: micHub.view("recording"))); features.append("audio.screencapturekit")
     features.append("audio.echo-gate")
-    features += ["talk.mic", "talk.insert.ax", "talk.insert.paste", "talk.hotkey"]
+    features += ["talk.mic", "talk.insert.ax", "talk.insert.paste", "talk.hotkey", "helper.mux", "permissions.watch"]
     features.append("audio.aec.localvqe")
 
     var asr: [StreamingTranscriber] = [ParakeetTranscriber()]
@@ -24,7 +26,7 @@ func makePlatformDeps(version: String) -> HelperDeps {
         permissions: MacPermissions(), meetings: AXMeetingSource(context: context), audio: audio, transcribers: asr,
         helperVersion: version, os: "macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)", features: features,
         context: context, enhancer: LocalVqeEnhancer(),
-        dictationMic: DictationMicSource(), dictationTranscribers: dictationAsr(), insertion: MacInsertion(), hotkeys: MacHotkeys())
+        dictationMic: micHub.view("dictation"), dictationTranscribers: dictationAsr(), insertion: MacInsertion(), hotkeys: MacHotkeys(), micHub: micHub)
 }
 
 /// Separate recogniser instances for qrtz talk so a dictation can run during a meeting recording.

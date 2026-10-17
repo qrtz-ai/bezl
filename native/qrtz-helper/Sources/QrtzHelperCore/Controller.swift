@@ -51,8 +51,15 @@ public struct HelperDeps: Sendable {
     public var dictationTranscribers: [StreamingTranscriber]
     public var insertion: InsertionBackend?
     public var hotkeys: HotkeyMonitor?
+    /// H6: the shared mic tap. When set, dictation and meeting capture read the mic through views of it, and a
+    /// microphone revocation drops every reader at once.
+    public var micHub: MicHub?
+    /// H5: how often TCC state is re-read while capturing or dictating (0 = never poll; tests call checkPermissions()).
+    public var permissionPollMs: Int
     public init(permissions: PermissionsProvider, meetings: MeetingSource?, audio: [AudioSource], transcribers: [StreamingTranscriber], helperVersion: String, os: String, features: [String], context: MeetingContext = MeetingContext(), enhancer: MicEnhancer? = nil,
-                dictationMic: MicSource? = nil, dictationTranscribers: [StreamingTranscriber] = [], insertion: InsertionBackend? = nil, hotkeys: HotkeyMonitor? = nil) {
+                dictationMic: MicSource? = nil, dictationTranscribers: [StreamingTranscriber] = [], insertion: InsertionBackend? = nil, hotkeys: HotkeyMonitor? = nil,
+                micHub: MicHub? = nil, permissionPollMs: Int = 2000) {
+        self.micHub = micHub; self.permissionPollMs = permissionPollMs
         self.dictationMic = dictationMic; self.dictationTranscribers = dictationTranscribers; self.insertion = insertion; self.hotkeys = hotkeys
         self.permissions = permissions; self.meetings = meetings; self.audio = audio; self.transcribers = transcribers
         self.helperVersion = helperVersion; self.os = os; self.features = features
@@ -85,8 +92,16 @@ public actor HelperController {
         init(wav: WavWriter, startMs: Double) { self.wav = wav; self.startMs = startMs }
     }
 
+    /// H6/H5 arbiter state (see Arbiter.swift); `lastPerms` is the TCC snapshot revocations are diffed against.
+    public private(set) var arbiter: ArbiterState
+    private var lastPerms: [OsPermission: PermissionState]
+    private var permWatch: Task<Void, Never>?
+
     public init(deps: HelperDeps, send: @escaping @Sendable (HelperMessage) -> Void, now: @escaping @Sendable () -> Double) {
         self.deps = deps; self.send = send; self.now = now
+        let st = deps.permissions.status()
+        self.lastPerms = st
+        self.arbiter = ArbiterState(denied: OsPermission.allCases.filter { st[$0] == .denied })
         self.dictation = DictationEngine(mic: deps.dictationMic, transcribers: deps.dictationTranscribers,
                                          inserter: deps.insertion.map { TextInserter(backend: $0) }, hotkeys: deps.hotkeys, send: send, now: now)
     }
@@ -113,21 +128,92 @@ public actor HelperController {
         case .permissionsRequest(let p):
             await deps.permissions.request(p)
             send(.permissionsStatus(deps.permissions.status()))
-        case .recordingStart(let path): await startRecording(path)
-        case .recordingStop: await stopRecording()
+        case .recordingStart(let path):
+            guard admit(.cmd("recording.start")) else { return }
+            await startRecording(path)
+        case .recordingStop:
+            guard admit(.cmd("recording.stop")) else { return }
+            await stopRecording()
         case .recordingPause: paused = true; send(.log(level: .info, msg: "capture paused"))
         case .recordingResume: paused = false; send(.log(level: .info, msg: "capture resumed"))
         case .shutdown: await shutdown()
         case .dictationConfigure(let warm, let pre, let stream, let key):
             await dictation.configure(warmMic: warm, preRollMs: pre, streamAudio: stream, pushKey: key)
-        case .dictationStart(let id): await dictation.start(id: id)
-        case .dictationStop(let id): await dictation.stop(id: id)
-        case .dictationCancel(let id): await dictation.cancel(id: id)
+        case .dictationStart(let id):
+            guard admit(.cmd("dictation.start")) else { return }
+            await dictation.start(id: id)
+            if await !dictation.isActive { arbiter.dictating = false; arbiter.mic.removeAll { $0 == "dictation" } }
+            watchPermissions()
+        case .dictationStop(let id):
+            guard await dictation.activeId == id, admit(.cmd("dictation.stop")) else { return }
+            await dictation.stop(id: id)
+        case .dictationCancel(let id):
+            guard await dictation.activeId == id, admit(.cmd("dictation.cancel")) else { return }
+            await dictation.cancel(id: id)
         case .insertText(let id, let text, let restore): await dictation.insert(id: id, text: text, restoreClipboard: restore)
         }
     }
 
     public func heartbeat() { send(.heartbeat(ts: now())) }
+
+    /// Runs a command through the arbiter. Ignored commands are logged; a refused dictation.start is an error.
+    private func admit(_ e: ArbiterEvent) -> Bool {
+        let r = SessionArbiter.step(arbiter, e)
+        arbiter = r.state
+        guard case .cmd(let c) = e else { return true }
+        switch r.decision {
+        case "ignore":
+            send(.log(level: .warn, msg: "\(c) while \(r.reason ?? "busy"); ignored")); return false
+        case "refuse":
+            send(.error(code: "dictation.mic", message: "microphone access denied", fatal: false)); return false
+        default:
+            if r.mux { send(.log(level: .info, msg: "mux: recording and dictation share the mic tap")) }
+            return true
+        }
+    }
+
+    /// H5: polls TCC while anything captures; stops by itself once idle.
+    func watchPermissions() {
+        guard permWatch == nil, deps.permissionPollMs > 0, arbiter.recording || arbiter.dictating else { return }
+        let ns = UInt64(deps.permissionPollMs) * 1_000_000
+        permWatch = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: ns)
+                guard let self, await self.pollPermissionsOnce() else { return }
+            }
+        }
+    }
+
+    private func pollPermissionsOnce() async -> Bool {
+        await checkPermissions()
+        if arbiter.recording || arbiter.dictating { return true }
+        permWatch = nil
+        return false
+    }
+
+    /// Diffs TCC state against the last snapshot. granted → denied emits permission.revoked and applies the
+    /// arbiter's effects: a dictation ends itself (dictation.stopped{reason: permission-revoked}) and the shared
+    /// mic tap is dropped; the recording keeps whatever source still works (the host adds the degradation).
+    public func checkPermissions() async {
+        let st = deps.permissions.status()
+        defer { lastPerms = st }
+        for p in OsPermission.allCases {
+            let was = lastPerms[p], now = st[p]
+            if now == .denied, was != .denied {
+                let r = SessionArbiter.step(arbiter, .revoked(p))
+                arbiter = r.state
+                guard r.decision == "accept" else { continue }
+                send(.permissionRevoked(permission: p, atMs: relativeMs()))
+                for fx in r.effects {
+                    if fx == "dictation.stop:permission-revoked" { await dictation.abort(reason: .permissionRevoked) }
+                    if fx.hasPrefix("mic.unsubscribe:") { deps.micHub?.unsubscribe(String(fx.dropFirst("mic.unsubscribe:".count))) }
+                }
+                if p == .microphone { deps.micHub?.dropAll() }
+            } else if now == .granted, was == .denied {
+                arbiter = SessionArbiter.step(arbiter, .granted(p)).state
+            }
+        }
+    }
 
     func startRecording(_ path: String) async {
         if recording != nil { send(.log(level: .warn, msg: "recording.start while recording; ignored")); return }
@@ -170,6 +256,7 @@ public actor HelperController {
         if rec.audio == nil { send(.error(code: "audio.unavailable", message: "no audio source could start (check Screen & System Audio Recording and Microphone permissions)", fatal: false)) }
 
         send(.recordingStarted(audioPath: path))
+        watchPermissions()
         tick = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 250_000_000)
@@ -221,6 +308,7 @@ public actor HelperController {
         guard !shuttingDown else { return }
         shuttingDown = true
         await stopRecording()
+        permWatch?.cancel(); permWatch = nil
         await dictation.shutdown()
         deps.meetings?.stop()
     }

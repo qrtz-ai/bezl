@@ -67,7 +67,7 @@ kebab_enum!(RecordingPhase {
 });
 kebab_enum!(StopReason { Manual = "manual", MeetingEnded = "meeting-ended", HelperLost = "helper-lost", CrashRecovered = "crash-recovered" });
 kebab_enum!(Degradation {
-    AsrUnavailable = "asr-unavailable", AudioUnavailable = "audio-unavailable", MicOnly = "mic-only",
+    AsrUnavailable = "asr-unavailable", AudioUnavailable = "audio-unavailable", MicOnly = "mic-only", NoMic = "no-mic",
     AxUnavailable = "ax-unavailable", TranscriptGap = "transcript-gap",
 });
 kebab_enum!(StepId { Finalize = "finalize", Summary = "summary", Index = "index" });

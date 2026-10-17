@@ -68,7 +68,9 @@ final class CoreAudioTapSource: AudioSource, @unchecked Sendable {
     private var procID: AudioDeviceIOProcID?
     private let queue = DispatchQueue(label: "qrtz.tap", qos: .userInteractive)
     private let aligner = DSP.Aligner()
-    private let mic = MicCapture()
+    /// The meeting's view of the shared mic tap (MicHub, H6): dictation can read the same device concurrently.
+    private let mic: MicSource
+    init(mic: MicSource) { self.mic = mic }
     private let conv = MonoConverter()
 
     private static func defaultOutputUID() throws -> String {
@@ -124,7 +126,7 @@ final class CoreAudioTapSource: AudioSource, @unchecked Sendable {
         guard st == noErr else { cleanup(); throw AudioError.os("AudioDeviceStart", st) }
 
         do {
-            try mic.start { [queue] s in queue.async { for b in aligner.pushMic(s) { onBlock(b) } } }
+            try mic.start(onSamples: { [queue] s in queue.async { for b in aligner.pushMic(s) { onBlock(b) } } })
         } catch {
             logErr("mic unavailable, recording system audio only: \(error)")
         }
@@ -175,7 +177,9 @@ final class ScreenCaptureKitSource: NSObject, AudioSource, SCStreamOutput, SCStr
     private var stream: SCStream?
     private let queue = DispatchQueue(label: "qrtz.sck", qos: .userInteractive)
     private let aligner = DSP.Aligner()
-    private let mic = MicCapture()
+    /// The meeting's view of the shared mic tap (MicHub, H6): dictation can read the same device concurrently.
+    private let mic: MicSource
+    init(mic: MicSource) { self.mic = mic }
     private let conv = MonoConverter()
     private var onBlock: (@Sendable (CaptureBlock) -> Void)?
 
@@ -199,7 +203,7 @@ final class ScreenCaptureKitSource: NSObject, AudioSource, SCStreamOutput, SCStr
         stream = s
         let aligner = self.aligner
         do {
-            try mic.start { [queue] x in queue.async { for b in aligner.pushMic(x) { onBlock(b) } } }
+            try mic.start(onSamples: { [queue] x in queue.async { for b in aligner.pushMic(x) { onBlock(b) } } })
         } catch {
             logErr("mic unavailable, recording system audio only: \(error)")
         }

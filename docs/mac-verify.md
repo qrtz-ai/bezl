@@ -82,3 +82,10 @@ npm run package && open apps/desktop/out/qrtz-darwin-arm64/qrtz.app
 - [ ] Warm mic on: the first word isn't clipped (pre-roll), and the mic indicator stays on as expected.
 - [ ] With an ElevenLabs or Deepgram key: the history meta shows the engine. Pull the network mid-dictation and it shows "on-device (fallback)".
 - [ ] Record `talk latency` log lines (firstPartialMs, finalMs, insertedMs) for each engine, and run `node scripts/bench-talk-asr.mjs speech16k.wav 5`. Put the numbers in docs/research-talk.md §2.
+
+## Helper mux + TCC revocation (H5/H6)
+
+- [ ] Record a meeting, then hold the push-to-talk key: dictation works, the meeting WAV/transcript is uninterrupted, and only one input device is open (Audio MIDI Setup / `log stream` shows a single AVAudioEngine input).
+- [ ] Turn Microphone off in System Settings mid-dictation: the pill shows "microphone access was turned off…", the text heard so far is inserted, and the helper logs `permission.revoked` within ~2 s.
+- [ ] Turn Screen & System Audio Recording off mid-meeting: a `mic only` badge appears live and the recording continues. Then turn Microphone off: `no audio` appears and the recording still stops cleanly.
+- [ ] Check whether macOS kills the helper on revocation (some TCC changes SIGKILL the process). If so, the reconnect path takes over (`transcript-gap`).

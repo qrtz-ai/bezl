@@ -9,11 +9,7 @@ import { migrate, migrations } from '../db/migrate';
 import { cleanupDictation } from '../talk/cleanup';
 import { EngineArbiter } from '../talk/asr';
 import { syntheticSegments } from './large';
-import {
-  createProvider,
-  summarizeMeeting,
-  type FetchLike,
-} from './llm';
+import { createProvider, summarizeMeeting, type FetchLike } from './llm';
 import { NoteRepo } from './repo';
 import {
   RETRY_POLICIES,

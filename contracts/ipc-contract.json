@@ -561,6 +561,7 @@
                 "asr-unavailable",
                 "audio-unavailable",
                 "mic-only",
+                "no-mic",
                 "ax-unavailable",
                 "transcript-gap"
               ]
@@ -999,6 +1000,7 @@
                 "asr-unavailable",
                 "audio-unavailable",
                 "mic-only",
+                "no-mic",
                 "ax-unavailable",
                 "transcript-gap"
               ]
@@ -1428,6 +1430,7 @@
                 "asr-unavailable",
                 "audio-unavailable",
                 "mic-only",
+                "no-mic",
                 "ax-unavailable",
                 "transcript-gap"
               ]
@@ -2442,6 +2445,7 @@
                 "asr-unavailable",
                 "audio-unavailable",
                 "mic-only",
+                "no-mic",
                 "ax-unavailable",
                 "transcript-gap"
               ]
@@ -3905,6 +3909,7 @@
                 "asr-unavailable",
                 "audio-unavailable",
                 "mic-only",
+                "no-mic",
                 "ax-unavailable",
                 "transcript-gap"
               ]
@@ -5325,6 +5330,7 @@
                 "asr-unavailable",
                 "audio-unavailable",
                 "mic-only",
+                "no-mic",
                 "ax-unavailable",
                 "transcript-gap"
               ]

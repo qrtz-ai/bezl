@@ -74,6 +74,11 @@ function rig(
       : never;
     llmFail?: boolean;
     llmStatus?: number;
+    revoke?: Parameters<typeof createMockHelper>[0] extends infer P
+      ? P extends { revoke?: infer Q }
+        ? Q
+        : never
+      : never;
     noStart?: boolean;
     llmDelayMs?: number;
     /** Runs before each host→helper line reaches the mock (fault/timing injection). */
@@ -151,6 +156,7 @@ function rig(
         speed: 0.01,
         detectAfterMs: 5,
         ...(o.permissions ? { permissions: o.permissions } : {}),
+        ...(o.revoke ? { revoke: o.revoke } : {}),
       });
       mocks.push(m);
       const write = m.write.bind(m);
@@ -396,6 +402,38 @@ describe('NoteService lifecycle (integration with mock helper + real worker hand
     expect(r.note.view().degraded).toEqual(
       expect.arrayContaining(['mic-only', 'ax-unavailable']),
     );
+    await r.note.stop();
+  });
+
+  it('H5: TCC revoked mid-recording degrades live (screen → mic-only, then mic → audio-unavailable) and keeps recording', async () => {
+    const r = rig({
+      revoke: [
+        { permission: 'screen-recording', afterMs: 20 },
+        { permission: 'microphone', afterMs: 60 },
+      ],
+    });
+    await detected(r);
+    await r.note.start();
+    expect(r.note.view().degraded).toEqual([]);
+    await until(() => r.note.view().degraded.includes('mic-only'));
+    await until(() => r.note.view().degraded.includes('audio-unavailable'));
+    expect(r.note.view().phase).toBe('recording');
+    expect(r.note.getPermissions()).toMatchObject({
+      'screen-recording': 'denied',
+      microphone: 'denied',
+    });
+    await r.note.stop();
+    await until(
+      () => r.note.view().phase === 'idle' || r.note.view().phase === 'done',
+    );
+  });
+
+  it('H5: mic revoked mid-recording with system audio still granted flags no-mic', async () => {
+    const r = rig({ revoke: [{ permission: 'microphone', afterMs: 20 }] });
+    await detected(r);
+    await r.note.start();
+    await until(() => r.note.view().degraded.includes('no-mic'));
+    expect(r.note.view().degraded).not.toContain('audio-unavailable');
     await r.note.stop();
   });
 

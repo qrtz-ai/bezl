@@ -28,6 +28,7 @@ const until = async (f: () => boolean, ms = 3000) => {
 function setup(
   o: {
     insert?: 'ax' | 'paste' | 'fail';
+    revokeMicAfterMs?: number;
     cfg?: unknown;
     llm?: TalkDeps['llm'];
     ws?: TalkDeps['ws'];
@@ -37,6 +38,16 @@ function setup(
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-talk-'));
   const helper = createMockHelper({
     ...(o.insert ? { insert: o.insert } : {}),
+    ...(o.revokeMicAfterMs !== undefined
+      ? {
+          revoke: [
+            {
+              permission: 'microphone' as const,
+              afterMs: o.revokeMicAfterMs,
+            },
+          ],
+        }
+      : {}),
     dictationStepMs: 5,
     heartbeatMs: 1e9,
   });
@@ -114,6 +125,24 @@ describe('TalkService', () => {
     expect(
       JSON.parse(fs.readFileSync(path.join(dir, 'talk.json'), 'utf8')).history,
     ).toHaveLength(1);
+  });
+
+  it('H5: microphone revoked mid-dictation stops gracefully, keeps what was heard, then shows why', async () => {
+    const { svc, states } = setup({ revokeMicAfterMs: 30 });
+    await svc.configure();
+    svc.handle({ type: 'hotkey', action: 'down' });
+    await until(() => svc.state().phase === 'error');
+    expect(svc.state().error).toMatch(/microphone access was turned off/);
+    const e = svc.state().last!;
+    expect(e.text.length).toBeGreaterThan(0);
+    expect(e.inserted).toBe(true);
+    expect(states.map((s) => s.phase)).toEqual(
+      expect.arrayContaining(['listening', 'finalizing', 'inserting', 'error']),
+    );
+    // The next dictation is refused by the helper (mic denied) and surfaces as an error, not a hang.
+    svc.handle({ type: 'hotkey', action: 'up' });
+    await svc.start();
+    await until(() => /microphone access denied/.test(svc.state().error ?? ''));
   });
 
   it('dictionary terms are applied; AI cleanup is used when fast', async () => {

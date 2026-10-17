@@ -112,6 +112,7 @@ public actor DictationEngine {
     }
 
     public var isActive: Bool { session != nil }
+    public var activeId: String? { session?.id }
     public var isMicRunning: Bool { micRunning }
     public var preRollSamples: Int { preRoll.count }
 
@@ -229,6 +230,21 @@ public actor DictationEngine {
         session = nil
         if !warmMic { stopMic() }
         send(.dictationStopped(id: id, text: "", durationMs: 0))
+    }
+
+    /// The helper ends the dictation itself (microphone revoked / device lost): flush what was heard, tell the host
+    /// why, and release the mic even when the warm mic is on (it can't be read any more).
+    public func abort(reason: DictationStopReason) async {
+        guard let s = session else { stopMic(); return }
+        tick?.cancel(); tick = nil
+        var text = ""
+        if let tr = s.transcriber {
+            text = await tr.finish().trimmingCharacters(in: .whitespacesAndNewlines)
+            for e in s.segmenter.flush(cumulative: text, nowMs: now() - s.startMs) { send(.dictationAsr(id: s.id, event: e)) }
+        }
+        session = nil
+        stopMic()
+        send(.dictationStopped(id: s.id, text: text, durationMs: Double(s.samples) * 1000 / 16_000, reason: reason))
     }
 
     public func insert(id: String, text: String, restoreClipboard: Bool) async {

@@ -229,8 +229,22 @@ export class TalkService {
         if (m.event.kind === 'partial') this.arbiter.localPartial(m.event.text);
         else this.arbiter.localFinal(m.event.text);
         return;
-      case 'dictation.stopped':
-        this.waiters.get(`stopped:${m.id}`)?.(m);
+      case 'dictation.stopped': {
+        const w = this.waiters.get(`stopped:${m.id}`);
+        if (w) return w(m);
+        // H5: the helper ended the dictation itself (microphone revoked). Stop gracefully: keep and insert what
+        // was heard so far, then show why it stopped.
+        if (
+          m.reason &&
+          this.view.id === m.id &&
+          this.view.phase === 'listening'
+        )
+          void this.endedByHelper(m);
+        return;
+      }
+      case 'permission.revoked':
+        if (m.permission === 'microphone' && this.active())
+          this.deps.log.warn('microphone revoked mid-dictation');
         return;
       case 'insert.result':
         this.waiters.get(`insert:${m.id}`)?.(m);
@@ -389,6 +403,27 @@ export class TalkService {
     this.cloud = null;
     this.arbiter = null;
     this.pendingAudio = [];
+  }
+
+  private async endedByHelper(
+    m: Extract<HelperToHost, { type: 'dictation.stopped' }>,
+  ) {
+    const id = m.id;
+    this.keyUpAt = this.now();
+    this.set({ phase: 'finalizing', level: 0 });
+    await this.finish(
+      id,
+      m.text,
+      m.durationMs || this.keyUpAt - this.keyDownAt,
+    );
+    this.set({
+      phase: 'error',
+      error:
+        m.reason === 'permission-revoked'
+          ? 'microphone access was turned off, so dictation stopped'
+          : 'the microphone went away, so dictation stopped',
+      level: 0,
+    });
   }
 
   private fail(error: string) {

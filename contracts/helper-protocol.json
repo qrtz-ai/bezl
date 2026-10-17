@@ -24,6 +24,7 @@
     "dictation.asr",
     "dictation.audio",
     "dictation.stopped",
+    "permission.revoked",
     "insert.result"
   ],
   "hostToHelperTypes": [
@@ -635,6 +636,13 @@
           },
           "durationMs": {
             "type": "number"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "permission-revoked",
+              "mic-lost"
+            ]
           }
         },
         "required": [
@@ -642,6 +650,31 @@
           "id",
           "text",
           "durationMs"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "permission.revoked"
+          },
+          "permission": {
+            "type": "string",
+            "enum": [
+              "accessibility",
+              "screen-recording",
+              "microphone"
+            ]
+          },
+          "atMs": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "type",
+          "permission",
+          "atMs"
         ]
       },
       {

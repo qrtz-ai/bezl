@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased: helper mux + TCC revocation (H5/H6)
+
+- **Concurrent recording + dictation (mux):** a dictation runs during a meeting recording and both read the mic through one shared tap (`MicHub`). Each kind is single-instance (duplicate starts are ignored, not queued), and `dictation.start` is refused when the mic is denied. Spec: `docs/helper-protocol.md`, ADR 0004.
+- **Permission revoked mid-capture:** the helper polls TCC while capturing and emits `permission.revoked`. Recordings degrade live (new `no-mic` flag, plus `mic-only`, `audio-unavailable` and `ax-unavailable`) and keep running. Dictation stops gracefully, keeping and inserting what was heard. Onboarding no longer covers a running recording.
+- One pure arbiter in TS and Swift with shared vectors (`spec/vectors/helper/arbiter.json`). Mock helper: `QRTZ_MOCK_REVOKE="microphone@1500"`.
+
 ## Unreleased: qrtz talk
 
 - **qrtz talk (dictation):** a new `talk` tab. Hold fn (configurable) or press ⌘⇧Space to dictate into any app. A floating pill that never takes focus shows the mic level and streaming text. When you let go, the text is finalized, cleaned up and inserted.

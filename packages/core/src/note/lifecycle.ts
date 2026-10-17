@@ -37,6 +37,8 @@ export const Degradation = z.enum([
   'audio-unavailable',
   /** Screen & System Audio Recording denied: only the microphone is captured (remote voices are faint/missing). */
   'mic-only',
+  /** Microphone revoked mid-recording: only system audio (the other side of the call) is captured. */
+  'no-mic',
   /** Accessibility denied: no meeting detection, participants or speaker names. */
   'ax-unavailable',
   /** The helper restarted mid-meeting: a short stretch of audio/transcript is missing. */
