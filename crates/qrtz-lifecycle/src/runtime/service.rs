@@ -278,6 +278,14 @@ impl NoteRuntime {
 
 type Matcher = Box<dyn Fn(&HelperInput) -> bool + Send>;
 
+/// Why the helper refused a start (see `busy_refusals`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Refusal {
+    Busy,
+    File,
+    Invariant,
+}
+
 struct WaiterEntry {
     id: u64,
     kind: &'static str,
@@ -297,9 +305,11 @@ struct State {
     waiters: Vec<WaiterEntry>,
     /// Audio path of the `recording.start` in flight (start or resume); acks for any other path are stale.
     pending_start_path: Option<String>,
-    /// Audio paths of starts the helper answered with `error{recording.busy, audioPath}` (another recording still
-    /// owns it). Keyed by the refused attempt's file, so a busy only ever fails the start it names.
-    busy_refusals: HashSet<String>,
+    /// Starts the helper refused, keyed by the refused attempt's file, so a refusal only ever fails the start it
+    /// names: `error{recording.busy, audioPath}` (another recording still owns it), `error{recording.file,
+    /// audioPath}` (the file could not be created; the helper already tore that recording down), or a busy naming
+    /// no active file (the helper broke "a running recording always has a file": last-resort restart).
+    busy_refusals: HashMap<String, Refusal>,
     emit_timer: bool,
     persisted: HashSet<String>,
     paused: bool,
@@ -336,7 +346,7 @@ impl State {
             .collect(),
             waiters: Vec::new(),
             pending_start_path: None,
-            busy_refusals: HashSet::new(),
+            busy_refusals: HashMap::new(),
             emit_timer: false,
             persisted: HashSet::new(),
             paused: false,
@@ -826,6 +836,10 @@ impl Shared {
                     self.on_busy(&s, audio_path, active_audio_path);
                     return;
                 }
+                if code == "recording.file" {
+                    self.on_file_failed(audio_path);
+                    return;
+                }
                 match code.as_str() {
                     "asr.unavailable" => self.degrade(Degradation::AsrUnavailable),
                     "audio.unavailable" => self.degrade(Degradation::AudioUnavailable),
@@ -850,17 +864,39 @@ impl Shared {
             self.resolve_started(&path, true);
             return;
         }
-        if let Some(a) = &active {
-            let ours = is_capturing(s.phase) && s.audio_parts.contains(a);
-            if !ours {
-                tracing::warn!(audio_path = %a, "stopping orphaned recording");
-                let _ = self.send_helper(HelperCommand::RecordingStop {
-                    audio_path: Some(a.clone()),
-                });
-            }
+        let Some(a) = active else {
+            // The helper says a recording runs but names no file: it broke its own invariant (a running recording
+            // always has a file). Nothing can stop that recording by path, and a pathless stop is never sent (it
+            // would stop whatever runs). A bug, not a normal path: the start fails and the helper is restarted.
+            tracing::error!(
+                audio_path = %path,
+                "BUG: helper invariant broken: recording.busy names no active recording file; restarting the helper"
+            );
+            self.lock().busy_refusals.insert(path.clone(), Refusal::Invariant);
+            self.resolve_started(&path, false);
+            return;
+        };
+        let ours = is_capturing(s.phase) && s.audio_parts.contains(&a);
+        if !ours {
+            tracing::warn!(audio_path = %a, "stopping orphaned recording");
+            let _ = self.send_helper(HelperCommand::RecordingStop {
+                audio_path: Some(a.clone()),
+            });
         }
         // The start was ignored: fail it now instead of waiting out the ack timeout.
-        self.lock().busy_refusals.insert(path.clone());
+        self.lock().busy_refusals.insert(path.clone(), Refusal::Busy);
+        self.resolve_started(&path, false);
+    }
+
+    /// `error{recording.file, audioPath}` (port of NoteService.onFileFailed): the helper could not create the file of
+    /// the start in flight and already tore that recording down (fail closed; no `recording.started` follows), so
+    /// the start fails now. Any other `recording.file` error (a WAV that would not finalize at stop) only logs.
+    fn on_file_failed(self: &Arc<Self>, audio_path: Option<String>) {
+        let pending = self.lock().pending_start_path.clone();
+        let Some(path) = audio_path.filter(|p| pending.as_deref() == Some(p.as_str())) else {
+            return;
+        };
+        self.lock().busy_refusals.insert(path.clone(), Refusal::File);
         self.resolve_started(&path, false);
     }
 
@@ -1171,27 +1207,41 @@ impl Shared {
             if !still_ours(&self) {
                 return Ok(self.view());
             }
-            // Only a busy that named this attempt's file counts; a busy for any other start never relabels it.
-            let busy = self.lock().busy_refusals.remove(&audio_path);
-            let error = if busy {
-                LifecycleError {
+            // Only a refusal that named this attempt's file counts; one for any other start never relabels it.
+            let refusal = self.lock().busy_refusals.remove(&audio_path);
+            let error = match refusal {
+                Some(Refusal::File) => LifecycleError {
+                    code: "recording-file".into(),
+                    message:
+                        "The recording file could not be created. Check free disk space, then try again."
+                            .into(),
+                    retryable: true,
+                },
+                Some(_) => LifecycleError {
                     code: "helper-busy".into(),
                     message: "The capture helper is still busy with another recording. Try again.".into(),
                     retryable: true,
-                }
-            } else {
-                LifecycleError {
+                },
+                None => LifecycleError {
                     code: "start-timeout".into(),
                     message: "The capture helper did not start recording. Try again.".into(),
                     retryable: true,
-                }
+                },
             };
-            // Only this attempt's file: never the recording that made the helper busy.
-            let _ = self.send_helper(HelperCommand::RecordingStop {
-                audio_path: Some(audio_path.clone()),
-            });
+            if refusal != Some(Refusal::Invariant) {
+                // Only this attempt's file: never the recording that made the helper busy.
+                let _ = self.send_helper(HelperCommand::RecordingStop {
+                    audio_path: Some(audio_path.clone()),
+                });
+            }
             let msg = error.message.clone();
             self.abort_start(&id, error).await;
+            // Last-resort watchdog: a helper that broke the file invariant is restarted. After abort_start, so the
+            // restart never looks like a crash of this (already failed) start.
+            if refusal == Some(Refusal::Invariant) {
+                self.d.helper.restart();
+            }
+            let busy = refusal.is_some();
             return Err(if busy {
                 CoreError::unavailable(msg)
             } else {

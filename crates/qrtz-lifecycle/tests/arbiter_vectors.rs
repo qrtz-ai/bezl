@@ -27,11 +27,16 @@ fn run(file: &str) -> usize {
             let e: ArbiterEvent = serde_json::from_value(st["event"].clone())
                 .unwrap_or_else(|err| panic!("{name} step {i}: {err}"));
             assert_eq!(
-                serde_json::to_value(e).unwrap(),
+                serde_json::to_value(&e).unwrap(),
                 st["event"],
                 "{name} step {i}: event round trip"
             );
             let r = arbiter_step(&s, &e);
+            assert_eq!(
+                qrtz_lifecycle::arbiter_invariant_violation(&r.state),
+                None,
+                "{name} step {i}: invariant"
+            );
             assert_eq!(
                 serde_json::to_value(&r).unwrap(),
                 st["expect"],
@@ -49,7 +54,7 @@ fn run(file: &str) -> usize {
 fn arbiter_vectors_match_ts_and_swift() {
     assert_eq!(
         load("arbiter.json")["cases"].as_array().unwrap().len(),
-        13,
+        15,
         "coverage changed: update this count"
     );
     assert!(run("arbiter.json") > 20);
@@ -78,4 +83,39 @@ fn revocation_degradations_cover_every_pair() {
         d(Accessibility, &[Microphone, ScreenRecording]),
         vec![Degradation::AxUnavailable]
     );
+}
+
+#[test]
+fn file_rule_refuses_pathless_start_and_flags_broken_states() {
+    use qrtz_lifecycle::{arbiter_invariant_violation, ArbiterCmd, Decision};
+    let s = ArbiterState::initial(vec![]);
+    let r = arbiter_step(
+        &s,
+        &ArbiterEvent::Cmd {
+            cmd: ArbiterCmd::RecordingStart,
+            audio_path: None,
+        },
+    );
+    assert_eq!(r.decision, Decision::Refuse);
+    assert_eq!(r.reason.as_deref(), Some("no-audio-path"));
+    assert_eq!(r.state, s);
+    let broken = ArbiterState {
+        recording: true,
+        ..ArbiterState::initial(vec![])
+    };
+    assert_eq!(
+        arbiter_invariant_violation(&broken),
+        Some("recording without an activeAudioPath")
+    );
+    let r = std::panic::catch_unwind(|| {
+        arbiter_step(&broken, &serde_json::from_str(r#"{"helperLost":true}"#).unwrap())
+    });
+    assert!(r.is_ok(), "helperLost resets to a valid state");
+    let r = std::panic::catch_unwind(|| {
+        arbiter_step(
+            &broken,
+            &serde_json::from_str(r#"{"configure":{"warmMic":false}}"#).unwrap(),
+        )
+    });
+    assert!(r.is_err(), "a step that keeps a pathless recording panics");
 }

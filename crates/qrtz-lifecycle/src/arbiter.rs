@@ -7,6 +7,11 @@
 //! `permission.revoked` exactly like Electron's NoteService, and the full step so a Rust host can predict the
 //! helper's answers. Pinned by `spec/vectors/helper/{arbiter,arbiter-edges}.json`, the same files vitest and the
 //! Swift tests run (ADR 0006).
+//!
+//! Invariant (asserted after every step, like the TS and Swift twins): a running recording always has a file,
+//! `recording` iff `active_audio_path` is set. A start without a path is refused; `RecordingFileFailed` (the
+//! helper could not create the WAV) tears the recording down (docs/helper-protocol.md, "A recording never runs
+//! without a file").
 
 use qrtz_model::{Degradation, OsPermission};
 use serde::{Deserialize, Serialize};
@@ -31,6 +36,9 @@ impl MicSubscriber {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ArbiterState {
     pub recording: bool,
+    /// The file the running recording writes; `None` iff not recording.
+    #[serde(rename = "activeAudioPath")]
+    pub active_audio_path: Option<String>,
     pub dictating: bool,
     /// Warm mic: the dictation reader stays subscribed between dictations. Survives a mic revoke.
     pub warm: bool,
@@ -80,12 +88,26 @@ pub struct Configure {
     pub warm_mic: bool,
 }
 
-/// Wire shape matches the TS union: `{cmd}`, `{configure:{warmMic}}`, `{revoked}`, `{granted}`, `{helperLost:true}`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FileFailed {
+    #[serde(rename = "audioPath")]
+    pub audio_path: String,
+}
+
+/// Wire shape matches the TS union: `{cmd, audioPath?}`, `{configure:{warmMic}}`, `{revoked}`, `{granted}`,
+/// `{helperLost:true}`, `{recordingFileFailed:{audioPath}}`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ArbiterEvent {
     Cmd {
         cmd: ArbiterCmd,
+        /// `recording.start` only: the file the recording will write (required; a start without one is refused).
+        #[serde(rename = "audioPath", default, skip_serializing_if = "Option::is_none")]
+        audio_path: Option<String>,
+    },
+    RecordingFileFailed {
+        #[serde(rename = "recordingFileFailed")]
+        recording_file_failed: FileFailed,
     },
     Configure {
         configure: Configure,
@@ -152,11 +174,32 @@ fn unsub(who: MicSubscriber) -> String {
     format!("mic.unsubscribe:{}", who.as_str())
 }
 
+/// Why `s` breaks the arbiter invariant, or `None`. A running recording must have a file (and only then).
+pub fn arbiter_invariant_violation(s: &ArbiterState) -> Option<&'static str> {
+    let has_file = s.active_audio_path.as_deref().is_some_and(|p| !p.is_empty());
+    if s.recording && !has_file {
+        return Some("recording without an activeAudioPath");
+    }
+    if !s.recording && s.active_audio_path.is_some() {
+        return Some("activeAudioPath set while not recording");
+    }
+    None
+}
+
+/// One arbiter step. Panics if the result breaks the invariant (a bug, never a normal path).
 pub fn arbiter_step(s: &ArbiterState, e: &ArbiterEvent) -> ArbiterResult {
+    let out = transition(s, e);
+    if let Some(v) = arbiter_invariant_violation(&out.state) {
+        panic!("helper arbiter invariant broken: {v}");
+    }
+    out
+}
+
+fn transition(s: &ArbiterState, e: &ArbiterEvent) -> ArbiterResult {
     use MicSubscriber::{Dictation as D, Recording as R};
     let mic_ok = !s.denied.contains(&OsPermission::Microphone);
     let has_dict = s.reads(D);
-    match *e {
+    match e {
         ArbiterEvent::HelperLost { .. } => {
             let mut fx = Vec::new();
             if s.dictating {
@@ -168,6 +211,31 @@ pub fn arbiter_step(s: &ArbiterState, e: &ArbiterEvent) -> ArbiterResult {
             fx.extend(s.mic.iter().map(|w| unsub(*w)));
             res(
                 ArbiterState::initial(s.denied.clone()),
+                Decision::Accept,
+                fx,
+                None,
+            )
+        }
+        ArbiterEvent::RecordingFileFailed {
+            recording_file_failed,
+        } => {
+            if !s.recording {
+                return res(s.clone(), Decision::Ignore, vec![], Some("not-recording"));
+            }
+            if s.active_audio_path.as_deref() != Some(recording_file_failed.audio_path.as_str()) {
+                return res(s.clone(), Decision::Ignore, vec![], Some("other-recording"));
+            }
+            let mut fx = vec!["recording.lost".to_owned()];
+            if s.reads(R) {
+                fx.push(unsub(R));
+            }
+            res(
+                ArbiterState {
+                    recording: false,
+                    active_audio_path: None,
+                    mic: s.without(R),
+                    ..s.clone()
+                },
                 Decision::Accept,
                 fx,
                 None,
@@ -202,6 +270,7 @@ pub fn arbiter_step(s: &ArbiterState, e: &ArbiterEvent) -> ArbiterResult {
             res(ArbiterState { warm, ..s.clone() }, Decision::Accept, vec![], None)
         }
         ArbiterEvent::Granted { granted } => {
+            let granted = *granted;
             let next = ArbiterState {
                 denied: s.denied.iter().copied().filter(|p| *p != granted).collect(),
                 ..s.clone()
@@ -213,6 +282,7 @@ pub fn arbiter_step(s: &ArbiterState, e: &ArbiterEvent) -> ArbiterResult {
             res(next, Decision::Accept, vec![], None)
         }
         ArbiterEvent::Revoked { revoked: p } => {
+            let p = *p;
             if s.denied.contains(&p) {
                 return res(s.clone(), Decision::Ignore, vec![], Some("unchanged"));
             }
@@ -236,17 +306,22 @@ pub fn arbiter_step(s: &ArbiterState, e: &ArbiterEvent) -> ArbiterResult {
             }
             res(next, Decision::Accept, fx, None)
         }
-        ArbiterEvent::Cmd { cmd } => match cmd {
+        ArbiterEvent::Cmd { cmd, audio_path } => match cmd {
             ArbiterCmd::RecordingStart => {
                 if s.recording {
                     return res(s.clone(), Decision::Ignore, vec![], Some("already-recording"));
                 }
+                // Never admit a recording that has no file to name it by (busy, stop and started carry the path).
+                let Some(path) = audio_path.clone().filter(|p| !p.is_empty()) else {
+                    return res(s.clone(), Decision::Refuse, vec![], Some("no-audio-path"));
+                };
                 let subscribe = mic_ok && !s.reads(R);
                 let mic = if subscribe { s.with(R) } else { s.mic.clone() };
                 let fx = if subscribe { vec![sub(R)] } else { vec![] };
                 res(
                     ArbiterState {
                         recording: true,
+                        active_audio_path: Some(path),
                         mic,
                         ..s.clone()
                     },
@@ -263,6 +338,7 @@ pub fn arbiter_step(s: &ArbiterState, e: &ArbiterEvent) -> ArbiterResult {
                 res(
                     ArbiterState {
                         recording: false,
+                        active_audio_path: None,
                         mic: s.without(R),
                         ..s.clone()
                     },

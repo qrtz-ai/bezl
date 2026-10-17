@@ -93,7 +93,15 @@ export class NoteService {
    * The helper answered a start with error{recording.busy, audioPath}: another recording still owns it. Keyed by
    * the refused attempt's audioPath, so a busy only ever fails the start it names.
    */
-  private busyRefusals = new Map<string, { activeAudioPath?: string }>();
+  /**
+   * Starts the helper refused, by this attempt's file: `busy` (another recording owns the helper), `file` (the
+   * helper could not create this file and tore the recording down), `invariant` (a busy that names no active
+   * file: the helper broke "a running recording always has a file"; last-resort watchdog restarts it).
+   */
+  private busyRefusals = new Map<
+    string,
+    { kind: 'busy' | 'file' | 'invariant'; activeAudioPath?: string }
+  >();
   private emitTimer: NodeJS.Timeout | null = null;
   private persisted = new Set<string>();
   private paused = false;
@@ -320,6 +328,7 @@ export class NoteService {
           message: m.message,
         });
         if (m.code === 'recording.busy') this.onBusy(s, m);
+        else if (m.code === 'recording.file') this.onFileFailed(m);
         else if (m.code === 'asr.unavailable') this.degrade('asr-unavailable');
         else if (m.code === 'audio.unavailable')
           this.degrade('audio-unavailable');
@@ -353,6 +362,22 @@ export class NoteService {
       return;
     }
     const active = m.activeAudioPath;
+    if (!active) {
+      // The helper says a recording runs but names no file: it broke its own invariant (a running recording always
+      // has a file). Nothing can stop that recording by path, and a pathless stop is never sent (it would stop
+      // whatever runs). This is a bug, not a normal path: the start fails and the helper is restarted (watchdog).
+      this.deps.log.error(
+        'BUG: helper invariant broken: recording.busy names no active recording file; restarting the helper',
+        { audioPath: path },
+      );
+      this.busyRefusals.set(path, { kind: 'invariant' });
+      this.resolveWaiters('recording.started', null, (w) =>
+        w.match
+          ? w.match({ type: 'recording.started', audioPath: path })
+          : true,
+      );
+      return;
+    }
     const ours =
       !!active && isCapturing(s.phase) && s.audioParts.includes(active);
     if (active && !ours) {
@@ -364,7 +389,22 @@ export class NoteService {
       }
     }
     // The start was ignored: fail it now instead of waiting out the ack timeout.
-    this.busyRefusals.set(path, active ? { activeAudioPath: active } : {});
+    this.busyRefusals.set(path, { kind: 'busy', activeAudioPath: active });
+    this.resolveWaiters('recording.started', null, (w) =>
+      w.match ? w.match({ type: 'recording.started', audioPath: path }) : true,
+    );
+  }
+
+  /**
+   * error{recording.file, audioPath}: the helper could not create the file of recording.start{audioPath}. It has
+   * already torn that recording down (fail closed: mic and taps released, no recording.started follows), so the
+   * start in flight fails now instead of waiting out the ack timeout. Any other recording.file error (e.g. a WAV
+   * that would not finalize at stop) only logs.
+   */
+  private onFileFailed(m: Extract<HelperToHost, { type: 'error' }>) {
+    const path = m.audioPath;
+    if (!path || path !== this.pendingStartPath) return;
+    this.busyRefusals.set(path, { kind: 'file' });
     this.resolveWaiters('recording.started', null, (w) =>
       w.match ? w.match({ type: 'recording.started', audioPath: path }) : true,
     );
@@ -691,31 +731,49 @@ export class NoteService {
         this.machine.state.phase !== 'starting'
       )
         return this.view();
-      // Only a busy that named this attempt's file counts; a busy for any other start never relabels it.
-      const busy = this.busyRefusals.has(audioPath);
+      // Only a refusal that named this attempt's file counts; one for any other start never relabels it.
+      const refusal = this.busyRefusals.get(audioPath);
       this.busyRefusals.delete(audioPath);
-      const error: LifecycleError = busy
-        ? {
-            code: 'helper-busy',
-            message:
-              'The capture helper is still busy with another recording. Try again.',
-            retryable: true,
-          }
-        : {
-            code: 'start-timeout',
-            message: 'The capture helper did not start recording. Try again.',
-            retryable: true,
-          };
-      try {
-        // Only this attempt's file: never the recording that made the helper busy.
-        this.send({ type: 'recording.stop', audioPath });
-      } catch {
-        /* helper gone */
-      }
+      const error: LifecycleError =
+        refusal?.kind === 'file'
+          ? {
+              code: 'recording-file',
+              message:
+                'The recording file could not be created. Check free disk space, then try again.',
+              retryable: true,
+            }
+          : refusal
+            ? {
+                code: 'helper-busy',
+                message:
+                  'The capture helper is still busy with another recording. Try again.',
+                retryable: true,
+              }
+            : {
+                code: 'start-timeout',
+                message:
+                  'The capture helper did not start recording. Try again.',
+                retryable: true,
+              };
+      if (refusal?.kind !== 'invariant')
+        try {
+          // Only this attempt's file: never the recording that made the helper busy.
+          this.send({ type: 'recording.stop', audioPath });
+        } catch {
+          /* helper gone */
+        }
       await this.abortStart(id, error);
-      throw new AppError(busy ? 'E_UNAVAILABLE' : 'E_TIMEOUT', error.message, {
-        retryable: true,
-      });
+      // Last-resort watchdog: a helper that broke the file invariant is restarted (the supervisor brings a fresh one
+      // back). After abortStart, so the restart never looks like a crash of this (already failed) start.
+      if (refusal?.kind === 'invariant') {
+        this.deps.helper.stop();
+        this.deps.helper.start();
+      }
+      throw new AppError(
+        refusal ? 'E_UNAVAILABLE' : 'E_TIMEOUT',
+        error.message,
+        { retryable: true },
+      );
     }
     if (
       this.machine.state.meetingId !== id ||

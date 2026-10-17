@@ -1,5 +1,5 @@
 {
-  "about": "Reviewer-added edge vectors for the helper arbiter (H5/H6): refcount release after helper loss/revoke, ignored-duplicate then stop, re-grant mid-recording. Generated from arbiter.ts and independently checked by packages/core/src/helper/arbiter-model.test.ts. Swift ArbiterTests should consume this file too.",
+  "about": "Reviewer-added edge vectors for the helper arbiter (H5/H6): refcount release after helper loss/revoke, ignored-duplicate then stop, re-grant mid-recording, the file rule (no recording without a file; recordingFileFailed tears it down). Generated from arbiter.ts and independently checked by packages/core/src/helper/arbiter-model.test.ts. Swift ArbiterTests should consume this file too.",
   "cases": [
     {
       "name": "helper lost releases everything; a later stop is a no-op",
@@ -7,7 +7,8 @@
       "steps": [
         {
           "event": {
-            "cmd": "recording.start"
+            "cmd": "recording.start",
+            "audioPath": "/rec/a.wav"
           },
           "expect": {
             "decision": "accept",
@@ -17,6 +18,7 @@
             ],
             "state": {
               "recording": true,
+              "activeAudioPath": "/rec/a.wav",
               "dictating": false,
               "warm": false,
               "mic": [
@@ -38,6 +40,7 @@
             ],
             "state": {
               "recording": true,
+              "activeAudioPath": "/rec/a.wav",
               "dictating": true,
               "warm": false,
               "mic": [
@@ -63,6 +66,7 @@
             ],
             "state": {
               "recording": false,
+              "activeAudioPath": null,
               "dictating": false,
               "warm": false,
               "mic": [],
@@ -81,6 +85,7 @@
             "effects": [],
             "state": {
               "recording": false,
+              "activeAudioPath": null,
               "dictating": false,
               "warm": false,
               "mic": [],
@@ -99,6 +104,7 @@
             "effects": [],
             "state": {
               "recording": false,
+              "activeAudioPath": null,
               "dictating": false,
               "warm": false,
               "mic": [],
@@ -114,7 +120,8 @@
       "steps": [
         {
           "event": {
-            "cmd": "recording.start"
+            "cmd": "recording.start",
+            "audioPath": "/rec/a.wav"
           },
           "expect": {
             "decision": "accept",
@@ -124,6 +131,7 @@
             ],
             "state": {
               "recording": true,
+              "activeAudioPath": "/rec/a.wav",
               "dictating": false,
               "warm": false,
               "mic": [
@@ -145,6 +153,7 @@
             ],
             "state": {
               "recording": true,
+              "activeAudioPath": "/rec/a.wav",
               "dictating": true,
               "warm": false,
               "mic": [
@@ -170,6 +179,7 @@
             ],
             "state": {
               "recording": true,
+              "activeAudioPath": "/rec/a.wav",
               "dictating": false,
               "warm": false,
               "mic": [],
@@ -190,6 +200,7 @@
             "effects": [],
             "state": {
               "recording": true,
+              "activeAudioPath": "/rec/a.wav",
               "dictating": false,
               "warm": false,
               "mic": [],
@@ -209,6 +220,7 @@
             "effects": [],
             "state": {
               "recording": false,
+              "activeAudioPath": null,
               "dictating": false,
               "warm": false,
               "mic": [],
@@ -236,6 +248,7 @@
             ],
             "state": {
               "recording": false,
+              "activeAudioPath": null,
               "dictating": true,
               "warm": false,
               "mic": [
@@ -256,6 +269,7 @@
             "effects": [],
             "state": {
               "recording": false,
+              "activeAudioPath": null,
               "dictating": true,
               "warm": false,
               "mic": [
@@ -277,6 +291,7 @@
             ],
             "state": {
               "recording": false,
+              "activeAudioPath": null,
               "dictating": false,
               "warm": false,
               "mic": [],
@@ -295,6 +310,7 @@
             "effects": [],
             "state": {
               "recording": false,
+              "activeAudioPath": null,
               "dictating": false,
               "warm": false,
               "mic": [],
@@ -310,7 +326,8 @@
       "steps": [
         {
           "event": {
-            "cmd": "recording.start"
+            "cmd": "recording.start",
+            "audioPath": "/rec/a.wav"
           },
           "expect": {
             "decision": "accept",
@@ -320,6 +337,7 @@
             ],
             "state": {
               "recording": true,
+              "activeAudioPath": "/rec/a.wav",
               "dictating": false,
               "warm": false,
               "mic": [
@@ -342,6 +360,7 @@
             ],
             "state": {
               "recording": true,
+              "activeAudioPath": "/rec/a.wav",
               "dictating": false,
               "warm": false,
               "mic": [],
@@ -361,6 +380,7 @@
             "effects": [],
             "state": {
               "recording": true,
+              "activeAudioPath": "/rec/a.wav",
               "dictating": false,
               "warm": false,
               "mic": [],
@@ -380,6 +400,7 @@
             ],
             "state": {
               "recording": true,
+              "activeAudioPath": "/rec/a.wav",
               "dictating": true,
               "warm": false,
               "mic": [
@@ -399,6 +420,7 @@
             "effects": [],
             "state": {
               "recording": false,
+              "activeAudioPath": null,
               "dictating": true,
               "warm": false,
               "mic": [
@@ -420,6 +442,7 @@
             ],
             "state": {
               "recording": false,
+              "activeAudioPath": null,
               "dictating": false,
               "warm": false,
               "mic": [],
@@ -443,6 +466,7 @@
             "effects": [],
             "state": {
               "recording": false,
+              "activeAudioPath": null,
               "dictating": false,
               "warm": false,
               "mic": [],
@@ -454,7 +478,8 @@
         },
         {
           "event": {
-            "cmd": "recording.start"
+            "cmd": "recording.start",
+            "audioPath": "/rec/a.wav"
           },
           "expect": {
             "decision": "accept",
@@ -462,6 +487,7 @@
             "effects": [],
             "state": {
               "recording": true,
+              "activeAudioPath": "/rec/a.wav",
               "dictating": false,
               "warm": false,
               "mic": [],
@@ -482,6 +508,7 @@
             "effects": [],
             "state": {
               "recording": true,
+              "activeAudioPath": "/rec/a.wav",
               "dictating": false,
               "warm": false,
               "mic": [],
@@ -501,6 +528,7 @@
             "effects": [],
             "state": {
               "recording": false,
+              "activeAudioPath": null,
               "dictating": false,
               "warm": false,
               "mic": [],
@@ -520,7 +548,8 @@
       "steps": [
         {
           "event": {
-            "cmd": "recording.start"
+            "cmd": "recording.start",
+            "audioPath": "/rec/a.wav"
           },
           "expect": {
             "decision": "accept",
@@ -528,6 +557,7 @@
             "effects": [],
             "state": {
               "recording": true,
+              "activeAudioPath": "/rec/a.wav",
               "dictating": false,
               "warm": false,
               "mic": [],
@@ -549,6 +579,7 @@
             ],
             "state": {
               "recording": false,
+              "activeAudioPath": null,
               "dictating": false,
               "warm": false,
               "mic": [],
@@ -569,6 +600,7 @@
             "effects": [],
             "state": {
               "recording": false,
+              "activeAudioPath": null,
               "dictating": false,
               "warm": false,
               "mic": [],
@@ -586,7 +618,8 @@
       "steps": [
         {
           "event": {
-            "cmd": "recording.start"
+            "cmd": "recording.start",
+            "audioPath": "/rec/a.wav"
           },
           "expect": {
             "decision": "accept",
@@ -596,6 +629,7 @@
             ],
             "state": {
               "recording": true,
+              "activeAudioPath": "/rec/a.wav",
               "dictating": false,
               "warm": false,
               "mic": [
@@ -618,6 +652,7 @@
             ],
             "state": {
               "recording": true,
+              "activeAudioPath": "/rec/a.wav",
               "dictating": false,
               "warm": false,
               "mic": [],
@@ -639,6 +674,7 @@
             ],
             "state": {
               "recording": true,
+              "activeAudioPath": "/rec/a.wav",
               "dictating": false,
               "warm": false,
               "mic": [],
@@ -659,6 +695,7 @@
             "effects": [],
             "state": {
               "recording": false,
+              "activeAudioPath": null,
               "dictating": false,
               "warm": false,
               "mic": [],
@@ -666,6 +703,265 @@
                 "microphone",
                 "screen-recording"
               ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a recording.start with no file is refused (a recording never runs without one)",
+      "initialDenied": [],
+      "steps": [
+        {
+          "event": {
+            "cmd": "recording.start"
+          },
+          "expect": {
+            "decision": "refuse",
+            "reason": "no-audio-path",
+            "mux": false,
+            "effects": [],
+            "state": {
+              "recording": false,
+              "activeAudioPath": null,
+              "dictating": false,
+              "warm": false,
+              "mic": [],
+              "denied": []
+            }
+          }
+        },
+        {
+          "event": {
+            "cmd": "recording.stop"
+          },
+          "expect": {
+            "decision": "ignore",
+            "reason": "not-recording",
+            "mux": false,
+            "effects": [],
+            "state": {
+              "recording": false,
+              "activeAudioPath": null,
+              "dictating": false,
+              "warm": false,
+              "mic": [],
+              "denied": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "file failure names the admitted file only; stale or late failures are ignored",
+      "initialDenied": [],
+      "steps": [
+        {
+          "event": {
+            "cmd": "recording.start",
+            "audioPath": "/rec/a.wav"
+          },
+          "expect": {
+            "decision": "accept",
+            "mux": false,
+            "effects": [
+              "mic.subscribe:recording"
+            ],
+            "state": {
+              "recording": true,
+              "activeAudioPath": "/rec/a.wav",
+              "dictating": false,
+              "warm": false,
+              "mic": [
+                "recording"
+              ],
+              "denied": []
+            }
+          }
+        },
+        {
+          "event": {
+            "recordingFileFailed": {
+              "audioPath": "/rec/b.wav"
+            }
+          },
+          "expect": {
+            "decision": "ignore",
+            "reason": "other-recording",
+            "mux": false,
+            "effects": [],
+            "state": {
+              "recording": true,
+              "activeAudioPath": "/rec/a.wav",
+              "dictating": false,
+              "warm": false,
+              "mic": [
+                "recording"
+              ],
+              "denied": []
+            }
+          }
+        },
+        {
+          "event": {
+            "cmd": "recording.start",
+            "audioPath": "/rec/b.wav"
+          },
+          "expect": {
+            "decision": "ignore",
+            "reason": "already-recording",
+            "mux": false,
+            "effects": [],
+            "state": {
+              "recording": true,
+              "activeAudioPath": "/rec/a.wav",
+              "dictating": false,
+              "warm": false,
+              "mic": [
+                "recording"
+              ],
+              "denied": []
+            }
+          }
+        },
+        {
+          "event": {
+            "recordingFileFailed": {
+              "audioPath": "/rec/a.wav"
+            }
+          },
+          "expect": {
+            "decision": "accept",
+            "mux": false,
+            "effects": [
+              "recording.lost",
+              "mic.unsubscribe:recording"
+            ],
+            "state": {
+              "recording": false,
+              "activeAudioPath": null,
+              "dictating": false,
+              "warm": false,
+              "mic": [],
+              "denied": []
+            }
+          }
+        },
+        {
+          "event": {
+            "recordingFileFailed": {
+              "audioPath": "/rec/a.wav"
+            }
+          },
+          "expect": {
+            "decision": "ignore",
+            "reason": "not-recording",
+            "mux": false,
+            "effects": [],
+            "state": {
+              "recording": false,
+              "activeAudioPath": null,
+              "dictating": false,
+              "warm": false,
+              "mic": [],
+              "denied": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "file failure with the mic denied and a warm mic: no reader to release, warm reader untouched on re-grant",
+      "initialDenied": [
+        "microphone"
+      ],
+      "steps": [
+        {
+          "event": {
+            "configure": {
+              "warmMic": true
+            }
+          },
+          "expect": {
+            "decision": "accept",
+            "mux": false,
+            "effects": [],
+            "state": {
+              "recording": false,
+              "activeAudioPath": null,
+              "dictating": false,
+              "warm": true,
+              "mic": [],
+              "denied": [
+                "microphone"
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "cmd": "recording.start",
+            "audioPath": "/rec/a.wav"
+          },
+          "expect": {
+            "decision": "accept",
+            "mux": false,
+            "effects": [],
+            "state": {
+              "recording": true,
+              "activeAudioPath": "/rec/a.wav",
+              "dictating": false,
+              "warm": true,
+              "mic": [],
+              "denied": [
+                "microphone"
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "recordingFileFailed": {
+              "audioPath": "/rec/a.wav"
+            }
+          },
+          "expect": {
+            "decision": "accept",
+            "mux": false,
+            "effects": [
+              "recording.lost"
+            ],
+            "state": {
+              "recording": false,
+              "activeAudioPath": null,
+              "dictating": false,
+              "warm": true,
+              "mic": [],
+              "denied": [
+                "microphone"
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "granted": "microphone"
+          },
+          "expect": {
+            "decision": "accept",
+            "mux": false,
+            "effects": [
+              "mic.subscribe:dictation"
+            ],
+            "state": {
+              "recording": false,
+              "activeAudioPath": null,
+              "dictating": false,
+              "warm": true,
+              "mic": [
+                "dictation"
+              ],
+              "denied": []
             }
           }
         }

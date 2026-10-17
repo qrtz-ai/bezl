@@ -20,7 +20,8 @@ final class ArbiterTests: XCTestCase {
 
     private func event(_ v: JSONValue) -> ArbiterEvent {
         let o = v.object!
-        if let c = o["cmd"]?.string { return .cmd(c) }
+        if let c = o["cmd"]?.string { return .cmd(c, audioPath: o["audioPath"]?.string) }
+        if let f = o["recordingFileFailed"]?.object { return .recordingFileFailed(audioPath: f["audioPath"]!.string!) }
         if let p = o["revoked"]?.string { return .revoked(perm(p)) }
         if let p = o["granted"]?.string { return .granted(perm(p)) }
         if let c = o["configure"]?.object { return .configure(warmMic: c["warmMic"]!.bool!) }
@@ -31,6 +32,7 @@ final class ArbiterTests: XCTestCase {
         let o = v.object!
         var s = ArbiterState(denied: o["denied"]!.array!.map { perm($0.string!) })
         s.recording = o["recording"]!.bool!; s.dictating = o["dictating"]!.bool!
+        s.activeAudioPath = o["activeAudioPath"]!.string  // JSON null -> nil
         s.warm = o["warm"]!.bool!
         s.mic = o["mic"]!.array!.map { $0.string! }
         return s
@@ -38,7 +40,7 @@ final class ArbiterTests: XCTestCase {
 
     /// Same vectors as packages/core/src/helper/arbiter.test.ts: the TS and Swift arbiters cannot drift.
     func testSharedVectors() throws {
-        let steps = try replay(Self.vectors, expectCases: 13)
+        let steps = try replay(Self.vectors, expectCases: 15)
         XCTAssertGreaterThan(steps, 40)
     }
 
@@ -66,6 +68,7 @@ final class ArbiterTests: XCTestCase {
                 XCTAssertEqual(r.mux, exp["mux"]!.bool!, ctx)
                 XCTAssertEqual(r.effects, exp["effects"]!.array!.map { $0.string! }, ctx)
                 XCTAssertEqual(r.state, state(exp["state"]!), ctx)
+                XCTAssertNil(SessionArbiter.invariantViolation(r.state), ctx)
                 s = r.state; steps += 1
             }
         }
@@ -337,6 +340,59 @@ final class ArbiterTests: XCTestCase {
         XCTAssertTrue(rec)
         await c.handle(.recordingStop(audioPath: b))
         for p in [a, b] { try? FileManager.default.removeItem(atPath: p) }
+    }
+
+    /// File rule (Bozniak): a recording never runs without a file. The arbiter refuses a start with no path, and
+    /// recordingFileFailed tears the admitted recording down; the invariant holds in every state the vectors reach.
+    func testArbiterFileRuleAndInvariant() {
+        var s = ArbiterState()
+        let refused = SessionArbiter.step(s, .cmd("recording.start"))
+        XCTAssertEqual(refused.decision, "refuse"); XCTAssertEqual(refused.reason, "no-audio-path"); XCTAssertEqual(refused.state, s)
+        s = SessionArbiter.step(s, .cmd("dictation.start")).state
+        s = SessionArbiter.step(s, .cmd("recording.start", audioPath: "/rec/a.wav")).state
+        XCTAssertEqual(s.activeAudioPath, "/rec/a.wav")
+        XCTAssertEqual(SessionArbiter.step(s, .recordingFileFailed(audioPath: "/rec/b.wav")).reason, "other-recording")
+        let r = SessionArbiter.step(s, .recordingFileFailed(audioPath: "/rec/a.wav"))
+        XCTAssertEqual(r.decision, "accept")
+        XCTAssertEqual(r.effects, ["recording.lost", "mic.unsubscribe:recording"])
+        XCTAssertFalse(r.state.recording); XCTAssertNil(r.state.activeAudioPath)
+        XCTAssertTrue(r.state.dictating); XCTAssertEqual(r.state.mic, ["dictation"])
+        var broken = ArbiterState(); broken.recording = true
+        XCTAssertEqual(SessionArbiter.invariantViolation(broken), "recording without an activeAudioPath")
+        var stale = ArbiterState(); stale.activeAudioPath = "/rec/a.wav"
+        XCTAssertEqual(SessionArbiter.invariantViolation(stale), "activeAudioPath set while not recording")
+    }
+
+    /// File rule through the controller: WavWriter fails, so the helper fails closed. It releases the recording's
+    /// mic permit, answers error{recording.file, audioPath}, never sends recording.started, keeps the dictation, and
+    /// is idle for recordings again: the next start is admitted (no recording.busy with a nil activeAudioPath).
+    func testRecordingFileFailureTearsTheRecordingDown() async throws {
+        let out = Box<[HelperMessage]>([]), mic = FakeMic(), hub = MicHub(source: mic)
+        let view = hub.view("recording", gated: true)
+        let c = controller(MutablePerms(), hub, out)
+        await c.handle(.dictationStart(id: "d1"))
+        let bad = "/dev/null/qrtz-\(UUID()).wav"  // parent is not a directory: the file can never be created
+        await c.handle(.recordingStart(audioPath: bad))
+        XCTAssertTrue(out.value.contains { if case .error("recording.file", _, false, _, _, bad, nil) = $0 { true } else { false } })
+        XCTAssertFalse(out.value.contains { if case .recordingStarted = $0 { true } else { false } })
+        var rec = await c.isRecording
+        XCTAssertFalse(rec)
+        var st = await c.arbiter
+        XCTAssertFalse(st.recording); XCTAssertNil(st.activeAudioPath)
+        XCTAssertTrue(st.dictating); XCTAssertEqual(st.mic, ["dictation"])
+        try view.start { _ in }
+        XCTAssertEqual(hub.subscribers, ["dictation"], "the recording's mic permit was revoked")
+        let good = tmp("after-file-failure")
+        await c.handle(.recordingStart(audioPath: good))
+        XCTAssertFalse(out.value.contains { if case .error("recording.busy", _, _, _, _, _, _) = $0 { true } else { false } })
+        XCTAssertTrue(out.value.contains(.recordingStarted(audioPath: good)))
+        st = await c.arbiter
+        XCTAssertEqual(st.activeAudioPath, good)
+        await c.handle(.recordingStop(audioPath: good))
+        rec = await c.isRecording
+        XCTAssertFalse(rec)
+        await c.handle(.dictationCancel(id: "d1"))
+        try? FileManager.default.removeItem(atPath: good)
     }
 }
 

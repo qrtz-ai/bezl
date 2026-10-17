@@ -1,0 +1,264 @@
+{
+  "name": "F5-busy-no-active-file",
+  "about": "F5 watchdog (file rule broken): the helper answers recording.start with error recording.busy{audioPath} naming no activeAudioPath, i.e. it claims a recording runs without a file. Last resort, logged as a bug: the start fails (E_UNAVAILABLE, helper-busy), no stop is sent (never a pathless stop), the helper is restarted, and the retry starts.",
+  "script": [
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permissions.status",
+        "status": {
+          "accessibility": "granted",
+          "screen-recording": "granted",
+          "microphone": "granted"
+        }
+      }
+    },
+    {
+      "op": "call",
+      "fn": "start",
+      "label": "start",
+      "args": {
+        "title": "T"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "error",
+        "code": "recording.busy",
+        "message": "a recording is already running",
+        "audioPath": "$REC/id1.wav"
+      }
+    },
+    {
+      "op": "snapshot",
+      "label": "refused"
+    },
+    {
+      "op": "advance",
+      "ms": 5000
+    },
+    {
+      "op": "call",
+      "fn": "start",
+      "label": "again",
+      "args": {
+        "title": "Again"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.started",
+        "audioPath": "$REC/id2.wav"
+      }
+    },
+    {
+      "op": "call",
+      "fn": "stop",
+      "label": "stop"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.stopped",
+        "audioPath": "$REC/id2.wav",
+        "durationMs": 4000
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 100
+    }
+  ],
+  "expect": {
+    "trace": {
+      "session": [
+        "idle|-|-|-|-|-|ok",
+        "starting|id1|-|-|-|-|ok",
+        "idle|-|-|helper-busy|-|-|ok",
+        "starting|id2|-|-|-|-|ok",
+        "recording|id2|-|-|-|-|ok",
+        "stopping|id2|-|-|-|-|ok",
+        "processing|id2|-|-|-|-|ok",
+        "done|id2|-|-|-|-|ok"
+      ],
+      "pipelines": {
+        "id2": [
+          "manual finalize:pending/0 summary:pending/0 index:pending/0",
+          "manual finalize:running/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:running/1 index:pending/0",
+          "manual finalize:done/1 summary:done/1 index:pending/0",
+          "manual finalize:done/1 summary:done/1 index:running/1",
+          "manual finalize:done/1 summary:done/1 index:done/1"
+        ]
+      },
+      "helper": [
+        "permissions.check",
+        "recording.start $REC/id1.wav",
+        "restart",
+        "recording.start $REC/id2.wav",
+        "recording.stop"
+      ],
+      "transcript": [
+        [
+          0,
+          1,
+          [],
+          null
+        ]
+      ],
+      "changed": [
+        "id1",
+        "id1",
+        "id2",
+        "id2",
+        "id2",
+        "id2"
+      ],
+      "permissions": [
+        "granted|granted|granted"
+      ],
+      "prompts": []
+    },
+    "results": {
+      "start": {
+        "err": [
+          "E_UNAVAILABLE",
+          "The capture helper is still busy with another recording. Try again."
+        ]
+      },
+      "again": {
+        "ok": {
+          "phase": "recording",
+          "meetingId": "id2"
+        }
+      },
+      "stop": {
+        "ok": {
+          "phase": "processing",
+          "meetingId": "id2"
+        }
+      }
+    },
+    "snapshots": {
+      "refused": {
+        "view": {
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": [
+            "helper-busy",
+            true
+          ],
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "idle",
+            null
+          ]
+        },
+        "files": []
+      },
+      "end": {
+        "view": {
+          "phase": "done",
+          "meetingId": "id2",
+          "startedAt": 1760000005000,
+          "elapsedMs": 0,
+          "stopReason": "manual",
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": "finalize:done/1 summary:done/1 index:done/1"
+        },
+        "live": {
+          "meetingId": "id2",
+          "rev": 1,
+          "segments": [],
+          "partial": null
+        },
+        "db": {
+          "meetings": [
+            [
+              "id2",
+              "Again",
+              "other",
+              "done",
+              1760000005000,
+              1760000005000,
+              4000,
+              "$REC/id2.wav",
+              "general"
+            ]
+          ],
+          "segments": [],
+          "summaries": [
+            [
+              "id2",
+              "stub",
+              "STUB summary",
+              null
+            ]
+          ],
+          "notes": [],
+          "pipelines": [
+            [
+              "id2",
+              1,
+              "manual",
+              "finalize:done/1 summary:done/1 index:done/1",
+              4000,
+              false,
+              [
+                "$REC/id2.wav"
+              ],
+              0
+            ]
+          ],
+          "session": [
+            "done",
+            "id2"
+          ]
+        },
+        "files": []
+      }
+    }
+  }
+}

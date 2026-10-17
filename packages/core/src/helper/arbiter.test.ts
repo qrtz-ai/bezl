@@ -2,7 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  arbiterInvariantViolation,
   arbiterStep,
+  assertArbiterInvariant,
   degradationsForRevocation,
   initialArbiterState,
   type HelperArbiterEvent,
@@ -23,7 +25,7 @@ const vectors = JSON.parse(
 };
 
 describe('helper arbiter: shared vectors (TS ⇄ Swift)', () => {
-  it('has the expected coverage', () => expect(vectors.cases.length).toBe(13));
+  it('has the expected coverage', () => expect(vectors.cases.length).toBe(15));
   for (const c of vectors.cases)
     it(c.name, () => {
       let s = initialArbiterState(c.initialDenied);
@@ -44,7 +46,7 @@ describe('helper arbiter: shared vectors (TS ⇄ Swift)', () => {
 describe('helper arbiter: invariants', () => {
   it('the mic tap runs iff someone subscribed; mux only when both kinds run', () => {
     const evs: HelperArbiterEvent[] = [
-      { cmd: 'recording.start' },
+      { cmd: 'recording.start', audioPath: 'a.wav' },
       { cmd: 'dictation.start' },
       { revoked: 'screen-recording' },
       { cmd: 'dictation.cancel' },
@@ -60,6 +62,54 @@ describe('helper arbiter: invariants', () => {
       expect(r.mux).toBe(s.recording && s.dictating);
     }
     expect(s.mic).toEqual([]);
+  });
+  it('a recording never runs without a file: a start with no audioPath is refused', () => {
+    const s = initialArbiterState();
+    const r = arbiterStep(s, { cmd: 'recording.start' });
+    expect(r).toMatchObject({
+      decision: 'refuse',
+      reason: 'no-audio-path',
+      effects: [],
+    });
+    expect(r.state).toEqual(s);
+  });
+  it('recordingFileFailed tears the recording down and leaves a dictation running', () => {
+    let s = initialArbiterState();
+    s = arbiterStep(s, { cmd: 'dictation.start' }).state;
+    s = arbiterStep(s, { cmd: 'recording.start', audioPath: 'a.wav' }).state;
+    expect(s.activeAudioPath).toBe('a.wav');
+    // Only the admitted recording's own file counts.
+    expect(
+      arbiterStep(s, { recordingFileFailed: { audioPath: 'b.wav' } }),
+    ).toMatchObject({ decision: 'ignore', reason: 'other-recording' });
+    const r = arbiterStep(s, { recordingFileFailed: { audioPath: 'a.wav' } });
+    expect(r.decision).toBe('accept');
+    expect(r.effects).toEqual(['recording.lost', 'mic.unsubscribe:recording']);
+    expect(r.state).toMatchObject({
+      recording: false,
+      activeAudioPath: null,
+      dictating: true,
+      mic: ['dictation'],
+    });
+    expect(
+      arbiterStep(r.state, { recordingFileFailed: { audioPath: 'a.wav' } }),
+    ).toMatchObject({ decision: 'ignore', reason: 'not-recording' });
+  });
+  it('asserts the invariant: running implies an activeAudioPath', () => {
+    const broken = { ...initialArbiterState(), recording: true };
+    expect(arbiterInvariantViolation(broken)).toMatch(
+      /without an activeAudioPath/,
+    );
+    expect(() => assertArbiterInvariant(broken)).toThrow(/invariant broken/);
+    expect(() =>
+      arbiterStep(broken, { configure: { warmMic: false } }),
+    ).toThrow(/invariant broken/);
+    expect(
+      arbiterInvariantViolation({
+        ...initialArbiterState(),
+        activeAudioPath: 'a.wav',
+      }),
+    ).toMatch(/not recording/);
   });
   it('maps revocations to recording degradations', () => {
     expect(degradationsForRevocation('microphone', [])).toEqual(['no-mic']);

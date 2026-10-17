@@ -44,6 +44,34 @@ describe('mock helper: concurrent recording.* + dictation.* (mux)', () => {
     h.kill();
   });
 
+  it('a recording whose file cannot be created is torn down at once: no pathless busy, the dictation survives', async () => {
+    const { h, got, send } = rig({ failRecordingFile: true });
+    send({ type: 'dictation.start', id: 'd1' });
+    send({ type: 'recording.start', audioPath: '/tmp/a.wav' });
+    expect(of(got, 'recording.started')).toHaveLength(0);
+    expect(of(got, 'error')).toEqual([
+      {
+        type: 'error',
+        code: 'recording.file',
+        message: 'could not create the recording file',
+        fatal: false,
+        audioPath: '/tmp/a.wav',
+      },
+    ]);
+    // The helper is idle for recordings again: the next start is admitted (and fails closed the same way), never
+    // answered with a recording.busy that names no active file.
+    send({ type: 'recording.start', audioPath: '/tmp/b.wav' });
+    expect(of(got, 'error').map((e) => [e.code, e.audioPath])).toEqual([
+      ['recording.file', '/tmp/a.wav'],
+      ['recording.file', '/tmp/b.wav'],
+    ]);
+    await tick(20);
+    send({ type: 'dictation.stop', id: 'd1' });
+    expect(of(got, 'dictation.stopped')[0]).toMatchObject({ id: 'd1' });
+    expect(of(got, 'dictation.stopped')[0]!.reason).toBeUndefined();
+    h.kill();
+  });
+
   it('duplicates are ignored (single instance per kind), stops when idle are no-ops', async () => {
     const { h, got, send } = rig();
     send({ type: 'recording.stop' });

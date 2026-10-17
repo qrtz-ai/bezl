@@ -49,6 +49,10 @@ export const HelperToHost = z.discriminatedUnion('type', [
     /**
      * Set on `recording.busy`: `audioPath` is the recording.start that was ignored, `activeAudioPath` the
      * file the running recording writes. The host acts only when `audioPath` is its start in flight.
+     * `activeAudioPath` is always set on recording.busy (a running recording always has a file); a busy without
+     * it means the helper broke that invariant, and the host restarts the helper (last-resort watchdog).
+     * Also set on `recording.file` when the file of recording.start{audioPath} could not be created: the helper
+     * has already torn that recording down (no recording.started follows), so the host fails the start at once.
      */
     audioPath: z.string().optional(),
     activeAudioPath: z.string().optional(),

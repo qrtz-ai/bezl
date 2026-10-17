@@ -16,8 +16,8 @@ pub mod transcript;
 pub mod wav;
 
 pub use arbiter::{
-    arbiter_step, degradations_for_revocation, ArbiterCmd, ArbiterEvent, ArbiterResult, ArbiterState,
-    Configure, Decision, MicSubscriber,
+    arbiter_invariant_violation, arbiter_step, degradations_for_revocation, ArbiterCmd, ArbiterEvent,
+    ArbiterResult, ArbiterState, Configure, Decision, FileFailed, MicSubscriber,
 };
 
 pub use pipeline::{

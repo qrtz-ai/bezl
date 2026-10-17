@@ -41,6 +41,12 @@ export interface MockHelperOptions {
    * dictation.start). Emits permission.revoked and applies the arbiter's effects like the Swift helper does.
    */
   revoke?: { permission: HelperPermission; afterMs: number }[];
+  /**
+   * Fault injection: the recording file cannot be created. Like the Swift helper, the mock fails closed: the
+   * admitted recording is torn down at once (arbiter recordingFileFailed) and answered with
+   * error{recording.file, audioPath}; no recording.started follows.
+   */
+  failRecordingFile?: boolean;
   /** Override reported TCC states (fault injection: denied permissions). */
   permissions?: Partial<
     Record<
@@ -86,7 +92,10 @@ export function createMockHelper(
         message: 'a recording is already running',
         fatal: false,
         ...(start.audioPath ? { audioPath: start.audioPath } : {}),
-        ...(audioPath ? { activeAudioPath: audioPath } : {}),
+        // The arbiter invariant guarantees a running recording has a file, so a busy always names it.
+        ...(arb.activeAudioPath
+          ? { activeAudioPath: arb.activeAudioPath }
+          : {}),
       });
     else if (r.decision === 'ignore' && r.reason === 'already-dictating')
       emit({
@@ -337,10 +346,24 @@ export function createMockHelper(
           return die(0, null);
         case 'recording.start':
           if (
-            admit({ cmd: 'recording.start' }, { audioPath: m.audioPath })
-              .decision !== 'accept'
+            admit(
+              { cmd: 'recording.start', audioPath: m.audioPath },
+              { audioPath: m.audioPath },
+            ).decision !== 'accept'
           )
             return;
+          if (opts.failRecordingFile) {
+            // Fail closed: never leave a recording admitted without a file.
+            admit({ recordingFileFailed: { audioPath: m.audioPath } });
+            emit({
+              type: 'error',
+              code: 'recording.file',
+              message: 'could not create the recording file',
+              fatal: false,
+              audioPath: m.audioPath,
+            });
+            return;
+          }
           armRevocations();
           audioPath = m.audioPath;
           // Mirrors the Swift helper: capture problems are non-fatal errors, recording.started still follows.

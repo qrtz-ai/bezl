@@ -62,6 +62,34 @@ Rules (the arbiter's `cmd` events):
 6. When the helper is lost, every session ends. The arbiter's `helperLost` releases everything explicitly:
    `dictation.stop:helper-lost`, `recording.lost`, and `mic.unsubscribe:<who>` for each reader, so refcounts balance. The host already treats a running dictation as failed when the helper
    restarts, and the recording follows the reconnect lifecycle (`recording-lifecycle.md`).
+7. A recording never runs without a file (see below).
+
+### A recording never runs without a file
+
+The arbiter state carries `activeAudioPath`, the file the running recording writes, and holds one invariant after
+every step: **`recording` iff `activeAudioPath` is set**. Every arbiter asserts it (`assertArbiterInvariant` throws
+in TS; `SessionArbiter.step` stops with `preconditionFailure` in Swift; the Rust port `arbiter_step` panics). That is what lets every `recording.busy`
+name its `activeAudioPath` and every cleanup `recording.stop` carry a path: there is no pathless running recording
+to stop, so the protocol has no stop without a path for it (one would be ambient authority: it stops whatever runs).
+
+- `recording.start{audioPath}` is the only way in. A start event with no path is refused (`no-audio-path`).
+- **Fail closed on the file.** When the helper cannot create the WAV for an admitted start, it tears the recording
+  down itself before anything else starts: the arbiter's `recordingFileFailed{audioPath}` event returns
+  `recording.lost` and `mic.unsubscribe:recording` (if the recording held the mic), the helper withdraws the
+  recording's mic permit and releases its taps, answers
+  `error{code: "recording.file", audioPath, fatal: false}`, and never sends `recording.started`. The arbiter is idle
+  for recordings again; a dictation or warm mic running alongside is untouched (no helper restart). The event is
+  ignored for any other file (`other-recording`) or when nothing records (`not-recording`).
+- Host: `error{recording.file, audioPath}` for its start in flight fails that start at once (`recording-file`,
+  retryable, `E_UNAVAILABLE`) instead of waiting out the ack timeout, then sends `recording.stop{audioPath}` for that
+  attempt's own file like every failed start (a no-op in the helper). Any other `recording.file` (for example a WAV
+  that would not finalize at stop) is only logged.
+- **Watchdog, last resort.** A `recording.busy` for the host's start that names no `activeAudioPath` means the helper
+  broke the invariant. The host logs it as a bug (`BUG: helper invariant broken …`), sends no stop at all, fails the
+  start (`helper-busy`), and restarts the helper after the start has failed (so it never looks like a crash
+  mid-recording). This also ends a healthy dictation, which is why it is not a normal path.
+- Longer term the helper may mint an opaque `recordingId` at admit, so busy, stop and started carry that instead of
+  the file path; it isn't needed for this rule.
 
 ### The arbiter is enforcing
 
@@ -114,19 +142,28 @@ On the host side:
 
 ## Tests
 
-- Shared vectors (13 cases): `packages/core/src/helper/arbiter.test.ts`, `ArbiterTests.testSharedVectors`. Edge vectors
+- Shared vectors (15 cases): `packages/core/src/helper/arbiter.test.ts`, `ArbiterTests.testSharedVectors`. Edge vectors
   (`spec/vectors/helper/arbiter-edges.json`) are replayed by `arbiter-model.test.ts` (an independent model, run
-  exhaustively over reachable states, including warm/configure) and by `ArbiterTests.testEdgeVectors`.
+  exhaustively over reachable states, including warm/configure) and by `ArbiterTests.testEdgeVectors`. A second
+  declarative model (`arbiter-declarative.test.ts`) checks the reader set. Both models track the recording's file
+  and assert the file invariant on every step, with path-less starts and `recordingFileFailed` for the active and
+  another file among the events.
 - Swift: `ArbiterTests`. Covers `MicHub` refcount and fan-out, mux through `HelperController`, mic revoked mid-mux, and
   accessibility revoked during dictation, the warm mic after a revoke and re-grant, busy errors and a mismatched stop
   path, the gated recording view with the mic denied, an unsubscribe racing the device start, a failed device start
   with a joiner (rethrown, detached), and the busy unlock paths (`dictation.busy{id, activeId}` then
-  `cancel{activeId}`; `recording.busy{audioPath, activeAudioPath}` then `stop{activeAudioPath}`).
-- Mock helper (child protocol): `packages/core/src/helper/mock-concurrency.test.ts`.
+  `cancel{activeId}`; `recording.busy{audioPath, activeAudioPath}` then `stop{activeAudioPath}`), the file rule
+  (`testArbiterFileRuleAndInvariant`) and a WAV that can't be created (`testRecordingFileFailureTearsTheRecordingDown`:
+  `error{recording.file, audioPath}`, no `started`, mic permit withdrawn, dictation kept, the next start admitted).
+- Mock helper (child protocol): `packages/core/src/helper/mock-concurrency.test.ts` (`failRecordingFile` injects the
+  file failure).
 - Host: `note-service.test.ts` (live `mic-only` → `audio-unavailable`, `no-mic`, `recording.busy`, an orphaned
-  recording A stopped by path so the retry starts, busy for another file ignored) and `talk-service.test.ts`
+  recording A stopped by path so the retry starts, busy for another file ignored, `recording.file` failing the start
+  fast without a restart, the pathless-busy watchdog restart) and `talk-service.test.ts`
   (graceful stop, then refusal, `dictation.busy`, a helper still running d1 after a host reload no longer locks
   dictation out, busy for another id / a duplicate start ignored).
+- Lifecycle scenarios (TS oracle and Rust `NoteRuntime`): `spec/scenarios/lifecycle/F5-recording-file.json` and
+  `F5-busy-no-active-file.json`.
 - e2e: `e2e/permissions.spec.ts`. Uses `QRTZ_MOCK_REVOKE="screen-recording@800,microphone@2000"` to revoke TCC that
   many ms after the first capture.
 - On a real Mac: see `mac-verify.md` (revoking in System Settings mid-capture, and two readers on one input device).

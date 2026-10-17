@@ -82,6 +82,8 @@ function rig(
       : never;
     noStart?: boolean;
     llmDelayMs?: number;
+    /** Every mock helper fails to create recording files (fails closed: error recording.file, no started). */
+    failRecordingFile?: boolean;
     /** Runs before each host→helper line reaches the mock (fault/timing injection). */
     beforeWrite?: (
       type: string,
@@ -161,6 +163,7 @@ function rig(
         detectAfterMs: 5,
         ...(o.permissions ? { permissions: o.permissions } : {}),
         ...(o.revoke ? { revoke: o.revoke } : {}),
+        ...(o.failRecordingFile ? { failRecordingFile: true } : {}),
       });
       mocks.push(m);
       const write = m.write.bind(m);
@@ -729,6 +732,63 @@ describe('NoteService lifecycle (integration with mock helper + real worker hand
     await r.note.start();
     expect(r.note.view().phase).toBe('recording');
     expect(r.writes.filter((w) => w.type === 'recording.stop')).toEqual([]);
+    await r.note.stop();
+  });
+
+  it('file rule: a start whose file the helper cannot create fails fast (recording-file), no helper restart', async () => {
+    const r = rig({ failRecordingFile: true });
+    await detected(r);
+    const t0 = Date.now();
+    await expect(r.note.start()).rejects.toThrow(
+      /recording file could not be created/,
+    );
+    expect(Date.now() - t0).toBeLessThan(1000);
+    const v = r.note.view();
+    expect(v.phase).toBe('detected'); // back where it was before the start
+    expect(v.errorInfo?.code).toBe('recording-file');
+    const own = r.writes.find((w) => w.type === 'recording.start')!.msg
+      .audioPath;
+    // Only this attempt's (already torn down) file; never a pathless stop, never a restart.
+    expect(
+      r.writes
+        .filter((w) => w.type === 'recording.stop')
+        .map((w) => w.msg.audioPath),
+    ).toEqual([own]);
+    expect(r.mocks).toHaveLength(1);
+    // The helper is idle again: the next start is admitted (not answered with a busy).
+    await expect(r.note.start()).rejects.toThrow(
+      /recording file could not be created/,
+    );
+    expect(r.mocks).toHaveLength(1);
+  });
+
+  it('file rule watchdog: a busy naming no active file is a broken invariant, so the helper is restarted', async () => {
+    let sent = false;
+    const r = rig({
+      beforeWrite: (type, _m, note, msg) => {
+        if (type !== 'recording.start' || sent) return;
+        sent = true;
+        note.handle({
+          type: 'error',
+          code: 'recording.busy',
+          message: 'a recording is already running',
+          fatal: false,
+          audioPath: msg.audioPath as string,
+        });
+      },
+    });
+    await detected(r);
+    await expect(r.note.start()).rejects.toThrow(
+      /still busy with another recording/,
+    );
+    // No stop at all: the unnamed recording cannot be stopped by path, and a pathless stop is never sent.
+    expect(r.writes.filter((w) => w.type === 'recording.stop')).toEqual([]);
+    await until(() => r.mocks.length === 2);
+    // The restart happens after the failed start, so it never looks like a crash mid-recording.
+    expect(r.note.view().phase).toBe('detected');
+    await until(() => r.helper.status.state === 'running');
+    await r.note.start();
+    expect(r.note.view().phase).toBe('recording');
     await r.note.stop();
   });
 

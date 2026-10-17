@@ -5,9 +5,15 @@ import Foundation
 //
 // Decision: MUX. recording.* and dictation.* run side by side and share one mic tap (MicHub). Each kind is
 // single-instance: a duplicate start is ignored (logged), never queued.
+//
+// Invariant (checked after every step): a running recording always has a file, `recording` iff
+// `activeAudioPath != nil`. A recording.start without a path is refused; when the file cannot be created
+// (`recordingFileFailed`) the recording is torn down at once, so busy and path-scoped stops can always name it.
 
 public struct ArbiterState: Equatable, Sendable {
     public var recording = false
+    /// The file the running recording writes; nil iff not recording (the invariant).
+    public var activeAudioPath: String?
     public var dictating = false
     /// Warm mic (dictation.configure warmMic): the dictation reader stays subscribed between dictations.
     /// Survives a mic revoke; the reader comes back on re-grant.
@@ -20,11 +26,13 @@ public struct ArbiterState: Equatable, Sendable {
 }
 
 public enum ArbiterEvent: Equatable, Sendable {
-    case cmd(String)  // recording.start|stop, dictation.start|stop|cancel
+    case cmd(String, audioPath: String? = nil)  // recording.start{audioPath}|stop, dictation.start|stop|cancel
     case configure(warmMic: Bool)
     case revoked(OsPermission)
     case granted(OsPermission)
     case helperLost
+    /// The file of the admitted recording could not be created: fail closed (tear the recording down).
+    case recordingFileFailed(audioPath: String)
 }
 
 public struct ArbiterResult: Equatable, Sendable {
@@ -46,7 +54,22 @@ public enum SessionArbiter {
         }
     }
 
+    /// Why `s` breaks the invariant, or nil. A running recording must have a file (and only then).
+    public static func invariantViolation(_ s: ArbiterState) -> String? {
+        if s.recording && (s.activeAudioPath ?? "").isEmpty { return "recording without an activeAudioPath" }
+        if !s.recording && s.activeAudioPath != nil { return "activeAudioPath set while not recording" }
+        return nil
+    }
+
     public static func step(_ s: ArbiterState, _ e: ArbiterEvent) -> ArbiterResult {
+        let out = transition(s, e)
+        // A bug, never a normal path: crash rather than run a recording that no busy or stop can name. The host
+        // supervisor restarts the helper (and the host's own watchdog restarts it if a pathless busy ever arrives).
+        if let v = invariantViolation(out.state) { preconditionFailure("helper arbiter invariant broken: \(v)") }
+        return out
+    }
+
+    static func transition(_ s: ArbiterState, _ e: ArbiterEvent) -> ArbiterResult {
         func r(_ st: ArbiterState, _ d: String, _ fx: [String] = [], _ reason: String? = nil) -> ArbiterResult {
             ArbiterResult(state: st, decision: d, reason: reason, mux: st.mic.contains("recording") && st.mic.contains("dictation"), effects: fx)
         }
@@ -60,6 +83,13 @@ public enum SessionArbiter {
             if s.recording { fx.append("recording.lost") }
             fx += s.mic.map { "mic.unsubscribe:\($0)" }
             return r(ArbiterState(denied: s.denied), "accept", fx)
+        case .recordingFileFailed(let path):
+            if !s.recording { return r(s, "ignore", [], "not-recording") }
+            if s.activeAudioPath != path { return r(s, "ignore", [], "other-recording") }
+            let unsub = s.mic.contains("recording")
+            n.recording = false; n.activeAudioPath = nil
+            n.mic.removeAll { $0 == "recording" }
+            return r(n, "accept", ["recording.lost"] + (unsub ? ["mic.unsubscribe:recording"] : []))
         case .configure(let warm):
             n.warm = warm
             if warm && micOk && !hasDict { n.mic.append("dictation"); return r(n, "accept", ["mic.subscribe:dictation"]) }
@@ -80,17 +110,18 @@ public enum SessionArbiter {
             }
             if s.recording { fx += degradations(revoking: p, alreadyDenied: s.denied).map { "degrade:\($0)" } }
             return r(n, "accept", fx)
-        case .cmd(let c):
+        case .cmd(let c, let path):
             switch c {
             case "recording.start":
                 if s.recording { return r(s, "ignore", [], "already-recording") }
-                n.recording = true
+                guard let path, !path.isEmpty else { return r(s, "refuse", [], "no-audio-path") }
+                n.recording = true; n.activeAudioPath = path
                 let sub = micOk && !s.mic.contains("recording")
                 if sub { n.mic.append("recording") }
                 return r(n, "accept", sub ? ["mic.subscribe:recording"] : [])
             case "recording.stop":
                 if !s.recording { return r(s, "ignore", [], "not-recording") }
-                n.recording = false
+                n.recording = false; n.activeAudioPath = nil
                 let unsub = s.mic.contains("recording")
                 n.mic.removeAll { $0 == "recording" }
                 return r(n, "accept", unsub ? ["mic.unsubscribe:recording"] : [])

@@ -129,7 +129,7 @@ public actor HelperController {
             await deps.permissions.request(p)
             send(.permissionsStatus(deps.permissions.status()))
         case .recordingStart(let path):
-            guard await admit(.cmd("recording.start"), audioPath: path) else { return }
+            guard await admit(.cmd("recording.start", audioPath: path), audioPath: path) else { return }
             await startRecording(path)
         case .recordingStop(let path):
             // A stop aimed at another file (the host's stale-start cleanup racing a newer recording) is ignored.
@@ -175,13 +175,14 @@ public actor HelperController {
         let r = SessionArbiter.step(arbiter, e)
         arbiter = r.state
         await apply(r.effects)
-        guard case .cmd(let c) = e else { return true }
+        guard case .cmd(let c, _) = e else { return true }
         switch r.decision {
         case "ignore":
             switch r.reason {
             case "already-recording":
+                // The invariant guarantees a running recording has a file, so a busy always names it.
                 send(.error(code: "recording.busy", message: "a recording is already running", fatal: false,
-                            audioPath: audioPath, activeAudioPath: recording?.wav.url.path))
+                            audioPath: audioPath, activeAudioPath: arbiter.activeAudioPath))
             case "already-dictating":
                 let active = await dictation.activeId
                 send(.error(code: "dictation.busy", message: "a dictation is already running", fatal: false, id: id, activeId: active))
@@ -189,6 +190,7 @@ public actor HelperController {
             }
             return false
         case "refuse":
+            if r.reason == "no-audio-path" { send(.log(level: .warn, msg: "\(c) without an audio path; refused")); return false }
             send(.error(code: "dictation.mic", message: "microphone access denied", fatal: false)); return false
         default:
             if r.mux { send(.log(level: .info, msg: "mux: recording and dictation share the mic tap")) }
@@ -204,7 +206,7 @@ public actor HelperController {
             case "mic.subscribe:recording": deps.micHub?.permit("recording")
             case "mic.unsubscribe:recording": deps.micHub?.revokePermit("recording"); deps.micHub?.unsubscribe("recording")
             case "dictation.stop:permission-revoked": await dictation.abort(reason: .permissionRevoked)
-            default: break  // degrade:* is applied by the host; helper-lost/recording.lost never happen in-process
+            default: break  // degrade:* is applied by the host; recording.lost: the caller already tore the recording down
             }
         }
     }
@@ -261,7 +263,13 @@ public actor HelperController {
         if recording != nil { send(.log(level: .warn, msg: "recording.start while recording; ignored")); return }
         let wav: WavWriter
         do { wav = try WavWriter(url: URL(fileURLWithPath: path)) } catch {
-            send(.error(code: "recording.file", message: "\(error)", fatal: false)); return
+            // Fail closed: a recording never runs without a file. Nothing has started yet (no source, no ASR, no
+            // started{}); release the admitted recording (its mic reader and permit) and tell the host which start died.
+            let r = SessionArbiter.step(arbiter, .recordingFileFailed(audioPath: path))
+            arbiter = r.state
+            await apply(r.effects)
+            send(.error(code: "recording.file", message: "\(error)", fatal: false, audioPath: path))
+            return
         }
         let rec = Recording(wav: wav, startMs: now())
         recordingStartMs = rec.startMs

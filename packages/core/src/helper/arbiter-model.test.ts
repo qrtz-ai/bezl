@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  arbiterInvariantViolation,
   arbiterStep,
   initialArbiterState,
   type HelperArbiterEvent,
@@ -22,7 +23,10 @@ const PERMS: HelperPermission[] = [
   'accessibility',
 ];
 const EVENTS: HelperArbiterEvent[] = [
+  { cmd: 'recording.start', audioPath: 'a.wav' },
   { cmd: 'recording.start' },
+  { recordingFileFailed: { audioPath: 'a.wav' } },
+  { recordingFileFailed: { audioPath: 'b.wav' } },
   { cmd: 'recording.stop' },
   { cmd: 'dictation.start' },
   { cmd: 'dictation.stop' },
@@ -37,6 +41,8 @@ const EVENTS: HelperArbiterEvent[] = [
 /** What the model believes, built only from the spec text, never from arbiter.ts. */
 interface Model {
   recording: boolean;
+  /** The file of the running recording (a recording never runs without one). */
+  file: string | null;
   dictating: boolean;
   /** Warm mic configured (dictation.configure warmMic). */
   warm: boolean;
@@ -51,6 +57,7 @@ interface Model {
 
 const initModel = (denied: HelperPermission[]): Model => ({
   recording: false,
+  file: null,
   dictating: false,
   warm: false,
   dictMic: false,
@@ -87,6 +94,17 @@ function modelStep(
       decision: 'accept',
       effects: fx,
     };
+  }
+  if ('recordingFileFailed' in e) {
+    // Fail closed on the admitted recording's own file: tear it down, release its reader; nothing else changes.
+    if (!m.recording || m.file !== e.recordingFileFailed.audioPath)
+      return { m, decision: 'ignore', effects: [] };
+    fx.push('recording.lost');
+    if (m.recMic) fx.push('mic.unsubscribe:recording');
+    n.recording = false;
+    n.recMic = false;
+    n.file = null;
+    return { m: n, decision: 'accept', effects: fx };
   }
   if ('configure' in e) {
     n.warm = e.configure.warmMic;
@@ -133,7 +151,9 @@ function modelStep(
   switch (e.cmd) {
     case 'recording.start':
       if (m.recording) return { m, decision: 'ignore', effects: [] };
+      if (!e.audioPath) return { m, decision: 'refuse', effects: [] };
       n.recording = true;
+      n.file = e.audioPath;
       n.recMic = !m.denied.has('microphone');
       if (n.recMic) fx.push('mic.subscribe:recording');
       return { m: n, decision: 'accept', effects: fx };
@@ -142,6 +162,7 @@ function modelStep(
       if (m.recMic) fx.push('mic.unsubscribe:recording');
       n.recording = false;
       n.recMic = false;
+      n.file = null;
       return { m: n, decision: 'accept', effects: fx };
     case 'dictation.start':
       if (m.dictating) return { m, decision: 'ignore', effects: [] };
@@ -209,6 +230,9 @@ function checkStep(
   // Invariants on the arbiter's state.
   const st = r.state;
   expect(st.recording).toBe(x.m.recording);
+  // A running recording always has a file (and only then): the pathless state cannot be reached.
+  expect(st.activeAudioPath, `activeAudioPath @ ${ctx}`).toBe(x.m.file);
+  expect(arbiterInvariantViolation(st), `invariant @ ${ctx}`).toBeNull();
   expect(st.dictating).toBe(x.m.dictating);
   expect(st.warm).toBe(x.m.warm);
   expect(new Set(st.denied)).toEqual(x.m.denied);
@@ -240,6 +264,7 @@ const key = (s: HelperArbiterState, m: Model) =>
     [...m.denied].sort(),
     m.recMic,
     m.dictMic,
+    m.file,
     m.warm,
     m.refs,
   ]);
@@ -247,32 +272,36 @@ const subsets = <T>(xs: T[]): T[][] =>
   xs.reduce<T[][]>((a, x) => [...a, ...a.map((y) => [...y, x])], [[]]);
 
 describe('helper arbiter: independent reference model', () => {
-  it('agrees with the spec model on every reachable state x event (all sequence lengths)', () => {
-    let explored = 0;
-    for (const init of subsets(PERMS)) {
-      const seen = new Set<string>();
-      const q: [HelperArbiterState, Model, string][] = [
-        [
-          initialArbiterState([...init]),
-          initModel(init),
-          `init${JSON.stringify(init)}`,
-        ],
-      ];
-      while (q.length) {
-        const [s, m, trace] = q.shift()!;
-        const k = key(s, m);
-        if (seen.has(k)) continue;
-        seen.add(k);
-        for (const e of EVENTS) {
-          const ctx = `${trace} -> ${JSON.stringify(e)}`;
-          const { r, m: m2 } = checkStep(s, m, e, ctx);
-          explored++;
-          q.push([r.state, m2, ctx]);
+  it(
+    'agrees with the spec model on every reachable state x event (all sequence lengths)',
+    { timeout: 30_000 },
+    () => {
+      let explored = 0;
+      for (const init of subsets(PERMS)) {
+        const seen = new Set<string>();
+        const q: [HelperArbiterState, Model, string][] = [
+          [
+            initialArbiterState([...init]),
+            initModel(init),
+            `init${JSON.stringify(init)}`,
+          ],
+        ];
+        while (q.length) {
+          const [s, m, trace] = q.shift()!;
+          const k = key(s, m);
+          if (seen.has(k)) continue;
+          seen.add(k);
+          for (const e of EVENTS) {
+            const ctx = `${trace} -> ${JSON.stringify(e)}`;
+            const { r, m: m2 } = checkStep(s, m, e, ctx);
+            explored++;
+            q.push([r.state, m2, ctx]);
+          }
         }
       }
-    }
-    expect(explored).toBeGreaterThan(1000);
-  });
+      expect(explored).toBeGreaterThan(1000);
+    },
+  );
 
   it('seeded random length-8 sequences hold the same properties', () => {
     let seed = 0x5eed;

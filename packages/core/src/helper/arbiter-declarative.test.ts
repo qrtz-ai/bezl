@@ -10,6 +10,10 @@
  * and requires the arbiter's mic effects to be exactly the diff of that set (subscribe for each reader gained,
  * unsubscribe for each reader lost; helperLost releases every reader). Checked exhaustively over every reachable
  * state x every event (all sequence lengths, warm/configure included) and over seeded random length-10 replays.
+ *
+ * Plus the file rule (helper-protocol.md "A recording never runs without a file"): a recording runs only with the
+ * file it was started with; a start with no file is refused, and a failure to create that file ends the recording
+ * (recording.lost) exactly as if it had stopped.
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -26,7 +30,11 @@ const PERMS: HelperPermission[] = [
   'accessibility',
 ];
 const EVENTS: HelperArbiterEvent[] = [
+  { cmd: 'recording.start', audioPath: 'a.wav' },
+  { cmd: 'recording.start', audioPath: 'b.wav' },
   { cmd: 'recording.start' },
+  { recordingFileFailed: { audioPath: 'a.wav' } },
+  { recordingFileFailed: { audioPath: 'b.wav' } },
   { cmd: 'recording.stop' },
   { cmd: 'dictation.start' },
   { cmd: 'dictation.stop' },
@@ -40,6 +48,7 @@ const EVENTS: HelperArbiterEvent[] = [
 
 interface Spec {
   recording: boolean;
+  file: string | null; // the running recording's file; null iff not recording
   recMicEligible: boolean; // started with mic usable, no mic revoke since
   dictating: boolean;
   warm: boolean;
@@ -67,6 +76,7 @@ function specStep(
     return {
       s: {
         recording: false,
+        file: null,
         recMicEligible: false,
         dictating: false,
         warm: false,
@@ -76,6 +86,14 @@ function specStep(
       extra,
     };
   }
+  if ('recordingFileFailed' in e)
+    return !s.recording || s.file !== e.recordingFileFailed.audioPath
+      ? { s, decision: 'ignore', extra: [] }
+      : {
+          s: { ...s, recording: false, file: null, recMicEligible: false },
+          decision: 'accept',
+          extra: ['recording.lost'],
+        };
   if ('configure' in e)
     return {
       s: { ...s, warm: e.configure.warmMic },
@@ -91,10 +109,16 @@ function specStep(
   if ('revoked' in e) return { s, decision: 'revoke', extra: [] }; // handled by caller (needs denied set)
   switch (e.cmd) {
     case 'recording.start':
-      return s.recording
-        ? { s, decision: 'ignore', extra: [] }
+      if (s.recording) return { s, decision: 'ignore', extra: [] };
+      return !e.audioPath
+        ? { s, decision: 'refuse', extra: [] }
         : {
-            s: { ...s, recording: true, recMicEligible: !s.micDenied },
+            s: {
+              ...s,
+              recording: true,
+              file: e.audioPath,
+              recMicEligible: !s.micDenied,
+            },
             decision: 'accept',
             extra: [],
           };
@@ -102,7 +126,7 @@ function specStep(
       return !s.recording
         ? { s, decision: 'ignore', extra: [] }
         : {
-            s: { ...s, recording: false, recMicEligible: false },
+            s: { ...s, recording: false, file: null, recMicEligible: false },
             decision: 'accept',
             extra: [],
           };
@@ -174,6 +198,8 @@ function check(
   expect(new Set(r.state.mic), `readers @ ${ctx}`).toEqual(after);
   expect(r.state.mic.length).toBe(after.size);
   expect(r.state.warm, `warm @ ${ctx}`).toBe(next.warm);
+  expect(r.state.recording, `recording @ ${ctx}`).toBe(next.recording);
+  expect(r.state.activeAudioPath, `file @ ${ctx}`).toBe(next.file);
   expect(new Set(r.state.denied)).toEqual(nd);
   if (r.decision !== 'accept') {
     expect(r.state).toEqual(a);
@@ -188,6 +214,7 @@ const subsets = <T>(xs: T[]): T[][] =>
   xs.reduce<T[][]>((acc, x) => [...acc, ...acc.map((y) => [...y, x])], [[]]);
 const spec0 = (d: HelperPermission[]): Spec => ({
   recording: false,
+  file: null,
   recMicEligible: false,
   dictating: false,
   warm: false,
@@ -211,6 +238,7 @@ describe('helper arbiter: declarative reader-set model (warm mic included)', () 
         const [a, s, d, t] = q.shift()!;
         const k = JSON.stringify([
           a.recording,
+          a.activeAudioPath,
           a.dictating,
           a.warm,
           [...a.mic].sort(),

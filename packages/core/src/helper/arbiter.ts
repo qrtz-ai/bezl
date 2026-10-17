@@ -11,6 +11,11 @@
  *
  * The arbiter is ENFORCING: the helper performs exactly the mic.subscribe / mic.unsubscribe effects it returns
  * (on commands, configure, revoke and re-grant), so its `mic` list is the hub's reader list.
+ *
+ * Invariant (asserted after every step): a running recording always has a file, `recording` iff
+ * `activeAudioPath !== null`. A recording.start without an audioPath is refused, and when the helper cannot create
+ * the file (`recordingFileFailed`) the recording is torn down at once. Busy errors and path-scoped stops can then
+ * always name the recording that owns the helper; there is no pathless state to stop.
  */
 import type { Degradation } from '../note/lifecycle';
 
@@ -22,6 +27,8 @@ export type MicSubscriber = 'recording' | 'dictation';
 
 export interface HelperArbiterState {
   recording: boolean;
+  /** The file the running recording writes; null iff not recording (invariant, see assertArbiterInvariant). */
+  activeAudioPath: string | null;
   dictating: boolean;
   /**
    * Warm mic (dictation.configure warmMic): the dictation reader stays subscribed between dictations so the
@@ -35,7 +42,7 @@ export interface HelperArbiterState {
 }
 
 export type HelperArbiterEvent =
-  | { cmd: 'recording.start' }
+  | { cmd: 'recording.start'; audioPath?: string }
   | { cmd: 'recording.stop' }
   | { cmd: 'dictation.start' }
   | { cmd: 'dictation.stop' }
@@ -43,13 +50,21 @@ export type HelperArbiterEvent =
   | { configure: { warmMic: boolean } }
   | { revoked: HelperPermission }
   | { granted: HelperPermission }
-  | { helperLost: true };
+  | { helperLost: true }
+  /**
+   * The helper could not create (open) the file of the recording it just admitted. It fails closed: the recording
+   * is torn down (mic and taps released, `recording.lost`), the helper answers
+   * error{code: recording.file, audioPath, fatal: false} and the arbiter is idle for recordings again.
+   */
+  | { recordingFileFailed: { audioPath: string } };
 
 /**
  * Side effects, as strings so vectors stay language-neutral:
  *   mic.subscribe:<who> / mic.unsubscribe:<who>   shared tap refcount (tap starts on first, stops on last)
  *   dictation.stop:<reason>                       the dictation ends without a host stop (dictation.stopped{reason})
- *   recording.lost                                the recording ended with the helper (host: reconnect path)
+ *   recording.lost                                the recording ended without a host stop: with the helper
+ *                                                 (helperLost; host: reconnect path) or because its file could
+ *                                                 not be created (recordingFileFailed; host: the start fails)
  *   degrade:<flag>                                host adds a recording degradation (lifecycle Degradation)
  */
 export type HelperArbiterEffect = string;
@@ -67,11 +82,29 @@ export const initialArbiterState = (
   denied: HelperPermission[] = [],
 ): HelperArbiterState => ({
   recording: false,
+  activeAudioPath: null,
   dictating: false,
   warm: false,
   mic: [],
   denied,
 });
+
+/** Why `s` breaks the arbiter invariant, or null. A running recording must have a file (and only then). */
+export function arbiterInvariantViolation(
+  s: HelperArbiterState,
+): string | null {
+  if (s.recording && !s.activeAudioPath)
+    return 'recording without an activeAudioPath';
+  if (!s.recording && s.activeAudioPath !== null)
+    return 'activeAudioPath set while not recording';
+  return null;
+}
+
+/** Throws when `s` breaks the invariant (a bug: the helper must never run a recording without a file). */
+export function assertArbiterInvariant(s: HelperArbiterState): void {
+  const v = arbiterInvariantViolation(s);
+  if (v) throw new Error(`helper arbiter invariant broken: ${v}`);
+}
 
 /** Recording degradations caused by losing `p`, given what was already denied. */
 export function degradationsForRevocation(
@@ -88,6 +121,15 @@ export function degradationsForRevocation(
 const without = <T>(xs: T[], x: T) => xs.filter((y) => y !== x);
 
 export function arbiterStep(
+  s: HelperArbiterState,
+  e: HelperArbiterEvent,
+): HelperArbiterResult {
+  const out = step(s, e);
+  assertArbiterInvariant(out.state);
+  return out;
+}
+
+function step(
   s: HelperArbiterState,
   e: HelperArbiterEvent,
 ): HelperArbiterResult {
@@ -113,6 +155,23 @@ export function arbiterStep(
     if (s.recording) fx.push('recording.lost');
     for (const who of s.mic) fx.push(`mic.unsubscribe:${who}`);
     return r(initialArbiterState(s.denied), 'accept', fx);
+  }
+  if ('recordingFileFailed' in e) {
+    // Fail closed: a recording whose file could not be created must not keep running (or holding the mic).
+    if (!s.recording) return r(s, 'ignore', [], 'not-recording');
+    if (s.activeAudioPath !== e.recordingFileFailed.audioPath)
+      return r(s, 'ignore', [], 'other-recording');
+    const unsub = s.mic.includes('recording');
+    return r(
+      {
+        ...s,
+        recording: false,
+        activeAudioPath: null,
+        mic: without(s.mic, 'recording'),
+      },
+      'accept',
+      ['recording.lost', ...(unsub ? ['mic.unsubscribe:recording'] : [])],
+    );
   }
   if ('configure' in e) {
     const warm = e.configure.warmMic;
@@ -158,9 +217,16 @@ export function arbiterStep(
   switch (e.cmd) {
     case 'recording.start': {
       if (s.recording) return r(s, 'ignore', [], 'already-recording');
+      // Never admit a recording that has no file to name it by (busy, stop and started all carry the path).
+      if (!e.audioPath) return r(s, 'refuse', [], 'no-audio-path');
       const sub = micOk && !s.mic.includes('recording');
       return r(
-        { ...s, recording: true, mic: sub ? [...s.mic, 'recording'] : s.mic },
+        {
+          ...s,
+          recording: true,
+          activeAudioPath: e.audioPath,
+          mic: sub ? [...s.mic, 'recording'] : s.mic,
+        },
         'accept',
         sub ? ['mic.subscribe:recording'] : [],
       );
@@ -169,7 +235,12 @@ export function arbiterStep(
       if (!s.recording) return r(s, 'ignore', [], 'not-recording');
       const unsub = s.mic.includes('recording');
       return r(
-        { ...s, recording: false, mic: without(s.mic, 'recording') },
+        {
+          ...s,
+          recording: false,
+          activeAudioPath: null,
+          mic: without(s.mic, 'recording'),
+        },
         'accept',
         unsub ? ['mic.unsubscribe:recording'] : [],
       );
