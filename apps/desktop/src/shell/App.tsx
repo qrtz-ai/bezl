@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Kbd, ThemeProvider, Text, ToastProvider, useTheme } from '@qrtz/ui';
 import { Palette } from './Palette';
+import { onNavigateRequest } from '@qrtz/core';
 import { registry } from './subapps';
 import { SubAppHost } from './SubAppHost';
 
@@ -131,6 +132,7 @@ export function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+  useEffect(() => onNavigateRequest((r) => setActive(r.app)), []);
   const app = registry.get(active);
   return (
     <ThemeProvider>

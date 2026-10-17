@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Dialog, Kbd, ListItem, Text, useTheme, useToast } from '@qrtz/ui';
-import type { SessionView } from '@qrtz/core';
+import { requestNavigate, type SessionView } from '@qrtz/core';
 import { registry } from './subapps';
 import { shellClient } from './shellClient';
 import { filterCommands, type Command } from './filter';
+
+type Client = ReturnType<typeof shellClient>;
+const listMeetings = (c: Client, query: string) =>
+  c.invoke('memo:list', { query });
 
 /** ⌘K command palette: navigate sub apps, start/stop recording. */
 export function Palette({
@@ -27,6 +31,21 @@ export function Palette({
     setI(0);
     client.invoke('memo:session').then(setSession, () => setSession(null));
   }, [open, client]);
+
+  const [meetings, setMeetings] = useState<
+    Awaited<ReturnType<typeof listMeetings>>
+  >([]);
+  useEffect(() => {
+    const query = q.trim();
+    if (!open || query.length < 2) return setMeetings([]);
+    const h = setTimeout(() => {
+      client.invoke('memo:list', { query }).then(
+        (r) => setMeetings(r.slice(0, 6)),
+        () => setMeetings([]),
+      );
+    }, 120);
+    return () => clearTimeout(h);
+  }, [q, open, client]);
 
   const commands = useMemo<Command[]>(() => {
     const recording = session?.phase === 'recording';
@@ -62,7 +81,19 @@ export function Palette({
     ];
   }, [session, client, onNavigate, toast]);
 
-  const results = filterCommands(commands, q);
+  const results = [
+    ...filterCommands(commands, q),
+    ...meetings.map(
+      ({ meeting, hit }): Command => ({
+        id: `meeting.${meeting.id}`,
+        title: meeting.title,
+        hint: hit?.snippet
+          ? hit.snippet.replace(/[[\]]/g, '').slice(0, 48)
+          : 'Meeting',
+        run: () => requestNavigate({ app: 'memo', meetingId: meeting.id }),
+      }),
+    ),
+  ];
   const pick = (c: Command | undefined) => {
     if (!c) return;
     onClose();

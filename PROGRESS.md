@@ -169,11 +169,13 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
 
 - The `mac/` Swift layer still needs its first real compile on a Mac (docs/mac-verify.md, step 0). [MAC-VERIFY]
 - The echo gate is a heuristic, not AEC.
-- The palette doesn't search meetings yet (next: a `memo:list` query inside the palette).
 
 ### Next
 
 - Run docs/mac-verify.md on a Mac and fix whatever it finds.
 - M5.3 signing and notarization (needs an Apple Developer ID).
-- Meeting search in the palette.
 - Polish the Home dashboard (recent meetings and onboarding state).
+- **Follow-up in the same iteration:**
+  - The ⌘K palette now searches meetings with FTS through `memo:list`. Picking a result opens it in Memo via core `requestNavigate`/`takePendingMeeting`, so sub apps never import each other.
+  - Home hints updated.
+  - e2e covers palette meeting search after a restart.

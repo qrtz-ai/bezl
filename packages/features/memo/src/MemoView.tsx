@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Badge, Card, EmptyState, Input, Text, useTheme } from '@qrtz/ui';
-import { AppError, SessionView, type PermissionsStatus } from '@qrtz/core';
+import {
+  AppError,
+  SessionView,
+  onNavigateRequest,
+  takePendingMeeting,
+  type PermissionsStatus,
+} from '@qrtz/core';
 import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
 import { Hud } from './Hud';
 import { MeetingDetail } from './MeetingDetail';
@@ -22,7 +28,17 @@ export default function MemoView() {
       hit?: { snippet: string };
     }[]
   >([]);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(
+    () => takePendingMeeting() ?? null,
+  );
+  useEffect(
+    () =>
+      onNavigateRequest((r) => {
+        if (r.app === 'memo' && r.meetingId)
+          setSelected(takePendingMeeting() ?? null);
+      }),
+    [],
+  );
   const [error, setError] = useState<string | null>(null);
   const liveSession = useQrtzEvent('memo:session');
   const livePerms = useQrtzEvent('permissions:changed');

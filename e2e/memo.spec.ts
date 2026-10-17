@@ -128,8 +128,16 @@ test('memo end-to-end: detect, record, live transcript, summarize, search, expor
     env: { ...env, QRTZ_MOCK_SCENARIO: '' },
   });
   const win2 = await app2.firstWindow();
-  await win2.getByTestId('nav-memo').click();
+  await expect(win2.getByTestId('brand')).toBeVisible();
+  // ⌘K meeting search (FTS) from Home opens the meeting in Memo.
+  await win2.keyboard.press('ControlOrMeta+k');
+  await win2.getByTestId('palette-input').fill('onboarding');
+  const hit = win2.locator('[data-testid^="cmd-meeting."]');
+  await expect(hit).toHaveCount(1, { timeout: 5_000 });
+  await expect(hit).toContainText('Weekly Product Sync');
+  await hit.click();
   await expect(win2.getByTestId('meeting-item')).toHaveCount(1);
+  await expect(win2.getByTestId('tab-transcript')).toBeVisible();
   await app2.close();
 
   expect(errors).toEqual([]);

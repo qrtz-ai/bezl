@@ -12,8 +12,8 @@ export default function HomeView() {
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <Badge>alpha</Badge>
         <Text muted size="sm">
-          Pick a sub app from the sidebar · <Kbd>⌘</Kbd> <Kbd>K</Kbd> coming
-          soon
+          <Kbd>⌘</Kbd> <Kbd>K</Kbd> commands and meeting search · <Kbd>⌘</Kbd>{' '}
+          <Kbd>⇧</Kbd> <Kbd>R</Kbd> record
         </Text>
       </div>
     </div>
