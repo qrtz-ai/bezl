@@ -215,10 +215,10 @@ async fn talk_settings_has_a_key_for_every_automatic_behavior_and_show_pill_off_
 
 /// Every `talk:state` the shell sees, with the time it arrived, and what the pill does for it
 /// (`qrtz_app::pill::pill_action`, the rule `backend.rs::on_talk` applies).
-fn pill_trace(
-    a: &App,
-    config: Value,
-) -> Arc<std::sync::Mutex<Vec<(std::time::Instant, Value, qrtz_app::pill::PillAction)>>> {
+/// Every `talk:state` view with the pill action it maps to, as a subscriber task sees them.
+type PillTrace = Arc<std::sync::Mutex<Vec<(std::time::Instant, Value, qrtz_app::pill::PillAction)>>>;
+
+fn pill_trace(a: &App, config: Value) -> PillTrace {
     let out = Arc::new(std::sync::Mutex::new(Vec::new()));
     let mut rx = a.app.service.events.subscribe();
     let o = out.clone();
@@ -305,18 +305,29 @@ async fn a_failure_after_release_flashes_the_error_once_afterwards() {
     a.talk("talk:start", Value::Null).await;
     a.until_talk("heard friday", |v| talk_text(v).contains("friday"))
         .await;
-    let n = on.lock().unwrap().len();
     a.talk("talk:stop", Value::Null).await;
     let e = a.until_talk("talk idle", |v| v["phase"] == "idle").await;
     assert_eq!(e["last"]["inserted"], false, "{e}");
-    wait("views settle", || async {
-        (on.lock().unwrap().len() > n + 1).then_some(())
+    // The traces are fed by their own subscriber tasks, so wait on what they hold, not on a count taken earlier:
+    // both have seen the failure's flash.
+    let flashed = |t: &PillTrace| {
+        t.lock()
+            .unwrap()
+            .iter()
+            .any(|(_, _, p)| matches!(p, PillAction::Flash { .. }))
+    };
+    wait("the failure flashed (pill on and off)", || async {
+        (flashed(&on) && flashed(&off)).then_some(())
     })
     .await;
-    let after: Vec<_> = on.lock().unwrap()[n..]
+    // Everything after the last listening view (the release onwards).
+    let trace = on.lock().unwrap().clone();
+    let release = trace
         .iter()
-        .map(|(_, _, p)| p.clone())
-        .collect();
+        .rposition(|(_, v, _)| v["phase"] == "listening")
+        .expect("listening views were traced");
+    let after: Vec<_> = trace[release + 1..].iter().map(|(_, _, p)| p.clone()).collect();
+    assert!(!after.is_empty(), "{trace:?}");
     assert_eq!(after[0], PillAction::Hide, "hidden on release first: {after:?}");
     let flashes: std::collections::BTreeSet<String> = after
         .iter()
