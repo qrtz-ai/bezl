@@ -297,6 +297,8 @@ struct State {
     waiters: Vec<WaiterEntry>,
     /// Audio path of the `recording.start` in flight (start or resume); acks for any other path are stale.
     pending_start_path: Option<String>,
+    /// The helper answered our start with `error{recording.busy}`: another recording still owns it.
+    start_refused_busy: bool,
     emit_timer: bool,
     persisted: HashSet<String>,
     paused: bool,
@@ -333,6 +335,7 @@ impl State {
             .collect(),
             waiters: Vec::new(),
             pending_start_path: None,
+            start_refused_busy: false,
             emit_timer: false,
             persisted: HashSet::new(),
             paused: false,
@@ -795,7 +798,10 @@ impl Shared {
                     && !(is_capturing(s.phase) && s.audio_parts.contains(&audio_path))
                 {
                     tracing::warn!("stale recording.started; stopping it");
-                    let _ = self.send_helper(HelperCommand::RecordingStop);
+                    // With the path, so a late started{A} can never stop the recording that replaced it.
+                    let _ = self.send_helper(HelperCommand::RecordingStop {
+                        audio_path: Some(audio_path),
+                    });
                 }
             }
             HelperInput::Asr { event } => {
@@ -810,6 +816,26 @@ impl Shared {
             }
             HelperInput::Error { code, message } => {
                 tracing::warn!(code = %code, message = %message, "helper error");
+                let busy = code == "recording.busy" && self.lock().pending_start_path.is_some();
+                if busy {
+                    // The start was ignored: fail it now instead of waiting out the ack timeout.
+                    let ws: Vec<WaiterEntry> = {
+                        let mut st = self.lock();
+                        st.start_refused_busy = true;
+                        let (ws, keep) = std::mem::take(&mut st.waiters)
+                            .into_iter()
+                            .partition(|w| w.kind == "recording.started");
+                        st.waiters = keep;
+                        ws
+                    };
+                    for w in ws {
+                        if let Some(t) = &w.timer {
+                            t.abort();
+                        }
+                        let _ = w.tx.send(None);
+                    }
+                    return;
+                }
                 match code.as_str() {
                     "asr.unavailable" => self.degrade(Degradation::AsrUnavailable),
                     "audio.unavailable" => self.degrade(Degradation::AudioUnavailable),
@@ -1075,7 +1101,11 @@ impl Shared {
             audio_path: audio_path.clone(),
         });
         self.emit(CoreEvent::Changed { id: id.clone() });
-        self.lock().pending_start_path = Some(audio_path.clone());
+        {
+            let mut st = self.lock();
+            st.pending_start_path = Some(audio_path.clone());
+            st.start_refused_busy = false;
+        }
         let acked = self.wait_for(
             "recording.started",
             self.ack_ms(policies::START_ACK_MS),
@@ -1102,15 +1132,31 @@ impl Shared {
             if !still_ours(&self) {
                 return Ok(self.view());
             }
-            let error = LifecycleError {
-                code: "start-timeout".into(),
-                message: "The capture helper did not start recording. Try again.".into(),
-                retryable: true,
+            let busy = std::mem::take(&mut self.lock().start_refused_busy);
+            let error = if busy {
+                LifecycleError {
+                    code: "helper-busy".into(),
+                    message: "The capture helper is still busy with another recording. Try again.".into(),
+                    retryable: true,
+                }
+            } else {
+                LifecycleError {
+                    code: "start-timeout".into(),
+                    message: "The capture helper did not start recording. Try again.".into(),
+                    retryable: true,
+                }
             };
-            let _ = self.send_helper(HelperCommand::RecordingStop);
+            // Only this attempt's file: never the recording that made the helper busy.
+            let _ = self.send_helper(HelperCommand::RecordingStop {
+                audio_path: Some(audio_path.clone()),
+            });
             let msg = error.message.clone();
             self.abort_start(&id, error).await;
-            return Err(CoreError::timeout(msg));
+            return Err(if busy {
+                CoreError::unavailable(msg)
+            } else {
+                CoreError::timeout(msg)
+            });
         }
         if !still_ours(&self) {
             return Ok(self.view()); // helper crashed during start: the reconnect path owns it now
@@ -1269,7 +1315,7 @@ impl Shared {
                 self.ack_ms(policies::STOP_ACK_MS),
                 Some(matcher),
             );
-            match self.send_helper(HelperCommand::RecordingStop) {
+            match self.send_helper(HelperCommand::RecordingStop { audio_path: None }) {
                 Ok(()) => {
                     if let Some(HelperInput::RecordingStopped { duration_ms, .. }) = p.await.ok().flatten() {
                         stopped = Some(duration_ms);
@@ -1283,7 +1329,7 @@ impl Shared {
             }
         } else {
             // Giving up a reconnect: a helper that came back late may have opened a part; never leave it capturing.
-            let _ = self.send_helper(HelperCommand::RecordingStop);
+            let _ = self.send_helper(HelperCommand::RecordingStop { audio_path: None });
         }
         let (st, segs, persisted) = {
             let mut g = self.lock();

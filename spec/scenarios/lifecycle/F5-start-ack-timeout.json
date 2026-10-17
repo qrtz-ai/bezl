@@ -72,8 +72,8 @@
       "helper": [
         "permissions.check",
         "recording.start $REC/id1.wav",
-        "recording.stop",
-        "recording.stop"
+        "recording.stop $REC/id1.wav",
+        "recording.stop $REC/id1.wav"
       ],
       "transcript": [],
       "changed": [

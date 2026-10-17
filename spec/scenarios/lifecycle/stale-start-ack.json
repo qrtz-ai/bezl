@@ -99,7 +99,7 @@
       "helper": [
         "permissions.check",
         "recording.start $REC/id1.wav",
-        "recording.stop",
+        "recording.stop $REC/zzz.wav",
         "recording.stop"
       ],
       "transcript": [

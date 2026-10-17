@@ -699,7 +699,7 @@ the expected sequence of `note:session` phases, `note:pipeline` step statuses an
 one file per `note-service.test.ts` case. On the TS side, a small adapter drives `NoteService` with the mock
 helper and fake timers. This is the gate for removing the TS runtime at cutover.
 
-_Implemented (stage 4)._ `spec/scenarios/lifecycle/*.json` (50 files): `{name, about, config?, excludedApps?, random?,
+_Implemented (stage 4)._ `spec/scenarios/lifecycle/*.json` (51 files): `{name, about, config?, excludedApps?, random?,
 retryScale?, faultStep?, script, expect}`. Script ops: `helper` (a helper → host message; `$REC` = the recordings
 dir), `call` (`start`, `stop`, `toggle`, `dismiss`, `pause`, `retryStep`, `pipeline`, `addNote`, `resummarize`,
 `requestPermission`; the result lands in `expect.results[label]`, `"pending"` if it never settles), `advance` (ms),

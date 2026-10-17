@@ -118,9 +118,17 @@ impl From<CoreError> for LifecycleError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HelperCommand {
     PermissionsCheck,
-    PermissionsRequest { permission: OsPermission },
-    RecordingStart { audio_path: String },
-    RecordingStop,
+    PermissionsRequest {
+        permission: OsPermission,
+    },
+    RecordingStart {
+        audio_path: String,
+    },
+    /// `audio_path`: only stop the recording writing this file (the helper ignores a stop for any other path).
+    RecordingStop {
+        audio_path: Option<String>,
+    },
+
     RecordingPause,
     RecordingResume,
 }
@@ -131,7 +139,7 @@ impl HelperCommand {
             HelperCommand::PermissionsCheck => "permissions.check",
             HelperCommand::PermissionsRequest { .. } => "permissions.request",
             HelperCommand::RecordingStart { .. } => "recording.start",
-            HelperCommand::RecordingStop => "recording.stop",
+            HelperCommand::RecordingStop { .. } => "recording.stop",
             HelperCommand::RecordingPause => "recording.pause",
             HelperCommand::RecordingResume => "recording.resume",
         }
@@ -141,7 +149,10 @@ impl HelperCommand {
             HelperCommand::PermissionsRequest { permission } => {
                 json!({ "type": self.type_name(), "permission": permission })
             }
-            HelperCommand::RecordingStart { audio_path } => {
+            HelperCommand::RecordingStart { audio_path }
+            | HelperCommand::RecordingStop {
+                audio_path: Some(audio_path),
+            } => {
                 json!({ "type": self.type_name(), "audioPath": audio_path })
             }
             _ => json!({ "type": self.type_name() }),
