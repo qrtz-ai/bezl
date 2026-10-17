@@ -2166,7 +2166,10 @@ impl Shared {
                 self.clone().append_live(meeting_id.clone(), seg).await;
             }
         }
-        let ended_at = self.now();
+        // N141 (ADR 0088): meeting time, not the wall clock. `startedAt` + monotonic elapsed, so a wall jump during
+        // the meeting (NTP after a sleep, a manual change) can't put `endedAt` before `startedAt` or add the jump to
+        // the duration this falls back to when the helper never confirmed the stop.
+        let ended_at = self.meeting_at().max(started_at);
         let (active, crashed, speaker_turns, speakers_down) = {
             let g = self.lock();
             let down: Vec<qrtz_model::SpeakersUnavailable> =
