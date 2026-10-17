@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Text, ThemeProvider, useTheme } from '@qrtz/ui';
 import { clockLabel, type MeetingNote, type SessionView } from '@qrtz/core';
 import { shellClient } from './shellClient';
+import { useConfigTheme } from './useConfigTheme';
 
 const clock = (ms: number) => {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -245,8 +246,9 @@ function Hud() {
 
 /** Root for the floating always-on-top recording window (index.html#hud). */
 export function MiniHudApp() {
+  const theme = useConfigTheme();
   return (
-    <ThemeProvider>
+    <ThemeProvider mode={theme}>
       <Hud />
     </ThemeProvider>
   );

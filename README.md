@@ -1,122 +1,92 @@
 # qrtz
 
-qrtz desktop app for macOS: an Electron shell hosting modular React "sub apps", all built on a shared design system.
+**Meeting notes that write themselves, on-device.** qrtz is a macOS app. It notices when you join a Zoom or Google Meet call, records it (with your OK, or always if you choose), transcribes live on your Mac, and gives you a summary, action items and a searchable archive you can chat with. Audio and transcripts stay local unless you add a cloud LLM key, and one switch turns cloud features off entirely.
 
-## Status (2026-10-16)
+| Home (light)                                       | Meeting summary                                                                                     |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| ![Home](docs/screenshots/home-light.png)           | ![Summary and action items](docs/screenshots/meeting-summary.png)                                   |
+| **Live recording**                                 | **Mini HUD with notes · Backup progress**                                                           |
+| ![Live transcript](docs/screenshots/memo-live.png) | ![Mini HUD](docs/screenshots/mini-hud.png) ![Backup progress](docs/screenshots/backup-progress.png) |
 
-**Works today (verified on Linux with the mock helper, lint/typecheck/unit/package/e2e green):**
+These screenshots come from the e2e suite on Linux with the mock helper. Dark is the default theme; Light and System are in Settings → Appearance. More are in [`docs/screenshots/`](docs/screenshots/), and every view in both themes is saved to `test-results/themes/` after `npm run e2e`.
 
-- Home dashboard: recent meetings, permission status, quick record.
-- Memo: auto-start on Zoom/Meet detection (mocked off-Mac), live streaming transcript (final, no re-transcription), summary (OpenRouter, or the extractive fallback without a key), FTS search, Markdown export, chat, retention, ⌘⇧R shortcut, mini HUD.
-- Fail-soft: if the helper is missing or crashes mid-meeting, the audio and transcript up to the crash are kept and the meeting is finalized (`e2e/crash.spec.ts`). Startup recovery finishes meetings a crash left behind.
-- Large meetings: a 2-hour, 1500-segment meeting opens in ~0.2 s, and search takes ~0.5 s (`e2e/large-a11y.spec.ts`).
-- Error states: the capture helper missing or stopped (shown on Home and Memo, recording disabled), LLM failures (falls back to the on-device summary with a Retry button), Settings sections that load independently, and a meeting that fails to load (Try again).
-- Chat: per-meeting Q&A (the Ask tab) and "Ask all meetings" (full-text retrieval across transcripts). Answers come from OpenRouter with citations when a key is set, or as extractive quotes without one. Clicking a citation jumps to that moment in the transcript.
-- Menu bar (tray) item: the recording state, with elapsed time in the menu bar, plus Start/Stop, Record this meeting / Not now, Open qrtz and Quit. Shown on macOS and Windows; opt in on Linux with `QRTZ_TRAY=1`.
-- Semantic chat retrieval: an on-device MiniLM model (transformers.js, ~23 MB, downloaded once) runs in the worker. It's combined with full-text search by rank fusion. If the model can't load, retrieval falls back to full-text only. Packaged builds bundle transformers.js with native onnxruntime-node, trimmed to the target platform. Where no native binary exists (Intel Macs), they use an onnxruntime-web WASM fallback that produces identical vectors. `npm run smoke:packaged` checks both backends against the packaged binary.
-- Live notes (Granola-style): jot notes in the live HUD or in a meeting's Notes tab. Each is saved with its recording timestamp. The AI summary is built around your notes plus the transcript; the on-device fallback leads with "Your notes: …" and turns TODO notes into action items. Notes are included in the Markdown export.
-- Summary templates: General, 1:1, Standup, Sales call and Interview. Set a default in Settings, change it per meeting from the Summary tab (which re-runs the summary), and the choice is stored with the meeting. Re-run is available any time.
-- Backup and restore: Settings → Backup exports one zip with a consistent DB snapshot, all recordings and a sha256 manifest. Import verifies every hash, SQLite integrity and the schema version, then merges meetings that aren't already present (it never overwrites). Tampered or foreign zips are rejected.
-- Privacy:
-  - Pause capture: a HUD button or a global shortcut (default ⌘⇧P, configurable). While paused, the helper writes silence so the audio stays aligned and transcribes nothing.
-  - Excluded apps or platforms are never detected or prompted.
-  - "Never send audio or transcripts to the cloud" forces local-only: on-device summaries and chat (Ollama allowed); cloud keys aren't read.
-- Calendar-free auto-start: a detected Zoom or Meet call shows a "Record?" prompt in the app, plus an OS notification when qrtz isn't focused. "Always record" (also in Settings) starts recording with no prompt.
-- Speaker rename and merge in meeting detail.
-- Hundreds of meetings: the Memo list pages 100 at a time ("Show 100 more"), and so do search results. Crash recovery finds stuck meetings at any age.
-- OpenRouter path: proven end to end against a local OpenAI-compatible stub server (`apps/desktop/src/worker/llm-openrouter.test.ts` and `e2e/states.spec.ts`), without a key.
-- Accessibility: no serious or critical axe violations (WCAG 2.1 AA) on Home, Memo, Gallery, Settings or the palette. Transcript rows can be operated by keyboard.
-- Swift helper core (protocol, DSP, echo pipeline with the LocalVQE → gate fallback): 29 tests pass on Linux.
-- Meeting scrapers (participants, active speaker, self name, captions) are tested against 11 synthetic AX-tree fixtures (`native/qrtz-helper/Tests/QrtzHelperCoreTests/Fixtures/ax`):
-  - Zoom app: gallery and speaker views, with and without captions.
-  - Zoom web.
-  - Meet in Chrome and Safari: grid, presenting, captions on and off, German and French.
-  - Real `--dump-ax` captures from a Mac should replace or extend them.
+## Quickstart on a Mac
 
-- Auto-update: an optional self-hosted static feed (R2/S3 or GitHub Releases) baked in at build with `QRTZ_UPDATE_FEED_URL`. It's off by default.
-- Release: `scripts/release-mac.sh` signs (hardened runtime and entitlements), notarizes and staples once a Developer ID exists. The checklist is in [docs/release.md](docs/release.md).
-
-**Needs a Mac to verify (see docs/mac-verify.md):**
-
-- Real capture: ScreenCaptureKit / Core Audio system audio, the microphone, and the TCC permission prompts.
-- FluidAudio streaming ASR and LocalVQE echo cancellation on real Zoom (app and web) and Meet (Chrome and Safari) calls.
-- Building the helper with Xcode, plus a signed and notarized run of `scripts/release-mac.sh`.
-
-**Accounts / secrets needed:**
-
-- OpenRouter API key: `QRTZ_SECRET_OPENROUTER` or Settings (stored with safeStorage).
-- Apple Developer ID (signing, notarization, auto-update).
-- Optional: a Hugging Face token if model downloads are rate-limited.
-
-## Screenshots
-
-These were captured by `e2e/screens.spec.ts` and `e2e/states.spec.ts` on Linux with the mock helper. Refresh them with `QRTZ_DOC_SHOTS=1 xvfb-run -a npx playwright test -c e2e/playwright.config.ts screens`.
-
-| First run                                                         | Live recording                                                          |
-| ----------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| ![Home on first run](docs/screenshots/home-first-run.png)         | ![Live transcript HUD](docs/screenshots/memo-live.png)                  |
-| **Meeting summary**                                               | **LLM failure with retry**                                              |
-| ![Summary and action items](docs/screenshots/meeting-summary.png) | ![AI summary failed callout with Retry](docs/screenshots/llm-error.png) |
-
-More screenshots in `docs/screenshots/`: home-with-meetings, meeting-transcript, memo-detected, settings, palette, helper-missing.
-
-## Requirements
-
-- Node.js >= 22.13 and npm >= 10.9 (required by Electron Forge 8)
-
-## Commands (run from the repo root)
+Needs Apple Silicon, macOS 14.2 or later, Xcode 16 or later, and Node 22.13 or later.
 
 ```sh
-npm install
-npm start          # run the desktop app (Vite HMR for the renderer)
-npm run lint       # oxlint + oxfmt check + workspace boundary check
-npm run lint:fix   # auto-fix lint/format
-npm run typecheck  # tsc -b across all workspace projects
-npm test           # vitest unit tests
-npm run e2e        # Playwright Electron smoke test (run `npm run package` first; xvfb-run on Linux)
-npm run check      # lint + typecheck + test
-npm run package    # packaged app in apps/desktop/out/
-npm run make       # distributables in apps/desktop/out/make/ (.dmg + .zip on macOS)
+git clone https://github.com/qrtz-ai/qrtz && cd qrtz
+npm ci                       # also installs the Electron binary
+npm run build:helper         # Swift helper (AX, audio, ASR), release arm64
+npm start                    # run the app with hot reload
 ```
 
-> DMGs can only be built on macOS. On Linux, `npm run package` works but the DMG
-> maker is skipped. Code signing and notarization aren't set up yet.
+- **AI summaries:** add an OpenRouter key in Settings → AI summaries (stored with safeStorage), or set `QRTZ_SECRET_OPENROUTER`. Without a key, qrtz uses its on-device summarizer.
+- **Packaged app:** `npm run package` builds `apps/desktop/out/`; `npm run make` builds a `.dmg` and `.zip`. To sign and notarize, run `scripts/release-mac.sh` (see [docs/release.md](docs/release.md)).
+- **No Mac?** Everything except real capture runs on Linux with a scripted mock meeting: `QRTZ_MOCK_HELPER=1 QRTZ_MOCK_SCENARIO=standup QRTZ_MOCK_SPEED=0.1 npm start`.
+
+## What it does
+
+- **Calendar-free auto-start:** detects Zoom (app and web) and Meet (Chrome and Safari) through the Accessibility tree. It reads the title, participants and active speaker, then asks whether to record or starts on its own if you chose "Always record".
+- **Live transcript:** on-device streaming ASR with speaker names, a floating mini HUD (pause, notes, stop), a ⌘⇧R toggle and a menu bar item.
+- **Live notes (Granola-style):** timestamped notes from the HUD or the Notes tab. They shape the summary, and TODOs become action items.
+- **After the call:** summary, action items and Q&A in five templates (General, 1:1, Standup, Sales, Interview). It uses OpenRouter, or Ollama or the extractive fallback when local-only is on.
+- **Your archive:** full-text and semantic search (on-device MiniLM), chat with one meeting or all of them (citations jump to the moment), speaker rename and merge, Markdown export, and delete with confirmation and Undo.
+- **Privacy:** pause capture (⌘⇧P), excluded apps, a "never send to the cloud" switch, and optional audio retention.
+- **Backup:** one streamed zip with a sha256 manifest and a progress bar. Import verifies everything and never overwrites.
+- **Built to fail soft:** if the helper crashes, the audio and transcript are kept. LLM failures fall back to the on-device summary with a Retry button. Settings sections load independently.
 
 ## Architecture
 
-Full plan: [PLAN.md](PLAN.md) · loop rules: [LOOP.md](LOOP.md) · log: [PROGRESS.md](PROGRESS.md) · [security](docs/security.md) · [research](docs/research-memo.md)
-
-**Process model:** main does orchestration and the validated IPC router. A supervised `utilityProcess` worker runs SQLite, migrations and heavy jobs. A supervised native Swift helper does AX scraping, audio capture and ASR, talking JSON-lines over stdio, with a TS mock on Linux and in tests.
-
 ```
-apps/
-  desktop/                 Electron shell: main, preload, React renderer host
-packages/
-  core/      @qrtz/core    sub-app contract + registry, shared types, typed IPC contract
-  ui/        @qrtz/ui      React design system: tokens, theme, Text, Button
-  features/
-    home/     @qrtz/feature-home      example sub app
-    settings/ @qrtz/feature-settings  example sub app (uses the IPC bridge)
-scripts/check-boundaries.mjs          enforces dependency rules
-docs/architecture.md                  research notes and rationale
+┌──────────────── Electron main ─────────────────┐     JSON lines over stdio     ┌──────── qrtz-helper (Swift) ────────┐
+│ capability-checked IPC router (zod contract)    │ ◀───────────────────────────▶ │ AX scraping · ScreenCaptureKit /     │
+│ windows · tray · shortcuts · backup · updates   │                               │ Core Audio taps · echo cancel · ASR  │
+└──────┬───────────────────────────┬─────────────┘                               └──────────────────────────────────────┘
+       │ typed invoke/events       │ MessagePort
+┌──────▼───────────────┐   ┌───────▼───────────────────────────────┐
+│ Renderer (React 19)  │   │ utilityProcess worker                  │
+│ shell + lazy sub-apps│   │ node:sqlite + FTS5 · migrations ·      │
+│ @qrtz/ui design sys. │   │ summaries/chat · transformers.js embed │
+└──────────────────────┘   └───────────────────────────────────────┘
 ```
 
-- **npm workspaces**, no build step for internal packages: each package exports its
-  TypeScript source and Vite compiles it into the shell bundle.
-- **TypeScript project references** (`tsconfig.base.json` plus `tsc -b`) give per-package
-  typechecking in dependency order.
-- **Dependency rules** (checked by `npm run lint`):
-  - `core` and `ui` depend on no other `@qrtz/*` package.
-  - Features may import only `@qrtz/core` and `@qrtz/ui`, never another feature or the shell.
-  - Only `apps/desktop` composes features.
-- **Sub apps** export a `defineSubApp({ manifest, load })`. The shell builds a
-  `SubAppRegistry` from them and renders the sidebar from `registry.list()`. Each sub
-  app's view is lazy-loaded (its own chunk).
-- **IPC** is typed end to end: channels are declared once in `@qrtz/core` (`IpcContract`).
-  The preload exposes only `window.qrtz.invoke` for allow-listed channels, and main
-  registers handlers with a typed `handle()` helper.
-- **Security:** `contextIsolation`, `sandbox`, no `nodeIntegration`, a strict CSP, and
-  hardened Electron fuses.
+- **Monorepo:** npm workspaces. `packages/core` holds the contracts, IPC schema, DB and pipeline. `packages/ui` is the design system (tokens, light and dark themes, components). Each sub-app (`packages/features/{home,memo,gallery,settings}`) declares the capabilities it needs. `apps/desktop` composes them. `npm run lint` enforces the package boundaries.
+- **Security:** context isolation, sandbox, strict CSP, Electron fuses, and capability-checked channels. Secrets live only in safeStorage or env vars, and dev-only env vars are stripped from packaged builds. See [docs/security.md](docs/security.md).
+- **Docs:** [PLAN.md](PLAN.md) · [LOOP.md](LOOP.md) · [PROGRESS.md](PROGRESS.md) · [architecture](docs/architecture.md) · [design system](docs/design-system.md) · [tokens](docs/design-tokens.md) · [test matrix](docs/test-matrix.md) · [release](docs/release.md)
+
+## Status (2026-10-16)
+
+**Verified on Linux with the mock helper:** every user-facing flow in [docs/test-matrix.md](docs/test-matrix.md) has a test. Every push runs lint, typecheck, about 120 unit tests, the packaged smoke test, 23 Electron e2e tests (axe-clean in dark and light, cold start about 0.65 s) and 29 Swift tests. A fresh-clone check (`scripts/fresh-clone-check.sh`) proves it builds from scratch. Large libraries are covered too: 500 meetings, a 2-hour transcript, and a 400 MB backup with bounded memory.
+
+**Needs a Mac to verify** (about 10 minutes; see the checklist in [docs/mac-verify.md](docs/mac-verify.md)):
+
+- Building the Swift helper with Xcode (`npm run build:helper`, `QRTZ_REQUIRE_SWIFT=1 npm run test:helper`).
+- Real capture: ScreenCaptureKit / Core Audio system audio, the microphone, and the TCC prompts.
+- AX scraping against live Zoom and Meet (synthetic fixtures cover 11 layouts today) and FluidAudio ASR plus echo cancellation on real calls.
+- The Keychain-backed API key path, and a signed and notarized run of `scripts/release-mac.sh`.
+
+## Accounts needed
+
+| Account                                                                        | Used for                                                        | Status                                  |
+| ------------------------------------------------------------------------------ | --------------------------------------------------------------- | --------------------------------------- |
+| Apple Developer ID (plus an app-specific password or API key for notarization) | Signing, notarization, auto-update                              | Needed before the first release         |
+| OpenRouter API key                                                             | Cloud summaries and chat (`QRTZ_SECRET_OPENROUTER` or Settings) | Optional; on-device fallback without it |
+| Hugging Face token                                                             | Only if model downloads get rate-limited                        | Optional                                |
+| Update-feed host (R2, S3 or GitHub Releases)                                   | `QRTZ_UPDATE_FEED_URL` at build time                            | Later; off by default                   |
+
+## Commands
+
+```sh
+npm start              # dev app (Vite HMR)
+npm run check          # lint + typecheck + unit tests
+npm run package        # packaged app → apps/desktop/out/
+npm run make           # .dmg + .zip (macOS)
+npm run e2e            # Electron e2e (run package first; xvfb-run -a on Linux)
+npm run smoke:packaged # packaged-binary checks (embeddings backends, env stripping)
+npm run test:helper    # Swift XCTests (QRTZ_REQUIRE_SWIFT=1 makes a missing toolchain fatal)
+scripts/fresh-clone-check.sh   # clone → npm ci → lint → test → package → e2e
+```
 
 ## How to add a sub app
 

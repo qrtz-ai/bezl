@@ -102,14 +102,19 @@ export function Dialog({
 }
 
 type ToastKind = 'info' | 'success' | 'error';
-interface ToastItem {
+export interface ToastOptions {
+  /** e.g. Undo. Clicking it runs onClick and dismisses the toast. */
+  action?: { label: string; onClick: () => void };
+  durationMs?: number;
+}
+interface ToastItem extends ToastOptions {
   id: number;
   kind: ToastKind;
   message: string;
 }
-const ToastContext = createContext<(m: string, kind?: ToastKind) => void>(
-  () => {},
-);
+const ToastContext = createContext<
+  (m: string, kind?: ToastKind, opts?: ToastOptions) => void
+>(() => {});
 export const useToast = () => useContext(ToastContext);
 
 /** Bottom-right toasts; auto-dismiss after 3.5 s. */
@@ -117,11 +122,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const t = useTheme();
   const [items, setItems] = useState<ToastItem[]>([]);
   const n = useRef(0);
-  const push = useCallback((message: string, kind: ToastKind = 'info') => {
-    const id = ++n.current;
-    setItems((xs) => [...xs, { id, kind, message }]);
-    setTimeout(() => setItems((xs) => xs.filter((x) => x.id !== id)), 3500);
-  }, []);
+  const dismiss = useCallback(
+    (id: number) => setItems((xs) => xs.filter((x) => x.id !== id)),
+    [],
+  );
+  const push = useCallback(
+    (message: string, kind: ToastKind = 'info', opts: ToastOptions = {}) => {
+      const id = ++n.current;
+      setItems((xs) => [...xs, { id, kind, message, ...opts }]);
+      setTimeout(() => dismiss(id), opts.durationMs ?? 3500);
+    },
+    [dismiss],
+  );
   const dot = {
     info: t.color.textMuted,
     success: t.color.success,
@@ -167,6 +179,28 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               }}
             />
             <Text size="sm">{i.message}</Text>
+            {i.action ? (
+              <button
+                type="button"
+                data-testid="toast-action"
+                onClick={() => {
+                  i.action!.onClick();
+                  dismiss(i.id);
+                }}
+                style={{
+                  all: 'unset',
+                  cursor: 'pointer',
+                  marginLeft: 'auto',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: t.color.text,
+                  textDecoration: 'underline',
+                  borderRadius: t.radius.sm,
+                }}
+              >
+                {i.action.label}
+              </button>
+            ) : null}
           </div>
         ))}
       </div>

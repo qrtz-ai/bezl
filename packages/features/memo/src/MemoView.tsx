@@ -8,6 +8,7 @@ import {
   Input,
   Text,
   useTheme,
+  useToast,
 } from '@qrtz/ui';
 import {
   AppError,
@@ -22,6 +23,8 @@ import { MeetingDetail } from './MeetingDetail';
 import { ChatPanel } from './ChatPanel';
 import { Onboarding, needsOnboarding } from './Onboarding';
 import { fmtDate } from './format';
+
+const UNDO_MS = 6000;
 
 const PAGE = 100;
 
@@ -59,6 +62,40 @@ export default function MemoView() {
     [],
   );
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
+  // Deletes are deferred for UNDO_MS so the toast's Undo can cancel them; hidden meanwhile.
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
+  const unhide = (id: string) =>
+    setHidden((h) => {
+      const n = new Set(h);
+      n.delete(id);
+      return n;
+    });
+  const requestDelete = (id: string, title: string) => {
+    setHidden((h) => new Set(h).add(id));
+    setSelected(null);
+    const timer = setTimeout(() => {
+      qrtz.invoke('memo:delete', { id }).then(
+        () => unhide(id),
+        (e: AppError) => {
+          unhide(id);
+          setError(e.message);
+        },
+      );
+    }, UNDO_MS);
+    toast(`Deleted “${title}”`, 'info', {
+      durationMs: UNDO_MS,
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          clearTimeout(timer);
+          unhide(id);
+          setSelected(id);
+        },
+      },
+    });
+  };
+  const visible = items.filter((i) => !hidden.has(i.meeting.id));
   const liveSession = useQrtzEvent('memo:session');
   const livePerms = useQrtzEvent('permissions:changed');
   const changed = useQrtzEvent('memo:changed');
@@ -217,7 +254,7 @@ export default function MemoView() {
             data-testid="memo-search"
             aria-label="Search meetings"
           />
-          {items.length === 0 ? (
+          {visible.length === 0 ? (
             <EmptyState
               icon="●"
               title={query ? 'No matches' : 'No meetings yet'}
@@ -228,7 +265,7 @@ export default function MemoView() {
               }
             />
           ) : (
-            items.map(({ meeting, hit }) => (
+            visible.map(({ meeting, hit }) => (
               <Card
                 key={meeting.id}
                 padding={3}
@@ -306,7 +343,7 @@ export default function MemoView() {
           ) : selected ? (
             <MeetingDetail
               id={selected}
-              onDeleted={() => setSelected(null)}
+              onDelete={(title) => requestDelete(selected, title)}
               {...(seekTo ? { seekTo } : {})}
             />
           ) : (

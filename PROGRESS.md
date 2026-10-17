@@ -379,3 +379,16 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
 - Bug fixed: Copy Markdown used `navigator.clipboard` and swallowed errors, so it said "Copied" even when the clipboard was denied (for example, when the window wasn't focused). Main now writes the clipboard.
 - Fresh-clone check: found one real break. Electron 44 downloads its binary lazily on first launch, so parallel e2e workers raced it in a clean clone (ETXTBSY, "Electron failed to install correctly"). Fixed with a root `postinstall: install-electron`. `scripts/fresh-clone-check.sh` now passes end to end (21 e2e).
 - Side work: Linux has no keyring under xvfb, so the e2e checks that saving a key is refused safely there; the save and remove happy path only runs on macOS. Small e2e backups finish too fast to show the progress bar, so progress is checked by the unit test.
+
+## Iteration 16 (2026-10-16)
+
+- Swift tests: they never stopped running. All 29 XCTests passed every time. Swift 6 also runs an empty swift-testing pass whose last line reads "0 tests passed", and that was the line we were reading. `scripts/build-helper.mjs` now:
+  - finds the toolchain on PATH, in `QRTZ_SWIFT_TOOLCHAIN`, or at the /tmp location from LOOP.md;
+  - runs XCTest only (`--disable-swift-testing`) and counts the results;
+  - fails if 0 tests ran or any failed, and prints "N Swift tests passed";
+  - fails when the toolchain is missing under `CI`, `QRTZ_REQUIRE_SWIFT=1` or on macOS (elsewhere it warns that it skipped).
+- Delete: a confirm dialog, then the meeting is hidden at once with an Undo toast; the delete runs after 6 s. Toasts can now carry an action.
+- Mini HUD light mode: found a real bug. The HUD window ignored the theme setting. A shared `useConfigTheme` hook now drives both windows. A new e2e test takes a screenshot and runs axe on the light HUD.
+- Backup progress e2e: a 400 MB seeded recording shows the bar (percentage and step) and then the result.
+- README rewritten as a landing page: pitch, screenshots, Mac quickstart, what it does, architecture diagram, status, Mac verification, accounts table.
+- Side work: if you quit qrtz within 6 s of deleting a meeting, the delete is dropped (the safe direction).

@@ -1,3 +1,4 @@
+import { axe } from './axe';
 import { _electron as electron, expect, test } from '@playwright/test';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -34,8 +35,26 @@ test('delete a meeting and copy its Markdown', async () => {
   await expect(win.getByTestId('export-result')).toBeVisible();
   const clip = await app.evaluate(({ clipboard }) => clipboard.readText());
   expect(clip).toMatch(/^# Sync \\?#500/);
+  // Confirm dialog: Cancel keeps the meeting.
   await win.getByTestId('meeting-delete').click();
+  await expect(win.getByTestId('confirm-delete')).toContainText('Sync #500');
+  await win.getByTestId('confirm-delete-cancel').click();
+  await expect(win.getByTestId('confirm-delete')).toHaveCount(0);
+  await expect(first).toBeVisible();
+  // Delete → hidden at once, Undo in the toast restores it.
+  await win.getByTestId('meeting-delete').click();
+  await win.getByTestId('confirm-delete-ok').click();
   await expect(first).toHaveCount(0);
+  await expect(win.getByTestId('toast')).toContainText('Deleted “Sync #500”');
+  await win.getByTestId('toast-action').click();
+  await expect(first).toBeVisible();
+  await expect(win.getByTestId('meeting-detail')).toContainText('Sync #500');
+  // Delete for real: once the undo window passes it's gone from the database.
+  await win.getByTestId('meeting-delete').click();
+  await win.getByTestId('confirm-delete-ok').click();
+  await expect(first).toHaveCount(0);
+  await expect(win.getByTestId('toast')).toHaveCount(0, { timeout: 10_000 });
+  await win.waitForTimeout(500);
   await expect(win.getByTestId('meeting-item').first()).toContainText(
     'Sync #499',
   );
@@ -98,4 +117,76 @@ test('settings persist across restarts; API key save and remove', async () => {
     ).toBeVisible();
   }
   await again.app.close();
+});
+
+test('mini HUD follows the light theme', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-flows-'));
+  const { app, win } = await launch(dir, {
+    QRTZ_MOCK_SCENARIO: 'standup',
+    QRTZ_MOCK_SPEED: '0.04',
+  });
+  await win.getByTestId('nav-settings').click();
+  await win.getByTestId('theme').selectOption('light');
+  await win.getByTestId('nav-memo').click();
+  await expect(win.getByTestId('memo-detected')).toBeVisible({
+    timeout: 10_000,
+  });
+  await win.getByTestId('memo-record').click();
+  await expect
+    .poll(() => app.windows().some((w) => w.url().endsWith('#hud')), {
+      timeout: 10_000,
+    })
+    .toBe(true);
+  const mini = app.windows().find((w) => w.url().endsWith('#hud'))!;
+  await expect(mini.getByTestId('mini-hud')).toBeVisible();
+  await expect(mini.locator('html')).toHaveAttribute('data-theme', 'light');
+  await mini.getByTestId('mini-hud-notes-toggle').click();
+  await expect(mini.getByTestId('mini-hud-notes')).toBeVisible();
+  await mini.waitForTimeout(400);
+  fs.mkdirSync(path.join(__dirname, '..', 'test-results', 'themes'), {
+    recursive: true,
+  });
+  await mini.screenshot({
+    path: path.join(
+      __dirname,
+      '..',
+      'test-results',
+      'themes',
+      'light-mini-hud.png',
+    ),
+  });
+  const bad = await axe(mini, 'light/mini-hud');
+  expect(bad).toEqual([]);
+  await app.close();
+});
+
+test('backup progress bar shows on a large seeded recording', async () => {
+  test.setTimeout(120_000);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-flows-'));
+  const rec = path.join(dir, 'recordings');
+  fs.mkdirSync(rec, { recursive: true });
+  const fd = fs.openSync(path.join(rec, 'big-seed.wav'), 'w');
+  const chunk = Buffer.alloc(8 * 1024 * 1024, 5);
+  for (let i = 0; i < 48; i++) fs.writeSync(fd, chunk); // ~400 MB
+  fs.closeSync(fd);
+  const out = path.join(dir, 'out', 'backup.zip');
+  const { app, win } = await launch(dir, { QRTZ_BACKUP_PATH: out });
+  await win.getByTestId('nav-settings').click();
+  await win.getByTestId('backup-export').click();
+  const bar = win.getByTestId('backup-progress');
+  await expect(bar).toBeVisible({ timeout: 10_000 });
+  await expect(bar.getByRole('progressbar')).toHaveAttribute(
+    'aria-valuenow',
+    /\d+/,
+  );
+  await expect(bar).toContainText(/Computing checksums|Writing zip/);
+  await win.screenshot({
+    path: path.join(__dirname, '..', 'test-results', 'backup-progress.png'),
+  });
+  await expect(win.getByTestId('backup-result')).toContainText('Backed up', {
+    timeout: 90_000,
+  });
+  await expect(bar).toHaveCount(0);
+  expect(fs.statSync(out).size).toBeGreaterThan(400e6);
+  await app.close();
 });

@@ -9,7 +9,7 @@ Mark each box, and paste any compiler error or odd output into an issue (or just
 ```sh
 git pull && npm ci
 npm run build:helper           # swift build -c release --arch arm64 (fetches FluidAudio)
-npm run test:helper            # 23 XCTest cases
+npm run test:helper            # prints "29 Swift tests passed" (fails on 0)
 native/qrtz-helper/.build/release/qrtz-helper --version   # → 0.1.0
 ```
 

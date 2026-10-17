@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Kbd, ThemeProvider, Text, ToastProvider, useTheme } from '@qrtz/ui';
 import { Palette } from './Palette';
 import { onNavigateRequest } from '@qrtz/core';
 import { registry } from './subapps';
 import { SubAppHost } from './SubAppHost';
-import { shellClient } from './shellClient';
-import type { ThemePreference } from '@qrtz/ui';
+import { useConfigTheme } from './useConfigTheme';
 
 function Sidebar({
   active,
@@ -135,17 +134,7 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
   useEffect(() => onNavigateRequest((r) => setActive(r.app)), []);
-  // Appearance follows Settings (dark is the qrtz.ai default; light and system are opt-in).
-  const client = useMemo(shellClient, []);
-  const [theme, setTheme] = useState<ThemePreference>('dark');
-  useEffect(() => {
-    const apply = (c: Record<string, unknown>) => {
-      const v = c.theme;
-      if (v === 'dark' || v === 'light' || v === 'system') setTheme(v);
-    };
-    client.invoke('config:get').then(apply, () => {});
-    return client.on('config:changed', apply);
-  }, [client]);
+  const theme = useConfigTheme();
   const app = registry.get(active);
   return (
     <ThemeProvider mode={theme}>

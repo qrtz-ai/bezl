@@ -11,6 +11,7 @@ import {
   useTheme,
   Callout,
   Select,
+  Dialog,
 } from '@qrtz/ui';
 import {
   SUMMARY_TEMPLATES,
@@ -26,17 +27,19 @@ import { Notes } from './Notes';
 
 export function MeetingDetail({
   id,
-  onDeleted,
+  onDelete,
   seekTo,
 }: {
   id: string;
-  onDeleted: () => void;
+  /** Asks the parent to delete (after the user confirmed); the parent offers Undo. */
+  onDelete: (title: string) => void;
   /** Open on the transcript at this moment (e.g. from a chat citation). */
   seekTo?: { ms: number; nonce: number };
 }) {
   const qrtz = useQrtz();
   const t = useTheme();
   const [d, setD] = useState<Detail | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [retrying, setRetrying] = useState(false);
@@ -221,15 +224,45 @@ export function MeetingDetail({
         <Button
           size="sm"
           variant="ghost"
-          onClick={() =>
-            void qrtz.invoke('memo:delete', { id }).then(onDeleted)
-          }
+          onClick={() => setConfirmDelete(true)}
           style={{ color: t.color.danger }}
           data-testid="meeting-delete"
         >
           Delete
         </Button>
       </div>
+      <Dialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        title="Delete this meeting?"
+        label="Confirm delete"
+      >
+        <div style={{ display: 'grid', gap: 16 }} data-testid="confirm-delete">
+          <Text size="sm" muted>
+            “{meeting.title}” and its transcript, notes and recording will be
+            deleted. You can undo for a few seconds.
+          </Text>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Button
+              variant="ghost"
+              onClick={() => setConfirmDelete(false)}
+              data-testid="confirm-delete-cancel"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                setConfirmDelete(false);
+                onDelete(meeting.title);
+              }}
+              data-testid="confirm-delete-ok"
+            >
+              Delete
+            </Button>
+          </div>
+        </div>
+      </Dialog>
       {exported ? (
         <Text size="sm" muted data-testid="export-result">
           {exported}

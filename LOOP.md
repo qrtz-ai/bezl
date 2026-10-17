@@ -36,6 +36,6 @@ Each iteration is one pass of: **read, pick, build, verify, commit, push, log.**
 ## Swift helper checks (when native/ changes)
 
 - Linux toolchain (if missing): download `swift-6.1.2-RELEASE-ubuntu24.04.tar.gz` into /tmp and extract it there.
-- Then run `export PATH=/tmp/swift-6.1.2-RELEASE-ubuntu24.04/usr/bin:$PATH && npm run test:helper`.
+- Then run `QRTZ_REQUIRE_SWIFT=1 npm run test:helper`. The script finds the /tmp toolchain on its own, fails if it is missing or if 0 XCTests ran, and prints "N Swift tests passed".
 - After that build, `packages/core/src/helper/swift-helper.test.ts` drives the real binary over stdio (it is skipped when there's no build).
 - Protocol changes must update `native/qrtz-helper/Fixtures/protocol/*.jsonl`. Both sides' tests enforce full coverage.
