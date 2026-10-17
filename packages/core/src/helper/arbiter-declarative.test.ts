@@ -35,6 +35,8 @@ const EVENTS: HelperArbiterEvent[] = [
   { cmd: 'recording.start' },
   { recordingFileFailed: { audioPath: 'a.wav' } },
   { recordingFileFailed: { audioPath: 'b.wav' } },
+  { cmd: 'recording.abort', audioPath: 'a.wav' },
+  { cmd: 'recording.abort', audioPath: 'b.wav' },
   { cmd: 'recording.stop' },
   { cmd: 'dictation.start' },
   { cmd: 'dictation.stop' },
@@ -124,6 +126,15 @@ function specStep(
           };
     case 'recording.stop':
       return !s.recording
+        ? { s, decision: 'ignore', extra: [] }
+        : {
+            s: { ...s, recording: false, file: null, recMicEligible: false },
+            decision: 'accept',
+            extra: [],
+          };
+    case 'recording.abort':
+      // N2: scoped teardown of the recording writing this file; nothing else changes.
+      return !s.recording || s.file !== e.audioPath
         ? { s, decision: 'ignore', extra: [] }
         : {
             s: { ...s, recording: false, file: null, recMicEligible: false },

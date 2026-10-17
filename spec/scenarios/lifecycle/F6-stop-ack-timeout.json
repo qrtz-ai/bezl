@@ -1,6 +1,6 @@
 {
   "name": "F6-stop-ack-timeout",
-  "about": "F6: recording.stop is not acked in 10 s: the helper is restarted, processing treats it as crashed (duration from the repaired audio).",
+  "about": "F6 (N2): recording.stop is not acked in 10 s and the scoped recording.abort{audioPath} is not acked within its 2 s deadline either: only then is the helper restarted; processing treats it as crashed (duration from the repaired audio).",
   "script": [
     {
       "op": "helper",
@@ -125,6 +125,18 @@
     },
     {
       "op": "advance",
+      "ms": 1999
+    },
+    {
+      "op": "snapshot",
+      "label": "aborting"
+    },
+    {
+      "op": "advance",
+      "ms": 1
+    },
+    {
+      "op": "advance",
       "ms": 100
     }
   ],
@@ -153,6 +165,7 @@
         "permissions.check",
         "recording.start $REC/id1.wav",
         "recording.stop",
+        "recording.abort $REC/id1.wav",
         "restart"
       ],
       "transcript": [
@@ -311,6 +324,106 @@
           ]
         ]
       },
+      "aborting": {
+        "view": {
+          "phase": "stopping",
+          "meetingId": "id1",
+          "startedAt": 1760000000000,
+          "elapsedMs": 2000,
+          "stopReason": "manual",
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": "Ben",
+          "lines": [
+            [
+              "u1",
+              "Ana",
+              "hello everyone",
+              100
+            ],
+            [
+              "u2",
+              "Ben",
+              "thanks ana",
+              2100
+            ]
+          ],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": {
+          "meetingId": "id1",
+          "rev": 3,
+          "segments": [
+            [
+              "u1",
+              "Ana",
+              100,
+              1900
+            ],
+            [
+              "u2",
+              "Ben",
+              2100,
+              3900
+            ]
+          ],
+          "partial": null
+        },
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "recording",
+              1760000000000,
+              null,
+              null,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [
+            [
+              "id1",
+              "u1",
+              "live",
+              100,
+              1900,
+              "Ana",
+              "hello everyone"
+            ],
+            [
+              "id1",
+              "u2",
+              "live",
+              2100,
+              3900,
+              "Ben",
+              "thanks ana"
+            ]
+          ],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "stopping",
+            "id1"
+          ]
+        },
+        "files": [
+          [
+            "id1.wav",
+            105644
+          ]
+        ]
+      },
       "end": {
         "view": {
           "phase": "done",
@@ -370,7 +483,7 @@
               "other",
               "done",
               1760000000000,
-              1760000012000,
+              1760000014000,
               3300,
               "$REC/id1.wav",
               "general"
@@ -411,7 +524,7 @@
               1,
               "manual",
               "finalize:done/1 summary:done/1 index:done/1",
-              12000,
+              14000,
               true,
               [
                 "$REC/id1.wav"

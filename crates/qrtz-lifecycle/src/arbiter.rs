@@ -74,6 +74,9 @@ pub enum ArbiterCmd {
     RecordingStart,
     #[serde(rename = "recording.stop")]
     RecordingStop,
+    /// N2: scoped teardown of the recording writing `audioPath`, without a flush.
+    #[serde(rename = "recording.abort")]
+    RecordingAbort,
     #[serde(rename = "dictation.start")]
     DictationStart,
     #[serde(rename = "dictation.stop")]
@@ -333,6 +336,26 @@ fn transition(s: &ArbiterState, e: &ArbiterEvent) -> ArbiterResult {
             ArbiterCmd::RecordingStop => {
                 if !s.recording {
                     return res(s.clone(), Decision::Ignore, vec![], Some("not-recording"));
+                }
+                let fx = if s.reads(R) { vec![unsub(R)] } else { vec![] };
+                res(
+                    ArbiterState {
+                        recording: false,
+                        active_audio_path: None,
+                        mic: s.without(R),
+                        ..s.clone()
+                    },
+                    Decision::Accept,
+                    fx,
+                    None,
+                )
+            }
+            ArbiterCmd::RecordingAbort => {
+                if !s.recording {
+                    return res(s.clone(), Decision::Ignore, vec![], Some("not-recording"));
+                }
+                if s.active_audio_path.is_none() || s.active_audio_path != *audio_path {
+                    return res(s.clone(), Decision::Ignore, vec![], Some("other-recording"));
                 }
                 let fx = if s.reads(R) { vec![unsub(R)] } else { vec![] };
                 res(

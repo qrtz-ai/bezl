@@ -91,6 +91,29 @@ to stop, so the protocol has no stop without a path for it (one would be ambient
 - Longer term the helper may mint an opaque `recordingId` at admit, so busy, stop and started carry that instead of
   the file path; it isn't needed for this rule.
 
+### Aborting a wedged stop (N2)
+
+`recording.stop` flushes (audio source stop, pipeline tail, recogniser finish, WAV header). If its
+`recording.stopped` does not arrive within `stopAckMs`, the host does **not** restart the helper straight away, because
+that would also end a healthy dictation on the shared helper. It first sends a scoped abort with a hard deadline
+(`abortAckMs`, 2 s):
+
+```json
+{ "type": "recording.abort", "audioPath": "/…/recordings/0b8e.wav" }
+{ "type": "recording.aborted", "audioPath": "/…/recordings/0b8e.wav" }
+```
+
+- The helper handles `recording.abort` **out of band** (`main.swift` runs it on its own task, so it never queues behind
+  the wedged stop) and tears down only the recording writing `audioPath`: no recogniser finish, no tail, it never
+  waits on the (possibly wedged) audio source, it closes the file, and it releases the recording's mic reader and
+  permit through the arbiter (`{cmd: "recording.abort", audioPath}`: `mic.unsubscribe:recording` when the recording
+  still held the mic; `other-recording` / `not-recording` otherwise). The stop that was in flight returns without
+  touching anything (no late `recording.stopped`, and its samples never reach a newer recording's file).
+- It always answers `recording.aborted{audioPath}`, also when nothing records that file, meaning "no writer on this
+  file remains". A dictation, the warm mic and any other recording are untouched.
+- Host: `recording.aborted` in time → keep the helper and post-process from the (repaired) WAV. Not in time (or the
+  helper is gone) → restart the helper as before, so there is never a concurrent writer.
+
 ### The arbiter is enforcing
 
 The helper carries out exactly the `mic.subscribe` / `mic.unsubscribe` effects the arbiter returns, on commands,
@@ -142,7 +165,7 @@ On the host side:
 
 ## Tests
 
-- Shared vectors (15 cases): `packages/core/src/helper/arbiter.test.ts`, `ArbiterTests.testSharedVectors`. Edge vectors
+- Shared vectors (16 cases): `packages/core/src/helper/arbiter.test.ts`, `ArbiterTests.testSharedVectors`. Edge vectors
   (`spec/vectors/helper/arbiter-edges.json`) are replayed by `arbiter-model.test.ts` (an independent model, run
   exhaustively over reachable states, including warm/configure) and by `ArbiterTests.testEdgeVectors`. A second
   declarative model (`arbiter-declarative.test.ts`) checks the reader set. Both models track the recording's file
@@ -162,8 +185,11 @@ On the host side:
   fast without a restart, the pathless-busy watchdog restart) and `talk-service.test.ts`
   (graceful stop, then refusal, `dictation.busy`, a helper still running d1 after a host reload no longer locks
   dictation out, busy for another id / a duplicate start ignored).
-- Lifecycle scenarios (TS oracle and Rust `NoteRuntime`): `spec/scenarios/lifecycle/F5-recording-file.json` and
-  `F5-busy-no-active-file.json`.
+- Lifecycle scenarios (TS oracle and Rust `NoteRuntime`): `spec/scenarios/lifecycle/F5-recording-file.json`,
+  `F5-busy-no-active-file.json`, `F6-stop-ack-abort.json` (abort acked, no restart) and `F6-stop-ack-timeout.json`
+  (abort not acked either, then restart).
+- N2: `AbortTests` (Swift, a stop wedged in the audio source), `mock-concurrency.test.ts`, `note-service.test.ts`
+  (a dictation survives an acked abort; a wedged abort restarts).
 - e2e: `e2e/permissions.spec.ts`. Uses `QRTZ_MOCK_REVOKE="screen-recording@800,microphone@2000"` to revoke TCC that
   many ms after the first capture.
 - On a real Mac: see `mac-verify.md` (revoking in System Settings mid-capture, and two readers on one input device).

@@ -908,6 +908,24 @@ export class NoteService {
 
   // ------------------------------------------------------------------ stop
 
+  /**
+   * N2: `recording.abort{audioPath}` with a hard deadline. True when the helper answered
+   * `recording.aborted{audioPath}` (no writer on that file remains); false on timeout or a dead helper.
+   */
+  private async abortRecording(audioPath: string): Promise<boolean> {
+    const p = this.waitFor(
+      'recording.aborted',
+      RETRY_POLICIES.abortAckMs * Math.max(this.scale, 0.2),
+      (m) => m.audioPath === audioPath,
+    );
+    try {
+      this.send({ type: 'recording.abort', audioPath });
+    } catch {
+      return false;
+    }
+    return !!(await p);
+  }
+
   async stop(reason: StopReason = 'manual'): Promise<SessionView> {
     const s = this.machine.state;
     // Idempotent: a second stop (double-click, tray + hotkey, meeting.ended racing a click) is a no-op.
@@ -934,11 +952,21 @@ export class NoteService {
         this.send({ type: 'recording.stop' });
         stopped = await p;
         if (!stopped) {
-          // Still flushing after the timeout: it may still be writing the WAV finalize is about to repair.
-          // Restart it so there is no concurrent writer (the supervisor brings a fresh helper back).
-          this.deps.log.warn('recording.stop not acked; restarting helper');
-          this.deps.helper.stop();
-          this.deps.helper.start();
+          // Still flushing after the timeout: it may still be writing the WAV finalize is about to repair. First
+          // abort just that recording (scoped by its file, hard deadline), so a dictation sharing the helper
+          // survives; only if the abort is not acked either, restart the helper so there is no concurrent writer.
+          const aborted = part ? await this.abortRecording(part) : false;
+          if (aborted)
+            this.deps.log.warn(
+              'recording.stop not acked; aborted the recording (helper kept)',
+            );
+          else {
+            this.deps.log.warn(
+              'recording.stop and recording.abort not acked; restarting helper',
+            );
+            this.deps.helper.stop();
+            this.deps.helper.start();
+          }
         }
       } catch {
         this.helperCrashed = true; // helper down: finish from what's persisted

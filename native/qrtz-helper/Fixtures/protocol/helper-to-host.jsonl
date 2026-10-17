@@ -20,6 +20,7 @@
 {"event":{"endMs":5000,"kind":"final","startMs":2500,"text":"Sounds good.","utteranceId":"u2"},"type":"asr"}
 {"audioPath":"/Users/j/Library/Application Support/qrtz/recordings/0b8e.wav","type":"recording.started"}
 {"audioPath":"/Users/j/Library/Application Support/qrtz/recordings/0b8e.wav","durationMs":61234.5,"type":"recording.stopped"}
+{"audioPath":"/Users/j/Library/Application Support/qrtz/recordings/0b8e.wav","type":"recording.aborted"}
 {"action":"down","type":"hotkey"}
 {"action":"up","type":"hotkey"}
 {"id":"d1","preRollMs":300,"type":"dictation.started"}

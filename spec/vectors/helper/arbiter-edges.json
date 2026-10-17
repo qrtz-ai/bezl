@@ -966,6 +966,141 @@
           }
         }
       ]
+    },
+    {
+      "name": "abort is scoped: another file, or a recording that already stopped, is a no-op",
+      "initialDenied": [],
+      "steps": [
+        {
+          "event": {
+            "cmd": "recording.start",
+            "audioPath": "/rec/a.wav"
+          },
+          "expect": {
+            "decision": "accept",
+            "mux": false,
+            "effects": [
+              "mic.subscribe:recording"
+            ],
+            "state": {
+              "recording": true,
+              "activeAudioPath": "/rec/a.wav",
+              "dictating": false,
+              "warm": false,
+              "mic": [
+                "recording"
+              ],
+              "denied": []
+            }
+          }
+        },
+        {
+          "event": {
+            "cmd": "recording.abort",
+            "audioPath": "/rec/b.wav"
+          },
+          "expect": {
+            "decision": "ignore",
+            "reason": "other-recording",
+            "mux": false,
+            "effects": [],
+            "state": {
+              "recording": true,
+              "activeAudioPath": "/rec/a.wav",
+              "dictating": false,
+              "warm": false,
+              "mic": [
+                "recording"
+              ],
+              "denied": []
+            }
+          }
+        },
+        {
+          "event": {
+            "cmd": "recording.stop"
+          },
+          "expect": {
+            "decision": "accept",
+            "mux": false,
+            "effects": [
+              "mic.unsubscribe:recording"
+            ],
+            "state": {
+              "recording": false,
+              "activeAudioPath": null,
+              "dictating": false,
+              "warm": false,
+              "mic": [],
+              "denied": []
+            }
+          }
+        },
+        {
+          "event": {
+            "cmd": "recording.abort",
+            "audioPath": "/rec/a.wav"
+          },
+          "expect": {
+            "decision": "ignore",
+            "reason": "not-recording",
+            "mux": false,
+            "effects": [],
+            "state": {
+              "recording": false,
+              "activeAudioPath": null,
+              "dictating": false,
+              "warm": false,
+              "mic": [],
+              "denied": []
+            }
+          }
+        },
+        {
+          "event": {
+            "cmd": "recording.start",
+            "audioPath": "/rec/b.wav"
+          },
+          "expect": {
+            "decision": "accept",
+            "mux": false,
+            "effects": [
+              "mic.subscribe:recording"
+            ],
+            "state": {
+              "recording": true,
+              "activeAudioPath": "/rec/b.wav",
+              "dictating": false,
+              "warm": false,
+              "mic": [
+                "recording"
+              ],
+              "denied": []
+            }
+          }
+        },
+        {
+          "event": {
+            "cmd": "recording.abort",
+            "audioPath": "/rec/b.wav"
+          },
+          "expect": {
+            "decision": "accept",
+            "mux": false,
+            "effects": [
+              "mic.unsubscribe:recording"
+            ],
+            "state": {
+              "recording": false,
+              "activeAudioPath": null,
+              "dictating": false,
+              "warm": false,
+              "mic": [],
+              "denied": []
+            }
+          }
+        }
+      ]
     }
   ]
 }

@@ -44,6 +44,8 @@ export interface HelperArbiterState {
 export type HelperArbiterEvent =
   | { cmd: 'recording.start'; audioPath?: string }
   | { cmd: 'recording.stop' }
+  /** N2: tear down the recording writing `audioPath` without a flush (scoped; dictation untouched). */
+  | { cmd: 'recording.abort'; audioPath: string }
   | { cmd: 'dictation.start' }
   | { cmd: 'dictation.stop' }
   | { cmd: 'dictation.cancel' }
@@ -233,6 +235,23 @@ function step(
     }
     case 'recording.stop': {
       if (!s.recording) return r(s, 'ignore', [], 'not-recording');
+      const unsub = s.mic.includes('recording');
+      return r(
+        {
+          ...s,
+          recording: false,
+          activeAudioPath: null,
+          mic: without(s.mic, 'recording'),
+        },
+        'accept',
+        unsub ? ['mic.unsubscribe:recording'] : [],
+      );
+    }
+    case 'recording.abort': {
+      // Scoped by file: an abort for another recording (or after this one ended) changes nothing.
+      if (!s.recording) return r(s, 'ignore', [], 'not-recording');
+      if (s.activeAudioPath !== e.audioPath)
+        return r(s, 'ignore', [], 'other-recording');
       const unsub = s.mic.includes('recording');
       return r(
         {

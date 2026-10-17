@@ -35,6 +35,8 @@ Task {
     for await line in lines {
         switch HostMessage.parse(line: line) {
         case .success(let m):
+            // N2: an abort is the host's way out of a wedged stop, so it must never queue behind it.
+            if case .recordingAbort = m { Task { await controller.handle(m) }; continue }
             await controller.handle(m)
             if m == .shutdown { exit(0) }
         case .failure(let e):

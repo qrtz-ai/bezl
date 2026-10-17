@@ -846,7 +846,7 @@ impl Shared {
                     _ => {}
                 }
             }
-            HelperInput::RecordingStopped { .. } => {}
+            HelperInput::RecordingStopped { .. } | HelperInput::RecordingAborted { .. } => {}
         }
     }
 
@@ -1262,6 +1262,29 @@ impl Shared {
         Ok(self.view())
     }
 
+    /// N2: `recording.abort{audioPath}` with a hard deadline. True when the helper answered
+    /// `recording.aborted{audioPath}` (no writer on that file remains); false on timeout or a dead helper.
+    async fn abort_recording(self: &Arc<Self>, audio_path: &str) -> bool {
+        let want = audio_path.to_owned();
+        let matcher: Matcher = Box::new(
+            move |m| matches!(m, HelperInput::RecordingAborted { audio_path } if *audio_path == want),
+        );
+        let p = self.wait_for(
+            "recording.aborted",
+            self.ack_ms(policies::ABORT_ACK_MS),
+            Some(matcher),
+        );
+        if self
+            .send_helper(HelperCommand::RecordingAbort {
+                audio_path: audio_path.to_owned(),
+            })
+            .is_err()
+        {
+            return false;
+        }
+        p.await.ok().flatten().is_some()
+    }
+
     async fn abort_start(self: &Arc<Self>, id: &str, error: LifecycleError) {
         self.send(LifecycleEvent::StartFailed { error });
         // Nothing was captured: drop the empty meeting instead of leaving a broken row.
@@ -1395,7 +1418,8 @@ impl Shared {
         let mut stopped: Option<Option<i64>> = None;
         if was_live {
             let part = s.audio_parts.last().cloned().filter(|p| !p.is_empty());
-            let matcher: Matcher = Box::new(move |m| match (m, &part) {
+            let stop_part = part.clone();
+            let matcher: Matcher = Box::new(move |m| match (m, &stop_part) {
                 (HelperInput::RecordingStopped { audio_path, .. }, Some(part)) => {
                     audio_path.as_ref() == Some(part)
                 }
@@ -1411,9 +1435,19 @@ impl Shared {
                     if let Some(HelperInput::RecordingStopped { duration_ms, .. }) = p.await.ok().flatten() {
                         stopped = Some(duration_ms);
                     } else {
-                        // Still flushing after the timeout: it may still be writing the WAV finalize repairs.
-                        tracing::warn!("recording.stop not acked; restarting helper");
-                        self.d.helper.restart();
+                        // Still flushing after the timeout: it may still be writing the WAV finalize repairs. First
+                        // abort just that recording (scoped by its file, hard deadline), so a dictation sharing the
+                        // helper survives; restart only if the abort is not acked either (port of NoteService N2).
+                        let aborted = match &part {
+                            Some(part) => self.abort_recording(part).await,
+                            None => false,
+                        };
+                        if aborted {
+                            tracing::warn!("recording.stop not acked; aborted the recording (helper kept)");
+                        } else {
+                            tracing::warn!("recording.stop and recording.abort not acked; restarting helper");
+                            self.d.helper.restart();
+                        }
                     }
                 }
                 Err(_) => self.lock().helper_crashed = true, // helper down: finish from what's persisted

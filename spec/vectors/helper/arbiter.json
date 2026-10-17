@@ -1734,6 +1734,122 @@
      }
     }
    ]
+  },
+  {
+   "name": "abort (N2): the recording is torn down by its file without a stop; a dictation keeps the mic",
+   "initialDenied": [],
+   "steps": [
+    {
+     "event": {
+      "cmd": "dictation.start"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.subscribe:dictation"
+      ],
+      "state": {
+       "recording": false,
+       "activeAudioPath": null,
+       "dictating": true,
+       "warm": false,
+       "mic": [
+        "dictation"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "recording.start",
+      "audioPath": "/rec/a.wav"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": true,
+      "effects": [
+       "mic.subscribe:recording"
+      ],
+      "state": {
+       "recording": true,
+       "activeAudioPath": "/rec/a.wav",
+       "dictating": true,
+       "warm": false,
+       "mic": [
+        "dictation",
+        "recording"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "recording.abort",
+      "audioPath": "/rec/a.wav"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.unsubscribe:recording"
+      ],
+      "state": {
+       "recording": false,
+       "activeAudioPath": null,
+       "dictating": true,
+       "warm": false,
+       "mic": [
+        "dictation"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "recording.stop"
+     },
+     "expect": {
+      "decision": "ignore",
+      "reason": "not-recording",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": false,
+       "activeAudioPath": null,
+       "dictating": true,
+       "warm": false,
+       "mic": [
+        "dictation"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.stop"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.unsubscribe:dictation"
+      ],
+      "state": {
+       "recording": false,
+       "activeAudioPath": null,
+       "dictating": false,
+       "warm": false,
+       "mic": [],
+       "denied": []
+      }
+     }
+    }
+   ]
   }
  ]
 }

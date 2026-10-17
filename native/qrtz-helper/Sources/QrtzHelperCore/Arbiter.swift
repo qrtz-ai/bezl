@@ -125,6 +125,14 @@ public enum SessionArbiter {
                 let unsub = s.mic.contains("recording")
                 n.mic.removeAll { $0 == "recording" }
                 return r(n, "accept", unsub ? ["mic.unsubscribe:recording"] : [])
+            case "recording.abort":
+                // N2: scoped by file; another recording (or one that already stopped) is untouched.
+                if !s.recording { return r(s, "ignore", [], "not-recording") }
+                guard let path, path == s.activeAudioPath else { return r(s, "ignore", [], "other-recording") }
+                n.recording = false; n.activeAudioPath = nil
+                let unsub = s.mic.contains("recording")
+                n.mic.removeAll { $0 == "recording" }
+                return r(n, "accept", unsub ? ["mic.unsubscribe:recording"] : [])
             case "dictation.start":
                 if s.dictating { return r(s, "ignore", [], "already-dictating") }
                 if !micOk { return r(s, "refuse", [], "microphone-denied") }

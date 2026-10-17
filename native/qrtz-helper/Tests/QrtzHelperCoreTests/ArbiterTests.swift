@@ -40,7 +40,7 @@ final class ArbiterTests: XCTestCase {
 
     /// Same vectors as packages/core/src/helper/arbiter.test.ts: the TS and Swift arbiters cannot drift.
     func testSharedVectors() throws {
-        let steps = try replay(Self.vectors, expectCases: 15)
+        let steps = try replay(Self.vectors, expectCases: 16)
         XCTAssertGreaterThan(steps, 40)
     }
 
@@ -393,6 +393,67 @@ final class ArbiterTests: XCTestCase {
         XCTAssertFalse(rec)
         await c.handle(.dictationCancel(id: "d1"))
         try? FileManager.default.removeItem(atPath: good)
+    }
+}
+
+/// An audio source whose stop never returns until released (a wedged flush).
+final class WedgedAudio: AudioSource, @unchecked Sendable {
+    let name = "wedged"
+    let stopping = Box<Bool>(false)
+    private let held = Box<[CheckedContinuation<Void, Never>]>([])
+    func start(onBlock: @escaping @Sendable (CaptureBlock) -> Void) async throws {}
+    func stop() async {
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            held.mutate { $0.append(c) }; stopping.mutate { $0 = true }
+        }
+    }
+    func release() { let cs = held.value; held.mutate { $0 = [] }; for c in cs { c.resume() } }
+}
+
+final class AbortTests: XCTestCase {
+    /// N2: recording.stop wedges in the audio source's stop. recording.abort{audioPath} (handled out of band) tears
+    /// that recording down without the flush, answers recording.aborted, sends no recording.stopped, keeps the
+    /// dictation on the shared mic, and lets the next recording start. The released stop then touches nothing.
+    func testAbortTearsDownAWedgedStopAndKeepsTheDictation() async throws {
+        let out = Box<[HelperMessage]>([]), hub = MicHub(source: FakeMic()), audio = WedgedAudio()
+        let c = HelperController(
+            deps: HelperDeps(permissions: MutablePerms(), meetings: nil, audio: [audio], transcribers: [FakeASR()], helperVersion: "t", os: "linux", features: [],
+                             dictationMic: hub.view("dictation"), dictationTranscribers: [RecordingASR()], micHub: hub, permissionPollMs: 0),
+            send: { m in out.mutate { $0.append(m) } }, now: { 0 })
+        let a = FileManager.default.temporaryDirectory.appendingPathComponent("abort-a-\(UUID()).wav").path
+        let b = FileManager.default.temporaryDirectory.appendingPathComponent("abort-b-\(UUID()).wav").path
+        await c.handle(.dictationStart(id: "d1"))
+        await c.handle(.recordingStart(audioPath: a))
+        XCTAssertTrue(out.value.contains(.recordingStarted(audioPath: a)))
+        let stopTask = Task { await c.handle(.recordingStop()) }
+        let end = Date().addingTimeInterval(5)
+        while !audio.stopping.value && Date() < end { try await Task.sleep(nanoseconds: 1_000_000) }
+        XCTAssertTrue(audio.stopping.value, "the stop is wedged in the audio source")
+        await c.handle(.recordingAbort(audioPath: a))
+        XCTAssertTrue(out.value.contains(.recordingAborted(audioPath: a)))
+        var rec = await c.isRecording
+        XCTAssertFalse(rec)
+        let st = await c.arbiter
+        XCTAssertFalse(st.recording); XCTAssertNil(st.activeAudioPath)
+        XCTAssertTrue(st.dictating, "the dictation survives the abort"); XCTAssertEqual(st.mic, ["dictation"])
+        // The helper is free again: a new recording starts while the old stop is still wedged.
+        await c.handle(.recordingStart(audioPath: b))
+        XCTAssertTrue(out.value.contains(.recordingStarted(audioPath: b)))
+        audio.release()
+        await stopTask.value
+        XCTAssertFalse(out.value.contains { if case .recordingStopped(a, _) = $0 { true } else { false } }, "no late stop ack for the aborted file")
+        rec = await c.isRecording
+        XCTAssertTrue(rec, "the released old stop did not touch the new recording")
+        // Scoped and idempotent: an abort for a file nobody records is answered and changes nothing.
+        await c.handle(.recordingAbort(audioPath: a))
+        XCTAssertEqual(out.value.filter { $0 == .recordingAborted(audioPath: a) }.count, 2)
+        rec = await c.isRecording
+        XCTAssertTrue(rec)
+        let stop2 = Task { await c.handle(.recordingAbort(audioPath: b)) }
+        await stop2.value
+        audio.release()
+        await c.handle(.dictationCancel(id: "d1"))
+        for p in [a, b] { try? FileManager.default.removeItem(atPath: p) }
     }
 }
 

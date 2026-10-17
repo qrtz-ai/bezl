@@ -147,16 +147,17 @@ fn run_policies(v: &Value) -> usize {
     );
     assert_eq!(e["startAckMs"], json!(policies::START_ACK_MS));
     assert_eq!(e["stopAckMs"], json!(policies::STOP_ACK_MS));
+    assert_eq!(e["abortAckMs"], json!(policies::ABORT_ACK_MS));
     assert_eq!(e["appendLive"], to(&policies::APPEND_LIVE));
     assert_eq!(e["finalize"], to(&policies::FINALIZE));
     assert_eq!(e["summary"], to(&policies::SUMMARY));
     assert_eq!(e["index"], to(&policies::INDEX));
     assert_eq!(
         e.as_object().unwrap().len(),
-        7,
+        8,
         "a policy was added on one side only"
     );
-    7
+    8
 }
 
 #[test]

@@ -38,6 +38,8 @@ pub mod policies {
     pub const START_ACK_MS: u64 = 5_000;
     /// `recording.stopped` ack (helper flushes recogniser + WAV).
     pub const STOP_ACK_MS: u64 = 10_000;
+    /// N2: `recording.aborted` ack after a missed stop ack (hard deadline; then the helper is restarted).
+    pub const ABORT_ACK_MS: u64 = 2_000;
     pub const APPEND_LIVE: RetryPolicy = RetryPolicy {
         max_attempts: 5,
         base_ms: 250,

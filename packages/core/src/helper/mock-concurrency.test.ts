@@ -72,6 +72,29 @@ describe('mock helper: concurrent recording.* + dictation.* (mux)', () => {
     h.kill();
   });
 
+  it('N2: recording.abort tears down a wedged stop by its file; the dictation keeps running', async () => {
+    const { h, got, send } = rig({ wedgeStop: {} });
+    send({ type: 'dictation.start', id: 'd1' });
+    send({ type: 'recording.start', audioPath: '/tmp/a.wav' });
+    send({ type: 'recording.stop' });
+    expect(of(got, 'recording.stopped')).toHaveLength(0); // wedged
+    send({ type: 'recording.abort', audioPath: '/tmp/b.wav' }); // another file: answered, nothing changes
+    send({ type: 'recording.abort', audioPath: '/tmp/a.wav' });
+    expect(of(got, 'recording.aborted').map((m) => m.audioPath)).toEqual([
+      '/tmp/b.wav',
+      '/tmp/a.wav',
+    ]);
+    send({ type: 'recording.start', audioPath: '/tmp/c.wav' });
+    expect(of(got, 'recording.started').map((m) => m.audioPath)).toEqual([
+      '/tmp/a.wav',
+      '/tmp/c.wav',
+    ]);
+    await tick(20);
+    send({ type: 'dictation.stop', id: 'd1' });
+    expect(of(got, 'dictation.stopped')[0]).toMatchObject({ id: 'd1' });
+    h.kill();
+  });
+
   it('duplicates are ignored (single instance per kind), stops when idle are no-ops', async () => {
     const { h, got, send } = rig();
     send({ type: 'recording.stop' });

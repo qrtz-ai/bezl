@@ -47,6 +47,11 @@ export interface MockHelperOptions {
    * error{recording.file, audioPath}; no recording.started follows.
    */
   failRecordingFile?: boolean;
+  /**
+   * N2 fault injection: recording.stop is admitted but never acked (a wedged flush). `abort: 'ok'` answers
+   * recording.abort{audioPath} with recording.aborted (the default); `abort: 'wedged'` never answers it either.
+   */
+  wedgeStop?: { abort?: 'ok' | 'wedged' };
   /** Override reported TCC states (fault injection: denied permissions). */
   permissions?: Partial<
     Record<
@@ -71,6 +76,8 @@ export function createMockHelper(
   let hb: unknown = null;
   let scriptTimers: unknown[] = [];
   let audioPath = '';
+  /** wedgeStop: the file whose stop never finished (until recording.abort). */
+  let wedged: string | null = null;
   // H6/H5: same arbiter as the Swift helper (spec/vectors/helper/arbiter.json).
   let arb = initialArbiterState(
     (Object.entries(opts.permissions ?? {}) as [HelperPermission, string][])
@@ -380,6 +387,17 @@ export function createMockHelper(
           emit({ type: 'recording.started', audioPath });
           if (opts.scenario) startScript();
           return;
+        case 'recording.abort':
+          // Scoped: tears down only the recording writing this file (dictation untouched), without a flush.
+          admit({ cmd: 'recording.abort', audioPath: m.audioPath });
+          if (opts.wedgeStop?.abort === 'wedged') return;
+          if (wedged === m.audioPath || audioPath === m.audioPath) {
+            wedged = null;
+            paused = false;
+            clearScript();
+          }
+          emit({ type: 'recording.aborted', audioPath: m.audioPath });
+          return;
         case 'recording.pause':
           paused = true;
           return;
@@ -442,6 +460,10 @@ export function createMockHelper(
             return;
           }
           if (admit({ cmd: 'recording.stop' }).decision !== 'accept') return;
+          if (opts.wedgeStop) {
+            wedged = audioPath; // the flush never finishes: no recording.stopped
+            return;
+          }
           paused = false;
           clearScript();
           return emit({

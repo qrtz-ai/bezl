@@ -92,6 +92,11 @@ export const HelperToHost = z.discriminatedUnion('type', [
     audioPath: z.string(),
     durationMs: z.number(),
   }),
+  /**
+   * Answer to recording.abort{audioPath}: no writer on that file remains (the recording was torn down without a
+   * flush, or nothing was recording it). Sent even when there was nothing to abort.
+   */
+  z.object({ type: z.literal('recording.aborted'), audioPath: z.string() }),
   // --- talk (dictation: mic only) ---
   /** Push-to-talk key from the helper's native key monitor (Electron shortcuts have no key-up). */
   z.object({ type: z.literal('hotkey'), action: z.enum(['down', 'up']) }),
@@ -165,6 +170,12 @@ export const HostToHelper = z.discriminatedUnion('type', [
     /** Only stop the recording writing this file; the helper ignores a stop for any other path. */
     audioPath: z.string().optional(),
   }),
+  /**
+   * N2: the host gave up on recording.stop's ack. Tear down the recording writing `audioPath` now, without the
+   * flush (no recogniser finish, no tail), close its file and answer recording.aborted{audioPath}. Scoped: any
+   * other recording, and every dictation, is untouched. Handled out of band, never queued behind a wedged stop.
+   */
+  z.object({ type: z.literal('recording.abort'), audioPath: z.string() }),
   /** Privacy pause: the helper writes silence and transcribes nothing until resume. */
   z.object({ type: z.literal('recording.pause') }),
   z.object({ type: z.literal('recording.resume') }),

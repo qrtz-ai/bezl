@@ -89,6 +89,8 @@ public actor HelperController {
         var samplesIn: AsyncStream<CaptureBlock>.Continuation?
         var pipeline: MicPipeline?
         var consumer: Task<Void, Never>?
+        /// N2: torn down by recording.abort; an in-flight stop for it must not touch anything any more.
+        var aborted = false
         init(wav: WavWriter, startMs: Double) { self.wav = wav; self.startMs = startMs }
     }
 
@@ -138,6 +140,7 @@ public actor HelperController {
             }
             guard await admit(.cmd("recording.stop")) else { return }
             await stopRecording()
+        case .recordingAbort(let path): await abortRecording(path)
         case .recordingPause: paused = true; send(.log(level: .info, msg: "capture paused"))
         case .recordingResume: paused = false; send(.log(level: .info, msg: "capture resumed"))
         case .shutdown: await shutdown()
@@ -292,7 +295,7 @@ public actor HelperController {
         rec.consumer = Task { [weak self] in
             for await b in blocks {
                 let mixed = await pipeline.process(b)
-                await self?.onSamples(mixed)
+                await self?.onSamples(mixed, of: rec)
             }
         }
         for a in deps.audio {
@@ -315,8 +318,9 @@ public actor HelperController {
         }
     }
 
-    func onSamples(_ s: [Float]) async {
-        guard let rec = recording, !s.isEmpty else { return }
+    func onSamples(_ s: [Float], of owner: Recording? = nil) async {
+        // Only the recording that captured these samples (an aborted one's late blocks never reach a newer file).
+        guard let rec = recording, !s.isEmpty, owner == nil || owner === rec else { return }
         // Paused: keep the WAV timeline aligned with wall-clock (silence) but capture and transcribe nothing.
         let s = paused ? [Float](repeating: 0, count: s.count) : s
         do { try rec.wav.append(s) } catch { send(.error(code: "recording.write", message: "\(error)", fatal: false)) }
@@ -340,11 +344,14 @@ public actor HelperController {
         guard let rec = recording else { return }
         tick?.cancel(); tick = nil
         await rec.audio?.stop()
+        if rec.aborted { return }  // N2: recording.abort tore it down while the source was stopping
         rec.samplesIn?.finish()
         await rec.consumer?.value
-        if let tail = rec.pipeline?.finish(), !tail.isEmpty { await onSamples(tail) }
+        if rec.aborted { return }
+        if let tail = rec.pipeline?.finish(), !tail.isEmpty { await onSamples(tail, of: rec) }
         if let tr = rec.transcriber {
             let text = await tr.finish()
+            if rec.aborted { return }
             for e in rec.segmenter.flush(cumulative: text, nowMs: now() - rec.startMs) { send(.asr(e)) }
         }
         recording = nil
@@ -352,6 +359,30 @@ public actor HelperController {
         do { try rec.wav.finish() } catch { send(.error(code: "recording.file", message: "\(error)", fatal: false)) }
         send(.recordingStopped(audioPath: rec.wav.url.path, durationMs: rec.wav.durationMs))
         recordingStartMs = nil
+    }
+
+    /// N2: the host gave up on recording.stop's ack. Tear down the recording writing `path` now, without the
+    /// flush: no recogniser finish, no tail, and never waiting on the (possibly wedged) audio source. Its file is
+    /// closed so no writer remains, its mic reader and permit are released through the arbiter, and a dictation is
+    /// untouched. Always answers recording.aborted{audioPath}, also when nothing records that file (idempotent).
+    func abortRecording(_ path: String) async {
+        // Releases the reader if the stop never got this far (usually the stop already did: then a quiet no-op).
+        let r = SessionArbiter.step(arbiter, .cmd("recording.abort", audioPath: path))
+        arbiter = r.state
+        await apply(r.effects)
+        if let rec = recording, rec.wav.url.path == path {
+            rec.aborted = true
+            tick?.cancel(); tick = nil
+            recording = nil
+            paused = false
+            recordingStartMs = nil
+            rec.samplesIn?.finish()
+            rec.consumer?.cancel()
+            if let audio = rec.audio { Task.detached { await audio.stop() } }  // may be what is wedged: don't wait
+            do { try rec.wav.finish() } catch { send(.error(code: "recording.file", message: "\(error)", fatal: false)) }
+            send(.log(level: .warn, msg: "recording aborted: \(path)"))
+        }
+        send(.recordingAborted(audioPath: path))
     }
 
     public func shutdown() async {

@@ -25,7 +25,7 @@ const vectors = JSON.parse(
 };
 
 describe('helper arbiter: shared vectors (TS ⇄ Swift)', () => {
-  it('has the expected coverage', () => expect(vectors.cases.length).toBe(15));
+  it('has the expected coverage', () => expect(vectors.cases.length).toBe(16));
   for (const c of vectors.cases)
     it(c.name, () => {
       let s = initialArbiterState(c.initialDenied);

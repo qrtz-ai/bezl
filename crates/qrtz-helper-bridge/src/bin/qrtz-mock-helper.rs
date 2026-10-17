@@ -98,6 +98,14 @@ fn main() {
                     say(json!({"type": "recording.stopped", "audioPath": p, "durationMs": now() - started}));
                 }
             }
+            "recording.abort" => {
+                // N2: scoped teardown without a flush; answered even when nothing records that file.
+                let p = msg["audioPath"].as_str().unwrap_or_default().to_owned();
+                if audio.as_deref() == Some(p.as_str()) {
+                    audio = None;
+                }
+                say(json!({"type": "recording.aborted", "audioPath": p}));
+            }
             "recording.pause" | "recording.resume" => {}
             "shutdown" => std::process::exit(0),
             _ => say(

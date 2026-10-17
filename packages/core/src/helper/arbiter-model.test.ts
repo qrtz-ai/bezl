@@ -27,6 +27,8 @@ const EVENTS: HelperArbiterEvent[] = [
   { cmd: 'recording.start' },
   { recordingFileFailed: { audioPath: 'a.wav' } },
   { recordingFileFailed: { audioPath: 'b.wav' } },
+  { cmd: 'recording.abort', audioPath: 'a.wav' },
+  { cmd: 'recording.abort', audioPath: 'b.wav' },
   { cmd: 'recording.stop' },
   { cmd: 'dictation.start' },
   { cmd: 'dictation.stop' },
@@ -159,6 +161,15 @@ function modelStep(
       return { m: n, decision: 'accept', effects: fx };
     case 'recording.stop':
       if (!m.recording) return { m, decision: 'ignore', effects: [] };
+      if (m.recMic) fx.push('mic.unsubscribe:recording');
+      n.recording = false;
+      n.recMic = false;
+      n.file = null;
+      return { m: n, decision: 'accept', effects: fx };
+    case 'recording.abort':
+      // Like a stop, but scoped to the recording's own file.
+      if (!m.recording || m.file !== e.audioPath)
+        return { m, decision: 'ignore', effects: [] };
       if (m.recMic) fx.push('mic.unsubscribe:recording');
       n.recording = false;
       n.recMic = false;

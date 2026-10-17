@@ -43,6 +43,8 @@ public enum HelperMessage: Equatable, Sendable {
     case asr(AsrEvent)
     case recordingStarted(audioPath: String)
     case recordingStopped(audioPath: String, durationMs: Double)
+    /// Answer to recording.abort{audioPath}: no writer on that file remains (sent even when nothing recorded it).
+    case recordingAborted(audioPath: String)
     // talk (dictation)
     case hotkey(HotkeyAction)
     case dictationStarted(id: String, preRollMs: Double)
@@ -65,6 +67,8 @@ public enum HostMessage: Equatable, Sendable {
     case recordingStart(audioPath: String)
     /// audioPath (optional): only stop the recording writing this file; a stop for any other path is ignored.
     case recordingStop(audioPath: String? = nil)
+    /// N2: tear down the recording writing this file without a flush (scoped; dictation untouched). Out of band.
+    case recordingAbort(audioPath: String)
     /// Privacy pause: audio is replaced by silence (timeline stays aligned) and nothing reaches the recogniser.
     case recordingPause
     case recordingResume
@@ -176,6 +180,7 @@ extension HelperMessage {
         case .asr(let e): return obj("asr", ["event": e.json])
         case .recordingStarted(let p): return obj("recording.started", ["audioPath": s(p)])
         case .recordingStopped(let p, let d): return obj("recording.stopped", ["audioPath": s(p), "durationMs": n(d)])
+        case .recordingAborted(let p): return obj("recording.aborted", ["audioPath": s(p)])
         case .hotkey(let a): return obj("hotkey", ["action": s(a.rawValue)])
         case .dictationStarted(let id, let pre): return obj("dictation.started", ["id": s(id), "preRollMs": n(pre)])
         case .dictationLevel(let rms): return obj("dictation.level", ["rms": n(min(1, max(0, rms)))])
@@ -231,6 +236,7 @@ extension HelperMessage {
             self = .asr(try AsrEvent(json: e))
         case "recording.started": self = .recordingStarted(audioPath: try f.str("audioPath"))
         case "recording.stopped": self = .recordingStopped(audioPath: try f.str("audioPath"), durationMs: try f.num("durationMs"))
+        case "recording.aborted": self = .recordingAborted(audioPath: try f.str("audioPath"))
         case "hotkey": self = .hotkey(try f.enumValue("action", HotkeyAction.self))
         case "dictation.started": self = .dictationStarted(id: try f.str("id"), preRollMs: try f.num("preRollMs"))
         case "dictation.level":
@@ -266,6 +272,7 @@ extension HostMessage {
         case .recordingStart(let p): return .object(["type": s("recording.start"), "audioPath": s(p)])
         case .recordingStop(let p):
             return p.map { .object(["type": s("recording.stop"), "audioPath": s($0)]) } ?? .object(["type": s("recording.stop")])
+        case .recordingAbort(let p): return .object(["type": s("recording.abort"), "audioPath": s(p)])
         case .recordingPause: return .object(["type": s("recording.pause")])
         case .recordingResume: return .object(["type": s("recording.resume")])
         case .dictationConfigure(let warm, let pre, let stream, let key):
@@ -287,6 +294,7 @@ extension HostMessage {
         case "shutdown": self = .shutdown
         case "recording.start": self = .recordingStart(audioPath: try f.str("audioPath"))
         case "recording.stop": self = .recordingStop(audioPath: try f.optStr("audioPath"))
+        case "recording.abort": self = .recordingAbort(audioPath: try f.str("audioPath"))
         case "recording.pause": self = .recordingPause
         case "recording.resume": self = .recordingResume
         case "dictation.configure":

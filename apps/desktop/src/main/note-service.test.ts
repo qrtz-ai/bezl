@@ -84,6 +84,8 @@ function rig(
     llmDelayMs?: number;
     /** Every mock helper fails to create recording files (fails closed: error recording.file, no started). */
     failRecordingFile?: boolean;
+    /** N2: recording.stop is never acked; recording.abort is answered ('ok') or not ('wedged'). */
+    wedgeStop?: { abort?: 'ok' | 'wedged' };
     /** Runs before each host→helper line reaches the mock (fault/timing injection). */
     beforeWrite?: (
       type: string,
@@ -164,6 +166,7 @@ function rig(
         ...(o.permissions ? { permissions: o.permissions } : {}),
         ...(o.revoke ? { revoke: o.revoke } : {}),
         ...(o.failRecordingFile ? { failRecordingFile: true } : {}),
+        ...(o.wedgeStop ? { wedgeStop: o.wedgeStop } : {}),
       });
       mocks.push(m);
       const write = m.write.bind(m);
@@ -791,6 +794,64 @@ describe('NoteService lifecycle (integration with mock helper + real worker hand
     expect(r.note.view().phase).toBe('recording');
     await r.note.stop();
   });
+
+  it(
+    'N2: a missed stop ack aborts just that recording by its file; the helper (and a dictation on it) survives',
+    { timeout: 20_000 },
+    async () => {
+      const r = rig({ wedgeStop: { abort: 'ok' } });
+      const lines: string[] = [];
+      r.helper.onLine((l) => lines.push(l));
+      await detected(r);
+      await r.note.start();
+      await until(() => finals(r) >= 1);
+      // A dictation shares the helper with the recording.
+      r.mocks[0]!.write(
+        encodeHostMessage({ type: 'dictation.start', id: 'd1' }),
+      );
+      await until(() => lines.some((l) => l.includes('"dictation.started"')));
+      await r.note.stop();
+      const own = r.writes.find((w) => w.type === 'recording.start')!.msg
+        .audioPath;
+      expect(
+        r.writes
+          .filter((w) => w.type === 'recording.abort')
+          .map((w) => w.msg.audioPath),
+      ).toEqual([own]);
+      expect(r.mocks).toHaveLength(1); // no restart
+      await until(() => r.note.view().phase === 'done');
+      // The dictation is still alive on the same helper: its stop is answered.
+      r.mocks[0]!.write(
+        encodeHostMessage({ type: 'dictation.stop', id: 'd1' }),
+      );
+      await until(() =>
+        lines.some(
+          (l) => l.includes('"dictation.stopped"') && l.includes('"d1"'),
+        ),
+      );
+      expect(lines.some((l) => l.includes('helper-lost'))).toBe(false);
+    },
+  );
+
+  it(
+    'N2: when the abort is not acked either (hard deadline), the helper is restarted',
+    { timeout: 40_000 },
+    async () => {
+      const r = rig({ wedgeStop: { abort: 'wedged' } });
+      await detected(r);
+      await r.note.start();
+      await until(() => finals(r) >= 1);
+      await r.note.stop();
+      expect(r.writes.filter((w) => w.type === 'recording.abort')).toHaveLength(
+        1,
+      );
+      // The abort deadline plus a helper restart: generous waits, this runs under full-suite load.
+      await until(() => r.mocks.length === 2, 15_000);
+      // The meeting still completes. Use the session events, not the live view: the restarted helper re-detects the
+      // meeting right after, which moves the view on to `detected`.
+      await until(() => r.sessions.some((v) => v.phase === 'done'), 15_000);
+    },
+  );
 
   it('C5: a step never runs if its start could not be persisted (durability barrier), then retries', async () => {
     const r = rig();

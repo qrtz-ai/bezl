@@ -5,6 +5,7 @@
     "helperReconnectWindowMs": 30000,
     "startAckMs": 5000,
     "stopAckMs": 10000,
+    "abortAckMs": 2000,
     "appendLive": {
       "maxAttempts": 5,
       "baseMs": 250,

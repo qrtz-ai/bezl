@@ -320,6 +320,8 @@ export const RETRY_POLICIES = {
   startAckMs: 5_000,
   /** recording.stopped ack (helper flushes recogniser + WAV). */
   stopAckMs: 10_000,
+  /** N2: recording.aborted ack after a missed stop ack (a hard deadline; then the helper is restarted). */
+  abortAckMs: 2_000,
   appendLive: { maxAttempts: 5, baseMs: 250, maxMs: 4_000 },
   finalize: { maxAttempts: 3, baseMs: 1_000, maxMs: 16_000 },
   summary: { maxAttempts: 3, baseMs: 2_000, maxMs: 30_000 },

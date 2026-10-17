@@ -128,6 +128,11 @@ pub enum HelperCommand {
     RecordingStop {
         audio_path: Option<String>,
     },
+    /// N2: tear down the recording writing `audio_path` without a flush (scoped; dictation untouched). The helper
+    /// answers `recording.aborted{audioPath}`.
+    RecordingAbort {
+        audio_path: String,
+    },
 
     RecordingPause,
     RecordingResume,
@@ -140,6 +145,7 @@ impl HelperCommand {
             HelperCommand::PermissionsRequest { .. } => "permissions.request",
             HelperCommand::RecordingStart { .. } => "recording.start",
             HelperCommand::RecordingStop { .. } => "recording.stop",
+            HelperCommand::RecordingAbort { .. } => "recording.abort",
             HelperCommand::RecordingPause => "recording.pause",
             HelperCommand::RecordingResume => "recording.resume",
         }
@@ -150,6 +156,7 @@ impl HelperCommand {
                 json!({ "type": self.type_name(), "permission": permission })
             }
             HelperCommand::RecordingStart { audio_path }
+            | HelperCommand::RecordingAbort { audio_path }
             | HelperCommand::RecordingStop {
                 audio_path: Some(audio_path),
             } => {
@@ -210,6 +217,9 @@ pub enum HelperInput {
         #[serde(default, deserialize_with = "de_ms_opt")]
         duration_ms: Option<Ms>,
     },
+    /// Answer to `recording.abort{audioPath}`: no writer on that file remains.
+    #[serde(rename = "recording.aborted", rename_all = "camelCase")]
+    RecordingAborted { audio_path: String },
     /// `audio_path` / `active_audio_path` are set on `recording.busy`: the ignored start's file and the file the
     /// running recording writes.
     #[serde(rename = "error", rename_all = "camelCase")]
@@ -241,6 +251,7 @@ impl HelperInput {
             HelperInput::Asr { .. } => "asr",
             HelperInput::RecordingStarted { .. } => "recording.started",
             HelperInput::RecordingStopped { .. } => "recording.stopped",
+            HelperInput::RecordingAborted { .. } => "recording.aborted",
             HelperInput::Error { .. } => "error",
         }
     }
