@@ -61,6 +61,8 @@ bun start                    # tauri dev: the Rust core + the React renderer wit
 
 **Verified on Linux with the Rust mock helper:** `cargo test --workspace` (the Rust core, the shell, the app E2E through the real router and helper bridge), the Swift helper core (`swift test`, Foundation-only parts), vitest for the renderer packages, and the renderer Playwright suite against the mocked backend (`bun run e2e`). Parity E2E against the real Tauri app is in progress (docs/e2e-parity.md).
 
+**Memory (Linux, release, ADR 0066):** idle 362 MB PSS / 554 MB RSS in total (the Electron build was 311 / 699). While recording, 485 / 851 (Electron 348 / 833). The Rust process takes about 110 MB; the rest is WebKitGTK, and the recording HUD's own web process is about 150 MB of that. Mac numbers are still to measure.
+
 **Needs a Mac:** see the Mac-only list in [docs/tauri-migration-status.md](docs/tauri-migration-status.md) and [docs/mac-verify.md](docs/mac-verify.md).
 
 ## Accounts needed

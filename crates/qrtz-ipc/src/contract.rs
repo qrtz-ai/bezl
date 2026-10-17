@@ -146,7 +146,7 @@ pub fn issues(v: &Validator, value: &Value) -> Vec<Value> {
         .take(10)
         .map(|e| {
             serde_json::json!({
-                "path": e.instance_path.to_string().trim_start_matches('/').replace('/', "."),
+                "path": e.instance_path().to_string().trim_start_matches('/').replace('/', "."),
                 "message": e.to_string(),
             })
         })

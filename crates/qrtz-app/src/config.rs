@@ -89,7 +89,7 @@ pub fn load_config(input: Option<&Value>) -> Value {
     }
     let mut obj = stored.as_object().cloned().unwrap_or_default();
     for e in c.config_schema.iter_errors(&merged) {
-        let path = e.instance_path.to_string();
+        let path = e.instance_path().to_string();
         if let Some(top) = path
             .trim_start_matches('/')
             .split('/')

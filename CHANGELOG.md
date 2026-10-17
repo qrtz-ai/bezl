@@ -2,6 +2,8 @@
 
 ## Unreleased: Tauri only
 
+- **First run and speech setup in the Tauri app:** a short walkthrough (welcome, permissions, the speech download with pause, resume and retry, which keeps going in the background and survives a quit, and an optional OpenRouter key). Settings gained a speech section (update, re-download, delete, auto-update, and the search model). Note and talk say when speech is missing or still downloading. A search model downloaded while the app runs is used without a restart (ADR 0064). Plain-http downloads are allowed only to a real loopback host (N100).
+- **About 240 MB less memory (ADR 0066):** jsonschema 0.33 → 0.59. The IPC contract validators took 222 MB in 0.33 and take 2 MB in 0.59. The Tauri app now uses 362 MB PSS idle and 485 MB recording on Linux (it was 601 and 726).
 - **Electron is gone (ADR 0061):** qrtz is one Tauri 2 app with the Rust core. `apps/desktop` is the Tauri app (the renderer and sub-app manifests moved in); the Electron main process, worker, Forge packaging, Electron e2e suite and its scripts are deleted (last at `c6723c4`). Rust is the oracle for the shared vectors and scenarios under `spec/`. Libraries, backups and `talk.json` from the Electron build open unchanged.
 - **Live transcript from the speech module in recordings (step 9, ADR 0046 §9.4):** each recording part runs its own module session attached to the helper's capture; its words are the live transcript, and without an installed module the part records audio and shows speech unavailable.
 - **Chat never sees a meeting pending delete (N90/N93, ADR 0060).**
