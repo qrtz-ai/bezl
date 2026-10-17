@@ -3950,6 +3950,7 @@ dependencies = [
  "qrtz-lifecycle",
  "qrtz-llm",
  "qrtz-model",
+ "qrtz-search",
  "qrtz-storage",
  "rand 0.8.8",
  "serde",

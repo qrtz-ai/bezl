@@ -15,6 +15,7 @@ runtime = [
   "dep:qrtz-model",
   "dep:qrtz-backup",
   "dep:qrtz-llm",
+  "dep:qrtz-search",
 ]
 
 [dependencies]
@@ -23,6 +24,7 @@ qrtz-storage = { workspace = true, optional = true }
 qrtz-model = { workspace = true, optional = true }
 qrtz-backup = { workspace = true, optional = true }
 qrtz-llm = { path = "../qrtz-llm", optional = true }
+qrtz-search = { path = "../qrtz-search", optional = true }
 rand.workspace = true
 unicode-normalization.workspace = true
 qrtz-ipc = { path = "../qrtz-ipc" }
@@ -41,6 +43,7 @@ tokio = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true
 qrtz-helper-bridge = { path = "../qrtz-helper-bridge" }
 qrtz-storage.workspace = true
+qrtz-search = { path = "../qrtz-search" }
 libc = "0.2"
 # `cargo test --workspace` builds the runtime adapter tests without extra flags.
 qrtz-app = { path = ".", features = ["runtime"] }

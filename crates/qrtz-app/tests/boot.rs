@@ -71,9 +71,10 @@ fn app_with(
         secrets: None,
         talk: None,
         steps: None,
+        embedder: Some(qrtz_search::LazyEmbedder::none()),
         knobs: DevKnobs {
             retry_scale: Some(0.001),
-            fault_step: None,
+            ..Default::default()
         },
     })
     .unwrap()

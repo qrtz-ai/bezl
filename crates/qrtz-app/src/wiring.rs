@@ -15,6 +15,57 @@ use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+/// `llmParams`: `note.llmProvider` / `note.llmModel` / `privacy.localOnly`, read per attempt; the base URL is a dev
+/// knob only (it would redirect the key).
+pub fn llm_config(cfg: &Value, base_url: Option<&str>) -> qrtz_llm::LlmConfig {
+    qrtz_llm::LlmConfig {
+        provider: cfg["note"]["llmProvider"]
+            .as_str()
+            .unwrap_or("openrouter")
+            .to_string(),
+        model: cfg["note"]["llmModel"].as_str().unwrap_or("").to_string(),
+        base_url: base_url.map(String::from),
+        local_only: cfg["privacy"]["localOnly"].as_bool().unwrap_or(false),
+    }
+}
+
+/// The gates the vector backfill checks per meeting (N17 tombstones; Bozniak's N82 `busy` gate goes here too).
+pub struct BackfillGates {
+    pub tombstoned: Arc<dyn Fn(&str) -> bool + Send + Sync>,
+}
+
+/// The search side the shell keeps for its lifetime: the lazily loaded embedder (index step, chat retrieval) and
+/// the background backfill (spawned by [`SearchHandles::start`], cancelled by [`SearchHandles::shutdown`]).
+pub struct SearchHandles {
+    pub embedder: Arc<qrtz_search::LazyEmbedder>,
+    pub backfill: Arc<qrtz_search::Backfill<StorageHandle>>,
+    config: SharedConfig,
+    started: std::sync::atomic::AtomicBool,
+}
+
+/// How long a failed backfill pass waits before the next one.
+pub const BACKFILL_RETRY: std::time::Duration = std::time::Duration::from_secs(60);
+
+impl SearchHandles {
+    /// Start loading the model and spawn the backfill (once; needs the tokio runtime). Off when
+    /// `note.backgroundIndexing` is false (the index step after each meeting still runs).
+    pub fn start(&self) {
+        if self.started.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+        self.embedder.start();
+        if self.config.get()["note"]["backgroundIndexing"].as_bool() == Some(false) {
+            return;
+        }
+        let (b, e) = (self.backfill.clone(), self.embedder.clone());
+        tokio::spawn(async move { b.run(e, BACKFILL_RETRY).await });
+    }
+    /// Quit: the backfill stops at its next meeting / batch boundary.
+    pub fn shutdown(&self) {
+        self.backfill.cancel();
+    }
+}
+
 /// `HelperPort` over the supervisor: ordered, sync enqueue; `false` when the helper isn't running.
 pub struct SupervisorHelper(pub Supervisor);
 impl HelperPort for SupervisorHelper {
@@ -108,6 +159,10 @@ impl EventSink for AppSink {
 pub struct DevKnobs {
     pub retry_scale: Option<f64>,
     pub fault_step: Option<StepId>,
+    /// `QRTZ_LLM_BASE_URL`: the LLM requests (with the API key) go to this host instead (tests, mock servers).
+    pub llm_base_url: Option<String>,
+    /// `QRTZ_MINILM_DIR`: the MiniLM model directory (default `<data>/models/all-MiniLM-L6-v2`).
+    pub minilm_dir: Option<PathBuf>,
 }
 
 impl DevKnobs {
@@ -123,6 +178,8 @@ impl DevKnobs {
             fault_step: std::env::var("QRTZ_FAULT_STEP")
                 .ok()
                 .and_then(|v| serde_json::from_value(Value::String(v)).ok()),
+            llm_base_url: std::env::var("QRTZ_LLM_BASE_URL").ok().filter(|v| !v.is_empty()),
+            minilm_dir: std::env::var_os("QRTZ_MINILM_DIR").map(PathBuf::from),
         }
     }
 }
@@ -148,6 +205,7 @@ pub struct Booted {
     pub dirs: AppDirs,
     pub db: StorageHandle,
     pub runtime: NoteRuntime,
+    pub search: Arc<SearchHandles>,
 }
 
 /// Inputs to [`boot`].
@@ -162,6 +220,10 @@ pub struct BootOptions {
     /// `None` = deferred deletes run at once (tests); the app passes `PendingDeletes::new(data dir)`.
     pub pending_delete: Option<Arc<qrtz_storage::PendingDeletes>>,
     pub clock: Option<Arc<dyn Clock>>,
+    /// API keys for the summary provider (`None` = on-device summaries only).
+    pub secrets: Option<Arc<dyn crate::secrets::SecretStore>>,
+    /// `None` = MiniLM from the model dir (full-text only until it is there).
+    pub embedder: Option<Arc<qrtz_search::LazyEmbedder>>,
     pub knobs: DevKnobs,
 }
 
@@ -172,19 +234,50 @@ pub fn boot(o: BootOptions) -> std::io::Result<Booted> {
     let db = StorageHandle::spawn(dirs.data.join("qrtz.db"))
         .map_err(|e| std::io::Error::other(format!("database: {e}")))?;
     let cfg = o.config.clone();
-    // ADR 0042: qrtz-llm's summary step (on-device extractive first); finalize/index stay CoreSteps for now.
+    let now: Arc<dyn Fn() -> i64 + Send + Sync> = Arc::new(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0)
+    });
+    let embedder = o.embedder.unwrap_or_else(|| {
+        let dir = o
+            .knobs
+            .minilm_dir
+            .clone()
+            .unwrap_or_else(|| dirs.data.join("models").join("all-MiniLM-L6-v2"));
+        qrtz_search::LazyEmbedder::new(qrtz_search::minilm::loader(dir))
+    });
+    // N83 (ADR 0042, 0049): SearchSteps (index) → LlmSteps (summary: the configured provider, extractive fallback)
+    // → CoreSteps (finalize). Every LLM request goes through `qrtz_llm::http_client()` (no redirects, N81).
     let steps = o.steps.unwrap_or_else(|| {
         let core: Arc<dyn StepExecutor> = Arc::new(CoreSteps { db: db.clone() });
-        Arc::new(qrtz_llm::LlmSteps::on_device(
-            db.clone(),
-            core,
-            Arc::new(|| {
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_millis() as i64)
-                    .unwrap_or(0)
-            }),
-        ))
+        let llm: Arc<dyn StepExecutor> = match o.secrets.clone() {
+            Some(sec) => {
+                let (c, base) = (cfg.clone(), o.knobs.llm_base_url.clone());
+                Arc::new(qrtz_llm::LlmSteps::new(
+                    db.clone(),
+                    core,
+                    now.clone(),
+                    Arc::new(move || llm_config(&c.get(), base.as_deref())),
+                    Arc::new(move |n: &str| sec.get(n)),
+                ))
+            }
+            None => Arc::new(qrtz_llm::LlmSteps::on_device(db.clone(), core, now.clone())),
+        };
+        Arc::new(qrtz_search::SearchSteps::new(db.clone(), llm, embedder.clone()))
+    });
+    let gates = BackfillGates {
+        tombstoned: match o.pending_delete.clone() {
+            Some(p) => Arc::new(move |id: &str| p.has(id)),
+            None => Arc::new(|_: &str| false),
+        },
+    };
+    let search = Arc::new(SearchHandles {
+        backfill: qrtz_search::Backfill::new(db.clone(), gates.tombstoned),
+        embedder,
+        config: o.config.clone(),
+        started: Default::default(),
     });
     let runtime = NoteRuntime::new(RuntimeDeps {
         store: Arc::new(Store(db.clone())),
@@ -201,7 +294,12 @@ pub fn boot(o: BootOptions) -> std::io::Result<Booted> {
         default_title: Arc::new(utc_recording_title),
         pending_delete: o.pending_delete,
     });
-    Ok(Booted { dirs, db, runtime })
+    Ok(Booted {
+        dirs,
+        db,
+        runtime,
+        search,
+    })
 }
 
 /// Everything the Tauri shell (and the headless tests) need to assemble the app in one call.
@@ -220,6 +318,8 @@ pub struct AppBuild {
     pub secrets: Option<Arc<dyn crate::secrets::SecretStore>>,
     pub talk: Option<Arc<dyn crate::ports::TalkPort>>,
     pub steps: Option<Arc<dyn StepExecutor>>,
+    /// `None` = MiniLM from the model dir.
+    pub embedder: Option<Arc<qrtz_search::LazyEmbedder>>,
     pub knobs: DevKnobs,
 }
 
@@ -228,6 +328,8 @@ pub struct BuiltApp {
     pub runtime: NoteRuntime,
     pub db: StorageHandle,
     pub dirs: AppDirs,
+    /// Call `search.start()` inside the tokio runtime after boot and `search.shutdown()` on quit.
+    pub search: Arc<SearchHandles>,
 }
 
 /// The default secret store for this platform (env overrides in front).
@@ -271,6 +373,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     };
     // One tombstone store for the runtime (undo window) and backup import (skips meetings pending delete).
     let pending = Arc::new(qrtz_storage::PendingDeletes::new(&dirs.data));
+    let secrets = b.secrets.unwrap_or_else(|| platform_secrets(&dirs.data));
     let booted = boot(BootOptions {
         data_dir: dirs.data.clone(),
         events: events.clone(),
@@ -280,6 +383,8 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         steps: b.steps,
         pending_delete: Some(pending.clone()),
         clock: None,
+        secrets: Some(secrets.clone()),
+        embedder: b.embedder,
         knobs: b.knobs,
     })?;
     let rt = booted.runtime.clone();
@@ -296,7 +401,6 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         pending: Some(pending.clone()),
         app_version: b.info.version.clone(),
     };
-    let secrets = b.secrets.unwrap_or_else(|| platform_secrets(&dirs.data));
     let service = crate::AppService::new(crate::AppDeps {
         info: b.info,
         config,
@@ -313,5 +417,6 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         runtime: booted.runtime,
         db: booted.db,
         dirs: booted.dirs,
+        search: booted.search,
     })
 }
