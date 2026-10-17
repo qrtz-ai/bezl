@@ -4,7 +4,7 @@
 //!
 //! The default engine is on-device (the helper's recogniser, `dictation.asr`); a cloud provider runs only when the
 //! user picks it (`talk.engine = elevenlabs`, off by default). ElevenLabs Scribe v2 Realtime is the only cloud
-//! option (Deepgram was removed, decisions-parity).
+//! option (Deepgram was removed, ADR 0067); the trait stays generic.
 //!
 //! Text is never attributed to a speaker here: the mic can pick up a whole room. A provider frame that carries a
 //! speaker label is read for its text only (diarization belongs to the note path).
