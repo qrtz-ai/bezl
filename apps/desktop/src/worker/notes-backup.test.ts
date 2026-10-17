@@ -73,10 +73,10 @@ describe('notes + templates', () => {
       active: [],
       llm,
     });
-    expect(s.summary).toMatch(
+    expect(s!.summary).toMatch(
       /^Your notes: Pilot budget 50k; TODO send the security questionnaire\./,
     );
-    expect(s.actionItems.map((a) => a.text)).toContain(
+    expect(s!.actionItems.map((a) => a.text)).toContain(
       'send the security questionnaire',
     );
     const d = h['note.get']({ id: 'm1' });
@@ -106,7 +106,7 @@ describe('notes + templates', () => {
       active: [],
       llm,
     });
-    expect(first.template).toBe('standup');
+    expect(first!.template).toBe('standup');
     const again = await h['note.resummarize']({
       id: 'm2',
       template: 'sales',

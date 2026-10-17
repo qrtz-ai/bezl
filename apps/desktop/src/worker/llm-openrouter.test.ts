@@ -109,9 +109,9 @@ describe('OpenRouter summary path (local OpenAI-compatible stub)', () => {
     seen.length = 0;
     const h = setup();
     const s = await finalize(h);
-    expect(s.provider).toBe('openrouter');
-    expect(s.llmError).toBeUndefined();
-    expect(s.actionItems).toEqual([
+    expect(s!.provider).toBe('openrouter');
+    expect(s!.llmError).toBeUndefined();
+    expect(s!.actionItems).toEqual([
       { text: 'Ship the beta', owner: 'Ada Lovelace' },
     ]);
     expect(h['note.get']({ id: 'm1' }).summary?.provider).toBe('openrouter');
@@ -127,8 +127,8 @@ describe('OpenRouter summary path (local OpenAI-compatible stub)', () => {
     mode = 'fail';
     const h = setup();
     const s = await finalize(h);
-    expect(s.provider).toBe('extractive');
-    expect(s.llmError).toMatch(/429|rate/i);
+    expect(s!.provider).toBe('extractive');
+    expect(s!.llmError).toMatch(/429|rate/i);
     expect(h['note.get']({ id: 'm1' }).meeting.status).toBe('done');
     mode = 'ok';
     const r = await h['note.resummarize']({ id: 'm1', llm: llm() });
@@ -139,8 +139,8 @@ describe('OpenRouter summary path (local OpenAI-compatible stub)', () => {
   it('treats a non-JSON reply as a failure (fallback, not a crash)', async () => {
     mode = 'garbage';
     const s = await finalize(setup());
-    expect(s.provider).toBe('extractive');
-    expect(s.llmError).toMatch(/JSON/);
+    expect(s!.provider).toBe('extractive');
+    expect(s!.llmError).toMatch(/JSON/);
   });
 
   it('chat: per-meeting and across-meetings answers are grounded in retrieved lines', async () => {

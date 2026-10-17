@@ -57,8 +57,8 @@ describe('worker handlers (DB + pipeline integration)', () => {
       active: fixtureActiveSpeakers(),
       llm: { provider: 'none' },
     });
-    expect(summary.provider).toBe('extractive');
-    expect(summary.actionItems.length).toBeGreaterThanOrEqual(3);
+    expect(summary!.provider).toBe('extractive');
+    expect(summary!.actionItems.length).toBeGreaterThanOrEqual(3);
     const got = h['note.get']({ id: 'm1' });
     expect(got.meeting).toMatchObject({
       status: 'done',
@@ -92,7 +92,7 @@ describe('worker handlers (DB + pipeline integration)', () => {
       active: fixtureActiveSpeakers(),
       llm: { provider: 'openai', apiKey: 'sk-test' },
     });
-    expect(s.provider).toBe('extractive');
+    expect(s!.provider).toBe('extractive');
     expect(logs).toContain('llm failed; using extractive fallback');
     expect(h['note.get']({ id: 'm1' }).segments[1]?.speakerName).toBe(
       'Grace Hopper',
