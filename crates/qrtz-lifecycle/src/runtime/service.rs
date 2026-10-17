@@ -77,16 +77,9 @@ const FINALIZE_TIMEOUT_MS: u64 = 60_000;
 const SUMMARY_TIMEOUT_MS: u64 = 120_000;
 const INDEX_TIMEOUT_MS: u64 = 300_000;
 
-/// `degradationsForRevocation` (packages/core/src/helper/arbiter.ts).
-pub fn degradations_for_revocation(p: OsPermission, already_denied: &[OsPermission]) -> Vec<Degradation> {
-    let has = |x: OsPermission| !already_denied.contains(&x) && x != p;
-    vec![match p {
-        OsPermission::Accessibility => Degradation::AxUnavailable,
-        OsPermission::Microphone if has(OsPermission::ScreenRecording) => Degradation::NoMic,
-        OsPermission::ScreenRecording if has(OsPermission::Microphone) => Degradation::MicOnly,
-        _ => Degradation::AudioUnavailable,
-    }]
-}
+/// `degradationsForRevocation` (packages/core/src/helper/arbiter.ts). One Rust copy: the arbiter port's, pinned
+/// to spec/vectors/helper; this re-export keeps the old path (N6, ADR 0011).
+pub use crate::arbiter::degradations_for_revocation;
 
 fn started_for(audio_path: &str) -> Option<Matcher> {
     let want = audio_path.to_string();
