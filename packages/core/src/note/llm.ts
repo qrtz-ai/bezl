@@ -93,12 +93,30 @@ async function post(
   body: unknown,
   signal?: AbortSignal,
 ) {
-  const res = await fetchFn(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', ...headers },
-    body: JSON.stringify(body),
-    ...(signal ? { signal } : {}),
-  });
+  let res: Response;
+  try {
+    res = await fetchFn(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...headers },
+      body: JSON.stringify(body),
+      ...(signal ? { signal } : {}),
+    });
+  } catch (e) {
+    // Transport failures (DNS, offline, reset) must be retryable: F11 / summary policy.
+    // A raw TypeError would become E_INTERNAL via AppError.from and fail the step once.
+    const msg = e instanceof Error ? e.message : String(e);
+    const aborted =
+      (e instanceof Error && e.name === 'AbortError') ||
+      (typeof DOMException !== 'undefined' &&
+        e instanceof DOMException &&
+        e.name === 'AbortError') ||
+      signal?.aborted;
+    throw new AppError(
+      aborted ? 'E_TIMEOUT' : 'E_UNAVAILABLE',
+      `LLM network error: ${msg.slice(0, 200)}`,
+      { retryable: true, cause: e },
+    );
+  }
   if (!res.ok) {
     const t = await res.text().catch(() => '');
     // Providers return {"error":{"message":...}}; show that instead of raw JSON.
