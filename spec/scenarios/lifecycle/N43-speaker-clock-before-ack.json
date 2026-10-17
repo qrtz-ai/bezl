@@ -1,0 +1,362 @@
+{
+  "name": "N43-speaker-clock-before-ack",
+  "about": "N43: an AX speaker change is placed in meeting time only once its part's ack is applied. Before the ack (starting) and while reconnecting, the helper's atMs counts from its own start, so those are ignored; one in the ack's own chunk is held and gets the new part's offset (N37 hold). Ana names the first line, Ben the line after the reconnect; Old and Zed name nothing.",
+  "script": [
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permissions.status",
+        "status": {
+          "accessibility": "granted",
+          "screen-recording": "granted",
+          "microphone": "granted"
+        }
+      }
+    },
+    {
+      "op": "call",
+      "fn": "start",
+      "label": "start",
+      "args": {
+        "title": "Standup"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "ax.activeSpeaker",
+        "atMs": 5000000,
+        "name": "Old"
+      }
+    },
+    {
+      "op": "helperBatch",
+      "msgs": [
+        {
+          "type": "recording.started",
+          "audioPath": "$REC/id1.wav"
+        },
+        {
+          "type": "ax.activeSpeaker",
+          "atMs": 0,
+          "name": "Ana"
+        },
+        {
+          "type": "asr",
+          "event": {
+            "kind": "final",
+            "utteranceId": "u1",
+            "startMs": 100,
+            "endMs": 1900,
+            "text": "hello everyone"
+          }
+        }
+      ]
+    },
+    {
+      "op": "advance",
+      "ms": 2000
+    },
+    {
+      "op": "wav",
+      "file": "id1.wav",
+      "ms": 2000,
+      "broken": true
+    },
+    {
+      "op": "helperDown",
+      "reason": "exited"
+    },
+    {
+      "op": "advance",
+      "ms": 1000
+    },
+    {
+      "op": "helperUp"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "ax.activeSpeaker",
+        "atMs": 300,
+        "name": "Zed"
+      }
+    },
+    {
+      "op": "helperBatch",
+      "msgs": [
+        {
+          "type": "recording.started",
+          "audioPath": "$REC/id1.p1.wav"
+        },
+        {
+          "type": "ax.activeSpeaker",
+          "atMs": 0,
+          "name": "Ben"
+        },
+        {
+          "type": "asr",
+          "event": {
+            "kind": "final",
+            "utteranceId": "u1",
+            "startMs": 100,
+            "endMs": 900,
+            "text": "after the gap"
+          }
+        }
+      ]
+    },
+    {
+      "op": "advance",
+      "ms": 1000
+    },
+    {
+      "op": "wav",
+      "file": "id1.p1.wav",
+      "ms": 1000,
+      "broken": false
+    },
+    {
+      "op": "call",
+      "fn": "stop",
+      "label": "stop"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.stopped",
+        "audioPath": "$REC/id1.p1.wav",
+        "durationMs": 1000
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 100
+    }
+  ],
+  "expect": {
+    "trace": {
+      "session": [
+        "idle|-|-|-|-|-|ok",
+        "starting|id1|-|-|-|-|ok",
+        "recording|id1|-|-|-|-|ok",
+        "reconnecting|id1|-|-|r1|-|ok",
+        "recording|id1|transcript-gap|-|-|-|ok",
+        "stopping|id1|transcript-gap|-|-|-|ok",
+        "processing|id1|transcript-gap|-|-|-|ok",
+        "done|id1|transcript-gap|-|-|-|ok"
+      ],
+      "pipelines": {
+        "id1": [
+          "manual finalize:pending/0 summary:pending/0 index:pending/0",
+          "manual finalize:running/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:running/1 index:pending/0",
+          "manual finalize:done/1 summary:done/1 index:pending/0",
+          "manual finalize:done/1 summary:done/1 index:running/1",
+          "manual finalize:done/1 summary:done/1 index:done/1"
+        ]
+      },
+      "helper": [
+        "permissions.check",
+        "recording.start $REC/id1.wav",
+        "permissions.check",
+        "recording.start $REC/id1.p1.wav",
+        "recording.stop"
+      ],
+      "transcript": [
+        [
+          0,
+          1,
+          [
+            "u1@Ana"
+          ],
+          null
+        ],
+        [
+          1,
+          2,
+          [
+            "p1-u1@Ben"
+          ],
+          null
+        ],
+        [
+          2,
+          3,
+          [],
+          null
+        ]
+      ],
+      "changed": [
+        "id1",
+        "id1",
+        "id1",
+        "id1"
+      ],
+      "permissions": [
+        "granted|granted|granted"
+      ],
+      "prompts": []
+    },
+    "results": {
+      "start": {
+        "ok": {
+          "phase": "recording",
+          "meetingId": "id1"
+        }
+      },
+      "stop": {
+        "ok": {
+          "phase": "processing",
+          "meetingId": "id1"
+        }
+      }
+    },
+    "snapshots": {
+      "end": {
+        "view": {
+          "phase": "done",
+          "meetingId": "id1",
+          "startedAt": 1760000000000,
+          "elapsedMs": 4000,
+          "stopReason": "manual",
+          "degraded": [
+            "transcript-gap"
+          ],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": "Ben",
+          "lines": [
+            [
+              "u1",
+              "Ana",
+              "hello everyone",
+              100
+            ],
+            [
+              "p1-u1",
+              "Ben",
+              "after the gap",
+              3100
+            ]
+          ],
+          "partial": "",
+          "pipeline": "finalize:done/1 summary:done/1 index:done/1"
+        },
+        "live": {
+          "meetingId": "id1",
+          "rev": 3,
+          "segments": [
+            [
+              "u1",
+              "Ana",
+              100,
+              1900
+            ],
+            [
+              "p1-u1",
+              "Ben",
+              3100,
+              3900
+            ]
+          ],
+          "partial": null
+        },
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "done",
+              1760000000000,
+              1760000004000,
+              4000,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [
+            [
+              "id1",
+              "u1",
+              "live",
+              100,
+              1900,
+              "Ana",
+              "hello everyone"
+            ],
+            [
+              "id1",
+              "p1-u1",
+              "live",
+              3100,
+              3900,
+              "Ben",
+              "after the gap"
+            ]
+          ],
+          "summaries": [
+            [
+              "id1",
+              "stub",
+              "STUB summary",
+              null
+            ]
+          ],
+          "notes": [],
+          "pipelines": [
+            [
+              "id1",
+              1,
+              "manual",
+              "finalize:done/1 summary:done/1 index:done/1",
+              1000,
+              true,
+              [
+                "$REC/id1.wav",
+                "$REC/id1.p1.wav"
+              ],
+              2
+            ]
+          ],
+          "session": [
+            "done",
+            "id1"
+          ]
+        },
+        "files": [
+          [
+            "id1.wav",
+            128044
+          ]
+        ]
+      }
+    }
+  }
+}

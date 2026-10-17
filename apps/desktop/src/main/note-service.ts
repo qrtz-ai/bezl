@@ -66,6 +66,8 @@ const INDEX_DEADLINE_MS = 280_000;
 const HELD_BEHIND_ACK: ReadonlySet<HelperToHost['type']> = new Set([
   'capture.degraded',
   'asr',
+  // N43: its `atMs` is part-relative from `recording.started` on, so it needs the new part's offset too.
+  'ax.activeSpeaker',
 ]);
 /** N37: the continuation runs a microtask after the ack, so this only bounds a misbehaving helper. */
 const MAX_HELD_BEHIND_ACK = 64;
@@ -451,7 +453,10 @@ export class NoteService {
         else this.machine.send({ type: 'meeting-ended', key: m.key });
         break;
       case 'ax.activeSpeaker':
-        if (isCapturing(s.phase)) {
+        // N43: only once the part's ack is applied. Before it (`starting`, `reconnecting`) the helper's `atMs` counts
+        // from its own start, not the part's, so adding `partOffsetMs` would misplace the speaker. `stopping` is kept:
+        // the part still runs until `recording.stopped`.
+        if (s.phase === 'recording' || s.phase === 'stopping') {
           this.active.push({ atMs: m.atMs + s.partOffsetMs, name: m.name });
           this.emitSoon();
         }

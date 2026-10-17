@@ -790,7 +790,10 @@ impl Shared {
                         held: Vec::new(),
                     });
                 }
-                HelperInput::CaptureDegraded { .. } | HelperInput::Asr { .. } => {
+                // N43: `ActiveSpeaker.at_ms` is part-relative from `recording.started` on, so it waits for the offset.
+                HelperInput::CaptureDegraded { .. }
+                | HelperInput::Asr { .. }
+                | HelperInput::ActiveSpeaker { .. } => {
                     if let Some(a) = st.acked.as_mut() {
                         if a.held.len() < MAX_HELD_BEHIND_ACK {
                             a.held.push(m);
@@ -938,7 +941,8 @@ impl Shared {
                 }
             }
             HelperInput::ActiveSpeaker { at_ms, name } => {
-                if is_capturing(s.phase) {
+                // N43: only once the part's ack is applied (before it the helper's clock is not the part's).
+                if matches!(s.phase, RecordingPhase::Recording | RecordingPhase::Stopping) {
                     self.lock().active.push(ActiveSpeakerEvent {
                         at_ms: at_ms + s.part_offset_ms,
                         name,
