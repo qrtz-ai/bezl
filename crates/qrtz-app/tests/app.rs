@@ -320,3 +320,84 @@ fn talk_messages_route_to_talk() {
     assert!(!is_talk_message("asr"));
     assert!(!is_talk_message("recording.started"));
 }
+
+/// T2: `hello` reaches both the recording runtime and talk, and helper status reaches talk too, so a Rust talk
+/// port can run the helper-lost path (Electron `TalkService.onHelperLost`). Talk messages still go only to talk.
+#[test]
+fn hello_and_helper_status_reach_talk() {
+    use qrtz_helper_bridge::{HelperState, HelperStatus};
+    use std::sync::Mutex;
+    #[derive(Default)]
+    struct Seen {
+        lines: Mutex<Vec<String>>,
+        statuses: Mutex<Vec<HelperState>>,
+    }
+    struct Talk(Arc<Seen>);
+    #[async_trait::async_trait]
+    impl TalkPort for Talk {
+        async fn call(&self, _c: &str, _p: Value) -> Result<Value, qrtz_ipc::AppError> {
+            Ok(Value::Null)
+        }
+        fn helper_line(&self, m: &Value) {
+            self.0
+                .lines
+                .lock()
+                .unwrap()
+                .push(m["type"].as_str().unwrap().into());
+        }
+        fn helper_status(&self, s: &HelperStatus) {
+            self.0.statuses.lock().unwrap().push(s.state);
+        }
+        async fn toggle(&self) -> Result<Value, qrtz_ipc::AppError> {
+            Ok(Value::Null)
+        }
+    }
+    struct Runtime(Arc<Seen>);
+    #[async_trait::async_trait]
+    impl RuntimePort for Runtime {
+        async fn call(&self, _c: &str, _p: Value) -> Result<Value, qrtz_ipc::AppError> {
+            Ok(Value::Null)
+        }
+        async fn toggle(&self) -> Result<Value, qrtz_ipc::AppError> {
+            Ok(Value::Null)
+        }
+        fn helper_line(&self, m: &Value) {
+            self.0
+                .lines
+                .lock()
+                .unwrap()
+                .push(m["type"].as_str().unwrap().into());
+        }
+        fn helper_status(&self, s: &HelperStatus) {
+            self.0.statuses.lock().unwrap().push(s.state);
+        }
+    }
+    let (talk, rt) = (Arc::new(Seen::default()), Arc::new(Seen::default()));
+    let dir = tempfile::tempdir().unwrap();
+    let svc = AppService::new(AppDeps {
+        info: info(),
+        config: ConfigStore::open(dir.path().join("config.json")),
+        secrets: Arc::new(MemorySecretStore::default()),
+        runtime: Arc::new(Runtime(rt.clone())),
+        storage: Arc::new(StubStorage),
+        talk: Arc::new(Talk(talk.clone())),
+        shell: Arc::new(NoShell),
+        helper: None,
+    });
+    svc.on_helper_line(
+        r#"{"features":[],"helperVersion":"0.1.0","os":"macOS 15.5","protocol":1,"type":"hello"}"#,
+    );
+    svc.on_helper_line(r#"{"action":"down","type":"hotkey"}"#);
+    assert_eq!(*rt.lines.lock().unwrap(), ["hello"]);
+    assert_eq!(*talk.lines.lock().unwrap(), ["hello", "hotkey"]);
+    let status = |state| HelperStatus {
+        state,
+        restarts: 1,
+        last_error: Some("exited".into()),
+    };
+    svc.on_helper_status(&status(HelperState::Backoff));
+    svc.on_helper_status(&status(HelperState::Running));
+    let want = [HelperState::Backoff, HelperState::Running];
+    assert_eq!(*talk.statuses.lock().unwrap(), want);
+    assert_eq!(*rt.statuses.lock().unwrap(), want);
+}

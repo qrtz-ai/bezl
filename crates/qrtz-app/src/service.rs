@@ -149,6 +149,11 @@ impl AppService {
                 if is_talk_message(ty) {
                     self.talk.helper_line(&msg);
                 } else if ty != "heartbeat" {
+                    // A new helper process concerns both apps: the runtime re-configures, talk ends a dictation the
+                    // old process owned (T2).
+                    if ty == "hello" {
+                        self.talk.helper_line(&msg);
+                    }
                     self.runtime.helper_line(&msg);
                 }
             }
@@ -158,8 +163,9 @@ impl AppService {
         }
     }
 
-    fn on_helper_status(&self, s: &HelperStatus) {
+    pub fn on_helper_status(&self, s: &HelperStatus) {
         self.runtime.helper_status(s);
+        self.talk.helper_status(s);
         self.events
             .emit("helper:status", serde_json::to_value(s).unwrap());
     }

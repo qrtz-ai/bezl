@@ -74,7 +74,12 @@ pub trait StoragePort: Send + Sync {
 #[async_trait]
 pub trait TalkPort: Send + Sync {
     async fn call(&self, channel: &str, payload: Value) -> Result<Value, AppError>;
+    /// Talk helper lines (`dictation.*`, `insert.*`, `hotkey`) and every `hello`: a hello from a newer helper while
+    /// a dictation is active means the helper restarted under it (T1/T2 helper-lost path).
     fn helper_line(&self, msg: &Value);
+    /// Supervisor status. Not running or starting while a dictation is active → end it gracefully with reason
+    /// `helper-lost` and release the started/stopped/insert waiters (mirrors Electron `TalkService.onHelperLost`).
+    fn helper_status(&self, _s: &HelperStatus) {}
     /// Global dictation hotkey (push-to-talk down/up or toggle).
     async fn toggle(&self) -> Result<Value, AppError>;
 }
