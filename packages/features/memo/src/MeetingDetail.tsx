@@ -12,6 +12,9 @@ import {
   Callout,
   Select,
   Dialog,
+  CaptureStatus,
+  PipelineSteps,
+  StreamingTranscript,
 } from '@qrtz/ui';
 import {
   SUMMARY_TEMPLATES,
@@ -24,6 +27,14 @@ import { PLATFORM_LABEL, fmtClock, fmtDate } from './format';
 import { ChatPanel } from './ChatPanel';
 import { Speakers } from './Speakers';
 import { Notes } from './Notes';
+import {
+  DEGRADED_LABELS,
+  STEP_LABELS,
+  isCapturingPhase,
+  useLiveTranscript,
+  usePipeline,
+  useSession,
+} from './useRecording';
 
 export function MeetingDetail({
   id,
@@ -44,9 +55,16 @@ export function MeetingDetail({
   const [reloadKey, setReloadKey] = useState(0);
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
+  // The transcript is front and center: it is the default view during and after a recording.
   const [tab, setTab] = useState<'summary' | 'notes' | 'transcript' | 'ask'>(
-    'summary',
+    'transcript',
   );
+  const session = useSession();
+  const isLive =
+    session.meetingId === id &&
+    (isCapturingPhase(session.phase) || session.phase === 'stopping');
+  const live = useLiveTranscript(isLive ? id : null);
+  const { pipeline, retry } = usePipeline(id);
   const [now, setNow] = useState(0);
   const [exported, setExported] = useState<string | null>(null);
   const audio = useRef<HTMLAudioElement>(null);
@@ -151,6 +169,48 @@ export function MeetingDetail({
       >
         {loadError}
       </Callout>
+    );
+  if (isLive)
+    return (
+      <div
+        data-testid="meeting-detail"
+        data-live=""
+        style={{ display: 'grid', gap: 12, alignContent: 'start' }}
+      >
+        <Heading level={2}>
+          {d?.meeting.title ?? session.detected?.title ?? 'Recording'}
+        </Heading>
+        <CaptureStatus
+          reconnecting={
+            session.reconnect
+              ? {
+                  attempt: session.reconnect.attempt,
+                  secondsLeft: Math.max(
+                    0,
+                    Math.round(
+                      (session.reconnect.deadlineAt - Date.now()) / 1000,
+                    ),
+                  ),
+                }
+              : null
+          }
+          degraded={session.degraded.map((f) => ({
+            id: f,
+            label: DEGRADED_LABELS[f],
+          }))}
+        />
+        <StreamingTranscript
+          live={session.phase !== 'stopping'}
+          segments={live?.segments ?? []}
+          partial={live?.partial ?? null}
+          maxHeight="calc(100vh - 260px)"
+          empty={
+            <Text size="sm" muted>
+              Listening…
+            </Text>
+          }
+        />
+      </div>
     );
   if (!d) return <Spinner />;
   const { meeting, segments, summary } = d;
@@ -268,12 +328,33 @@ export function MeetingDetail({
           {exported}
         </Text>
       ) : null}
+      {pipeline &&
+      !(
+        ['done', 'skipped'].includes(pipeline.steps.finalize.status) &&
+        pipeline.steps.summary.status === 'done' &&
+        ['done', 'skipped'].includes(pipeline.steps.index.status)
+      ) ? (
+        <PipelineSteps
+          steps={(['finalize', 'summary', 'index'] as const).map((k) => ({
+            id: k,
+            label: STEP_LABELS[k],
+            status: pipeline.steps[k].status,
+            attempts: pipeline.steps[k].attempts,
+            maxAttempts: pipeline.steps[k].maxAttempts,
+            ...(pipeline.steps[k].error
+              ? { error: pipeline.steps[k].error!.message }
+              : {}),
+            ...(pipeline.steps[k].fallback ? { fallback: true } : {}),
+          }))}
+          onRetry={(step) => retry(step as 'finalize' | 'summary' | 'index')}
+        />
+      ) : null}
       <Speakers meetingId={id} segments={segments} />
       <Tabs
         tabs={[
+          { id: 'transcript', label: `Transcript (${segments.length})` },
           { id: 'summary', label: 'Summary' },
           { id: 'notes', label: `Notes (${d?.notes?.length ?? 0})` },
-          { id: 'transcript', label: `Transcript (${segments.length})` },
           { id: 'ask', label: 'Ask' },
         ]}
         value={tab}

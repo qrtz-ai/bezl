@@ -59,6 +59,7 @@ async function recordAndFinish(win: Page, during?: () => Promise<void>) {
     ).not.toMatch(/recording|processing/);
   });
   await win.getByTestId('meeting-item').first().click();
+  await win.getByTestId('tab-summary').click(); // transcript is the default tab
   await expect(win.getByTestId('detail-summary')).toBeVisible({
     timeout: 15_000,
   });
@@ -87,6 +88,7 @@ test('live notes + privacy pause in the HUD, notes merged into the summary, temp
     await win.getByTestId('note-add').click();
     await expect(win.getByTestId('note')).toHaveCount(2);
   });
+  await win.getByTestId('tab-summary').click(); // transcript is the default tab
   const summary = win.getByTestId('detail-summary');
   await expect(summary).toContainText(
     'Your notes: Ask Grace about the launch checklist; TODO send recap to the team.',
@@ -120,6 +122,7 @@ test('live notes + privacy pause in the HUD, notes merged into the summary, temp
   await win.getByTestId('nav-home').click();
   await win.getByTestId('nav-memo').click();
   await win.getByTestId('meeting-item').first().click();
+  await win.getByTestId('tab-summary').click();
   await expect(win.getByTestId('summary-template')).toHaveValue('standup');
   expect(errors).toEqual([]);
   await app.close();
@@ -162,6 +165,7 @@ test('privacy: local-only never calls the cloud LLM; excluded apps are not detec
     fullPage: true,
   });
   await recordAndFinish(win);
+  await win.getByTestId('tab-summary').click(); // transcript is the default tab
   await expect(win.getByTestId('detail-summary')).toContainText(
     'on-device extractive',
   );
@@ -233,6 +237,7 @@ test('backup: export zip with checksums, import into a fresh profile, tampered z
   );
   await b.win.getByTestId('nav-memo').click();
   await b.win.getByTestId('meeting-item').first().click();
+  await b.win.getByTestId('tab-summary').click(); // transcript is the default tab
   await expect(b.win.getByTestId('detail-summary')).toContainText(
     'Your notes: backup me.',
   );

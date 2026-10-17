@@ -52,7 +52,8 @@ export function createTray(o: {
   render();
   // Elapsed time in the menu bar ticks once a second while recording.
   const timer = setInterval(() => {
-    if (o.getView().phase === 'recording') render();
+    if (['starting', 'recording', 'reconnecting'].includes(o.getView().phase))
+      render();
   }, 1000);
   return {
     update: render,

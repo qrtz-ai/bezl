@@ -55,6 +55,7 @@ async function recordStandup(win: Page) {
   await win.getByTestId('memo-stop').click();
   await expect(win.getByTestId('memo-done')).toBeVisible({ timeout: 20_000 });
   await win.getByTestId('memo-open').click();
+  await win.getByTestId('tab-summary').click(); // transcript is the default tab
   await expect(win.getByTestId('detail-summary')).toBeVisible();
 }
 

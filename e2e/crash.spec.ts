@@ -54,6 +54,7 @@ test('helper crash mid-recording: reconnects, resumes, stitches audio, keeps tra
     },
   );
   await win.getByTestId('meeting-item').first().click();
+  await win.getByTestId('tab-summary').click(); // transcript is the default tab
   await expect(win.getByTestId('detail-summary')).toBeVisible({
     timeout: 15_000,
   });

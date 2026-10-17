@@ -33,7 +33,11 @@ export function Hud({
   onOpen: (id: string) => void;
 }) {
   const t = useTheme();
-  const now = useNow(s.phase === 'recording');
+  const capturing =
+    s.phase === 'starting' ||
+    s.phase === 'recording' ||
+    s.phase === 'reconnecting';
+  const now = useNow(capturing);
   if (s.phase === 'idle') return null;
   if (s.phase === 'detected')
     return (
@@ -71,7 +75,7 @@ export function Hud({
         ) : null}
       </Card>
     );
-  if (s.phase === 'recording') {
+  if (capturing) {
     const elapsed = s.startedAt ? now - s.startedAt : s.elapsedMs;
     return (
       <Card
@@ -176,7 +180,7 @@ export function Hud({
       </Card>
     );
   }
-  if (s.phase === 'processing')
+  if (s.phase === 'stopping' || s.phase === 'processing')
     return (
       <Card
         padding={4}
@@ -184,7 +188,9 @@ export function Hud({
         style={{ display: 'flex', gap: 12, alignItems: 'center' }}
       >
         <Spinner />
-        <Text>{s.progress ?? 'Summarizing'}…</Text>
+        <Text>
+          {s.phase === 'stopping' ? 'Stopping' : (s.progress ?? 'Summarizing')}…
+        </Text>
       </Card>
     );
   if (s.phase === 'done')

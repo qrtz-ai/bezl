@@ -34,6 +34,7 @@ test('2-hour meeting: list, detail, transcript and search stay fast', async () =
   await expect(item).toBeVisible({ timeout: 15_000 });
   let t = Date.now();
   await item.click();
+  await win.getByTestId('tab-summary').click(); // transcript is the default tab
   await expect(win.getByTestId('detail-summary')).toBeVisible();
   const openMs = Date.now() - t;
   t = Date.now();

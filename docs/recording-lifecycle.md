@@ -114,6 +114,19 @@ statuses are `pending → running → (done | skipped | retrying → running …
   so the transcript survives any crash. After stop, and after a restart, the meeting view reads the
   persisted segments from `memo:get`.
 
+## Renderer
+
+- **Hooks.** `packages/features/memo/src/useRecording.ts` provides `useSession`, `usePipeline(id)` and
+  `useLiveTranscript(id)`. Each fetches a snapshot, subscribes, and refetches on a gap.
+- **Components.** The presentational pieces live in `@qrtz/ui` (`packages/ui/src/Lifecycle.tsx`):
+  - `StreamingTranscript`: finals plus an italic volatile partial. It follows the newest line, scrolling up
+    pauses that, and "Jump to live" resumes it.
+  - `PipelineSteps`: per-step status with Retry.
+  - `CaptureStatus`: reconnecting, degraded badges, and a refused-start error.
+- **Meeting view.** While the meeting is live, it shows the streaming transcript front and center. Afterwards
+  it opens on the Transcript tab, read from the DB, with the pipeline progress above it until every step is
+  done. Starting a recording selects its meeting automatically.
+
 ## Failure modes
 
 | #   | Failure                                                 | Detection                                                 | Fallback / retry                                                                                                                                                        | User-visible state                                                                  |

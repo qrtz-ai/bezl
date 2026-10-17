@@ -48,7 +48,9 @@ export function Palette({
   }, [q, open, client]);
 
   const commands = useMemo<Command[]>(() => {
-    const recording = session?.phase === 'recording';
+    const recording = ['starting', 'recording', 'reconnecting'].includes(
+      session?.phase ?? '',
+    );
     const rec: Command = recording
       ? {
           id: 'memo.stop',

@@ -18,7 +18,7 @@ const clock = (ms: number) => {
 
 /** Pure tray state: icon, menu-bar title, tooltip and menu for a session (unit-tested; Electron wiring in tray.ts). */
 export function trayState(v: SessionView, now = Date.now()) {
-  const recording = v.phase === 'recording';
+  const recording = ['starting', 'recording', 'reconnecting'].includes(v.phase);
   const elapsed = recording && v.startedAt ? now - v.startedAt : v.elapsedMs;
   const status =
     v.helper === 'missing'
@@ -39,7 +39,7 @@ export function trayState(v: SessionView, now = Date.now()) {
     items.push({
       label: v.phase === 'detected' ? 'Record This Meeting' : 'Start Recording',
       action: 'start',
-      enabled: v.phase !== 'processing' && v.helper !== 'missing',
+      enabled: v.phase !== 'stopping' && v.helper !== 'missing',
     });
   if (v.phase === 'detected')
     items.push({ label: 'Not Now', action: 'dismiss' });

@@ -14,3 +14,4 @@ export * from './Overlay';
 export * from './Callout';
 export * from './tokens-doc';
 export * from './Progress';
+export * from './Lifecycle';

@@ -115,6 +115,7 @@ test('LLM failure falls back to on-device summary, Retry gets the AI summary', a
     ).not.toMatch(/recording|processing/);
   });
   await win.getByTestId('meeting-item').first().click();
+  await win.getByTestId('tab-summary').click(); // transcript is the default tab
   await expect(win.getByTestId('llm-error')).toContainText('503', {
     timeout: 15_000,
   });
@@ -122,6 +123,7 @@ test('LLM failure falls back to on-device summary, Retry gets the AI summary', a
   fail = false;
   await win.getByTestId('llm-retry').click();
   await until(win, async () => {
+    await win.getByTestId('tab-summary').click(); // transcript is the default tab
     expect(await win.getByTestId('detail-summary').innerText()).toContain(
       'STUB-AI',
     );

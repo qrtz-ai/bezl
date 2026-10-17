@@ -29,7 +29,9 @@ function Hud() {
   const [expanded, setExpanded] = useState(false);
   const [notes, setNotes] = useState<MeetingNote[]>([]);
   const [draft, setDraft] = useState('');
-  const recording = s?.phase === 'recording';
+  const recording = ['starting', 'recording', 'reconnecting'].includes(
+    s?.phase ?? '',
+  );
   const toggle = (next: boolean) => {
     setExpanded(next);
     void client.invoke('hud:set-expanded', { expanded: next }).catch(() => {});

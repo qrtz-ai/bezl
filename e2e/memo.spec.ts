@@ -95,6 +95,7 @@ test('memo end-to-end: detect, record, live transcript, summarize, search, expor
   await win.getByTestId('memo-stop').click();
   await expect(win.getByTestId('memo-done')).toBeVisible({ timeout: 20_000 });
   await win.getByTestId('memo-open').click();
+  await win.getByTestId('tab-summary').click(); // transcript is the default tab
   const summary = win.getByTestId('detail-summary');
   await expect(summary).toBeVisible();
   const actions = win.getByTestId('action-item');

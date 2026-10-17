@@ -3,6 +3,7 @@ import {
   Badge,
   Button,
   Callout,
+  CaptureStatus,
   Card,
   EmptyState,
   Input,
@@ -19,6 +20,7 @@ import {
 } from '@qrtz/core';
 import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
 import { Hud } from './Hud';
+import { isCapturingPhase, useSession } from './useRecording';
 import { MeetingDetail } from './MeetingDetail';
 import { ChatPanel } from './ChatPanel';
 import { Onboarding, needsOnboarding } from './Onboarding';
@@ -31,9 +33,8 @@ const PAGE = 100;
 export default function MemoView() {
   const qrtz = useQrtz();
   const t = useTheme();
-  const [session, setSession] = useState<SessionView>(
-    SessionView.parse({ phase: 'idle' }),
-  );
+  // Lifecycle state comes only from main (memo:session); the view never guesses.
+  const session = useSession();
   const [perms, setPerms] = useState<PermissionsStatus | null>(null);
   const [onboarded, setOnboarded] = useState(false);
   const [query, setQuery] = useState('');
@@ -94,17 +95,22 @@ export default function MemoView() {
     });
   };
   const visible = items.filter((i) => !hidden.has(i.meeting.id));
-  const liveSession = useQrtzEvent('memo:session');
   const livePerms = useQrtzEvent('permissions:changed');
   const changed = useQrtzEvent('memo:changed');
 
   useEffect(() => {
-    void qrtz.invoke('memo:session').then(setSession);
     void qrtz.invoke('permissions:get').then(setPerms);
   }, [qrtz]);
+  // A new recording opens its meeting so the live transcript is front and center.
+  const liveId = isCapturingPhase(session.phase)
+    ? session.meetingId
+    : undefined;
   useEffect(() => {
-    if (liveSession) setSession(liveSession);
-  }, [liveSession]);
+    if (liveId) {
+      setSelected(liveId);
+      setAskAll(false);
+    }
+  }, [liveId]);
   useEffect(() => {
     if (livePerms) setPerms(livePerms);
   }, [livePerms]);
@@ -127,8 +133,13 @@ export default function MemoView() {
     return () => clearTimeout(h);
   }, [refresh, changed, query]);
 
+  // Results arrive as memo:session events. Refused starts (permissions, ack timeout) are lifecycle state
+  // (`errorInfo`, shown by CaptureStatus); only unexpected failures land in the generic error callout.
   const act = (p: Promise<SessionView>) =>
-    p.then(setSession).catch((e: AppError) => setError(e.message));
+    p.catch((e: AppError) => {
+      if (e.code !== 'E_FORBIDDEN' && e.code !== 'E_TIMEOUT')
+        setError(e.message);
+    });
 
   if (perms && needsOnboarding(perms) && !onboarded)
     return (
@@ -182,6 +193,11 @@ export default function MemoView() {
             )
           }
           onOpen={(id) => setSelected(id)}
+        />
+        <CaptureStatus
+          degraded={[]}
+          error={session.errorInfo?.message ?? null}
+          onDismiss={() => void act(qrtz.invoke('memo:dismiss'))}
         />
         {session.phase === 'idle' || session.phase === 'done' ? (
           <Text size="sm" muted>
