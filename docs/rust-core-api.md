@@ -139,6 +139,7 @@ pub struct RecordingState {
     pub fallbacks: Vec<CaptureFallback>,     // {from, to: Option<String> (null), reason, at_ms}, ≤ 8
     // N35 (ADR 0028): omitted when empty
     pub device_lost: Vec<Degradation>,       // degraded flags only a failed device set; helper-restored drops them
+    pub asr_unavailable: Option<AsrUnavailableReason>, // N95 (ADR 0062): why, from a speech session; None without the flag
     pub device_failures: Vec<DeviceFailure>, // {degraded, reason, at_ms}, ≤ 8; never written for a revoke
     pub lost_spans: Vec<SilentSpan>,         // N39 (ADR 0031): a source not delivered at all, ≤ 16; end_ms None = still lost
 }
@@ -185,7 +186,8 @@ pub struct LiveTranscriptDelta { pub meeting_id: String, pub base_rev: u64, pub 
                                  pub append: Vec<LiveSegment>, pub partial: Option<LivePartial> /* null */ }
 pub struct SessionView { /* every field of note/contract.ts SessionView, same optionality;
     N29: silent: Vec<SilentInput> (omitted when empty), no_audio: bool (`noAudio: true`, omitted when false);
-    N35: device_lost: Vec<Degradation> (omitted when empty) */ }
+    N35: device_lost: Vec<Degradation> (omitted when empty);
+    N95: asr_unavailable: Option<AsrUnavailableReason> (`asrUnavailable`, omitted when none; Rust only) */ }
 pub type PermissionsStatus = BTreeMap<OsPermission, PermissionState>;
 ```
 
