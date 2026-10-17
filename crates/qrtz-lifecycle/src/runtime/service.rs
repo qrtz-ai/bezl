@@ -237,8 +237,9 @@ impl NoteRuntime {
         self.task(async move { sh.schedule_delete(&id, defer_ms).await })
             .await
     }
-    /// `note:undo-delete`: cancels a scheduled delete. `false`: too late, the delete already went through (or
-    /// none was scheduled). Emits `Changed{id}` either way, like the Electron handler.
+    /// `note:undo-delete`: cancels a scheduled delete whose window is still open. `false`: too late, the delete
+    /// already started or went through, or was not scheduled by this process (N51). Emits `Changed{id}` either
+    /// way, like the Electron handler.
     pub fn undo_delete(&self, id: &str) -> bool {
         self.sh.undo_delete(id)
     }
@@ -380,8 +381,11 @@ struct State {
     t_sent: HashSet<String>,
     pipelines: HashMap<String, PipelineState>,
     pipeline_timers: HashMap<String, AbortHandle>,
-    /// Undo-window timers of scheduled deletes (TS `PendingDeletes.timers`).
-    delete_timers: HashMap<String, AbortHandle>,
+    /// Undo-window timers of scheduled deletes (TS `PendingDeletes.timers`), keyed by meeting, with the
+    /// schedule's generation. The entry is the claim on the delete: the timer's delete runs only if it still
+    /// finds its own generation here, and an undo restores only if it removes the entry first (N51, ADR 0040).
+    delete_timers: HashMap<String, (u64, Option<AbortHandle>)>,
+    delete_gen: u64,
     /// Per meeting, the `{id}:{step}:{attempts}` whose backoff timer already fired (N12: never wait on the wall
     /// clock twice). One entry per meeting at most, dropped with the pipeline (N14).
     backoff_served: HashMap<String, String>,
@@ -434,6 +438,7 @@ impl State {
             pipelines: HashMap::new(),
             pipeline_timers: HashMap::new(),
             delete_timers: HashMap::new(),
+            delete_gen: 0,
             backoff_served: HashMap::new(),
             pipeline_running: HashSet::new(),
             start_in_flight: false,
@@ -1571,25 +1576,50 @@ impl Shared {
         };
         pd.add(id)
             .map_err(|e| CoreError::internal(format!("could not record the pending delete: {e}")))?;
-        if let Some(t) = self.lock().delete_timers.remove(id) {
-            t.abort();
-        }
+        // Claim first, then arm the timer: a timer that fires before its handle is stored still finds its claim.
+        let gen = {
+            let mut g = self.lock();
+            g.delete_gen += 1;
+            let gen = g.delete_gen;
+            if let Some((_, Some(t))) = g.delete_timers.insert(id.to_string(), (gen, None)) {
+                t.abort(); // a second delete of the same meeting restarts the window
+            }
+            gen
+        };
         let mid = id.to_string();
         let t = self.set_timeout(defer_ms as f64, move |sh| {
             let s2 = sh.clone();
-            sh.spawn(async move { s2.complete_delete(&mid).await });
+            sh.spawn(async move {
+                let ours = {
+                    let mut g = s2.lock();
+                    match g.delete_timers.get(&mid) {
+                        Some((x, _)) if *x == gen => g.delete_timers.remove(&mid).is_some(),
+                        _ => false, // undone, or replaced by a later schedule
+                    }
+                };
+                if ours {
+                    s2.complete_delete(&mid).await;
+                }
+            });
         });
         if let Some(t) = t {
-            self.lock().delete_timers.insert(id.to_string(), t);
+            match self.lock().delete_timers.get_mut(id) {
+                Some((x, h)) if *x == gen => *h = Some(t),
+                _ => {}
+            }
         }
         self.emit(CoreEvent::Changed { id: id.to_string() });
         Ok(())
     }
 
     fn undo_delete(&self, id: &str) -> bool {
-        let restored = match &self.d.pending_delete {
-            Some(pd) if pd.has(id) => {
-                if let Some(t) = self.lock().delete_timers.remove(id) {
+        // Only a delete still waiting out its window can be undone. Once its timer fired (the delete is running,
+        // or failed and waits for the next launch) or the tombstone came from an earlier launch, it is too late:
+        // reporting "restored" there would hide a meeting that is being removed (N51).
+        let claim = self.lock().delete_timers.remove(id);
+        let restored = match (claim, &self.d.pending_delete) {
+            (Some((_, t)), Some(pd)) => {
+                if let Some(t) = t {
                     t.abort();
                 }
                 match pd.remove(id) {
@@ -1609,7 +1639,6 @@ impl Shared {
     /// The delete a tombstone stands for (TS `PendingDeletes.complete`): on success the tombstone goes and
     /// `Changed{id}` is emitted; on failure it stays and is retried on the next launch.
     async fn complete_delete(self: &Arc<Self>, id: &str) {
-        self.lock().delete_timers.remove(id);
         let Some(pd) = self.d.pending_delete.clone() else {
             return;
         };

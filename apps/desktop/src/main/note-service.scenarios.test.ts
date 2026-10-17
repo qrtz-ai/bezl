@@ -122,6 +122,8 @@ function run(sc: Scenario) {
     index: [],
   };
   const failing = new Set<string>();
+  /** Store methods that take this long (fake time) before they run: a delete still in flight (N51). */
+  const slow = new Map<string, number>();
   const base = defaultConfig();
   const config = {
     ...base,
@@ -214,6 +216,9 @@ function run(sc: Scenario) {
           throw new AppError('E_UNAVAILABLE', `${method} unavailable`, {
             retryable: true,
           });
+        const delay = slow.get(method);
+        if (delay) await new Promise((r) => setTimeout(r, delay));
+        if (life.dead) return never;
         const p =
           params === undefined ? undefined : JSON.parse(JSON.stringify(params));
         const r = method.startsWith('note.step')
@@ -656,6 +661,11 @@ function run(sc: Scenario) {
           case 'store':
             for (const m of (op.fail as string[]) ?? []) failing.add(m);
             for (const m of (op.heal as string[]) ?? []) failing.delete(m);
+            for (const [m, ms] of Object.entries(
+              (op.slowMs as Record<string, number>) ?? {},
+            ))
+              if (ms > 0) slow.set(m, ms);
+              else slow.delete(m);
             break;
           case 'wav':
             writeWav(op.file as string, op.ms as number, !!op.broken);

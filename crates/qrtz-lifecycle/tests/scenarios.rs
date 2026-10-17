@@ -128,6 +128,8 @@ struct Shared {
     trace: Mutex<Trace>,
     up: AtomicBool,
     failing: Mutex<HashSet<String>>,
+    /// Store methods that take this long (paused time) before they run: a delete still in flight (N51).
+    slow: Mutex<HashMap<String, u64>>,
     /// The app data dir: undo tombstones live in `<dir>/pending-deletes.json` across restarts.
     dir: PathBuf,
     outcomes: Mutex<HashMap<&'static str, VecDeque<String>>>,
@@ -271,6 +273,10 @@ struct FaultyStore {
 macro_rules! guarded {
     ($self:ident, $m:literal, $call:expr) => {{
         $self.sh.fail($m)?;
+        let delay = $self.sh.slow.lock().unwrap().get($m).copied();
+        if let Some(ms) = delay {
+            tokio::time::sleep(Duration::from_millis(ms)).await;
+        }
         $call.await
     }};
 }
@@ -889,6 +895,13 @@ impl Run {
                     for m in op["heal"].as_array().into_iter().flatten() {
                         f.remove(m.as_str().unwrap());
                     }
+                    let mut sl = self.sh.slow.lock().unwrap();
+                    for (m, ms) in op["slowMs"].as_object().into_iter().flatten() {
+                        match ms.as_u64().unwrap_or(0) {
+                            0 => sl.remove(m),
+                            ms => sl.insert(m.clone(), ms),
+                        };
+                    }
                 }
                 "wav" => write_wav(
                     &self.rec.join(op["file"].as_str().unwrap()),
@@ -1014,6 +1027,7 @@ fn run_one(file: &Path) -> Result<(), String> {
                 trace: Mutex::new(Trace::default()),
                 up: AtomicBool::new(true),
                 failing: Mutex::new(HashSet::new()),
+                slow: Mutex::new(HashMap::new()),
                 dir: tmp.path().to_path_buf(),
                 outcomes: Mutex::new(HashMap::new()),
             }),

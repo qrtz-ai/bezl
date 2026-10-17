@@ -45,10 +45,16 @@ export class PendingDeletes {
       setTimeout(() => void this.complete(id), deferMs),
     );
   }
-  /** Returns false when the delete already went through (too late to undo). */
+  /**
+   * Returns false when it is too late: the window ended, so the delete is running or already went through (or
+   * failed and waits for the next launch), or the tombstone came from an earlier launch. Only a delete still
+   * waiting out its window is undone; `true` for one that is already running would hide a meeting that is being
+   * removed (N51).
+   */
   undo(id: string): boolean {
-    if (!this.has(id)) return false;
-    clearTimeout(this.timers.get(id));
+    const t = this.timers.get(id);
+    if (t === undefined) return false;
+    clearTimeout(t);
     this.timers.delete(id);
     this.write(this.ids().filter((x) => x !== id));
     return true;

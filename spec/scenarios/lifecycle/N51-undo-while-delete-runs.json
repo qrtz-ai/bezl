@@ -1,0 +1,380 @@
+{
+  "name": "N51-undo-while-delete-runs",
+  "about": "N51: an undo that arrives after the window ended, while the deferred delete is still running (slow store), reports too late (false) and the meeting is removed anyway; before the fix it returned true and removed the tombstone while the rows and audio were being deleted. A tombstone from an earlier launch (no timer in this process) is not undoable either and stays for recovery.",
+  "script": [
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permissions.status",
+        "status": {
+          "accessibility": "granted",
+          "screen-recording": "granted",
+          "microphone": "granted"
+        }
+      }
+    },
+    {
+      "op": "call",
+      "fn": "start",
+      "label": "start",
+      "args": {
+        "title": "Standup"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.started",
+        "audioPath": "$REC/id1.wav"
+      }
+    },
+    {
+      "op": "wav",
+      "file": "id1.wav",
+      "ms": 400,
+      "broken": false
+    },
+    {
+      "op": "call",
+      "fn": "stop",
+      "label": "stop"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.stopped",
+        "audioPath": "$REC/id1.wav",
+        "durationMs": 4000
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 100
+    },
+    {
+      "op": "store",
+      "slowMs": {
+        "note.delete": 2000
+      }
+    },
+    {
+      "op": "call",
+      "fn": "scheduleDelete",
+      "label": "defer",
+      "args": {
+        "id": "id1",
+        "deferMs": 6000
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 6000
+    },
+    {
+      "op": "call",
+      "fn": "undoDelete",
+      "label": "undo-while-deleting",
+      "args": {
+        "id": "id1"
+      }
+    },
+    {
+      "op": "snapshot",
+      "label": "deleting"
+    },
+    {
+      "op": "advance",
+      "ms": 2000
+    },
+    {
+      "op": "snapshot",
+      "label": "after"
+    },
+    {
+      "op": "store",
+      "slowMs": {
+        "note.delete": 0
+      }
+    },
+    {
+      "op": "pendingDelete",
+      "id": "id9"
+    },
+    {
+      "op": "call",
+      "fn": "undoDelete",
+      "label": "undo-earlier-launch",
+      "args": {
+        "id": "id9"
+      }
+    },
+    {
+      "op": "snapshot",
+      "label": "earlier-tombstone-kept"
+    }
+  ],
+  "expect": {
+    "trace": {
+      "session": [
+        "idle|-|-|-|-|-|ok",
+        "starting|id1|-|-|-|-|ok",
+        "recording|id1|-|-|-|-|ok",
+        "stopping|id1|-|-|-|-|ok",
+        "processing|id1|-|-|-|-|ok",
+        "done|id1|-|-|-|-|ok",
+        "idle|-|-|-|-|-|ok"
+      ],
+      "pipelines": {
+        "id1": [
+          "manual finalize:pending/0 summary:pending/0 index:pending/0",
+          "manual finalize:running/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:running/1 index:pending/0",
+          "manual finalize:done/1 summary:done/1 index:pending/0",
+          "manual finalize:done/1 summary:done/1 index:running/1",
+          "manual finalize:done/1 summary:done/1 index:done/1"
+        ]
+      },
+      "helper": [
+        "permissions.check",
+        "recording.start $REC/id1.wav",
+        "recording.stop"
+      ],
+      "transcript": [
+        [
+          0,
+          1,
+          [],
+          null
+        ]
+      ],
+      "changed": [
+        "id1",
+        "id1",
+        "id1",
+        "id1",
+        "id1",
+        "id1",
+        "id1",
+        "id9"
+      ],
+      "permissions": [
+        "granted|granted|granted"
+      ],
+      "prompts": []
+    },
+    "results": {
+      "start": {
+        "ok": {
+          "phase": "recording",
+          "meetingId": "id1"
+        }
+      },
+      "stop": {
+        "ok": {
+          "phase": "processing",
+          "meetingId": "id1"
+        }
+      },
+      "defer": {
+        "ok": null
+      },
+      "undo-while-deleting": {
+        "ok": false
+      },
+      "undo-earlier-launch": {
+        "ok": false
+      }
+    },
+    "snapshots": {
+      "deleting": {
+        "view": {
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "done",
+              1760000000000,
+              1760000000000,
+              4000,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [],
+          "summaries": [
+            [
+              "id1",
+              "stub",
+              "STUB summary",
+              null
+            ]
+          ],
+          "notes": [],
+          "pipelines": [
+            [
+              "id1",
+              1,
+              "manual",
+              "finalize:done/1 summary:done/1 index:done/1",
+              4000,
+              false,
+              [
+                "$REC/id1.wav"
+              ],
+              0
+            ]
+          ],
+          "session": [
+            "idle",
+            null
+          ]
+        },
+        "files": [
+          [
+            "id1.wav",
+            12844
+          ]
+        ],
+        "tombstones": [
+          "id1"
+        ]
+      },
+      "after": {
+        "view": {
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "idle",
+            null
+          ]
+        },
+        "files": []
+      },
+      "earlier-tombstone-kept": {
+        "view": {
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "idle",
+            null
+          ]
+        },
+        "files": [],
+        "tombstones": [
+          "id9"
+        ]
+      },
+      "end": {
+        "view": {
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "idle",
+            null
+          ]
+        },
+        "files": [],
+        "tombstones": [
+          "id9"
+        ]
+      }
+    }
+  }
+}
