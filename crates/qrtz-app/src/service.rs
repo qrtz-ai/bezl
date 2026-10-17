@@ -83,6 +83,7 @@ pub struct AppService {
     shell: Arc<dyn ShellHooks>,
     helper: Option<Supervisor>,
     pub events: Events,
+    chat: std::sync::OnceLock<Arc<dyn crate::ports::ChatPort>>,
 }
 
 /// Helper → host message types that belong to qrtz talk; everything else goes to the recording runtime.
@@ -102,7 +103,12 @@ impl AppService {
             shell: d.shell,
             helper: d.helper,
             events: d.events,
+            chat: std::sync::OnceLock::new(),
         })
+    }
+    /// Plug in note:chat (set once by `build_app`; without it note:chat is `E_UNAVAILABLE`).
+    pub fn set_chat(&self, chat: Arc<dyn crate::ports::ChatPort>) {
+        let _ = self.chat.set(chat);
     }
 
     pub fn config(&self) -> Value {
@@ -242,11 +248,13 @@ impl AppService {
                     .set_hud_expanded(p["expanded"].as_bool().unwrap_or(false));
                 Ok(json!({"expanded": e}))
             }
-            "note:chat" => Err(AppError::new(
-                ErrorCode::Unavailable,
-                "Chat is not available in the Tauri build yet (qrtz-llm/qrtz-search, plan P4)",
-            )
-            .retryable(false)),
+            "note:chat" => match self.chat.get() {
+                Some(c) => c.chat(p).await,
+                None => Err(
+                    AppError::new(ErrorCode::Unavailable, "chat is not available in this build")
+                        .retryable(false),
+                ),
+            },
             _ => Err(no_handler(channel)),
         }
     }

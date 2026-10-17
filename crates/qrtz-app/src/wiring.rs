@@ -231,6 +231,8 @@ pub struct Booted {
     pub search: Arc<SearchHandles>,
     /// N86: recordings, steps and dictations hold it; the backfill yields while it is held.
     pub live: Arc<crate::live::LiveWork>,
+    /// note:chat (retrieval + the configured provider).
+    pub chat: Arc<crate::chat::NoteChat>,
 }
 
 /// Inputs to [`boot`].
@@ -275,21 +277,28 @@ pub fn boot(o: BootOptions) -> std::io::Result<Booted> {
     });
     // N83 (ADR 0042, 0049): SearchSteps (index) → LlmSteps (summary: the configured provider, extractive fallback)
     // → CoreSteps (finalize). Every LLM request goes through `qrtz_llm::http_client()` (no redirects, N81).
+    // The same LlmSteps (config, keys, `http_client()`) answers note:chat (N89, ADR 0059).
+    let core: Arc<dyn StepExecutor> = Arc::new(CoreSteps { db: db.clone() });
+    let llm_steps: Arc<qrtz_llm::LlmSteps<StorageHandle>> = match o.secrets.clone() {
+        Some(sec) => {
+            let (c, base) = (cfg.clone(), o.knobs.llm_base_url.clone());
+            Arc::new(qrtz_llm::LlmSteps::new(
+                db.clone(),
+                core,
+                now.clone(),
+                Arc::new(move || llm_config(&c.get(), base.as_deref())),
+                Arc::new(move |n: &str| sec.get(n)),
+            ))
+        }
+        None => Arc::new(qrtz_llm::LlmSteps::on_device(db.clone(), core, now.clone())),
+    };
+    let chat = Arc::new(crate::chat::NoteChat {
+        db: db.clone(),
+        embedder: embedder.clone(),
+        llm: llm_steps.clone(),
+    });
     let steps = o.steps.unwrap_or_else(|| {
-        let core: Arc<dyn StepExecutor> = Arc::new(CoreSteps { db: db.clone() });
-        let llm: Arc<dyn StepExecutor> = match o.secrets.clone() {
-            Some(sec) => {
-                let (c, base) = (cfg.clone(), o.knobs.llm_base_url.clone());
-                Arc::new(qrtz_llm::LlmSteps::new(
-                    db.clone(),
-                    core,
-                    now.clone(),
-                    Arc::new(move || llm_config(&c.get(), base.as_deref())),
-                    Arc::new(move |n: &str| sec.get(n)),
-                ))
-            }
-            None => Arc::new(qrtz_llm::LlmSteps::on_device(db.clone(), core, now.clone())),
-        };
+        let llm: Arc<dyn StepExecutor> = llm_steps;
         Arc::new(qrtz_search::SearchSteps::new(db.clone(), llm, embedder.clone()))
     });
     let live = crate::live::LiveWork::new();
@@ -334,6 +343,7 @@ pub fn boot(o: BootOptions) -> std::io::Result<Booted> {
         runtime,
         search,
         live,
+        chat,
     })
 }
 
@@ -464,6 +474,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         helper: supervisor,
         events,
     });
+    service.set_chat(booted.chat.clone());
     Ok(BuiltApp {
         service,
         runtime: booted.runtime,

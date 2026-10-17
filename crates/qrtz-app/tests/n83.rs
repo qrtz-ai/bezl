@@ -490,3 +490,109 @@ async fn n86_the_backfill_yields_to_a_live_recording() {
     a.search.shutdown();
     a.runtime.kill();
 }
+
+fn completion_text(content: &str) -> String {
+    let body = json!({"choices": [{"message": {"content": content}}]}).to_string();
+    http(200, "application/json", &body)
+}
+
+/// N89 (ADR 0059): note:chat through the Tauri backend: retrieval over the recorded transcript, then the same
+/// OpenRouter provider (key, `http_client()`) as the summary; the excerpts sit in the N69 fence.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn note_chat_answers_from_the_transcript_through_openrouter() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mock = MockLlm::default();
+    let base = mock.start().await;
+    mock.push(completion(
+        &json!({"summary": "a greeting.", "actionItems": [], "qa": []}),
+    ));
+    mock.push(completion_text("  the mock helper said hello.  "));
+    let a = app(&tmp.path().join("data"), &base, LazyEmbedder::none());
+    let r = Router::new(Shared(a.service.clone())).validate_responses(true);
+    a.service.start_helper();
+    a.runtime.recover().await.unwrap();
+    call(
+        &r,
+        "settings",
+        "secrets:set",
+        json!({"name": "llm.openrouter", "value": "sk-or-test"}),
+    )
+    .await;
+    let (id, _) = record_one(&a, &r, "Greeting").await;
+    let ans = call(
+        &r,
+        "note",
+        "note:chat",
+        json!({
+            "question": "what did the mock helper say?",
+            "meetingId": id,
+            "history": [
+                {"role": "user", "content": "who spoke?"},
+                {"role": "assistant", "content": "the mock helper."}
+            ]
+        }),
+    )
+    .await;
+    assert_eq!(ans["answer"], "the mock helper said hello.", "{ans}");
+    assert_eq!(ans["provider"], "openrouter", "{ans}");
+    assert!(ans.get("llmError").is_none_or(Value::is_null), "{ans}");
+    let srcs = ans["sources"].as_array().unwrap();
+    assert!(
+        srcs.iter().any(|s| s["text"] == "Hello from the mock helper."),
+        "{ans}"
+    );
+    let seen = mock.seen();
+    assert_eq!(seen.len(), 2, "summary + chat");
+    let (line, head, body) = &seen[1];
+    assert!(line.starts_with("POST /chat/completions"), "{line}");
+    assert!(head.contains("authorization: bearer sk-or-test"), "{head}");
+    let msgs = serde_json::from_str::<Value>(body).unwrap()["messages"].to_string();
+    assert!(msgs.contains("<excerpts-"), "N69 fence: {msgs}");
+    assert!(msgs.contains("Hello from the mock helper."), "{msgs}");
+    assert!(msgs.contains("what did the mock helper say?"), "{msgs}");
+    assert!(msgs.contains("who spoke?"), "history is sent: {msgs}");
+
+    // A provider failure answers extractively with llmError (never an IPC error).
+    mock.push(http(
+        500,
+        "application/json",
+        r#"{"error":{"message":"upstream down"}}"#,
+    ));
+    let ans = call(&r, "note", "note:chat", json!({"question": "hello?"})).await;
+    assert!(ans["llmError"].is_string(), "{ans}");
+    assert!(
+        !ans["answer"].as_str().unwrap_or("").contains("sk-or-test"),
+        "{ans}"
+    );
+    a.runtime.kill();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn note_chat_in_local_only_mode_sends_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mock = MockLlm::default();
+    let base = mock.start().await;
+    let a = app(&tmp.path().join("data"), &base, LazyEmbedder::none());
+    let r = Router::new(Shared(a.service.clone())).validate_responses(true);
+    a.service.start_helper();
+    a.runtime.recover().await.unwrap();
+    call(
+        &r,
+        "settings",
+        "secrets:set",
+        json!({"name": "llm.openrouter", "value": "sk-or-test"}),
+    )
+    .await;
+    call(
+        &r,
+        "settings",
+        "config:set",
+        json!({"patch": {"privacy": {"localOnly": true}}}),
+    )
+    .await;
+    record_one(&a, &r, "Local").await;
+    let ans = call(&r, "note", "note:chat", json!({"question": "what was said?"})).await;
+    assert_eq!(ans["provider"], "extractive", "{ans}");
+    assert!(mock.seen().is_empty(), "nothing leaves the machine");
+    a.runtime.kill();
+}

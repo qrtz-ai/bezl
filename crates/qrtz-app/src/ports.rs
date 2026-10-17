@@ -73,6 +73,12 @@ pub trait StoragePort: Send + Sync {
     async fn call(&self, channel: &str, payload: Value) -> Result<Value, AppError>;
 }
 
+/// `note:chat`: retrieval (qrtz-search) + the grounded answer (qrtz-llm, N89).
+#[async_trait]
+pub trait ChatPort: Send + Sync {
+    async fn chat(&self, payload: Value) -> Result<Value, AppError>;
+}
+
 #[async_trait]
 pub trait TalkPort: Send + Sync {
     async fn call(&self, channel: &str, payload: Value) -> Result<Value, AppError>;
