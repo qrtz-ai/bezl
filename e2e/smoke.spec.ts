@@ -28,7 +28,9 @@ test('boots, renders sidebar, and talks to main + worker over typed IPC', async 
   await expect(win.getByTestId('nav-home')).toBeVisible();
   await expect(win.getByRole('heading', { name: 'qrtz' })).toBeVisible();
 
-  await win.screenshot({ path: path.join(__dirname, '..', 'test-results', 'home.png') });
+  await win.screenshot({
+    path: path.join(__dirname, '..', 'test-results', 'home.png'),
+  });
   await win.getByTestId('nav-settings').click();
   await expect(win.getByText(/Database: ok · schema v1 · FTS5 on/)).toBeVisible(
     { timeout: 15_000 },
