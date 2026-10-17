@@ -184,6 +184,8 @@ pub struct DevKnobs {
     pub llm_base_url: Option<String>,
     /// `QRTZ_MINILM_DIR`: the MiniLM model directory (default `<data>/models/all-MiniLM-L6-v2`).
     pub minilm_dir: Option<PathBuf>,
+    /// `QRTZ_MINILM_BASE`: where the search model downloads from (default Hugging Face; tests use a local server).
+    pub minilm_base: Option<String>,
     /// `QRTZ_TALK_LLM=fake|hang`: a stand-in cleanup LLM for the talk E2E.
     pub talk_llm: Option<String>,
 }
@@ -205,6 +207,7 @@ impl DevKnobs {
             fault_step: get("QRTZ_FAULT_STEP").and_then(|v| serde_json::from_value(Value::String(v)).ok()),
             llm_base_url: get("QRTZ_LLM_BASE_URL").filter(|v| !v.is_empty()),
             minilm_dir: get("QRTZ_MINILM_DIR").map(PathBuf::from),
+            minilm_base: get("QRTZ_MINILM_BASE").filter(|v| !v.is_empty()),
             talk_llm: get("QRTZ_TALK_LLM").filter(|v| v == "fake" || v == "hang"),
         }
     }
@@ -388,6 +391,9 @@ pub struct BuiltApp {
     pub attach: Arc<crate::speech::HelperAttach>,
     pub note_speech: Option<Arc<crate::speech::NoteSpeech>>,
     pub speech: Option<crate::speech::SpeechSetup>,
+    /// Onboarding / settings "speech": the module download and the search model. Call
+    /// `setup.speech.resume_pending()` inside the tokio runtime after boot (a download a quit cut short resumes).
+    pub setup: Arc<crate::setup::Setup>,
 }
 
 /// The default secret store for this platform (env overrides in front).
@@ -445,6 +451,24 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     // One tombstone store for the runtime (undo window) and backup import (skips meetings pending delete).
     let pending = Arc::new(qrtz_storage::PendingDeletes::new(&dirs.data));
     let secrets = b.secrets.unwrap_or_else(|| platform_secrets(&dirs.data));
+    // The search model (ADR 0050): downloaded first when missing and `note.searchModelDownload` is on, then loaded.
+    let model = crate::setup::SearchModel::new(
+        b.knobs
+            .minilm_dir
+            .clone()
+            .unwrap_or_else(|| dirs.data.join("models").join("all-MiniLM-L6-v2")),
+        b.knobs
+            .minilm_base
+            .clone()
+            .unwrap_or_else(|| qrtz_search::minilm::HF_BASE.to_string()),
+        events.clone(),
+    );
+    let embedder = b.embedder.unwrap_or_else(|| {
+        let allow = config.get()["note"]["searchModelDownload"]
+            .as_bool()
+            .unwrap_or(true);
+        qrtz_search::LazyEmbedder::new(model.loader(allow))
+    });
     let booted = boot(BootOptions {
         data_dir: dirs.data.clone(),
         events: events.clone(),
@@ -455,7 +479,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         pending_delete: Some(pending.clone()),
         clock: None,
         secrets: Some(secrets.clone()),
-        embedder: b.embedder,
+        embedder: Some(embedder.clone()),
         knobs: b.knobs.clone(),
     })?;
     if let Some(ns) = &note_speech {
@@ -501,6 +525,12 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
             },
         ))),
     };
+    let setup = Arc::new(crate::setup::Setup {
+        speech: crate::setup::SpeechManager::new(b.speech.clone(), events.clone()),
+        model,
+        embedder,
+        config: config.clone(),
+    });
     let service = crate::AppService::new(crate::AppDeps {
         info: b.info,
         config,
@@ -513,6 +543,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         events,
     });
     service.set_chat(booted.chat.clone());
+    service.set_setup(setup.clone());
     {
         let (a, ns) = (attach.clone(), note_speech.clone());
         service.set_speech_tap(Arc::new(move |m: &serde_json::Value| {
@@ -541,6 +572,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         attach,
         note_speech,
         speech: b.speech,
+        setup,
     })
 }
 

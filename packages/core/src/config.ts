@@ -31,6 +31,8 @@ export const ConfigSchema = z.object({
       autoSummarize: z.boolean().default(true),
       /** Build semantic-search embeddings in the background after meetings. */
       backgroundIndexing: z.boolean().default(true),
+      /** Download the on-device search model when it is missing (off = full-text search only). */
+      searchModelDownload: z.boolean().default(true),
       llmProvider: z
         .enum(['openai', 'anthropic', 'google', 'openrouter', 'ollama', 'none'])
         .default('openrouter'),
@@ -91,6 +93,8 @@ export const ConfigSchema = z.object({
       autoUpdate: z.boolean().default(true),
     })
     .prefault({}),
+  /** First-run setup (welcome, permissions, speech download, optional OpenRouter key). */
+  onboarding: z.object({ done: z.boolean().default(false) }).prefault({}),
   privacy: z
     .object({
       /** Never send audio, transcripts or notes to a cloud service: summaries/chat use the on-device fallback (or a local Ollama). */

@@ -5,6 +5,6 @@ export const manifest = SubAppManifest.parse({
   name: 'talk',
   icon: 'mic',
   order: 20,
-  capabilities: ['talk.read', 'talk.dictate', 'talk.write'],
+  capabilities: ['talk.read', 'talk.dictate', 'talk.write', 'speech.read'],
   permissions: ['microphone', 'accessibility'],
 });

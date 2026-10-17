@@ -6335,6 +6335,751 @@
           "additionalProperties": false
         }
       }
+    },
+    "speech:status": {
+      "version": 1,
+      "capability": "speech.read",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "installed": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "latest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latestBytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "waiting": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "listExpired": {
+            "type": "boolean"
+          },
+          "download": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "idle",
+                  "checking",
+                  "downloading",
+                  "paused",
+                  "installing",
+                  "error"
+                ]
+              },
+              "done": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "error": {
+                "type": "string"
+              },
+              "errorKind": {
+                "type": "string",
+                "enum": [
+                  "network",
+                  "checksum",
+                  "signature",
+                  "list-expired",
+                  "health",
+                  "disk",
+                  "busy",
+                  "unavailable",
+                  "other"
+                ]
+              }
+            },
+            "required": [
+              "state",
+              "done",
+              "total"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "configured",
+          "installed",
+          "bytes",
+          "latest",
+          "latestBytes",
+          "waiting",
+          "listExpired",
+          "download"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "speech:check": {
+      "version": 1,
+      "capability": "speech.read",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "installed": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "latest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latestBytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "waiting": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "listExpired": {
+            "type": "boolean"
+          },
+          "download": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "idle",
+                  "checking",
+                  "downloading",
+                  "paused",
+                  "installing",
+                  "error"
+                ]
+              },
+              "done": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "error": {
+                "type": "string"
+              },
+              "errorKind": {
+                "type": "string",
+                "enum": [
+                  "network",
+                  "checksum",
+                  "signature",
+                  "list-expired",
+                  "health",
+                  "disk",
+                  "busy",
+                  "unavailable",
+                  "other"
+                ]
+              }
+            },
+            "required": [
+              "state",
+              "done",
+              "total"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "configured",
+          "installed",
+          "bytes",
+          "latest",
+          "latestBytes",
+          "waiting",
+          "listExpired",
+          "download"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "speech:download": {
+      "version": 1,
+      "capability": "speech.manage",
+      "request": {
+        "optional": true,
+        "schema": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "force": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "installed": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "latest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latestBytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "waiting": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "listExpired": {
+            "type": "boolean"
+          },
+          "download": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "idle",
+                  "checking",
+                  "downloading",
+                  "paused",
+                  "installing",
+                  "error"
+                ]
+              },
+              "done": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "error": {
+                "type": "string"
+              },
+              "errorKind": {
+                "type": "string",
+                "enum": [
+                  "network",
+                  "checksum",
+                  "signature",
+                  "list-expired",
+                  "health",
+                  "disk",
+                  "busy",
+                  "unavailable",
+                  "other"
+                ]
+              }
+            },
+            "required": [
+              "state",
+              "done",
+              "total"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "configured",
+          "installed",
+          "bytes",
+          "latest",
+          "latestBytes",
+          "waiting",
+          "listExpired",
+          "download"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "speech:pause": {
+      "version": 1,
+      "capability": "speech.manage",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "installed": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "latest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latestBytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "waiting": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "listExpired": {
+            "type": "boolean"
+          },
+          "download": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "idle",
+                  "checking",
+                  "downloading",
+                  "paused",
+                  "installing",
+                  "error"
+                ]
+              },
+              "done": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "error": {
+                "type": "string"
+              },
+              "errorKind": {
+                "type": "string",
+                "enum": [
+                  "network",
+                  "checksum",
+                  "signature",
+                  "list-expired",
+                  "health",
+                  "disk",
+                  "busy",
+                  "unavailable",
+                  "other"
+                ]
+              }
+            },
+            "required": [
+              "state",
+              "done",
+              "total"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "configured",
+          "installed",
+          "bytes",
+          "latest",
+          "latestBytes",
+          "waiting",
+          "listExpired",
+          "download"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "speech:resume": {
+      "version": 1,
+      "capability": "speech.manage",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "installed": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "latest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latestBytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "waiting": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "listExpired": {
+            "type": "boolean"
+          },
+          "download": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "idle",
+                  "checking",
+                  "downloading",
+                  "paused",
+                  "installing",
+                  "error"
+                ]
+              },
+              "done": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "error": {
+                "type": "string"
+              },
+              "errorKind": {
+                "type": "string",
+                "enum": [
+                  "network",
+                  "checksum",
+                  "signature",
+                  "list-expired",
+                  "health",
+                  "disk",
+                  "busy",
+                  "unavailable",
+                  "other"
+                ]
+              }
+            },
+            "required": [
+              "state",
+              "done",
+              "total"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "configured",
+          "installed",
+          "bytes",
+          "latest",
+          "latestBytes",
+          "waiting",
+          "listExpired",
+          "download"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "speech:delete": {
+      "version": 1,
+      "capability": "speech.manage",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "installed": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "latest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latestBytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "waiting": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "listExpired": {
+            "type": "boolean"
+          },
+          "download": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "idle",
+                  "checking",
+                  "downloading",
+                  "paused",
+                  "installing",
+                  "error"
+                ]
+              },
+              "done": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "error": {
+                "type": "string"
+              },
+              "errorKind": {
+                "type": "string",
+                "enum": [
+                  "network",
+                  "checksum",
+                  "signature",
+                  "list-expired",
+                  "health",
+                  "disk",
+                  "busy",
+                  "unavailable",
+                  "other"
+                ]
+              }
+            },
+            "required": [
+              "state",
+              "done",
+              "total"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "configured",
+          "installed",
+          "bytes",
+          "latest",
+          "latestBytes",
+          "waiting",
+          "listExpired",
+          "download"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "search:model-status": {
+      "version": 1,
+      "capability": "speech.read",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "missing",
+              "downloading",
+              "loading",
+              "ready",
+              "error"
+            ]
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "search:model-download": {
+      "version": 1,
+      "capability": "speech.manage",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "missing",
+              "downloading",
+              "loading",
+              "ready",
+              "error"
+            ]
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "events": {
@@ -7664,6 +8409,140 @@
           "microphone"
         ]
       }
+    },
+    "speech:status": {
+      "capability": "speech.read",
+      "payload": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "installed": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "latest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latestBytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "waiting": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "listExpired": {
+            "type": "boolean"
+          },
+          "download": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "idle",
+                  "checking",
+                  "downloading",
+                  "paused",
+                  "installing",
+                  "error"
+                ]
+              },
+              "done": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "error": {
+                "type": "string"
+              },
+              "errorKind": {
+                "type": "string",
+                "enum": [
+                  "network",
+                  "checksum",
+                  "signature",
+                  "list-expired",
+                  "health",
+                  "disk",
+                  "busy",
+                  "unavailable",
+                  "other"
+                ]
+              }
+            },
+            "required": [
+              "state",
+              "done",
+              "total"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "configured",
+          "installed",
+          "bytes",
+          "latest",
+          "latestBytes",
+          "waiting",
+          "listExpired",
+          "download"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "search:model-status": {
+      "capability": "speech.read",
+      "payload": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "missing",
+              "downloading",
+              "loading",
+              "ready",
+              "error"
+            ]
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "manifests": [
@@ -7676,7 +8555,12 @@
         "note.read",
         "note.record",
         "talk.read",
-        "talk.dictate"
+        "talk.dictate",
+        "os.permissions",
+        "config.write",
+        "secrets.write",
+        "speech.read",
+        "speech.manage"
       ]
     },
     {
@@ -7685,7 +8569,8 @@
         "note.read",
         "note.record",
         "note.write",
-        "os.permissions"
+        "os.permissions",
+        "speech.read"
       ]
     },
     {
@@ -7693,7 +8578,8 @@
       "capabilities": [
         "talk.read",
         "talk.dictate",
-        "talk.write"
+        "talk.write",
+        "speech.read"
       ]
     },
     {
@@ -7709,7 +8595,9 @@
         "secrets.write",
         "db.read",
         "helper.status",
-        "data.backup"
+        "data.backup",
+        "speech.read",
+        "speech.manage"
       ]
     }
   ],
@@ -7733,6 +8621,7 @@
         "notifyNoAudio": true,
         "autoSummarize": true,
         "backgroundIndexing": true,
+        "searchModelDownload": true,
         "llmProvider": "openrouter",
         "llmModel": "",
         "floatingHud": true,
@@ -7760,6 +8649,9 @@
         "speakerMode": "fast",
         "cloud": "off",
         "autoUpdate": true
+      },
+      "onboarding": {
+        "done": false
       },
       "privacy": {
         "localOnly": false,
@@ -7857,6 +8749,10 @@
               "default": true,
               "type": "boolean"
             },
+            "searchModelDownload": {
+              "default": true,
+              "type": "boolean"
+            },
             "llmProvider": {
               "default": "openrouter",
               "type": "string",
@@ -7902,6 +8798,7 @@
             "notifyNoAudio",
             "autoSummarize",
             "backgroundIndexing",
+            "searchModelDownload",
             "llmProvider",
             "llmModel",
             "floatingHud",
@@ -8043,6 +8940,19 @@
           ],
           "additionalProperties": false
         },
+        "onboarding": {
+          "type": "object",
+          "properties": {
+            "done": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "done"
+          ],
+          "additionalProperties": false
+        },
         "privacy": {
           "type": "object",
           "properties": {
@@ -8083,6 +8993,7 @@
         "note",
         "talk",
         "speech",
+        "onboarding",
         "privacy"
       ],
       "additionalProperties": false

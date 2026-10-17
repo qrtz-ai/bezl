@@ -84,6 +84,7 @@ pub struct AppService {
     helper: Option<Supervisor>,
     pub events: Events,
     chat: std::sync::OnceLock<Arc<dyn crate::ports::ChatPort>>,
+    setup: std::sync::OnceLock<Arc<dyn crate::ports::SetupPort>>,
     speech_tap: std::sync::OnceLock<SpeechTap>,
     /// The last helper status every port has seen (`on_helper_status` finished), for readiness checks.
     delivered: std::sync::Mutex<Option<HelperStatus>>,
@@ -110,6 +111,7 @@ impl AppService {
             helper: d.helper,
             events: d.events,
             chat: std::sync::OnceLock::new(),
+            setup: std::sync::OnceLock::new(),
             speech_tap: std::sync::OnceLock::new(),
             delivered: Default::default(),
         })
@@ -119,6 +121,11 @@ impl AppService {
     /// part boundaries for note speech; the helper's own `asr` lines are dropped once the module transcribes).
     pub fn set_speech_tap(&self, tap: SpeechTap) {
         let _ = self.speech_tap.set(tap);
+    }
+    /// Plug in speech/search-model setup (set once by `build_app`; without it the status channels answer their idle
+    /// samples and the actions are `E_UNAVAILABLE`).
+    pub fn set_setup(&self, setup: Arc<dyn crate::ports::SetupPort>) {
+        let _ = self.setup.set(setup);
     }
     pub fn set_chat(&self, chat: Arc<dyn crate::ports::ChatPort>) {
         let _ = self.chat.set(chat);
@@ -293,6 +300,8 @@ impl AppService {
             Some("storage")
         } else if APP_CHANNELS.contains(&channel) {
             Some("app")
+        } else if SETUP_CHANNELS.contains(&channel) {
+            Some("setup")
         } else if channel.starts_with(TALK_PREFIX) {
             Some("talk")
         } else {
@@ -309,6 +318,16 @@ impl Handler for AppService {
             Some("storage") => self.storage.call(channel, payload).await,
             Some("talk") => self.talk.call(channel, payload).await,
             Some("app") => self.app_channel(channel, payload).await,
+            Some("setup") => match self.setup.get() {
+                Some(s) => s.call(channel, payload).await,
+                None => qrtz_ipc::idle_response(channel).ok_or_else(|| {
+                    AppError::new(
+                        ErrorCode::Unavailable,
+                        "speech setup is not available in this build",
+                    )
+                    .retryable(false)
+                }),
+            },
             _ => Err(no_handler(channel)),
         }
     }

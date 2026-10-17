@@ -57,6 +57,17 @@ pub const APP_CHANNELS: &[&str] = &[
     "note:chat",
 ];
 pub const TALK_PREFIX: &str = "talk:";
+/// qrtz speech setup and the on-device search model (onboarding, settings "speech"; ADR 0046 §7).
+pub const SETUP_CHANNELS: &[&str] = &[
+    "speech:status",
+    "speech:check",
+    "speech:download",
+    "speech:pause",
+    "speech:resume",
+    "speech:delete",
+    "search:model-status",
+    "search:model-download",
+];
 
 #[async_trait]
 pub trait RuntimePort: Send + Sync {
@@ -77,6 +88,12 @@ pub trait StoragePort: Send + Sync {
 #[async_trait]
 pub trait ChatPort: Send + Sync {
     async fn chat(&self, payload: Value) -> Result<Value, AppError>;
+}
+
+/// Speech module download/update/delete and the search model download (`crate::setup::Setup`).
+#[async_trait]
+pub trait SetupPort: Send + Sync {
+    async fn call(&self, channel: &str, payload: Value) -> Result<Value, AppError>;
 }
 
 #[async_trait]

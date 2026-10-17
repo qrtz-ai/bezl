@@ -14,6 +14,7 @@ import { ChatAnswer, ChatTurn } from '../note/chat';
 import { MeetingNote } from '../note/notes';
 import { SummaryTemplateId } from '../note/templates';
 import { DictionaryEntry, TalkEntry, TalkView } from '../talk/contract';
+import { SearchModelStatus, SpeechSetupStatus } from '../speech/setup';
 
 /** Bump when the envelope shape changes (not when a channel changes). */
 export const PROTOCOL_VERSION = 1;
@@ -373,6 +374,58 @@ export const ipcContract = {
     capability: 'talk.write',
     request: z.object({ entries: z.array(DictionaryEntry).max(500) }),
     response: z.array(DictionaryEntry),
+  }),
+  // --- qrtz speech setup (ADR 0046 §7) and the search model ---
+  'speech:status': defineChannel({
+    version: 1,
+    capability: 'speech.read',
+    request: z.void(),
+    response: SpeechSetupStatus,
+  }),
+  /** Look for the newest release (version + size); never downloads. */
+  'speech:check': defineChannel({
+    version: 1,
+    capability: 'speech.read',
+    request: z.void(),
+    response: SpeechSetupStatus,
+  }),
+  /** Download + install the newest release in the background (resumes a paused or cut one). `force` = re-download. */
+  'speech:download': defineChannel({
+    version: 1,
+    capability: 'speech.manage',
+    request: z.object({ force: z.boolean().optional() }).default({}),
+    response: SpeechSetupStatus,
+  }),
+  'speech:pause': defineChannel({
+    version: 1,
+    capability: 'speech.manage',
+    request: z.void(),
+    response: SpeechSetupStatus,
+  }),
+  'speech:resume': defineChannel({
+    version: 1,
+    capability: 'speech.manage',
+    request: z.void(),
+    response: SpeechSetupStatus,
+  }),
+  /** Remove every installed version and partial download (refused while a session runs). */
+  'speech:delete': defineChannel({
+    version: 1,
+    capability: 'speech.manage',
+    request: z.void(),
+    response: SpeechSetupStatus,
+  }),
+  'search:model-status': defineChannel({
+    version: 1,
+    capability: 'speech.read',
+    request: z.void(),
+    response: SearchModelStatus,
+  }),
+  'search:model-download': defineChannel({
+    version: 1,
+    capability: 'speech.manage',
+    request: z.void(),
+    response: SearchModelStatus,
   }),
 } as const satisfies Record<string, ChannelDef>;
 

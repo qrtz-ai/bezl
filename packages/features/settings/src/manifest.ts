@@ -14,5 +14,7 @@ export const manifest = SubAppManifest.parse({
     'db.read',
     'helper.status',
     'data.backup',
+    'speech.read',
+    'speech.manage',
   ],
 });

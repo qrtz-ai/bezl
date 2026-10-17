@@ -105,6 +105,8 @@ pub struct Faults {
     pub corrupt: HashSet<String>,
     /// Paths served with extra bytes.
     pub oversize: HashSet<String>,
+    /// Paths served in 16 KiB chunks with this pause between them (pause/resume tests).
+    pub throttle: HashMap<String, std::time::Duration>,
     /// Range headers seen, per path.
     pub ranges: Vec<(String, String)>,
     pub hits: HashMap<String, usize>,
@@ -153,7 +155,7 @@ impl Server {
                         k.eq_ignore_ascii_case("range").then(|| v.trim().to_string())
                     });
                     let body = s.routes.lock().unwrap().get(&path).cloned();
-                    let (fail, cut, corrupt, over) = {
+                    let (fail, cut, corrupt, over, slow) = {
                         let mut f = s.faults.lock().unwrap();
                         *f.hits.entry(path.clone()).or_default() += 1;
                         if let Some(r) = &range {
@@ -164,6 +166,7 @@ impl Server {
                             f.truncate_once.remove(&path),
                             f.corrupt.contains(&path),
                             f.oversize.contains(&path),
+                            f.throttle.get(&path).copied(),
                         )
                     };
                     let Some(mut body) = body else {
@@ -204,9 +207,19 @@ impl Server {
                         Some(n) => {
                             let _ = c.write_all(&part[..n.min(part.len())]).await;
                         }
-                        None => {
-                            let _ = c.write_all(part).await;
-                        }
+                        None => match slow {
+                            Some(gap) => {
+                                for chunk in part.chunks(16 * 1024) {
+                                    if c.write_all(chunk).await.is_err() {
+                                        return;
+                                    }
+                                    tokio::time::sleep(gap).await;
+                                }
+                            }
+                            None => {
+                                let _ = c.write_all(part).await;
+                            }
+                        },
                     }
                     let _ = c.shutdown().await;
                 });

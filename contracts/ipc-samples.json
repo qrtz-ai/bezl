@@ -618,6 +618,137 @@
           ]
         }
       ]
+    },
+    "speech:status": {
+      "request": null,
+      "response": {
+        "configured": true,
+        "installed": "1.0.0",
+        "bytes": 412000000,
+        "latest": "1.0.0",
+        "latestBytes": 412000000,
+        "waiting": null,
+        "listExpired": false,
+        "download": {
+          "state": "idle",
+          "done": 0,
+          "total": 0
+        }
+      },
+      "idle": {
+        "configured": false,
+        "installed": null,
+        "bytes": 0,
+        "latest": null,
+        "latestBytes": null,
+        "waiting": null,
+        "listExpired": false,
+        "download": {
+          "state": "idle",
+          "done": 0,
+          "total": 0
+        }
+      }
+    },
+    "speech:check": {
+      "request": null,
+      "response": {
+        "configured": true,
+        "installed": "1.0.0",
+        "bytes": 412000000,
+        "latest": "1.0.0",
+        "latestBytes": 412000000,
+        "waiting": null,
+        "listExpired": false,
+        "download": {
+          "state": "idle",
+          "done": 0,
+          "total": 0
+        }
+      }
+    },
+    "speech:download": {
+      "request": {},
+      "response": {
+        "configured": true,
+        "installed": null,
+        "bytes": 0,
+        "latest": "1.0.0",
+        "latestBytes": 412000000,
+        "waiting": null,
+        "listExpired": false,
+        "download": {
+          "state": "downloading",
+          "done": 100000000,
+          "total": 412000000
+        }
+      }
+    },
+    "speech:pause": {
+      "request": null,
+      "response": {
+        "configured": true,
+        "installed": null,
+        "bytes": 0,
+        "latest": "1.0.0",
+        "latestBytes": 412000000,
+        "waiting": null,
+        "listExpired": false,
+        "download": {
+          "state": "paused",
+          "done": 100000000,
+          "total": 412000000
+        }
+      }
+    },
+    "speech:resume": {
+      "request": null,
+      "response": {
+        "configured": true,
+        "installed": null,
+        "bytes": 0,
+        "latest": "1.0.0",
+        "latestBytes": 412000000,
+        "waiting": null,
+        "listExpired": false,
+        "download": {
+          "state": "downloading",
+          "done": 100000000,
+          "total": 412000000
+        }
+      }
+    },
+    "speech:delete": {
+      "request": null,
+      "response": {
+        "configured": true,
+        "installed": null,
+        "bytes": 0,
+        "latest": null,
+        "latestBytes": null,
+        "waiting": null,
+        "listExpired": false,
+        "download": {
+          "state": "idle",
+          "done": 0,
+          "total": 0
+        }
+      }
+    },
+    "search:model-status": {
+      "request": null,
+      "response": {
+        "state": "ready"
+      },
+      "idle": {
+        "state": "missing"
+      }
+    },
+    "search:model-download": {
+      "request": null,
+      "response": {
+        "state": "downloading"
+      }
     }
   },
   "events": {
@@ -699,6 +830,23 @@
       "accessibility": "unknown",
       "screen-recording": "unknown",
       "microphone": "unknown"
+    },
+    "speech:status": {
+      "configured": true,
+      "installed": null,
+      "bytes": 0,
+      "latest": "1.0.0",
+      "latestBytes": 412000000,
+      "waiting": null,
+      "listExpired": false,
+      "download": {
+        "state": "downloading",
+        "done": 100000000,
+        "total": 412000000
+      }
+    },
+    "search:model-status": {
+      "state": "missing"
     }
   }
 }

@@ -18,6 +18,9 @@ export const Capability = z.enum([
   'talk.read',
   'talk.dictate',
   'talk.write',
+  /** qrtz speech (ADR 0046) and the on-device search model: read setup state / download, update, delete. */
+  'speech.read',
+  'speech.manage',
 ]);
 export type Capability = z.infer<typeof Capability>;
 

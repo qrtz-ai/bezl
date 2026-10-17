@@ -16,6 +16,34 @@ export interface ChannelSample<C extends IpcChannel> {
 }
 
 const T0 = 1_760_659_200_000;
+const speechNone = {
+  configured: true,
+  installed: null,
+  bytes: 0,
+  latest: null,
+  latestBytes: null,
+  waiting: null,
+  listExpired: false,
+  download: { state: 'idle' as const, done: 0, total: 0 },
+};
+const speechInstalled = {
+  ...speechNone,
+  installed: '1.0.0',
+  bytes: 412_000_000,
+  latest: '1.0.0',
+  latestBytes: 412_000_000,
+};
+const speechDownloading = {
+  ...speechNone,
+  latest: '1.0.0',
+  latestBytes: 412_000_000,
+  download: {
+    state: 'downloading' as const,
+    done: 100_000_000,
+    total: 412_000_000,
+  },
+};
+const searchModelMissing = { state: 'missing' as const };
 export const SAMPLE_MEETING_ID = '00000000-0000-4000-8000-000000000001';
 const meeting = {
   id: SAMPLE_MEETING_ID,
@@ -263,6 +291,26 @@ export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
     request: { entries: [{ term: 'qrtz', aliases: ['quartz'] }] },
     response: [{ term: 'qrtz', aliases: ['quartz'] }],
   },
+  'speech:status': { request: undefined, response: speechInstalled },
+  'speech:check': { request: undefined, response: speechInstalled },
+  'speech:download': { request: {}, response: speechDownloading },
+  'speech:pause': {
+    request: undefined,
+    response: {
+      ...speechDownloading,
+      download: { ...speechDownloading.download, state: 'paused' },
+    },
+  },
+  'speech:resume': { request: undefined, response: speechDownloading },
+  'speech:delete': { request: undefined, response: speechNone },
+  'search:model-status': {
+    request: undefined,
+    response: { state: 'ready' },
+  },
+  'search:model-download': {
+    request: undefined,
+    response: { state: 'downloading' },
+  },
 };
 
 export const eventSamples: { [E in EventName]: EventPayload<E> } = {
@@ -282,6 +330,8 @@ export const eventSamples: { [E in EventName]: EventPayload<E> } = {
   'talk:state': talkIdle,
   'talk:history-changed': { id: 't1' },
   'permissions:changed': unknownPermissions,
+  'speech:status': speechDownloading,
+  'search:model-status': searchModelMissing,
 };
 
 /** Idle answers per channel (what an empty backend says); a channel absent here has no idle answer. */
@@ -298,4 +348,6 @@ export const idleResponses: Partial<Record<IpcChannel, unknown>> = {
   'talk:cancel': talkIdle,
   'talk:history': [],
   'talk:dictionary': [],
+  'speech:status': { ...speechNone, configured: false },
+  'search:model-status': searchModelMissing,
 };

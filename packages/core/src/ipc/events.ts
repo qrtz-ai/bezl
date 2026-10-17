@@ -4,6 +4,7 @@ import { HelperStatus } from './contract';
 import { PermissionsStatus, SessionView } from '../note/contract';
 import { LiveTranscriptDelta, PipelineView } from '../note/lifecycle';
 import { TalkView } from '../talk/contract';
+import { SearchModelStatus, SpeechSetupStatus } from '../speech/setup';
 
 export interface EventDef<P extends z.ZodType = z.ZodType> {
   capability: Capability;
@@ -54,6 +55,14 @@ export const eventContract = {
   'permissions:changed': defineEvent({
     capability: 'os.permissions',
     payload: PermissionsStatus,
+  }),
+  'speech:status': defineEvent({
+    capability: 'speech.read',
+    payload: SpeechSetupStatus,
+  }),
+  'search:model-status': defineEvent({
+    capability: 'speech.read',
+    payload: SearchModelStatus,
   }),
 } as const satisfies Record<string, EventDef>;
 
