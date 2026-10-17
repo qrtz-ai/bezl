@@ -40,7 +40,7 @@ final class ArbiterTests: XCTestCase {
 
     /// Same vectors as packages/core/src/helper/arbiter.test.ts: the TS and Swift arbiters cannot drift.
     func testSharedVectors() throws {
-        let steps = try replay(Self.vectors, expectCases: 16)
+        let steps = try replay(Self.vectors, expectCases: 17)
         XCTAssertGreaterThan(steps, 40)
     }
 

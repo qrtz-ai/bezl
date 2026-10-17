@@ -67,7 +67,7 @@ describe('N4: permission.revoked.degraded is the arbiter degrade:* effects', () 
 });
 
 describe('helper arbiter: shared vectors (TS ⇄ Swift)', () => {
-  it('has the expected coverage', () => expect(vectors.cases.length).toBe(16));
+  it('has the expected coverage', () => expect(vectors.cases.length).toBe(17));
   for (const c of vectors.cases)
     it(c.name, () => {
       let s = initialArbiterState(c.initialDenied);

@@ -1850,6 +1850,124 @@
      }
     }
    ]
+  },
+  {
+   "name": "N5: a warm idle mic during a recording is not a mux; only a live dictation is",
+   "initialDenied": [],
+   "steps": [
+    {
+     "event": {
+      "configure": {
+       "warmMic": true
+      }
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.subscribe:dictation"
+      ],
+      "state": {
+       "recording": false,
+       "activeAudioPath": null,
+       "dictating": false,
+       "warm": true,
+       "mic": [
+        "dictation"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "recording.start",
+      "audioPath": "/rec/n5.wav"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.subscribe:recording"
+      ],
+      "state": {
+       "recording": true,
+       "activeAudioPath": "/rec/n5.wav",
+       "dictating": false,
+       "warm": true,
+       "mic": [
+        "dictation",
+        "recording"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.start"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": true,
+      "effects": [],
+      "state": {
+       "recording": true,
+       "activeAudioPath": "/rec/n5.wav",
+       "dictating": true,
+       "warm": true,
+       "mic": [
+        "dictation",
+        "recording"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.stop"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": true,
+       "activeAudioPath": "/rec/n5.wav",
+       "dictating": false,
+       "warm": true,
+       "mic": [
+        "dictation",
+        "recording"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "recording.stop"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.unsubscribe:recording"
+      ],
+      "state": {
+       "recording": false,
+       "activeAudioPath": null,
+       "dictating": false,
+       "warm": true,
+       "mic": [
+        "dictation"
+       ],
+       "denied": []
+      }
+     }
+    }
+   ]
   }
  ]
 }
