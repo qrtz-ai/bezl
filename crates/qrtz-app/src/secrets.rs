@@ -197,11 +197,15 @@ impl SecretStore for KeychainSecretStore {
             }
         }
         names.sort();
-        let _ = write_private_atomic(
+        // N52: the Keychain already holds the change; a failed index write would make secrets:list lie, so say so.
+        write_private_atomic(
             &self.index,
             serde_json::to_string(&names).unwrap_or_default().as_bytes(),
-        );
-        Ok(())
+        )
+        .map_err(|e| {
+            tracing::warn!(err = %e, index = %self.index.display(), "secret index write failed");
+            AppError::new(ErrorCode::Internal, format!("secret index write failed: {e}"))
+        })
     }
     fn get(&self, name: &str) -> Option<String> {
         keyring::Entry::new(&self.service, name).ok()?.get_password().ok()

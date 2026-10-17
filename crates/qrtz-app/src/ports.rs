@@ -2,7 +2,7 @@
 //! so the adapter onto the real crates is the one-liner table in docs/rust-core-api.md §4.3:
 //!   RuntimePort → qrtz-lifecycle `NoteRuntime` (feature "runtime")
 //!   StoragePort → qrtz-storage `StorageHandle`
-//!   TalkPort    → the Rust TalkService port (talk worker's TS service today)
+//!   TalkPort    → Bozniak's qrtz-talk service (routing only here)
 //! Until those land, the `Stub*` impls answer with the golden idle samples and refuse actions with a
 //! retryable E_UNAVAILABLE, so the Tauri UI boots, renders empty states and shows honest errors.
 use async_trait::async_trait;
@@ -84,6 +84,9 @@ pub trait TalkPort: Send + Sync {
     fn helper_status(&self, _s: &HelperStatus) {}
     /// Global dictation hotkey (push-to-talk down/up or toggle).
     async fn toggle(&self) -> Result<Value, AppError>;
+    /// `config:set` / `secrets:set` happened: re-read engine keys and push `dictation.configure` (Electron
+    /// `config.onChange(() => talk.configure())`).
+    fn config_changed(&self) {}
 }
 
 /// OS notifications the core asks the shell for. Not IPC events: the shell decides whether a window is focused

@@ -16,7 +16,7 @@ If a run is interrupted, the next one continues from this file. Keep it current.
 | Pending-delete tombstones (`RuntimeDeps::pending_delete`) and `assert_deletable`: **done** (`qrtz_storage::PendingDeletes`, `NoteRuntime::{schedule_delete, undo_delete, pending_deletes, assert_deletable}`; see rust-core-api.md §6 q8) | Bozniak |
 | `crates/qrtz-app` wiring (ports, EventSink, HelperPort, Store, recover, AppDirs, config, secrets)                                                                                                                                         | Bobs    |
 | `apps/desktop-tauri/src-tauri` shell (windows, tray, shortcuts, notifications, media protocol)                                                                                                                                            | Bobs    |
-| Rust talk service (ElevenLabs → Deepgram → on-device Parakeet via the helper; T1 helper-lost; busy ids)                                                                                                                                   | Bobs    |
+| `qrtz-talk` Rust talk service (behind `TalkPort`) and `qrtz-backup` (backup zip export/import) — since 2026-10-17 07:21 PT                                                                                                                | Bozniak |
 | `qrtz-helper-bridge`, helper protocol, mocks (N38), arbiter mux (N5)                                                                                                                                                                      | Bobs    |
 | E2E port to the real Tauri app; removing Electron; memory numbers; docs/ADR/CHANGELOG for the cutover                                                                                                                                     | Bobs    |
 
@@ -43,12 +43,34 @@ hides `pending_deletes()`, and the runtime (not the shell) emits `note:changed`.
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----- | --------- |
 | 0   | This file, ownership split                                                                                                                                                                                                                                         | done  | (this)    |
 | 1   | `src-tauri` shell in the workspace; qrtz-app: NoteRuntimePort (all runtime channels), StoragePort over `StorageHandle`, EventSink (bus + OS notifications + no-audio hook), HelperPort over the supervisor, recover() at boot, AppDirs, file secrets 0600 on Linux | done  | (see log) |
-| 2   | Rust talk service (`qrtz-talk`): cloud streaming (ElevenLabs Scribe v2 Realtime, Deepgram), on-device via helper, history/dictionary 0600 with stale `.tmp` removal, T1 helper-lost on the T2 hooks                                                                | todo  |           |
-| 3   | Export markdown, backup zip export/import, chat + summaries through Bozniak's crates when they land                                                                                                                                                                | todo  |           |
+| 2   | Talk routing only (`talk:*` → `TalkPort`; dictation errors / `permission.revoked` reach talk; `config_changed` on config/secrets set). The service is Bozniak's `qrtz-talk`                                                                                        | done  | (see log) |
+| 2b  | ASR + diarization plan (Jared, 2026-10-17 07:17 PT), see below                                                                                                                                                                                                     | todo  |           |
+| 3   | Integrate Bozniak's `qrtz-llm`, `qrtz-search`, `qrtz-talk`, `qrtz-backup` behind StepExecutor / TalkPort / StoragePort when they land (markdown export done in phase 1)                                                                                            | todo  |           |
 | 4   | N38 (mock start reports in the `recording.started` chunk + e2e), N5 (`mux = mic.includes('recording') && state.dictating`, TS + Swift, vectors)                                                                                                                    | todo  |           |
 | 5   | E2E suite against the real Tauri app on Linux (WebKitWebDriver/tauri-driver + Rust mock helper): one equivalent per Electron scenario                                                                                                                              | todo  |           |
 | 6   | Move the renderer into `apps/desktop-tauri`, delete `apps/desktop` and the TS-only runtime; keep TS spec models + vectors                                                                                                                                          | todo  |           |
 | 7   | Memory: Tauri idle/recording vs the last Electron build (Linux); docs, README, ADR (Electron removed), CHANGELOG                                                                                                                                                   | todo  |           |
+
+## Phase 2b: on-device diarization + Nemotron ASR (Jared, 2026-10-17)
+
+- Speaker labels on every path: the Swift helper diarizes on-device with FluidAudio's Nemotron 3 Diarization
+  (Core ML), preset `low` by default, `fast32` selectable in settings. Two separate diarizer instances, one on
+  the system-audio channel and one on the mic channel (several people can share the room mic). Speaker ids stay
+  per channel (`system:s1`, `mic:s1`), never merged across channels. The dominant mic speaker defaults to the
+  name "me" (renameable); other mic speakers are named like room/system speakers. (Correction 07:22 PT: the mic
+  is not always one person.)
+- Diarizer timestamps are matched to words from any ASR (cloud or on-device); speakers attach to words ~1-3 s
+  after the words arrive (late binding, the transcript is not held back).
+- Cloud default stays ElevenLabs Scribe v2 Realtime (no diarization); the on-device layer covers it.
+- Offline fallback ASR: NVIDIA Nemotron 3 ASR English streaming
+  (`FluidInference/nemotron-speech-streaming-en-0.6b-coreml`, 560 ms chunks) replaces Parakeet.
+- Keep the existing speaker events and UI; update the helper protocol, docs, an ADR; tests with fake diarizer
+  output (Rust mock helper + attribution unit tests). Swift changes are Mac-only checks.
+- Ownership (07:21 PT): Bozniak now owns `qrtz-talk` (behind `TalkPort`) and `qrtz-backup` (export/backup);
+  qrtz-app only routes `talk:*`, `data:*-backup`. My parked talk WIP (cleanup port + TS-oracle vectors) is at
+  `/workspace/qrtz-talk-wip` on the box if useful.
+- Ownership: protocol, Swift helper, mock helper and the pure attribution module are Bobs; calling it from
+  `qrtz-lifecycle` fusion / transcript assembly is Bozniak's (coordinate here, don't edit their crate).
 
 ## Running the Tauri app on headless Linux
 
@@ -66,6 +88,7 @@ On Linux the tray is off unless `QRTZ_TRAY=1`.
 ## Mac-only checks (cannot run on the Linux box)
 
 - Swift helper changes compile and pass XCTest on macOS (see docs/mac-verify.md).
+- FluidAudio Nemotron 3 Diarization (`low`/`fast32`) and Nemotron 3 ASR streaming (560 ms) in the Swift helper: build, model download, latency, accuracy on a real call.
 - Keychain secret store (`KeychainSecretStore`), TCC prompts, real capture, WKWebView rendering, tray/notifications.
 
 ## Log
@@ -74,3 +97,4 @@ On Linux the tray is off unless `QRTZ_TRAY=1`.
 - 2026-10-17 07:20 PT: Phase 1 green: `cargo test --workspace` 138 passed; clippy -D warnings clean; npm lint/typecheck ok; vitest 536 passed / 2 skipped. App boots headless on Linux (data dir 0700, qrtz.db 0600, mock helper Simulated, recovery ran). Next: Phase 2 talk service or Phase 5 E2E harness.
 - 2026-10-17 07:25 PT (Bozniak, hardening cycle 13): undo restores only a delete still inside its window (N51,
   `720ae3a`, ADR 0041; TS + Rust); port checklist of every hardening behaviour in `docs/architecture-review/talk-and-note.md` §21.1.
+- 2026-10-17 07:25 PT: talk + backup reassigned to Bozniak; talk WIP parked off-repo. Phase 2 = routing. N52 (Keychain index write error is returned + logged) done. Mic diarization correction recorded in Phase 2b.

@@ -332,6 +332,7 @@ fn hello_and_helper_status_reach_talk() {
     struct Seen {
         lines: Mutex<Vec<String>>,
         statuses: Mutex<Vec<HelperState>>,
+        configured: std::sync::atomic::AtomicUsize,
     }
     struct Talk(Arc<Seen>);
     #[async_trait::async_trait]
@@ -351,6 +352,11 @@ fn hello_and_helper_status_reach_talk() {
         }
         async fn toggle(&self) -> Result<Value, qrtz_ipc::AppError> {
             Ok(Value::Null)
+        }
+        fn config_changed(&self) {
+            self.0
+                .configured
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         }
     }
     struct Runtime(Arc<Seen>);
@@ -390,8 +396,13 @@ fn hello_and_helper_status_reach_talk() {
         r#"{"features":[],"helperVersion":"0.1.0","os":"macOS 15.5","protocol":1,"type":"hello"}"#,
     );
     svc.on_helper_line(r#"{"action":"down","type":"hotkey"}"#);
-    assert_eq!(*rt.lines.lock().unwrap(), ["hello"]);
-    assert_eq!(*talk.lines.lock().unwrap(), ["hello", "hotkey"]);
+    // Talk's own errors and mic revocations reach talk as well; other errors stay with the runtime.
+    svc.on_helper_line(
+        r#"{"type":"error","code":"dictation.busy","message":"busy","fatal":false,"id":"d2","activeId":"d1"}"#,
+    );
+    svc.on_helper_line(r#"{"type":"error","code":"audio.unavailable","message":"none","fatal":false}"#);
+    assert_eq!(*rt.lines.lock().unwrap(), ["hello", "error", "error"]);
+    assert_eq!(*talk.lines.lock().unwrap(), ["hello", "hotkey", "error"]);
     let status = |state| HelperStatus {
         state,
         restarts: 1,
@@ -402,4 +413,18 @@ fn hello_and_helper_status_reach_talk() {
     let want = [HelperState::Backoff, HelperState::Running];
     assert_eq!(*talk.statuses.lock().unwrap(), want);
     assert_eq!(*rt.statuses.lock().unwrap(), want);
+    // config:set and secrets:set tell talk to re-configure.
+    let rt2 = tokio::runtime::Runtime::new().unwrap();
+    rt2.block_on(async {
+        use qrtz_ipc::{CallContext, Handler};
+        let ctx = CallContext {
+            sub_app: "settings".into(),
+            request_id: "r1".into(),
+        };
+        let patch = json!({"patch": {"talk": {"warmMic": true}}});
+        svc.handle("config:set", patch, &ctx).await.unwrap();
+        let key = json!({"name": "asr.elevenlabs", "value": "k"});
+        svc.handle("secrets:set", key, &ctx).await.unwrap();
+    });
+    assert_eq!(talk.configured.load(std::sync::atomic::Ordering::SeqCst), 2);
 }

@@ -172,6 +172,12 @@ impl AppService {
                 if is_talk_message(ty) {
                     self.talk.helper_line(&msg);
                 } else if ty != "heartbeat" {
+                    // Talk also needs its own errors (dictation.busy / dictation.mic) and mic revocations; the
+                    // runtime still sees them (it logs foreign codes and owns the capture side of a revocation).
+                    let code = msg["code"].as_str().unwrap_or_default();
+                    if (ty == "error" && code.starts_with("dictation.")) || ty == "permission.revoked" {
+                        self.talk.helper_line(&msg);
+                    }
                     // A new helper process concerns both apps: the runtime re-configures, talk ends a dictation the
                     // old process owned (T2).
                     if ty == "hello" {
@@ -201,6 +207,7 @@ impl AppService {
             .unwrap_or_else(|p| p.into_inner())
             .set(patch)?;
         self.events.emit("config:changed", next.clone());
+        self.talk.config_changed();
         Ok(next)
     }
 
@@ -220,6 +227,8 @@ impl AppService {
             "secrets:set" => {
                 let name = p["name"].as_str().unwrap_or_default();
                 self.secrets.set(name, p["value"].as_str())?;
+                // A new or removed ASR key changes which talk engine a dictation uses.
+                self.talk.config_changed();
                 Ok(json!({"ok": true}))
             }
             "secrets:list" => Ok(json!(self.secrets.list())),
