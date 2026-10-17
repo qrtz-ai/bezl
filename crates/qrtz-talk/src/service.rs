@@ -198,6 +198,8 @@ fn s(v: &Value, k: &str) -> String {
 }
 
 const MSG_BUSY: &str = "another dictation is still running";
+const MSG_HOTKEY: &str = "the push-to-talk key isn't available; allow qrtz in system settings → privacy & \
+    security → input monitoring and accessibility";
 
 impl TalkService {
     pub fn new(deps: TalkDeps) -> Self {
@@ -404,6 +406,7 @@ impl TalkService {
                     return;
                 }
                 let action = s(m, "action");
+                tracing::info!(%action, "push key");
                 let mut g = self.lock();
                 if action == "down" {
                     g.key_held = true;
@@ -496,6 +499,12 @@ impl TalkService {
                     }
                 } else if code == "dictation.busy" {
                     self.on_busy(m);
+                } else if code == "dictation.hotkey" {
+                    // The helper couldn't watch the push key: pressing it would do nothing, so say so (never
+                    // silent). An active dictation keeps going; the next press is what's broken.
+                    if !self.lock().view.active() {
+                        self.refuse(TalkErrorKind::PermissionRevoked, MSG_HOTKEY);
+                    }
                 }
             }
             _ => {}

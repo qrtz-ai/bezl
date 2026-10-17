@@ -202,11 +202,10 @@ fn pill_trace(a: &App, config: Value) -> PillTrace {
     out
 }
 
-/// Jared: the pill goes the instant the key is released; the final text finishes in the background and is
-/// inserted when ready (no LLM cleanup any more). The very first view after the release hides the pill, before
-/// the text is in, and nothing shows it again.
+/// Jared (Oct 17): the pill stays up after the key is released, through the final text and the insert, and
+/// hides once the text is in. Nothing hides it early, and nothing shows it again afterwards.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn the_pill_hides_on_release_and_the_text_is_inserted_later_in_the_background() {
+async fn the_pill_stays_up_until_the_text_is_inserted_then_hides() {
     use qrtz_app::pill::PillAction;
     let tmp = tempfile::tempdir().unwrap();
     let a = App::launch(&tmp.path().join("d"), Opts::default().helper(Helper::Scripted)).await;
@@ -215,15 +214,6 @@ async fn the_pill_hides_on_release_and_the_text_is_inserted_later_in_the_backgro
     a.talk("talk:start", Value::Null).await;
     a.until_talk("heard friday", |v| talk_text(v).contains("friday"))
         .await;
-    assert!(
-        trace
-            .lock()
-            .unwrap()
-            .iter()
-            .any(|(_, _, p)| *p == PillAction::Show),
-        "shown while held"
-    );
-    let released = std::time::Instant::now();
     let n = trace.lock().unwrap().len();
     a.talk("talk:stop", Value::Null).await;
     let e = wait("history entry", || async {
@@ -231,32 +221,25 @@ async fn the_pill_hides_on_release_and_the_text_is_inserted_later_in_the_backgro
     })
     .await;
     assert_eq!(e["inserted"], true, "{e}");
-    let inserted = std::time::Instant::now();
-    let after: Vec<_> = trace.lock().unwrap()[n..].to_vec();
-    let (first_at, first, act) = after.first().cloned().expect("a view after the release");
-    assert_ne!(first["phase"], "listening", "{first}");
-    assert_eq!(act, PillAction::Hide, "{first}");
+    let after = wait("the pill hid", || async {
+        let t = trace.lock().unwrap()[n..].to_vec();
+        t.iter().any(|(_, v, _)| v["phase"] == "idle").then_some(t)
+    })
+    .await;
+    let done = after.iter().position(|(_, v, _)| v["phase"] == "idle").unwrap();
+    assert!(done > 0, "finalizing / inserting views came first: {after:?}");
+    for (_, v, p) in &after[..done] {
+        assert_eq!(*p, PillAction::Show, "shown while busy: {v}");
+    }
     assert!(
-        first_at.duration_since(released) < std::time::Duration::from_millis(250),
-        "hidden {:?} after the release",
-        first_at.duration_since(released)
-    );
-    assert!(first_at < inserted, "hidden before the text was in");
-    assert!(
-        after
-            .iter()
-            .any(|(_, v, _)| v["phase"] == "inserting" || v["phase"] == "finalizing"),
-        "the final text and insert ran after the release: {after:?}"
-    );
-    assert!(
-        after.iter().all(|(_, _, p)| *p == PillAction::Hide),
-        "never shown again: {after:?}"
+        after[done..].iter().all(|(_, _, p)| *p == PillAction::Hide),
+        "hidden once the text is in, and stays hidden: {after:?}"
     );
     a.quit().await;
 }
 
-/// A dictation that fails after the release (nothing could insert; the text went to the clipboard) never held
-/// the pill open: it hid on release and flashes the error once afterwards, or notifies with the pill off.
+/// A dictation that fails after the release (nothing could insert; the text went to the clipboard): the pill stays
+/// up while it finishes, then flashes the error once, or notifies with the pill off.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_failure_after_release_flashes_the_error_once_afterwards() {
     use qrtz_app::pill::PillAction;
@@ -297,7 +280,14 @@ async fn a_failure_after_release_flashes_the_error_once_afterwards() {
         .expect("listening views were traced");
     let after: Vec<_> = trace[release + 1..].iter().map(|(_, _, p)| p.clone()).collect();
     assert!(!after.is_empty(), "{trace:?}");
-    assert_eq!(after[0], PillAction::Hide, "hidden on release first: {after:?}");
+    let first_flash = after
+        .iter()
+        .position(|p| matches!(p, PillAction::Flash { .. }))
+        .expect("flashed");
+    assert!(
+        after[..first_flash].iter().all(|p| *p == PillAction::Show),
+        "shown until the failure: {after:?}"
+    );
     let flashes: std::collections::BTreeSet<String> = after
         .iter()
         .filter_map(|p| match p {
@@ -310,7 +300,10 @@ async fn a_failure_after_release_flashes_the_error_once_afterwards() {
         })
         .collect();
     assert_eq!(flashes.len(), 1, "one failure, one flash key: {after:?}");
-    assert!(!after.contains(&PillAction::Show), "{after:?}");
+    assert!(
+        !after[first_flash..].contains(&PillAction::Show),
+        "not shown again after the flash: {after:?}"
+    );
     assert!(
         off.lock()
             .unwrap()
@@ -416,7 +409,7 @@ async fn a_second_press_during_a_slow_insert_gives_two_ordered_inserts_and_shows
 /// `dictation.started`) leaves nothing running: the helper is told to stop the dictation (the mic closes), the
 /// view ends idle, and the pill is hidden from the release on.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_20ms_tap_during_a_slow_engine_start_leaves_the_mic_closed_and_the_pill_hidden() {
+async fn a_20ms_tap_during_a_slow_engine_start_leaves_the_mic_closed_and_the_pill_hidden_when_done() {
     use qrtz_app::pill::PillAction;
     let tmp = tempfile::tempdir().unwrap();
     let log = tmp.path().join("cmds.log");
@@ -449,15 +442,12 @@ async fn a_20ms_tap_during_a_slow_engine_start_leaves_the_mic_closed_and_the_pil
     let v = a.talk_state().await;
     assert_ne!(v["phase"], "listening", "{v}");
     a.until_talk("idle", |v| v["phase"] == "idle").await;
-    // The pill shows on the press itself (it doesn't wait for the engine), so it may blink for the tap; once
-    // released it is hidden and nothing (not the late start, not the empty result) brings it back.
+    // The pill shows on the press itself (it doesn't wait for the engine), so it may blink for the tap; once the
+    // tap's dictation is done it is hidden and nothing (not the late start, not the empty result) brings it back.
     let t = trace.lock().unwrap().clone();
-    let released = t
-        .iter()
-        .position(|(_, v, _)| v["phase"] != "listening")
-        .expect("released");
+    let done = t.iter().position(|(_, v, _)| v["phase"] == "idle").expect("done");
     assert!(
-        t[released..].iter().all(|(_, _, p)| *p == PillAction::Hide),
+        t[done..].iter().all(|(_, _, p)| *p == PillAction::Hide),
         "the pill stayed hidden after the tap: {t:?}"
     );
     // The next press still works (nothing is stuck).
@@ -466,5 +456,110 @@ async fn a_20ms_tap_during_a_slow_engine_start_leaves_the_mic_closed_and_the_pil
         .await;
     key(&a, "up");
     a.until_talk("idle again", |v| v["phase"] == "idle").await;
+    a.quit().await;
+}
+
+/// Regression (Jared, Oct 17: "pressing fn does nothing" after the offline change): his real config.json from
+/// before ADR 0076 (cloud keys, `engine: auto`, `privacy.localOnly`, `speech.cloud`, the removed chat/cleanup
+/// keys, no `blockGlobeKey`) and no speech module (the Mac build: `SpeechSetup` is `None`, the helper's own
+/// recogniser is the on-device engine). Push key down → listening, the pill shown, the helper told to consume Fn;
+/// key up → the text is inserted on device and a history entry is written; the pill hides when done.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_push_key_dictates_on_device_with_a_pre_offline_mac_config_and_no_speech_module() {
+    use qrtz_app::pill::PillAction;
+    let tmp = tempfile::tempdir().unwrap();
+    let data = tmp.path().join("data");
+    let log = tmp.path().join("cmds.log");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::write(
+        data.join("config.json"),
+        json!({
+            "app": {"autoUpdateCheck": true, "launchAtLogin": false, "menuBarIcon": true},
+            "logLevel": "info",
+            "note": {"autoDetectMeetings": true, "autoRecord": false, "autoSummarize": true,
+                     "backgroundIndexing": true, "defaultTemplate": "general", "detectPrompt": true,
+                     "floatingHud": true, "llmModel": "", "llmProvider": "openrouter", "notifyNoAudio": true,
+                     "retainAudioDays": 0, "searchModelDownload": true},
+            "onboarding": {"done": true},
+            "privacy": {"excludedApps": [], "localOnly": false, "pauseHotkey": "CommandOrControl+Shift+P"},
+            "schemaVersion": 1,
+            "speech": {"autoUpdate": true, "cloud": "off", "speakerMode": "fast"},
+            "talk": {"aiCleanup": true, "autoCleanup": true, "autoFailover": true, "autoInsert": true,
+                     "cleanupModel": "", "cleanupTimeoutMs": 900, "enabled": true, "engine": "auto",
+                     "preRollMs": 300, "pushKey": "fn", "restoreClipboard": true, "saveHistory": true,
+                     "showPill": true, "toggleHotkey": "CommandOrControl+Shift+Space", "warmMic": false},
+            "telemetry": {"crashReports": false},
+            "theme": "dark"
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let a = App::launch(
+        &data,
+        Opts::default()
+            .helper(Helper::Scripted)
+            .env("QRTZ_MOCK_CMD_LOG", log.to_str().unwrap()),
+    )
+    .await;
+    a.helper_ready().await;
+    let cfg = a.settings("config:get", Value::Null).await;
+    assert_eq!(cfg["talk"]["enabled"], true, "{cfg}");
+    assert_eq!(cfg["talk"]["pushKey"], "fn", "{cfg}");
+    let trace = pill_trace(&a, cfg.clone());
+    key(&a, "down");
+    a.until_talk("listening on device", |v| {
+        v["phase"] == "listening" && v["engine"] == "on-device" && talk_text(v).contains("friday")
+    })
+    .await;
+    key(&a, "up");
+    let e = wait("history entry", || async {
+        a.talk_history().await.first().cloned()
+    })
+    .await;
+    assert_eq!(e["inserted"], true, "{e}");
+    assert_eq!(e["engine"], "on-device", "{e}");
+    assert!(
+        !received(&log, "insert.text").is_empty(),
+        "the text went to the focused app"
+    );
+    wait("the pill hid when done", || async {
+        let t = trace.lock().unwrap().clone();
+        (t.iter().any(|(_, _, p)| *p == PillAction::Show)
+            && t.last()
+                .is_some_and(|(_, v, p)| v["phase"] == "idle" && *p == PillAction::Hide))
+        .then_some(())
+    })
+    .await;
+    a.quit().await;
+}
+
+/// The helper couldn't watch the push key (`error{dictation.hotkey}`, no Input Monitoring / Accessibility):
+/// pressing fn would do nothing, so the user is told (talk error view → the pill flashes it), never silence.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_unavailable_push_key_is_shown_not_silent() {
+    use qrtz_app::pill::PillAction;
+    let tmp = tempfile::tempdir().unwrap();
+    let a = App::launch(&tmp.path().join("d"), Opts::default().helper(Helper::Scripted)).await;
+    a.helper_ready().await;
+    let trace = pill_trace(&a, json!({"talk": {"showPill": true}}));
+    a.app.service.on_helper_line(
+        &json!({"type": "error", "code": "dictation.hotkey",
+                "message": "push-to-talk key fn unavailable (Input Monitoring / Accessibility?)", "fatal": false})
+        .to_string(),
+    );
+    let v = a.until_talk("error shown", |v| v["phase"] == "error").await;
+    assert!(
+        v["error"].as_str().unwrap_or("").contains("push-to-talk key"),
+        "{v}"
+    );
+    wait("flashed", || async {
+        trace
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(_, _, p)| matches!(p, PillAction::Flash { .. }))
+            .then_some(())
+    })
+    .await;
     a.quit().await;
 }

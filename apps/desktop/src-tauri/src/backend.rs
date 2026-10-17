@@ -346,8 +346,8 @@ fn on_session(app: &AppHandle, session: Value) {
     linger(app, &b.hud, windows::HUD, want, policy::HUD_LINGER, true);
 }
 
-/// The pill is up only while the key is held: on release it hides at once and the dictation finishes in the
-/// background. A failure flashes it (or notifies, with the pill off) once, afterwards (`qrtz_app::pill`).
+/// The pill is up from the press until the dictation is done (text inserted); a failure flashes it (or notifies,
+/// with the pill off) once (`qrtz_app::pill`).
 fn on_talk(app: &AppHandle, talk: &Value) {
     use qrtz_app::pill::{PillAction, ERROR_FLASH};
     let b = app.state::<Backend>();

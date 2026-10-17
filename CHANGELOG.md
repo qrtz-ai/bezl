@@ -2,6 +2,8 @@
 
 ## Unreleased: Tauri only
 
+- **Talk fix:** pressing fn did nothing after the globe-key change. The globe blocker no longer reports the key itself; a separate listen-only watch does, like before, so blocking the globe action can't break push-to-talk. If qrtz can't watch the push key, it now says so instead of staying silent.
+- **Talk pill:** stays up after you let go of the key while the text is finished and inserted, and hides once it's in (or after a brief error flash).
 - **GitHub Actions (docs/ci.md):** every push to main runs lint, typecheck, vitest, the renderer Playwright suite, cargo fmt, clippy and cargo test on Linux, plus the Swift helper tests and a desktop-crate check on macOS. A `v*` tag builds the Apple Silicon app (.dmg and zipped .app, unsigned for now) and publishes a GitHub release with the CHANGELOG section as notes.
 - **qrtz is entirely offline (Jared's decision, ADR 0076):**
   - ElevenLabs is gone. Talk is on-device only, and if speech is missing or withdrawn, talk and note say they're unavailable instead of using the cloud.

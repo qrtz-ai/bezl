@@ -1,16 +1,15 @@
-//! When the talk pill is on screen (Jared: it must go the instant the key is released). Pure, so the shell
-//! (`apps/desktop/src-tauri/src/backend.rs::on_talk`) and the E2E (`tests/e2e_talk.rs`) use the same rule.
+//! When the talk pill is on screen. Pure, so the shell (`apps/desktop/src-tauri/src/backend.rs::on_talk`) and
+//! the E2E (`tests/e2e_talk.rs`) use the same rule.
 //!
-//! - `listening` (the key is held): shown.
-//! - Key released (`finalizing` / `cleaning` / `inserting`): hidden at once. The final text, cleanup and insert
-//!   finish in the background, and the text is inserted when it's ready.
+//! Jared (Oct 17, reversing ADR 0071's "hide on release"): the pill stays up until the dictation is done.
+//! - `listening`, `finalizing`, `inserting` (key held, then the final text and the insert): shown.
+//! - Done (`idle`, the text is in): hidden.
 //! - The dictation failed (`error`, or a `last` entry that says the text couldn't be inserted): a brief flash of
-//!   the pill with the error ([`ERROR_FLASH`]), or an OS notification when the pill is turned off. Each failure
-//!   flashes once ([`PillGate`]).
-//! - Review §12.22 (a): the `last` failure counts in any phase, not only `idle`. Since ADR 0074 an older
-//!   dictation's insert can finish (and fail) while a newer one is finalizing, inserting or still listening. While
-//!   the key is held the pill shows the live text, so the flash waits for the release; with the pill off the
-//!   notification is posted at once.
+//!   the pill with the error ([`ERROR_FLASH`]), then hidden; an OS notification instead when the pill is turned
+//!   off. Each failure flashes once ([`PillGate`]).
+//! - Review §12.22 (a): an older dictation's insert can finish (and fail) while a newer one is busy (ADR 0074).
+//!   While the pill shows the newer dictation, that failure waits and flashes once the pill would hide; with the
+//!   pill off the notification is posted at once.
 use serde_json::Value;
 use std::time::Duration;
 
@@ -42,10 +41,18 @@ fn last_failure(talk: &Value) -> Option<(String, String)> {
         })
 }
 
+/// A dictation is in flight (the pill shows it while `talk.showPill` is on).
+fn busy(phase: &str) -> bool {
+    matches!(phase, "listening" | "finalizing" | "cleaning" | "inserting")
+}
+
 pub fn pill_action(config: &Value, talk: &Value) -> PillAction {
     let show_pill = config["talk"]["showPill"].as_bool().unwrap_or(true);
-    let failure = match talk["phase"].as_str().unwrap_or("idle") {
-        "listening" if show_pill => return PillAction::Show,
+    let phase = talk["phase"].as_str().unwrap_or("idle");
+    if show_pill && busy(phase) {
+        return PillAction::Show;
+    }
+    let failure = match phase {
         "error" => talk["error"]
             .as_str()
             .map(|e| {
@@ -65,24 +72,51 @@ pub fn pill_action(config: &Value, talk: &Value) -> PillAction {
     }
 }
 
-/// [`pill_action`] with each failure flashed (or notified) once: a view that repeats the failure already shown is
-/// `Hide`, so a dictation that starts after it is still hidden on release. The shell keeps one per app.
+/// [`pill_action`] with each failure flashed (or notified) once. A failure that lands while the pill is showing a
+/// newer dictation is kept and flashed when that one is done. The shell keeps one per app.
 #[derive(Debug, Default)]
 pub struct PillGate {
     flashed: Option<String>,
+    pending: Option<(String, String)>,
 }
 
 impl PillGate {
     pub fn next(&mut self, config: &Value, talk: &Value) -> PillAction {
         match pill_action(config, talk) {
+            PillAction::Show => {
+                if let Some((key, error)) = last_failure(talk) {
+                    if self.flashed.as_deref() != Some(key.as_str()) {
+                        self.pending = Some((key, error));
+                    }
+                }
+                PillAction::Show
+            }
             PillAction::Flash { key, .. } if self.flashed.as_deref() == Some(key.as_str()) => {
-                PillAction::Hide
+                self.take_pending()
             }
             PillAction::Flash { key, error, notify } => {
+                if self.pending.as_ref().is_some_and(|(k, _)| *k == key) {
+                    self.pending = None;
+                }
                 self.flashed = Some(key.clone());
                 PillAction::Flash { key, error, notify }
             }
-            a => a,
+            PillAction::Hide => self.take_pending(),
+        }
+    }
+
+    /// A failure kept while the pill was busy, flashed now (once); else hide.
+    fn take_pending(&mut self) -> PillAction {
+        match self.pending.take() {
+            Some((key, error)) if self.flashed.as_deref() != Some(key.as_str()) => {
+                self.flashed = Some(key.clone());
+                PillAction::Flash {
+                    key,
+                    error,
+                    notify: false,
+                }
+            }
+            _ => PillAction::Hide,
         }
     }
 }
@@ -93,21 +127,22 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn shown_only_while_the_key_is_held_and_flashed_on_failure() {
+    fn shown_until_the_dictation_is_done_and_flashed_on_failure() {
         let on = json!({"talk": {"showPill": true}});
         let off = json!({"talk": {"showPill": false}});
-        assert_eq!(pill_action(&on, &json!({"phase": "listening"})), PillAction::Show);
-        assert_eq!(
-            pill_action(&off, &json!({"phase": "listening"})),
-            PillAction::Hide
-        );
-        for p in ["finalizing", "inserting", "idle"] {
+        for p in ["listening", "finalizing", "inserting"] {
             assert_eq!(
                 pill_action(&on, &json!({"phase": p, "id": "d1"})),
+                PillAction::Show,
+                "{p}"
+            );
+            assert_eq!(
+                pill_action(&off, &json!({"phase": p, "id": "d1"})),
                 PillAction::Hide,
                 "{p}"
             );
         }
+        assert_eq!(pill_action(&on, &json!({"phase": "idle"})), PillAction::Hide);
         let err = json!({"phase": "error", "id": "d1", "error": "offline", "errorKind": "offline"});
         assert_eq!(
             pill_action(&on, &err),
@@ -135,47 +170,48 @@ mod tests {
         assert_eq!(pill_action(&on, &inserted), PillAction::Hide);
     }
 
-    /// §12.22 (a): an older dictation's failed insert lands while a newer one is finalizing or inserting (or while
-    /// the key is held): it flashes on release, or notifies at once with the pill off, and only once.
+    /// §12.22 (a): an older dictation's failed insert lands while a newer one is busy: with the pill on it waits
+    /// for the newer one to be done and flashes once; with the pill off it notifies at once, once.
     #[test]
-    fn a_new_failed_last_entry_flashes_in_any_phase_once() {
+    fn a_failure_during_a_newer_dictation_flashes_once_when_it_is_done() {
         let on = json!({"talk": {"showPill": true}});
         let off = json!({"talk": {"showPill": false}});
         let last = json!({"id": "d1", "inserted": false, "error": "couldn't insert; copied to clipboard"});
         let key = "d1:couldn't insert; copied to clipboard";
+        let ok = json!({"id": "d2", "inserted": true});
         let mut g = PillGate::default();
-        let held = json!({"phase": "listening", "id": "d2", "last": last});
-        assert_eq!(
-            g.next(&on, &held),
-            PillAction::Show,
-            "the live pill isn't replaced"
-        );
-        for p in ["finalizing", "inserting"] {
-            let v = json!({"phase": p, "id": "d2", "last": last});
-            assert!(
-                matches!(pill_action(&on, &v), PillAction::Flash { ref key, notify: false, .. } if key == "d1:couldn't insert; copied to clipboard"),
+        for p in ["listening", "finalizing", "inserting"] {
+            assert_eq!(
+                g.next(&on, &json!({"phase": p, "id": "d2", "last": last})),
+                PillAction::Show,
                 "{p}"
             );
         }
+        // d2 is in; its own success replaced `last`, but d1's failure still flashes, once.
         assert!(matches!(
-            g.next(&on, &json!({"phase": "finalizing", "id": "d2", "last": last})),
-            PillAction::Flash { .. }
+            g.next(&on, &json!({"phase": "idle", "last": ok})),
+            PillAction::Flash { key: ref k, notify: false, .. } if k == key
         ));
         assert_eq!(
-            g.next(&on, &json!({"phase": "inserting", "id": "d2", "last": last})),
-            PillAction::Hide,
-            "once"
+            g.next(&on, &json!({"phase": "idle", "last": ok})),
+            PillAction::Hide
         );
         assert_eq!(
             g.next(&on, &json!({"phase": "idle", "last": last})),
-            PillAction::Hide
+            PillAction::Hide,
+            "once"
         );
         assert_eq!(
             g.next(&on, &json!({"phase": "listening", "id": "d3", "last": last})),
             PillAction::Show
         );
+        assert_eq!(
+            g.next(&on, &json!({"phase": "idle", "last": last})),
+            PillAction::Hide
+        );
 
         let mut g = PillGate::default();
+        let held = json!({"phase": "listening", "id": "d2", "last": last});
         assert_eq!(
             g.next(&off, &held),
             PillAction::Flash {
@@ -190,7 +226,7 @@ mod tests {
             PillAction::Hide
         );
         assert_eq!(
-            g.next(&off, &json!({"phase": "listening", "id": "d2"})),
+            g.next(&off, &json!({"phase": "idle", "last": ok})),
             PillAction::Hide
         );
     }

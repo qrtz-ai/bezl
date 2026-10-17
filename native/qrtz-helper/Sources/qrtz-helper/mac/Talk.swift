@@ -104,62 +104,100 @@ final class MacInsertion: InsertionBackend, @unchecked Sendable {
     }
 }
 
-/// Modifier-only push-to-talk keys via a session-level CGEvent tap (`HotkeyFilter` decides). Fn is another dictation app's
-/// default. With `fn` and consumeFn on (`talk.blockGlobeKey`, default) the tap is active and drops the Fn/globe
-/// events so macOS doesn't also switch the input source or open the emoji picker; that needs Accessibility. Without
-/// it, the tap falls back to listen-only (Input Monitoring): talk still works, and the globe action runs too.
+/// Modifier-only push-to-talk keys via session-level CGEvent taps (`HotkeyFilter` decides). Fn is another dictation app's
+/// default.
+///
+/// Two taps, so blocking the globe key can never break push-to-talk (Oct 17 regression: 4f19009 reported the key
+/// edges from the active tap itself; on Jared's Mac that tap was created but the Fn edges never reached qrtz, so
+/// pressing fn did nothing at all):
+/// - Edges: a listen-only `flagsChanged` tap, exactly what worked before the globe fix. It alone reports down/up.
+/// - Blocking (only with `fn`, consumeFn on = `talk.blockGlobeKey`, and Accessibility): a separate active tap that
+///   drops the Fn/globe events so macOS doesn't also switch the input source or open the emoji picker. It reports
+///   nothing; if macOS withholds events from it, talk still works and only the globe action runs too.
+/// The blocker is created first and the listener inserted at the head after it, so the listener sees every Fn event
+/// before the blocker drops it.
 final class MacHotkeys: HotkeyMonitor, @unchecked Sendable {
-    private var tap: CFMachPort?
-    private var source: CFRunLoopSource?
+    private var listenTap: CFMachPort?
+    private var listenSource: CFRunLoopSource?
+    private var blockTap: CFMachPort?
+    private var blockSource: CFRunLoopSource?
     fileprivate var onChange: (@Sendable (HotkeyAction) -> Void)?
+    /// Edge state (listen tap only).
     fileprivate var filter: HotkeyFilter?
+    /// Consume decisions (block tap only; its edges are ignored).
+    fileprivate var blocker: HotkeyFilter?
 
     func start(key: String, consumeFn: Bool, onChange: @escaping @Sendable (HotkeyAction) -> Void) -> Bool {
         stop()
         guard let f = HotkeyFilter(key: key, consumeFn: consumeFn) else { return false }
         filter = f
         self.onChange = onChange
-        var mask = CGEventMask(1 << CGEventType.flagsChanged.rawValue)
-        if f.consumes {
-            mask |= CGEventMask(1 << CGEventType.keyDown.rawValue) | CGEventMask(1 << CGEventType.keyUp.rawValue)
-        }
         let me = Unmanaged.passUnretained(self).toOpaque()
-        let callback: CGEventTapCallBack = { _, type, event, ctx in
+
+        if f.consumes && AXIsProcessTrusted() {
+            blocker = HotkeyFilter(key: key, consumeFn: true)
+            let block: CGEventTapCallBack = { _, type, event, ctx in
+                guard let ctx else { return Unmanaged.passUnretained(event) }
+                let hk = Unmanaged<MacHotkeys>.fromOpaque(ctx).takeUnretainedValue()
+                if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                    _ = hk.blocker?.reset()
+                    if let t = hk.blockTap { CGEvent.tapEnable(tap: t, enable: true) }
+                    return Unmanaged.passUnretained(event)
+                }
+                guard var b = hk.blocker else { return Unmanaged.passUnretained(event) }
+                let r = b.handle(type: type.rawValue, keyCode: event.getIntegerValueField(.keyboardEventKeycode),
+                                 flags: event.flags.rawValue)
+                hk.blocker = b
+                return r.consume ? nil : Unmanaged.passUnretained(event)
+            }
+            let mask = CGEventMask(1 << CGEventType.flagsChanged.rawValue)
+                | CGEventMask(1 << CGEventType.keyDown.rawValue) | CGEventMask(1 << CGEventType.keyUp.rawValue)
+            if let t = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
+                                         eventsOfInterest: mask, callback: block, userInfo: me) {
+                blockTap = t
+                let src = CFMachPortCreateRunLoopSource(nil, t, 0)
+                blockSource = src
+                CFRunLoopAddSource(CFRunLoopGetMain(), src, .commonModes)
+                CGEvent.tapEnable(tap: t, enable: true)
+            }
+        }
+
+        let listen: CGEventTapCallBack = { _, type, event, ctx in
             guard let ctx else { return Unmanaged.passUnretained(event) }
             let hk = Unmanaged<MacHotkeys>.fromOpaque(ctx).takeUnretainedValue()
             if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
                 if let up = hk.filter?.reset() { hk.onChange?(up) }
-                if let tap = hk.tap { CGEvent.tapEnable(tap: tap, enable: true) }
+                if let t = hk.listenTap { CGEvent.tapEnable(tap: t, enable: true) }
                 return Unmanaged.passUnretained(event)
             }
-            guard var f = hk.filter else { return Unmanaged.passUnretained(event) }
+            guard type == .flagsChanged, var f = hk.filter else { return Unmanaged.passUnretained(event) }
             let r = f.handle(type: type.rawValue, keyCode: event.getIntegerValueField(.keyboardEventKeycode),
                              flags: event.flags.rawValue)
             hk.filter = f
             if let a = r.action { hk.onChange?(a) }
-            return r.consume ? nil : Unmanaged.passUnretained(event)
+            return Unmanaged.passUnretained(event)
         }
-        // An active tap can drop events but needs Accessibility; listen-only needs only Input Monitoring.
-        let tap = (f.consumes
-            ? CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
-                                eventsOfInterest: mask, callback: callback, userInfo: me)
-            : nil)
-            ?? CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .listenOnly,
-                                 eventsOfInterest: CGEventMask(1 << CGEventType.flagsChanged.rawValue),
-                                 callback: callback, userInfo: me)
-        guard let tap else { return false }
-        self.tap = tap
-        let src = CFMachPortCreateRunLoopSource(nil, tap, 0)
-        source = src
+        guard let t = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .listenOnly,
+                                        eventsOfInterest: CGEventMask(1 << CGEventType.flagsChanged.rawValue),
+                                        callback: listen, userInfo: me) else {
+            stop()
+            return false
+        }
+        listenTap = t
+        let src = CFMachPortCreateRunLoopSource(nil, t, 0)
+        listenSource = src
         CFRunLoopAddSource(CFRunLoopGetMain(), src, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
+        CGEvent.tapEnable(tap: t, enable: true)
         return true
     }
 
     func stop() {
-        if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
-        if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
-        tap = nil; source = nil; filter = nil
+        for (t, s) in [(listenTap, listenSource), (blockTap, blockSource)] {
+            if let t { CGEvent.tapEnable(tap: t, enable: false) }
+            if let s { CFRunLoopRemoveSource(CFRunLoopGetMain(), s, .commonModes) }
+        }
+        listenTap = nil; listenSource = nil; blockTap = nil; blockSource = nil
+        filter = nil; blocker = nil
     }
 }
 #endif
