@@ -1,0 +1,351 @@
+{
+  "name": "N27-deleted-mid-step",
+  "about": "Cycle 5 N27: the meeting is deleted while its summary step is in flight (a slow provider that then fails). When the step returns, the host finds no pipeline and stops there: no retry, no fallback, no pipeline event and no save for the deleted meeting. Before the fix the TS host dereferenced the forgotten pipeline (a TypeError, an unhandled rejection in Electron main) and the Rust host fell back to its stale copy, re-inserted it and emitted a pipeline event for the deleted meeting before the store refused the save.",
+  "script": [
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permissions.status",
+        "status": {
+          "accessibility": "granted",
+          "screen-recording": "granted",
+          "microphone": "granted"
+        }
+      }
+    },
+    {
+      "op": "steps",
+      "summary": [
+        "slow-fail"
+      ]
+    },
+    {
+      "op": "call",
+      "fn": "start",
+      "label": "start",
+      "args": {
+        "title": "Standup"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.started",
+        "audioPath": "$REC/id1.wav"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "asr",
+        "event": {
+          "kind": "final",
+          "utteranceId": "u1",
+          "startMs": 100,
+          "endMs": 1900,
+          "text": "hello everyone"
+        }
+      }
+    },
+    {
+      "op": "wav",
+      "file": "id1.wav",
+      "ms": 400,
+      "broken": false
+    },
+    {
+      "op": "call",
+      "fn": "stop",
+      "label": "stop"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.stopped",
+        "audioPath": "$REC/id1.wav",
+        "durationMs": 2000
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 50
+    },
+    {
+      "op": "snapshot",
+      "label": "summary-in-flight"
+    },
+    {
+      "op": "call",
+      "fn": "deleteMeeting",
+      "label": "delete",
+      "args": {
+        "id": "id1"
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 50
+    },
+    {
+      "op": "snapshot",
+      "label": "deleted"
+    },
+    {
+      "op": "advance",
+      "ms": 10000
+    }
+  ],
+  "expect": {
+    "trace": {
+      "session": [
+        "idle|-|-|-|-|-|ok",
+        "starting|id1|-|-|-|-|ok",
+        "recording|id1|-|-|-|-|ok",
+        "stopping|id1|-|-|-|-|ok",
+        "processing|id1|-|-|-|-|ok",
+        "done|id1|-|-|-|-|ok",
+        "idle|-|-|-|-|-|ok"
+      ],
+      "pipelines": {
+        "id1": [
+          "manual finalize:pending/0 summary:pending/0 index:pending/0",
+          "manual finalize:running/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:running/1 index:pending/0"
+        ]
+      },
+      "helper": [
+        "permissions.check",
+        "recording.start $REC/id1.wav",
+        "recording.stop"
+      ],
+      "transcript": [
+        [
+          0,
+          1,
+          [
+            "u1"
+          ],
+          null
+        ],
+        [
+          1,
+          2,
+          [],
+          null
+        ]
+      ],
+      "changed": [
+        "id1",
+        "id1"
+      ],
+      "permissions": [
+        "granted|granted|granted"
+      ],
+      "prompts": []
+    },
+    "results": {
+      "start": {
+        "ok": {
+          "phase": "recording",
+          "meetingId": "id1"
+        }
+      },
+      "stop": {
+        "ok": {
+          "phase": "processing",
+          "meetingId": "id1"
+        }
+      },
+      "delete": {
+        "ok": [
+          "id1.wav"
+        ]
+      }
+    },
+    "snapshots": {
+      "summary-in-flight": {
+        "view": {
+          "phase": "processing",
+          "meetingId": "id1",
+          "startedAt": 1760000000000,
+          "elapsedMs": 0,
+          "stopReason": "manual",
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": "Summarizing",
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [
+            [
+              "u1",
+              null,
+              "hello everyone",
+              100
+            ]
+          ],
+          "partial": "",
+          "pipeline": "finalize:done/1 summary:running/1 index:pending/0"
+        },
+        "live": {
+          "meetingId": "id1",
+          "rev": 2,
+          "segments": [
+            [
+              "u1",
+              null,
+              100,
+              1900
+            ]
+          ],
+          "partial": null
+        },
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "processing",
+              1760000000000,
+              1760000000000,
+              2000,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [
+            [
+              "id1",
+              "u1",
+              "live",
+              100,
+              1900,
+              null,
+              "hello everyone"
+            ]
+          ],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [
+            [
+              "id1",
+              0,
+              "manual",
+              "finalize:done/1 summary:running/1 index:pending/0",
+              2000,
+              false,
+              [
+                "$REC/id1.wav"
+              ],
+              0
+            ]
+          ],
+          "session": [
+            "processing",
+            "id1"
+          ]
+        },
+        "files": [
+          [
+            "id1.wav",
+            12844
+          ]
+        ]
+      },
+      "deleted": {
+        "view": {
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [
+            [
+              "u1",
+              null,
+              "hello everyone",
+              100
+            ]
+          ],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "idle",
+            null
+          ]
+        },
+        "files": []
+      },
+      "end": {
+        "view": {
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [
+            [
+              "u1",
+              null,
+              "hello everyone",
+              100
+            ]
+          ],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [],
+          "segments": [],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "idle",
+            null
+          ]
+        },
+        "files": []
+      }
+    }
+  }
+}

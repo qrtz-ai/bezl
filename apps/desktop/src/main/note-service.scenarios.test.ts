@@ -44,7 +44,16 @@ const nullLog = {
   },
 } as never;
 
-type Outcome = 'ok' | 'fail' | 'fatal' | 'hang' | 'skip';
+/** `slow-ok` / `slow-fail`: the step takes SLOW_MS of (fake) time, then succeeds / fails retryably (N27). */
+type Outcome =
+  | 'ok'
+  | 'fail'
+  | 'fatal'
+  | 'hang'
+  | 'skip'
+  | 'slow-ok'
+  | 'slow-fail';
+const SLOW_MS = 5000;
 type Op = { op: string; [k: string]: unknown };
 interface Scenario {
   name: string;
@@ -131,8 +140,12 @@ function run(sc: Scenario) {
       repo.setStatus(id, 'done');
       return s;
     }
-    const o = outcomes[step]!.shift() ?? 'ok';
+    let o = outcomes[step]!.shift() ?? 'ok';
     if (o === 'hang') return never;
+    if (o === 'slow-ok' || o === 'slow-fail') {
+      await new Promise((r) => setTimeout(r, SLOW_MS));
+      o = o === 'slow-ok' ? 'ok' : 'fail';
+    }
     if (o === 'fail' || o === 'fatal') throw stepError(method, o);
     const id = p.meetingId as string;
     if (method === 'note.stepFinalize') return h[method]!(p);

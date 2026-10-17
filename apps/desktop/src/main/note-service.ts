@@ -1196,16 +1196,19 @@ export class NoteService {
               },
             );
           const skipped = await this.execStep(p, step);
+          // N27: the meeting was deleted while the step ran (forgetPipeline): nothing more for it.
+          const now = this.pipelines.get(id);
+          if (!now) return;
           // A manual retry re-armed this step while it was in flight: its result is stale, drop it.
-          if (this.pipelines.get(id)!.steps[step].status !== 'running')
-            continue;
-          p = pipelineStep(this.pipelines.get(id)!, step, {
+          if (now.steps[step].status !== 'running') continue;
+          p = pipelineStep(now, step, {
             kind: skipped ? 'skip' : 'success',
             now: Date.now(),
           });
         } catch (e) {
           const err = toLifecycleError(e);
-          const latest = this.pipelines.get(id)!;
+          const latest = this.pipelines.get(id);
+          if (!latest) return; // N27: deleted while the step ran: no retry, no fallback, no save
           if (latest.steps[step].status !== 'running') continue; // superseded by a manual retry
           const policy = RETRY_POLICIES[step];
           p = pipelineStep(latest, step, {

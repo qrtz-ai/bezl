@@ -1706,7 +1706,11 @@ impl Shared {
             } else {
                 Err(CoreError::unavailable("could not persist step start"))
             };
-            let latest = self.lock().pipelines.get(id).cloned().unwrap_or(p);
+            // N27: the meeting was deleted while the step ran (`forget_pipeline`): no retry, no fallback, no
+            // event, no save for it. Falling back to the stale copy here re-inserted a deleted meeting's pipeline.
+            let Some(latest) = self.lock().pipelines.get(id).cloned() else {
+                return;
+            };
             // A manual retry re-armed this step while it was in flight: its result is stale, drop it.
             if latest.steps.get(step).status != StepStatus::Running {
                 continue;

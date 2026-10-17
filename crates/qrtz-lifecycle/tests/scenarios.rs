@@ -267,7 +267,12 @@ impl ScriptedSteps {
     }
     async fn outcome(&self, method: &str, step: &'static str) -> Result<String, LifecycleError> {
         self.sh.fail(method)?;
-        let o = self.next(step);
+        let mut o = self.next(step);
+        if let Some(rest) = o.strip_prefix("slow-") {
+            // The step takes SLOW_MS of (paused tokio) time, then succeeds or fails retryably (N27).
+            tokio::time::sleep(Duration::from_millis(5000)).await;
+            o = rest.to_string();
+        }
         match o.as_str() {
             "hang" => std::future::pending().await,
             "fail" => Err(LifecycleError {
