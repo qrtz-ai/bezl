@@ -28,6 +28,48 @@ final class HotkeyFilterTests: XCTestCase {
         }
     }
 
+    /// Property: the tap can never become a keystroke source. For every key setting (with and without the globe
+    /// block, key up or held), every event type and key code except Fn `flagsChanged` (63) and the globe key (179)
+    /// gives `(nil, false)`: no push-to-talk edge, nothing dropped. The one other event that may carry an edge is the
+    /// configured modifier's own `flagsChanged` (that is the push key itself), and it is never dropped. Fn and globe
+    /// are only dropped with `fn` + the globe block on.
+    func testNoOtherEventEverActsOrIsDropped() throws {
+        let types: [UInt32] = Array(0...40) + [UInt32.max - 1, UInt32.max]
+        let codes: [Int64] = Array(-2...300) + [Int64.min, Int64.max]
+        let flagSets: [UInt64] = [0, F.fnFlag, F.optionFlag, F.commandFlag, F.controlFlag,
+                                  F.fnFlag | F.optionFlag | F.commandFlag | F.controlFlag, UInt64.max]
+        var checked = 0
+        for key in ["fn", "right-option", "right-command", "right-control"] {
+            for consumeFn in [false, true] {
+                let up = try XCTUnwrap(F(key: key, consumeFn: consumeFn))
+                var held = up
+                XCTAssertEqual(held.handle(type: F.flagsChanged, keyCode: up.keyCode, flags: up.flag).action, .down)
+                for base in [up, held] {
+                    for type in types {
+                        for code in codes {
+                            let fnOrGlobe = (type == F.flagsChanged && code == F.fnKeyCode)
+                                || ((type == F.keyDown || type == F.keyUp) && code == F.globeKeyCode)
+                            let ownEdge = type == F.flagsChanged && code == up.keyCode
+                            for flags in flagSets {
+                                var f = base
+                                let r = f.handle(type: type, keyCode: code, flags: flags)
+                                let at = "\(key) consumeFn=\(consumeFn) held=\(base.down) type=\(type) code=\(code) flags=\(flags)"
+                                if !fnOrGlobe && !ownEdge {
+                                    if r.action != nil || r.consume { XCTFail(at); return }
+                                    if f.down != base.down { XCTFail("state moved: \(at)"); return }
+                                }
+                                if r.consume && !(fnOrGlobe && key == "fn" && consumeFn) { XCTFail("dropped: \(at)"); return }
+                                if r.action != nil && !ownEdge { XCTFail("edge: \(at)"); return }
+                                checked += 1
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        XCTAssertEqual(checked, 4 * 2 * 2 * 43 * 305 * 7)
+    }
+
     func testTheToggleOffLeavesFnToMacOS() throws {
         var f = try XCTUnwrap(F(key: "fn", consumeFn: false))
         XCTAssertFalse(f.consumes)
