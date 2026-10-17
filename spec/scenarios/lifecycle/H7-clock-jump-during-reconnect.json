@@ -1,6 +1,6 @@
 {
   "name": "H7-clock-jump-during-reconnect",
-  "about": "H7 + clock skew: the wall clock jumps forward an hour while the helper is down. The second part's offset (and its transcript) move an hour on, but the pad written before it is capped at the reconnect window plus the start ack (35 s), so the stitched file stays small.",
+  "about": "N45 + H7: the wall clock jumps forward an hour while the helper is down. Part offsets come from a monotonic clock, so the second part’s offset (and its transcript) only advance by the reconnect gap (~1 s of advance), the pad matches that gap, and the stitched file stays meeting-length (not the wall jump).",
   "script": [
     {
       "op": "helper",
@@ -215,7 +215,7 @@
               "p1-u1",
               null,
               "after the jump",
-              3603000
+              3000
             ]
           ],
           "partial": "",
@@ -228,8 +228,8 @@
             [
               "p1-u1",
               null,
-              3603000,
-              3603800
+              3000,
+              3800
             ]
           ],
           "partial": null
@@ -243,7 +243,7 @@
               "done",
               1760000000000,
               1760003604000,
-              38000,
+              4000,
               "$REC/id1.wav",
               "general"
             ]
@@ -253,8 +253,8 @@
               "id1",
               "p1-u1",
               "live",
-              3603000,
-              3603800,
+              3000,
+              3800,
               null,
               "after the jump"
             ]
@@ -291,7 +291,7 @@
         "files": [
           [
             "id1.wav",
-            1216044
+            128044
           ]
         ]
       }

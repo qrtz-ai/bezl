@@ -574,6 +574,8 @@ export function lifecycleReducer(
       const { reconnect: _r, deviceLost: lost = [], ...rest } = s;
       const kept = s.degraded.filter((f) => !lost.includes(f));
       // Clamp: a backward clock jump must not invent negative meeting-time offsets.
+      // N45 (ADR 0037): the runtime stamps `e.at` from a monotonic clock for helper-lost/restored, so a wall jump
+      // during a reconnect does not slide this offset; H2 still clamps a hostile or legacy stamp.
       const partOffsetMs = Math.max(0, e.at - (s.startedAt ?? e.at));
       // H7: the offsets are kept only while they line up with the parts (a row from an older build has none).
       const prev =

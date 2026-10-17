@@ -1,0 +1,389 @@
+{
+  "name": "N45-multi-reconnect-clock-jump",
+  "about": "N45 stress: two reconnects, each with a 1 h wall jump. Monotonic offsets keep every part and pad meeting-length; transcripts land at ~3 s and ~6 s, not at +1 h / +2 h.",
+  "script": [
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permissions.status",
+        "status": {
+          "accessibility": "granted",
+          "screen-recording": "granted",
+          "microphone": "granted"
+        }
+      }
+    },
+    {
+      "op": "call",
+      "fn": "start",
+      "label": "start",
+      "args": {
+        "title": "Standup"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.started",
+        "audioPath": "$REC/id1.wav"
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 2000
+    },
+    {
+      "op": "helperDown",
+      "reason": "exited"
+    },
+    {
+      "op": "clockJump",
+      "ms": 3600000
+    },
+    {
+      "op": "advance",
+      "ms": 1000
+    },
+    {
+      "op": "helperUp"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.started",
+        "audioPath": "$REC/id1.p1.wav"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "asr",
+        "event": {
+          "kind": "final",
+          "utteranceId": "u1",
+          "startMs": 0,
+          "endMs": 500,
+          "text": "after jump one"
+        }
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 2000
+    },
+    {
+      "op": "helperDown",
+      "reason": "exited"
+    },
+    {
+      "op": "clockJump",
+      "ms": 3600000
+    },
+    {
+      "op": "advance",
+      "ms": 1000
+    },
+    {
+      "op": "helperUp"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.started",
+        "audioPath": "$REC/id1.p2.wav"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "asr",
+        "event": {
+          "kind": "final",
+          "utteranceId": "u2",
+          "startMs": 0,
+          "endMs": 500,
+          "text": "after jump two"
+        }
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 1000
+    },
+    {
+      "op": "wav",
+      "file": "id1.wav",
+      "ms": 2000,
+      "broken": true
+    },
+    {
+      "op": "wav",
+      "file": "id1.p1.wav",
+      "ms": 2000,
+      "broken": false
+    },
+    {
+      "op": "wav",
+      "file": "id1.p2.wav",
+      "ms": 1000,
+      "broken": false
+    },
+    {
+      "op": "call",
+      "fn": "stop",
+      "label": "stop"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.stopped",
+        "audioPath": "$REC/id1.p2.wav",
+        "durationMs": 1000
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 100
+    }
+  ],
+  "expect": {
+    "trace": {
+      "session": [
+        "idle|-|-|-|-|-|ok",
+        "starting|id1|-|-|-|-|ok",
+        "recording|id1|-|-|-|-|ok",
+        "reconnecting|id1|-|-|r1|-|ok",
+        "recording|id1|transcript-gap|-|-|-|ok",
+        "reconnecting|id1|transcript-gap|-|r1|-|ok",
+        "recording|id1|transcript-gap|-|-|-|ok",
+        "stopping|id1|transcript-gap|-|-|-|ok",
+        "processing|id1|transcript-gap|-|-|-|ok",
+        "done|id1|transcript-gap|-|-|-|ok"
+      ],
+      "pipelines": {
+        "id1": [
+          "manual finalize:pending/0 summary:pending/0 index:pending/0",
+          "manual finalize:running/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:running/1 index:pending/0",
+          "manual finalize:done/1 summary:done/1 index:pending/0",
+          "manual finalize:done/1 summary:done/1 index:running/1",
+          "manual finalize:done/1 summary:done/1 index:done/1"
+        ]
+      },
+      "helper": [
+        "permissions.check",
+        "recording.start $REC/id1.wav",
+        "permissions.check",
+        "recording.start $REC/id1.p1.wav",
+        "permissions.check",
+        "recording.start $REC/id1.p2.wav",
+        "recording.stop"
+      ],
+      "transcript": [
+        [
+          0,
+          1,
+          [
+            "p1-u1"
+          ],
+          null
+        ],
+        [
+          1,
+          2,
+          [
+            "p2-u2"
+          ],
+          null
+        ],
+        [
+          2,
+          3,
+          [],
+          null
+        ]
+      ],
+      "changed": [
+        "id1",
+        "id1",
+        "id1",
+        "id1"
+      ],
+      "permissions": [
+        "granted|granted|granted"
+      ],
+      "prompts": []
+    },
+    "results": {
+      "start": {
+        "ok": {
+          "phase": "recording",
+          "meetingId": "id1"
+        }
+      },
+      "stop": {
+        "ok": {
+          "phase": "processing",
+          "meetingId": "id1"
+        }
+      }
+    },
+    "snapshots": {
+      "end": {
+        "view": {
+          "phase": "done",
+          "meetingId": "id1",
+          "startedAt": 1760000000000,
+          "elapsedMs": 7207000,
+          "stopReason": "manual",
+          "degraded": [
+            "transcript-gap"
+          ],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [
+            [
+              "p1-u1",
+              null,
+              "after jump one",
+              3000
+            ],
+            [
+              "p2-u2",
+              null,
+              "after jump two",
+              6000
+            ]
+          ],
+          "partial": "",
+          "pipeline": "finalize:done/1 summary:done/1 index:done/1"
+        },
+        "live": {
+          "meetingId": "id1",
+          "rev": 3,
+          "segments": [
+            [
+              "p1-u1",
+              null,
+              3000,
+              3500
+            ],
+            [
+              "p2-u2",
+              null,
+              6000,
+              6500
+            ]
+          ],
+          "partial": null
+        },
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "done",
+              1760000000000,
+              1760007207000,
+              7000,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [
+            [
+              "id1",
+              "p1-u1",
+              "live",
+              3000,
+              3500,
+              null,
+              "after jump one"
+            ],
+            [
+              "id1",
+              "p2-u2",
+              "live",
+              6000,
+              6500,
+              null,
+              "after jump two"
+            ]
+          ],
+          "summaries": [
+            [
+              "id1",
+              "stub",
+              "STUB summary",
+              null
+            ]
+          ],
+          "notes": [],
+          "pipelines": [
+            [
+              "id1",
+              1,
+              "manual",
+              "finalize:done/1 summary:done/1 index:done/1",
+              1000,
+              true,
+              [
+                "$REC/id1.wav",
+                "$REC/id1.p1.wav",
+                "$REC/id1.p2.wav"
+              ],
+              0
+            ]
+          ],
+          "session": [
+            "done",
+            "id1"
+          ]
+        },
+        "files": [
+          [
+            "id1.wav",
+            224044
+          ]
+        ]
+      }
+    }
+  }
+}

@@ -345,9 +345,18 @@ pub trait HelperPort: Send + Sync {
     fn restart(&self) {}
 }
 
-/// Wall clock in epoch ms. Timers are `tokio::time`, so tests pair a paused runtime with [`TokioClock`].
+/// Wall and monotonic clocks in ms. Timers are `tokio::time`, so tests pair a paused runtime with [`TokioClock`].
+///
+/// N45 (ADR 0037): `mono_ms` advances with real/async time and ignores wall jumps (`clockJump`, sleep, NTP).
+/// Part offsets for `helper-lost` / `helper-restored` are derived from it so a laptop sleep during a reconnect
+/// cannot slide the next part's transcript by an hour while the WAV pad stays capped at 35 s.
 pub trait Clock: Send + Sync {
+    /// Wall clock in epoch ms (subject to NTP / sleep jumps).
     fn now_ms(&self) -> EpochMs;
+    /// Monotonic ms since an arbitrary origin. Default = [`Self::now_ms`] for clocks without wall skew.
+    fn mono_ms(&self) -> EpochMs {
+        self.now_ms()
+    }
 }
 
 pub struct SystemClock;
@@ -357,6 +366,11 @@ impl Clock for SystemClock {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as i64)
             .unwrap_or(0)
+    }
+    fn mono_ms(&self) -> EpochMs {
+        use std::sync::OnceLock;
+        static START: OnceLock<std::time::Instant> = OnceLock::new();
+        START.get_or_init(std::time::Instant::now).elapsed().as_millis() as i64
     }
 }
 
@@ -382,9 +396,10 @@ impl TokioClock {
 }
 impl Clock for TokioClock {
     fn now_ms(&self) -> EpochMs {
-        self.base
-            + (tokio::time::Instant::now() - self.start).as_millis() as i64
-            + self.skew.load(std::sync::atomic::Ordering::SeqCst)
+        self.mono_ms() + self.skew.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    fn mono_ms(&self) -> EpochMs {
+        self.base + (tokio::time::Instant::now() - self.start).as_millis() as i64
     }
 }
 

@@ -656,12 +656,15 @@ describe('tier-2 lifecycle scenarios (spec/scenarios/lifecycle)', () => {
     ids.n = 0;
     vi.useFakeTimers({
       now: T0,
+      // N45: fake `performance` too so meeting-relative offsets advance with `advance` and ignore `clockJump`
+      // (which only moves Date / the wall clock).
       toFake: [
         'setTimeout',
         'clearTimeout',
         'setInterval',
         'clearInterval',
         'Date',
+        'performance',
       ],
     });
   });

@@ -396,6 +396,7 @@ pub fn reduce(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> 
             n.reconnect = None;
             n.phase = P::Recording;
             // Clamp: a backward clock jump must not invent negative meeting-time offsets.
+            // N45 (ADR 0037): the runtime stamps `at` from a monotonic clock for helper-lost/restored.
             n.part_offset_ms = (*at - s.started_at.unwrap_or(*at)).max(0);
             // H7: the offsets are kept only while they line up with the parts (a row from an older build has none).
             n.part_offsets_ms = match &s.part_offsets_ms {

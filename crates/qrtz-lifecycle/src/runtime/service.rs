@@ -343,6 +343,8 @@ struct State {
     persisted: HashSet<String>,
     paused: bool,
     helper_crashed: bool,
+    /// N45: `mono_ms` at `start-requested`, so helper-lost/restored `at` is meeting-relative without wall jumps.
+    mono_origin: Option<i64>,
     reconnect_timer: Option<AbortHandle>,
     t_rev: u64,
     t_sent: HashSet<String>,
@@ -393,6 +395,7 @@ impl State {
             persisted: HashSet::new(),
             paused: false,
             helper_crashed: false,
+            mono_origin: None,
             reconnect_timer: None,
             t_rev: 0,
             t_sent: HashSet::new(),
@@ -534,6 +537,23 @@ impl Shared {
     }
     fn now(&self) -> EpochMs {
         self.d.clock.now_ms()
+    }
+    fn mono(&self) -> EpochMs {
+        self.d.clock.mono_ms()
+    }
+    /// Meeting-time epoch for helper-lost / helper-restored (N45): `startedAt + (mono_now − mono_origin)`.
+    /// Wall jumps during a reconnect do not move the next part's offset. Falls back to the wall clock when no
+    /// meeting is in progress.
+    fn meeting_at(&self) -> EpochMs {
+        let st = self.lock();
+        let Some(started) = st.machine.state().started_at else {
+            return self.now();
+        };
+        let Some(origin) = st.mono_origin else {
+            return self.now();
+        };
+        drop(st);
+        started + (self.mono() - origin).max(0)
     }
     fn scale(&self) -> f64 {
         self.d.retry_scale
@@ -1314,6 +1334,7 @@ impl Shared {
             return Err(CoreError::forbidden(msg));
         }
         let id = (self.d.ids)();
+        let mono_origin = self.mono();
         {
             let mut st = self.lock();
             st.asr = TranscriptAssembler::new();
@@ -1323,6 +1344,8 @@ impl Shared {
             st.t_rev = 0;
             st.paused = false;
             st.helper_crashed = false;
+            // N45: pin the monotonic origin next to startedAt (wall) for meeting-relative reconnect offsets.
+            st.mono_origin = Some(mono_origin);
         }
         let audio_path = self
             .d
@@ -1482,6 +1505,7 @@ impl Shared {
 
     async fn abort_start(self: &Arc<Self>, id: &str, error: LifecycleError) {
         self.send(LifecycleEvent::StartFailed { error });
+        self.lock().mono_origin = None;
         // Nothing was captured: drop the empty meeting (and any file the helper began) instead of a broken row.
         let _ = self.drop_meeting(id).await;
         self.emit(CoreEvent::Changed { id: id.to_string() });
@@ -1530,12 +1554,13 @@ impl Shared {
             return;
         }
         self.lock().helper_crashed = true;
-        let now = self.now();
+        // N45: meeting-relative `at` from the monotonic clock so a wall jump during reconnect cannot slide offsets.
+        let at = self.meeting_at();
         let window = policies::HELPER_RECONNECT_WINDOW_MS as f64 * self.scale();
         tracing::warn!(reason, "helper went away mid-recording; reconnecting");
         self.send(LifecycleEvent::HelperLost {
-            at: now,
-            deadline_at: now + window.round() as i64,
+            at,
+            deadline_at: at + window.round() as i64,
         });
         if self.lock().reconnect_timer.is_none() {
             let t = self.set_timeout(window, |sh| {
@@ -1599,8 +1624,9 @@ impl Shared {
             self.ack_ms(policies::START_ACK_MS),
             started_for(&audio_path),
         );
-        // Offset from when capture was asked to begin, not from the ack (ack latency would shift timestamps).
-        let at = self.now();
+        // N45: meeting-relative offset from the monotonic clock (not the wall), taken before recording.start
+        // so ack latency does not shift timestamps and a wall jump during reconnect does not either.
+        let at = self.meeting_at();
         let paused = self.lock().paused;
         if self
             .send_helper(HelperCommand::RecordingStart {
@@ -1729,6 +1755,7 @@ impl Shared {
         pipeline.capture = capture_report(&st);
         self.persist_pipeline(pipeline).await;
         self.send(LifecycleEvent::Stopped { at: ended_at });
+        self.lock().mono_origin = None;
         self.emit_transcript(&meeting_id); // final rev: partial cleared
         let (sh, id) = (self.clone(), meeting_id);
         self.spawn(async move { sh.run_pipeline(id).await });

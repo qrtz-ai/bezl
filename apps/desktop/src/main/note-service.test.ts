@@ -348,9 +348,10 @@ describe('NoteService lifecycle (integration with mock helper + real worker hand
     await until(() => r.note.view().phase === 'done');
     expect(fs.existsSync(parts[1]!)).toBe(false);
     // H7: the reconnect gap is silence, so the second part starts at its offset in the stitched file.
+    // N45: offsets are mono-derived (`performance.now` deltas) and may be fractional; match gapPadBytes' round.
     const pad = gapPadBytes(offset, 3200, { byteRate: 32000, blockAlign: 2 });
     expect(pad).toBe(
-      Math.max(0, Math.floor((offset * 32000) / 2000) * 2 - 3200),
+      Math.max(0, Math.floor((Math.round(offset) * 32000) / 2000) * 2 - 3200),
     );
     expect(fs.statSync(parts[0]!).size).toBe(44 + 3200 + pad + 3200);
     expect(r.note.view().pipeline?.stopReason).toBe('manual');

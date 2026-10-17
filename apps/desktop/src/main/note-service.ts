@@ -136,6 +136,11 @@ export class NoteService {
   private persisted = new Set<string>();
   private paused = false;
   private helperCrashed = false;
+  /**
+   * N45: `performance.now()` at `start-requested`, so helper-lost / helper-restored `at` is meeting-relative and
+   * ignores wall jumps (sleep, NTP). Cleared when the meeting stops.
+   */
+  private monoOriginMs: number | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
   /** Live transcript stream state. */
   private tRev = 0;
@@ -954,6 +959,8 @@ export class NoteService {
     this.tRev = 0;
     this.paused = false;
     this.helperCrashed = false;
+    // N45: pin the monotonic origin next to startedAt (wall) for meeting-relative reconnect offsets.
+    this.monoOriginMs = performance.now();
     const audioPath = path.join(this.deps.recordingsDir, `${id}.wav`);
     const now = Date.now();
     await this.deps.worker.call('note.create', {
@@ -1072,9 +1079,22 @@ export class NoteService {
 
   private async abortStart(id: string, error: LifecycleError) {
     this.machine.send({ type: 'start-failed', error });
+    this.monoOriginMs = null;
     // Nothing was captured: drop the empty meeting (and any file the helper began) instead of a broken row.
     await this.dropMeeting(id).catch(() => {});
     this.deps.bus.emit('note:changed', { id });
+  }
+
+  /**
+   * N45: meeting-time epoch for helper-lost / helper-restored: `startedAt + (performance.now() − monoOrigin)`.
+   * Wall jumps during a reconnect do not move the next part's offset. Falls back to `Date.now()` when no meeting
+   * is in progress.
+   */
+  private meetingAt(): number {
+    const started = this.machine.state.startedAt;
+    const origin = this.monoOriginMs;
+    if (started == null || origin == null) return Date.now();
+    return started + Math.max(0, performance.now() - origin);
   }
 
   // ------------------------------------------------------------------ helper crash / reconnect
@@ -1089,15 +1109,16 @@ export class NoteService {
     const s = this.machine.state;
     if (!isCapturing(s.phase) || !s.meetingId) return;
     this.helperCrashed = true;
-    const now = Date.now();
+    // N45: meeting-relative `at` from the monotonic clock so a wall jump during reconnect cannot slide offsets.
+    const at = this.meetingAt();
     const window = RETRY_POLICIES.helperReconnectWindowMs * this.scale;
     this.deps.log.warn('helper went away mid-recording; reconnecting', {
       reason,
     });
     this.machine.send({
       type: 'helper-lost',
-      at: now,
-      deadlineAt: now + window,
+      at,
+      deadlineAt: at + window,
     });
     if (!this.reconnectTimer)
       this.reconnectTimer = setTimeout(() => {
@@ -1136,8 +1157,9 @@ export class NoteService {
       RETRY_POLICIES.startAckMs * Math.max(this.scale, 0.2),
       (m) => m.audioPath === audioPath,
     );
-    // Offset from when capture was asked to begin, not from the ack (ack latency would shift timestamps late).
-    const at = Date.now();
+    // N45: meeting-relative offset from the monotonic clock (not the wall), taken before recording.start so ack
+    // latency does not shift timestamps and a wall jump during reconnect does not either.
+    const at = this.meetingAt();
     try {
       this.send({ type: 'recording.start', audioPath });
       if (this.paused) this.send({ type: 'recording.pause' });
@@ -1267,6 +1289,7 @@ export class NoteService {
     const pipeline = capture ? { ...base, capture } : base;
     await this.persistPipeline(pipeline);
     this.machine.send({ type: 'stopped', at: endedAt });
+    this.monoOriginMs = null;
     this.emitTranscript(meetingId); // final rev: partial cleared
     void this.runPipeline(meetingId);
     return this.view();
