@@ -117,7 +117,8 @@ export class TalkService {
     try {
       fs.mkdirSync(path.dirname(this.deps.storePath), { recursive: true });
       const tmp = `${this.deps.storePath}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(this.store));
+      // Owner-only like config and secrets: history holds everything the user dictated (T3).
+      fs.writeFileSync(tmp, JSON.stringify(this.store), { mode: 0o600 });
       fs.renameSync(tmp, this.deps.storePath);
     } catch (e) {
       this.deps.log.warn('talk store write failed', { err: String(e) });
