@@ -438,3 +438,17 @@ fn the_app_wires_no_network_summary_path() {
     let toml = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml")).unwrap();
     assert!(!toml.contains("reqwest"));
 }
+
+/// Cycle 26: qrtz-lifecycle's hardening24 budget test mirrors this constant (it can't import qrtz-app); this keeps
+/// the mirror from drifting, and checks the runtime's settle budget covers every attempt of the real timeout.
+#[test]
+fn the_lifecycle_budget_test_mirrors_the_real_on_device_timeout() {
+    assert_eq!(
+        ON_DEVICE_SUMMARY_TIMEOUT_MS, 3_660_000,
+        "update crates/qrtz-lifecycle/tests/hardening24.rs too"
+    );
+    let attempts = qrtz_lifecycle::policies::SUMMARY.max_attempts as u64;
+    let b =
+        qrtz_lifecycle::runtime::settle_budget_ms(qrtz_model::StepId::Summary, ON_DEVICE_SUMMARY_TIMEOUT_MS);
+    assert!(b >= attempts * ON_DEVICE_SUMMARY_TIMEOUT_MS, "{b}");
+}
