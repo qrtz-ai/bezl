@@ -370,3 +370,12 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
 - Design system: light/system theme (opt-in, dark stays the default), motion and focus tokens, a global focus ring, a generated docs/design-tokens.md with a drift and contrast test, new gallery sections (callouts, cards, space, motion, focus), and axe-clean gallery in dark and light.
 - Startup: an e2e cold-start test with a 1.5 s budget (`QRTZ_COLD_START_BUDGET_MS`) measures about 0.65–0.70 s to home and about 0.2 s to first contentful paint on Linux under xvfb. Main now lazy-loads backup (yazl/yauzl) and updates. Sub-apps were already React.lazy.
 - Side work: none blocking. The cold-start number was measured under xvfb, not on a real Mac. docs/design-tokens.md is excluded from oxfmt because it is generated.
+
+## Iteration 15 (2026-10-16)
+
+- Light mode on every view: `e2e/themes.spec.ts` takes screenshots of home, memo list, summary, transcript, gallery, settings and the palette in dark and light (saved to `test-results/themes/`) and runs axe on each. Everything passes with no changes to the views; the iteration 14 status-color fix was enough.
+- Backup and restore progress: a throttled `data:backup-progress` event reports checksum, write, verify, import and done. Settings shows a progress bar and percentage. `@qrtz/ui` gained a `Progress` component, which is also in the gallery. A unit test checks that progress only goes up and ends at the total.
+- Test audit: `docs/test-matrix.md` maps every flow to its tests. New `e2e/flows.spec.ts` covers the gaps: deleting a meeting (survives restart), Copy Markdown, settings surviving a restart, and the API key never landing in plaintext.
+- Bug fixed: Copy Markdown used `navigator.clipboard` and swallowed errors, so it said "Copied" even when the clipboard was denied (for example, when the window wasn't focused). Main now writes the clipboard.
+- Fresh-clone check: a clean clone from GitHub passed `npm ci`, lint, tsc, test, package and e2e with no fixes needed. `scripts/fresh-clone-check.sh` makes it repeatable.
+- Side work: Linux has no keyring under xvfb, so the e2e checks that saving a key is refused safely there; the save and remove happy path only runs on macOS. Small e2e backups finish too fast to show the progress bar, so progress is checked by the unit test.

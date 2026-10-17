@@ -2,6 +2,7 @@ import { createTray } from './tray';
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   globalShortcut,
   net,
@@ -162,6 +163,20 @@ export function bootstrap() {
     }
   });
   config.onChange((c) => bus.emit('config:changed', c));
+  /** Throttled (~10/s) backup progress events for the Settings progress bar. */
+  const progress = (kind: 'export' | 'import') => {
+    let last = 0;
+    return (
+      phase: 'checksum' | 'write' | 'verify',
+      done: number,
+      total: number,
+    ) => {
+      const now = Date.now();
+      if (now - last < 100 && done < total) return;
+      last = now;
+      bus.emit('data:backup-progress', { kind, phase, done, total });
+    };
+  };
 
   registerIpc({
     bus,
@@ -211,7 +226,11 @@ export function bootstrap() {
       },
       'memo:export': async ({ id, save }) => {
         const ex = await worker.call('memo.export', { id });
-        if (!save) return ex;
+        if (!save) {
+          // Main-process clipboard: works even when the window isn't focused (navigator.clipboard doesn't).
+          clipboard.writeText(ex.markdown);
+          return ex;
+        }
         let target: string | undefined;
         if (process.env.QRTZ_EXPORT_DIR)
           target = path.join(process.env.QRTZ_EXPORT_DIR, ex.filename);
@@ -293,6 +312,13 @@ export function bootstrap() {
             appVersion: app.getVersion(),
             schemaVersion: health.schemaVersion,
             meetings,
+            onProgress: progress('export'),
+          });
+          bus.emit('data:backup-progress', {
+            kind: 'export',
+            phase: 'done',
+            done: 1,
+            total: 1,
           });
           log.info('backup written', {
             meetings,
@@ -330,12 +356,25 @@ export function bootstrap() {
             source,
             workDir,
             audioDir: recordingsDir,
+            onProgress: progress('import'),
+          });
+          bus.emit('data:backup-progress', {
+            kind: 'import',
+            phase: 'import',
+            done: 1,
+            total: 1,
           });
           const r = await worker.call('data.importDb', {
             path: dbPath,
             audioMap,
           });
           log.info('backup imported', r);
+          bus.emit('data:backup-progress', {
+            kind: 'import',
+            phase: 'done',
+            done: 1,
+            total: 1,
+          });
           bus.emit('memo:changed', { id: '*' });
           return { ...r, audioFiles: Object.keys(audioMap).length };
         } finally {

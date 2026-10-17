@@ -7,6 +7,7 @@ import {
   Field,
   Heading,
   Input,
+  Progress,
   Select,
   Text,
 } from '@qrtz/ui';
@@ -39,6 +40,7 @@ export default function SettingsView() {
   const [key, setKey] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
   const live = useQrtzEvent('helper:status');
+  const backupProgress = useQrtzEvent('data:backup-progress');
   const [error, setError] = useState<string | null>(null);
 
   const refresh = () => {
@@ -302,6 +304,31 @@ export default function SettingsView() {
             Import backup…
           </Button>
         </div>
+        {backupBusy && backupProgress && backupProgress.phase !== 'done' ? (
+          <div
+            style={{ display: 'grid', gap: 6 }}
+            data-testid="backup-progress"
+          >
+            <Progress
+              value={backupProgress.done / Math.max(1, backupProgress.total)}
+              label={`Backup ${backupProgress.kind} progress`}
+            />
+            <Text size="sm" muted>
+              {
+                {
+                  checksum: 'Computing checksums…',
+                  write: 'Writing zip…',
+                  verify: 'Verifying backup…',
+                  import: 'Importing meetings…',
+                  done: '',
+                }[backupProgress.phase]
+              }{' '}
+              {backupProgress.phase === 'import'
+                ? ''
+                : `${Math.round((backupProgress.done / Math.max(1, backupProgress.total)) * 100)}%`}
+            </Text>
+          </div>
+        ) : null}
         {backupMsg ? (
           <Text size="sm" muted data-testid="backup-result" role="status">
             {backupMsg}

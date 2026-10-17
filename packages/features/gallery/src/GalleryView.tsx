@@ -13,6 +13,7 @@ import {
   ListItem,
   Select,
   Spinner,
+  Progress,
   Switch,
   Tabs,
   Text,
@@ -156,7 +157,7 @@ function Showcase({
         <Button disabled>Disabled</Button>
       </Section>
 
-      <Section id="badges" title="Badges, Kbd, Spinner, Tooltip">
+      <Section id="badges" title="Badges, Kbd, Spinner, Progress, Tooltip">
         {(['neutral', 'primary', 'success', 'warning', 'danger'] as const).map(
           (tone) => (
             <Badge key={tone} tone={tone}>
@@ -168,6 +169,9 @@ function Showcase({
           <Kbd>⌘</Kbd> <Kbd>K</Kbd>
         </span>
         <Spinner />
+        <div style={{ width: 160 }}>
+          <Progress value={0.6} label="Example progress" />
+        </div>
         <Tooltip label="Start recording (⌘⇧R)">
           <Button variant="ghost" size="sm">
             Hover me

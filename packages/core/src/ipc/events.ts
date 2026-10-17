@@ -27,6 +27,15 @@ export const eventContract = {
     capability: 'memo.read',
     payload: z.object({ id: z.string() }),
   }),
+  'data:backup-progress': defineEvent({
+    capability: 'data.backup',
+    payload: z.object({
+      kind: z.enum(['export', 'import']),
+      phase: z.enum(['checksum', 'write', 'verify', 'import', 'done']),
+      done: z.number(),
+      total: z.number(),
+    }),
+  }),
   'permissions:changed': defineEvent({
     capability: 'os.permissions',
     payload: PermissionsStatus,

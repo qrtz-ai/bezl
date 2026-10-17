@@ -153,7 +153,6 @@ export function MeetingDetail({
   const { meeting, segments, summary } = d;
   const doExport = async (save: boolean) => {
     const r = await qrtz.invoke('memo:export', { id, save });
-    if (!save) await navigator.clipboard?.writeText(r.markdown).catch(() => {});
     setExported(
       save
         ? r.savedTo
@@ -210,7 +209,12 @@ export function MeetingDetail({
         >
           Export .md
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => void doExport(false)}>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => void doExport(false)}
+          data-testid="export-copy"
+        >
           Copy Markdown
         </Button>
         <div style={{ flex: 1 }} />
@@ -221,6 +225,7 @@ export function MeetingDetail({
             void qrtz.invoke('memo:delete', { id }).then(onDeleted)
           }
           style={{ color: t.color.danger }}
+          data-testid="meeting-delete"
         >
           Delete
         </Button>

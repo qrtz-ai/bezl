@@ -42,14 +42,22 @@ const isSafeEntry = (p: string) => p === DB_ENTRY || SAFE_AUDIO.test(p);
 const MAX_MANIFEST = 16 * 1024 * 1024;
 
 /** Streams a file through sha256 (no buffering). */
+export type BackupProgress = (
+  phase: 'checksum' | 'write' | 'verify',
+  done: number,
+  total: number,
+) => void;
+
 export async function hashFile(
   file: string,
+  onChunk?: (n: number) => void,
 ): Promise<{ sha256: string; bytes: number }> {
   const h = createHash('sha256');
   let bytes = 0;
   for await (const chunk of fs.createReadStream(file)) {
     h.update(chunk as Buffer);
     bytes += (chunk as Buffer).length;
+    onChunk?.((chunk as Buffer).length);
   }
   return { sha256: h.digest('hex'), bytes };
 }
@@ -63,6 +71,7 @@ export async function writeBackup(o: {
   schemaVersion: number;
   meetings: number;
   now?: number;
+  onProgress?: BackupProgress;
 }): Promise<{ bytes: number; audioFiles: number }> {
   const entries: { entry: string; file: string }[] = [
     { entry: DB_ENTRY, file: o.dbSnapshot },
@@ -73,8 +82,17 @@ export async function writeBackup(o: {
       entries.push({ entry, file: f });
   }
   const files: BackupManifest['files'] = [];
+  const total = entries.reduce((n, e) => n + fs.statSync(e.file).size, 0);
+  let done = 0;
   for (const e of entries)
-    files.push({ path: e.entry, ...(await hashFile(e.file)) });
+    files.push({
+      path: e.entry,
+      ...(await hashFile(e.file, (n) => {
+        done += n;
+        o.onProgress?.('checksum', done, total);
+      })),
+    });
+  done = 0;
   const manifest: BackupManifest = {
     format: BACKUP_FORMAT,
     version: 1,
@@ -86,9 +104,21 @@ export async function writeBackup(o: {
   };
   const zip = new yazl.ZipFile();
   for (const e of entries)
-    zip.addReadStream(fs.createReadStream(e.file), e.entry, {
-      compress: e.entry === DB_ENTRY,
-    });
+    zip.addReadStream(
+      fs.createReadStream(e.file).pipe(
+        new Transform({
+          transform(c: Buffer, _enc, cb) {
+            done += c.length;
+            o.onProgress?.('write', done, total);
+            cb(null, c);
+          },
+        }),
+      ),
+      e.entry,
+      {
+        compress: e.entry === DB_ENTRY,
+      },
+    );
   zip.addBuffer(
     Buffer.from(JSON.stringify(manifest, null, 2)),
     'manifest.json',
@@ -143,6 +173,7 @@ export async function readBackup(o: {
   source: string;
   workDir: string;
   audioDir: string;
+  onProgress?: BackupProgress;
 }): Promise<{
   manifest: BackupManifest;
   dbPath: string;
@@ -192,6 +223,8 @@ export async function readBackup(o: {
     fs.mkdirSync(o.audioDir, { recursive: true });
     const dbPath = path.join(o.workDir, 'import.db');
     const staged: { entry: string; tmp: string; sha256: string }[] = [];
+    const total = manifest.files.reduce((n, f) => n + f.bytes, 0);
+    let done = 0;
     for (const f of manifest.files) {
       if (!isSafeEntry(f.path)) throw bad(`unsafe path ${f.path}`);
       const e = byName.get(f.path);
@@ -212,6 +245,8 @@ export async function readBackup(o: {
         transform(chunk: Buffer, _enc, cb) {
           h.update(chunk);
           bytes += chunk.length;
+          done += chunk.length;
+          o.onProgress?.('verify', done, total);
           if (bytes > f.bytes)
             return cb(new Error('entry larger than its manifest size'));
           cb(null, chunk);

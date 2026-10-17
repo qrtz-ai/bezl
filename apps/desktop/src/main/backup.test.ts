@@ -41,6 +41,41 @@ describe('streaming backup zip', () => {
     );
   });
 
+  it('reports monotonic progress for every phase, ending at the total', async () => {
+    const dir = tmp();
+    const db = path.join(dir, 'snap.db');
+    fs.writeFileSync(db, Buffer.alloc(4096, 1));
+    const wav = path.join(dir, 'p.wav');
+    fs.writeFileSync(wav, Buffer.alloc(300_000, 2));
+    const seen: Record<string, number[][]> = {};
+    const rec = (ph: string, d: number, t: number) =>
+      (seen[ph] ??= []).push([d, t]);
+    const target = path.join(dir, 'b.zip');
+    await writeBackup({
+      target,
+      dbSnapshot: db,
+      audioFiles: [wav],
+      appVersion: 't',
+      schemaVersion: 4,
+      meetings: 1,
+      onProgress: rec,
+    });
+    await readBackup({
+      source: target,
+      workDir: path.join(dir, 'w'),
+      audioDir: path.join(dir, 'a'),
+      onProgress: rec,
+    });
+    for (const ph of ['checksum', 'write', 'verify']) {
+      const xs = seen[ph]!;
+      expect(xs.length, ph).toBeGreaterThan(0);
+      for (let i = 1; i < xs.length; i++)
+        expect(xs[i]![0]).toBeGreaterThanOrEqual(xs[i - 1]![0]!);
+      expect(xs.at(-1)![0]).toBe(304_096);
+      expect(xs.at(-1)![1]).toBe(304_096);
+    }
+  });
+
   it('streams a large recording with bounded memory', async () => {
     const big = 38 * 8 * 1024 * 1024;
     const { dir, target, wav } = await make(0);
