@@ -11,6 +11,16 @@ export const RevocationDegradation = z.enum([
 ]);
 export type RevocationDegradation = z.infer<typeof RevocationDegradation>;
 
+/** N29: a raw capture channel, as `capture.silent` / `capture.audible` name it. */
+export const CaptureSource = z.enum(['system', 'mic']);
+export type CaptureSource = z.infer<typeof CaptureSource>;
+
+/**
+ * N29: when the helper calls a source silent. Mirrors Swift `SilenceConfig.default` (Silence.swift): block RMS
+ * under `floorRms` (linear, ≈ −70 dBFS) for `afterMs`. Configurable per helper via `HelperDeps.silence`.
+ */
+export const CAPTURE_SILENCE = { floorRms: 0.0003, afterMs: 60_000 } as const;
+
 /**
  * Wire protocol between the app (host) and the native Swift helper (`qrtz-helper`).
  * Transport: newline-delimited JSON over stdio. One message per line.
@@ -94,6 +104,20 @@ export const HelperToHost = z.discriminatedUnion('type', [
     text: z.string(),
   }),
   z.object({ type: z.literal('audio.level'), rms: z.number().min(0).max(1) }),
+  z.object({
+    /**
+     * N29: while recording, `source` has been under the silence floor since `sinceMs` (recording-relative ms, like
+     * other atMs fields) for `CAPTURE_SILENCE.afterMs`. Once per silent stretch; `capture.audible` ends it.
+     */
+    type: z.literal('capture.silent'),
+    source: CaptureSource,
+    sinceMs: z.number().min(0),
+  }),
+  z.object({
+    /** N29: `source` is above the floor again after a `capture.silent`. */
+    type: z.literal('capture.audible'),
+    source: CaptureSource,
+  }),
   z.object({
     /**
      * H8: a capture source failed to start and the helper moves on to the next one (Core Audio process tap →

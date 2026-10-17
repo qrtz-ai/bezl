@@ -135,6 +135,28 @@ The helper carries out exactly the `mic.subscribe` / `mic.unsubscribe` effects t
   the engine is told `micDropped()`, so it forgets the dead reader. When the mic is granted again, the arbiter
   resubscribes the warm reader, so the next dictation hears audio. A re-grant never resubscribes a running recording.
 
+## Silent capture (N29)
+
+While recording, the helper measures each raw capture channel (system audio and mic, before echo gate and mix; the
+host's `audio.level` is only the mix) and reports a source that stays under a floor:
+
+```json
+{ "type": "capture.silent", "source": "system", "sinceMs": 12500 }
+{ "type": "capture.audible", "source": "system" }
+```
+
+- `source`: `system` | `mic`. `sinceMs`: when the silent stretch began, recording-relative ms like other `atMs`.
+- Threshold: block RMS under `floorRms` 0.0003 (≈ −70 dBFS: digital silence, a muted input, ScreenCaptureKit zeros;
+  well under a quiet room) for `afterMs` 60 000. Swift `SilenceConfig.default` (`Silence.swift`, configurable per
+  helper through `HelperDeps.silence`), mirrored by TS `CAPTURE_SILENCE`.
+- Once per silent stretch per source; `capture.audible` when that source is above the floor again. A pause breaks a
+  stretch (nothing is captured), an already reported one stays reported. A mic channel the source does not deliver
+  is not tracked (no mic, or revoked: `permission.revoked` covers that). Nothing is sent outside a recording.
+- Host: wire only so far (Electron logs it). The session degradation (`silent-input`), reducers, vectors and runtimes
+  come separately.
+- Mock helper: `createMockHelper({ silence: [{ source, afterMs, audibleAfterMs?, sinceMs? }] })`, or
+  `QRTZ_MOCK_SILENT="system@1500,mic@2000-4000"` (ms after `recording.start`; `-4000`: audible again then).
+
 ## Capture fallback (H8)
 
 On `recording.start` the helper tries its audio sources in order (Core Audio process tap → ScreenCaptureKit → …).

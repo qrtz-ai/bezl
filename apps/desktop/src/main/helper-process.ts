@@ -61,6 +61,22 @@ export function parseRevoke(v: string) {
     .map(([permission, ms]) => ({ permission, afterMs: Number(ms) }));
 }
 
+/**
+ * QRTZ_MOCK_SILENT="system@1500,mic@2000-4000": the mock reports that source silent at 1500 ms after
+ * recording.start (and audible again at 4000 ms) (N29 fault injection).
+ */
+export function parseSilence(v: string) {
+  return v
+    .split(',')
+    .map((kv) => /^(system|mic)@(\d+)(?:-(\d+))?$/.exec(kv.trim()))
+    .filter((m): m is RegExpExecArray => !!m)
+    .map((m) => ({
+      source: m[1] as 'system' | 'mic',
+      afterMs: Number(m[2]),
+      ...(m[3] ? { audibleAfterMs: Number(m[3]) } : {}),
+    }));
+}
+
 /** QRTZ_MOCK_PERMISSIONS="screen-recording=denied,microphone=denied" (e2e fault injection). */
 function mockPermissions() {
   const out: Record<string, 'granted' | 'denied' | 'unsupported'> = {};
@@ -83,6 +99,9 @@ export function spawnHelper(): ChildHandle {
       permissions: mockPermissions(),
       ...(process.env.QRTZ_MOCK_REVOKE
         ? { revoke: parseRevoke(process.env.QRTZ_MOCK_REVOKE) }
+        : {}),
+      ...(process.env.QRTZ_MOCK_SILENT
+        ? { silence: parseSilence(process.env.QRTZ_MOCK_SILENT) }
         : {}),
       ...(['ax', 'paste', 'fail'].includes(process.env.QRTZ_MOCK_INSERT ?? '')
         ? { insert: process.env.QRTZ_MOCK_INSERT as 'ax' | 'paste' | 'fail' }

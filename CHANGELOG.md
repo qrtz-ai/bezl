@@ -2,6 +2,7 @@
 
 ## Unreleased: helper mux + TCC revocation (H5/H6)
 
+- **Silent capture on the wire (N29, protocol + helper):** while recording, the helper tracks the system and mic channels apart and sends `capture.silent {source: 'system'|'mic', sinceMs}` after 60 s under ≈ −70 dBFS (`SilenceConfig.default` / `CAPTURE_SILENCE`, configurable via `HelperDeps.silence`) and `capture.audible {source}` when sound returns. Zod, Swift, contracts, golden fixtures (3 valid, 4 invalid), mock helper `silence` option and `QRTZ_MOCK_SILENT`. The host only logs it for now; the `silent-input` degradation comes with the reducer.
 - **Structured capture fallback (H8):** when an audio source fails to start, the helper sends `capture.fallback {from, to, reason}` (`to: null` when no source is left) instead of a free-text log line. The host logs it as a warning like before. Zod, Swift, contracts, golden fixtures (2 valid, 2 invalid), mock helper option `captureFallback`.
 - **Tauri data dirs owner-only (N25 parity):** `qrtz-app` creates the app data dir and the recordings dir 0700 (`AppDirs::prepare`, `private_dir`: `DirBuilderExt::mode(0o700)` plus a chmod for a directory an older build made 0755), and the config store uses it for its directory. Tested under umask 022.
 - **Concurrent recording + dictation (mux):** a dictation runs during a meeting recording and both read the mic through one shared tap (`MicHub`). Each kind is single-instance (duplicate starts are ignored, not queued), and `dictation.start` is refused when the mic is denied. Spec: `docs/helper-protocol.md`, ADR 0004.

@@ -13,3 +13,7 @@ not json
 {"atMs":1,"degraded":"no-mic","permission":"microphone","type":"permission.revoked"}
 {"from":"core-audio-tap","reason":"x","type":"capture.fallback"}
 {"from":"","reason":"x","to":null,"type":"capture.fallback"}
+{"sinceMs":1,"source":"camera","type":"capture.silent"}
+{"sinceMs":-5,"source":"mic","type":"capture.silent"}
+{"source":"system","type":"capture.silent"}
+{"type":"capture.audible"}

@@ -59,6 +59,10 @@ public enum HelperMessage: Equatable, Sendable {
     case dictationStopped(id: String, text: String, durationMs: Double, reason: DictationStopReason? = nil)
     /// A TCC permission went granted → denied while capturing or dictating. `degraded` (N4): the arbiter's
     /// `degrade:*` effects, `[]` when not recording; nil only when parsing an older helper's line.
+    /// N29: `source` has been under the silence floor since `sinceMs` (recording-relative), for `SilenceConfig.afterMs`.
+    case captureSilent(source: CaptureSource, sinceMs: Double)
+    /// N29: `source` is above the floor again after a `captureSilent`.
+    case captureAudible(source: CaptureSource)
     /// H8: capture source `from` failed to start; `to` is tried next (nil: none left).
     case captureFallback(from: String, to: String?, reason: String)
     case permissionRevoked(permission: OsPermission, atMs: Double, degraded: [RevocationDegradation]? = nil)
@@ -197,6 +201,8 @@ extension HelperMessage {
             var o: [String: JSONValue] = ["id": s(id), "text": s(text), "durationMs": n(d)]
             if let reason { o["reason"] = s(reason.rawValue) }
             return obj("dictation.stopped", o)
+        case .captureSilent(let src, let since): return obj("capture.silent", ["source": s(src.rawValue), "sinceMs": n(since)])
+        case .captureAudible(let src): return obj("capture.audible", ["source": s(src.rawValue)])
         case .captureFallback(let from, let to, let reason):
             return obj("capture.fallback", ["from": s(from), "to": to.map(s) ?? .null, "reason": s(reason)])
         case .permissionRevoked(let p, let at, let degraded):
@@ -265,6 +271,11 @@ extension HelperMessage {
                                          guard let v = DictationStopReason(rawValue: r) else { throw ProtocolError("bad reason \(r)") }
                                          return v
                                      })
+        case "capture.silent":
+            let since = try f.num("sinceMs")
+            guard since >= 0 else { throw ProtocolError("negative sinceMs") }
+            self = .captureSilent(source: try f.enumValue("source", CaptureSource.self), sinceMs: since)
+        case "capture.audible": self = .captureAudible(source: try f.enumValue("source", CaptureSource.self))
         case "capture.fallback":
             guard let to = f.o["to"] else { throw ProtocolError("missing to") }
             guard to == .null || !(to.string ?? "").isEmpty else { throw ProtocolError("bad to") }

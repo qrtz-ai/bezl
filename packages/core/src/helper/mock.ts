@@ -1,5 +1,7 @@
 import {
+  CAPTURE_SILENCE,
   HELPER_PROTOCOL_VERSION,
+  type CaptureSource,
   HostToHelper,
   type HelperToHost,
   type RevocationDegradation,
@@ -59,6 +61,17 @@ export interface MockHelperOptions {
    * capture.fallback{from, to, reason} before recording.started, like the Swift helper walking its source list.
    */
   captureFallback?: { from: string; to: string | null; reason: string }[];
+  /**
+   * N29 script: per recording, `source` reports `capture.silent` `afterMs` (real ms) after recording.start and, with
+   * `audibleAfterMs`, `capture.audible` then. `sinceMs` defaults to when the silence would have begun
+   * (elapsed − CAPTURE_SILENCE.afterMs, at least 0). Cleared on stop/abort like the scenario script.
+   */
+  silence?: {
+    source: CaptureSource;
+    afterMs: number;
+    audibleAfterMs?: number;
+    sinceMs?: number;
+  }[];
   /** Override reported TCC states (fault injection: denied permissions). */
   permissions?: Partial<
     Record<
@@ -161,6 +174,24 @@ export function createMockHelper(
         if (r.effects.includes('dictation.stop:permission-revoked') && dict)
           stopDictation(dict.id, false, 'permission-revoked');
       });
+  };
+  const armSilence = () => {
+    const t0 = clock.now();
+    for (const sl of opts.silence ?? []) {
+      at(sl.afterMs, () =>
+        emit({
+          type: 'capture.silent',
+          source: sl.source,
+          sinceMs:
+            sl.sinceMs ??
+            Math.max(0, clock.now() - t0 - CAPTURE_SILENCE.afterMs),
+        }),
+      );
+      if (sl.audibleAfterMs !== undefined)
+        at(sl.audibleAfterMs, () =>
+          emit({ type: 'capture.audible', source: sl.source }),
+        );
+    }
   };
   const reported: Partial<Record<HelperPermission, 'denied'>> = {};
   const granted = opts.scenario ? 'granted' : 'unsupported';
@@ -385,6 +416,7 @@ export function createMockHelper(
           audioPath = m.audioPath;
           for (const f of opts.captureFallback ?? [])
             emit({ type: 'capture.fallback', ...f });
+          armSilence();
           // Mirrors the Swift helper: capture problems are non-fatal errors, recording.started still follows.
           if (
             opts.permissions?.['screen-recording'] === 'denied' &&

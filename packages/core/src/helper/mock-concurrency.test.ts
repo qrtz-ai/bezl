@@ -3,6 +3,7 @@ import { createMockHelper } from './mock';
 import {
   encodeHostMessage,
   parseHelperLine,
+  CAPTURE_SILENCE,
   HelperToHost,
   type HostToHelper,
 } from './protocol';
@@ -147,6 +148,52 @@ describe('mock helper: concurrent recording.* + dictation.* (mux)', () => {
     expect(of(got, 'dictation.started')).toHaveLength(0);
     expect(of(got, 'error')[0]).toMatchObject({ code: 'dictation.mic' });
     h.kill();
+  });
+});
+
+describe('mock helper: scripted capture.silent / capture.audible (N29)', () => {
+  it('reports per source after recording.start, audible again later, nothing after stop', async () => {
+    const { h, got, send } = rig({
+      silence: [
+        { source: 'system', afterMs: 10, audibleAfterMs: 30 },
+        { source: 'mic', afterMs: 20, sinceMs: 5 },
+        { source: 'mic', afterMs: 80 },
+      ],
+    });
+    await tick(30);
+    expect(of(got, 'capture.silent')).toHaveLength(0); // only while recording
+    send({ type: 'recording.start', audioPath: '/tmp/s.wav' });
+    await tick(50);
+    expect(of(got, 'capture.silent')).toEqual([
+      { type: 'capture.silent', source: 'system', sinceMs: 0 },
+      { type: 'capture.silent', source: 'mic', sinceMs: 5 },
+    ]);
+    expect(of(got, 'capture.audible')).toEqual([
+      { type: 'capture.audible', source: 'system' },
+    ]);
+    for (const m of [
+      ...of(got, 'capture.silent'),
+      ...of(got, 'capture.audible'),
+    ])
+      expect(HelperToHost.parse(m)).toEqual(m);
+    send({ type: 'recording.stop' });
+    await tick(60);
+    expect(of(got, 'capture.silent')).toHaveLength(2); // the 80 ms one was cleared with the recording
+    h.kill();
+  });
+  it('the wire shape: source is system|mic, sinceMs >= 0', () => {
+    const ok = (m: unknown) => HelperToHost.safeParse(m).success;
+    expect(ok({ type: 'capture.silent', source: 'mic', sinceMs: 0 })).toBe(
+      true,
+    );
+    expect(ok({ type: 'capture.silent', source: 'mic', sinceMs: -1 })).toBe(
+      false,
+    );
+    expect(ok({ type: 'capture.silent', source: 'camera', sinceMs: 1 })).toBe(
+      false,
+    );
+    expect(ok({ type: 'capture.audible', source: 'system' })).toBe(true);
+    expect(CAPTURE_SILENCE).toEqual({ floorRms: 0.0003, afterMs: 60_000 }); // = Swift SilenceConfig.default
   });
 });
 

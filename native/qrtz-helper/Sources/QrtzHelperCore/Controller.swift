@@ -56,10 +56,12 @@ public struct HelperDeps: Sendable {
     public var micHub: MicHub?
     /// H5: how often TCC state is re-read while capturing or dictating (0 = never poll; tests call checkPermissions()).
     public var permissionPollMs: Int
+    /// N29: when a capture source counts as silent (`capture.silent` / `capture.audible`).
+    public var silence: SilenceConfig
     public init(permissions: PermissionsProvider, meetings: MeetingSource?, audio: [AudioSource], transcribers: [StreamingTranscriber], helperVersion: String, os: String, features: [String], context: MeetingContext = MeetingContext(), enhancer: MicEnhancer? = nil,
                 dictationMic: MicSource? = nil, dictationTranscribers: [StreamingTranscriber] = [], insertion: InsertionBackend? = nil, hotkeys: HotkeyMonitor? = nil,
-                micHub: MicHub? = nil, permissionPollMs: Int = 2000) {
-        self.micHub = micHub; self.permissionPollMs = permissionPollMs
+                micHub: MicHub? = nil, permissionPollMs: Int = 2000, silence: SilenceConfig = .default) {
+        self.micHub = micHub; self.permissionPollMs = permissionPollMs; self.silence = silence
         self.dictationMic = dictationMic; self.dictationTranscribers = dictationTranscribers; self.insertion = insertion; self.hotkeys = hotkeys
         self.permissions = permissions; self.meetings = meetings; self.audio = audio; self.transcribers = transcribers
         self.helperVersion = helperVersion; self.os = os; self.features = features
@@ -91,7 +93,11 @@ public actor HelperController {
         var consumer: Task<Void, Never>?
         /// N2: torn down by recording.abort; an in-flight stop for it must not touch anything any more.
         var aborted = false
-        init(wav: WavWriter, startMs: Double) { self.wav = wav; self.startMs = startMs }
+        /// N29: per-source silence on the raw (pre-mix) capture channels.
+        var silence: SilenceTracker
+        init(wav: WavWriter, startMs: Double, silence: SilenceConfig = .default) {
+            self.wav = wav; self.startMs = startMs; self.silence = SilenceTracker(config: silence)
+        }
     }
 
     /// H6/H5 arbiter state (see Arbiter.swift); `lastPerms` is the TCC snapshot revocations are diffed against.
@@ -278,7 +284,7 @@ public actor HelperController {
             send(.error(code: "recording.file", message: "\(error)", fatal: false, audioPath: path))
             return
         }
-        let rec = Recording(wav: wav, startMs: now())
+        let rec = Recording(wav: wav, startMs: now(), silence: deps.silence)
         recordingStartMs = rec.startMs
         recording = rec
 
@@ -298,6 +304,7 @@ public actor HelperController {
         rec.samplesIn = samplesIn
         rec.consumer = Task { [weak self] in
             for await b in blocks {
+                await self?.trackSilence(b, of: rec)
                 let mixed = await pipeline.process(b)
                 await self?.onSamples(mixed, of: rec)
             }
@@ -324,6 +331,16 @@ public actor HelperController {
                 await self?.pollTranscript()
             }
         }
+    }
+
+    /// N29: feed the raw channels (before echo gate and mix) to the recording's silence tracker. A mic channel the
+    /// source does not deliver (no mic, or revoked) is not tracked: permission.revoked / degradations cover that.
+    func trackSilence(_ b: CaptureBlock, of owner: Recording) {
+        guard let rec = recording, owner === rec, !rec.aborted else { return }
+        if paused { rec.silence.pause(); return }
+        let t = now() - rec.startMs
+        if let m = rec.silence.update(.system, rms: DSP.rms(b.system), atMs: t) { send(m) }
+        if let mic = b.mic, let m = rec.silence.update(.mic, rms: DSP.rms(mic), atMs: t) { send(m) }
     }
 
     func onSamples(_ s: [Float], of owner: Recording? = nil) async {
