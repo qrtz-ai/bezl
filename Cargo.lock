@@ -3986,6 +3986,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "qrtz-cloexec"
+version = "0.1.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "qrtz-desktop"
 version = "0.1.0"
 dependencies = [
@@ -4015,6 +4022,7 @@ version = "0.1.0"
 dependencies = [
  "jsonschema",
  "libc",
+ "qrtz-cloexec",
  "rand 0.8.8",
  "serde",
  "serde_json",
@@ -4116,6 +4124,7 @@ dependencies = [
  "hex",
  "jsonschema",
  "libc",
+ "qrtz-cloexec",
  "qrtz-speech",
  "reqwest 0.12.28",
  "semver",

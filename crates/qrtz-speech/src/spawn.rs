@@ -19,7 +19,7 @@ use crate::store::SessionPin;
 use crate::validate::{check_hello, OutputValidator, Verdict};
 use crate::{SpeechError, SpeechStore};
 use async_trait::async_trait;
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -72,39 +72,11 @@ pub struct ModuleProcess {
     pub confined: bool,
 }
 
-/// A close-on-exec pipe. Linux creates it atomically with `pipe2(O_CLOEXEC)`; macOS has no `pipe2`, so it uses
-/// `pipe()` + `FD_CLOEXEC` (the host never forks between the two calls without exec'ing through the spawner,
-/// which builds the child's fd table explicitly, so the window cannot leak these fds into a module).
+/// A close-on-exec pipe (N98: atomic on Linux; on macOS created under `qrtz_cloexec`'s spawn lock, so no
+/// concurrently spawned host child can inherit it).
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))] // used by the macOS spawner once it lands
 fn pipe2() -> std::io::Result<(OwnedFd, OwnedFd)> {
-    let mut fds = [0; 2];
-    #[cfg(target_os = "linux")]
-    {
-        // SAFETY: fds is valid for two ints.
-        if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } < 0 {
-            return Err(std::io::Error::last_os_error());
-        }
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        // SAFETY: fds is valid for two ints.
-        if unsafe { libc::pipe(fds.as_mut_ptr()) } < 0 {
-            return Err(std::io::Error::last_os_error());
-        }
-    }
-    // SAFETY: fresh fds we own.
-    let pair = unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) };
-    #[cfg(not(target_os = "linux"))]
-    for fd in [&pair.0, &pair.1] {
-        // SAFETY: fcntl on an fd we own.
-        unsafe {
-            let f = libc::fcntl(fd.as_raw_fd(), libc::F_GETFD);
-            if f < 0 || libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, f | libc::FD_CLOEXEC) < 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-        }
-    }
-    Ok(pair)
+    qrtz_cloexec::pipe()
 }
 
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))] // used by the macOS spawner once it lands
@@ -210,7 +182,7 @@ fn spawn_linux(
     unsafe {
         cmd.pre_exec(move || plan.exec_in_child());
     }
-    let child = cmd.spawn()?;
+    let child = qrtz_cloexec::spawn(|| cmd.spawn())?;
     // N55 (host side): our copies of the child's ends close now.
     drop((ctl_r, res_w, mic_r, sys_r, devnull_in, devnull_out, log));
     set_nonblocking(ctl_w.as_raw_fd())?;

@@ -74,7 +74,8 @@ impl Spawn for ProcessSpawn {
         };
         #[cfg(not(unix))]
         let speech: Option<(std::os::fd::OwnedFd, std::os::fd::OwnedFd)> = None;
-        let mut child = cmd.spawn()?;
+        // N98: no non-atomic close-on-exec create may be in flight while the helper forks.
+        let mut child = qrtz_cloexec::spawn(|| cmd.spawn())?;
         // The helper end now lives in the child only.
         let speech = speech.map(|(host, _helper)| host);
         let stdout = child.stdout.take().expect("piped stdout");

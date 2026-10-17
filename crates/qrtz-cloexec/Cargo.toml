@@ -1,0 +1,11 @@
+[package]
+name = "qrtz-cloexec"
+description = "Close-on-exec fd creation that is race-free against concurrent child spawns, also on macOS (review N98)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+libc = "0.2"

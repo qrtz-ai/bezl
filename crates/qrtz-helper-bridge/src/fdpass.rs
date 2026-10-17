@@ -14,33 +14,18 @@ pub const MAX_FDS: usize = 4;
 
 /// `(host, helper)`: both `CLOEXEC`; the host end is non-blocking (a stuck helper never blocks the supervisor).
 pub fn socketpair() -> io::Result<(OwnedFd, OwnedFd)> {
-    let mut fds = [0 as libc::c_int; 2];
     #[cfg(target_os = "linux")]
-    let ty = libc::SOCK_SEQPACKET | libc::SOCK_CLOEXEC;
+    let ty = libc::SOCK_SEQPACKET;
     #[cfg(not(target_os = "linux"))]
     let ty = libc::SOCK_STREAM;
-    // SAFETY: valid out array.
-    if unsafe { libc::socketpair(libc::AF_UNIX, ty, 0, fds.as_mut_ptr()) } != 0 {
-        return Err(io::Error::last_os_error());
-    }
-    // SAFETY: fresh fds owned by us.
-    let (a, b) = unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) };
-    for fd in [&a, &b] {
-        set_cloexec(fd.as_raw_fd())?;
-    }
+    // N98: close-on-exec without a window a concurrently spawned child could inherit through.
+    let (a, b) = qrtz_cloexec::socketpair(ty)?;
     set_nonblocking(a.as_raw_fd())?;
     Ok((a, b))
 }
 
 fn set_cloexec(fd: RawFd) -> io::Result<()> {
-    // SAFETY: plain fcntl on an owned fd.
-    unsafe {
-        let f = libc::fcntl(fd, libc::F_GETFD);
-        if f < 0 || libc::fcntl(fd, libc::F_SETFD, f | libc::FD_CLOEXEC) < 0 {
-            return Err(io::Error::last_os_error());
-        }
-    }
-    Ok(())
+    qrtz_cloexec::set_cloexec(fd)
 }
 
 fn set_nonblocking(fd: RawFd) -> io::Result<()> {
@@ -134,39 +119,44 @@ pub fn recv_fds(sock: RawFd, timeout: Duration) -> io::Result<Option<Received>> 
         fds: vec![],
         truncated: false,
     };
-    // SAFETY: zeroed msghdr pointing at live buffers; received fds are taken into OwnedFd at once.
-    unsafe {
-        let mut msg: libc::msghdr = std::mem::zeroed();
-        msg.msg_iov = &mut iov;
-        msg.msg_iovlen = 1;
-        msg.msg_control = cbuf.as_mut_ptr().cast();
-        msg.msg_controllen = space as _;
-        #[cfg(target_os = "linux")]
-        let flags = libc::MSG_CMSG_CLOEXEC | libc::MSG_DONTWAIT;
-        #[cfg(not(target_os = "linux"))]
-        let flags = libc::MSG_DONTWAIT;
-        let n = libc::recvmsg(sock, &mut msg, flags);
-        if n < 0 {
-            return Err(io::Error::last_os_error());
-        }
-        let mut c = libc::CMSG_FIRSTHDR(&msg);
-        while !c.is_null() {
-            if (*c).cmsg_level == libc::SOL_SOCKET && (*c).cmsg_type == libc::SCM_RIGHTS {
-                let data = libc::CMSG_DATA(c).cast::<RawFd>();
-                let len = (*c).cmsg_len as usize - libc::CMSG_LEN(0) as usize;
-                for i in 0..len / std::mem::size_of::<RawFd>() {
-                    let fd = std::ptr::read_unaligned(data.add(i));
-                    out.fds.push(OwnedFd::from_raw_fd(fd));
-                }
+    // N98: off Linux the received fds become close-on-exec only after recvmsg; hold the create guard so no
+    // qrtz child is spawned in between.
+    qrtz_cloexec::creating(|| -> io::Result<()> {
+        // SAFETY: zeroed msghdr pointing at live buffers; received fds are taken into OwnedFd at once.
+        unsafe {
+            let mut msg: libc::msghdr = std::mem::zeroed();
+            msg.msg_iov = &mut iov;
+            msg.msg_iovlen = 1;
+            msg.msg_control = cbuf.as_mut_ptr().cast();
+            msg.msg_controllen = space as _;
+            #[cfg(target_os = "linux")]
+            let flags = libc::MSG_CMSG_CLOEXEC | libc::MSG_DONTWAIT;
+            #[cfg(not(target_os = "linux"))]
+            let flags = libc::MSG_DONTWAIT;
+            let n = libc::recvmsg(sock, &mut msg, flags);
+            if n < 0 {
+                return Err(io::Error::last_os_error());
             }
-            c = libc::CMSG_NXTHDR(&msg, c);
+            let mut c = libc::CMSG_FIRSTHDR(&msg);
+            while !c.is_null() {
+                if (*c).cmsg_level == libc::SOL_SOCKET && (*c).cmsg_type == libc::SCM_RIGHTS {
+                    let data = libc::CMSG_DATA(c).cast::<RawFd>();
+                    let len = (*c).cmsg_len as usize - libc::CMSG_LEN(0) as usize;
+                    for i in 0..len / std::mem::size_of::<RawFd>() {
+                        let fd = std::ptr::read_unaligned(data.add(i));
+                        out.fds.push(OwnedFd::from_raw_fd(fd));
+                    }
+                }
+                c = libc::CMSG_NXTHDR(&msg, c);
+            }
+            out.truncated = msg.msg_flags & (libc::MSG_CTRUNC | libc::MSG_TRUNC) != 0;
+            buf.truncate(n as usize);
         }
-        out.truncated = msg.msg_flags & (libc::MSG_CTRUNC | libc::MSG_TRUNC) != 0;
-        buf.truncate(n as usize);
-    }
-    for f in &out.fds {
-        let _ = set_cloexec(f.as_raw_fd());
-    }
+        for f in &out.fds {
+            let _ = set_cloexec(f.as_raw_fd());
+        }
+        Ok(())
+    })?;
     out.payload = buf;
     Ok(Some(out))
 }
