@@ -9,12 +9,20 @@ publish.workspace = true
 
 [features]
 # `NoteRuntimePort`: the qrtz-lifecycle `NoteRuntime` behind `RuntimePort` (note:delete so far).
-runtime = ["dep:qrtz-lifecycle", "dep:qrtz-storage", "dep:qrtz-model"]
+runtime = [
+  "dep:qrtz-lifecycle",
+  "dep:qrtz-storage",
+  "dep:qrtz-model",
+  "dep:qrtz-backup",
+  "dep:qrtz-llm",
+]
 
 [dependencies]
 qrtz-lifecycle = { workspace = true, features = ["runtime"], optional = true }
 qrtz-storage = { workspace = true, optional = true }
 qrtz-model = { workspace = true, optional = true }
+qrtz-backup = { workspace = true, optional = true }
+qrtz-llm = { path = "../qrtz-llm", optional = true }
 rand.workspace = true
 unicode-normalization.workspace = true
 qrtz-ipc = { path = "../qrtz-ipc" }

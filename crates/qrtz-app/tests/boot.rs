@@ -44,6 +44,15 @@ fn mock_helper_bin() -> PathBuf {
 }
 
 fn app(dir: &Path, env: &[(&str, &str)], shell: Arc<Shell>) -> BuiltApp {
+    app_with(dir, env, shell, Arc::new(NoStorageShell))
+}
+
+fn app_with(
+    dir: &Path,
+    env: &[(&str, &str)],
+    shell: Arc<Shell>,
+    storage_shell: Arc<dyn qrtz_app::storage_port::StorageShell>,
+) -> BuiltApp {
     let mut spawn = ProcessSpawn::helper(mock_helper_bin());
     spawn.env = env.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
     build_app(AppBuild {
@@ -58,7 +67,7 @@ fn app(dir: &Path, env: &[(&str, &str)], shell: Arc<Shell>) -> BuiltApp {
         helper: Some((spawn, HelperAvailability::Simulated)),
         supervisor: SupervisorOptions::default(),
         shell,
-        storage_shell: Arc::new(NoStorageShell),
+        storage_shell,
         secrets: None,
         talk: None,
         steps: None,
@@ -139,6 +148,8 @@ async fn record_stop_process_list_export_with_the_mock_helper() {
     until("done", || rt2.session().phase.as_str() == "done").await;
     let p = call(&r, "note", "note:pipeline", json!({"id": id})).await;
     assert_eq!(p["steps"]["finalize"]["status"], "done", "{p}");
+    // ADR 0042: qrtz-llm's on-device summary step is wired, so the meeting is not summary-less (N53).
+    assert_eq!(p["steps"]["summary"]["status"], "done", "{p}");
 
     let list = call(&r, "note", "note:list", json!({})).await;
     assert_eq!(list[0]["meeting"]["id"], json!(id));
@@ -238,4 +249,112 @@ async fn mic_fails_at_start_in_the_started_chunk_degrades_the_session() {
     let s = call(&r, "note", "note:session", json!(null)).await;
     assert_eq!(s["phase"], "recording", "{s}");
     a.runtime.kill();
+}
+
+/// rust-core-api.md §9: data:export-backup → zip (progress, done), data:import-backup into a fresh library
+/// (verify → import → done, then note:changed "*"); cancel answers zeros / {canceled: true}.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn backup_export_then_import_into_a_fresh_library() {
+    struct Paths(std::sync::Mutex<Option<PathBuf>>);
+    impl qrtz_app::storage_port::StorageShell for Paths {
+        fn backup_save_path(&self, name: &str) -> Option<PathBuf> {
+            assert!(
+                name.starts_with("qrtz-backup-") && name.ends_with(".zip"),
+                "{name}"
+            );
+            self.0.lock().unwrap().clone()
+        }
+        fn backup_open_path(&self) -> Option<PathBuf> {
+            self.0.lock().unwrap().clone()
+        }
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let zip = tmp.path().join("b.zip");
+    let paths = Arc::new(Paths(std::sync::Mutex::new(None)));
+    let a = app_with(
+        &tmp.path().join("a"),
+        &[],
+        Arc::new(Shell::default()),
+        paths.clone(),
+    );
+    let r = Router::new(Shared(a.service.clone())).validate_responses(true);
+    a.service.start_helper();
+    a.runtime.recover().await.unwrap();
+    let rt = a.runtime.clone();
+    until("helper", || rt.session().helper.as_str() == "simulated").await;
+    // Cancelled dialog: zeros, no file.
+    let c = call(&r, "settings", "data:export-backup", json!(null)).await;
+    assert_eq!(c, json!({"meetings": 0, "audioFiles": 0, "bytes": 0}));
+    let s = call(&r, "note", "note:start", json!({"title": "Backup me"})).await;
+    let id = s["meetingId"].as_str().unwrap().to_owned();
+    call(&r, "note", "note:stop", json!(null)).await;
+    until("done", || rt.session().phase.as_str() == "done").await;
+
+    *paths.0.lock().unwrap() = Some(zip.clone());
+    let mut ev = a.service.events.subscribe();
+    let rep = call(&r, "settings", "data:export-backup", json!(null)).await;
+    assert_eq!(rep["meetings"], 1, "{rep}");
+    assert_eq!(rep["savedTo"], json!(zip.to_string_lossy()));
+    assert!(zip.exists());
+    let mut phases = vec![];
+    while let Ok((name, p)) = ev.try_recv() {
+        if name == "data:backup-progress" {
+            phases.push(p["phase"].as_str().unwrap().to_owned());
+        }
+    }
+    assert_eq!(phases.last().map(String::as_str), Some("done"), "{phases:?}");
+    assert!(phases.iter().any(|p| p == "write"), "{phases:?}");
+    a.runtime.kill();
+
+    let b = app_with(
+        &tmp.path().join("b"),
+        &[],
+        Arc::new(Shell::default()),
+        paths.clone(),
+    );
+    let rb = Router::new(Shared(b.service.clone())).validate_responses(true);
+    b.runtime.recover().await.unwrap();
+    let mut ev = b.service.events.subscribe();
+    let imp = call(&rb, "settings", "data:import-backup", json!(null)).await;
+    assert_eq!(imp["imported"], 1, "{imp}");
+    let mut seen = vec![];
+    while let Ok((name, p)) = ev.try_recv() {
+        match name.as_str() {
+            "data:backup-progress" => seen.push(p["phase"].as_str().unwrap().to_owned()),
+            "note:changed" => seen.push(format!("changed:{}", p["id"].as_str().unwrap())),
+            _ => {}
+        }
+    }
+    let first = |x: &str| {
+        seen.iter()
+            .position(|p| p == x)
+            .unwrap_or_else(|| panic!("{x} in {seen:?}"))
+    };
+    assert!(
+        first("verify") < first("import") && first("import") < first("done"),
+        "{seen:?}"
+    );
+    assert_eq!(seen.last().map(String::as_str), Some("changed:*"), "{seen:?}");
+    let list = call(&rb, "note", "note:list", json!({})).await;
+    assert_eq!(list[0]["meeting"]["id"], json!(id));
+    *paths.0.lock().unwrap() = None;
+    let c = call(&rb, "settings", "data:import-backup", json!(null)).await;
+    assert_eq!(
+        c,
+        json!({"canceled": true, "imported": 0, "skipped": 0, "audioFiles": 0})
+    );
+    b.runtime.kill();
+}
+
+#[test]
+fn backup_filename_is_utc_minutes_with_dashes() {
+    // 2026-10-17T14:32:59.999Z
+    assert_eq!(
+        qrtz_app::storage_port::backup_filename(1_792_247_579_999),
+        "qrtz-backup-2026-10-17-14-32.zip"
+    );
+    assert_eq!(
+        qrtz_app::storage_port::backup_filename(0),
+        "qrtz-backup-1970-01-01-00-00.zip"
+    );
 }

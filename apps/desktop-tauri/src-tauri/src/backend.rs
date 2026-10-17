@@ -97,6 +97,26 @@ impl StorageShell for TauriStorageShell {
         }
         d.blocking_save_file().and_then(|p| p.into_path().ok())
     }
+    fn backup_save_path(&self, default_name: &str) -> Option<PathBuf> {
+        let app = self.0.get()?;
+        let mut d = app
+            .dialog()
+            .file()
+            .set_file_name(default_name)
+            .add_filter("qrtz backup", &["zip"]);
+        if let Ok(docs) = app.path().document_dir() {
+            d = d.set_directory(docs);
+        }
+        d.blocking_save_file().and_then(|p| p.into_path().ok())
+    }
+    fn backup_open_path(&self) -> Option<PathBuf> {
+        let app = self.0.get()?;
+        app.dialog()
+            .file()
+            .add_filter("qrtz backup", &["zip"])
+            .blocking_pick_file()
+            .and_then(|p| p.into_path().ok())
+    }
 }
 
 #[derive(Default)]

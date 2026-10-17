@@ -172,7 +172,20 @@ pub fn boot(o: BootOptions) -> std::io::Result<Booted> {
     let db = StorageHandle::spawn(dirs.data.join("qrtz.db"))
         .map_err(|e| std::io::Error::other(format!("database: {e}")))?;
     let cfg = o.config.clone();
-    let steps = o.steps.unwrap_or_else(|| Arc::new(CoreSteps { db: db.clone() }));
+    // ADR 0042: qrtz-llm's summary step (on-device extractive first); finalize/index stay CoreSteps for now.
+    let steps = o.steps.unwrap_or_else(|| {
+        let core: Arc<dyn StepExecutor> = Arc::new(CoreSteps { db: db.clone() });
+        Arc::new(qrtz_llm::LlmSteps::on_device(
+            db.clone(),
+            core,
+            Arc::new(|| {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as i64)
+                    .unwrap_or(0)
+            }),
+        ))
+    });
     let runtime = NoteRuntime::new(RuntimeDeps {
         store: Arc::new(Store(db.clone())),
         steps,
@@ -256,6 +269,8 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         Some(s) => Arc::new(SupervisorHelper(s.clone())),
         None => Arc::new(NoHelper),
     };
+    // One tombstone store for the runtime (undo window) and backup import (skips meetings pending delete).
+    let pending = Arc::new(qrtz_storage::PendingDeletes::new(&dirs.data));
     let booted = boot(BootOptions {
         data_dir: dirs.data.clone(),
         events: events.clone(),
@@ -263,7 +278,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         config: config.clone(),
         helper,
         steps: b.steps,
-        pending_delete: Some(Arc::new(qrtz_storage::PendingDeletes::new(&dirs.data))),
+        pending_delete: Some(pending.clone()),
         clock: None,
         knobs: b.knobs,
     })?;
@@ -277,6 +292,9 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
             Arc::new(move || rt.pending_deletes())
         }),
         shell: b.storage_shell,
+        recordings_dir: dirs.recordings.clone(),
+        pending: Some(pending.clone()),
+        app_version: b.info.version.clone(),
     };
     let secrets = b.secrets.unwrap_or_else(|| platform_secrets(&dirs.data));
     let service = crate::AppService::new(crate::AppDeps {
