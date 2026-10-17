@@ -471,6 +471,16 @@ pub fn reduce(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> 
                 ..s.clone()
             })
         }
+        E::SpeechReady => {
+            // N42 (ADR 0046 §3b): speech-unavailable is scoped to the speech session that reported it.
+            if s.phase != P::Recording || !s.degraded.contains(&Degradation::AsrUnavailable) {
+                return None;
+            }
+            let mut n = s.clone();
+            n.degraded.retain(|f| *f != Degradation::AsrUnavailable);
+            n.device_lost.retain(|f| *f != Degradation::AsrUnavailable);
+            Some(n)
+        }
         E::ClearError => {
             s.error.as_ref()?;
             Some(RecordingState {

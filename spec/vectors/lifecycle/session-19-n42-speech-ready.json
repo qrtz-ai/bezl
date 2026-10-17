@@ -1,0 +1,190 @@
+{
+  "kind": "session",
+  "name": "N42 (ADR 0046 §3b): speech-unavailable is scoped to its speech session; when the current part's session reaches ready it clears (other flags stay), only while recording, and is idempotent",
+  "from": "Bozniak, qrtz-talk / qrtz-speech integration (ADR 0046 rev 2 §3b)",
+  "initial": null,
+  "steps": [
+    {
+      "event": {
+        "type": "start-requested",
+        "meetingId": "m",
+        "at": 0,
+        "audioPath": "/p0"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0
+      }
+    },
+    {
+      "event": {
+        "type": "speech-ready"
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "degraded",
+        "flag": "asr-unavailable",
+        "at": 10
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [
+          "asr-unavailable"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0
+      }
+    },
+    {
+      "event": {
+        "type": "speech-ready"
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "start-acked"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "asr-unavailable"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0
+      }
+    },
+    {
+      "event": {
+        "type": "degraded",
+        "flag": "no-mic",
+        "at": 20
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "asr-unavailable",
+          "no-mic"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0,
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 20
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "speech-ready"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "no-mic"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0,
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 20
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "speech-ready"
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "degraded",
+        "flag": "asr-unavailable",
+        "at": 30
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "no-mic",
+          "asr-unavailable"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0,
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 20
+          }
+        ]
+      }
+    },
+    {
+      "event": {
+        "type": "stop-requested",
+        "reason": "manual",
+        "at": 40
+      },
+      "expect": {
+        "phase": "stopping",
+        "degraded": [
+          "no-mic",
+          "asr-unavailable"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0,
+        "lostSpans": [
+          {
+            "source": "mic",
+            "startMs": 20,
+            "endMs": 40
+          }
+        ],
+        "stopReason": "manual",
+        "stoppedAt": 40
+      }
+    },
+    {
+      "event": {
+        "type": "speech-ready"
+      },
+      "expect": "rejected"
+    }
+  ]
+}

@@ -233,6 +233,15 @@ pub enum HelperInput {
     },
     #[serde(rename = "asr")]
     Asr { event: AsrEvent },
+    /// ADR 0046: an event from a recording part's speech session (fed by the host through
+    /// `NoteRuntime::speech_event`, never a helper line). `audio_path` names the part (`None` = the current one).
+    #[serde(skip)]
+    Speech {
+        audio_path: Option<String>,
+        /// The channels the part's session was started with (`SessionSpec::channels`).
+        channels: Vec<qrtz_speech::Channel>,
+        event: qrtz_speech::SpeechEvent,
+    },
     #[serde(rename = "recording.started", rename_all = "camelCase")]
     RecordingStarted {
         #[serde(default)]
@@ -281,6 +290,7 @@ impl HelperInput {
             HelperInput::CaptureFallback { .. } => "capture.fallback",
             HelperInput::CaptureDegraded { .. } => "capture.degraded",
             HelperInput::Asr { .. } => "asr",
+            HelperInput::Speech { .. } => "speech",
             HelperInput::RecordingStarted { .. } => "recording.started",
             HelperInput::RecordingStopped { .. } => "recording.stopped",
             HelperInput::RecordingAborted { .. } => "recording.aborted",

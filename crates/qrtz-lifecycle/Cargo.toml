@@ -16,6 +16,7 @@ runtime = [
   "dep:qrtz-storage",
   "dep:tracing",
   "dep:thiserror",
+  "dep:qrtz-speech",
 ]
 
 [dependencies]
@@ -28,6 +29,8 @@ serde_json = { workspace = true, optional = true }
 qrtz-storage = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
+# ADR 0046: the runtime consumes `qrtz_speech::SpeechEvent` (helper asr lines are going away).
+qrtz-speech = { path = "../qrtz-speech", optional = true }
 
 [dev-dependencies]
 serde_json.workspace = true

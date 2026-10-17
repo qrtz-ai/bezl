@@ -312,6 +312,24 @@ impl NoteRuntime {
             self.helper_message(m);
         }
     }
+    /// ADR 0046: an event from the speech session of the recording part `audio_path` (`None` = the current part).
+    /// Words become the live transcript like the helper's `asr` lines did, under the same rules: held behind a
+    /// part's ack (N37), accepted only while recording / stopping, placed in that part's meeting time. A failed
+    /// session is "speech unavailable" for that part only, and a later part's `ready` clears it (N42).
+    /// `channels` are the session's own (`SessionSpec::channels`): words with no channel, or a channel the session
+    /// doesn't have, are dropped (N68).
+    pub fn speech_event(
+        &self,
+        audio_path: Option<&str>,
+        channels: &[qrtz_speech::Channel],
+        event: qrtz_speech::SpeechEvent,
+    ) {
+        self.helper_message(HelperInput::Speech {
+            audio_path: audio_path.map(str::to_owned),
+            channels: channels.to_vec(),
+            event,
+        });
+    }
     /// Supervisor: the helper went away (crash, kill, heartbeat lost). F3.
     pub fn helper_down(&self, reason: &str) {
         if !self.sh.killed() {
@@ -851,6 +869,10 @@ impl Shared {
                 // N43: `ActiveSpeaker.at_ms` is part-relative from `recording.started` on, so it waits for the offset.
                 HelperInput::CaptureDegraded { .. }
                 | HelperInput::Asr { .. }
+                | HelperInput::Speech {
+                    event: qrtz_speech::SpeechEvent::Words { .. },
+                    ..
+                }
                 | HelperInput::ActiveSpeaker { .. } => {
                     if let Some(a) = st.acked.as_mut() {
                         if a.held.len() < MAX_HELD_BEHIND_ACK {
@@ -1035,6 +1057,11 @@ impl Shared {
                 }
                 self.on_asr(&s, event);
             }
+            HelperInput::Speech {
+                audio_path,
+                channels,
+                event,
+            } => self.on_speech(&s, audio_path, &channels, event),
             HelperInput::Error {
                 code,
                 message,
@@ -1164,6 +1191,106 @@ impl Shared {
                 t.abort();
             }
             let _ = w.tx.send(ack.then(|| probe.clone()));
+        }
+    }
+
+    /// ADR 0046 §3b: `SpeechEvent`s under the rules the helper's `asr` lines had.
+    fn on_speech(
+        self: &Arc<Self>,
+        s: &RecordingState,
+        audio_path: Option<String>,
+        channels: &[qrtz_speech::Channel],
+        ev: qrtz_speech::SpeechEvent,
+    ) {
+        use qrtz_speech::engine::StatusPhase;
+        use qrtz_speech::SpeechEvent as Sp;
+        // An event from another part's session (an older part, or a start that did not take) is not this part's.
+        let current = {
+            let st = self.lock();
+            match audio_path.as_deref() {
+                None => true,
+                Some(p) => {
+                    s.audio_parts.last().is_some_and(|l| l == p)
+                        || st.pending_start_path.as_deref() == Some(p)
+                }
+            }
+        };
+        if !current {
+            tracing::debug!("speech event for another part; dropped");
+            return;
+        }
+        match ev {
+            Sp::Words {
+                utterance_id,
+                channel,
+                is_final,
+                words,
+                ..
+            } => {
+                if !matches!(s.phase, RecordingPhase::Recording | RecordingPhase::Stopping)
+                    || s.meeting_id.is_none()
+                    || self.lock().paused
+                {
+                    return;
+                }
+                // N68: words on a channel this part's session was not started with are dropped.
+                if !channels.contains(&channel) {
+                    tracing::warn!(
+                        channel = channel.as_str(),
+                        "speech words on a channel of no session; dropped"
+                    );
+                    return;
+                }
+                // Utterance ids are per channel: keep the system channel's apart (mic keeps the helper's ids).
+                let utterance_id = match channel {
+                    qrtz_speech::Channel::System => format!("system-{utterance_id}"),
+                    qrtz_speech::Channel::Mic => utterance_id,
+                };
+                let text = words
+                    .iter()
+                    .map(|w| w.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let start_ms = words.first().map_or(0, |w| w.start_ms) as qrtz_model::Ms;
+                let end_ms = words.last().map_or(0, |w| w.end_ms) as qrtz_model::Ms;
+                let e = if is_final {
+                    AsrEvent::Final {
+                        utterance_id,
+                        start_ms,
+                        end_ms: end_ms.max(start_ms),
+                        text,
+                        confidence: None,
+                    }
+                } else {
+                    AsrEvent::Partial {
+                        utterance_id,
+                        start_ms,
+                        text,
+                    }
+                };
+                self.on_asr(s, e);
+            }
+            // N42: scoped to this part's session (helper-scoped flags also die at a helper loss).
+            Sp::Failed { reason } => {
+                tracing::warn!(?reason, "speech session failed");
+                self.degrade(Degradation::AsrUnavailable);
+            }
+            Sp::Status {
+                phase: StatusPhase::Failed,
+                error,
+            } => {
+                tracing::warn!(?error, "speech session status failed");
+                self.degrade(Degradation::AsrUnavailable);
+            }
+            Sp::Status {
+                phase: StatusPhase::Ready,
+                ..
+            } => {
+                self.send(LifecycleEvent::SpeechReady);
+            }
+            // Speaker turns go to fusion (ADR 0045 per-channel ids) once the module ships them; `finished` and
+            // `loading` carry nothing for the session.
+            Sp::Status { .. } | Sp::Speaker { .. } | Sp::Finished { .. } => {}
         }
     }
 

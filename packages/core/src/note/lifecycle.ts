@@ -207,6 +207,8 @@ export type LifecycleEvent =
       reason: string;
       at: number;
     }
+  /** N42 (ADR 0046 §3b): the current part's speech session reached ready. */
+  | { type: 'speech-ready' }
   | { type: 'helper-lost'; at: number; deadlineAt: number }
   | { type: 'helper-restored'; at: number; audioPath: string }
   | { type: 'stop-requested'; reason: StopReason; at: number }
@@ -632,6 +634,17 @@ export function lifecycleReducer(
       // A start refused before anything was created (e.g. permissions): record why, keep the phase.
       if (!canStart(s.phase)) return null;
       return { ...s, error: e.error };
+    case 'speech-ready': {
+      // N42 (ADR 0046 §3b): speech-unavailable is scoped to the speech session that reported it.
+      if (s.phase !== 'recording' || !s.degraded.includes('asr-unavailable'))
+        return null;
+      const keep = (f: Degradation) => f !== 'asr-unavailable';
+      return withList(
+        { ...s, degraded: s.degraded.filter(keep) },
+        'deviceLost',
+        (s.deviceLost ?? []).filter(keep),
+      );
+    }
     case 'clear-error': {
       if (!s.error) return null;
       const { error: _e, ...rest } = s;

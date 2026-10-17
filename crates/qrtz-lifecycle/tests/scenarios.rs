@@ -12,6 +12,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use qrtz_lifecycle::runtime::*;
 use qrtz_model::*;
+use qrtz_speech::Channel;
 use qrtz_storage::Db;
 use serde_json::{json, Value};
 
@@ -467,6 +468,119 @@ struct Run {
     config: RuntimeConfig,
     results: Arc<Mutex<BTreeMap<String, Value>>>,
     snapshots: BTreeMap<String, Value>,
+    /// ADR 0046 §3b: replay the helper's `asr` lines and `asr.unavailable` errors as `SpeechEvent`s through
+    /// `NoteRuntime::speech_event`; the TS oracle's expectations must hold unchanged.
+    speech: bool,
+}
+
+/// `asr {event}` → `SpeechEvent::Words`; `error{asr.unavailable}` → `SpeechEvent::Failed`. Words get the event's
+/// span (first word starts at `startMs`, last ends at `endMs`), as the module reports them.
+fn as_speech(v: &Value) -> Option<qrtz_speech::SpeechEvent> {
+    use qrtz_speech::engine::SpeechWordOut;
+    match v["type"].as_str()? {
+        "asr" => {
+            let e = &v["event"];
+            let start = e["startMs"].as_u64().unwrap_or(0);
+            let end = e["endMs"].as_u64().unwrap_or(start);
+            let words = e["text"]
+                .as_str()
+                .unwrap_or_default()
+                .split_whitespace()
+                .map(|w| SpeechWordOut {
+                    text: w.into(),
+                    start_ms: start,
+                    end_ms: end,
+                })
+                .collect();
+            Some(qrtz_speech::SpeechEvent::Words {
+                utterance_id: e["utteranceId"].as_str().unwrap_or("u").into(),
+                channel: qrtz_speech::Channel::Mic,
+                is_final: e["kind"] == "final",
+                language: "en".into(),
+                words,
+            })
+        }
+        "error" if v["code"] == "asr.unavailable" => Some(qrtz_speech::SpeechEvent::Failed {
+            reason: qrtz_speech::FailReason::StartFailed,
+        }),
+        _ => None,
+    }
+}
+
+fn speech_of(e: &Value) -> qrtz_speech::SpeechEvent {
+    use qrtz_speech::engine::{SpeechWordOut, StatusPhase};
+    use qrtz_speech::SpeechEvent as Sp;
+    let u = |k: &str| e[k].as_u64().unwrap_or(0);
+    match e["type"].as_str().unwrap() {
+        "words" => Sp::Words {
+            utterance_id: e["utteranceId"].as_str().unwrap().into(),
+            channel: Channel::parse(e["channel"].as_str().unwrap()).unwrap(),
+            is_final: e["final"].as_bool().unwrap(),
+            language: e["language"].as_str().unwrap_or("en").into(),
+            words: e["words"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|w| SpeechWordOut {
+                    text: w["text"].as_str().unwrap().into(),
+                    start_ms: w["startMs"].as_u64().unwrap(),
+                    end_ms: w["endMs"].as_u64().unwrap(),
+                })
+                .collect(),
+        },
+        "status" => Sp::Status {
+            phase: match e["phase"].as_str().unwrap() {
+                "ready" => StatusPhase::Ready,
+                "loading" => StatusPhase::Loading,
+                _ => StatusPhase::Failed,
+            },
+            error: e["error"].as_str().map(qrtz_speech::StatusError::parse),
+        },
+        "speaker" => Sp::Speaker {
+            speaker: {
+                let id = e["speaker"].as_str().unwrap();
+                let ch = Channel::parse(id.split(':').next().unwrap()).unwrap();
+                qrtz_speech::SpeakerId::parse(id, ch).unwrap()
+            },
+            start_ms: u("startMs"),
+            end_ms: u("endMs"),
+        },
+        "finished" => Sp::Finished {
+            duration_ms: u("durationMs"),
+        },
+        _ => Sp::Failed {
+            reason: match e["reason"].as_str() {
+                Some("not-installed") => qrtz_speech::FailReason::NotInstalled,
+                Some("revoked") => qrtz_speech::FailReason::Revoked,
+                Some("stale") => qrtz_speech::FailReason::Stale,
+                _ => qrtz_speech::FailReason::Crashed,
+            },
+        },
+    }
+}
+
+/// Rust-only scenarios (spec/scenarios/lifecycle-speech): speech-session behaviour Electron never had (its helper
+/// recognises speech itself). Same runner and snapshot format; `expect` was written by this runner
+/// (`QRTZ_SCENARIO_DUMP=1`) and reviewed, there is no TS oracle.
+#[test]
+fn tier2_speech_scenarios() {
+    let d = dir().join("../lifecycle-speech");
+    let mut files: Vec<PathBuf> = std::fs::read_dir(&d)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|e| e == "json"))
+        .collect();
+    files.sort();
+    assert!(!files.is_empty());
+    let failures: Vec<String> = files
+        .iter()
+        .filter_map(|f| {
+            run_one(f, false)
+                .err()
+                .map(|d| format!("{}: {d}", f.file_name().unwrap().to_string_lossy()))
+        })
+        .collect();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
 struct Live {
@@ -843,7 +957,10 @@ impl Run {
                         .unwrap()
                         .replace("$REC", &self.sh.rec);
                     let v: Value = serde_json::from_str(&raw).unwrap();
-                    live.rt.helper_json(&v);
+                    match as_speech(&v).filter(|_| self.speech) {
+                        Some(ev) => live.rt.speech_event(None, &[Channel::Mic, Channel::System], ev),
+                        None => live.rt.helper_json(&v),
+                    }
                 }
                 // N37: several lines from one stdout chunk, handled with no await between them (as the bridge's
                 // reader loop does), so a start's ack continuation cannot run in between.
@@ -851,8 +968,35 @@ impl Run {
                     for msg in op["msgs"].as_array().unwrap() {
                         let raw = serde_json::to_string(msg).unwrap().replace("$REC", &self.sh.rec);
                         let v: Value = serde_json::from_str(&raw).unwrap();
-                        live.rt.helper_json(&v);
+                        match as_speech(&v).filter(|_| self.speech) {
+                            Some(ev) => live.rt.speech_event(None, &[Channel::Mic, Channel::System], ev),
+                            None => live.rt.helper_json(&v),
+                        }
                     }
+                }
+                // ADR 0046: an event from a part's speech session (`audioPath` null = the current part; `channels` = the
+                // session's, default both), written like
+                // the module's own line (`words` / `status` / `speaker` / `finished`) or `{"type": "failed", reason}`.
+                "speech" => {
+                    let raw = serde_json::to_string(&op["event"])
+                        .unwrap()
+                        .replace("$REC", &self.sh.rec);
+                    let e: Value = serde_json::from_str(&raw).unwrap();
+                    let path = op["audioPath"].as_str().map(|p| p.replace("$REC", &self.sh.rec));
+                    let channels: Vec<Channel> = match op["channels"].as_array() {
+                        Some(cs) => cs
+                            .iter()
+                            .map(|c| {
+                                if c == "system" {
+                                    Channel::System
+                                } else {
+                                    Channel::Mic
+                                }
+                            })
+                            .collect(),
+                        None => vec![Channel::Mic, Channel::System],
+                    };
+                    live.rt.speech_event(path.as_deref(), &channels, speech_of(&e));
                 }
                 // A line the host's parser must refuse (qrtz-app drops it): it never reaches the runtime.
                 "helperInvalid" => {
@@ -993,7 +1137,7 @@ fn diff(a: &Value, b: &Value, path: &str) -> Option<String> {
     }
 }
 
-fn run_one(file: &Path) -> Result<(), String> {
+fn run_one(file: &Path, speech: bool) -> Result<(), String> {
     let sc: Value = serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
     let tmp = tempfile::tempdir().unwrap();
     let rec = tmp.path().join("recordings");
@@ -1038,6 +1182,7 @@ fn run_one(file: &Path) -> Result<(), String> {
             config,
             results: Arc::new(Mutex::new(BTreeMap::new())),
             snapshots: BTreeMap::new(),
+            speech,
         };
         run.exec().await
     });
@@ -1068,13 +1213,46 @@ fn tier2_lifecycle_scenarios() {
     assert!(!files.is_empty(), "no scenarios in {}", dir().display());
     let mut failures = vec![];
     for f in &files {
-        if let Err(d) = run_one(f) {
+        if let Err(d) = run_one(f, false) {
             failures.push(format!("{}: {d}", f.file_name().unwrap().to_string_lossy()));
         }
     }
     assert!(
         failures.is_empty(),
         "{} of {} scenarios differ from the TS oracle:\n{}",
+        failures.len(),
+        files.len(),
+        failures.join("\n")
+    );
+}
+
+/// ADR 0046 §3b: the same scenarios with every `asr` line and `asr.unavailable` report arriving as a
+/// `qrtz_speech::SpeechEvent` instead (N37 hold behind the ack, part offsets and ids, N42 scoping): identical
+/// expectations, so the helper's asr lines can go away without changing what the runtime records.
+#[test]
+fn tier2_lifecycle_scenarios_through_speech_events() {
+    let mut files: Vec<PathBuf> = std::fs::read_dir(dir())
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|e| e == "json"))
+        .filter(|p| {
+            let t = std::fs::read_to_string(p).unwrap();
+            t.contains("\"asr\"") || t.contains("asr.unavailable")
+        })
+        .collect();
+    files.sort();
+    assert!(files.len() >= 5, "scenarios with asr lines: {}", files.len());
+    let failures: Vec<String> = files
+        .iter()
+        .filter_map(|f| {
+            run_one(f, true)
+                .err()
+                .map(|d| format!("{}: {d}", f.file_name().unwrap().to_string_lossy()))
+        })
+        .collect();
+    assert!(
+        failures.is_empty(),
+        "{} of {} differ via SpeechEvent:\n{}",
         failures.len(),
         files.len(),
         failures.join("\n")

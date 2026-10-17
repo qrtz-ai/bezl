@@ -458,6 +458,9 @@ pub enum LifecycleEvent {
         reason: String,
         at: EpochMs,
     },
+    /// N42 (ADR 0046 §3b): the current part's speech session reached `ready`; an earlier session's
+    /// "speech unavailable" no longer applies.
+    SpeechReady,
     HelperLost {
         at: EpochMs,
         deadline_at: EpochMs,

@@ -1,0 +1,570 @@
+{
+  "name": "N42-N68-speech-session-scoped",
+  "about": "ADR 0046 \u00a73b, N42/N37 on SpeechEvent (Rust only: Electron's helper recognises speech itself). A speech session that fails before the ack marks the part asr-unavailable; when the host respawns the part's session and it reaches ready, the flag clears and words land in the live transcript. Words held behind the ack are replayed in order (N37). Events naming another part's audio file are dropped; system-channel utterance ids stay apart from mic ids; speaker turns and loading status change nothing. N68: words on a channel the part's session was not started with are dropped (a channel is always given: it is typed).",
+  "script": [
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permissions.status",
+        "status": {
+          "accessibility": "granted",
+          "screen-recording": "granted",
+          "microphone": "granted"
+        }
+      }
+    },
+    {
+      "op": "call",
+      "fn": "start",
+      "label": "start",
+      "args": {
+        "title": "Standup"
+      }
+    },
+    {
+      "op": "speech",
+      "audioPath": null,
+      "event": {
+        "type": "failed",
+        "reason": "crashed"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.started",
+        "audioPath": "$REC/id1.wav"
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 100
+    },
+    {
+      "op": "snapshot",
+      "label": "speech-failed"
+    },
+    {
+      "op": "speech",
+      "audioPath": "$REC/id1.wav",
+      "event": {
+        "type": "status",
+        "phase": "loading"
+      }
+    },
+    {
+      "op": "speech",
+      "audioPath": "$REC/id1.wav",
+      "event": {
+        "type": "status",
+        "phase": "ready"
+      }
+    },
+    {
+      "op": "speech",
+      "audioPath": "$REC/id1.wav",
+      "event": {
+        "type": "words",
+        "utteranceId": "u1",
+        "final": true,
+        "language": "en",
+        "words": [
+          {
+            "text": "we",
+            "startMs": 0,
+            "endMs": 200
+          },
+          {
+            "text": "are",
+            "startMs": 200,
+            "endMs": 400
+          },
+          {
+            "text": "back",
+            "startMs": 400,
+            "endMs": 700
+          }
+        ],
+        "channel": "mic"
+      }
+    },
+    {
+      "op": "speech",
+      "audioPath": "$REC/id1.wav",
+      "event": {
+        "type": "words",
+        "utteranceId": "u1",
+        "final": true,
+        "language": "en",
+        "words": [
+          {
+            "text": "other",
+            "startMs": 0,
+            "endMs": 200
+          },
+          {
+            "text": "side",
+            "startMs": 200,
+            "endMs": 400
+          }
+        ],
+        "channel": "system"
+      }
+    },
+    {
+      "op": "speech",
+      "audioPath": "$REC/id1.wav",
+      "event": {
+        "type": "speaker",
+        "speaker": "mic:0",
+        "startMs": 0,
+        "endMs": 700
+      }
+    },
+    {
+      "op": "speech",
+      "audioPath": "$REC/old.wav",
+      "event": {
+        "type": "words",
+        "utteranceId": "u9",
+        "final": true,
+        "language": "en",
+        "words": [
+          {
+            "text": "stale",
+            "startMs": 0,
+            "endMs": 100
+          }
+        ],
+        "channel": "mic"
+      }
+    },
+    {
+      "op": "speech",
+      "audioPath": "$REC/id1.wav",
+      "event": {
+        "type": "words",
+        "utteranceId": "u2",
+        "final": false,
+        "language": "en",
+        "words": [
+          {
+            "text": "still",
+            "startMs": 800,
+            "endMs": 900
+          },
+          {
+            "text": "talking",
+            "startMs": 900,
+            "endMs": 1100
+          }
+        ],
+        "channel": "mic"
+      }
+    },
+    {
+      "op": "speech",
+      "audioPath": "$REC/id1.wav",
+      "channels": [
+        "mic"
+      ],
+      "event": {
+        "type": "words",
+        "utteranceId": "u6",
+        "final": true,
+        "language": "en",
+        "words": [
+          {
+            "text": "notmine",
+            "startMs": 1200,
+            "endMs": 1300
+          }
+        ],
+        "channel": "system"
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 100
+    },
+    {
+      "op": "snapshot",
+      "label": "speech-ready"
+    },
+    {
+      "op": "call",
+      "fn": "stop",
+      "label": "stop"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.stopped",
+        "audioPath": "$REC/id1.wav",
+        "durationMs": 1200
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 100
+    }
+  ],
+  "expect": {
+    "results": {
+      "start": {
+        "ok": {
+          "meetingId": "id1",
+          "phase": "recording"
+        }
+      },
+      "stop": {
+        "ok": {
+          "meetingId": "id1",
+          "phase": "processing"
+        }
+      }
+    },
+    "snapshots": {
+      "end": {
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "done",
+              1760000000000,
+              1760000000200,
+              1200,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "notes": [],
+          "pipelines": [
+            [
+              "id1",
+              1,
+              "manual",
+              "finalize:done/1 summary:done/1 index:done/1",
+              1200,
+              false,
+              [
+                "$REC/id1.wav"
+              ],
+              0
+            ]
+          ],
+          "segments": [
+            [
+              "id1",
+              "system-u1",
+              "live",
+              0,
+              400,
+              null,
+              "other side"
+            ],
+            [
+              "id1",
+              "u1",
+              "live",
+              0,
+              700,
+              null,
+              "we are back"
+            ]
+          ],
+          "session": [
+            "done",
+            "id1"
+          ],
+          "summaries": [
+            [
+              "id1",
+              "stub",
+              "STUB summary",
+              null
+            ]
+          ]
+        },
+        "files": [],
+        "live": {
+          "meetingId": "id1",
+          "partial": null,
+          "rev": 4,
+          "segments": [
+            [
+              "u1",
+              null,
+              0,
+              700
+            ],
+            [
+              "system-u1",
+              null,
+              0,
+              400
+            ]
+          ]
+        },
+        "view": {
+          "activeSpeaker": null,
+          "degraded": [],
+          "elapsedMs": 200,
+          "error": null,
+          "helper": "ok",
+          "lines": [
+            [
+              "u1",
+              null,
+              "we are back",
+              0
+            ],
+            [
+              "system-u1",
+              null,
+              "other side",
+              0
+            ]
+          ],
+          "meetingId": "id1",
+          "partial": "",
+          "participants": [],
+          "paused": false,
+          "phase": "done",
+          "pipeline": "finalize:done/1 summary:done/1 index:done/1",
+          "progress": null,
+          "reconnect": null,
+          "startedAt": 1760000000000,
+          "stopReason": "manual"
+        }
+      },
+      "speech-failed": {
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "recording",
+              1760000000000,
+              null,
+              null,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "notes": [],
+          "pipelines": [],
+          "segments": [],
+          "session": [
+            "recording",
+            "id1"
+          ],
+          "summaries": []
+        },
+        "files": [],
+        "live": {
+          "meetingId": "id1",
+          "partial": null,
+          "rev": 0,
+          "segments": []
+        },
+        "view": {
+          "activeSpeaker": null,
+          "degraded": [
+            "asr-unavailable"
+          ],
+          "elapsedMs": 100,
+          "error": null,
+          "helper": "ok",
+          "lines": [],
+          "meetingId": "id1",
+          "partial": "",
+          "participants": [],
+          "paused": false,
+          "phase": "recording",
+          "pipeline": null,
+          "progress": null,
+          "reconnect": null,
+          "startedAt": 1760000000000,
+          "stopReason": null
+        }
+      },
+      "speech-ready": {
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "recording",
+              1760000000000,
+              null,
+              null,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "notes": [],
+          "pipelines": [],
+          "segments": [
+            [
+              "id1",
+              "system-u1",
+              "live",
+              0,
+              400,
+              null,
+              "other side"
+            ],
+            [
+              "id1",
+              "u1",
+              "live",
+              0,
+              700,
+              null,
+              "we are back"
+            ]
+          ],
+          "session": [
+            "recording",
+            "id1"
+          ],
+          "summaries": []
+        },
+        "files": [],
+        "live": {
+          "meetingId": "id1",
+          "partial": "still talking",
+          "rev": 3,
+          "segments": [
+            [
+              "u1",
+              null,
+              0,
+              700
+            ],
+            [
+              "system-u1",
+              null,
+              0,
+              400
+            ]
+          ]
+        },
+        "view": {
+          "activeSpeaker": null,
+          "degraded": [],
+          "elapsedMs": 200,
+          "error": null,
+          "helper": "ok",
+          "lines": [
+            [
+              "u1",
+              null,
+              "we are back",
+              0
+            ],
+            [
+              "system-u1",
+              null,
+              "other side",
+              0
+            ]
+          ],
+          "meetingId": "id1",
+          "partial": "still talking",
+          "participants": [],
+          "paused": false,
+          "phase": "recording",
+          "pipeline": null,
+          "progress": null,
+          "reconnect": null,
+          "startedAt": 1760000000000,
+          "stopReason": null
+        }
+      }
+    },
+    "trace": {
+      "changed": [
+        "id1",
+        "id1",
+        "id1",
+        "id1"
+      ],
+      "helper": [
+        "permissions.check",
+        "recording.start $REC/id1.wav",
+        "recording.stop"
+      ],
+      "permissions": [
+        "granted|granted|granted"
+      ],
+      "pipelines": {
+        "id1": [
+          "manual finalize:pending/0 summary:pending/0 index:pending/0",
+          "manual finalize:running/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:pending/0 index:pending/0",
+          "manual finalize:done/1 summary:running/1 index:pending/0",
+          "manual finalize:done/1 summary:done/1 index:pending/0",
+          "manual finalize:done/1 summary:done/1 index:running/1",
+          "manual finalize:done/1 summary:done/1 index:done/1"
+        ]
+      },
+      "prompts": [],
+      "session": [
+        "idle|-|-|-|-|-|ok",
+        "starting|id1|-|-|-|-|ok",
+        "starting|id1|asr-unavailable|-|-|-|ok",
+        "recording|id1|asr-unavailable|-|-|-|ok",
+        "recording|id1|-|-|-|-|ok",
+        "stopping|id1|-|-|-|-|ok",
+        "processing|id1|-|-|-|-|ok",
+        "done|id1|-|-|-|-|ok"
+      ],
+      "transcript": [
+        [
+          0,
+          1,
+          [
+            "u1"
+          ],
+          null
+        ],
+        [
+          1,
+          2,
+          [
+            "system-u1"
+          ],
+          null
+        ],
+        [
+          2,
+          3,
+          [],
+          "still talking"
+        ],
+        [
+          3,
+          4,
+          [],
+          null
+        ]
+      ]
+    }
+  }
+}
