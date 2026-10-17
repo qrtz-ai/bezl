@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 // Tauri renderer e2e: the same React UI the Tauri app ships, served by Vite with mocked IPC
-// (apps/desktop-tauri/src/mock/backend.ts behind the real createTauriTransport). Chromium and WebKit
+// (apps/desktop/src/mock/backend.ts behind the real createTauriTransport). Chromium and WebKit
 // (Playwright WebKit approximates macOS WKWebView). The real Rust backend is covered by `cargo test`.
 const port = Number(process.env.QRTZ_TAURI_E2E_PORT ?? 1420);
 export default defineConfig({
@@ -15,7 +15,7 @@ export default defineConfig({
   },
   webServer: {
     command: `npx vite --port ${port} --strictPort`,
-    cwd: '../apps/desktop-tauri',
+    cwd: '../apps/desktop',
     env: { VITE_QRTZ_MOCK_IPC: '1' },
     url: `http://localhost:${port}`,
     reuseExistingServer: !process.env.CI,

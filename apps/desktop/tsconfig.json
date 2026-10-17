@@ -2,8 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist-types",
-    "types": ["node"],
-    "allowJs": true
+    "types": ["node"]
   },
   "include": ["src", "*.mts"],
   "references": [
@@ -12,19 +11,6 @@
     },
     {
       "path": "../../packages/ui"
-    },
-    {
-      "path": "../../packages/features/settings"
-    },
-    {
-      "path": "../../packages/features/note"
-    },
-    {
-      "path": "../../packages/features/talk"
-    },
-    {
-      "path": "../../packages/features/gallery"
     }
-  ],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+  ]
 }

@@ -1,5 +1,5 @@
 [package]
-name = "qrtz-desktop-tauri"
+name = "qrtz-desktop"
 description = "qrtz desktop app, Tauri 2 shell"
 version.workspace = true
 edition.workspace = true
@@ -13,7 +13,7 @@ name = "qrtz"
 path = "src/main.rs"
 
 [lib]
-name = "qrtz_desktop_tauri"
+name = "qrtz_desktop"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

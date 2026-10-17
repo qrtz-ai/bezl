@@ -8,22 +8,22 @@
 | **Live recording**                                 | **Mini HUD with notes · Backup progress**                                                           |
 | ![Live transcript](docs/screenshots/note-live.png) | ![Mini HUD](docs/screenshots/mini-hud.png) ![Backup progress](docs/screenshots/backup-progress.png) |
 
-These screenshots come from the e2e suite on Linux with the mock helper. Regenerate them with `npm run screenshots`, which packages the app, runs the screenshot specs and refreshes `docs/screenshots/`. Dark is the default theme; Light and System are in Settings → App → Theme. More are in [`docs/screenshots/`](docs/screenshots/), including light variants of the summary and mini HUD.
+These screenshots come from the (now removed) Electron e2e suite on Linux with the mock helper; the Tauri app renders the same UI. Dark is the default theme; Light and System are in Settings → App → Theme. More are in [`docs/screenshots/`](docs/screenshots/), including light variants of the summary and mini HUD.
 
 ## Quickstart on a Mac
 
-Needs Apple Silicon, macOS 14.2 or later, Xcode 16 or later, and Node 22.13 or later.
+Needs Apple Silicon, macOS 14.2 or later, Xcode 16 or later, Rust 1.90 (`rust-toolchain.toml`) and Node 22.13 or later.
 
 ```sh
 git clone https://github.com/qrtz-ai/qrtz && cd qrtz
-npm ci                       # also installs the Electron binary
-npm run build:helper         # Swift helper (AX, audio, ASR), release arm64
-npm start                    # run the app with hot reload
+npm ci
+npm run build:helper         # Swift helper (AX, audio capture), release arm64
+npm start                    # tauri dev: the Rust core + the React renderer with hot reload
 ```
 
-- **AI summaries:** add an OpenRouter key in Settings → AI summaries (stored with safeStorage), or set `QRTZ_SECRET_OPENROUTER`. Without a key, qrtz uses its on-device summarizer.
-- **Packaged app:** `npm run package` builds `apps/desktop/out/`; `npm run make` builds a `.dmg` and `.zip`. To sign and notarize, run `scripts/release-mac.sh` (see [docs/release.md](docs/release.md)).
-- **No Mac?** Everything except real capture runs on Linux with a scripted mock meeting: `QRTZ_MOCK_HELPER=1 QRTZ_MOCK_SCENARIO=standup QRTZ_MOCK_SPEED=0.1 npm start`.
+- **AI summaries:** add an OpenRouter key in onboarding or settings (stored in the Keychain), or set `QRTZ_SECRET_OPENROUTER`. Without a key, qrtz uses its on-device summarizer.
+- **Packaged app:** `npm run make` runs `tauri build` (`.app` + `.dmg`). Signing and notarization: [docs/release.md](docs/release.md).
+- **No Mac?** Everything except real capture runs on Linux with the Rust mock helper: `QRTZ_MOCK_HELPER=1 QRTZ_MOCK_SCENARIO=standup QRTZ_MOCK_SPEED=0.1 npm start`.
 
 ## What it does
 
@@ -39,32 +39,29 @@ npm start                    # run the app with hot reload
 ## Architecture
 
 ```
-┌──────────────── Electron main ─────────────────┐     JSON lines over stdio     ┌──────── qrtz-helper (Swift) ────────┐
-│ capability-checked IPC router (zod contract)    │ ◀───────────────────────────▶ │ AX scraping · ScreenCaptureKit /     │
-│ windows · tray · shortcuts · backup · updates   │                               │ Core Audio taps · echo cancel · ASR  │
-└──────┬───────────────────────────┬─────────────┘                               └──────────────────────────────────────┘
-       │ typed invoke/events       │ MessagePort
-┌──────▼───────────────┐   ┌───────▼───────────────────────────────┐
-│ Renderer (React 19)  │   │ utilityProcess worker                  │
-│ shell + lazy sub-apps│   │ node:sqlite + FTS5 · migrations ·      │
-│ @qrtz/ui design sys. │   │ summaries/chat · transformers.js embed │
-└──────────────────────┘   └───────────────────────────────────────┘
+┌──────────── Tauri 2 shell (apps/desktop/src-tauri) ────────────┐   JSON lines + fds   ┌──── qrtz-helper (Swift) ────┐
+│ qrtz-app: capability-checked IPC router (contracts/*.json)      │ ◀──────────────────▶ │ AX · ScreenCaptureKit /      │
+│ qrtz-lifecycle · qrtz-storage (SQLite+FTS5) · qrtz-llm ·        │                      │ Core Audio taps · echo gate  │
+│ qrtz-search (MiniLM via candle) · qrtz-talk · qrtz-backup       │                      └──────────────┬───────────────┘
+└──────┬──────────────────────────────────────┬──────────────────┘                     PCM over FIFOs │
+       │ invoke / events                      │ spawn, confined (Landlock+seccomp / sandbox)        ▼
+┌──────▼───────────────┐              ┌───────▼──────────────────────────────────────────────────────────┐
+│ Renderer (React 19)  │              │ qrtz speech module (signed, updatable, model-agnostic; ADR 0046) │
+│ shell + sub-apps     │              └──────────────────────────────────────────────────────────────────┘
+│ @qrtz/ui only        │
+└──────────────────────┘
 ```
 
-- **Monorepo:** npm workspaces. `packages/core` holds the contracts, IPC schema, DB and pipeline. `packages/ui` is the design system (Geist Pixel type scale, tokens, light and dark themes) and owns every visual component, down to the split view, meeting row and HUD. Each sub-app (`packages/features/{note,settings,gallery}`, gallery dev-only) declares the capabilities it needs and only composes `@qrtz/ui` with data and handlers. `apps/desktop` composes them behind tiny bottom tabs. `npm run lint` enforces the package boundaries, the type scale and the no-styling-outside-ui rule.
-- **Security:** context isolation, sandbox, strict CSP, Electron fuses, and capability-checked channels. Secrets live only in safeStorage or env vars, and dev-only env vars are stripped from packaged builds. See [docs/security.md](docs/security.md).
-- **Docs:** [PLAN.md](PLAN.md) · [LOOP.md](LOOP.md) · [PROGRESS.md](PROGRESS.md) · [architecture](docs/architecture.md) · [design system](docs/design-system.md) · [tokens](docs/design-tokens.md) · [test matrix](docs/test-matrix.md) · [release](docs/release.md)
+- **Monorepo:** Cargo workspace (`crates/*`, `apps/desktop/src-tauri`) and npm workspaces. `packages/core` holds the zod IPC contract (rendered to `contracts/*.json` by `npm run gen:contracts`, embedded by the Rust router). `packages/ui` is the design system (Geist Pixel, Feather icons, tokens, light and dark) and owns every visual component. Each sub-app (`packages/features/{note,talk,settings,gallery}`) declares its capabilities and only composes `@qrtz/ui`. `apps/desktop` is the Tauri app and its renderer. `npm run lint` enforces the package boundaries, the type scale, lowercase UI text and no styling outside ui.
+- **Shared spec:** `spec/` holds the JSON vectors, scenarios and fixtures; the Rust tests are the oracle (ADR 0061).
+- **Security:** strict CSP, capability-checked channels, a trusted-sender check on every command, secrets in the Keychain, dev knobs ignored in release builds (N87). See [docs/security.md](docs/security.md).
+- **Docs:** [architecture](docs/architecture.md) · [rust core api](docs/rust-core-api.md) · [migration status](docs/tauri-migration-status.md) · [design system](docs/design-system.md) · [release](docs/release.md) · [ADRs](docs/adr/)
 
-## Status (2026-10-16)
+## Status (2026-10-17)
 
-**Verified on Linux with the mock helper:** every user-facing flow in [docs/test-matrix.md](docs/test-matrix.md) has a test. Every push runs lint, typecheck, about 130 unit tests, the packaged smoke test, 24 Electron e2e tests (axe-clean in dark and light, cold start about 0.65 s) and 29 Swift tests. A fresh-clone check (`scripts/fresh-clone-check.sh`) proves it builds from scratch. Large libraries are covered too: 500 meetings, a 2-hour transcript, and a 400 MB backup with bounded memory.
+**Verified on Linux with the Rust mock helper:** `cargo test --workspace` (the Rust core, the shell, the app E2E through the real router and helper bridge), the Swift helper core (`swift test`, Foundation-only parts), vitest for the renderer packages, and the renderer Playwright suite against the mocked backend (`npm run e2e`). Parity E2E against the real Tauri app is in progress (docs/e2e-parity.md).
 
-**Needs a Mac to verify** (about 10 minutes; see the checklist in [docs/mac-verify.md](docs/mac-verify.md)):
-
-- Building the Swift helper with Xcode (`npm run build:helper`, `QRTZ_REQUIRE_SWIFT=1 npm run test:helper`).
-- Real capture: ScreenCaptureKit / Core Audio system audio, the microphone, and the TCC prompts.
-- AX scraping against live Zoom and Meet (synthetic fixtures cover 11 layouts today) and FluidAudio ASR plus echo cancellation on real calls.
-- The Keychain-backed API key path, and a signed and notarized run of `scripts/release-mac.sh`.
+**Needs a Mac:** see the Mac-only list in [docs/tauri-migration-status.md](docs/tauri-migration-status.md) and [docs/mac-verify.md](docs/mac-verify.md).
 
 ## Accounts needed
 
@@ -78,14 +75,13 @@ npm start                    # run the app with hot reload
 ## Commands
 
 ```sh
-npm start              # dev app (Vite HMR)
-npm run check          # lint + typecheck + unit tests
-npm run package        # packaged app → apps/desktop/out/
-npm run make           # .dmg + .zip (macOS)
-npm run e2e            # Electron e2e (run package first; xvfb-run -a on Linux)
-npm run smoke:packaged # packaged-binary checks (embeddings backends, env stripping)
-npm run test:helper    # Swift XCTests (QRTZ_REQUIRE_SWIFT=1 makes a missing toolchain fatal)
-scripts/fresh-clone-check.sh   # clone → npm ci → lint → test → package → e2e
+npm start              # tauri dev
+npm run make           # tauri build (.app + .dmg on macOS)
+npm run check          # lint + typecheck + vitest
+npm run check:rust     # cargo fmt --check + clippy -D warnings + cargo test --workspace
+npm run gen:contracts  # re-render contracts/*.json from the zod contract
+npm run e2e            # renderer Playwright suite (mocked backend)
+npm run test:helper    # Swift XCTests
 ```
 
 ## How to add a sub app
@@ -105,24 +101,24 @@ scripts/fresh-clone-check.sh   # clone → npm ci → lint → test → package 
    - Add `{ "path": "../../packages/features/notes" }` to `apps/desktop/tsconfig.json` references.
    - Add the same path to the root `tsconfig.json`.
    - Add `notes` to the list in `apps/desktop/src/shell/subapps.ts`.
-5. Run `npm install && npm run check`. The new sub app appears in the sidebar.
+5. Run `npm install && npm run check`. The new sub app appears in the bottom tabs.
 
-If a sub app needs the main process, add a channel to `IpcContract` in
-`packages/core/src/ipc.ts`, add it to `IPC_CHANNELS`, and handle it in
-`apps/desktop/src/ipc.ts`.
+If a sub app needs the backend, add a channel to `ipcContract` in
+`packages/core/src/ipc/contract.ts`, run `npm run gen:contracts`, and answer it in `crates/qrtz-app`
+(the port that owns it, see `crates/qrtz-app/src/ports.rs`).
 
 ## qrtz note (meeting recorder)
 
 - **Detection and metadata:** finds Zoom (app and web) and Google Meet (Chrome and Safari) through the macOS Accessibility tree, and reads the title, participants and active speaker.
-- **Live transcription:** on-device NVIDIA Parakeet streaming. The live transcript is final.
+- **Live transcription:** on-device streaming through the qrtz speech module, with speakers per channel.
 - **After the meeting:** an LLM writes the summary, action items and Q&A.
 - **LLM keys:** OpenRouter is the default. Set `QRTZ_SECRET_OPENROUTER` or add a key in Settings. Without a key, an on-device extractive summarizer is used.
 - **Storage and export:** local SQLite with full-text search, and Markdown export.
 
-On Linux (and in tests) a TypeScript mock replaces the Swift helper. To watch a scripted meeting:
+On Linux (and in tests) the Rust mock helper replaces the Swift helper. To watch a scripted meeting:
 
 ```sh
 QRTZ_MOCK_HELPER=1 QRTZ_MOCK_SCENARIO=standup QRTZ_MOCK_SPEED=0.1 npm start
 ```
 
-The full flow is covered by `e2e/note.spec.ts` (`npm run package && xvfb-run -a npm run e2e`).
+The full flow is covered by `crates/qrtz-app/tests/` (boot, n83, note_speech, talk).

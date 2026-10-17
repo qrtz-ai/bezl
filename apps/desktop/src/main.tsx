@@ -1,5 +1,5 @@
 // Tauri renderer entry: install `window.qrtzTransport` (the only platform seam the React app uses), then
-// boot the exact same renderer as the Electron build (apps/desktop/src/renderer.tsx).
+// boot the renderer.
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { createTauriTransport, type TauriBridge } from '@qrtz/core';
@@ -19,4 +19,4 @@ async function bridge(): Promise<TauriBridge> {
 }
 
 window.qrtzTransport = createTauriTransport(await bridge());
-await import('../../desktop/src/renderer');
+await import('./renderer');

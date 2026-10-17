@@ -3987,7 +3987,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "qrtz-desktop-tauri"
+name = "qrtz-desktop"
 version = "0.1.0"
 dependencies = [
  "qrtz-app",

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased: Tauri only
+
+- **Electron is gone (ADR 0061):** qrtz is one Tauri 2 app with the Rust core. `apps/desktop` is the Tauri app (the renderer and sub-app manifests moved in); the Electron main process, worker, Forge packaging, Electron e2e suite and its scripts are deleted (last at `c6723c4`). Rust is the oracle for the shared vectors and scenarios under `spec/`. Libraries, backups and `talk.json` from the Electron build open unchanged.
+- **Live transcript from the speech module in recordings (step 9, ADR 0046 §9.4):** each recording part runs its own module session attached to the helper's capture; its words are the live transcript, and without an installed module the part records audio and shows speech unavailable.
+- **Chat never sees a meeting pending delete (N90/N93, ADR 0060).**
+
 ## Unreleased: helper mux + TCC revocation (H5/H6)
 
 - **Speakers per channel in recordings (Bozniak; ADR 0058 §12):** with the speech module, mic and system audio are diarized apart, and each line keeps its channel's speaker id (`mic:0`, `system:1`). The mic's main voice is "me" by default and can be renamed; another voice on the same mic is its own speaker, never folded into "me", and a mic line with no diarized voice gets no speaker. Everyone else is "speaker n" in order of first appearance; meeting-app (AX) names still name system speakers, never the mic. A rename survives a finalize retry. Meetings without diarization keep the AX-only names as before. No migration.

@@ -12,25 +12,18 @@
   },
   "scripts": {
     "start": "npm run start -w @qrtz/desktop",
-    "package": "npm run package -w @qrtz/desktop",
     "make": "npm run make -w @qrtz/desktop",
     "lint": "oxlint && oxfmt --check && node scripts/check-boundaries.mjs && node scripts/check-typography.mjs && node scripts/check-ui-purity.mjs && node scripts/check-titles.mjs && node scripts/check-swift.mjs",
     "lint:fix": "oxlint --fix && oxfmt --write",
     "typecheck": "tsc -b && tsc -p tsconfig.test.json",
     "check": "npm run lint && npm run typecheck && npm test",
     "test": "vitest run",
-    "e2e": "playwright test -c e2e/playwright.config.ts",
+    "e2e": "playwright test -c e2e-tauri/playwright.config.ts",
     "build:helper": "node scripts/build-helper.mjs",
     "test:helper": "node scripts/build-helper.mjs --test",
-    "smoke:packaged": "node scripts/smoke-packaged.mjs",
-    "postinstall": "install-electron",
-    "screenshots": "node scripts/screenshots.mjs",
     "gen:contracts": "QRTZ_UPDATE_CONTRACTS=1 vitest run apps/desktop/src/shared/contract-json.test.ts",
     "test:rust": "cargo test --workspace",
-    "check:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo clippy -p qrtz-ipc -p qrtz-helper-bridge -p qrtz-app --all-targets -- -D warnings && cargo test --workspace",
-    "e2e:tauri": "playwright test -c e2e-tauri/playwright.config.ts",
-    "start:tauri": "npm run start -w @qrtz/desktop-tauri",
-    "make:tauri": "npm run make -w @qrtz/desktop-tauri"
+    "check:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo clippy -p qrtz-ipc -p qrtz-helper-bridge -p qrtz-app --all-targets -- -D warnings && cargo test --workspace"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",

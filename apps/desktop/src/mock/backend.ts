@@ -24,7 +24,7 @@ import {
   ipcSamples,
   unknownPermissions,
 } from '@qrtz/core/ipc/samples';
-import { resolveManifest } from '../../../desktop/src/shared/manifests';
+import { resolveManifest } from '../shared/manifests';
 
 type Json = Record<string, unknown>;
 const params = new URLSearchParams(window.location.search);
@@ -266,7 +266,7 @@ export function createMockBridge(): TauriBridge {
       const startedAt = Date.now();
       const meeting = {
         id,
-        title: req?.title ?? 'Untitled meeting',
+        title: req?.title ?? 'untitled meeting',
         platform: 'other',
         startedAt,
         participants: ['Ada Lovelace', 'Grace Hopper'],

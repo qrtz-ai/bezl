@@ -15,7 +15,7 @@ export interface TauriBridge {
   ): Promise<() => void>;
 }
 
-/** Rust command / event names (apps/desktop-tauri/src-tauri/src/commands.rs). */
+/** Rust command / event names (apps/desktop/src-tauri/src/commands.rs). */
 export const TAURI_INVOKE_CMD = 'qrtz_invoke';
 export const TAURI_SUBSCRIBE_CMD = 'qrtz_subscribe';
 export const TAURI_EVENT = 'qrtz:event';

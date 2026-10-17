@@ -21,9 +21,6 @@
     },
     {
       "path": "apps/desktop"
-    },
-    {
-      "path": "apps/desktop-tauri"
     }
   ]
 }

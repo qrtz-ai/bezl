@@ -20,7 +20,7 @@ Everything here is a port of code on `main` at `c64174f`. The TS sources this mi
 ## 1. Layout: one cargo workspace at the repo root
 
 ```
-Cargo.toml                 # [workspace] members = ["crates/*"]  (+ "apps/desktop-tauri/src-tauri" when Bobs adds it)
+Cargo.toml                 # [workspace] members = ["crates/*"]  (+ "apps/desktop/src-tauri" when Bobs adds it)
 Cargo.lock                 # committed; one lock for crates + shell
 rust-toolchain.toml        # channel = "1.90" (see "Toolchain")
 crates/
@@ -34,13 +34,13 @@ spec/fixtures/db/          # fixture DBs written by the TS repo (parity tests bo
 **Why the root, not `src-tauri/crates`:**
 
 - `src-tauri` does not exist yet (checked `git log`/`ls` at `c64174f`). The plan puts it under
-  `apps/desktop-tauri/src-tauri`, so it simply joins the root workspace as a member. Tauri 2 supports being a
+  `apps/desktop/src-tauri`, so it simply joins the root workspace as a member. Tauri 2 supports being a
   workspace member; it uses the workspace `target/`.
 - The crates must stay UI-free. A future `qrtz-eval` CLI, a headless integration harness (Bobs's Rust
   integration tests), and any other binary can depend on them without pulling in Tauri.
 - One `Cargo.lock` and one `target/` for everything: `cargo test --workspace` from the root is the single gate,
   next to `npm test`.
-- Kill switch from the plan stays one `rm -rf crates/ apps/desktop-tauri/` plus deleting the root `Cargo.toml`.
+- Kill switch from the plan stays one `rm -rf crates/ apps/desktop/` plus deleting the root `Cargo.toml`.
 
 **Why a third tiny crate (`qrtz-model`):** storage needs the domain types (`Meeting`, `Segment`, `MeetingSummary`,
 `PipelineState`, ...) and lifecycle needs some of them too. Putting them in either crate forces the other to depend

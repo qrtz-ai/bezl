@@ -30,7 +30,7 @@
     ],
     "macOS": {
       "minimumSystemVersion": "14.2",
-      "entitlements": "../../desktop/entitlements.mac.plist",
+      "entitlements": "entitlements.mac.plist",
       "infoPlist": "Info.plist"
     }
   }
