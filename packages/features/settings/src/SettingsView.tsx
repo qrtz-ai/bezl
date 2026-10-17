@@ -64,6 +64,7 @@ export default function SettingsView() {
     llmProvider?: ProviderId | 'none';
     llmModel?: string;
     retainAudioDays?: number;
+    autoRecord?: boolean;
   };
   const provider = memoCfg.llmProvider ?? 'openrouter';
   const secretName =
@@ -99,6 +100,21 @@ export default function SettingsView() {
       <Heading>Settings</Heading>
       <Card padding={4} style={{ display: 'grid', gap: 12 }}>
         <Text weight={600}>Recordings</Text>
+        <Field
+          label="When a meeting starts"
+          hint="qrtz detects Zoom and Google Meet calls without a calendar."
+        >
+          <Select
+            value={memoCfg.autoRecord ? 'auto' : 'ask'}
+            onChange={(e) =>
+              void patch({ autoRecord: e.target.value === 'auto' })
+            }
+            data-testid="auto-record"
+          >
+            <option value="ask">Ask me to record</option>
+            <option value="auto">Always record automatically</option>
+          </Select>
+        </Field>
         <Field
           label="Keep recordings"
           hint="Transcripts and summaries are kept. Only the audio is deleted."

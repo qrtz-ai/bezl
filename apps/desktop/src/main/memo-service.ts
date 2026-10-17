@@ -18,6 +18,7 @@ import {
   type SessionView,
   type Supervisor,
   PROVIDER_DEFAULTS,
+  type ChatTurn,
 } from '@qrtz/core';
 import type { WorkerClient } from './worker-client';
 
@@ -49,6 +50,8 @@ export class MemoService {
       secrets: SecretStore;
       config: () => Config;
       recordingsDir: string;
+      /** A meeting was detected and auto-record is off: prompt the user (OS notification when unfocused). */
+      onDetectedPrompt?: (title: string, platform: string) => void;
     },
   ) {
     this.machine.onChange(() => this.emitSoon(0));
@@ -107,6 +110,12 @@ export class MemoService {
             platform: m.platform,
             app: m.app,
           });
+          if (this.deps.config().memo.autoRecord) {
+            this.deps.log.info('auto-record: starting');
+            void this.start().catch((e) =>
+              this.deps.log.warn('auto-record failed', { err: String(e) }),
+            );
+          } else this.deps.onDetectedPrompt?.(m.title, m.platform);
         }
         break;
       case 'meeting.ended':
@@ -326,6 +335,18 @@ export class MemoService {
         ? { baseUrl: process.env.QRTZ_LLM_BASE_URL }
         : {}),
     };
+  }
+
+  async chat(req: {
+    question: string;
+    meetingId?: string;
+    history?: ChatTurn[];
+  }) {
+    return this.deps.worker.call(
+      'memo.chat',
+      { ...req, llm: await this.llmParams() },
+      120_000,
+    );
   }
 
   /** Retry the summary for one meeting (after an LLM failure or a provider/key change). */

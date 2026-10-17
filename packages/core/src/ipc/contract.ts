@@ -9,6 +9,7 @@ import {
   SessionView,
 } from '../memo/contract';
 import { MeetingSummary } from '../memo/summary';
+import { ChatAnswer, ChatTurn } from '../memo/chat';
 
 /** Bump when the envelope shape changes (not when a channel changes). */
 export const PROTOCOL_VERSION = 1;
@@ -165,6 +166,33 @@ export const ipcContract = {
     capability: 'memo.write',
     request: z.object({ id: z.string().max(64) }),
     response: MeetingSummary,
+  }),
+  /** Scoped config write so Memo's prompt can enable auto-record without the broad config.write capability. */
+  'memo:set-auto-record': defineChannel({
+    version: 1,
+    capability: 'memo.record',
+    request: z.object({ enabled: z.boolean() }),
+    response: z.object({ autoRecord: z.boolean() }),
+  }),
+  'memo:chat': defineChannel({
+    version: 1,
+    capability: 'memo.read',
+    request: z.object({
+      question: z.string().min(1).max(2000),
+      meetingId: z.string().max(64).optional(),
+      history: z.array(ChatTurn).max(20).optional(),
+    }),
+    response: ChatAnswer,
+  }),
+  'memo:rename-speaker': defineChannel({
+    version: 1,
+    capability: 'memo.write',
+    request: z.object({
+      meetingId: z.string().max(64),
+      from: z.string().min(1).max(120),
+      to: z.string().trim().min(1).max(120),
+    }),
+    response: z.object({ changed: z.number() }),
   }),
   'memo:delete': defineChannel({
     version: 1,

@@ -14,13 +14,18 @@ import {
 import type { MeetingDetail as Detail, Segment } from '@qrtz/core';
 import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
 import { PLATFORM_LABEL, fmtClock, fmtDate } from './format';
+import { ChatPanel } from './ChatPanel';
+import { Speakers } from './Speakers';
 
 export function MeetingDetail({
   id,
   onDeleted,
+  seekTo,
 }: {
   id: string;
   onDeleted: () => void;
+  /** Open on the transcript at this moment (e.g. from a chat citation). */
+  seekTo?: { ms: number; nonce: number };
 }) {
   const qrtz = useQrtz();
   const t = useTheme();
@@ -29,7 +34,7 @@ export function MeetingDetail({
   const [reloadKey, setReloadKey] = useState(0);
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
-  const [tab, setTab] = useState<'summary' | 'transcript'>('summary');
+  const [tab, setTab] = useState<'summary' | 'transcript' | 'ask'>('summary');
   const [now, setNow] = useState(0);
   const [exported, setExported] = useState<string | null>(null);
   const audio = useRef<HTMLAudioElement>(null);
@@ -87,6 +92,19 @@ export function MeetingDetail({
     }
     setNow(ms);
   }, []);
+
+  // Jump to a cited moment once the meeting is loaded.
+  const loaded = !!d;
+  useEffect(() => {
+    if (!seekTo || !loaded) return;
+    setTab('transcript');
+    setNow(seekTo.ms);
+    requestAnimationFrame(() =>
+      document
+        .querySelector('[data-testid="transcript-segment"][data-active]')
+        ?.scrollIntoView({ block: 'center' }),
+    );
+  }, [seekTo, loaded]);
 
   if (!d && loadError)
     return (
@@ -187,15 +205,25 @@ export function MeetingDetail({
           {exported}
         </Text>
       ) : null}
+      <Speakers meetingId={id} segments={segments} />
       <Tabs
         tabs={[
           { id: 'summary', label: 'Summary' },
           { id: 'transcript', label: `Transcript (${segments.length})` },
+          { id: 'ask', label: 'Ask' },
         ]}
         value={tab}
         onChange={setTab}
       />
-      {tab === 'summary' ? (
+      {tab === 'ask' ? (
+        <ChatPanel
+          meetingId={id}
+          onOpenSource={(_m, ms) => {
+            setTab('transcript');
+            seek(ms);
+          }}
+        />
+      ) : tab === 'summary' ? (
         summary ? (
           <div
             style={{ display: 'grid', gap: 16 }}

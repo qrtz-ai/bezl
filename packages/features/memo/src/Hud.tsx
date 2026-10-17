@@ -19,12 +19,14 @@ export function Hud({
   onRecord,
   onStop,
   onDismiss,
+  onAlways,
   onOpen,
 }: {
   s: SessionView;
   onRecord: () => void;
   onStop: () => void;
   onDismiss: () => void;
+  onAlways?: () => void;
   onOpen: (id: string) => void;
 }) {
   const t = useTheme();
@@ -54,6 +56,16 @@ export function Hud({
         <Button variant="ghost" onClick={onDismiss}>
           Not now
         </Button>
+        {onAlways ? (
+          <Button
+            variant="ghost"
+            onClick={onAlways}
+            data-testid="memo-always-record"
+            title="Record every detected meeting automatically (change in Settings)"
+          >
+            Always record
+          </Button>
+        ) : null}
       </Card>
     );
   if (s.phase === 'recording') {

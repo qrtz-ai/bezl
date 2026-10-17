@@ -5,6 +5,7 @@ import {
   dialog,
   globalShortcut,
   net,
+  Notification,
   protocol,
   screen,
 } from 'electron';
@@ -110,6 +111,25 @@ export function bootstrap() {
     secrets,
     config: () => config.get(),
     recordingsDir,
+    onDetectedPrompt: (title, platform) => {
+      // The in-app HUD prompt is always shown; when qrtz isn't focused, also raise an OS notification.
+      if (BrowserWindow.getFocusedWindow() || !Notification.isSupported())
+        return;
+      const n = new Notification({
+        title: 'Meeting detected',
+        body: `Record “${title || platform}”? Click to start recording.`,
+        silent: true,
+      });
+      n.on('click', () => {
+        void memo.start().catch(() => {});
+        const w = BrowserWindow.getAllWindows()[0];
+        if (w) {
+          w.show();
+          w.focus();
+        }
+      });
+      n.show();
+    },
   });
   if (availability === 'missing')
     memo.setHelperHealth(
@@ -160,6 +180,16 @@ export function bootstrap() {
       'memo:list': (req) => worker.call('memo.list', req),
       'memo:get': ({ id }) => worker.call('memo.get', { id }),
       'memo:resummarize': ({ id }) => memo.resummarize(id),
+      'memo:chat': (req) => memo.chat(req),
+      'memo:set-auto-record': ({ enabled }) => ({
+        autoRecord: config.set({ memo: { autoRecord: enabled } }).memo
+          .autoRecord,
+      }),
+      'memo:rename-speaker': async (req) => {
+        const r = await worker.call('memo.renameSpeaker', req);
+        bus.emit('memo:changed', { id: req.meetingId });
+        return r;
+      },
       'memo:delete': async ({ id }) => {
         await worker.call('memo.delete', { id });
         bus.emit('memo:changed', { id });

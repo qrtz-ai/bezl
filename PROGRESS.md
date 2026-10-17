@@ -231,3 +231,28 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
 - Build on a Mac (docs/mac-verify.md), then real Zoom and Meet runs.
 - Chat over meeting transcripts.
 - Search results paging.
+
+## 2026-10-16 ~18:35–18:50 PT: iteration 9 (chat, search paging, auto-record, speakers)
+
+- Chat:
+  - Core `memo/chat.ts`: term ranking with rarity weighting, a grounded prompt with numbered excerpts, and an extractive quote fallback that also covers LLM failures (`llmError`). Never throws.
+  - Worker `memo.chat`: per-meeting retrieval over that transcript, or FTS OR-retrieval across meetings (`repo.searchSegments`).
+  - IPC `memo:chat` (memo.read). `ChatPanel` provides the Ask tab and "Ask all meetings", with clickable citations that open the transcript at that moment, plus error and retry.
+- Search paging: `memo:list` takes `query` with `limit`/`offset` and uses limit+1 to signal more. "Show 100 more" works for search, and paging resets when the query changes.
+- Auto-start:
+  - The `memo.autoRecord` config flag defaults to off.
+  - When off, detection shows the in-app prompt plus an OS Notification if qrtz is unfocused; clicking the notification starts recording.
+  - "Always record" on the prompt goes through a scoped `memo:set-auto-record` (memo.record), so there's no broad config.write capability. There's also a Settings select.
+- Speakers: `repo.renameSpeaker` updates the segments and participants in one transaction. Merge renames onto an existing name. IPC `memo:rename-speaker` (memo.write). Speaker chips in detail offer Rename and "Merge into…".
+- Tests:
+  - vitest (stub OpenRouter): chat per meeting and across meetings, the fallback, rename/merge, and search paging.
+  - e2e `chat.spec.ts`: chat, citation seek, rename and merge, the Always-record prompt persisting and auto-starting on the next launch, the Settings toggle, and paged search over 500 meetings.
+
+### Side work
+
+- Retrieval is lexical (FTS plus term overlap). Embeddings could come later if recall is weak on paraphrases.
+
+### Next
+
+- Run an a11y axe pass over the chat and speaker editor.
+- Mac build and real-call verification.

@@ -110,6 +110,58 @@ export class MemoRepo {
     ).map(toMeeting);
   }
 
+  /** Transcript lines matching any query term (FTS, best first), for chat retrieval across meetings. */
+  searchSegments(input: string, limit = 60) {
+    const words = (
+      input
+        .toLowerCase()
+        .normalize('NFKC')
+        .match(/[\p{L}\p{N}]{2,}/gu) ?? []
+    ).slice(0, 12);
+    if (!words.length) return [];
+    const q = words.map((w) => `"${w}"*`).join(' OR ');
+    return (
+      this.db
+        .prepare(
+          `SELECT s.meeting_id AS meetingId, m.title AS title, m.started_at AS startedAt, s.start_ms AS startMs,
+                  COALESCE(s.speaker_name, s.speaker) AS speaker, s.text AS text
+           FROM segments_fts JOIN segments s ON s.rowid = segments_fts.rowid JOIN meetings m ON m.id = s.meeting_id
+           WHERE segments_fts MATCH ? ORDER BY bm25(segments_fts) LIMIT ?`,
+        )
+        .all(q, limit) as Row[]
+    ).map((r) => ({
+      meetingId: String(r.meetingId),
+      title: String(r.title),
+      startedAt: Number(r.startedAt),
+      startMs: Number(r.startMs),
+      ...(r.speaker == null ? {} : { speaker: String(r.speaker) }),
+      text: String(r.text),
+    }));
+  }
+
+  /** Rename a speaker in one meeting (merge = rename onto an existing name). Returns lines changed. */
+  renameSpeaker(meetingId: string, from: string, to: string): number {
+    return this.tx(() => {
+      const r = this.db
+        .prepare(
+          'UPDATE segments SET speaker_name=? WHERE meeting_id=? AND COALESCE(speaker_name, speaker)=?',
+        )
+        .run(to, meetingId, from);
+      const m = this.db
+        .prepare('SELECT participants FROM meetings WHERE id=?')
+        .get(meetingId) as Row | undefined;
+      if (m) {
+        const ps = (JSON.parse(String(m.participants ?? '[]')) as string[]).map(
+          (p) => (p === from ? to : p),
+        );
+        this.db
+          .prepare('UPDATE meetings SET participants=? WHERE id=?')
+          .run(JSON.stringify([...new Set(ps)]), meetingId);
+      }
+      return Number((r as { changes: number | bigint }).changes);
+    });
+  }
+
   /** Meetings in the given states regardless of age (crash recovery must not miss old ones). */
   listByStatus(statuses: string[]): MeetingRow[] {
     if (!statuses.length) return [];

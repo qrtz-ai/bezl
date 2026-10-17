@@ -4,6 +4,10 @@ import {
   AppError,
   MemoRepo,
   createProvider,
+  answerQuestion,
+  type ChatAnswer,
+  type ChatSource,
+  type ChatTurn,
   exportFilename,
   nameSegmentsFromAx,
   meetingToMarkdown,
@@ -228,10 +232,15 @@ export function createWorkerHandlers(
         return repo
           .listMeetings((p?.limit ?? 100) + 1, p?.offset ?? 0)
           .map((meeting) => ({ meeting }));
-      return repo.search(q).flatMap((hit) => {
-        const meeting = repo.getMeeting(hit.meetingId);
-        return meeting ? [{ meeting, hit }] : [];
-      });
+      const off = p?.offset ?? 0;
+      const lim = p?.limit ?? 100;
+      return repo
+        .search(q, off + lim + 1)
+        .slice(off)
+        .flatMap((hit) => {
+          const meeting = repo.getMeeting(hit.meetingId);
+          return meeting ? [{ meeting, hit }] : [];
+        });
     },
     'memo.get': (p: { id: string }) => {
       const meeting = need(p.id);
@@ -273,6 +282,46 @@ export function createWorkerHandlers(
       );
       repo.saveSummary(p.id, summary);
       return summary;
+    },
+    /**
+     * Grounded chat. With `meetingId`: retrieval over that meeting's transcript; otherwise FTS retrieval across all
+     * meetings. LLM (OpenRouter by default) answers from the excerpts; without a key, extractive quotes.
+     */
+    'memo.chat': async (p: {
+      question: string;
+      meetingId?: string;
+      history?: ChatTurn[];
+      llm: LlmParams;
+    }): Promise<ChatAnswer> => {
+      let candidates: ChatSource[];
+      if (p.meetingId) {
+        const m = need(p.meetingId);
+        candidates = repo.getSegments(p.meetingId).map((s) => ({
+          meetingId: m.id,
+          title: m.title,
+          startedAt: m.startedAt,
+          startMs: s.startMs,
+          ...(s.speakerName || s.speaker
+            ? { speaker: (s.speakerName ?? s.speaker)! }
+            : {}),
+          text: s.text,
+        }));
+      } else candidates = repo.searchSegments(p.question, 80);
+      const provider = createProvider(p.llm.provider, {
+        fetch: deps.fetch,
+        ...(p.llm.apiKey ? { apiKey: p.llm.apiKey } : {}),
+        ...(p.llm.model ? { model: p.llm.model } : {}),
+        ...(p.llm.baseUrl ? { baseUrl: p.llm.baseUrl } : {}),
+      });
+      return answerQuestion(p.question, candidates, provider, p.history ?? []);
+    },
+    'memo.renameSpeaker': (p: {
+      meetingId: string;
+      from: string;
+      to: string;
+    }) => {
+      need(p.meetingId);
+      return { changed: repo.renameSpeaker(p.meetingId, p.from, p.to) };
     },
     'memo.delete': (p: { id: string }) => {
       repo.deleteMeeting(p.id);

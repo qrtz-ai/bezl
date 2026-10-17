@@ -18,7 +18,7 @@ import { createWorkerHandlers } from './handlers';
  */
 type Req = { path: string; headers: http.IncomingHttpHeaders; body: any };
 const seen: Req[] = [];
-let mode: 'ok' | 'fail' | 'garbage' = 'ok';
+let mode: 'ok' | 'fail' | 'garbage' | 'chat' = 'ok';
 let server: http.Server;
 let baseUrl = '';
 
@@ -37,15 +37,18 @@ beforeAll(async () => {
         return res.end(JSON.stringify({ error: { message: 'rate limited' } }));
       }
       const content =
-        mode === 'garbage'
-          ? 'sorry, I cannot help'
-          : '```json\n' +
-            JSON.stringify({
-              summary: 'The team reviewed the launch and agreed on next steps.',
-              actionItems: [{ text: 'Ship the beta', owner: 'Ada Lovelace' }],
-              qa: [{ question: 'When is launch?', answer: 'Friday' }],
-            }) +
-            '\n```';
+        mode === 'chat'
+          ? 'Grace will draft the onboarding copy [1].'
+          : mode === 'garbage'
+            ? 'sorry, I cannot help'
+            : '```json\n' +
+              JSON.stringify({
+                summary:
+                  'The team reviewed the launch and agreed on next steps.',
+                actionItems: [{ text: 'Ship the beta', owner: 'Ada Lovelace' }],
+                qa: [{ question: 'When is launch?', answer: 'Friday' }],
+              }) +
+              '\n```';
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(
         JSON.stringify({
@@ -138,5 +141,89 @@ describe('OpenRouter summary path (local OpenAI-compatible stub)', () => {
     const s = await finalize(setup());
     expect(s.provider).toBe('extractive');
     expect(s.llmError).toMatch(/JSON/);
+  });
+
+  it('chat: per-meeting and across-meetings answers are grounded in retrieved lines', async () => {
+    mode = 'chat';
+    seen.length = 0;
+    const h = setup();
+    await finalize(h);
+    seen.length = 0;
+    const a = await h['memo.chat']({
+      question: 'who writes the onboarding copy?',
+      meetingId: 'm1',
+      llm: llm(),
+    });
+    expect(a.provider).toBe('openrouter');
+    expect(a.answer).toContain('[1]');
+    expect(a.sources[0]!.text.toLowerCase()).toContain('onboarding');
+    const prompt = JSON.stringify(seen[0]!.body.messages);
+    expect(prompt).toContain('Excerpts:');
+    expect(prompt.toLowerCase()).toContain('onboarding');
+    const all = await h['memo.chat']({
+      question: 'onboarding copy',
+      llm: llm(),
+    });
+    expect(all.sources.length).toBeGreaterThan(0);
+    expect(all.sources.every((s) => s.meetingId === 'm1')).toBe(true);
+  });
+
+  it('chat: LLM failure falls back to extractive quotes; no key = extractive', async () => {
+    mode = 'fail';
+    const h = setup();
+    const a = await h['memo.chat']({
+      question: 'onboarding copy',
+      meetingId: 'm1',
+      llm: llm(),
+    });
+    expect(a.provider).toBe('extractive');
+    expect(a.llmError).toMatch(/429/);
+    expect(a.answer).toMatch(/onboarding/i);
+    const b = await h['memo.chat']({
+      question: 'zzzqqq nothing',
+      llm: { provider: 'none' },
+    });
+    expect(b.sources).toEqual([]);
+    expect(b.answer).toMatch(/couldn't find/);
+  });
+
+  it('speaker rename and merge update lines and participants', async () => {
+    mode = 'ok';
+    const h = setup();
+    await finalize(h);
+    const before = h['memo.get']({ id: 'm1' });
+    const names = [
+      ...new Set(
+        before.segments.map((s) => s.speakerName ?? s.speaker).filter(Boolean),
+      ),
+    ] as string[];
+    expect(names.length).toBeGreaterThan(1);
+    const r = h['memo.renameSpeaker']({
+      meetingId: 'm1',
+      from: names[0]!,
+      to: 'Renamed Person',
+    });
+    expect(r.changed).toBeGreaterThan(0);
+    h['memo.renameSpeaker']({
+      meetingId: 'm1',
+      from: names[1]!,
+      to: 'Renamed Person',
+    }); // merge
+    const after = h['memo.get']({ id: 'm1' });
+    const left = new Set(after.segments.map((s) => s.speakerName ?? s.speaker));
+    expect(left.has(names[0]!)).toBe(false);
+    expect(left.has(names[1]!)).toBe(false);
+    expect(left.has('Renamed Person')).toBe(true);
+    expect(after.meeting.participants).toContain('Renamed Person');
+    expect(after.meeting.participants).not.toContain(names[0]);
+  });
+
+  it('search results are paged (limit + offset)', async () => {
+    const h = setup();
+    const p1 = h['memo.list']({ query: 'onboarding', limit: 1 });
+    expect(p1.length).toBeLessThanOrEqual(2);
+    expect(
+      h['memo.list']({ query: 'onboarding', limit: 1, offset: 1 }),
+    ).toHaveLength(0);
   });
 });

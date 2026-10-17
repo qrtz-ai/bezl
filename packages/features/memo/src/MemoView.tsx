@@ -19,6 +19,7 @@ import {
 import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
 import { Hud } from './Hud';
 import { MeetingDetail } from './MeetingDetail';
+import { ChatPanel } from './ChatPanel';
 import { Onboarding, needsOnboarding } from './Onboarding';
 import { fmtDate } from './format';
 
@@ -35,6 +36,10 @@ export default function MemoView() {
   const [query, setQuery] = useState('');
   // Paging: render PAGE meetings at a time; "Show more" grows the window (list stays cheap with hundreds).
   const [pages, setPages] = useState(1);
+  const [askAll, setAskAll] = useState(false);
+  const [seekTo, setSeekTo] = useState<{ ms: number; nonce: number } | null>(
+    null,
+  );
   const [hasMore, setHasMore] = useState(false);
   const [items, setItems] = useState<
     {
@@ -71,9 +76,12 @@ export default function MemoView() {
 
   const refresh = useCallback(() => {
     qrtz
-      .invoke('memo:list', query ? { query } : { limit: PAGE * pages })
+      .invoke(
+        'memo:list',
+        query ? { query, limit: PAGE * pages } : { limit: PAGE * pages },
+      )
       .then((r) => {
-        const more = !query && r.length > PAGE * pages;
+        const more = r.length > PAGE * pages;
         setHasMore(more);
         setItems(more ? r.slice(0, PAGE * pages) : r);
       })
@@ -130,6 +138,13 @@ export default function MemoView() {
           onRecord={() => void act(qrtz.invoke('memo:start', {}))}
           onStop={() => void act(qrtz.invoke('memo:stop'))}
           onDismiss={() => void act(qrtz.invoke('memo:dismiss'))}
+          onAlways={() =>
+            void act(
+              qrtz
+                .invoke('memo:set-auto-record', { enabled: true })
+                .then(() => qrtz.invoke('memo:start', {})),
+            )
+          }
           onOpen={(id) => setSelected(id)}
         />
         {session.phase === 'idle' || session.phase === 'done' ? (
@@ -180,10 +195,24 @@ export default function MemoView() {
             overflow: 'auto',
           }}
         >
+          <Button
+            variant={askAll && !selected ? 'primary' : 'secondary'}
+            size="sm"
+            onClick={() => {
+              setAskAll(true);
+              setSelected(null);
+            }}
+            data-testid="memo-ask-all"
+          >
+            Ask all meetings
+          </Button>
           <Input
             placeholder="Search meetings…"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setPages(1);
+            }}
             data-testid="memo-search"
             aria-label="Search meetings"
           />
@@ -204,7 +233,10 @@ export default function MemoView() {
                 padding={3}
                 interactive
                 selected={selected === meeting.id}
-                onClick={() => setSelected(meeting.id)}
+                onClick={() => {
+                  setSelected(meeting.id);
+                  setSeekTo(null);
+                }}
                 data-testid="meeting-item"
                 style={{
                   contentVisibility: 'auto',
@@ -260,8 +292,22 @@ export default function MemoView() {
           ) : null}
         </div>
         <div style={{ overflow: 'auto', minHeight: 0 }}>
-          {selected ? (
-            <MeetingDetail id={selected} onDeleted={() => setSelected(null)} />
+          {askAll && !selected ? (
+            <div style={{ display: 'grid', gap: 12 }} data-testid="ask-all">
+              <Text weight={600}>Ask across all meetings</Text>
+              <ChatPanel
+                onOpenSource={(m, ms) => {
+                  setSelected(m);
+                  setSeekTo({ ms, nonce: Date.now() });
+                }}
+              />
+            </div>
+          ) : selected ? (
+            <MeetingDetail
+              id={selected}
+              onDeleted={() => setSelected(null)}
+              {...(seekTo ? { seekTo } : {})}
+            />
           ) : (
             <EmptyState
               icon="_"

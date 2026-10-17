@@ -11,6 +11,8 @@ export const ConfigSchema = z.object({
   memo: z
     .object({
       autoDetectMeetings: z.boolean().default(true),
+      /** Start recording as soon as a meeting is detected (no prompt). Off = show the "Record this meeting?" prompt. */
+      autoRecord: z.boolean().default(false),
       liveAsr: z
         .enum(['parakeet-eou-160ms', 'parakeet-unified-320ms', 'apple-speech'])
         .default('parakeet-unified-320ms'),
