@@ -126,17 +126,33 @@ impl FileSecretStore {
             lock: Mutex::new(()),
         }
     }
-    fn read(&self) -> BTreeMap<String, String> {
-        std::fs::read_to_string(&self.file)
-            .ok()
-            .and_then(|t| serde_json::from_str(&t).ok())
-            .unwrap_or_default()
+    /// N106: a missing file is an empty store; an unreadable or corrupt one is an error, never "empty": saving
+    /// over it would drop every other key.
+    fn read(&self) -> Result<BTreeMap<String, String>, String> {
+        let text = match std::fs::read_to_string(&self.file) {
+            Ok(t) => t,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(BTreeMap::new()),
+            Err(e) => return Err(format!("couldn't read the secrets file: {}", e.kind())),
+        };
+        serde_json::from_str(&text).map_err(|e| format!("the secrets file is corrupt (line {})", e.line()))
+    }
+    /// `get` / `list` can't fail: a corrupt store reads as empty there, logged (the keys are kept on disk).
+    fn read_or_empty(&self) -> BTreeMap<String, String> {
+        self.read().unwrap_or_else(|e| {
+            tracing::warn!(err = %e, "secret store unreadable; keys left untouched");
+            BTreeMap::new()
+        })
     }
 }
 impl SecretStore for FileSecretStore {
     fn set(&self, name: &str, value: Option<&str>) -> Result<(), AppError> {
         let _g = self.lock.lock().unwrap_or_else(|p| p.into_inner());
-        let mut all = self.read();
+        let mut all = self.read().map_err(|e| {
+            AppError::new(
+                qrtz_ipc::ErrorCode::Internal,
+                format!("{e}, so the key was not saved (the file is left as it is)"),
+            )
+        })?;
         match value {
             Some(v) => all.insert(name.to_owned(), v.to_owned()),
             None => all.remove(name),
@@ -150,10 +166,10 @@ impl SecretStore for FileSecretStore {
         })
     }
     fn get(&self, name: &str) -> Option<String> {
-        self.read().get(name).cloned()
+        self.read_or_empty().get(name).cloned()
     }
     fn list(&self) -> Vec<String> {
-        self.read().into_keys().collect()
+        self.read_or_empty().into_keys().collect()
     }
 }
 

@@ -15,6 +15,9 @@
 //!                                once per mark file: n ms after recording.start, leave a half WAV with an unfinalized
 //!                                header and exit(1) (the TS mock's once-per-app-run crash)
 //!   QRTZ_MOCK_DICTATION_STEP_MS=60
+//!   QRTZ_MOCK_DICTATION_START_MS=400   a slow engine start: `dictation.started` (and the words) that much later
+//!   QRTZ_MOCK_INSERT_DELAY_MS=1500     a slow paste: `insert.result` that much after `insert.text`
+//!   QRTZ_MOCK_CMD_LOG=<file>           one line per host message, `<type> <id>` (what reached the helper, in order)
 //!   QRTZ_MOCK_HB_MS=200
 //!   QRTZ_MOCK_SUMMARIZE / QRTZ_MOCK_SUMMARIZE_LOG  ADR 0075 on-device summaries (`qrtz-helper-bridge/mock/summarize.rs`)
 #[path = "../../qrtz-helper-bridge/mock/summarize.rs"]
@@ -183,6 +186,14 @@ fn main() {
     let step_ms: u64 = env("QRTZ_MOCK_DICTATION_STEP_MS")
         .and_then(|v| v.parse().ok())
         .unwrap_or(60);
+    let start_ms: u64 = env("QRTZ_MOCK_DICTATION_START_MS")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    let insert_delay_ms: u64 = env("QRTZ_MOCK_INSERT_DELAY_MS")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    let cmd_log = env("QRTZ_MOCK_CMD_LOG");
+    let insert_busy = Arc::new(Mutex::new(()));
     let crash_after: Option<u64> = env("QRTZ_MOCK_CRASH_AFTER_MS").and_then(|v| v.parse().ok());
     let crash_mark = env("QRTZ_MOCK_CRASH_MARK");
     let revoke: Vec<(String, u64)> = env("QRTZ_MOCK_REVOKE")
@@ -334,6 +345,17 @@ fn main() {
         let Ok(msg) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
+        if let Some(f) = &cmd_log {
+            use std::io::Write as _;
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(f) {
+                let _ = writeln!(
+                    f,
+                    "{} {}",
+                    msg["type"].as_str().unwrap_or(""),
+                    msg["id"].as_str().unwrap_or("")
+                );
+            }
+        }
         match msg["type"].as_str().unwrap_or_default() {
             "summarize" | "summarize.check" | "summarize.cancel" => {
                 if let Some(reply) = mock_summarize::handle(&line, &msg) {
@@ -455,10 +477,16 @@ fn main() {
                 arm_revocations();
                 let gen = dict_gen.fetch_add(1, Ordering::SeqCst) + 1;
                 *dict.lock().unwrap() = Some((id.clone(), 0, Instant::now()));
-                out.say(json!({"type": "dictation.started", "id": id, "preRollMs": 0}));
                 let (out, dict, dict_gen, words) = (out.clone(), dict.clone(), dict_gen.clone(), words.clone());
                 let stream = stream_audio.load(Ordering::SeqCst);
                 std::thread::spawn(move || {
+                    if start_ms > 0 {
+                        std::thread::sleep(Duration::from_millis(start_ms));
+                        if dict_gen.load(Ordering::SeqCst) != gen {
+                            return;
+                        }
+                    }
+                    out.say(json!({"type": "dictation.started", "id": id, "preRollMs": 0}));
                     for i in 1..=words.len() {
                         std::thread::sleep(Duration::from_millis(step_ms));
                         let mut d = dict.lock().unwrap();
@@ -479,13 +507,26 @@ fn main() {
             }
             "dictation.stop" => stop_dictation(msg["id"].as_str().unwrap_or_default(), false, None),
             "dictation.cancel" => stop_dictation(msg["id"].as_str().unwrap_or_default(), true, None),
-            "insert.text" => out.say(match insert.as_str() {
-                "fail" => json!({"type": "insert.result", "id": msg["id"], "method": "none", "ok": false,
-                                 "app": "Mock Editor", "error": "no focused text field"}),
-                "paste" => json!({"type": "insert.result", "id": msg["id"], "method": "paste", "ok": true, "app": "Mock Editor"}),
-                _ => json!({"type": "insert.result", "id": msg["id"], "method": "ax-selected-text", "ok": true,
-                            "app": "Mock Editor"}),
-            }),
+            "insert.text" => {
+                let r = match insert.as_str() {
+                    "fail" => json!({"type": "insert.result", "id": msg["id"], "method": "none", "ok": false,
+                                     "app": "Mock Editor", "error": "no focused text field"}),
+                    "paste" => json!({"type": "insert.result", "id": msg["id"], "method": "paste", "ok": true, "app": "Mock Editor"}),
+                    _ => json!({"type": "insert.result", "id": msg["id"], "method": "ax-selected-text", "ok": true,
+                                "app": "Mock Editor"}),
+                };
+                if insert_delay_ms == 0 {
+                    out.say(r);
+                } else {
+                    // One paste at a time, like the real helper: a later insert.text waits behind this one.
+                    let (out, busy) = (out.clone(), insert_busy.clone());
+                    std::thread::spawn(move || {
+                        let _g = busy.lock().unwrap();
+                        std::thread::sleep(Duration::from_millis(insert_delay_ms));
+                        out.say(r);
+                    });
+                }
+            }
             _ => out.say(json!({"type": "error", "code": "protocol.unknown", "message": "unknown message", "fatal": false})),
         }
     }

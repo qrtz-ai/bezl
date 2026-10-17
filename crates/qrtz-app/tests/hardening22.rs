@@ -18,13 +18,13 @@ fn an_older_0644_file_and_a_crash_left_0644_tmp_end_up_0600() {
     let dir = tempfile::tempdir().unwrap();
     let f = dir.path().join("secrets.json");
     let tmp = dir.path().join("secrets.json.tmp");
-    std::fs::write(&f, b"{\"llm.openrouter\":\"old\"}").unwrap();
+    std::fs::write(&f, b"{\"test.a\":\"old\"}").unwrap();
     std::fs::write(&tmp, b"{\"half").unwrap();
     for p in [&f, &tmp] {
         std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o644)).unwrap();
     }
-    write_private_atomic(&f, b"{\"llm.openrouter\":\"new\"}").unwrap();
-    assert_eq!(std::fs::read(&f).unwrap(), b"{\"llm.openrouter\":\"new\"}");
+    write_private_atomic(&f, b"{\"test.a\":\"new\"}").unwrap();
+    assert_eq!(std::fs::read(&f).unwrap(), b"{\"test.a\":\"new\"}");
     assert_eq!(mode(&f), 0o600);
     assert!(!tmp.exists());
 }
@@ -46,16 +46,45 @@ fn a_failed_write_keeps_every_saved_key_and_the_next_one_succeeds() {
     let dir = tempfile::tempdir().unwrap();
     let f = dir.path().join("secrets.json");
     let store = FileSecretStore::new(f.clone());
-    store.set("llm.openrouter", Some("sk-or-1")).unwrap();
-    store.set("talk.elevenlabs", Some("el-2")).unwrap();
+    store.set("test.a", Some("sk-or-1")).unwrap();
+    store.set("test.b", Some("el-2")).unwrap();
     let blocker = dir.path().join("secrets.json.tmp");
     std::fs::create_dir(&blocker).unwrap();
     std::fs::write(blocker.join("x"), b"x").unwrap();
-    assert!(store.set("llm.openai", Some("sk-3")).is_err());
-    assert_eq!(store.list(), ["llm.openrouter", "talk.elevenlabs"]);
-    assert_eq!(store.get("talk.elevenlabs").as_deref(), Some("el-2"));
+    assert!(store.set("test.c", Some("sk-3")).is_err());
+    assert_eq!(store.list(), ["test.a", "test.b"]);
+    assert_eq!(store.get("test.b").as_deref(), Some("el-2"));
     std::fs::remove_dir_all(&blocker).unwrap();
-    store.set("llm.openai", Some("sk-3")).unwrap();
-    assert_eq!(store.list(), ["llm.openai", "llm.openrouter", "talk.elevenlabs"]);
+    store.set("test.c", Some("sk-3")).unwrap();
+    assert_eq!(store.list(), ["test.a", "test.b", "test.c"]);
     assert_eq!(mode(&f), 0o600);
+}
+
+/// N106: a corrupt (or not owner-readable) `secrets.json` is not an empty store. A save fails with the reason and
+/// leaves the file byte for byte, so the keys in it aren't dropped by the next write; reads stay empty meanwhile.
+/// A missing file is still an empty store.
+#[test]
+fn a_corrupt_secrets_file_is_an_error_and_a_save_never_overwrites_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let f = dir.path().join("secrets.json");
+    let store = FileSecretStore::new(f.clone());
+    assert!(store.list().is_empty());
+    let corrupt = b"{\"test.a\":\"keep-me\",\"test.b\":";
+    std::fs::write(&f, corrupt).unwrap();
+    let e = store.set("test.c", Some("new")).unwrap_err();
+    assert!(e.message.contains("corrupt"), "{}", e.message);
+    assert_eq!(std::fs::read(&f).unwrap(), corrupt);
+    assert!(store.list().is_empty());
+    assert_eq!(store.get("test.a"), None);
+    assert!(
+        store.set("test.a", None).is_err(),
+        "a removal doesn't rewrite it either"
+    );
+    assert_eq!(std::fs::read(&f).unwrap(), corrupt);
+    qrtz_app::secrets::drop_retired(&store);
+    assert_eq!(std::fs::read(&f).unwrap(), corrupt);
+
+    std::fs::write(&f, br#"{"test.a":"keep-me"}"#).unwrap();
+    store.set("test.c", Some("new")).unwrap();
+    assert_eq!(store.list(), ["test.a", "test.c"]);
 }

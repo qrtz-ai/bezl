@@ -125,10 +125,11 @@ struct Linger {
     hiding: AtomicBool,
 }
 
-/// The pill's error flash (`qrtz_app::pill`): the failure last shown, and whether it is on screen now.
+/// The pill's error flash (`qrtz_app::pill`): which failures were shown (`PillGate`), and whether a flash is on
+/// screen now.
 #[derive(Default)]
 struct Flash {
-    key: Mutex<String>,
+    gate: Mutex<qrtz_app::pill::PillGate>,
     on: AtomicBool,
 }
 
@@ -341,9 +342,15 @@ fn on_session(app: &AppHandle, session: Value) {
 /// The pill is up only while the key is held: on release it hides at once and the dictation finishes in the
 /// background. A failure flashes it (or notifies, with the pill off) once, afterwards (`qrtz_app::pill`).
 fn on_talk(app: &AppHandle, talk: &Value) {
-    use qrtz_app::pill::{pill_action, PillAction, ERROR_FLASH};
+    use qrtz_app::pill::{PillAction, ERROR_FLASH};
     let b = app.state::<Backend>();
-    match pill_action(&b.service.config(), talk) {
+    let action = b
+        .flash
+        .gate
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .next(&b.service.config(), talk);
+    match action {
         PillAction::Show => {
             b.pill.gen.fetch_add(1, Ordering::SeqCst);
             b.flash.on.store(false, Ordering::SeqCst);
@@ -355,14 +362,7 @@ fn on_talk(app: &AppHandle, talk: &Value) {
                 windows::hide(app, windows::PILL);
             }
         }
-        PillAction::Flash { key, error, notify } => {
-            {
-                let mut last = b.flash.key.lock().unwrap();
-                if *last == key {
-                    return;
-                }
-                *last = key;
-            }
+        PillAction::Flash { error, notify, .. } => {
             if notify {
                 if let Err(e) = app
                     .notification()

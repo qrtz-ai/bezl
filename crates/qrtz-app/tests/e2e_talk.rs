@@ -183,8 +183,7 @@ async fn talk_settings_has_a_key_for_every_automatic_behavior_and_show_pill_off_
 }
 
 /// Every `talk:state` the shell sees, with the time it arrived, and what the pill does for it
-/// (`qrtz_app::pill::pill_action`, the rule `backend.rs::on_talk` applies).
-/// Every `talk:state` view with the pill action it maps to, as a subscriber task sees them.
+/// (`qrtz_app::pill::PillGate`, the rule `backend.rs::on_talk` applies: each failure flashes once).
 type PillTrace = Arc<std::sync::Mutex<Vec<(std::time::Instant, Value, qrtz_app::pill::PillAction)>>>;
 
 fn pill_trace(a: &App, config: Value) -> PillTrace {
@@ -192,9 +191,10 @@ fn pill_trace(a: &App, config: Value) -> PillTrace {
     let mut rx = a.app.service.events.subscribe();
     let o = out.clone();
     tokio::spawn(async move {
+        let mut gate = qrtz_app::pill::PillGate::default();
         while let Ok((ev, v)) = rx.recv().await {
             if ev == "talk:state" {
-                let act = qrtz_app::pill::pill_action(&config, &v);
+                let act = gate.next(&config, &v);
                 o.lock().unwrap().push((std::time::Instant::now(), v, act));
             }
         }
@@ -318,5 +318,153 @@ async fn a_failure_after_release_flashes_the_error_once_afterwards() {
             .any(|(_, _, p)| matches!(p, PillAction::Flash { notify: true, .. })),
         "with the pill off the failure is a notification"
     );
+    a.quit().await;
+}
+
+/// The push key as the helper reports it (`hotkey` down / up), into the app like a helper line.
+fn key(a: &App, action: &str) {
+    a.app
+        .service
+        .on_helper_line(&json!({"type": "hotkey", "action": action}).to_string());
+}
+
+/// `<type> <id>` lines the scripted helper received (`QRTZ_MOCK_CMD_LOG`).
+fn received(log: &std::path::Path, ty: &str) -> Vec<String> {
+    std::fs::read_to_string(log)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| l.strip_prefix(&format!("{ty} ")).map(str::to_owned))
+        .collect()
+}
+
+/// Review §12.22 (b), N110 (ADR 0074): a second press while the first dictation's paste is still out (a slow
+/// `insert.result`) starts a new dictation at once: the pill shows again, and both texts go in, in order.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_second_press_during_a_slow_insert_gives_two_ordered_inserts_and_shows_the_pill_again() {
+    use qrtz_app::pill::PillAction;
+    let tmp = tempfile::tempdir().unwrap();
+    let log = tmp.path().join("cmds.log");
+    let a = App::launch(
+        &tmp.path().join("d"),
+        Opts::default()
+            .helper(Helper::Scripted)
+            .env("QRTZ_MOCK_INSERT_DELAY_MS", "1500")
+            .env("QRTZ_MOCK_CMD_LOG", log.to_str().unwrap()),
+    )
+    .await;
+    a.helper_ready().await;
+    let trace = pill_trace(&a, json!({"talk": {"showPill": true}}));
+
+    key(&a, "down");
+    let first = a
+        .until_talk("first heard friday", |v| {
+            v["phase"] == "listening" && talk_text(v).contains("friday")
+        })
+        .await;
+    let first_id = first["id"].as_str().unwrap().to_owned();
+    key(&a, "up");
+    a.until_talk("first inserting", |v| v["phase"] == "inserting")
+        .await;
+    assert_eq!(
+        received(&log, "insert.text"),
+        std::slice::from_ref(&first_id),
+        "the first paste is out"
+    );
+    let shown_before = trace.lock().unwrap().len();
+
+    key(&a, "down");
+    let second = a
+        .until_talk("second listening", |v| {
+            v["phase"] == "listening" && v["id"] != first_id.as_str()
+        })
+        .await;
+    let second_id = second["id"].as_str().unwrap().to_owned();
+    assert!(
+        a.talk_history()
+            .await
+            .iter()
+            .all(|e| e["id"] != first_id.as_str()),
+        "the second dictation started before the first insert finished"
+    );
+    a.until_talk("second heard friday", |v| {
+        v["id"] == second_id.as_str() && talk_text(v).contains("friday")
+    })
+    .await;
+    key(&a, "up");
+
+    let h = wait("both entries", || async {
+        let h = a.talk_history().await;
+        (h.len() == 2).then_some(h)
+    })
+    .await;
+    for e in &h {
+        assert_eq!(e["inserted"], true, "{e}");
+    }
+    assert_eq!(received(&log, "insert.text"), [first_id, second_id], "in order");
+    assert!(
+        trace.lock().unwrap()[shown_before..]
+            .iter()
+            .any(|(_, _, p)| *p == PillAction::Show),
+        "the pill came back for the second dictation"
+    );
+    let last = trace.lock().unwrap().last().cloned().unwrap();
+    assert_eq!(last.2, PillAction::Hide, "{:?}", last.1);
+    a.quit().await;
+}
+
+/// Review §12.22 (b), N111 (ADR 0074): a 20 ms tap while the engine is still starting (a slow
+/// `dictation.started`) leaves nothing running: the helper is told to stop the dictation (the mic closes), the
+/// view ends idle, and the pill is hidden from the release on.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_20ms_tap_during_a_slow_engine_start_leaves_the_mic_closed_and_the_pill_hidden() {
+    use qrtz_app::pill::PillAction;
+    let tmp = tempfile::tempdir().unwrap();
+    let log = tmp.path().join("cmds.log");
+    let a = App::launch(
+        &tmp.path().join("d"),
+        Opts::default()
+            .helper(Helper::Scripted)
+            .env("QRTZ_MOCK_DICTATION_START_MS", "400")
+            .env("QRTZ_MOCK_CMD_LOG", log.to_str().unwrap()),
+    )
+    .await;
+    a.helper_ready().await;
+    let trace = pill_trace(&a, json!({"talk": {"showPill": true}}));
+    key(&a, "down");
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    key(&a, "up");
+
+    let started = wait("dictation.start sent", || async {
+        received(&log, "dictation.start").first().cloned()
+    })
+    .await;
+    wait("the helper was told to stop it", || async {
+        (received(&log, "dictation.stop").contains(&started)
+            || received(&log, "dictation.cancel").contains(&started))
+        .then_some(())
+    })
+    .await;
+    // Past the slow start and well past any late `started`: still nothing listening.
+    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+    let v = a.talk_state().await;
+    assert_ne!(v["phase"], "listening", "{v}");
+    a.until_talk("idle", |v| v["phase"] == "idle").await;
+    // The pill shows on the press itself (it doesn't wait for the engine), so it may blink for the tap; once
+    // released it is hidden and nothing (not the late start, not the empty result) brings it back.
+    let t = trace.lock().unwrap().clone();
+    let released = t
+        .iter()
+        .position(|(_, v, _)| v["phase"] != "listening")
+        .expect("released");
+    assert!(
+        t[released..].iter().all(|(_, _, p)| *p == PillAction::Hide),
+        "the pill stayed hidden after the tap: {t:?}"
+    );
+    // The next press still works (nothing is stuck).
+    key(&a, "down");
+    a.until_talk("listening again", |v| v["phase"] == "listening")
+        .await;
+    key(&a, "up");
+    a.until_talk("idle again", |v| v["phase"] == "idle").await;
     a.quit().await;
 }
