@@ -1,0 +1,25 @@
+[package]
+name = "qrtz-app"
+description = "UI-free app service for the Tauri build: IPC routing to runtime/storage/talk ports, config, secrets, helper wiring, events"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+qrtz-ipc = { path = "../qrtz-ipc" }
+qrtz-helper-bridge = { path = "../qrtz-helper-bridge" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+tracing.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+tempfile.workspace = true
+qrtz-helper-bridge = { path = "../qrtz-helper-bridge" }
