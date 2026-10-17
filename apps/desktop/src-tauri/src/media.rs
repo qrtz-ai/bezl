@@ -5,8 +5,14 @@
 //! with no Range header for a bigger file gets `206` with the first chunk, and a range (WebKit asks for
 //! `bytes=0-`) is cut to a chunk from its start. The player reads `Content-Range` and asks for the rest as it
 //! plays or seeks, so memory stays bounded however long the recording is (a 2 h WAV is about 230 MB).
+//!
+//! A meeting whose delete is pending (undo window, or a deferred delete that failed and waits for the next launch)
+//! is 404, like the lists that hide it (N133). Requests run on a small fixed pool ([`spawn`], N135), not a thread
+//! each.
+use qrtz_storage::PendingDeletes;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
+use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use tauri::http::{header, Request, Response, StatusCode};
 
 pub fn valid_name(name: &str) -> bool {
@@ -17,22 +23,57 @@ pub fn valid_name(name: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b) || b == b'-')
 }
 
-/// Parses `bytes=a-b` / `bytes=a-` / `bytes=-n` against `len` into an inclusive range.
-pub fn parse_range(h: &str, len: u64) -> Option<(u64, u64)> {
-    let spec = h.strip_prefix("bytes=")?;
-    if spec.contains(',') || len == 0 {
-        return None;
-    }
-    let (a, b) = spec.split_once('-')?;
-    let (start, end) = match (a.trim(), b.trim()) {
-        ("", n) => {
-            let n: u64 = n.parse().ok()?;
-            (len.saturating_sub(n), len - 1)
-        }
-        (s, "") => (s.parse().ok()?, len - 1),
-        (s, e) => (s.parse().ok()?, e.parse::<u64>().ok()?.min(len - 1)),
+/// A `Range` header against a file of `len` bytes (RFC 9110 §14).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Range {
+    /// Serve as if there were no header: an unknown unit, several ranges, or an invalid one (inverted, not
+    /// numbers). RFC 9110 has a server ignore those.
+    Ignore,
+    /// A valid single range nothing of the file satisfies: 416.
+    Unsatisfiable,
+    /// Inclusive byte range inside the file.
+    Bytes(u64, u64),
+}
+
+/// Parses `bytes=a-b` / `bytes=a-` / `bytes=-n` (the unit case-insensitive) against `len`.
+pub fn parse_range(h: &str, len: u64) -> Range {
+    use Range::*;
+    let Some((unit, spec)) = h.split_once('=') else {
+        return Ignore;
     };
-    (start <= end && start < len).then_some((start, end))
+    if !unit.trim().eq_ignore_ascii_case("bytes") || spec.contains(',') {
+        return Ignore;
+    }
+    let Some((a, b)) = spec.split_once('-') else {
+        return Ignore;
+    };
+    // Digits only (`u64::from_str` would take `+1`); too large for u64 is still a valid, huge number.
+    let num = |s: &str| {
+        (!s.is_empty() && s.bytes().all(|c| c.is_ascii_digit())).then(|| s.parse().unwrap_or(u64::MAX))
+    };
+    match (a.trim(), b.trim()) {
+        ("", "") => Ignore,
+        ("", n) => match num(n) {
+            None => Ignore,
+            Some(0) => Unsatisfiable,
+            Some(_) if len == 0 => Unsatisfiable,
+            Some(n) => Bytes(len.saturating_sub(n), len - 1),
+        },
+        (s, e) => {
+            let Some(s) = num(s) else { return Ignore };
+            let e = match e {
+                "" => u64::MAX,
+                e => match num(e) {
+                    Some(e) if e >= s => e,
+                    _ => return Ignore,
+                },
+            };
+            if s >= len {
+                return Unsatisfiable;
+            }
+            Bytes(s, e.min(len - 1))
+        }
+    }
 }
 
 /// The most bytes one response carries.
@@ -42,13 +83,47 @@ fn status(code: StatusCode) -> Response<Vec<u8>> {
     Response::builder().status(code).body(Vec::new()).unwrap()
 }
 
-pub fn serve(recordings: &Path, req: &Request<Vec<u8>>) -> Response<Vec<u8>> {
+/// Request threads: WebKit fires several ranges per seek; more just wait their turn.
+pub const WORKERS: usize = 4;
+
+type Job = Box<dyn FnOnce() + Send>;
+
+/// Runs `job` on the media pool ([`WORKERS`] threads, started on first use).
+pub fn spawn(job: impl FnOnce() + Send + 'static) {
+    static POOL: OnceLock<mpsc::Sender<Job>> = OnceLock::new();
+    let tx = POOL.get_or_init(|| {
+        let (tx, rx) = mpsc::channel::<Job>();
+        let rx = Arc::new(Mutex::new(rx));
+        for i in 0..WORKERS {
+            let rx = rx.clone();
+            std::thread::Builder::new()
+                .name(format!("qrtz-media-{i}"))
+                .spawn(move || loop {
+                    let job = match rx.lock().unwrap_or_else(|p| p.into_inner()).recv() {
+                        Ok(job) => job,
+                        Err(_) => return,
+                    };
+                    // A panicking request must not take a worker with it.
+                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job));
+                })
+                .expect("media worker thread");
+        }
+        tx
+    });
+    let _ = tx.send(Box::new(job));
+}
+
+/// `pending`: the app's tombstones (`PendingDeletes` on the data dir); a meeting on it is 404 (N133).
+pub fn serve(recordings: &Path, pending: &PendingDeletes, req: &Request<Vec<u8>>) -> Response<Vec<u8>> {
     // macOS/Linux: qrtz-media://rec/<name>; Windows: http://qrtz-media.localhost/rec/<name>.
     let path = req.uri().path().trim_start_matches('/');
     let name = path.strip_prefix("rec/").unwrap_or(path);
     let name = name.replace("%2D", "-");
     if !valid_name(&name) {
         return status(StatusCode::FORBIDDEN);
+    }
+    if pending.has(&name[..36]) {
+        return status(StatusCode::NOT_FOUND);
     }
     // N132 (ADR 0086): the regular file under that name, never a symlink's target, a FIFO (would block this
     // thread for good) or a directory.
@@ -60,15 +135,18 @@ pub fn serve(recordings: &Path, req: &Request<Vec<u8>>) -> Response<Vec<u8>> {
 
 /// [`serve`] once the file is open; `chunk` is the response size cap ([`MAX_CHUNK`]; tests pass a small one).
 fn serve_file(f: &mut std::fs::File, len: u64, req: &Request<Vec<u8>>, chunk: u64) -> Response<Vec<u8>> {
-    let mut range = req
+    let range = match req
         .headers()
         .get(header::RANGE)
         .and_then(|v| v.to_str().ok())
-        .map(|h| parse_range(h, len));
-    if range.is_none() && len > chunk {
-        // No Range on a file over the cap: answer the first chunk as a partial response.
-        range = Some(Some((0, len - 1)));
-    }
+        .map(|h| parse_range(h, len))
+    {
+        Some(Range::Unsatisfiable) => Some(None),
+        Some(Range::Bytes(s, e)) => Some(Some((s, e))),
+        // No Range, or one to ignore (N135), on a file over the cap: the first chunk as a partial response.
+        None | Some(Range::Ignore) if len > chunk => Some(Some((0, len - 1))),
+        None | Some(Range::Ignore) => None,
+    };
     let b = Response::builder()
         .header(header::CONTENT_TYPE, "audio/wav")
         .header(header::ACCEPT_RANGES, "bytes");
@@ -110,6 +188,11 @@ fn serve_file(f: &mut std::fs::File, len: u64, req: &Request<Vec<u8>>, chunk: u6
 mod tests {
     use super::*;
 
+    /// `serve` with no tombstones (tests that aren't about pending deletes).
+    fn serve(recordings: &Path, req: &Request<Vec<u8>>) -> Response<Vec<u8>> {
+        super::serve(recordings, &PendingDeletes::new(recordings), req)
+    }
+
     const ID: &str = "0b9f6a2e-6c1d-4e7a-9a43-2f1d0c8e5b71.wav";
 
     #[test]
@@ -127,12 +210,14 @@ mod tests {
 
     #[test]
     fn ranges() {
-        assert_eq!(parse_range("bytes=0-", 10), Some((0, 9)));
-        assert_eq!(parse_range("bytes=2-4", 10), Some((2, 4)));
-        assert_eq!(parse_range("bytes=-3", 10), Some((7, 9)));
-        assert_eq!(parse_range("bytes=5-99", 10), Some((5, 9)));
-        assert_eq!(parse_range("bytes=10-", 10), None);
-        assert_eq!(parse_range("bytes=0-1,4-5", 10), None);
+        use Range::*;
+        assert_eq!(parse_range("bytes=0-", 10), Bytes(0, 9));
+        assert_eq!(parse_range("bytes=2-4", 10), Bytes(2, 4));
+        assert_eq!(parse_range("bytes=-3", 10), Bytes(7, 9));
+        assert_eq!(parse_range("bytes=5-99", 10), Bytes(5, 9));
+        assert_eq!(parse_range("Bytes=2-4", 10), Bytes(2, 4));
+        assert_eq!(parse_range("bytes=10-", 10), Unsatisfiable);
+        assert_eq!(parse_range("bytes=0-1,4-5", 10), Ignore);
     }
 
     #[test]
@@ -325,18 +410,18 @@ mod tests {
             "bytes=+1-2",
             "bytes=\u{0}",
         ] {
-            if let Some((s, e)) = parse_range(h, len) {
+            if let Range::Bytes(s, e) = parse_range(h, len) {
                 assert!(s <= e && e < len, "{h}: {s}-{e}");
             }
         }
         assert_eq!(
             parse_range("bytes=-0", len),
-            None,
+            Range::Unsatisfiable,
             "a zero-length suffix is unsatisfiable"
         );
-        assert_eq!(parse_range("bytes=0-0", len), Some((0, 0)));
-        assert_eq!(parse_range("bytes=-99", len), Some((0, 13)));
-        assert_eq!(parse_range("bytes=0-", 0), None);
+        assert_eq!(parse_range("bytes=0-0", len), Range::Bytes(0, 0));
+        assert_eq!(parse_range("bytes=-99", len), Range::Bytes(0, 13));
+        assert_eq!(parse_range("bytes=0-", 0), Range::Unsatisfiable);
         // An empty file: a plain 200 with no body, and any range is 416 with `*/0`.
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join(ID), b"").unwrap();
@@ -377,5 +462,121 @@ mod tests {
         assert_eq!(last.body().len(), 1);
         let past = serve(dir.path(), &req(Some(&format!("bytes={len}-"))));
         assert_eq!(past.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+    }
+
+    /// N135 (RFC 9110 §14.2): a Range with an unknown unit, several ranges or an invalid spec is ignored (served as
+    /// if absent, still capped); only a valid range nothing satisfies is 416.
+    #[test]
+    fn ranges_to_ignore_are_served_as_if_absent_and_only_unsatisfiable_ones_are_416() {
+        use Range::*;
+        let len = 14u64;
+        for h in [
+            "items=0-1",
+            "bytes=0-1,2-3",
+            "bytes=5-3",
+            "bytes=",
+            "bytes=-",
+            "bytes=--1",
+            "bytes=a-b",
+            "bytes=+1-2",
+            "bytes=1-+2",
+            "bytes",
+            "bytes=\u{0}",
+            "0-1",
+        ] {
+            assert_eq!(parse_range(h, len), Ignore, "{h}");
+        }
+        for h in [
+            "bytes=14-",
+            "bytes=99-100",
+            "bytes=-0",
+            "bytes=18446744073709551615-",
+        ] {
+            assert_eq!(parse_range(h, len), Unsatisfiable, "{h}");
+        }
+        assert_eq!(parse_range("bytes=-18446744073709551616", len), Bytes(0, 13));
+        assert_eq!(parse_range("bytes= 0 - 1 ", len), Bytes(0, 1));
+
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join(ID);
+        std::fs::write(&p, b"RIFF0123456789").unwrap();
+        let get = |range: &str, chunk: u64| {
+            let mut f = std::fs::File::open(&p).unwrap();
+            serve_file(&mut f, len, &req(Some(range)), chunk)
+        };
+        for h in ["items=0-1", "bytes=0-1,2-3", "bytes=5-3"] {
+            let whole = get(h, MAX_CHUNK);
+            assert_eq!(whole.status(), StatusCode::OK, "{h}");
+            assert_eq!(whole.body(), b"RIFF0123456789", "{h}");
+            // Still capped: over the cap it is the first chunk, like no Range at all.
+            let first = get(h, 4);
+            assert_eq!(first.status(), StatusCode::PARTIAL_CONTENT, "{h}");
+            assert_eq!(first.headers()[header::CONTENT_RANGE], "bytes 0-3/14", "{h}");
+            assert_eq!(first.body(), b"RIFF", "{h}");
+        }
+        let r = get("bytes=14-", MAX_CHUNK);
+        assert_eq!(r.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+        assert_eq!(r.headers()[header::CONTENT_RANGE], "bytes */14");
+    }
+
+    /// N133: a meeting whose delete is pending (tombstoned) is not served; after an undo it is again.
+    #[test]
+    fn a_meeting_pending_delete_is_404_until_the_delete_is_undone() {
+        let data = tempfile::tempdir().unwrap();
+        let rec = data.path().join("recordings");
+        std::fs::create_dir(&rec).unwrap();
+        std::fs::write(rec.join(ID), b"RIFF0123456789").unwrap();
+        let other = "1b9f6a2e-6c1d-4e7a-9a43-2f1d0c8e5b71.wav";
+        std::fs::write(rec.join(other), b"RIFFother").unwrap();
+        let pending = PendingDeletes::new(data.path());
+        let get = |name: &str, range: Option<&str>| {
+            let mut r = Request::builder().uri(format!("qrtz-media://rec/{name}"));
+            if let Some(h) = range {
+                r = r.header(header::RANGE, h);
+            }
+            super::serve(&rec, &pending, &r.body(Vec::new()).unwrap())
+        };
+        assert_eq!(get(ID, None).status(), StatusCode::OK);
+        pending.add(&ID[..36]).unwrap();
+        for range in [None, Some("bytes=0-"), Some("bytes=4-7")] {
+            let r = get(ID, range);
+            assert_eq!(r.status(), StatusCode::NOT_FOUND, "{range:?}");
+            assert!(r.body().is_empty());
+        }
+        // Other meetings play on.
+        assert_eq!(get(other, None).body(), b"RIFFother");
+        assert!(pending.remove(&ID[..36]).unwrap());
+        let r = get(ID, None);
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(r.body(), b"RIFF0123456789");
+    }
+
+    /// N135: requests share a fixed pool; a burst uses at most [`WORKERS`] threads, every job runs, and a
+    /// panicking one doesn't take a worker down.
+    #[test]
+    fn requests_run_on_a_bounded_pool() {
+        let (tx, rx) = mpsc::channel();
+        spawn(|| panic!("a bad request"));
+        let n = 64;
+        for i in 0..n {
+            let tx = tx.clone();
+            spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(2));
+                let _ = tx.send((i, std::thread::current().name().map(str::to_owned)));
+            });
+        }
+        let mut threads = std::collections::HashSet::new();
+        let mut done = std::collections::HashSet::new();
+        for _ in 0..n {
+            let (i, name) = rx
+                .recv_timeout(std::time::Duration::from_secs(10))
+                .expect("a job never ran");
+            done.insert(i);
+            let name = name.expect("a pool thread");
+            assert!(name.starts_with("qrtz-media-"), "{name}");
+            threads.insert(name);
+        }
+        assert_eq!(done.len(), n);
+        assert!(threads.len() <= WORKERS, "{threads:?}");
     }
 }

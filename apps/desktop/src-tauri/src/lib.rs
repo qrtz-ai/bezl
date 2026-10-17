@@ -53,8 +53,15 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .register_asynchronous_uri_scheme_protocol("qrtz-media", |ctx, req, responder| {
-            let dir = paths::recordings_dir(ctx.app_handle());
-            std::thread::spawn(move || responder.respond(media::serve(&dir, &req)));
+            let (dir, data) = (
+                paths::recordings_dir(ctx.app_handle()),
+                paths::data_dir(ctx.app_handle()),
+            );
+            // N133: the runtime's tombstones (same file); N135: a fixed pool, not a thread per request.
+            media::spawn(move || {
+                let pending = qrtz_storage::PendingDeletes::new(&data);
+                responder.respond(media::serve(&dir, &pending, &req))
+            });
         })
         .invoke_handler(tauri::generate_handler![
             commands::qrtz_invoke,
