@@ -1,7 +1,7 @@
 /**
  * Shared talk cleanup vectors (spec/vectors/talk/cleanup.json). The Rust talk service runs the same file
  * (crates/qrtz-talk/tests/vectors.rs), so both cleanups agree byte for byte. TS is the oracle:
- * `QRTZ_VECTORS_UPDATE=1 npx vitest run cleanup.vectors` recomputes every `expect`.
+ * `QRTZ_VECTORS_UPDATE=1 bunx vitest run cleanup.vectors` recomputes every `expect`.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

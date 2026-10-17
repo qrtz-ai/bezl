@@ -14,11 +14,11 @@ bundler signs and notarizes when Apple credentials are in the environment.
 ## Cut a release
 
 ```sh
-npm ci && npm run check && npm run check:rust
-npm run build:helper                               # Swift helper → src-tauri/binaries/qrtz-helper-<target>
+bun install --frozen-lockfile && bun run check && bun run check:rust
+bun run build:helper                               # Swift helper → src-tauri/binaries/qrtz-helper-<target>
 export APPLE_SIGNING_IDENTITY="Developer ID Application: Jared Grimes (TEAMID1234)"
 export QRTZ_SPEECH_URL=… QRTZ_SPEECH_KEY_ID=… QRTZ_SPEECH_KEY=… QRTZ_SPEECH_ROOT_KEY_ID=… QRTZ_SPEECH_ROOT_KEY=…
-npm run make                                       # tauri build → .app + .dmg under the cargo target dir
+bun run make                                       # tauri build → .app + .dmg under the cargo target dir
 ```
 
 The speech module source (download URL and the two pinned Ed25519 keys, hex) is baked in at compile time

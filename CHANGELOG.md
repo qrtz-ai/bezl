@@ -5,6 +5,8 @@
 - **Electron is gone (ADR 0061):** qrtz is one Tauri 2 app with the Rust core. `apps/desktop` is the Tauri app (the renderer and sub-app manifests moved in); the Electron main process, worker, Forge packaging, Electron e2e suite and its scripts are deleted (last at `c6723c4`). Rust is the oracle for the shared vectors and scenarios under `spec/`. Libraries, backups and `talk.json` from the Electron build open unchanged.
 - **Live transcript from the speech module in recordings (step 9, ADR 0046 §9.4):** each recording part runs its own module session attached to the helper's capture; its words are the live transcript, and without an installed module the part records audio and shows speech unavailable.
 - **Chat never sees a meeting pending delete (N90/N93, ADR 0060).**
+- **Talk AI cleanup in the Tauri build:** dictations are cleaned up by Claude Haiku 5.5 through OpenRouter when a key is set (never with local-only); otherwise by the on-device rules.
+- **bun replaces npm:** `bun install && bun start`. `bun.lock`, bun workspaces; no separate Node needed.
 
 ## Unreleased: helper mux + TCC revocation (H5/H6)
 

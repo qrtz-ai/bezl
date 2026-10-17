@@ -3,13 +3,13 @@
 // Streams 16 kHz mono PCM16 at real time in 100 ms frames (like the helper), then reports:
 //   first partial  = audio start → first non-empty partial
 //   final          = end of audio → final text after the flush (Finalize / commit) — the "key-up → text" ASR cost
-// Usage: QRTZ_SECRET_ASR_DEEPGRAM=… QRTZ_SECRET_ASR_ELEVENLABS=… node scripts/bench-talk-asr.mjs speech16k.wav [runs]
+// Usage: QRTZ_SECRET_ASR_DEEPGRAM=… QRTZ_SECRET_ASR_ELEVENLABS=… bun scripts/bench-talk-asr.mjs speech16k.wav [runs]
 // (Convert any file: ffmpeg -i in.m4a -ar 16000 -ac 1 -c:a pcm_s16le speech16k.wav)
 import fs from 'node:fs';
 
 const [wavPath, runsArg] = process.argv.slice(2);
 if (!wavPath) {
-  console.error('usage: node scripts/bench-talk-asr.mjs speech16k.wav [runs]');
+  console.error('usage: bun scripts/bench-talk-asr.mjs speech16k.wav [runs]');
   process.exit(2);
 }
 const wav = fs.readFileSync(wavPath);

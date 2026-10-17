@@ -14,7 +14,7 @@
 //   - the message passed to toast(…) and React state setters (setMsg(…), setExported(…))
 // Shortcut glyphs keep their key (⌘K, ⌘⇧Space). Mark deliberate exceptions (sample user content in the
 // gallery) with a `check-titles-ignore` comment on the line or the line above.
-// Usage: node scripts/check-titles.mjs [--fix]
+// Usage: bun scripts/check-titles.mjs [--fix]
 import fs from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
@@ -217,7 +217,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   }
   if (report.length && !fix) {
     console.error(
-      `check-titles: ${report.length} UI string(s) not lowercase:\n  ${report.join('\n  ')}\n(run node scripts/check-titles.mjs --fix, or mark user content with check-titles-ignore)`,
+      `check-titles: ${report.length} UI string(s) not lowercase:\n  ${report.join('\n  ')}\n(run bun scripts/check-titles.mjs --fix, or mark user content with check-titles-ignore)`,
     );
     process.exit(1);
   }

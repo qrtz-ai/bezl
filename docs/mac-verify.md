@@ -7,9 +7,9 @@ Mark each box, and paste any compiler error or odd output into an issue (or just
 ## 0. Build (2 min)
 
 ```sh
-git pull && npm ci
-npm run build:helper           # swift build -c release --arch arm64 (fetches FluidAudio)
-npm run test:helper            # prints "29 Swift tests passed" (fails on 0)
+git pull && bun install --frozen-lockfile
+bun run build:helper           # swift build -c release --arch arm64 (fetches FluidAudio)
+bun run test:helper            # prints "29 Swift tests passed" (fails on 0)
 native/qrtz-helper/.build/release/qrtz-helper --version   # → 0.1.0
 ```
 
@@ -61,10 +61,10 @@ Play a YouTube talk and speak for a few seconds.
 ## 4. Inside the app (1 min)
 
 ```sh
-npm run package && open apps/desktop/out/qrtz-darwin-arm64/qrtz.app
+bun start                      # tauri dev (or `bun run make` for the .app + .dmg)
 ```
 
-- [ ] `Contents/Resources/qrtz-helper` exists in the .app, and Settings → System shows the helper as connected and not mock.
+- [ ] With `bun run make`, `Contents/MacOS/qrtz-helper` is in the .app. In either build, Settings → System shows the helper as connected and not mock.
 - [ ] Join a Zoom or Meet call. qrtz offers to record, the floating HUD appears (top right, above Zoom), ⌘⇧R stops recording, and a summary appears.
 
 ## Known gaps
@@ -81,7 +81,7 @@ npm run package && open apps/desktop/out/qrtz-darwin-arm64/qrtz.app
 - [ ] Input Monitoring / Accessibility denied: a `dictation.hotkey` error is logged and ⌘⇧Space still works.
 - [ ] Warm mic on: the first word isn't clipped (pre-roll), and the mic indicator stays on as expected.
 - [ ] With an ElevenLabs or Deepgram key: the history meta shows the engine. Pull the network mid-dictation and it shows "on-device (fallback)".
-- [ ] Record `talk latency` log lines (firstPartialMs, finalMs, insertedMs) for each engine, and run `node scripts/bench-talk-asr.mjs speech16k.wav 5`. Put the numbers in docs/research-talk.md §2.
+- [ ] Record `talk latency` log lines (firstPartialMs, finalMs, insertedMs) for each engine, and run `bun scripts/bench-talk-asr.mjs speech16k.wav 5`. Put the numbers in docs/research-talk.md §2.
 
 ## Helper mux + TCC revocation (H5/H6)
 

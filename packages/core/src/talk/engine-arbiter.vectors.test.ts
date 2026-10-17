@@ -1,7 +1,7 @@
 /**
  * Shared cloud/on-device arbitration vectors (spec/vectors/talk/engine-arbiter.json). The Rust talk service runs
  * the same file (crates/qrtz-talk/tests/vectors.rs). TS is the oracle:
- * `QRTZ_VECTORS_UPDATE=1 npx vitest run engine-arbiter.vectors` recomputes every `expect`.
+ * `QRTZ_VECTORS_UPDATE=1 bunx vitest run engine-arbiter.vectors` recomputes every `expect`.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

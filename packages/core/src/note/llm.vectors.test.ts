@@ -4,7 +4,7 @@
  * classification (N8: errors in a 200, HTML, bad shape), the reply parser and the on-device extractive fallback.
  * The Rust port (crates/qrtz-llm/tests/vectors.rs) runs the same files and must produce the same bytes.
  *
- * TS is the oracle: `QRTZ_VECTORS_UPDATE=1 npx vitest run llm.vectors` rewrites every `expect`.
+ * TS is the oracle: `QRTZ_VECTORS_UPDATE=1 bunx vitest run llm.vectors` rewrites every `expect`.
  */
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';

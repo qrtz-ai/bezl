@@ -1,7 +1,7 @@
 /**
  * Shared Markdown export vectors (Tauri migration): spec/vectors/export/markdown.json. TS is the oracle;
  * crates/qrtz-backup/tests/markdown_vectors.rs must produce the same filename and bytes for every case.
- * `QRTZ_VECTORS_UPDATE=1 npx vitest run markdown.vectors` rewrites the file from the cases below.
+ * `QRTZ_VECTORS_UPDATE=1 bunx vitest run markdown.vectors` rewrites the file from the cases below.
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

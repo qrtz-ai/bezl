@@ -13,9 +13,9 @@ The native macOS side of qrtz. Electron spawns it with `--stdio` and talks newli
 
 ```sh
 # macOS (Xcode 16+): release arm64 build that Forge bundles into Contents/Resources
-npm run build:helper
+bun run build:helper
 # any platform with a Swift 6 toolchain: builds the core + stub executable and runs the tests
-npm run test:helper
+bun run test:helper
 # macOS: dump the AX trees of open meeting windows as JSON (for new scraper fixtures)
 .build/release/qrtz-helper --dump-ax > meet.jsonl
 ```

@@ -16,12 +16,12 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
-    "@qrtz/core": "*",
-    "@qrtz/feature-gallery": "*",
-    "@qrtz/feature-note": "*",
-    "@qrtz/feature-settings": "*",
-    "@qrtz/feature-talk": "*",
-    "@qrtz/ui": "*",
+    "@qrtz/core": "workspace:*",
+    "@qrtz/feature-gallery": "workspace:*",
+    "@qrtz/feature-note": "workspace:*",
+    "@qrtz/feature-settings": "workspace:*",
+    "@qrtz/feature-talk": "workspace:*",
+    "@qrtz/ui": "workspace:*",
     "@tauri-apps/api": "^2.9.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -35,6 +35,6 @@
     "vite": "^8.3.4"
   },
   "engines": {
-    "node": ">=22.13.0"
+    "bun": ">=1.4.0"
   }
 }

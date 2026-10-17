@@ -1,5 +1,5 @@
 {
-  "$comment": "GENERATED from packages/core/src/ipc/samples.ts. Golden request/response per channel (zod output shape) + idle answers + event payloads. Do not edit; run `npm run gen:contracts`.",
+  "$comment": "GENERATED from packages/core/src/ipc/samples.ts. Golden request/response per channel (zod output shape) + idle answers + event payloads. Do not edit; run `bun run gen:contracts`.",
   "channels": {
     "app:get-info": {
       "request": null,

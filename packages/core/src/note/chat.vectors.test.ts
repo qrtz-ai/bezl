@@ -4,7 +4,7 @@
  * ChatAnswer: LLM answer trimmed, the 24-source cap, the 3-line extractive fallback with `llmError`). The Rust port
  * (crates/qrtz-llm/tests/n89.rs) runs the same file against a mock server and must produce the same bytes.
  *
- * TS is the oracle: `QRTZ_VECTORS_UPDATE=1 npx vitest run chat.vectors` rewrites every `expect`.
+ * TS is the oracle: `QRTZ_VECTORS_UPDATE=1 bunx vitest run chat.vectors` rewrites every `expect`.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

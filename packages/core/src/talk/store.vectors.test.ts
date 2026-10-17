@@ -1,7 +1,7 @@
 /**
  * Shared talk.json vectors (spec/vectors/talk/store.json): the Electron TalkService load/save rules, run by the Rust
  * talk store too (crates/qrtz-talk/tests/vectors.rs), so a history written by either build reads the same in the
- * other. TS is the oracle: `QRTZ_VECTORS_UPDATE=1 npx vitest run store.vectors`.
+ * other. TS is the oracle: `QRTZ_VECTORS_UPDATE=1 bunx vitest run store.vectors`.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

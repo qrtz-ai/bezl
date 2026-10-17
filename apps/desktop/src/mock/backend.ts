@@ -1,4 +1,4 @@
-// In-page mocked IPC backend for Playwright against the dev UI (and `npm run dev:mock`). It sits behind
+// In-page mocked IPC backend for Playwright against the dev UI (and `bun run dev:mock`). It sits behind
 // the same `TauriBridge` the real app uses, routes through the real TS router with the real manifests
 // (capability + zod checks), and plays a scripted meeting: start → streamed transcript (partials replaced by
 // finals) → stop → finalize/summary/index → done. Query params inject faults:

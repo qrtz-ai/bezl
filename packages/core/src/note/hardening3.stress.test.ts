@@ -1,5 +1,5 @@
 /**
- * Hardening cycle 3 stress scenarios (keep running on every `npm test`). See docs/hardening/LOG.md.
+ * Hardening cycle 3 stress scenarios (keep running on every `bun run test`). See docs/hardening/LOG.md.
  * LLM transport after a 200 (N8), OpenRouter error bodies, malformed model replies; search across one huge
  * meeting (N10); nested atomic blocks (N11); disk full / busy classified retryable (N13).
  */

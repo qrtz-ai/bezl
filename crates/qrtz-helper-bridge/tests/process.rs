@@ -321,7 +321,7 @@ async fn real_swift_helper_when_available() {
         Some(root().join("native/qrtz-helper/.build/release/qrtz-helper")),
     ];
     let Some(bin) = candidates.into_iter().flatten().find(|p| p.exists()) else {
-        eprintln!("SKIP: no Swift helper build (set QRTZ_HELPER_BIN or run npm run test:helper)");
+        eprintln!("SKIP: no Swift helper build (set QRTZ_HELPER_BIN or run bun run test:helper)");
         return;
     };
     let s = Supervisor::spawn(fast(), Arc::new(ProcessSpawn::helper(bin.clone())));

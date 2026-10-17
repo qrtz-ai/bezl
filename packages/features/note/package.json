@@ -10,8 +10,8 @@
     "./manifest": "./src/manifest.ts"
   },
   "dependencies": {
-    "@qrtz/core": "*",
-    "@qrtz/ui": "*"
+    "@qrtz/core": "workspace:*",
+    "@qrtz/ui": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19.0.0"

@@ -1,0 +1,9 @@
+[install]
+# Exact versions from bun.lock on CI and fresh clones.
+saveTextLockfile = true
+# npm-style hoisted node_modules (the packages rely on hoisting for react and @types across workspaces).
+linker = "hoisted"
+
+[run]
+# Run package bins (vite, vitest, tauri, tsc, oxlint) on bun, so a Mac needs no separate Node.
+bun = true

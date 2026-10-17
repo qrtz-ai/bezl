@@ -12,18 +12,18 @@ These screenshots come from the (now removed) Electron e2e suite on Linux with t
 
 ## Quickstart on a Mac
 
-Needs Apple Silicon, macOS 14.2 or later, Xcode 16 or later, Rust 1.90 (`rust-toolchain.toml`) and Node 22.13 or later.
+Needs Apple Silicon, macOS 14.2 or later, Xcode 16 or later, Rust 1.90 (`rust-toolchain.toml`) and [bun](https://bun.sh) 1.4 or later (no separate Node needed).
 
 ```sh
 git clone https://github.com/qrtz-ai/qrtz && cd qrtz
-npm ci
-npm run build:helper         # Swift helper (AX, audio capture), release arm64
-npm start                    # tauri dev: the Rust core + the React renderer with hot reload
+bun install
+bun run build:helper         # Swift helper (AX, audio capture), release arm64
+bun start                    # tauri dev: the Rust core + the React renderer with hot reload
 ```
 
 - **AI summaries:** add an OpenRouter key in onboarding or settings (stored in the Keychain), or set `QRTZ_SECRET_OPENROUTER`. Without a key, qrtz uses its on-device summarizer.
-- **Packaged app:** `npm run make` runs `tauri build` (`.app` + `.dmg`). Signing and notarization: [docs/release.md](docs/release.md).
-- **No Mac?** Everything except real capture runs on Linux with the Rust mock helper: `QRTZ_MOCK_HELPER=1 QRTZ_MOCK_SCENARIO=standup QRTZ_MOCK_SPEED=0.1 npm start`.
+- **Packaged app:** `bun run make` runs `tauri build` (`.app` + `.dmg`). Signing and notarization: [docs/release.md](docs/release.md).
+- **No Mac?** Everything except real capture runs on Linux with the Rust mock helper: `QRTZ_MOCK_HELPER=1 QRTZ_MOCK_SCENARIO=standup QRTZ_MOCK_SPEED=0.1 bun start`.
 
 ## What it does
 
@@ -52,14 +52,14 @@ npm start                    # tauri dev: the Rust core + the React renderer wit
 └──────────────────────┘
 ```
 
-- **Monorepo:** Cargo workspace (`crates/*`, `apps/desktop/src-tauri`) and npm workspaces. `packages/core` holds the zod IPC contract (rendered to `contracts/*.json` by `npm run gen:contracts`, embedded by the Rust router). `packages/ui` is the design system (Geist Pixel, Feather icons, tokens, light and dark) and owns every visual component. Each sub-app (`packages/features/{note,talk,settings,gallery}`) declares its capabilities and only composes `@qrtz/ui`. `apps/desktop` is the Tauri app and its renderer. `npm run lint` enforces the package boundaries, the type scale, lowercase UI text and no styling outside ui.
+- **Monorepo:** Cargo workspace (`crates/*`, `apps/desktop/src-tauri`) and bun workspaces (`bun.lock`, hoisted `node_modules`). `packages/core` holds the zod IPC contract (rendered to `contracts/*.json` by `bun run gen:contracts`, embedded by the Rust router). `packages/ui` is the design system (Geist Pixel, Feather icons, tokens, light and dark) and owns every visual component. Each sub-app (`packages/features/{note,talk,settings,gallery}`) declares its capabilities and only composes `@qrtz/ui`. `apps/desktop` is the Tauri app and its renderer. `bun run lint` enforces the package boundaries, the type scale, lowercase UI text and no styling outside ui.
 - **Shared spec:** `spec/` holds the JSON vectors, scenarios and fixtures; the Rust tests are the oracle (ADR 0061).
 - **Security:** strict CSP, capability-checked channels, a trusted-sender check on every command, secrets in the Keychain, dev knobs ignored in release builds (N87). See [docs/security.md](docs/security.md).
 - **Docs:** [architecture](docs/architecture.md) · [rust core api](docs/rust-core-api.md) · [migration status](docs/tauri-migration-status.md) · [design system](docs/design-system.md) · [release](docs/release.md) · [ADRs](docs/adr/)
 
 ## Status (2026-10-17)
 
-**Verified on Linux with the Rust mock helper:** `cargo test --workspace` (the Rust core, the shell, the app E2E through the real router and helper bridge), the Swift helper core (`swift test`, Foundation-only parts), vitest for the renderer packages, and the renderer Playwright suite against the mocked backend (`npm run e2e`). Parity E2E against the real Tauri app is in progress (docs/e2e-parity.md).
+**Verified on Linux with the Rust mock helper:** `cargo test --workspace` (the Rust core, the shell, the app E2E through the real router and helper bridge), the Swift helper core (`swift test`, Foundation-only parts), vitest for the renderer packages, and the renderer Playwright suite against the mocked backend (`bun run e2e`). Parity E2E against the real Tauri app is in progress (docs/e2e-parity.md).
 
 **Needs a Mac:** see the Mac-only list in [docs/tauri-migration-status.md](docs/tauri-migration-status.md) and [docs/mac-verify.md](docs/mac-verify.md).
 
@@ -75,13 +75,13 @@ npm start                    # tauri dev: the Rust core + the React renderer wit
 ## Commands
 
 ```sh
-npm start              # tauri dev
-npm run make           # tauri build (.app + .dmg on macOS)
-npm run check          # lint + typecheck + vitest
-npm run check:rust     # cargo fmt --check + clippy -D warnings + cargo test --workspace
-npm run gen:contracts  # re-render contracts/*.json from the zod contract
-npm run e2e            # renderer Playwright suite (mocked backend)
-npm run test:helper    # Swift XCTests
+bun start              # tauri dev
+bun run make           # tauri build (.app + .dmg on macOS)
+bun run check          # lint + typecheck + vitest
+bun run check:rust     # cargo fmt --check + clippy -D warnings + cargo test --workspace
+bun run gen:contracts  # re-render contracts/*.json from the zod contract
+bun run e2e            # renderer Playwright suite (mocked backend)
+bun run test:helper    # Swift XCTests
 ```
 
 ## How to add a sub app
@@ -97,14 +97,14 @@ npm run test:helper    # Swift XCTests
    ```
    Rename the view component to match.
 4. Wire it into the shell:
-   - Add `"@qrtz/feature-notes": "*"` to `apps/desktop/package.json` dependencies.
+   - Add `"@qrtz/feature-notes": "workspace:*"` to `apps/desktop/package.json` dependencies.
    - Add `{ "path": "../../packages/features/notes" }` to `apps/desktop/tsconfig.json` references.
    - Add the same path to the root `tsconfig.json`.
    - Add `notes` to the list in `apps/desktop/src/shell/subapps.ts`.
-5. Run `npm install && npm run check`. The new sub app appears in the bottom tabs.
+5. Run `bun install && bun run check`. The new sub app appears in the bottom tabs.
 
 If a sub app needs the backend, add a channel to `ipcContract` in
-`packages/core/src/ipc/contract.ts`, run `npm run gen:contracts`, and answer it in `crates/qrtz-app`
+`packages/core/src/ipc/contract.ts`, run `bun run gen:contracts`, and answer it in `crates/qrtz-app`
 (the port that owns it, see `crates/qrtz-app/src/ports.rs`).
 
 ## qrtz note (meeting recorder)
@@ -118,7 +118,7 @@ If a sub app needs the backend, add a channel to `ipcContract` in
 On Linux (and in tests) the Rust mock helper replaces the Swift helper. To watch a scripted meeting:
 
 ```sh
-QRTZ_MOCK_HELPER=1 QRTZ_MOCK_SCENARIO=standup QRTZ_MOCK_SPEED=0.1 npm start
+QRTZ_MOCK_HELPER=1 QRTZ_MOCK_SCENARIO=standup QRTZ_MOCK_SPEED=0.1 bun start
 ```
 
 The full flow is covered by `crates/qrtz-app/tests/` (boot, n83, note_speech, talk).

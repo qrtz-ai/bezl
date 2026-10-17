@@ -261,7 +261,7 @@ function Showcase({
                     </Text>
                   ))}
                 </Stack>
-                <Code block>npm run lint</Code>
+                <Code block>bun run lint</Code>
               </Stack>
             </div>
           </Section>

@@ -7,12 +7,11 @@ Each iteration is one pass of: **read, pick, build, verify, commit, push, log.**
    small (≤ ~30 min). If one is bigger, split it in PLAN.md first, then pick the first piece.
 3. **Build** only that task. Don't refactor unrelated code. Respect the boundary rules
    (`scripts/check-boundaries.mjs`).
-4. **Verify**, with all of these green from the repo root using Node ≥ 22.13
-   (on the Linux box: `export PATH=/tmp/node-v22.21.0-linux-x64/bin:$PATH`):
+4. **Verify**, with all of these green from the repo root using bun ≥ 1.4
    ```sh
-   npm run lint && npm run typecheck && npm test && npm run package
+   bun run lint && bun run typecheck && bun run test && bun run check:rust
    ```
-   Also run `npm run e2e` when shell/main/preload/IPC changed (it needs `xvfb-run` on Linux). When packaging, the worker or deps changed, also run `npm run smoke:packaged`, which checks embeddings in the packaged binary.
+   Also run `bun run e2e` when the renderer, the shell or the IPC contract changed.
    A task is done only when its **acceptance criteria** in PLAN.md hold.
 5. **Commit** with a message of the form `M<n>.<k>: <task>`. Push **straight to `main`**:
    no branches, no PRs, no GitHub Actions workflows (the token lacks workflow scope).
@@ -36,6 +35,6 @@ Each iteration is one pass of: **read, pick, build, verify, commit, push, log.**
 ## Swift helper checks (when native/ changes)
 
 - Linux toolchain (if missing): download `swift-6.1.2-RELEASE-ubuntu24.04.tar.gz` into /tmp and extract it there.
-- Then run `QRTZ_REQUIRE_SWIFT=1 npm run test:helper`. The script finds the /tmp toolchain on its own, fails if it is missing or if 0 XCTests ran, and prints "N Swift tests passed".
+- Then run `QRTZ_REQUIRE_SWIFT=1 bun run test:helper`. The script finds the /tmp toolchain on its own, fails if it is missing or if 0 XCTests ran, and prints "N Swift tests passed".
 - After that build, `packages/core/src/helper/swift-helper.test.ts` drives the real binary over stdio (it is skipped when there's no build).
 - Protocol changes must update `native/qrtz-helper/Fixtures/protocol/*.jsonl`. Both sides' tests enforce full coverage.

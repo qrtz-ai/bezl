@@ -1,5 +1,5 @@
 /**
- * Stress scenarios that keep running every `npm test` (hardening cycle 1).
+ * Stress scenarios that keep running every `bun run test` (hardening cycle 1).
  * Prefer unit/integration here; e2e harness ownership stays with Beve Bobs.
  */
 import { DatabaseSync } from 'node:sqlite';

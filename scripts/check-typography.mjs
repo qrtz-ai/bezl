@@ -1,8 +1,8 @@
-// Typography guard (part of `npm run lint`): outside packages/ui no raw font-family / font-size / font-weight /
+// Typography guard (part of `bun run lint`): outside packages/ui no raw font-family / font-size / font-weight /
 // line-height / letter-spacing (inline styles, CSS strings, or Text/Heading size/weight props). Use
 // <Text variant>, <Heading level>, <Label>, <Code>, <Link> or typeStyle() instead.
-//   node scripts/check-typography.mjs           → fail on violations
-//   node scripts/check-typography.mjs --audit   → distinct raw values per property, whole repo (incl. packages/ui)
+//   bun scripts/check-typography.mjs           → fail on violations
+//   bun scripts/check-typography.mjs --audit   → distinct raw values per property, whole repo (incl. packages/ui)
 import fs from 'node:fs';
 import path from 'node:path';
 

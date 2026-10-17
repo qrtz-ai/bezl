@@ -14,7 +14,7 @@ export default defineConfig({
     viewport: { width: 1100, height: 720 },
   },
   webServer: {
-    command: `npx vite --port ${port} --strictPort`,
+    command: `bunx --bun vite --port ${port} --strictPort`,
     cwd: '../apps/desktop',
     env: { VITE_QRTZ_MOCK_IPC: '1' },
     url: `http://localhost:${port}`,

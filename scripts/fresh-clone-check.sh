@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# Proves the repo builds and passes from scratch: fresh clone of HEAD, npm ci, lint, typecheck, test, package, e2e.
+# Proves the repo builds and passes from scratch: fresh clone of HEAD, bun install (frozen), lint, typecheck,
+# vitest, the renderer build and the Rust workspace tests.
 set -euo pipefail
 src="$(git rev-parse --show-toplevel)"
 dir="$(mktemp -d)"
 trap 'rm -rf "$dir"' EXIT
 git clone -q "${1:-$src}" "$dir/qrtz"
 cd "$dir/qrtz"
-npm ci
-npm run lint
-npx tsc -b
-npm test
-npm run package
-if command -v xvfb-run >/dev/null && [ "$(uname)" = Linux ]; then xvfb-run -a npm run e2e; else npm run e2e; fi
+bun install --frozen-lockfile
+bun run lint
+bun run typecheck
+bun run test
+bun run --cwd apps/desktop build
+cargo test --workspace
 echo "fresh-clone check passed ($(git rev-parse --short HEAD))"

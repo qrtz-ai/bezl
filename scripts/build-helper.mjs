@@ -1,7 +1,7 @@
 // Builds/tests native/qrtz-helper with SwiftPM.
-//   npm run build:helper  → macOS: release arm64 binary that the Tauri bundle ships in Contents/Resources. Elsewhere: skipped
+//   bun run build:helper  → macOS: release arm64 binary that the Tauri bundle ships in Contents/Resources. Elsewhere: skipped
 //                           (the app uses the TS mock helper).
-//   npm run test:helper   → `swift build && swift test` anywhere a Swift toolchain is on PATH (Linux builds the
+//   bun run test:helper   → `swift build && swift test` anywhere a Swift toolchain is on PATH (Linux builds the
 //                           Foundation-only core + stub executable; macOS builds everything). Skipped if no toolchain.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';

@@ -40,7 +40,7 @@ Use `Text variant=…`, `Heading level=…`, `Label`, `Code`/`Mono` and `Link`.
 ## Every visual abstraction lives in @qrtz/ui
 
 The shell (`apps/desktop/src/shell`) and feature packages compose `@qrtz/ui` and pass data and
-handlers only. `scripts/check-ui-purity.mjs` (part of `npm run lint`) fails outside `packages/ui` on:
+handlers only. `scripts/check-ui-purity.mjs` (part of `bun run lint`) fails outside `packages/ui` on:
 
 - `style=` or `className=` props
 - raw intrinsic JSX elements (`<div>`, `<span>`, `<button>`…); only `<option>`/`<optgroup>` are allowed

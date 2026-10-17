@@ -3,7 +3,7 @@
  * (crates/qrtz-lifecycle/tests/vectors.rs), so both implementations must agree on every transition, byte for byte
  * (exact JSON equality, not partial matches).
  *
- * TS is the oracle during the dual run: `QRTZ_VECTORS_UPDATE=1 npx vitest run lifecycle.vectors` recomputes every
+ * TS is the oracle during the dual run: `QRTZ_VECTORS_UPDATE=1 bunx vitest run lifecycle.vectors` recomputes every
  * `expect` from this implementation and rewrites the files. Add a scenario by writing its inputs with
  * `"expect": null` and running the update.
  */
