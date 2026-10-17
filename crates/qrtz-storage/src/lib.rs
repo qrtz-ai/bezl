@@ -18,6 +18,7 @@ mod lifecycle;
 mod migrate;
 mod notes;
 mod pending_deletes;
+pub mod recordings;
 mod row;
 
 pub use db::{Db, DbHealth, ImportHooks, ImportReport};

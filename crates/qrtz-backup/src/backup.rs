@@ -73,7 +73,8 @@ pub fn write_backup(o: &WriteBackup<'_>, progress: Progress<'_>) -> Result<Write
             continue;
         };
         let entry = format!("audio/{name}");
-        if is_safe_audio(&entry) && f.is_file() {
+        // N132: a regular file itself; a symlink under a recording's name would put its target in the zip.
+        if is_safe_audio(&entry) && qrtz_storage::recordings::is_regular(f) {
             entries.push((entry, f));
         }
     }
@@ -94,13 +95,27 @@ pub fn write_backup(o: &WriteBackup<'_>, progress: Progress<'_>) -> Result<Write
         let mut done = 0u64;
         let mut audio = 0u32;
         for (entry, path) in &entries {
-            let src = match File::open(path) {
-                Ok(f) => f,
-                // A recording removed since the listing (deleted meeting) is skipped, like TS `existsSync`.
-                Err(e) if e.kind() == io::ErrorKind::NotFound && entry != DB_ENTRY => continue,
+            let opened = if entry == DB_ENTRY {
+                File::open(path).and_then(|f| {
+                    let len = f.metadata()?.len();
+                    Ok((f, len))
+                })
+            } else {
+                // N132: the regular file that is there, never what a symlink swapped in since the listing points at.
+                qrtz_storage::recordings::open_regular(path)
+            };
+            let (src, len) = match opened {
+                Ok(x) => x,
+                // A recording removed since the listing (deleted meeting) is skipped, like TS `existsSync`; one that is
+                // no longer a regular file too.
+                Err(e)
+                    if entry != DB_ENTRY
+                        && matches!(e.kind(), io::ErrorKind::NotFound | io::ErrorKind::InvalidInput) =>
+                {
+                    continue
+                }
                 Err(e) => return Err(e.into()),
             };
-            let len = src.metadata()?.len();
             let opts = SimpleFileOptions::default()
                 .compression_method(if entry == DB_ENTRY {
                     CompressionMethod::Deflated
@@ -213,7 +228,7 @@ pub fn export_backup(o: &ExportBackup<'_>, progress: Progress<'_>) -> Result<Exp
         Ok(rd) => rd
             .filter_map(|e| e.ok())
             .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|x| x == "wav") && p.is_file())
+            .filter(|p| p.extension().is_some_and(|x| x == "wav") && qrtz_storage::recordings::is_regular(p))
             .collect(),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Vec::new(),
         Err(e) => return Err(e.into()),

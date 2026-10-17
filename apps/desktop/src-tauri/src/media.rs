@@ -50,10 +50,11 @@ pub fn serve(recordings: &Path, req: &Request<Vec<u8>>) -> Response<Vec<u8>> {
     if !valid_name(&name) {
         return status(StatusCode::FORBIDDEN);
     }
-    let Ok(mut f) = std::fs::File::open(recordings.join(&name)) else {
+    // N132 (ADR 0086): the regular file under that name, never a symlink's target, a FIFO (would block this
+    // thread for good) or a directory.
+    let Ok((mut f, len)) = qrtz_storage::recordings::open_regular(&recordings.join(&name)) else {
         return status(StatusCode::NOT_FOUND);
     };
-    let len = f.metadata().map(|m| m.len()).unwrap_or(0);
     serve_file(&mut f, len, req, MAX_CHUNK)
 }
 
@@ -227,5 +228,154 @@ mod tests {
         // The last bytes: a short tail chunk.
         let tail = serve(dir.path(), &req(Some(&format!("bytes={}-", len - 10))));
         assert_eq!(tail.body().len(), 10);
+    }
+
+    /// Hardening cycle 27 (N132, ADR 0086): what sits in the recordings dir under a recording's name is served only
+    /// when it is a regular file; traversal spellings and malformed ranges never panic or leave the directory.
+    #[cfg(unix)]
+    #[test]
+    fn only_a_regular_file_is_served_never_a_symlink_fifo_or_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let secret = outside.path().join("secret.txt");
+        std::fs::write(&secret, b"not audio").unwrap();
+        std::os::unix::fs::symlink(&secret, dir.path().join(ID)).unwrap();
+        let r = serve(dir.path(), &req(None));
+        assert_eq!(
+            r.status(),
+            StatusCode::NOT_FOUND,
+            "followed a symlink out of the recordings dir"
+        );
+        assert!(r.body().is_empty());
+        std::fs::remove_file(dir.path().join(ID)).unwrap();
+        std::fs::create_dir(dir.path().join(ID)).unwrap();
+        assert_eq!(serve(dir.path(), &req(None)).status(), StatusCode::NOT_FOUND);
+        std::fs::remove_dir(dir.path().join(ID)).unwrap();
+        // A FIFO: File::open would block until a writer came (the request thread, for good).
+        let fifo = dir.path().join(ID);
+        assert!(std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap()
+            .success());
+        let (tx, rx) = std::sync::mpsc::channel();
+        let d = dir.path().to_path_buf();
+        std::thread::spawn(move || {
+            let _ = tx.send(serve(&d, &req(None)).status());
+        });
+        assert_eq!(
+            rx.recv_timeout(std::time::Duration::from_secs(5))
+                .expect("blocked on a FIFO"),
+            StatusCode::NOT_FOUND
+        );
+    }
+
+    #[test]
+    fn traversal_spellings_are_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let inner = dir.path().join("rec");
+        std::fs::create_dir(&inner).unwrap();
+        std::fs::write(dir.path().join(ID), b"RIFF outside").unwrap();
+        for uri in [
+            format!("qrtz-media://rec/../{ID}"),
+            format!("qrtz-media://rec/..%2F{ID}"),
+            format!("qrtz-media://rec/x/../{ID}"),
+            format!("qrtz-media://rec/%2e%2e/{ID}"),
+            format!("qrtz-media://rec/.%2E/{ID}"),
+            format!("http://qrtz-media.localhost/rec/rec/../{ID}"),
+            format!(
+                "qrtz-media://rec/{}",
+                ID.replace('-', "%2D").replace(".wav", "%2Ewav")
+            ),
+            format!("qrtz-media://rec/{}", ID.to_uppercase()),
+            format!("qrtz-media://rec/{ID}%00"),
+            "qrtz-media://rec/".to_string(),
+        ] {
+            let r = serve(
+                &inner,
+                &Request::builder().uri(uri.as_str()).body(Vec::new()).unwrap(),
+            );
+            assert!(
+                matches!(r.status(), StatusCode::FORBIDDEN | StatusCode::NOT_FOUND),
+                "{uri}: {}",
+                r.status()
+            );
+            assert!(r.body().is_empty(), "{uri}");
+        }
+    }
+
+    #[test]
+    fn malformed_and_edge_ranges_never_panic_and_never_overrun() {
+        let len = 14u64;
+        for h in [
+            "bytes=",
+            "bytes=-",
+            "bytes=--1",
+            "bytes=a-b",
+            "bytes=5-3",
+            "bytes=-0",
+            "bytes=14-",
+            "bytes=18446744073709551615-",
+            "bytes=0-18446744073709551615",
+            "bytes=-18446744073709551616",
+            "bytes=0-1,2-3",
+            "items=0-1",
+            "Bytes=0-1",
+            "bytes= 0 - 1 ",
+            "bytes=+1-2",
+            "bytes=\u{0}",
+        ] {
+            if let Some((s, e)) = parse_range(h, len) {
+                assert!(s <= e && e < len, "{h}: {s}-{e}");
+            }
+        }
+        assert_eq!(
+            parse_range("bytes=-0", len),
+            None,
+            "a zero-length suffix is unsatisfiable"
+        );
+        assert_eq!(parse_range("bytes=0-0", len), Some((0, 0)));
+        assert_eq!(parse_range("bytes=-99", len), Some((0, 13)));
+        assert_eq!(parse_range("bytes=0-", 0), None);
+        // An empty file: a plain 200 with no body, and any range is 416 with `*/0`.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(ID), b"").unwrap();
+        let r = serve(dir.path(), &req(None));
+        assert_eq!(r.status(), StatusCode::OK);
+        assert!(r.body().is_empty());
+        let r = serve(dir.path(), &req(Some("bytes=0-")));
+        assert_eq!(r.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+        assert_eq!(r.headers()[header::CONTENT_RANGE], "bytes */0");
+    }
+
+    /// Seeking through a long (sparse) recording: every chunk stays inside the file and under the cap, the last one
+    /// ends at the last byte, and a range past the end is 416, never a short read turned into a 500.
+    #[test]
+    fn every_chunk_of_a_long_recording_stays_inside_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let len: u64 = 3 * 3600 * 16_000 * 2 * 2 + 44 + 3; // 3 h stereo + header + an odd tail
+        std::fs::File::create(dir.path().join(ID))
+            .unwrap()
+            .set_len(len)
+            .unwrap();
+        let mut at = 0u64;
+        let mut n = 0;
+        while at < len {
+            let r = serve(dir.path(), &req(Some(&format!("bytes={at}-"))));
+            assert_eq!(r.status(), StatusCode::PARTIAL_CONTENT, "at {at}");
+            let got = r.body().len() as u64;
+            assert!(got > 0 && got <= MAX_CHUNK);
+            assert_eq!(
+                r.headers()[header::CONTENT_RANGE],
+                format!("bytes {at}-{}/{len}", at + got - 1).as_str()
+            );
+            at += got * 11; // a seek every 11 chunks keeps the test fast
+            n += 1;
+        }
+        assert!(n > 10);
+        let last = serve(dir.path(), &req(Some(&format!("bytes={}-", len - 1))));
+        assert_eq!(last.body().len(), 1);
+        let past = serve(dir.path(), &req(Some(&format!("bytes={len}-"))));
+        assert_eq!(past.status(), StatusCode::RANGE_NOT_SATISFIABLE);
     }
 }
