@@ -8,6 +8,7 @@
 //! N77: audio write ends are `O_NONBLOCK`: a module that stops reading costs dropped frames (counted), never a
 //! blocked capture path. The event channel is bounded; a full channel fails the session instead of blocking the
 //! reader. Lines are bounded before allocation.
+#[cfg(target_os = "linux")]
 use crate::confine::Confinement;
 use crate::engine::{
     Channel, EngineInfo, EngineKind, FailReason, SessionSpec, SpeechEngine, SpeechEvent, SpeechSession,
@@ -71,16 +72,42 @@ pub struct ModuleProcess {
     pub confined: bool,
 }
 
+/// A close-on-exec pipe. Linux creates it atomically with `pipe2(O_CLOEXEC)`; macOS has no `pipe2`, so it uses
+/// `pipe()` + `FD_CLOEXEC` (the host never forks between the two calls without exec'ing through the spawner,
+/// which builds the child's fd table explicitly, so the window cannot leak these fds into a module).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))] // used by the macOS spawner once it lands
 fn pipe2() -> std::io::Result<(OwnedFd, OwnedFd)> {
     let mut fds = [0; 2];
-    // SAFETY: fds is valid for two ints.
-    if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } < 0 {
-        return Err(std::io::Error::last_os_error());
+    #[cfg(target_os = "linux")]
+    {
+        // SAFETY: fds is valid for two ints.
+        if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        // SAFETY: fds is valid for two ints.
+        if unsafe { libc::pipe(fds.as_mut_ptr()) } < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
     }
     // SAFETY: fresh fds we own.
-    Ok(unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) })
+    let pair = unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) };
+    #[cfg(not(target_os = "linux"))]
+    for fd in [&pair.0, &pair.1] {
+        // SAFETY: fcntl on an fd we own.
+        unsafe {
+            let f = libc::fcntl(fd.as_raw_fd(), libc::F_GETFD);
+            if f < 0 || libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, f | libc::FD_CLOEXEC) < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+        }
+    }
+    Ok(pair)
 }
 
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))] // used by the macOS spawner once it lands
 fn set_nonblocking(fd: RawFd) -> std::io::Result<()> {
     // SAFETY: fcntl on an fd we own.
     unsafe {
@@ -92,6 +119,7 @@ fn set_nonblocking(fd: RawFd) -> std::io::Result<()> {
     Ok(())
 }
 
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))] // used by the macOS spawner once it lands
 fn open_log(p: &std::path::Path) -> std::io::Result<std::fs::File> {
     use std::os::unix::fs::OpenOptionsExt;
     if let Some(d) = p.parent() {
