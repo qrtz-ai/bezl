@@ -1,6 +1,7 @@
 import { defineSubApp } from '@qrtz/core';
+import { manifest } from './manifest';
 
 export default defineSubApp({
-  manifest: { id: 'settings', name: 'Settings', icon: '⚙', order: 1000 },
+  manifest,
   load: () => import('./SettingsView'),
 });

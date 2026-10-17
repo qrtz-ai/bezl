@@ -1,6 +1,7 @@
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { ThemeProvider, Text, useTheme } from '@qrtz/ui';
 import { registry } from './subapps';
+import { SubAppHost } from './SubAppHost';
 
 function Sidebar({
   active,
@@ -25,6 +26,7 @@ function Sidebar({
       {registry.list().map(({ manifest }) => (
         <button
           key={manifest.id}
+          data-testid={`nav-${manifest.id}`}
           type="button"
           onClick={() => onSelect(manifest.id)}
           style={{
@@ -47,17 +49,14 @@ function Sidebar({
 export function App() {
   const first = registry.list()[0]?.manifest.id ?? '';
   const [active, setActive] = useState(first);
-  const View = useMemo(() => {
-    const app = registry.get(active);
-    return app ? lazy(app.load) : null;
-  }, [active]);
+  const app = registry.get(active);
   return (
     <ThemeProvider>
       <div style={{ display: 'flex', height: '100%' }}>
         <div className="drag-region" />
         <Sidebar active={active} onSelect={setActive} />
         <main style={{ flex: 1, padding: 32, overflow: 'auto' }}>
-          <Suspense fallback={null}>{View ? <View /> : null}</Suspense>
+          {app ? <SubAppHost app={app} /> : null}
         </main>
       </div>
     </ThemeProvider>

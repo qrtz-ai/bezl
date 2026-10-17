@@ -1,0 +1,36 @@
+# Security review checklist
+
+Status as of M0 (2026-10-16). Items marked ☐ are tracked in PLAN.md.
+
+## Renderer
+
+- ☑ `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`, `webSecurity: true`. The e2e test asserts there's no `require` in the renderer.
+- ☑ Strict CSP in `index.html` (`default-src 'self'; script-src 'self'`).
+- ☑ The preload exposes only `qrtzTransport.invoke/on`. There's no raw `ipcRenderer` and no Node APIs.
+- ☑ `window.open` is denied (https links go to the system browser), `will-navigate` is limited to the app origin, and `<webview>` is blocked.
+- ☑ All Chromium permission requests and checks are denied. Mic, screen and AX are owned by the native helper, not the renderer.
+- ☑ Renderer code (`src/shell`, features, ui) can't import `electron` or `node:*` (boundary script).
+
+## IPC
+
+- ☑ Every call passes through the zod envelope, then the channel and version check, then the capability check, then request validation, then the handler, then response validation.
+- ☑ The sender frame URL must be the app's own origin.
+- ☑ Errors are normalised to `AppError`. Internals aren't leaked, and `E_INTERNAL` is logged with its cause only in main.
+- ☑ Event subscriptions are capability-checked in main. Events go only to sub apps that are allowed to receive them.
+- ☐ Capability scoping is defence-in-depth among first-party, compiled-in sub apps that share one renderer. Third-party sub apps would need their own `WebContentsView` and session (future).
+
+## Secrets and config
+
+- ☑ Secrets use `safeStorage` (Keychain-backed on macOS). The file holds only ciphertext and is mode 0600.
+- ☑ On Linux, storing secrets is refused when the backend is `basic_text`.
+- ☑ Secret values never cross back to the renderer. `secrets:list` returns names only, and the logger redacts `*key*/*token*/*secret*` fields.
+- ☑ Config writes are zod-validated. Deep merge drops `__proto__`, `constructor` and `prototype` (tested).
+
+## Processes
+
+- ☑ Helper and worker run under a Supervisor with backoff, a crash-loop breaker and a heartbeat watchdog.
+- ☑ Helper stdout is parsed line by line with zod. Malformed lines are dropped and logged.
+- ☑ Electron fuses: RunAsNode off, NODE_OPTIONS off, `--inspect` off, ASAR integrity on, OnlyLoadAppFromAsar on, and cookie encryption on.
+- ☑ Crash reporting is local only (`uploadToServer: false`). The `CrashSink` hook is there for opt-in remote reporting.
+- ☐ Sign and notarize with the hardened runtime. Entitlements: `com.apple.security.device.audio-input` and screen capture usage strings (M4.7/M5.3).
+- ☐ Sign the helper binary with the same Team ID. The app verifies the helper's code signature before spawning it (M4.7).

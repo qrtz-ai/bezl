@@ -36,6 +36,12 @@ const config: ForgeConfig = {
           target: 'main',
         },
         {
+          // Electron utilityProcess: SQLite + heavy jobs.
+          entry: 'src/worker.ts',
+          config: 'vite.main.config.mts',
+          target: 'main',
+        },
+        {
           entry: 'src/preload.ts',
           config: 'vite.preload.config.mts',
           target: 'preload',

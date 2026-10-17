@@ -7,9 +7,18 @@
   },
   "include": ["src", "*.mts"],
   "references": [
-    { "path": "../../packages/core" },
-    { "path": "../../packages/ui" },
-    { "path": "../../packages/features/home" },
-    { "path": "../../packages/features/settings" }
-  ]
+    {
+      "path": "../../packages/core"
+    },
+    {
+      "path": "../../packages/ui"
+    },
+    {
+      "path": "../../packages/features/home"
+    },
+    {
+      "path": "../../packages/features/settings"
+    }
+  ],
+  "exclude": ["src/**/*.test.ts"]
 }

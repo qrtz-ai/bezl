@@ -1,27 +1,55 @@
 import type { ComponentType } from 'react';
+import { z } from 'zod';
+import { Capability, OsPermission } from './capabilities';
 
-/** Static description of a sub app. Kept serialisable so the shell can list
- * sub apps (sidebar, command palette) without mounting them. */
-export interface SubAppManifest {
-  /** Stable, unique, kebab-case id. Also used as the route segment. */
-  id: string;
-  name: string;
+export const SubAppManifest = z.object({
+  /** Stable, unique, kebab-case id; also the route segment and IPC identity. */
+  id: z.string().regex(/^[a-z][a-z0-9-]*$/, 'kebab-case id'),
+  name: z.string().min(1),
   /** Short glyph or emoji shown in the sidebar. */
-  icon: string;
-  /** Lower numbers sort first in the sidebar. */
-  order?: number;
+  icon: z.string().min(1),
+  /** Lower numbers sort first. */
+  order: z.number().optional(),
+  /** IPC capabilities this sub app may use. Least privilege: declare only what you call. */
+  capabilities: z.array(Capability).default([]),
+  /** macOS permissions this sub app needs (for onboarding). */
+  permissions: z.array(OsPermission).default([]),
+});
+export type SubAppManifest = z.infer<typeof SubAppManifest>;
+export type SubAppManifestInput = z.input<typeof SubAppManifest>;
+
+export interface SubAppLifecycle {
+  /** Called when the sub app becomes visible. Return a cleanup to run on deactivate. */
+  activate?: () => void | (() => void);
 }
 
-export interface SubApp {
+export interface SubApp extends SubAppLifecycle {
   manifest: SubAppManifest;
   /** Lazily loaded React entry, so sub apps are code-split. */
   load: () => Promise<{ default: ComponentType }>;
 }
 
-/** Identity helper that gives sub-app authors type checking. */
-export function defineSubApp(subApp: SubApp): SubApp {
-  if (!/^[a-z][a-z0-9-]*$/.test(subApp.manifest.id)) {
-    throw new Error(`Invalid sub app id "${subApp.manifest.id}"`);
-  }
-  return subApp;
+export interface SubAppInput extends SubAppLifecycle {
+  manifest: SubAppManifestInput;
+  load: SubApp['load'];
 }
+
+/** Validates the manifest and returns a typed sub app. Throws on invalid manifests. */
+export function defineSubApp(input: SubAppInput): SubApp {
+  const parsed = SubAppManifest.safeParse(input.manifest);
+  if (!parsed.success) {
+    throw new Error(
+      `Invalid sub app manifest "${String(input.manifest.id)}": ${parsed.error.message}`,
+    );
+  }
+  return { ...input, manifest: parsed.data };
+}
+
+/** Built-in identity for the shell itself. */
+export const SHELL_MANIFEST: SubAppManifest = {
+  id: 'shell',
+  name: 'qrtz',
+  icon: 'q',
+  capabilities: ['app.info', 'config.read', 'helper.status'],
+  permissions: [],
+};

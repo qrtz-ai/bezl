@@ -147,3 +147,6 @@ out/
 
 # TS project-reference build info / declarations
 **/dist-types/
+
+test-results/
+playwright-report/

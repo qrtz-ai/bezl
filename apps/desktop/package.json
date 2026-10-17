@@ -27,21 +27,22 @@
     "@electron-forge/plugin-vite": "^8.0.1",
     "@electron/fuses": "^2.1.3",
     "@types/electron-squirrel-startup": "^1.0.2",
-    "electron": "44.8.0",
-    "vite": "^8.3.4",
+    "@types/node": "^22.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.0.0",
-    "@types/node": "^22.0.0"
+    "electron": "44.8.0",
+    "vite": "^8.3.4"
   },
   "dependencies": {
-    "electron-squirrel-startup": "^1.0.1",
     "@qrtz/core": "*",
-    "@qrtz/ui": "*",
     "@qrtz/feature-home": "*",
     "@qrtz/feature-settings": "*",
+    "@qrtz/ui": "*",
+    "electron-squirrel-startup": "^1.0.1",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "zod": "^4.6.7"
   },
   "engines": {
     "node": ">=22.13.0"

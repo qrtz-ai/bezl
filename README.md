@@ -14,7 +14,9 @@ npm start          # run the desktop app (Vite HMR for the renderer)
 npm run lint       # oxlint + oxfmt check + workspace boundary check
 npm run lint:fix   # auto-fix lint/format
 npm run typecheck  # tsc -b across all workspace projects
-npm run check      # lint + typecheck
+npm test           # vitest unit tests
+npm run e2e        # Playwright Electron smoke test (run `npm run package` first; xvfb-run on Linux)
+npm run check      # lint + typecheck + test
 npm run package    # packaged app in apps/desktop/out/
 npm run make       # distributables in apps/desktop/out/make/ (.dmg + .zip on macOS)
 ```
@@ -23,6 +25,10 @@ npm run make       # distributables in apps/desktop/out/make/ (.dmg + .zip on ma
 > maker is skipped. Code signing and notarization aren't set up yet.
 
 ## Architecture
+
+Full plan: [PLAN.md](PLAN.md) · loop rules: [LOOP.md](LOOP.md) · log: [PROGRESS.md](PROGRESS.md) · [security](docs/security.md) · [research](docs/research-memo.md)
+
+**Process model:** main does orchestration and the validated IPC router. A supervised `utilityProcess` worker runs SQLite, migrations and heavy jobs. A supervised native Swift helper does AX scraping, audio capture and ASR, talking JSON-lines over stdio, with a TS mock on Linux and in tests.
 
 ```
 apps/

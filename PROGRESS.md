@@ -1,0 +1,22 @@
+# PROGRESS.md: iteration log
+
+Newest entries at the bottom. Times are in America/Los_Angeles (PT).
+
+## 2026-10-16: iteration 0 (setup and research)
+
+- Research recorded in `docs/research-memo.md` and `docs/design-system.md`.
+- Wrote PLAN.md, LOOP.md and this file.
+
+## 2026-10-16 ~17:15–17:35 PT: iteration 1 (M0 architecture hardening)
+
+- **Done:** M0.1–M0.8, M0.10 and M0.11.
+  - `@qrtz/core` now has: `AppError`, a structured logger with redaction, a versioned zod IPC contract, a router, a typed client and event bus, a sub-app manifest with capabilities and permissions, a Supervisor (backoff, breaker, heartbeat), the helper JSON-lines protocol and a mock, a config schema, a `SecretStore`, and a migration runner.
+  - Desktop main is split into `main/*`. The worker is a supervised utilityProcess using `node:sqlite` with FTS5. Secrets use safeStorage. There are crash hooks and security hardening.
+- **M0.9:** the error boundary and crash hooks are implemented. The e2e fallback test is still pending.
+- **Verified:** lint ✓, typecheck (tsc -b plus a test project) ✓, vitest 34/34 ✓, package ✓, e2e (Playwright, xvfb) ✓. The packaged binary boots and the worker starts.
+- **Bugs found and fixed along the way:**
+  - Vite stubbed `node:sqlite`, so it's now external.
+  - zod 4 rejects duplicate discriminators; the worker protocol now uses a union.
+  - `params` must be optional.
+- **Note:** Playwright can't drive the fused, packaged app (the inspect fuse is off, by design). The e2e runs the production `.vite` build on the stock Electron binary.
+- **Next:** M0.9 e2e test, then M1.1 (tokens).

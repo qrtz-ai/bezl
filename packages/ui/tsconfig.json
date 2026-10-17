@@ -1,6 +1,11 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "outDir": "dist-types", "rootDir": "src", "types": [] },
+  "compilerOptions": {
+    "outDir": "dist-types",
+    "rootDir": "src",
+    "types": []
+  },
   "include": ["src"],
-  "references": []
+  "references": [],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }
