@@ -168,8 +168,7 @@ pub struct Opts {
     pub talk: Option<Arc<dyn TalkPort>>,
     /// `QRTZ_TALK_LLM=fake|hang` (`DevKnobs::talk_llm`).
     pub talk_llm: Option<String>,
-    /// `QRTZ_TALK_CLOUD=echo|fail` (Electron's mock cloud engine). Not wired: the Tauri talk wiring has no such
-    /// knob yet (docs/e2e-parity.md "Production changes"); the tests that set it are `#[ignore]`d.
+    /// `QRTZ_TALK_CLOUD=echo|fail` (`DevKnobs::talk_cloud`): the cloud talk engines are `qrtz_talk::mock::MockCloud`.
     pub talk_cloud: Option<String>,
 }
 impl Default for Opts {
@@ -284,6 +283,7 @@ impl App {
                 retry_scale: Some(o.retry_scale),
                 llm_base_url: o.llm_base,
                 talk_llm: o.talk_llm,
+                talk_cloud: o.talk_cloud,
                 ..Default::default()
             },
         })

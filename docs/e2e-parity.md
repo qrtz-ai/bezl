@@ -61,7 +61,7 @@ Scenarios that split (backend + renderer) have one row per half.
 | 34  | talk: live streaming text, pill window, cleanup + dictionary, insert, history, latency                         | partials grow; dictionary term; AI cleanup; insert via AX; history entry with latency; copy; delete                                                          | `e2e_talk.rs` (pill window itself: renderer)                                                                                  | ported                                       |
 | 35  | talk: cleanup timeout falls back to on-device rules                                                            | hanging cleanup LLM → rules cleanup ("cue arts" from dictionary), cleanupMs ≥ 800                                                                            | `talk.rs` (Bobs, 1b0ed37)                                                                                                     | ported                                       |
 | 36  | talk: insertion falls back to paste, and to the clipboard when nothing can insert                              | `insert.result` paste → `insert: paste`; fail → copied to clipboard                                                                                          | `e2e_talk.rs`                                                                                                                 | ported                                       |
-| 37  | talk: cloud engine primary, automatic failover to on-device when the stream dies                               | cloud stream → engine cloud, failover false; dead stream → on-device (fallback)                                                                              | `e2e_talk.rs` (`#[ignore]`)                                                                                                   | needs production change (P1)                 |
+| 37  | talk: cloud engine primary, automatic failover to on-device when the stream dies                               | cloud stream → engine cloud, failover false; dead stream → on-device (fallback)                                                                              | `e2e_talk.rs` (`QRTZ_TALK_CLOUD` → `DevKnobs::talk_cloud`, `4792e36`)                                                         | ported                                       |
 | 38  | talk: settings has a toggle for every automatic behavior                                                       | every talk toggle in settings; show-pill off → no pill window                                                                                                | `e2e_talk.rs` + `e2e-tauri/screens.spec.ts` (every talk toggle present and writes config)                                     | ported (backend + renderer)                  |
 | 39  | themes: dark theme: every view renders, is screenshotted and axe-clean                                         | screenshots + axe per view                                                                                                                                   | `e2e-tauri/screens.spec.ts` (dark theme: every view, screenshot + axe)                                                        | ported (renderer)                            |
 | 40  | themes: light theme: every view renders, is screenshotted and axe-clean                                        | screenshots + axe per view                                                                                                                                   | `e2e-tauri/screens.spec.ts` (light theme: every view, screenshot + axe)                                                       | ported (renderer)                            |
@@ -78,15 +78,12 @@ Scenarios that split (backend + renderer) have one row per half.
 
 ## Production changes needed (for Bobs)
 
-- **P1 (row 37): a `QRTZ_TALK_CLOUD=echo|fail` dev knob.** Electron's talk E2E ran the cloud engine against a mock
-  stream; the Tauri talk wiring hardcodes `qrtz_talk::ws::TungsteniteConnector` (`crates/qrtz-app/src/talk.rs`
-  `talk_service`) and `DevKnobs` has no cloud knob. Change: add `DevKnobs::talk_cloud: Option<String>` (read from
-  `QRTZ_TALK_CLOUD`, debug builds / `QRTZ_ALLOW_DEV_KNOBS=1` only, like the other knobs, N87), pass it through
-  `TalkWiring`, and use `qrtz_talk::mock::MockCloud::new().with(engine, MockMode::Echo | MockMode::Refuse)` as the
-  connector when set. Then wire `Opts::talk_cloud` in `tests/e2e_support/mod.rs` to it (one line) and drop the
-  `#[ignore]` on `e2e_talk.rs::talk_cloud_engine_primary_with_automatic_failover_to_on_device_when_the_stream_dies`.
-  The failover logic itself is already covered in `crates/qrtz-talk/tests/dictation.rs`; this row is the app-level
-  wiring.
+None open.
+
+- **P1 (row 37), done in `4792e36`:** `DevKnobs::talk_cloud` (`QRTZ_TALK_CLOUD=echo|fail`, debug builds or
+  `QRTZ_ALLOW_DEV_KNOBS=1`) → `TalkWiring.cloud` → `qrtz_talk::mock::MockCloud` as the talk connector. The harness
+  passes `Opts::talk_cloud` through it. The scripted helper now streams `dictation.audio` frames when the host's
+  `dictation.configure` asks for `streamAudio`, as the TS mock did, so the cloud mock has audio to echo.
 
 Notes (no change needed for parity):
 
@@ -98,10 +95,12 @@ Notes (no change needed for parity):
 
 ## Summary
 
+Phase 5 is done: every row has an equivalent.
+
 - 41 Playwright scenarios (40 rows; the theme spec is two).
-- **Ported (backend, green Rust test):** 1–7, 9–11, 14–28, 31–36 (row 35 by Bobs in `tests/talk.rs`).
-- **Backend ported, renderer half moves with phase 6:** 8 (HUD), 13 (first paint), 30 (palette/gallery), 38
-  (settings UI, pill window).
-- **Renderer only, moves with phase 6:** 12 (axe), 29 (walkthrough screenshots), 39, 40 (themes).
-- **Needs production change:** 37 (P1 above), test written and `#[ignore]`d.
+- **Backend only (Rust, `crates/qrtz-app/tests/`):** 1–7, 9–11, 14–28, 31–37 (row 35 by Bobs in `tests/talk.rs`).
+- **Backend + renderer:** 8 (HUD), 13 (boot budget + first paint), 30 (palette/gallery), 38 (settings, pill),
+  with the renderer half in `e2e-tauri/screens.spec.ts` (`7b2bb2e`).
+- **Renderer only (`e2e-tauri/screens.spec.ts`):** 12 (axe), 29 (walkthrough), 39, 40 (themes).
+- **Not covered:** the Linux tray part of row 29.
 - Every vitest flow/scenario file that drove the Electron main process has a Rust equivalent (table above).

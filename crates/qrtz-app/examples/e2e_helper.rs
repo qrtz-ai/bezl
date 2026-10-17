@@ -213,6 +213,7 @@ fn main() {
             .collect(),
     ));
     let recording = Arc::new(AtomicBool::new(false));
+    let stream_audio = AtomicBool::new(false);
     let paused = Arc::new(AtomicBool::new(false));
     let generation = Arc::new(AtomicU64::new(0));
     // The live dictation: (id, words heard, started).
@@ -429,7 +430,8 @@ fn main() {
             "recording.resume" => paused.store(false, Ordering::SeqCst),
             "speech.attach" => out.say(json!({"type": "speech.attach.rejected", "sessionId": msg["sessionId"],
                                               "reason": "unsupported"})),
-            "dictation.configure" => {}
+            // `streamAudio`: the host runs a cloud engine and wants the mic as `dictation.audio` frames (TS mock dictCfg).
+            "dictation.configure" => stream_audio.store(msg["streamAudio"] == true, Ordering::SeqCst),
             "dictation.start" => {
                 let id = msg["id"].as_str().unwrap_or_default().to_owned();
                 if let Some((cur, _, _)) = dict.lock().unwrap().as_ref() {
@@ -447,6 +449,7 @@ fn main() {
                 *dict.lock().unwrap() = Some((id.clone(), 0, Instant::now()));
                 out.say(json!({"type": "dictation.started", "id": id, "preRollMs": 0}));
                 let (out, dict, dict_gen, words) = (out.clone(), dict.clone(), dict_gen.clone(), words.clone());
+                let stream = stream_audio.load(Ordering::SeqCst);
                 std::thread::spawn(move || {
                     for i in 1..=words.len() {
                         std::thread::sleep(Duration::from_millis(step_ms));
@@ -460,6 +463,9 @@ fn main() {
                         out.say(json!({"type": "dictation.asr", "id": id, "event": {"kind": "partial",
                                        "utteranceId": format!("{id}-1"), "startMs": 0, "text": words[..i].join(" ")}}));
                         out.say(json!({"type": "dictation.level", "rms": 0.3 + 0.5 * (i as f64).sin().abs()}));
+                        if stream {
+                            out.say(json!({"type": "dictation.audio", "id": id, "seq": i - 1, "pcm16": "AAAAAAAAAAA="}));
+                        }
                     }
                 });
             }

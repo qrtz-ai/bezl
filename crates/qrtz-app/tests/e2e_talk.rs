@@ -122,7 +122,6 @@ async fn talk_insertion_falls_back_to_paste_and_to_the_clipboard_when_nothing_ca
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "needs: a QRTZ_TALK_CLOUD=echo|fail dev knob (DevKnobs::talk_cloud → qrtz_talk::mock::MockCloud as the talk_service connector), docs/e2e-parity.md Production changes"]
 async fn talk_cloud_engine_primary_with_automatic_failover_to_on_device_when_the_stream_dies() {
     let tmp = tempfile::tempdir().unwrap();
     let a = App::launch(
