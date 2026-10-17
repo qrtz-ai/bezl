@@ -37,6 +37,8 @@ export function Dialog({
     if (!open) return;
     const prev = document.activeElement as HTMLElement | null;
     const onKey = (e: KeyboardEvent) => {
+      // A sheet left open in a hidden (inert) sub app must not take Escape from the visible one.
+      if (ref.current?.closest('[inert]')) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         onClose();

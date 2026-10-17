@@ -3,11 +3,17 @@ import {
   lazy,
   Suspense,
   useEffect,
-  useMemo,
+  type ComponentType,
+  type LazyExoticComponent,
   type ReactNode,
 } from 'react';
-import { createClient, type QrtzTransport, type SubApp } from '@qrtz/core';
-import { Button, Stack, Text } from '@qrtz/ui';
+import {
+  createClient,
+  type QrtzClient,
+  type QrtzTransport,
+  type SubApp,
+} from '@qrtz/core';
+import { Button, KeepAlive, Stack, Text } from '@qrtz/ui';
 import { QrtzClientProvider } from '@qrtz/core/react';
 
 export const noTransport: QrtzTransport = {
@@ -55,26 +61,55 @@ class SubAppErrorBoundary extends Component<
   }
 }
 
-/** Mounts one sub app with its own scoped IPC client, error boundary and lifecycle. */
-export function SubAppHost({ app }: { app: SubApp }) {
-  const View = useMemo(() => lazy(app.load), [app]);
-  const client = useMemo(
-    () => createClient(window.qrtzTransport ?? noTransport, app.manifest.id),
-    [app],
-  );
+// One lazy view and one client per sub app id for the life of the window: a fresh `lazy()` on every
+// render would suspend (blank frame) and remount the whole sub app even when its module is cached.
+const views = new Map<string, LazyExoticComponent<ComponentType>>();
+const clients = new Map<string, QrtzClient>();
+const viewFor = (app: SubApp) => {
+  let v = views.get(app.manifest.id);
+  if (!v) views.set(app.manifest.id, (v = lazy(app.load)));
+  return v;
+};
+const clientFor = (app: SubApp) => {
+  let c = clients.get(app.manifest.id);
+  if (!c)
+    clients.set(
+      app.manifest.id,
+      (c = createClient(window.qrtzTransport ?? noTransport, app.manifest.id)),
+    );
+  return c;
+};
+
+/**
+ * Mounts one sub app with its own scoped IPC client, error boundary and lifecycle. The shell keeps a
+ * visited sub app mounted while another is shown: `active={false}` hides it (`hidden`, `inert`,
+ * `aria-hidden`) and runs its `activate()` cleanup, since activate is per visible session.
+ */
+export function SubAppHost({
+  app,
+  active = true,
+}: {
+  app: SubApp;
+  active?: boolean;
+}) {
+  const View = viewFor(app);
+  const client = clientFor(app);
   useEffect(() => {
+    if (!active) return;
     const cleanup = app.activate?.();
     return () => {
       if (typeof cleanup === 'function') cleanup();
     };
-  }, [app]);
+  }, [app, active]);
   return (
-    <QrtzClientProvider client={client}>
-      <SubAppErrorBoundary key={app.manifest.id} name={app.manifest.name}>
-        <Suspense fallback={null}>
-          <View />
-        </Suspense>
-      </SubAppErrorBoundary>
-    </QrtzClientProvider>
+    <KeepAlive active={active} fill data-subapp={app.manifest.id}>
+      <QrtzClientProvider client={client}>
+        <SubAppErrorBoundary key={app.manifest.id} name={app.manifest.name}>
+          <Suspense fallback={null}>
+            <View />
+          </Suspense>
+        </SubAppErrorBoundary>
+      </QrtzClientProvider>
+    </KeepAlive>
   );
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { startTransition, useCallback, useEffect, useState } from 'react';
 import { AppFrame, TabBar, ThemeProvider, ToastProvider } from '@qrtz/ui';
 import { Palette } from './Palette';
 import { onNavigateRequest } from '@qrtz/core';
@@ -10,7 +10,18 @@ import { useOnboarded } from './useOnboarded';
 
 export function App() {
   const first = registry.list()[0]?.manifest.id ?? '';
-  const [active, setActive] = useState(first);
+  const [active, setActiveNow] = useState(first);
+  // Sub apps mount on first visit and then stay mounted (hidden) so switching back is instant.
+  const [visited, setVisited] = useState<ReadonlySet<string>>(
+    () => new Set([first]),
+  );
+  // A transition keeps the current tab on screen while a first visit's lazy module loads.
+  const setActive = useCallback((id: string) => {
+    startTransition(() => {
+      setActiveNow(id);
+      setVisited((v) => (v.has(id) ? v : new Set(v).add(id)));
+    });
+  }, []);
   const [palette, setPalette] = useState(false);
   const closePalette = useCallback(() => setPalette(false), []);
   useEffect(() => {
@@ -23,10 +34,9 @@ export function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
-  useEffect(() => onNavigateRequest((r) => setActive(r.app)), []);
+  useEffect(() => onNavigateRequest((r) => setActive(r.app)), [setActive]);
   const theme = useConfigTheme();
   const [onboarded, setOnboarded] = useOnboarded();
-  const app = registry.get(active);
   if (onboarded === false)
     return (
       <ThemeProvider mode={theme}>
@@ -51,7 +61,16 @@ export function App() {
             />
           }
         >
-          {app ? <SubAppHost app={app} /> : null}
+          {registry
+            .list()
+            .filter((a) => visited.has(a.manifest.id))
+            .map((a) => (
+              <SubAppHost
+                key={a.manifest.id}
+                app={a}
+                active={a.manifest.id === active}
+              />
+            ))}
         </AppFrame>
       </ToastProvider>
     </ThemeProvider>

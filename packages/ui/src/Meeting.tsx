@@ -513,7 +513,8 @@ export function ActionMenu({
     const close = (e: MouseEvent) => {
       if (!ref.current?.contains(e.target as Node)) setOpen(false);
     };
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    const esc = (e: KeyboardEvent) =>
+      e.key === 'Escape' && !ref.current?.closest('[inert]') && setOpen(false);
     window.addEventListener('mousedown', close);
     window.addEventListener('keydown', esc);
     return () => {

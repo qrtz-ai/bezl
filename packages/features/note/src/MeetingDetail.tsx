@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   ActionMenu,
   AudioPlayer,
@@ -12,6 +19,7 @@ import {
   EmptyState,
   Heading,
   IconButton,
+  KeepAlive,
   Select,
   Spinner,
   Stack,
@@ -41,6 +49,8 @@ import {
   useSession,
 } from './useRecording';
 
+type Tab = 'summary' | 'notes' | 'transcript';
+
 export function MeetingDetail({
   id,
   onDelete,
@@ -60,9 +70,19 @@ export function MeetingDetail({
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
   // The transcript is front and center: it is the default view during and after a recording.
-  const [tab, setTab] = useState<'summary' | 'notes' | 'transcript'>(
-    'transcript',
-  );
+  const [tab, setTab] = useState<Tab>('transcript');
+  // Panels mount on first view and then stay mounted (hidden), so switching tabs never refetches notes,
+  // reloads the audio or shows an empty frame.
+  const [seen, setSeen] = useState<ReadonlySet<Tab>>(() => new Set([tab]));
+  useEffect(() => {
+    setSeen((s) => (s.has(tab) ? s : new Set(s).add(tab)));
+  }, [tab]);
+  const panel = (p: Tab, node: ReactNode) =>
+    p === tab || seen.has(p) ? (
+      <KeepAlive role="tabpanel" data-panel={p} active={p === tab}>
+        {node}
+      </KeepAlive>
+    ) : null;
   const session = useSession();
   const isLive =
     session.meetingId === id &&
@@ -313,9 +333,9 @@ export function MeetingDetail({
         value={tab}
         onChange={setTab}
       />
-      {tab === 'notes' ? (
-        <Notes meetingId={id} />
-      ) : tab === 'summary' ? (
+      {panel('notes', <Notes meetingId={id} />)}
+      {panel(
+        'summary',
         summary ? (
           <SummaryBlock
             summary={summary.summary}
@@ -406,8 +426,10 @@ export function MeetingDetail({
                 }
               : {})}
           />
-        )
-      ) : (
+        ),
+      )}
+      {panel(
+        'transcript',
         <Stack gap={3}>
           {audioName && meeting.status === 'done' ? (
             <AudioPlayer
@@ -421,7 +443,7 @@ export function MeetingDetail({
               <Segment key={s.id} s={s} active={i === current} onSeek={seek} />
             ))}
           </TranscriptList>
-        </Stack>
+        </Stack>,
       )}
     </Stack>
   );

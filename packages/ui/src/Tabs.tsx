@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { typeStyle } from './tokens';
 import { useTheme } from './theme';
 
@@ -45,6 +46,40 @@ export function Tabs<T extends string>({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * A view that stays mounted while another one is shown (tab panels, the shell's sub apps), so switching
+ * back never remounts, refetches or flashes. Inactive: `hidden`, `inert` (no focus, clicks or the
+ * Escape handlers of sheets inside it) and `aria-hidden`.
+ */
+export function KeepAlive({
+  active,
+  fill,
+  role,
+  children,
+  ...data
+}: {
+  active: boolean;
+  /** Take the parent's full height (a sub app). */
+  fill?: boolean;
+  role?: 'tabpanel';
+  children: ReactNode;
+} & { [k: `data-${string}`]: string }) {
+  return (
+    <div
+      {...data}
+      role={role}
+      hidden={!active}
+      inert={!active}
+      aria-hidden={active ? undefined : true}
+      style={
+        active ? (fill ? { height: '100%' } : undefined) : { display: 'none' }
+      }
+    >
+      {children}
     </div>
   );
 }
