@@ -19,6 +19,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::AbortHandle;
 
 use super::api::*;
+use crate::pipeline::max_retry_delay;
 use crate::transcript::TranscriptAssembler;
 use crate::{
     can_start, initial_state, is_capturing, new_pipeline, next_runnable_step, pipeline_settled,
@@ -319,6 +320,8 @@ struct State {
     t_sent: HashSet<String>,
     pipelines: HashMap<String, PipelineState>,
     pipeline_timers: HashMap<String, AbortHandle>,
+    /// `{id}:{step}:{attempts}` whose backoff timer already fired (N12: never wait on the wall clock twice).
+    backoff_served: HashSet<String>,
     pipeline_running: HashSet<String>,
     start_in_flight: bool,
     helper_health: HelperHealth,
@@ -356,6 +359,7 @@ impl State {
             t_sent: HashSet::new(),
             pipelines: HashMap::new(),
             pipeline_timers: HashMap::new(),
+            backoff_served: HashSet::new(),
             pipeline_running: HashSet::new(),
             start_in_flight: false,
             helper_health: HelperHealth::Ok,
@@ -1567,12 +1571,18 @@ impl Shared {
             let Some(step) = next_runnable_step(&p) else { break };
             let cur = p.steps.get(step);
             let now = self.now();
-            if cur.status == StepStatus::Retrying {
+            // Wait out the backoff (in memory; a restart resumes immediately). `next_retry_at` is wall clock, so
+            // the wait is capped at the longest delay this attempt could have drawn, and once that timer fired the
+            // step runs: a clock that jumped back must not stall it for the size of the jump (N12).
+            let backoff = format!("{id}:{}:{}", step.as_str(), cur.attempts);
+            let served = self.lock().backoff_served.remove(&backoff);
+            if !served && cur.status == StepStatus::Retrying {
                 if let Some(at) = cur.next_retry_at.filter(|at| *at != 0 && *at > now) {
-                    // Wait out the backoff (in memory; a restart resumes immediately).
+                    let cap = max_retry_delay(&policies::for_step(step), cur.attempts, self.scale()) as i64;
                     let mid = id.to_string();
-                    let t = self.set_timeout((at - now) as f64, move |sh| {
+                    let t = self.set_timeout((at - now).min(cap) as f64, move |sh| {
                         sh.lock().pipeline_timers.remove(&mid);
+                        sh.lock().backoff_served.insert(backoff);
                         let s2 = sh.clone();
                         sh.spawn(async move { s2.run_pipeline(mid).await });
                     });

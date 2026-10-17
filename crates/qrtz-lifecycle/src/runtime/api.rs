@@ -332,18 +332,27 @@ impl Clock for SystemClock {
 pub struct TokioClock {
     base: EpochMs,
     start: tokio::time::Instant,
+    /// Wall-clock steps (NTP, VM resume, manual change); timers are unaffected, like a real wall clock.
+    skew: std::sync::atomic::AtomicI64,
 }
 impl TokioClock {
     pub fn new(base: EpochMs) -> Self {
         TokioClock {
             base,
             start: tokio::time::Instant::now(),
+            skew: std::sync::atomic::AtomicI64::new(0),
         }
+    }
+    /// Steps the wall clock by `ms` (negative = backwards) without moving tokio time (tests, scenario `clockJump`).
+    pub fn jump(&self, ms: i64) {
+        self.skew.fetch_add(ms, std::sync::atomic::Ordering::SeqCst);
     }
 }
 impl Clock for TokioClock {
     fn now_ms(&self) -> EpochMs {
-        self.base + (tokio::time::Instant::now() - self.start).as_millis() as i64
+        self.base
+            + (tokio::time::Instant::now() - self.start).as_millis() as i64
+            + self.skew.load(std::sync::atomic::Ordering::SeqCst)
     }
 }
 

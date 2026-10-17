@@ -21,8 +21,8 @@ pub use arbiter::{
 };
 
 pub use pipeline::{
-    new_pipeline, next_runnable_step, pipeline_settled, pipeline_step, pipeline_usable, progress_label,
-    resume_after_restart, retry_delay, to_view, RetryPolicy, StepPatch, STEP_ORDER,
+    max_retry_delay, new_pipeline, next_runnable_step, pipeline_settled, pipeline_step, pipeline_usable,
+    progress_label, resume_after_restart, retry_delay, to_view, RetryPolicy, StepPatch, STEP_ORDER,
 };
 pub use qrtz_model as model;
 pub use session::{can_start, initial_state, is_capturing, reduce, Machine, CAPTURING};

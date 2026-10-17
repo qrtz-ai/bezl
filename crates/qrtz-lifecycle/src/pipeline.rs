@@ -30,6 +30,13 @@ pub fn retry_delay(p: &RetryPolicy, attempt: u32, random: f64, scale: f64) -> u6
     }
 }
 
+/// `maxRetryDelay`: the longest delay [`retry_delay`] can draw for this attempt (jitter at +20%). The runtime never
+/// waits longer than this for a persisted (wall-clock) `next_retry_at`, so a clock that jumped back cannot stall a
+/// retry (N12).
+pub fn max_retry_delay(p: &RetryPolicy, attempt: u32, scale: f64) -> u64 {
+    retry_delay(p, attempt, 1.0, scale)
+}
+
 /// One pipeline step transition (`StepPatch` in lifecycle.ts). Serde shape = the vector JSON.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", rename_all_fields = "camelCase")]

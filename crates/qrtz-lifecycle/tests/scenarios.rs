@@ -691,6 +691,7 @@ impl Run {
                 }
                 "call" => self.call(&mut live, op, &label),
                 "advance" => tokio::time::sleep(Duration::from_millis(op["ms"].as_u64().unwrap())).await,
+                "clockJump" => self.clock.jump(op["ms"].as_i64().unwrap()),
                 "helperDown" => {
                     self.sh.up.store(false, Ordering::SeqCst);
                     live.rt.helper_down(op["reason"].as_str().unwrap_or("exited"));

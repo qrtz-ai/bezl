@@ -339,6 +339,13 @@ export function retryDelay(
   return Math.round(exp * (0.8 + random() * 0.4) * scale);
 }
 
+/**
+ * The longest delay `retryDelay` can draw for this attempt (jitter at +20%). A persisted `nextRetryAt` is wall
+ * clock; the runtime never waits longer than this for it, so a clock that jumped back cannot stall a retry.
+ */
+export const maxRetryDelay = (p: RetryPolicy, attempt: number, scale = 1) =>
+  retryDelay(p, attempt, () => 1, scale);
+
 const step = (maxAttempts: number): StepState => ({
   status: 'pending',
   attempts: 0,

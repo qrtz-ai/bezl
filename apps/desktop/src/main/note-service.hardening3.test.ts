@@ -1,8 +1,8 @@
 /**
  * Hardening cycle 3: NoteService host-side scenarios (real worker handlers, no helper needed).
- * N3 index deadline wiring, N9 template change routed through the pipeline.
+ * N3 index deadline wiring, N9 template change routed through the pipeline, N12 wall clock jumping back.
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   AppError,
   EventBus,
@@ -52,6 +52,9 @@ interface Rpc {
 }
 
 const realNow = Date.now;
+afterEach(() => {
+  Date.now = realNow;
+});
 
 function rig(fetch: FetchLike) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-h3-'));
@@ -203,5 +206,30 @@ describe('hardening 3: NoteService', () => {
     }).catch((e: AppError) => e);
     expect((err as AppError).code).toBe('E_TIMEOUT');
     expect(late.h['note.get']({ id: 'x' }).summary).toBeUndefined();
+  });
+
+  it('N12: a wall clock that jumps back an hour while a summary waits to retry does not stall the retry', async () => {
+    let calls = 0;
+    const r = rig(async () =>
+      ++calls === 1
+        ? new Response('{"error":{"message":"overloaded"}}', { status: 503 })
+        : okReply(),
+    );
+    let skewed = false;
+    r.bus.on('note:pipeline', (v) => {
+      if (
+        !skewed &&
+        Object.values(v.steps).some((s) => s.status === 'retrying')
+      ) {
+        skewed = true;
+        Date.now = () => realNow() - 3_600_000; // NTP / VM resume / manual change
+      }
+    });
+    r.withPipeline('m');
+    await r.note.recover();
+    await until(() => r.settled('m'), 3000);
+    expect(skewed).toBe(true);
+    expect(calls).toBe(2);
+    expect(r.h['pipeline.get']({ id: 'm' })!.steps.summary.status).toBe('done');
   });
 });

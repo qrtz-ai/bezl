@@ -16,6 +16,7 @@ import {
   pipelineStep,
   pipelineUsable,
   retryDelay,
+  maxRetryDelay,
   toPipelineView,
   resumeAfterRestart,
   type ActiveSpeakerEvent,
@@ -115,6 +116,8 @@ export class NoteService {
   private tSent = new Set<string>();
   private pipelines = new Map<string, PipelineState>();
   private pipelineTimers = new Map<string, NodeJS.Timeout>();
+  /** `${id}:${step}:${attempts}` whose backoff timer already fired (N12: never wait on the wall clock twice). */
+  private backoffServed = new Set<string>();
   private pipelineRunning = new Set<string>();
   private readyResolve!: () => void;
   /** Resolves once the persisted session was loaded and crash recovery queued (start waits on it). */
@@ -1052,17 +1055,26 @@ export class NoteService {
         const step = nextRunnableStep(p);
         if (!step) break;
         const cur = p.steps[step];
+        // Wait out the backoff (timer survives in-memory; a restart resumes immediately). nextRetryAt is wall
+        // clock, so the wait is capped at the longest delay this attempt could have drawn, and once that timer
+        // has fired the step runs: a clock that jumped back must not stall it for the size of the jump (N12).
+        const backoff = `${id}:${step}:${cur.attempts}`;
+        const served = this.backoffServed.delete(backoff);
         if (
+          !served &&
           cur.status === 'retrying' &&
           cur.nextRetryAt &&
           cur.nextRetryAt > Date.now()
         ) {
-          // Wait out the backoff (timer survives in-memory; a restart resumes immediately).
-          const delay = cur.nextRetryAt - Date.now();
+          const delay = Math.min(
+            cur.nextRetryAt - Date.now(),
+            maxRetryDelay(RETRY_POLICIES[step], cur.attempts, this.scale),
+          );
           this.pipelineTimers.set(
             id,
             setTimeout(() => {
               this.pipelineTimers.delete(id);
+              this.backoffServed.add(backoff);
               void this.runPipeline(id);
             }, delay),
           );

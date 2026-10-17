@@ -485,6 +485,10 @@ function run(sc: Scenario) {
           case 'advance':
             await vi.advanceTimersByTimeAsync(op.ms as number);
             break;
+          case 'clockJump':
+            // A wall-clock step (NTP, VM resume, manual change): Date moves, pending timers do not.
+            vi.setSystemTime(Date.now() + (op.ms as number));
+            break;
           case 'helperDown':
             up = false;
             note.onHelperDown((op.reason as string) ?? 'exited');
