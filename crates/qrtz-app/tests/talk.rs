@@ -48,6 +48,10 @@ fn mock_helper_bin() -> PathBuf {
 }
 
 fn app(dir: &Path, clip: Arc<Clip>, helper: bool) -> BuiltApp {
+    app_with(dir, clip, helper, DevKnobs::default())
+}
+
+fn app_with(dir: &Path, clip: Arc<Clip>, helper: bool, knobs: DevKnobs) -> BuiltApp {
     build_app(AppBuild {
         info: AppInfo {
             name: "qrtz".into(),
@@ -71,7 +75,7 @@ fn app(dir: &Path, clip: Arc<Clip>, helper: bool) -> BuiltApp {
         speech: None,
         steps: None,
         embedder: Some(qrtz_search::LazyEmbedder::none()),
-        knobs: DevKnobs::default(),
+        knobs,
     })
     .unwrap()
 }
@@ -206,4 +210,147 @@ async fn without_a_helper_a_dictation_fails_cleanly_and_holds_no_live_work() {
     tokio::time::sleep(Duration::from_millis(200)).await;
     assert_ne!(call(&r, "talk:state", Value::Null).await["phase"], "listening");
     assert!(!a.live.busy());
+}
+
+/// A one-reply-per-connection OpenRouter stand-in: records each request body, answers a chat completion.
+async fn mock_openrouter(reply: &'static str) -> (String, Arc<Mutex<Vec<String>>>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", l.local_addr().unwrap());
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let s2 = seen.clone();
+    tokio::spawn(async move {
+        while let Ok((mut s, _)) = l.accept().await {
+            let seen = s2.clone();
+            tokio::spawn(async move {
+                let mut buf = Vec::new();
+                let mut tmp = [0u8; 8192];
+                loop {
+                    let n = s.read(&mut tmp).await.unwrap_or(0);
+                    if n == 0 {
+                        return;
+                    }
+                    buf.extend_from_slice(&tmp[..n]);
+                    let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") else {
+                        continue;
+                    };
+                    let head = String::from_utf8_lossy(&buf[..i]).to_lowercase();
+                    let len = head
+                        .lines()
+                        .find_map(|l| l.strip_prefix("content-length:"))
+                        .and_then(|v| v.trim().parse::<usize>().ok())
+                        .unwrap_or(0);
+                    if buf.len() >= i + 4 + len {
+                        let body = String::from_utf8_lossy(&buf[i + 4..]).to_string();
+                        seen.lock().unwrap().push(format!("{head}\n\n{body}"));
+                        break;
+                    }
+                }
+                let body = json!({"choices": [{"message": {"content": reply}}]}).to_string();
+                let r = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = s.write_all(r.as_bytes()).await;
+                let _ = s.shutdown().await;
+            });
+        }
+    });
+    (base, seen)
+}
+
+async fn settings(r: &Router<Shared>, ch: &str, payload: Value) {
+    let v = r
+        .dispatch(json!({"v":1,"id":"s","channel":ch,"version":1,"subApp":"settings","payload":payload}))
+        .await;
+    assert_eq!(v["ok"], true, "{ch}: {v}");
+}
+
+async fn dictate_once(r: &Router<Shared>) -> Value {
+    call(r, "talk:start", Value::Null).await;
+    until_phase(r, "listening").await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    call(r, "talk:stop", Value::Null).await;
+    until_phase(r, "idle").await;
+    let h = call(r, "talk:history", Value::Null).await;
+    h[0].clone()
+}
+
+/// Parity rows 34/35 (docs/e2e-parity.md): AI cleanup goes to OpenRouter with the user's key and the Haiku default;
+/// local-only never calls it (rules cleanup); the `QRTZ_TALK_LLM=hang` stand-in falls back to rules on timeout.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ai_cleanup_uses_openrouter_and_local_only_keeps_it_on_device() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (base, seen) = mock_openrouter("Hello from the cleaned-up dictation.").await;
+    let a = app_with(
+        &tmp.path().join("data"),
+        Arc::new(Clip::default()),
+        true,
+        DevKnobs {
+            llm_base_url: Some(base),
+            ..Default::default()
+        },
+    );
+    let r = Router::new(Shared(a.service.clone())).validate_responses(true);
+    a.service.start_helper();
+    let svc = a.service.clone();
+    until("helper", || svc.helper_ready()).await;
+    settings(
+        &r,
+        "secrets:set",
+        json!({"name": "llm.openrouter", "value": "sk-or-talk"}),
+    )
+    .await;
+
+    let e = dictate_once(&r).await;
+    assert_eq!(e["cleanup"], "llm", "{e}");
+    assert_eq!(e["text"], "Hello from the cleaned-up dictation.", "{e}");
+    let reqs = seen.lock().unwrap().clone();
+    assert_eq!(reqs.len(), 1, "{reqs:?}");
+    assert!(
+        reqs[0].contains("authorization: bearer sk-or-talk"),
+        "{}",
+        reqs[0]
+    );
+    assert!(
+        reqs[0].contains(&format!("\"model\":\"{}\"", qrtz_llm::OPENROUTER_DEFAULT_MODEL)),
+        "{}",
+        reqs[0]
+    );
+
+    settings(
+        &r,
+        "config:set",
+        json!({"patch": {"privacy": {"localOnly": true}}}),
+    )
+    .await;
+    let e = dictate_once(&r).await;
+    assert_eq!(e["cleanup"], "rules", "{e}");
+    assert_eq!(seen.lock().unwrap().len(), 1, "local-only sent a request");
+    if let Some(h) = a.service.helper() {
+        h.stop();
+    }
+    drop(r);
+    drop(a);
+
+    // The E2E stand-in: a cleanup LLM that never answers falls back to rules after the timeout.
+    let b = app_with(
+        &tmp.path().join("data2"),
+        Arc::new(Clip::default()),
+        true,
+        DevKnobs {
+            talk_llm: Some("hang".into()),
+            ..Default::default()
+        },
+    );
+    let r = Router::new(Shared(b.service.clone())).validate_responses(true);
+    b.service.start_helper();
+    let svc = b.service.clone();
+    until("helper", || svc.helper_ready()).await;
+    let e = dictate_once(&r).await;
+    assert_eq!(e["cleanup"], "rules", "{e}");
+    assert!(e["latency"]["cleanupMs"].as_f64().unwrap_or(0.0) >= 800.0, "{e}");
+    if let Some(h) = b.service.helper() {
+        h.stop();
+    }
 }

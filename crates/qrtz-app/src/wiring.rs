@@ -184,6 +184,8 @@ pub struct DevKnobs {
     pub llm_base_url: Option<String>,
     /// `QRTZ_MINILM_DIR`: the MiniLM model directory (default `<data>/models/all-MiniLM-L6-v2`).
     pub minilm_dir: Option<PathBuf>,
+    /// `QRTZ_TALK_LLM=fake|hang`: a stand-in cleanup LLM for the talk E2E.
+    pub talk_llm: Option<String>,
 }
 
 impl DevKnobs {
@@ -203,6 +205,7 @@ impl DevKnobs {
             fault_step: get("QRTZ_FAULT_STEP").and_then(|v| serde_json::from_value(Value::String(v)).ok()),
             llm_base_url: get("QRTZ_LLM_BASE_URL").filter(|v| !v.is_empty()),
             minilm_dir: get("QRTZ_MINILM_DIR").map(PathBuf::from),
+            talk_llm: get("QRTZ_TALK_LLM").filter(|v| v == "fake" || v == "hang"),
         }
     }
 }
@@ -453,7 +456,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         clock: None,
         secrets: Some(secrets.clone()),
         embedder: b.embedder,
-        knobs: b.knobs,
+        knobs: b.knobs.clone(),
     })?;
     if let Some(ns) = &note_speech {
         ns.set_runtime(booted.runtime.clone());
@@ -484,6 +487,12 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
                 shell: talk_shell,
                 config: config.clone(),
                 store_path: dirs.data.join("talk.json"),
+                llm: Arc::new(crate::talk::TalkLlm::new(
+                    secrets.clone(),
+                    config.clone(),
+                    b.knobs.llm_base_url.clone(),
+                    b.knobs.talk_llm.clone(),
+                )),
                 local: b.speech.as_ref().map(|s| {
                     let e = qrtz_speech::spawn::OnDeviceSpeech::new(s.store.clone(), s.opts.clone())
                         .with_attach(attach.clone());
