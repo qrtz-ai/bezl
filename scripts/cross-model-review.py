@@ -20,12 +20,13 @@ prompt = ('You are a senior distributed-systems reviewer doing an independent, a
 out = pathlib.Path('review-out'); out.mkdir(exist_ok=True)
 for model in MODELS:
     req = urllib.request.Request('https://openrouter.ai/api/v1/chat/completions',
-        data=json.dumps({'model': model, 'messages': [{'role': 'user', 'content': prompt}], 'max_tokens': 4000}).encode(),
+        data=json.dumps({'model': model, 'messages': [{'role': 'user', 'content': prompt}], 'max_tokens': int(os.environ.get('REVIEW_MAX_TOKENS', '16000')), 'usage': {'include': True}}).encode(),
         headers={'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json',
                  'HTTP-Referer': 'https://qrtz.ai', 'X-Title': 'qrtz'})
     try:
         r = json.load(urllib.request.urlopen(req, timeout=600))
         text = r['choices'][0]['message']['content']
+        print(model, 'usage', json.dumps(r.get('usage', {})))
     except urllib.error.HTTPError as e:
         text = f'HTTP {e.code}: {e.read()[:300]!r}'
     (out / (model.replace('/', '_').replace(':', '_') + '.md')).write_text(text)

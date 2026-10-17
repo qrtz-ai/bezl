@@ -162,11 +162,13 @@ pub fn reduce(s: &RecordingState, e: &LifecycleEvent) -> Option<RecordingState> 
             })
         }
         E::ProcessingDone => {
-            if s.phase != P::Processing {
+            // From Error: a manual retry of the failed step succeeded; the error is resolved.
+            if s.phase != P::Processing && s.phase != P::Error {
                 return None;
             }
             Some(RecordingState {
                 phase: P::Done,
+                error: None,
                 ..s.clone()
             })
         }

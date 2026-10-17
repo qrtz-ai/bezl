@@ -44,6 +44,11 @@ import {
 } from '@qrtz/core';
 import type { WorkerClient } from './worker-client';
 
+interface Waiter {
+  type: string;
+  resolve: (m: HelperToHost) => void;
+  match?: (m: HelperToHost) => boolean;
+}
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const toLifecycleError = (
   e: unknown,
@@ -77,7 +82,9 @@ export class NoteService {
     'screen-recording': 'unknown',
     microphone: 'unknown',
   };
-  private waiters: { type: string; resolve: (m: HelperToHost) => void }[] = [];
+  private waiters: Waiter[] = [];
+  /** Audio path of the recording.start in flight (start or resume); acks for any other path are stale. */
+  private pendingStartPath: string | null = null;
   private emitTimer: NodeJS.Timeout | null = null;
   private persisted = new Set<string>();
   private paused = false;
@@ -142,8 +149,12 @@ export class NoteService {
     if (p.meetingId === this.machine.state.meetingId) this.emitSoon(0);
     return this.deps.worker
       .call('pipeline.save', { state: p, settled: pipelineSettled(p) })
-      .catch((e) =>
-        this.deps.log.warn('pipeline persist failed', { err: String(e) }),
+      .then(
+        () => true,
+        (e) => {
+          this.deps.log.warn('pipeline persist failed', { err: String(e) });
+          return false;
+        },
       );
   }
 
@@ -156,20 +167,33 @@ export class NoteService {
       });
   }
 
+  /**
+   * Wait for a helper message. `match` correlates it to this request (e.g. the audio path of this start/stop),
+   * so a late ack from an aborted attempt can never satisfy a newer one. The timer is cleared on resolution.
+   */
   private waitFor<T extends HelperToHost['type']>(
     type: T,
     ms: number,
+    match?: (m: Extract<HelperToHost, { type: T }>) => boolean,
   ): Promise<Extract<HelperToHost, { type: T }> | null> {
     return new Promise((resolve) => {
-      const w = { type, resolve: resolve as (m: HelperToHost) => void };
-      this.waiters.push(w);
-      setTimeout(() => {
+      let timer: NodeJS.Timeout | undefined;
+      const w: Waiter = {
+        type,
+        resolve: (m) => {
+          if (timer) clearTimeout(timer);
+          resolve(m as Extract<HelperToHost, { type: T }>);
+        },
+        ...(match ? { match: match as (m: HelperToHost) => boolean } : {}),
+      };
+      timer = setTimeout(() => {
         const i = this.waiters.indexOf(w);
         if (i >= 0) {
           this.waiters.splice(i, 1);
           resolve(null);
         }
       }, ms);
+      this.waiters.push(w);
     });
   }
 
@@ -181,7 +205,7 @@ export class NoteService {
   /** Feed every parsed helper message here. */
   handle(m: HelperToHost) {
     for (const w of this.waiters.slice()) {
-      if (w.type === m.type) {
+      if (w.type === m.type && (!w.match || w.match(m))) {
         this.waiters.splice(this.waiters.indexOf(w), 1);
         w.resolve(m);
       }
@@ -236,13 +260,33 @@ export class NoteService {
           this.emitSoon();
         }
         break;
+      case 'recording.started':
+        // A late ack for a start we already abandoned (timeout, give-up): never leave that capture running.
+        if (
+          m.audioPath !== this.pendingStartPath &&
+          !(isCapturing(s.phase) && s.audioParts.includes(m.audioPath))
+        ) {
+          this.deps.log.warn('stale recording.started; stopping it');
+          try {
+            this.send({ type: 'recording.stop' });
+          } catch {
+            /* helper gone */
+          }
+        }
+        break;
       case 'audio.level':
         this.level = m.rms;
         this.emitSoon(150);
         break;
       case 'asr':
+        // `stopping` is accepted: the helper flushes the recogniser's last finals before recording.stopped.
         // Paused: drop anything still in flight from the helper (it stops feeding the recogniser too).
-        if (s.phase !== 'recording' || !s.meetingId || this.paused) break;
+        if (
+          (s.phase !== 'recording' && s.phase !== 'stopping') ||
+          !s.meetingId ||
+          this.paused
+        )
+          break;
         this.onAsr(s, m.event);
         break;
       case 'error':
@@ -541,9 +585,11 @@ export class NoteService {
       audioPath,
     });
     this.deps.bus.emit('note:changed', { id });
+    this.pendingStartPath = audioPath;
     const acked = this.waitFor(
       'recording.started',
       RETRY_POLICIES.startAckMs * Math.max(this.scale, 0.2),
+      (m) => m.audioPath === audioPath,
     );
     try {
       this.send({ type: 'recording.start', audioPath });
@@ -554,7 +600,9 @@ export class NoteService {
       }
       return this.view();
     }
-    if (!(await acked)) {
+    const ok = await acked;
+    if (this.pendingStartPath === audioPath) this.pendingStartPath = null;
+    if (!ok) {
       // The helper may have died meanwhile: then `reconnecting` owns the meeting, do not delete it.
       if (
         this.machine.state.meetingId !== id ||
@@ -650,17 +698,23 @@ export class NoteService {
       this.deps.recordingsDir,
       `${s.meetingId}.p${part}.wav`,
     );
+    this.pendingStartPath = audioPath;
     const acked = this.waitFor(
       'recording.started',
       RETRY_POLICIES.startAckMs * Math.max(this.scale, 0.2),
+      (m) => m.audioPath === audioPath,
     );
+    // Offset from when capture was asked to begin, not from the ack (ack latency would shift timestamps late).
+    const at = Date.now();
     try {
       this.send({ type: 'recording.start', audioPath });
       if (this.paused) this.send({ type: 'recording.pause' });
     } catch {
       return; // went down again; the next hello retries
     }
-    if (!(await acked) || this.machine.state.phase !== 'reconnecting') return;
+    const ok = await acked;
+    if (this.pendingStartPath === audioPath) this.pendingStartPath = null;
+    if (!ok || this.machine.state.phase !== 'reconnecting') return;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
     // A fresh helper starts unpaused: re-apply a privacy pause before anything is transcribed.
@@ -671,7 +725,7 @@ export class NoteService {
         /* down again; next hello retries */
       }
     }
-    this.machine.send({ type: 'helper-restored', at: Date.now(), audioPath });
+    this.machine.send({ type: 'helper-restored', at, audioPath });
     this.deps.log.info('recording resumed after helper restart', { part });
   }
 
@@ -679,6 +733,9 @@ export class NoteService {
 
   async stop(reason: StopReason = 'manual'): Promise<SessionView> {
     const s = this.machine.state;
+    // Idempotent: a second stop (double-click, tray + hotkey, meeting.ended racing a click) is a no-op.
+    if (s.meetingId && (s.phase === 'stopping' || s.phase === 'processing'))
+      return this.view();
     if (!isCapturing(s.phase) || !s.meetingId)
       throw new AppError('E_VALIDATION', 'not recording');
     const meetingId = s.meetingId;
@@ -690,13 +747,22 @@ export class NoteService {
     let stopped: Extract<HelperToHost, { type: 'recording.stopped' }> | null =
       null;
     if (wasLive) {
+      const part = s.audioParts.at(-1);
       const p = this.waitFor(
         'recording.stopped',
         RETRY_POLICIES.stopAckMs * Math.max(this.scale, 0.2),
+        (m) => !part || m.audioPath === part,
       );
       try {
         this.send({ type: 'recording.stop' });
         stopped = await p;
+        if (!stopped) {
+          // Still flushing after the timeout: it may still be writing the WAV finalize is about to repair.
+          // Restart it so there is no concurrent writer (the supervisor brings a fresh helper back).
+          this.deps.log.warn('recording.stop not acked; restarting helper');
+          this.deps.helper.stop();
+          this.deps.helper.start();
+        }
       } catch {
         this.helperCrashed = true; // helper down: finish from what's persisted
       }
@@ -711,12 +777,12 @@ export class NoteService {
     this.paused = false;
     const st = this.machine.state;
     // Flush any final segment whose live append gave up.
+    // Same retry policy as live appends; whatever still fails is logged loudly (doc: known limits).
     for (const seg of this.asr.segments())
-      if (!this.persisted.has(seg.id))
-        await this.deps.worker
-          .call('note.appendLive', { meetingId, segment: seg })
-          .then(() => this.persisted.add(seg.id))
-          .catch(() => {});
+      if (!this.persisted.has(seg.id)) {
+        this.persisted.add(seg.id);
+        await this.appendLive(meetingId, seg);
+      }
     const endedAt = Date.now();
     const pipeline = newPipeline(
       meetingId,
@@ -798,9 +864,21 @@ export class NoteService {
           return;
         }
         p = pipelineStep(p, step, { kind: 'start', now: Date.now() });
-        await this.persistPipeline(p);
+        const started = await this.persistPipeline(p);
         try {
+          // Durability barrier: never run a step whose start is not on disk (a crash would re-run it blind).
+          if (!started)
+            throw new AppError(
+              'E_UNAVAILABLE',
+              'could not persist step start',
+              {
+                retryable: true,
+              },
+            );
           const skipped = await this.execStep(p, step);
+          // A manual retry re-armed this step while it was in flight: its result is stale, drop it.
+          if (this.pipelines.get(id)!.steps[step].status !== 'running')
+            continue;
           p = pipelineStep(this.pipelines.get(id)!, step, {
             kind: skipped ? 'skip' : 'success',
             now: Date.now(),
@@ -808,6 +886,7 @@ export class NoteService {
         } catch (e) {
           const err = toLifecycleError(e);
           const latest = this.pipelines.get(id)!;
+          if (latest.steps[step].status !== 'running') continue; // superseded by a manual retry
           const policy = RETRY_POLICIES[step];
           p = pipelineStep(latest, step, {
             kind: 'failure',
@@ -862,8 +941,23 @@ export class NoteService {
     }
   }
 
+  /**
+   * Network/CPU-heavy steps (summary, index) run one at a time across all meetings, so a recovered backlog or
+   * synchronized retry timers can never burst the LLM provider. Finalize is local and runs immediately.
+   */
+  private heavyChain: Promise<unknown> = Promise.resolve();
+  private execStep(p: PipelineState, step: StepId): Promise<boolean> {
+    if (step === 'finalize') return this.execStepInner(p, step);
+    const run = this.heavyChain.then(() => this.execStepInner(p, step));
+    this.heavyChain = run.catch(() => {});
+    return run;
+  }
+
   /** Returns true when the step was skipped (nothing to do on this machine). */
-  private async execStep(p: PipelineState, step: StepId): Promise<boolean> {
+  private async execStepInner(
+    p: PipelineState,
+    step: StepId,
+  ): Promise<boolean> {
     if (
       this.deps.faultStep === step &&
       !this.faultsFired.has(`${p.meetingId}:${step}`)
@@ -917,9 +1011,14 @@ export class NoteService {
   /** The session's own meeting: processing → done once usable, → error if finalize failed for good. */
   private syncSessionWithPipeline(p: PipelineState) {
     const s = this.machine.state;
-    if (s.meetingId !== p.meetingId || s.phase !== 'processing') return;
+    // `error` too: a manual finalize retry that succeeds must bring the session back to done.
+    if (
+      s.meetingId !== p.meetingId ||
+      (s.phase !== 'processing' && s.phase !== 'error')
+    )
+      return;
     if (pipelineUsable(p)) this.machine.send({ type: 'processing-done' });
-    else if (p.steps.finalize.status === 'failed')
+    else if (s.phase === 'processing' && p.steps.finalize.status === 'failed')
       this.machine.send({
         type: 'processing-failed',
         error: p.steps.finalize.error ?? {
@@ -996,6 +1095,7 @@ export class NoteService {
       // The session itself always restarts idle (nothing is capturing after a restart).
       if (saved && saved.phase !== 'idle')
         this.persistSession(this.machine.state);
+      this.deps.bus.emit('note:session', this.view());
       const pending = await this.deps.worker.call(
         'pipeline.listUnsettled',
         undefined as never,

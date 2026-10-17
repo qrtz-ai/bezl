@@ -55,6 +55,8 @@ stateDiagram-v2
   recording --> stopping: stop (manual) / meeting.ended (AX)
   stopping --> processing: recording.stopped ack (≤10 s) or helper gone\npipeline row written
   processing --> done: finalize done + summary settled
+  error --> done: manual finalize retry succeeds
+  processing --> detected: next meeting detected (pipeline keeps running)
   processing --> error: finalize failed after max attempts
   done --> idle: dismiss / next detection
   error --> idle: dismiss
@@ -97,8 +99,18 @@ summarized. The pipeline is persisted **before** each step starts and after it e
 
 Every delay has ±20% jitter (`retryDelay`), and `QRTZ_RETRY_SCALE` shrinks all of them for tests. Step
 statuses are `pending → running → (done | skipped | retrying → running … | failed)`. A manual retry
-(`note:retry-step`) gives the step a fresh attempt budget and re-arms every step after it. `note:resummarize`
-(the existing "Retry" button and template changes) now routes through the same pipeline.
+(`note:retry-step`) gives the step a fresh attempt budget and re-arms every later step that isn't `done` (a finalize retry
+re-arms all of them). A result that comes back for a step re-armed while it was in flight is dropped.
+
+Two more rules, from the cross-model review (`architecture-review.md`):
+
+- **Durability barrier.** A step runs only after its `running` state is saved. If that save fails, the attempt
+  counts as a retryable failure and the step is not executed.
+- **One heavy step at a time.** Summary and index run through a single queue across all meetings, so a
+  recovered backlog or retry timers that line up never send concurrent LLM calls. Finalize is local and runs
+  immediately. `note:resummarize`
+  (the existing "Retry" button) routes through the same pipeline. A template change re-runs the summary
+  directly with its own spinner and error; routing it through the pipeline is backlog.
 
 ## Live transcript stream
 
@@ -164,6 +176,14 @@ At startup, after the worker is ready, `NoteService.recover()` runs. `start()` w
   its backoff, which is what you want after a restart.
 
 ## Known limits
+
+- A live final whose append exhausts its retries (worker down for about 8 s) is kept in memory and flushed
+  with the same retry policy at stop. If main also crashes before stop, that line is lost. A durable spill
+  queue is backlog (architecture-review C7).
+- Helper acks are correlated by audio path. A `recording.started` for a path main isn't expecting gets an
+  immediate `recording.stop`, and a stop ack that times out restarts the helper so finalize never repairs a
+  WAV that is still being written.
+- ASR finals that arrive in `stopping` (the recogniser flush) are kept.
 
 - Speaker activity (`active[]`) is kept in memory until stop. After an R1 crash, names come only from the
   live per-segment speaker stamped at append time.

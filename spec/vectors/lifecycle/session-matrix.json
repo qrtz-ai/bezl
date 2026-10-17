@@ -910,7 +910,18 @@
       "rejected",
       "rejected",
       "rejected",
-      "rejected",
+      {
+        "phase": "done",
+        "meetingId": "m",
+        "startedAt": 100,
+        "stoppedAt": 300,
+        "stopReason": "helper-lost",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0
+      },
       "rejected",
       {
         "phase": "error",

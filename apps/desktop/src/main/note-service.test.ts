@@ -49,7 +49,13 @@ interface Rig {
   mocks: ReturnType<typeof createMockHelper>[];
   writes: { helper: number; type: string }[];
   failWorker: Set<string>;
-  llm: { fail: boolean; status: number; calls: number };
+  llm: {
+    fail: boolean;
+    status: number;
+    calls: number;
+    inflight: number;
+    maxInflight: number;
+  };
   close(): void;
 }
 
@@ -69,14 +75,31 @@ function rig(
     llmFail?: boolean;
     llmStatus?: number;
     noStart?: boolean;
+    llmDelayMs?: number;
+    /** Runs before each host→helper line reaches the mock (fault/timing injection). */
+    beforeWrite?: (
+      type: string,
+      m: ReturnType<typeof createMockHelper>,
+      note: NoteService,
+    ) => void;
   } = {},
 ): Rig {
   const dir = o.dir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-lc-'));
   const dbPath = path.join(dir, 'qrtz.db');
   const db = openDatabase(dbPath);
-  const llm = { fail: !!o.llmFail, status: o.llmStatus ?? 503, calls: 0 };
+  const llm = {
+    fail: !!o.llmFail,
+    status: o.llmStatus ?? 503,
+    calls: 0,
+    inflight: 0,
+    maxInflight: 0,
+  };
   const fetch: FetchLike = async () => {
     llm.calls++;
+    llm.inflight++;
+    llm.maxInflight = Math.max(llm.maxInflight, llm.inflight);
+    if (o.llmDelayMs) await new Promise((res) => setTimeout(res, o.llmDelayMs));
+    llm.inflight--;
     if (llm.fail)
       return new Response('{"error":{"message":"upstream overloaded"}}', {
         status: llm.status,
@@ -132,7 +155,9 @@ function rig(
       mocks.push(m);
       const write = m.write.bind(m);
       m.write = (line: string) => {
-        writes.push({ helper: mocks.indexOf(m), type: JSON.parse(line).type });
+        const type = JSON.parse(line).type as string;
+        writes.push({ helper: mocks.indexOf(m), type });
+        o.beforeWrite?.(type, m, note);
         write(line);
       };
       return m;
@@ -496,6 +521,124 @@ describe('NoteService lifecycle (integration with mock helper + real worker hand
     const m = await b.h['note.get']({ id });
     expect(m.meeting.status).toBe('done');
     expect(m.segments.length).toBeGreaterThanOrEqual(3);
+  });
+
+  // ---- cross-model review fixes (docs/architecture-review.md, C-findings) ----
+
+  it('C1: finals the helper flushes after recording.stop (phase stopping) are kept and persisted', async () => {
+    const r = rig({
+      beforeWrite: (type, _m, note) => {
+        if (type === 'recording.stop')
+          // The recogniser's tail arrives while main is already in `stopping`.
+          queueMicrotask(() =>
+            note.handle({
+              type: 'asr',
+              event: {
+                kind: 'final',
+                utteranceId: 'tail',
+                startMs: 90_000,
+                endMs: 91_000,
+                text: 'Last words before stop.',
+              },
+            }),
+          );
+      },
+    });
+    await detected(r);
+    await r.note.start();
+    await until(() => finals(r) >= 1);
+    await r.note.stop();
+    await until(() => r.note.view().phase === 'done');
+    const m = await r.h['note.get']({ id: r.note.view().meetingId! });
+    expect(m.segments.map((x) => x.text)).toContain('Last words before stop.');
+  });
+
+  it('C2: a manual finalize retry that succeeds takes the session from error to done', async () => {
+    const r = rig();
+    await detected(r);
+    await r.note.start();
+    await until(() => finals(r) >= 1);
+    r.failWorker.add('note.stepFinalize');
+    await r.note.stop();
+    await until(() => r.note.view().phase === 'error');
+    r.failWorker.delete('note.stepFinalize');
+    await r.note.retryStep(r.note.view().meetingId!, 'finalize');
+    await until(() => r.note.view().phase === 'done');
+    expect(r.note.view().errorInfo).toBeUndefined();
+  });
+
+  it('C3: stop is idempotent (double stop resolves, one pipeline)', async () => {
+    const r = rig();
+    await detected(r);
+    await r.note.start();
+    await until(() => finals(r) >= 1);
+    const [a, b] = await Promise.all([r.note.stop(), r.note.stop()]);
+    expect(a.meetingId).toBe(b.meetingId);
+    await expect(r.note.stop()).resolves.toMatchObject({
+      meetingId: a.meetingId,
+    });
+    expect(r.writes.filter((w) => w.type === 'recording.stop')).toHaveLength(1);
+  });
+
+  it('C4: helper acks are correlated by audio path; a stale recording.started is stopped, not trusted', async () => {
+    const r = rig();
+    await detected(r);
+    await r.note.start();
+    const stopsBefore = r.writes.filter(
+      (w) => w.type === 'recording.stop',
+    ).length;
+    r.note.handle({
+      type: 'recording.started',
+      audioPath: '/elsewhere/stale.wav',
+    });
+    expect(r.writes.filter((w) => w.type === 'recording.stop').length).toBe(
+      stopsBefore + 1,
+    );
+    expect(r.note.view().phase).toBe('recording'); // our own capture is untouched
+    // The real ack for our own path is not treated as stale.
+    r.note.handle({
+      type: 'recording.started',
+      audioPath: r.note.machine.state.audioParts[0]!,
+    });
+    expect(r.writes.filter((w) => w.type === 'recording.stop').length).toBe(
+      stopsBefore + 1,
+    );
+  });
+
+  it('C5: a step never runs if its start could not be persisted (durability barrier), then retries', async () => {
+    const r = rig();
+    await detected(r);
+    await r.note.start();
+    await until(() => finals(r) >= 1);
+    let saves = 0;
+    const orig = r.h['pipeline.save'];
+    (r.h as Record<string, unknown>)['pipeline.save'] = (
+      p: Parameters<typeof orig>[0],
+    ) => {
+      // Fail exactly the save that marks summary running.
+      if (p.state.steps.summary.status === 'running' && saves++ === 0)
+        throw new Error('disk full');
+      return orig(p);
+    };
+    await r.note.stop();
+    await until(() => r.note.view().phase === 'done');
+    const s = r.note.view().pipeline!.steps.summary;
+    expect(s.status).toBe('done');
+    expect(s.attempts).toBe(2);
+    expect(r.llm.calls).toBe(1); // the unpersisted first attempt never reached the LLM
+  });
+
+  it('C6: summaries across meetings never call the LLM concurrently (no retry storms)', async () => {
+    const a = rig({ llmDelayMs: 60 });
+    await detected(a);
+    await a.note.start();
+    await until(() => finals(a) >= 1);
+    await a.note.stop();
+    await a.note.start('second');
+    await until(() => finals(a) >= 1);
+    await a.note.stop();
+    await until(() => a.llm.calls >= 2 && a.llm.inflight === 0, 8000);
+    expect(a.llm.maxInflight).toBe(1);
   });
 });
 

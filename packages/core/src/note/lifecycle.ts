@@ -204,9 +204,12 @@ export function lifecycleReducer(
     case 'stopped':
       if (s.phase !== 'stopping') return null;
       return { ...s, phase: 'processing' };
-    case 'processing-done':
-      if (s.phase !== 'processing') return null;
-      return { ...s, phase: 'done' };
+    case 'processing-done': {
+      // From `error`: a manual retry of the failed step succeeded; the error is resolved.
+      if (s.phase !== 'processing' && s.phase !== 'error') return null;
+      const { error: _e, ...rest } = s;
+      return { ...rest, phase: 'done' };
+    }
     case 'processing-failed':
       if (s.phase !== 'processing') return null;
       return { ...s, phase: 'error', error: e.error };
