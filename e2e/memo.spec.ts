@@ -70,6 +70,20 @@ test('memo end-to-end: detect, record, live transcript, summarize, search, expor
   ).toBe(true);
   await mini.screenshot({ path: path.join(shots, 'mini-hud.png') });
 
+  // Mini HUD notes: expand, jot a note (stamped with the recording time), window grows.
+  await mini.getByTestId('mini-hud-notes-toggle').click();
+  await mini.getByTestId('mini-hud-note-input').fill('From the mini HUD');
+  await mini.getByTestId('mini-hud-note-input').press('Enter');
+  await expect(mini.getByTestId('mini-hud-note')).toContainText(
+    /\d:\d\d From the mini HUD/,
+  );
+  await expect
+    .poll(() => mini.evaluate(() => window.innerHeight))
+    .toBeGreaterThan(150);
+  await expect(win.getByTestId('note')).toContainText('From the mini HUD');
+  await mini.screenshot({ path: path.join(shots, 'mini-hud-notes.png') });
+  await mini.getByTestId('mini-hud-notes-toggle').click();
+
   // Fixture audio was written for the recording.
   const recs = fs.readdirSync(path.join(userData, 'recordings'));
   expect(recs).toHaveLength(1);

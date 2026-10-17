@@ -58,7 +58,7 @@ export function Dialog({
         position: 'fixed',
         inset: 0,
         zIndex: t.z.dialog,
-        background: 'rgba(0,0,0,0.6)',
+        background: t.color.overlay,
         backdropFilter: 'blur(2px)',
         display: 'flex',
         justifyContent: 'center',
@@ -73,6 +73,7 @@ export function Dialog({
         aria-modal="true"
         aria-label={label ?? (typeof title === 'string' ? title : undefined)}
         tabIndex={-1}
+        data-q-no-ring
         style={{
           width,
           maxWidth: 'calc(100vw - 32px)',
@@ -293,7 +294,6 @@ export function TextArea({
         color: t.color.text,
         fontFamily: 'inherit',
         fontSize: t.font.size.md,
-        outline: 'none',
         resize: 'vertical',
         ...style,
       }}

@@ -1,5 +1,3 @@
-import { initAutoUpdates } from './updates';
-import { readBackup, writeBackup } from './backup';
 import { createTray } from './tray';
 import {
   app,
@@ -245,6 +243,14 @@ export function bootstrap() {
         return r;
       },
       'memo:pause': ({ paused }) => memo.pause(paused),
+      'hud:set-expanded': ({ expanded }) => {
+        if (hud && !hud.isDestroyed()) {
+          const [w] = hud.getSize();
+          hud.setSize(w ?? 340, expanded ? HUD_EXPANDED_H : HUD_H, true);
+          if (expanded) hud.focus();
+        }
+        return { expanded };
+      },
       'data:export-backup': async () => {
         let target = process.env.QRTZ_BACKUP_PATH;
         if (!target) {
@@ -278,7 +284,9 @@ export function bootstrap() {
                 .filter((f) => f.endsWith('.wav'))
                 .map((f) => path.join(recordingsDir, f))
             : [];
-          const r = writeBackup({
+          const r = await (
+            await import('./backup')
+          ).writeBackup({
             target,
             dbSnapshot: snap,
             audioFiles,
@@ -316,7 +324,9 @@ export function bootstrap() {
           path.join(app.getPath('temp'), 'qrtz-import-'),
         );
         try {
-          const { dbPath, audioMap } = readBackup({
+          const { dbPath, audioMap } = await (
+            await import('./backup')
+          ).readBackup({
             source,
             workDir,
             audioDir: recordingsDir,
@@ -365,12 +375,14 @@ export function bootstrap() {
 
   // M6.3: floating, always-on-top mini HUD while recording (index.html#hud, shell-scoped IPC).
   let hud: BrowserWindow | null = null;
+  const HUD_H = 56;
+  const HUD_EXPANDED_H = 220;
   const showHud = () => {
     if (hud && !hud.isDestroyed()) return hud.showInactive();
     const area = screen.getPrimaryDisplay().workArea;
     hud = new BrowserWindow({
       width: 340,
-      height: 56,
+      height: HUD_H,
       x: area.x + area.width - 340 - 16,
       y: area.y + 16,
       frame: false,
@@ -490,18 +502,20 @@ export function bootstrap() {
       bus.on('memo:session', () => tray.update());
       app.on('before-quit', () => tray.destroy());
     }
-    void initAutoUpdates(
-      {
-        isPackaged: app.isPackaged,
-        platform: process.platform,
-        arch: process.arch,
-        env: process.env,
-        build: {
-          feedUrl: __QRTZ_UPDATE_FEED_URL__,
-          autoUpdate: __QRTZ_AUTO_UPDATE__,
+    void import('./updates').then(({ initAutoUpdates }) =>
+      initAutoUpdates(
+        {
+          isPackaged: app.isPackaged,
+          platform: process.platform,
+          arch: process.arch,
+          env: process.env,
+          build: {
+            feedUrl: __QRTZ_UPDATE_FEED_URL__,
+            autoUpdate: __QRTZ_AUTO_UPDATE__,
+          },
         },
-      },
-      log,
+        log,
+      ),
     );
     // M6.2: ⌘⇧R starts/stops Memo recording from anywhere (e.g. while in Zoom/Meet).
     const ok = globalShortcut.register('CommandOrControl+Shift+R', () => {

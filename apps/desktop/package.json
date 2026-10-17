@@ -26,11 +26,12 @@
     "@electron-forge/plugin-fuses": "^8.0.1",
     "@electron-forge/plugin-vite": "^8.0.1",
     "@electron/fuses": "^2.1.3",
-    "@types/adm-zip": "^0.5.8",
     "@types/electron-squirrel-startup": "^1.0.2",
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@types/yauzl": "^3.4.0",
+    "@types/yazl": "^3.3.1",
     "@vitejs/plugin-react": "^5.0.0",
     "electron": "44.8.0",
     "vite": "^8.3.4"
@@ -43,11 +44,12 @@
     "@qrtz/feature-memo": "*",
     "@qrtz/feature-settings": "*",
     "@qrtz/ui": "*",
-    "adm-zip": "^0.6.1",
     "electron-squirrel-startup": "^1.0.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "update-electron-app": "^3.3.0",
+    "yauzl": "^3.4.0",
+    "yazl": "^3.3.1",
     "zod": "^4.6.7"
   },
   "engines": {

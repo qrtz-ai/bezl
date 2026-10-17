@@ -141,6 +141,28 @@ export default function SettingsView() {
     <div style={{ display: 'grid', gap: 20, maxWidth: 640 }}>
       <Heading>Settings</Heading>
       <Card padding={4} style={{ display: 'grid', gap: 12 }}>
+        <Text weight={600}>Appearance</Text>
+        <Field
+          label="Theme"
+          hint="Dark is the qrtz look. Light uses the same neutral palette; System follows macOS."
+        >
+          <Select
+            value={String(cfg?.theme ?? 'dark')}
+            onChange={(e) =>
+              void qrtz
+                .invoke('config:set', { patch: { theme: e.target.value } })
+                .then(setCfg)
+                .catch((err: Error) => setError(err.message))
+            }
+            data-testid="theme"
+          >
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+            <option value="system">System</option>
+          </Select>
+        </Field>
+      </Card>
+      <Card padding={4} style={{ display: 'grid', gap: 12 }}>
         <Text weight={600}>Recordings</Text>
         <Field
           label="When a meeting starts"

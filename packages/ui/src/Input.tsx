@@ -17,7 +17,6 @@ const useFieldStyle = () => {
     color: t.color.text,
     fontFamily: 'inherit',
     fontSize: t.font.size.md,
-    outline: 'none',
   } as const;
 };
 

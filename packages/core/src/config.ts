@@ -3,7 +3,7 @@ import { z } from 'zod';
 /** App configuration (non-secret). Every field has a default so old files keep loading. */
 export const ConfigSchema = z.object({
   schemaVersion: z.literal(1).default(1),
-  theme: z.enum(['dark', 'system']).default('dark'),
+  theme: z.enum(['dark', 'light', 'system']).default('dark'),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   telemetry: z
     .object({ crashReports: z.boolean().default(false) })

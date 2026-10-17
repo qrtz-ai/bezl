@@ -362,3 +362,11 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
 ### Next
 
 - Mac verification of pause with real capture, and a streaming backup for large libraries.
+
+## Iteration 14 (2026-10-16)
+
+- Streaming backup: yazl/yauzl replace adm-zip. Files get a per-file sha256 while streaming. Bad archives are rejected with nothing written. A 304 MB test keeps RSS growth under 200 MB.
+- Mini HUD notes: a ✎ toggle expands the HUD to 220 px for a notes list and input (`hud:set-expanded`).
+- Design system: light/system theme (opt-in, dark stays the default), motion and focus tokens, a global focus ring, a generated docs/design-tokens.md with a drift and contrast test, new gallery sections (callouts, cards, space, motion, focus), and axe-clean gallery in dark and light.
+- Startup: an e2e cold-start test with a 1.5 s budget (`QRTZ_COLD_START_BUDGET_MS`) measures about 0.65–0.70 s to home and about 0.2 s to first contentful paint on Linux under xvfb. Main now lazy-loads backup (yazl/yauzl) and updates. Sub-apps were already React.lazy.
+- Side work: none blocking. The cold-start number was measured under xvfb, not on a real Mac. docs/design-tokens.md is excluded from oxfmt because it is generated.

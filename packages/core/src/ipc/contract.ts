@@ -241,6 +241,13 @@ export const ipcContract = {
     request: z.object({ id: z.string().max(64), template: SummaryTemplateId }),
     response: MeetingSummary,
   }),
+  /** Floating mini HUD: grow to show the notes field, or collapse back to the strip. */
+  'hud:set-expanded': defineChannel({
+    version: 1,
+    capability: 'memo.record',
+    request: z.object({ expanded: z.boolean() }),
+    response: z.object({ expanded: z.boolean() }),
+  }),
   /** Privacy pause/resume of capture while recording (omit `paused` to toggle). */
   'memo:pause': defineChannel({
     version: 1,

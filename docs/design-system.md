@@ -18,3 +18,10 @@ border-primary/20 rounded`.
   on hover, and a blinking caret. The feel is fast and minimal, using about 150–200 ms
   ease-out transitions.
 - **Spacing:** generous; sections use `py-16 px-4` and stacks use `space-y-6`.
+
+## Themes, motion and focus (iteration 14)
+
+- **Light theme decision:** qrtz.ai is dark-only, so dark stays the default brand theme. Light and System are opt-in under Settings → Appearance. They use the same neutral roles, with status colors darkened to pass AA. The gallery shows a Dark/Light preview (`ThemeScope`), and axe scans both.
+- The full token reference is in [design-tokens.md](design-tokens.md). It is generated, and a unit test fails when it drifts or when text contrast drops below AA.
+- **Motion:** use `transition(prop, 'hover' | 'enter' | 'exit')`. Reduce Motion collapses every duration to `motion.instant`.
+- **Focus:** one global `:focus-visible` ring comes from the `focus.*` tokens. `data-q-no-ring` opts out containers that get focus programmatically.

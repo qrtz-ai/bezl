@@ -1,5 +1,6 @@
 {
   "singleQuote": true,
   "printWidth": 80,
-  "sortPackageJson": false
+  "sortPackageJson": false,
+  "ignorePatterns": ["docs/design-tokens.md"]
 }

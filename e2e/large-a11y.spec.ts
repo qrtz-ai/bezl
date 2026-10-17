@@ -74,10 +74,35 @@ test('accessibility: no serious axe violations on main views', async () => {
     await win.getByTestId(`nav-${id}`).click();
     await win.waitForTimeout(300);
     bad.push(...(await axe(win, id)));
+    if (id === 'gallery') {
+      await win
+        .getByTestId('gallery-theme')
+        .getByRole('tab', { name: 'Light' })
+        .click();
+      await win.waitForTimeout(300);
+      bad.push(...(await axe(win, 'gallery')).map((v) => `light: ${v}`));
+    }
   }
   await win.keyboard.press('ControlOrMeta+k');
   await expect(win.getByTestId('palette')).toBeVisible();
   bad.push(...(await axe(win, 'palette')));
   expect(bad).toEqual([]);
+  await app.close();
+});
+
+test('cold start: launch to first paint of home under 1.5 s', async () => {
+  const t0 = Date.now();
+  const { app, win } = await launch({});
+  await expect(win.getByTestId('home')).toBeVisible();
+  const coldMs = Date.now() - t0;
+  const paint = await win.evaluate(
+    () =>
+      performance.getEntriesByName('first-contentful-paint')[0]?.startTime ??
+      -1,
+  );
+  console.log(JSON.stringify({ coldMs, firstContentfulPaintMs: paint }));
+  expect(coldMs).toBeLessThan(
+    Number(process.env.QRTZ_COLD_START_BUDGET_MS ?? 1500),
+  );
   await app.close();
 });
