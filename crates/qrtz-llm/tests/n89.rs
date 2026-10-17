@@ -276,50 +276,86 @@ async fn llm_steps_answer_chat_calls_openrouter() {
     assert_eq!(mock.seen().len(), 1);
 }
 
-#[test]
-fn chat_prompts_match_ts_oracle() {
-    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spec/vectors/llm/chat-prompts.json");
-    let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap();
-    for c in v["cases"].as_array().unwrap() {
+fn chat_vectors() -> serde_json::Value {
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spec/vectors/llm/chat.json");
+    serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap()
+}
+
+fn openrouter_at(mock: &Mock) -> Box<dyn qrtz_llm::LlmProvider> {
+    qrtz_llm::create_provider(
+        &qrtz_llm::http_client(),
+        "openrouter",
+        Some(Secret::new("sk-or-test")),
+        None,
+        Some(&mock.base_url),
+    )
+    .unwrap()
+}
+
+/// `genSources` (see the `about` of chat.json).
+fn gen_sources(n: usize) -> Vec<ChatSource> {
+    (0..n)
+        .map(|i| ChatSource {
+            meeting_id: format!("m{}", i % 3),
+            title: format!("Meeting {}", i % 3),
+            started_at: 1_700_000_000_000 + (i % 3) as i64,
+            start_ms: i as i64 * 7_000,
+            speaker: (i % 4 != 3).then(|| format!("S{}", i % 2)),
+            text: format!("line {i} about the budget"),
+        })
+        .collect()
+}
+
+/// spec/vectors/llm/chat.json `prompts`: messages and the exact OpenRouter request body, byte for byte.
+#[tokio::test]
+async fn chat_prompts_match_ts_oracle() {
+    let v = chat_vectors();
+    let mock = Mock::start().await;
+    for c in v["prompts"].as_array().unwrap() {
         let sources: Vec<ChatSource> = serde_json::from_value(c["sources"].clone()).unwrap();
-        let history: Vec<ChatTurn> = c
-            .get("history")
-            .map(|h| serde_json::from_value(h.clone()).unwrap())
-            .unwrap_or_default();
+        let history: Vec<ChatTurn> =
+            serde_json::from_value(c.get("history").cloned().unwrap_or(json!([]))).unwrap();
         let msgs = build_chat_prompt(
             c["question"].as_str().unwrap(),
             &sources,
             &history,
             c["nonce"].as_str(),
         );
-        let roles: Vec<&str> = msgs
-            .iter()
-            .map(|m| match m.role {
-                qrtz_llm::prompt::Role::System => "system",
-                qrtz_llm::prompt::Role::User => "user",
-                qrtz_llm::prompt::Role::Assistant => "assistant",
-            })
-            .collect();
-        let expect_roles: Vec<&str> = c["expect"]["roles"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|r| r.as_str().unwrap())
-            .collect();
-        assert_eq!(roles, expect_roles, "{}", c["id"]);
-        for s in c["expect"]["systemHas"].as_array().unwrap() {
-            assert!(
-                msgs[0].content.contains(s.as_str().unwrap()),
-                "{} missing {}",
-                c["id"],
-                s
-            );
-        }
-        assert_eq!(
-            msgs.last().unwrap().content,
-            c["expect"]["user"].as_str().unwrap(),
-            "{}",
-            c["id"]
-        );
+        assert_eq!(json!(msgs), c["expect"]["messages"], "{} messages", c["name"]);
+        mock.push(Reply::content("ok"));
+        openrouter_at(&mock).complete(&msgs, false).await.unwrap();
+        let req = mock.seen().pop().unwrap();
+        assert_eq!(json!(req.body), c["expect"]["body"], "{} body", c["name"]);
+    }
+}
+
+/// spec/vectors/llm/chat.json `answers`: the ChatAnswer TS returns for the same sources and provider reply.
+#[tokio::test]
+async fn chat_answers_match_ts_oracle() {
+    let v = chat_vectors();
+    for c in v["answers"].as_array().unwrap() {
+        let sources: Vec<ChatSource> = match c.get("sources") {
+            Some(s) => serde_json::from_value(s.clone()).unwrap(),
+            None => gen_sources(c["gen"].as_u64().unwrap() as usize),
+        };
+        let history: Vec<ChatTurn> =
+            serde_json::from_value(c.get("history").cloned().unwrap_or(json!([]))).unwrap();
+        let mock = Mock::start().await;
+        let provider = c["reply"].as_object().map(|r| {
+            mock.push(Reply::json(
+                r["status"].as_u64().unwrap() as u16,
+                r["body"].as_str().unwrap(),
+            ));
+            openrouter_at(&mock)
+        });
+        let got = answer_question(
+            c["question"].as_str().unwrap(),
+            &sources,
+            provider.as_deref(),
+            &history,
+            Duration::from_secs(5),
+        )
+        .await;
+        assert_eq!(json!(got), c["expect"], "{}", c["name"]);
     }
 }

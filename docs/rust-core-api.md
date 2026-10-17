@@ -873,22 +873,25 @@ let steps = Arc::new(qrtz_llm::LlmSteps::new(
   written by `packages/core/src/note/llm.vectors.test.ts` and read by `crates/qrtz-llm/tests/*.rs`, plus a mock HTTP
   server (`tests/common`).
 
-### Chat answer (N89, ADR 0059)
-
-Retrieval stays in qrtz-search. The answer half:
+### 9.1 `note:chat` answer (`qrtz_llm::chat`, N89, ADR 0059)
 
 ```rust
-let r = qrtz_search::retrieve(&storage, &embedder, &question, meeting_id).await?;
-let sources = r.ranked.unwrap_or_else(|| qrtz_search::rank_sources(&question, &r.candidates, 24));
-let answer = llm_steps.answer_chat(&question, &sources, &history).await;
-// ChatAnswer { answer, sources, provider, llm_error? } — serde camelCase
+// Keep the concrete LlmSteps next to the dyn StepExecutor (same instance: same provider, keys, local-only, client).
+let llm_steps = Arc::new(qrtz_llm::LlmSteps::new(db.clone(), core, now, config_fn, secrets));   // or ::on_device
+let llm: Arc<dyn StepExecutor> = llm_steps.clone();
+// note:chat {question, meetingId?, history?}:
+let r = qrtz_search::retrieve(&db, &embedder, &question, meeting_id).await?;  // E_NOT_FOUND for an unknown meeting
+let sources = r.into_sources(&question);              // hybrid order, else rank_sources(q, candidates, 24)
+let answer = llm_steps.answer_chat(&question, &sources, &history).await;     // never Err
+Ok(serde_json::to_value(answer)?)                     // ChatAnswer {answer, sources, provider, llmError?}
 ```
 
-Or without `LlmSteps`: `qrtz_llm::answer_question(&q, &sources, provider.as_deref(), &history, deadline)`.
-Prompt: `build_chat_prompt` (N69 `<excerpts-NONCE>` fence, N85 tag sanitizer). Deadline = `CHAT_DEADLINE_MS`
-(110 s). No provider / error / timeout → extractive top-3 quotes with `llmError`. Parity:
-`spec/vectors/llm/chat-prompts.json`.
-
+- `history`: `Vec<qrtz_llm::ChatTurn>` deserialized from the request (`{role: "user"|"assistant", content}`); the
+  last 6 go into the prompt.
+- LLM when `provider()` gives one (the configured provider with its key; under local-only only `none` or loopback
+  Ollama), one attempt under 110 s, not JSON mode, no streaming. Otherwise, or on any LLM failure, the first 3
+  sources are quoted (`provider: "extractive"`, `llmError` when a provider was tried).
+- Parity: `spec/vectors/llm/chat.json` (prompts + request bodies, ChatAnswer shaping), `tests/n89.rs`.
 
 ## 9. `qrtz-backup`: Markdown export and backup zip (phase 3, done)
 
@@ -953,9 +956,9 @@ let steps = Arc::new(qrtz_search::SearchSteps::new(storage.clone(), llm_steps, e
 // The runtime's StepExecutor is now `steps` (finalize/summary/resummarize go to LlmSteps, index here).
 let backfill = qrtz_search::Backfill::new(storage.clone(), Arc::new(move |id: &str| pending.has(id)));
 tokio::spawn(backfill.clone().run(embedder.clone(), Duration::from_secs(60)));   // at boot; backfill.cancel() on quit
-// note:chat retrieval (answering stays with the LLM side):
+// note:chat retrieval (the answer is qrtz-llm's, §9.1):
 let r = qrtz_search::retrieve(&storage, &embedder, &question, meeting_id).await?;  // never waits for the model
-// r.ranked = Some(hybrid order) when a model was ready, else rank with qrtz_search::rank_sources(&question, &r.candidates, 24)
+let sources = r.into_sources(&question);  // r.ranked (hybrid, first 24) or rank_sources(&question, &r.candidates, 24)
 ```
 
 - `index(id)`: `E_NOT_FOUND` for a missing meeting. With no model, `{indexed: 0, skipped: true}`. Otherwise the

@@ -25,6 +25,25 @@ pub struct Retrieval {
     pub ranked: Option<Vec<ChatSource>>,
 }
 
+/// Sources the chat prompt gets (TS `answerQuestion`: `rankSources(q, candidates, 24)`, or the first 24 of a
+/// hybrid order).
+pub const CHAT_SOURCES: usize = 24;
+
+impl Retrieval {
+    /// The ranked sources for `qrtz_llm::LlmSteps::answer_chat` (N89, ADR 0059): the hybrid order when it ran,
+    /// otherwise the lexical ranking of the candidates, at most [`CHAT_SOURCES`]. The extractive fallback then
+    /// quotes the first three, which is TS `extractiveAnswer` (`rankSources(q, candidates, 3)`).
+    pub fn into_sources(self, question: &str) -> Vec<ChatSource> {
+        match self.ranked {
+            Some(mut r) => {
+                r.truncate(CHAT_SOURCES);
+                r
+            }
+            None => crate::rank::rank_sources(question, &self.candidates, CHAT_SOURCES),
+        }
+    }
+}
+
 type Key = (String, i64, String);
 
 fn key(s: &ChatSource) -> Key {

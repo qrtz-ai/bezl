@@ -89,3 +89,42 @@ fn chat_cjk_ranks_match_ts() {
         assert_eq!(serde_json::to_value(got).unwrap(), c["texts"], "{q}");
     }
 }
+
+/// N89: what the chat answerer gets from a retrieval: the hybrid order (capped at 24) or the lexical ranking.
+#[test]
+fn retrieval_into_sources() {
+    use qrtz_search::{rank_sources, ChatSource, Retrieval, CHAT_SOURCES};
+    let line = |i: usize, t: &str| ChatSource {
+        meeting_id: "m".into(),
+        title: "T".into(),
+        started_at: 1,
+        start_ms: i as i64 * 1000,
+        speaker: None,
+        text: t.into(),
+    };
+    let cands: Vec<ChatSource> = (0..40)
+        .map(|i| {
+            line(
+                i,
+                if i % 5 == 0 {
+                    "the budget was approved"
+                } else {
+                    "lunch plans"
+                },
+            )
+        })
+        .collect();
+    let lexical = Retrieval {
+        candidates: cands.clone(),
+        ranked: None,
+    }
+    .into_sources("budget approved?");
+    assert_eq!(lexical, rank_sources("budget approved?", &cands, CHAT_SOURCES));
+    assert_eq!(lexical.len(), 8);
+    let hybrid = Retrieval {
+        candidates: vec![],
+        ranked: Some(cands.clone()),
+    }
+    .into_sources("x");
+    assert_eq!(hybrid, cands[..24].to_vec());
+}
