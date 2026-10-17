@@ -121,13 +121,14 @@ final class DictationTests: XCTestCase {
         let out = Box<[HelperMessage]>([])
         let mic = FakeMic()
         let c = HelperController(
-            deps: HelperDeps(permissions: FakePerms(), meetings: nil, audio: [], transcribers: [], helperVersion: "t", os: "linux", features: [], dictationMic: mic),
+            deps: HelperDeps(permissions: FakePerms(), meetings: nil, audio: [], transcribers: [], helperVersion: "t", os: "linux", features: [],
+                             dictationMic: mic, dictationTranscribers: [RecordingASR()]),
             send: { m in out.mutate { $0.append(m) } }, now: { 0 })
         await c.handle(.dictationStart(id: "a"))
         XCTAssertEqual(mic.starts, 1)
         await c.handle(.dictationStop(id: "a"))
         XCTAssertEqual(mic.stops, 1)
-        XCTAssertTrue(out.value.contains(.dictationStopped(id: "a", text: "", durationMs: 0)))
+        XCTAssertTrue(out.value.contains(.dictationStopped(id: "a", text: "hello world", durationMs: 0)), "only the pad reached it: no captured audio")
         await c.handle(.insertText(id: "a", text: "x", restoreClipboard: true))
         XCTAssertTrue(out.value.contains { if case .insertResult("a", .none, false, _, _) = $0 { true } else { false } })
     }
@@ -251,11 +252,13 @@ final class DictationTailTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(t), 0.6, "bounded: 150 ms + 0.8 s / 10")
         XCTAssertEqual(stoppedText(out.value), "w1", "the last partial, read before the finish, not from the recogniser mid-finish")
         XCTAssertTrue(out.value.contains { if case .log(.warn, let m) = $0 { m.contains("not ready") } else { false } })
-        // A re-press while that finish still runs never touches the recogniser: no reset, no append.
+        // A re-press while that finish still runs never touches the recogniser: no reset, no append. With no other
+        // recogniser it is refused (N134), never started deaf.
         await c.handle(.dictationStart(id: "d2"))
         await c.dictation.onSamples(level(3, 8960))
         XCTAssertTrue(out.value.contains { if case .log(.warn, let m) = $0 { m.contains("still finishing") } else { false } })
-        await c.handle(.dictationStop(id: "d2"))
+        XCTAssertTrue(out.value.contains { if case .error("dictation.asr", _, false, "d2", _, _, _) = $0 { true } else { false } })
+        XCTAssertFalse(out.value.contains(.dictationStarted(id: "d2", preRollMs: 0)))
         XCTAssertEqual(asr.lock.withLock { asr.appendsWhileFinishing }, 0)
         // Once it returns, the next dictation has it again.
         try? await Task.sleep(nanoseconds: 1_000_000_000)
@@ -264,7 +267,7 @@ final class DictationTailTests: XCTestCase {
         await c.handle(.dictationStart(id: "d3"))
         await c.dictation.onSamples(level(4, 8960))
         await c.handle(.dictationStop(id: "d3"))
-        XCTAssertEqual(stoppedText(out.value), "w4")
+        XCTAssertTrue(stoppedText(out.value)?.hasSuffix("w4") == true, "\(out.value)")  // after the refused press's pre-roll
     }
 
     func testNothingReachesTheRecogniserAfterTheDrain() async {
@@ -331,5 +334,125 @@ final class DictationTailTests: XCTestCase {
 
     func testTheBudgetFitsTheHostsStopWait() {
         XCTAssertLessThan(DictationTail().budgetMs(), 3000, "qrtz-talk waits 3000 ms for dictation.stopped")
+    }
+}
+
+/// N131: an `append` that blocks until released (any block with level `blockAt`, or every zero-only pad block when
+/// `blockPad`); otherwise a ChunkASR. Counts appends that reach it after a close gave up on it.
+final class BlockingASR: StreamingTranscriber, @unchecked Sendable {
+    let name = "blocking"
+    let loadsInstantly = true
+    let inner = ChunkASR()
+    let lock = NSLock()
+    var gate: [CheckedContinuation<Void, Never>] = []
+    var blocking = true
+    var inFlight = 0
+    var finishes = 0
+    var prepareFails = false
+    let blockAt: Float?, blockPad: Bool
+    init(blockAt: Float? = nil, blockPad: Bool = false) { self.blockAt = blockAt; self.blockPad = blockPad }
+    struct NoModel: Error {}
+    func prepare() async throws { if lock.withLock({ prepareFails }) { throw NoModel() } }
+    func append(_ s: [Float]) async {
+        let hit = (blockAt.map { b in s.contains(b) } ?? false) || (blockPad && !s.isEmpty && s.allSatisfy { $0 == 0 })
+        if hit, lock.withLock({ blocking }) {
+            lock.withLock { inFlight += 1 }
+            await withCheckedContinuation { c in lock.withLock { gate.append(c) } }
+            lock.withLock { inFlight -= 1 }
+        }
+        await inner.append(s)
+    }
+    func release() { let g = lock.withLock { () -> [CheckedContinuation<Void, Never>] in blocking = false; defer { gate.removeAll() }; return gate }; for c in g { c.resume() } }
+    func transcript() async -> String { await inner.transcript() }
+    func finish() async -> String { lock.withLock { finishes += 1 }; return await inner.finish() }
+    func reset() async { await inner.reset() }
+}
+
+final class DictationBoundsTests: XCTestCase {
+    func controller(_ asrs: [StreamingTranscriber], _ tail: DictationTail, mic: FakeMic = FakeMic()) -> (HelperController, Box<[HelperMessage]>) {
+        let out = Box<[HelperMessage]>([])
+        var deps = HelperDeps(permissions: FakePerms(), meetings: nil, audio: [], transcribers: [], helperVersion: "t", os: "linux",
+                              features: [], dictationMic: mic, dictationTranscribers: asrs)
+        deps.dictationTail = tail
+        return (HelperController(deps: deps, send: { m in out.mutate { $0.append(m) } }, now: { 0 }), out)
+    }
+    func level(_ k: Int, _ n: Int) -> [Float] { [Float](repeating: Float(k) / 10, count: n) }
+    func stoppedText(_ msgs: [HelperMessage], _ id: String) -> String? {
+        msgs.compactMap { if case .dictationStopped(id, let t, _, _) = $0 { t } else { nil } }.first
+    }
+    func warned(_ msgs: [HelperMessage], _ s: String) -> Bool { msgs.contains { if case .log(.warn, let m) = $0 { m.contains(s) } else { false } } }
+
+    func testAHungAppendAtTheReleaseIsBoundedAndHoldsTheRecogniser() async {
+        // N131: the recogniser hangs inside an append (level 0.9) as fn goes up.
+        let mic = FakeMic()
+        let asr = BlockingASR(blockAt: 0.9)
+        let spare = ChunkASR()
+        let tail = DictationTail(tailMs: 50, drainTimeoutMs: 200, padMs: 640, finalizeTimeoutMs: 300)
+        let (c, out) = controller([asr, spare], tail, mic: mic)
+        await c.handle(.dictationStart(id: "d1"))
+        guard let cb = mic.cb else { return XCTFail("mic attached") }
+        cb(level(1, 8960))
+        try? await Task.sleep(nanoseconds: 250_000_000)  // decoded, polled: the partial is "w1"
+        cb(level(9, 1360))  // hangs
+        cb(level(1, 1360))  // queued behind it
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        let t = Date()
+        await c.handle(.dictationStop(id: "d1"))
+        let ms = Date().timeIntervalSince(t) * 1000
+        let budget = Double(tail.budgetMs(audioMs: 700, queuedMs: 85))
+        XCTAssertLessThan(ms, budget + 100, "dictation.stopped within the helper's budget")
+        XCTAssertEqual(stoppedText(out.value, "d1"), "w1", "the last partial")
+        XCTAssertTrue(warned(out.value, "append still running"))
+        XCTAssertEqual(asr.lock.withLock { asr.finishes }, 0, "no pad, no finish on a recogniser mid-append")
+        // The next dictation skips it (uses the spare) until that append returns.
+        await c.handle(.dictationStart(id: "d2"))
+        XCTAssertTrue(warned(out.value, "blocking still finishing"))
+        mic.cb?(level(2, 8960))
+        await c.handle(.dictationStop(id: "d2"))
+        XCTAssertEqual(stoppedText(out.value, "d2"), "w2")
+        asr.release()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        out.mutate { $0.removeAll() }
+        await c.handle(.dictationStart(id: "d3"))
+        XCTAssertFalse(warned(out.value, "still finishing"), "released once its append returned")
+        await c.handle(.dictationStop(id: "d3"))
+    }
+
+    func testAHungPadIsInsideTheFinalizeDeadline() async {
+        // N131: the pad's own append hangs; the deadline started before it, so the stop still answers in time.
+        let asr = BlockingASR(blockPad: true)
+        let tail = DictationTail(tailMs: 0, drainTimeoutMs: 100, padMs: 640, finalizeTimeoutMs: 200)
+        let (c, out) = controller([asr], tail)
+        await c.handle(.dictationStart(id: "d1"))
+        await c.dictation.onSamples(level(1, 8960))
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        let t = Date()
+        await c.handle(.dictationStop(id: "d1"))
+        XCTAssertLessThan(Date().timeIntervalSince(t) * 1000, Double(tail.budgetMs(audioMs: 560)) + 100)
+        XCTAssertEqual(stoppedText(out.value, "d1"), "w1")
+        XCTAssertTrue(warned(out.value, "final text not ready"))
+        await c.handle(.dictationStart(id: "d2"))  // held until the pad and finish return: refused (N134)
+        XCTAssertTrue(out.value.contains { if case .error("dictation.asr", _, false, "d2", _, _, _) = $0 { true } else { false } })
+        asr.release()
+    }
+
+    func testAStartWithNoRecogniserIsRefusedNotDeaf() async {
+        // N134: every recogniser fails prepare (or is busy): error{dictation.asr} for that id, no started, mic released.
+        let mic = FakeMic()
+        let a = BlockingASR(), b = BlockingASR()
+        a.prepareFails = true; b.prepareFails = true
+        let (c, out) = controller([a, b], DictationTail(tailMs: 0), mic: mic)
+        await c.handle(.dictationStart(id: "d1"))
+        XCTAssertTrue(out.value.contains { if case .error("dictation.asr", let m, false, "d1", _, _, _) = $0 { m.contains("ready") } else { false } })
+        XCTAssertFalse(out.value.contains { if case .dictationStarted = $0 { true } else { false } })
+        let active = await c.dictation.isActive
+        XCTAssertFalse(active)
+        XCTAssertEqual(mic.stops, mic.starts, "the mic reader is released")
+        // Once one loads again, the next press works.
+        b.lock.withLock { b.prepareFails = false }
+        await c.handle(.dictationStart(id: "d2"))
+        XCTAssertTrue(out.value.contains { if case .dictationStarted("d2", _) = $0 { true } else { false } })
+        await c.handle(.dictationStop(id: "d2"))
+        XCTAssertNotNil(stoppedText(out.value, "d2"))
     }
 }

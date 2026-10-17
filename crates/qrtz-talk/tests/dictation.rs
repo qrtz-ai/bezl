@@ -133,6 +133,29 @@ async fn mic_denied_is_typed() {
     assert_eq!(r.view().error_kind, Some(TalkErrorKind::MicDenied));
 }
 
+/// N134: a start the helper refuses for want of a recogniser fails at once, typed, without a cancel (it never ran).
+#[tokio::test(start_paused = true)]
+async fn no_recogniser_is_typed_and_immediate() {
+    let r = rig(RigOpts {
+        helper: HelperOpts {
+            no_recogniser: true,
+            audio_every_ms: 50,
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+    let me = r.svc.clone();
+    tokio::spawn(async move { me.start().await });
+    until(|| r.view().phase == TalkPhase::Error, 500).await;
+    let v = r.view();
+    assert_eq!(v.error_kind, Some(TalkErrorKind::SpeechUnavailable));
+    assert_eq!(
+        v.error.as_deref(),
+        Some("speech recognition isn't ready yet; try again in a moment")
+    );
+    assert!(!r.helper.sent().iter().any(|m| m["type"] == "dictation.cancel"));
+}
+
 #[tokio::test(start_paused = true)]
 async fn recording_and_dictation_share_the_mic() {
     let r = rig(RigOpts::default());

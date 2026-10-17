@@ -91,6 +91,8 @@ impl StoreIo for FaultyIo {
 #[derive(Debug, Clone, Default)]
 pub struct HelperOpts {
     pub mic_denied: bool,
+    /// N134: refuse every dictation.start with error{dictation.asr} (no recogniser could take it).
+    pub no_recogniser: bool,
     pub insert_fails: bool,
     /// Audio chunk period (ms) while dictating.
     pub audio_every_ms: u64,
@@ -373,6 +375,12 @@ impl HelperSink for SinkHandle {
             }
             "dictation.start" => {
                 if st.opts.mute {
+                    return true;
+                }
+                if st.opts.no_recogniser {
+                    drop(st);
+                    me.deliver(json!({"type": "error", "code": "dictation.asr", "message": "no speech recogniser is ready",
+                                      "fatal": false, "id": id}));
                     return true;
                 }
                 let r = MockHelper::step(

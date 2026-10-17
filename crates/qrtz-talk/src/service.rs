@@ -321,6 +321,8 @@ fn s(v: &Value, k: &str) -> String {
 }
 
 const MSG_BUSY: &str = "another dictation is still running";
+/// N134: the helper refused the start because no recogniser could take it (all busy finishing, or none loads).
+const MSG_ASR: &str = "speech recognition isn't ready yet; try again in a moment";
 const MSG_HOTKEY: &str = "the push-to-talk key isn't available; allow qrtz in system settings → privacy & \
     security → input monitoring and accessibility";
 
@@ -634,6 +636,13 @@ impl TalkService {
                     }
                 } else if code == "dictation.busy" {
                     self.on_busy(m);
+                } else if code == "dictation.asr" {
+                    // N134: the helper refused our start (it never ran): say so now instead of waiting it out.
+                    let mut g = self.lock();
+                    let ours = m["id"].as_str().is_none_or(|id| g.view.id.as_deref() == Some(id));
+                    if g.view.active() && ours {
+                        self.fail(&mut g, TalkErrorKind::SpeechUnavailable, MSG_ASR, false);
+                    }
                 } else if code == "dictation.hotkey" {
                     // The helper couldn't watch the push key: pressing it would do nothing, so say so (never
                     // silent). An active dictation keeps going; the next press is what's broken.

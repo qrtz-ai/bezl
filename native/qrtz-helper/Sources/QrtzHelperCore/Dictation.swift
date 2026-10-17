@@ -184,9 +184,11 @@ public actor DictationEngine {
     /// Waiting for the mic stream to deliver everything queued before a stop (an empty block is the barrier).
     var drainWaiters: [CheckedContinuation<Void, Never>] = []
     var backlog: MicBacklog?
-    /// Appends in flight on the recogniser (actor reentrancy) and who waits for them to end.
-    var appending = 0
-    var idleWaiters: [CheckedContinuation<Void, Never>] = []
+    /// Appends in flight per recogniser (actor reentrancy) and who waits for them to end (true: idle, false: gave up).
+    var appending: [ObjectIdentifier: Int] = [:]
+    var idleWaiters: [ObjectIdentifier: [(UUID, CheckedContinuation<Bool, Never>)]] = [:]
+    /// N131: recognisers held `busy` because an append outlived `close()`'s limit; released when it returns.
+    var heldByAppend: Set<ObjectIdentifier> = []
     /// Recognisers whose finish() outlived the finalize limit: not used again until it returns.
     var busy: Set<ObjectIdentifier> = []
     var session: Session?
@@ -298,6 +300,13 @@ public actor DictationEngine {
             do { try await t.prepare(); await t.reset(); s.transcriber = t; break }
             catch { send(.log(level: .warn, msg: "dictation asr \(t.name) unavailable: \(error)")) }
         }
+        // N134: nothing would hear this dictation (every recogniser busy or failing, no speech module attached):
+        // refuse it, so the host says so instead of pasting nothing after the release.
+        if s.transcriber == nil, !(speech?.has(.dictation(id: id)) ?? false) {
+            let why = transcribers.isEmpty ? "no speech recogniser" : "no speech recogniser is ready"
+            send(.error(code: "dictation.asr", message: why, fatal: false, id: id))
+            return
+        }
         let pre = preRoll.drain()
         session = s
         send(.dictationStarted(id: id, preRollMs: Double(pre.count) * 1000 / 16_000))
@@ -342,16 +351,46 @@ public actor DictationEngine {
         session = sess
         speech?.write(.dictation(id: sess.id), .mic, s)
         guard let tr = sess.transcriber else { return }
-        appending += 1
+        let k = ObjectIdentifier(tr)
+        appending[k, default: 0] += 1
         await tr.append(s)
-        appending -= 1
-        if appending == 0 { let w = idleWaiters; idleWaiters.removeAll(); for c in w { c.resume() } }
+        appending[k, default: 1] -= 1
+        if appending[k] == 0 {
+            appending[k] = nil
+            let w = idleWaiters.removeValue(forKey: k) ?? []
+            for (_, c) in w { c.resume(returning: true) }
+            if heldByAppend.remove(k) != nil { busy.remove(k) }
+        }
     }
 
-    /// No append starts after this, and the ones in flight have returned: the recogniser is the caller's alone.
-    func close() async {
+    /// No append starts after this. True: the ones in flight returned within `limitMs`, the recogniser is the
+    /// caller's alone. False (N131): one is still running; the recogniser is held `busy` until it returns, and the
+    /// caller must not touch it (no pad, no finish).
+    func close(limitMs: Int) async -> Bool {
         session?.closed = true
-        if appending > 0 { await withCheckedContinuation { idleWaiters.append($0) } }
+        guard let tr = session?.transcriber else { return true }
+        let k = ObjectIdentifier(tr)
+        guard (appending[k] ?? 0) > 0 else { return true }
+        let token = UUID()
+        let idle = await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+            idleWaiters[k, default: []].append((token, c))
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(max(0, limitMs)) * 1_000_000)
+                await self?.giveUpIdle(k, token)
+            }
+        }
+        if !idle {
+            busy.insert(k); heldByAppend.insert(k)
+            send(.log(level: .warn, msg: "dictation: \(tr.name) append still running after \(limitMs) ms; using the last partial (recogniser held until it returns)"))
+        }
+        return idle
+    }
+
+    func giveUpIdle(_ k: ObjectIdentifier, _ token: UUID) {
+        guard var w = idleWaiters[k], let i = w.firstIndex(where: { $0.0 == token }) else { return }
+        let c = w.remove(at: i).1
+        idleWaiters[k] = w.isEmpty ? nil : w
+        c.resume(returning: false)
     }
 
     func poll() async {
@@ -370,9 +409,14 @@ public actor DictationEngine {
         guard session?.id == id else { return }  // cancelled or aborted meanwhile (that path answered)
         // 2. Drain: the mic blocks still queued in the stream reach the recogniser (bounded, scaled to the queue).
         let queuedMs = (backlog?.queuedSamples ?? 0) / 16
-        let drained = await drainMic(limitMs: tail.drainLimitMs(queuedMs: queuedMs))
+        let drainLimit = tail.drainLimitMs(queuedMs: queuedMs)
+        let drainStart = ContinuousClock.now
+        let drained = await drainMic(limitMs: drainLimit)
         guard session?.id == id else { return }
-        await close()
+        // N131: close() gets what is left of the drain's budget; past it the last partial is the answer.
+        let used = drainStart.duration(to: .now)
+        let usedMs = Int(used.components.seconds) * 1000 + Int(used.components.attoseconds / 1_000_000_000_000_000)
+        let idle = await close(limitMs: drainLimit - usedMs)
         if !drained { _ = preRoll.drain() }  // what was still queued is this dictation's stale audio, not pre-roll
         guard var s = session, s.id == id else { return }
         tick?.cancel(); tick = nil
@@ -381,7 +425,10 @@ public actor DictationEngine {
             s.seq += 1; s.pendingPcm.removeAll()
         }
         var text = ""
-        if let tr = s.transcriber {
+        if s.transcriber != nil, !idle {
+            text = s.lastPartial.trimmingCharacters(in: .whitespacesAndNewlines)
+            for e in s.segmenter.flush(cumulative: text, nowMs: now() - s.startMs) { send(.dictationAsr(id: s.id, event: e)) }
+        } else if let tr = s.transcriber {
             // 3. Pad and finalize: silence after the last word puts it in a full chunk; the final text is awaited.
             let limit = tail.finalizeLimitMs(audioMs: s.samples / 16, queuedMs: queuedMs)
             text = await finalText(tr, limitMs: limit, partial: s.lastPartial).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -423,15 +470,17 @@ public actor DictationEngine {
         for c in w { c.resume() }
     }
 
-    /// Silence pad, then the recogniser's final text, waited for up to `limitMs`. Only past that (a hung recogniser)
-    /// is `partial` used, and the recogniser stays out of use until its finish() returns.
+    /// Silence pad, then the recogniser's final text, both under one deadline of `limitMs` (N131: the pad's append
+    /// counts too). Only past that (a hung recogniser) is `partial` used, and the recogniser stays out of use until
+    /// its pad and finish() return.
     func finalText(_ tr: StreamingTranscriber, limitMs: Int, partial: String) async -> String {
-        if tail.padMs > 0 { await tr.append([Float](repeating: 0, count: 16 * tail.padMs)) }
+        let pad = tail.padMs > 0 ? [Float](repeating: 0, count: 16 * tail.padMs) : []
         let key = ObjectIdentifier(tr)
         busy.insert(key)
         let first = FirstOf()
         let final: String? = await withCheckedContinuation { (c: CheckedContinuation<String?, Never>) in
             Task { [weak self] in
+                if !pad.isEmpty { await tr.append(pad) }
                 let t = await tr.finish()
                 await self?.finished(key)
                 first.fire { c.resume(returning: t) }
@@ -446,14 +495,13 @@ public actor DictationEngine {
         return partial
     }
 
-    func finished(_ key: ObjectIdentifier) { busy.remove(key) }
+    func finished(_ key: ObjectIdentifier) { if !heldByAppend.contains(key) { busy.remove(key) } }
 
     public func cancel(id: String) async {
         guard let s = session, s.id == id else { return }
         if s.closed { session?.cancelled = true; return }  // the stop is finalizing: it answers, once
         tick?.cancel(); tick = nil
-        await close()
-        _ = await s.transcriber?.finish()
+        if await close(limitMs: tail.drainTimeoutMs) { _ = await s.transcriber?.finish() }
         session = nil
         speech?.end(.dictation(id: id))
         if !warmMic && !managedMic { stopMic() }
@@ -466,10 +514,10 @@ public actor DictationEngine {
         guard let s = session else { stopMic(); return }
         if s.closed { session?.abortReason = reason; return }  // the stop is finalizing: it answers with the reason
         tick?.cancel(); tick = nil
-        await close()
+        let idle = await close(limitMs: tail.drainTimeoutMs)
         var text = ""
         if let tr = s.transcriber {
-            text = await tr.finish().trimmingCharacters(in: .whitespacesAndNewlines)
+            text = (idle ? await tr.finish() : s.lastPartial).trimmingCharacters(in: .whitespacesAndNewlines)
             for e in s.segmenter.flush(cumulative: text, nowMs: now() - s.startMs) { send(.dictationAsr(id: s.id, event: e)) }
         }
         session = nil
