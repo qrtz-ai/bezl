@@ -58,5 +58,9 @@ qrtz-search = { path = "../qrtz-search" }
 libc = "0.2"
 qrtz-speech = { path = "../qrtz-speech", features = ["testkit"] }
 ed25519-dalek = "2"
+# e2e_notes_privacy.rs reads the log (`meeting ignored (excluded app)`), as the Electron spec read logs/main.jsonl.
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+  "fmt",
+] }
 # `cargo test --workspace` builds the runtime adapter tests without extra flags.
 qrtz-app = { path = ".", features = ["runtime"] }

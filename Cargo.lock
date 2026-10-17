@@ -3966,6 +3966,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "unicode-normalization",
 ]
 

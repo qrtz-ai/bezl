@@ -166,6 +166,11 @@ pub struct Opts {
     pub retry_scale: f64,
     pub embedder: Option<Arc<LazyEmbedder>>,
     pub talk: Option<Arc<dyn TalkPort>>,
+    /// `QRTZ_TALK_LLM=fake|hang` (`DevKnobs::talk_llm`).
+    pub talk_llm: Option<String>,
+    /// `QRTZ_TALK_CLOUD=echo|fail` (Electron's mock cloud engine). Not wired: the Tauri talk wiring has no such
+    /// knob yet (docs/e2e-parity.md "Production changes"); the tests that set it are `#[ignore]`d.
+    pub talk_cloud: Option<String>,
 }
 impl Default for Opts {
     fn default() -> Self {
@@ -176,6 +181,8 @@ impl Default for Opts {
             retry_scale: 0.001,
             embedder: None,
             talk: None,
+            talk_llm: None,
+            talk_cloud: None,
         }
     }
 }
@@ -202,6 +209,14 @@ impl Opts {
     }
     pub fn talk(mut self, t: Arc<dyn TalkPort>) -> Self {
         self.talk = Some(t);
+        self
+    }
+    pub fn talk_llm(mut self, mode: &str) -> Self {
+        self.talk_llm = Some(mode.into());
+        self
+    }
+    pub fn talk_cloud(mut self, mode: &str) -> Self {
+        self.talk_cloud = Some(mode.into());
         self
     }
     /// The standup scenario at `speed` (scripted helper).
@@ -268,6 +283,7 @@ impl App {
             knobs: DevKnobs {
                 retry_scale: Some(o.retry_scale),
                 llm_base_url: o.llm_base,
+                talk_llm: o.talk_llm,
                 ..Default::default()
             },
         })
@@ -358,6 +374,46 @@ impl App {
         .await
     }
 
+    pub async fn talk(&self, ch: &str, payload: Value) -> Value {
+        self.call("talk", ch, payload).await
+    }
+
+    pub async fn talk_state(&self) -> Value {
+        self.talk("talk:state", Value::Null).await
+    }
+
+    /// Poll `talk:state` until `pred` holds; returns that view.
+    pub async fn until_talk(&self, what: &str, pred: impl Fn(&Value) -> bool) -> Value {
+        wait(what, || async {
+            let s = self.talk_state().await;
+            pred(&s).then_some(s)
+        })
+        .await
+    }
+
+    pub async fn talk_history(&self) -> Vec<Value> {
+        self.talk("talk:history", Value::Null)
+            .await
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// One dictation: start, stream until "friday" is heard, stop, wait for the history entry; returns it.
+    pub async fn dictate(&self) -> Value {
+        let before = self.talk_history().await.len();
+        self.talk("talk:start", Value::Null).await;
+        self.until_talk("heard friday", |v| talk_text(v).contains("friday"))
+            .await;
+        self.talk("talk:stop", Value::Null).await;
+        self.until_talk("talk idle", |v| v["phase"] == "idle").await;
+        wait("history entry", || async {
+            let h = self.talk_history().await;
+            (h.len() > before).then(|| h[0].clone())
+        })
+        .await
+    }
+
     pub fn helper_pid_alive(&self) -> bool {
         self.app.service.helper().is_some()
     }
@@ -409,6 +465,17 @@ pub async fn record_until(a: &App, title: Option<&str>, enough: impl Fn(&Value) 
     a.until_phase("done").await;
     let p = a.until_settled(&id).await;
     (id, p)
+}
+
+/// What the pill shows: committed text + the live partial.
+pub fn talk_text(v: &Value) -> String {
+    format!(
+        "{} {}",
+        v["text"].as_str().unwrap_or(""),
+        v["partial"].as_str().unwrap_or("")
+    )
+    .trim()
+    .to_owned()
 }
 
 pub fn segments(t: &Value) -> usize {
