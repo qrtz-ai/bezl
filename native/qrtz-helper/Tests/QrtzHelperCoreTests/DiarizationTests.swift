@@ -364,3 +364,41 @@ final class DiarizerRunScopeTests: XCTestCase {
     func testAnAbortedRunNeverUnloadsTheNextRecordingsModel() async { await runBackToBack(abortFirst: true) }
 }
 
+final class ModelsWarmCancelTests: XCTestCase {
+    func testARecordingThatStartsDuringTheWarmCancelsItBetweenModels() async {
+        // N127: three "models" of 200 ms each, checking isCancelled between them like mac warmModels.
+        let out = Box<[HelperMessage]>([])
+        let loaded = Box<[String]>([]), resident = Box<Int>(0)
+        var deps = HelperDeps(permissions: FakePerms(), meetings: nil, audio: [FakeAudio("sck")], transcribers: [FakeASR()],
+                              helperVersion: "t", os: "linux", features: [])
+        deps.modelWarmup = {
+            for m in ["asr", "diarizer", "echo"] {
+                resident.mutate { $0 += 1 }
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                loaded.mutate { $0.append(m) }
+                resident.mutate { $0 -= 1 }  // unloaded right after its load
+                if Task.isCancelled { return "models.warm cancelled after \(m)" }
+            }
+            return "models warmed: test"
+        }
+        let c = HelperController(deps: deps, send: { m in out.mutate { $0.append(m) } }, now: { 0 })
+        let warm = await c.warmModels()
+        try? await Task.sleep(nanoseconds: 50_000_000)  // inside the first model
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("qrtz-n127-\(UUID()).wav").path
+        await c.handle(.recordingStart(audioPath: path))
+        await warm?.value
+        XCTAssertEqual(loaded.value, ["asr"], "stopped after the model it was in")
+        XCTAssertEqual(resident.value, 0, "nothing left loaded next to the recording")
+        XCTAssertTrue(out.value.contains(.log(level: .info, msg: "models.warm cancelled: recording")))
+        XCTAssertTrue(out.value.contains(.log(level: .info, msg: "models.warm cancelled after asr")))
+        XCTAssertFalse(out.value.contains(.log(level: .info, msg: "models warmed: test")))
+        await c.handle(.recordingStop())
+        // After the recording a new warm runs in full.
+        let again = await c.warmModels()
+        XCTAssertNotNil(again)
+        await again?.value
+        XCTAssertTrue(out.value.contains(.log(level: .info, msg: "models warmed: test")))
+        try? FileManager.default.removeItem(atPath: path)
+    }
+}
+

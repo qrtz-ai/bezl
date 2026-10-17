@@ -59,14 +59,19 @@ func logErr(_ s: String) { FileHandle.standardError.write(Data("[qrtz-helper] \(
 func warmModels() async -> String {
     func ms(_ t: Date) -> Int { Int(Date().timeIntervalSince(t) * 1000) }
     var parts: [String] = []
+    // N127: a recording that starts cancels the warm; it stops between models (each one is unloaded right after its
+    // load, so nothing stays resident next to the recording's models).
+    func cancelled() -> String? { Task.isCancelled ? "models.warm cancelled (recording started) after: " + (parts.isEmpty ? "none" : parts.joined(separator: ", ")) : nil }
     var t = Date()
     let asr = NemotronTranscriber()
     do { try await asr.prepare(); parts.append("asr \(ms(t)) ms") } catch { parts.append("asr unavailable: \(error)") }
     await asr.unload()
+    if let c = cancelled() { return c }
     t = Date()
     let diar = NemotronChannelDiarizer()
     do { try await diar.prepare(); parts.append("diarizer \(ms(t)) ms") } catch { parts.append("diarizer unavailable: \(error)") }
     await diar.unload()
+    if let c = cancelled() { return c }
     t = Date()
     let vqe = LocalVqeEnhancer()
     do { try await vqe.prepare(); parts.append("echo \(ms(t)) ms") } catch { parts.append("echo unavailable: \(error)") }

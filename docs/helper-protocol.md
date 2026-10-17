@@ -186,6 +186,8 @@ diarizer reports finished speaker turns:
 Host → helper `{"type":"models.warm"}` (ADR 0079 / N121): sent once after the local speech models finish installing
 (`speech.warmAfterDownload`, default on). The helper loads each model once, one at a time, then unloads it, and logs
 `models warmed: …`. Ignored while recording or while a warm-up runs; an older helper logs it as an ignored line.
+N127: a `recording.start` during the warm-up cancels it. The warm-up stops after the model it is loading, unloads
+that model, and logs `models.warm cancelled …`. The next `models.warm` runs in full.
 
 ## Silent capture (N29)
 

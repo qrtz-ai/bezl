@@ -490,6 +490,7 @@ public actor HelperController {
 
     func startRecording(_ path: String) async {
         if recording != nil { send(.log(level: .warn, msg: "recording.start while recording; ignored")); return }
+        if let w = warmTask { w.cancel(); send(.log(level: .info, msg: "models.warm cancelled: recording")) }
         let wav: WavWriter
         do { wav = try WavWriter(url: URL(fileURLWithPath: path)) } catch {
             // Fail closed: a recording never runs without a file. Nothing has started yet (no source, no ASR, no
@@ -647,14 +648,20 @@ public actor HelperController {
         if warming { return nil }
         warming = true
         let send = self.send, dictation = self.dictation
-        return Task.detached { [weak self] in
+        let t = Task.detached { [weak self] in
             send(.log(level: .info, msg: await warm()))
             await self?.warmDone()
-            await dictation.prewarmIfKeyed()  // talk's own instance, now from the compiled cache
+            if !Task.isCancelled { await dictation.prewarmIfKeyed() }  // talk's own instance, now from the compiled cache
         }
+        warmTask = t
+        return t
     }
 
-    func warmDone() { warming = false }
+    /// N127: the running `models.warm`; a recording that starts cancels it (the warm checks between models and
+    /// unloads what it loaded), so no warm-up model stays resident next to the recording's.
+    var warmTask: Task<Void, Never>?
+
+    func warmDone() { warming = false; warmTask = nil }
 
     /// ADR 0079: one task per channel diarizer. It loads the model (local files only) while capture runs, then waits
     /// for the recogniser's mode: speakers only make sense with per-channel transcripts, so it stands down otherwise.
