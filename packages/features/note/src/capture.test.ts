@@ -69,6 +69,19 @@ describe('capture status (N29, H8)', () => {
   });
 
   it('meeting notice: nothing to say → no lines; many → capped with +n more', () => {
+    expect(
+      captureNoticeLines(start, {
+        deviceFailures: [
+          { degraded: ['no-mic'], reason: 'device busy', atMs: 7 * 60_000 },
+        ],
+      }),
+    ).toEqual([
+      {
+        id: 'device-0',
+        text: 'mic device failed at 10:07',
+        detail: 'device busy',
+      },
+    ]); // N35: a device failure, never worded as a revoke
     expect(captureNoticeLines(start, undefined)).toEqual([]);
     expect(captureNoticeLines(start, {})).toEqual([]);
     const many = captureNoticeLines(start, {

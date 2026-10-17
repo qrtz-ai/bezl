@@ -49,6 +49,14 @@ export function liveCaptureStatus(
   };
 }
 
+/** N35: what a failed capture device took away, as the meeting notice says it (not a permission revoke). */
+const DEVICE_LOST_LABEL: Record<string, string> = {
+  'no-mic': 'mic',
+  'mic-only': 'system audio',
+  'audio-unavailable': 'audio capture',
+  'ax-unavailable': 'speaker names',
+};
+
 /** Most lines the meeting notice shows; the rest collapse into "+n more". */
 export const CAPTURE_NOTICE_MAX = 6;
 
@@ -90,6 +98,13 @@ export function captureNoticeLines(
       id: f.id,
       text: f.n > 1 ? `${f.text} ×${f.n}` : f.text,
       ...(f.detail ? { detail: f.detail } : {}),
+    });
+  // N35: a device that failed mid-recording (a revoke is not on this record, so this never reads as one).
+  for (const [i, d] of (capture?.deviceFailures ?? []).entries())
+    out.push({
+      id: `device-${i}`,
+      text: `${d.degraded.map((f) => DEVICE_LOST_LABEL[f] ?? f).join(', ')} device failed at ${fmtTimeOfDay(startedAt + d.atMs)}`,
+      ...(d.reason ? { detail: d.reason } : {}),
     });
   if (out.length <= CAPTURE_NOTICE_MAX) return out;
   const shown = out.slice(0, CAPTURE_NOTICE_MAX - 1);
