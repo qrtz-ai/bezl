@@ -1,0 +1,29 @@
+[package]
+name = "qrtz-search"
+description = "qrtz semantic search: the Embedder seam (FTS only until a model is loaded), the index step with its deadline, the bounded/cancelable vector backfill, chat retrieval and the lexical + hybrid ranker (port of packages/core/src/note/{chat,embeddings}.ts and the worker's note.stepIndex / note.chat retrieval)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+qrtz-model.workspace = true
+qrtz-storage.workspace = true
+qrtz-lifecycle = { workspace = true, features = ["runtime"] }
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+unicode-normalization.workspace = true
+regex = "1"
+tokio = { version = "1", features = ["time", "sync", "rt"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = [
+  "rt",
+  "rt-multi-thread",
+  "macros",
+  "time",
+  "test-util",
+] }

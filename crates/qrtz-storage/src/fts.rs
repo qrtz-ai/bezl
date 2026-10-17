@@ -50,7 +50,7 @@ fn prefix_terms(words: &[String]) -> String {
 /// Scripts written without spaces between words (Thai, Lao, Myanmar, Khmer, kana, Han): unicode61 indexes a run of
 /// them as one token (N48). Fixed code point ranges, the same class as TS `UNSEGMENTED`, so both runtimes agree
 /// whatever Unicode version each ships.
-fn unsegmented(w: &str) -> bool {
+pub fn unsegmented(w: &str) -> bool {
     w.chars().any(|c| {
         matches!(c as u32,
             0x0E00..=0x0EFF

@@ -361,6 +361,42 @@ impl<'a> NoteRepo<'a> {
         })
     }
 
+    /// Saves only the vectors whose line is still there with the text that was embedded (same meeting, same
+    /// text), so a vector computed while the meeting was deleted, re-finalized or edited is dropped, never attached
+    /// to another line (qrtz-search, ADR 0049). Returns how many were saved.
+    pub fn save_vectors_if_current(&self, model: &str, rows: &[(VectorRow, String)]) -> Result<u32> {
+        self.tx(|| {
+            let mut check = self
+                .conn
+                .prepare_cached("SELECT 1 FROM segments WHERE rowid = ? AND meeting_id = ? AND text = ?")?;
+            let mut put = self.conn.prepare_cached(
+                "INSERT OR REPLACE INTO segment_vectors (segment_rowid, meeting_id, model, vec) VALUES (?,?,?,?)",
+            )?;
+            let mut n = 0;
+            for (r, text) in rows {
+                if check.exists(params![r.rowid, r.meeting_id, text])? {
+                    put.execute(params![r.rowid, r.meeting_id, model, r.vec])?;
+                    n += 1;
+                }
+            }
+            Ok(n)
+        })
+    }
+
+    /// Meetings with at least one line that has no vector for `model` (a new model id counts every line), newest
+    /// meeting first.
+    pub fn meetings_missing_vectors(&self, model: &str) -> Result<Vec<String>> {
+        collect(
+            self.conn,
+            "SELECT m.id AS id FROM meetings m WHERE EXISTS (
+               SELECT 1 FROM segments s LEFT JOIN segment_vectors v ON v.segment_rowid = s.rowid AND v.model = ?
+               WHERE s.meeting_id = m.id AND v.segment_rowid IS NULL)
+             ORDER BY m.started_at DESC, m.id",
+            [model],
+            |r: &Row| string(r, "id"),
+        )
+    }
+
     /// Indexed transcript lines with their vectors (one meeting, or all).
     pub fn vector_sources(&self, model: &str, meeting_id: Option<&str>) -> Result<Vec<VectorSource>> {
         let map = |r: &Row| {

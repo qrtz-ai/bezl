@@ -920,3 +920,25 @@ entry is a SQLite error ("file is not a database"); a newer schema is `Validatio
 5. Map errors with the existing `StorageError` → `AppError` path. Both calls hold the storage thread for the
    whole run, like the TS worker; the renderer already shows progress for that.
 6. E2E: `QRTZ_BACKUP_PATH` / `QRTZ_EXPORT_DIR` drive the existing Electron specs unchanged.
+
+## 10. `qrtz-search` (index step, backfill, chat retrieval; ADR 0049)
+
+```rust
+let embedder = qrtz_search::LazyEmbedder::none();          // full-text only; with a model: LazyEmbedder::new(loader)
+let steps = Arc::new(qrtz_search::SearchSteps::new(storage.clone(), llm_steps, embedder.clone()));
+// The runtime's StepExecutor is now `steps` (finalize/summary/resummarize go to LlmSteps, index here).
+let backfill = qrtz_search::Backfill::new(storage.clone(), Arc::new(move |id: &str| pending.has(id)));
+tokio::spawn(backfill.clone().run(embedder.clone(), Duration::from_secs(60)));   // at boot; backfill.cancel() on quit
+// note:chat retrieval (answering stays with the LLM side):
+let r = qrtz_search::retrieve(&storage, &embedder, &question, meeting_id).await?;  // never waits for the model
+// r.ranked = Some(hybrid order) when a model was ready, else rank with qrtz_search::rank_sources(&question, &r.candidates, 24)
+```
+
+- `index(id)`: `E_NOT_FOUND` for a missing meeting. With no model, `{indexed: 0, skipped: true}`. Otherwise the
+  meeting's missing lines in 64-line batches under the 280 s deadline (which includes the model load); past it a
+  retryable `E_TIMEOUT` with the earlier batches kept.
+- `Backfill::pass(e, max_lines)` returns `{embedded, more, cancelled}`. It goes newest meeting first, skips
+  tombstoned meetings, and a model change re-embeds every line.
+- Stored vectors: little-endian f32 (`vec_to_blob`), the model id in `segment_vectors.model`, written with
+  `NoteRepo::save_vectors_if_current` (only lines that still have the embedded text).
+- Parity: `spec/vectors/search/rank.json` and the `ranks` of `spec/stress/chat-cjk.json`.

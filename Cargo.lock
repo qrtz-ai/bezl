@@ -3518,6 +3518,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "qrtz-search"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "qrtz-lifecycle",
+ "qrtz-model",
+ "qrtz-storage",
+ "regex",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "unicode-normalization",
+]
+
+[[package]]
 name = "qrtz-speech"
 version = "0.1.0"
 dependencies = [

@@ -22,6 +22,7 @@ mod row;
 
 pub use db::{Db, DbHealth, ImportHooks, ImportReport};
 pub use error::{Result, StorageError};
+pub use fts::unsegmented as is_unsegmented;
 pub use fts::{
     bigrams, chat_plan, search_plan, substring_snippet, to_chat_fts_query, to_fts_query, ChatPlan,
     SearchPlan, CHAT_MAX_BIGRAMS,
