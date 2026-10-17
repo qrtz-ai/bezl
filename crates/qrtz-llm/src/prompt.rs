@@ -50,16 +50,33 @@ pub struct SummaryOptions {
 
 /// N69: characters that could forge structure in a prompt: C0/C1 controls (newlines, CR, tab, NEL…), the Unicode
 /// line and paragraph separators, and the bidi embedding/override/isolate controls (`PROMPT_UNSAFE` in llm.ts).
+/// N85: also the Unicode tag characters U+E0000–U+E007F, which render as nothing but spell ASCII the model reads
+/// (an invisible instruction in a calendar title, a speaker name or a note).
 pub fn prompt_unsafe(c: char) -> bool {
-    c.is_control() || matches!(c, '\u{2028}' | '\u{2029}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+    c.is_control()
+        || matches!(c, '\u{2028}' | '\u{2029}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+        || is_tag_char(c)
 }
 
-/// N69: one-line, display-safe text for a prompt: every unsafe character becomes a space. All of them are one
-/// UTF-16 unit, so lengths (and the N21 windowing) don't change.
+/// N85: the Unicode tag block (deprecated language tags; today only emoji subdivision flags use it).
+fn is_tag_char(c: char) -> bool {
+    ('\u{E0000}'..='\u{E007F}').contains(&c)
+}
+
+/// N69: one-line, display-safe text for a prompt: every unsafe character becomes a space, a tag character (two
+/// UTF-16 units) two spaces, so UTF-16 lengths (and the N21 windowing) don't change.
 pub fn prompt_safe(s: &str) -> String {
-    s.chars()
-        .map(|c| if prompt_unsafe(c) { ' ' } else { c })
-        .collect()
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if is_tag_char(c) {
+            out.push_str("  ");
+        } else if prompt_unsafe(c) {
+            out.push(' ');
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// N69: a fresh fence nonce, 64 random bits as 16 hex chars.

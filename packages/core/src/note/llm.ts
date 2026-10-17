@@ -38,10 +38,14 @@ export interface SummaryOptions {
  * Unicode line and paragraph separators, and the bidi embedding/override/isolate controls. Each is one UTF-16 unit,
  * so `promptSafe` keeps lengths (and the N21 windowing) unchanged.
  */
-const PROMPT_UNSAFE = /[\p{Cc}\u2028\u2029\u202A-\u202E\u2066-\u2069]/gu;
+// N85: plus the Unicode tag characters U+E0000-U+E007F (invisible, but they spell ASCII the model reads).
+const PROMPT_UNSAFE =
+  /[\p{Cc}\u2028\u2029\u202A-\u202E\u2066-\u2069\u{E0000}-\u{E007F}]/gu;
 
-/** N69: one-line, display-safe text for a prompt: every PROMPT_UNSAFE character becomes a space. */
-export const promptSafe = (s: string): string => s.replace(PROMPT_UNSAFE, ' ');
+/** N69: one-line, display-safe text for a prompt: every PROMPT_UNSAFE character becomes a space (a tag character,
+ * two UTF-16 units, two spaces), so UTF-16 lengths don't change. */
+export const promptSafe = (s: string): string =>
+  s.replace(PROMPT_UNSAFE, (m) => (m.length === 2 ? '  ' : ' '));
 
 /** N69: a fresh fence nonce, 64 random bits as 16 hex chars (the transcript can't guess its closing tag). */
 export function fenceNonce(): string {
