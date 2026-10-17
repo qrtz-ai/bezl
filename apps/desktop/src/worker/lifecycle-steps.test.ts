@@ -116,3 +116,115 @@ describe('worker lifecycle steps', () => {
     expect(h['lifecycle.loadSession']()).toBeNull();
   });
 });
+
+/** An OpenRouter-shaped reply whose summary text is `text`. */
+const reply = (text: string) =>
+  new Response(
+    JSON.stringify({
+      id: 'x',
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: JSON.stringify({ summary: text, actionItems: [], qa: [] }),
+          },
+        },
+      ],
+    }),
+    { status: 200 },
+  );
+const sleepMs = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Hardening cycle 2 (ADR 0005): a summary attempt the host gave up on must be over in the worker too.
+describe('stepSummary deadline (slow OpenRouter)', () => {
+  const setup = (fetch: FetchLike) => {
+    const h = createWorkerHandlers(openDatabase(':memory:'), { fetch });
+    h['note.create']({ meeting: meeting('m', 'processing') });
+    h['note.appendLive']({ meetingId: 'm', segment: seg });
+    return h;
+  };
+
+  it('a provider that hangs is aborted at deadlineMs: retryable E_TIMEOUT, nothing saved', async () => {
+    let sawSignal = false;
+    const hang: FetchLike = (_u, init) =>
+      new Promise((_r, reject) => {
+        sawSignal = !!init.signal;
+        init.signal?.addEventListener('abort', () =>
+          reject(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+        );
+      });
+    const h = setup(hang);
+    const err = await h['note.stepSummary']({
+      meetingId: 'm',
+      llm,
+      deadlineMs: 30,
+    }).catch((e) => e);
+    expect(sawSignal).toBe(true);
+    expect(err.code).toBe('E_TIMEOUT');
+    expect(err.retryable).toBe(true);
+    expect(h['note.get']({ id: 'm' }).summary).toBeUndefined();
+    expect(h['note.get']({ id: 'm' }).meeting.status).toBe('processing');
+  });
+
+  it('a reply that ignores the abort and lands after the deadline is dropped, not saved', async () => {
+    const late: FetchLike = async () => {
+      await sleepMs(60);
+      return reply('stale');
+    };
+    const h = setup(late);
+    const err = await h['note.stepSummary']({
+      meetingId: 'm',
+      llm,
+      deadlineMs: 20,
+    }).catch((e) => e);
+    expect(err.code).toBe('E_TIMEOUT');
+    expect(h['note.get']({ id: 'm' }).summary).toBeUndefined();
+  });
+
+  it('a timed-out attempt can never overwrite the retry that replaced it, or the fallback', async () => {
+    let n = 0;
+    const fetch: FetchLike = async () => {
+      const i = ++n;
+      if (i === 1) {
+        await sleepMs(80); // attempt 1: the host already timed it out
+        return reply('stale attempt 1');
+      }
+      return reply('fresh attempt 2');
+    };
+    const h = setup(fetch);
+    const a1 = h['note.stepSummary']({ meetingId: 'm', llm, deadlineMs: 20 });
+    await sleepMs(30);
+    await h['note.stepSummary']({ meetingId: 'm', llm, deadlineMs: 1000 });
+    await a1.catch(() => {});
+    await sleepMs(70);
+    expect(h['note.get']({ id: 'm' }).summary?.summary).toBe('fresh attempt 2');
+
+    // Exhausted → fallback: a late LLM reply must not replace the extractive summary the pipeline recorded.
+    let m = 0;
+    const h2 = setup(async () => {
+      m++;
+      await sleepMs(60);
+      return reply('late llm');
+    });
+    const late = h2['note.stepSummary']({
+      meetingId: 'm',
+      llm,
+      deadlineMs: 15,
+    });
+    await h2['note.stepSummary']({
+      meetingId: 'm',
+      llm,
+      fallback: { error: 'LLM timed out' },
+    });
+    await late.catch(() => {});
+    await sleepMs(70);
+    expect(m).toBe(1);
+    expect(h2['note.get']({ id: 'm' }).summary?.llmError).toBe('LLM timed out');
+  });
+
+  it('the default deadline sits inside the host RPC timeout', async () => {
+    const { SUMMARY_DEADLINE_MS } = await import('./handlers');
+    expect(SUMMARY_DEADLINE_MS).toBeLessThan(120_000);
+  });
+});

@@ -59,6 +59,9 @@ export interface FinalizeParams {
   helperCrashed?: boolean;
 }
 
+/** Default worker-side deadline for one strict LLM summary attempt; the host's RPC timeout is longer. */
+export const SUMMARY_DEADLINE_MS = 110_000;
+
 /** All worker RPC methods. Pure over a DB + fetch so they're integration-testable in Node. */
 export function createWorkerHandlers(
   db: DatabaseSync,
@@ -112,6 +115,7 @@ export function createWorkerHandlers(
     llm: LlmParams,
     errMsg: string,
     strict = false,
+    signal?: AbortSignal,
   ) =>
     summarizeMeeting(
       m.title,
@@ -127,6 +131,7 @@ export function createWorkerHandlers(
         notes: repo.getNotes(m.id),
         ...(m.template ? { template: m.template } : {}),
         strict,
+        ...(signal ? { signal } : {}),
       },
     );
   const need = (id: string) => {
@@ -256,6 +261,12 @@ export function createWorkerHandlers(
       fallback?: { error: string };
       /** Auto-summarize is off: mark the meeting done without a summary. */
       skip?: boolean;
+      /**
+       * Worker-side deadline for the LLM call (ms). Must be shorter than the host's RPC timeout: the call is
+       * aborted and nothing is saved, so a reply that lands after the host gave up can never overwrite a later
+       * attempt or the fallback summary, and the host's one-at-a-time summary queue is real (ADR 0005).
+       */
+      deadlineMs?: number;
     }): Promise<MeetingSummary | null> => {
       const m = need(p.meetingId);
       if (p.skip) {
@@ -271,7 +282,33 @@ export function createWorkerHandlers(
             }),
             llmError: p.fallback.error.slice(0, 500),
           }
-        : await summarize(m, segments, p.llm, 'llm attempt failed', true);
+        : await (async () => {
+            const ac = new AbortController();
+            const t = setTimeout(
+              () => ac.abort(),
+              p.deadlineMs ?? SUMMARY_DEADLINE_MS,
+            );
+            try {
+              const s = await summarize(
+                m,
+                segments,
+                p.llm,
+                'llm attempt failed',
+                true,
+                ac.signal,
+              );
+              // A fetch that ignores the signal can still resolve late: past the deadline, drop the result.
+              if (ac.signal.aborted)
+                throw new AppError(
+                  'E_TIMEOUT',
+                  'LLM summary deadline exceeded',
+                  { retryable: true },
+                );
+              return s;
+            } finally {
+              clearTimeout(t);
+            }
+          })();
       repo.saveSummary(p.meetingId, summary);
       repo.setStatus(p.meetingId, 'done');
       return summary;

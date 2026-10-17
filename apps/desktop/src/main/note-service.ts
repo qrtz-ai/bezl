@@ -50,6 +50,9 @@ interface Waiter {
   resolve: (m: HelperToHost | null) => void;
   match?: (m: HelperToHost) => boolean;
 }
+/** Host RPC timeout for one summary attempt, and the worker's LLM deadline inside it (ADR 0005). */
+const SUMMARY_RPC_MS = 120_000;
+const SUMMARY_DEADLINE_MS = 110_000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const toLifecycleError = (
   e: unknown,
@@ -1081,10 +1084,16 @@ export class NoteService {
           });
           return true;
         }
+        // The worker aborts the LLM call at deadlineMs and saves nothing; our RPC timeout is longer, so a
+        // timed-out attempt is really over before the next one (or the fallback) starts (ADR 0005).
         await this.deps.worker.call(
           'note.stepSummary',
-          { meetingId: p.meetingId, llm: await this.llmParams() },
-          120_000,
+          {
+            meetingId: p.meetingId,
+            llm: await this.llmParams(),
+            deadlineMs: SUMMARY_DEADLINE_MS,
+          },
+          SUMMARY_RPC_MS,
         );
         return false;
       case 'index': {

@@ -11,6 +11,11 @@ export interface SummaryOptions {
   template?: string;
   /** Rethrow provider failures instead of falling back (the lifecycle pipeline owns retry + fallback). */
   strict?: boolean;
+  /**
+   * Cancels the provider call (the caller's deadline). Strict mode turns any failure after an abort into a
+   * retryable E_TIMEOUT, so a late reply can never be mistaken for a terminal provider error (ADR 0005).
+   */
+  signal?: AbortSignal;
 }
 
 export type ChatMessage = {
@@ -358,11 +363,16 @@ export async function summarizeMeeting(
     try {
       const reply = await provider.complete(
         buildSummaryPrompt(title, segments, opts),
-        { json: true },
+        { json: true, ...(opts.signal ? { signal: opts.signal } : {}) },
       );
       return { ...parseSummaryReply(reply), provider: provider.id, template };
     } catch (e) {
       onError?.(e);
+      if (opts.strict && opts.signal?.aborted)
+        throw new AppError('E_TIMEOUT', 'LLM summary deadline exceeded', {
+          retryable: true,
+          cause: e,
+        });
       if (opts.strict) throw e;
       const msg = e instanceof Error ? e.message : String(e);
       return {
