@@ -111,6 +111,8 @@ public struct HelperDeps: Sendable {
     public var modelWarmup: (@Sendable () async -> String)?
     /// N137: the per-kind load gate `modelWarmup` and recordings share (one load of a model at a time).
     public var modelLoads = ModelLoads()
+    /// ADR 0087: load echo's recogniser when the helper starts (kept for its life). Off in tests that count loads.
+    public var preloadDictationAsr = true
     /// Echo: what the helper does between the key release and `dictation.stopped` (tail, drain, pad, finalize).
     public var dictationTail = DictationTail()
     public var helperVersion: String
@@ -330,7 +332,16 @@ public actor HelperController {
         send(.hello(protocol: helperProtocolVersion, helperVersion: deps.helperVersion, os: deps.os, features: deps.features))
         send(.permissionsStatus(deps.permissions.status()))
         deps.meetings?.start(emit: send, clock: { [weak self] in self?.relativeMs() ?? 0 })
+        if deps.preloadDictationAsr {
+            // Inside the "asr" gate (N137), so it never compiles alongside a recording's loads; a press meanwhile
+            // doesn't wait for the gate: it starts (or joins) the transcriber's one load itself.
+            let engine = dictation, loads = deps.modelLoads
+            startupPreload = Task { _ = try? await loads.load("asr") { await engine.preload().value } }
+        }
     }
+
+    /// ADR 0087: the startup load of echo's recogniser (tests await it).
+    public var startupPreload: Task<Void, Never>?
 
     public var isRecording: Bool { recording != nil }
 

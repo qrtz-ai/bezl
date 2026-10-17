@@ -8,6 +8,7 @@ import QrtzHelperCore
 /// are joined with 0.5 s of silence, e.g. two `say` voices) and prints one JSON object: load times, per-channel text
 /// and speaker turns, real-time factor, talk latency (the mic clip fed at real time to a warm instance: first
 /// partial, and release to final) and the process footprint. Never downloads; stdout is the JSON only.
+/// `--bench --load` (ADR 0087) measures only talk's load in this process (see `loadOnly`).
 enum Bench {
     static func run(_ args: [String]) -> Never {
         Task {
@@ -148,7 +149,35 @@ enum Bench {
         var all: [HelperMessage] { lock.withLock { msgs } }
     }
 
+    /// `--bench --load` (ADR 0087): one process's talk load. `loadMs` is the first prepare (cold if Core ML has to
+    /// specialize for this path, else cached); `joinedPrepareMs` a second prepare started 50 ms into it (a press during
+    /// the startup preload: it must wait for the same load, not start another); `residentPrepareMs` a prepare on the
+    /// loaded instance (warm). The stamp's expectation and the footprint come along.
+    static func loadOnly() async throws -> String {
+        let talk = NemotronTranscriber()
+        let t0 = Date()
+        async let first: Void = talk.prepare()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        let tj = Date()
+        try await talk.prepare()
+        let joined = ms(since: tj)
+        try await first
+        let load = ms(since: t0)
+        let tr = Date()
+        try await talk.prepare()
+        let resident = (Date().timeIntervalSince(tr) * 1000 * 1000).rounded() / 1000
+        let last = talk.lastLoad
+        let r: [String: Any] = [
+            "loadMs": load, "joinedPrepareMs": joined, "residentPrepareMs": resident,
+            "modelLoadMs": last?.ms ?? -1, "expectCached": last?.expectCached ?? false, "why": last?.why ?? "",
+            "footprintMB": footprintMB(),
+        ]
+        let data = try JSONSerialization.data(withJSONObject: r, options: [.sortedKeys])
+        return String(decoding: data, as: UTF8.self)
+    }
+
     static func measure(_ args: [String]) async throws -> String {
+        if args.contains("--load") { return try await loadOnly() }
         let micPaths = value(args, "--mic"), sysPaths = value(args, "--system")
         guard !micPaths.isEmpty else { throw Failure(description: "usage: --bench --mic a.aiff[,b.aiff] [--system c.aiff]") }
         let mic = try joined(micPaths)

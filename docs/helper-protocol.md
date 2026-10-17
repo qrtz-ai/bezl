@@ -191,6 +191,12 @@ diarizer reports finished speaker turns:
 - N125: a run the stop closed out, or an aborted run, may still be inside a model call. The next recording's run on
   that channel waits for it before loading, so the old run's unload never lands under it.
 
+ADR 0087: when the helper starts, right after `hello`, it loads echo's recogniser in the background if the models are
+downloaded. It logs `echo asr: <name> resident (<ms> ms)` (or why it didn't load) and keeps that recogniser loaded
+for the helper's life (about 62 MB). A `dictation.start` during that load joins it instead of loading a second copy.
+The recording's recognisers and speaker models stay per recording. Each Nemotron load logs whether Core ML's
+specialization was expected to be cached (`<data>/models/compiled/<set>.json`).
+
 Host → helper `{"type":"models.warm"}` (ADR 0079 / N121): sent once after the local speech models finish installing
 (`speech.warmAfterDownload`, default on). The helper loads each model once, one at a time, then unloads it, and logs
 `models warmed: …`. Ignored while recording or while a warm-up runs; an older helper logs it as an ignored line.

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **echo is ready from launch:** qrtz loads echo's speech recogniser when it starts (if the speech models are downloaded) and keeps it loaded, so the first fn press doesn't wait for a model load. A press during that load uses it instead of loading a second copy. This keeps about 62 MB in memory while qrtz runs. Meeting models still load only for a recording.
 - **echo's popup is just a moving waveform:** it no longer shows your words while you talk. The wave follows your voice live and settles into a slow swell while echo finishes; errors still show in the popup. The popup is narrower (240 px).
 - **A meeting that starts during the post-download warm-up no longer compiles the speaker model twice (N137):** it waits for the warm-up's load and then uses the compiled model, so only one copy is in memory.
 - **echo always answers after you release fn (N131), and says so when it can't listen (N134):** a stuck speech recogniser can no longer hold the release open; echo inserts what it had shown. When no recogniser is ready, pressing fn now says "speech recognition isn't ready yet" right away instead of recording nothing.

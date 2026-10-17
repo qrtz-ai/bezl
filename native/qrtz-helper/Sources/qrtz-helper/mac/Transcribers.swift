@@ -18,36 +18,32 @@ func pcmBuffer16k(_ s: [Float]) -> AVAudioPCMBuffer? {
 
 /// ADR 0079: Nemotron Speech Streaming 0.6B (English, 560 ms chunks; FluidAudio StreamingNemotronAsrManager) on the
 /// Neural Engine. Loads only from the verified local set (`LocalModels.asr`); never downloads. One instance per use:
-/// dictation (kept loaded, warmed when a push key is set) and the recording's mic and system channels (loaded per
-/// recording, unloaded at its end).
+/// echo's (ADR 0087: loaded when the helper starts, resident for its life, ~62 MB) and the recording's mic and system
+/// channels (loaded per recording, unloaded at its end). Concurrent prepares share one load (`SharedLoad`).
 final class NemotronTranscriber: StreamingTranscriber, @unchecked Sendable {
     let name = "nemotron-560ms"
     let loadsInstantly = false
     let latencyMs: Double = 560
-    private let lock = NSLock()
-    private var manager: StreamingNemotronAsrManager?
-    private var loading: Task<StreamingNemotronAsrManager, Error>?
+    private let load = SharedLoad<StreamingNemotronAsrManager>()
+    /// The last load of this instance: how long it took and whether Core ML's device specialization was expected
+    /// to be cached (`CompiledModelStamp`).
+    private(set) var lastLoad: (ms: Int, expectCached: Bool, why: String)?
 
-    private var current: StreamingNemotronAsrManager? { lock.withLock { manager } }
+    private var current: StreamingNemotronAsrManager? { load.loaded }
 
     func prepare() async throws {
-        let task: Task<StreamingNemotronAsrManager, Error> = lock.withLock {
-            if let l = loading { return l }
-            let l = Task<StreamingNemotronAsrManager, Error> {
-                let dir = try LocalModels.dir(LocalModels.asr)
-                let m = StreamingNemotronAsrManager(requestedChunkSize: .ms560)
-                try await m.loadModels(from: dir)
-                return m
-            }
-            loading = l
-            return l
-        }
-        do {
-            let m = try await task.value
-            lock.withLock { if loading == task { manager = m } }
-        } catch {
-            lock.withLock { if loading == task { loading = nil } }
-            throw error
+        _ = try await load.get { [weak self] in
+            let dir = try LocalModels.dir(LocalModels.asr)
+            let stamp = CompiledModelStamp(set: LocalModels.asr, dir: dir)
+            let expect = stamp.expectCached()
+            let t0 = Date()
+            let m = StreamingNemotronAsrManager(requestedChunkSize: .ms560)
+            try await m.loadModels(from: dir)
+            let ms = Int(Date().timeIntervalSince(t0) * 1000)
+            stamp.record(loadMs: ms)
+            self?.lastLoad = (ms, expect.cached, expect.why)
+            logErr("nemotron: loaded in \(ms) ms (\(expect.cached ? "specialization cached" : "specializing: " + expect.why))")
+            return m
         }
     }
 
@@ -71,11 +67,7 @@ final class NemotronTranscriber: StreamingTranscriber, @unchecked Sendable {
     func reset() async { await current?.reset() }
 
     func unload() async {
-        let m: StreamingNemotronAsrManager? = lock.withLock {
-            let m = manager
-            manager = nil; loading = nil
-            return m
-        }
+        let m = load.clear()
         await m?.cleanup()
     }
 }

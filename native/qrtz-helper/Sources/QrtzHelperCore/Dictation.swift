@@ -238,13 +238,27 @@ public actor DictationEngine {
     /// `prewarm()` when a push key is set (after the models were downloaded and warmed).
     public func prewarmIfKeyed() { if !pushKey.isEmpty { prewarm() } }
 
-    /// Loads the first recogniser that can load, in the background.
-    public func prewarm() {
-        let ts = transcribers
-        Task.detached {
+    /// Loads the first recogniser that can load, in the background (idempotent: a loaded one returns at once).
+    public func prewarm() { preload(log: false) }
+
+    /// ADR 0087: echo's recogniser is resident for the life of the helper. Loaded when the helper starts (if the
+    /// models are downloaded; only local files are read), never unloaded by the engine. A press while this runs joins
+    /// the same in-flight load (the transcriber's `SharedLoad`), so there is never a second load. Logs how long it took.
+    @discardableResult
+    nonisolated public func preload(log: Bool = true) -> Task<Void, Never> {
+        let ts = transcribers, send = self.send
+        return Task.detached {
             for t in ts {
-                do { try await t.prepare(); return }
-                catch { continue }
+                let t0 = ContinuousClock.now
+                do {
+                    try await t.prepare()
+                    let d = t0.duration(to: .now)
+                    let ms = Int(d.components.seconds) * 1000 + Int(d.components.attoseconds / 1_000_000_000_000_000)
+                    if log { send(.log(level: .info, msg: "echo asr: \(t.name) resident (\(ms) ms)")) }
+                    return
+                } catch {
+                    if log { send(.log(level: .info, msg: "echo asr: \(t.name) not loaded at start: \(error)")) }
+                }
             }
         }
     }
