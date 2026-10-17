@@ -1,0 +1,1339 @@
+{
+ "opResults": [
+  2,
+  1,
+  true,
+  false,
+  true,
+  false,
+  true,
+  true,
+  false
+ ],
+ "userVersion": 5,
+ "health": {
+  "ok": true,
+  "schemaVersion": 5,
+  "fts5": true
+ },
+ "schema": [
+  {
+   "type": "index",
+   "name": "meetings_started",
+   "tbl": "meetings",
+   "sql": "CREATE INDEX meetings_started ON meetings(started_at DESC)"
+  },
+  {
+   "type": "index",
+   "name": "notes_meeting",
+   "tbl": "notes",
+   "sql": "CREATE INDEX notes_meeting ON notes(meeting_id, at_ms)"
+  },
+  {
+   "type": "index",
+   "name": "pipeline_unsettled",
+   "tbl": "pipeline_state",
+   "sql": "CREATE INDEX pipeline_unsettled ON pipeline_state(settled)"
+  },
+  {
+   "type": "index",
+   "name": "segment_vectors_meeting",
+   "tbl": "segment_vectors",
+   "sql": "CREATE INDEX segment_vectors_meeting ON segment_vectors(meeting_id)"
+  },
+  {
+   "type": "index",
+   "name": "segments_meeting",
+   "tbl": "segments",
+   "sql": "CREATE INDEX segments_meeting ON segments(meeting_id, source, start_ms)"
+  },
+  {
+   "type": "index",
+   "name": "sqlite_autoindex_kv_1",
+   "tbl": "kv",
+   "sql": null
+  },
+  {
+   "type": "index",
+   "name": "sqlite_autoindex_lifecycle_state_1",
+   "tbl": "lifecycle_state",
+   "sql": null
+  },
+  {
+   "type": "index",
+   "name": "sqlite_autoindex_meetings_1",
+   "tbl": "meetings",
+   "sql": null
+  },
+  {
+   "type": "index",
+   "name": "sqlite_autoindex_notes_1",
+   "tbl": "notes",
+   "sql": null
+  },
+  {
+   "type": "index",
+   "name": "sqlite_autoindex_pipeline_state_1",
+   "tbl": "pipeline_state",
+   "sql": null
+  },
+  {
+   "type": "index",
+   "name": "sqlite_autoindex_segments_1",
+   "tbl": "segments",
+   "sql": null
+  },
+  {
+   "type": "index",
+   "name": "sqlite_autoindex_summaries_1",
+   "tbl": "summaries",
+   "sql": null
+  },
+  {
+   "type": "table",
+   "name": "kv",
+   "tbl": "kv",
+   "sql": "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)"
+  },
+  {
+   "type": "table",
+   "name": "lifecycle_state",
+   "tbl": "lifecycle_state",
+   "sql": "CREATE TABLE lifecycle_state (\n  key TEXT PRIMARY KEY,\n  json TEXT NOT NULL,\n  updated_at INTEGER NOT NULL\n)"
+  },
+  {
+   "type": "table",
+   "name": "meetings",
+   "tbl": "meetings",
+   "sql": "CREATE TABLE meetings (\n  id TEXT PRIMARY KEY,\n  title TEXT NOT NULL,\n  platform TEXT NOT NULL,\n  started_at INTEGER NOT NULL,\n  ended_at INTEGER,\n  status TEXT NOT NULL,\n  participants TEXT NOT NULL DEFAULT '[]',\n  audio_path TEXT,\n  duration_ms INTEGER\n, template TEXT NOT NULL DEFAULT 'general')"
+  },
+  {
+   "type": "table",
+   "name": "meetings_fts",
+   "tbl": "meetings_fts",
+   "sql": "CREATE VIRTUAL TABLE meetings_fts USING fts5(title, summary, tokenize='porter unicode61')"
+  },
+  {
+   "type": "table",
+   "name": "meetings_fts_config",
+   "tbl": "meetings_fts_config",
+   "sql": "CREATE TABLE 'meetings_fts_config'(k PRIMARY KEY, v) WITHOUT ROWID"
+  },
+  {
+   "type": "table",
+   "name": "meetings_fts_content",
+   "tbl": "meetings_fts_content",
+   "sql": "CREATE TABLE 'meetings_fts_content'(id INTEGER PRIMARY KEY, c0, c1)"
+  },
+  {
+   "type": "table",
+   "name": "meetings_fts_data",
+   "tbl": "meetings_fts_data",
+   "sql": "CREATE TABLE 'meetings_fts_data'(id INTEGER PRIMARY KEY, block BLOB)"
+  },
+  {
+   "type": "table",
+   "name": "meetings_fts_docsize",
+   "tbl": "meetings_fts_docsize",
+   "sql": "CREATE TABLE 'meetings_fts_docsize'(id INTEGER PRIMARY KEY, sz BLOB)"
+  },
+  {
+   "type": "table",
+   "name": "meetings_fts_idx",
+   "tbl": "meetings_fts_idx",
+   "sql": "CREATE TABLE 'meetings_fts_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID"
+  },
+  {
+   "type": "table",
+   "name": "notes",
+   "tbl": "notes",
+   "sql": "CREATE TABLE notes (\n  id TEXT PRIMARY KEY,\n  meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,\n  at_ms INTEGER NOT NULL,\n  text TEXT NOT NULL,\n  created_at INTEGER NOT NULL\n)"
+  },
+  {
+   "type": "table",
+   "name": "pipeline_state",
+   "tbl": "pipeline_state",
+   "sql": "CREATE TABLE pipeline_state (\n  meeting_id TEXT PRIMARY KEY REFERENCES meetings(id) ON DELETE CASCADE,\n  json TEXT NOT NULL,\n  settled INTEGER NOT NULL DEFAULT 0,\n  updated_at INTEGER NOT NULL\n)"
+  },
+  {
+   "type": "table",
+   "name": "segment_vectors",
+   "tbl": "segment_vectors",
+   "sql": "CREATE TABLE segment_vectors (\n  segment_rowid INTEGER PRIMARY KEY,\n  meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,\n  model TEXT NOT NULL,\n  vec BLOB NOT NULL\n)"
+  },
+  {
+   "type": "table",
+   "name": "segments",
+   "tbl": "segments",
+   "sql": "CREATE TABLE segments (\n  rowid INTEGER PRIMARY KEY,\n  id TEXT NOT NULL,\n  meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,\n  source TEXT NOT NULL,\n  start_ms INTEGER NOT NULL,\n  end_ms INTEGER NOT NULL,\n  speaker TEXT,\n  speaker_name TEXT,\n  text TEXT NOT NULL,\n  confidence REAL,\n  UNIQUE(meeting_id, source, id)\n)"
+  },
+  {
+   "type": "table",
+   "name": "segments_fts",
+   "tbl": "segments_fts",
+   "sql": "CREATE VIRTUAL TABLE segments_fts USING fts5(text, speaker_name, content='segments', content_rowid='rowid', tokenize='porter unicode61')"
+  },
+  {
+   "type": "table",
+   "name": "segments_fts_config",
+   "tbl": "segments_fts_config",
+   "sql": "CREATE TABLE 'segments_fts_config'(k PRIMARY KEY, v) WITHOUT ROWID"
+  },
+  {
+   "type": "table",
+   "name": "segments_fts_data",
+   "tbl": "segments_fts_data",
+   "sql": "CREATE TABLE 'segments_fts_data'(id INTEGER PRIMARY KEY, block BLOB)"
+  },
+  {
+   "type": "table",
+   "name": "segments_fts_docsize",
+   "tbl": "segments_fts_docsize",
+   "sql": "CREATE TABLE 'segments_fts_docsize'(id INTEGER PRIMARY KEY, sz BLOB)"
+  },
+  {
+   "type": "table",
+   "name": "segments_fts_idx",
+   "tbl": "segments_fts_idx",
+   "sql": "CREATE TABLE 'segments_fts_idx'(segid, term, pgno, PRIMARY KEY(segid, term)) WITHOUT ROWID"
+  },
+  {
+   "type": "table",
+   "name": "summaries",
+   "tbl": "summaries",
+   "sql": "CREATE TABLE summaries (\n  meeting_id TEXT PRIMARY KEY REFERENCES meetings(id) ON DELETE CASCADE,\n  provider TEXT NOT NULL,\n  json TEXT NOT NULL,\n  created_at INTEGER NOT NULL\n)"
+  },
+  {
+   "type": "trigger",
+   "name": "segments_ad",
+   "tbl": "segments",
+   "sql": "CREATE TRIGGER segments_ad AFTER DELETE ON segments BEGIN\n  INSERT INTO segments_fts(segments_fts, rowid, text, speaker_name) VALUES ('delete', old.rowid, old.text, old.speaker_name);\nEND"
+  },
+  {
+   "type": "trigger",
+   "name": "segments_ai",
+   "tbl": "segments",
+   "sql": "CREATE TRIGGER segments_ai AFTER INSERT ON segments BEGIN\n  INSERT INTO segments_fts(rowid, text, speaker_name) VALUES (new.rowid, new.text, new.speaker_name);\nEND"
+  },
+  {
+   "type": "trigger",
+   "name": "segments_au",
+   "tbl": "segments",
+   "sql": "CREATE TRIGGER segments_au AFTER UPDATE ON segments BEGIN\n  INSERT INTO segments_fts(segments_fts, rowid, text, speaker_name) VALUES ('delete', old.rowid, old.text, old.speaker_name);\n  INSERT INTO segments_fts(rowid, text, speaker_name) VALUES (new.rowid, new.text, new.speaker_name);\nEND"
+  },
+  {
+   "type": "trigger",
+   "name": "segments_vec_ad",
+   "tbl": "segments",
+   "sql": "CREATE TRIGGER segments_vec_ad AFTER DELETE ON segments BEGIN\n  DELETE FROM segment_vectors WHERE segment_rowid = old.rowid;\nEND"
+  }
+ ],
+ "list": [
+  [
+   {
+    "meeting": {
+     "id": "m-c",
+     "title": "Café ﬁnancials",
+     "platform": "teams",
+     "startedAt": 1760014400000,
+     "status": "recording",
+     "participants": [],
+     "template": "general"
+    }
+   },
+   {
+    "meeting": {
+     "id": "m-b",
+     "title": "1:1 Ada / Grace",
+     "platform": "google-meet",
+     "startedAt": 1760007200000,
+     "status": "processing",
+     "participants": [
+      "Grace Hopper"
+     ],
+     "template": "one-on-one"
+    }
+   },
+   {
+    "meeting": {
+     "id": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "platform": "zoom",
+     "startedAt": 1760000000000,
+     "endedAt": 1760003600000,
+     "status": "done",
+     "participants": [
+      "Ada Lovelace",
+      "Alan M. Turing"
+     ],
+     "audioPath": "/rec/a.wav",
+     "durationMs": 3600000,
+     "template": "general"
+    }
+   }
+  ],
+  [
+   {
+    "meeting": {
+     "id": "m-c",
+     "title": "Café ﬁnancials",
+     "platform": "teams",
+     "startedAt": 1760014400000,
+     "status": "recording",
+     "participants": [],
+     "template": "general"
+    }
+   },
+   {
+    "meeting": {
+     "id": "m-b",
+     "title": "1:1 Ada / Grace",
+     "platform": "google-meet",
+     "startedAt": 1760007200000,
+     "status": "processing",
+     "participants": [
+      "Grace Hopper"
+     ],
+     "template": "one-on-one"
+    }
+   }
+  ],
+  [
+   {
+    "meeting": {
+     "id": "m-b",
+     "title": "1:1 Ada / Grace",
+     "platform": "google-meet",
+     "startedAt": 1760007200000,
+     "status": "processing",
+     "participants": [
+      "Grace Hopper"
+     ],
+     "template": "one-on-one"
+    }
+   },
+   {
+    "meeting": {
+     "id": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "platform": "zoom",
+     "startedAt": 1760000000000,
+     "endedAt": 1760003600000,
+     "status": "done",
+     "participants": [
+      "Ada Lovelace",
+      "Alan M. Turing"
+     ],
+     "audioPath": "/rec/a.wav",
+     "durationMs": 3600000,
+     "template": "general"
+    }
+   }
+  ],
+  [
+   {
+    "meeting": {
+     "id": "m-b",
+     "title": "1:1 Ada / Grace",
+     "platform": "google-meet",
+     "startedAt": 1760007200000,
+     "status": "processing",
+     "participants": [
+      "Grace Hopper"
+     ],
+     "template": "one-on-one"
+    }
+   },
+   {
+    "meeting": {
+     "id": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "platform": "zoom",
+     "startedAt": 1760000000000,
+     "endedAt": 1760003600000,
+     "status": "done",
+     "participants": [
+      "Ada Lovelace",
+      "Alan M. Turing"
+     ],
+     "audioPath": "/rec/a.wav",
+     "durationMs": 3600000,
+     "template": "general"
+    }
+   }
+  ],
+  [
+   {
+    "meeting": {
+     "id": "m-b",
+     "title": "1:1 Ada / Grace",
+     "platform": "google-meet",
+     "startedAt": 1760007200000,
+     "status": "processing",
+     "participants": [
+      "Grace Hopper"
+     ],
+     "template": "one-on-one"
+    },
+    "hit": {
+     "meetingId": "m-b",
+     "title": "1:1 Ada / Grace",
+     "startedAt": 1760007200000,
+     "startMs": 6100,
+     "snippet": "Ship it on [Friday] then."
+    }
+   },
+   {
+    "meeting": {
+     "id": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "platform": "zoom",
+     "startedAt": 1760000000000,
+     "endedAt": 1760003600000,
+     "status": "done",
+     "participants": [
+      "Ada Lovelace",
+      "Alan M. Turing"
+     ],
+     "audioPath": "/rec/a.wav",
+     "durationMs": 3600000,
+     "template": "general"
+    },
+    "hit": {
+     "meetingId": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "startedAt": 1760000000000,
+     "startMs": 0,
+     "snippet": "Good morning everyone, let's plan the [Friday] release."
+    }
+   }
+  ],
+  [
+   {
+    "meeting": {
+     "id": "m-b",
+     "title": "1:1 Ada / Grace",
+     "platform": "google-meet",
+     "startedAt": 1760007200000,
+     "status": "processing",
+     "participants": [
+      "Grace Hopper"
+     ],
+     "template": "one-on-one"
+    },
+    "hit": {
+     "meetingId": "m-b",
+     "title": "1:1 Ada / Grace",
+     "startedAt": 1760007200000,
+     "startMs": 6100,
+     "snippet": "Ship it on [Friday] then."
+    }
+   },
+   {
+    "meeting": {
+     "id": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "platform": "zoom",
+     "startedAt": 1760000000000,
+     "endedAt": 1760003600000,
+     "status": "done",
+     "participants": [
+      "Ada Lovelace",
+      "Alan M. Turing"
+     ],
+     "audioPath": "/rec/a.wav",
+     "durationMs": 3600000,
+     "template": "general"
+    },
+    "hit": {
+     "meetingId": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "startedAt": 1760000000000,
+     "startMs": 0,
+     "snippet": "Good morning everyone, let's plan the [Friday] release."
+    }
+   }
+  ],
+  [
+   {
+    "meeting": {
+     "id": "m-b",
+     "title": "1:1 Ada / Grace",
+     "platform": "google-meet",
+     "startedAt": 1760007200000,
+     "status": "processing",
+     "participants": [
+      "Grace Hopper"
+     ],
+     "template": "one-on-one"
+    },
+    "hit": {
+     "meetingId": "m-b",
+     "title": "1:1 Ada / Grace",
+     "startedAt": 1760007200000,
+     "snippet": "1:1 Ada / Grace"
+    }
+   },
+   {
+    "meeting": {
+     "id": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "platform": "zoom",
+     "startedAt": 1760000000000,
+     "endedAt": 1760003600000,
+     "status": "done",
+     "participants": [
+      "Ada Lovelace",
+      "Alan M. Turing"
+     ],
+     "audioPath": "/rec/a.wav",
+     "durationMs": 3600000,
+     "template": "general"
+    },
+    "hit": {
+     "meetingId": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "startedAt": 1760000000000,
+     "startMs": 22100,
+     "snippet": "Don't forget the O'Reilly contract."
+    }
+   }
+  ],
+  [
+   {
+    "meeting": {
+     "id": "m-c",
+     "title": "Café ﬁnancials",
+     "platform": "teams",
+     "startedAt": 1760014400000,
+     "status": "recording",
+     "participants": [],
+     "template": "general"
+    },
+    "hit": {
+     "meetingId": "m-c",
+     "title": "Café ﬁnancials",
+     "startedAt": 1760014400000,
+     "snippet": "Café ﬁnancials"
+    }
+   },
+   {
+    "meeting": {
+     "id": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "platform": "zoom",
+     "startedAt": 1760000000000,
+     "endedAt": 1760003600000,
+     "status": "done",
+     "participants": [
+      "Ada Lovelace",
+      "Alan M. Turing"
+     ],
+     "audioPath": "/rec/a.wav",
+     "durationMs": 3600000,
+     "template": "general"
+    },
+    "hit": {
+     "meetingId": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "startedAt": 1760000000000,
+     "startMs": 15100,
+     "snippet": "[Café] au lait for everyone ☕ after the demo."
+    }
+   }
+  ],
+  [
+   {
+    "meeting": {
+     "id": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "platform": "zoom",
+     "startedAt": 1760000000000,
+     "endedAt": 1760003600000,
+     "status": "done",
+     "participants": [
+      "Ada Lovelace",
+      "Alan M. Turing"
+     ],
+     "audioPath": "/rec/a.wav",
+     "durationMs": 3600000,
+     "template": "general"
+    },
+    "hit": {
+     "meetingId": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "startedAt": 1760000000000,
+     "startMs": 15100,
+     "snippet": "[Café] au lait for everyone ☕ after the demo."
+    }
+   }
+  ],
+  [],
+  [
+   {
+    "meeting": {
+     "id": "m-b",
+     "title": "1:1 Ada / Grace",
+     "platform": "google-meet",
+     "startedAt": 1760007200000,
+     "status": "processing",
+     "participants": [
+      "Grace Hopper"
+     ],
+     "template": "one-on-one"
+    },
+    "hit": {
+     "meetingId": "m-b",
+     "title": "1:1 Ada / Grace",
+     "startedAt": 1760007200000,
+     "startMs": 0,
+     "snippet": "[会議は金曜日です]"
+    }
+   }
+  ],
+  [],
+  [
+   {
+    "meeting": {
+     "id": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "platform": "zoom",
+     "startedAt": 1760000000000,
+     "endedAt": 1760003600000,
+     "status": "done",
+     "participants": [
+      "Ada Lovelace",
+      "Alan M. Turing"
+     ],
+     "audioPath": "/rec/a.wav",
+     "durationMs": 3600000,
+     "template": "general"
+    },
+    "hit": {
+     "meetingId": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "startedAt": 1760000000000,
+     "snippet": "…Write the [rollback] plan\nBook the [demo] room"
+    }
+   }
+  ],
+  [],
+  [],
+  [
+   {
+    "meeting": {
+     "id": "m-b",
+     "title": "1:1 Ada / Grace",
+     "platform": "google-meet",
+     "startedAt": 1760007200000,
+     "status": "processing",
+     "participants": [
+      "Grace Hopper"
+     ],
+     "template": "one-on-one"
+    },
+    "hit": {
+     "meetingId": "m-b",
+     "title": "1:1 Ada / Grace",
+     "startedAt": 1760007200000,
+     "startMs": 6100,
+     "snippet": "Ship it on [Friday] then."
+    }
+   },
+   {
+    "meeting": {
+     "id": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "platform": "zoom",
+     "startedAt": 1760000000000,
+     "endedAt": 1760003600000,
+     "status": "done",
+     "participants": [
+      "Ada Lovelace",
+      "Alan M. Turing"
+     ],
+     "audioPath": "/rec/a.wav",
+     "durationMs": 3600000,
+     "template": "general"
+    },
+    "hit": {
+     "meetingId": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "startedAt": 1760000000000,
+     "startMs": 0,
+     "snippet": "Good morning everyone, let's plan the [Friday] release."
+    }
+   }
+  ],
+  [
+   {
+    "meeting": {
+     "id": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "platform": "zoom",
+     "startedAt": 1760000000000,
+     "endedAt": 1760003600000,
+     "status": "done",
+     "participants": [
+      "Ada Lovelace",
+      "Alan M. Turing"
+     ],
+     "audioPath": "/rec/a.wav",
+     "durationMs": 3600000,
+     "template": "general"
+    },
+    "hit": {
+     "meetingId": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "startedAt": 1760000000000,
+     "startMs": 0,
+     "snippet": "Good morning everyone, let's plan the [Friday] release."
+    }
+   }
+  ],
+  [],
+  [],
+  [],
+  [
+   {
+    "meeting": {
+     "id": "m-c",
+     "title": "Café ﬁnancials",
+     "platform": "teams",
+     "startedAt": 1760014400000,
+     "status": "recording",
+     "participants": [],
+     "template": "general"
+    }
+   },
+   {
+    "meeting": {
+     "id": "m-b",
+     "title": "1:1 Ada / Grace",
+     "platform": "google-meet",
+     "startedAt": 1760007200000,
+     "status": "processing",
+     "participants": [
+      "Grace Hopper"
+     ],
+     "template": "one-on-one"
+    }
+   },
+   {
+    "meeting": {
+     "id": "m-a",
+     "title": "Weekly sync — Δ planning",
+     "platform": "zoom",
+     "startedAt": 1760000000000,
+     "endedAt": 1760003600000,
+     "status": "done",
+     "participants": [
+      "Ada Lovelace",
+      "Alan M. Turing"
+     ],
+     "audioPath": "/rec/a.wav",
+     "durationMs": 3600000,
+     "template": "general"
+    }
+   }
+  ],
+  [],
+  [],
+  [],
+  [],
+  [],
+  []
+ ],
+ "details": {
+  "m-a": {
+   "meeting": {
+    "id": "m-a",
+    "title": "Weekly sync — Δ planning",
+    "platform": "zoom",
+    "startedAt": 1760000000000,
+    "endedAt": 1760003600000,
+    "status": "done",
+    "participants": [
+     "Ada Lovelace",
+     "Alan M. Turing"
+    ],
+    "audioPath": "/rec/a.wav",
+    "durationMs": 3600000,
+    "template": "general"
+   },
+   "segments": [
+    {
+     "id": "u0",
+     "startMs": 0,
+     "endMs": 4200,
+     "text": "Good morning everyone, let's plan the Friday release.",
+     "source": "live",
+     "speaker": "S0",
+     "speakerName": "Ada Lovelace",
+     "confidence": 0.93
+    },
+    {
+     "id": "u1",
+     "startMs": 4300,
+     "endMs": 9100,
+     "text": "We ship on Friday if the migration tests stay green.",
+     "source": "live",
+     "speaker": "S1",
+     "speakerName": "Alan M. Turing",
+     "confidence": 0.88
+    },
+    {
+     "id": "u2",
+     "startMs": 9200,
+     "endMs": 15000,
+     "text": "Action item: Alan writes the rollback plan.",
+     "source": "live",
+     "speaker": "S1",
+     "speakerName": "Alan M. Turing"
+    },
+    {
+     "id": "u3",
+     "startMs": 15100,
+     "endMs": 22000,
+     "text": "Café au lait for everyone ☕ after the demo.",
+     "source": "live",
+     "speaker": "S0",
+     "speakerName": "Ada Lovelace"
+    },
+    {
+     "id": "u4",
+     "startMs": 22100,
+     "endMs": 26000,
+     "text": "Don't forget the O'Reilly contract.",
+     "source": "live",
+     "speaker": "S2",
+     "speakerName": "Ada Lovelace"
+    }
+   ],
+   "summary": {
+    "summary": "Plan for the Friday release; rollback plan owned by Alan.",
+    "actionItems": [
+     {
+      "text": "Write the rollback plan",
+      "owner": "Alan M. Turing"
+     },
+     {
+      "text": "Book the demo room"
+     }
+    ],
+    "qa": [
+     {
+      "question": "Do we ship Friday?",
+      "answer": "Yes, if tests stay green.",
+      "askedBy": "Ada Lovelace"
+     }
+    ],
+    "provider": "openrouter",
+    "template": "general"
+   },
+   "notes": [
+    {
+     "id": "n1",
+     "atMs": 4000,
+     "text": "Friday release confirmed",
+     "createdAt": 1760000004000
+    },
+    {
+     "id": "n2",
+     "atMs": 4000,
+     "text": "edited: tie on atMs, later createdAt",
+     "createdAt": 1760000005000
+    }
+   ]
+  },
+  "m-b": {
+   "meeting": {
+    "id": "m-b",
+    "title": "1:1 Ada / Grace",
+    "platform": "google-meet",
+    "startedAt": 1760007200000,
+    "status": "processing",
+    "participants": [
+     "Grace Hopper"
+    ],
+    "template": "one-on-one"
+   },
+   "segments": [
+    {
+     "id": "q0",
+     "startMs": 0,
+     "endMs": 6000,
+     "text": "Meeting is on Friday; bugs are undocumented features.",
+     "source": "post",
+     "speaker": "S0",
+     "speakerName": "Grace Hopper",
+     "confidence": 1
+    }
+   ],
+   "summary": {
+    "summary": "Extractive: meeting on Friday.",
+    "actionItems": [],
+    "qa": [],
+    "provider": "extractive",
+    "llmError": "401 unauthorized"
+   },
+   "notes": [
+    {
+     "id": "n4",
+     "atMs": 0,
+     "text": "Ask about 会議 notes",
+     "createdAt": 1760007200000
+    }
+   ]
+  },
+  "m-c": {
+   "meeting": {
+    "id": "m-c",
+    "title": "Café ﬁnancials",
+    "platform": "teams",
+    "startedAt": 1760014400000,
+    "status": "recording",
+    "participants": [],
+    "template": "general"
+   },
+   "segments": [],
+   "notes": []
+  },
+  "m-d": {
+   "error": "E_NOT_FOUND"
+  }
+ },
+ "searchSegments": [
+  [
+   {
+    "meetingId": "m-b",
+    "title": "1:1 Ada / Grace",
+    "startedAt": 1760007200000,
+    "startMs": 6100,
+    "speaker": "Grace Hopper",
+    "text": "Ship it on Friday then."
+   },
+   {
+    "meetingId": "m-a",
+    "title": "Weekly sync — Δ planning",
+    "startedAt": 1760000000000,
+    "startMs": 4300,
+    "speaker": "Alan M. Turing",
+    "text": "We ship on Friday if the migration tests stay green."
+   },
+   {
+    "meetingId": "m-b",
+    "title": "1:1 Ada / Grace",
+    "startedAt": 1760007200000,
+    "startMs": 0,
+    "speaker": "Grace Hopper",
+    "text": "Meeting is on Friday; bugs are undocumented features."
+   },
+   {
+    "meetingId": "m-a",
+    "title": "Weekly sync — Δ planning",
+    "startedAt": 1760000000000,
+    "startMs": 0,
+    "speaker": "Ada Lovelace",
+    "text": "Good morning everyone, let's plan the Friday release."
+   }
+  ],
+  [],
+  [
+   {
+    "meetingId": "m-b",
+    "title": "1:1 Ada / Grace",
+    "startedAt": 1760007200000,
+    "startMs": 0,
+    "speaker": "Grace Hopper",
+    "text": "会議は金曜日です"
+   },
+   {
+    "meetingId": "m-b",
+    "title": "1:1 Ada / Grace",
+    "startedAt": 1760007200000,
+    "startMs": 3100,
+    "speaker": "S1",
+    "text": "Bugs are features we haven't documented yet 🐛"
+   },
+   {
+    "meetingId": "m-b",
+    "title": "1:1 Ada / Grace",
+    "startedAt": 1760007200000,
+    "startMs": 0,
+    "speaker": "Grace Hopper",
+    "text": "Meeting is on Friday; bugs are undocumented features."
+   }
+  ],
+  [
+   {
+    "meetingId": "m-a",
+    "title": "Weekly sync — Δ planning",
+    "startedAt": 1760000000000,
+    "startMs": 9200,
+    "speaker": "Alan M. Turing",
+    "text": "Action item: Alan writes the rollback plan."
+   }
+  ],
+  [
+   {
+    "meetingId": "m-a",
+    "title": "Weekly sync — Δ planning",
+    "startedAt": 1760000000000,
+    "startMs": 15100,
+    "speaker": "Ada Lovelace",
+    "text": "Café au lait for everyone ☕ after the demo."
+   }
+  ]
+ ],
+ "missingVectors": [
+  [
+   {
+    "rowid": 9,
+    "meetingId": "m-b",
+    "text": "Meeting is on Friday; bugs are undocumented features."
+   },
+   {
+    "rowid": 8,
+    "meetingId": "m-b",
+    "text": "Ship it on Friday then."
+   },
+   {
+    "rowid": 7,
+    "meetingId": "m-b",
+    "text": "Bugs are features we haven't documented yet 🐛"
+   },
+   {
+    "rowid": 6,
+    "meetingId": "m-b",
+    "text": "会議は金曜日です"
+   },
+   {
+    "rowid": 5,
+    "meetingId": "m-a",
+    "text": "Don't forget the O'Reilly contract."
+   },
+   {
+    "rowid": 4,
+    "meetingId": "m-a",
+    "text": "Café au lait for everyone ☕ after the demo."
+   },
+   {
+    "rowid": 3,
+    "meetingId": "m-a",
+    "text": "Action item: Alan writes the rollback plan."
+   }
+  ],
+  [
+   {
+    "rowid": 9,
+    "meetingId": "m-b",
+    "text": "Meeting is on Friday; bugs are undocumented features."
+   },
+   {
+    "rowid": 8,
+    "meetingId": "m-b",
+    "text": "Ship it on Friday then."
+   }
+  ],
+  [
+   {
+    "rowid": 9,
+    "meetingId": "m-b",
+    "text": "Meeting is on Friday; bugs are undocumented features."
+   },
+   {
+    "rowid": 8,
+    "meetingId": "m-b",
+    "text": "Ship it on Friday then."
+   },
+   {
+    "rowid": 7,
+    "meetingId": "m-b",
+    "text": "Bugs are features we haven't documented yet 🐛"
+   },
+   {
+    "rowid": 6,
+    "meetingId": "m-b",
+    "text": "会議は金曜日です"
+   }
+  ],
+  [
+   {
+    "rowid": 9,
+    "meetingId": "m-b",
+    "text": "Meeting is on Friday; bugs are undocumented features."
+   },
+   {
+    "rowid": 8,
+    "meetingId": "m-b",
+    "text": "Ship it on Friday then."
+   },
+   {
+    "rowid": 7,
+    "meetingId": "m-b",
+    "text": "Bugs are features we haven't documented yet 🐛"
+   }
+  ]
+ ],
+ "vectorSources": [
+  [
+   {
+    "meetingId": "m-a",
+    "title": "Weekly sync — Δ planning",
+    "startedAt": 1760000000000,
+    "startMs": 0,
+    "speaker": "Ada Lovelace",
+    "text": "Good morning everyone, let's plan the Friday release.",
+    "vec": "00010203fffe"
+   },
+   {
+    "meetingId": "m-a",
+    "title": "Weekly sync — Δ planning",
+    "startedAt": 1760000000000,
+    "startMs": 4300,
+    "speaker": "Alan M. Turing",
+    "text": "We ship on Friday if the migration tests stay green.",
+    "vec": "0a0b0c"
+   }
+  ],
+  [
+   {
+    "meetingId": "m-a",
+    "title": "Weekly sync — Δ planning",
+    "startedAt": 1760000000000,
+    "startMs": 0,
+    "speaker": "Ada Lovelace",
+    "text": "Good morning everyone, let's plan the Friday release.",
+    "vec": "00010203fffe"
+   },
+   {
+    "meetingId": "m-a",
+    "title": "Weekly sync — Δ planning",
+    "startedAt": 1760000000000,
+    "startMs": 4300,
+    "speaker": "Alan M. Turing",
+    "text": "We ship on Friday if the migration tests stay green.",
+    "vec": "0a0b0c"
+   }
+  ],
+  [
+   {
+    "meetingId": "m-b",
+    "title": "1:1 Ada / Grace",
+    "startedAt": 1760007200000,
+    "startMs": 0,
+    "speaker": "Grace Hopper",
+    "text": "Meeting is on Friday; bugs are undocumented features.",
+    "vec": "01"
+   }
+  ]
+ ],
+ "session": {
+  "phase": "recording",
+  "detected": {
+   "key": "teams:café",
+   "title": "Café ﬁnancials",
+   "platform": "teams",
+   "app": "Microsoft Teams"
+  },
+  "meetingId": "m-c",
+  "startedAt": 1760014400000,
+  "degraded": [
+   "mic-only",
+   "transcript-gap"
+  ],
+  "audioParts": [
+   "/rec/c.wav",
+   "/rec/c.p1.wav"
+  ],
+  "partOffsetMs": 4200
+ },
+ "pipelines": {
+  "m-a": {
+   "meetingId": "m-a",
+   "stopReason": "manual",
+   "steps": {
+    "finalize": {
+     "status": "done",
+     "attempts": 1,
+     "maxAttempts": 3,
+     "startedAt": 1760003600001,
+     "finishedAt": 1760003600002
+    },
+    "summary": {
+     "status": "done",
+     "attempts": 1,
+     "maxAttempts": 3,
+     "startedAt": 1760003600003,
+     "finishedAt": 1760003600010
+    },
+    "index": {
+     "status": "done",
+     "attempts": 1,
+     "maxAttempts": 3,
+     "startedAt": 1760003600011,
+     "finishedAt": 1760003600020
+    }
+   },
+   "ctx": {
+    "startedAt": 1760000000000,
+    "endedAt": 1760003600000,
+    "durationMs": 3600000,
+    "audioParts": [
+     "/rec/a.wav"
+    ],
+    "active": [],
+    "helperCrashed": false
+   },
+   "updatedAt": 1760003600020
+  },
+  "m-b": {
+   "meetingId": "m-b",
+   "stopReason": "crash-recovered",
+   "steps": {
+    "finalize": {
+     "status": "done",
+     "attempts": 2,
+     "maxAttempts": 3,
+     "startedAt": 1760010799990,
+     "finishedAt": 1760010799995
+    },
+    "summary": {
+     "status": "retrying",
+     "attempts": 1,
+     "maxAttempts": 3,
+     "nextRetryAt": 1760010802000,
+     "error": {
+      "code": "E_PROVIDER",
+      "message": "503",
+      "retryable": true
+     },
+     "startedAt": 1760010799996
+    },
+    "index": {
+     "status": "pending",
+     "attempts": 0,
+     "maxAttempts": 3
+    }
+   },
+   "ctx": {
+    "startedAt": 1760007200000,
+    "endedAt": 1760009000000,
+    "durationMs": 1800000,
+    "audioParts": [
+     "/rec/b.wav",
+     "/rec/b.p1.wav"
+    ],
+    "active": [
+     {
+      "atMs": 1000,
+      "name": "Grace Hopper"
+     }
+    ],
+    "helperCrashed": true
+   },
+   "updatedAt": 1760010800000
+  },
+  "m-zzz": null
+ },
+ "unsettled": [
+  {
+   "meetingId": "m-b",
+   "stopReason": "crash-recovered",
+   "steps": {
+    "finalize": {
+     "status": "done",
+     "attempts": 2,
+     "maxAttempts": 3,
+     "startedAt": 1760010799990,
+     "finishedAt": 1760010799995
+    },
+    "summary": {
+     "status": "retrying",
+     "attempts": 1,
+     "maxAttempts": 3,
+     "nextRetryAt": 1760010802000,
+     "error": {
+      "code": "E_PROVIDER",
+      "message": "503",
+      "retryable": true
+     },
+     "startedAt": 1760010799996
+    },
+    "index": {
+     "status": "pending",
+     "attempts": 0,
+     "maxAttempts": 3
+    }
+   },
+   "ctx": {
+    "startedAt": 1760007200000,
+    "endedAt": 1760009000000,
+    "durationMs": 1800000,
+    "audioParts": [
+     "/rec/b.wav",
+     "/rec/b.p1.wav"
+    ],
+    "active": [
+     {
+      "atMs": 1000,
+      "name": "Grace Hopper"
+     }
+    ],
+    "helperCrashed": true
+   },
+   "updatedAt": 1760010800000
+  }
+ ],
+ "orphans": [
+  {
+   "id": "m-c",
+   "title": "Café ﬁnancials",
+   "platform": "teams",
+   "startedAt": 1760014400000,
+   "status": "recording",
+   "participants": [],
+   "template": "general"
+  }
+ ],
+ "notes": {
+  "m-a": [
+   {
+    "id": "n1",
+    "atMs": 4000,
+    "text": "Friday release confirmed",
+    "createdAt": 1760000004000
+   },
+   {
+    "id": "n2",
+    "atMs": 4000,
+    "text": "edited: tie on atMs, later createdAt",
+    "createdAt": 1760000005000
+   }
+  ],
+  "m-b": [
+   {
+    "id": "n4",
+    "atMs": 0,
+    "text": "Ask about 会議 notes",
+    "createdAt": 1760007200000
+   }
+  ],
+  "m-c": []
+ },
+ "ftsQueries": [
+  "\"hello\"* \"world\"*",
+  "\"oreillys\"* \"café\"*",
+  "\"financials\"* \"xii\"* \"1\"*",
+  null,
+  "\"drop\"* \"table\"* \"x\"*",
+  "\"one\"* \"two\"* \"three\"* \"four\"* \"five\"* \"six\"* \"seven\"* \"eight\"*",
+  "\"σας\"*",
+  "\"i\"* \"stanbul\"*",
+  "\"日本語のテキスト\"*",
+  "\"émoji\"* \"bugs\"*",
+  "\"abc\"*",
+  "\"xii\"* \"1\"*"
+ ]
+}

@@ -5,6 +5,7 @@
   "ignorePatterns": [
     "docs/design-tokens.md",
     "contracts/*.json",
-    "spec/vectors/**"
+    "spec/vectors/**",
+    "spec/fixtures/**"
   ]
 }

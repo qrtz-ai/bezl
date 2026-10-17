@@ -1,0 +1,686 @@
+{
+ "$comment": "Shared DB seed for the Electron<->Rust cross-open tests (apps/desktop/src/worker/db-parity.test.ts, crates/qrtz-storage/tests/parity.rs). Both sides apply these ops through their repo/handler APIs and must produce expected.json; electron.sqlite and rust.sqlite are the committed results of each side, and each side must read the other's file to the same expected.json.",
+ "ops": [
+  {
+   "op": "upsertMeeting",
+   "meeting": {
+    "id": "m-a",
+    "title": "Weekly sync — Δ planning",
+    "platform": "zoom",
+    "startedAt": 1760000000000,
+    "endedAt": 1760003600000,
+    "status": "processing",
+    "participants": [
+     "Ada Lovelace",
+     "Alan Turing"
+    ],
+    "audioPath": "/rec/a.wav",
+    "durationMs": 3600000
+   }
+  },
+  {
+   "op": "setTemplate",
+   "id": "m-a",
+   "template": "general"
+  },
+  {
+   "op": "upsertMeeting",
+   "meeting": {
+    "id": "m-b",
+    "title": "1:1 Ada / Grace",
+    "platform": "google-meet",
+    "startedAt": 1760007200000,
+    "status": "processing",
+    "participants": [
+     "Grace Hopper"
+    ]
+   }
+  },
+  {
+   "op": "setTemplate",
+   "id": "m-b",
+   "template": "one-on-one"
+  },
+  {
+   "op": "upsertMeeting",
+   "meeting": {
+    "id": "m-c",
+    "title": "Café ﬁnancials",
+    "platform": "teams",
+    "startedAt": 1760014400000,
+    "status": "recording",
+    "participants": []
+   }
+  },
+  {
+   "op": "upsertMeeting",
+   "meeting": {
+    "id": "m-d",
+    "title": "Deleted later",
+    "platform": "other",
+    "startedAt": 1760018000000,
+    "status": "done",
+    "participants": [
+     "Nobody"
+    ]
+   }
+  },
+  {
+   "op": "replaceSegments",
+   "meetingId": "m-a",
+   "source": "live",
+   "segments": [
+    {
+     "id": "u0",
+     "startMs": 0,
+     "endMs": 4200,
+     "text": "Good morning everyone, let's plan the Friday release.",
+     "source": "live",
+     "speaker": "S0",
+     "speakerName": "Ada Lovelace",
+     "confidence": 0.93
+    },
+    {
+     "id": "u1",
+     "startMs": 4300,
+     "endMs": 9100,
+     "text": "We ship on Friday if the migration tests stay green.",
+     "source": "live",
+     "speaker": "S1",
+     "speakerName": "Alan Turing",
+     "confidence": 0.88
+    },
+    {
+     "id": "u2",
+     "startMs": 9200,
+     "endMs": 15000,
+     "text": "Action item: Alan writes the rollback plan.",
+     "source": "live",
+     "speaker": "S1",
+     "speakerName": "Alan Turing"
+    },
+    {
+     "id": "u3",
+     "startMs": 15100,
+     "endMs": 21000,
+     "text": "Café au lait for the team ☕ after the demo.",
+     "source": "live",
+     "speaker": "S0"
+    }
+   ]
+  },
+  {
+   "op": "appendSegment",
+   "meetingId": "m-a",
+   "segment": {
+    "id": "u3",
+    "startMs": 15100,
+    "endMs": 22000,
+    "text": "Café au lait for everyone ☕ after the demo.",
+    "source": "live",
+    "speaker": "S0",
+    "speakerName": "Ada Lovelace"
+   }
+  },
+  {
+   "op": "appendSegment",
+   "meetingId": "m-a",
+   "segment": {
+    "id": "u4",
+    "startMs": 22100,
+    "endMs": 26000,
+    "text": "Don't forget the O'Reilly contract.",
+    "source": "live",
+    "speaker": "S2"
+   }
+  },
+  {
+   "op": "replaceSegments",
+   "meetingId": "m-b",
+   "source": "live",
+   "segments": [
+    {
+     "id": "p0",
+     "startMs": 0,
+     "endMs": 3000,
+     "text": "会議は金曜日です",
+     "source": "live",
+     "speaker": "S0",
+     "speakerName": "Grace Hopper"
+    },
+    {
+     "id": "p1",
+     "startMs": 3100,
+     "endMs": 6000,
+     "text": "Bugs are features we haven't documented yet 🐛",
+     "source": "live",
+     "speaker": "S1"
+    },
+    {
+     "id": "p2",
+     "startMs": 6100,
+     "endMs": 9000,
+     "text": "Ship it on Friday then.",
+     "source": "live",
+     "speaker": "S0",
+     "speakerName": "Grace Hopper",
+     "confidence": 0.5
+    }
+   ]
+  },
+  {
+   "op": "replaceSegments",
+   "meetingId": "m-b",
+   "source": "post",
+   "segments": [
+    {
+     "id": "q0",
+     "startMs": 0,
+     "endMs": 6000,
+     "text": "Meeting is on Friday; bugs are undocumented features.",
+     "source": "post",
+     "speaker": "S0",
+     "speakerName": "Grace Hopper",
+     "confidence": 1
+    }
+   ]
+  },
+  {
+   "op": "replaceSegments",
+   "meetingId": "m-d",
+   "source": "live",
+   "segments": [
+    {
+     "id": "d0",
+     "startMs": 0,
+     "endMs": 1000,
+     "text": "This meeting gets deleted with its friday text.",
+     "source": "live"
+    }
+   ]
+  },
+  {
+   "op": "renameSpeaker",
+   "meetingId": "m-a",
+   "from": "Alan Turing",
+   "to": "Alan M. Turing"
+  },
+  {
+   "op": "renameSpeaker",
+   "meetingId": "m-a",
+   "from": "S2",
+   "to": "Ada Lovelace"
+  },
+  {
+   "op": "addNote",
+   "meetingId": "m-a",
+   "note": {
+    "id": "n1",
+    "atMs": 4000,
+    "text": "Friday release confirmed",
+    "createdAt": 1760000004000
+   }
+  },
+  {
+   "op": "addNote",
+   "meetingId": "m-a",
+   "note": {
+    "id": "n2",
+    "atMs": 4000,
+    "text": "tie on atMs, later createdAt",
+    "createdAt": 1760000005000
+   }
+  },
+  {
+   "op": "addNote",
+   "meetingId": "m-a",
+   "note": {
+    "id": "n3",
+    "atMs": 100,
+    "text": "to be deleted",
+    "createdAt": 1760000000100
+   }
+  },
+  {
+   "op": "addNote",
+   "meetingId": "m-b",
+   "note": {
+    "id": "n4",
+    "atMs": 0,
+    "text": "Ask about 会議 notes",
+    "createdAt": 1760007200000
+   }
+  },
+  {
+   "op": "updateNote",
+   "id": "n2",
+   "text": "edited: tie on atMs, later createdAt"
+  },
+  {
+   "op": "updateNote",
+   "id": "missing",
+   "text": "x"
+  },
+  {
+   "op": "deleteNote",
+   "id": "n3"
+  },
+  {
+   "op": "deleteNote",
+   "id": "n3"
+  },
+  {
+   "op": "saveSummary",
+   "meetingId": "m-a",
+   "now": 1760003600010,
+   "summary": {
+    "summary": "Plan for the Friday release; rollback plan owned by Alan.",
+    "actionItems": [
+     {
+      "text": "Write the rollback plan",
+      "owner": "Alan M. Turing"
+     },
+     {
+      "text": "Book the demo room"
+     }
+    ],
+    "qa": [
+     {
+      "question": "Do we ship Friday?",
+      "answer": "Yes, if tests stay green.",
+      "askedBy": "Ada Lovelace"
+     }
+    ],
+    "provider": "openrouter",
+    "template": "general"
+   }
+  },
+  {
+   "op": "saveSummary",
+   "meetingId": "m-b",
+   "now": 1760010800000,
+   "summary": {
+    "summary": "Extractive: meeting on Friday.",
+    "actionItems": [],
+    "qa": [],
+    "provider": "extractive",
+    "llmError": "401 unauthorized"
+   }
+  },
+  {
+   "op": "saveSummary",
+   "meetingId": "m-d",
+   "now": 1760021600000,
+   "summary": {
+    "summary": "Deleted summary about zebras.",
+    "actionItems": [],
+    "qa": [],
+    "provider": "extractive"
+   }
+  },
+  {
+   "op": "setStatus",
+   "id": "m-a",
+   "status": "done"
+  },
+  {
+   "op": "saveVectors",
+   "model": "minilm-q8",
+   "rows": [
+    {
+     "meetingId": "m-a",
+     "source": "live",
+     "segmentId": "u0",
+     "vecHex": "00010203fffe"
+    },
+    {
+     "meetingId": "m-a",
+     "source": "live",
+     "segmentId": "u1",
+     "vecHex": "0a0b0c"
+    },
+    {
+     "meetingId": "m-d",
+     "source": "live",
+     "segmentId": "d0",
+     "vecHex": "ff"
+    }
+   ]
+  },
+  {
+   "op": "saveVectors",
+   "model": "other-model",
+   "rows": [
+    {
+     "meetingId": "m-b",
+     "source": "post",
+     "segmentId": "q0",
+     "vecHex": "01"
+    }
+   ]
+  },
+  {
+   "op": "savePipeline",
+   "settled": true,
+   "state": {
+    "meetingId": "m-a",
+    "stopReason": "manual",
+    "updatedAt": 1760003600020,
+    "ctx": {
+     "startedAt": 1760000000000,
+     "endedAt": 1760003600000,
+     "durationMs": 3600000,
+     "audioParts": [
+      "/rec/a.wav"
+     ],
+     "active": [],
+     "helperCrashed": false
+    },
+    "steps": {
+     "finalize": {
+      "status": "done",
+      "attempts": 1,
+      "maxAttempts": 3,
+      "startedAt": 1760003600001,
+      "finishedAt": 1760003600002
+     },
+     "summary": {
+      "status": "done",
+      "attempts": 1,
+      "maxAttempts": 3,
+      "startedAt": 1760003600003,
+      "finishedAt": 1760003600010
+     },
+     "index": {
+      "status": "done",
+      "attempts": 1,
+      "maxAttempts": 3,
+      "startedAt": 1760003600011,
+      "finishedAt": 1760003600020
+     }
+    }
+   }
+  },
+  {
+   "op": "savePipeline",
+   "settled": false,
+   "state": {
+    "meetingId": "m-b",
+    "stopReason": "crash-recovered",
+    "updatedAt": 1760010800000,
+    "ctx": {
+     "startedAt": 1760007200000,
+     "endedAt": 1760009000000,
+     "durationMs": 1800000,
+     "audioParts": [
+      "/rec/b.wav",
+      "/rec/b.p1.wav"
+     ],
+     "active": [
+      {
+       "atMs": 1000,
+       "name": "Grace Hopper"
+      }
+     ],
+     "helperCrashed": true
+    },
+    "steps": {
+     "finalize": {
+      "status": "done",
+      "attempts": 2,
+      "maxAttempts": 3,
+      "startedAt": 1760010799990,
+      "finishedAt": 1760010799995
+     },
+     "summary": {
+      "status": "retrying",
+      "attempts": 1,
+      "maxAttempts": 3,
+      "startedAt": 1760010799996,
+      "nextRetryAt": 1760010802000,
+      "error": {
+       "code": "E_PROVIDER",
+       "message": "503",
+       "retryable": true
+      }
+     },
+     "index": {
+      "status": "pending",
+      "attempts": 0,
+      "maxAttempts": 3
+     }
+    }
+   }
+  },
+  {
+   "op": "savePipeline",
+   "settled": false,
+   "state": {
+    "meetingId": "m-zzz",
+    "stopReason": "manual",
+    "updatedAt": 1,
+    "ctx": {
+     "startedAt": 1760007200000,
+     "endedAt": 1760009000000,
+     "durationMs": 1800000,
+     "audioParts": [
+      "/rec/b.wav",
+      "/rec/b.p1.wav"
+     ],
+     "active": [
+      {
+       "atMs": 1000,
+       "name": "Grace Hopper"
+      }
+     ],
+     "helperCrashed": true
+    },
+    "steps": {
+     "finalize": {
+      "status": "pending",
+      "attempts": 0,
+      "maxAttempts": 3
+     },
+     "summary": {
+      "status": "pending",
+      "attempts": 0,
+      "maxAttempts": 3
+     },
+     "index": {
+      "status": "pending",
+      "attempts": 0,
+      "maxAttempts": 3
+     }
+    }
+   }
+  },
+  {
+   "op": "saveSession",
+   "now": 1760014400000,
+   "state": {
+    "phase": "recording",
+    "detected": {
+     "key": "teams:café",
+     "title": "Café ﬁnancials",
+     "platform": "teams",
+     "app": "Microsoft Teams"
+    },
+    "meetingId": "m-c",
+    "startedAt": 1760014400000,
+    "degraded": [
+     "mic-only",
+     "transcript-gap"
+    ],
+    "audioParts": [
+     "/rec/c.wav",
+     "/rec/c.p1.wav"
+    ],
+    "partOffsetMs": 4200
+   }
+  },
+  {
+   "op": "deleteMeeting",
+   "id": "m-d"
+  },
+  {
+   "op": "deleteMeeting",
+   "id": "never-existed"
+  }
+ ],
+ "queries": {
+  "list": [
+   {},
+   {
+    "limit": 1
+   },
+   {
+    "limit": 1,
+    "offset": 1
+   },
+   {
+    "limit": 2,
+    "offset": 1
+   },
+   {
+    "query": "friday"
+   },
+   {
+    "query": "  Friday  "
+   },
+   {
+    "query": "ada"
+   },
+   {
+    "query": "café"
+   },
+   {
+    "query": "cafe"
+   },
+   {
+    "query": "financials"
+   },
+   {
+    "query": "会議"
+   },
+   {
+    "query": "o'reilly"
+   },
+   {
+    "query": "rollback demo"
+   },
+   {
+    "query": "zebras"
+   },
+   {
+    "query": "\"*()"
+   },
+   {
+    "query": "friday",
+    "limit": 1
+   },
+   {
+    "query": "friday",
+    "limit": 1,
+    "offset": 1
+   },
+   {
+    "query": "Hello, World!"
+   },
+   {
+    "query": "O'Reilly's café"
+   },
+   {
+    "query": "ﬁnancials Ⅻ ①"
+   },
+   {
+    "query": "  "
+   },
+   {
+    "query": "\"; DROP TABLE x; --"
+   },
+   {
+    "query": "one two three four five six seven eight nine ten"
+   },
+   {
+    "query": "ΣΑΣ"
+   },
+   {
+    "query": "İstanbul"
+   },
+   {
+    "query": "日本語のテキスト"
+   },
+   {
+    "query": "émoji 🐛 bugs"
+   }
+  ],
+  "details": [
+   "m-a",
+   "m-b",
+   "m-c",
+   "m-d"
+  ],
+  "searchSegments": [
+   "ship friday",
+   "a",
+   "会議 bugs",
+   "rollback?",
+   "ÉQUIPE café"
+  ],
+  "missingVectors": [
+   {
+    "model": "minilm-q8",
+    "limit": 100
+   },
+   {
+    "model": "minilm-q8",
+    "limit": 2
+   },
+   {
+    "model": "minilm-q8",
+    "limit": 10,
+    "meetingId": "m-b"
+   },
+   {
+    "model": "nope",
+    "limit": 3
+   }
+  ],
+  "vectorSources": [
+   {
+    "model": "minilm-q8"
+   },
+   {
+    "model": "minilm-q8",
+    "meetingId": "m-a"
+   },
+   {
+    "model": "other-model"
+   }
+  ],
+  "pipelines": [
+   "m-a",
+   "m-b",
+   "m-zzz"
+  ],
+  "notes": [
+   "m-a",
+   "m-b",
+   "m-c"
+  ],
+  "ftsQueries": [
+   "Hello, World!",
+   "O'Reilly's café",
+   "ﬁnancials Ⅻ ①",
+   "  ",
+   "\"; DROP TABLE x; --",
+   "one two three four five six seven eight nine ten",
+   "ΣΑΣ",
+   "İstanbul",
+   "日本語のテキスト",
+   "émoji 🐛 bugs",
+   "a'b'c",
+   "Ⅻ ①"
+  ]
+ }
+}
