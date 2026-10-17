@@ -52,8 +52,10 @@ impl Db {
         })
     }
 
-    /// Opens (creating if needed) and migrates the app database: WAL, foreign keys on, busy_timeout 5000.
+    /// Opens (creating if needed) and migrates the app database: WAL, foreign keys on, busy_timeout 5000. The
+    /// file and its SQLite companions are owner-only (0600) whatever the umask (N25, `ownerOnlyDbFiles`).
     pub fn open(path: impl AsRef<Path>) -> Result<Db> {
+        owner_only_db_files(path.as_ref());
         Db::configure(Connection::open(path)?)
     }
 
@@ -117,9 +119,12 @@ impl Db {
     /// `data.snapshot`: a consistent online copy via `VACUUM INTO` (does not renumber the live DB's rowids).
     pub fn snapshot_to(&self, path: impl AsRef<Path>) -> Result<()> {
         let path = path.as_ref();
-        if path.exists() {
+        // The snapshot is the whole library: a fresh 0600 file, created exclusively so a symlink planted at the
+        // path is removed, never followed (N26, `freshOwnerOnlyFile`). `VACUUM INTO` accepts an empty file.
+        if path.symlink_metadata().is_ok() {
             std::fs::remove_file(path)?;
         }
+        create_owner_only(path, true)?;
         self.conn.execute("VACUUM INTO ?", [path.to_string_lossy()])?;
         Ok(())
     }
@@ -179,6 +184,49 @@ impl Db {
             imported += 1;
         }
         Ok(ImportReport { imported, skipped })
+    }
+}
+
+/// SQLite's companion files: the unix VFS creates them with the main file's mode.
+const SIDECARS: [&str; 3] = ["-wal", "-shm", "-journal"];
+
+/// Creates `path` with mode 0600 (`exclusive`: fail if it exists, never follow a symlink). Elsewhere than unix, a
+/// plain create.
+fn create_owner_only(path: &Path, exclusive: bool) -> std::io::Result<()> {
+    let mut o = std::fs::OpenOptions::new();
+    o.write(true);
+    if exclusive {
+        o.create_new(true);
+    } else {
+        o.create(true).append(true);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        o.mode(0o600);
+    }
+    o.open(path).map(drop)
+}
+
+/// N25 (`ownerOnlyDbFiles` in `apps/desktop/src/worker/db.ts`): the DB holds every transcript, so it is created
+/// 0600 before SQLite opens it (`-wal`/`-shm`/`-journal` then follow, SQLite copies the main file's mode), and
+/// files an older build left at the umask default are tightened. Best effort: the open itself still decides.
+fn owner_only_db_files(path: &Path) {
+    let s = path.to_string_lossy();
+    if s.is_empty() || s == ":memory:" || s.starts_with("file:") {
+        return;
+    }
+    if create_owner_only(path, false).is_err() {
+        return; // missing directory, read-only volume: let SQLite report it
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let all = std::iter::once(path.to_path_buf())
+            .chain(SIDECARS.iter().map(|x| PathBuf::from(format!("{s}{x}"))));
+        for f in all {
+            let _ = std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o600));
+        }
     }
 }
 

@@ -35,7 +35,7 @@ import {
   extractiveSummary,
   type PipelineContext,
 } from '@qrtz/core';
-import { dbHealth } from './db';
+import { dbHealth, freshOwnerOnlyFile } from './db';
 import { repairWav } from './wav-repair';
 
 export interface LlmParams {
@@ -642,7 +642,7 @@ export function createWorkerHandlers(
     'note.deleteNote': (p: { id: string }) => ({ ok: repo.deleteNote(p.id) }),
     /** Consistent online snapshot of the whole DB (for backups). */
     'data.snapshot': (p: { path: string }) => {
-      fs.rmSync(p.path, { force: true });
+      freshOwnerOnlyFile(p.path); // the snapshot is the whole library: 0600, never through a symlink (N26)
       db.prepare('VACUUM INTO ?').run(p.path);
       return {
         meetings: Number(

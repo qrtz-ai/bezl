@@ -67,6 +67,14 @@ export function bootstrap() {
   if (process.env.QRTZ_USER_DATA)
     app.setPath('userData', process.env.QRTZ_USER_DATA);
   const userData = app.getPath('userData');
+  // N25: owner-only app data (DB, logs, config, talk history, tombstones, models), whatever the umask; chmod
+  // too, for a directory an older build or Electron created 0755.
+  fs.mkdirSync(userData, { recursive: true, mode: 0o700 });
+  try {
+    fs.chmodSync(userData, 0o700);
+  } catch {
+    /* not ours to change: the files inside are still owner-only */
+  }
   const config = new ConfigStore(path.join(userData, 'config.json'));
   const log = createFileLogger(
     path.join(userData, 'logs'),
@@ -393,10 +401,12 @@ export function bootstrap() {
             return { meetings: 0, audioFiles: 0, bytes: 0 };
           target = r.filePath;
         }
-        const snap = path.join(
-          app.getPath('temp'),
-          `qrtz-snapshot-${process.pid}.db`,
+        // N26: the snapshot is the whole library. A private (0700) temp dir, not a predictable name in a
+        // shared temp dir; the worker creates the file itself 0600 and exclusively.
+        const snapDir = fs.mkdtempSync(
+          path.join(app.getPath('temp'), 'qrtz-snapshot-'),
         );
+        const snap = path.join(snapDir, 'qrtz.db');
         try {
           const { meetings } = await worker.call('data.snapshot', {
             path: snap,
@@ -437,7 +447,7 @@ export function bootstrap() {
             bytes: r.bytes,
           };
         } finally {
-          fs.rmSync(snap, { force: true });
+          fs.rmSync(snapDir, { recursive: true, force: true });
         }
       },
       'data:import-backup': async () => {

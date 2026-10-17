@@ -127,7 +127,13 @@ export async function writeBackup(o: {
   fs.mkdirSync(path.dirname(o.target), { recursive: true });
   const tmp = `${o.target}.partial`;
   try {
-    await pipeline(zip.outputStream, fs.createWriteStream(tmp));
+    // Owner-only (N26): the archive is every transcript and recording. A `.partial` an interrupted export left
+    // is removed first, because the open's mode only applies when it creates the file.
+    fs.rmSync(tmp, { force: true });
+    await pipeline(
+      zip.outputStream,
+      fs.createWriteStream(tmp, { mode: 0o600 }),
+    );
     fs.renameSync(tmp, o.target);
   } catch (e) {
     fs.rmSync(tmp, { force: true });
