@@ -210,8 +210,17 @@ pub enum HelperInput {
         #[serde(default, deserialize_with = "de_ms_opt")]
         duration_ms: Option<Ms>,
     },
-    #[serde(rename = "error")]
-    Error { code: String, message: String },
+    /// `audio_path` / `active_audio_path` are set on `recording.busy`: the ignored start's file and the file the
+    /// running recording writes.
+    #[serde(rename = "error", rename_all = "camelCase")]
+    Error {
+        code: String,
+        message: String,
+        #[serde(default)]
+        audio_path: Option<String>,
+        #[serde(default)]
+        active_audio_path: Option<String>,
+    },
 }
 
 impl HelperInput {

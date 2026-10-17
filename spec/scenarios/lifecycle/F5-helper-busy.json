@@ -1,6 +1,6 @@
 {
   "name": "F5-helper-busy",
-  "about": "F5: the helper answers recording.start with error recording.busy: the start fails at once (E_UNAVAILABLE, helper-busy) and only this attempt's file is stopped.",
+  "about": "F5: the helper answers recording.start with error recording.busy{audioPath, activeAudioPath}: the start fails at once (E_UNAVAILABLE, helper-busy), the orphaned active recording is stopped by its path, then this attempt's own file; the retry starts.",
   "script": [
     {
       "op": "helper",
@@ -36,7 +36,9 @@
       "msg": {
         "type": "error",
         "code": "recording.busy",
-        "message": "another recording owns the helper"
+        "message": "another recording owns the helper",
+        "audioPath": "$REC/id1.wav",
+        "activeAudioPath": "$REC/orphan.wav"
       }
     },
     {
@@ -106,6 +108,7 @@
       "helper": [
         "permissions.check",
         "recording.start $REC/id1.wav",
+        "recording.stop $REC/orphan.wav",
         "recording.stop $REC/id1.wav",
         "recording.start $REC/id2.wav",
         "recording.stop"

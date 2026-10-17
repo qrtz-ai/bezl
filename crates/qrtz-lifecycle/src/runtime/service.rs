@@ -297,8 +297,9 @@ struct State {
     waiters: Vec<WaiterEntry>,
     /// Audio path of the `recording.start` in flight (start or resume); acks for any other path are stale.
     pending_start_path: Option<String>,
-    /// The helper answered our start with `error{recording.busy}`: another recording still owns it.
-    start_refused_busy: bool,
+    /// Audio paths of starts the helper answered with `error{recording.busy, audioPath}` (another recording still
+    /// owns it). Keyed by the refused attempt's file, so a busy only ever fails the start it names.
+    busy_refusals: HashSet<String>,
     emit_timer: bool,
     persisted: HashSet<String>,
     paused: bool,
@@ -335,7 +336,7 @@ impl State {
             .collect(),
             waiters: Vec::new(),
             pending_start_path: None,
-            start_refused_busy: false,
+            busy_refusals: HashSet::new(),
             emit_timer: false,
             persisted: HashSet::new(),
             paused: false,
@@ -814,26 +815,15 @@ impl Shared {
                 }
                 self.on_asr(&s, event);
             }
-            HelperInput::Error { code, message } => {
+            HelperInput::Error {
+                code,
+                message,
+                audio_path,
+                active_audio_path,
+            } => {
                 tracing::warn!(code = %code, message = %message, "helper error");
-                let busy = code == "recording.busy" && self.lock().pending_start_path.is_some();
-                if busy {
-                    // The start was ignored: fail it now instead of waiting out the ack timeout.
-                    let ws: Vec<WaiterEntry> = {
-                        let mut st = self.lock();
-                        st.start_refused_busy = true;
-                        let (ws, keep) = std::mem::take(&mut st.waiters)
-                            .into_iter()
-                            .partition(|w| w.kind == "recording.started");
-                        st.waiters = keep;
-                        ws
-                    };
-                    for w in ws {
-                        if let Some(t) = &w.timer {
-                            t.abort();
-                        }
-                        let _ = w.tx.send(None);
-                    }
+                if code == "recording.busy" {
+                    self.on_busy(&s, audio_path, active_audio_path);
                     return;
                 }
                 match code.as_str() {
@@ -843,6 +833,55 @@ impl Shared {
                 }
             }
             HelperInput::RecordingStopped { .. } => {}
+        }
+    }
+
+    /// `error{recording.busy, audioPath, activeAudioPath}` (port of NoteService.onBusy). Acts only on the start in
+    /// flight. A busy naming that same file as active is a duplicate start of a running recording: treat it as the
+    /// ack. If the active file is not one of ours (an orphan from before a reload or an abandoned attempt), stop it
+    /// by its path before failing this attempt, so the retry can start; never stop a recording we are capturing.
+    fn on_busy(self: &Arc<Self>, s: &RecordingState, audio_path: Option<String>, active: Option<String>) {
+        let pending = self.lock().pending_start_path.clone();
+        let Some(path) = audio_path.filter(|p| pending.as_deref() == Some(p.as_str())) else {
+            tracing::warn!("recording.busy for another start; ignored");
+            return;
+        };
+        if active.as_deref() == Some(path.as_str()) {
+            self.resolve_started(&path, true);
+            return;
+        }
+        if let Some(a) = &active {
+            let ours = is_capturing(s.phase) && s.audio_parts.contains(a);
+            if !ours {
+                tracing::warn!(audio_path = %a, "stopping orphaned recording");
+                let _ = self.send_helper(HelperCommand::RecordingStop {
+                    audio_path: Some(a.clone()),
+                });
+            }
+        }
+        // The start was ignored: fail it now instead of waiting out the ack timeout.
+        self.lock().busy_refusals.insert(path.clone());
+        self.resolve_started(&path, false);
+    }
+
+    /// Resolves the `recording.started` waiters for `path`: with a synthetic ack, or with `None` (refused).
+    fn resolve_started(&self, path: &str, ack: bool) {
+        let probe = HelperInput::RecordingStarted {
+            audio_path: path.to_string(),
+        };
+        let ws: Vec<WaiterEntry> = {
+            let mut st = self.lock();
+            let (ws, keep) = std::mem::take(&mut st.waiters)
+                .into_iter()
+                .partition(|w| w.kind == "recording.started" && w.matcher.as_ref().is_none_or(|m| m(&probe)));
+            st.waiters = keep;
+            ws
+        };
+        for w in ws {
+            if let Some(t) = &w.timer {
+                t.abort();
+            }
+            let _ = w.tx.send(ack.then(|| probe.clone()));
         }
     }
 
@@ -1104,7 +1143,7 @@ impl Shared {
         {
             let mut st = self.lock();
             st.pending_start_path = Some(audio_path.clone());
-            st.start_refused_busy = false;
+            st.busy_refusals.remove(&audio_path);
         }
         let acked = self.wait_for(
             "recording.started",
@@ -1132,7 +1171,8 @@ impl Shared {
             if !still_ours(&self) {
                 return Ok(self.view());
             }
-            let busy = std::mem::take(&mut self.lock().start_refused_busy);
+            // Only a busy that named this attempt's file counts; a busy for any other start never relabels it.
+            let busy = self.lock().busy_refusals.remove(&audio_path);
             let error = if busy {
                 LifecycleError {
                     code: "helper-busy".into(),
@@ -1270,6 +1310,7 @@ impl Shared {
         }
         let acked = acked.await.ok().flatten();
         self.clear_pending_start(&audio_path);
+        self.lock().busy_refusals.remove(&audio_path);
         if acked.is_none() || self.lock().machine.state().phase != RecordingPhase::Reconnecting {
             return;
         }
