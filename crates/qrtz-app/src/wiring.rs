@@ -351,6 +351,7 @@ pub struct AppBuild {
     pub storage_shell: Arc<dyn crate::storage_port::StorageShell>,
     /// `None` = file store (non-macOS) / Keychain (macOS) under the data dir.
     pub secrets: Option<Arc<dyn crate::secrets::SecretStore>>,
+    /// `None` = qrtz talk over the helper (data/talk.json).
     pub talk: Option<Arc<dyn crate::ports::TalkPort>>,
     pub steps: Option<Arc<dyn StepExecutor>>,
     /// `None` = MiniLM from the model dir.
@@ -423,6 +424,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         embedder: b.embedder,
         knobs: b.knobs,
     })?;
+    let talk_shell = b.storage_shell.clone();
     let rt = booted.runtime.clone();
     let storage = crate::storage_port::SqliteStorage {
         db: booted.db.clone(),
@@ -432,10 +434,24 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
             let rt = booted.runtime.clone();
             Arc::new(move || rt.pending_deletes())
         }),
-        shell: b.storage_shell,
+        shell: b.storage_shell.clone(),
         recordings_dir: dirs.recordings.clone(),
         pending: Some(pending.clone()),
         app_version: b.info.version.clone(),
+    };
+    let talk: Arc<dyn crate::ports::TalkPort> = match b.talk {
+        Some(t) => t,
+        None => Arc::new(crate::talk::Talk(crate::talk::talk_service(
+            crate::talk::TalkWiring {
+                helper: supervisor.clone(),
+                events: events.clone(),
+                live: booted.live.clone(),
+                secrets: secrets.clone(),
+                shell: talk_shell,
+                config: config.clone(),
+                store_path: dirs.data.join("talk.json"),
+            },
+        ))),
     };
     let service = crate::AppService::new(crate::AppDeps {
         info: b.info,
@@ -443,7 +459,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         secrets,
         runtime: Arc::new(NoteRuntimePort::new(booted.runtime.clone(), availability)),
         storage: Arc::new(storage),
-        talk: b.talk.unwrap_or_else(|| Arc::new(crate::ports::StubTalk)),
+        talk,
         shell: b.shell,
         helper: supervisor,
         events,

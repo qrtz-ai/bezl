@@ -18,6 +18,10 @@
 //!   QRTZ_MOCK_CRASH_ONCE=path    crash (exit 3) 100 ms after start unless `path` exists; creates it first
 //!   QRTZ_MOCK_GARBAGE=1          print one invalid line right after hello
 //!   QRTZ_MOCK_PERMISSIONS=microphone=denied,...
+//!   QRTZ_MOCK_DICTATION="hello from qrtz talk"
+//!                                dictation: `dictation.started`, then every 150 ms a level + a growing
+//!                                `dictation.asr` partial; `dictation.stop` answers `dictation.stopped {text}`;
+//!                                `insert.text` answers `insert.result` (ok, method ax-selected-text).
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -135,6 +139,20 @@ fn main() {
     }
 
     let mut audio: Option<String> = None;
+
+    let dictation_words: Arc<Vec<String>> = Arc::new(
+        env("QRTZ_MOCK_DICTATION")
+            .unwrap_or_else(|| "hello from qrtz talk".into())
+            .split_whitespace()
+            .map(String::from)
+            .collect(),
+    );
+
+    let dictation_gen = Arc::new(AtomicU64::new(0));
+
+    let dictation_heard = Arc::new(AtomicU64::new(0));
+
+    let mut dictation_id: Option<String> = None;
     let mut started = 0u64;
     for line in std::io::stdin().lock().lines() {
         let Ok(line) = line else { break };
@@ -227,6 +245,46 @@ fn main() {
                 }
                 say(json!({"type": "recording.aborted", "audioPath": p}));
             }
+            "dictation.configure" => {}
+            "dictation.start" => {
+                let id = msg["id"].as_str().unwrap_or_default().to_owned();
+                let gen = dictation_gen.fetch_add(1, Ordering::SeqCst) + 1;
+                say(json!({"type": "dictation.started", "id": id, "preRollMs": 0}));
+                let (say, dg, heard) = (say.clone(), dictation_gen.clone(), dictation_heard.clone());
+                let words = dictation_words.clone();
+                heard.store(0, Ordering::SeqCst);
+                std::thread::spawn(move || loop {
+                    std::thread::sleep(Duration::from_millis(150));
+                    if dg.load(Ordering::SeqCst) != gen {
+                        return;
+                    }
+                    let n = (heard.fetch_add(1, Ordering::SeqCst) + 1).min(words.len() as u64) as usize;
+                    say(json!({"type": "dictation.level", "rms": 0.2}));
+                    say(
+                        json!({"type": "dictation.asr", "id": id, "event": {"kind": "partial", "utteranceId": "u1",
+                                "startMs": 0, "text": words[..n].join(" ")}}),
+                    );
+                });
+                dictation_id = Some(msg["id"].as_str().unwrap_or_default().to_owned());
+            }
+            ty @ ("dictation.stop" | "dictation.cancel") => {
+                let id = msg["id"].as_str().unwrap_or_default().to_owned();
+                if dictation_id.as_deref() == Some(id.as_str()) {
+                    dictation_gen.fetch_add(1, Ordering::SeqCst);
+                    dictation_id = None;
+                    if ty == "dictation.stop" {
+                        let n = dictation_heard
+                            .load(Ordering::SeqCst)
+                            .clamp(1, dictation_words.len() as u64) as usize;
+                        say(
+                            json!({"type": "dictation.stopped", "id": id, "text": dictation_words[..n].join(" "), "durationMs": 1000}),
+                        );
+                    }
+                }
+            }
+            "insert.text" => say(
+                json!({"type": "insert.result", "id": msg["id"], "method": "ax-selected-text", "ok": true, "app": "Mock Editor"}),
+            ),
             "recording.pause" | "recording.resume" => {}
             "shutdown" => std::process::exit(0),
             _ => say(

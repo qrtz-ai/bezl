@@ -16,6 +16,7 @@ runtime = [
   "dep:qrtz-backup",
   "dep:qrtz-llm",
   "dep:qrtz-search",
+  "dep:qrtz-talk",
 ]
 
 [dependencies]
@@ -25,6 +26,7 @@ qrtz-model = { workspace = true, optional = true }
 qrtz-backup = { workspace = true, optional = true }
 qrtz-llm = { path = "../qrtz-llm", optional = true }
 qrtz-search = { path = "../qrtz-search", optional = true }
+qrtz-talk = { path = "../qrtz-talk", optional = true }
 rand.workspace = true
 unicode-normalization.workspace = true
 qrtz-ipc = { path = "../qrtz-ipc" }
