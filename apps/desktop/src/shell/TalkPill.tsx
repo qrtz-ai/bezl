@@ -11,13 +11,20 @@ function Pill() {
     client.invoke('talk:state').then(setS, () => {});
     return client.on('talk:state', setS);
   }, [client]);
+  // The shell only shows this window while the key is held, or briefly after a failure (crates/qrtz-app
+  // src/pill.rs): an idle view whose last dictation couldn't be inserted shows that error.
+  const lastError =
+    s?.phase === 'idle' && s.last && !s.last.inserted
+      ? s.last.error
+      : undefined;
+  const error = s?.error ?? lastError;
   return (
     <TalkPill
-      phase={s?.phase ?? 'idle'}
+      phase={lastError ? 'error' : (s?.phase ?? 'idle')}
       level={s?.level ?? 0}
-      text={s?.text ?? ''}
+      text={lastError ? '' : (s?.text ?? '')}
       partial={s?.partial ?? ''}
-      {...(s?.error ? { error: s.error } : {})}
+      {...(error ? { error } : {})}
     />
   );
 }

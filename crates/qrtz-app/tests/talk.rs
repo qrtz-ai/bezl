@@ -259,11 +259,12 @@ async fn mock_openrouter(reply: &'static str) -> (String, Arc<Mutex<Vec<String>>
     (base, seen)
 }
 
-async fn settings(r: &Router<Shared>, ch: &str, payload: Value) {
+async fn settings(r: &Router<Shared>, ch: &str, payload: Value) -> Value {
     let v = r
         .dispatch(json!({"v":1,"id":"s","channel":ch,"version":1,"subApp":"settings","payload":payload}))
         .await;
     assert_eq!(v["ok"], true, "{ch}: {v}");
+    v["data"].clone()
 }
 
 async fn dictate_once(r: &Router<Shared>) -> Value {
@@ -276,14 +277,25 @@ async fn dictate_once(r: &Router<Shared>) -> Value {
     h[0].clone()
 }
 
-/// Parity rows 34/35 (docs/e2e-parity.md): AI cleanup goes to OpenRouter with the user's key and the Haiku default;
-/// local-only never calls it (rules cleanup); the `QRTZ_TALK_LLM=hang` stand-in falls back to rules on timeout.
+/// Jared: talk has no LLM cleanup (speed). With an OpenRouter key saved, a dictation still makes no request and
+/// the text goes in as soon as the key is released (on-device rules only: fillers, punctuation, dictionary).
+/// An old config that still has the removed `aiCleanup` / `cleanupModel` / `cleanupTimeoutMs` loads; those keys
+/// are dropped. Parity rows 34/35 (docs/e2e-parity.md) are retired by this.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn ai_cleanup_uses_openrouter_and_local_only_keeps_it_on_device() {
+async fn talk_never_calls_an_llm_even_with_an_openrouter_key() {
     let tmp = tempfile::tempdir().unwrap();
+    let data = tmp.path().join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::write(
+        data.join("config.json"),
+        json!({"talk": {"aiCleanup": true, "cleanupModel": "anthropic/claude-haiku-5.5", "cleanupTimeoutMs": 900,
+                        "showPill": false}})
+        .to_string(),
+    )
+    .unwrap();
     let (base, seen) = mock_openrouter("Hello from the cleaned-up dictation.").await;
     let a = app_with(
-        &tmp.path().join("data"),
+        &data,
         Arc::new(Clip::default()),
         true,
         DevKnobs {
@@ -292,6 +304,14 @@ async fn ai_cleanup_uses_openrouter_and_local_only_keeps_it_on_device() {
         },
     );
     let r = Router::new(Shared(a.service.clone())).validate_responses(true);
+    let cfg = settings(&r, "config:get", Value::Null).await;
+    assert_eq!(
+        cfg["talk"]["showPill"], false,
+        "the rest of the old talk settings survive: {cfg}"
+    );
+    for k in ["aiCleanup", "cleanupModel", "cleanupTimeoutMs"] {
+        assert!(cfg["talk"].get(k).is_none(), "talk.{k} is gone: {cfg}");
+    }
     a.service.start_helper();
     let svc = a.service.clone();
     until("helper", || svc.helper_ready()).await;
@@ -301,56 +321,11 @@ async fn ai_cleanup_uses_openrouter_and_local_only_keeps_it_on_device() {
         json!({"name": "llm.openrouter", "value": "sk-or-talk"}),
     )
     .await;
-
     let e = dictate_once(&r).await;
-    assert_eq!(e["cleanup"], "llm", "{e}");
-    assert_eq!(e["text"], "Hello from the cleaned-up dictation.", "{e}");
-    let reqs = seen.lock().unwrap().clone();
-    assert_eq!(reqs.len(), 1, "{reqs:?}");
-    assert!(
-        reqs[0].contains("authorization: bearer sk-or-talk"),
-        "{}",
-        reqs[0]
-    );
-    assert!(
-        reqs[0].contains(&format!("\"model\":\"{}\"", qrtz_llm::OPENROUTER_DEFAULT_MODEL)),
-        "{}",
-        reqs[0]
-    );
-
-    settings(
-        &r,
-        "config:set",
-        json!({"patch": {"privacy": {"localOnly": true}}}),
-    )
-    .await;
-    let e = dictate_once(&r).await;
-    assert_eq!(e["cleanup"], "rules", "{e}");
-    assert_eq!(seen.lock().unwrap().len(), 1, "local-only sent a request");
+    assert_ne!(e["cleanup"], "llm", "{e}");
+    assert_ne!(e["text"], "Hello from the cleaned-up dictation.", "{e}");
+    assert!(seen.lock().unwrap().is_empty(), "talk sent an LLM request");
     if let Some(h) = a.service.helper() {
-        h.stop();
-    }
-    drop(r);
-    drop(a);
-
-    // The E2E stand-in: a cleanup LLM that never answers falls back to rules after the timeout.
-    let b = app_with(
-        &tmp.path().join("data2"),
-        Arc::new(Clip::default()),
-        true,
-        DevKnobs {
-            talk_llm: Some("hang".into()),
-            ..Default::default()
-        },
-    );
-    let r = Router::new(Shared(b.service.clone())).validate_responses(true);
-    b.service.start_helper();
-    let svc = b.service.clone();
-    until("helper", || svc.helper_ready()).await;
-    let e = dictate_once(&r).await;
-    assert_eq!(e["cleanup"], "rules", "{e}");
-    assert!(e["latency"]["cleanupMs"].as_f64().unwrap_or(0.0) >= 800.0, "{e}");
-    if let Some(h) = b.service.helper() {
         h.stop();
     }
 }

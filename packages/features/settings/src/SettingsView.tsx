@@ -194,7 +194,6 @@ export default function SettingsView() {
     engine?: string;
     autoFailover?: boolean;
     autoCleanup?: boolean;
-    aiCleanup?: boolean;
     autoInsert?: boolean;
     restoreClipboard?: boolean;
     showPill?: boolean;
@@ -482,13 +481,6 @@ export default function SettingsView() {
           talkCfg.autoCleanup,
           true,
           (v) => void patchTalk({ autoCleanup: v }),
-        )}
-        {toggle(
-          'ai cleanup',
-          'talk-ai-cleanup',
-          talkCfg.aiCleanup,
-          true,
-          (v) => void patchTalk({ aiCleanup: v }),
         )}
         {toggle(
           'insert into app',

@@ -125,6 +125,13 @@ struct Linger {
     hiding: AtomicBool,
 }
 
+/// The pill's error flash (`qrtz_app::pill`): the failure last shown, and whether it is on screen now.
+#[derive(Default)]
+struct Flash {
+    key: Mutex<String>,
+    on: AtomicBool,
+}
+
 pub struct Backend {
     pub service: Arc<AppService>,
     pub router: Router<Shared>,
@@ -134,6 +141,7 @@ pub struct Backend {
     session: Mutex<Value>,
     hud: Linger,
     pill: Linger,
+    flash: Flash,
     hotkeys: Mutex<Vec<(String, &'static str)>>,
     /// Embedder + vector backfill (N83): started after recovery, cancelled on quit.
     search: Arc<qrtz_app::wiring::SearchHandles>,
@@ -244,6 +252,7 @@ pub fn setup(app: &mut tauri::App, started: Instant) -> Result<(), Box<dyn std::
         session: Mutex::new(json!({"phase": "idle", "helper": "ok", "elapsedMs": 0})),
         hud: Linger::default(),
         pill: Linger::default(),
+        flash: Flash::default(),
         hotkeys: Mutex::default(),
         search: built.search.clone(),
     });
@@ -336,17 +345,57 @@ fn on_session(app: &AppHandle, session: Value) {
     linger(app, &b.hud, windows::HUD, want, policy::HUD_LINGER, true);
 }
 
+/// The pill is up only while the key is held: on release it hides at once and the dictation finishes in the
+/// background. A failure flashes it (or notifies, with the pill off) once, afterwards (`qrtz_app::pill`).
 fn on_talk(app: &AppHandle, talk: &Value) {
+    use qrtz_app::pill::{pill_action, PillAction, ERROR_FLASH};
     let b = app.state::<Backend>();
-    let want = policy::pill_wanted(&b.service.config(), talk);
-    linger(
-        app,
-        &b.pill,
-        windows::PILL,
-        want,
-        policy::pill_linger(talk),
-        false,
-    );
+    match pill_action(&b.service.config(), talk) {
+        PillAction::Show => {
+            b.pill.gen.fetch_add(1, Ordering::SeqCst);
+            b.flash.on.store(false, Ordering::SeqCst);
+            windows::show_pill(app);
+        }
+        PillAction::Hide => {
+            if !b.flash.on.load(Ordering::SeqCst) {
+                b.pill.gen.fetch_add(1, Ordering::SeqCst);
+                windows::hide(app, windows::PILL);
+            }
+        }
+        PillAction::Flash { key, error, notify } => {
+            {
+                let mut last = b.flash.key.lock().unwrap();
+                if *last == key {
+                    return;
+                }
+                *last = key;
+            }
+            if notify {
+                if let Err(e) = app
+                    .notification()
+                    .builder()
+                    .title(crate::strings::UI_TALK_FAILED)
+                    .body(&error)
+                    .show()
+                {
+                    tracing::warn!(err = %e, "notification failed");
+                }
+                return;
+            }
+            let g = b.pill.gen.fetch_add(1, Ordering::SeqCst) + 1;
+            b.flash.on.store(true, Ordering::SeqCst);
+            windows::show_pill(app);
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(ERROR_FLASH).await;
+                let b = app.state::<Backend>();
+                if b.pill.gen.load(Ordering::SeqCst) == g {
+                    b.flash.on.store(false, Ordering::SeqCst);
+                    windows::hide(&app, windows::PILL);
+                }
+            });
+        }
+    }
 }
 
 /// Show now, or hide/close after `delay` unless something wants it back first.
@@ -361,18 +410,14 @@ fn linger(
     if want {
         l.gen.fetch_add(1, Ordering::SeqCst);
         l.hiding.store(false, Ordering::SeqCst);
-        if label == windows::HUD {
-            windows::show_hud(app)
-        } else {
-            windows::show_pill(app)
-        }
+        windows::show_hud(app)
     } else if app.get_webview_window(label).is_some() && !l.hiding.swap(true, Ordering::SeqCst) {
         let g = l.gen.load(Ordering::SeqCst);
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
             tokio::time::sleep(delay).await;
             let b = app.state::<Backend>();
-            let l = if label == windows::HUD { &b.hud } else { &b.pill };
+            let l = &b.hud;
             if l.gen.load(Ordering::SeqCst) == g && l.hiding.swap(false, Ordering::SeqCst) {
                 if close {
                     windows::close(&app, label)

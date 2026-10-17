@@ -8,8 +8,8 @@ use async_trait::async_trait;
 use qrtz_helper_bridge::{encode_host_message, HelperState, HelperStatus, Supervisor};
 use qrtz_ipc::{AppError, ErrorCode};
 use qrtz_talk::{
-    ChatMessage, CleanupLlm, CleanupLlmSource, Clipboard, HelperAsrSpeech, HelperSink, Providers, RandomIds,
-    SecretSource, SystemClock, TalkDeps, TalkEvents, TalkService, Timeouts,
+    Clipboard, HelperAsrSpeech, HelperSink, Providers, RandomIds, SecretSource, SystemClock, TalkDeps,
+    TalkEvents, TalkService, Timeouts,
 };
 use serde_json::Value;
 use std::path::PathBuf;
@@ -97,103 +97,6 @@ impl Clipboard for TalkClipboard {
     }
 }
 
-/// AI cleanup for dictations: OpenRouter (Claude Haiku 5.5 unless `talk.cleanupModel` names another model) with
-/// the `llm.openrouter` key, through `qrtz_llm::http_client()` (no redirects, N81). Local-only never builds it
-/// (the talk service also skips the call), and neither does a build without a key: rules cleanup then.
-pub struct TalkLlm {
-    pub secrets: Arc<dyn crate::secrets::SecretStore>,
-    pub config: SharedConfig,
-    /// Dev knob `QRTZ_LLM_BASE_URL` (tests and mock servers only, N87).
-    pub base_url: Option<String>,
-    /// Dev knob `QRTZ_TALK_LLM=fake|hang`: the E2E stand-in (Electron `fakeCleanupLlm`).
-    pub fake: Option<String>,
-    client: reqwest::Client,
-}
-
-impl TalkLlm {
-    pub fn new(
-        secrets: Arc<dyn crate::secrets::SecretStore>,
-        config: SharedConfig,
-        base_url: Option<String>,
-        fake: Option<String>,
-    ) -> Self {
-        Self {
-            secrets,
-            config,
-            base_url,
-            fake,
-            client: qrtz_llm::http_client(),
-        }
-    }
-}
-
-struct ProviderCleanup(Box<dyn qrtz_llm::LlmProvider>);
-#[async_trait]
-impl CleanupLlm for ProviderCleanup {
-    async fn complete(&self, messages: Vec<ChatMessage>) -> Result<String, String> {
-        use qrtz_llm::prompt::{ChatMessage as M, Role};
-        let msgs: Vec<M> = messages
-            .into_iter()
-            .map(|m| M {
-                role: match m.role {
-                    "system" => Role::System,
-                    "assistant" => Role::Assistant,
-                    _ => Role::User,
-                },
-                content: m.content,
-            })
-            .collect();
-        self.0.complete(&msgs, false).await.map_err(|e| e.message)
-    }
-}
-
-/// `fake`: the rules cleanup of the dictation minus a leading "so"; `hang`: never answers (the timeout path).
-struct FakeCleanup(bool);
-#[async_trait]
-impl CleanupLlm for FakeCleanup {
-    async fn complete(&self, messages: Vec<ChatMessage>) -> Result<String, String> {
-        if self.0 {
-            std::future::pending::<()>().await;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        let raw = messages.last().map(|m| m.content.as_str()).unwrap_or("");
-        let out = qrtz_talk::cleanup::rule_cleanup(raw, &[]);
-        let out = out
-            .strip_prefix("So, ")
-            .or_else(|| out.strip_prefix("So "))
-            .unwrap_or(&out);
-        Ok(out.to_string())
-    }
-}
-
-#[async_trait]
-impl CleanupLlmSource for TalkLlm {
-    async fn llm(&self) -> Option<Arc<dyn CleanupLlm>> {
-        if let Some(mode) = &self.fake {
-            return Some(Arc::new(FakeCleanup(mode == "hang")));
-        }
-        let cfg = self.config.get();
-        let c = qrtz_llm::LlmConfig {
-            provider: "openrouter".into(),
-            model: cfg["talk"]["cleanupModel"].as_str().unwrap_or("").to_string(),
-            base_url: self.base_url.clone(),
-            local_only: cfg["privacy"]["localOnly"].as_bool().unwrap_or(false),
-        };
-        if c.effective_provider() == "none" {
-            return None;
-        }
-        let key = self.secrets.get("llm.openrouter").filter(|k| !k.is_empty());
-        let p = qrtz_llm::create_provider(
-            &self.client,
-            "openrouter",
-            key.map(qrtz_llm::Secret::new),
-            Some(&c.model),
-            c.base_url.as_deref(),
-        )?;
-        Some(Arc::new(ProviderCleanup(p)))
-    }
-}
-
 pub struct TalkWiring {
     pub helper: Option<Supervisor>,
     pub events: Events,
@@ -205,8 +108,6 @@ pub struct TalkWiring {
     /// The on-device engine: the speech module with its audio from the helper; `None` = the helper's
     /// `dictation.asr` lines (no module configured in this build).
     pub local: Option<Arc<dyn qrtz_speech::SpeechEngine>>,
-    /// The cleanup LLM (production: [`TalkLlm`]).
-    pub llm: Arc<dyn CleanupLlmSource>,
     /// Dev knob `QRTZ_TALK_CLOUD=echo|fail`: the cloud engines are `qrtz_talk::mock::MockCloud` (echo every
     /// stream, or refuse every connection) instead of real WebSockets. `None` in production.
     pub cloud: Option<String>,
@@ -235,7 +136,8 @@ pub fn talk_service(w: TalkWiring) -> TalkService {
         clipboard: Arc::new(TalkClipboard(w.shell)),
         clock: Arc::new(SystemClock::default()),
         ids: Arc::new(RandomIds),
-        llm: w.llm,
+        // No LLM cleanup in talk (Jared, for speed): the text goes in on release, rules only.
+        llm: Arc::new(qrtz_talk::NoLlm),
         connector: cloud_connector(w.cloud.as_deref()),
         local: w.local.unwrap_or_else(|| asr.clone()),
         helper_asr: asr,

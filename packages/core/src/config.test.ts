@@ -84,6 +84,20 @@ describe('config', () => {
       migrateLegacyConfig({ talk: { engine: 'elevenlabs' } }).migrated,
     ).toBe(false);
   });
+
+  it('an old config with the removed talk ai cleanup settings loads without them', () => {
+    const c = loadConfig({
+      talk: {
+        aiCleanup: false,
+        cleanupModel: 'anthropic/claude-haiku-5.5',
+        cleanupTimeoutMs: 900,
+        autoCleanup: false,
+      },
+    });
+    expect(c.talk.autoCleanup).toBe(false);
+    for (const k of ['aiCleanup', 'cleanupModel', 'cleanupTimeoutMs'])
+      expect(k in c.talk).toBe(false);
+  });
 });
 
 describe('secrets', () => {

@@ -5,6 +5,7 @@ pub mod config;
 pub mod dirs;
 #[cfg(feature = "runtime")]
 pub mod live;
+pub mod pill;
 pub mod ports;
 #[cfg(feature = "runtime")]
 pub mod runtime_port;

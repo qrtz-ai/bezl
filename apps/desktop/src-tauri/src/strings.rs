@@ -3,6 +3,7 @@
 pub const UI_APP: &str = "qrtz";
 pub const UI_HUD: &str = "qrtz hud";
 pub const UI_PILL: &str = "qrtz talk";
+pub const UI_TALK_FAILED: &str = "dictation didn't go through";
 pub const UI_OPEN: &str = "open qrtz";
 pub const UI_QUIT: &str = "quit qrtz";
 pub const UI_START: &str = "start recording";

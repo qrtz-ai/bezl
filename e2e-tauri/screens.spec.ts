@@ -360,7 +360,6 @@ test('talk: settings has a toggle for every automatic behaviour; each writes con
     ['talk-auto-failover', 'autoFailover'],
     ['talk-warm-mic', 'warmMic'],
     ['talk-auto-cleanup', 'autoCleanup'],
-    ['talk-ai-cleanup', 'aiCleanup'],
     ['talk-auto-insert', 'autoInsert'],
     ['talk-restore-clipboard', 'restoreClipboard'],
     ['talk-show-pill', 'showPill'],

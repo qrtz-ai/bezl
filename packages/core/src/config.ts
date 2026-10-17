@@ -67,12 +67,10 @@ export const ConfigSchema = z.object({
       engine: z.enum(['auto', 'elevenlabs', 'on-device']).default('auto'),
       /** Switch to the on-device stream automatically when the cloud stream fails. */
       autoFailover: z.boolean().default(true),
-      /** Clean up dictated text (fillers, punctuation, formatting). */
+      /** Clean up dictated text on the device (fillers, punctuation, the dictionary). There is no LLM cleanup:
+       * the text goes in as soon as the key is released (an old `aiCleanup` / `cleanupModel` /
+       * `cleanupTimeoutMs` is dropped on load). */
       autoCleanup: z.boolean().default(true),
-      /** Use the LLM for cleanup (OpenRouter); off = on-device rules only. */
-      aiCleanup: z.boolean().default(true),
-      cleanupModel: z.string().max(120).default(''),
-      cleanupTimeoutMs: z.number().int().min(100).max(10_000).default(900),
       /** Type the text into the focused app when you let go. */
       autoInsert: z.boolean().default(true),
       /** Put your clipboard back after a paste-based insert. */

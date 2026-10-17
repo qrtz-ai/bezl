@@ -15,16 +15,7 @@ pub fn hud_wanted(config: &Value, session: &Value) -> bool {
 /// Linger so "summarizing…" → done is visible, then close.
 pub const HUD_LINGER: Duration = Duration::from_millis(1500);
 
-pub fn pill_wanted(config: &Value, talk: &Value) -> bool {
-    config["talk"]["showPill"].as_bool().unwrap_or(true) && talk["phase"].as_str().unwrap_or("idle") != "idle"
-}
-pub fn pill_linger(talk: &Value) -> Duration {
-    Duration::from_millis(if talk["phase"].as_str() == Some("error") {
-        2500
-    } else {
-        400
-    })
-}
+// The talk pill's rule is `qrtz_app::pill::pill_action` (shared with the E2E).
 
 /// Global shortcuts the config asks for: (accelerator, action). Empty strings mean unbound.
 pub fn hotkeys(config: &Value) -> Vec<(String, &'static str)> {
@@ -59,22 +50,6 @@ mod tests {
         for p in ["idle", "detected", "done", "error"] {
             assert!(!hud_wanted(&on, &json!({ "phase": p })), "{p}");
         }
-    }
-
-    #[test]
-    fn pill_follows_talk_phase() {
-        let c = json!({"talk": {"showPill": true}});
-        assert!(pill_wanted(&c, &json!({"phase": "listening"})));
-        assert!(!pill_wanted(&c, &json!({"phase": "idle"})));
-        assert!(!pill_wanted(
-            &json!({"talk": {"showPill": false}}),
-            &json!({"phase": "listening"})
-        ));
-        assert_eq!(
-            pill_linger(&json!({"phase": "error"})),
-            Duration::from_millis(2500)
-        );
-        assert_eq!(pill_linger(&json!({"phase": "idle"})), Duration::from_millis(400));
     }
 
     #[test]

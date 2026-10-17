@@ -8627,9 +8627,6 @@
         "engine": "auto",
         "autoFailover": true,
         "autoCleanup": true,
-        "aiCleanup": true,
-        "cleanupModel": "",
-        "cleanupTimeoutMs": 900,
         "autoInsert": true,
         "restoreClipboard": true,
         "showPill": true,
@@ -8851,21 +8848,6 @@
               "default": true,
               "type": "boolean"
             },
-            "aiCleanup": {
-              "default": true,
-              "type": "boolean"
-            },
-            "cleanupModel": {
-              "default": "",
-              "type": "string",
-              "maxLength": 120
-            },
-            "cleanupTimeoutMs": {
-              "default": 900,
-              "type": "integer",
-              "minimum": 100,
-              "maximum": 10000
-            },
             "autoInsert": {
               "default": true,
               "type": "boolean"
@@ -8893,9 +8875,6 @@
             "engine",
             "autoFailover",
             "autoCleanup",
-            "aiCleanup",
-            "cleanupModel",
-            "cleanupTimeoutMs",
             "autoInsert",
             "restoreClipboard",
             "showPill",

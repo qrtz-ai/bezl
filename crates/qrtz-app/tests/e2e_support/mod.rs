@@ -166,8 +166,6 @@ pub struct Opts {
     pub retry_scale: f64,
     pub embedder: Option<Arc<LazyEmbedder>>,
     pub talk: Option<Arc<dyn TalkPort>>,
-    /// `QRTZ_TALK_LLM=fake|hang` (`DevKnobs::talk_llm`).
-    pub talk_llm: Option<String>,
     /// `QRTZ_TALK_CLOUD=echo|fail` (`DevKnobs::talk_cloud`): the cloud talk engines are `qrtz_talk::mock::MockCloud`.
     pub talk_cloud: Option<String>,
 }
@@ -180,7 +178,6 @@ impl Default for Opts {
             retry_scale: 0.001,
             embedder: None,
             talk: None,
-            talk_llm: None,
             talk_cloud: None,
         }
     }
@@ -208,10 +205,6 @@ impl Opts {
     }
     pub fn talk(mut self, t: Arc<dyn TalkPort>) -> Self {
         self.talk = Some(t);
-        self
-    }
-    pub fn talk_llm(mut self, mode: &str) -> Self {
-        self.talk_llm = Some(mode.into());
         self
     }
     pub fn talk_cloud(mut self, mode: &str) -> Self {
@@ -282,7 +275,6 @@ impl App {
             knobs: DevKnobs {
                 retry_scale: Some(o.retry_scale),
                 llm_base_url: o.llm_base,
-                talk_llm: o.talk_llm,
                 talk_cloud: o.talk_cloud,
                 ..Default::default()
             },
