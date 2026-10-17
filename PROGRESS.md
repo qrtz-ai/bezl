@@ -232,7 +232,7 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
 - Chat over meeting transcripts.
 - Search results paging.
 
-## 2026-10-16 ~18:35–18:50 PT: iteration 9 (chat, search paging, auto-record, speakers)
+## 2026-10-16 ~18:34–18:37 PT: iteration 9 (chat, search paging, auto-record, speakers)
 
 - Chat:
   - Core `memo/chat.ts`: term ranking with rarity weighting, a grounded prompt with numbered excerpts, and an extractive quote fallback that also covers LLM failures (`llmError`). Never throws.
