@@ -17,7 +17,7 @@ serde_json.workspace = true
 tracing.workspace = true
 unicode-normalization.workspace = true
 regex = "1"
-tokio = { version = "1", features = ["time", "sync", "rt"] }
+tokio = { version = "1", features = ["time", "sync", "rt", "macros"] }
 # minilm: the local all-MiniLM-L6-v2 embedder (ADR 0050). Weights are not bundled; they come from a model
 # directory (the app's model store), or `minilm-download` fetches the pinned revision and checks its hashes.
 candle-core = { version = "0.10", optional = true }

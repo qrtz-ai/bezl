@@ -11,7 +11,7 @@ pub mod rank;
 pub mod retrieve;
 
 pub use backfill::{Backfill, BusyFn, PassReport, BACKFILL_PASS_LINES, BUSY_POLL};
-pub use embedder::{blob_to_vec, dot, vec_to_blob, Embedder, EmbedderState, LazyEmbedder};
+pub use embedder::{blob_to_vec, dot, same_embedder, vec_to_blob, Embedder, EmbedderState, LazyEmbedder};
 pub use index::{index_vectors, index_vectors_paused, SearchSteps, INDEX_DEADLINE_MS};
 pub use rank::{hybrid_rank, query_terms, rank_sources, ChatSource, VecSource};
 pub use retrieve::{retrieve, retrieve_visible, HiddenFn, Retrieval, CHAT_SOURCES};

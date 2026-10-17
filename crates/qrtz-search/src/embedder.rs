@@ -1,5 +1,9 @@
 //! The embedder seam (TS `Embedder` in embeddings.ts). Search never waits for a model: [`LazyEmbedder::ready`]
 //! answers at once, and until a model has loaded (or when none is configured) search and chat are full-text only.
+//!
+//! [`LazyEmbedder::reload`] (ADR 0064) loads again after the model files changed (MiniLM downloaded while the app
+//! runs): the current state keeps serving until the new model is ready, a failed load (missing files, a hash
+//! mismatch) leaves it as it was, and loads never overlap (a reload asked for during one runs once more after it).
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -52,11 +56,27 @@ impl EmbedderState {
     }
 }
 
-/// Loads the model once, in the background, on first use (TS `getEmbedder` with `transformersEmbedder`).
+/// Loads the model once, in the background, on first use (TS `getEmbedder` with `transformersEmbedder`), and again
+/// on [`LazyEmbedder::reload`].
 pub struct LazyEmbedder {
     loader: Option<Loader>,
     state: watch::Sender<EmbedderState>,
     started: Mutex<bool>,
+    /// ADR 0064: one load at a time. `requested` counts asks; the running load serves every ask made before it began.
+    loads: Mutex<Loads>,
+    /// The newest ask a finished load served, and whether that load succeeded.
+    done: watch::Sender<(u64, bool)>,
+}
+
+#[derive(Default)]
+struct Loads {
+    requested: u64,
+    running: bool,
+}
+
+/// The same loaded model (not just the same id).
+pub fn same_embedder(a: &Arc<dyn Embedder>, b: &Arc<dyn Embedder>) -> bool {
+    std::ptr::eq(Arc::as_ptr(a) as *const (), Arc::as_ptr(b) as *const ())
 }
 
 impl LazyEmbedder {
@@ -65,6 +85,8 @@ impl LazyEmbedder {
             loader: Some(loader),
             state: watch::Sender::new(EmbedderState::Idle),
             started: Mutex::new(false),
+            loads: Mutex::new(Loads::default()),
+            done: watch::Sender::new((0, false)),
         })
     }
 
@@ -74,6 +96,8 @@ impl LazyEmbedder {
             loader: None,
             state: watch::Sender::new(EmbedderState::Unavailable),
             started: Mutex::new(true),
+            loads: Mutex::new(Loads::default()),
+            done: watch::Sender::new((0, false)),
         })
     }
 
@@ -83,6 +107,8 @@ impl LazyEmbedder {
             loader: None,
             state: watch::Sender::new(EmbedderState::Ready(e)),
             started: Mutex::new(true),
+            loads: Mutex::new(Loads::default()),
+            done: watch::Sender::new((0, false)),
         })
     }
 
@@ -97,20 +123,88 @@ impl LazyEmbedder {
             return;
         }
         *started = true;
-        let Some(loader) = &self.loader else { return };
+        if self.loader.is_none() {
+            return;
+        }
         self.state.send_replace(EmbedderState::Loading);
-        let fut = loader();
+        drop(started);
+        self.ask();
+    }
+
+    /// Can [`LazyEmbedder::reload`] load anything (a loader is configured)?
+    pub fn reloadable(&self) -> bool {
+        self.loader.is_some()
+    }
+
+    /// ADR 0064: load the model again, e.g. after MiniLM was downloaded. The load starts at the call (needs a tokio
+    /// runtime); await the result to learn whether it succeeded, or drop it. Until the new model is ready the
+    /// current state keeps serving (full-text only if no model was loaded, else the old model); a failed load keeps
+    /// it. A reload asked for while a load runs is served by one more load after it, so concurrent reloads never
+    /// load in parallel and the last one always sees the files as they were when it was asked. `false` with no
+    /// loader.
+    pub fn reload(self: &Arc<Self>) -> impl Future<Output = bool> + Send + 'static {
+        let ask = self.loader.as_ref().map(|_| {
+            // A reload before first use is that first load.
+            *self.started.lock().unwrap() = true;
+            self.ask()
+        });
         let me = self.clone();
-        tokio::spawn(async move {
-            let s = match fut.await {
-                Ok(e) => EmbedderState::Ready(e),
+        async move {
+            let Some(ask) = ask else { return false };
+            let mut rx = me.done.subscribe();
+            let served = rx.wait_for(|(served, _)| *served >= ask).await.map(|d| d.1);
+            served.unwrap_or(false)
+        }
+    }
+
+    /// Records an ask and starts the load loop if none runs; the ask's number.
+    fn ask(self: &Arc<Self>) -> u64 {
+        let mut l = self.loads.lock().unwrap();
+        l.requested += 1;
+        let ask = l.requested;
+        if !l.running {
+            l.running = true;
+            tokio::spawn(self.clone().drive());
+        }
+        ask
+    }
+
+    async fn drive(self: Arc<Self>) {
+        let Some(loader) = &self.loader else { return };
+        loop {
+            let serves = self.loads.lock().unwrap().requested;
+            let res = loader().await;
+            let ok = res.is_ok();
+            self.state.send_modify(|s| match res {
+                Ok(e) => {
+                    if matches!(s, EmbedderState::Ready(_)) {
+                        tracing::info!(model = e.id(), "embedder reloaded");
+                    }
+                    *s = EmbedderState::Ready(e);
+                }
+                // The old model, if any, keeps serving; otherwise full-text only, as before.
                 Err(err) => {
                     tracing::warn!(%err, "embeddings unavailable; search and chat use full-text retrieval");
-                    EmbedderState::Unavailable
+                    if !matches!(s, EmbedderState::Ready(_)) {
+                        *s = EmbedderState::Unavailable;
+                    }
                 }
-            };
-            me.state.send_replace(s);
-        });
+            });
+            self.done.send_replace((serves, ok));
+            let mut l = self.loads.lock().unwrap();
+            if l.requested == serves {
+                l.running = false;
+                return;
+            }
+        }
+    }
+
+    /// The loaded model, without starting a load.
+    pub fn current(&self) -> Option<Arc<dyn Embedder>> {
+        match &*self.state.borrow() {
+            EmbedderState::Ready(e) => Some(e.clone()),
+            _ => None,
+        }
     }
 
     /// Never waits: the embedder if it has loaded, else `None` (and the load is started).
@@ -133,9 +227,30 @@ impl LazyEmbedder {
         }
     }
 
-    /// Resolves when the embedder becomes ready (for starting the backfill); never if it is unavailable.
+    /// Resolves when a model is ready (for starting the backfill): at once if one is loaded, else when a load or a
+    /// [`LazyEmbedder::reload`] succeeds; never without one.
     pub async fn when_ready(self: &Arc<Self>) -> Arc<dyn Embedder> {
-        match self.get().await {
+        self.start();
+        self.ready_where(|_| true).await
+    }
+
+    /// Resolves when a model other than `than` is ready (a reload replaced it).
+    pub async fn replaced(&self, than: &Arc<dyn Embedder>) -> Arc<dyn Embedder> {
+        let than = than.clone();
+        self.ready_where(move |e| !same_embedder(e, &than)).await
+    }
+
+    async fn ready_where(&self, f: impl Fn(&Arc<dyn Embedder>) -> bool) -> Arc<dyn Embedder> {
+        let mut rx = self.state.subscribe();
+        let got = rx
+            .wait_for(|s| matches!(s, EmbedderState::Ready(e) if f(e)))
+            .await
+            .ok()
+            .and_then(|s| match &*s {
+                EmbedderState::Ready(e) => Some(e.clone()),
+                _ => None,
+            });
+        match got {
             Some(e) => e,
             None => std::future::pending().await,
         }
