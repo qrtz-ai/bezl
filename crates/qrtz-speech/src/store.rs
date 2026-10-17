@@ -18,6 +18,30 @@ use std::sync::{Arc, Mutex};
 pub const DISK_CAP_BYTES: u64 = 3 * 1024 * 1024 * 1024;
 pub const CRASH_LOOP_FAILURES: usize = 3;
 pub const CRASH_LOOP_WINDOW_MS: u64 = 5 * 60 * 1000;
+/// Fail-open has a floor (Bozniak, 07:58 PT, condition 5): a revocation list older than this stops sessions.
+pub const REVOCATION_HARD_CAP_MS: u64 = 90 * 24 * 60 * 60 * 1000;
+
+/// Why the pointer moves back. With an expired revocation list only a crash-loop rollback to a clean N-1 is allowed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RollbackKind {
+    User,
+    CrashLoop,
+    Revoked,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Revocation {
+    /// `issued` of the newest list we applied (0 = none yet).
+    pub issued: u64,
+    pub expires: u64,
+    /// Effective now (clock high-water mark) minus `issued`.
+    pub age_ms: u64,
+    /// Settings shows "speech couldn't check for revocations since <issued>".
+    pub expired: bool,
+    /// Past the 90-day hard cap: sessions stop (talk uses its host-side fallback).
+    pub stale: bool,
+}
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -32,7 +56,13 @@ pub struct State {
     pub denylist_seq: u64,
     /// Expiry (ms) of the newest applied denylist; installs need it in the future (N60).
     pub denylist_expires: u64,
+    /// `issued` of the newest applied denylist.
+    pub denylist_issued: u64,
+    /// Every version any list we have ever seen denied (never shrinks: condition 1).
     pub denied: Vec<String>,
+    /// Persisted clock high-water mark: max(wall clock seen, newest list `issued`). Expiry and age are measured
+    /// against it, so moving the clock back neither un-expires a list nor makes an old one fresh (condition 2).
+    pub clock_hwm: u64,
     pub rotation_seq: u64,
     /// Versions whose files are hashed again on their first load (after an install or update).
     pub needs_rehash: Vec<String>,
@@ -57,6 +87,7 @@ pub struct StoreStatus {
     /// Opaque engine metadata of `current` (settings only).
     pub engine: serde_json::Value,
     pub sessions: usize,
+    pub revocation: Revocation,
 }
 
 /// A session's hold on one installed version: the pointer cannot move while any pin is alive.
@@ -163,7 +194,34 @@ impl SpeechStore {
         }
     }
 
-    pub fn status(&self) -> StoreStatus {
+    /// max(now, persisted high-water mark); raises and persists the mark when the clock moved forward.
+    pub fn effective_now(&self, now_ms: u64) -> u64 {
+        let mut st = self.state.lock().unwrap();
+        if now_ms > st.clock_hwm {
+            st.clock_hwm = now_ms;
+            let snap = st.clone();
+            drop(st);
+            let _ = self.save(&snap);
+            return now_ms;
+        }
+        st.clock_hwm
+    }
+
+    pub fn revocation(&self, now_ms: u64) -> Revocation {
+        let eff = self.effective_now(now_ms);
+        let st = self.state();
+        let age_ms = eff.saturating_sub(st.denylist_issued);
+        Revocation {
+            issued: st.denylist_issued,
+            expires: st.denylist_expires,
+            age_ms,
+            expired: st.denylist_expires <= eff,
+            stale: age_ms > REVOCATION_HARD_CAP_MS,
+        }
+    }
+
+    pub fn status(&self, now_ms: u64) -> StoreStatus {
+        let revocation = self.revocation(now_ms);
         let st = self.state();
         let engine = st
             .current
@@ -178,6 +236,7 @@ impl SpeechStore {
             bytes: fsx::dir_size(&self.root.join("versions")),
             engine,
             sessions: self.active_sessions(),
+            revocation,
         }
     }
 
@@ -283,9 +342,15 @@ impl SpeechStore {
     }
 
     /// Move the pointer to a committed, health-checked version (never while a session runs). Keeps N and N-1.
-    pub fn activate(&self, ver: &str) -> Result<(), SpeechError> {
+    pub fn activate(&self, ver: &str, now_ms: u64) -> Result<(), SpeechError> {
         if self.active_sessions() > 0 {
             return Err(SpeechError::Busy);
+        }
+        if !self.denylist_fresh(now_ms) {
+            return Err(SpeechError::RevocationExpired);
+        }
+        if self.state().denied.iter().any(|d| d == ver) {
+            return Err(SpeechError::Denied(ver.into()));
         }
         let mut st = self.state.lock().unwrap();
         if st.current.as_deref() != Some(ver) {
@@ -307,7 +372,9 @@ impl SpeechStore {
     }
 
     /// Pin the current version for one session. The first load after an install re-hashes every file.
-    pub fn pin_session(&self) -> Result<SessionPin, SpeechError> {
+    /// Refused for a version any list ever denied (also after the list expired) and past the 90-day cap.
+    pub fn pin_session(&self, now_ms: u64) -> Result<SessionPin, SpeechError> {
+        let rev = self.revocation(now_ms);
         // Pin first so a concurrent activate sees the session.
         self.pins.fetch_add(1, Ordering::SeqCst);
         let guard = PinGuard(&self.pins);
@@ -315,6 +382,11 @@ impl SpeechStore {
         let ver = st.current.clone().ok_or(SpeechError::NotInstalled)?;
         if st.denied.contains(&ver) {
             return Err(SpeechError::Denied(ver));
+        }
+        if rev.stale {
+            return Err(SpeechError::Stale {
+                days: rev.age_ms / (24 * 60 * 60 * 1000),
+            });
         }
         let dir = self.version_dir(&ver);
         let m = if st.needs_rehash.contains(&ver) {
@@ -339,12 +411,29 @@ impl SpeechStore {
         })
     }
 
-    /// Back to the local N-1 (kept and already verified). The failed version is deleted.
-    pub fn rollback(&self, reason: &str) -> Result<Rollback, SpeechError> {
+    /// Back to the local N-1 (kept and already verified, and clean on every list we have seen). The failed
+    /// version is deleted. With an expired revocation list only a crash-loop rollback is allowed (condition 3).
+    pub fn rollback(&self, kind: RollbackKind, now_ms: u64) -> Result<Rollback, SpeechError> {
         if self.active_sessions() > 0 {
             return Err(SpeechError::Busy);
         }
+        if kind != RollbackKind::CrashLoop && self.revocation(now_ms).expired {
+            return Err(SpeechError::RevocationExpired);
+        }
+        let reason = match kind {
+            RollbackKind::User => "user",
+            RollbackKind::CrashLoop => "crash loop",
+            RollbackKind::Revoked => "revoked",
+        };
         let mut st = self.state.lock().unwrap();
+        if kind == RollbackKind::CrashLoop
+            && !st
+                .previous
+                .as_ref()
+                .is_some_and(|p| !st.denied.contains(p) && self.version_dir(p).exists())
+        {
+            return Err(SpeechError::NotInstalled);
+        }
         let from = st.current.clone().ok_or(SpeechError::NotInstalled)?;
         let to = st
             .previous
@@ -384,19 +473,21 @@ impl SpeechStore {
         st.failures
             .retain(|t| now_ms.saturating_sub(*t) < CRASH_LOOP_WINDOW_MS);
         st.failures.push(now_ms);
-        let looped = st.failures.len() >= CRASH_LOOP_FAILURES && st.previous.is_some();
+        let looped = st.failures.len() >= CRASH_LOOP_FAILURES
+            && st.previous.as_ref().is_some_and(|p| !st.denied.contains(p));
         let snap = st.clone();
         drop(st);
         self.save(&snap)?;
         if looped && self.active_sessions() == 0 {
-            return self.rollback("crash loop").map(Some);
+            return self.rollback(RollbackKind::CrashLoop, now_ms).map(Some);
         }
         Ok(None)
     }
 
     pub fn apply_rotation(&self, bytes: &[u8], sigs: &[u8], now_ms: u64) -> Result<PinnedKey, SpeechError> {
         let last = self.state().rotation_seq;
-        let (k, r) = bundle::verify_rotation(&self.root_key, &self.key(), last, now_ms, bytes, sigs)?;
+        let eff = self.effective_now(now_ms);
+        let (k, r) = bundle::verify_rotation(&self.root_key, &self.key(), last, eff, bytes, sigs)?;
         let mut st = self.state.lock().unwrap();
         st.pinned_key_id = Some(k.key_id.clone());
         st.pinned_key = Some(k.hex());
@@ -407,9 +498,9 @@ impl SpeechStore {
         Ok(k)
     }
 
-    /// N60: installs and updates need an unexpired denylist (sessions keep running without one).
+    /// N60 / condition 3: installs and updates need an unexpired denylist, measured against the high-water mark.
     pub fn denylist_fresh(&self, now_ms: u64) -> bool {
-        self.state().denylist_expires > now_ms
+        !self.revocation(now_ms).expired
     }
 
     /// Apply a signed denylist (newer seq only). A denied current version rolls back to an allowed N-1, or leaves
@@ -421,13 +512,17 @@ impl SpeechStore {
         now_ms: u64,
     ) -> Result<Option<Rollback>, SpeechError> {
         let d = bundle::verify_denylist(&self.key(), bytes, sig)?;
+        let eff = self.effective_now(now_ms);
         let mut st = self.state.lock().unwrap();
-        // A replay (equal or older seq) or an expired document changes nothing.
-        if d.seq <= st.denylist_seq || d.expires <= now_ms {
+        // A replay (equal or older seq) changes nothing. A newer list applies its denials even when it has expired
+        // itself (condition 4): freshness gates installs, never denials. Its `issued` raises the clock mark.
+        if d.seq <= st.denylist_seq {
             return Ok(None);
         }
         st.denylist_seq = d.seq;
         st.denylist_expires = d.expires;
+        st.denylist_issued = d.issued;
+        st.clock_hwm = st.clock_hwm.max(eff).max(d.issued);
         for x in d.versions {
             if !st.denied.contains(&x) {
                 st.denied.push(x);
@@ -441,7 +536,12 @@ impl SpeechStore {
         drop(st);
         self.save(&snap)?;
         if cur_denied && self.active_sessions() == 0 {
-            return self.rollback("revoked").map(Some);
+            // A fresh list may roll back to a clean N-1; an expired one only blocks the version (condition 3).
+            match self.rollback(RollbackKind::Revoked, now_ms) {
+                Ok(rb) => return Ok(Some(rb)),
+                Err(SpeechError::RevocationExpired) => return Ok(None),
+                Err(e) => return Err(e),
+            }
         }
         self.sweep();
         Ok(None)

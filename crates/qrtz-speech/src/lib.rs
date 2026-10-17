@@ -10,7 +10,7 @@ pub mod update;
 pub mod validate;
 
 pub use engine::{Channel, SessionKind, SessionSpec, SpeakerMode, SpeechEngine, SpeechEvent, SpeechSession};
-pub use store::{SpeechStore, StoreStatus};
+pub use store::{Revocation, RollbackKind, SpeechStore, StoreStatus};
 
 #[derive(Debug, thiserror::Error)]
 pub enum SpeechError {
@@ -34,6 +34,10 @@ pub enum SpeechError {
     Rollback { offered: String, highest: String },
     #[error("version {0} was revoked")]
     Denied(String),
+    #[error("the revocation list has expired; connect to update speech")]
+    RevocationExpired,
+    #[error("speech has not checked for revocations in {days} days; connect to keep using it")]
+    Stale { days: u64 },
     #[error("a speech session is running")]
     Busy,
     #[error("download paused")]
@@ -56,6 +60,8 @@ impl SpeechError {
             SpeechError::Network(_)
                 | SpeechError::Checksum(_)
                 | SpeechError::Paused
+                | SpeechError::RevocationExpired
+                | SpeechError::Stale { .. }
                 | SpeechError::Io(_)
                 | SpeechError::Busy
         )

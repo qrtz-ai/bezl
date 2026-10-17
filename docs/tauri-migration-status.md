@@ -66,7 +66,10 @@ Done (this phase so far):
   updater (Ed25519 manifest, pinned key, root-signed + cross-signed rotation with seq/expiry, denylist with
   seq/expiry, resumable size-limited download with pause, staging 0700 -> rename -> read-only versions, N/N-1,
   anti-rollback, health check hook, no swap mid-session, crash-loop rollback, lazy re-hash). 21 tests against a mock
-  bundle server.
+  bundle server. Fail-open on an expired revocation list with Bozniak's five conditions (ADR 0046 §4b), tests
+  `c1`-`c5`.
+- Builds: Bozniak's review checkout `/workspace/qrtz-rev46` shares `/workspace/qrtz/target`, so concurrent builds
+  clobber each other's `qrtz-speech` artifacts. I build with `CARGO_TARGET_DIR=/home/box/cargo-target-bobs`.
 
 Next, in order:
 

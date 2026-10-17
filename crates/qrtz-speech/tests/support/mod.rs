@@ -59,6 +59,9 @@ pub fn bundle(sk: &SigningKey, key_id: &str, version: &str, big: usize) -> Bundl
     }
 }
 
+pub const DAY: u64 = 24 * 60 * 60 * 1000;
+
+/// Issued at min(NOW, expires - 7 days).
 pub fn denylist(
     sk: &SigningKey,
     key_id: &str,
@@ -66,9 +69,27 @@ pub fn denylist(
     expires: u64,
     versions: &[&str],
 ) -> (Vec<u8>, Vec<u8>) {
-    let b = serde_json::to_vec(
-        &serde_json::json!({"keyId": key_id, "seq": seq, "expires": expires, "versions": versions}),
+    denylist_at(
+        sk,
+        key_id,
+        seq,
+        expires.saturating_sub(7 * DAY).min(NOW),
+        expires,
+        versions,
     )
+}
+
+pub fn denylist_at(
+    sk: &SigningKey,
+    key_id: &str,
+    seq: u64,
+    issued: u64,
+    expires: u64,
+    versions: &[&str],
+) -> (Vec<u8>, Vec<u8>) {
+    let b = serde_json::to_vec(&serde_json::json!({
+        "keyId": key_id, "seq": seq, "issued": issued, "expires": expires, "versions": versions,
+    }))
     .unwrap();
     let s = sign(sk, &b);
     (b, s)

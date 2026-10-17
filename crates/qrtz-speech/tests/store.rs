@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use qrtz_speech::bundle::Manifest;
 use qrtz_speech::download::{DownloadControl, Downloader, Progress};
 use qrtz_speech::update::{HealthCheck, UpdateOutcome, Updater};
-use qrtz_speech::{SpeechError, SpeechStore};
+use qrtz_speech::{RollbackKind, SpeechError, SpeechStore};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -105,7 +105,7 @@ async fn installs_verifies_and_makes_it_read_only() {
     );
     let last = *seen.lock().unwrap().last().unwrap();
     assert_eq!(last.done, last.total);
-    let st = e.store.status();
+    let st = e.store.status(NOW);
     assert_eq!(st.current.as_deref(), Some("1.0.0"));
     assert_eq!(st.engine["id"], "opaque-engine");
     let root = e.store.root();
@@ -127,7 +127,7 @@ async fn installs_verifies_and_makes_it_read_only() {
         }
     );
     // First load after the install re-hashes, then the session is pinned.
-    let pin = e.store.pin_session().unwrap();
+    let pin = e.store.pin_session(NOW).unwrap();
     assert_eq!(pin.version, "1.0.0");
     assert!(e.store.state().needs_rehash.is_empty());
 }
@@ -145,7 +145,7 @@ async fn a_failed_download_is_retryable_and_then_succeeds() {
         .insert("1.0.0/engine/weights.bin".into());
     let err = e.install(false).await.unwrap_err();
     assert!(matches!(err, SpeechError::Network(_)) && err.retryable(), "{err}");
-    assert_eq!(e.store.status().current, None);
+    assert_eq!(e.store.status(NOW).current, None);
     assert!(matches!(
         e.install(false).await.unwrap(),
         UpdateOutcome::Installed { .. }
@@ -243,7 +243,7 @@ async fn a_checksum_mismatch_drops_the_file_and_a_retry_fixes_it() {
     );
     let st = e.store.staging_dir("1.0.0");
     assert!(!st.join("engine/weights.bin.part").exists() && !st.join("engine/weights.bin").exists());
-    assert_eq!(e.store.status().current, None);
+    assert_eq!(e.store.status(NOW).current, None);
     e.srv.faults.lock().unwrap().corrupt.clear();
     assert!(matches!(
         e.install(false).await.unwrap(),
@@ -313,7 +313,7 @@ async fn update_keeps_n_minus_1_and_rollback_returns_to_it() {
     e.srv.publish(&bundle(&e.sk, "k1", "1.2.0", 4096));
     e.install(false).await.unwrap();
     assert!(!e.store.version_dir("1.0.0").exists(), "only N and N-1 are kept");
-    let rb = e.store.rollback("user").unwrap();
+    let rb = e.store.rollback(RollbackKind::User, NOW).unwrap();
     assert_eq!((rb.from.as_str(), rb.to.as_deref()), ("1.2.0", Some("1.1.0")));
     assert!(!e.store.version_dir("1.2.0").exists());
     assert_eq!(e.store.state().highest_verified.as_deref(), Some("1.2.0"));
@@ -342,7 +342,7 @@ async fn a_failed_health_check_never_goes_live() {
         e.install(false).await.unwrap_err(),
         SpeechError::Health(_)
     ));
-    assert_eq!(e.store.status().current.as_deref(), Some("1.0.0"));
+    assert_eq!(e.store.status(NOW).current.as_deref(), Some("1.0.0"));
     assert!(!e.store.version_dir("1.1.0").exists());
     assert_eq!(e.store.state().highest_verified.as_deref(), Some("1.0.0"));
 }
@@ -352,7 +352,7 @@ async fn no_swap_while_a_session_runs() {
     let e = env().await;
     e.srv.publish(&bundle(&e.sk, "k1", "1.0.0", 4096));
     e.install(false).await.unwrap();
-    let pin = e.store.pin_session().unwrap();
+    let pin = e.store.pin_session(NOW).unwrap();
     e.srv.publish(&bundle(&e.sk, "k1", "1.1.0", 4096));
     assert_eq!(
         e.install(false).await.unwrap(),
@@ -360,12 +360,15 @@ async fn no_swap_while_a_session_runs() {
             version: "1.1.0".into()
         }
     );
-    assert_eq!(e.store.status().current.as_deref(), Some("1.0.0"));
+    assert_eq!(e.store.status(NOW).current.as_deref(), Some("1.0.0"));
     assert!(matches!(e.store.delete_all().unwrap_err(), SpeechError::Busy));
-    assert!(matches!(e.store.rollback("x").unwrap_err(), SpeechError::Busy));
+    assert!(matches!(
+        e.store.rollback(RollbackKind::User, NOW).unwrap_err(),
+        SpeechError::Busy
+    ));
     drop(pin);
-    e.store.activate("1.1.0").unwrap();
-    assert_eq!(e.store.status().current.as_deref(), Some("1.1.0"));
+    e.store.activate("1.1.0", NOW).unwrap();
+    assert_eq!(e.store.status(NOW).current.as_deref(), Some("1.1.0"));
 }
 
 #[tokio::test]
@@ -423,7 +426,7 @@ async fn denylist_revokes_ignores_replays_and_expiry_blocks_installs() {
     e2.srv.publish(&bundle(&e2.sk, "k1", "1.0.0", 4096));
     assert!(matches!(
         e2.install(false).await.unwrap_err(),
-        SpeechError::Network(_)
+        SpeechError::RevocationExpired
     ));
 }
 
@@ -496,7 +499,7 @@ async fn a_tampered_install_fails_the_lazy_rehash_on_first_load() {
     std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o600)).unwrap();
     std::fs::write(&f, b"tampered").unwrap();
     assert!(matches!(
-        e.store.pin_session().unwrap_err(),
+        e.store.pin_session(NOW).unwrap_err(),
         SpeechError::Checksum(_)
     ));
     assert_eq!(e.store.active_sessions(), 0, "a failed pin releases its hold");
@@ -512,9 +515,9 @@ async fn delete_keeps_anti_rollback_state_and_redownload_reinstalls() {
         "re-download"
     );
     e.store.delete_all().unwrap();
-    assert_eq!(e.store.status().current, None);
+    assert_eq!(e.store.status(NOW).current, None);
     assert!(matches!(
-        e.store.pin_session().unwrap_err(),
+        e.store.pin_session(NOW).unwrap_err(),
         SpeechError::NotInstalled
     ));
     e.srv.publish(&bundle(&e.sk, "k1", "1.0.0", 4096));
@@ -522,4 +525,175 @@ async fn delete_keeps_anti_rollback_state_and_redownload_reinstalls() {
         e.install(false).await.unwrap_err(),
         SpeechError::Rollback { .. }
     ));
+}
+
+// ---- Fail-open on an expired revocation list (Bozniak, 07:58 PT): conditions 1-5 ----
+
+/// 1.0.0 then 1.1.0 installed at NOW under a list issued NOW that expires NOW + 7 days.
+async fn two_versions() -> Env {
+    let e = env().await;
+    let (d, s) = denylist_at(&e.sk, "k1", 1, NOW, NOW + 7 * DAY, &[]);
+    e.srv.put("denylist.json", d);
+    e.srv.put("denylist.json.sig", s);
+    e.srv.publish(&bundle(&e.sk, "k1", "1.0.0", 4096));
+    e.install(false).await.unwrap();
+    e.srv.publish(&bundle(&e.sk, "k1", "1.1.0", 4096));
+    e.install(false).await.unwrap();
+    e
+}
+
+#[tokio::test]
+async fn c1_the_cached_list_and_the_floor_keep_applying_after_expiry() {
+    let e = two_versions().await;
+    let (d, s) = denylist_at(&e.sk, "k1", 2, NOW, NOW + 7 * DAY, &["1.0.0"]);
+    assert_eq!(e.store.apply_denylist(&d, &s, NOW).unwrap(), None);
+    assert_eq!(e.store.state().previous, None, "a denied N-1 is dropped");
+    // Expired now: sessions still run on the clean current version (fail-open)…
+    let later = NOW + 10 * DAY;
+    let pin = e.store.pin_session(later).unwrap();
+    assert_eq!(pin.version, "1.1.0");
+    drop(pin);
+    let rev = e.store.status(later).revocation;
+    assert!(rev.expired && !rev.stale);
+    assert_eq!(rev.age_ms, 10 * DAY);
+    // …a later list that no longer names 1.0.0 does not un-deny it (denials never shrink)…
+    let (d3, s3) = denylist_at(&e.sk, "k1", 3, later, later + 7 * DAY, &[]);
+    e.store.apply_denylist(&d3, &s3, later).unwrap();
+    assert!(e.store.state().denied.contains(&"1.0.0".to_string()));
+    // …and the anti-rollback floor holds.
+    assert_eq!(e.store.state().highest_verified.as_deref(), Some("1.1.0"));
+    assert!(matches!(
+        e.store
+            .check_candidate(&manifest_of(&bundle(&e.sk, "k1", "1.0.0", 4096)))
+            .unwrap_err(),
+        SpeechError::Denied(_)
+    ));
+    assert!(matches!(
+        e.store
+            .check_candidate(&manifest_of(&bundle(&e.sk, "k1", "1.0.5", 4096)))
+            .unwrap_err(),
+        SpeechError::Rollback { .. }
+    ));
+}
+
+fn manifest_of(b: &Bundle) -> Manifest {
+    serde_json::from_slice(&b.manifest).unwrap()
+}
+
+#[tokio::test]
+async fn c2_moving_the_clock_back_does_not_unexpire_the_list() {
+    let e = two_versions().await;
+    assert!(e.store.denylist_fresh(NOW + DAY));
+    assert!(!e.store.denylist_fresh(NOW + 8 * DAY), "expired");
+    // Clock set back: still expired (high-water mark), also after a restart.
+    assert!(!e.store.denylist_fresh(NOW + DAY));
+    let (_, pk) = key(1, "k1");
+    let (_, rootpk) = key(9, "root");
+    let reopened = SpeechStore::open(e.store.root(), APP, pk, rootpk).unwrap();
+    assert!(!reopened.denylist_fresh(NOW + DAY));
+    assert_eq!(
+        reopened.status(NOW).revocation.age_ms,
+        8 * DAY,
+        "age measured against the mark too"
+    );
+    // A list's own `issued` raises the mark: an old list cannot be made fresh by an early clock.
+    let e2 = env().await;
+    let (d, s) = denylist_at(&e2.sk, "k1", 7, NOW + 30 * DAY, NOW + 37 * DAY, &[]);
+    e2.store.apply_denylist(&d, &s, NOW).unwrap();
+    assert_eq!(e2.store.state().clock_hwm, NOW + 30 * DAY);
+    let (d8, s8) = denylist_at(&e2.sk, "k1", 8, NOW, NOW + 7 * DAY, &[]);
+    e2.store.apply_denylist(&d8, &s8, NOW).unwrap();
+    assert!(
+        !e2.store.denylist_fresh(NOW),
+        "issued in the 'past' of the mark: expired"
+    );
+}
+
+#[tokio::test]
+async fn c3_expired_means_no_install_update_or_rollback_except_a_crash_loop_to_a_clean_n_minus_1() {
+    let e = two_versions().await;
+    let later = NOW + 10 * DAY;
+    e.store.effective_now(later);
+    // No install / update (the server still serves the old, expired list).
+    e.srv.publish(&bundle(&e.sk, "k1", "1.2.0", 4096));
+    let err = e.install(false).await.unwrap_err();
+    assert!(matches!(err, SpeechError::RevocationExpired), "{err}");
+    assert!(
+        matches!(e.install(true).await.unwrap_err(), SpeechError::RevocationExpired),
+        "no re-download either"
+    );
+    assert!(matches!(
+        e.store.activate("1.0.0", later).unwrap_err(),
+        SpeechError::RevocationExpired
+    ));
+    // No user rollback.
+    assert!(matches!(
+        e.store.rollback(RollbackKind::User, later).unwrap_err(),
+        SpeechError::RevocationExpired
+    ));
+    assert_eq!(e.store.status(later).current.as_deref(), Some("1.1.0"));
+    // Crash loop to a clean N-1: allowed.
+    for i in 0..2 {
+        assert_eq!(e.store.record_failure(later + i).unwrap(), None);
+    }
+    let rb = e.store.record_failure(later + 2).unwrap().unwrap();
+    assert_eq!(
+        (rb.to.as_deref(), rb.reason.as_str()),
+        (Some("1.0.0"), "crash loop")
+    );
+}
+
+#[tokio::test]
+async fn c3_no_crash_loop_rollback_to_a_denied_n_minus_1() {
+    let e = two_versions().await;
+    // 1.0.0 denied by a list we saw; even if it were still on disk it must not run.
+    let (d, s) = denylist_at(&e.sk, "k1", 2, NOW, NOW + 7 * DAY, &["1.0.0"]);
+    e.store.apply_denylist(&d, &s, NOW).unwrap();
+    let later = NOW + 10 * DAY;
+    for i in 0..3 {
+        assert_eq!(e.store.record_failure(later + i).unwrap(), None);
+    }
+    assert_eq!(e.store.status(later).current.as_deref(), Some("1.1.0"));
+}
+
+#[tokio::test]
+async fn c4_a_newer_expired_list_still_applies_its_denials() {
+    let e = two_versions().await;
+    let later = NOW + 10 * DAY;
+    let (d, s) = denylist_at(&e.sk, "k1", 2, NOW + DAY, NOW + 8 * DAY, &["1.1.0"]);
+    // Expired itself, validly signed: the denial applies; with the list expired there is no rollback (condition 3),
+    // so the denied current version just stops running.
+    assert_eq!(e.store.apply_denylist(&d, &s, later).unwrap(), None);
+    assert!(e.store.state().denied.contains(&"1.1.0".to_string()));
+    assert!(matches!(
+        e.store.pin_session(later).unwrap_err(),
+        SpeechError::Denied(_)
+    ));
+    // Freshness is not granted by it.
+    assert!(!e.store.denylist_fresh(later));
+    // A forged "newer" list still does nothing.
+    let (bad, _) = key(3, "k1");
+    let (df, sf) = denylist_at(&bad, "k1", 9, later, later + 7 * DAY, &[]);
+    assert!(e.store.apply_denylist(&df, &sf, later).is_err());
+}
+
+#[tokio::test]
+async fn c5_settings_shows_the_age_and_sessions_stop_after_90_days() {
+    let e = two_versions().await;
+    let d89 = NOW + 89 * DAY;
+    let rev = e.store.status(d89).revocation;
+    assert!(rev.expired && !rev.stale);
+    assert_eq!((rev.issued, rev.age_ms), (NOW, 89 * DAY));
+    drop(e.store.pin_session(d89).unwrap());
+    let d91 = NOW + 91 * DAY;
+    assert!(e.store.status(d91).revocation.stale);
+    assert!(matches!(
+        e.store.pin_session(d91).unwrap_err(),
+        SpeechError::Stale { days: 91 }
+    ));
+    assert_eq!(e.store.active_sessions(), 0);
+    // A fresh list (back online) lifts it.
+    let (d, s) = denylist_at(&e.sk, "k1", 2, d91, d91 + 7 * DAY, &[]);
+    e.store.apply_denylist(&d, &s, d91).unwrap();
+    drop(e.store.pin_session(d91).unwrap());
 }

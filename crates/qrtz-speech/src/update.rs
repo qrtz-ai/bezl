@@ -88,9 +88,8 @@ impl Updater<'_> {
             }
         }
         if !self.store.denylist_fresh((self.now_ms)()) {
-            return Err(SpeechError::Network(
-                "no current revocation list; try again online".into(),
-            ));
+            // Condition 3: no install, update or re-download on an expired list.
+            return Err(SpeechError::RevocationExpired);
         }
         let (m, mb, sb) = self.latest().await?;
         let st = self.store.state();
@@ -108,7 +107,7 @@ impl Updater<'_> {
             }
             return Err(SpeechError::Health(e));
         }
-        match self.store.activate(&m.version) {
+        match self.store.activate(&m.version, (self.now_ms)()) {
             Ok(()) => Ok(UpdateOutcome::Installed {
                 version: m.version,
                 previous: self.store.state().previous,

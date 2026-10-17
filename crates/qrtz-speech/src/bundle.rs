@@ -88,6 +88,8 @@ pub struct RotationSigs {
 pub struct Denylist {
     pub key_id: String,
     pub seq: u64,
+    /// When the server signed it (ms); feeds the clock high-water mark and the list's age.
+    pub issued: u64,
     pub expires: u64,
     pub versions: Vec<String>,
 }
