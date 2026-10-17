@@ -1,7 +1,8 @@
 //! Cycle 22: behaviours whose only end-to-end test was a TS test deleted with Electron (`44f9da6`,
 //! apps/desktop/src/main/note-service.hardening3.test.ts), now pinned on the Rust executor:
 //! N13 (a full disk while the LLM summary is saved is retryable and saves nothing half-way; the retry saves it once
-//! space frees up) and N3 (the summary deadline sits inside the runtime's RPC timeout). Mock OpenRouter only.
+//! space frees up), N3 (the summary deadline sits inside the runtime's RPC timeout) and the 402 path (no silent model
+//! swap). Mock OpenRouter only.
 mod common;
 
 use std::sync::Arc;
@@ -134,4 +135,56 @@ fn n3_summary_and_chat_deadlines_sit_inside_the_rpc_timeout() {
     // Checked at compile time above; this names the behaviour in the test list.
     let [deadline, rpc] = std::hint::black_box([SUMMARY_DEADLINE_MS, SUMMARY_TIMEOUT_MS]);
     assert!(deadline < rpc, "{deadline} vs {rpc}");
+}
+
+/// No free-model fallback (decisions-parity gap 5; the TS "on 402" test went with Electron): a 402 is one
+/// request to the configured model and a non-retryable provider error that says to add credits. The lifecycle's
+/// fallback then saves the on-device summary carrying that error (the UI's "add credits" hint keys off
+/// `needs_credits`), and "summarize again" once credits are added is a normal LLM summary.
+#[tokio::test]
+async fn a_402_is_an_error_with_retry_never_a_silent_model_swap() {
+    let db = seeded();
+    let (s, mock) = steps(&db).await;
+    mock.push(Reply::json(
+        402,
+        r#"{"error":{"message":"Insufficient credits"}}"#,
+    ));
+    let e = s.summary("m1".into(), SummaryRequest::Llm).await.unwrap_err();
+    assert_eq!(
+        (e.code.as_str(), e.retryable),
+        ("E_PROVIDER", false),
+        "{}",
+        e.message
+    );
+    assert!(qrtz_llm::needs_credits(&e.message), "{}", e.message);
+    let seen = mock.seen();
+    assert_eq!(seen.len(), 1, "one request, no second model tried");
+    let body: serde_json::Value = serde_json::from_str(&seen[0].body).unwrap();
+    assert_eq!(body["model"], qrtz_llm::OPENROUTER_DEFAULT_MODEL);
+    assert_eq!(stored(&db), (None, MeetingStatus::Processing));
+
+    let fallback = s
+        .summary(
+            "m1".into(),
+            SummaryRequest::Fallback {
+                error: e.message.clone(),
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(fallback.provider, "openrouter");
+    assert!(qrtz_llm::needs_credits(
+        fallback.llm_error.as_deref().unwrap_or("")
+    ));
+    assert_eq!(mock.seen().len(), 1, "the fallback is on-device");
+    assert_eq!(stored(&db), (Some(fallback), MeetingStatus::Done));
+
+    mock.push(Reply::content(
+        r#"{"summary":"We ship Friday.","actionItems":[],"qa":[]}"#,
+    ));
+    let again = s.resummarize("m1".into(), None).await.unwrap();
+    assert_eq!(again.provider, "openrouter");
+    assert_eq!(again.llm_error, None);
+    assert_eq!(stored(&db).0, Some(again));
 }
