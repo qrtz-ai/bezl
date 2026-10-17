@@ -1025,17 +1025,17 @@
     "meetingId": "m-b",
     "title": "1:1 Ada / Grace",
     "startedAt": 1760007200000,
-    "startMs": 3100,
-    "speaker": "S1",
-    "text": "Bugs are features we haven't documented yet 🐛"
+    "startMs": 0,
+    "speaker": "Grace Hopper",
+    "text": "Meeting is on Friday; bugs are undocumented features."
    },
    {
     "meetingId": "m-b",
     "title": "1:1 Ada / Grace",
     "startedAt": 1760007200000,
-    "startMs": 0,
-    "speaker": "Grace Hopper",
-    "text": "Meeting is on Friday; bugs are undocumented features."
+    "startMs": 3100,
+    "speaker": "S1",
+    "text": "Bugs are features we haven't documented yet 🐛"
    }
   ],
   [

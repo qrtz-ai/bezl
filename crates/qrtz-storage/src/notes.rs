@@ -6,7 +6,7 @@ use qrtz_model::{
 use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 
-use crate::fts::{js_trim, search_plan, substring_snippet, to_chat_fts_query, SearchPlan};
+use crate::fts::{chat_plan, js_trim, search_plan, substring_snippet, SearchPlan};
 use crate::row::{blob, i64_, opt_f64, opt_i64, opt_string, string};
 use crate::{Result, StorageError};
 
@@ -131,6 +131,11 @@ const SEARCH_SEGMENT_SUBSTR_SQL: &str = include_str!(concat!(
 const SEARCH_META_SUBSTR_SQL: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../packages/core/src/note/sql/search_meta_substr.sql"
+));
+/// Chat retrieval by bigram for unsegmented-script questions (N49, ADR 0047); shared with TS.
+const SEARCH_CHAT_SUBSTR_SQL: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../packages/core/src/note/sql/search_chat_substr.sql"
 ));
 
 fn collect<T>(
@@ -273,28 +278,40 @@ impl<'a> NoteRepo<'a> {
         )
     }
 
-    /// Transcript lines matching any query term (FTS, best first), for chat retrieval across meetings.
+    /// Transcript lines matching any question term, best first, for chat retrieval across meetings. Words from
+    /// unsegmented scripts are matched by bigram (N49, ADR 0047), which scans `segments` once like N48's search.
     pub fn search_segments(&self, input: &str, limit: u32) -> Result<Vec<SegmentHit>> {
-        let Some(q) = to_chat_fts_query(input) else {
+        let Some(plan) = chat_plan(input) else {
             return Ok(vec![]);
         };
+        let map = |r: &Row| {
+            Ok(SegmentHit {
+                meeting_id: string(r, "meetingId")?,
+                title: string(r, "title")?,
+                started_at: i64_(r, "startedAt")?,
+                start_ms: i64_(r, "startMs")?,
+                speaker: opt_string(r, "speaker")?,
+                text: string(r, "text")?,
+            })
+        };
+        if !plan.substrings.is_empty() {
+            let terms =
+                serde_json::to_string(&plan.substrings).map_err(|e| StorageError::Corrupt(e.to_string()))?;
+            return collect(
+                self.conn,
+                SEARCH_CHAT_SUBSTR_SQL,
+                params![plan.fts.as_deref(), &terms, limit],
+                map,
+            );
+        }
         collect(
             self.conn,
             "SELECT s.meeting_id AS meetingId, m.title AS title, m.started_at AS startedAt, s.start_ms AS startMs,
                   COALESCE(s.speaker_name, s.speaker) AS speaker, s.text AS text
            FROM segments_fts JOIN segments s ON s.rowid = segments_fts.rowid JOIN meetings m ON m.id = s.meeting_id
            WHERE segments_fts MATCH ? ORDER BY bm25(segments_fts) LIMIT ?",
-            params![q, limit],
-            |r| {
-                Ok(SegmentHit {
-                    meeting_id: string(r, "meetingId")?,
-                    title: string(r, "title")?,
-                    started_at: i64_(r, "startedAt")?,
-                    start_ms: i64_(r, "startMs")?,
-                    speaker: opt_string(r, "speaker")?,
-                    text: string(r, "text")?,
-                })
-            },
+            params![plan.fts.unwrap_or_default(), limit],
+            map,
         )
     }
 

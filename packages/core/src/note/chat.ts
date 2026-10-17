@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { LlmProvider, ChatMessage } from './llm';
+import { bigrams, CHAT_MAX_BIGRAMS, UNSEGMENTED } from './unsegmented';
 
 /** One retrieved transcript line given to the model (and cited back to the UI). */
 export const ChatSource = z.object({
@@ -34,20 +35,29 @@ const STOP = new Set(
   ),
 );
 /**
- * Question terms, split the same way as the source words in `rankSources` (on anything but letters and digits).
+ * Question terms, split the same way as the source words in `rankSources` (on anything but letters, digits and
+ * combining marks; a mark inside a Thai or Indic word no longer cuts it, N49).
  * They used to drop apostrophes instead, so "O'Reilly" became `oreilly`, which no source word (`o`, `reilly`) starts
  * with, and the line FTS had just retrieved scored 0 and was dropped (N47, ADR 0038).
  */
-export const queryTerms = (q: string) =>
-  [
+export const queryTerms = (q: string) => {
+  const words = [
     ...new Set(
       q
         .toLowerCase()
         .normalize('NFKC')
-        .split(/[^\p{L}\p{N}]+/u)
+        .split(/[^\p{L}\p{N}\p{M}]+/u)
         .filter((w) => w.length > 1 && !STOP.has(w)),
     ),
   ].slice(0, 12);
+  // N49 (ADR 0047): a run of Han, kana or Thai is one "word" here (a whole Chinese question has no spaces), and no
+  // line word starts with it. Its bigrams are matched inside the line instead, the same ones retrieval used.
+  const plain = words.filter((w) => !UNSEGMENTED.test(w));
+  const grams = [
+    ...new Set(words.filter((w) => UNSEGMENTED.test(w)).flatMap(bigrams)),
+  ].slice(0, CHAT_MAX_BIGRAMS);
+  return [...plain, ...grams];
+};
 
 /** Cheap lexical relevance: matched distinct terms (prefix match), weighted by rarity across the candidates. */
 export function rankSources(
@@ -61,16 +71,19 @@ export function rankSources(
     `${s.speaker ?? ''} ${s.text}`
       .toLowerCase()
       .normalize('NFKC')
-      .split(/[^\p{L}\p{N}]+/u),
+      .split(/[^\p{L}\p{N}\p{M}]+/u),
   );
-  const df = terms.map(
-    (t) => words.filter((ws) => ws.some((w) => w.startsWith(t))).length,
-  );
+  const lines = words.map((ws) => ws.join(' '));
+  // A bigram (N49) is matched anywhere in the line, any other term as a word prefix.
+  const has = (i: number, t: string) =>
+    UNSEGMENTED.test(t)
+      ? lines[i]!.includes(t)
+      : words[i]!.some((w) => w.startsWith(t));
+  const df = terms.map((t) => sources.filter((_, i) => has(i, t)).length);
   const scored = sources.map((s, i) => {
     let score = 0;
     terms.forEach((t, j) => {
-      if (words[i]!.some((w) => w.startsWith(t)))
-        score += Math.log(1 + sources.length / (1 + df[j]!));
+      if (has(i, t)) score += Math.log(1 + sources.length / (1 + df[j]!));
     });
     return { s, score, i };
   });

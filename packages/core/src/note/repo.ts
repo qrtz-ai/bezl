@@ -5,6 +5,10 @@ import type { MeetingNote } from './notes';
 import SEARCH_SEGMENT_HITS_SQL from './sql/search_segment_hits.sql?raw';
 import SEARCH_SEGMENT_SUBSTR_SQL from './sql/search_segment_substr.sql?raw';
 import SEARCH_META_SUBSTR_SQL from './sql/search_meta_substr.sql?raw';
+import SEARCH_CHAT_SUBSTR_SQL from './sql/search_chat_substr.sql?raw';
+import { bigrams, CHAT_MAX_BIGRAMS, UNSEGMENTED } from './unsegmented';
+
+export { bigrams, CHAT_MAX_BIGRAMS, UNSEGMENTED };
 
 export interface MeetingRow extends Meeting {
   durationMs?: number;
@@ -67,14 +71,6 @@ function searchWords(input: string): string[] {
     .slice(0, 8);
 }
 
-/**
- * Scripts written without spaces between words (Thai, Lao, Myanmar, Khmer, kana, Han). unicode61 indexes a run of
- * them as one token, so only a word at the start of a run is found by the index (N48). Fixed code point ranges, not
- * `\p{Script}`, so TS and Rust agree whatever Unicode version each ships. Same class as Rust `UNSEGMENTED`.
- */
-const UNSEGMENTED =
-  /[\u0E00-\u0EFF\u1000-\u109F\u1780-\u17FF\u3005-\u3007\u3040-\u30FF\u31F0-\u31FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\u{20000}-\u{3134F}]/u;
-
 export interface SearchPlan {
   /** FTS5 MATCH for the space-separated terms (same quoting as `toFtsQuery`), or null when every term is substring. */
   fts: string | null;
@@ -94,6 +90,39 @@ export function searchPlan(input: string): SearchPlan | null {
   return {
     fts: fts.length ? fts.map((w) => `"${w}"*`).join(' ') : null,
     substrings: words.filter((w) => UNSEGMENTED.test(w)),
+  };
+}
+
+export interface ChatPlan {
+  /** OR-ed FTS5 prefix terms for the other words (as `searchSegments` always built), or null when there are none. */
+  fts: string | null;
+  /** Distinct bigrams of the unsegmented words, at most `CHAT_MAX_BIGRAMS`, matched as substrings. */
+  substrings: string[];
+}
+
+/**
+ * How chat retrieval runs a question (N49, ADR 0047). Words are 2+ letters, digits or combining marks with a letter or
+ * digit, at most 12. Marks stay inside the word (a Thai or Indic word was cut at every vowel sign; quoted, FTS5 reads
+ * it as a phrase, as in N46). A word with a Han, kana, Thai, Lao, Khmer or Myanmar character becomes its bigrams; the
+ * others stay OR-ed prefix terms. With neither such a word nor a mark, `fts` is the old query exactly.
+ */
+export function chatPlan(input: string): ChatPlan | null {
+  const words = (
+    input
+      .toLowerCase()
+      .normalize('NFKC')
+      .match(/[\p{L}\p{N}\p{M}]{2,}/gu) ?? []
+  )
+    .filter((w) => /[\p{L}\p{N}]/u.test(w))
+    .slice(0, 12);
+  if (!words.length) return null;
+  const fts = words.filter((w) => !UNSEGMENTED.test(w));
+  const subs = [
+    ...new Set(words.filter((w) => UNSEGMENTED.test(w)).flatMap(bigrams)),
+  ].slice(0, CHAT_MAX_BIGRAMS);
+  return {
+    fts: fts.length ? fts.map((w) => `"${w}"*`).join(' OR ') : null,
+    substrings: subs,
   };
 }
 
@@ -256,26 +285,28 @@ export class NoteRepo {
     ).map(toMeeting);
   }
 
-  /** Transcript lines matching any query term (FTS, best first), for chat retrieval across meetings. */
+  /**
+   * Transcript lines matching any question term, best first, for chat retrieval across meetings. Words from
+   * unsegmented scripts are matched by bigram (N49, ADR 0047): that path scans `segments` once, like N48's search.
+   */
   searchSegments(input: string, limit = 60) {
-    const words = (
-      input
-        .toLowerCase()
-        .normalize('NFKC')
-        .match(/[\p{L}\p{N}]{2,}/gu) ?? []
-    ).slice(0, 12);
-    if (!words.length) return [];
-    const q = words.map((w) => `"${w}"*`).join(' OR ');
-    return (
-      this.db
-        .prepare(
-          `SELECT s.meeting_id AS meetingId, m.title AS title, m.started_at AS startedAt, s.start_ms AS startMs,
+    const plan = chatPlan(input);
+    if (!plan) return [];
+    const rows = (
+      plan.substrings.length
+        ? this.db
+            .prepare(SEARCH_CHAT_SUBSTR_SQL)
+            .all(plan.fts, JSON.stringify(plan.substrings), limit)
+        : this.db
+            .prepare(
+              `SELECT s.meeting_id AS meetingId, m.title AS title, m.started_at AS startedAt, s.start_ms AS startMs,
                   COALESCE(s.speaker_name, s.speaker) AS speaker, s.text AS text
            FROM segments_fts JOIN segments s ON s.rowid = segments_fts.rowid JOIN meetings m ON m.id = s.meeting_id
            WHERE segments_fts MATCH ? ORDER BY bm25(segments_fts) LIMIT ?`,
-        )
-        .all(q, limit) as Row[]
-    ).map((r) => ({
+            )
+            .all(plan.fts, limit)
+    ) as Row[];
+    return rows.map((r) => ({
       meetingId: String(r.meetingId),
       title: String(r.title),
       startedAt: Number(r.startedAt),

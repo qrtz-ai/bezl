@@ -1,0 +1,323 @@
+{
+  "description": "Hardening cycle 14 (N49, ADR 0047): chat retrieval and ranking for questions in Chinese, Japanese and Thai. A run of those scripts is one token for unicode61 and has no spaces, so the question's run is cut into character bigrams (at most 16) matched as substrings; other words stay OR-ed FTS prefix terms. `plans` pins TS chatPlan = Rust chat_plan; `retrievals` runs NoteRepo.searchSegments / Notes::search_segments on a migrated DB holding `meetings` (expected [meetingId, startMs] in order); `ranks` pins TS rankSources over the lines of `meetings` (Rust: qrtz-search, when the chat ranker is ported). Expectations were produced by the TS oracle and checked by hand. Run by packages/core/src/note/chat.hardening14.test.ts and crates/qrtz-storage/tests/hardening14.rs.",
+  "plans": [
+    {
+      "input": "会议什么时候开?",
+      "fts": null,
+      "substrings": ["会议", "议什", "什么", "么时", "时候", "候开"]
+    },
+    {
+      "input": "我们决定了什么",
+      "fts": null,
+      "substrings": ["我们", "们决", "决定", "定了", "了什", "什么"]
+    },
+    {
+      "input": "预算批准了吗",
+      "fts": null,
+      "substrings": ["预算", "算批", "批准", "准了", "了吗"]
+    },
+    {
+      "input": "Q3预算",
+      "fts": null,
+      "substrings": ["q3", "3预", "预算"]
+    },
+    {
+      "input": "budget 会议",
+      "fts": "\"budget\"*",
+      "substrings": ["会议"]
+    },
+    {
+      "input": "会議の予定",
+      "fts": null,
+      "substrings": ["会議", "議の", "の予", "予定"]
+    },
+    {
+      "input": "ประชุม",
+      "fts": null,
+      "substrings": ["ปร", "ระ", "ะช", "ชุ", "ุม"]
+    },
+    {
+      "input": "budget friday",
+      "fts": "\"budget\"* OR \"friday\"*",
+      "substrings": []
+    },
+    {
+      "input": "?!",
+      "fts": null,
+      "substrings": null
+    },
+    {
+      "input": "会",
+      "fts": null,
+      "substrings": null
+    },
+    {
+      "input": "我们下周五之前必须把预算和发布计划都定下来吧",
+      "fts": null,
+      "substrings": [
+        "我们",
+        "们下",
+        "下周",
+        "周五",
+        "五之",
+        "之前",
+        "前必",
+        "必须",
+        "须把",
+        "把预",
+        "预算",
+        "算和",
+        "和发",
+        "发布",
+        "布计",
+        "计划"
+      ]
+    },
+    {
+      "input": "会议 会议 会议",
+      "fts": null,
+      "substrings": ["会议"]
+    },
+    {
+      "input": "ｶｲｷﾞ",
+      "fts": null,
+      "substrings": ["カイ", "イギ"]
+    },
+    {
+      "input": "बैठक कब है",
+      "fts": "\"बैठक\"* OR \"कब\"* OR \"है\"*",
+      "substrings": []
+    },
+    {
+      "input": "เริ่มประชุม",
+      "fts": null,
+      "substrings": ["เร", "ริ", "ิ่", "่ม", "มป", "ปร", "ระ", "ะช", "ชุ", "ุม"]
+    }
+  ],
+  "meetings": [
+    {
+      "id": "m-zh",
+      "title": "周会",
+      "startedAt": 3000,
+      "segments": [
+        {
+          "id": "z0",
+          "startMs": 0,
+          "text": "明天的会议很重要",
+          "speaker": "Li"
+        },
+        {
+          "id": "z1",
+          "startMs": 1000,
+          "text": "预算下周五之前要定下来",
+          "speaker": "Wang"
+        },
+        {
+          "id": "z2",
+          "startMs": 2000,
+          "text": "我们决定推迟发布。",
+          "speaker": "Li"
+        },
+        {
+          "id": "z3",
+          "startMs": 3000,
+          "text": "Q3的预算还没有批准",
+          "speaker": "Wang"
+        }
+      ]
+    },
+    {
+      "id": "m-ja",
+      "title": "定例",
+      "startedAt": 2000,
+      "segments": [
+        {
+          "id": "j0",
+          "startMs": 0,
+          "text": "来週の会議は金曜日です"
+        },
+        {
+          "id": "j1",
+          "startMs": 1000,
+          "text": "予算の承認はまだです"
+        }
+      ]
+    },
+    {
+      "id": "m-th",
+      "title": "ประชุมทีม",
+      "startedAt": 1000,
+      "segments": [
+        {
+          "id": "t0",
+          "startMs": 0,
+          "text": "เริ่มประชุมกันเลย"
+        },
+        {
+          "id": "t1",
+          "startMs": 1000,
+          "text": "งบประมาณยังไม่อนุมัติ"
+        }
+      ]
+    },
+    {
+      "id": "m-en",
+      "title": "Weekly",
+      "startedAt": 500,
+      "segments": [
+        {
+          "id": "e0",
+          "startMs": 0,
+          "text": "The budget review moved to Friday",
+          "speaker": "Ana"
+        },
+        {
+          "id": "e1",
+          "startMs": 1000,
+          "text": "Ship it after the meeting",
+          "speaker": "Ben"
+        }
+      ]
+    },
+    {
+      "id": "m-hi",
+      "title": "साप्ताहिक",
+      "startedAt": 400,
+      "segments": [
+        {
+          "id": "h0",
+          "startMs": 0,
+          "text": "कल बैठक है"
+        },
+        {
+          "id": "h1",
+          "startMs": 1000,
+          "text": "बजट तैयार है"
+        }
+      ]
+    }
+  ],
+  "retrievals": [
+    {
+      "input": "会议什么时候开?",
+      "limit": 60,
+      "hits": [["m-zh", 0]]
+    },
+    {
+      "input": "我们决定了什么",
+      "limit": 60,
+      "hits": [["m-zh", 2000]]
+    },
+    {
+      "input": "预算批准了吗",
+      "limit": 60,
+      "hits": [
+        ["m-zh", 3000],
+        ["m-zh", 1000]
+      ]
+    },
+    {
+      "input": "Q3预算",
+      "limit": 60,
+      "hits": [
+        ["m-zh", 3000],
+        ["m-zh", 1000]
+      ]
+    },
+    {
+      "input": "budget 会议",
+      "limit": 60,
+      "hits": [
+        ["m-zh", 0],
+        ["m-en", 0]
+      ]
+    },
+    {
+      "input": "会議の予定",
+      "limit": 60,
+      "hits": [["m-ja", 0]]
+    },
+    {
+      "input": "ประชุม",
+      "limit": 60,
+      "hits": [
+        ["m-th", 0],
+        ["m-th", 1000]
+      ]
+    },
+    {
+      "input": "budget friday",
+      "limit": 60,
+      "hits": [["m-en", 0]]
+    },
+    {
+      "input": "?!",
+      "limit": 60,
+      "hits": []
+    },
+    {
+      "input": "我们下周五之前必须把预算和发布计划都定下来吧",
+      "limit": 60,
+      "hits": [
+        ["m-zh", 1000],
+        ["m-zh", 2000],
+        ["m-zh", 3000]
+      ]
+    },
+    {
+      "input": "预算批准了吗",
+      "limit": 1,
+      "hits": [["m-zh", 3000]]
+    },
+    {
+      "input": "बैठक कब है",
+      "limit": 60,
+      "hits": [
+        ["m-hi", 0],
+        ["m-hi", 1000]
+      ]
+    }
+  ],
+  "ranks": [
+    {
+      "question": "我们决定了什么",
+      "k": 3,
+      "texts": ["我们决定推迟发布。"]
+    },
+    {
+      "question": "预算批准了吗",
+      "k": 3,
+      "texts": ["Q3的预算还没有批准", "预算下周五之前要定下来"]
+    },
+    {
+      "question": "会議の予定",
+      "k": 3,
+      "texts": ["来週の会議は金曜日です"]
+    },
+    {
+      "question": "ประชุม",
+      "k": 3,
+      "texts": ["เริ่มประชุมกันเลย", "งบประมาณยังไม่อนุมัติ"]
+    },
+    {
+      "question": "budget 会议",
+      "k": 3,
+      "texts": ["明天的会议很重要", "The budget review moved to Friday"]
+    },
+    {
+      "question": "Ship",
+      "k": 3,
+      "texts": ["Ship it after the meeting"]
+    },
+    {
+      "question": "बैठक कब है",
+      "k": 3,
+      "texts": ["कल बैठक है", "बजट तैयार है"]
+    },
+    {
+      "question": "เริ่มประชุม",
+      "k": 3,
+      "texts": ["เริ่มประชุมกันเลย", "งบประมาณยังไม่อนุมัติ"]
+    }
+  ]
+}

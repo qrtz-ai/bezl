@@ -163,6 +163,71 @@ pub fn to_chat_fts_query(input: &str) -> Option<String> {
     )
 }
 
+/// At most this many bigrams per chat question (`CHAT_MAX_BIGRAMS`): each is a substring test per line in the scan.
+pub const CHAT_MAX_BIGRAMS: usize = 16;
+
+/// `bigrams`: character bigrams of a word from an unsegmented script, by code point (N49, ADR 0047). A two-character
+/// word is its own bigram.
+pub fn bigrams(word: &str) -> Vec<String> {
+    let cs: Vec<char> = word.chars().collect();
+    if cs.len() <= 2 {
+        return vec![word.to_string()];
+    }
+    cs.windows(2).map(|w| w.iter().collect()).collect()
+}
+
+/// `ChatPlan` of repo.ts (N49, ADR 0047).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChatPlan {
+    /// OR-ed prefix terms for the other words, or `None` when there are none.
+    pub fts: Option<String>,
+    /// Distinct bigrams of the unsegmented words, at most [`CHAT_MAX_BIGRAMS`], matched as substrings.
+    pub substrings: Vec<String>,
+}
+
+/// `chatPlan`: words of 2+ letters, digits or combining marks with a letter or digit, at most 12. A word with a Han,
+/// kana, Thai, Lao, Khmer or Myanmar character becomes its bigrams; the others stay OR-ed `"w"*` terms. With neither
+/// such a word nor a mark, `fts` equals the old `to_chat_fts_query(input)`.
+pub fn chat_plan(input: &str) -> Option<ChatPlan> {
+    static WORD: OnceLock<Regex> = OnceLock::new();
+    static WORDY: OnceLock<Regex> = OnceLock::new();
+    let word = WORD.get_or_init(|| Regex::new(r"[\p{L}\p{N}\p{M}]{2,}").unwrap());
+    let wordy = WORDY.get_or_init(|| Regex::new(r"[\p{L}\p{N}]").unwrap());
+    let n = norm(input);
+    let words: Vec<&str> = word
+        .find_iter(&n)
+        .map(|m| m.as_str())
+        .filter(|w| wordy.is_match(w))
+        .take(12)
+        .collect();
+    if words.is_empty() {
+        return None;
+    }
+    let (subs, rest): (Vec<&str>, Vec<&str>) = words.into_iter().partition(|w| unsegmented(w));
+    let mut substrings: Vec<String> = Vec::new();
+    for g in subs.iter().flat_map(|w| bigrams(w)) {
+        if substrings.len() == CHAT_MAX_BIGRAMS {
+            break;
+        }
+        if !substrings.contains(&g) {
+            substrings.push(g);
+        }
+    }
+    Some(ChatPlan {
+        fts: if rest.is_empty() {
+            None
+        } else {
+            Some(
+                rest.iter()
+                    .map(|w| format!("\"{w}\"*"))
+                    .collect::<Vec<_>>()
+                    .join(" OR "),
+            )
+        },
+        substrings,
+    })
+}
+
 /// JS `String.prototype.trim` (White_Space plus U+FEFF).
 pub(crate) fn js_trim(s: &str) -> &str {
     s.trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}')
