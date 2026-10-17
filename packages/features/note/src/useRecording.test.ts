@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { SessionView } from '@qrtz/core';
-import { liveCaptureStatus } from './capture';
+import { asrUnavailableLabel, liveCaptureStatus } from './capture';
 
 const view = (o: Partial<SessionView>) =>
   SessionView.parse({ phase: 'recording', startedAt: 0, ...o });
@@ -71,5 +71,32 @@ describe('liveCaptureStatus (N32)', () => {
       ],
     });
     expect(new Set(all).size).toBe(all.length);
+  });
+});
+
+describe('asrUnavailable in the live notice (N95, ADR 0062)', () => {
+  const label = (o: Partial<SessionView>) =>
+    liveCaptureStatus(view({ degraded: ['asr-unavailable'], ...o }))
+      .degraded[0]!.label;
+  it('names what to do, lowercase', () => {
+    expect(label({ asrUnavailable: 'not-installed' })).toBe(
+      'install qrtz speech',
+    );
+    expect(label({ asrUnavailable: 'stale' })).toBe('connect to update');
+    expect(label({ asrUnavailable: 'revoked' })).toBe('connect to update');
+    for (const r of [
+      'crashed',
+      'start-failed',
+      'timeout',
+      'protocol-violations',
+      'network',
+      'cancelled',
+    ] as const)
+      expect(asrUnavailableLabel(r)).toBe(
+        'speech stopped, audio is still recorded',
+      );
+  });
+  it('without a reason (the helper said asr.unavailable): the plain label', () => {
+    expect(label({})).toBe('No live transcription');
   });
 });

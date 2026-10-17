@@ -34,11 +34,17 @@ export function silentBadges(s: Pick<SessionView, 'silent' | 'startedAt'>) {
  * silence badge goes on top of it. Silence is live: a badge clears when the helper reports the source audible again.
  */
 export function liveCaptureStatus(
-  s: Pick<SessionView, 'degraded' | 'silent' | 'noAudio' | 'startedAt'>,
+  s: Pick<
+    SessionView,
+    'degraded' | 'silent' | 'noAudio' | 'startedAt' | 'asrUnavailable'
+  >,
 ) {
   const degraded = s.degraded.map((f) => ({
     id: f,
-    label: DEGRADED_LABELS[f],
+    label:
+      f === 'asr-unavailable' && s.asrUnavailable
+        ? asrUnavailableLabel(s.asrUnavailable)
+        : DEGRADED_LABELS[f],
   }));
   if (s.degraded.includes('audio-unavailable'))
     return { degraded, silent: [], noAudio: false };
@@ -47,6 +53,18 @@ export function liveCaptureStatus(
     silent: s.noAudio ? [] : silentBadges(s),
     noAudio: !!s.noAudio,
   };
+}
+
+/**
+ * N95 (ADR 0062): why live transcription stopped, as the live notice says it. Not installed → install it; an expired
+ * or stale revocation list or a revoked release → connect to update; anything else → the audio is still recorded.
+ */
+export function asrUnavailableLabel(
+  r: NonNullable<SessionView['asrUnavailable']>,
+): string {
+  if (r === 'not-installed') return 'install qrtz speech';
+  if (r === 'stale' || r === 'revoked') return 'connect to update';
+  return 'speech stopped, audio is still recorded';
 }
 
 /** N35: what a failed capture device took away, as the meeting notice says it (not a permission revoke). */
