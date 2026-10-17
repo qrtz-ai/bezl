@@ -133,21 +133,21 @@ export const ipcContract = {
   'note:pipeline': defineChannel({
     version: 1,
     capability: 'note.read',
-    request: z.object({ id: z.string() }),
+    request: z.object({ id: z.string().max(64) }),
     response: PipelineView.nullable(),
   }),
   /** Manual retry of one post-processing step (re-runs it and everything after it). */
   'note:retry-step': defineChannel({
     version: 1,
     capability: 'note.write',
-    request: z.object({ id: z.string(), step: StepId }),
+    request: z.object({ id: z.string().max(64), step: StepId }),
     response: PipelineView,
   }),
   /** Snapshot of the live transcript of the meeting being recorded; apply `note:transcript` deltas on top. */
   'note:live-transcript': defineChannel({
     version: 1,
     capability: 'note.read',
-    request: z.object({ meetingId: z.string().optional() }).optional(),
+    request: z.object({ meetingId: z.string().max(64).optional() }).optional(),
     response: LiveTranscript.nullable(),
   }),
   'note:dismiss': defineChannel({

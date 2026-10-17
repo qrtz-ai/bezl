@@ -1718,7 +1718,8 @@
           "type": "object",
           "properties": {
             "id": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 64
             }
           },
           "required": [
@@ -1961,7 +1962,8 @@
           "type": "object",
           "properties": {
             "id": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 64
             },
             "step": {
               "type": "string",
@@ -2206,7 +2208,8 @@
           "type": "object",
           "properties": {
             "meetingId": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 64
             }
           }
         }
