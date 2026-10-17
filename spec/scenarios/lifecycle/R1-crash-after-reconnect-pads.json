@@ -1,0 +1,381 @@
+{
+  "name": "R1-crash-after-reconnect-pads",
+  "about": "H7 + R1: the app dies while recording the second part (a 3 s reconnect gap after 2 s of audio). The session row carries the part offsets, crash recovery copies them into the pipeline context, and finalize pads the gap: the recovered meeting's audio is 6 s, the same as its transcript time (before H7 it was 3 s).",
+  "script": [
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "permissions.status",
+        "status": {
+          "accessibility": "granted",
+          "screen-recording": "granted",
+          "microphone": "granted"
+        }
+      }
+    },
+    {
+      "op": "call",
+      "fn": "start",
+      "label": "start",
+      "args": {
+        "title": "Standup"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.started",
+        "audioPath": "$REC/id1.wav"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "asr",
+        "event": {
+          "kind": "final",
+          "utteranceId": "u1",
+          "startMs": 0,
+          "endMs": 1500,
+          "text": "before the crash"
+        }
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 2000
+    },
+    {
+      "op": "helperDown",
+      "reason": "exited"
+    },
+    {
+      "op": "advance",
+      "ms": 3000
+    },
+    {
+      "op": "helperUp"
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "hello",
+        "protocol": 1,
+        "helperVersion": "test",
+        "os": "macos",
+        "features": []
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "recording.started",
+        "audioPath": "$REC/id1.p1.wav"
+      }
+    },
+    {
+      "op": "helper",
+      "msg": {
+        "type": "asr",
+        "event": {
+          "kind": "final",
+          "utteranceId": "u1",
+          "startMs": 0,
+          "endMs": 800,
+          "text": "after the gap"
+        }
+      }
+    },
+    {
+      "op": "advance",
+      "ms": 1000
+    },
+    {
+      "op": "snapshot",
+      "label": "resumed"
+    },
+    {
+      "op": "wav",
+      "file": "id1.wav",
+      "ms": 2000,
+      "broken": true
+    },
+    {
+      "op": "wav",
+      "file": "id1.p1.wav",
+      "ms": 1000,
+      "broken": true
+    },
+    {
+      "op": "restart"
+    },
+    {
+      "op": "advance",
+      "ms": 100
+    }
+  ],
+  "expect": {
+    "trace": {
+      "session": [
+        "idle|-|-|-|-|-|ok",
+        "starting|id1|-|-|-|-|ok",
+        "recording|id1|-|-|-|-|ok",
+        "reconnecting|id1|-|-|r1|-|ok",
+        "recording|id1|transcript-gap|-|-|-|ok",
+        "idle|-|-|-|-|-|ok"
+      ],
+      "pipelines": {
+        "id1": [
+          "crash-recovered finalize:pending/0 summary:pending/0 index:pending/0",
+          "crash-recovered finalize:running/1 summary:pending/0 index:pending/0",
+          "crash-recovered finalize:done/1 summary:pending/0 index:pending/0",
+          "crash-recovered finalize:done/1 summary:running/1 index:pending/0",
+          "crash-recovered finalize:done/1 summary:done/1 index:pending/0",
+          "crash-recovered finalize:done/1 summary:done/1 index:running/1",
+          "crash-recovered finalize:done/1 summary:done/1 index:done/1"
+        ]
+      },
+      "helper": [
+        "permissions.check",
+        "recording.start $REC/id1.wav",
+        "permissions.check",
+        "recording.start $REC/id1.p1.wav"
+      ],
+      "transcript": [
+        [
+          0,
+          1,
+          [
+            "u1"
+          ],
+          null
+        ],
+        [
+          1,
+          2,
+          [
+            "p1-u1"
+          ],
+          null
+        ]
+      ],
+      "changed": [
+        "id1",
+        "id1",
+        "id1",
+        "id1"
+      ],
+      "permissions": [
+        "granted|granted|granted"
+      ],
+      "prompts": []
+    },
+    "results": {
+      "start": {
+        "ok": {
+          "phase": "recording",
+          "meetingId": "id1"
+        }
+      }
+    },
+    "snapshots": {
+      "resumed": {
+        "view": {
+          "phase": "recording",
+          "meetingId": "id1",
+          "startedAt": 1760000000000,
+          "elapsedMs": 6000,
+          "stopReason": null,
+          "degraded": [
+            "transcript-gap"
+          ],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [
+            [
+              "u1",
+              null,
+              "before the crash",
+              0
+            ],
+            [
+              "p1-u1",
+              null,
+              "after the gap",
+              5000
+            ]
+          ],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": {
+          "meetingId": "id1",
+          "rev": 2,
+          "segments": [
+            [
+              "u1",
+              null,
+              0,
+              1500
+            ],
+            [
+              "p1-u1",
+              null,
+              5000,
+              5800
+            ]
+          ],
+          "partial": null
+        },
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "recording",
+              1760000000000,
+              null,
+              null,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [
+            [
+              "id1",
+              "u1",
+              "live",
+              0,
+              1500,
+              null,
+              "before the crash"
+            ],
+            [
+              "id1",
+              "p1-u1",
+              "live",
+              5000,
+              5800,
+              null,
+              "after the gap"
+            ]
+          ],
+          "summaries": [],
+          "notes": [],
+          "pipelines": [],
+          "session": [
+            "recording",
+            "id1"
+          ]
+        },
+        "files": []
+      },
+      "end": {
+        "view": {
+          "phase": "idle",
+          "meetingId": null,
+          "startedAt": null,
+          "elapsedMs": 0,
+          "stopReason": null,
+          "degraded": [],
+          "error": null,
+          "paused": false,
+          "progress": null,
+          "reconnect": null,
+          "helper": "ok",
+          "participants": [],
+          "activeSpeaker": null,
+          "lines": [],
+          "partial": "",
+          "pipeline": null
+        },
+        "live": null,
+        "db": {
+          "meetings": [
+            [
+              "id1",
+              "Standup",
+              "other",
+              "done",
+              1760000000000,
+              1760000006000,
+              6000,
+              "$REC/id1.wav",
+              "general"
+            ]
+          ],
+          "segments": [
+            [
+              "id1",
+              "u1",
+              "live",
+              0,
+              1500,
+              null,
+              "before the crash"
+            ],
+            [
+              "id1",
+              "p1-u1",
+              "live",
+              5000,
+              5800,
+              null,
+              "after the gap"
+            ]
+          ],
+          "summaries": [
+            [
+              "id1",
+              "stub",
+              "STUB summary",
+              null
+            ]
+          ],
+          "notes": [],
+          "pipelines": [
+            [
+              "id1",
+              1,
+              "crash-recovered",
+              "finalize:done/1 summary:done/1 index:done/1",
+              0,
+              true,
+              [
+                "$REC/id1.wav",
+                "$REC/id1.p1.wav"
+              ],
+              0
+            ]
+          ],
+          "session": [
+            "idle",
+            null
+          ]
+        },
+        "files": [
+          [
+            "id1.wav",
+            192044
+          ]
+        ]
+      }
+    }
+  }
+}
