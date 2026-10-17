@@ -1,5 +1,7 @@
 import './index.css';
 import { createRoot } from 'react-dom/client';
 import { App } from './shell/App';
+import { MiniHudApp } from './shell/MiniHud';
 
-createRoot(document.getElementById('root')!).render(<App />);
+const root = createRoot(document.getElementById('root')!);
+root.render(window.location.hash === '#hud' ? <MiniHudApp /> : <App />);

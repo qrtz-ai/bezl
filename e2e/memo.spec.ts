@@ -51,6 +51,25 @@ test('memo end-to-end: detect, record, live transcript, summarize, search, expor
   });
   await win.screenshot({ path: path.join(shots, 'memo-live.png') });
 
+  // M6.3: the floating always-on-top mini HUD window mirrors the live session.
+  await expect
+    .poll(() => app.windows().some((w) => w.url().endsWith('#hud')), {
+      timeout: 10_000,
+    })
+    .toBe(true);
+  const mini = app.windows().find((w) => w.url().endsWith('#hud'))!;
+  await expect(mini.getByTestId('mini-hud')).toBeVisible();
+  await expect(mini.getByTestId('mini-hud-clock')).toHaveText(/\d\d:\d\d/);
+  await expect(mini.getByTestId('mini-hud-line')).not.toHaveText(/^\s*$/, {
+    timeout: 10_000,
+  });
+  expect(
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().some((w) => w.isAlwaysOnTop()),
+    ),
+  ).toBe(true);
+  await mini.screenshot({ path: path.join(shots, 'mini-hud.png') });
+
   // Fixture audio was written for the recording.
   const recs = fs.readdirSync(path.join(userData, 'recordings'));
   expect(recs).toHaveLength(1);

@@ -10,7 +10,7 @@ import { createClient, type QrtzTransport, type SubApp } from '@qrtz/core';
 import { Button, Text } from '@qrtz/ui';
 import { QrtzClientProvider } from '@qrtz/core/react';
 
-const noTransport: QrtzTransport = {
+export const noTransport: QrtzTransport = {
   invoke: async (e) => ({
     ok: false,
     id: e.id,

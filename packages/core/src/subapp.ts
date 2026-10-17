@@ -50,6 +50,13 @@ export const SHELL_MANIFEST: SubAppManifest = {
   id: 'shell',
   name: 'qrtz',
   icon: 'q',
-  capabilities: ['app.info', 'config.read', 'helper.status'],
+  // The shell hosts the ⌘K palette and the floating recording HUD.
+  capabilities: [
+    'app.info',
+    'config.read',
+    'helper.status',
+    'memo.read',
+    'memo.record',
+  ],
   permissions: [],
 };

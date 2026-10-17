@@ -19,6 +19,8 @@ export const ConfigSchema = z.object({
         .default('openrouter'),
       llmModel: z.string().default(''),
       /** Delete recordings (audio only; transcript and summary stay) this many days after the meeting. 0 = keep. */
+      /** Show the floating always-on-top mini HUD while recording. */
+      floatingHud: z.boolean().default(true),
       retainAudioDays: z.number().int().min(0).max(3650).default(0),
     })
     .prefault({}),

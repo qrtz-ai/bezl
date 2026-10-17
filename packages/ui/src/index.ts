@@ -10,3 +10,4 @@ export * from './Card';
 export * from './Input';
 export * from './Tabs';
 export * from './EmptyState';
+export * from './Overlay';

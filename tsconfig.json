@@ -17,6 +17,9 @@
       "path": "packages/features/memo"
     },
     {
+      "path": "packages/features/gallery"
+    },
+    {
       "path": "apps/desktop"
     }
   ]

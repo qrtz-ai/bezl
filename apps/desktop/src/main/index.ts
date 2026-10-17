@@ -5,6 +5,7 @@ import {
   globalShortcut,
   net,
   protocol,
+  screen,
 } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -189,6 +190,63 @@ export function bootstrap() {
       win.webContents.openDevTools({ mode: 'detach' });
     }
   };
+
+  // M6.3: floating, always-on-top mini HUD while recording (index.html#hud, shell-scoped IPC).
+  let hud: BrowserWindow | null = null;
+  const showHud = () => {
+    if (hud && !hud.isDestroyed()) return hud.showInactive();
+    const area = screen.getPrimaryDisplay().workArea;
+    hud = new BrowserWindow({
+      width: 340,
+      height: 56,
+      x: area.x + area.width - 340 - 16,
+      y: area.y + 16,
+      frame: false,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      show: false,
+      title: 'qrtz HUD',
+      backgroundColor: '#111111',
+      roundedCorners: true,
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.cjs'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        webSecurity: true,
+        spellcheck: false,
+      },
+    });
+    hud.setAlwaysOnTop(true, 'floating');
+    hud.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    hud.once('ready-to-show', () => hud?.showInactive());
+    hud.on('closed', () => (hud = null));
+    if (MAIN_WINDOW_VITE_DEV_SERVER_URL)
+      void hud.loadURL(`${MAIN_WINDOW_VITE_DEV_SERVER_URL}#hud`);
+    else
+      void hud.loadFile(path.join(rendererDir, 'index.html'), { hash: 'hud' });
+  };
+  let hudHide: NodeJS.Timeout | null = null;
+  bus.on('memo:session', (v) => {
+    const want =
+      config.get().memo.floatingHud &&
+      (v.phase === 'recording' || v.phase === 'processing');
+    if (want) {
+      if (hudHide) clearTimeout(hudHide);
+      hudHide = null;
+      showHud();
+    } else if (hud && !hudHide) {
+      // Linger briefly so "Summarizing…" → done is visible, then close.
+      hudHide = setTimeout(() => {
+        hudHide = null;
+        hud?.close();
+      }, 1500);
+    }
+  });
 
   app.whenReady().then(() => {
     // Serve recordings to the sandboxed renderer: qrtz-media://rec/<uuid>.wav, nothing else.

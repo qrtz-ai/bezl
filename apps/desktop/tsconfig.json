@@ -21,6 +21,9 @@
     },
     {
       "path": "../../packages/features/memo"
+    },
+    {
+      "path": "../../packages/features/gallery"
     }
   ],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]

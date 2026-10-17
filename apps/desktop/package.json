@@ -43,7 +43,8 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "zod": "^4.6.7",
-    "@qrtz/feature-memo": "*"
+    "@qrtz/feature-memo": "*",
+    "@qrtz/feature-gallery": "*"
   },
   "engines": {
     "node": ">=22.13.0"
