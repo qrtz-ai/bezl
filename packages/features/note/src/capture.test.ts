@@ -138,4 +138,27 @@ describe('capture status (N29, H8)', () => {
     for (const l of [...lines, ...all])
       expect(l.text).toBe(l.text.toLowerCase());
   });
+
+  it('N126: a channel whose speakers stopped being separated gets one line, with why', () => {
+    const lines = captureNoticeLines(start, {
+      speakersUnavailable: [
+        { source: 'system', atMs: 12 * 60_000, reason: 'backlog' },
+        { source: 'mic', atMs: 0, reason: 'model-unavailable' },
+        { source: 'system', atMs: 40 * 60_000, reason: 'backlog' }, // a later part: already said
+      ],
+    });
+    expect(lines).toEqual([
+      {
+        id: 'speakers-0',
+        text: 'system audio speakers not separated after 10:12',
+        detail: 'speaker separation fell behind',
+      },
+      {
+        id: 'speakers-1',
+        text: 'mic speakers not separated',
+        detail: 'speaker model not loaded',
+      },
+    ]);
+    expect(captureNoticeLines(start, {})).toEqual([]);
+  });
 });

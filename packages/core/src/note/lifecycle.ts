@@ -107,6 +107,18 @@ export const DeviceFailure = z.object({
 });
 export type DeviceFailure = z.infer<typeof DeviceFailure>;
 
+/**
+ * N126 (ADR 0085): from `atMs` (meeting time) on, `source`'s speakers are not separated for the rest of that
+ * recording part: the helper's diarizer stood down (`backlog`) or its model didn't load (`model-unavailable`). Lines
+ * after it keep no speaker; this says why ("not separated", not "nobody spoke").
+ */
+export const SpeakersUnavailable = z.object({
+  source: CaptureSource,
+  atMs: z.number(),
+  reason: z.enum(['backlog', 'model-unavailable']),
+});
+export type SpeakersUnavailable = z.infer<typeof SpeakersUnavailable>;
+
 /** What a recording's capture looked like, carried from the session to its pipeline (N29, H8, N35). */
 export const CaptureReport = z.object({
   silentSpans: z.array(SilentSpan).optional(),
@@ -118,6 +130,8 @@ export const CaptureReport = z.object({
    * silent one, so a lost mic plus silent system audio is "no audio at all", not a one-sided gap.
    */
   lostSpans: z.array(SilentSpan).optional(),
+  /** N126: channels whose speakers stopped being separated, in order. */
+  speakersUnavailable: z.array(SpeakersUnavailable).optional(),
 });
 export type CaptureReport = z.infer<typeof CaptureReport>;
 
@@ -129,6 +143,8 @@ export const CAPTURE_LIMITS = {
   deviceFailures: 8,
   /** N39: stretches of a lost source kept per recording (each reconnect can lose and restore the mic again). */
   lostSpans: 16,
+  /** N126: speaker stand-downs kept per recording (one per channel per part). */
+  speakersUnavailable: 16,
   /** `capture.fallback.reason` / `capture.degraded.reason` are helper error text: kept to this many code points. */
   reasonChars: 200,
 } as const;

@@ -88,6 +88,11 @@ kebab_enum!(
     /// N29: a raw capture channel, as `capture.silent` / `capture.audible` name it (`CaptureSource` in protocol.ts).
     CaptureSource { System = "system", Mic = "mic" }
 );
+kebab_enum!(
+    /// N126 (ADR 0085): why a channel's speakers stopped being separated (`diarization.unavailable` in protocol.ts):
+    /// `backlog`, its diarizer fell too far behind and stood down; `model-unavailable`, its model didn't load.
+    DiarizationUnavailableReason { Backlog = "backlog", ModelUnavailable = "model-unavailable" }
+);
 kebab_enum!(StepId { Finalize = "finalize", Summary = "summary", Index = "index" });
 kebab_enum!(StepStatus {
     Pending = "pending", Running = "running", Retrying = "retrying", Done = "done", Failed = "failed",
@@ -318,6 +323,19 @@ pub struct DeviceFailure {
     pub at_ms: Ms,
 }
 
+/// N126 (ADR 0085): from `at_ms` (meeting time) on, `source`'s speakers are not separated for the rest of that
+/// recording part (the helper's diarizer stood down or never loaded). Lines after it keep no speaker by design; this
+/// says why, so the meeting can tell "not separated" from "nobody spoke".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "camelCase")]
+pub struct SpeakersUnavailable {
+    pub source: CaptureSource,
+    #[serde(deserialize_with = "de_ms")]
+    pub at_ms: Ms,
+    pub reason: DiarizationUnavailableReason,
+}
+
 /// What a recording's capture looked like, carried from the session to its pipeline (N29, H8, N35).
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
@@ -333,6 +351,9 @@ pub struct CaptureReport {
     /// treats them as that source's silence (`CaptureReport.lostSpans` in lifecycle.ts).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lost_spans: Vec<SilentSpan>,
+    /// N126 (ADR 0085): channels whose speakers stopped being separated, in order (omitted when none).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub speakers_unavailable: Vec<SpeakersUnavailable>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

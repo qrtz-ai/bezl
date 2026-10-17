@@ -905,6 +905,37 @@
                       ],
                       "additionalProperties": false
                     }
+                  },
+                  "speakersUnavailable": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "atMs": {
+                          "type": "number"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "backlog",
+                            "model-unavailable"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "atMs",
+                        "reason"
+                      ],
+                      "additionalProperties": false
+                    }
                   }
                 },
                 "additionalProperties": false
@@ -1521,6 +1552,37 @@
                       ],
                       "additionalProperties": false
                     }
+                  },
+                  "speakersUnavailable": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "atMs": {
+                          "type": "number"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "backlog",
+                            "model-unavailable"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "atMs",
+                        "reason"
+                      ],
+                      "additionalProperties": false
+                    }
                   }
                 },
                 "additionalProperties": false
@@ -2128,6 +2190,37 @@
                       ],
                       "additionalProperties": false
                     }
+                  },
+                  "speakersUnavailable": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "atMs": {
+                          "type": "number"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "backlog",
+                            "model-unavailable"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "atMs",
+                        "reason"
+                      ],
+                      "additionalProperties": false
+                    }
                   }
                 },
                 "additionalProperties": false
@@ -2530,6 +2623,37 @@
                       ],
                       "additionalProperties": false
                     }
+                  },
+                  "speakersUnavailable": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "atMs": {
+                          "type": "number"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "backlog",
+                            "model-unavailable"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "atMs",
+                        "reason"
+                      ],
+                      "additionalProperties": false
+                    }
                   }
                 },
                 "additionalProperties": false
@@ -2900,6 +3024,37 @@
                   "required": [
                     "source",
                     "startMs"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "speakersUnavailable": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "system",
+                        "mic"
+                      ]
+                    },
+                    "atMs": {
+                      "type": "number"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "enum": [
+                        "backlog",
+                        "model-unavailable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "atMs",
+                    "reason"
                   ],
                   "additionalProperties": false
                 }
@@ -3564,6 +3719,37 @@
                       "required": [
                         "source",
                         "startMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "speakersUnavailable": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "atMs": {
+                          "type": "number"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "backlog",
+                            "model-unavailable"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "atMs",
+                        "reason"
                       ],
                       "additionalProperties": false
                     }
@@ -5192,6 +5378,37 @@
                       "required": [
                         "source",
                         "startMs"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "speakersUnavailable": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "atMs": {
+                          "type": "number"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "backlog",
+                            "model-unavailable"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "atMs",
+                        "reason"
                       ],
                       "additionalProperties": false
                     }
@@ -7527,6 +7744,37 @@
                       ],
                       "additionalProperties": false
                     }
+                  },
+                  "speakersUnavailable": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "source": {
+                          "type": "string",
+                          "enum": [
+                            "system",
+                            "mic"
+                          ]
+                        },
+                        "atMs": {
+                          "type": "number"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "backlog",
+                            "model-unavailable"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "source",
+                        "atMs",
+                        "reason"
+                      ],
+                      "additionalProperties": false
+                    }
                   }
                 },
                 "additionalProperties": false
@@ -7908,6 +8156,37 @@
                   "required": [
                     "source",
                     "startMs"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "speakersUnavailable": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "system",
+                        "mic"
+                      ]
+                    },
+                    "atMs": {
+                      "type": "number"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "enum": [
+                        "backlog",
+                        "model-unavailable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "atMs",
+                    "reason"
                   ],
                   "additionalProperties": false
                 }

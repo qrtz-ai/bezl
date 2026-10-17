@@ -41,5 +41,7 @@ qrtz-storage.workspace = true
 rusqlite.workspace = true
 # Scenario op `helperInvalid`: the production helper-line parser (contract schema).
 qrtz-helper-bridge = { path = "../qrtz-helper-bridge" }
+# hardening27: the meeting's capture record against the IPC contract (`note:pipeline`).
+qrtz-ipc = { path = "../qrtz-ipc" }
 # `cargo test --workspace` builds the runtime tests without extra flags.
 qrtz-lifecycle = { path = ".", features = ["runtime"] }

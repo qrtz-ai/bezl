@@ -11,6 +11,8 @@ pub mod capture_limits {
     pub const DEVICE_FAILURES: usize = 8;
     /// N39: lost-source stretches kept per recording.
     pub const LOST_SPANS: usize = 16;
+    /// N126: speaker stand-downs kept per recording (one per channel per part).
+    pub const SPEAKERS_UNAVAILABLE: usize = 16;
     /// `capture.fallback` strings are kept to this many code points.
     pub const REASON_CHARS: usize = 200;
 }
@@ -154,6 +156,7 @@ pub fn capture_report(s: &RecordingState) -> Option<CaptureReport> {
         fallbacks: s.fallbacks.clone(),
         device_failures: s.device_failures.clone(),
         lost_spans: s.lost_spans.clone(),
+        speakers_unavailable: Vec::new(),
     })
 }
 

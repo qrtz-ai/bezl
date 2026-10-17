@@ -382,6 +382,9 @@ struct State {
     active: Vec<ActiveSpeakerEvent>,
     /// Diarized turns in meeting time (per-channel speaker ids), for finalize's attribution.
     turns: Vec<SpeakerTurn>,
+    /// N126 (ADR 0085): helper diarizer stand-downs of this recording, each with the part offset it happened in
+    /// (a part is one helper process: its diarizer run is new). The meeting's capture record gets them.
+    speakers_down: Vec<(qrtz_model::Ms, qrtz_model::SpeakersUnavailable)>,
     participants: Vec<String>,
     level: f64,
     permissions: PermissionsStatus,
@@ -442,6 +445,7 @@ impl State {
             asr: TranscriptAssembler::new(),
             active: Vec::new(),
             turns: Vec::new(),
+            speakers_down: Vec::new(),
             participants: Vec::new(),
             level: 0.0,
             permissions: [
@@ -1139,6 +1143,14 @@ impl Shared {
                     qrtz_model::CaptureSource::Mic => qrtz_speech::Channel::Mic,
                     qrtz_model::CaptureSource::System => qrtz_speech::Channel::System,
                 };
+                // N126: a channel that said it stood down sends nothing more this part (its last turns came first).
+                if self.speakers_down_in_part(&s, source) {
+                    tracing::warn!(
+                        source = source.as_str(),
+                        "diarization segment after its channel stood down; dropped"
+                    );
+                    return;
+                }
                 match qrtz_speech::SpeakerId::new(channel, speaker) {
                     Some(id) => self.push_turn(&s, id.to_string(), start_ms, end_ms),
                     None => tracing::warn!(
@@ -1146,6 +1158,13 @@ impl Shared {
                         "diarization segment with an out-of-range speaker; dropped"
                     ),
                 }
+            }
+            HelperInput::DiarizationUnavailable {
+                source,
+                at_ms,
+                reason,
+            } => {
+                self.speakers_unavailable(&s, source, at_ms, reason);
             }
             HelperInput::CaptureAudible { source } => {
                 let at = self.now();
@@ -1405,6 +1424,55 @@ impl Shared {
         }
     }
 
+    /// N126 (ADR 0085): `diarization.unavailable` (part-relative `at_ms`): kept once per channel per part, in
+    /// meeting time, while this part records or stops, at most `SPEAKERS_UNAVAILABLE` per recording.
+    fn speakers_unavailable(
+        self: &Arc<Self>,
+        s: &RecordingState,
+        source: qrtz_model::CaptureSource,
+        at_ms: qrtz_model::Ms,
+        reason: qrtz_model::DiarizationUnavailableReason,
+    ) {
+        if !matches!(s.phase, RecordingPhase::Recording | RecordingPhase::Stopping)
+            || s.meeting_id.is_none()
+            || !(0..=MAX_TURN_END_MS).contains(&at_ms)
+        {
+            return;
+        }
+        let part = s.part_offset_ms;
+        let mut st = self.lock();
+        if st
+            .speakers_down
+            .iter()
+            .any(|(p, d)| *p == part && d.source == source)
+            || st.speakers_down.len() >= crate::session::capture_limits::SPEAKERS_UNAVAILABLE
+        {
+            return;
+        }
+        tracing::warn!(
+            source = source.as_str(),
+            reason = reason.as_str(),
+            at_ms,
+            "speakers not separated on this channel for the rest of the part"
+        );
+        st.speakers_down.push((
+            part,
+            qrtz_model::SpeakersUnavailable {
+                source,
+                at_ms: at_ms.saturating_add(part),
+                reason,
+            },
+        ));
+    }
+
+    fn speakers_down_in_part(&self, s: &RecordingState, source: qrtz_model::CaptureSource) -> bool {
+        let part = s.part_offset_ms;
+        self.lock()
+            .speakers_down
+            .iter()
+            .any(|(p, d)| *p == part && d.source == source)
+    }
+
     fn on_asr(self: &Arc<Self>, s: &RecordingState, ev: AsrEvent) {
         let meeting_id = s.meeting_id.clone().unwrap_or_default();
         let part = s.audio_parts.len() as i64 - 1;
@@ -1616,6 +1684,7 @@ impl Shared {
             st.asr = TranscriptAssembler::new();
             st.active.clear();
             st.turns.clear();
+            st.speakers_down.clear();
             st.persisted.clear();
             st.t_sent.clear();
             st.t_rev = 0;
@@ -2098,9 +2167,11 @@ impl Shared {
             }
         }
         let ended_at = self.now();
-        let (active, crashed, speaker_turns) = {
+        let (active, crashed, speaker_turns, speakers_down) = {
             let g = self.lock();
-            (g.active.clone(), g.helper_crashed, g.turns.clone())
+            let down: Vec<qrtz_model::SpeakersUnavailable> =
+                g.speakers_down.iter().map(|(_, d)| d.clone()).collect();
+            (g.active.clone(), g.helper_crashed, g.turns.clone(), down)
         };
         let helper_dur = stopped.flatten().filter(|d| *d != 0);
         let mut pipeline = new_pipeline(
@@ -2121,6 +2192,13 @@ impl Shared {
         );
         // N29/H8: silent stretches (closed at the stop) and capture fallbacks go to the meeting's pipeline.
         pipeline.capture = capture_report(&st);
+        if !speakers_down.is_empty() {
+            // N126: why some lines keep no speaker.
+            pipeline
+                .capture
+                .get_or_insert_with(Default::default)
+                .speakers_unavailable = speakers_down;
+        }
         self.persist_pipeline(pipeline).await;
         self.send(LifecycleEvent::Stopped { at: ended_at });
         self.lock().mono_origin = None;

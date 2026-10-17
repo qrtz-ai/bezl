@@ -185,6 +185,25 @@ export function captureNoticeLines(
           : `${what} ${from}–${fmtTimeOfDay(startedAt + g.endMs)}`,
     });
   }
+  // N126 / ADR 0085: a channel whose speakers stopped being separated (its diarizer fell behind or never loaded), so
+  // its later lines keep no speaker: say so, or it reads as nobody speaking. Once per channel (a part restart
+  // repeating it adds nothing the first line doesn't say).
+  const speakersSaid = new Set<string>();
+  for (const [i, d] of (capture?.speakersUnavailable ?? []).entries()) {
+    if (speakersSaid.has(d.source)) continue;
+    speakersSaid.add(d.source);
+    out.push({
+      id: `speakers-${i}`,
+      text:
+        d.atMs > 0
+          ? `${SOURCE[d.source]} speakers not separated after ${fmtTimeOfDay(startedAt + d.atMs)}`
+          : `${SOURCE[d.source]} speakers not separated`,
+      detail:
+        d.reason === 'backlog'
+          ? 'speaker separation fell behind'
+          : 'speaker model not loaded',
+    });
+  }
   if (out.length <= CAPTURE_NOTICE_MAX) return out;
   const shown = out.slice(0, CAPTURE_NOTICE_MAX - 1);
   return [...shown, { id: 'more', text: `+${out.length - shown.length} more` }];

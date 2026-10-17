@@ -3499,6 +3499,7 @@ dependencies = [
  "async-trait",
  "indexmap 2.14.2",
  "qrtz-helper-bridge",
+ "qrtz-ipc",
  "qrtz-lifecycle",
  "qrtz-model",
  "qrtz-speech",

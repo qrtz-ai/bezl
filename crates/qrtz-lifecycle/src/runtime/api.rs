@@ -237,6 +237,15 @@ pub enum HelperInput {
         #[serde(deserialize_with = "de_ms")]
         end_ms: Ms,
     },
+    /// N126 (ADR 0085): the helper's diarizer for `source` stood down (`backlog`) or never loaded
+    /// (`model-unavailable`) at `at_ms` (part-relative); no more turns come from it this part.
+    #[serde(rename = "diarization.unavailable", rename_all = "camelCase")]
+    DiarizationUnavailable {
+        source: CaptureSource,
+        #[serde(deserialize_with = "de_ms")]
+        at_ms: Ms,
+        reason: qrtz_model::DiarizationUnavailableReason,
+    },
     /// N35: a capture device failed inside a running source; applied like a revoke, sticky until a reconnect.
     #[serde(rename = "capture.degraded")]
     CaptureDegraded {
@@ -308,6 +317,7 @@ impl HelperInput {
             HelperInput::CaptureSilent { .. } => "capture.silent",
             HelperInput::CaptureAudible { .. } => "capture.audible",
             HelperInput::DiarizationSegment { .. } => "diarization.segment",
+            HelperInput::DiarizationUnavailable { .. } => "diarization.unavailable",
             HelperInput::CaptureFallback { .. } => "capture.fallback",
             HelperInput::CaptureDegraded { .. } => "capture.degraded",
             HelperInput::Asr { .. } => "asr",
