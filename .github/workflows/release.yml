@@ -26,7 +26,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: package.json
@@ -51,12 +51,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: macos-release
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: native/qrtz-helper/.build
           key: swiftpm-release-${{ runner.os }}-${{ hashFiles('native/qrtz-helper/Package.swift', 'native/qrtz-helper/Package.resolved') }}
@@ -87,7 +87,7 @@ jobs:
           ditto -c -k --keepParent "$bundle/macos/qrtz.app" "dist-release/qrtz_${v}_aarch64.app.zip"
           (cd dist-release && shasum -a 256 * > SHA256SUMS.txt)
           ls -la dist-release && cat dist-release/SHA256SUMS.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: qrtz-${{ steps.meta.outputs.version }}-macos-aarch64
           path: dist-release/

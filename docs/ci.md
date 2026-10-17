@@ -4,7 +4,9 @@ Both workflows live in `.github/workflows/`. They run on GitHub-hosted runners; 
 
 ## `ci.yml`: every push to main (and manual "run workflow")
 
-A newer push to main cancels the run still going for an older one.
+A newer push to main cancels the run still going for an older one. A manual run (`gh workflow run ci.yml`) is in its
+own concurrency group, so pushes don't cancel it. The caches are saved only by a job that finishes, so when main is
+busy a manual run is the way to warm them.
 
 | Job     | Runner         | Runs                                                                                                                   |
 | ------- | -------------- | ---------------------------------------------------------------------------------------------------------------------- |
