@@ -94,6 +94,8 @@ final class AXMeetingSource: MeetingSource, @unchecked Sendable {
     private var manualAXEnabled = Set<pid_t>()
     private var scrapeScheduled = false
     private var warnedTrust = false
+    private let context: MeetingContext
+    init(context: MeetingContext) { self.context = context }
 
     static let chromium: Set<String> = ["com.google.Chrome", "com.google.Chrome.beta", "company.thebrowser.Browser", "com.microsoft.edgemac", "com.brave.Browser"]
     static let watched: Set<String> = Set(MeetingClassifier.browsers.keys).union([MeetingClassifier.zoomApp]).union(MeetingClassifier.teamsApps)
@@ -158,6 +160,7 @@ final class AXMeetingSource: MeetingSource, @unchecked Sendable {
             case .meetingDetected(let key, _, _, _):
                 activeKey = key
                 differ.reset()
+                context.reset()
                 if let w = windowsByKey[key] { observe(pid: w.pid, window: w.window) }
             case .meetingEnded(let key):
                 windowsByKey[key] = nil
@@ -173,7 +176,9 @@ final class AXMeetingSource: MeetingSource, @unchecked Sendable {
         guard let key = activeKey, let w = windowsByKey[key] else { return }
         let root = w.browser ? (AX.webArea(in: w.window) ?? w.window) : w.window
         let snap = AX.snapshot(root)
-        for e in differ.diff(AXScraper.scrape(platform: w.platform, window: snap), atMs: clock?() ?? 0) { emit?(e) }
+        let scrape = AXScraper.scrape(platform: w.platform, window: snap)
+        context.update(selfName: scrape.selfName, activeSpeaker: scrape.activeSpeaker)
+        for e in differ.diff(scrape, atMs: clock?() ?? 0) { emit?(e) }
     }
 
     /// Debounced scrape triggered by AX notifications (speaker highlight changes, captions updating).
@@ -232,8 +237,8 @@ enum AXDump {
                 let scrape = meeting.map { AXScraper.scrape(platform: $0.platform, window: snap) }
                 let out: JSONValue = .object([
                     "bundleId": .string(bid), "title": .string(title), "url": info.url.map(JSONValue.string) ?? .null,
-                    "meeting": meeting.map { .string($0.key) } ?? .null,
-                    "participants": scrape?.participants.map { .array($0.map(JSONValue.string)) } ?? .null,
+                    "meeting": meeting.map { JSONValue.string($0.key) } ?? .null,
+                    "participants": scrape?.participants.map { JSONValue.array($0.map(JSONValue.string)) } ?? .null,
                     "activeSpeaker": scrape?.activeSpeaker.map(JSONValue.string) ?? .null,
                     "tree": json(snap),
                 ])

@@ -52,13 +52,18 @@ public struct MeetingScrape: Equatable, Sendable {
     public var activeSpeaker: String?
     /// (speaker, cumulative caption text) in on-screen order.
     public var captions: [(speaker: String?, text: String)] = []
+    /// (author, text) chat messages currently visible, oldest first.
+    public var chat: [(author: String, text: String)] = []
+    /// The local user's display name, when the participants list marks it ("(me)", "(You)").
+    public var selfName: String?
 
-    public init(participants: [String]? = nil, activeSpeaker: String? = nil, captions: [(speaker: String?, text: String)] = []) {
-        self.participants = participants; self.activeSpeaker = activeSpeaker; self.captions = captions
+    public init(participants: [String]? = nil, activeSpeaker: String? = nil, captions: [(speaker: String?, text: String)] = [], chat: [(author: String, text: String)] = [], selfName: String? = nil) {
+        self.participants = participants; self.activeSpeaker = activeSpeaker; self.captions = captions; self.chat = chat; self.selfName = selfName
     }
 
     public static func == (a: MeetingScrape, b: MeetingScrape) -> Bool {
-        a.participants == b.participants && a.activeSpeaker == b.activeSpeaker
+        a.participants == b.participants && a.activeSpeaker == b.activeSpeaker && a.selfName == b.selfName
+            && a.chat.map { "\($0.author)\u{1}\($0.text)" } == b.chat.map { "\($0.author)\u{1}\($0.text)" }
             && a.captions.map { "\($0.speaker ?? "")\u{1}\($0.text)" } == b.captions.map { "\($0.speaker ?? "")\u{1}\($0.text)" }
     }
 }
@@ -116,6 +121,7 @@ public enum AXScraper {
         if let panel = window.first(where: { ($0.role == "AXTable" || $0.role == "AXOutline" || $0.role == "AXList" || $0.role == "AXGroup") && isLabeled($0, ["participants", "people", "contributors", "in call"]) }) {
             let n = names(in: panel)
             if !n.isEmpty { r.participants = n }
+            r.selfName = selfName(in: panel)
         }
         // Active speaker: tiles whose label announces speaking (Zoom app/web, Meet), or a speaking-indicator subtree.
         window.walk { n, _ in
@@ -127,7 +133,48 @@ public enum AXScraper {
         if let region = window.first(where: { isLabeled($0, ["captions", "live transcript", "subtitles"]) }) {
             r.captions = captions(in: region, platform: platform)
         }
+        // Chat: Meet "In-call messages", Zoom "Chat" panel / "Meeting chat", Teams "Chat".
+        if let panel = window.first(where: { $0.role != "AXButton" && isLabeled($0, ["in-call messages", "meeting chat", "chat messages", "chat"]) && !$0.children.isEmpty }) {
+            r.chat = chat(in: panel)
+        }
         return r
+    }
+
+    static let selfMarkers = ["(me)", "(you)", ", me)", "(host, me)", "(co-host, me)"]
+
+    static func selfName(in list: AXNode) -> String? {
+        var found: String?
+        list.walk { n, _ in
+            if found != nil { return false }
+            let l = n.label.lowercased()
+            if (n.role == "AXStaticText" || n.role == "AXCell") && selfMarkers.contains(where: { l.contains($0) }) {
+                found = cleanName(n.label)
+                return false
+            }
+            return true
+        }
+        return found
+    }
+
+    static let zoomChatHeader = try! NSRegularExpression(pattern: #"^(?:from\s+)?(.+?)\s+to\s+(?:everyone|me|.+?)(?:\s*\(.*\))?:?$"#, options: [.caseInsensitive])
+    static let timeLike = try! NSRegularExpression(pattern: #"^\d{1,2}:\d{2}(?:\s?[ap]m)?$"#, options: [.caseInsensitive])
+
+    /// Chat turns are groups/rows of [author, (time), text...]. Zoom prefixes "From X to Everyone"; a turn without an
+    /// author line continues the previous author (consecutive messages are grouped under one name in Meet and Zoom).
+    static func chat(in panel: AXNode) -> [(author: String, text: String)] {
+        var out: [(author: String, text: String)] = []
+        var lastAuthor: String?
+        for turn in panel.children {
+            var t = turn.texts.filter { timeLike.firstMatch(in: $0, range: NSRange($0.startIndex..., in: $0)) == nil }
+            guard !t.isEmpty else { continue }
+            var author: String?
+            if let a = MeetingClassifier.firstGroup(zoomChatHeader, t[0]) { author = cleanName(a); t.removeFirst() }
+            else if t.count >= 2 { author = cleanName(t[0]); t.removeFirst() }
+            guard let who = author ?? lastAuthor else { continue }
+            lastAuthor = who
+            for line in t where !line.isEmpty { out.append((who, line)) }
+        }
+        return out
     }
 
     static func captions(in region: AXNode, platform: MeetingPlatform) -> [(speaker: String?, text: String)] {
@@ -159,10 +206,12 @@ public final class ScrapeDiffer {
     private var speaker: String?
     private var emittedCaptions: [String] = []  // keys of emitted "speaker\u{1}text"
     private var pending: (key: String, speaker: String?, text: String, since: Double)?
+    private var seenChat: [String] = []
+    private var chatPrimed = false
 
     public init(captionSettleMs: Double = 1500) { self.captionSettleMs = captionSettleMs }
 
-    public func reset() { participants = []; speaker = nil; emittedCaptions = []; pending = nil }
+    public func reset() { participants = []; speaker = nil; emittedCaptions = []; pending = nil; seenChat = []; chatPrimed = false }
 
     public func diff(_ s: MeetingScrape, atMs: Double) -> [HelperMessage] {
         var out: [HelperMessage] = []
@@ -181,6 +230,18 @@ public final class ScrapeDiffer {
             emittedCaptions.append(k)
             if emittedCaptions.count > 200 { emittedCaptions.removeFirst(100) }
             out.append(.axCaption(atMs: atMs, speaker: c.speaker, text: c.text))
+        }
+        // Chat: emit messages not seen before. The first scrape of a meeting only primes (history from before the
+        // recording/attach is not replayed as if it were new).
+        do {
+            for c in s.chat {
+                let k = "\(c.author)\u{1}\(c.text)"
+                if seenChat.contains(k) { continue }
+                seenChat.append(k)
+                if seenChat.count > 500 { seenChat.removeFirst(250) }
+                if chatPrimed { out.append(.axChat(atMs: atMs, author: c.author, text: c.text)) }
+            }
+            chatPrimed = true
         }
         if !s.captions.isEmpty {
             for c in s.captions.dropLast() { emit(c) }

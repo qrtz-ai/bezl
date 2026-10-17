@@ -94,16 +94,23 @@ public enum DSP {
     public final class Mixer {
         private var a: [Float] = [], b: [Float] = []
         public let maxSkewFrames: Int
-        public init(maxSkewFrames: Int = 16_000 / 2) { self.maxSkewFrames = maxSkewFrames }
+        /// Optional echo suppression applied to the mic side before mixing.
+        public var echo: EchoGate?
+        public init(maxSkewFrames: Int = 16_000 / 2, echo: EchoGate? = nil) { self.maxSkewFrames = maxSkewFrames; self.echo = echo }
         public func pushSystem(_ x: [Float]) -> [Float] { a += x; return drain() }
         public func pushMic(_ x: [Float]) -> [Float] { b += x; return drain() }
         private func drain() -> [Float] {
-            var n = min(a.count, b.count)
+            let n = min(a.count, b.count)
             var out = [Float](repeating: 0, count: n)
-            for i in 0..<n { out[i] = max(-1, min(1, a[i] + b[i])) }
+            if n > 0 {
+                let sys = Array(a[0..<n])
+                var mic = Array(b[0..<n])
+                echo?.process(system: sys, mic: &mic)
+                for i in 0..<n { out[i] = max(-1, min(1, sys[i] + mic[i])) }
+            }
             a.removeFirst(n); b.removeFirst(n)
-            if a.count > maxSkewFrames { out += a; a.removeAll(); n = 0 }
-            if b.count > maxSkewFrames { out += b; b.removeAll(); n = 0 }
+            if a.count > maxSkewFrames { out += a; a.removeAll() }
+            if b.count > maxSkewFrames { out += b; b.removeAll() }
             return out
         }
     }

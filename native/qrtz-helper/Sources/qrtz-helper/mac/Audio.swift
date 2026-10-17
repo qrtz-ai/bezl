@@ -1,6 +1,7 @@
 #if os(macOS)
 import AVFoundation
 import CoreAudio
+import CoreMedia
 import Foundation
 import QrtzHelperCore
 import ScreenCaptureKit
@@ -65,7 +66,8 @@ final class CoreAudioTapSource: AudioSource, @unchecked Sendable {
     private var aggregateID = AudioObjectID(kAudioObjectUnknown)
     private var procID: AudioDeviceIOProcID?
     private let queue = DispatchQueue(label: "qrtz.tap", qos: .userInteractive)
-    private let mixer = DSP.Mixer()
+    private let mixer: DSP.Mixer
+    init(context: MeetingContext) { mixer = DSP.Mixer(echo: EchoGate(context: context)) }
     private let mic = MicCapture()
     private let conv = MonoConverter()
 
@@ -151,7 +153,11 @@ final class ScreenCaptureKitSource: NSObject, AudioSource, SCStreamOutput, SCStr
     let name = "screencapturekit"
     private var stream: SCStream?
     private let queue = DispatchQueue(label: "qrtz.sck", qos: .userInteractive)
-    private let mixer = DSP.Mixer()
+    private let mixer: DSP.Mixer
+    init(context: MeetingContext) {
+        mixer = DSP.Mixer(echo: EchoGate(context: context))
+        super.init()
+    }
     private let mic = MicCapture()
     private let conv = MonoConverter()
     private var onSamples: (@Sendable ([Float]) -> Void)?

@@ -135,3 +135,45 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
 - M6.2 palette.
 - M6.3 floating HUD.
 - M6.5 chat.
+
+## 2026-10-16 18:02 PT: iteration 6 (rest of M6, echo gate, Mac readiness)
+
+- **M6.1:**
+  - New `@qrtz/ui` components: Dialog (Esc, backdrop click, focus handling), ToastProvider/useToast, Tooltip, Switch, TextArea, ListItem.
+  - New `@qrtz/feature-gallery` sub app showing color tokens, typography, buttons, badges/Kbd/spinner/tooltip, inputs, tabs and list, dialog and toast, and the empty state.
+- **M6.2:** ⌘K command palette in the shell.
+  - Fuzzy filtering (pure `filter.ts`, unit-tested) and keyboard navigation.
+  - Commands: "Go to <sub app>" and Start/Stop recording, through a shell-scoped IPC client. The shell manifest gained `memo.read` and `memo.record`.
+  - The sidebar has a "Search… ⌘K" button.
+- **M6.3:** floating, always-on-top mini HUD window (`index.html#hud`).
+  - Frameless, shows on all workspaces including full-screen spaces, and opens without taking focus.
+  - Shows a pulsing dot, the active speaker, the live line, a clock and a Stop button.
+  - Opens on recording or processing and closes 1.5 s after. Controlled by `memo.floatingHud` (on by default).
+- **Visual polish (qrtz.ai):** sidebar has a mono "qrtz" wordmark with a blinking block cursor, muted nav that highlights on hover and when active, the ⌘K search field, and a "⌘⇧R record" footer. Checked with xvfb screenshots of the palette, gallery, mini HUD and memo.
+- **M6.5:** AX chat scraping for Meet "In-call messages" and Zoom "From X to Everyone", with consecutive messages grouped under one author and timestamps dropped. `ScrapeDiffer` treats the first scrape as history, then emits only new messages as `ax.chat`. Self-name detection from "(You)" / "(me)".
+- **Echo:**
+  - Shared `MeetingContext`: the AX layer writes the active speaker and self name; audio threads read them.
+  - `EchoGate` in the mixer ducks the mic to −20 dB when someone else is the active speaker and the far end is active, or to −10 dB on the energy heuristic when the speaker is unknown. Gain changes are smoothed.
+  - Tested in Swift.
+- **Mac-readiness pass over the Swift code:**
+  - Removed `traits:` from the FluidAudio dependency. It needs tools 6.1, but the manifest declares 6.0.
+  - The executable target uses Swift 5 language mode, so non-Sendable SDK types (AVAudioPCMBuffer across the FluidAudio actor, SCStream, AXUIElement) produce warnings, not errors.
+  - Added the missing `super.init()` in the ScreenCaptureKitSource init, an explicit `import CoreMedia`, and explicit `JSONValue` in the `--dump-ax` closures.
+  - Re-read the code against the current API shapes of CATapDescription, the aggregate device keys, AudioDeviceCreateIOProcIDWithBlock, the SCStream config, AVAudioEngine taps, StreamingUnifiedAsrManager and SpeechAnalyzer.
+- **docs/mac-verify.md:** a 10-minute checklist covering build, protocol smoke test, `--dump-ax` for Zoom app/web and Meet in Chrome/Safari, audio and ASR with fallback and echo checks, and the in-app flow.
+- **Verified:**
+  - lint ✓, typecheck ✓, vitest ✓, Swift 23 ✓, package ✓.
+  - e2e 3/3 ✓: smoke; memo, extended with mini-HUD window and always-on-top checks; and a new shell spec covering the palette (open, filter, Enter to navigate, start/stop recording) and the gallery (all sections, dialog with Esc, toast, switch).
+
+### Side work
+
+- The `mac/` Swift layer still needs its first real compile on a Mac (docs/mac-verify.md, step 0). [MAC-VERIFY]
+- The echo gate is a heuristic, not AEC.
+- The palette doesn't search meetings yet (next: a `memo:list` query inside the palette).
+
+### Next
+
+- Run docs/mac-verify.md on a Mac and fix whatever it finds.
+- M5.3 signing and notarization (needs an Apple Developer ID).
+- Meeting search in the palette.
+- Polish the Home dashboard (recent meetings and onboarding state).

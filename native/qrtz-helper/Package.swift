@@ -8,7 +8,7 @@ import PackageDescription
 
 #if os(macOS)
 let platformDeps: [Package.Dependency] = [
-    .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.17.7", traits: [])
+    .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.17.7")
 ]
 let execDeps: [Target.Dependency] = [
     "QrtzHelperCore",
@@ -26,7 +26,11 @@ let package = Package(
     dependencies: platformDeps,
     targets: [
         .target(name: "QrtzHelperCore"),
-        .executableTarget(name: "qrtz-helper", dependencies: execDeps),
+        .executableTarget(
+            name: "qrtz-helper", dependencies: execDeps,
+            // Apple framework types (AVAudioPCMBuffer, AXUIElement, SCStream) are not Sendable-annotated consistently
+            // across SDKs; Swift 5 mode keeps strict-concurrency findings as warnings so SDK drift can't break the build.
+            swiftSettings: [.swiftLanguageMode(.v5)]),
         .testTarget(name: "QrtzHelperCoreTests", dependencies: ["QrtzHelperCore"]),
     ]
 )

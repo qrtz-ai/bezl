@@ -3,10 +3,13 @@ import Foundation
 import QrtzHelperCore
 
 func makePlatformDeps(version: String) -> HelperDeps {
+    // Shared between the AX layer (who is speaking, who am I) and the audio path (mic echo gate).
+    let context = MeetingContext()
     var audio: [AudioSource] = []
     var features = ["ax", "ax.observer"]
-    if #available(macOS 14.2, *) { audio.append(CoreAudioTapSource()); features.append("audio.process-tap") }
-    audio.append(ScreenCaptureKitSource()); features.append("audio.screencapturekit")
+    if #available(macOS 14.2, *) { audio.append(CoreAudioTapSource(context: context)); features.append("audio.process-tap") }
+    audio.append(ScreenCaptureKitSource(context: context)); features.append("audio.screencapturekit")
+    features.append("audio.echo-gate")
 
     var asr: [StreamingTranscriber] = [ParakeetTranscriber()]
     features.append("asr.parakeet")
@@ -16,7 +19,7 @@ func makePlatformDeps(version: String) -> HelperDeps {
 
     let v = ProcessInfo.processInfo.operatingSystemVersion
     return HelperDeps(
-        permissions: MacPermissions(), meetings: AXMeetingSource(), audio: audio, transcribers: asr,
+        permissions: MacPermissions(), meetings: AXMeetingSource(context: context), audio: audio, transcribers: asr,
         helperVersion: version, os: "macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)", features: features)
 }
 
