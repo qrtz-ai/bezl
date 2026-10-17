@@ -37,7 +37,8 @@ func makePlatformDeps(version: String) -> HelperDeps {
     deps.summarizer = FoundationModelsSummarizer()
     deps.systemTranscribers = [NemotronTranscriber()]
     deps.diarizers = [.mic: NemotronChannelDiarizer(), .system: NemotronChannelDiarizer()]
-    deps.modelWarmup = warmModels
+    let loads = deps.modelLoads
+    deps.modelWarmup = { await warmModels(loads) }
     return deps
 }
 
@@ -56,23 +57,33 @@ func logErr(_ s: String) { FileHandle.standardError.write(Data("[qrtz-helper] \(
 #if os(macOS)
 /// `models.warm` (ADR 0079 / N121): each model loaded once and unloaded, one at a time (peak = one model), so Core ML
 /// compiles and caches them now. Fresh instances: nothing a recording or talk holds is touched.
-func warmModels() async -> String {
+func warmModels(_ loads: ModelLoads) async -> String {
     func ms(_ t: Date) -> Int { Int(Date().timeIntervalSince(t) * 1000) }
     var parts: [String] = []
     // N127: a recording that starts cancels the warm; it stops between models (each one is unloaded right after its
     // load, so nothing stays resident next to the recording's models).
     func cancelled() -> String? { Task.isCancelled ? "models.warm cancelled (recording started) after: " + (parts.isEmpty ? "none" : parts.joined(separator: ", ")) : nil }
-    var t = Date()
+    // N137: each load and its unload hold that model's gate, so a recording starting meanwhile waits for this
+    // compile and then loads from the cache, never compiling next to it.
     let asr = NemotronTranscriber()
-    do { try await asr.prepare(); parts.append("asr \(ms(t)) ms") } catch { parts.append("asr unavailable: \(error)") }
-    await asr.unload()
+    parts.append((try? await loads.load("asr") { () async -> String in
+        let t0 = Date()
+        do { try await asr.prepare() } catch { await asr.unload(); return "asr unavailable: \(error)" }
+        let r = "asr \(Int(Date().timeIntervalSince(t0) * 1000)) ms"
+        await asr.unload()
+        return r
+    }) ?? "asr skipped")
     if let c = cancelled() { return c }
-    t = Date()
     let diar = NemotronChannelDiarizer()
-    do { try await diar.prepare(); parts.append("diarizer \(ms(t)) ms") } catch { parts.append("diarizer unavailable: \(error)") }
-    await diar.unload()
+    parts.append((try? await loads.load("diarizer") { () async -> String in
+        let t0 = Date()
+        do { try await diar.prepare() } catch { await diar.unload(); return "diarizer unavailable: \(error)" }
+        let r = "diarizer \(Int(Date().timeIntervalSince(t0) * 1000)) ms"
+        await diar.unload()
+        return r
+    }) ?? "diarizer skipped")
     if let c = cancelled() { return c }
-    t = Date()
+    let t = Date()
     let vqe = LocalVqeEnhancer()
     do { try await vqe.prepare(); parts.append("echo \(ms(t)) ms") } catch { parts.append("echo unavailable: \(error)") }
     return "models warmed: " + parts.joined(separator: ", ")

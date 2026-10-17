@@ -109,6 +109,8 @@ public struct HelperDeps: Sendable {
     /// ADR 0079 / N121 (`models.warm`): loads every speech model once, one at a time, and unloads it, so the first
     /// recording after a download doesn't pay the OS model compile (about 50 s for the diarizer). Returns a summary.
     public var modelWarmup: (@Sendable () async -> String)?
+    /// N137: the per-kind load gate `modelWarmup` and recordings share (one load of a model at a time).
+    public var modelLoads = ModelLoads()
     /// Echo: what the helper does between the key release and `dictation.stopped` (tail, drain, pad, finalize).
     public var dictationTail = DictationTail()
     public var helperVersion: String
@@ -606,7 +608,7 @@ public actor HelperController {
         var failed: StreamingTranscriber?
         if let micT = deps.transcribers.first, let sysT = deps.systemTranscribers.first {
             do {
-                try await micT.prepare(); try await sysT.prepare()
+                try await deps.modelLoads.load("asr") { try await micT.prepare(); try await sysT.prepare() }
                 await micT.reset(); await sysT.reset()
                 rec.transcriber = micT; rec.systemTranscriber = sysT
                 rec.segmenter = UtteranceSegmenter(idPrefix: "mic-u")
@@ -622,7 +624,10 @@ public actor HelperController {
         }
         if !perChannel {
             for t in deps.transcribers where t !== failed {
-                do { try await t.prepare(); await t.reset(); rec.transcriber = t; send(.log(level: .info, msg: "asr: \(t.name)")); break }
+                do {
+                    try await deps.modelLoads.load("asr") { try await t.prepare() }
+                    await t.reset(); rec.transcriber = t; send(.log(level: .info, msg: "asr: \(t.name)")); break
+                }
                 catch { send(.log(level: .warn, msg: "asr \(t.name) unavailable: \(error)")) }
             }
             if rec.transcriber == nil { send(.error(code: "asr.unavailable", message: "no speech recogniser available; recording audio only", fatal: false)) }
@@ -667,7 +672,7 @@ public actor HelperController {
     /// for the recogniser's mode: speakers only make sense with per-channel transcripts, so it stands down otherwise.
     func startDiarizers(_ rec: Recording, after prep: Task<Bool, Never>) {
         guard !deps.systemTranscribers.isEmpty else { return }
-        let send = self.send
+        let send = self.send, loads = deps.modelLoads
         for (source, d) in deps.diarizers.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
             let run = DiarRun(source: source, diarizer: d, send: send)
             let stream = run.stream
@@ -675,7 +680,7 @@ public actor HelperController {
             run.task = Task.detached {
                 defer { run.end() }
                 if let prior { await prior.value }  // N125: one model call at most; the queue bound covers it
-                do { try await d.prepare(); await d.reset() } catch {
+                do { try await loads.load("diarizer") { try await d.prepare() }; await d.reset() } catch {
                     send(.log(level: .warn, msg: "diarizer \(source.rawValue) unavailable: \(error)"))
                     run.unavailable(.modelUnavailable)
                     for await s in stream { run.took(s.count) }

@@ -195,6 +195,9 @@ Host → helper `{"type":"models.warm"}` (ADR 0079 / N121): sent once after the 
 `models warmed: …`. Ignored while recording or while a warm-up runs; an older helper logs it as an ignored line.
 N127: a `recording.start` during the warm-up cancels it. The warm-up stops after the model it is loading, unloads
 that model, and logs `models.warm cancelled …`. The next `models.warm` runs in full.
+N137: a load the warm-up already started can't be stopped. Each model's load and unload hold a per-model gate
+(`ModelLoads`) that the recording's loads also go through. So the recording waits for that compile, then loads
+from the compiled cache. It never compiles alongside it, and only one instance of the model is resident at a time.
 
 ## Silent capture (N29)
 

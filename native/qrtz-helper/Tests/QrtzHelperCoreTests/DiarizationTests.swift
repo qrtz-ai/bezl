@@ -405,3 +405,88 @@ final class ModelsWarmCancelTests: XCTestCase {
     }
 }
 
+
+/// N137: a model whose load takes `loadNs`, counting instances resident at once across warm-up and recording.
+final class Residency: @unchecked Sendable {
+    let lock = NSLock()
+    var now = 0, peak = 0
+    var log: [String] = []
+    func up(_ who: String) { lock.withLock { now += 1; peak = max(peak, now); log.append("\(who) load") } }
+    func down(_ who: String) { lock.withLock { now -= 1; log.append("\(who) unload") } }
+}
+
+final class ResidentDiarizer: ChannelDiarizer, @unchecked Sendable {
+    let name = "resident-diar"
+    let r: Residency, who: String, loadNs: UInt64
+    let lock = NSLock()
+    var loaded = false
+    init(_ r: Residency, _ who: String, loadNs: UInt64) { self.r = r; self.who = who; self.loadNs = loadNs }
+    func prepare() async throws {
+        if lock.withLock({ loaded }) { return }
+        r.up(who)
+        try? await Task.sleep(nanoseconds: loadNs)
+        lock.withLock { loaded = true }
+    }
+    func reset() async {}
+    func append(_ s: [Float]) async -> [DiarizedTurn] { [DiarizedTurn(speaker: 0, startMs: 0, endMs: Double(s.count) / 16)] }
+    func finish() async -> [DiarizedTurn] { [] }
+    func unload() async { if lock.withLock({ () -> Bool in defer { loaded = false }; return loaded }) { r.down(who) } }
+    func abandon() -> [DiarizedTurn] { [] }
+}
+
+final class ModelLoadsTests: XCTestCase {
+    func testARecordingWaitsForTheWarmsInFlightLoadInsteadOfCompetingWithIt() async {
+        let res = Residency()
+        let loads = ModelLoads()
+        let out = Box<[HelperMessage]>([])
+        var deps = HelperDeps(permissions: FakePerms(), meetings: nil, audio: [FakeAudio("sck")],
+                              transcribers: [SlowASR("mic", words: "hi.", delayNs: 1_000_000)],
+                              helperVersion: "t", os: "linux", features: [])
+        deps.systemTranscribers = [SlowASR("sys", words: "yo.", delayNs: 1_000_000)]
+        deps.diarizers = [.mic: ResidentDiarizer(res, "rec", loadNs: 50_000_000)]
+        deps.modelLoads = loads
+        // The warm's diarizer compile (400 ms here, ~50 s cold on a Mac), in the gate with its unload, like mac warmModels.
+        deps.modelWarmup = {
+            let warm = ResidentDiarizer(res, "warm", loadNs: 400_000_000)
+            return (try? await loads.load("diarizer") { () async -> String in
+                try? await warm.prepare(); await warm.unload(); return "warmed"
+            }) ?? "skipped"
+        }
+        let c = HelperController(deps: deps, send: { m in out.mutate { $0.append(m) } }, now: { 0 })
+        let w = await c.warmModels()
+        try? await Task.sleep(nanoseconds: 100_000_000)  // inside the warm's load
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent("qrtz-n137-\(UUID()).wav").path
+        await c.handle(.recordingStart(audioPath: path))  // cancels the warm (N127), but this load can't stop
+        let loud = [Float](repeating: 0.2, count: 16_000)
+        for _ in 0..<3 { await c.onSamples(loud, of: nil, channels: (system: loud, mic: loud)) }
+        await w?.value
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        await c.handle(.recordingStop())
+        XCTAssertEqual(res.peak, 1, "never two instances of the model at once: \(res.log)")
+        XCTAssertEqual(Array(res.log.prefix(3)), ["warm load", "warm unload", "rec load"], "the recording loads after the warm's unload")
+        XCTAssertTrue(out.value.contains { if case .diarizationSegment(.mic, _, _, _) = $0 { true } else { false } }, "and still gets speakers")
+        try? FileManager.default.removeItem(atPath: path)
+    }
+
+    func testTheGateIsFirstInFirstOutAndSurvivesAThrow() async throws {
+        struct Boom: Error {}
+        let loads = ModelLoads()
+        let order = Box<[Int]>([])
+        await withTaskGroup(of: Void.self) { g in
+            for i in 0..<4 {
+                g.addTask {
+                    _ = try? await loads.load("k") { () async throws -> Int in
+                        order.mutate { $0.append(i) }
+                        try? await Task.sleep(nanoseconds: 20_000_000)
+                        if i == 1 { throw Boom() }
+                        return i
+                    }
+                }
+                try? await Task.sleep(nanoseconds: 5_000_000)
+            }
+        }
+        XCTAssertEqual(order.value, [0, 1, 2, 3])
+        let v = try await loads.load("k") { 7 }
+        XCTAssertEqual(v, 7, "a throwing body released the gate")
+    }
+}
