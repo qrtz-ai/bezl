@@ -1,5 +1,5 @@
 {
- "$comment": "Shared DB seed for the Electron<->Rust cross-open tests (apps/desktop/src/worker/db-parity.test.ts, crates/qrtz-storage/tests/parity.rs). Both sides apply these ops through their repo/handler APIs and must produce expected.json; electron.sqlite and rust.sqlite are the committed results of each side, and each side must read the other's file to the same expected.json.",
+ "$comment": "Shared DB seed for the Electron<->Rust cross-open tests (apps/desktop/src/worker/db-parity.test.ts, crates/qrtz-storage/tests/parity.rs). Both sides apply these ops through their repo/handler APIs and must produce expected.json; electron.sqlite and rust.sqlite are the committed results of each side, and each side must read the other's file to the same expected.json. Since 44f9da6 (Electron removed) electron.sqlite is a frozen fixture and only the Rust side runs.",
  "ops": [
   {
    "op": "upsertMeeting",

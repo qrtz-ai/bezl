@@ -73,6 +73,63 @@ fn cap_matches_the_spec() {
     assert_eq!(STITCH_MAX_GAP_MS, spec()["maxGapMs"].as_i64().unwrap());
 }
 
+/// The spec's own formula (its `description`), independent of `wav.rs`: the pads, data size and duration each case
+/// expects. Cycle 22 (N107): the TS runner that produced these expectations (stitch.hardening9.test.ts) went with
+/// apps/desktop in `44f9da6`, so the expectations are checked against this reference, and
+/// `QRTZ_VECTORS_UPDATE=1 cargo test -p qrtz-lifecycle --test hardening9` writes a new or changed case's `expect`
+/// from it (never from the code under test).
+fn spec_expect(sp: &Value, c: &Value) -> Value {
+    let br = sp["format"]["byteRate"].as_u64().unwrap();
+    let ba = sp["format"]["blockAlign"].as_u64().unwrap();
+    let at = |ms: f64| -> u64 { ((ms.round().max(0.0) as u64) * br / (1000 * ba)) * ba };
+    let cap = at(sp["maxGapMs"].as_f64().unwrap());
+    let ps = c["parts"].as_array().unwrap();
+    let offsets = c["offsetsMs"]
+        .as_array()
+        .filter(|o| o.len() == ps.len())
+        .map(|o| o.iter().map(|x| x.as_f64().unwrap()).collect::<Vec<_>>());
+    let mut have = ps[0]["dataBytes"].as_u64().unwrap();
+    let mut pads = Vec::new();
+    for (k, p) in ps.iter().enumerate().skip(1) {
+        if p["missing"].as_bool().unwrap_or(false) {
+            pads.push(Value::Null);
+            continue;
+        }
+        let pad = offsets
+            .as_ref()
+            .map_or(0, |o| at(o[k]).saturating_sub(have).min(cap));
+        have += pad + p["dataBytes"].as_u64().unwrap();
+        pads.push(pad.into());
+    }
+    // `Math.round(dataBytes * 1000 / byteRate)`.
+    let duration = (have * 1000 + br / 2) / br;
+    serde_json::json!({"padBytes": pads, "dataBytes": have, "durationMs": duration})
+}
+
+#[test]
+fn stitch_gap_expectations_follow_the_spec_formula() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spec/stress/stitch-gaps.json");
+    let mut sp = spec();
+    let mut changed = false;
+    let update = std::env::var_os("QRTZ_VECTORS_UPDATE").is_some();
+    let snapshot = sp.clone();
+    for c in sp["cases"].as_array_mut().unwrap() {
+        let want = spec_expect(&snapshot, c);
+        if c["expect"] != want {
+            assert!(
+                update,
+                "{}: expect {} but the spec formula gives {want}",
+                c["name"], c["expect"]
+            );
+            c["expect"] = want;
+            changed = true;
+        }
+    }
+    if changed {
+        fs::write(&path, serde_json::to_string_pretty(&sp).unwrap() + "\n").unwrap();
+    }
+}
+
 #[test]
 fn stitch_gap_cases_match_ts() {
     let sp = spec();
