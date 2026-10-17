@@ -222,6 +222,17 @@ pub enum HelperInput {
     /// N29: `source` is above the floor again.
     #[serde(rename = "capture.audible")]
     CaptureAudible { source: CaptureSource },
+    /// ADR 0079: a speaker turn on one raw channel from the helper's own diarizer (the Mac path without the speech
+    /// module), part-relative ms. Attributed exactly like a module `speaker` event (`mic:N` / `system:N`).
+    #[serde(rename = "diarization.segment", rename_all = "camelCase")]
+    DiarizationSegment {
+        source: CaptureSource,
+        speaker: u8,
+        #[serde(deserialize_with = "de_ms")]
+        start_ms: Ms,
+        #[serde(deserialize_with = "de_ms")]
+        end_ms: Ms,
+    },
     /// N35: a capture device failed inside a running source; applied like a revoke, sticky until a reconnect.
     #[serde(rename = "capture.degraded")]
     CaptureDegraded {
@@ -292,6 +303,7 @@ impl HelperInput {
             HelperInput::AudioLevel { .. } => "audio.level",
             HelperInput::CaptureSilent { .. } => "capture.silent",
             HelperInput::CaptureAudible { .. } => "capture.audible",
+            HelperInput::DiarizationSegment { .. } => "diarization.segment",
             HelperInput::CaptureFallback { .. } => "capture.fallback",
             HelperInput::CaptureDegraded { .. } => "capture.degraded",
             HelperInput::Asr { .. } => "asr",

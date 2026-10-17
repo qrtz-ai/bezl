@@ -1,0 +1,192 @@
+{
+  "version": "1.0.0",
+  "sets": [
+    {
+      "id": "asr",
+      "dir": "nemotron-560ms",
+      "repo": "FluidInference/nemotron-speech-streaming-en-0.6b-coreml",
+      "revision": "e673531caa6d25ab7baf5a8c14c9b99ba1551838",
+      "files": [
+        {
+          "remote": "nemotron_coreml_560ms/decoder.mlmodelc/analytics/coremldata.bin",
+          "path": "decoder.mlmodelc/analytics/coremldata.bin",
+          "size": 243,
+          "sha256": "bca0e343fa0d698de8bdb22c66fd377b79104f606b1bfffc90931fe2161029b8"
+        },
+        {
+          "remote": "nemotron_coreml_560ms/decoder.mlmodelc/coremldata.bin",
+          "path": "decoder.mlmodelc/coremldata.bin",
+          "size": 493,
+          "sha256": "4d0549ac72a38abdcbe7927f2b7d488386d6b96f1f5e837d93ba9e379de04f4e"
+        },
+        {
+          "remote": "nemotron_coreml_560ms/decoder.mlmodelc/model.mil",
+          "path": "decoder.mlmodelc/model.mil",
+          "size": 13093,
+          "sha256": "8298f16d3926565b77732b549fa9c64fedebb2e5a29a76e33d0b2e970e93ae69"
+        },
+        {
+          "remote": "nemotron_coreml_560ms/decoder.mlmodelc/weights/weight.bin",
+          "path": "decoder.mlmodelc/weights/weight.bin",
+          "size": 14429952,
+          "sha256": "d9758e49f9b2b9a0462c933256663d4174209739e62f0ddc14e4147bc50e7818"
+        },
+        {
+          "remote": "nemotron_coreml_560ms/decoder_joint.mlmodelc/analytics/coremldata.bin",
+          "path": "decoder_joint.mlmodelc/analytics/coremldata.bin",
+          "size": 243,
+          "sha256": "d46ecf790a728d91b8962ec62e597980e288e66c775e45429bf734b54c658ffc"
+        },
+        {
+          "remote": "nemotron_coreml_560ms/decoder_joint.mlmodelc/coremldata.bin",
+          "path": "decoder_joint.mlmodelc/coremldata.bin",
+          "size": 514,
+          "sha256": "d9a7f7cfece967a69dca59b3fc3cc7d1ecff93ad2815ac3ba6b47e057db22172"
+        },
+        {
+          "remote": "nemotron_coreml_560ms/decoder_joint.mlmodelc/model.mil",
+          "path": "decoder_joint.mlmodelc/model.mil",
+          "size": 17146,
+          "sha256": "517bb31cf87eb8aa80adaa8c3fee2df0fd7d7dd0c8791e615c5023886c39d572"
+        },
+        {
+          "remote": "nemotron_coreml_560ms/decoder_joint.mlmodelc/weights/weight.bin",
+          "path": "decoder_joint.mlmodelc/weights/weight.bin",
+          "size": 17876866,
+          "sha256": "96cac67a1352e45a2418284779dbd5efe5865159b7b92f328247e5ed31485f52"
+        },
+        {
+          "remote": "nemotron_coreml_560ms/encoder/encoder_int8.mlmodelc/analytics/coremldata.bin",
+          "path": "encoder/encoder_int8.mlmodelc/analytics/coremldata.bin",
+          "size": 243,
+          "sha256": "ef51dbab5c6ce310ce1a537538a4df6b88f13ad5c45c0acaddca055503896daa"
+        },
+        {
+          "remote": "nemotron_coreml_560ms/encoder/encoder_int8.mlmodelc/coremldata.bin",
+          "path": "encoder/encoder_int8.mlmodelc/coremldata.bin",
+          "size": 608,
+          "sha256": "864a357ae2eb7d6b38ced73d5f23c908096a256516afa498c6730778767ec404"
+        },
+        {
+          "remote": "nemotron_coreml_560ms/encoder/encoder_int8.mlmodelc/model.mil",
+          "path": "encoder/encoder_int8.mlmodelc/model.mil",
+          "size": 968920,
+          "sha256": "4b903ee4f401d81add07d1252192a486bd07154174818902f03bca38b2f293f6"
+        },
+        {
+          "remote": "nemotron_coreml_560ms/encoder/encoder_int8.mlmodelc/weights/weight.bin",
+          "path": "encoder/encoder_int8.mlmodelc/weights/weight.bin",
+          "size": 589057600,
+          "sha256": "8ced31411f7903eaec52de85e94c7847228f3e44028d8f0040800e5603943a40"
+        },
+        {
+          "remote": "nemotron_coreml_560ms/joint.mlmodelc/analytics/coremldata.bin",
+          "path": "joint.mlmodelc/analytics/coremldata.bin",
+          "size": 243,
+          "sha256": "478804308534c7f9cab1030aa9ce19ddf672fcd15deba633fe3ed5da8f53b103"
+        },
+        {
+          "remote": "nemotron_coreml_560ms/joint.mlmodelc/coremldata.bin",
+          "path": "joint.mlmodelc/coremldata.bin",
+          "size": 401,
+          "sha256": "46363626fd89730ade6e6461e8be808c7fade198fb0df63db83fb00ed033abb2"
+        },
+        {
+          "remote": "nemotron_coreml_560ms/joint.mlmodelc/model.mil",
+          "path": "joint.mlmodelc/model.mil",
+          "size": 5064,
+          "sha256": "73bcc51b58ff73c7620e31a2c32dc5ef4939e8ec2a77ec22242303422bfafba4"
+        },
+        {
+          "remote": "nemotron_coreml_560ms/joint.mlmodelc/weights/weight.bin",
+          "path": "joint.mlmodelc/weights/weight.bin",
+          "size": 3446978,
+          "sha256": "d1d45514a91da39f24e264712a9f8b5a2a90e9cbce04bad3f3f74242bea106d5"
+        },
+        {
+          "remote": "nemotron_coreml_560ms/metadata.json",
+          "path": "metadata.json",
+          "size": 438,
+          "sha256": "e8d93e5afa1e5c87257f6e31a5c336058eeba7d6cacd36ba80fbf9758c3916dc"
+        },
+        {
+          "remote": "nemotron_coreml_560ms/tokenizer.json",
+          "path": "tokenizer.json",
+          "size": 18374,
+          "sha256": "a87b5b8a0e0a989fa7db3121f279ce6af70e337feb55ab553b8d0658db70b9d3"
+        }
+      ]
+    },
+    {
+      "id": "diarizer",
+      "dir": "nemotron3-diarizer",
+      "repo": "FluidInference/nemotron-3-diarization-coreml",
+      "revision": "25a90f97f254428d4b30374b76af9c74fdee8327",
+      "files": [
+        {
+          "remote": "learnable_sil_emb.bin",
+          "path": "learnable_sil_emb.bin",
+          "size": 2048,
+          "sha256": "d4417b3c0eabdf7c47032fac2b5b5a7ee83d819a6ddda8fd8eaf74e2b5cc4ac7"
+        },
+        {
+          "remote": "monolithic/v2/Nemotron3Diarizer_fast32.mlmodelc/analytics/coremldata.bin",
+          "path": "Nemotron3Diarizer_fast32.mlmodelc/analytics/coremldata.bin",
+          "size": 243,
+          "sha256": "7932ba85d07f09ba8feff996e1278f376a9139e31141d2827021f1c225e590ae"
+        },
+        {
+          "remote": "monolithic/v2/Nemotron3Diarizer_fast32.mlmodelc/coremldata.bin",
+          "path": "Nemotron3Diarizer_fast32.mlmodelc/coremldata.bin",
+          "size": 755,
+          "sha256": "fbc2d4dc25147427269e4774a5b8e3dd6b613e8c8458d74c7462a1a377dbae75"
+        },
+        {
+          "remote": "monolithic/v2/Nemotron3Diarizer_fast32.mlmodelc/model.mil",
+          "path": "Nemotron3Diarizer_fast32.mlmodelc/model.mil",
+          "size": 501830,
+          "sha256": "e2f0cbbf88e824385475779b637c36281c5f98f339783840bdf7b3dfcd08c123"
+        },
+        {
+          "remote": "monolithic/v2/Nemotron3Diarizer_fast32.mlmodelc/weights/weight.bin",
+          "path": "Nemotron3Diarizer_fast32.mlmodelc/weights/weight.bin",
+          "size": 198566016,
+          "sha256": "7353d8e7a5d29a8d15edf86dbf40bed4e82b7b8f456f302d5cdcbf850ed25358"
+        }
+      ]
+    },
+    {
+      "id": "echo",
+      "dir": "localvqe",
+      "repo": "FluidInference/localvqe-coreml",
+      "revision": "4205430781c240397073d6f7bf676fb4c732fc12",
+      "files": [
+        {
+          "remote": "localvqe-v1.3-4.8M-16ms.mlmodelc/analytics/coremldata.bin",
+          "path": "localvqe-v1.3-4.8M-16ms.mlmodelc/analytics/coremldata.bin",
+          "size": 243,
+          "sha256": "b38b26719f7fdb1d37d0ea66e2a72c0cb2f111105b606636d733b958ea3d7892"
+        },
+        {
+          "remote": "localvqe-v1.3-4.8M-16ms.mlmodelc/coremldata.bin",
+          "path": "localvqe-v1.3-4.8M-16ms.mlmodelc/coremldata.bin",
+          "size": 3528,
+          "sha256": "795709e1ad528f94a7d76226e0e408d1897ee0a6603d32fdfad9ffb5b668fd22"
+        },
+        {
+          "remote": "localvqe-v1.3-4.8M-16ms.mlmodelc/model.mil",
+          "path": "localvqe-v1.3-4.8M-16ms.mlmodelc/model.mil",
+          "size": 311978,
+          "sha256": "8dddf32c801cdb90329e43748a46e9321ef2b14c8d41d6515c541c81a43cbbf4"
+        },
+        {
+          "remote": "localvqe-v1.3-4.8M-16ms.mlmodelc/weights/weight.bin",
+          "path": "localvqe-v1.3-4.8M-16ms.mlmodelc/weights/weight.bin",
+          "size": 19281728,
+          "sha256": "fc5f290cbfb497718d9d9568ee965c352bfe4663bab49b30a10e91f8fcfff826"
+        }
+      ]
+    }
+  ],
+  "base": "https://huggingface.co"
+}

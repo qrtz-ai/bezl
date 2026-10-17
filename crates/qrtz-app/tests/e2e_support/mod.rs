@@ -241,6 +241,7 @@ impl App {
             knobs: DevKnobs {
                 retry_scale: Some(o.retry_scale),
                 fault_step: o.fault_step,
+                ..Default::default()
             },
         })
         .unwrap();

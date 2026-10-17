@@ -24,3 +24,7 @@ not json
 {"reason":"maybe","sessionId":"d1","type":"speech.attach.rejected"}
 {"code":"nope","id":"s4","message":"x","type":"summarize.error"}
 {"actionItems":[],"id":"s5","qa":[],"type":"summarize.result"}
+{"endMs":4200,"source":"mic","speaker":8,"startMs":1200,"type":"diarization.segment"}
+{"endMs":4200,"source":"camera","speaker":0,"startMs":1200,"type":"diarization.segment"}
+{"endMs":4200,"source":"mic","speaker":0,"startMs":-1,"type":"diarization.segment"}
+{"endMs":4200,"source":"mic","speaker":1.5,"startMs":0,"type":"diarization.segment"}

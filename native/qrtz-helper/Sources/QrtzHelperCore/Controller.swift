@@ -74,6 +74,18 @@ public protocol StreamingTranscriber: AnyObject, Sendable {
     func transcript() async -> String
     func finish() async -> String
     func reset() async
+    /// False for a model that may take seconds to load (a recording then starts at once and its audio waits).
+    var loadsInstantly: Bool { get }
+    /// How far the transcript trails the audio fed (one decoding chunk), for segment timestamps.
+    var latencyMs: Double { get }
+    /// Frees the model (a recording ended; the next one loads it again).
+    func unload() async
+}
+
+extension StreamingTranscriber {
+    public var loadsInstantly: Bool { true }
+    public var latencyMs: Double { 0 }
+    public func unload() async {}
 }
 
 public struct HelperDeps: Sendable {
@@ -81,8 +93,13 @@ public struct HelperDeps: Sendable {
     public var meetings: MeetingSource?
     /// Tried in order; the first that starts wins (e.g. Core Audio tap, then ScreenCaptureKit).
     public var audio: [AudioSource]
-    /// Tried in order (e.g. Parakeet via FluidAudio, then Apple SpeechAnalyzer).
+    /// Tried in order (e.g. Nemotron via FluidAudio, then Apple SpeechAnalyzer).
     public var transcribers: [StreamingTranscriber]
+    /// ADR 0079: a second instance of `transcribers.first` for the system channel. Set = a recording transcribes mic
+    /// (echo-cleaned) and system separately (`mic-…` / `system-…` utterance ids) when both load; else the mix.
+    public var systemTranscribers: [StreamingTranscriber] = []
+    /// ADR 0079: one diarizer per raw channel, recordings only (never dictation), used with per-channel ASR.
+    public var diarizers: [CaptureSource: ChannelDiarizer] = [:]
     public var helperVersion: String
     public var os: String
     public var features: [String]
@@ -134,7 +151,19 @@ public actor HelperController {
         let startMs: Double
         var audio: AudioSource?
         var transcriber: StreamingTranscriber?
-        let segmenter = UtteranceSegmenter()
+        var segmenter = UtteranceSegmenter()
+        /// ADR 0079: per-channel mode (mic on `transcriber`, system here).
+        var systemTranscriber: StreamingTranscriber?
+        var systemSegmenter: UtteranceSegmenter?
+        /// False while the recogniser loads in the background; captured audio waits in `backlog` meanwhile.
+        var asrReady = true
+        var backlog: [AsrBlock] = []
+        var backlogSamples = 0
+        /// Samples of recording time the recognisers have been given (paused time included): the per-channel clock.
+        var asrSamples = 0
+        var asrLatencyMs: Double = 0
+        var prep: Task<Bool, Never>?
+        var diarRuns: [DiarRun] = []
         var lastLevelMs: Double = 0
         var pendingLevel: [Float] = []
         var samplesIn: AsyncStream<CaptureBlock>.Continuation?
@@ -154,6 +183,21 @@ public actor HelperController {
             self.wav = wav; self.startMs = startMs; self.silence = SilenceTracker(config: silence)
         }
     }
+
+    struct AsrBlock { let mix: [Float]; let system: [Float]; let mic: [Float]; let paused: Bool }
+
+    /// One channel's diarizer for one recording: its own stream and task, so a model call never holds up capture.
+    final class DiarRun: @unchecked Sendable {
+        let source: CaptureSource
+        let input: AsyncStream<[Float]>.Continuation
+        let task: Task<Void, Never>
+        init(source: CaptureSource, input: AsyncStream<[Float]>.Continuation, task: Task<Void, Never>) {
+            self.source = source; self.input = input; self.task = task
+        }
+    }
+
+    /// At most this much audio waits for a loading recogniser (older audio is then left untranscribed).
+    static let maxBacklogSamples = 16_000 * 180
 
     /// H6/H5 arbiter state (see Arbiter.swift); `lastPerms` is the TCC snapshot revocations are diffed against.
     public private(set) var arbiter: ArbiterState
@@ -365,12 +409,15 @@ public actor HelperController {
         // transcribed there only; the helper's own recogniser is not loaded for it.
         if speech.has(.recording(audioPath: rec.wav.url.path)) {
             send(.log(level: .info, msg: "asr: speech module"))
+        } else if deps.systemTranscribers.isEmpty && (deps.transcribers.first?.loadsInstantly ?? true) {
+            _ = await prepareAsr(rec)
         } else {
-            for t in deps.transcribers {
-                do { try await t.prepare(); await t.reset(); rec.transcriber = t; send(.log(level: .info, msg: "asr: \(t.name)")); break }
-                catch { send(.log(level: .warn, msg: "asr \(t.name) unavailable: \(error)")) }
-            }
-            if rec.transcriber == nil { send(.error(code: "asr.unavailable", message: "no speech recogniser available; recording audio only", fatal: false)) }
+            // ADR 0079: a model that takes seconds to load must not delay the capture: audio starts now and waits in
+            // the backlog; the diarizers start with it and wait for the recogniser's mode (per channel or not).
+            rec.asrReady = false
+            let prep = Task { [weak self] () -> Bool in await self?.prepareAsr(rec) ?? false }
+            rec.prep = prep
+            startDiarizers(rec, after: prep)
         }
 
         // Audio callbacks arrive on capture threads; funnel them through one ordered stream into the actor.
@@ -385,8 +432,8 @@ public actor HelperController {
             for await b in blocks {
                 await self?.trackSilence(b, of: rec)
                 await self?.feedSpeech(b, of: rec)
-                let mixed = await pipeline.process(b)
-                await self?.onSamples(mixed, of: rec)
+                let ch = await pipeline.processChannels(b)
+                await self?.onSamples(MicPipeline.mix(ch), of: rec, channels: ch)
             }
         }
         for (i, a) in deps.audio.enumerated() {
@@ -452,7 +499,97 @@ public actor HelperController {
         speech.write(t, .mic, paused ? zero : (b.mic ?? zero))
     }
 
-    func onSamples(_ s: [Float], of owner: Recording? = nil) async {
+    /// Picks the recogniser(s) for `rec` and feeds them whatever audio waited. Per channel when a system instance
+    /// exists and both load; otherwise the first of `transcribers` that loads, on the mix. True = per channel.
+    func prepareAsr(_ rec: Recording) async -> Bool {
+        var perChannel = false
+        var failed: StreamingTranscriber?
+        if let micT = deps.transcribers.first, let sysT = deps.systemTranscribers.first {
+            do {
+                try await micT.prepare(); try await sysT.prepare()
+                await micT.reset(); await sysT.reset()
+                rec.transcriber = micT; rec.systemTranscriber = sysT
+                rec.segmenter = UtteranceSegmenter(idPrefix: "mic-u")
+                rec.systemSegmenter = UtteranceSegmenter(idPrefix: "system-u")
+                rec.asrLatencyMs = micT.latencyMs
+                perChannel = true
+                send(.log(level: .info, msg: "asr: \(micT.name) (mic and system)"))
+            } catch {
+                send(.log(level: .warn, msg: "asr \(micT.name) unavailable: \(error)"))
+                failed = micT
+                await micT.unload(); await sysT.unload()
+            }
+        }
+        if !perChannel {
+            for t in deps.transcribers where t !== failed {
+                do { try await t.prepare(); await t.reset(); rec.transcriber = t; send(.log(level: .info, msg: "asr: \(t.name)")); break }
+                catch { send(.log(level: .warn, msg: "asr \(t.name) unavailable: \(error)")) }
+            }
+            if rec.transcriber == nil { send(.error(code: "asr.unavailable", message: "no speech recogniser available; recording audio only", fatal: false)) }
+        }
+        // Audio that arrived meanwhile, in order (new blocks keep queueing behind it until the backlog is empty).
+        while !rec.backlog.isEmpty, !rec.aborted {
+            let b = rec.backlog.removeFirst()
+            rec.backlogSamples -= b.mix.count
+            await pushAsr(b, to: rec)
+        }
+        rec.backlog.removeAll(); rec.backlogSamples = 0
+        rec.asrReady = true
+        if rec.aborted { await unloadAsr(rec) }
+        return perChannel
+    }
+
+    /// ADR 0079: one task per channel diarizer. It loads the model (local files only) while capture runs, then waits
+    /// for the recogniser's mode: speakers only make sense with per-channel transcripts, so it stands down otherwise.
+    func startDiarizers(_ rec: Recording, after prep: Task<Bool, Never>) {
+        guard !deps.systemTranscribers.isEmpty else { return }
+        let send = self.send
+        for (source, d) in deps.diarizers.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+            let (stream, input) = AsyncStream<[Float]>.makeStream()
+            let task = Task.detached {
+                do { try await d.prepare(); await d.reset() } catch {
+                    send(.log(level: .warn, msg: "diarizer \(source.rawValue) unavailable: \(error)"))
+                    for await _ in stream {}
+                    return
+                }
+                guard await prep.value else {
+                    for await _ in stream {}
+                    await d.unload()
+                    return
+                }
+                send(.log(level: .info, msg: "diarizer: \(d.name) (\(source.rawValue))"))
+                for await s in stream {
+                    for t in await d.append(s) { send(.diarizationSegment(source: source, speaker: t.speaker, startMs: t.startMs, endMs: t.endMs)) }
+                }
+                for t in await d.finish() { send(.diarizationSegment(source: source, speaker: t.speaker, startMs: t.startMs, endMs: t.endMs)) }
+                await d.unload()
+            }
+            rec.diarRuns.append(DiarRun(source: source, input: input, task: task))
+        }
+    }
+
+    func pushAsr(_ b: AsrBlock, to rec: Recording) async {
+        rec.asrSamples += b.mix.count
+        if b.paused { return }
+        if let st = rec.systemTranscriber {
+            await rec.transcriber?.append(b.mic)
+            await st.append(b.system)
+        } else {
+            await rec.transcriber?.append(b.mix)
+        }
+    }
+
+    func unloadAsr(_ rec: Recording) async {
+        if !(rec.transcriber?.loadsInstantly ?? true) || rec.systemTranscriber != nil {
+            await rec.transcriber?.unload()
+            await rec.systemTranscriber?.unload()
+        }
+    }
+
+    /// Per-channel segment clock: recording time the recognisers heard, less their decoding lag.
+    private func asrClock(_ rec: Recording) -> Double { max(0, Double(rec.asrSamples) / 16 - rec.asrLatencyMs) }
+
+    func onSamples(_ s: [Float], of owner: Recording? = nil, channels: (system: [Float], mic: [Float]?)? = nil) async {
         // Only the recording that captured these samples (an aborted one's late blocks never reach a newer file).
         guard let rec = recording, !s.isEmpty, owner == nil || owner === rec else { return }
         // Paused: keep the WAV timeline aligned with wall-clock (silence) but capture and transcribe nothing.
@@ -465,12 +602,33 @@ public actor HelperController {
             rec.pendingLevel.removeAll(keepingCapacity: true)
             rec.lastLevelMs = t
         }
-        if !paused { await rec.transcriber?.append(s) }
+        let zero = [Float](repeating: 0, count: s.count)
+        let sys = channels.map { $0.system.count == s.count ? $0.system : zero } ?? zero
+        let mic = channels.map { $0.mic.flatMap { $0.count == s.count ? $0 : nil } ?? zero } ?? s
+        // Diarizers hear the same timeline as the WAV (silence while paused).
+        for run in rec.diarRuns { run.input.yield(paused ? zero : (run.source == .mic ? mic : sys)) }
+        let b = AsrBlock(mix: s, system: sys, mic: mic, paused: paused)
+        if rec.asrReady {
+            await pushAsr(b, to: rec)
+        } else {
+            rec.backlog.append(b); rec.backlogSamples += s.count
+            while rec.backlogSamples > Self.maxBacklogSamples, !rec.backlog.isEmpty {
+                let old = rec.backlog.removeFirst()
+                rec.backlogSamples -= old.mix.count
+                rec.asrSamples += old.mix.count
+            }
+        }
     }
 
     func pollTranscript() async {
-        guard let rec = recording, let tr = rec.transcriber else { return }
+        guard let rec = recording, rec.asrReady, let tr = rec.transcriber else { return }
         let text = await tr.transcript()
+        if let st = rec.systemTranscriber, let seg = rec.systemSegmenter {
+            let t = asrClock(rec)
+            for e in rec.segmenter.update(cumulative: text, nowMs: t) { send(.asr(e)) }
+            for e in seg.update(cumulative: await st.transcript(), nowMs: t) { send(.asr(e)) }
+            return
+        }
         for e in rec.segmenter.update(cumulative: text, nowMs: now() - rec.startMs) { send(.asr(e)) }
     }
 
@@ -486,12 +644,27 @@ public actor HelperController {
         // Every captured block reached the module: close its audio (EOF ends its channels).
         speech.end(.recording(audioPath: rec.wav.url.path))
         if rec.aborted { return }
-        if let tail = rec.pipeline?.finish(), !tail.isEmpty { await onSamples(tail, of: rec) }
-        if let tr = rec.transcriber {
+        if let tail = rec.pipeline?.finish(), !tail.isEmpty { await onSamples(tail, of: rec, channels: (tail, nil)) }
+        // Audio still waiting for a loading recogniser is transcribed before the stop is acknowledged.
+        if let prep = rec.prep { _ = await prep.value }
+        if rec.aborted { return }
+        if let st = rec.systemTranscriber, let seg = rec.systemSegmenter {
+            let t = asrClock(rec)
+            let micText = await rec.transcriber?.finish() ?? ""
+            let sysText = await st.finish()
+            if rec.aborted { return }
+            for e in rec.segmenter.flush(cumulative: micText, nowMs: t) { send(.asr(e)) }
+            for e in seg.flush(cumulative: sysText, nowMs: t) { send(.asr(e)) }
+        } else if let tr = rec.transcriber {
             let text = await tr.finish()
             if rec.aborted { return }
             for e in rec.segmenter.flush(cumulative: text, nowMs: now() - rec.startMs) { send(.asr(e)) }
         }
+        // Speaker turns flush before the stop ack, so the host has all of them when it finalizes.
+        for run in rec.diarRuns { run.input.finish() }
+        for run in rec.diarRuns { await run.task.value }
+        rec.diarRuns.removeAll()
+        await unloadAsr(rec)
         recording = nil
         paused = false
         do { try rec.wav.finish() } catch { send(.error(code: "recording.file", message: "\(error)", fatal: false)) }
@@ -519,6 +692,9 @@ public actor HelperController {
             recordingStartMs = nil
             rec.samplesIn?.finish()
             rec.consumer?.cancel()
+            for run in rec.diarRuns { run.input.finish(); run.task.cancel() }
+            rec.diarRuns.removeAll()
+            if rec.asrReady { Task { [weak self] in await self?.unloadAsr(rec) } }  // else prepareAsr unloads when done
             if let audio = rec.audio { Task.detached { await audio.stop() } }  // may be what is wedged: don't wait
             do { try rec.wav.finish() } catch { send(.error(code: "recording.file", message: "\(error)", fatal: false)) }
             send(.log(level: .warn, msg: "recording aborted: \(path)"))

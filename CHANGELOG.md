@@ -2,6 +2,7 @@
 
 ## Unreleased: Tauri only
 
+- **Speaker labels on the Mac (ADR 0079):** recordings are transcribed with Nemotron (on-device) per channel, your mic and the call separately, and each channel is diarized, so the transcript says who spoke ("me", "speaker 1", or the call's names). Talk uses Nemotron too, without speaker labels, and stays loaded for a fast first press. The models (about 845 MB) download in onboarding or settings → speech, with progress, pause and resume; nothing downloads on first use anymore. Parakeet is gone, echo cancellation uses the downloaded model (or the echo gate without it), and the Apple speech backup is used only if macOS already has its assets.
 - **Talk fix:** pressing fn did nothing after the globe-key change. The globe blocker no longer reports the key itself; a separate listen-only watch does, like before, so blocking the globe action can't break push-to-talk. If qrtz can't watch the push key, it now says so instead of staying silent.
 - **Talk pill:** stays up after you let go of the key while the text is finished and inserted, and hides once it's in (or after a brief error flash).
 - **GitHub Actions (docs/ci.md):** every push to main runs lint, typecheck, vitest, the renderer Playwright suite, cargo fmt, clippy and cargo test on Linux, plus the Swift helper tests and a desktop-crate check on macOS. A `v*` tag builds the Apple Silicon app (.dmg and zipped .app, unsigned for now) and publishes a GitHub release with the CHANGELOG section as notes.

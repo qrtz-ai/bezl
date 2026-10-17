@@ -16,52 +16,73 @@ func pcmBuffer16k(_ s: [Float]) -> AVAudioPCMBuffer? {
     return buf
 }
 
-/// Parakeet Unified 0.6B streaming (FluidAudio StreamingUnifiedAsrManager) on the Neural Engine. Models are fetched
-/// from Hugging Face into ~/Library/Application Support on first use (~600 MB, once). [MAC-VERIFY]
-final class ParakeetTranscriber: StreamingTranscriber, @unchecked Sendable {
-    let name = "parakeet-unified-streaming"
-    private var manager: StreamingUnifiedAsrManager?
-    private var processing = false
+/// ADR 0079: Nemotron Speech Streaming 0.6B (English, 560 ms chunks; FluidAudio StreamingNemotronAsrManager) on the
+/// Neural Engine. Loads only from the verified local set (`LocalModels.asr`); never downloads. One instance per use:
+/// dictation (kept loaded, warmed when a push key is set) and the recording's mic and system channels (loaded per
+/// recording, unloaded at its end).
+final class NemotronTranscriber: StreamingTranscriber, @unchecked Sendable {
+    let name = "nemotron-560ms"
+    let loadsInstantly = false
+    let latencyMs: Double = 560
+    private let lock = NSLock()
+    private var manager: StreamingNemotronAsrManager?
+    private var loading: Task<StreamingNemotronAsrManager, Error>?
+
+    private var current: StreamingNemotronAsrManager? { lock.withLock { manager } }
 
     func prepare() async throws {
-        if manager != nil { return }
-        let m = StreamingUnifiedAsrManager()
-        if let dir = ProcessInfo.processInfo.environment["QRTZ_MODELS_DIR"], !dir.isEmpty {
-            try await m.loadModels(to: URL(fileURLWithPath: dir))
-        } else {
-            try await m.loadModels()
+        let task: Task<StreamingNemotronAsrManager, Error> = lock.withLock {
+            if let l = loading { return l }
+            let l = Task<StreamingNemotronAsrManager, Error> {
+                let dir = try LocalModels.dir(LocalModels.asr)
+                let m = StreamingNemotronAsrManager(requestedChunkSize: .ms560)
+                try await m.loadModels(from: dir)
+                return m
+            }
+            loading = l
+            return l
         }
-        manager = m
+        do {
+            let m = try await task.value
+            lock.withLock { if loading == task { manager = m } }
+        } catch {
+            lock.withLock { if loading == task { loading = nil } }
+            throw error
+        }
     }
 
     func append(_ s: [Float]) async {
-        guard let m = manager, let buf = pcmBuffer16k(s) else { return }
+        guard let m = current, let buf = pcmBuffer16k(s) else { return }
         do {
             try await m.appendAudio(buf)
-            // Decoding is cheaper than real time; skip a cycle rather than queueing if a previous pass is running.
-            if !processing {
-                processing = true
-                try await m.processBufferedAudio()
-                processing = false
-            }
+            try await m.processBufferedAudio()
         } catch {
-            processing = false
-            logErr("parakeet: \(error)")
+            logErr("nemotron: \(error)")
         }
     }
 
-    func transcript() async -> String { await manager?.getPartialTranscript() ?? "" }
+    func transcript() async -> String { await current?.getPartialTranscript() ?? "" }
 
     func finish() async -> String {
-        guard let m = manager else { return "" }
-        do { return try await m.finish() } catch { logErr("parakeet finish: \(error)"); return await m.getPartialTranscript() }
+        guard let m = current else { return "" }
+        do { return try await m.finish() } catch { logErr("nemotron finish: \(error)"); return await m.getPartialTranscript() }
     }
 
-    func reset() async { try? await manager?.reset() }
+    func reset() async { await current?.reset() }
+
+    func unload() async {
+        let m: StreamingNemotronAsrManager? = lock.withLock {
+            let m = manager
+            manager = nil; loading = nil
+            return m
+        }
+        await m?.cleanup()
+    }
 }
 
 #if compiler(>=6.2) && canImport(Speech)
-/// Fallback: Apple SpeechAnalyzer + SpeechTranscriber (macOS 26), on-device, with volatile (partial) results.
+/// Backup: Apple SpeechAnalyzer + SpeechTranscriber (macOS 26), on-device, with volatile (partial) results, used
+/// while Nemotron isn't downloaded and only if the OS already has the assets.
 @available(macOS 26.0, *)
 final class SpeechAnalyzerTranscriber: StreamingTranscriber, @unchecked Sendable {
     let name = "apple-speechanalyzer"
@@ -77,7 +98,11 @@ final class SpeechAnalyzerTranscriber: StreamingTranscriber, @unchecked Sendable
 
     func prepare() async throws {
         let t = SpeechTranscriber(locale: Locale.current, transcriptionOptions: [], reportingOptions: [.volatileResults], attributeOptions: [])
-        if let req = try await AssetInventory.assetInstallationRequest(supporting: [t]) { try await req.downloadAndInstall() }
+        // ADR 0079: only when macOS already has this language's speech assets. qrtz never asks the OS to download
+        // them (no download outside onboarding/settings); without them this backup is simply not used.
+        guard await AssetInventory.status(forModules: [t]) == .installed else {
+            throw NSError(domain: "qrtz.speechanalyzer", code: 1, userInfo: [NSLocalizedDescriptionKey: "speech assets for \(Locale.current.identifier) not installed"])
+        }
         transcriber = t
         format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [t])
     }

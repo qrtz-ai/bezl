@@ -120,3 +120,43 @@ async fn detected_meeting_prompts_and_always_record_persists_and_auto_starts_nex
     assert_eq!(c.note("note:list", json!({})).await.as_array().unwrap().len(), 2);
     c.quit().await;
 }
+
+/// ADR 0079: the Mac helper's per-channel diarization (`diarization.segment`) names the speakers of a recording:
+/// the main mic voice is "me", the second mic voice and the call (system) get their own names, ids stay per channel.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn helper_diarization_segments_name_the_speakers_per_channel() {
+    let tmp = tempfile::tempdir().unwrap();
+    let a = App::launch(
+        &tmp.path().join("data"),
+        Opts::default().env("QRTZ_MOCK_DIARIZE", "1"),
+    )
+    .await;
+    a.helper_ready().await;
+    let (id, _) = record_until(&a, None, |t| segments(t) >= 3).await;
+    let d = a.note("note:get", json!({"id": id})).await;
+    let by: Vec<(String, String)> = d["segments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| {
+            (
+                s["id"].as_str().unwrap().to_owned(),
+                s["speaker"].as_str().unwrap_or("").to_owned(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        by,
+        [
+            ("mic-u1", "mic:0"),
+            ("mic-u2", "mic:1"),
+            ("system-u3", "system:0")
+        ]
+        .map(|(a, b)| (a.to_owned(), b.to_owned())),
+        "{d}"
+    );
+    let names = speakers(&d);
+    assert!(names.contains("me"), "{names:?}");
+    assert_eq!(names.len(), 3, "{names:?}");
+    a.quit().await;
+}

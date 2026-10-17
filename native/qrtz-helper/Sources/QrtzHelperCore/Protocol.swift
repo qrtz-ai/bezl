@@ -80,6 +80,9 @@ public enum HelperMessage: Equatable, Sendable {
     case captureSilent(source: CaptureSource, sinceMs: Double)
     /// N29: `source` is above the floor again after a `captureSilent`.
     case captureAudible(source: CaptureSource)
+    /// ADR 0079: one speaker's turn on one raw channel (on-device diarization), recording-relative ms. `speaker` is
+    /// that channel's slot 0...7 (the host names it `mic:N` / `system:N`); never merged across channels.
+    case diarizationSegment(source: CaptureSource, speaker: Int, startMs: Double, endMs: Double)
     /// H8: capture source `from` failed to start; `to` is tried next (nil: none left).
     case captureFallback(from: String, to: String?, reason: String)
     /// N35: a source lost part of its input (today: its in-source mic) and records the rest. Sticky until a reconnect.
@@ -236,6 +239,8 @@ extension HelperMessage {
             return obj("dictation.stopped", o)
         case .captureSilent(let src, let since): return obj("capture.silent", ["source": s(src.rawValue), "sinceMs": n(since)])
         case .captureAudible(let src): return obj("capture.audible", ["source": s(src.rawValue)])
+        case .diarizationSegment(let src, let spk, let a, let b):
+            return obj("diarization.segment", ["source": s(src.rawValue), "speaker": n(Double(spk)), "startMs": n(a), "endMs": n(b)])
         case .captureFallback(let from, let to, let reason):
             return obj("capture.fallback", ["from": s(from), "to": to.map(s) ?? .null, "reason": s(reason)])
         case .captureDegraded(let degraded, let reason):
@@ -334,6 +339,10 @@ extension HelperMessage {
             guard since >= 0 else { throw ProtocolError("negative sinceMs") }
             self = .captureSilent(source: try f.enumValue("source", CaptureSource.self), sinceMs: since)
         case "capture.audible": self = .captureAudible(source: try f.enumValue("source", CaptureSource.self))
+        case "diarization.segment":
+            let spk = try f.num("speaker"), a = try f.num("startMs"), b = try f.num("endMs")
+            guard spk >= 0, spk <= 7, spk == spk.rounded(), a >= 0, b > a else { throw ProtocolError("bad diarization.segment") }
+            self = .diarizationSegment(source: try f.enumValue("source", CaptureSource.self), speaker: Int(spk), startMs: a, endMs: b)
         case "capture.fallback":
             guard let to = f.o["to"] else { throw ProtocolError("missing to") }
             guard to == .null || !(to.string ?? "").isEmpty else { throw ProtocolError("bad to") }

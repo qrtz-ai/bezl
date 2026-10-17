@@ -15,8 +15,10 @@ func makePlatformDeps(version: String) -> HelperDeps {
     features += ["talk.mic", "talk.insert.ax", "talk.insert.paste", "talk.hotkey", "helper.mux", "permissions.watch"]
     features.append("audio.aec.localvqe")
 
-    var asr: [StreamingTranscriber] = [ParakeetTranscriber()]
-    features.append("asr.parakeet")
+    // ADR 0079: Nemotron (local files only) on the mic and system channels, each diarized; SpeechAnalyzer on the mix
+    // as the backup while Nemotron isn't downloaded (only with OS assets already installed). Echo never diarizes.
+    var asr: [StreamingTranscriber] = [NemotronTranscriber()]
+    features += ["asr.nemotron", "diarize.nemotron3"]
     #if compiler(>=6.2) && canImport(Speech)
     if #available(macOS 26.0, *) { asr.append(SpeechAnalyzerTranscriber()); features.append("asr.speechanalyzer") }
     #endif
@@ -33,12 +35,14 @@ func makePlatformDeps(version: String) -> HelperDeps {
         context: context, enhancer: LocalVqeEnhancer(),
         dictationMic: micHub.view("dictation"), dictationTranscribers: dictationAsr(), insertion: MacInsertion(), hotkeys: MacHotkeys(), micHub: micHub)
     deps.summarizer = FoundationModelsSummarizer()
+    deps.systemTranscribers = [NemotronTranscriber()]
+    deps.diarizers = [.mic: NemotronChannelDiarizer(), .system: NemotronChannelDiarizer()]
     return deps
 }
 
 /// Separate recogniser instances for qrtz talk so a dictation can run during a meeting recording.
 private func dictationAsr() -> [StreamingTranscriber] {
-    var asr: [StreamingTranscriber] = [ParakeetTranscriber()]
+    var asr: [StreamingTranscriber] = [NemotronTranscriber()]
     #if compiler(>=6.2) && canImport(Speech)
     if #available(macOS 26.0, *) { asr.append(SpeechAnalyzerTranscriber()) }
     #endif

@@ -2,6 +2,9 @@
 //! and do. The speech module downloads in the background with pause, resume and retry, survives a quit (a
 //! marker file in the speech store resumes it on the next launch, from the `.part` files), checks for the newest
 //! release, re-downloads and deletes. No engine or model names leave this module: a version, a size and a state.
+//! ADR 0079: a build without a speech module source (the Mac today) offers the helper's own pinned models here
+//! instead ([`LocalModels`]), with the same status, progress, pause, resume, retry and delete.
+use crate::local_models::LocalModels;
 use crate::ports::SetupPort;
 use crate::service::Events;
 use crate::speech::SpeechSetup;
@@ -89,6 +92,7 @@ fn error_text(kind: &str) -> &'static str {
 
 pub struct SpeechManager {
     setup: Option<SpeechSetup>,
+    local: Option<Arc<LocalModels>>,
     events: Events,
     dl: Mutex<Dl>,
     latest: Mutex<Option<(String, u64)>>,
@@ -99,8 +103,19 @@ pub struct SpeechManager {
 
 impl SpeechManager {
     pub fn new(setup: Option<SpeechSetup>, events: Events) -> Arc<Self> {
+        Self::with_local(setup, None, events)
+    }
+
+    /// `local`: the helper's pinned models, used only when there is no speech module source (`setup` is None).
+    pub fn with_local(setup: Option<SpeechSetup>, local: Option<LocalModels>, events: Events) -> Arc<Self> {
+        let local = if setup.is_none() {
+            local.map(Arc::new)
+        } else {
+            None
+        };
         Arc::new(Self {
             setup,
+            local,
             events,
             dl: Mutex::new(Dl::idle()),
             latest: Mutex::default(),
@@ -111,7 +126,11 @@ impl SpeechManager {
     }
 
     fn marker_path(&self) -> Option<PathBuf> {
-        self.setup.as_ref().map(|s| s.store.root().join("download.json"))
+        match (&self.setup, &self.local) {
+            (Some(s), _) => Some(s.store.root().join("download.json")),
+            (None, Some(l)) => Some(l.root().join("download.json")),
+            _ => None,
+        }
     }
     fn marker(&self) -> Option<Marker> {
         let b = std::fs::read(self.marker_path()?).ok()?;
@@ -132,8 +151,21 @@ impl SpeechManager {
     }
 
     pub fn status(&self) -> Value {
-        let latest = self.latest.lock().unwrap().clone();
         let dl = self.dl.lock().unwrap().clone();
+        if let (None, Some(l)) = (&self.setup, &self.local) {
+            let installed = l.installed();
+            return json!({
+                "configured": true,
+                "installed": installed.then(|| l.version().to_owned()),
+                "bytes": if installed { l.bytes_on_disk() } else { 0 },
+                "latest": l.version(),
+                "latestBytes": l.total_size(),
+                "waiting": null,
+                "listExpired": false,
+                "download": dl,
+            });
+        }
+        let latest = self.latest.lock().unwrap().clone();
         let (installed, bytes, waiting, expired) = match &self.setup {
             Some(s) => {
                 let st = s.store.status(wall());
@@ -189,7 +221,7 @@ impl SpeechManager {
 
     /// Start (or resume) the background download; answers at once with the new status.
     pub fn download(self: &Arc<Self>, force: bool) -> Result<Value, AppError> {
-        if self.setup.is_none() {
+        if self.setup.is_none() && self.local.is_none() {
             return Err(Self::unconfigured());
         }
         self.ctl.resume();
@@ -200,7 +232,9 @@ impl SpeechManager {
     }
 
     fn spawn(self: &Arc<Self>, force: bool) {
-        let Some(setup) = self.setup.clone() else { return };
+        let Some(setup) = self.setup.clone() else {
+            return self.spawn_local(force);
+        };
         if self.running.swap(true, Ordering::SeqCst) {
             return;
         }
@@ -286,6 +320,73 @@ impl SpeechManager {
         });
     }
 
+    /// The helper's pinned models: one resumable transfer, verified file by file, each set marked when complete.
+    fn spawn_local(self: &Arc<Self>, force: bool) {
+        let Some(local) = self.local.clone() else { return };
+        if self.running.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        if let Err(e) = qrtz_speech::fsx::mkdir_private(local.root()) {
+            tracing::warn!(err = %e, "speech models dir");
+        }
+        self.set_marker(Some(Marker { force, paused: false }));
+        let keep = self.dl.lock().unwrap().clone();
+        self.set_dl(Dl {
+            state: "downloading",
+            done: keep.done,
+            total: local.total_size(),
+            ..Default::default()
+        });
+        let me = self.clone();
+        tokio::spawn(async move {
+            let me2 = me.clone();
+            let on_progress = move |p: Progress| {
+                *me2.dl.lock().unwrap() = Dl {
+                    state: "downloading",
+                    done: p.done,
+                    total: p.total,
+                    ..Default::default()
+                };
+                me2.emit(false);
+            };
+            let r = local.download(force, &me.ctl, &on_progress).await;
+            // N101: `running` goes false last (see `spawn`).
+            match r {
+                Ok(()) => {
+                    tracing::info!(version = local.version(), "speech models installed");
+                    me.set_marker(None);
+                    me.set_dl(Dl::idle());
+                }
+                Err(SpeechError::Paused) => {
+                    me.set_marker(Some(Marker {
+                        force: false,
+                        paused: true,
+                    }));
+                    let d = me.dl.lock().unwrap().clone();
+                    me.set_dl(Dl {
+                        state: "paused",
+                        done: d.done,
+                        total: d.total,
+                        ..Default::default()
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!(err = %e, "speech models download failed");
+                    let kind = error_kind(&e);
+                    let d = me.dl.lock().unwrap().clone();
+                    me.set_dl(Dl {
+                        state: "error",
+                        done: d.done,
+                        total: d.total,
+                        error: Some(error_text(kind).into()),
+                        error_kind: Some(kind),
+                    });
+                }
+            }
+            me.running.store(false, Ordering::SeqCst);
+        });
+    }
+
     pub fn pause(&self) -> Value {
         self.ctl.pause();
         if self.marker().is_some() {
@@ -313,6 +414,10 @@ impl SpeechManager {
 
     pub async fn check(&self) -> Result<Value, AppError> {
         let Some(setup) = &self.setup else {
+            // The pinned models have no newer release to look for (an app update brings new pins): no request.
+            if self.local.is_some() {
+                return Ok(self.status());
+            }
             return Err(Self::unconfigured());
         };
         let dl = Downloader::new(&setup.base_url);
@@ -340,12 +445,21 @@ impl SpeechManager {
     }
 
     pub fn delete(&self) -> Result<Value, AppError> {
-        let Some(setup) = &self.setup else {
-            return Err(Self::unconfigured());
-        };
-        if self.running.load(Ordering::SeqCst) {
+        if self.running.load(Ordering::SeqCst) && (self.setup.is_some() || self.local.is_some()) {
             return Err(AppError::new(ErrorCode::Unavailable, "pause the download first").retryable(true));
         }
+        let Some(setup) = &self.setup else {
+            let Some(local) = &self.local else {
+                return Err(Self::unconfigured());
+            };
+            if let Err(e) = local.delete() {
+                return Err(AppError::new(ErrorCode::Internal, e.to_string()));
+            }
+            self.set_marker(None);
+            self.ctl.resume();
+            self.set_dl(Dl::idle());
+            return Ok(self.status());
+        };
         match setup.store.delete_all() {
             Ok(()) => {}
             Err(SpeechError::Busy) => {

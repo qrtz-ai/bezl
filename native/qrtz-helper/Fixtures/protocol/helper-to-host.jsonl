@@ -49,3 +49,5 @@
 {"code":"context","id":"s3","message":"over the context window","type":"summarize.error"}
 {"available":true,"contextTokens":4096,"id":"c1","type":"summarize.status"}
 {"available":false,"id":"c2","reason":"model-not-ready","type":"summarize.status"}
+{"endMs":4200,"source":"mic","speaker":0,"startMs":1200,"type":"diarization.segment"}
+{"endMs":9100,"source":"system","speaker":2,"startMs":5000,"type":"diarization.segment"}

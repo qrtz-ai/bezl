@@ -111,6 +111,9 @@ impl EventSink for AppSink {
 pub struct DevKnobs {
     pub retry_scale: Option<f64>,
     pub fault_step: Option<StepId>,
+    /// ADR 0079, tests only (never read from the environment): offer the helper's local models on any OS and fetch
+    /// them from this loopback base instead of the pinned model host.
+    pub local_models_base: Option<String>,
 }
 
 impl DevKnobs {
@@ -127,6 +130,7 @@ impl DevKnobs {
         Self {
             retry_scale: get("QRTZ_RETRY_SCALE").and_then(|v| v.parse().ok()),
             fault_step: get("QRTZ_FAULT_STEP").and_then(|v| serde_json::from_value(Value::String(v)).ok()),
+            local_models_base: None,
         }
     }
 }
@@ -255,12 +259,24 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     let dirs = AppDirs::prepare(&b.data_dir)?;
     let config: SharedConfig = crate::ConfigStore::open(dirs.data.join("config.json")).into();
     let events = Events::new();
+    // ADR 0079: without a speech module source (the Mac build today) the helper transcribes with its own models,
+    // downloaded from onboarding/settings into <data>/models and read by the helper from there only.
+    let local_models = (b.speech.is_none()
+        && (cfg!(target_os = "macos") || b.knobs.local_models_base.is_some()))
+    .then(|| {
+        crate::local_models::LocalModels::new(dirs.data.join("models"), b.knobs.local_models_base.clone())
+    });
     let (supervisor, availability) = match b.helper {
-        Some((spawn, av)) => (
-            Some(qrtz_helper_bridge::Supervisor::spawn(
-                b.supervisor,
-                Arc::new(spawn),
-            )),
+        Some((mut spawn, av)) => (
+            Some({
+                if let Some(l) = &local_models {
+                    spawn.env.push((
+                        crate::local_models::ENV.to_owned(),
+                        l.root().to_string_lossy().into_owned(),
+                    ));
+                }
+                qrtz_helper_bridge::Supervisor::spawn(b.supervisor, Arc::new(spawn))
+            }),
             av,
         ),
         None => (None, HelperAvailability::Missing),
@@ -334,7 +350,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         ))),
     };
     let setup = Arc::new(crate::setup::Setup {
-        speech: crate::setup::SpeechManager::new(b.speech.clone(), events.clone()),
+        speech: crate::setup::SpeechManager::with_local(b.speech.clone(), local_models, events.clone()),
     });
     let service = crate::AppService::new(crate::AppDeps {
         info: b.info,

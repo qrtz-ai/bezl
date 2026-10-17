@@ -115,33 +115,40 @@ public final class MicPipeline: @unchecked Sendable {
         }
     }
 
-    public func process(_ b: CaptureBlock) async -> [Float] {
-        guard var mic = b.mic else { return b.system }
+    /// The echo-cleaned mic and the system audio it lines up with (equal lengths; the AEC may hold some back).
+    public func processChannels(_ b: CaptureBlock) async -> (system: [Float], mic: [Float]?) {
+        guard var mic = b.mic else { return (b.system, nil) }
         if let e = enhancer, aecReady, !aecFailed {
             pendingSystem += b.system
             do {
                 let clean = try await e.enhance(mic: mic, reference: b.system)
                 let n = min(clean.count, pendingSystem.count)
-                var out = [Float](repeating: 0, count: n)
-                for i in 0..<n { out[i] = max(-1, min(1, pendingSystem[i] + clean[i])) }
+                let sys = Array(pendingSystem[0..<n])
                 pendingSystem.removeFirst(n)
-                return out
+                return (sys, Array(clean[0..<n]))
             } catch {
                 aecFailed = true
                 onLog?(.warn, "echo: \(e.name) failed (\(error)); falling back to echo gate")
                 // Release the system audio that was waiting on the AEC, then continue with the gate.
-                let held = pendingSystem
+                let held = Array(pendingSystem.dropLast(b.system.count))
                 pendingSystem.removeAll()
                 gate.process(system: b.system, mic: &mic)
-                let tail = zip(b.system, mic).map { max(-1, min(1, $0 + $1)) }
-                return Array(held.dropLast(b.system.count)) + tail
+                return (held + b.system, [Float](repeating: 0, count: held.count) + mic)
             }
         }
         gate.process(system: b.system, mic: &mic)
-        var out = [Float](repeating: 0, count: mic.count)
-        for i in 0..<mic.count { out[i] = max(-1, min(1, b.system[i] + mic[i])) }
+        return (b.system, mic)
+    }
+
+    /// system + mic, clipped (what the WAV and a single recogniser get).
+    public static func mix(_ ch: (system: [Float], mic: [Float]?)) -> [Float] {
+        guard let mic = ch.mic else { return ch.system }
+        var out = [Float](repeating: 0, count: min(mic.count, ch.system.count))
+        for i in 0..<out.count { out[i] = max(-1, min(1, ch.system[i] + mic[i])) }
         return out
     }
+
+    public func process(_ b: CaptureBlock) async -> [Float] { Self.mix(await processChannels(b)) }
 
     /// End of recording: whatever system audio is still waiting is emitted (its mic tail is lost, ≤ 1 hop).
     public func finish() -> [Float] {

@@ -3,6 +3,8 @@
 pub mod config;
 pub mod dirs;
 #[cfg(feature = "runtime")]
+pub mod local_models;
+#[cfg(feature = "runtime")]
 pub mod pill;
 pub mod ports;
 #[cfg(feature = "runtime")]

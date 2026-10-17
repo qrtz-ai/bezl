@@ -10,6 +10,8 @@
 //! 3. Tauri: the CSP keeps fetch/WebSocket to the app itself and IPC, and the window capability grants no
 //!    http/opener/shell/updater/websocket permission.
 //! 4. Helper: no Private Cloud Compute model and no network entitlement.
+//! 5. ADR 0079: the downloader's only callers are qrtz-app's `setup.rs` (the signed module) and `local_models.rs`
+//!    (the helper's pinned models), and the pinned models come only from `https://huggingface.co` at fixed revisions.
 //!
 //! A new network path has to change this test and its ADR, on purpose.
 use serde_json::Value;
@@ -285,6 +287,53 @@ fn no_rust_source_opens_a_socket_or_names_an_http_client_outside_the_exception()
         "network use outside ADR 0078's exception:\n{}",
         bad.join("\n")
     );
+}
+
+#[test]
+fn only_setup_and_the_pinned_local_models_call_the_downloader() {
+    let r = root();
+    let mut files = vec![];
+    rust_sources(&r.join("crates"), &mut files);
+    rust_sources(&r.join("apps/desktop/src-tauri/src"), &mut files);
+    let allowed = [
+        "crates/qrtz-app/src/setup.rs",
+        "crates/qrtz-app/src/local_models.rs",
+    ];
+    let mut bad = vec![];
+    for f in &files {
+        let rel = f.strip_prefix(&r).unwrap().to_string_lossy().replace('\\', "/");
+        if rel.starts_with("crates/qrtz-speech/") || rel.contains("/tests/") || rel.contains("/examples/") {
+            continue;
+        }
+        for (n, l) in code(f) {
+            if (l.contains("Downloader") || l.contains("speech::download"))
+                && !allowed.contains(&rel.as_str())
+            {
+                bad.push(format!("{rel}:{n}: {}", l.trim()));
+            }
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "downloader used outside ADR 0079's callers:\n{}",
+        bad.join("\n")
+    );
+
+    let m: Value = serde_json::from_str(
+        &std::fs::read_to_string(r.join("crates/qrtz-app/src/local_models.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(m["base"], "https://huggingface.co");
+    for set in m["sets"].as_array().unwrap() {
+        let rev = set["revision"].as_str().unwrap();
+        assert!(
+            rev.len() == 40 && rev.bytes().all(|b| b.is_ascii_hexdigit()),
+            "{set}: a fixed commit, not a branch"
+        );
+        for f in set["files"].as_array().unwrap() {
+            assert_eq!(f["sha256"].as_str().unwrap().len(), 64, "{f}");
+        }
+    }
 }
 
 #[test]

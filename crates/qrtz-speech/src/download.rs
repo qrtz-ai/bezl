@@ -4,7 +4,7 @@
 //! Server layout under `base`: `latest/manifest.json` + `.sig`, files at `<version>/<path>`, optional
 //! `denylist.json` + `denylist.json.sig` (required for installs, N60) and `key-rotation.json` +
 //! `key-rotation.sigs.json`.
-use crate::bundle::{Manifest, MAX_META_BYTES};
+use crate::bundle::{FileEntry, Manifest, MAX_META_BYTES};
 use crate::fsx;
 use crate::SpeechError;
 use futures_util::StreamExt;
@@ -115,9 +115,27 @@ impl Downloader {
         ctl: &DownloadControl,
         on_progress: &(dyn Fn(Progress) + Send + Sync),
     ) -> Result<(), SpeechError> {
-        let total = m.total_size();
+        let files: Vec<(String, FileEntry)> = m
+            .files
+            .iter()
+            .map(|f| (format!("{}/{}", m.version, f.path), f.clone()))
+            .collect();
+        self.download_files(&files, staging, ctl, on_progress).await
+    }
+
+    /// The same resumable, capped, sha256-checked transfer for any pinned list: each `(url_path, entry)` is fetched
+    /// from `<base>/<url_path>` into `<dest>/<entry.path>` (ADR 0079: the Mac helper's local model files, whose
+    /// sha256s are pinned in the app, use this with the model host as `base`).
+    pub async fn download_files(
+        &self,
+        files: &[(String, FileEntry)],
+        staging: &Path,
+        ctl: &DownloadControl,
+        on_progress: &(dyn Fn(Progress) + Send + Sync),
+    ) -> Result<(), SpeechError> {
+        let total: u64 = files.iter().map(|(_, f)| f.size).sum();
         let mut done_files = 0u64;
-        for f in &m.files {
+        for (url_path, f) in files {
             let dest = staging.join(&f.path);
             if let Some(parent) = dest.parent() {
                 fsx::mkdir_private(parent)?;
@@ -144,7 +162,7 @@ impl Downloader {
                 if ctl.is_paused() {
                     return Err(SpeechError::Paused);
                 }
-                let mut req = self.client.get(format!("{}/{}/{}", self.base, m.version, f.path));
+                let mut req = self.client.get(format!("{}/{url_path}", self.base));
                 if have > 0 {
                     req = req.header(reqwest::header::RANGE, format!("bytes={have}-"));
                 }

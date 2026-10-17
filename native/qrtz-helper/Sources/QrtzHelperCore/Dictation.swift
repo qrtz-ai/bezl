@@ -139,8 +139,22 @@ public actor DictationEngine {
                 }
             }
         }
+        // ADR 0079: echo latency: load the recogniser as soon as a push key is set, not on the first press. Idempotent,
+        // and only local files are read (a missing model fails fast and the next press tries again).
+        if !self.pushKey.isEmpty { prewarm() }
         guard !managedMic else { return }
         if warmMic { startMic() } else if session == nil { stopMic() }
+    }
+
+    /// Loads the first recogniser that can load, in the background.
+    public func prewarm() {
+        let ts = transcribers
+        Task.detached {
+            for t in ts {
+                do { try await t.prepare(); return }
+                catch { continue }
+            }
+        }
     }
 
     func startMic() {

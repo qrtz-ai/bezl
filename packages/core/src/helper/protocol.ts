@@ -153,6 +153,18 @@ export const HelperToHost = z.discriminatedUnion('type', [
   }),
   z.object({
     /**
+     * ADR 0079: one speaker's turn on one raw channel from the helper's on-device diarizer (nano only), in
+     * recording-relative ms like other atMs fields. `speaker` is that channel's slot (the host names it `mic:N` /
+     * `system:N`); slots are never merged across channels.
+     */
+    type: z.literal('diarization.segment'),
+    source: CaptureSource,
+    speaker: z.number().int().min(0).max(7),
+    startMs: z.number().min(0),
+    endMs: z.number().min(0),
+  }),
+  z.object({
+    /**
      * H8: a capture source failed to start and the helper moves on to the next one (Core Audio process tap →
      * ScreenCaptureKit → …). `to` is the source tried next; null when none is left (`error{audio.unavailable}`
      * follows). Informational: the host logs it; recording.started still follows.

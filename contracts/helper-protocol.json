@@ -17,6 +17,7 @@
     "audio.level",
     "capture.silent",
     "capture.audible",
+    "diarization.segment",
     "capture.fallback",
     "capture.degraded",
     "asr",
@@ -423,6 +424,42 @@
         "required": [
           "type",
           "source"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "diarization.segment"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "system",
+              "mic"
+            ]
+          },
+          "speaker": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 7
+          },
+          "startMs": {
+            "type": "number",
+            "minimum": 0
+          },
+          "endMs": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "type",
+          "source",
+          "speaker",
+          "startMs",
+          "endMs"
         ]
       },
       {

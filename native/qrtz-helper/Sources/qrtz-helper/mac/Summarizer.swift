@@ -114,7 +114,8 @@ enum FMRun {
     }
 
     static func run(stage: SummarizeStage, prompt: String) async -> Result<SummaryOutput, SummarizeFailure> {
-        let session = LanguageModelSession(instructions: instructions(stage))
+        // ADR 0078: the on-device model named explicitly, so a later SDK default can't change where this runs.
+        let session = LanguageModelSession(model: SystemLanguageModel.default, instructions: instructions(stage))
         do {
             if stage == .map {
                 let r = try await session.respond(to: prompt, generating: FMPartNotes.self)

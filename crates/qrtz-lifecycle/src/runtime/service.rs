@@ -906,7 +906,8 @@ impl Shared {
                     event: qrtz_speech::SpeechEvent::Words { .. },
                     ..
                 }
-                | HelperInput::ActiveSpeaker { .. } => {
+                | HelperInput::ActiveSpeaker { .. }
+                | HelperInput::DiarizationSegment { .. } => {
                     if let Some(a) = st.acked.as_mut() {
                         if a.held.len() < MAX_HELD_BEHIND_ACK {
                             a.held.push(m);
@@ -1125,6 +1126,24 @@ impl Shared {
                     }
                 }
             }
+            HelperInput::DiarizationSegment {
+                source,
+                speaker,
+                start_ms,
+                end_ms,
+            } => {
+                let channel = match source {
+                    qrtz_model::CaptureSource::Mic => qrtz_speech::Channel::Mic,
+                    qrtz_model::CaptureSource::System => qrtz_speech::Channel::System,
+                };
+                match qrtz_speech::SpeakerId::new(channel, speaker) {
+                    Some(id) => self.push_turn(&s, id.to_string(), start_ms, end_ms),
+                    None => tracing::warn!(
+                        speaker,
+                        "diarization segment with an out-of-range speaker; dropped"
+                    ),
+                }
+            }
             HelperInput::CaptureAudible { source } => {
                 let at = self.now();
                 if self.send(LifecycleEvent::InputAudible { source, at }) {
@@ -1332,34 +1351,52 @@ impl Shared {
                     tracing::warn!(%speaker, "speaker turn on a channel of no session; dropped");
                     return;
                 }
-                if !matches!(s.phase, RecordingPhase::Recording | RecordingPhase::Stopping)
-                    || s.meeting_id.is_none()
-                    || end_ms <= start_ms
-                    || self.lock().paused
-                {
-                    return;
-                }
-                let off = s.part_offset_ms;
-                let t = SpeakerTurn {
-                    speaker: speaker.to_string(),
-                    start_ms: start_ms as qrtz_model::Ms + off,
-                    end_ms: end_ms as qrtz_model::Ms + off,
-                };
-                let mut st = self.lock();
-                let n = st.turns.len();
-                match st.turns.last_mut() {
-                    // One voice talking on: extend its turn (bounded memory over a long meeting).
-                    Some(l) if l.speaker == t.speaker && t.start_ms <= l.end_ms + TURN_MERGE_GAP_MS => {
-                        l.end_ms = l.end_ms.max(t.end_ms);
-                    }
-                    _ if n >= MAX_SPEAKER_TURNS => {
-                        tracing::warn!("speaker turn cap reached; later turns are not attributed");
-                    }
-                    _ => st.turns.push(t),
-                }
+                self.push_turn(
+                    s,
+                    speaker.to_string(),
+                    start_ms as qrtz_model::Ms,
+                    end_ms as qrtz_model::Ms,
+                );
             }
             // `finished` and `loading` carry nothing for the session.
             Sp::Status { .. } | Sp::Finished { .. } => {}
+        }
+    }
+
+    /// A speaker turn (part-relative ms) into the meeting's turns for finalize's attribution: only while this part
+    /// records or stops, never while paused.
+    fn push_turn(
+        self: &Arc<Self>,
+        s: &RecordingState,
+        speaker: String,
+        start_ms: qrtz_model::Ms,
+        end_ms: qrtz_model::Ms,
+    ) {
+        if !matches!(s.phase, RecordingPhase::Recording | RecordingPhase::Stopping)
+            || s.meeting_id.is_none()
+            || end_ms <= start_ms
+            || start_ms < 0
+            || self.lock().paused
+        {
+            return;
+        }
+        let off = s.part_offset_ms;
+        let t = SpeakerTurn {
+            speaker,
+            start_ms: start_ms + off,
+            end_ms: end_ms + off,
+        };
+        let mut st = self.lock();
+        let n = st.turns.len();
+        match st.turns.last_mut() {
+            // One voice talking on: extend its turn (bounded memory over a long meeting).
+            Some(l) if l.speaker == t.speaker && t.start_ms <= l.end_ms + TURN_MERGE_GAP_MS => {
+                l.end_ms = l.end_ms.max(t.end_ms);
+            }
+            _ if n >= MAX_SPEAKER_TURNS => {
+                tracing::warn!("speaker turn cap reached; later turns are not attributed");
+            }
+            _ => st.turns.push(t),
         }
     }
 

@@ -135,6 +135,28 @@ The helper carries out exactly the `mic.subscribe` / `mic.unsubscribe` effects t
   the engine is told `micDropped()`, so it forgets the dead reader. When the mic is granted again, the arbiter
   resubscribes the warm reader, so the next dictation hears audio. A re-grant never resubscribes a running recording.
 
+## Diarization (ADR 0079)
+
+In a recording with per-channel transcription (both Nemotron instances and both diarizers loaded), each channel's
+diarizer reports finished speaker turns:
+
+```json
+{
+  "type": "diarization.segment",
+  "source": "mic",
+  "speaker": 0,
+  "startMs": 1200,
+  "endMs": 4200
+}
+```
+
+- `source`: `mic` | `system`. `speaker`: 0-7, stable within the channel for the recording part. `startMs`/`endMs`:
+  part-relative audio ms (`endMs > startMs`). The ASR finals of that part use `mic-u…` / `system-u…` ids.
+- Sent while recording and during stop (the last turns arrive before `recording.stopped`). Never for talk.
+- Host: held behind the start ack like `active.speaker`, then a speaker turn `mic:N` / `system:N` in meeting time
+  for finalize's attribution (ADR 0058 §12). Ignored while paused or outside a recording.
+- Mock helper: `QRTZ_MOCK_DIARIZE=1`.
+
 ## Silent capture (N29)
 
 While recording, the helper measures each raw capture channel (system audio and mic, before echo gate and mix; the

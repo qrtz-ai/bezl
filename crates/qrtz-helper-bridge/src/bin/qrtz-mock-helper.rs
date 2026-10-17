@@ -38,6 +38,9 @@
 //!                                dictation: `dictation.started`, then every 150 ms a level + a growing
 //!                                `dictation.asr` partial; `dictation.stop` answers `dictation.stopped {text}`;
 //!                                `insert.text` answers `insert.result` (ok, method ax-selected-text).
+//!   QRTZ_MOCK_DIARIZE=1          ADR 0079 per-channel Nemotron + diarization (no scenario): finals `mic-u1`,
+//!                                `mic-u2`, `system-u3` and a `diarization.segment` per turn (mic 0, mic 1,
+//!                                system 0) right after recording.started, like the Swift per-channel pipeline.
 //!   QRTZ_MOCK_SUMMARIZE / QRTZ_MOCK_SUMMARIZE_LOG
 //!                                ADR 0075 on-device summaries: see `mock/summarize.rs`.
 #[path = "../../mock/summarize.rs"]
@@ -282,6 +285,7 @@ fn main() {
             .collect(),
     ));
     let perms = Arc::new(Mutex::new(perms0));
+    let diarize = env("QRTZ_MOCK_DIARIZE").as_deref() == Some("1");
     let scenario = env("QRTZ_MOCK_SCENARIO").filter(|v| v == "standup").is_some();
     let speed = env("QRTZ_MOCK_SPEED")
         .and_then(|v| v.parse::<f64>().ok())
@@ -504,6 +508,25 @@ fn main() {
                             }
                         }
                     });
+                } else if diarize {
+                    for (id, a, b, text) in [
+                        ("mic-u1", 0, 1200, "Morning, I pushed the fix."),
+                        ("mic-u2", 1500, 2600, "Can I add one thing?"),
+                        ("system-u3", 3000, 4200, "Sure, go ahead."),
+                    ] {
+                        say(
+                            json!({"type": "asr", "event": {"kind": "final", "utteranceId": id, "startMs": a, "endMs": b, "text": text}}),
+                        );
+                    }
+                    for (src, n, a, b) in [
+                        ("mic", 0, 0, 1300),
+                        ("mic", 1, 1400, 2700),
+                        ("system", 0, 2900, 4300),
+                    ] {
+                        say(
+                            json!({"type": "diarization.segment", "source": src, "speaker": n, "startMs": a, "endMs": b}),
+                        );
+                    }
                 } else {
                     say(
                         json!({"type": "asr", "event": {"kind": "partial", "utteranceId": "u1", "text": "hello", "startMs": 0}}),
