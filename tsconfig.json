@@ -1,10 +1,23 @@
 {
   "files": [],
   "references": [
-    { "path": "packages/core" },
-    { "path": "packages/ui" },
-    { "path": "packages/features/home" },
-    { "path": "packages/features/settings" },
-    { "path": "apps/desktop" }
+    {
+      "path": "packages/core"
+    },
+    {
+      "path": "packages/ui"
+    },
+    {
+      "path": "packages/features/home"
+    },
+    {
+      "path": "packages/features/settings"
+    },
+    {
+      "path": "packages/features/memo"
+    },
+    {
+      "path": "apps/desktop"
+    }
   ]
 }

@@ -42,7 +42,8 @@
     "electron-squirrel-startup": "^1.0.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "zod": "^4.6.7"
+    "zod": "^4.6.7",
+    "@qrtz/feature-memo": "*"
   },
   "engines": {
     "node": ">=22.13.0"

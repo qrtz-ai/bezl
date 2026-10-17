@@ -37,3 +37,53 @@ Newest entries at the bottom. Times are in America/Los_Angeles (PT).
 - These live in core for now. If memo logic grows, consider a `@qrtz/memo-core` package with a boundary rule.
 - **Verified:** lint, typecheck, 40 tests, package and e2e all green.
 - **Next, in order:** M0.9 (e2e test for the error fallback), M1.3 → M1.7 (DS plus gallery), then M2.2 (memo DB schema and FTS), M2.3, M2.4, M2.7–M2.9.
+
+## 2026-10-16 ~17:34–18:15 PT: iteration 4 (M2 + M3 + M0.9: Memo end to end)
+
+- **M2.2:**
+  - Memo schema migration v2 adds meetings, segments, summaries, and FTS5 indexes (`segments_fts` with triggers, plus `meetings_fts`).
+  - `MemoRepo` handles CRUD, idempotent segment replacement, cascading deletes, and a sanitized FTS query builder (prefix and porter stemming).
+- **M2.3:** the helper protocol now has memo messages:
+  - `meeting.detected/ended`, `ax.participants/activeSpeaker/caption/chat`, `audio.level`, `asr`, and `recording.start/stop/started/stopped`.
+  - The mock helper plays the scripted "Weekly Product Sync" meeting. A desktop wrapper writes a fixture 16 kHz WAV to the recording path.
+- **M2.4:** a pure `sessionReducer` and `SessionMachine` (idle → detected → recording → processing → done/error).
+- **M2.7:** the LLM layer covers OpenAI-compatible APIs (OpenRouter is the default and sends `HTTP-Referer`/`X-Title`), Anthropic and Google, plus a deterministic extractive fallback (summary, action items with owners, Q&A). `summarizeMeeting` never throws.
+- **M2.8:** Markdown export (golden snapshot test).
+- **M2.9:** search through `memo:list {query}`.
+- **Backend wiring:**
+  - Worker `memo.*` methods (`createWorkerHandlers`) are integration-tested on real `node:sqlite`.
+  - `MemoService` in main orchestrates helper events → session → worker → summary.
+  - New IPC channels and events: `memo:*`, `permissions:*`.
+  - A `qrtz-media://` protocol serves only `recordings/<uuid>.wav`, and the CSP got `media-src`.
+- **Direction changes applied:**
+  - The re-transcription pass is gone: the protocol's `post.*` messages are removed and the live transcript is final.
+  - `nameSegmentsFromAx` does live speaker fusion with lag correction.
+  - The default provider is OpenRouter (`google/gemini-2.5-flash`). The env alias `QRTZ_SECRET_OPENROUTER` works.
+  - Zoom and Meet are P0. PLAN.md and the research memo are updated.
+- **M3 (`@qrtz/feature-memo`):**
+  - Permission onboarding.
+  - Live HUD with timer, level meter, active speaker, streaming lines and partial text.
+  - Detection prompt, processing and done states.
+  - Meetings list with FTS search and snippets.
+  - Detail view with audio player, synced transcript (click to seek, current segment highlighted), summary, action items, Q&A, Markdown save/copy and delete.
+  - The Settings page has provider, model and API key fields (safeStorage), plus system status.
+- **UI components added:** Card, Input, Select, Field, Tabs, EmptyState. Text now takes HTML attributes.
+- **M0.9:** a jsdom test shows that a crashing sub app renders the fallback and the shell survives.
+- **Tests:**
+  - **IPC:** capability matrix across real manifests, and a check that no channel's capability is unreachable.
+  - **DB and worker:** integration suites.
+  - **E2E:** `e2e/memo.spec.ts` drives the full flow: detection → record → live transcript (AX speaker names) → fixture audio written → stop → extractive summary and action items → transcript tab → list and search (hit and miss) → Markdown export file → persistence across a restart.
+- **Verified:** lint ✓, typecheck ✓, vitest (all green) ✓, package ✓, e2e 2/2 ✓. Screenshots: `test-results/memo-live.png`, `memo-summary.png`.
+
+### Side work (mocked or blocked, not blocking)
+
+- **Swift helper (M4):** not written yet. The Linux build runs the TS mock with the identical protocol. [MAC-VERIFY]
+- **Live summaries:** without an OpenRouter key, summaries come from the extractive fallback. With `QRTZ_SECRET_OPENROUTER` set, the same path calls OpenRouter.
+- **Audio player:** on Linux it shows a 0:00 duration until playback starts. Check on macOS.
+- **Lint warning:** a `prefer-startsWith` warning remains in `main/security.ts` because the auto-review tool errored on the one-line edit.
+
+### Next
+
+- M4.1–M4.5 (Swift helper: stdio, AX for Zoom and Meet, audio taps, FluidAudio streaming) [MAC-VERIFY].
+- M5.1 (resume summaries stuck in processing).
+- M6.1 (gallery and the remaining components).

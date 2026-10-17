@@ -1,0 +1,117 @@
+import { _electron as electron, expect, test } from '@playwright/test';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+// Full Memo flow against the production build with the scripted mock AX helper:
+// detect → record (fixture audio + ASR stream) → live transcript → stop → summary → list/search → export.
+const appDir = path.join(__dirname, '..', 'apps', 'desktop');
+const shots = path.join(__dirname, '..', 'test-results');
+
+test('memo end-to-end: detect, record, live transcript, summarize, search, export', async () => {
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-memo-'));
+  const exportDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qrtz-export-'));
+  const env: Record<string, string> = {
+    ...(process.env as Record<string, string>),
+    QRTZ_USER_DATA: userData,
+    QRTZ_MOCK_HELPER: '1',
+    QRTZ_MOCK_SCENARIO: 'standup',
+    QRTZ_MOCK_SPEED: '0.04',
+    QRTZ_EXPORT_DIR: exportDir,
+    QRTZ_DEVTOOLS: '0',
+  };
+  delete env.QRTZ_SECRET_OPENROUTER; // prove the key-free path
+  delete env.QRTZ_SECRET_LLM_OPENROUTER;
+  const app = await electron.launch({
+    args: [appDir, ...(process.platform === 'linux' ? ['--no-sandbox'] : [])],
+    env,
+  });
+  const win = await app.firstWindow();
+  const errors: string[] = [];
+  win.on('pageerror', (e) => errors.push(e.message));
+
+  await win.getByTestId('nav-memo').click();
+
+  // 1. Mock AX helper detects a Zoom meeting.
+  const detected = win.getByTestId('memo-detected');
+  await expect(detected).toBeVisible({ timeout: 10_000 });
+  await expect(detected).toContainText('Weekly Product Sync');
+  await expect(detected).toContainText('Zoom');
+
+  // 2. Record → live transcript streams in with AX speaker names.
+  await win.getByTestId('memo-record').click();
+  const hud = win.getByTestId('memo-hud');
+  await expect(hud).toBeVisible();
+  await expect(win.getByTestId('memo-active-speaker')).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(hud).toContainText('Grace Hopper', { timeout: 10_000 });
+  await expect(hud).toContainText("let's ship the desktop launch next week", {
+    timeout: 15_000,
+  });
+  await win.screenshot({ path: path.join(shots, 'memo-live.png') });
+
+  // Fixture audio was written for the recording.
+  const recs = fs.readdirSync(path.join(userData, 'recordings'));
+  expect(recs).toHaveLength(1);
+  expect(
+    fs.statSync(path.join(userData, 'recordings', recs[0]!)).size,
+  ).toBeGreaterThan(1_000_000);
+
+  // 3. Stop → summary + action items (extractive fallback, no keys).
+  await win.getByTestId('memo-stop').click();
+  await expect(win.getByTestId('memo-done')).toBeVisible({ timeout: 20_000 });
+  await win.getByTestId('memo-open').click();
+  const summary = win.getByTestId('detail-summary');
+  await expect(summary).toBeVisible();
+  const actions = win.getByTestId('action-item');
+  await expect(actions.first()).toBeVisible();
+  expect(await actions.count()).toBeGreaterThanOrEqual(3);
+  await expect(summary).toContainText('onboarding copy');
+  await expect(summary).toContainText('Grace Hopper');
+  await expect(summary).toContainText('extractive');
+  await win.screenshot({ path: path.join(shots, 'memo-summary.png') });
+
+  // Transcript tab: 8 segments, speaker-labelled.
+  await win.getByTestId('tab-transcript').click();
+  await expect(win.getByTestId('transcript-segment')).toHaveCount(8);
+  await expect(win.getByTestId('detail-transcript')).toContainText(
+    'Alan Turing',
+  );
+
+  // 4. Meeting list + full-text search.
+  await expect(win.getByTestId('meeting-item')).toHaveCount(1);
+  await win.getByTestId('memo-search').fill('parakeet');
+  await expect(win.getByTestId('search-snippet')).toContainText('[parakeet]', {
+    timeout: 5_000,
+  });
+  await win.getByTestId('memo-search').fill('zebra');
+  await expect(win.getByTestId('meeting-item')).toHaveCount(0);
+  await win.getByTestId('memo-search').fill('');
+  await expect(win.getByTestId('meeting-item')).toHaveCount(1);
+
+  // 5. Markdown export.
+  await win.getByTestId('export-save').click();
+  await expect(win.getByTestId('export-result')).toContainText('Saved to');
+  const files = fs.readdirSync(exportDir);
+  expect(files).toHaveLength(1);
+  expect(files[0]).toMatch(/weekly-product-sync\.md$/);
+  const md = fs.readFileSync(path.join(exportDir, files[0]!), 'utf8');
+  expect(md).toContain('# Weekly Product Sync');
+  expect(md).toContain('## Action items');
+  expect(md).toContain('- [ ] ');
+  expect(md).toContain('**[0:04] Grace Hopper:**');
+
+  // Persistence: the meeting survives a restart.
+  await app.close();
+  const app2 = await electron.launch({
+    args: [appDir, ...(process.platform === 'linux' ? ['--no-sandbox'] : [])],
+    env: { ...env, QRTZ_MOCK_SCENARIO: '' },
+  });
+  const win2 = await app2.firstWindow();
+  await win2.getByTestId('nav-memo').click();
+  await expect(win2.getByTestId('meeting-item')).toHaveCount(1);
+  await app2.close();
+
+  expect(errors).toEqual([]);
+});

@@ -82,3 +82,19 @@ docs/architecture.md                  research notes and rationale
 If a sub app needs the main process, add a channel to `IpcContract` in
 `packages/core/src/ipc.ts`, add it to `IPC_CHANNELS`, and handle it in
 `apps/desktop/src/ipc.ts`.
+
+## Memo (meeting recorder)
+
+- **Detection and metadata:** finds Zoom (app and web) and Google Meet (Chrome and Safari) through the macOS Accessibility tree, and reads the title, participants and active speaker.
+- **Live transcription:** on-device NVIDIA Parakeet streaming. The live transcript is final.
+- **After the meeting:** an LLM writes the summary, action items and Q&A.
+- **LLM keys:** OpenRouter is the default. Set `QRTZ_SECRET_OPENROUTER` or add a key in Settings. Without a key, an on-device extractive summarizer is used.
+- **Storage and export:** local SQLite with full-text search, and Markdown export.
+
+On Linux (and in tests) a TypeScript mock replaces the Swift helper. To watch a scripted meeting:
+
+```sh
+QRTZ_MOCK_HELPER=1 QRTZ_MOCK_SCENARIO=standup QRTZ_MOCK_SPEED=0.1 npm start
+```
+
+The full flow is covered by `e2e/memo.spec.ts` (`npm run package && xvfb-run -a npm run e2e`).

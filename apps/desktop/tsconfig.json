@@ -18,7 +18,10 @@
     },
     {
       "path": "../../packages/features/settings"
+    },
+    {
+      "path": "../../packages/features/memo"
     }
   ],
-  "exclude": ["src/**/*.test.ts"]
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }
