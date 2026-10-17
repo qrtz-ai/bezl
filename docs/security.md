@@ -29,7 +29,7 @@ Status as of M0 (2026-10-16). Items marked ☐ are tracked in PLAN.md.
 - ☑ Config writes are zod-validated. Deep merge drops `__proto__`, `constructor` and `prototype` (tested).
 
 - ☑ Dev and test env hooks (`QRTZ_DEV_SEED`, `QRTZ_LLM_BASE_URL`, `QRTZ_SIMULATE_MISSING_HELPER`, `QRTZ_MOCK_CRASH_AFTER_MS`, `QRTZ_MOCK_SCENARIO`) are stripped at startup in packaged builds, before the worker and helper inherit the env. `QRTZ_LLM_BASE_URL` could otherwise send the API key to another host.
-- ☑ The embedding model is downloaded from Hugging Face into `userData/models`. Transcript text never leaves the device for embeddings (`QRTZ_EMBEDDINGS=0` disables them, `QRTZ_EMBEDDINGS_OFFLINE=1` forbids downloads).
+- ☑ There is no embedding model (removed with chat, ADR 0072/0073); search is full-text only.
 
 ## Processes
 
@@ -42,7 +42,7 @@ Status as of M0 (2026-10-16). Items marked ☐ are tracked in PLAN.md.
 
 ## Privacy controls (iteration 13)
 
-- **Entirely offline** (ADR 0076): no cloud speech and no summary provider; summaries are Apple Intelligence on the Mac (ADR 0075). The only outbound requests are the signed speech-bundle downloads (qrtz-speech; plain http only to a real loopback host, N100). The old `privacy.localOnly` switch is gone, and saved cloud keys are deleted at launch.
+- **Entirely offline** (ADR 0076): no cloud speech and no summary provider; summaries are Apple Intelligence on the Mac (ADR 0075). In qrtz's own code the only outbound requests are the signed speech-bundle downloads (qrtz-speech; plain http only to a real loopback host, N100), enforced by `qrtz-lifecycle/tests/offline_graph.rs` (ADR 0078). Open: the helper's FluidAudio model downloads (Parakeet, LocalVQE) and the OS speech-asset download still reach the network, and there is no App Sandbox (ADR 0078 follow-ups). The old `privacy.localOnly` switch is gone, and saved cloud keys are deleted at launch.
 - **Pause** (`recording.pause` / `recording.resume`): the helper writes silence and doesn't feed the recogniser; main also drops in-flight ASR.
 - **Excluded apps**: detection events from listed apps or platforms are dropped in main (logged without the title).
 - **Backups**: entries are restricted to `db/qrtz.db` and `audio/<safe name>.wav`. Every byte is sha256-verified before anything is written. The imported DB is integrity-checked and schema-checked, then merged without overwriting. `QRTZ_BACKUP_PATH` (which skips the dialogs, for tests) is stripped in packaged builds.

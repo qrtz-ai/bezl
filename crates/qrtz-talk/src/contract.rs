@@ -27,7 +27,7 @@ pub enum TalkPhase {
     Idle,
     /// Mic open, text streaming.
     Listening,
-    /// Key released; waiting for the provider's final text.
+    /// Key released; waiting for the speech module's final text.
     Finalizing,
     Inserting,
     Error,
@@ -156,7 +156,8 @@ pub struct TalkEntry {
     pub text: String,
     pub cleanup: CleanupMethod,
     pub engine: Engine,
-    /// True when the cloud provider failed and the on-device text was used.
+    /// Legacy: true on entries from the removed cloud engine when it failed over to on-device. New entries always
+    /// write `false` (ADR 0076); kept so old `talk.json` files and the shared vectors round-trip.
     #[serde(default)]
     pub failover: bool,
     pub insert: InsertMethod,

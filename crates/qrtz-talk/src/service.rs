@@ -363,7 +363,7 @@ impl TalkService {
         Engine::OnDevice
     }
 
-    /// Push settings to the helper. Call on start, every helper hello and every config or secret change.
+    /// Push settings to the helper. Call on start, every helper hello and every config change.
     pub fn configure(&self) {
         let cfg = self.cfg();
         self.send(json!({
