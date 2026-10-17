@@ -1,0 +1,143 @@
+{
+  "kind": "session",
+  "name": "stop is legal while reconnecting (salvage) and rejected when idle",
+  "from": "lifecycle.test.ts",
+  "initial": null,
+  "steps": [
+    {
+      "event": {
+        "type": "stop-requested",
+        "reason": "manual",
+        "at": 0
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "start-requested",
+        "meetingId": "m",
+        "at": 0,
+        "audioPath": "/p0"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0
+      }
+    },
+    {
+      "event": {
+        "type": "start-acked"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0
+      }
+    },
+    {
+      "event": {
+        "type": "helper-lost",
+        "at": 1,
+        "deadlineAt": 2
+      },
+      "expect": {
+        "phase": "reconnecting",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0,
+        "reconnect": {
+          "attempt": 1,
+          "since": 1,
+          "deadlineAt": 2
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "stop-requested",
+        "reason": "helper-lost",
+        "at": 3
+      },
+      "expect": {
+        "phase": "stopping",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0,
+        "stopReason": "helper-lost",
+        "stoppedAt": 3
+      }
+    },
+    {
+      "event": {
+        "type": "stop-requested",
+        "reason": "manual",
+        "at": 4
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "stopped",
+        "at": 5
+      },
+      "expect": {
+        "phase": "processing",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0,
+        "stopReason": "helper-lost",
+        "stoppedAt": 3
+      }
+    },
+    {
+      "event": {
+        "type": "processing-failed",
+        "error": {
+          "code": "E",
+          "message": "boom",
+          "retryable": true
+        }
+      },
+      "expect": {
+        "phase": "error",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0,
+        "stopReason": "helper-lost",
+        "stoppedAt": 3,
+        "error": {
+          "code": "E",
+          "message": "boom",
+          "retryable": true
+        }
+      }
+    }
+  ]
+}

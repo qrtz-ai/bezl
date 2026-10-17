@@ -1,0 +1,31 @@
+{
+  "kind": "session",
+  "name": "crash-recovered style initial state is accepted and normalized",
+  "from": "lifecycle.test.ts",
+  "initial": {
+    "phase": "done",
+    "meetingId": "m",
+    "startedAt": 5,
+    "degraded": [
+      "mic-only"
+    ],
+    "audioParts": [
+      "/a"
+    ],
+    "partOffsetMs": 0,
+    "stopReason": "crash-recovered"
+  },
+  "steps": [
+    {
+      "event": {
+        "type": "reset"
+      },
+      "expect": {
+        "phase": "idle",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0
+      }
+    }
+  ]
+}

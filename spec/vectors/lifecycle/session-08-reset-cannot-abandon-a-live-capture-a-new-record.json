@@ -1,0 +1,93 @@
+{
+  "kind": "session",
+  "name": "reset cannot abandon a live capture; a new recording may start while the last one post-processes",
+  "from": "lifecycle.test.ts",
+  "initial": null,
+  "steps": [
+    {
+      "event": {
+        "type": "start-requested",
+        "meetingId": "m",
+        "at": 0,
+        "audioPath": "/p"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/p"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0
+      }
+    },
+    {
+      "event": {
+        "type": "reset"
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "stop-requested",
+        "reason": "manual",
+        "at": 1
+      },
+      "expect": {
+        "phase": "stopping",
+        "degraded": [],
+        "audioParts": [
+          "/p"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0,
+        "stopReason": "manual",
+        "stoppedAt": 1
+      }
+    },
+    {
+      "event": {
+        "type": "reset"
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "stopped",
+        "at": 1
+      },
+      "expect": {
+        "phase": "processing",
+        "degraded": [],
+        "audioParts": [
+          "/p"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0,
+        "stopReason": "manual",
+        "stoppedAt": 1
+      }
+    },
+    {
+      "event": {
+        "type": "start-requested",
+        "meetingId": "n",
+        "at": 2,
+        "audioPath": "/q"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/q"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "n",
+        "startedAt": 2
+      }
+    }
+  ]
+}

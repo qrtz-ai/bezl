@@ -1,0 +1,106 @@
+{
+  "kind": "session",
+  "name": "degradations are deduplicated and only apply while capturing",
+  "from": "lifecycle.test.ts",
+  "initial": null,
+  "steps": [
+    {
+      "event": {
+        "type": "degraded",
+        "flag": "mic-only"
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "start-requested",
+        "meetingId": "m",
+        "at": 0,
+        "audioPath": "/p"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/p"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0
+      }
+    },
+    {
+      "event": {
+        "type": "degraded",
+        "flag": "mic-only"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [
+          "mic-only"
+        ],
+        "audioParts": [
+          "/p"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0
+      }
+    },
+    {
+      "event": {
+        "type": "degraded",
+        "flag": "mic-only"
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "degraded",
+        "flag": "ax-unavailable"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [
+          "mic-only",
+          "ax-unavailable"
+        ],
+        "audioParts": [
+          "/p"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0
+      }
+    },
+    {
+      "event": {
+        "type": "stop-requested",
+        "reason": "manual",
+        "at": 1
+      },
+      "expect": {
+        "phase": "stopping",
+        "degraded": [
+          "mic-only",
+          "ax-unavailable"
+        ],
+        "audioParts": [
+          "/p"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0,
+        "stopReason": "manual",
+        "stoppedAt": 1
+      }
+    },
+    {
+      "event": {
+        "type": "degraded",
+        "flag": "asr-unavailable"
+      },
+      "expect": "rejected"
+    }
+  ]
+}

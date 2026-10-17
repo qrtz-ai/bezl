@@ -1,0 +1,118 @@
+{
+  "kind": "session",
+  "name": "failed start returns to the resting phase with a structured error",
+  "from": "lifecycle.test.ts",
+  "initial": null,
+  "steps": [
+    {
+      "event": {
+        "type": "detected",
+        "meeting": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        }
+      },
+      "expect": {
+        "phase": "detected",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "start-requested",
+        "meetingId": "m",
+        "at": 1,
+        "audioPath": "/a"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/a"
+        ],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "meetingId": "m",
+        "startedAt": 1
+      }
+    },
+    {
+      "event": {
+        "type": "start-failed",
+        "error": {
+          "code": "E",
+          "message": "boom",
+          "retryable": true
+        }
+      },
+      "expect": {
+        "phase": "detected",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "error": {
+          "code": "E",
+          "message": "boom",
+          "retryable": true
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "clear-error"
+      },
+      "expect": {
+        "phase": "detected",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "meeting-ended",
+        "key": "other"
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "meeting-ended",
+        "key": "k"
+      },
+      "expect": {
+        "phase": "idle",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0
+      }
+    }
+  ]
+}

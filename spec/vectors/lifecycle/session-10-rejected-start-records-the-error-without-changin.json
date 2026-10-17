@@ -1,0 +1,116 @@
+{
+  "kind": "session",
+  "name": "rejected start records the error without changing phase; clear-error removes it",
+  "from": "lifecycle.test.ts",
+  "initial": null,
+  "steps": [
+    {
+      "event": {
+        "type": "clear-error"
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "detected",
+        "meeting": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        }
+      },
+      "expect": {
+        "phase": "detected",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "rejected",
+        "error": {
+          "code": "E",
+          "message": "boom",
+          "retryable": true
+        }
+      },
+      "expect": {
+        "phase": "detected",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "error": {
+          "code": "E",
+          "message": "boom",
+          "retryable": true
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "clear-error"
+      },
+      "expect": {
+        "phase": "detected",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "start-requested",
+        "meetingId": "m",
+        "at": 0,
+        "audioPath": "/p"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/p"
+        ],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "meetingId": "m",
+        "startedAt": 0
+      }
+    },
+    {
+      "event": {
+        "type": "rejected",
+        "error": {
+          "code": "E",
+          "message": "boom",
+          "retryable": true
+        }
+      },
+      "expect": "rejected"
+    }
+  ]
+}

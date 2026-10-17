@@ -1,0 +1,29 @@
+{
+  "kind": "policies",
+  "name": "RETRY_POLICIES constants",
+  "expect": {
+    "helperReconnectWindowMs": 30000,
+    "startAckMs": 5000,
+    "stopAckMs": 10000,
+    "appendLive": {
+      "maxAttempts": 5,
+      "baseMs": 250,
+      "maxMs": 4000
+    },
+    "finalize": {
+      "maxAttempts": 3,
+      "baseMs": 1000,
+      "maxMs": 16000
+    },
+    "summary": {
+      "maxAttempts": 3,
+      "baseMs": 2000,
+      "maxMs": 30000
+    },
+    "index": {
+      "maxAttempts": 3,
+      "baseMs": 5000,
+      "maxMs": 60000
+    }
+  }
+}

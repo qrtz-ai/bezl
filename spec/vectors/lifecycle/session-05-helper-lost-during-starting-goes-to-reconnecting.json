@@ -1,0 +1,74 @@
+{
+  "kind": "session",
+  "name": "helper lost during starting goes to reconnecting",
+  "from": "note-service.ts",
+  "initial": null,
+  "steps": [
+    {
+      "event": {
+        "type": "start-requested",
+        "meetingId": "m",
+        "at": 0,
+        "audioPath": "/p0"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0
+      }
+    },
+    {
+      "event": {
+        "type": "helper-lost",
+        "at": 1,
+        "deadlineAt": 31
+      },
+      "expect": {
+        "phase": "reconnecting",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 0,
+        "reconnect": {
+          "attempt": 1,
+          "since": 1,
+          "deadlineAt": 31
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "start-acked"
+      },
+      "expect": "rejected"
+    },
+    {
+      "event": {
+        "type": "helper-restored",
+        "at": 5,
+        "audioPath": "/p1"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1"
+        ],
+        "partOffsetMs": 5,
+        "meetingId": "m",
+        "startedAt": 0
+      }
+    }
+  ]
+}

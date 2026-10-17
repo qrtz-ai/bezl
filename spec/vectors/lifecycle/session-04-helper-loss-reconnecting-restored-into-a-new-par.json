@@ -1,0 +1,159 @@
+{
+  "kind": "session",
+  "name": "helper loss → reconnecting → restored into a new part with an offset and a gap flag",
+  "from": "lifecycle.test.ts",
+  "initial": null,
+  "steps": [
+    {
+      "event": {
+        "type": "start-requested",
+        "meetingId": "m",
+        "at": 1000,
+        "audioPath": "/p0"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000
+      }
+    },
+    {
+      "event": {
+        "type": "start-acked"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000
+      }
+    },
+    {
+      "event": {
+        "type": "helper-lost",
+        "at": 2000,
+        "deadlineAt": 32000
+      },
+      "expect": {
+        "phase": "reconnecting",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "reconnect": {
+          "attempt": 1,
+          "since": 2000,
+          "deadlineAt": 32000
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "helper-lost",
+        "at": 2500,
+        "deadlineAt": 40000
+      },
+      "expect": {
+        "phase": "reconnecting",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "reconnect": {
+          "attempt": 2,
+          "since": 2000,
+          "deadlineAt": 32000
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "helper-restored",
+        "at": 4000,
+        "audioPath": "/p1"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1"
+        ],
+        "partOffsetMs": 3000,
+        "meetingId": "m",
+        "startedAt": 1000
+      }
+    },
+    {
+      "event": {
+        "type": "helper-lost",
+        "at": 5000,
+        "deadlineAt": 35000
+      },
+      "expect": {
+        "phase": "reconnecting",
+        "degraded": [
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1"
+        ],
+        "partOffsetMs": 3000,
+        "meetingId": "m",
+        "startedAt": 1000,
+        "reconnect": {
+          "attempt": 1,
+          "since": 5000,
+          "deadlineAt": 35000
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "helper-restored",
+        "at": 6000,
+        "audioPath": "/p2"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1",
+          "/p2"
+        ],
+        "partOffsetMs": 5000,
+        "meetingId": "m",
+        "startedAt": 1000
+      }
+    },
+    {
+      "event": {
+        "type": "helper-restored",
+        "at": 7000,
+        "audioPath": "/p3"
+      },
+      "expect": "rejected"
+    }
+  ]
+}

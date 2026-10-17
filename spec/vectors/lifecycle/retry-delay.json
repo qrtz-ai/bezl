@@ -1,0 +1,4230 @@
+{
+  "kind": "retry-delay",
+  "name": "retryDelay: exponential, capped, ±20% jitter, scale",
+  "cases": [
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 0,
+      "random": 0,
+      "scale": 1,
+      "expect": 800
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 0,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 8
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 0,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 900
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 0,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 9
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 0,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 1000
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 0,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 10
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 0,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 1100
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 0,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 11
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 0,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 1200
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 0,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 12
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 0,
+      "random": 1,
+      "scale": 1,
+      "expect": 1200
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 0,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 12
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 1,
+      "random": 0,
+      "scale": 1,
+      "expect": 800
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 1,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 8
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 1,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 900
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 1,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 9
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 1,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 1000
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 1,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 10
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 1,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 1100
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 1,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 11
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 1,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 1200
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 1,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 12
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 1,
+      "random": 1,
+      "scale": 1,
+      "expect": 1200
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 1,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 12
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 2,
+      "random": 0,
+      "scale": 1,
+      "expect": 1600
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 2,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 16
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 2,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 1800
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 2,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 18
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 2,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 2000
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 2,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 20
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 2,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 2200
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 2,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 22
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 2,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 2399
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 2,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 24
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 2,
+      "random": 1,
+      "scale": 1,
+      "expect": 2400
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 2,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 24
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 3,
+      "random": 0,
+      "scale": 1,
+      "expect": 3200
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 3,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 32
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 3,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 3600
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 3,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 36
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 3,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 4000
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 3,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 40
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 3,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 4400
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 3,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 44
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 3,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 4798
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 3,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 48
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 3,
+      "random": 1,
+      "scale": 1,
+      "expect": 4800
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 3,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 48
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 4,
+      "random": 0,
+      "scale": 1,
+      "expect": 4000
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 4,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 40
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 4,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 4500
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 4,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 45
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 4,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 5000
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 4,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 50
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 4,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 5500
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 4,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 55
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 4,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 5998
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 4,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 60
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 4,
+      "random": 1,
+      "scale": 1,
+      "expect": 6000
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 4,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 60
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 5,
+      "random": 0,
+      "scale": 1,
+      "expect": 4000
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 5,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 40
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 5,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 4500
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 5,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 45
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 5,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 5000
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 5,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 50
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 5,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 5500
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 5,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 55
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 5,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 5998
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 5,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 60
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 5,
+      "random": 1,
+      "scale": 1,
+      "expect": 6000
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 5,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 60
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 9,
+      "random": 0,
+      "scale": 1,
+      "expect": 4000
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 9,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 40
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 9,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 4500
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 9,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 45
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 9,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 5000
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 9,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 50
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 9,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 5500
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 9,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 55
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 9,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 5998
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 9,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 60
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 9,
+      "random": 1,
+      "scale": 1,
+      "expect": 6000
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 9,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 60
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 40,
+      "random": 0,
+      "scale": 1,
+      "expect": 4000
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 40,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 40
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 40,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 4500
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 40,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 45
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 40,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 5000
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 40,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 50
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 40,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 5500
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 40,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 55
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 40,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 5998
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 40,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 60
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 40,
+      "random": 1,
+      "scale": 1,
+      "expect": 6000
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 1000,
+        "maxMs": 5000
+      },
+      "attempt": 40,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 60
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 0,
+      "random": 0,
+      "scale": 1,
+      "expect": 200
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 0,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 2
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 0,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 225
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 0,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 2
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 0,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 250
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 0,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 3
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 0,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 275
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 0,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 3
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 0,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 300
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 0,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 3
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 0,
+      "random": 1,
+      "scale": 1,
+      "expect": 300
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 0,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 3
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 1,
+      "random": 0,
+      "scale": 1,
+      "expect": 200
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 1,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 2
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 1,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 225
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 1,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 2
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 1,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 250
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 1,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 3
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 1,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 275
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 1,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 3
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 1,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 300
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 1,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 3
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 1,
+      "random": 1,
+      "scale": 1,
+      "expect": 300
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 1,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 3
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 2,
+      "random": 0,
+      "scale": 1,
+      "expect": 400
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 2,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 4
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 2,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 450
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 2,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 5
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 2,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 500
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 2,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 5
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 2,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 550
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 2,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 6
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 2,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 600
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 2,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 6
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 2,
+      "random": 1,
+      "scale": 1,
+      "expect": 600
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 2,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 6
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 3,
+      "random": 0,
+      "scale": 1,
+      "expect": 800
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 3,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 8
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 3,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 900
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 3,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 9
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 3,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 1000
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 3,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 10
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 3,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 1100
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 3,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 11
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 3,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 1200
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 3,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 12
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 3,
+      "random": 1,
+      "scale": 1,
+      "expect": 1200
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 3,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 12
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 4,
+      "random": 0,
+      "scale": 1,
+      "expect": 1600
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 4,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 16
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 4,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 1800
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 4,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 18
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 4,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 2000
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 4,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 20
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 4,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 2200
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 4,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 22
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 4,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 2399
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 4,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 24
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 4,
+      "random": 1,
+      "scale": 1,
+      "expect": 2400
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 4,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 24
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 5,
+      "random": 0,
+      "scale": 1,
+      "expect": 3200
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 5,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 32
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 5,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 3600
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 5,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 36
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 5,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 4000
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 5,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 40
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 5,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 4400
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 5,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 44
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 5,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 4798
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 5,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 48
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 5,
+      "random": 1,
+      "scale": 1,
+      "expect": 4800
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 5,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 48
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 9,
+      "random": 0,
+      "scale": 1,
+      "expect": 3200
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 9,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 32
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 9,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 3600
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 9,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 36
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 9,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 4000
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 9,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 40
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 9,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 4400
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 9,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 44
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 9,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 4798
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 9,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 48
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 9,
+      "random": 1,
+      "scale": 1,
+      "expect": 4800
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 9,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 48
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 40,
+      "random": 0,
+      "scale": 1,
+      "expect": 3200
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 40,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 32
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 40,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 3600
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 40,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 36
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 40,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 4000
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 40,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 40
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 40,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 4400
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 40,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 44
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 40,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 4798
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 40,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 48
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 40,
+      "random": 1,
+      "scale": 1,
+      "expect": 4800
+    },
+    {
+      "policy": {
+        "maxAttempts": 5,
+        "baseMs": 250,
+        "maxMs": 4000
+      },
+      "attempt": 40,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 48
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 0,
+      "random": 0,
+      "scale": 1,
+      "expect": 1600
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 0,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 16
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 0,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 1800
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 0,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 18
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 0,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 2000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 0,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 20
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 0,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 2200
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 0,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 22
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 0,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 2399
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 0,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 24
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 0,
+      "random": 1,
+      "scale": 1,
+      "expect": 2400
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 0,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 24
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 1,
+      "random": 0,
+      "scale": 1,
+      "expect": 1600
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 1,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 16
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 1,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 1800
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 1,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 18
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 1,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 2000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 1,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 20
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 1,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 2200
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 1,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 22
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 1,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 2399
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 1,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 24
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 1,
+      "random": 1,
+      "scale": 1,
+      "expect": 2400
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 1,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 24
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 2,
+      "random": 0,
+      "scale": 1,
+      "expect": 3200
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 2,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 32
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 2,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 3600
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 2,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 36
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 2,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 4000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 2,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 40
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 2,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 4400
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 2,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 44
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 2,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 4798
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 2,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 48
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 2,
+      "random": 1,
+      "scale": 1,
+      "expect": 4800
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 2,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 48
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 3,
+      "random": 0,
+      "scale": 1,
+      "expect": 6400
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 3,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 64
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 3,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 7200
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 3,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 72
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 3,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 8000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 3,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 80
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 3,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 8800
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 3,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 88
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 3,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 9597
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 3,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 96
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 3,
+      "random": 1,
+      "scale": 1,
+      "expect": 9600
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 3,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 96
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 4,
+      "random": 0,
+      "scale": 1,
+      "expect": 12800
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 4,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 128
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 4,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 14400
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 4,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 144
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 4,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 16000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 4,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 160
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 4,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 17600
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 4,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 176
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 4,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 19194
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 4,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 192
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 4,
+      "random": 1,
+      "scale": 1,
+      "expect": 19200
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 4,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 192
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 5,
+      "random": 0,
+      "scale": 1,
+      "expect": 24000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 5,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 240
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 5,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 27000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 5,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 270
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 5,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 30000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 5,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 300
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 5,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 33000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 5,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 330
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 5,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 35988
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 5,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 360
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 5,
+      "random": 1,
+      "scale": 1,
+      "expect": 36000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 5,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 360
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 9,
+      "random": 0,
+      "scale": 1,
+      "expect": 24000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 9,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 240
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 9,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 27000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 9,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 270
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 9,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 30000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 9,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 300
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 9,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 33000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 9,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 330
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 9,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 35988
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 9,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 360
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 9,
+      "random": 1,
+      "scale": 1,
+      "expect": 36000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 9,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 360
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 40,
+      "random": 0,
+      "scale": 1,
+      "expect": 24000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 40,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 240
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 40,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 27000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 40,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 270
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 40,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 30000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 40,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 300
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 40,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 33000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 40,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 330
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 40,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 35988
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 40,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 360
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 40,
+      "random": 1,
+      "scale": 1,
+      "expect": 36000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 2000,
+        "maxMs": 30000
+      },
+      "attempt": 40,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 360
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 0,
+      "random": 0,
+      "scale": 1,
+      "expect": 4000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 0,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 40
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 0,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 4500
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 0,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 45
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 0,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 5000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 0,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 50
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 0,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 5500
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 0,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 55
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 0,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 5998
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 0,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 60
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 0,
+      "random": 1,
+      "scale": 1,
+      "expect": 6000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 0,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 60
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 1,
+      "random": 0,
+      "scale": 1,
+      "expect": 4000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 1,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 40
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 1,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 4500
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 1,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 45
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 1,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 5000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 1,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 50
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 1,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 5500
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 1,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 55
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 1,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 5998
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 1,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 60
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 1,
+      "random": 1,
+      "scale": 1,
+      "expect": 6000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 1,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 60
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 2,
+      "random": 0,
+      "scale": 1,
+      "expect": 8000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 2,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 80
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 2,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 9000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 2,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 90
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 2,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 10000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 2,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 100
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 2,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 11000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 2,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 110
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 2,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 11996
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 2,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 120
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 2,
+      "random": 1,
+      "scale": 1,
+      "expect": 12000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 2,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 120
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 3,
+      "random": 0,
+      "scale": 1,
+      "expect": 16000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 3,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 160
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 3,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 18000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 3,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 180
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 3,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 20000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 3,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 200
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 3,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 22000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 3,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 220
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 3,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 23992
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 3,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 240
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 3,
+      "random": 1,
+      "scale": 1,
+      "expect": 24000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 3,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 240
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 4,
+      "random": 0,
+      "scale": 1,
+      "expect": 32000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 4,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 320
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 4,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 36000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 4,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 360
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 4,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 40000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 4,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 400
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 4,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 44000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 4,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 440
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 4,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 47984
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 4,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 480
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 4,
+      "random": 1,
+      "scale": 1,
+      "expect": 48000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 4,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 480
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 5,
+      "random": 0,
+      "scale": 1,
+      "expect": 48000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 5,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 480
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 5,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 54000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 5,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 540
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 5,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 60000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 5,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 600
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 5,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 66000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 5,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 660
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 5,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 71976
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 5,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 720
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 5,
+      "random": 1,
+      "scale": 1,
+      "expect": 72000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 5,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 720
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 9,
+      "random": 0,
+      "scale": 1,
+      "expect": 48000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 9,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 480
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 9,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 54000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 9,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 540
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 9,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 60000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 9,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 600
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 9,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 66000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 9,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 660
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 9,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 71976
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 9,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 720
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 9,
+      "random": 1,
+      "scale": 1,
+      "expect": 72000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 9,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 720
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 40,
+      "random": 0,
+      "scale": 1,
+      "expect": 48000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 40,
+      "random": 0,
+      "scale": 0.01,
+      "expect": 480
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 40,
+      "random": 0.25,
+      "scale": 1,
+      "expect": 54000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 40,
+      "random": 0.25,
+      "scale": 0.01,
+      "expect": 540
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 40,
+      "random": 0.5,
+      "scale": 1,
+      "expect": 60000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 40,
+      "random": 0.5,
+      "scale": 0.01,
+      "expect": 600
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 40,
+      "random": 0.75,
+      "scale": 1,
+      "expect": 66000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 40,
+      "random": 0.75,
+      "scale": 0.01,
+      "expect": 660
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 40,
+      "random": 0.999,
+      "scale": 1,
+      "expect": 71976
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 40,
+      "random": 0.999,
+      "scale": 0.01,
+      "expect": 720
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 40,
+      "random": 1,
+      "scale": 1,
+      "expect": 72000
+    },
+    {
+      "policy": {
+        "maxAttempts": 3,
+        "baseMs": 5000,
+        "maxMs": 60000
+      },
+      "attempt": 40,
+      "random": 1,
+      "scale": 0.01,
+      "expect": 720
+    }
+  ]
+}

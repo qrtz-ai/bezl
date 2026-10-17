@@ -1,0 +1,521 @@
+{
+  "kind": "pipeline",
+  "name": "manual retry grants a fresh budget and re-arms later steps",
+  "from": "lifecycle.test.ts",
+  "initial": {
+    "meetingId": "m",
+    "stopReason": "manual",
+    "ctx": {
+      "startedAt": 0,
+      "endedAt": 1,
+      "durationMs": 1,
+      "audioParts": [],
+      "active": [],
+      "helperCrashed": false
+    },
+    "now": 0
+  },
+  "steps": [
+    {
+      "step": "finalize",
+      "patch": {
+        "kind": "start",
+        "now": 0
+      },
+      "expect": {
+        "state": {
+          "meetingId": "m",
+          "stopReason": "manual",
+          "ctx": {
+            "startedAt": 0,
+            "endedAt": 1,
+            "durationMs": 1,
+            "audioParts": [],
+            "active": [],
+            "helperCrashed": false
+          },
+          "updatedAt": 0,
+          "steps": {
+            "finalize": {
+              "status": "running",
+              "attempts": 1,
+              "maxAttempts": 3,
+              "startedAt": 0
+            },
+            "summary": {
+              "status": "pending",
+              "attempts": 0,
+              "maxAttempts": 3
+            },
+            "index": {
+              "status": "pending",
+              "attempts": 0,
+              "maxAttempts": 3
+            }
+          }
+        },
+        "nextRunnable": "finalize",
+        "settled": false,
+        "usable": false
+      }
+    },
+    {
+      "step": "finalize",
+      "patch": {
+        "kind": "failure",
+        "now": 0,
+        "error": {
+          "code": "E",
+          "message": "boom",
+          "retryable": false
+        },
+        "delayMs": 0
+      },
+      "expect": {
+        "state": {
+          "meetingId": "m",
+          "stopReason": "manual",
+          "ctx": {
+            "startedAt": 0,
+            "endedAt": 1,
+            "durationMs": 1,
+            "audioParts": [],
+            "active": [],
+            "helperCrashed": false
+          },
+          "updatedAt": 0,
+          "steps": {
+            "finalize": {
+              "status": "failed",
+              "attempts": 1,
+              "maxAttempts": 3,
+              "startedAt": 0,
+              "error": {
+                "code": "E",
+                "message": "boom",
+                "retryable": false
+              },
+              "finishedAt": 0
+            },
+            "summary": {
+              "status": "pending",
+              "attempts": 0,
+              "maxAttempts": 3
+            },
+            "index": {
+              "status": "pending",
+              "attempts": 0,
+              "maxAttempts": 3
+            }
+          }
+        },
+        "nextRunnable": null,
+        "settled": true,
+        "usable": false
+      }
+    },
+    {
+      "step": "finalize",
+      "patch": {
+        "kind": "manual-retry",
+        "now": 1
+      },
+      "expect": {
+        "state": {
+          "meetingId": "m",
+          "stopReason": "manual",
+          "ctx": {
+            "startedAt": 0,
+            "endedAt": 1,
+            "durationMs": 1,
+            "audioParts": [],
+            "active": [],
+            "helperCrashed": false
+          },
+          "updatedAt": 1,
+          "steps": {
+            "finalize": {
+              "status": "pending",
+              "attempts": 0,
+              "maxAttempts": 3
+            },
+            "summary": {
+              "status": "pending",
+              "attempts": 0,
+              "maxAttempts": 3
+            },
+            "index": {
+              "status": "pending",
+              "attempts": 0,
+              "maxAttempts": 3
+            }
+          }
+        },
+        "nextRunnable": "finalize",
+        "settled": false,
+        "usable": false
+      }
+    },
+    {
+      "step": "finalize",
+      "patch": {
+        "kind": "start",
+        "now": 2
+      },
+      "expect": {
+        "state": {
+          "meetingId": "m",
+          "stopReason": "manual",
+          "ctx": {
+            "startedAt": 0,
+            "endedAt": 1,
+            "durationMs": 1,
+            "audioParts": [],
+            "active": [],
+            "helperCrashed": false
+          },
+          "updatedAt": 2,
+          "steps": {
+            "finalize": {
+              "status": "running",
+              "attempts": 1,
+              "maxAttempts": 3,
+              "startedAt": 2
+            },
+            "summary": {
+              "status": "pending",
+              "attempts": 0,
+              "maxAttempts": 3
+            },
+            "index": {
+              "status": "pending",
+              "attempts": 0,
+              "maxAttempts": 3
+            }
+          }
+        },
+        "nextRunnable": "finalize",
+        "settled": false,
+        "usable": false
+      }
+    },
+    {
+      "step": "finalize",
+      "patch": {
+        "kind": "success",
+        "now": 3
+      },
+      "expect": {
+        "state": {
+          "meetingId": "m",
+          "stopReason": "manual",
+          "ctx": {
+            "startedAt": 0,
+            "endedAt": 1,
+            "durationMs": 1,
+            "audioParts": [],
+            "active": [],
+            "helperCrashed": false
+          },
+          "updatedAt": 3,
+          "steps": {
+            "finalize": {
+              "status": "done",
+              "attempts": 1,
+              "maxAttempts": 3,
+              "finishedAt": 3,
+              "startedAt": 2
+            },
+            "summary": {
+              "status": "pending",
+              "attempts": 0,
+              "maxAttempts": 3
+            },
+            "index": {
+              "status": "pending",
+              "attempts": 0,
+              "maxAttempts": 3
+            }
+          }
+        },
+        "nextRunnable": "summary",
+        "settled": false,
+        "usable": false
+      }
+    },
+    {
+      "step": "summary",
+      "patch": {
+        "kind": "start",
+        "now": 4
+      },
+      "expect": {
+        "state": {
+          "meetingId": "m",
+          "stopReason": "manual",
+          "ctx": {
+            "startedAt": 0,
+            "endedAt": 1,
+            "durationMs": 1,
+            "audioParts": [],
+            "active": [],
+            "helperCrashed": false
+          },
+          "updatedAt": 4,
+          "steps": {
+            "finalize": {
+              "status": "done",
+              "attempts": 1,
+              "maxAttempts": 3,
+              "finishedAt": 3,
+              "startedAt": 2
+            },
+            "summary": {
+              "status": "running",
+              "attempts": 1,
+              "maxAttempts": 3,
+              "startedAt": 4
+            },
+            "index": {
+              "status": "pending",
+              "attempts": 0,
+              "maxAttempts": 3
+            }
+          }
+        },
+        "nextRunnable": "summary",
+        "settled": false,
+        "usable": false
+      }
+    },
+    {
+      "step": "summary",
+      "patch": {
+        "kind": "success",
+        "now": 5
+      },
+      "expect": {
+        "state": {
+          "meetingId": "m",
+          "stopReason": "manual",
+          "ctx": {
+            "startedAt": 0,
+            "endedAt": 1,
+            "durationMs": 1,
+            "audioParts": [],
+            "active": [],
+            "helperCrashed": false
+          },
+          "updatedAt": 5,
+          "steps": {
+            "finalize": {
+              "status": "done",
+              "attempts": 1,
+              "maxAttempts": 3,
+              "finishedAt": 3,
+              "startedAt": 2
+            },
+            "summary": {
+              "status": "done",
+              "attempts": 1,
+              "maxAttempts": 3,
+              "finishedAt": 5,
+              "startedAt": 4
+            },
+            "index": {
+              "status": "pending",
+              "attempts": 0,
+              "maxAttempts": 3
+            }
+          }
+        },
+        "nextRunnable": "index",
+        "settled": false,
+        "usable": true
+      }
+    },
+    {
+      "step": "index",
+      "patch": {
+        "kind": "start",
+        "now": 6
+      },
+      "expect": {
+        "state": {
+          "meetingId": "m",
+          "stopReason": "manual",
+          "ctx": {
+            "startedAt": 0,
+            "endedAt": 1,
+            "durationMs": 1,
+            "audioParts": [],
+            "active": [],
+            "helperCrashed": false
+          },
+          "updatedAt": 6,
+          "steps": {
+            "finalize": {
+              "status": "done",
+              "attempts": 1,
+              "maxAttempts": 3,
+              "finishedAt": 3,
+              "startedAt": 2
+            },
+            "summary": {
+              "status": "done",
+              "attempts": 1,
+              "maxAttempts": 3,
+              "finishedAt": 5,
+              "startedAt": 4
+            },
+            "index": {
+              "status": "running",
+              "attempts": 1,
+              "maxAttempts": 3,
+              "startedAt": 6
+            }
+          }
+        },
+        "nextRunnable": "index",
+        "settled": false,
+        "usable": true
+      }
+    },
+    {
+      "step": "index",
+      "patch": {
+        "kind": "success",
+        "now": 7
+      },
+      "expect": {
+        "state": {
+          "meetingId": "m",
+          "stopReason": "manual",
+          "ctx": {
+            "startedAt": 0,
+            "endedAt": 1,
+            "durationMs": 1,
+            "audioParts": [],
+            "active": [],
+            "helperCrashed": false
+          },
+          "updatedAt": 7,
+          "steps": {
+            "finalize": {
+              "status": "done",
+              "attempts": 1,
+              "maxAttempts": 3,
+              "finishedAt": 3,
+              "startedAt": 2
+            },
+            "summary": {
+              "status": "done",
+              "attempts": 1,
+              "maxAttempts": 3,
+              "finishedAt": 5,
+              "startedAt": 4
+            },
+            "index": {
+              "status": "done",
+              "attempts": 1,
+              "maxAttempts": 3,
+              "finishedAt": 7,
+              "startedAt": 6
+            }
+          }
+        },
+        "nextRunnable": null,
+        "settled": true,
+        "usable": true
+      }
+    },
+    {
+      "step": "summary",
+      "patch": {
+        "kind": "manual-retry",
+        "now": 8
+      },
+      "expect": {
+        "state": {
+          "meetingId": "m",
+          "stopReason": "manual",
+          "ctx": {
+            "startedAt": 0,
+            "endedAt": 1,
+            "durationMs": 1,
+            "audioParts": [],
+            "active": [],
+            "helperCrashed": false
+          },
+          "updatedAt": 8,
+          "steps": {
+            "finalize": {
+              "status": "done",
+              "attempts": 1,
+              "maxAttempts": 3,
+              "finishedAt": 3,
+              "startedAt": 2
+            },
+            "summary": {
+              "status": "pending",
+              "attempts": 0,
+              "maxAttempts": 3
+            },
+            "index": {
+              "status": "done",
+              "attempts": 1,
+              "maxAttempts": 3,
+              "finishedAt": 7,
+              "startedAt": 6
+            }
+          }
+        },
+        "nextRunnable": "summary",
+        "settled": false,
+        "usable": false
+      }
+    },
+    {
+      "step": "finalize",
+      "patch": {
+        "kind": "manual-retry",
+        "now": 9
+      },
+      "expect": {
+        "state": {
+          "meetingId": "m",
+          "stopReason": "manual",
+          "ctx": {
+            "startedAt": 0,
+            "endedAt": 1,
+            "durationMs": 1,
+            "audioParts": [],
+            "active": [],
+            "helperCrashed": false
+          },
+          "updatedAt": 9,
+          "steps": {
+            "finalize": {
+              "status": "pending",
+              "attempts": 0,
+              "maxAttempts": 3
+            },
+            "summary": {
+              "status": "pending",
+              "attempts": 0,
+              "maxAttempts": 3
+            },
+            "index": {
+              "status": "pending",
+              "attempts": 0,
+              "maxAttempts": 3
+            }
+          }
+        },
+        "nextRunnable": "finalize",
+        "settled": false,
+        "usable": false
+      }
+    }
+  ]
+}

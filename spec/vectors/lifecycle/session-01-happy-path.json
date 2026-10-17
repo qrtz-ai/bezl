@@ -1,0 +1,159 @@
+{
+  "kind": "session",
+  "name": "happy path: detected → starting → recording → stopping → processing → done",
+  "from": "lifecycle.test.ts",
+  "initial": null,
+  "steps": [
+    {
+      "event": {
+        "type": "detected",
+        "meeting": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        }
+      },
+      "expect": {
+        "phase": "detected",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "start-requested",
+        "meetingId": "m",
+        "at": 10,
+        "audioPath": "/a.wav"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/a.wav"
+        ],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "meetingId": "m",
+        "startedAt": 10
+      }
+    },
+    {
+      "event": {
+        "type": "start-acked"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [],
+        "audioParts": [
+          "/a.wav"
+        ],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "meetingId": "m",
+        "startedAt": 10
+      }
+    },
+    {
+      "event": {
+        "type": "stop-requested",
+        "reason": "manual",
+        "at": 20
+      },
+      "expect": {
+        "phase": "stopping",
+        "degraded": [],
+        "audioParts": [
+          "/a.wav"
+        ],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "meetingId": "m",
+        "startedAt": 10,
+        "stopReason": "manual",
+        "stoppedAt": 20
+      }
+    },
+    {
+      "event": {
+        "type": "stopped",
+        "at": 21
+      },
+      "expect": {
+        "phase": "processing",
+        "degraded": [],
+        "audioParts": [
+          "/a.wav"
+        ],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "meetingId": "m",
+        "startedAt": 10,
+        "stopReason": "manual",
+        "stoppedAt": 20
+      }
+    },
+    {
+      "event": {
+        "type": "processing-done"
+      },
+      "expect": {
+        "phase": "done",
+        "degraded": [],
+        "audioParts": [
+          "/a.wav"
+        ],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "meetingId": "m",
+        "startedAt": 10,
+        "stopReason": "manual",
+        "stoppedAt": 20
+      }
+    },
+    {
+      "event": {
+        "type": "reset"
+      },
+      "expect": {
+        "phase": "idle",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0
+      }
+    }
+  ]
+}

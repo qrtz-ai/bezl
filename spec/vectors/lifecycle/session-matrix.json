@@ -1,0 +1,952 @@
+{
+  "kind": "session-matrix",
+  "name": "every event in every phase",
+  "states": {
+    "idle": {
+      "phase": "idle",
+      "degraded": [],
+      "audioParts": [],
+      "partOffsetMs": 0
+    },
+    "idle-with-error": {
+      "phase": "idle",
+      "degraded": [],
+      "audioParts": [],
+      "partOffsetMs": 0,
+      "error": {
+        "code": "E",
+        "message": "boom",
+        "retryable": true
+      }
+    },
+    "detected": {
+      "phase": "detected",
+      "detected": {
+        "key": "k",
+        "title": "Standup",
+        "platform": "zoom",
+        "app": "Zoom"
+      },
+      "degraded": [],
+      "audioParts": [],
+      "partOffsetMs": 0
+    },
+    "starting": {
+      "phase": "starting",
+      "detected": {
+        "key": "k",
+        "title": "Standup",
+        "platform": "zoom",
+        "app": "Zoom"
+      },
+      "meetingId": "m",
+      "startedAt": 100,
+      "degraded": [],
+      "audioParts": [
+        "/p0"
+      ],
+      "partOffsetMs": 0
+    },
+    "recording": {
+      "phase": "recording",
+      "detected": {
+        "key": "k",
+        "title": "Standup",
+        "platform": "zoom",
+        "app": "Zoom"
+      },
+      "meetingId": "m",
+      "startedAt": 100,
+      "degraded": [
+        "mic-only"
+      ],
+      "audioParts": [
+        "/p0"
+      ],
+      "partOffsetMs": 0
+    },
+    "reconnecting": {
+      "phase": "reconnecting",
+      "meetingId": "m",
+      "startedAt": 100,
+      "degraded": [],
+      "audioParts": [
+        "/p0"
+      ],
+      "partOffsetMs": 0,
+      "reconnect": {
+        "attempt": 2,
+        "since": 200,
+        "deadlineAt": 30200
+      }
+    },
+    "stopping": {
+      "phase": "stopping",
+      "meetingId": "m",
+      "startedAt": 100,
+      "stoppedAt": 300,
+      "stopReason": "manual",
+      "degraded": [],
+      "audioParts": [
+        "/p0"
+      ],
+      "partOffsetMs": 0
+    },
+    "processing": {
+      "phase": "processing",
+      "meetingId": "m",
+      "startedAt": 100,
+      "stoppedAt": 300,
+      "stopReason": "manual",
+      "degraded": [],
+      "audioParts": [
+        "/p0"
+      ],
+      "partOffsetMs": 0
+    },
+    "done": {
+      "phase": "done",
+      "meetingId": "m",
+      "startedAt": 100,
+      "stoppedAt": 300,
+      "stopReason": "manual",
+      "degraded": [
+        "transcript-gap"
+      ],
+      "audioParts": [
+        "/p0",
+        "/p1"
+      ],
+      "partOffsetMs": 50
+    },
+    "error": {
+      "phase": "error",
+      "meetingId": "m",
+      "startedAt": 100,
+      "stoppedAt": 300,
+      "stopReason": "helper-lost",
+      "degraded": [],
+      "audioParts": [
+        "/p0"
+      ],
+      "partOffsetMs": 0,
+      "error": {
+        "code": "E",
+        "message": "boom",
+        "retryable": true
+      }
+    }
+  },
+  "events": [
+    {
+      "type": "detected",
+      "meeting": {
+        "key": "k9",
+        "title": "Planning",
+        "platform": "teams",
+        "app": "Teams"
+      }
+    },
+    {
+      "type": "meeting-ended",
+      "key": "k"
+    },
+    {
+      "type": "meeting-ended",
+      "key": "zzz"
+    },
+    {
+      "type": "start-requested",
+      "meetingId": "n",
+      "at": 1000,
+      "audioPath": "/n.wav"
+    },
+    {
+      "type": "start-acked"
+    },
+    {
+      "type": "start-failed",
+      "error": {
+        "code": "E",
+        "message": "boom",
+        "retryable": true
+      }
+    },
+    {
+      "type": "degraded",
+      "flag": "mic-only"
+    },
+    {
+      "type": "degraded",
+      "flag": "transcript-gap"
+    },
+    {
+      "type": "helper-lost",
+      "at": 400,
+      "deadlineAt": 30400
+    },
+    {
+      "type": "helper-restored",
+      "at": 500,
+      "audioPath": "/p9"
+    },
+    {
+      "type": "stop-requested",
+      "reason": "meeting-ended",
+      "at": 600
+    },
+    {
+      "type": "stopped",
+      "at": 700
+    },
+    {
+      "type": "processing-done"
+    },
+    {
+      "type": "processing-failed",
+      "error": {
+        "code": "E",
+        "message": "boom",
+        "retryable": false
+      }
+    },
+    {
+      "type": "rejected",
+      "error": {
+        "code": "permission-denied",
+        "message": "no",
+        "retryable": true
+      }
+    },
+    {
+      "type": "clear-error"
+    },
+    {
+      "type": "reset"
+    }
+  ],
+  "expect": {
+    "idle": [
+      {
+        "phase": "detected",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k9",
+          "title": "Planning",
+          "platform": "teams",
+          "app": "Teams"
+        }
+      },
+      "rejected",
+      "rejected",
+      {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/n.wav"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "n",
+        "startedAt": 1000
+      },
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      {
+        "phase": "idle",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0,
+        "error": {
+          "code": "permission-denied",
+          "message": "no",
+          "retryable": true
+        }
+      },
+      "rejected",
+      {
+        "phase": "idle",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0
+      }
+    ],
+    "idle-with-error": [
+      {
+        "phase": "detected",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k9",
+          "title": "Planning",
+          "platform": "teams",
+          "app": "Teams"
+        }
+      },
+      "rejected",
+      "rejected",
+      {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/n.wav"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "n",
+        "startedAt": 1000
+      },
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      {
+        "phase": "idle",
+        "degraded": [],
+        "error": {
+          "code": "permission-denied",
+          "message": "no",
+          "retryable": true
+        },
+        "audioParts": [],
+        "partOffsetMs": 0
+      },
+      {
+        "phase": "idle",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0
+      },
+      {
+        "phase": "idle",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0
+      }
+    ],
+    "detected": [
+      {
+        "phase": "detected",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k9",
+          "title": "Planning",
+          "platform": "teams",
+          "app": "Teams"
+        }
+      },
+      {
+        "phase": "idle",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0
+      },
+      "rejected",
+      {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/n.wav"
+        ],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "meetingId": "n",
+        "startedAt": 1000
+      },
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      {
+        "phase": "detected",
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0,
+        "error": {
+          "code": "permission-denied",
+          "message": "no",
+          "retryable": true
+        }
+      },
+      "rejected",
+      {
+        "phase": "idle",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0
+      }
+    ],
+    "starting": [
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      {
+        "phase": "recording",
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "meetingId": "m",
+        "startedAt": 100,
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0
+      },
+      {
+        "phase": "detected",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "error": {
+          "code": "E",
+          "message": "boom",
+          "retryable": true
+        }
+      },
+      {
+        "phase": "starting",
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "meetingId": "m",
+        "startedAt": 100,
+        "degraded": [
+          "mic-only"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0
+      },
+      {
+        "phase": "starting",
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "meetingId": "m",
+        "startedAt": 100,
+        "degraded": [
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0
+      },
+      {
+        "phase": "reconnecting",
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "meetingId": "m",
+        "startedAt": 100,
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "reconnect": {
+          "attempt": 1,
+          "since": 400,
+          "deadlineAt": 30400
+        }
+      },
+      "rejected",
+      {
+        "phase": "stopping",
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "meetingId": "m",
+        "startedAt": 100,
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "stopReason": "meeting-ended",
+        "stoppedAt": 600
+      },
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected"
+    ],
+    "recording": [
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      {
+        "phase": "recording",
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "meetingId": "m",
+        "startedAt": 100,
+        "degraded": [
+          "mic-only",
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0
+      },
+      {
+        "phase": "reconnecting",
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "meetingId": "m",
+        "startedAt": 100,
+        "degraded": [
+          "mic-only"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "reconnect": {
+          "attempt": 1,
+          "since": 400,
+          "deadlineAt": 30400
+        }
+      },
+      "rejected",
+      {
+        "phase": "stopping",
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "meetingId": "m",
+        "startedAt": 100,
+        "degraded": [
+          "mic-only"
+        ],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "stopReason": "meeting-ended",
+        "stoppedAt": 600
+      },
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected"
+    ],
+    "reconnecting": [
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      {
+        "phase": "reconnecting",
+        "meetingId": "m",
+        "startedAt": 100,
+        "degraded": [
+          "mic-only"
+        ],
+        "reconnect": {
+          "attempt": 2,
+          "since": 200,
+          "deadlineAt": 30200
+        },
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0
+      },
+      {
+        "phase": "reconnecting",
+        "meetingId": "m",
+        "startedAt": 100,
+        "degraded": [
+          "transcript-gap"
+        ],
+        "reconnect": {
+          "attempt": 2,
+          "since": 200,
+          "deadlineAt": 30200
+        },
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0
+      },
+      {
+        "phase": "reconnecting",
+        "meetingId": "m",
+        "startedAt": 100,
+        "degraded": [],
+        "reconnect": {
+          "attempt": 3,
+          "since": 200,
+          "deadlineAt": 30200
+        },
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0
+      },
+      {
+        "phase": "recording",
+        "meetingId": "m",
+        "startedAt": 100,
+        "degraded": [
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p9"
+        ],
+        "partOffsetMs": 400
+      },
+      {
+        "phase": "stopping",
+        "meetingId": "m",
+        "startedAt": 100,
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "stopReason": "meeting-ended",
+        "stoppedAt": 600
+      },
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected"
+    ],
+    "stopping": [
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      {
+        "phase": "processing",
+        "meetingId": "m",
+        "startedAt": 100,
+        "stoppedAt": 300,
+        "stopReason": "manual",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0
+      },
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected"
+    ],
+    "processing": [
+      {
+        "phase": "detected",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k9",
+          "title": "Planning",
+          "platform": "teams",
+          "app": "Teams"
+        }
+      },
+      "rejected",
+      "rejected",
+      {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/n.wav"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "n",
+        "startedAt": 1000
+      },
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      {
+        "phase": "done",
+        "meetingId": "m",
+        "startedAt": 100,
+        "stoppedAt": 300,
+        "stopReason": "manual",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0
+      },
+      {
+        "phase": "error",
+        "meetingId": "m",
+        "startedAt": 100,
+        "stoppedAt": 300,
+        "stopReason": "manual",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "error": {
+          "code": "E",
+          "message": "boom",
+          "retryable": false
+        }
+      },
+      {
+        "phase": "processing",
+        "meetingId": "m",
+        "startedAt": 100,
+        "stoppedAt": 300,
+        "stopReason": "manual",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0,
+        "error": {
+          "code": "permission-denied",
+          "message": "no",
+          "retryable": true
+        }
+      },
+      "rejected",
+      {
+        "phase": "idle",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0
+      }
+    ],
+    "done": [
+      {
+        "phase": "detected",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k9",
+          "title": "Planning",
+          "platform": "teams",
+          "app": "Teams"
+        }
+      },
+      "rejected",
+      "rejected",
+      {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/n.wav"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "n",
+        "startedAt": 1000
+      },
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      {
+        "phase": "done",
+        "meetingId": "m",
+        "startedAt": 100,
+        "stoppedAt": 300,
+        "stopReason": "manual",
+        "degraded": [
+          "transcript-gap"
+        ],
+        "audioParts": [
+          "/p0",
+          "/p1"
+        ],
+        "partOffsetMs": 50,
+        "error": {
+          "code": "permission-denied",
+          "message": "no",
+          "retryable": true
+        }
+      },
+      "rejected",
+      {
+        "phase": "idle",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0
+      }
+    ],
+    "error": [
+      {
+        "phase": "detected",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k9",
+          "title": "Planning",
+          "platform": "teams",
+          "app": "Teams"
+        }
+      },
+      "rejected",
+      "rejected",
+      {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/n.wav"
+        ],
+        "partOffsetMs": 0,
+        "meetingId": "n",
+        "startedAt": 1000
+      },
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      "rejected",
+      {
+        "phase": "error",
+        "meetingId": "m",
+        "startedAt": 100,
+        "stoppedAt": 300,
+        "stopReason": "helper-lost",
+        "degraded": [],
+        "error": {
+          "code": "permission-denied",
+          "message": "no",
+          "retryable": true
+        },
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0
+      },
+      {
+        "phase": "error",
+        "meetingId": "m",
+        "startedAt": 100,
+        "stoppedAt": 300,
+        "stopReason": "helper-lost",
+        "degraded": [],
+        "audioParts": [
+          "/p0"
+        ],
+        "partOffsetMs": 0
+      },
+      {
+        "phase": "idle",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0
+      }
+    ]
+  }
+}

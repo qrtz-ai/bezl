@@ -1,0 +1,154 @@
+{
+  "kind": "session",
+  "name": "detection during post-processing replaces the session meeting (quirk kept for parity)",
+  "from": "note-service.test.ts",
+  "initial": null,
+  "steps": [
+    {
+      "event": {
+        "type": "detected",
+        "meeting": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        }
+      },
+      "expect": {
+        "phase": "detected",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "start-requested",
+        "meetingId": "m",
+        "at": 0,
+        "audioPath": "/p"
+      },
+      "expect": {
+        "phase": "starting",
+        "degraded": [],
+        "audioParts": [
+          "/p"
+        ],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "meetingId": "m",
+        "startedAt": 0
+      }
+    },
+    {
+      "event": {
+        "type": "start-acked"
+      },
+      "expect": {
+        "phase": "recording",
+        "degraded": [],
+        "audioParts": [
+          "/p"
+        ],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "meetingId": "m",
+        "startedAt": 0
+      }
+    },
+    {
+      "event": {
+        "type": "stop-requested",
+        "reason": "meeting-ended",
+        "at": 9
+      },
+      "expect": {
+        "phase": "stopping",
+        "degraded": [],
+        "audioParts": [
+          "/p"
+        ],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "meetingId": "m",
+        "startedAt": 0,
+        "stopReason": "meeting-ended",
+        "stoppedAt": 9
+      }
+    },
+    {
+      "event": {
+        "type": "stopped",
+        "at": 10
+      },
+      "expect": {
+        "phase": "processing",
+        "degraded": [],
+        "audioParts": [
+          "/p"
+        ],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k",
+          "title": "Standup",
+          "platform": "zoom",
+          "app": "Zoom"
+        },
+        "meetingId": "m",
+        "startedAt": 0,
+        "stopReason": "meeting-ended",
+        "stoppedAt": 9
+      }
+    },
+    {
+      "event": {
+        "type": "detected",
+        "meeting": {
+          "key": "k2",
+          "title": "1:1",
+          "platform": "google-meet",
+          "app": "Chrome"
+        }
+      },
+      "expect": {
+        "phase": "detected",
+        "degraded": [],
+        "audioParts": [],
+        "partOffsetMs": 0,
+        "detected": {
+          "key": "k2",
+          "title": "1:1",
+          "platform": "google-meet",
+          "app": "Chrome"
+        }
+      }
+    },
+    {
+      "event": {
+        "type": "processing-done"
+      },
+      "expect": "rejected"
+    }
+  ]
+}
