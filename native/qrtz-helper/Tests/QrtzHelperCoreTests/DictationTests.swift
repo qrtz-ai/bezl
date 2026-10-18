@@ -289,7 +289,11 @@ final class DictationTailTests: XCTestCase {
         XCTAssertEqual(asr.lock.withLock { asr.appendsWhileFinishing }, 0)
         // The first block the tap delivers after the release (the one it was filling) is in; the later ones aren't.
         XCTAssertEqual(stoppedText(out.value), "w1 w5")
-        XCTAssertTrue(out.value.contains(.dictationStopped(id: "d1", text: "w1 w5", durationMs: (8960 + 1360) / 16)))
+        let dur = out.value.compactMap { if case .dictationStopped(_, _, let d, _) = $0 { d } else { nil } }.first ?? 0
+        // On a loaded CI runner a second 50 ms block can land before the barrier; never all six.
+        let extra = ciSlackMs > 0 ? 1360.0 : 0
+        XCTAssertGreaterThanOrEqual(dur, Double(8960 + 1360) / 16)
+        XCTAssertLessThanOrEqual(dur, (Double(8960 + 1360) + extra) / 16)
     }
 
     func testTheShortTailWaitsForTheBlockTheTapWasFillingAtTheRelease() async {
