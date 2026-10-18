@@ -11,18 +11,18 @@ use qrtz_talk::*;
 fn swift_static(src: &str, name: &str) -> u64 {
     let at = src
         .find(&format!("static let {name} = "))
-        .unwrap_or_else(|| panic!("HelperController has no {name}"));
+        .unwrap_or_else(|| panic!("EchoController has no {name}"));
     let rest = &src[at + "static let ".len() + name.len() + " = ".len()..];
     let end = rest.find(|c: char| !(c.is_ascii_digit() || c == '_')).unwrap();
     rest[..end].replace('_', "").parse().unwrap()
 }
 
-/// The host's copy of the arm's cap is the helper's.
+/// The host's copy of the arm's cap is the helper's (echo's controller since ADR 0146 M2.2).
 #[test]
-fn the_host_copy_of_the_arm_cap_matches_controller_swift() {
+fn the_host_copy_of_the_arm_cap_matches_echo_controller_swift() {
     let src = std::fs::read_to_string(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../native/qrtz-helper/Sources/QrtzHelperCore/Controller.swift"),
+            .join("../../native/qrtz-helper/Sources/QrtzHelperCore/EchoController.swift"),
     )
     .unwrap();
     assert_eq!(swift_static(&src, "armMaxMs"), HelperTail::default().arm_max_ms);
