@@ -637,6 +637,9 @@ impl TalkService {
     /// Push settings to the helper. Call on start, every helper hello and every config change.
     pub fn configure(&self) {
         let cfg = self.cfg();
+        if !cfg.enabled {
+            self.switched_off();
+        }
         self.send(json!({
             "type": "dictation.configure",
             "warmMic": cfg.enabled && cfg.warm_mic,
@@ -648,6 +651,25 @@ impl TalkService {
             "autoInsert": cfg.auto_insert,
             "echoGate": cfg.echo_gate,
         }));
+    }
+
+    /// N172 (ADR 0147): echo was switched off (`talk.enabled`, or ADR 0146's `modules.echo.enabled` /
+    /// `modules.enabled`). The push key is about to be unset on the helper, so no release will ever arrive: a
+    /// dictation still listening is cancelled now (mic closed, nothing inserted) instead of recording on until a
+    /// timeout, and a press held for the next dictation is forgotten. One already finalizing or inserting was
+    /// released by the user and finishes as usual.
+    fn switched_off(&self) {
+        self.0.pending_press.store(false, Ordering::SeqCst);
+        let listening = {
+            let mut g = self.lock();
+            g.key_held = false;
+            g.via_push_key = false;
+            g.view.phase == TalkPhase::Listening
+        };
+        if listening {
+            tracing::info!("echo switched off while a dictation was listening; cancelled, nothing inserted");
+            self.cancel();
+        }
     }
 
     /// ADR 0092: show a failure or notice only the host knows on the helper's native pill (`kind`: error|info).
@@ -691,10 +713,12 @@ impl TalkService {
                 self.configure();
             }
             "hotkey" => {
-                if !self.cfg().enabled {
+                let action = s(m, "action");
+                // N172: a release always counts (it only ends what a press started), so a dictation started
+                // before echo was switched off still stops on release; only a press needs echo on.
+                if action != "up" && !self.cfg().enabled {
                     return;
                 }
-                let action = s(m, "action");
                 tracing::info!(%action, "push key");
                 let mut g = self.lock();
                 if action == "down" {
@@ -1102,6 +1126,11 @@ impl TalkService {
             }
         };
         let now = self.deps().clock.now_ms();
+        // N172: echo was switched off during the engine handshake: a push-key start never opens the mic.
+        if from_key && !self.cfg().enabled {
+            tracing::info!("echo switched off while a push-key dictation was starting; not started");
+            return self.state();
+        }
         let started_rx = {
             let mut g = self.lock();
             if !g.view.takes_a_start() {
