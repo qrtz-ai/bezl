@@ -9,8 +9,8 @@
 08-thanks	Daniel	Thanks so much, that works for me.
 09-one-on-one	Karen	Can we move our one on one to next week?
 10-list	Samantha	Add milk, eggs, and coffee to the shopping list.
-11-short	Daniel	Sounds good.
-12-yes	Karen	Yes.
+11-short	Daniel	Sounds good
+12-yes	Karen	Yes
 13-pineapple	Samantha	Please move the launch review to Thursday and add a note about pineapple.
 14-names	Daniel	Ask Priyanka to update the Kubernetes config and ping Jared on Slack.
 15-email	Karen	Hi team, quick update on the release. The installer is signed, the crash on launch is fixed, and the new onboarding flow is ready for testing. Please try it on your own Mac today and send me anything that looks off.

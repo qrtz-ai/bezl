@@ -37,6 +37,20 @@ final class EchoBenchTests: XCTestCase {
         XCTAssertEqual(EchoWER.headLoss(ref: ref, hyp: EchoWER.normalize("a note about pineapple")), 1)
     }
 
+    func testTailLossMatchesWholeWords() {
+        // N163: "pin" is not the end of "pineapple".
+        XCTAssertEqual(EchoWER.tailLoss(ref: EchoWER.normalize("drop the pin"), hyp: EchoWER.normalize("drop the pineapple")), 1)
+        XCTAssertEqual(EchoWER.headLoss(ref: EchoWER.normalize("pin it there"), hyp: EchoWER.normalize("spin it there")), 1)
+        XCTAssertEqual(EchoWER.tailLoss(ref: EchoWER.normalize("drop the pin"), hyp: EchoWER.normalize("drop the pin, ok")), 0)
+    }
+
+    func testTypographicQuotesScoreAsAscii() {
+        // N162: a reference typed in TextEdit or Notes.
+        XCTAssertEqual(EchoWER.normalize("Don\u{2019}t stop"), EchoWER.normalize("don't stop"))
+        XCTAssertEqual(EchoWER.formatted("\u{201C}Don\u{2019}t\u{201D}"), ["\"Don't\""])
+        XCTAssertEqual(EchoWER.score(ref: EchoWER.normalize("It\u{2019}s fine."), hyp: EchoWER.normalize("it's fine")).errors, 0)
+    }
+
     func testVariantShapingIsDeterministicAndBounded() {
         let clip = (0..<16_000).map { Float(sin(Double($0) / 10)) * 0.5 }
         var v = EchoVariant(name: "x"); v.noiseSnrDb = 10; v.dropHeadMs = 100; v.gain = 3

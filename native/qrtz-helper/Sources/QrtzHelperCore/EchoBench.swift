@@ -17,7 +17,7 @@ public enum EchoWER {
     /// number words 0–99 written as digits, so "twenty five" and "25" match (formatting is scored separately).
     public static func normalize(_ s: String) -> [String] {
         var cleaned = ""
-        for ch in s.lowercased() {
+        for ch in asciiQuotes(s).lowercased() {
             if ch.isLetter || ch.isNumber || ch == "'" { cleaned.append(ch) }
             else if ch == "%" { cleaned += " percent " }
             else { cleaned.append(" ") }
@@ -38,7 +38,7 @@ public enum EchoWER {
     }
 
     /// Words for the formatted WER: whitespace tokens as written (case and punctuation count).
-    public static func formatted(_ s: String) -> [String] { s.split(whereSeparator: { $0.isWhitespace }).map(String.init) }
+    public static func formatted(_ s: String) -> [String] { asciiQuotes(s).split(whereSeparator: { $0.isWhitespace }).map(String.init) }
 
     /// Edit distance between word lists: substitutions, deletions, insertions.
     public static func edits(_ ref: [String], _ hyp: [String]) -> (sub: Int, del: Int, ins: Int) {
@@ -88,9 +88,29 @@ public enum EchoWER {
         var lost = k
         for j in 0...k {
             let want = Array(refTail.prefix(k - j))
-            if want.isEmpty || hyp.suffix(want.count + 2).joined(separator: " ").contains(want.joined(separator: " ")) { lost = j; break }
+            // N163: as words, so "a" is not found inside "cat".
+            if want.isEmpty || containsRun(Array(hyp.suffix(want.count + 2)), want) { lost = j; break }
         }
         return lost
+    }
+
+    /// `run` appears in `words` as consecutive whole words.
+    static func containsRun(_ words: [String], _ run: [String]) -> Bool {
+        guard !run.isEmpty else { return true }
+        guard words.count >= run.count else { return false }
+        return (0...(words.count - run.count)).contains { Array(words[$0..<($0 + run.count)]) == run }
+    }
+
+    /// N162: typographic apostrophes and quotes as ASCII (a reference typed in TextEdit or Notes), like
+    /// qrtz-talk's `ascii_quotes`.
+    public static func asciiQuotes(_ s: String) -> String {
+        String(s.map { c -> Character in
+            switch c {
+            case "\u{2018}", "\u{2019}", "\u{02BC}": "'"
+            case "\u{201C}", "\u{201D}": "\""
+            default: c
+            }
+        })
     }
 
     /// Same for the first words (the clipped head of a cold mic).
