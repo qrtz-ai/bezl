@@ -152,7 +152,10 @@ fn the_gate_shows_exactly_what_will_happen_and_deny_never_acts() {
     );
     assert_eq!(
         c["rules"],
-        json!(["choose_intent:intent.quit_app", "choose_move:shortcut.cmd+q"])
+        json!([
+            "choose_intent:intent.quit_app",
+            "choose_move:route.workspace.quit_app"
+        ])
     );
     assert_eq!(
         r.s.take_confirm_notices().len(),

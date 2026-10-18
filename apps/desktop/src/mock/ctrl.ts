@@ -35,7 +35,7 @@ interface Rec {
   reverified?: true;
   action?: { id: string; status: 'executing' | 'done' };
   verified?: { actionId: string; outcome: 'passed' };
-  held?: 'files-not-yet' | 'folder-not-yet';
+  held?: 'files-not-yet' | 'folder-not-yet' | 'no-route';
   /** A folder cleanup's batch (ADR 0117): its files, and which of them moved since (a "renamed" task). */
   batch?: { files: string[]; moved: string[] };
   undone?: number;
@@ -139,7 +139,15 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
       opt('app.com.apple.Notes', 'notes', 0.03),
     ]),
     act('choose_move', [
-      { ...opt('shortcut.cmd+q', 'quit', 0.95), irreversible: true },
+      // ADR 0148: one named app quits through the workspace (terminate, no key event, no activation).
+      {
+        ...opt(
+          'route.workspace.quit_app',
+          'quit it without bringing it forward',
+          0.95,
+        ),
+        irreversible: true,
+      },
     ]),
   ],
   // ADR 0130: the apps not used today (the helper's activation record), quit behind the card; no app question.
@@ -440,6 +448,21 @@ const BLIND: CtrlConfirm['items'] = [
   { key: 'a7b8c9d0e1f2#0', kind: 'tab', label: 'expense form', unsaved: null },
 ];
 
+/** ADR 0148: "quit notes", the frontmost app in the mock: the plan, then held (never the app the user is in). */
+const QUIT_FRONT = [
+  act('choose_app', [opt('app.com.apple.Notes', 'notes', 0.9)]),
+  act('choose_move', [
+    {
+      ...opt(
+        'route.workspace.quit_app',
+        'quit it without bringing it forward',
+        0.95,
+      ),
+      irreversible: true,
+    },
+  ]),
+];
+
 /** ADR 0130: the running apps a quit_unused run would quit (not used today; frontmost, finder and qrtz never). */
 const UNUSED: CtrlConfirm['items'] = [
   { key: '0a1b2c3d4e5f#0', kind: 'app', label: 'slack', unsaved: null },
@@ -617,7 +640,9 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
       const n = stepOf(text);
       decide(r, act('choose_target', [opt(`step.${n}`, `by ${n}`, 0.96)]));
     }
-    for (const d of REST[intent]) decide(r, d);
+    // ADR 0148: notes is the app the user is in (the mock's frontmost), so "quit notes" is held before the card.
+    const quitFront = intent === 'quit_app' && /\bnotes\b/i.test(text);
+    for (const d of quitFront ? QUIT_FRONT : REST[intent]) decide(r, d);
     const s = stateAt(r.recs, r.recs.length);
     push(r, 'plan.produced', {
       plan: {
@@ -633,6 +658,11 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
         })),
       },
     });
+    if (quitFront) {
+      push(r, 'exec.held', { held: 'no-route' });
+      push(r, 'task.finished', { finished: 'asked-out' });
+      return;
+    }
     if (intent === 'tidy_documents') {
       // ADR 0125: held before any folder is read; the run ends and says why.
       push(r, 'exec.held', { held: 'folder-not-yet' });

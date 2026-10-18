@@ -18,7 +18,8 @@
 //! and only the items the approved card listed. Without roots they still stop with `exec.held { files_not_yet }`. (Runs from before slice 6 may still hold `exec.held { irreversible }`; they replay as before.)
 use crate::apps::{
     level_of, step_of, stepped, still_visible, to_hide, unused_today, DEFAULT_VOLUME_STEP, HIDE_OTHERS_MOVE,
-    MUTE_MOVE, QUIT_UNUSED_MOVE, SET_VOLUME_MOVE, UNMUTE_MOVE, VOLUME_DOWN_MOVE, VOLUME_UP_MOVE,
+    MUTE_MOVE, QUIT_APP_MOVE, QUIT_UNUSED_MOVE, SET_VOLUME_MOVE, UNMUTE_MOVE, VOLUME_DOWN_MOVE,
+    VOLUME_UP_MOVE,
 };
 use crate::ax::{diff, AxSnapshot};
 use crate::decide::{next_backtrack, run_chain_obs, unobserved, BacktrackReason, Goal, Node, Scorer};
@@ -197,8 +198,17 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
         "shortcut.cmd+w" if browser => act(vec![key("cmd+w")], tabs, Expect::Decreased),
         "shortcut.cmd+w" => act(vec![key("cmd+w")], windows, Expect::Decreased),
         "shortcut.cmd+option+w" => act(vec![key("cmd+option+w")], tabs, Expect::Decreased),
-        // Quit, posted to the app's pid (irreversible: only after the confirm gate). The app keeps its own save
-        // sheet for unsaved work; nothing here answers it.
+        // ADR 0148: quit one named app through the workspace (`NSRunningApplication.terminate()`, like the Dock's
+        // Quit): no activation, no key event, only after the confirm gate. The ladder refuses it for the app the user
+        // is in. The app keeps its own save sheet for unsaved work; nothing here answers it.
+        "route.workspace.quit_app" => act(
+            vec![Route::Workspace(WorkspaceOp::QuitApps {
+                apps: vec![app.clone()],
+            })],
+            Check::AppRunning { app: app.clone() },
+            Expect::Zero,
+        ),
+        // Quit, posted to the app's pid (an older plan's move; ADR 0148 plans the workspace route instead).
         "shortcut.cmd+q" => act(
             vec![key("cmd+q")],
             Check::AppRunning { app: app.clone() },
@@ -332,7 +342,11 @@ pub fn preview_of(
     routes: &[Route],
 ) -> (Preview, Vec<(String, String)>) {
     let (intent, mv) = intent_and_move(s);
-    let app = routes.iter().find_map(|r| r.app().map(str::to_string));
+    // ADR 0148: a one-app workspace quit previews that app's windows, like the key route it replaced.
+    let app = routes.iter().find_map(|r| match r {
+        Route::Workspace(WorkspaceOp::QuitApps { apps }) if apps.len() == 1 => Some(apps[0].clone()),
+        r => r.app().map(str::to_string),
+    });
     let (items, labels, complete) = match (preview_what(&intent), app.as_deref()) {
         (Some((what, kind)), Some(a)) => match helper.preview(a, what) {
             Ok(wire) => {
@@ -651,6 +665,26 @@ impl Driver<'_> {
                 }
                 None => None,
             };
+            // ADR 0148: "quit <app>" never quits the app the user is in. Checked before the gate (no card for a quit
+            // that can't happen) and before the ladder's own refusal, which would backtrack into another intent.
+            if fplan.is_none() && mv == QUIT_APP_MOVE {
+                let target = s
+                    .chosen()
+                    .get(&Node::ChooseApp)
+                    .and_then(|o| o.strip_prefix("app."))
+                    .map(str::to_string);
+                // The same frontmost read the ladder refuses on (the helper's probe).
+                let front = self.helper.probe().ok().and_then(|(env, _)| env.frontmost_app);
+                if target.is_some() && front == target {
+                    sink.push(
+                        log,
+                        Event::ExecHeld {
+                            reason: HoldReason::NoRoute,
+                        },
+                    )?;
+                    return sink.push(log, finish(TaskStatus::AskedOut));
+                }
+            }
             // ADR 0130: "quit unused apps" is planned from the helper's last-used report each round, so the gate's
             // re-check and the act both see the apps as they are now.
             let qplan: Option<QuitPlan> = if fplan.is_none() && mv == QUIT_UNUSED_MOVE {

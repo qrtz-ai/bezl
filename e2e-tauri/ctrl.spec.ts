@@ -523,6 +523,45 @@ test('ctrl: tidy my documents stops and says it cannot tidy that folder yet', as
   expect(errors).toEqual([]);
 });
 
+// ADR 0148: "quit <app>" quits one named app through the workspace, never the app the user is in. Quitting
+// textedit (in the background) waits at the card; "quit notes" (the frontmost app) stops before any card and says
+// it has no background way, and nothing is quit.
+test('ctrl: quit an app waits at the card, and the app you are in is never quit', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  await ctrl.getByTestId('ctrl-task-input').fill('quit textedit');
+  await ctrl.getByTestId('ctrl-task-add').click();
+  await ctrl.getByTestId('ctrl-task').getByTestId('ctrl-task-run').click();
+  const card = ctrl.getByTestId('ctrl-confirm');
+  await expect(card).toBeVisible();
+  await expect(card).toContainText(
+    "quit an app · textedit: this can't be undone",
+  );
+  await card.getByTestId('ctrl-confirm-approve').click();
+  await expect(
+    ctrl.getByTestId('ctrl-run').first().getByTestId('ctrl-run-status'),
+  ).toHaveText('done');
+
+  await ctrl.getByTestId('ctrl-task-input').fill('quit notes');
+  await ctrl.getByTestId('ctrl-task-add').click();
+  const notes = ctrl.getByTestId('ctrl-task').filter({ hasText: 'quit notes' });
+  await notes.getByTestId('ctrl-task-run').click();
+  const run = ctrl.getByTestId('ctrl-run').first();
+  await expect(run.getByTestId('ctrl-run-status')).toHaveText('needs you');
+  await expect(ctrl.getByTestId('ctrl-state').first()).toContainText(
+    'no way to do it in the background',
+  );
+  await expect(card).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 // ADR 0124 / 0126: "tidy my desktop" moves only macOS's screenshots and screen recordings into their folder, in
 // one batch with no card (nothing is deleted), and the run can be put back from its card.
 test('ctrl: tidy my desktop moves the screenshots without a card and puts them back', async ({

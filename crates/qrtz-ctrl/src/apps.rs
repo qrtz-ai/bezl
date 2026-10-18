@@ -12,6 +12,9 @@ use crate::helper::RunningAppWire;
 /// The move of the quit-unused plan (behind the ADR 0111 gate, preview of the apps).
 pub const QUIT_UNUSED_MOVE: &str = "route.workspace.quit_unused";
 
+/// ADR 0148: the move of "quit <app>" (one named app, behind the gate, never the frontmost).
+pub const QUIT_APP_MOVE: &str = "route.workspace.quit_app";
+
 /// Never quit by "quit unused apps" (ctrl's own app, the Finder, the login / system shells).
 pub const PROTECTED: &[&str] = &[
     "com.apple.finder",

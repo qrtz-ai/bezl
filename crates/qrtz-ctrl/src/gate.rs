@@ -44,7 +44,7 @@ pub struct PreviewItem {
 /// What an irreversible step would do, as logged. No titles, no task text.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Preview {
-    /// The chosen intent option (`intent.quit_app`) and move (`shortcut.cmd+q`).
+    /// The chosen intent option (`intent.quit_app`) and move (`route.workspace.quit_app`).
     pub intent: String,
     #[serde(rename = "move")]
     pub mv: String,

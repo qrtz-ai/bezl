@@ -1147,7 +1147,9 @@ fn move_question(
             shortcut("cmd+t", 500),
         ],
         "open_app" => vec![route("workspace.launch_hidden", 4500)],
-        "quit_app" => vec![irreversible(shortcut("cmd+q", 4000))],
+        // ADR 0148: one named app quits through the workspace (`terminate()`, the Dock's Quit), never a key event;
+        // the ladder refuses the frontmost app, and there's no fallback move to backtrack into.
+        "quit_app" => vec![irreversible(route("workspace.quit_app", 4500))],
         "quit_unused" => vec![irreversible(route("workspace.quit_unused", 4500))],
         "hide_others" => vec![route("workspace.hide_others", 4500)],
         "mute" => vec![route("system.mute", 4500)],
@@ -1403,6 +1405,7 @@ fn route_label(id: &str) -> &'static str {
         "workspace.open_url" => "open the address in the background",
         "workspace.launch_hidden" => "start it hidden",
         "workspace.quit_unused" => "quit them without bringing anything forward",
+        "workspace.quit_app" => "quit it without bringing it forward",
         "workspace.hide_others" => "hide them, the app you're in stays",
         "system.mute" => "mute the sound output",
         "system.unmute" => "turn the sound output back on",
