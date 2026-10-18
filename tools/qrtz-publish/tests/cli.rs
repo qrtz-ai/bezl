@@ -1,5 +1,5 @@
-//! The publisher CLI: dry-run end to end (including a chunked file), keygen, key-file permissions, immutability,
-//! and that no key material reaches stdout or the output dir.
+//! The publisher CLI: dry-run end to end (extension, service and model, a file big enough for range fetches),
+//! keygen, key-file permissions, immutability, pinned models, and that no key material reaches stdout or the output.
 use std::process::Command;
 
 fn bin() -> Command {
@@ -21,20 +21,30 @@ fn dry_run_publishes_packs_and_installs_with_runtime_keys() {
         .unwrap();
     let out = String::from_utf8_lossy(&o.stdout);
     assert!(o.status.success(), "{out}{}", String::from_utf8_lossy(&o.stderr));
-    assert!(out.contains("client sideload installed echo@0.3.0"), "{out}");
+    assert!(out.contains("client sideload installed 3 packages"), "{out}");
+    assert!(
+        out.contains("echo@0.3.0, inference.sample@1.0.0, model.sample@1.0.0"),
+        "{out}"
+    );
     assert!(out.contains("blobs checked"), "{out}");
-    // The big file went out as two chunks, and no file in the output is larger than one.
+    // The big file is one whole blob (fetched in ranges, never split into objects).
     let blobs = d.path().join("out/v1/blobs/sha256");
     let sizes: Vec<u64> = std::fs::read_dir(&blobs)
         .unwrap()
         .flatten()
         .map(|e| e.metadata().unwrap().len())
         .collect();
-    assert!(sizes.iter().all(|s| *s <= qrtz_modules::index::CHUNK_SIZE));
-    assert!(
-        sizes.contains(&qrtz_modules::index::CHUNK_SIZE) && sizes.contains(&4096),
-        "{sizes:?}"
-    );
+    assert!(sizes.contains(&(20 * 1024 * 1024)), "{sizes:?}");
+    // The client's lock is text and names all three, exactly.
+    let lock = std::fs::read_to_string(d.path().join("client/qrtz.lock")).unwrap();
+    for k in [
+        "\"echo@0.3.0\"",
+        "\"inference.sample@1.0.0\"",
+        "\"model.sample@1.0.0\"",
+        "\"designatedRequirement\"",
+    ] {
+        assert!(lock.contains(k), "{k} in {lock}");
+    }
     // No .key files anywhere: dry-run keys live in memory only.
     let mut stack = vec![d.path().to_path_buf()];
     while let Some(p) = stack.pop() {
@@ -105,7 +115,8 @@ fn a_published_version_never_changes() {
     assert!(b.added.is_empty());
     assert_eq!((b.index_version, b.timestamp_version), (2, 2));
     // Other bytes under a published version: refused.
-    std::fs::write(spec.packages[0].dir.join("config.json"), b"{\"changed\":true}").unwrap();
+    let cfg = spec.packages[0].dir.join("config.json");
+    std::fs::write(&cfg, b"{\"changed\":true}").unwrap();
     let e = qrtz_publish::build(&out, &spec, &keys, now + 2).unwrap_err();
     assert!(e.contains("bump the version"), "{e}");
     // The timestamp re-sign keeps the index.
@@ -142,5 +153,46 @@ fn keys_can_come_from_the_environment() {
     for n in ["root-a.key", "timestamp.key", "index.key"] {
         assert!(!s.contains(read(n).trim()));
     }
+    rm(d.path());
+}
+
+#[test]
+fn a_pinned_model_publishes_as_exactly_the_tree_the_app_pins() {
+    let d = tempfile::tempdir().unwrap();
+    let keys = qrtz_publish::keys::Keys::ephemeral();
+    let out = d.path().join("out");
+    let now = qrtz_publish::now_ms();
+    qrtz_publish::write_root(&out, &keys, None, 1, now).unwrap();
+    // A pin file like local_models.json, and the downloaded files.
+    let files = d.path().join("dl");
+    std::fs::create_dir_all(files.join("m.mlmodelc")).unwrap();
+    std::fs::write(files.join("m.mlmodelc/weight.bin"), b"weights").unwrap();
+    std::fs::write(files.join("vocab.json"), b"{}").unwrap();
+    let f = |p: &str, b: &[u8]| serde_json::json!({"remote": format!("up/{p}"), "path": p, "size": b.len(), "sha256": qrtz_modules::sha256_hex(b)});
+    let pins = serde_json::json!({"version": "1.0.0", "base": "https://huggingface.co", "sets": [{
+        "id": "x", "package": "model.x", "task": "asr", "dir": "x", "repo": "org/x", "revision": "abc123",
+        "files": [f("m.mlmodelc/weight.bin", b"weights"), f("vocab.json", b"{}")]}]});
+    std::fs::write(d.path().join("pins.json"), serde_json::to_vec(&pins).unwrap()).unwrap();
+    let spec = serde_json::json!({"teamId": "ABCDE12345", "pinnedModels": ["pins.json"],
+                                  "models": [{"name": "model.x", "dir": "dl"}]});
+    std::fs::write(d.path().join("publish.json"), serde_json::to_vec(&spec).unwrap()).unwrap();
+    let spec = qrtz_publish::Spec::load(&d.path().join("publish.json")).unwrap();
+    qrtz_publish::build(&out, &spec, &keys, now).unwrap();
+    let (_, ix) = qrtz_publish::current(&out).unwrap().unwrap();
+    let e = ix.entry("model.x", "1.0.0").unwrap();
+    let src = &qrtz_modules::models::parse_pinned(&serde_json::to_vec(&pins).unwrap()).unwrap()[0];
+    assert_eq!(
+        e.sha256,
+        src.tree().sha256(),
+        "the hosted tree is the pinned tree"
+    );
+    assert!(e
+        .files
+        .iter()
+        .any(|f| f.mirrors == vec!["https://huggingface.co/org/x/resolve/abc123/up/vocab.json".to_string()]));
+    // A downloaded file that doesn't match its pin is refused.
+    std::fs::write(files.join("vocab.json"), b"{ }").unwrap();
+    let e = qrtz_publish::build(&out, &spec, &keys, now + 1).unwrap_err();
+    assert!(e.contains("doesn't match the pin"), "{e}");
     rm(d.path());
 }

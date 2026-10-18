@@ -1,4 +1,4 @@
-//! `qrtz-publish`: see `docs/modules/hosting-setup.md` and ADR 0153.
+//! `qrtz-publish`: see `docs/modules/hosting-setup.md`, ADR 0153 and ADR 0157.
 use qrtz_publish::keys::{write_keypair, Keys};
 use std::path::PathBuf;
 
@@ -7,9 +7,11 @@ const USAGE: &str = "qrtz-publish <command> [options]
   keygen    --dir <keys> --role <root-a|root-b|timestamp|index>   new key (0600) + .pub; never overwrites
   root      --out <dir> [--keys <dir>] [--prev-keys <dir>] [--threshold 1]
                                       write root N+1 (or 1) and print its sha256 (pin 1.root.json's in the app)
-  build     --out <dir> --spec <publish.json> [--keys <dir>]       add packages, sign index + timestamp
+  build     --out <dir> --spec <publish.json> [--keys <dir>]       add packages (each dir has its qrtz.json, or a
+                                      pinned model set and the dir of its downloaded files), sign index + timestamp
   timestamp --out <dir> [--keys <dir>]                              re-sign the timestamp (at least weekly)
-  pack      --out <dir> --module <id> --version <v> --to <file.qrtzpkg>
+  pack      --out <dir> --name <package> --version <v> --to <file.qrtzpkg>
+                                      the package and everything it resolves to, for an offline install
   verify    --out <dir> --root-sha256 <hex>                         check the dir as a fresh client would
   dry-run   [--dir <dir>] [--big]     everything with test keys made at runtime (never written)
 
@@ -89,13 +91,11 @@ fn run() -> Result<(), String> {
         }
         "pack" => {
             let to = PathBuf::from(need("--to")?);
-            qrtz_publish::pack(
-                &PathBuf::from(need("--out")?),
-                &need("--module")?,
-                &need("--version")?,
-                &to,
-            )?;
-            println!("wrote {}", to.display());
+            let name = opt("--name")
+                .or_else(|| opt("--module"))
+                .ok_or(format!("pack: --name is required\n\n{USAGE}"))?;
+            let set = qrtz_publish::pack(&PathBuf::from(need("--out")?), &name, &need("--version")?, &to)?;
+            println!("wrote {} ({})", to.display(), set.join(", "));
         }
         "verify" => println!(
             "{}",

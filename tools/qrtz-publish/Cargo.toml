@@ -12,6 +12,7 @@ name = "qrtz-publish"
 path = "src/main.rs"
 
 [dependencies]
+semver = "1"
 qrtz-modules = { path = "../../crates/qrtz-modules" }
 serde.workspace = true
 serde_json.workspace = true
@@ -23,3 +24,5 @@ tokio = { workspace = true }
 
 [dev-dependencies]
 tempfile.workspace = true
+async-trait.workspace = true
+tokio = { workspace = true, features = ["macros", "rt"] }
