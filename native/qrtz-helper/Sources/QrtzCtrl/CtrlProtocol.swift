@@ -17,6 +17,8 @@ public enum CtrlRoute: Equatable, Sendable {
     case quitApps(apps: [String])
     /// ADR 0134: hide each running app (no activation, nothing raised). Reversible, so no gate; never the frontmost.
     case hideApps(apps: [String])
+    /// ADR 0135: mute the sound output (in the helper's own process; no app, nothing shown). Reversible, no gate.
+    case muteOutput
     case scripting(app: String, verb: String)
     case axPerform(app: String, role: String, element: String, action: String)
     case axSet(app: String, role: String, element: String, attribute: String)
@@ -41,6 +43,7 @@ public enum CtrlRoute: Equatable, Sendable {
             case "launch_hidden": if let a = s("app") { return .launchHidden(app: a) }
             case "quit_apps": if let a = o["apps"] as? [String] { return .quitApps(apps: a) }
             case "hide_apps": if let a = o["apps"] as? [String] { return .hideApps(apps: a) }
+            case "mute_output": return .muteOutput
             default: return nil
             }
             return nil
@@ -100,7 +103,9 @@ public enum CtrlRequest: Equatable, Sendable {
                   let c = o["content"] as? [String: String] else { return nil }
             return .act(id: id, actionId: a, route: r, content: c)
         case "ctrl.measure":
-            guard let c = o["check"] as? [String: Any], let k = c["check"] as? String, let a = c["app"] as? String else { return nil }
+            // ADR 0135: `output_muted` has no app.
+            guard let c = o["check"] as? [String: Any], let k = c["check"] as? String,
+                  let a = (c["app"] as? String) ?? (k == "output_muted" ? "" : nil) else { return nil }
             return .measure(id: id, check: k, app: a)
         case "ctrl.restore": return .restore(id: id, frontmostPid: (o["frontmostPid"] as? NSNumber).map { $0.int32Value })
         case "ctrl.laya":
@@ -208,7 +213,7 @@ public final class CtrlServer {
         case let .pidKey(_, combo):
             guard let t = targetPid else { throw CtrlFailure("app.not_running") }
             do { try CtrlPolicy.checkKey(combo, targetPid: t, frontmostPid: frontmostPid) } catch { throw CtrlFailure("policy.refused") }
-        case .files, .openURL, .launchHidden, .quitApps, .hideApps: break
+        case .files, .openURL, .launchHidden, .quitApps, .hideApps, .muteOutput: break
         }
     }
 
@@ -216,7 +221,7 @@ public final class CtrlServer {
         switch r {
         case let .openURL(a, _), let .launchHidden(a), let .scripting(a, _), let .axPerform(a, _, _, _), let .axSet(a, _, _, _),
              let .pidKey(a, _): return a
-        case .files, .takesOver, .quitApps, .hideApps: return nil
+        case .files, .takesOver, .quitApps, .hideApps, .muteOutput: return nil
         }
     }
 

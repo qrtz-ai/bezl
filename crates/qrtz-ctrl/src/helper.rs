@@ -45,6 +45,8 @@ pub enum Check {
     /// ADR 0134: of these apps, how many are still on screen (running, not hidden, not frontmost). Measured by the
     /// host from `ctrl.apps`.
     AppsVisible { apps: Vec<String> },
+    /// ADR 0135: 1 if the Mac's sound output is muted, 0 if not (`null`: no output device that can mute).
+    OutputMuted,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -536,6 +538,8 @@ pub struct FakeWorld {
     pub last_active: BTreeMap<String, u64>,
     pub watch_since_ms: Option<u64>,
     pub day_start_ms: u64,
+    /// ADR 0135: the sound output's mute (`None`: no output that can mute).
+    pub muted: Option<bool>,
 }
 
 pub struct FakeHelper(pub Mutex<FakeWorld>);
@@ -588,6 +592,7 @@ impl FakeWorld {
             last_active: BTreeMap::new(),
             watch_since_ms: None,
             day_start_ms: 0,
+            muted: Some(false),
         }
     }
 
@@ -697,6 +702,14 @@ impl FakeWorld {
                 }
                 Ok(())
             }
+            // ADR 0135: no output that can mute fails like the Mac's `set volume` would.
+            Route::Workspace(WorkspaceOp::MuteOutput) => match self.muted {
+                Some(_) => {
+                    self.muted = Some(true);
+                    Ok(())
+                }
+                None => Err("sound.no_output".into()),
+            },
             Route::Ax { app, element, .. } => {
                 let a = self.app_mut(app).ok_or("app.not_running")?;
                 let before = a.ax_top.len();
@@ -812,6 +825,7 @@ impl FakeWorld {
                     | Check::FilesRemaining
                     | Check::AppsRemaining { .. }
                     | Check::AppsVisible { .. } => None,
+                    Check::OutputMuted => self.muted.map(i64::from),
                 };
                 HelperMsg::MeasureResult { id, value }
             }

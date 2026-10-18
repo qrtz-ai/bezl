@@ -476,6 +476,13 @@ const INTENTS: &[IntentDef] = &[
         slot: Slot::None,
         irreversible: false,
     },
+    // ADR 0135: mute the Mac's sound output; reversible, no gate, no app.
+    IntentDef {
+        id: "mute",
+        app: AppMode::None,
+        slot: Slot::None,
+        irreversible: false,
+    },
     IntentDef {
         id: "empty_trash",
         app: AppMode::Files,
@@ -634,6 +641,13 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
                 ],
             );
             if has(toks, &["hide"]) && group && !named_app {
+                p += 8500;
+            }
+        }
+        "mute" => {
+            // "mute my mac", "mute the sound". Not "mute slack" (one app's own mute is a different thing).
+            p -= 3000;
+            if has(toks, &["mute", "silence"]) && !named_app {
                 p += 8500;
             }
         }
@@ -920,6 +934,7 @@ fn move_question(
         "quit_app" => vec![irreversible(shortcut("cmd+q", 4000))],
         "quit_unused" => vec![irreversible(route("workspace.quit_unused", 4500))],
         "hide_others" => vec![route("workspace.hide_others", 4500)],
+        "mute" => vec![route("system.mute", 4500)],
         // ADR 0124: on the Desktop only the screenshots and screen recordings are ctrl's; the Downloads routes
         // would act on another folder, so they aren't offered here.
         "clean_folder" if matches!(target, Some("folder.desktop" | "folder.screenshots")) => {
@@ -1127,6 +1142,7 @@ fn intent_label(id: &str) -> &'static str {
         "quit_app" => "quit an app",
         "quit_unused" => "quit apps you haven't used today",
         "hide_others" => "hide your other apps",
+        "mute" => "mute your mac",
         "empty_trash" => "empty the trash",
         "dark_mode" => "switch dark mode",
         "search" => "search in an app",
@@ -1145,6 +1161,7 @@ fn route_label(id: &str) -> &'static str {
         "workspace.launch_hidden" => "start it hidden",
         "workspace.quit_unused" => "quit them without bringing anything forward",
         "workspace.hide_others" => "hide them, the app you're in stays",
+        "system.mute" => "mute the sound output",
         "files.tidy" => "sort by kind, nothing deleted",
         "files.sort_by_kind" => "sort files into folders by kind",
         "files.trash_old" => "move old installers to the trash",

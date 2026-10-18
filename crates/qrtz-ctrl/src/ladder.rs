@@ -79,6 +79,9 @@ pub enum WorkspaceOp {
     /// ADR 0134: `NSRunningApplication.hide()` each app (no activation, no key event, no window raised). Reversible
     /// (clicking the app in the Dock brings it back), so no gate; never the frontmost app.
     HideApps { apps: Vec<String> },
+    /// ADR 0135: mute the Mac's sound output (Standard Additions `set volume with output muted`, in the helper's
+    /// own process: no app is told anything, nothing is shown, no key event). Reversible, no gate.
+    MuteOutput,
 }
 
 /// The only Apple Event verbs ctrl sends. Templates, not free text: the type can't express `activate`.
@@ -154,7 +157,9 @@ impl Route {
         match self {
             Route::Files(_)
             | Route::GlobalKey { .. }
-            | Route::Workspace(WorkspaceOp::QuitApps { .. } | WorkspaceOp::HideApps { .. }) => None,
+            | Route::Workspace(
+                WorkspaceOp::QuitApps { .. } | WorkspaceOp::HideApps { .. } | WorkspaceOp::MuteOutput,
+            ) => None,
             Route::Workspace(WorkspaceOp::OpenUrl { app, .. } | WorkspaceOp::LaunchHidden { app }) => {
                 Some(app)
             }
@@ -329,6 +334,8 @@ pub fn judge(route: &Route, env: &Env) -> Verdict {
                     }
                     return Verdict::Allowed;
                 }
+                // No app, no window, no input: nothing on screen to take over.
+                WorkspaceOp::MuteOutput => return Verdict::Allowed,
             };
             if !env.running_apps.contains(app) {
                 return Verdict::NeedsGrant {

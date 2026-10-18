@@ -54,7 +54,7 @@ final class CtrlProtocolTests: XCTestCase {
     func testEveryHostLineOfTheFixtureParses() throws {
         let all = try lines()
         let host = all.filter { !(($0["type"] as! String).hasSuffix(".result")) && $0["type"] as! String != "ctrl.error" }
-        XCTAssertEqual(host.count, 14)
+        XCTAssertEqual(host.count, 16)
         for o in host {
             let line = String(decoding: try JSONSerialization.data(withJSONObject: o), as: UTF8.self)
             XCTAssertNotNil(CtrlRequest.parse(line), "\(o["type"]!)")
@@ -163,6 +163,23 @@ final class CtrlProtocolTests: XCTestCase {
         let apps = json(server.handle(line: #"{"type":"ctrl.apps","id":"h"}"#))["apps"] as! [[String: Any]]
         XCTAssertEqual(apps[0]["hidden"] as? Bool, false)
         XCTAssertNil(apps[1]["hidden"], "unknown stays off the wire")
+    }
+
+    func testMuteOutputWireAndItsMeasureHasNoApp() throws {
+        // ADR 0135: mute_output and the app-less output_muted measure parse from the fixture and reach the backend.
+        let all = try lines()
+        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["op"] as? String == "mute_output" }!
+        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
+        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("mute_output") }
+        XCTAssertEqual(route, .muteOutput)
+        let fake = Fake()
+        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: line))["ok"] as? Bool, true)
+        XCTAssertEqual(fake.acted, [.muteOutput])
+        guard case let .measure(_, check, app)? = CtrlRequest.parse(#"{"type":"ctrl.measure","id":"c15","check":{"check":"output_muted"}}"#)
+        else { return XCTFail("output_muted") }
+        XCTAssertEqual(check, "output_muted")
+        XCTAssertEqual(app, "")
+        XCTAssertNil(CtrlRequest.parse(#"{"type":"ctrl.measure","id":"x","check":{"check":"tab_count"}}"#), "other checks still need an app")
     }
 
     func testTheLastUsedRecordKeepsTheLatestActivationAndMidnightIsLocal() {

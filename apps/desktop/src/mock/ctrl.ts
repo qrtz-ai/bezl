@@ -84,6 +84,7 @@ const INTENTS = {
     irreversible: true,
   },
   hide_others: opt('intent.hide_others', 'hide your other apps', 0.07),
+  mute: opt('intent.mute', 'mute your mac', 0.07),
 };
 type Intent =
   | 'close_tabs'
@@ -95,7 +96,8 @@ type Intent =
   | 'empty_trash'
   | 'quit_app'
   | 'quit_unused'
-  | 'hide_others';
+  | 'hide_others'
+  | 'mute';
 /** What an unclear task is asked (the three most likely intents). */
 const ASKED = [INTENTS.close_tabs, INTENTS.clean_folder, INTENTS.close_windows];
 
@@ -145,6 +147,12 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
         "hide them, the app you're in stays",
         0.97,
       ),
+    ]),
+  ],
+  // ADR 0135: the sound output, muted in the helper's own process; reversible, no card, no app question.
+  mute: [
+    act('choose_move', [
+      opt('route.system.mute', 'mute the sound output', 0.97),
     ]),
   ],
   clean_folder: [
@@ -261,30 +269,32 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
 };
 
 const intentOf = (text: string): Intent | null =>
-  /\bhide\b/i.test(text) &&
-  /\b(apps|applications|other|others|everything|all)\b/i.test(text)
-    ? 'hide_others'
-    : /\b(quit|close)\b/i.test(text) &&
-        /\bapps?\b/i.test(text) &&
-        /\b(unused|used|using|idle)\b/i.test(text)
-      ? 'quit_unused'
-      : /\bquit\b/i.test(text)
-        ? 'quit_app'
-        : /\bcalendar\b/i.test(text)
-          ? 'open_calendar'
-          : /\bempty\b/i.test(text) && /\b(trash|bin)\b/i.test(text)
-            ? 'empty_trash'
-            : /\btabs?\b/i.test(text)
-              ? 'close_tabs'
-              : /\bdocuments\b/i.test(text)
-                ? 'tidy_documents'
-                : /\b(desktop|screenshots?)\b/i.test(text)
-                  ? 'tidy_desktop'
-                  : /download|folder/i.test(text)
-                    ? /\b(delete|trash|old)\b/i.test(text)
-                      ? 'trash_old'
-                      : 'clean_folder'
-                    : null;
+  /\b(mute|silence)\b/i.test(text)
+    ? 'mute'
+    : /\bhide\b/i.test(text) &&
+        /\b(apps|applications|other|others|everything|all)\b/i.test(text)
+      ? 'hide_others'
+      : /\b(quit|close)\b/i.test(text) &&
+          /\bapps?\b/i.test(text) &&
+          /\b(unused|used|using|idle)\b/i.test(text)
+        ? 'quit_unused'
+        : /\bquit\b/i.test(text)
+          ? 'quit_app'
+          : /\bcalendar\b/i.test(text)
+            ? 'open_calendar'
+            : /\bempty\b/i.test(text) && /\b(trash|bin)\b/i.test(text)
+              ? 'empty_trash'
+              : /\btabs?\b/i.test(text)
+                ? 'close_tabs'
+                : /\bdocuments\b/i.test(text)
+                  ? 'tidy_documents'
+                  : /\b(desktop|screenshots?)\b/i.test(text)
+                    ? 'tidy_desktop'
+                    : /download|folder/i.test(text)
+                      ? /\b(delete|trash|old)\b/i.test(text)
+                        ? 'trash_old'
+                        : 'clean_folder'
+                      : null;
 
 const PREVIEW: CtrlConfirm['items'] = [
   { key: '3f2a9c1d0b7e#0', kind: 'window', label: 'notes.txt', unsaved: false },

@@ -268,6 +268,10 @@ public final class MacCtrlBackend: CtrlBackend {
         return try Self.runScript(src)
     }
 
+    /// ADR 0135: the only two sound scripts (templates, never task text).
+    static let muteSource = "set volume with output muted"
+    static let outputMutedSource = "if output muted of (get volume settings) then\nreturn 1\nelse\nreturn 0\nend if"
+
     public func act(_ route: CtrlRoute, content: [String: String]) throws {
         switch route {
         case .files: throw CtrlFailure("files.not_yet")
@@ -293,6 +297,10 @@ public final class MacCtrlBackend: CtrlBackend {
                 guard let a = runningApp(id), a.processIdentifier != front else { continue }
                 _ = a.terminate()
             }
+        case .muteOutput:
+            // ADR 0135: Standard Additions, run in the helper's own process: no Apple Event to another app, no
+            // volume HUD, no key event. The host verifies by reading the mute back.
+            _ = try Self.runScript(Self.muteSource)
         case let .hideApps(apps):
             // ADR 0134: `hide()` is the Dock's Hide: the app's windows go, nothing is activated or raised, no key event.
             // The frontmost app was dropped before this point (CtrlServer); re-checked here for the race.
@@ -333,6 +341,9 @@ public final class MacCtrlBackend: CtrlBackend {
     public func measure(check: String, app: String) -> Int? {
         switch check {
         case "app_running": return runningApp(app) == nil ? 0 : 1
+        // ADR 0135: read back by Standard Additions in this process (no app asked, no prompt); nil without an
+        // output that can mute.
+        case "output_muted": return (try? Self.runScript(Self.outputMutedSource)).map { Int($0.int32Value) }
         case "tab_count":
             return (try? script("count_tabs", app: app)).map { Int($0.int32Value) }
         case "saved_tabs", "unpinned_tabs":

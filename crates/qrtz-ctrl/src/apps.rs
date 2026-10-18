@@ -45,6 +45,9 @@ pub fn unused_today(
         .collect()
 }
 
+/// ADR 0135: the move of "mute my mac" (the system output, reversible, no gate, no UI).
+pub const MUTE_MOVE: &str = "route.system.mute";
+
 /// ADR 0134: the move of "hide other apps" / "hide all my apps" (reversible, no gate).
 pub const HIDE_OTHERS_MOVE: &str = "route.workspace.hide_others";
 
