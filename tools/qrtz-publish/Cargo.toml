@@ -1,0 +1,25 @@
+[package]
+name = "qrtz-publish"
+description = "qrtz module publisher (ADR 0153): builds the content-addressed blobs and the signed root/timestamp/index from built module bundles and model sets, re-signs the timestamp, packs .qrtzpkg sideload files, and verifies an output dir as the client would. Release-machine tool; never shipped in the app. Keys come from files or env and are never printed or written to the output."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "qrtz-publish"
+path = "src/main.rs"
+
+[dependencies]
+qrtz-modules = { path = "../../crates/qrtz-modules" }
+serde.workspace = true
+serde_json.workspace = true
+ed25519-dalek = "2"
+rand.workspace = true
+hex = "0.4"
+sha2 = "0.10"
+tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -6,6 +6,7 @@
     "qrtz-app": "shell",
     "qrtz-speech": "shell",
     "qrtz-modules": "shell",
+    "qrtz-publish": "shell",
     "qrtz-speech-types": "shared",
     "qrtz-ipc": "shared",
     "qrtz-helper-bridge": "shared",
