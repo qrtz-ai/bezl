@@ -57,7 +57,10 @@ public enum CtrlRoute: Equatable, Sendable {
             case "unmute_output": return .unmuteOutput
             // ADR 0140: a whole number 0–100 only; anything else is a bad request, never clamped.
             case "set_volume":
-                guard !(o["level"] is Bool), let l = o["level"] as? Int, (0...100).contains(l) else { return nil }
+                // ADR 0141: `is Bool` is true for a JSON 0 or 1 too (NSNumber bridging, Linux and macOS), so a JSON
+                // true/false is told apart by its objCType "c" instead; 0 and 1 are levels, true and false are not.
+                guard let n = o["level"] as? NSNumber, String(cString: n.objCType) != "c", let l = o["level"] as? Int,
+                      (0...100).contains(l) else { return nil }
                 return .setVolume(level: l)
             default: return nil
             }

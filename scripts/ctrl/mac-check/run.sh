@@ -20,7 +20,15 @@ grep -E 'Sources/QrtzCtrl/.*warning:' "$D/helper-build.log" | sort -u | head -20
 echo "warnings total: $(grep -E 'warning:' "$D/helper-build.log" | sort -u | wc -l)"
 tail -3 "$D/helper-build.log"
 echo "== QrtzCtrlTests"
+# ADR 0141: the Mac check is read-only end to end. These CtrlMacGuardTests open TextEdit, press its close button,
+# post key events (to the test process) or call AX actions on Finder, so they're skipped here unless
+# QRTZ_CTRL_MAC_ACTIVE=1. The session probe and the temp-dir downloads cleanup still run.
+SKIP=()
+if [ "${QRTZ_CTRL_MAC_ACTIVE:-}" != "1" ]; then
+  SKIP=(--skip 'CtrlMacGuardTests\.(testBackgroundTextEdit|testPrivateSourceKeyEvents|testMacProbe|testForbiddenAXActions)')
+  echo "skipping the active CtrlMacGuardTests (QRTZ_CTRL_MAC_ACTIVE=1 runs them)"
+fi
 s=$(date +%s)
-(cd "$D/qrtz-helper" && xcrun swift test --filter QrtzCtrlTests "${SP[@]}" --scratch-path "$D/b-helper" >"$D/test.log" 2>&1)
+(cd "$D/qrtz-helper" && xcrun swift test --filter QrtzCtrlTests "${SKIP[@]}" "${SP[@]}" --scratch-path "$D/b-helper" >"$D/test.log" 2>&1)
 echo "exit $? in $(( $(date +%s) - s ))s"
 grep -E "error:|failed|Executed .* tests" "$D/test.log" | sort -u | head -30; tail -3 "$D/test.log"

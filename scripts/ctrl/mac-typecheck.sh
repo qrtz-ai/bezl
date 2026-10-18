@@ -7,6 +7,7 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 src="$root/native/qrtz-helper/Sources/QrtzCtrl"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
+"$root/scripts/ctrl/objc-names.sh"
 for f in "$src"/mac/*.swift; do
   grep -v -E '^#if os\(macOS\)|^#endif|^import (AppKit|ApplicationServices|CoreML|CoreServices|Carbon|CoreGraphics)' "$f" >"$tmp/mac_$(basename "$f")"
 done

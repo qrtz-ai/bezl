@@ -185,7 +185,13 @@ final class CtrlProtocolTests: XCTestCase {
         let svLine = String(decoding: try JSONSerialization.data(withJSONObject: sv), as: UTF8.self)
         XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: svLine))["ok"] as? Bool, true)
         XCTAssertEqual(fake.acted, [.muteOutput, .unmuteOutput, .setVolume(level: 30)])
-        for bad in [#"101"#, #"-1"#, #""30""#, #"30.5"#, #"null"#] {
+        // ADR 0141: 0 and 1 are levels (a JSON 0 or 1 also bridges `is Bool`), true and false are not.
+        for (level, want) in [("0", 0), ("1", 1), ("100", 100)] {
+            guard case let .act(_, _, route, _)? = CtrlRequest.parse(#"{"type":"ctrl.act","id":"x","actionId":"a","route":{"route":"workspace","op":"set_volume","level":"# + level + #"},"content":{}}"#)
+            else { return XCTFail("level \(level)") }
+            XCTAssertEqual(route, .setVolume(level: want))
+        }
+        for bad in [#"101"#, #"-1"#, #""30""#, #"30.5"#, #"null"#, #"true"#, #"false"#] {
             XCTAssertNil(CtrlRequest.parse(#"{"type":"ctrl.act","id":"x","actionId":"a","route":{"route":"workspace","op":"set_volume","level":"# + bad + #"},"content":{}}"#), bad)
         }
         guard case let .measure(_, vcheck, vapp)? = CtrlRequest.parse(#"{"type":"ctrl.measure","id":"c20","check":{"check":"output_volume"}}"#)
