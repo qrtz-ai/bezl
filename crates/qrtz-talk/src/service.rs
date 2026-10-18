@@ -1556,10 +1556,12 @@ impl TalkService {
             engine = entry.engine.as_str(),
             audio_ms = entry.duration_ms,
             head_ms = head_ms.round(),
-            first_partial_ms = ?entry.latency.first_partial_ms,
-            final_ms = ?entry.latency.final_ms,
-            cleanup_ms = ?entry.latency.cleanup_ms,
-            inserted_ms = ?entry.latency.inserted_ms,
+            // ADR 0156 (N175): plain numbers, whole ms, and left out when the stage never happened. `?` printed
+            // `first_partial_ms=Some(890.4)` / `final_ms=None`, which the timing report and a plain grep can't read.
+            first_partial_ms = entry.latency.first_partial_ms.map(f64::round),
+            final_ms = entry.latency.final_ms.map(f64::round),
+            cleanup_ms = entry.latency.cleanup_ms.map(f64::round),
+            inserted_ms = entry.latency.inserted_ms.map(f64::round),
             insert = ?entry.insert,
             cleanup = ?entry.cleanup,
             raw_chars = entry.raw.chars().count(),
