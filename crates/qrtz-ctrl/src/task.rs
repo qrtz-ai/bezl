@@ -77,6 +77,9 @@ pub struct Task {
     pub created_at: u64,
     /// Run ids, oldest first.
     pub runs: Vec<String>,
+    /// Standing approvals of the confirm gate (slice 6), oldest first; revoking one removes it.
+    #[serde(default)]
+    pub approvals: Vec<crate::gate::Approval>,
 }
 
 #[cfg(test)]

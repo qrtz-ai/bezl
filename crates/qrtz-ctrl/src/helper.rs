@@ -90,6 +90,29 @@ pub enum HostMsg {
         question: String,
         options: Vec<String>,
     },
+    /// The confirm gate's preview (slice 6, ADR 0111): what an irreversible action would touch in `app`, one item
+    /// per window or tab, with its title (hashed by the host before anything is logged) and unsaved state.
+    #[serde(rename = "ctrl.preview")]
+    Preview {
+        id: String,
+        app: String,
+        what: PreviewWhat,
+    },
+}
+
+/// What a confirm-gate preview enumerates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PreviewWhat {
+    Windows,
+    Tabs,
+}
+
+/// One previewed item as the helper reports it. `unsaved: null` = the helper can't tell (counted as unsaved).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PreviewItemWire {
+    pub title: String,
+    pub unsaved: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,6 +151,8 @@ pub enum HelperMsg {
     RestoreResult { id: String, ok: bool },
     #[serde(rename = "ctrl.laya.result")]
     LayaResult { id: String, p: Vec<f32> },
+    #[serde(rename = "ctrl.preview.result")]
+    PreviewResult { id: String, items: Vec<PreviewItemWire> },
     /// A short code (`ax.not_trusted`, `app.not_running`, `policy.refused`, `laya.no_model`), never content.
     #[serde(rename = "ctrl.error")]
     Error { id: String, code: String },
@@ -143,6 +168,7 @@ impl HelperMsg {
             | HelperMsg::MeasureResult { id, .. }
             | HelperMsg::RestoreResult { id, .. }
             | HelperMsg::LayaResult { id, .. }
+            | HelperMsg::PreviewResult { id, .. }
             | HelperMsg::Error { id, .. } => id,
         }
     }
@@ -195,7 +221,8 @@ impl HelperClient {
             | HostMsg::Act { id, .. }
             | HostMsg::Measure { id, .. }
             | HostMsg::Restore { id, .. }
-            | HostMsg::Laya { id, .. } => id.clone(),
+            | HostMsg::Laya { id, .. }
+            | HostMsg::Preview { id, .. } => id.clone(),
         };
         let reply = self.wire.roundtrip(&line)?;
         let r: HelperMsg = serde_json::from_str(reply.trim()).map_err(|_| proto_err("bad_reply"))?;
@@ -300,6 +327,20 @@ impl HelperClient {
     }
 }
 
+impl HelperClient {
+    /// The confirm gate's preview of `app`'s windows or tabs (an error code when the helper can't enumerate them).
+    pub fn preview(&self, app: &str, what: PreviewWhat) -> Result<Vec<PreviewItemWire>, String> {
+        match self.call(HostMsg::Preview {
+            id: self.id(),
+            app: app.into(),
+            what,
+        })? {
+            HelperMsg::PreviewResult { items, .. } => Ok(items),
+            _ => Err(proto_err("unexpected")),
+        }
+    }
+}
+
 /// The app catalog from the helper (LaunchServices: running apps and the real default browser). Replaces
 /// [`crate::layers::ScanApps`] whenever a helper is connected; an unreachable helper gives an empty catalog
 /// (the chain then asks instead of guessing).
@@ -327,6 +368,10 @@ pub struct FakeApp {
     pub ax_children: BTreeMap<String, Vec<AxNodeWire>>,
     /// Scripting verbs this app understands.
     pub scriptable: bool,
+    /// Window titles and unsaved state for the confirm gate's preview (empty: `window 1` … `window n`).
+    pub docs: Vec<(String, bool)>,
+    /// The fake can't enumerate this app's windows (the preview errors, the host falls back to a count).
+    pub no_preview: bool,
 }
 
 impl FakeApp {
@@ -342,6 +387,8 @@ impl FakeApp {
             ax_top: Vec::new(),
             ax_children: BTreeMap::new(),
             scriptable: false,
+            docs: Vec::new(),
+            no_preview: false,
         }
     }
     pub fn browser(mut self, tabs: i64) -> Self {
@@ -510,6 +557,13 @@ impl FakeWorld {
                     "cmd+w" if a.browser => a.tabs = (a.tabs - 1).max(0),
                     "cmd+w" => a.windows = (a.windows - 1).max(0),
                     "cmd+option+w" => a.tabs = a.tabs.min(1),
+                    // Quit: the app's windows go with it (a real app would show its save sheet for unsaved work).
+                    "cmd+q" => {
+                        a.running = false;
+                        a.windows = 0;
+                        a.tabs = 0;
+                        a.docs.clear();
+                    }
                     _ => {}
                 }
                 Ok(())
@@ -599,6 +653,41 @@ impl FakeWorld {
                     ok: frontmost_pid.is_some(),
                 }
             }
+            HostMsg::Preview { id, app, what } => match self.apps.iter().find(|a| a.bundle_id == app) {
+                Some(a) if a.running && !a.no_preview => {
+                    let items = match what {
+                        PreviewWhat::Windows if !a.docs.is_empty() => a
+                            .docs
+                            .iter()
+                            .map(|(t, u)| PreviewItemWire {
+                                title: t.clone(),
+                                unsaved: Some(*u),
+                            })
+                            .collect(),
+                        PreviewWhat::Windows => (1..=a.windows)
+                            .map(|i| PreviewItemWire {
+                                title: format!("window {i}"),
+                                unsaved: Some(false),
+                            })
+                            .collect(),
+                        PreviewWhat::Tabs => (1..=a.tabs)
+                            .map(|i| PreviewItemWire {
+                                title: format!("tab {i}"),
+                                unsaved: None,
+                            })
+                            .collect(),
+                    };
+                    HelperMsg::PreviewResult { id, items }
+                }
+                Some(a) if a.running => HelperMsg::Error {
+                    id,
+                    code: "preview.unsupported".into(),
+                },
+                _ => HelperMsg::Error {
+                    id,
+                    code: "app.not_running".into(),
+                },
+            },
             HostMsg::Laya { id, options, .. } => match &self.laya {
                 Some(p) if p.len() == options.len() => HelperMsg::LayaResult { id, p: p.clone() },
                 _ => HelperMsg::Error {

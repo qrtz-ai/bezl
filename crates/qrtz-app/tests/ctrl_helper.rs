@@ -113,7 +113,13 @@ async fn run_task(r: &Router<Shared>, text: &str) -> Value {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_run_executes_through_the_supervised_helper_stdio_next_to_the_echo_nano_pump() {
     let d = tempfile::tempdir().unwrap();
-    let fake = Arc::new(FakeHelper::new(FakeWorld::typical(4)));
+    let mut world = FakeWorld::typical(4);
+    world.apps.push(qrtz_ctrl::helper::FakeApp::new(
+        "com.apple.TextEdit",
+        "TextEdit",
+        400,
+    ));
+    let fake = Arc::new(FakeHelper::new(world));
     let sup = Supervisor::spawn(
         opts(),
         Arc::new(FakeChild {
@@ -135,10 +141,20 @@ async fn a_run_executes_through_the_supervised_helper_stdio_next_to_the_echo_nan
     assert_eq!(w.frontmost_pid, 100, "the user's app stayed frontmost");
     let safari = w.apps.iter().find(|a| a.bundle_id == "com.apple.Safari").unwrap();
     assert_eq!(safari.tabs, 0);
-    // An irreversible task still holds before acting over the real stdio.
-    let run = run_task(&r, "empty the trash").await;
+    // An irreversible task stops at the confirm gate over the real stdio (the preview rides `ctrl.preview`).
+    let run = run_task(&r, "quit textedit").await;
     assert_eq!(run["data"]["status"], "needs-confirm", "{run}");
     assert_eq!(fake.world().acted.len(), 1);
+    let v = call(&r, "ctrl:run", json!({"runId": run["data"]["id"]})).await;
+    assert_eq!(v["data"]["state"]["confirm"]["complete"], true, "{v}");
+    let v = call(
+        &r,
+        "ctrl:confirm",
+        json!({"runId": run["data"]["id"], "gateId": "g0", "answer": "approve"}),
+    )
+    .await;
+    assert_eq!(v["data"]["state"]["status"], "done", "{v}");
+    assert_eq!(fake.world().acted.len(), 2);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

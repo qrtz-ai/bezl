@@ -10,6 +10,7 @@
 //! verify (a bad line in the middle, a broken hash chain, a wrong seq) is damage: the file is never rewritten,
 //! the store refuses writes and says so. Ids come from the store's own seq (`task-7`, `run-12`), so a replay of
 //! the same log gives the same ids.
+use crate::gate::{Approval, Scope};
 use crate::log::{Event, EventLog, Record};
 use crate::task::{clean_text, Schedule, Task, TaskError};
 use serde::{Deserialize, Serialize};
@@ -38,6 +39,15 @@ pub enum StoreEvent {
     /// A run of this task exists in `runs/<run_id>.jsonl`.
     #[serde(rename = "run.recorded")]
     RunRecorded { task_id: String, run_id: String },
+    /// The user approved an irreversible step and asked ctrl to remember it for this task (slice 6, ADR 0111).
+    #[serde(rename = "approval.granted")]
+    ApprovalGranted {
+        task_id: String,
+        approval_id: String,
+        scope: Scope,
+    },
+    #[serde(rename = "approval.revoked")]
+    ApprovalRevoked { task_id: String, approval_id: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -98,6 +108,7 @@ pub fn apply_store(mut s: StoreState, r: &StoreRecord) -> StoreState {
                     paused: false,
                     created_at: r.t_wall_ms,
                     runs: Vec::new(),
+                    approvals: Vec::new(),
                 },
             );
         }
@@ -115,6 +126,24 @@ pub fn apply_store(mut s: StoreState, r: &StoreRecord) -> StoreState {
                 t.runs.push(run_id.clone());
             }
             s.runs.insert(run_id.clone(), (task_id.clone(), r.t_wall_ms));
+        }
+        StoreEvent::ApprovalGranted {
+            task_id,
+            approval_id,
+            scope,
+        } => {
+            if let Some(t) = s.tasks.get_mut(task_id) {
+                t.approvals.push(Approval {
+                    id: approval_id.clone(),
+                    scope: scope.clone(),
+                    granted_at: r.t_wall_ms,
+                });
+            }
+        }
+        StoreEvent::ApprovalRevoked { task_id, approval_id } => {
+            if let Some(t) = s.tasks.get_mut(task_id) {
+                t.approvals.retain(|a| &a.id != approval_id);
+            }
         }
     }
     s
@@ -300,6 +329,39 @@ impl Store {
     pub fn delete_task(&mut self, now_ms: u64, id: &str) -> Result<(), StoreError> {
         self.task(id)?;
         self.append(now_ms, StoreEvent::TaskDeleted { task_id: id.into() })
+    }
+
+    /// Remember an approval for this task (a standing approval, ADR 0111). Returns its id.
+    pub fn grant_approval(&mut self, now_ms: u64, task_id: &str, scope: Scope) -> Result<String, StoreError> {
+        self.task(task_id)?;
+        let approval_id = format!("approval-{}", self.next_seq());
+        self.append(
+            now_ms,
+            StoreEvent::ApprovalGranted {
+                task_id: task_id.into(),
+                approval_id: approval_id.clone(),
+                scope,
+            },
+        )?;
+        Ok(approval_id)
+    }
+
+    pub fn revoke_approval(
+        &mut self,
+        now_ms: u64,
+        task_id: &str,
+        approval_id: &str,
+    ) -> Result<(), StoreError> {
+        if !self.task(task_id)?.approvals.iter().any(|a| a.id == approval_id) {
+            return Err(StoreError::NotFound);
+        }
+        self.append(
+            now_ms,
+            StoreEvent::ApprovalRevoked {
+                task_id: task_id.into(),
+                approval_id: approval_id.into(),
+            },
+        )
     }
 
     /// Start a run of `task_id`: `run.recorded` in the store, then the run's own log with its first events.

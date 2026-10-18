@@ -54,6 +54,11 @@ impl ShellHooks for TauriShell {
                     if title.is_empty() { platform } else { title }
                 ),
             ),
+            // ADR 0111: a banner only; it doesn't activate qrtz. No task text on the lock screen.
+            Notice::CtrlConfirm { .. } => (
+                crate::strings::UI_CTRL_CONFIRM_TITLE.to_string(),
+                crate::strings::UI_CTRL_CONFIRM_BODY.to_string(),
+            ),
         };
         // e2e: every notice the core raised, focused or not (dev builds only).
         if cfg!(debug_assertions) {

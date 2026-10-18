@@ -187,16 +187,24 @@ fn a_failed_verify_backtracks_then_asks_when_out_of_alternatives() {
 }
 
 #[test]
-fn an_irreversible_plan_stops_before_acting() {
+fn an_irreversible_plan_stops_at_the_confirm_gate_before_acting() {
     let d = tempfile::tempdir().unwrap();
-    let (s, fake) = svc(d.path(), FakeWorld::typical(1));
-    let v = run(&s, "every week empty the trash");
+    let mut world = FakeWorld::typical(1);
+    world
+        .apps
+        .push(FakeApp::new("com.apple.TextEdit", "TextEdit", 400));
+    let (s, fake) = svc(d.path(), world);
+    let v = run(&s, "every week quit textedit");
     let st = &v["state"];
     assert_eq!(st["status"], "needs-confirm", "{v}");
-    assert_eq!(st["held"], "irreversible");
     assert_eq!(st["plan"]["irreversible"], true);
+    assert_eq!(st["confirm"]["gateId"], "g0");
     assert!(fake.world().acted.is_empty());
     assert!(!kinds(&v).iter().any(|k| k == "action.requested"));
+    // Emptying the trash is a file route: held until slice 7 (it will pass the gate then), nothing acted.
+    let v = run(&s, "every week empty the trash");
+    assert_eq!(v["state"]["held"], "files-not-yet", "{v}");
+    assert!(fake.world().acted.is_empty());
 }
 
 #[test]
@@ -404,7 +412,7 @@ fn the_ctrl_protocol_fixture_round_trips() {
         };
         assert_eq!(back, v, "{t} round-trips");
     }
-    assert_eq!((host, helper), (8, 8), "every message, two act routes");
+    assert_eq!((host, helper), (9, 9), "every message, two act routes");
 }
 
 #[test]

@@ -1,4 +1,5 @@
 import type {
+  CtrlApproval,
   CtrlDecision,
   CtrlEventRow,
   CtrlNode,
@@ -71,7 +72,7 @@ export function describeSchedule(s: CtrlSchedule): string {
 const STATUS: Record<CtrlRunStatus, [string, BadgeTone]> = {
   'pending-intent': ['waiting for intent', 'neutral'],
   asking: ['needs you', 'warning'],
-  'needs-confirm': ['asks before it acts', 'warning'],
+  'needs-confirm': ['needs your ok', 'warning'],
   planned: ['planned', 'primary'],
   running: ['running', 'primary'],
   done: ['done', 'success'],
@@ -79,6 +80,7 @@ const STATUS: Record<CtrlRunStatus, [string, BadgeTone]> = {
   cancelled: ['cancelled', 'neutral'],
   'asked-out': ['needs you', 'warning'],
   deferred: ['deferred', 'neutral'],
+  expired: ['expired, nothing done', 'neutral'],
 };
 export const runStatus = (s: CtrlRunStatus) => STATUS[s];
 
@@ -163,4 +165,12 @@ export function stateSummary(s: CtrlRunState): string {
   if (s.violations) parts.push(`${s.violations} guard violations`);
   if (s.quarantined.length) parts.push(`${s.quarantined.length} routes off`);
   return parts.join(' · ');
+}
+
+/** A standing approval as the task shows it (ADR 0111): "quit an app in textedit, up to 2 items". */
+export function describeApproval(a: CtrlApproval): string {
+  const action = a.intent.replace(/^intent\./, '').replace(/_/g, ' ');
+  const app = a.app ? ` in ${a.app.split('.').pop()!.toLowerCase()}` : '';
+  const unsaved = a.unsaved ? `, ${a.unsaved} unsaved` : '';
+  return `${action}${app}, up to ${a.items} ${a.items === 1 ? 'item' : 'items'}${unsaved}`;
 }

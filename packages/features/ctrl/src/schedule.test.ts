@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CtrlSchedule } from '@qrtz/core';
 import {
   decisionItem,
+  describeApproval,
   describeSchedule,
   eventItem,
   runItem,
@@ -127,10 +128,19 @@ describe('ctrl run history', () => {
         held: null,
       }),
     ).toBe('done · 2/2 actions done · 1/2 verified');
-    expect(runStatus('needs-confirm')).toEqual([
-      'asks before it acts',
-      'warning',
-    ]);
+    expect(runStatus('needs-confirm')).toEqual(['needs your ok', 'warning']);
+    expect(runStatus('expired')).toEqual(['expired, nothing done', 'neutral']);
+    expect(
+      describeApproval({
+        id: 'approval-4',
+        intent: 'intent.quit_app',
+        move: 'shortcut.cmd+q',
+        app: 'com.apple.TextEdit',
+        items: 2,
+        unsaved: 1,
+        grantedAt: 0,
+      }),
+    ).toBe('quit app in textedit, up to 2 items, 1 unsaved');
   });
 
   it('words the decision layers: status, event layer, inspector items', () => {

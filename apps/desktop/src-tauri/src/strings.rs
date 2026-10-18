@@ -16,3 +16,6 @@ pub const UI_MEETING_DETECTED: &str = "meeting detected";
 pub const UI_RECORDING: &str = "recording";
 pub const UI_NO_AUDIO_TITLE: &str = "no audio is being recorded";
 pub const UI_NO_AUDIO_BODY: &str = "check your mic and meeting audio";
+pub const UI_CTRL_CONFIRM_TITLE: &str = "ctrl needs your ok";
+pub const UI_CTRL_CONFIRM_BODY: &str =
+    "a task is waiting before it does something that can't be undone. open qrtz to look.";

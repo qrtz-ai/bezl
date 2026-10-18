@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   AskCard,
+  ConfirmCard,
+  ConfirmOutcome,
+  StandingApprovals,
   Button,
   CtrlTaskRow,
   DecisionList,
@@ -27,6 +30,7 @@ import {
 import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
 import {
   decisionItem,
+  describeApproval,
   describeSchedule,
   eventItem,
   nodeQuestion,
@@ -109,6 +113,20 @@ export default function CtrlView() {
         setRun(v);
         if (selected) loadRuns(selected);
       }, fail);
+  const confirm = (
+    runId: string,
+    gateId: string,
+    a: 'approve' | 'remember' | 'deny',
+  ) =>
+    void qrtz.invoke('ctrl:confirm', { runId, gateId, answer: a }).then((v) => {
+      setRun(v);
+      loadTasks();
+      if (selected) loadRuns(selected);
+    }, fail);
+  const revoke = (taskId: string, approvalId: string) =>
+    void qrtz
+      .invoke('ctrl:revoke-approval', { taskId, approvalId })
+      .then(loadTasks, fail);
   const togglePause = (t: CtrlTask) =>
     void qrtz
       .invoke('ctrl:set-paused', { id: t.id, paused: !t.paused })
@@ -177,6 +195,20 @@ export default function CtrlView() {
           <EmptyState title="no tasks yet" icon="command" />
         )}
       </SettingsSection>
+      {current?.approvals?.length ? (
+        <SettingsSection
+          title="allowed without asking"
+          data-testid="ctrl-standing"
+        >
+          <StandingApprovals
+            approvals={current.approvals.map((a) => ({
+              id: a.id,
+              label: describeApproval(a),
+            }))}
+            onRevoke={(id) => revoke(current.id, id)}
+          />
+        </SettingsSection>
+      ) : null}
       {current ? (
         <SettingsSection title="runs" data-testid="ctrl-history">
           {runs.length ? (
@@ -205,6 +237,28 @@ export default function CtrlView() {
                 answer(run.run.id, run.state.ask!.decisionId, null)
               }
             />
+          ) : null}
+          {run?.state.confirm &&
+          !run.state.confirm.answer &&
+          run.at === run.events.length ? (
+            <ConfirmCard
+              action={run.state.confirm.action}
+              app={run.state.confirm.app}
+              items={run.state.confirm.items}
+              complete={run.state.confirm.complete}
+              onApprove={() =>
+                confirm(run.run.id, run.state.confirm!.gateId, 'approve')
+              }
+              onRemember={() =>
+                confirm(run.run.id, run.state.confirm!.gateId, 'remember')
+              }
+              onDeny={() =>
+                confirm(run.run.id, run.state.confirm!.gateId, 'deny')
+              }
+            />
+          ) : null}
+          {run?.state.confirm?.answer ? (
+            <ConfirmOutcome answer={run.state.confirm.answer} />
           ) : null}
           {run?.state.plan ? (
             <PlanSummary

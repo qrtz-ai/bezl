@@ -8,12 +8,19 @@
 //! type into the user's focus: the routes are the ladder's, the ladder judges them against the helper's `Env`, and
 //! the helper judges them again before acting.
 //!
-//! Not executed in this slice: **irreversible** plans (quit, empty trash, a system setting, send) stop with
-//! `exec.held { irreversible }` before any action, for slice 6's confirm gate; **file routes** (`files.*`) stop with
-//! `exec.held { files_not_yet }` until slice 7 expands a folder into moves.
+//! **Irreversible** plans (quit, empty trash, a system setting, send) go through the confirm gate first (slice 6,
+//! ADR 0111, [`crate::gate`]): `confirm.requested` with a preview from the helper, then the user's answer (or a
+//! standing approval of the task that covers it), then `confirm.reverified` right before the one action the
+//! approval allows. **File routes** (`files.*`) stop with `exec.held { files_not_yet }` until slice 7 expands a
+//! folder into moves. (Runs from before slice 6 may still hold `exec.held { irreversible }`; they replay as before.)
 use crate::ax::{diff, AxSnapshot};
 use crate::decide::{next_backtrack, run_chain_obs, unobserved, BacktrackReason, Goal, Node, Scorer};
+use crate::gate::{
+    counted_items, hash_items, intent_and_move, preview_what, rules, Approval, ConfirmAnswer, ItemKind,
+    Preview, PreviewItem,
+};
 use crate::guard::{Field, UiSnapshot};
+use crate::helper::PreviewWhat;
 use crate::helper::{Check, Expect, HelperClient};
 use crate::ladder::{AxOp, ContentRef, Env, Route, ScriptVerb, WorkspaceOp};
 use crate::layers::{branch_element, chosen_app, find_snapshot, label};
@@ -25,7 +32,7 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HoldReason {
-    /// The plan can't be undone: slice 6's confirm gate asks first.
+    /// The plan can't be undone (slice 5 logs; slice 6 asks through the confirm gate instead).
     Irreversible,
     /// File routes run in slice 7 (folder → moves).
     FilesNotYet,
@@ -69,10 +76,7 @@ fn chosen_opt(s: &CtrlState, node: Node) -> Option<&crate::decide::Opt> {
 
 /// The step a plan's move maps to. Pure.
 pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
-    let plan = s.plan.as_ref()?;
-    if plan.irreversible {
-        return Some(Step::Hold(HoldReason::Irreversible));
-    }
+    s.plan.as_ref()?;
     let apps = s.apps.clone().unwrap_or_default();
     let chosen = s.chosen();
     let mv = chosen.get(&Node::ChooseMove)?.as_str();
@@ -114,6 +118,13 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
         "shortcut.cmd+w" if browser => act(vec![key("cmd+w")], tabs, Expect::Decreased),
         "shortcut.cmd+w" => act(vec![key("cmd+w")], windows, Expect::Decreased),
         "shortcut.cmd+option+w" => act(vec![key("cmd+option+w")], tabs, Expect::Decreased),
+        // Quit, posted to the app's pid (irreversible: only after the confirm gate). The app keeps its own save
+        // sheet for unsaved work; nothing here answers it.
+        "shortcut.cmd+q" => act(
+            vec![key("cmd+q")],
+            Check::AppRunning { app: app.clone() },
+            Expect::Zero,
+        ),
         // A focus-intent shortcut: the ladder refuses it (ADR 0100), which backtracks or asks.
         "shortcut.cmd+l" => act(vec![key("cmd+l")], tabs, Expect::Increased),
         "route.workspace.open_url" => {
@@ -227,6 +238,59 @@ pub trait Sink {
     fn push(&mut self, log: &mut EventLog, e: Event) -> Result<(), String>;
     /// Persist records the runner appended directly (from index `from`).
     fn flush(&mut self, log: &EventLog, from: usize) -> Result<(), String>;
+    /// Readable titles of a gate preview's item keys (kept in memory for the view, never logged).
+    fn labels(&mut self, _labels: Vec<(String, String)>) {}
+    /// A gate now waits for the user (raise a non-activating notification).
+    fn confirm_waiting(&mut self, _gate_id: &str) {}
+}
+
+/// The confirm gate's preview of a step, from the helper: the windows or tabs it touches, or a count when the
+/// helper can't enumerate them, or the action itself when there's nothing to enumerate.
+pub fn preview_of(
+    helper: &HelperClient,
+    s: &CtrlState,
+    routes: &[Route],
+) -> (Preview, Vec<(String, String)>) {
+    let (intent, mv) = intent_and_move(s);
+    let app = routes.iter().find_map(|r| r.app().map(str::to_string));
+    let (items, labels, complete) = match (preview_what(&intent), app.as_deref()) {
+        (Some((what, kind)), Some(a)) => match helper.preview(a, what) {
+            Ok(wire) => {
+                let (items, labels) = hash_items(kind, &wire);
+                (items, labels, true)
+            }
+            Err(_) => {
+                let check = match what {
+                    PreviewWhat::Windows => Check::WindowCount { app: a.into() },
+                    PreviewWhat::Tabs => Check::TabCount { app: a.into() },
+                };
+                (
+                    counted_items(kind, helper.measure(&check).unwrap_or(0)),
+                    Vec::new(),
+                    false,
+                )
+            }
+        },
+        _ => (
+            vec![PreviewItem {
+                kind: ItemKind::Action,
+                key: "action".into(),
+                unsaved: Some(false),
+            }],
+            Vec::new(),
+            true,
+        ),
+    };
+    (
+        Preview {
+            intent,
+            mv,
+            app,
+            items,
+            complete,
+        },
+        labels,
+    )
 }
 
 /// An observer over the helper: snapshot `app`'s scope, or record why it couldn't.
@@ -246,6 +310,8 @@ pub struct Driver<'a> {
     pub helper: &'a HelperClient,
     pub scorer: &'a dyn Scorer,
     pub clock: &'a dyn Clock,
+    /// The task's standing approvals (slice 6): one that covers a gate's preview answers it without asking.
+    pub standing: &'a [Approval],
 }
 
 struct DynClock<'a>(&'a dyn Clock);
@@ -308,6 +374,61 @@ impl Driver<'_> {
                     content,
                 } => (routes, verify, content),
             };
+            // The confirm gate (ADR 0111): an irreversible plan acts only on an unspent approval of this plan whose
+            // preview still holds right now.
+            if s.plan.as_ref().is_some_and(|p| p.irreversible) {
+                let gate = s.confirm.as_ref().filter(|g| !g.used);
+                match gate.map(|g| (g, g.answer.as_ref())) {
+                    None => {
+                        let (preview, labels) = preview_of(self.helper, &s, &routes);
+                        sink.labels(labels);
+                        let gate_id = format!("g{}", s.gates);
+                        let scope = preview.scope();
+                        sink.push(
+                            log,
+                            Event::ConfirmRequested {
+                                gate_id: gate_id.clone(),
+                                preview,
+                                rules: rules(&s),
+                            },
+                        )?;
+                        match self.standing.iter().find(|a| a.scope.covers(&scope)) {
+                            Some(a) => sink.push(
+                                log,
+                                Event::ConfirmResolved {
+                                    gate_id,
+                                    answer: ConfirmAnswer::Standing {
+                                        approval_id: a.id.clone(),
+                                        scope: a.scope.clone(),
+                                    },
+                                },
+                            )?,
+                            None => {
+                                sink.confirm_waiting(&gate_id);
+                                return Ok(());
+                            }
+                        }
+                        continue;
+                    }
+                    // Waiting for the user, or denied / expired (the service finishes the run).
+                    Some((_, None)) => return Ok(()),
+                    Some((_, Some(a))) if !a.approves() => return Ok(()),
+                    Some((g, Some(_))) if g.reverified.is_none() => {
+                        let (fresh, labels) = preview_of(self.helper, &s, &routes);
+                        sink.labels(labels);
+                        let ok = fresh.within(&g.preview);
+                        sink.push(
+                            log,
+                            Event::ConfirmReverified {
+                                gate_id: g.id.clone(),
+                                ok,
+                            },
+                        )?;
+                        continue;
+                    }
+                    Some(_) => {}
+                }
+            }
             let action_id = format!("a{}", s.actions.len());
             let before_scope = match &verify.check {
                 Check::AxScope { app, scope } => find_snapshot(&s.snapshots, app, scope.as_deref()).cloned(),

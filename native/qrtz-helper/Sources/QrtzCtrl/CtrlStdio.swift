@@ -40,6 +40,7 @@ public final class UnsupportedCtrlBackend: CtrlBackend {
     public init() {}
     static let no = CtrlFailure("platform.unsupported")
     public func catalog() throws -> (apps: [CtrlCatalogApp], defaultBrowser: String?) { throw Self.no }
+    public func preview(app: String, what: String) throws -> [CtrlPreviewItem] { throw Self.no }
     public func probe() throws -> (env: [String: Any], ui: [String: Any]) { throw Self.no }
     public func snapshot(app: String, scope: String?) throws -> [CtrlAXNode] { throw Self.no }
     public func act(_ route: CtrlRoute, content: [String: String]) throws { throw Self.no }

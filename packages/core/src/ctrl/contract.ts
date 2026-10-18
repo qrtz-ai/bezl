@@ -23,6 +23,21 @@ export const CtrlSchedule = z.discriminatedUnion('kind', [
 ]);
 export type CtrlSchedule = z.infer<typeof CtrlSchedule>;
 
+/**
+ * A standing approval of the confirm gate (ADR 0111): this task may do this action (intent + move) in this app
+ * without asking again, as long as it touches no more items and no more unsaved ones than were approved.
+ */
+export const CtrlApproval = z.object({
+  id: z.string(),
+  intent: z.string(),
+  move: z.string(),
+  app: z.string().nullable(),
+  items: z.number().int().nonnegative(),
+  unsaved: z.number().int().nonnegative(),
+  grantedAt: z.number(),
+});
+export type CtrlApproval = z.infer<typeof CtrlApproval>;
+
 export const CtrlTask = z.object({
   id: z.string(),
   text: z.string(),
@@ -34,13 +49,16 @@ export const CtrlTask = z.object({
   lastRunAt: z.number().nullable(),
   /** Next due instant (epoch ms), or null when paused / once already run / no schedule left (ADR 0105). */
   nextRunAt: z.number().nullable(),
+  /** Standing approvals of the confirm gate, oldest first (revocable, ADR 0111). */
+  approvals: z.array(CtrlApproval).optional(),
 });
 export type CtrlTask = z.infer<typeof CtrlTask>;
 
 /**
  * Derived from the run's event log: `task.finished`, else asking the user (a decision layer wasn't sure), else
- * waiting for an intent, else needs-confirm (an irreversible plan held before acting, ADR 0108), else planned (a
- * plan and no action: no helper connected, or a held file route), else running.
+ * the confirm gate waiting for the user's ok (needs-confirm, ADR 0111), else waiting for an intent, else planned (a
+ * plan and no action: no helper connected, or a held file route), else running. `expired`: the gate went
+ * unanswered past its timeout (or a newer run replaced it); nothing acted.
  */
 export const CtrlRunStatus = z.enum([
   'pending-intent',
@@ -53,6 +71,7 @@ export const CtrlRunStatus = z.enum([
   'cancelled',
   'asked-out',
   'deferred',
+  'expired',
 ]);
 export type CtrlRunStatus = z.infer<typeof CtrlRunStatus>;
 
@@ -143,6 +162,37 @@ export const CtrlAsk = z.object({
 });
 export type CtrlAsk = z.infer<typeof CtrlAsk>;
 
+/**
+ * The confirm gate (ADR 0111): exactly what an irreversible step would do, item by item. `label`s are lowercase;
+ * window and tab titles come from memory only (never the log), else "window 2". `complete: false`: the helper
+ * could only count the items. `answer`: approved, remembered (a standing approval was granted), standing (one
+ * covered it, no question asked), denied or expired.
+ */
+export const CtrlConfirm = z.object({
+  gateId: z.string(),
+  action: z.string(),
+  app: z.string().nullable(),
+  move: z.string().nullable(),
+  items: z.array(
+    z.object({
+      key: z.string(),
+      kind: z.enum(['window', 'tab', 'action']),
+      label: z.string(),
+      unsaved: z.boolean().nullable(),
+    }),
+  ),
+  complete: z.boolean(),
+  rules: z.array(z.string()),
+  answer: z
+    .enum(['approved', 'remembered', 'standing', 'denied', 'expired'])
+    .nullable(),
+  /** The re-check right before acting: still inside what was approved. */
+  reverified: z.boolean().nullable(),
+  /** The approved action ran (an approval acts once). */
+  used: z.boolean(),
+});
+export type CtrlConfirm = z.infer<typeof CtrlConfirm>;
+
 /** The reducer's state after `at` events (crates/qrtz-ctrl `log::CtrlState`). */
 export const CtrlRunState = z.object({
   actions: z.array(z.object({ id: z.string(), status: CtrlActionStatus })),
@@ -153,6 +203,8 @@ export const CtrlRunState = z.object({
   decisions: z.array(CtrlDecision),
   plan: CtrlPlan.nullable(),
   ask: CtrlAsk.nullable(),
+  /** The confirm gate of the current plan, if it has one (ADR 0111). */
+  confirm: CtrlConfirm.nullable().optional(),
   /** Why the executor stopped before acting (ADR 0108). */
   held: z
     .enum(['irreversible', 'files-not-yet', 'no-route', 'unknown-app'])

@@ -33,13 +33,16 @@ private final class Fake: CtrlBackend {
     func laya(state: String, question: String, options: [String]) throws -> [Double] { [0.75, 0.25] }
     func frontmostPid() -> Int32? { front }
     func pid(of app: String) -> Int32? { app == "com.apple.Notes" ? 100 : 200 }
+    func preview(app: String, what: String) throws -> [CtrlPreviewItem] {
+        [CtrlPreviewItem(title: "notes.txt", unsaved: false), CtrlPreviewItem(title: "draft.txt", unsaved: true)]
+    }
 }
 
 final class CtrlProtocolTests: XCTestCase {
     func testEveryHostLineOfTheFixtureParses() throws {
         let all = try lines()
         let host = all.filter { !(($0["type"] as! String).hasSuffix(".result")) && $0["type"] as! String != "ctrl.error" }
-        XCTAssertEqual(host.count, 8)
+        XCTAssertEqual(host.count, 9)
         for o in host {
             let line = String(decoding: try JSONSerialization.data(withJSONObject: o), as: UTF8.self)
             XCTAssertNotNil(CtrlRequest.parse(line), "\(o["type"]!)")
@@ -60,6 +63,17 @@ final class CtrlProtocolTests: XCTestCase {
         let actLine = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
         XCTAssertEqual(json(server.handle(line: actLine)), want("ctrl.act.result"))
         XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.probe","id":"c8"}"#)), want("ctrl.error"))
+        XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.preview","id":"c9","app":"com.apple.TextEdit","what":"windows"}"#)),
+                       want("ctrl.preview.result"))
+    }
+
+    func testABackendWithoutAPreviewSaysSoAndNeverActs() {
+        // The host falls back to a count on any error; a preview is read-only either way.
+        let server = CtrlServer(backend: UnsupportedCtrlBackend())
+        XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.preview","id":"p","app":"com.apple.TextEdit","what":"windows"}"#)),
+                       ["type": "ctrl.error", "id": "p", "code": "platform.unsupported"] as NSDictionary)
+        XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.preview","id":"q","app":"x","what":"files"}"#))["code"] as? String,
+                       "helper.bad_request", "only windows or tabs")
     }
 
     func testThePolicyIsRecheckedBeforeTheBackendActs() {

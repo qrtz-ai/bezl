@@ -389,6 +389,16 @@ pub fn replay_check(log: &EventLog, goal: &Goal) -> Result<(), Divergence> {
                     _ => return Err(div),
                 }
             }
+            // The confirm gate (ADR 0111): an irreversible plan's action needs an approved, re-verified, unspent
+            // gate right before it. A log that acted otherwise doesn't replay.
+            Event::ActionRequested { .. } if s.plan.as_ref().is_some_and(|p| p.irreversible) => {
+                let ok = s.confirm.as_ref().is_some_and(|g| {
+                    g.answer.as_ref().is_some_and(|a| a.approves()) && g.reverified == Some(true) && !g.used
+                });
+                if !ok {
+                    return Err(div);
+                }
+            }
             // An observation the chain asked for (before a plan) must be the one the state asks for; the
             // executor's re-snapshots after an action (a plan exists) aren't questions.
             Event::ObsSnapshot { app, scope, .. } if s.plan.is_none() => {

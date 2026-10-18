@@ -1036,6 +1036,126 @@
           "ask": null
         }
       }
+    },
+    "ctrl:confirm": {
+      "request": {
+        "runId": "run-1",
+        "gateId": "g0",
+        "answer": "deny"
+      },
+      "response": {
+        "run": {
+          "id": "run-1",
+          "taskId": "task-0",
+          "at": 1760659260000,
+          "status": "cancelled",
+          "events": 6,
+          "violations": 0
+        },
+        "events": [
+          {
+            "seq": 0,
+            "kind": "task.started",
+            "at": 1760659260000,
+            "actionId": null
+          },
+          {
+            "seq": 1,
+            "kind": "intent.pending",
+            "at": 1760659260000,
+            "actionId": null
+          },
+          {
+            "seq": 2,
+            "kind": "obs.apps",
+            "at": 1760659260000,
+            "actionId": null,
+            "node": null
+          },
+          {
+            "seq": 3,
+            "kind": "decision.made",
+            "at": 1760659260000,
+            "actionId": null,
+            "node": "choose_intent"
+          },
+          {
+            "seq": 4,
+            "kind": "confirm.requested",
+            "at": 1760659260000,
+            "actionId": null,
+            "node": null
+          },
+          {
+            "seq": 5,
+            "kind": "confirm.resolved",
+            "at": 1760659261000,
+            "actionId": null,
+            "node": null
+          }
+        ],
+        "at": 6,
+        "state": {
+          "actions": [],
+          "violations": 0,
+          "inconclusive": 0,
+          "quarantined": [],
+          "status": "cancelled",
+          "decisions": [],
+          "plan": null,
+          "ask": null,
+          "confirm": {
+            "gateId": "g0",
+            "action": "quit an app",
+            "app": "textedit",
+            "move": "quit",
+            "items": [
+              {
+                "key": "3f2a9c1d0b7e#0",
+                "kind": "window",
+                "label": "notes.txt",
+                "unsaved": false
+              },
+              {
+                "key": "8c1e44a0d2f9#0",
+                "kind": "window",
+                "label": "draft.txt",
+                "unsaved": true
+              }
+            ],
+            "complete": true,
+            "rules": [
+              "choose_intent:intent.quit_app",
+              "choose_move:shortcut.cmd+q"
+            ],
+            "answer": "denied",
+            "reverified": null,
+            "used": false
+          }
+        }
+      }
+    },
+    "ctrl:revoke-approval": {
+      "request": {
+        "taskId": "task-0",
+        "approvalId": "approval-4"
+      },
+      "response": {
+        "id": "task-0",
+        "text": "every week clean up my downloads folder",
+        "schedule": {
+          "kind": "weekly",
+          "weekday": 0,
+          "hour": 18,
+          "minute": 0
+        },
+        "paused": false,
+        "createdAt": 1760659200000,
+        "runs": 1,
+        "lastRunAt": 1760659260000,
+        "nextRunAt": 1761264000000,
+        "approvals": []
+      }
     }
   },
   "events": {

@@ -117,6 +117,9 @@ pub enum Notice {
     NoAudio { meeting_id: String },
     /// A meeting was detected and auto-record is off (`CoreEvent::DetectedPrompt`); a click starts recording.
     MeetingDetected { title: String, platform: String },
+    /// ctrl's confirm gate (ADR 0111): a run waits for the user's ok before something that can't be undone. A
+    /// banner only (it never activates qrtz or takes focus); the answer happens on the ctrl view's card.
+    CtrlConfirm { task_id: String, run_id: String },
 }
 
 /// Window-level effects owned by the Tauri shell.

@@ -497,6 +497,31 @@ export const ipcContract = {
     }),
     response: CtrlRunView,
   }),
+  /**
+   * Answer a run's confirm gate (ADR 0111): approve (acts once, after the preview is checked again), remember
+   * (approve, and let this task do the same again without asking while it stays inside this scope) or deny (the
+   * run ends, nothing acts). Answers the run's view after all events.
+   */
+  'ctrl:confirm': defineChannel({
+    version: 1,
+    capability: 'ctrl.write',
+    request: z.object({
+      runId: z.string().max(64),
+      gateId: z.string().max(32),
+      answer: z.enum(['approve', 'remember', 'deny']),
+    }),
+    response: CtrlRunView,
+  }),
+  /** Drop a task's standing approval: the next run of that action asks again. */
+  'ctrl:revoke-approval': defineChannel({
+    version: 1,
+    capability: 'ctrl.write',
+    request: z.object({
+      taskId: z.string().max(64),
+      approvalId: z.string().max(64),
+    }),
+    response: CtrlTask,
+  }),
 } as const satisfies Record<string, ChannelDef>;
 
 export type IpcContract = typeof ipcContract;

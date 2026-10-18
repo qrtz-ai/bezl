@@ -6,8 +6,12 @@
 // The mock acts as if the ctrl helper were connected (ADR 0108): a close-tabs plan executes in the background
 // (one guarded action, verified) and finishes `done`; a folder cleanup stays `planned` (file routes are slice 7).
 // The real executor against a fake helper is covered by `crates/qrtz-ctrl/tests/exec.rs`.
+// "quit" → quit textedit, irreversible: the run stops at the confirm gate (ADR 0111) with two windows (one unsaved)
+// until `ctrl:confirm` approves (acts once), remembers (a standing approval: the next run doesn't ask) or denies.
+// The real gate is covered by `crates/qrtz-ctrl/tests/gate.rs`.
 import {
   AppError,
+  type CtrlConfirm,
   type CtrlDecision,
   type CtrlOption,
   type CtrlPlan,
@@ -25,6 +29,9 @@ interface Rec {
   plan?: CtrlPlan;
   answer?: { decisionId: string; choice: string | null };
   finished?: 'cancelled' | 'done';
+  confirm?: CtrlConfirm;
+  answerGate?: NonNullable<CtrlConfirm['answer']>;
+  reverified?: true;
   action?: { id: string; status: 'executing' | 'done' };
   verified?: { actionId: string; outcome: 'passed' };
   held?: 'files-not-yet';
@@ -56,8 +63,14 @@ const INTENTS = {
   close_tabs: opt('intent.close_tabs', 'close browser tabs', 0.07),
   clean_folder: opt('intent.clean_folder', 'clean up a folder', 0.07),
   close_windows: opt('intent.close_windows', 'close windows', 0.07),
+  quit_app: {
+    ...opt('intent.quit_app', 'quit an app', 0.07),
+    irreversible: true,
+  },
 };
-type Intent = 'close_tabs' | 'clean_folder';
+type Intent = 'close_tabs' | 'clean_folder' | 'quit_app';
+/** What an unclear task is asked (the three most likely intents). */
+const ASKED = [INTENTS.close_tabs, INTENTS.clean_folder, INTENTS.close_windows];
 
 /** After the intent: the rest of the chain, all acting. */
 const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
@@ -73,6 +86,15 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
     act('choose_move', [
       opt('route.scripting.close_all_tabs', 'close every tab by script', 0.94),
       opt('shortcut.cmd+w', 'cmd-w close tab', 0.02),
+    ]),
+  ],
+  quit_app: [
+    act('choose_app', [
+      opt('app.com.apple.TextEdit', 'textedit', 0.9),
+      opt('app.com.apple.Notes', 'notes', 0.03),
+    ]),
+    act('choose_move', [
+      { ...opt('shortcut.cmd+q', 'quit', 0.95), irreversible: true },
     ]),
   ],
   clean_folder: [
@@ -92,11 +114,18 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
 };
 
 const intentOf = (text: string): Intent | null =>
-  /\btabs?\b/i.test(text)
-    ? 'close_tabs'
-    : /download|folder/i.test(text)
-      ? 'clean_folder'
-      : null;
+  /\bquit\b/i.test(text)
+    ? 'quit_app'
+    : /\btabs?\b/i.test(text)
+      ? 'close_tabs'
+      : /download|folder/i.test(text)
+        ? 'clean_folder'
+        : null;
+
+const PREVIEW: CtrlConfirm['items'] = [
+  { key: '3f2a9c1d0b7e#0', kind: 'window', label: 'notes.txt', unsaved: false },
+  { key: '8c1e44a0d2f9#0', kind: 'window', label: 'draft.txt', unsaved: true },
+];
 
 export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
   let seq = 0;
@@ -116,7 +145,13 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
     const actions = new Map<string, 'executing' | 'done'>();
     const verified: NonNullable<Rec['verified']>[] = [];
     let held: Rec['held'] | null = null;
+    let confirm: CtrlConfirm | null = null;
     for (const r of recs.slice(0, at)) {
+      if (r.confirm) confirm = r.confirm;
+      if (r.answerGate && confirm)
+        confirm = { ...confirm, answer: r.answerGate };
+      if (r.reverified && confirm) confirm = { ...confirm, reverified: true };
+      if (r.action && confirm) confirm = { ...confirm, used: true };
       if (r.held) held = r.held;
       if (r.action) actions.set(r.action.id, r.action.status);
       if (r.verified) verified.push(r.verified);
@@ -154,11 +189,13 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
       ? finished
       : ask
         ? 'asking'
-        : pending
-          ? 'pending-intent'
-          : plan && !actions.size
-            ? 'planned'
-            : 'running';
+        : confirm && !confirm.answer
+          ? 'needs-confirm'
+          : pending
+            ? 'pending-intent'
+            : plan && !actions.size
+              ? 'planned'
+              : 'running';
     return {
       actions: [...actions].map(([id, st]) => ({ id, status: st })),
       verified,
@@ -170,6 +207,7 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
       decisions,
       plan,
       ask,
+      confirm,
     };
   };
   const push = (
@@ -190,25 +228,8 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
     const n = r.recs.filter((x) => x.decision).length;
     push(r, 'decision.made', { decision: { ...d, id: `d${n}` } }, d.node);
   };
-  const finishChain = (r: { run: CtrlRun; recs: Rec[] }, intent: Intent) => {
-    for (const d of REST[intent]) decide(r, d);
-    const s = stateAt(r.recs, r.recs.length);
-    push(r, 'plan.produced', {
-      plan: {
-        irreversible: false,
-        steps: s.decisions.map((d) => ({
-          node: d.node,
-          option: d.chosen,
-          label: d.chosenLabel,
-        })),
-      },
-    });
-    if (intent !== 'close_tabs') {
-      // File routes run in slice 7: the executor holds the plan before acting.
-      push(r, 'exec.held', { held: 'files-not-yet' });
-      return;
-    }
-    // The executor (ADR 0108): one guarded scripting action, then its verify step.
+  const execute = (r: { run: CtrlRun; recs: Rec[] }) => {
+    // The executor (ADR 0108): one guarded action, then its verify step.
     const a = (kind: string, extra: Omit<Rec, 'row'> = {}) =>
       r.recs.push({
         row: {
@@ -228,6 +249,53 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
     a('guard.result');
     a('verify.result', { verified: { actionId: 'a0', outcome: 'passed' } });
     push(r, 'task.finished', { finished: 'done' });
+  };
+  const finishChain = (r: { run: CtrlRun; recs: Rec[] }, intent: Intent) => {
+    for (const d of REST[intent]) decide(r, d);
+    const s = stateAt(r.recs, r.recs.length);
+    push(r, 'plan.produced', {
+      plan: {
+        irreversible: intent === 'quit_app',
+        steps: s.decisions.map((d) => ({
+          node: d.node,
+          option: d.chosen,
+          label: d.chosenLabel,
+        })),
+      },
+    });
+    if (intent === 'quit_app') {
+      // The confirm gate (ADR 0111): a standing approval covers it, or the run waits for the user.
+      const g = r.recs.filter((x) => x.confirm).length;
+      push(r, 'confirm.requested', {
+        confirm: {
+          gateId: `g${g}`,
+          action: 'quit an app',
+          app: 'textedit',
+          move: 'quit',
+          items: PREVIEW,
+          complete: true,
+          rules: [
+            'choose_intent:intent.quit_app',
+            'choose_move:shortcut.cmd+q',
+          ],
+          answer: null,
+          reverified: null,
+          used: false,
+        },
+      });
+      if (task(r.run.taskId).approvals?.length) {
+        push(r, 'confirm.resolved', { answerGate: 'standing' });
+        push(r, 'confirm.reverified', { reverified: true });
+        execute(r);
+      }
+      return;
+    }
+    if (intent !== 'close_tabs') {
+      // File routes run in slice 7: the executor holds the plan before acting.
+      push(r, 'exec.held', { held: 'files-not-yet' });
+      return;
+    }
+    execute(r);
   };
   const sync = (r: { run: CtrlRun; recs: Rec[] }) => {
     r.run.events = r.recs.length;
@@ -260,6 +328,7 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
         lastRunAt: null,
         // Mock has no ticker; ASAP shows as due now, cadences as null (real nextRunAt is server-side).
         nextRunAt: schedule.kind === 'once' ? (schedule.at ?? now()) : null,
+        approvals: [],
       };
       tasks.push(t);
       return t;
@@ -299,7 +368,7 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
         finishChain(r, intent);
       } else {
         decide(r, {
-          ...act('choose_intent', Object.values(INTENTS)),
+          ...act('choose_intent', ASKED),
           outcome: 'ask',
           chosen: 'none',
           chosenLabel: 'none of these',
@@ -340,6 +409,47 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
       }
       sync(r);
       return view(r);
+    },
+    'ctrl:confirm': ({ runId, gateId, answer }) => {
+      const r = get(runId);
+      const c = stateAt(r.recs, r.recs.length).confirm;
+      if (!c || c.gateId !== gateId || c.answer)
+        throw new AppError('E_VALIDATION', 'that request was already answered');
+      if (answer === 'deny') {
+        push(r, 'confirm.resolved', { answerGate: 'denied' });
+        push(r, 'task.finished', { finished: 'cancelled' });
+      } else {
+        if (answer === 'remember') {
+          const t = task(r.run.taskId);
+          t.approvals = [
+            ...(t.approvals ?? []),
+            {
+              id: `approval-${seq++}`,
+              intent: 'intent.quit_app',
+              move: 'shortcut.cmd+q',
+              app: 'com.apple.TextEdit',
+              items: PREVIEW.length,
+              unsaved: 1,
+              grantedAt: now(),
+            },
+          ];
+        }
+        push(r, 'confirm.resolved', {
+          answerGate: answer === 'remember' ? 'remembered' : 'approved',
+        });
+        push(r, 'confirm.reverified', { reverified: true });
+        execute(r);
+      }
+      sync(r);
+      return view(r);
+    },
+    'ctrl:revoke-approval': ({ taskId, approvalId }) => {
+      const t = task(taskId);
+      if (!t.approvals?.some((a) => a.id === approvalId))
+        throw new AppError('E_NOT_FOUND', 'that task or run is gone');
+      t.approvals = t.approvals.filter((a) => a.id !== approvalId);
+      seq++;
+      return t;
     },
   };
 }

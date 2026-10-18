@@ -227,6 +227,69 @@ const ctrlSamples = {
       },
     },
   },
+  'ctrl:confirm': {
+    request: { runId: 'run-1', gateId: 'g0', answer: 'deny' },
+    response: {
+      run: { ...ctrlRun, status: 'cancelled', events: 6 },
+      events: [
+        ...ctrlEvents,
+        {
+          seq: 4,
+          kind: 'confirm.requested',
+          at: T0 + 60_000,
+          actionId: null,
+          node: null,
+        },
+        {
+          seq: 5,
+          kind: 'confirm.resolved',
+          at: T0 + 61_000,
+          actionId: null,
+          node: null,
+        },
+      ],
+      at: 6,
+      state: {
+        ...ctrlState,
+        status: 'cancelled',
+        decisions: [],
+        plan: null,
+        ask: null,
+        confirm: {
+          gateId: 'g0',
+          action: 'quit an app',
+          app: 'textedit',
+          move: 'quit',
+          items: [
+            {
+              key: '3f2a9c1d0b7e#0',
+              kind: 'window',
+              label: 'notes.txt',
+              unsaved: false,
+            },
+            {
+              key: '8c1e44a0d2f9#0',
+              kind: 'window',
+              label: 'draft.txt',
+              unsaved: true,
+            },
+          ],
+          complete: true,
+          rules: [
+            'choose_intent:intent.quit_app',
+            'choose_move:shortcut.cmd+q',
+          ],
+          answer: 'denied',
+          reverified: null,
+          used: false,
+        },
+      },
+    },
+  },
+  'ctrl:revoke-approval': {
+    request: { taskId: 'task-0', approvalId: 'approval-4' },
+    response: { ...ctrlTask, approvals: [] },
+  },
 } satisfies { [C in Extract<IpcChannel, `ctrl:${string}`>]: ChannelSample<C> };
 
 export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {

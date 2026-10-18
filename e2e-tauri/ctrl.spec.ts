@@ -206,3 +206,87 @@ test('ctrl: a close-tabs run executes in the background, verifies, and scrubs ba
   expect(await axe(page, 'ctrl')).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+// The confirm gate (ADR 0111): an irreversible task stops with a card in the ctrl view (never a modal) that lists
+// exactly what will happen; "don't" ends the run with nothing done, "do it once" acts once, "don't ask again"
+// leaves a standing approval the next run uses without asking, and revoking it brings the card back.
+test('ctrl: the confirm card lists what will happen; deny, approve and remember', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  await ctrl.getByTestId('ctrl-task-input').fill('every day quit textedit');
+  await ctrl.getByTestId('ctrl-schedule-daily').click();
+  await ctrl.getByTestId('ctrl-schedule-time').fill('18:00');
+  await ctrl.getByTestId('ctrl-task-add').click();
+  const row = ctrl.getByTestId('ctrl-task');
+  const runs = ctrl.getByTestId('ctrl-run');
+  const card = ctrl.getByTestId('ctrl-confirm');
+
+  // Deny: nothing is done.
+  await row.getByTestId('ctrl-task-run').click();
+  await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText(
+    'needs your ok',
+  );
+  await expect(card).toBeVisible();
+  await expect(card).toContainText(
+    "quit an app · textedit: this can't be undone",
+  );
+  await expect(card.getByTestId('ctrl-confirm-item')).toHaveText([
+    'notes.txt',
+    'draft.txt · unsaved changes',
+  ]);
+  await expect(card.getByTestId('ctrl-confirm-unsaved')).toBeVisible();
+  // A card, not a modal: nothing on the page is inert or trapped behind a dialog.
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  await card.getByTestId('ctrl-confirm-deny').click();
+  await expect(card).toHaveCount(0);
+  await expect(ctrl.getByTestId('ctrl-confirm-outcome')).toHaveText(
+    'you said no; nothing was done',
+  );
+  await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText(
+    'cancelled',
+  );
+
+  // Approve once: the run acts and finishes.
+  await row.getByTestId('ctrl-task-run').click();
+  await expect(runs).toHaveCount(2);
+  await card.getByTestId('ctrl-confirm-approve').click();
+  await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText('done');
+  await expect(ctrl.getByTestId('ctrl-confirm-outcome')).toHaveText(
+    'you said yes, once',
+  );
+  await expect(ctrl.getByTestId('ctrl-standing')).toHaveCount(0);
+
+  // Remember: a standing approval, and the next run doesn't ask.
+  await row.getByTestId('ctrl-task-run').click();
+  await card.getByTestId('ctrl-confirm-remember').click();
+  await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText('done');
+  const standing = ctrl.getByTestId('ctrl-approval');
+  await expect(standing).toHaveText([
+    /quit app in textedit, up to 2 items, 1 unsaved/,
+  ]);
+  await row.getByTestId('ctrl-task-run').click();
+  await expect(runs).toHaveCount(4);
+  await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText('done');
+  await expect(card).toHaveCount(0);
+  await expect(ctrl.getByTestId('ctrl-confirm-outcome')).toHaveText(
+    'allowed by your standing ok',
+  );
+  expect(await axe(page, 'ctrl')).toEqual([]);
+
+  // Revoke: the card is back.
+  await standing.getByTestId('ctrl-approval-revoke').click();
+  await expect(ctrl.getByTestId('ctrl-standing')).toHaveCount(0);
+  await row.getByTestId('ctrl-task-run').click();
+  await expect(runs).toHaveCount(5);
+  await expect(card).toBeVisible();
+  expect(errors).toEqual([]);
+});

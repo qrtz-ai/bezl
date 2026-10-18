@@ -8,10 +8,14 @@
 //! chose from), `decision.made` (options, probabilities, chosen option, outcome), `decision.answered_by_user`,
 //! `backtrack` and `plan.produced`. Slice 5 (ADR 0108) adds the executor's: `obs.snapshot` (an AX scope of a
 //! background app, hashed), `obs.diff` (what an action changed in it), `verify.result` and `exec.held` (the plan
-//! stops before acting: irreversible, not yet supported, or no background route).
+//! stops before acting: irreversible, not yet supported, or no background route). Slice 6 (ADR 0111) adds the
+//! confirm gate's: `confirm.requested` (the preview and the rules that triggered it), `confirm.resolved` (approve,
+//! deny, approve-and-remember, a standing approval's use, or an expiry) and `confirm.reverified` (the re-check of
+//! the preview right before acting).
 use crate::ax::{AxDiff, AxSnapshot};
 use crate::decide::{BacktrackReason, ModelId, Node, Opt, Outcome, Thresholds};
 use crate::exec::{HoldReason, VerifyOutcome};
+use crate::gate::{ConfirmAnswer, GateState, Preview};
 use crate::guard::{Field, GuardOutcome, UiSnapshot};
 use crate::helper::{Check, Expect};
 use crate::ladder::{Decision, Route, Rung, Verdict};
@@ -111,6 +115,19 @@ pub enum Event {
     /// The executor stopped before acting (slice 6's confirm gate resumes an irreversible plan).
     #[serde(rename = "exec.held")]
     ExecHeld { reason: HoldReason },
+    /// An irreversible step waits for the user: exactly what it would do (spec §9, Bound → Confirm → Act).
+    #[serde(rename = "confirm.requested")]
+    ConfirmRequested {
+        gate_id: String,
+        preview: Preview,
+        rules: Vec<String>,
+    },
+    #[serde(rename = "confirm.resolved")]
+    ConfirmResolved { gate_id: String, answer: ConfirmAnswer },
+    /// Right before acting, the preview was taken again: still inside what was approved (`ok`), or the world
+    /// changed and the gate asks again.
+    #[serde(rename = "confirm.reverified")]
+    ConfirmReverified { gate_id: String, ok: bool },
     #[serde(rename = "action.requested")]
     ActionRequested { action_id: String, routes: Vec<Route> },
     #[serde(rename = "action.decided")]
@@ -158,6 +175,8 @@ pub enum TaskStatus {
     Cancelled,
     AskedOut,
     Deferred,
+    /// The confirm gate went unanswered past its timeout (or a newer run replaced it): nothing acted.
+    Expired,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -395,6 +414,10 @@ pub struct CtrlState {
     pub verified: BTreeMap<String, VerifyOutcome>,
     /// Why the executor stopped before acting, until a new plan (or the confirm gate) moves on.
     pub held: Option<HoldReason>,
+    /// The confirm gate of the current plan (slice 6); a new plan or a backtrack clears it.
+    pub confirm: Option<GateState>,
+    /// Every `confirm.requested` ever applied (gate ids stay unique).
+    pub gates: u64,
 }
 
 impl CtrlState {
@@ -429,6 +452,7 @@ pub fn apply(mut s: CtrlState, e: &Event) -> CtrlState {
             s.decisions_made += 1;
             s.plan = None;
             s.held = None;
+            s.confirm = None;
             if *outcome == Outcome::Ask {
                 s.ask = Some(decision_id.clone());
             }
@@ -466,6 +490,7 @@ pub fn apply(mut s: CtrlState, e: &Event) -> CtrlState {
                 s.plan = None;
                 s.held = None;
                 s.ask = None;
+                s.confirm = None;
             }
         }
         Event::PlanProduced {
@@ -477,7 +502,50 @@ pub fn apply(mut s: CtrlState, e: &Event) -> CtrlState {
                 irreversible: *irreversible,
             });
         }
+        Event::ConfirmRequested {
+            gate_id,
+            preview,
+            rules,
+        } => {
+            s.gates += 1;
+            s.confirm = Some(GateState {
+                id: gate_id.clone(),
+                preview: preview.clone(),
+                rules: rules.clone(),
+                answer: None,
+                reverified: None,
+                used: false,
+            });
+        }
+        Event::ConfirmResolved { gate_id, answer } => {
+            if let Some(g) = s
+                .confirm
+                .as_mut()
+                .filter(|g| &g.id == gate_id && g.answer.is_none())
+            {
+                g.answer = Some(answer.clone());
+            }
+        }
+        Event::ConfirmReverified { gate_id, ok } => {
+            if s.confirm.as_ref().is_some_and(|g| &g.id == gate_id) {
+                if *ok {
+                    if let Some(g) = s.confirm.as_mut() {
+                        g.reverified = Some(true);
+                    }
+                } else {
+                    // The world changed since the answer: this gate is void; the next step asks again.
+                    s.confirm = None;
+                }
+            }
+        }
         Event::ActionRequested { action_id, .. } => {
+            if let Some(g) = s
+                .confirm
+                .as_mut()
+                .filter(|g| g.answer.as_ref().is_some_and(|a| a.approves()))
+            {
+                g.used = true;
+            }
             s.intent_pending = false;
             s.actions.insert(action_id.clone(), ActionStatus::Requested);
         }

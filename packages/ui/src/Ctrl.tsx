@@ -556,3 +556,182 @@ export function AskCard({
     </div>
   );
 }
+
+export interface ConfirmItem {
+  key: string;
+  label: string;
+  /** null: ctrl can't tell (it asks as if it were unsaved). */
+  unsaved: boolean | null;
+}
+
+/**
+ * The confirm gate (ADR 0111): exactly what an irreversible step will do, item by item, and the three answers.
+ * It's a card in the ctrl view, never a modal: it takes no focus and blocks nothing else on screen.
+ */
+export function ConfirmCard({
+  action,
+  app,
+  items,
+  complete,
+  onApprove,
+  onRemember,
+  onDeny,
+}: {
+  action: string;
+  app: string | null;
+  items: ConfirmItem[];
+  complete: boolean;
+  onApprove: () => void;
+  onRemember: () => void;
+  onDeny: () => void;
+}) {
+  const t = useTheme();
+  const unsaved = items.filter((i) => i.unsaved !== false).length;
+  return (
+    <div
+      role="group"
+      aria-label="ctrl needs your ok"
+      data-testid="ctrl-confirm"
+      style={{
+        display: 'grid',
+        gap: t.space[2],
+        padding: t.space[3],
+        borderRadius: t.radius.md,
+        border: `1px solid ${t.color.border}`,
+        background: t.color.accent,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: t.space[2] }}>
+        <Icon name="alert" size="sm" />
+        <Text variant="label">
+          {action}
+          {app ? ` · ${app}` : ''}: this can't be undone
+        </Text>
+      </div>
+      <Text variant="caption" muted>
+        {complete
+          ? `it will touch ${items.length} ${items.length === 1 ? 'item' : 'items'}:`
+          : `it will touch ${items.length} ${items.length === 1 ? 'item' : 'items'} (ctrl could only count them):`}
+      </Text>
+      <ul
+        aria-label="what will happen"
+        data-testid="ctrl-confirm-items"
+        style={{
+          margin: 0,
+          paddingLeft: t.space[4],
+          display: 'grid',
+          gap: t.space[1],
+        }}
+      >
+        {items.map((i) => (
+          <li key={i.key} data-testid="ctrl-confirm-item">
+            <Text variant="caption">
+              {i.label}
+              {i.unsaved === true ? ' · unsaved changes' : ''}
+              {i.unsaved === null ? ' · may have unsaved changes' : ''}
+            </Text>
+          </li>
+        ))}
+      </ul>
+      {unsaved ? (
+        <Text variant="caption" data-testid="ctrl-confirm-unsaved">
+          {unsaved} with unsaved work: the app will ask before it discards
+          anything
+        </Text>
+      ) : null}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: t.space[2] }}>
+        <Button
+          size="sm"
+          onClick={onApprove}
+          data-testid="ctrl-confirm-approve"
+        >
+          do it once
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={onRemember}
+          data-testid="ctrl-confirm-remember"
+        >
+          do it and don't ask again for this task
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onDeny}
+          data-testid="ctrl-confirm-deny"
+        >
+          don't
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** How a gate was answered, for a run scrubbed past it. */
+export function ConfirmOutcome({ answer }: { answer: string }) {
+  return (
+    <Badge
+      tone={answer === 'denied' || answer === 'expired' ? 'neutral' : 'success'}
+      data-testid="ctrl-confirm-outcome"
+    >
+      {answer === 'approved' && 'you said yes, once'}
+      {answer === 'remembered' && "you said yes and don't ask again"}
+      {answer === 'standing' && 'allowed by your standing ok'}
+      {answer === 'denied' && 'you said no; nothing was done'}
+      {answer === 'expired' && 'no answer in time; nothing was done'}
+    </Badge>
+  );
+}
+
+export interface ApprovalItem {
+  id: string;
+  label: string;
+}
+
+/** A task's standing approvals of the confirm gate; each can be revoked. */
+export function StandingApprovals({
+  approvals,
+  onRevoke,
+}: {
+  approvals: ApprovalItem[];
+  onRevoke: (id: string) => void;
+}) {
+  const t = useTheme();
+  return (
+    <ul
+      aria-label="standing approvals"
+      data-testid="ctrl-approvals"
+      style={{
+        margin: 0,
+        padding: 0,
+        listStyle: 'none',
+        display: 'grid',
+        gap: t.space[1],
+      }}
+    >
+      {approvals.map((a) => (
+        <li
+          key={a.id}
+          data-testid="ctrl-approval"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: t.space[2],
+          }}
+        >
+          <Text variant="caption">{a.label}</Text>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onRevoke(a.id)}
+            data-testid="ctrl-approval-revoke"
+          >
+            revoke
+          </Button>
+        </li>
+      ))}
+    </ul>
+  );
+}

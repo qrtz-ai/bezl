@@ -204,6 +204,7 @@ impl AppService {
             return;
         };
         let events = self.events.clone();
+        let shell = self.shell.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -224,8 +225,16 @@ impl AppService {
                 if !fired.is_empty() {
                     events.emit("ctrl:changed", serde_json::json!({ "ids": fired }));
                 }
+                Self::notify_ctrl_confirms(&ctrl, shell.as_ref());
             }
         });
+    }
+
+    /// ADR 0111: a confirm gate that started waiting raises one non-activating notification.
+    fn notify_ctrl_confirms(ctrl: &qrtz_ctrl::service::CtrlService, shell: &dyn ShellHooks) {
+        for (task_id, run_id) in ctrl.take_confirm_notices() {
+            shell.notify(crate::ports::Notice::CtrlConfirm { task_id, run_id });
+        }
     }
 
     /// `ctrl:*`: the store writes and `fsync`s, so off the async runtime.
@@ -237,9 +246,11 @@ impl AppService {
             );
         };
         let ch = channel.to_owned();
-        let r = tokio::task::spawn_blocking(move || ctrl.call(&ch, p))
+        let c = ctrl.clone();
+        let r = tokio::task::spawn_blocking(move || c.call(&ch, p))
             .await
             .map_err(|_| AppError::new(ErrorCode::Internal, "ctrl call failed"))?;
+        Self::notify_ctrl_confirms(&ctrl, self.shell.as_ref());
         r.map_err(|e| {
             let code = match e.code {
                 C::Validation => ErrorCode::Validation,

@@ -7303,6 +7303,52 @@
                 "number",
                 "null"
               ]
+            },
+            "approvals": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "intent": {
+                    "type": "string"
+                  },
+                  "move": {
+                    "type": "string"
+                  },
+                  "app": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "unsaved": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "grantedAt": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "id",
+                  "intent",
+                  "move",
+                  "app",
+                  "items",
+                  "unsaved",
+                  "grantedAt"
+                ],
+                "additionalProperties": false
+              }
             }
           },
           "required": [
@@ -7539,6 +7585,52 @@
               "number",
               "null"
             ]
+          },
+          "approvals": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "intent": {
+                  "type": "string"
+                },
+                "move": {
+                  "type": "string"
+                },
+                "app": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "unsaved": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "grantedAt": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "id",
+                "intent",
+                "move",
+                "app",
+                "items",
+                "unsaved",
+                "grantedAt"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -7693,6 +7785,52 @@
               "number",
               "null"
             ]
+          },
+          "approvals": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "intent": {
+                  "type": "string"
+                },
+                "move": {
+                  "type": "string"
+                },
+                "app": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "unsaved": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "grantedAt": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "id",
+                "intent",
+                "move",
+                "app",
+                "items",
+                "unsaved",
+                "grantedAt"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -7782,7 +7920,8 @@
               "failed",
               "cancelled",
               "asked-out",
-              "deferred"
+              "deferred",
+              "expired"
             ]
           },
           "events": {
@@ -7851,7 +7990,8 @@
                 "failed",
                 "cancelled",
                 "asked-out",
-                "deferred"
+                "deferred",
+                "expired"
               ]
             },
             "events": {
@@ -7927,7 +8067,8 @@
                   "failed",
                   "cancelled",
                   "asked-out",
-                  "deferred"
+                  "deferred",
+                  "expired"
                 ]
               },
               "events": {
@@ -8066,7 +8207,8 @@
                   "failed",
                   "cancelled",
                   "asked-out",
-                  "deferred"
+                  "deferred",
+                  "expired"
                 ]
               },
               "decisions": {
@@ -8269,6 +8411,119 @@
                       "decisionId",
                       "node",
                       "options"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "confirm": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "gateId": {
+                        "type": "string"
+                      },
+                      "action": {
+                        "type": "string"
+                      },
+                      "app": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "move": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "key": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "window",
+                                "tab",
+                                "action"
+                              ]
+                            },
+                            "label": {
+                              "type": "string"
+                            },
+                            "unsaved": {
+                              "type": [
+                                "boolean",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "key",
+                            "kind",
+                            "label",
+                            "unsaved"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "complete": {
+                        "type": "boolean"
+                      },
+                      "rules": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "answer": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "approved",
+                              "remembered",
+                              "standing",
+                              "denied",
+                              "expired"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "reverified": {
+                        "type": [
+                          "boolean",
+                          "null"
+                        ]
+                      },
+                      "used": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "gateId",
+                      "action",
+                      "app",
+                      "move",
+                      "items",
+                      "complete",
+                      "rules",
+                      "answer",
+                      "reverified",
+                      "used"
                     ],
                     "additionalProperties": false
                   },
@@ -8402,7 +8657,8 @@
                   "failed",
                   "cancelled",
                   "asked-out",
-                  "deferred"
+                  "deferred",
+                  "expired"
                 ]
               },
               "events": {
@@ -8541,7 +8797,8 @@
                   "failed",
                   "cancelled",
                   "asked-out",
-                  "deferred"
+                  "deferred",
+                  "expired"
                 ]
               },
               "decisions": {
@@ -8752,6 +9009,119 @@
                   }
                 ]
               },
+              "confirm": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "gateId": {
+                        "type": "string"
+                      },
+                      "action": {
+                        "type": "string"
+                      },
+                      "app": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "move": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "key": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "window",
+                                "tab",
+                                "action"
+                              ]
+                            },
+                            "label": {
+                              "type": "string"
+                            },
+                            "unsaved": {
+                              "type": [
+                                "boolean",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "key",
+                            "kind",
+                            "label",
+                            "unsaved"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "complete": {
+                        "type": "boolean"
+                      },
+                      "rules": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "answer": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "approved",
+                              "remembered",
+                              "standing",
+                              "denied",
+                              "expired"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "reverified": {
+                        "type": [
+                          "boolean",
+                          "null"
+                        ]
+                      },
+                      "used": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "gateId",
+                      "action",
+                      "app",
+                      "move",
+                      "items",
+                      "complete",
+                      "rules",
+                      "answer",
+                      "reverified",
+                      "used"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "held": {
                 "anyOf": [
                   {
@@ -8811,6 +9181,794 @@
           "events",
           "at",
           "state"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "ctrl:confirm": {
+      "version": 1,
+      "capability": "ctrl.write",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "runId": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "gateId": {
+              "type": "string",
+              "maxLength": 32
+            },
+            "answer": {
+              "type": "string",
+              "enum": [
+                "approve",
+                "remember",
+                "deny"
+              ]
+            }
+          },
+          "required": [
+            "runId",
+            "gateId",
+            "answer"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "run": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "taskId": {
+                "type": "string"
+              },
+              "at": {
+                "type": "number"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending-intent",
+                  "asking",
+                  "needs-confirm",
+                  "planned",
+                  "running",
+                  "done",
+                  "failed",
+                  "cancelled",
+                  "asked-out",
+                  "deferred",
+                  "expired"
+                ]
+              },
+              "events": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "violations": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "id",
+              "taskId",
+              "at",
+              "status",
+              "events",
+              "violations"
+            ],
+            "additionalProperties": false
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "seq": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "number"
+                },
+                "actionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "node": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "seq",
+                "kind",
+                "at",
+                "actionId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "at": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "state": {
+            "type": "object",
+            "properties": {
+              "actions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "requested",
+                        "executing",
+                        "deferred",
+                        "asked",
+                        "refused",
+                        "done",
+                        "failed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "violations": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "inconclusive": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "quarantined": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "app": {
+                      "type": "string"
+                    },
+                    "rung": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "app",
+                    "rung"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending-intent",
+                  "asking",
+                  "needs-confirm",
+                  "planned",
+                  "running",
+                  "done",
+                  "failed",
+                  "cancelled",
+                  "asked-out",
+                  "deferred",
+                  "expired"
+                ]
+              },
+              "decisions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "node": {
+                      "type": "string",
+                      "enum": [
+                        "choose_intent",
+                        "choose_app",
+                        "choose_target",
+                        "choose_text",
+                        "choose_move",
+                        "choose_control"
+                      ]
+                    },
+                    "outcome": {
+                      "type": "string",
+                      "enum": [
+                        "act",
+                        "tentative",
+                        "ask"
+                      ]
+                    },
+                    "answered": {
+                      "type": "boolean"
+                    },
+                    "chosen": {
+                      "type": "string"
+                    },
+                    "chosenLabel": {
+                      "type": "string"
+                    },
+                    "p": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "options": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "p": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "irreversible": {
+                            "type": "boolean"
+                          },
+                          "refusedInBackground": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "label",
+                          "p",
+                          "irreversible",
+                          "refusedInBackground"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "node",
+                    "outcome",
+                    "answered",
+                    "chosen",
+                    "chosenLabel",
+                    "p",
+                    "model",
+                    "options"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "plan": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "steps": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "node": {
+                              "type": "string",
+                              "enum": [
+                                "choose_intent",
+                                "choose_app",
+                                "choose_target",
+                                "choose_text",
+                                "choose_move",
+                                "choose_control"
+                              ]
+                            },
+                            "option": {
+                              "type": "string"
+                            },
+                            "label": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "node",
+                            "option",
+                            "label"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "irreversible": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "steps",
+                      "irreversible"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "ask": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "decisionId": {
+                        "type": "string"
+                      },
+                      "node": {
+                        "type": "string",
+                        "enum": [
+                          "choose_intent",
+                          "choose_app",
+                          "choose_target",
+                          "choose_text",
+                          "choose_move",
+                          "choose_control"
+                        ]
+                      },
+                      "options": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "label": {
+                              "type": "string"
+                            },
+                            "p": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            },
+                            "irreversible": {
+                              "type": "boolean"
+                            },
+                            "refusedInBackground": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "label",
+                            "p",
+                            "irreversible",
+                            "refusedInBackground"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "decisionId",
+                      "node",
+                      "options"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "confirm": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "gateId": {
+                        "type": "string"
+                      },
+                      "action": {
+                        "type": "string"
+                      },
+                      "app": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "move": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "key": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "window",
+                                "tab",
+                                "action"
+                              ]
+                            },
+                            "label": {
+                              "type": "string"
+                            },
+                            "unsaved": {
+                              "type": [
+                                "boolean",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "key",
+                            "kind",
+                            "label",
+                            "unsaved"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "complete": {
+                        "type": "boolean"
+                      },
+                      "rules": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "answer": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "approved",
+                              "remembered",
+                              "standing",
+                              "denied",
+                              "expired"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "reverified": {
+                        "type": [
+                          "boolean",
+                          "null"
+                        ]
+                      },
+                      "used": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "gateId",
+                      "action",
+                      "app",
+                      "move",
+                      "items",
+                      "complete",
+                      "rules",
+                      "answer",
+                      "reverified",
+                      "used"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "held": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "irreversible",
+                      "files-not-yet",
+                      "no-route",
+                      "unknown-app"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "verified": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "actionId": {
+                      "type": "string"
+                    },
+                    "outcome": {
+                      "type": "string",
+                      "enum": [
+                        "passed",
+                        "failed",
+                        "unverifiable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "actionId",
+                    "outcome"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "actions",
+              "violations",
+              "inconclusive",
+              "quarantined",
+              "status",
+              "decisions",
+              "plan",
+              "ask"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "run",
+          "events",
+          "at",
+          "state"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "ctrl:revoke-approval": {
+      "version": 1,
+      "capability": "ctrl.write",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "taskId": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "approvalId": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "required": [
+            "taskId",
+            "approvalId"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "schedule": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "once"
+                  },
+                  "at": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "at"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "daily"
+                  },
+                  "hour": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 23
+                  },
+                  "minute": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 59
+                  }
+                },
+                "required": [
+                  "kind",
+                  "hour",
+                  "minute"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "weekly"
+                  },
+                  "weekday": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 6
+                  },
+                  "hour": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 23
+                  },
+                  "minute": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 59
+                  }
+                },
+                "required": [
+                  "kind",
+                  "weekday",
+                  "hour",
+                  "minute"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "runs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "lastRunAt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "nextRunAt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "approvals": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "intent": {
+                  "type": "string"
+                },
+                "move": {
+                  "type": "string"
+                },
+                "app": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "unsaved": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "grantedAt": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "id",
+                "intent",
+                "move",
+                "app",
+                "items",
+                "unsaved",
+                "grantedAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "schedule",
+          "paused",
+          "createdAt",
+          "runs",
+          "lastRunAt",
+          "nextRunAt"
         ],
         "additionalProperties": false
       }

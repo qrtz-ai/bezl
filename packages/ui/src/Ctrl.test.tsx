@@ -2,12 +2,15 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import {
   AskCard,
+  ConfirmCard,
+  ConfirmOutcome,
   CtrlTaskRow,
   DecisionList,
   PlanSummary,
   RunHistory,
   RunTimeline,
   SchedulePicker,
+  StandingApprovals,
 } from './Ctrl';
 
 const noop = () => {};
@@ -146,5 +149,46 @@ describe('ctrl components', () => {
     expect(ask).toContain('what kind of task: which one?');
     expect(ask.match(/data-testid="ctrl-ask-option"/g)).toHaveLength(2);
     expect(ask).toContain('cancel run');
+  });
+
+  it('the confirm card lists every item, flags unsaved work, and is a group, never a dialog', () => {
+    const html = renderToStaticMarkup(
+      <ConfirmCard
+        action="quit an app"
+        app="textedit"
+        items={[
+          { key: 'a#0', label: 'notes.txt', unsaved: false },
+          { key: 'b#0', label: 'draft.txt', unsaved: true },
+          { key: 'n2', label: 'window 3', unsaved: null },
+        ]}
+        complete={false}
+        onApprove={noop}
+        onRemember={noop}
+        onDeny={noop}
+      />,
+    );
+    expect(html).toContain('role="group"');
+    expect(html).not.toContain('dialog');
+    expect(html).toContain('quit an app · textedit: this can&#x27;t be undone');
+    expect(html).toContain('ctrl could only count them');
+    expect(html.match(/data-testid="ctrl-confirm-item"/g)).toHaveLength(3);
+    expect(html).toContain('draft.txt · unsaved changes');
+    expect(html).toContain('window 3 · may have unsaved changes');
+    expect(html).toContain('2 with unsaved work');
+    for (const id of ['approve', 'remember', 'deny'])
+      expect(html).toContain(`ctrl-confirm-${id}`);
+    expect(renderToStaticMarkup(<ConfirmOutcome answer="expired" />)).toContain(
+      'no answer in time; nothing was done',
+    );
+    const list = renderToStaticMarkup(
+      <StandingApprovals
+        approvals={[
+          { id: 'approval-4', label: 'quit app in textedit, up to 2 items' },
+        ]}
+        onRevoke={noop}
+      />,
+    );
+    expect(list).toContain('ctrl-approval-revoke');
+    expect(list).toContain('quit app in textedit, up to 2 items');
   });
 });

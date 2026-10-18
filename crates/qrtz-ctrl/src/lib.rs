@@ -23,6 +23,10 @@
 //!   through the ctrl helper protocol between two guard snapshots, a verify step checks it, and a failure
 //!   backtracks or asks; AX snapshots of a background app's front window (hashed) join the move question.
 //!
+//! - [`gate`] (slice 6, ADR 0111): the confirm gate. An irreversible plan stops with a concrete preview until the
+//!   user approves, denies or approves and remembers it for the task; answers, expiries and standing-approval uses
+//!   are events.
+//!
 //! The macOS side (real probes, AX, `CGEventPostToPid`, `NSWorkspace`) is `native/qrtz-helper/Sources/QrtzCtrl`.
 //! Both sides test their policy tables and guard semantics against the same fixtures in
 //! `native/qrtz-helper/Fixtures/ctrl/`.
@@ -30,6 +34,7 @@ pub mod ax;
 pub mod decide;
 pub mod exec;
 pub mod fs_exec;
+pub mod gate;
 pub mod guard;
 pub mod helper;
 pub mod ladder;

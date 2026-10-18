@@ -6,7 +6,19 @@ use qrtz_ctrl::service::{CtrlService, SystemClock};
 use qrtz_ipc::Router;
 use serde_json::{json, Value};
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+
+/// Records the notices the core raises.
+#[derive(Default)]
+struct RecShell(Mutex<Vec<Notice>>);
+impl ShellHooks for RecShell {
+    fn set_hud_expanded(&self, expanded: bool) -> bool {
+        expanded
+    }
+    fn notify(&self, n: Notice) {
+        self.0.lock().unwrap().push(n);
+    }
+}
 
 fn app(dir: &Path, with_ctrl: bool) -> Router<Shared> {
     let svc = AppService::new(AppDeps {
@@ -182,9 +194,14 @@ async fn ctrl_channels_are_validated_gated_and_honest_when_missing() {
 /// the generated contract; an irreversible task stops at needs-confirm with nothing acted.
 #[tokio::test]
 async fn with_a_helper_a_run_executes_verifies_and_holds_irreversible_plans_through_the_router() {
-    use qrtz_ctrl::helper::{FakeHelper, FakeWorld, HelperClient};
+    use qrtz_ctrl::helper::{FakeApp, FakeHelper, FakeWorld, HelperClient};
     let d = tempfile::tempdir().unwrap();
-    let fake = Arc::new(FakeHelper::new(FakeWorld::typical(4)));
+    let mut world = FakeWorld::typical(4);
+    world
+        .apps
+        .push(FakeApp::new("com.apple.TextEdit", "TextEdit", 400));
+    let fake = Arc::new(FakeHelper::new(world));
+    let shell = Arc::new(RecShell::default());
     let svc = AppService::new(AppDeps {
         info: AppInfo {
             name: "qrtz".into(),
@@ -197,7 +214,7 @@ async fn with_a_helper_a_run_executes_verifies_and_holds_irreversible_plans_thro
         runtime: Arc::new(StubRuntime::default()),
         storage: Arc::new(StubStorage),
         talk: Arc::new(StubTalk),
-        shell: Arc::new(NoShell),
+        shell: shell.clone(),
         helper: None,
         events: Events::new(),
     });
@@ -208,7 +225,7 @@ async fn with_a_helper_a_run_executes_verifies_and_holds_irreversible_plans_thro
     let r = Router::new(Shared(svc));
     for (text, status) in [
         ("every day close all my tabs", "done"),
-        ("every week empty the trash", "needs-confirm"),
+        ("every week quit textedit", "needs-confirm"),
     ] {
         let t = call(
             &r,
@@ -225,8 +242,59 @@ async fn with_a_helper_a_run_executes_verifies_and_holds_irreversible_plans_thro
         assert_eq!(v["ok"], true, "{v}");
         assert_eq!(v["data"]["state"]["violations"], 0);
     }
+    assert_eq!(fake.world().acted.len(), 1, "only the reversible task acted");
+    // ADR 0111: the waiting gate raised one notice; the confirm card's answer goes through the router.
+    let notices = shell.0.lock().unwrap().clone();
+    assert_eq!(notices.len(), 1, "{notices:?}");
+    let Notice::CtrlConfirm { task_id, run_id } = &notices[0] else {
+        panic!("{notices:?}")
+    };
+    let v = call(&r, "ctrl", "ctrl:run", json!({"runId": run_id})).await;
+    assert_eq!(v["data"]["state"]["confirm"]["gateId"], "g0", "{v}");
+    let other = call(
+        &r,
+        "echo",
+        "ctrl:confirm",
+        json!({"runId": run_id, "gateId": "g0", "answer": "approve"}),
+    )
+    .await;
+    assert_eq!(other["ok"], false, "another sub app can't answer: {other}");
+    let bad = call(
+        &r,
+        "ctrl",
+        "ctrl:confirm",
+        json!({"runId": run_id, "gateId": "g0", "answer": "maybe"}),
+    )
+    .await;
+    assert_eq!(bad["ok"], false, "{bad}");
+    let v = call(
+        &r,
+        "ctrl",
+        "ctrl:confirm",
+        json!({"runId": run_id, "gateId": "g0", "answer": "remember"}),
+    )
+    .await;
+    assert_eq!(v["ok"], true, "{v}");
+    assert_eq!(v["data"]["state"]["status"], "done", "{v}");
+    let tasks = call(&r, "ctrl", "ctrl:tasks", Value::Null).await;
+    let t = tasks["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| &t["id"] == task_id)
+        .unwrap()
+        .clone();
+    let approval = t["approvals"][0]["id"].as_str().unwrap().to_string();
+    let v = call(
+        &r,
+        "ctrl",
+        "ctrl:revoke-approval",
+        json!({"taskId": task_id, "approvalId": approval}),
+    )
+    .await;
+    assert_eq!(v["data"]["approvals"], json!([]), "{v}");
     let w = fake.world();
-    assert_eq!(w.acted.len(), 1, "only the reversible task acted");
+    assert_eq!(w.acted.len(), 2, "the approved quit acted once");
     assert_eq!(w.frontmost_pid, 100, "the user's app stayed frontmost");
     assert_eq!(
         w.apps
