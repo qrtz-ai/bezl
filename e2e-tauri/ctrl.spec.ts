@@ -555,3 +555,32 @@ test('ctrl: tidy my desktop moves the screenshots without a card and puts them b
   expect(await axe(page, 'ctrl')).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+// ADR 0128: "every morning open my calendar" picks calendar.app and opens it without bringing it forward; the run
+// is done with no card and no dialog.
+test('ctrl: every morning open my calendar opens calendar without a card', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  await ctrl
+    .getByTestId('ctrl-task-input')
+    .fill('every morning open my calendar');
+  await ctrl.getByTestId('ctrl-schedule-daily').click();
+  await ctrl.getByTestId('ctrl-schedule-time').fill('08:00');
+  await ctrl.getByTestId('ctrl-task-add').click();
+  await ctrl.getByTestId('ctrl-task').getByTestId('ctrl-task-run').click();
+  const run = ctrl.getByTestId('ctrl-run').first();
+  await expect(run.getByTestId('ctrl-run-status')).toHaveText('done');
+  await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
+  const decisions = ctrl.getByTestId('ctrl-decisions').first();
+  await expect(decisions).toContainText('open an app');
+  await expect(decisions).toContainText('calendar');
+  await expect(decisions).toContainText('start it hidden');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});

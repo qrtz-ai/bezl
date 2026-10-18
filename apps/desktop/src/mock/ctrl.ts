@@ -69,6 +69,7 @@ const INTENTS = {
   trash_old: opt('intent.clean_folder', 'clean up a folder', 0.07),
   tidy_documents: opt('intent.clean_folder', 'clean up a folder', 0.07),
   tidy_desktop: opt('intent.clean_folder', 'clean up a folder', 0.07),
+  open_calendar: opt('intent.open_app', 'open an app', 0.07),
   close_windows: opt('intent.close_windows', 'close windows', 0.07),
   empty_trash: {
     ...opt('intent.empty_trash', 'empty the trash', 0.07),
@@ -85,6 +86,7 @@ type Intent =
   | 'trash_old'
   | 'tidy_documents'
   | 'tidy_desktop'
+  | 'open_calendar'
   | 'empty_trash'
   | 'quit_app';
 /** What an unclear task is asked (the three most likely intents). */
@@ -174,6 +176,16 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
       },
     ]),
   ],
+  // ADR 0128: "my calendar" is calendar.app; a running one is already open (nothing launched, nothing hidden).
+  open_calendar: [
+    act('choose_app', [
+      opt('app.com.apple.iCal', 'calendar', 0.95),
+      opt('app.name.notion-calendar', 'notion calendar', 0.03),
+    ]),
+    act('choose_move', [
+      opt('route.workspace.launch_hidden', 'start it hidden', 0.97),
+    ]),
+  ],
   // ADR 0122: emptying the Trash deletes through the file executor (never the finder), always behind the card.
   empty_trash: [
     act('choose_app', [
@@ -221,19 +233,21 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
 const intentOf = (text: string): Intent | null =>
   /\bquit\b/i.test(text)
     ? 'quit_app'
-    : /\bempty\b/i.test(text) && /\b(trash|bin)\b/i.test(text)
-      ? 'empty_trash'
-      : /\btabs?\b/i.test(text)
-        ? 'close_tabs'
-        : /\bdocuments\b/i.test(text)
-          ? 'tidy_documents'
-          : /\b(desktop|screenshots?)\b/i.test(text)
-            ? 'tidy_desktop'
-            : /download|folder/i.test(text)
-              ? /\b(delete|trash|old)\b/i.test(text)
-                ? 'trash_old'
-                : 'clean_folder'
-              : null;
+    : /\bcalendar\b/i.test(text)
+      ? 'open_calendar'
+      : /\bempty\b/i.test(text) && /\b(trash|bin)\b/i.test(text)
+        ? 'empty_trash'
+        : /\btabs?\b/i.test(text)
+          ? 'close_tabs'
+          : /\bdocuments\b/i.test(text)
+            ? 'tidy_documents'
+            : /\b(desktop|screenshots?)\b/i.test(text)
+              ? 'tidy_desktop'
+              : /download|folder/i.test(text)
+                ? /\b(delete|trash|old)\b/i.test(text)
+                  ? 'trash_old'
+                  : 'clean_folder'
+                : null;
 
 const PREVIEW: CtrlConfirm['items'] = [
   { key: '3f2a9c1d0b7e#0', kind: 'window', label: 'notes.txt', unsaved: false },
