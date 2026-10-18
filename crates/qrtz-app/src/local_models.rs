@@ -1,14 +1,17 @@
-//! ADR 0079: the Mac helper's own speech models (Nemotron ASR for recordings, Nemotron 3 diarization, LocalVQE echo
-//! cancellation, Parakeet TDT v2 for echo dictation) for builds without the signed speech module. The files and their
-//! sha256s are pinned in this binary (`local_models.json`, generated from the model host's tree at a fixed revision),
-//! downloaded only from onboarding or settings through `qrtz-speech`'s resumable, size-capped, hash-checked downloader
-//! (ADR 0078's one network path), into `<data>/models/<set>/` (0700). A set is usable once every file verified and its
-//! `.qrtz-verified` marker is written; the helper reads only marked sets (`QRTZ_MODELS_DIR`) and never fetches
-//! anything itself.
-use qrtz_speech::bundle::FileEntry;
-use qrtz_speech::download::Downloader;
+//! ADR 0079 / ADR 0157: the Mac helper's own speech models (Nemotron ASR for recordings, Nemotron 3 diarization,
+//! LocalVQE echo cancellation, Parakeet TDT v2 for echo dictation) for builds without the signed speech module. Each
+//! set is a `model.*` package whose tree (every file's path, size and sha256, and its Hugging Face URL at a fixed
+//! revision) is pinned in this binary (`local_models.json`). The download is the package manager's: onboarding or
+//! settings asks, `Op::Pinned` plans it, and the one fetcher takes each file from the package hosts
+//! (`modules.qrtz.ai`, then its mirrors) or else the pinned Hugging Face URL, verified by the same sha256 into the
+//! content-addressed store, then installed read-only under `<data>/packages/`. The helper's view is unchanged:
+//! `<data>/models/<set>/` (0700) holds store links of the files, and a set is usable once its `.qrtz-verified` marker
+//! is written; the helper reads only marked sets (`QRTZ_MODELS_DIR`) and never fetches anything itself.
+use crate::module_hosting::{AppleCodeChecks, Hosts, HttpTransport, InstallError, Op};
+use qrtz_modules::install::{Installer, PinnedPackage};
+use qrtz_modules::models::{ModelFile as PinnedFile, ModelSource};
 /// The download's control and progress types, for the model sets that go through here (ctrl's Laya model, ADR
-/// 0116): this module is the only qrtz-app caller of the downloader besides `setup.rs` (ADR 0078/0079).
+/// 0116).
 pub use qrtz_speech::download::{DownloadControl, Progress};
 use qrtz_speech::{fsx, SpeechError};
 use serde::Deserialize;
@@ -28,8 +31,17 @@ pub struct Manifest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ModelSet {
     pub id: String,
+    /// The `model.*` package this set is.
+    pub package: String,
+    pub task: String,
+    /// The package version when it isn't the manifest's (ctrl's Laya manifest carries a model build name).
+    #[serde(default)]
+    pub package_version: Option<String>,
+    #[serde(default)]
+    pub license: String,
     pub dir: String,
     pub repo: String,
     pub revision: String,
@@ -55,8 +67,10 @@ impl Manifest {
 
 pub struct LocalModels {
     root: PathBuf,
+    packages_root: PathBuf,
     manifest: Manifest,
-    base: String,
+    /// The Hugging Face host actually reached (tests: a loopback server); `None` = the pinned hosts.
+    base: Option<String>,
 }
 
 fn safe_rel(p: &str) -> bool {
@@ -68,24 +82,93 @@ fn safe_rel(p: &str) -> bool {
 }
 
 impl LocalModels {
-    /// The pinned manifest from the model host (`base` overrides the host: tests serve it from loopback).
+    /// The pinned manifest. `root` is `<data>/models`; the packages live in its parent (`<data>`). `base` replaces
+    /// the Hugging Face host and drops the package hosts (tests serve the files from loopback).
     pub fn new(root: impl Into<PathBuf>, base: Option<String>) -> Self {
         Self::with_manifest(root, Manifest::pinned(), base)
     }
 
     pub fn with_manifest(root: impl Into<PathBuf>, manifest: Manifest, base: Option<String>) -> Self {
-        for s in &manifest.sets {
+        let root: PathBuf = root.into();
+        let packages_root = root
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| root.clone());
+        let m = Self {
+            root,
+            packages_root,
+            manifest,
+            base,
+        };
+        for s in &m.manifest.sets {
             assert!(safe_rel(&s.dir), "model set dir {}", s.dir);
             for f in &s.files {
                 assert!(safe_rel(&f.path) && safe_rel(&f.remote), "model file {}", f.path);
             }
+            let src = m.source(s);
+            src.manifest().validate().expect("pinned model qrtz.json");
+            src.tree().validate().expect("pinned model tree");
         }
-        let base = base.unwrap_or_else(|| manifest.base.clone());
-        Self {
-            root: root.into(),
-            manifest,
-            base,
+        m
+    }
+
+    /// Where the packages live (`<data>`), when `root` isn't `<data>/models`.
+    pub fn with_packages_root(mut self, p: impl Into<PathBuf>) -> Self {
+        self.packages_root = p.into();
+        self
+    }
+
+    fn source(&self, s: &ModelSet) -> ModelSource {
+        ModelSource {
+            package: s.package.clone(),
+            version: s
+                .package_version
+                .clone()
+                .unwrap_or_else(|| self.manifest.version.clone()),
+            task: s.task.clone(),
+            repo: s.repo.clone(),
+            revision: s.revision.clone(),
+            license: s.license.clone(),
+            files: s
+                .files
+                .iter()
+                .map(|f| PinnedFile {
+                    remote: f.remote.clone(),
+                    path: f.path.clone(),
+                    size: f.size,
+                    sha256: f.sha256.clone(),
+                })
+                .collect(),
         }
+    }
+
+    /// The `model.*` packages this manifest pins, for `Op::Pinned`.
+    pub fn packages(&self) -> Vec<PinnedPackage> {
+        // Data carries no signature: the placeholder team stands until the signed index lists the same tree (then
+        // the index's team is recorded).
+        let team = qrtz_modules::manifest::PLACEHOLDER_TEAM_ID;
+        self.manifest
+            .sets
+            .iter()
+            .map(|s| self.source(s).pinned(team))
+            .collect()
+    }
+
+    fn installer(&self) -> Installer {
+        Installer::new(
+            &self.packages_root,
+            Hosts::pinned().root1_sha256,
+            Box::new(AppleCodeChecks),
+        )
+    }
+
+    fn transport(&self, ctl: &DownloadControl) -> HttpTransport {
+        let t = match &self.base {
+            None => HttpTransport::pinned(),
+            // The signed trees name Hugging Face; a test serves those paths from loopback.
+            Some(b) => HttpTransport::new(&[], &[(qrtz_modules::models::HUGGING_FACE.to_owned(), b.clone())]),
+        };
+        t.with_control(ctl.clone())
     }
 
     pub fn root(&self) -> &Path {
@@ -129,8 +212,9 @@ impl LocalModels {
         walk(&self.root)
     }
 
-    /// Downloads whatever is missing (resuming `.part` files), checks every file's size and sha256 before it is
-    /// renamed into place, then marks each set. `force` re-fetches everything.
+    /// Installs whatever is missing through the package manager (resuming partial blobs; every file checked by
+    /// size and sha256 before it enters the store), then links each set's files into its view dir and marks it.
+    /// `force` deletes the view dirs and re-checks every stored blob. The caller holds the user's consent.
     pub async fn download(
         &self,
         force: bool,
@@ -141,56 +225,102 @@ impl LocalModels {
             self.delete()?;
         }
         fsx::mkdir_private(&self.root)?;
-        let dl = Downloader::new(&self.base);
+        let installer = self.installer();
+        let plan = installer
+            .plan(Op::Pinned(self.packages()))
+            .map_err(|e| pm_error(e, ctl))?;
+        let t = self.transport(ctl);
         let total = self.total_size();
-        let mut before = 0u64;
-        for s in &self.manifest.sets {
-            let size: u64 = s.files.iter().map(|f| f.size).sum();
-            if self.set_ok(s) {
-                before += size;
-                on_progress(Progress { done: before, total });
-                continue;
-            }
-            let dir = self.root.join(&s.dir);
-            fsx::mkdir_private(&dir)?;
-            let _ = std::fs::remove_file(dir.join(MARKER));
-            let files: Vec<(String, FileEntry)> = s
-                .files
-                .iter()
-                .map(|f| {
-                    (
-                        format!("{}/resolve/{}/{}", s.repo, s.revision, f.remote),
-                        FileEntry {
-                            path: f.path.clone(),
-                            size: f.size,
-                            sha256: f.sha256.clone(),
-                        },
-                    )
-                })
-                .collect();
-            let off = before;
-            dl.download_files(&files, &dir, ctl, &|p: Progress| {
+        let have = total.saturating_sub(plan.download_bytes);
+        installer
+            .apply(&t, &plan, &plan.consent(), now_ms(), &|done, _| {
                 on_progress(Progress {
-                    done: off + p.done,
+                    done: (have + done).min(total),
                     total,
                 })
             })
-            .await?;
+            .await
+            .map_err(|e| pm_error(e, ctl))?;
+        for s in &self.manifest.sets {
+            if self.set_ok(s) {
+                continue;
+            }
+            let src = self.source(s);
+            let dir = self.root.join(&s.dir);
+            let _ = std::fs::remove_file(dir.join(MARKER));
+            fsx::mkdir_private(&dir)?;
+            for f in &s.files {
+                let dest = dir.join(&f.path);
+                if let Some(p) = dest.parent() {
+                    fsx::mkdir_private(p)?;
+                }
+                let _ = std::fs::remove_file(&dest);
+                installer
+                    .store()
+                    .link(&f.sha256, f.size, &dest, false)
+                    .map_err(|e| SpeechError::Checksum(format!("{}: {e}", f.path)))?;
+            }
+            debug_assert_eq!(src.files.len(), s.files.len());
             fsx::write_private_atomic(&dir.join(MARKER), self.manifest.version.as_bytes())?;
-            before += size;
         }
+        on_progress(Progress { done: total, total });
         Ok(())
     }
 
-    /// Removes every set (and partial downloads). A recording that already loaded a model keeps it until it ends.
+    /// Removes every set's view dir, drops the pinned requests and prunes what nothing else needs (a model an
+    /// installed extension depends on stays). A recording that already loaded a model keeps it until it ends.
     pub fn delete(&self) -> std::io::Result<()> {
         for s in &self.manifest.sets {
-            match std::fs::remove_dir_all(self.root.join(&s.dir)) {
+            match qrtz_modules::fsutil::remove_tree(&self.root.join(&s.dir)) {
                 Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e),
                 _ => {}
             }
         }
+        let installer = self.installer();
+        let names: Vec<String> = self.manifest.sets.iter().map(|s| s.package.clone()).collect();
+        let io = |e: InstallError| std::io::Error::other(e.to_string());
+        let requested = installer.lock().map_err(io)?.workspace.dependencies;
+        let names: Vec<String> = names.into_iter().filter(|n| requested.contains_key(n)).collect();
+        if !names.is_empty() {
+            let plan = installer.plan(Op::Remove(names)).map_err(io)?;
+            let t = HttpTransport::new(&[], &[]);
+            futures_lite_block(installer.apply(&t, &plan, &plan.consent(), now_ms(), &|_, _| {}))
+                .map_err(io)?;
+            installer.prune().map_err(io)?;
+        }
         Ok(())
+    }
+}
+
+/// A remove plan fetches nothing, so its apply completes without awaiting I/O; run it in place (`delete` is called
+/// from sync code and inside the runtime alike).
+fn futures_lite_block<F: std::future::Future>(f: F) -> F::Output {
+    let waker = std::task::Waker::noop();
+    let mut cx = std::task::Context::from_waker(waker);
+    let mut f = std::pin::pin!(f);
+    loop {
+        if let std::task::Poll::Ready(v) = f.as_mut().poll(&mut cx) {
+            return v;
+        }
+        std::thread::yield_now();
+    }
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn pm_error(e: InstallError, ctl: &DownloadControl) -> SpeechError {
+    if ctl.is_paused() {
+        return SpeechError::Paused;
+    }
+    match e {
+        InstallError::Network(m) if m.contains(qrtz_modules::fetch::MISMATCH) => SpeechError::Checksum(m),
+        InstallError::Network(m) => SpeechError::Network(m),
+        e => SpeechError::Invalid(e.to_string()),
     }
 }
 

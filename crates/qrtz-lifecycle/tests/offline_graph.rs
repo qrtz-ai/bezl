@@ -16,6 +16,9 @@
 //!    manifest is pinned the same way (or a placeholder, which is refused before any request).
 //!    ADR 0153: the module installer's transport (`module_hosting.rs`) is the third caller, to the hosts pinned in
 //!    `module_hosts.json` only (`https://modules.qrtz.ai` and Backblaze B2 mirrors).
+//!    ADR 0157: the package manager's one fetcher (`module_hosting.rs`) also serves the pinned models: a model
+//!    file's signed tree may name a mirror URL, reachable only under `modelMirrors` (exactly
+//!    `https://huggingface.co`). `local_models.rs` installs through it and names no downloader of its own.
 //!
 //! 6. ADR 0144 (module confinement, M0): every crate and Swift target has an owner in `docs/modules/confinement-map.json`
 //!    (shell / shared / echo / nano / ctrl / voice / monolith); module-owned and shared crates reach no network crate in
@@ -375,6 +378,12 @@ fn only_setup_and_the_pinned_local_models_call_the_downloader() {
             "{m}: a Backblaze B2 host and nothing after it"
         );
     }
+    // ADR 0157: the only extra mirror host a signed tree may point at (the pinned models' upstream).
+    assert_eq!(
+        hosts["modelMirrors"],
+        serde_json::json!(["https://huggingface.co"]),
+        "module_hosts.json modelMirrors"
+    );
     let pin = &hosts["root1Sha256"];
     assert!(
         pin.is_null()

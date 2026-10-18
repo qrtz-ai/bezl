@@ -6,6 +6,9 @@
   "sets": [
     {
       "id": "laya",
+      "package": "model.laya",
+      "task": "decision",
+      "packageVersion": "1.0.0",
       "dir": "laya",
       "repo": "FluidInference/laya-coreml",
       "revision": "7b8d7a2b7e28e746c6ecaad44bbcd5cf251a4fcc",

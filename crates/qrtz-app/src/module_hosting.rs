@@ -1,24 +1,29 @@
-//! ADR 0153: the shell's side of installable modules: the HTTPS transport to the pinned module hosts and the
-//! Apple code checks, around `qrtz_modules::install::Installer` (which has no network code of its own).
+//! ADR 0153/0157: the shell's side of the package manager: the HTTPS transport to the pinned package hosts (and the
+//! pinned model mirror hosts), and the Apple code checks, around `qrtz_modules::install::Installer` (which has no
+//! network code of its own). The app's Extensions screen, the `qrtz` CLI and the speech model download all go through
+//! [`Packages`]: one installer, one fetcher, one verify path.
 //!
 //! - **Hosts** are pinned in this binary (`module_hosts.json`): `https://modules.qrtz.ai` (Cloudflare R2), then
-//!   each mirror (Backblaze B2). Nothing else is reachable from here, and nothing is reached without a consent:
-//!   `refresh` takes a `RefreshConsent`, `install` an `InstallConsent` for exactly the plan the user saw.
-//! - **Transport** is `qrtz-speech`'s downloader (ADR 0078's one network path, ADR 0079's callers): HTTPS only,
-//!   resumable `.part` files, size caps, sha256 before rename. Hosts are untrusted: the installer checks every
-//!   byte against the signed index, and moves to the next host when one fails or serves something stale.
+//!   each mirror (Backblaze B2), then, for a model file only, the signed tree's own mirror URL when it is under a
+//!   pinned model mirror host (`https://huggingface.co`). Nothing else is reachable from here, and nothing is
+//!   reached without a consent: `refresh` takes a `RefreshConsent`, `apply` an `InstallConsent` for exactly the plan
+//!   the user saw.
+//! - **Transport** is `qrtz-speech`'s downloader (ADR 0078's one network path): HTTPS only, size caps, exact byte
+//!   ranges. Hosts are untrusted: every blob is checked against its signed sha256 before it enters the store.
 //! - **Code checks** (Bozniak's rule 7, both paths): on macOS, `codesign --verify --strict --deep` against the
-//!   manifest's exact designated requirement, the signing team, and Gatekeeper's notarization assessment of the
-//!   staged bundle; a placeholder team (`0000000000`) is refused. Elsewhere every install is refused.
-use qrtz_modules::index::Chunk;
-use qrtz_modules::install::{CodeChecks, Installer, Transport};
-use qrtz_modules::manifest::ModuleManifest;
-use qrtz_speech::bundle::FileEntry;
-use qrtz_speech::download::{DownloadControl, Downloader, Progress};
+//!   package's exact designated requirement, the signing team, and Gatekeeper's notarization assessment of the
+//!   staged helper or `.xpc`; a placeholder team (`0000000000`) is refused. Elsewhere every code install is refused
+//!   (models, which are data, install anywhere).
+use qrtz_modules::fetch::{Source, Transport};
+use qrtz_modules::index::{layout, PackageKind};
+use qrtz_modules::install::{CodeChecks, Installer};
+use qrtz_speech::download::{DownloadControl, Downloader};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
-pub use qrtz_modules::install::{InstallConsent, InstallError, Installed, Plan, RefreshConsent, Refreshed};
+pub use qrtz_modules::install::{
+    Applied, Change, InstallConsent, InstallError, Listed, Op, Plan, Pruned, RefreshConsent, Refreshed,
+};
 
 pub const HOSTS: &str = include_str!("module_hosts.json");
 
@@ -27,6 +32,8 @@ pub const HOSTS: &str = include_str!("module_hosts.json");
 pub struct Hosts {
     pub primary: String,
     pub mirrors: Vec<String>,
+    /// Hosts a signed tree's extra mirror URL may point at (models only).
+    pub model_mirrors: Vec<String>,
     pub root1_sha256: Option<String>,
 }
 
@@ -41,24 +48,43 @@ impl Hosts {
     }
 }
 
-/// The primary host and its mirrors, in order, over the shared downloader.
+/// The package hosts in order, plus the allowed model mirror hosts, over the shared downloader.
 pub struct HttpTransport {
     hosts: Vec<Downloader>,
+    /// `(allowed prefix, downloader)`: a mirror URL `<prefix>/<path>` is fetched as `<path>` from the downloader's
+    /// base (the prefix itself in the app; a loopback server in tests).
+    extra: Vec<(String, Downloader)>,
     ctl: DownloadControl,
 }
 
 impl HttpTransport {
-    /// `bases` are host roots (`https://modules.qrtz.ai`); the layout paths carry the `v1/`. Tests pass loopback
-    /// servers; the app passes [`Hosts::pinned`].
-    pub fn new(bases: &[String]) -> Self {
+    /// `bases` are host roots (`https://modules.qrtz.ai`); the layout paths carry the `v1/`. `extra` maps each
+    /// allowed mirror prefix to the base actually reached. Tests pass loopback servers; the app passes
+    /// [`Hosts::pinned`].
+    pub fn new(bases: &[String], extra: &[(String, String)]) -> Self {
         Self {
             hosts: bases.iter().map(|b| Downloader::new(b)).collect(),
+            extra: extra
+                .iter()
+                .map(|(p, b)| (p.trim_end_matches('/').to_owned(), Downloader::new(b)))
+                .collect(),
             ctl: DownloadControl::default(),
         }
     }
-    /// Pause keeps the `.part` files; the next `install` resumes them.
+    /// The pinned hosts and model mirrors.
+    pub fn pinned() -> Self {
+        let h = Hosts::pinned();
+        let extra: Vec<(String, String)> = h.model_mirrors.iter().map(|m| (m.clone(), m.clone())).collect();
+        Self::new(&h.all(), &extra)
+    }
+    /// Pause stops at the next range boundary, keeping the `.part` and its finished ranges; the next `apply`
+    /// resumes them.
     pub fn control(&self) -> DownloadControl {
         self.ctl.clone()
+    }
+    pub fn with_control(mut self, ctl: DownloadControl) -> Self {
+        self.ctl = ctl;
+        self
     }
 }
 
@@ -79,46 +105,22 @@ impl Transport for HttpTransport {
         }
     }
 
-    async fn get_pinned(&self, host: usize, path: &str, size: u64, sha256: &str) -> Result<Vec<u8>, String> {
-        static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("qrtz-index-{}-{n}", std::process::id()));
-        let entry = FileEntry {
-            path: "index.json".into(),
-            size,
-            sha256: sha256.into(),
+    async fn get_range(&self, src: &Source, sha256: &str, start: u64, len: u64) -> Result<Vec<u8>, String> {
+        if self.ctl.is_paused() {
+            return Err("paused".into());
+        }
+        let (dl, path) = match src {
+            Source::Host(i) => (self.hosts.get(*i).ok_or("no such host")?, layout::blob(sha256)),
+            Source::Url(u) => self
+                .extra
+                .iter()
+                .find_map(|(p, d)| {
+                    let rest = u.strip_prefix(p.as_str())?.strip_prefix('/')?;
+                    Some((d, rest.to_owned()))
+                })
+                .ok_or_else(|| format!("{u}: not under a pinned model mirror host"))?,
         };
-        let r = self.hosts[host]
-            .download_files(&[(path.to_owned(), entry)], &dir, &self.ctl, &|_| {})
-            .await
-            .map_err(|e| e.to_string())
-            .and_then(|()| std::fs::read(dir.join("index.json")).map_err(|e| e.to_string()));
-        let _ = std::fs::remove_dir_all(&dir);
-        r
-    }
-
-    async fn get_blobs(
-        &self,
-        host: usize,
-        blobs: &[Chunk],
-        dir: &Path,
-        progress: &(dyn Fn(u64, u64) + Send + Sync),
-    ) -> Result<(), String> {
-        let files: Vec<(String, FileEntry)> = blobs
-            .iter()
-            .map(|c| {
-                (
-                    qrtz_modules::index::layout::blob(&c.sha256),
-                    FileEntry {
-                        path: c.sha256.clone(),
-                        size: c.size,
-                        sha256: c.sha256.clone(),
-                    },
-                )
-            })
-            .collect();
-        self.hosts[host]
-            .download_files(&files, dir, &self.ctl, &|p: Progress| progress(p.done, p.total))
+        dl.fetch_range(&path, start, len, &self.ctl)
             .await
             .map_err(|e| e.to_string())
     }
@@ -178,97 +180,60 @@ pub fn check_bundle(_bundle: &Path, _team_id: &str, _requirement: &str) -> Resul
     Err("module code checks need macOS".into())
 }
 
-fn bundle_in(dir: &Path, entry: Option<&str>, ext: &[&str]) -> Result<PathBuf, String> {
-    if let Some(e) = entry {
-        return Ok(dir.join(e));
-    }
-    let mut found: Vec<PathBuf> = std::fs::read_dir(dir)
-        .map_err(|e| e.to_string())?
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| {
-            p.extension()
-                .and_then(|x| x.to_str())
-                .is_some_and(|x| ext.contains(&x))
-        })
-        .collect();
-    found.sort();
-    match found.len() {
-        1 => Ok(found.remove(0)),
-        n => Err(format!("{}: expected one bundle, found {n}", dir.display())),
-    }
-}
-
 impl CodeChecks for AppleCodeChecks {
-    fn check_module(&self, dir: &Path, m: &ModuleManifest) -> Result<(), String> {
-        let b = bundle_in(dir, Some(&m.launch.entry), &[])?;
-        check_bundle(&b, &m.code.team_id, &m.code.designated_requirement)
-    }
-    fn check_service(
-        &self,
-        dir: &Path,
-        bundle_id: &str,
-        team_id: &str,
-        requirement: &str,
-    ) -> Result<(), String> {
-        let named = dir.join(format!("{bundle_id}.xpc"));
-        let b = if named.exists() {
-            named
-        } else {
-            bundle_in(dir, None, &["xpc", "app"])?
-        };
-        check_bundle(&b, team_id, requirement)
+    /// `code` is an extension's helper executable or a service's `.xpc` bundle, already staged.
+    fn check(&self, _kind: PackageKind, code: &Path, team_id: &str, requirement: &str) -> Result<(), String> {
+        check_bundle(code, team_id, requirement)
     }
 }
 
-/// The installer over the pinned hosts.
-pub struct ModuleHosting {
+/// The installer over the pinned hosts: what the Extensions screen, the `qrtz` CLI and the speech model download
+/// share.
+pub struct Packages {
     pub installer: Installer,
     pub transport: HttpTransport,
 }
 
-impl ModuleHosting {
-    /// `~/Library/Application Support/qrtz/modules`, the pinned hosts and root, and the Apple checks.
+impl Packages {
+    /// The app's data dir (or `QRTZ_USER_DATA`), the pinned hosts and root, and the Apple checks.
     pub fn pinned(root: Option<PathBuf>) -> Option<Self> {
-        let h = Hosts::pinned();
         let root = root.or_else(qrtz_modules::install::default_root)?;
-        Some(Self::with(
-            root,
-            &h.all(),
-            h.root1_sha256,
-            Box::new(AppleCodeChecks),
-        ))
+        Some(Self {
+            installer: Installer::new(root, Hosts::pinned().root1_sha256, Box::new(AppleCodeChecks)),
+            transport: HttpTransport::pinned(),
+        })
     }
 
-    pub fn with(
-        root: PathBuf,
-        hosts: &[String],
-        root1_sha256: Option<String>,
-        checks: Box<dyn CodeChecks>,
-    ) -> Self {
-        Self {
-            installer: Installer::new(root, root1_sha256, checks),
-            transport: HttpTransport::new(hosts),
-        }
+    pub fn with(installer: Installer, transport: HttpTransport) -> Self {
+        Self { installer, transport }
     }
 
     pub async fn refresh(&self, consent: &RefreshConsent, now_ms: u64) -> Result<Refreshed, InstallError> {
         self.installer.refresh(&self.transport, consent, now_ms).await
     }
 
-    pub fn plan(&self, module: &str, version: Option<&str>) -> Result<Plan, InstallError> {
-        self.installer.plan(module, version)
+    pub fn plan(&self, op: Op) -> Result<Plan, InstallError> {
+        self.installer.plan(op)
     }
 
-    pub async fn install(
+    pub async fn apply(
         &self,
+        plan: &Plan,
         consent: &InstallConsent,
         now_ms: u64,
         progress: &(dyn Fn(u64, u64) + Send + Sync),
-    ) -> Result<Installed, InstallError> {
+    ) -> Result<Applied, InstallError> {
         self.installer
-            .install(&self.transport, consent, now_ms, progress)
+            .apply(&self.transport, plan, consent, now_ms, progress)
             .await
+    }
+
+    pub fn prune(&self) -> Result<Pruned, InstallError> {
+        self.installer.prune()
+    }
+
+    pub fn list(&self) -> Result<Vec<Listed>, InstallError> {
+        self.installer.list()
     }
 }
 
@@ -287,5 +252,6 @@ mod tests {
             );
         }
         assert!(h.all().iter().all(|u| !u.contains('?') && !u.ends_with('/')));
+        assert_eq!(h.model_mirrors, ["https://huggingface.co"]);
     }
 }

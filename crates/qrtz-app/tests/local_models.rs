@@ -1,6 +1,7 @@
-//! ADR 0079: the Mac helper's pinned models through onboarding/settings ("speech"): status, download with progress,
-//! pause and resume from the `.part` files, a damaged file refused and retried, the `.qrtz-verified` markers the
-//! helper waits for, delete. Served by the qrtz-speech test kit (loopback), with a small manifest of the same shape.
+//! ADR 0079 / ADR 0157: the Mac helper's pinned models through onboarding/settings ("speech"), installed by the
+//! package manager: status, download with progress, pause and resume, a damaged file refused and retried (only it),
+//! the `.qrtz-verified` markers the helper waits for, the `model.*` packages in `qrtz.lock`, delete and prune.
+//! Served by the qrtz-speech test kit (loopback, playing Hugging Face), with a small manifest of the same shape.
 use qrtz_app::local_models::{LocalModels, Manifest, MARKER};
 use qrtz_app::service::Events;
 use qrtz_app::setup::SpeechManager;
@@ -48,10 +49,16 @@ fn serve(srv: &Server) -> Manifest {
         let f = json!({"remote": remote, "path": path, "size": body.len(), "sha256": sha(&body)});
         match sets.iter_mut().find(|s| s["repo"] == repo) {
             Some(s) => s["files"].as_array_mut().unwrap().push(f),
-            None => sets.push(json!({"id": repo, "dir": repo.replace("org/", ""), "repo": repo, "revision": rev, "files": [f]})),
+            None => {
+                let dir = repo.replace("org/", "");
+                sets.push(
+                    json!({"id": repo, "package": format!("model.{dir}"), "task": "asr", "dir": dir,
+                                 "repo": repo, "revision": rev, "files": [f]}),
+                )
+            }
         }
     }
-    serde_json::from_value(json!({"version": "1.0.0", "base": "https://example.invalid", "sets": sets}))
+    serde_json::from_value(json!({"version": "1.0.0", "base": "https://huggingface.co", "sets": sets}))
         .unwrap()
 }
 
@@ -106,20 +113,24 @@ async fn the_helper_models_download_pause_resume_verify_and_delete() {
         w.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }));
     mgr.download(false).unwrap();
-    until("progress into the big file", || {
-        mgr.status()["download"]["done"].as_u64().unwrap() > 300 * 1024
+    // Progress moves per finished range; wait for the big file's range to be under way.
+    until("the big file under way", || {
+        srv.faults.lock().unwrap().hits.contains_key(&big)
     })
     .await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
     let s = mgr.pause();
     assert_eq!(s["download"]["state"], "paused");
     until("paused", || mgr.status()["download"]["state"] == "paused").await;
     tokio::time::sleep(Duration::from_millis(200)).await;
-    let part = root.join("asr/enc.mlmodelc/weights/weight.bin.part");
-    let have = std::fs::metadata(&part).unwrap().len();
-    assert!(have > 0 && (have as usize) < BIG, "{have}");
     assert!(
         !root.join("asr").join(MARKER).exists(),
         "no marker before every file is verified"
+    );
+    let data = tmp.path();
+    assert!(
+        !data.join("qrtz.lock").exists(),
+        "nothing is installed before every blob is in"
     );
 
     srv.faults.lock().unwrap().throttle.remove(&big);
@@ -133,14 +144,16 @@ async fn the_helper_models_download_pause_resume_verify_and_delete() {
     })
     .await;
     assert!(s["bytes"].as_u64().unwrap() >= total);
-    // Resumed from the .part, not from scratch.
-    assert!(srv
-        .faults
-        .lock()
-        .unwrap()
-        .ranges
-        .iter()
-        .any(|(p, r)| p == &big && r == &format!("bytes={have}-")));
+    // Closed ranges (the big file is one 2 MiB range: asked again after the pause).
+    let ranges = srv.faults.lock().unwrap().ranges.clone();
+    assert!(
+        ranges
+            .iter()
+            .filter(|(p, r)| p == &big && r == "bytes=0-2097151")
+            .count()
+            >= 2,
+        "{ranges:?}"
+    );
     for set in ["asr", "diar"] {
         assert_eq!(
             std::fs::read_to_string(root.join(set).join(MARKER)).unwrap(),
@@ -149,11 +162,28 @@ async fn the_helper_models_download_pause_resume_verify_and_delete() {
         assert_eq!(mode(&root.join(set)), 0o700);
     }
     assert_eq!(std::fs::read(root.join("asr/tokenizer.json")).unwrap(), b"{}");
-    assert!(!part.exists());
+    // They are model packages now: in the lock, read-only under packages/, from the store.
+    let lock = std::fs::read_to_string(data.join("qrtz.lock")).unwrap();
+    assert!(
+        lock.contains("\"model.asr@1.0.0\"") && lock.contains("\"source\": \"pinned\""),
+        "{lock}"
+    );
+    assert!(data.join("packages/model.asr/1.0.0/tokenizer.json").exists());
+    assert!(
+        std::fs::read_dir(data.join("store/.tmp"))
+            .unwrap()
+            .next()
+            .is_none(),
+        "no parts left"
+    );
 
     let s = mgr.delete().unwrap();
     assert_eq!(s["installed"], Value::Null);
     assert!(!root.join("asr").exists() && !root.join("diar").exists());
+    assert!(
+        !data.join("packages/model.asr").exists(),
+        "pruned: nothing else needs it"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -177,11 +207,10 @@ async fn a_damaged_model_file_is_refused_and_a_retry_fetches_it_again() {
     let s = mgr.status();
     assert_eq!(s["download"]["errorKind"], "checksum", "{s}");
     assert_eq!(s["installed"], Value::Null);
-    assert!(
-        root.join("asr").join(MARKER).exists(),
-        "the first set verified and is kept"
-    );
+    // The whole resolved set swaps at once: nothing is marked, but the verified blobs stay in the store.
+    assert!(!root.join("asr").join(MARKER).exists());
     assert!(!root.join("diar").join(MARKER).exists());
+    assert!(tmp.path().join("store").join(sha(&bytes(BIG, 1))).exists());
     assert!(
         !root.join("diar/diar.mlmodelc/coremldata.bin").exists(),
         "a damaged file never lands under its name"

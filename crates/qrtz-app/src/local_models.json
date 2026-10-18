@@ -3,6 +3,8 @@
   "sets": [
     {
       "id": "asr",
+      "package": "model.nemotron",
+      "task": "asr",
       "dir": "nemotron-560ms",
       "repo": "FluidInference/nemotron-speech-streaming-en-0.6b-coreml",
       "revision": "e673531caa6d25ab7baf5a8c14c9b99ba1551838",
@@ -119,6 +121,8 @@
     },
     {
       "id": "diarizer",
+      "package": "model.nemotron-diarizer",
+      "task": "diarization",
       "dir": "nemotron3-diarizer",
       "repo": "FluidInference/nemotron-3-diarization-coreml",
       "revision": "25a90f97f254428d4b30374b76af9c74fdee8327",
@@ -157,6 +161,8 @@
     },
     {
       "id": "echo",
+      "package": "model.localvqe",
+      "task": "echo-cancellation",
       "dir": "localvqe",
       "repo": "FluidInference/localvqe-coreml",
       "revision": "4205430781c240397073d6f7bf676fb4c732fc12",
@@ -189,6 +195,8 @@
     },
     {
       "id": "echo-asr",
+      "package": "model.parakeet-tdt-v2-en",
+      "task": "asr",
       "dir": "parakeet-tdt-v2",
       "repo": "FluidInference/parakeet-tdt-0.6b-v2-coreml",
       "revision": "ee09c569f73759e6d44c9bd16766f477b2b36d39",

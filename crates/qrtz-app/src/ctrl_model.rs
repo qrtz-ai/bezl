@@ -85,7 +85,9 @@ impl CtrlLayaModel {
         CtrlLayaModel {
             entry,
             placeholder: m.placeholder,
-            models: LocalModels::with_manifest(models_root, m.manifest, base),
+            // The packages live in `<data>`, the parent of `ctrl_dir`.
+            models: LocalModels::with_manifest(models_root, m.manifest, base)
+                .with_packages_root(ctrl_dir.parent().unwrap_or(ctrl_dir)),
             consent_file: ctrl_dir.join("laya.json"),
         }
     }

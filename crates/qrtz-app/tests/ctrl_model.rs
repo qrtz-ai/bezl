@@ -1,7 +1,7 @@
 //! ADR 0116 / 0129: ctrl's Laya model. Nothing is fetched without the user's yes; a placeholder manifest refuses
 //! before any network call; the pinned manifest is laya-coreml @ 7b8d7a2 (e8, L512) + tokenizer.json; with a test
-//! manifest the download is verified (size + sha256), a damaged file is
-//! refused, a partial one resumes, and only an installed, consented model reaches `select_scorer` with its path.
+//! manifest the download is verified (size + sha256) through the package manager, a damaged file is
+//! refused and fetched again, and only an installed, consented model reaches `select_scorer` with its path.
 //! Withdrawing consent deletes the model. Served by the qrtz-speech test kit on loopback.
 use qrtz_app::ctrl_model::{CtrlLayaModel, CtrlManifest};
 use qrtz_speech::download::DownloadControl;
@@ -20,7 +20,7 @@ fn manifest(srv: &Server, placeholder: bool) -> CtrlManifest {
     srv.put(&format!("org/laya/resolve/{rev}/{remote}"), b.clone());
     serde_json::from_value(json!({
         "version": "1.0.0", "placeholder": placeholder, "base": "https://example.invalid",
-        "sets": [{"id": "laya", "dir": "laya", "repo": "org/laya", "revision": rev, "files": [
+        "sets": [{"id": "laya", "package": "model.laya", "task": "decision", "dir": "laya", "repo": "org/laya", "revision": rev, "files": [
             {"remote": remote, "path": "laya.mlpackage/Data/com.apple.CoreML/model.mlmodel",
              "size": b.len(), "sha256": sha(&b)}]}]
     }))
@@ -189,11 +189,8 @@ async fn a_consented_download_is_verified_resumable_and_reaches_the_scorer() {
     assert!(m.download(&DownloadControl::default(), &|_| {}).await.is_err());
     assert!(!m.installed());
     srv.faults.lock().unwrap().corrupt.clear();
-    // A partial file resumes from where it stopped (a Range request).
-    let part = root.join("laya/laya.mlpackage/Data/com.apple.CoreML/model.mlmodel.part");
-    std::fs::create_dir_all(part.parent().unwrap()).unwrap();
-    let _ = std::fs::remove_file(&part);
-    std::fs::write(&part, &body()[..100_000]).unwrap();
+    // The retry goes through the package manager's fetcher (range resumes are tested there: qrtz-publish
+    // tests/pm.rs and module_hosting.rs).
     let last = std::sync::Mutex::new((0u64, 0u64));
     m.download(&DownloadControl::default(), &|p| {
         *last.lock().unwrap() = (p.done, p.total)
@@ -202,16 +199,13 @@ async fn a_consented_download_is_verified_resumable_and_reaches_the_scorer() {
     .unwrap();
     let (done, total) = *last.lock().unwrap();
     assert_eq!((done, total), (300_000, 300_000));
-    assert!(
-        srv.faults
-            .lock()
-            .unwrap()
-            .ranges
-            .iter()
-            .any(|(_, r)| r.contains("100000")),
-        "resumed: {:?}",
-        srv.faults.lock().unwrap().ranges
-    );
+    assert!(srv
+        .faults
+        .lock()
+        .unwrap()
+        .ranges
+        .iter()
+        .all(|(_, r)| r == "bytes=0-299999"));
     assert!(m.installed());
     let st = m.state(true);
     assert_eq!((st.state, st.scorer), ("installed", "laya"));
@@ -294,12 +288,15 @@ mod router {
         assert_eq!(v["data"]["state"], "failed", "{v}");
         assert!(v["data"]["error"].is_string(), "{v}");
         assert_eq!(v["data"]["scorer"], "heuristic");
+        // Only loopback, only the pinned paths (files are fetched in parallel now, so several may be asked for).
+        let pinned: Vec<String> = super::CtrlManifest::pinned().manifest.sets[0]
+            .files
+            .iter()
+            .map(|f| format!("{}/resolve/{}/{}", super::REPO, super::REV, f.remote))
+            .collect();
         let asked: Vec<String> = hits().into_keys().collect();
-        assert_eq!(
-            asked,
-            ["FluidInference/laya-coreml/resolve/7b8d7a2b7e28e746c6ecaad44bbcd5cf251a4fcc/laya_multilingual_e8_L512_options32.mlmodelc/coremldata.bin"],
-            "only loopback, only the pinned path, stops at the first bad file"
-        );
+        assert!(!asked.is_empty());
+        assert!(asked.iter().all(|a| pinned.contains(a)), "{asked:?}");
         assert_eq!(v["data"]["bytesOnDisk"], 0, "nothing kept: {v}");
         // The answer persists (a restart reads the same file).
         assert!(CtrlLayaModel::new(d.path().join("models/ctrl"), &d.path().join("ctrl"), None).consented());
