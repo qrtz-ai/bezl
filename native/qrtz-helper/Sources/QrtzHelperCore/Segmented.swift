@@ -115,6 +115,44 @@ public struct SegmentStats: Sendable, Equatable {
 
 /// Implemented by a recogniser that takes the release pad as an argument instead of as appended audio, so the pad
 /// is end context for the last segment only (never a pause, never a segment of its own).
+/// ADR 0118: the release deadline of a segmented recogniser (N130: `dictation.stopped` within the budget qrtz-talk
+/// waits for, `HelperTail::segmented_budget_ms`, which mirrors this). The release decodes the last segment (at most
+/// `capMs - padMs` of audio) with its overlap and the pad, and waits for at most one more still decoding in the
+/// background: `decodeFloorMs` plus `decodeMsPerAudioS` per second of that audio, within what `maxWaitMs` leaves
+/// after the drain. Unlike `DictationTail.budgetMs` it stops growing past two segments of audio.
+public struct SegmentedTail: Sendable, Equatable {
+    public var tail: DictationTail
+    public var capMs: Int
+    public var overlapMs: Int
+    public var decodeFloorMs: Int
+    public var decodeMsPerAudioS: Int
+    public init(tail: DictationTail = DictationTail(), capMs: Int = 15_000, overlapMs: Int = 0, decodeFloorMs: Int = 1_500,
+                decodeMsPerAudioS: Int = 100) {
+        self.tail = tail; self.capMs = capMs; self.overlapMs = overlapMs; self.decodeFloorMs = decodeFloorMs
+        self.decodeMsPerAudioS = decodeMsPerAudioS
+    }
+    public init(tail: DictationTail, rule: SegmentRule) {
+        self.init(tail: tail, capMs: rule.capMs, overlapMs: rule.overlapMs)
+    }
+
+    /// The pad and finish part (after the drain): what `budgetMs` allows past `tailMs + drainLimitMs(0)`.
+    public func finalizeLimitMs(audioMs: Int) -> Int {
+        let a = max(0, audioMs)
+        let span = max(1, capMs == .max ? .max : capMs - tail.padMs)
+        let last = min(a, span), queued = min(a - last, span)
+        let work = Self.sat(Self.sat(Self.sat(last, overlapMs), tail.padMs), queued)
+        let want = Self.sat(decodeFloorMs, Int(min(Double(Int.max), Double(work) * Double(decodeMsPerAudioS) / 1000)))
+        return min(want, max(decodeFloorMs, tail.maxWaitMs - tail.drainLimitMs(queuedMs: 0)))
+    }
+
+    /// Release to `dictation.stopped` at most: tail + drain(0) + finalize.
+    public func budgetMs(audioMs: Int) -> Int {
+        tail.tailMs + tail.drainLimitMs(queuedMs: 0) + finalizeLimitMs(audioMs: audioMs)
+    }
+
+    static func sat(_ a: Int, _ b: Int) -> Int { let (r, o) = a.addingReportingOverflow(b); return o ? .max : r }
+}
+
 public protocol PaddedFinishing: StreamingTranscriber {
     func finish(padSamples: Int) async -> String
     /// The counts of the dictation since the last `reset()`.

@@ -519,7 +519,10 @@ public actor DictationEngine {
         session?.timing.tailMs = Int(released.msToNow())
         // 2. Drain: the mic blocks still queued in the stream reach the recogniser (bounded, scaled to the queue).
         let queuedMs = (backlog?.queuedSamples ?? 0) / 16
-        let drainLimit = tail.drainLimitMs(queuedMs: queuedMs)
+        // ADR 0118: a segmented recogniser's whole release is `SegmentedTail.budgetMs` (drain at its unqueued limit:
+        // its appends only buffer, so nothing should be queued), the streaming `budgetMs` otherwise.
+        let segmented = session?.transcriber is SegmentedTranscriber
+        let drainLimit = tail.drainLimitMs(queuedMs: segmented ? 0 : queuedMs)
         let drainStart = ContinuousClock.now
         let drained = await drainMic(limitMs: drainLimit, sinceBlocks: releaseBlocks)
         guard session?.id == id else { return }
@@ -534,7 +537,7 @@ public actor DictationEngine {
         // N139: one deadline for the whole release (drain + finalize; `budgetMs` unchanged). close() may use all of
         // it except a reserve for pad + finish, so a drain that timed out still waits for a slow (not hung) append and
         // finalizes its audio; past that the last partial is the answer (N131).
-        let finalizeLimit = tail.finalizeLimitMs(audioMs: (session?.samples ?? 0) / 16, queuedMs: queuedMs)
+        let finalizeLimit = finalizeLimitMs(session?.transcriber, audioMs: (session?.samples ?? 0) / 16, queuedMs: queuedMs)
         let deadline = drainStart + .milliseconds(drainLimit + finalizeLimit)
         let reserveMs = finalizeLimit / 2
         let idle = await close(limitMs: max(0, Self.msLeft(until: deadline) - reserveMs))
@@ -583,6 +586,13 @@ public actor DictationEngine {
     static func asrInfo(_ tr: StreamingTranscriber?, _ g: SegmentStats?) -> DictationAsrInfo? {
         guard let tr else { return nil }
         return DictationAsrInfo(asr: tr.name, segments: g?.segments, tailDecodeMs: g.flatMap { $0.tailDecodeMs < 0 ? nil : ($0.tailDecodeMs * 10).rounded() / 10 })
+    }
+
+    /// The pad + finish limit of a release: ADR 0118's segmented budget for a segmented recogniser (its decode is
+    /// the last segment, not the dictation), the streaming one otherwise.
+    func finalizeLimitMs(_ tr: StreamingTranscriber?, audioMs: Int, queuedMs: Int) -> Int {
+        if let seg = tr as? SegmentedTranscriber { return SegmentedTail(tail: tail, rule: seg.rule).finalizeLimitMs(audioMs: audioMs) }
+        return tail.finalizeLimitMs(audioMs: audioMs, queuedMs: queuedMs)
     }
 
     /// How long a stop waits for the resampler's flushed tail to reach the recogniser (a few ms of audio, already
@@ -694,7 +704,7 @@ public actor DictationEngine {
         var text = ""
         if let tr = s.transcriber {
             // N164: the same pad + finish as a release (bounded like it), so an abort keeps the last word too.
-            let limit = tail.finalizeLimitMs(audioMs: s.samples / 16, queuedMs: 0)
+            let limit = finalizeLimitMs(tr, audioMs: s.samples / 16, queuedMs: 0)
             text = (idle ? await finalText(tr, limitMs: limit, partial: s.lastPartial) : s.lastPartial).trimmingCharacters(in: .whitespacesAndNewlines)
             for e in s.segmenter.flush(cumulative: text, nowMs: now() - s.startMs) { send(.dictationAsr(id: s.id, event: e)) }
         }

@@ -65,11 +65,13 @@ Rules (the arbiter's `cmd` events):
    Echo on Parakeet (2026-10-18): echo's recogniser is Parakeet TDT v2 (English, Core ML), a batch decoder, so
    there are no partials within a segment. While the key is held the helper cuts the audio at pauses (≥ 300 ms
    of silence, once the segment is at least 2 s long) or at a 15 s cap and decodes each finished segment in the background, one at a time. `dictation.asr`
-   partials then carry the segments decoded so far. On release, the 640 ms pad goes on the last segment only, as end
-   context, and only that segment is decoded. Cuts land in silence (mid-pause, or the quietest 100 ms of the cap's
+   partials then carry the segments decoded so far. Every segment is decoded with 640 ms of silence after
+   it as end context for its last word (`segmentPadMs`, and the cap counts it). On release only the last segment is
+   left to decode, with the release's 640 ms pad. Cuts land in silence (mid-pause, or the quietest 100 ms of the cap's
    last 1.5 s), so by default segments don't overlap: Parakeet often drops a segment that starts inside a word. With
    an overlap set, words are stitched by their start times at the middle of the overlap. That decode is the finish
-   under the same N139 deadline. A last
+   under the N139 single deadline, sized by `SegmentedTail.budgetMs(audioMs:)` (ADR 0118, below) instead of the
+   streaming `budgetMs`. A last
    segment with no speech (a pause before the release) isn't decoded. Every knob of the rule is an environment
    override (`QRTZ_ECHO_SEGMENT_PAUSE_MS`, `_CAP_MS`, `_OVERLAP_MS`, `_OVERLAP_MODE` = `all`|`cap`, `_MIN_MS`). The
    fallback is Apple SpeechAnalyzer (macOS 26). Recordings keep Nemotron streaming, and it loads only for a
