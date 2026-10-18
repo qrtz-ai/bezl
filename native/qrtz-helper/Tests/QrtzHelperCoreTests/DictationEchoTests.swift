@@ -75,8 +75,12 @@ final class DictationEchoTests: XCTestCase {
         await c.handle(.dictationStop(id: "d1"))
     }
 
-    func waitFor(_ cond: () -> Bool) async {
-        for _ in 0..<200 where !cond() { try? await Task.sleep(nanoseconds: 5_000_000) }
+    func waitFor(_ cond: @Sendable () -> Bool) async {
+        var tries = 0
+        while tries < 200, !cond() {
+            tries += 1
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
     }
 
     func testWithoutAGateTheSentenceOnTheSpeakersIsTyped() async {
