@@ -98,7 +98,7 @@ fn close_all_tabs_runs_by_script_in_the_background_and_verifies() {
             "a0".to_string(),
             Route::Scripting {
                 app: "com.apple.Safari".into(),
-                verb: ScriptVerb::CloseAllTabs
+                verb: ScriptVerb::CloseSavedTabs
             }
         )]
     );
@@ -162,7 +162,9 @@ fn a_failed_verify_backtracks_then_asks_when_out_of_alternatives() {
     let mut world = FakeWorld::typical(4);
     world.no_effect = true;
     let (s, fake) = svc(d.path(), world);
-    let text = "close tabs";
+    // Slice 7b: a failed selective tab close asks instead of falling back to cmd-w (which can't skip pinned or
+    // unsaved tabs): "close this tab" backtracks from the one-tab close to the selective close, which then asks.
+    let text = "close this tab";
     let v = run(&s, text);
     let st = &v["state"];
     // Out of tries, or the re-decided move isn't sure: either way the user is asked.
@@ -183,7 +185,20 @@ fn a_failed_verify_backtracks_then_asks_when_out_of_alternatives() {
     // Every try was its own action with its own guard; none touched the user.
     assert_eq!(fake.world().acted.len(), verifies.len());
     untouched(&fake.world());
-    replays(d.path(), &v, text, &["close tabs"]);
+    replays(d.path(), &v, text, &["this tab"]);
+}
+
+#[test]
+fn a_failed_selective_tab_close_asks_without_a_key_fallback() {
+    let d = tempfile::tempdir().unwrap();
+    let mut world = FakeWorld::typical(4);
+    world.no_effect = true;
+    let (s, fake) = svc(d.path(), world);
+    let v = run(&s, "close all my tabs");
+    assert_eq!(v["state"]["status"], "asked-out", "{v}");
+    assert_eq!(fake.world().acted.len(), 1, "one try, no cmd-w fallback");
+    assert_eq!(kinds(&v).iter().filter(|x| *x == "backtrack").count(), 0);
+    untouched(&fake.world());
 }
 
 #[test]

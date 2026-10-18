@@ -108,7 +108,13 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
         content: BTreeMap::new(),
     };
     let step = match mv {
-        "route.scripting.close_all_tabs" => act(vec![script(ScriptVerb::CloseAllTabs)], tabs, Expect::Zero),
+        // Slice 7b (ADR 0114): close the tabs that are neither pinned nor hold unsaved input; the driver then holds
+        // the unsaved ones behind the confirm gate ([`HELD_TABS_MOVE`]).
+        "route.scripting.close_all_tabs" => act(
+            vec![script(ScriptVerb::CloseSavedTabs)],
+            Check::SavedTabs { app: app.clone() },
+            Expect::Zero,
+        ),
         "route.scripting.close_tab" => act(
             vec![script(ScriptVerb::CloseTab), key("cmd+w")],
             tabs,
@@ -370,6 +376,52 @@ impl Clock for DynClock<'_> {
     }
 }
 
+/// The gate's move for the tabs "close all my tabs" held back because they hold unsaved input (or the helper
+/// couldn't tell): approving it closes every unpinned tab ([`ScriptVerb::CloseUnpinnedTabs`]).
+pub const HELD_TABS_MOVE: &str = "route.scripting.close_unsaved_tabs";
+pub const CLOSE_ALL_TABS_MOVE: &str = "route.scripting.close_all_tabs";
+
+/// "Close all my tabs" (slice 7b): the browser's tabs, split into the ones closed without asking (not pinned, no
+/// unsaved input) and the ones held for the gate (not pinned, unsaved input or unknown). Pinned tabs are never
+/// touched. A helper that can't enumerate gives a count, all held.
+pub fn tabs_split(
+    helper: &HelperClient,
+    app: &str,
+) -> (usize, Vec<PreviewItem>, Vec<(String, String)>, bool) {
+    match helper.preview(app, PreviewWhat::Tabs) {
+        Ok(wire) => {
+            let (items, labels) = hash_items(ItemKind::Tab, &wire);
+            let mut safe = 0;
+            let mut held = Vec::new();
+            for (it, w) in items.into_iter().zip(wire.iter()) {
+                match (w.pinned, w.unsaved) {
+                    (Some(true), _) => {}
+                    (Some(false), Some(false)) => safe += 1,
+                    // Unsaved, or the helper can't tell whether it's pinned: ask.
+                    _ => held.push(it),
+                }
+            }
+            let keep: std::collections::BTreeSet<&String> = held.iter().map(|i| &i.key).collect();
+            let labels = labels.into_iter().filter(|(k, _)| keep.contains(k)).collect();
+            (safe, held, labels, true)
+        }
+        Err(_) => {
+            let n = helper.measure(&Check::TabCount { app: app.into() }).unwrap_or(0);
+            (0, counted_items(ItemKind::Tab, n), Vec::new(), false)
+        }
+    }
+}
+
+fn held_tabs_preview(s: &CtrlState, app: &str, items: Vec<PreviewItem>, complete: bool) -> Preview {
+    Preview {
+        intent: intent_and_move(s).0,
+        mv: HELD_TABS_MOVE.into(),
+        app: Some(app.into()),
+        items,
+        complete,
+    }
+}
+
 /// Most actions one run takes (a first try plus backtracks).
 pub const MAX_ACTIONS: usize = 1 + crate::decide::BACKTRACKS_PER_TASK as usize;
 
@@ -460,6 +512,93 @@ impl Driver<'_> {
                     verify,
                     content,
                 } => (routes, verify, content),
+            };
+            // Slice 7b (ADR 0114): "close all my tabs" closes the plain tabs unattended, never touches pinned ones,
+            // and holds tabs with unsaved input behind the gate; approving closes them, deny leaves them open.
+            let tabs_app = (fplan.is_none() && mv == CLOSE_ALL_TABS_MOVE)
+                .then(|| routes.iter().find_map(|r| r.app().map(str::to_string)))
+                .flatten();
+            let mut tabs_more = false;
+            let (routes, verify) = match &tabs_app {
+                None => (routes, verify),
+                Some(app) => {
+                    let held_gate = s
+                        .confirm
+                        .as_ref()
+                        .filter(|g| g.preview.mv == HELD_TABS_MOVE && !g.used);
+                    match held_gate.map(|g| (g, g.answer.as_ref())) {
+                        // Waiting, or denied / expired (the service finishes the run).
+                        Some((_, None)) => return Ok(()),
+                        Some((_, Some(a))) if !a.approves() => return Ok(()),
+                        Some((g, Some(_))) if g.reverified.is_none() => {
+                            let (_, held, labels, complete) = tabs_split(self.helper, app);
+                            sink.labels(labels);
+                            let ok = held_tabs_preview(&s, app, held, complete).within(&g.preview);
+                            sink.push(
+                                log,
+                                Event::ConfirmReverified {
+                                    gate_id: g.id.clone(),
+                                    ok,
+                                },
+                            )?;
+                            continue;
+                        }
+                        Some(_) => (
+                            vec![Route::Scripting {
+                                app: app.clone(),
+                                verb: ScriptVerb::CloseUnpinnedTabs,
+                            }],
+                            Verify {
+                                check: Check::UnpinnedTabs { app: app.clone() },
+                                expect: Expect::Zero,
+                            },
+                        ),
+                        None => {
+                            let (safe, held, labels, complete) = tabs_split(self.helper, app);
+                            // The unattended close runs once per run (a tab opened after it isn't swept up).
+                            let swept = log.records().iter().any(|r| {
+                                matches!(&r.event, Event::ActionRequested { routes, .. } if routes.iter().any(|r| matches!(r, Route::Scripting { verb: ScriptVerb::CloseSavedTabs, .. })))
+                            });
+                            if safe > 0 && !swept {
+                                tabs_more = !held.is_empty();
+                                (routes, verify)
+                            } else if held.is_empty() {
+                                // Only pinned tabs (or nothing) left: done, nothing to close.
+                                return sink.push(log, finish(TaskStatus::Done));
+                            } else {
+                                let preview = held_tabs_preview(&s, app, held, complete);
+                                sink.labels(labels);
+                                let gate_id = format!("g{}", s.gates);
+                                let scope = preview.scope();
+                                sink.push(
+                                    log,
+                                    Event::ConfirmRequested {
+                                        gate_id: gate_id.clone(),
+                                        preview,
+                                        rules: rules(&s),
+                                    },
+                                )?;
+                                match self.standing.iter().find(|a| a.scope.covers(&scope)) {
+                                    Some(a) => sink.push(
+                                        log,
+                                        Event::ConfirmResolved {
+                                            gate_id,
+                                            answer: ConfirmAnswer::Standing {
+                                                approval_id: a.id.clone(),
+                                                scope: a.scope.clone(),
+                                            },
+                                        },
+                                    )?,
+                                    None => {
+                                        sink.confirm_waiting(&gate_id);
+                                        return Ok(());
+                                    }
+                                }
+                                continue;
+                            }
+                        }
+                    }
+                }
             };
             // The confirm gate (ADR 0111): an irreversible plan acts only on an unspent approval of this plan whose
             // preview still holds right now.
@@ -613,6 +752,10 @@ impl Driver<'_> {
                         },
                     )?;
                     if verdict != VerifyOutcome::Failed {
+                        if tabs_more {
+                            // The held tabs' gate comes next round.
+                            continue;
+                        }
                         sink.push(log, finish(TaskStatus::Done))?;
                         return Ok(());
                     }
@@ -629,6 +772,11 @@ impl Driver<'_> {
                     return Ok(());
                 }
             };
+            // Key routes (cmd-w, …) can't skip pinned or unsaved tabs: a selective close that failed asks.
+            if tabs_app.is_some() {
+                sink.push(log, finish(TaskStatus::AskedOut))?;
+                return Ok(());
+            }
             match next_backtrack(&log.state(), reason) {
                 Some(b) => sink.push(log, b)?,
                 None => {

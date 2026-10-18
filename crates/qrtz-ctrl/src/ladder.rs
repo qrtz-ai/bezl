@@ -70,6 +70,12 @@ pub enum ScriptVerb {
     CloseTab,
     CountWindows,
     CloseWindow,
+    /// Slice 7b (ADR 0114): close every tab that is not pinned and holds no unsaved form input; the helper leaves a
+    /// tab alone whenever it can't tell (pinned / unsaved unknown counts as "keep").
+    CloseSavedTabs,
+    /// Close every tab that is not pinned, unsaved input included. Only after an approved confirm gate on the held
+    /// tabs (`replay_check` refuses it otherwise).
+    CloseUnpinnedTabs,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

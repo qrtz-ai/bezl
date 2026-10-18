@@ -306,6 +306,7 @@ mod tests {
         let w = |t: &str| PreviewItemWire {
             title: t.into(),
             unsaved: Some(false),
+            pinned: None,
         };
         let (items, labels) = hash_items(ItemKind::Window, &[w("untitled"), w("untitled"), w("notes")]);
         assert_eq!(items.len(), 3);

@@ -813,6 +813,13 @@ impl CtrlService {
                     }
                 };
                 let approves = answer.approves();
+                // "Close all my tabs" (ADR 0114): the other tabs are already closed; deny keeps the held ones open
+                // and the run is done.
+                let denied_status = if g.preview.mv == crate::exec::HELD_TABS_MOVE {
+                    TaskStatus::Done
+                } else {
+                    TaskStatus::Cancelled
+                };
                 let mono = self.clock.mono_ns();
                 store.append_run_record(&mut log, mono, now, Event::ConfirmResolved { gate_id, answer })?;
                 self.unwait(log.run_id());
@@ -825,7 +832,7 @@ impl CtrlService {
                         now,
                         Event::TaskFinished {
                             task_id,
-                            status: TaskStatus::Cancelled,
+                            status: denied_status,
                         },
                     )?;
                 }

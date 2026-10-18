@@ -21,6 +21,9 @@ public enum CtrlRoute: Equatable, Sendable {
     case takesOver(String)
 
     /// The only Apple Event verbs (Rust `ScriptVerb`): none of them can activate, launch, open or reopen.
+    /// Slice 7b's `close_saved_tabs` / `close_unpinned_tabs` are deliberately absent: neither Safari's nor Chrome's
+    /// scripting dictionary says whether a tab is pinned or holds unsaved input, so this helper refuses them (the
+    /// host then asks) until a backend can tell (ADR 0114).
     public static let scriptVerbs: Set<String> = ["count_tabs", "close_all_tabs", "close_tab", "count_windows", "close_window"]
 
     static func parse(_ o: [String: Any]) -> CtrlRoute? {
@@ -117,9 +120,13 @@ public struct CtrlFailure: Error, Equatable { public let code: String; public in
 
 /// One item of a confirm-gate preview. `title` goes to the host, which hashes it before anything is logged;
 /// `unsaved: nil` = can't tell (the host counts it as unsaved).
+/// `pinned` (tabs only, slice 7b, ADR 0114): a pinned tab is never closed by "close all my tabs"; nil = can't tell
+/// (the host then holds the tab for the confirm gate) and is left off the wire.
 public struct CtrlPreviewItem: Equatable, Sendable {
-    public let title: String, unsaved: Bool?
-    public init(title: String, unsaved: Bool?) { self.title = title; self.unsaved = unsaved }
+    public let title: String, unsaved: Bool?, pinned: Bool?
+    public init(title: String, unsaved: Bool?, pinned: Bool? = nil) {
+        self.title = title; self.unsaved = unsaved; self.pinned = pinned
+    }
 }
 
 /// What the macOS side implements (and the tests fake).
@@ -206,7 +213,9 @@ public final class CtrlServer {
             case let .preview(_, app, what):
                 let items = try backend.preview(app: app, what: what)
                 return ["type": "ctrl.preview.result", "id": id, "items": items.map { i -> [String: Any] in
-                    ["title": i.title, "unsaved": i.unsaved as Any? ?? NSNull()]
+                    var o: [String: Any] = ["title": i.title, "unsaved": i.unsaved as Any? ?? NSNull()]
+                    if let p = i.pinned { o["pinned"] = p }
+                    return o
                 }]
             }
         } catch let f as CtrlFailure {

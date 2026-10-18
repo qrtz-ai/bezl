@@ -71,6 +71,9 @@ final class CtrlStdioTests: XCTestCase {
             }
         }
         XCTAssertNil(CtrlScripts.source(verb: "quit", bundleId: "com.apple.Safari"))
+        // Slice 7b (ADR 0114): no script can tell a pinned or unsaved tab, so the selective closes have none.
+        XCTAssertNil(CtrlScripts.source(verb: "close_saved_tabs", bundleId: "com.apple.Safari"))
+        XCTAssertNil(CtrlScripts.source(verb: "close_unpinned_tabs", bundleId: "com.google.Chrome"))
         XCTAssertNil(CtrlScripts.source(verb: "close_tab", bundleId: "com.apple.Safari\" to activate --"))
         XCTAssertNil(CtrlScripts.source(verb: "close_tab", bundleId: ""))
         XCTAssertTrue(CtrlScripts.safeBundleId("org.mozilla.firefox"))

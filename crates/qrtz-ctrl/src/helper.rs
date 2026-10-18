@@ -33,6 +33,10 @@ pub enum Check {
     AppRunning { app: String },
     /// Re-snapshot this AX scope; verified by `obs.diff` (something changed), not by a number.
     AxScope { app: String, scope: Option<String> },
+    /// Slice 7b: tabs that are neither pinned nor hold unsaved input (blank new-tab pages not counted).
+    SavedTabs { app: String },
+    /// Slice 7b: tabs that are not pinned (blank new-tab pages not counted).
+    UnpinnedTabs { app: String },
     /// Planned files not yet where a file batch puts them (slice 7). Measured by the host from the disk, never
     /// sent to the helper.
     FilesRemaining,
@@ -116,6 +120,9 @@ pub enum PreviewWhat {
 pub struct PreviewItemWire {
     pub title: String,
     pub unsaved: Option<bool>,
+    /// Tabs only (slice 7b): a pinned tab is never closed by "close all my tabs". Absent / `null` = can't tell.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pinned: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -375,6 +382,9 @@ pub struct FakeApp {
     pub docs: Vec<(String, bool)>,
     /// The fake can't enumerate this app's windows (the preview errors, the host falls back to a count).
     pub no_preview: bool,
+    /// Slice 7b: pinned tabs and tabs with unsaved form input (titles), on top of `tabs` plain ones.
+    pub pinned_tabs: Vec<String>,
+    pub unsaved_tabs: Vec<String>,
 }
 
 impl FakeApp {
@@ -392,6 +402,8 @@ impl FakeApp {
             scriptable: false,
             docs: Vec::new(),
             no_preview: false,
+            pinned_tabs: Vec::new(),
+            unsaved_tabs: Vec::new(),
         }
     }
     pub fn browser(mut self, tabs: i64) -> Self {
@@ -524,7 +536,16 @@ impl FakeWorld {
                     return Err("script.unsupported".into());
                 }
                 match verb {
-                    ScriptVerb::CloseAllTabs => a.tabs = 0,
+                    ScriptVerb::CloseAllTabs => {
+                        a.tabs = 0;
+                        a.pinned_tabs.clear();
+                        a.unsaved_tabs.clear();
+                    }
+                    ScriptVerb::CloseSavedTabs => a.tabs = 0,
+                    ScriptVerb::CloseUnpinnedTabs => {
+                        a.tabs = 0;
+                        a.unsaved_tabs.clear();
+                    }
                     ScriptVerb::CloseTab => a.tabs = (a.tabs - 1).max(0),
                     ScriptVerb::CloseWindow => a.windows = (a.windows - 1).max(0),
                     ScriptVerb::CountTabs | ScriptVerb::CountWindows => {}
@@ -634,7 +655,17 @@ impl FakeWorld {
                         .apps
                         .iter()
                         .find(|a| &a.bundle_id == app && a.running && a.scriptable)
+                        .map(|a| a.tabs + a.pinned_tabs.len() as i64 + a.unsaved_tabs.len() as i64),
+                    Check::SavedTabs { app } => self
+                        .apps
+                        .iter()
+                        .find(|a| &a.bundle_id == app && a.running && a.scriptable)
                         .map(|a| a.tabs),
+                    Check::UnpinnedTabs { app } => self
+                        .apps
+                        .iter()
+                        .find(|a| &a.bundle_id == app && a.running && a.scriptable)
+                        .map(|a| a.tabs + a.unsaved_tabs.len() as i64),
                     Check::WindowCount { app } => self
                         .apps
                         .iter()
@@ -665,20 +696,29 @@ impl FakeWorld {
                             .map(|(t, u)| PreviewItemWire {
                                 title: t.clone(),
                                 unsaved: Some(*u),
+                                pinned: None,
                             })
                             .collect(),
                         PreviewWhat::Windows => (1..=a.windows)
                             .map(|i| PreviewItemWire {
                                 title: format!("window {i}"),
                                 unsaved: Some(false),
+                                pinned: None,
                             })
                             .collect(),
-                        PreviewWhat::Tabs => (1..=a.tabs)
-                            .map(|i| PreviewItemWire {
-                                title: format!("tab {i}"),
-                                unsaved: None,
-                            })
-                            .collect(),
+                        PreviewWhat::Tabs => {
+                            let tab = |title: String, unsaved, pinned| PreviewItemWire {
+                                title,
+                                unsaved: Some(unsaved),
+                                pinned: Some(pinned),
+                            };
+                            a.pinned_tabs
+                                .iter()
+                                .map(|t| tab(t.clone(), false, true))
+                                .chain((1..=a.tabs).map(|i| tab(format!("tab {i}"), false, false)))
+                                .chain(a.unsaved_tabs.iter().map(|t| tab(t.clone(), true, false)))
+                                .collect()
+                        }
                     };
                     HelperMsg::PreviewResult { id, items }
                 }

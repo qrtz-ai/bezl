@@ -399,6 +399,28 @@ pub fn replay_check(log: &EventLog, goal: &Goal) -> Result<(), Divergence> {
                     return Err(div);
                 }
             }
+            // Slice 7b (ADR 0114): closing tabs with unsaved input needs the same approved, re-verified gate.
+            Event::ActionRequested { routes, .. }
+                if routes.iter().any(|r| {
+                    matches!(
+                        r,
+                        crate::ladder::Route::Scripting {
+                            verb: crate::ladder::ScriptVerb::CloseUnpinnedTabs,
+                            ..
+                        }
+                    )
+                }) =>
+            {
+                let ok = s.confirm.as_ref().is_some_and(|g| {
+                    g.preview.mv == crate::exec::HELD_TABS_MOVE
+                        && g.answer.as_ref().is_some_and(|a| a.approves())
+                        && g.reverified == Some(true)
+                        && !g.used
+                });
+                if !ok {
+                    return Err(div);
+                }
+            }
             // An observation the chain asked for (before a plan) must be the one the state asks for; the
             // executor's re-snapshots after an action (a plan exists) aren't questions.
             Event::ObsSnapshot { app, scope, .. } if s.plan.is_none() => {

@@ -98,6 +98,13 @@ final class CtrlProtocolTests: XCTestCase {
         XCTAssertEqual(fake.acted, [.pidKey(app: "com.apple.Safari", combo: "cmd+w")])
     }
 
+    func testAPinnedFlagRidesThePreviewOnlyWhenKnown() {
+        let a = CtrlPreviewItem(title: "mail", unsaved: false, pinned: true)
+        let b = CtrlPreviewItem(title: "doc", unsaved: nil)
+        XCTAssertEqual(a.pinned, true)
+        XCTAssertNil(b.pinned)
+    }
+
     func testABadLineIsAnErrorNotACrash() {
         let server = CtrlServer(backend: Fake())
         XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.nope","id":"z"}"#)),
