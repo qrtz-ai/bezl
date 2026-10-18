@@ -85,6 +85,10 @@ pub enum WorkspaceOp {
     /// ADR 0139: the reverse of [`WorkspaceOp::MuteOutput`] (`set volume without output muted`, same process, same
     /// rules).
     UnmuteOutput,
+    /// ADR 0140: set the Mac's output volume to `level` percent (0–100) and unmute it (Standard Additions
+    /// `set volume output volume N` then `set volume without output muted`, in the helper's own process, same rules
+    /// as mute: no app told anything, no HUD, no key event). Reversible, no gate.
+    SetVolume { level: u8 },
 }
 
 /// The only Apple Event verbs ctrl sends. Templates, not free text: the type can't express `activate`.
@@ -169,7 +173,8 @@ impl Route {
                 WorkspaceOp::QuitApps { .. }
                 | WorkspaceOp::HideApps { .. }
                 | WorkspaceOp::MuteOutput
-                | WorkspaceOp::UnmuteOutput,
+                | WorkspaceOp::UnmuteOutput
+                | WorkspaceOp::SetVolume { .. },
             ) => None,
             Route::Workspace(WorkspaceOp::OpenUrl { app, .. } | WorkspaceOp::LaunchHidden { app }) => {
                 Some(app)
@@ -346,7 +351,9 @@ pub fn judge(route: &Route, env: &Env) -> Verdict {
                     return Verdict::Allowed;
                 }
                 // No app, no window, no input: nothing on screen to take over.
-                WorkspaceOp::MuteOutput | WorkspaceOp::UnmuteOutput => return Verdict::Allowed,
+                WorkspaceOp::MuteOutput | WorkspaceOp::UnmuteOutput | WorkspaceOp::SetVolume { .. } => {
+                    return Verdict::Allowed
+                }
             };
             if !env.running_apps.contains(app) {
                 return Verdict::NeedsGrant {

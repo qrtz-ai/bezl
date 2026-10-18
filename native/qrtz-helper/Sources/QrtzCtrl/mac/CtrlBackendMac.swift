@@ -274,6 +274,12 @@ public final class MacCtrlBackend: CtrlBackend {
     static let muteSource = "set volume with output muted"
     /// ADR 0139: the reverse.
     static let unmuteSource = "set volume without output muted"
+    /// ADR 0140: the level is checked 0–100 by the parse and is the only thing put in; never task text.
+    static func setVolumeSource(_ level: Int) -> String {
+        "set volume output volume \(min(max(level, 0), 100))\nset volume without output muted"
+    }
+    /// ADR 0140: -1 (read as nil) when muted or when the output has no volume, so an inaudible level never verifies.
+    static let outputVolumeSource = "set s to (get volume settings)\nif output muted of s is true then\nreturn -1\nend if\nset v to output volume of s\nif v is missing value then\nreturn -1\nend if\nreturn v"
     static let outputMutedSource = "if output muted of (get volume settings) then\nreturn 1\nelse\nreturn 0\nend if"
 
     public func act(_ route: CtrlRoute, content: [String: String]) throws {
@@ -308,6 +314,9 @@ public final class MacCtrlBackend: CtrlBackend {
         case .unmuteOutput:
             // ADR 0139: the same, reversed.
             _ = try Self.runScript(Self.unmuteSource)
+        case let .setVolume(level):
+            // ADR 0140: the same process and rules; the host verifies by reading the level back.
+            _ = try Self.runScript(Self.setVolumeSource(level))
         case let .hideApps(apps):
             // ADR 0134: `hide()` is the Dock's Hide: the app's windows go, nothing is activated or raised, no key event.
             // The frontmost app was dropped before this point (CtrlServer); re-checked here for the race.
@@ -351,6 +360,8 @@ public final class MacCtrlBackend: CtrlBackend {
         // ADR 0135: read back by Standard Additions in this process (no app asked, no prompt); nil without an
         // output that can mute.
         case "output_muted": return (try? Self.runScript(Self.outputMutedSource)).map { Int($0.int32Value) }
+        // ADR 0140: the level in this process; nil when muted or without a volume.
+        case "output_volume": return (try? Self.runScript(Self.outputVolumeSource)).map { Int($0.int32Value) }.flatMap { $0 < 0 ? nil : $0 }
         // ADR 0137: the global appearance, read in this process (no app asked, no prompt): "Dark" or absent.
         case "dark_mode": return CtrlAppearance.isDark(UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)) ? 1 : 0
         case "tab_count":

@@ -50,6 +50,9 @@ pub enum Check {
     /// ADR 0137: 1 if the Mac is in dark mode, 0 in light mode (read in the helper's own process from the global
     /// `AppleInterfaceStyle`; no app asked, no prompt).
     DarkMode,
+    /// ADR 0140: the Mac's output volume in percent, 0–100 (`null`: no output device with a volume, or muted, so
+    /// a level that can't be heard never reads as set).
+    OutputVolume,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,6 +65,9 @@ pub enum Expect {
     One,
     /// The AX scope changed.
     Changed,
+    /// ADR 0140: this exact level after, give or take 1 (macOS keeps the volume as a fraction, so a set 30 can read
+    /// back as 29 or 31).
+    Level(i64),
 }
 
 /// Host → helper.
@@ -545,6 +551,8 @@ pub struct FakeWorld {
     pub muted: Option<bool>,
     /// ADR 0137: the system appearance (true = dark).
     pub dark: bool,
+    /// ADR 0140: the output volume in percent (read back only while unmuted).
+    pub volume: i64,
 }
 
 pub struct FakeHelper(pub Mutex<FakeWorld>);
@@ -599,6 +607,7 @@ impl FakeWorld {
             day_start_ms: 0,
             muted: Some(false),
             dark: false,
+            volume: 50,
         }
     }
 
@@ -730,6 +739,14 @@ impl FakeWorld {
                 }
                 None => Err("sound.no_output".into()),
             },
+            Route::Workspace(WorkspaceOp::SetVolume { level }) => match self.muted {
+                Some(_) => {
+                    self.muted = Some(false);
+                    self.volume = i64::from(*level);
+                    Ok(())
+                }
+                None => Err("sound.no_output".into()),
+            },
             Route::Workspace(WorkspaceOp::UnmuteOutput) => match self.muted {
                 Some(_) => {
                     self.muted = Some(false);
@@ -854,6 +871,10 @@ impl FakeWorld {
                     | Check::AppsVisible { .. } => None,
                     Check::OutputMuted => self.muted.map(i64::from),
                     Check::DarkMode => Some(i64::from(self.dark)),
+                    Check::OutputVolume => match self.muted {
+                        Some(false) => Some(self.volume),
+                        _ => None,
+                    },
                 };
                 HelperMsg::MeasureResult { id, value }
             }

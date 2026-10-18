@@ -17,7 +17,8 @@
 //! (ADR 0122) deletes the Trash's items through the same executor, never through the Finder, only after the gate,
 //! and only the items the approved card listed. Without roots they still stop with `exec.held { files_not_yet }`. (Runs from before slice 6 may still hold `exec.held { irreversible }`; they replay as before.)
 use crate::apps::{
-    still_visible, to_hide, unused_today, HIDE_OTHERS_MOVE, MUTE_MOVE, QUIT_UNUSED_MOVE, UNMUTE_MOVE,
+    level_of, still_visible, to_hide, unused_today, HIDE_OTHERS_MOVE, MUTE_MOVE, QUIT_UNUSED_MOVE,
+    SET_VOLUME_MOVE, UNMUTE_MOVE,
 };
 use crate::ax::{diff, AxSnapshot};
 use crate::decide::{next_backtrack, run_chain_obs, unobserved, BacktrackReason, Goal, Node, Scorer};
@@ -132,6 +133,22 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
             verify: Verify {
                 check: Check::DarkMode,
                 expect: if on { Expect::One } else { Expect::Zero },
+            },
+            content: BTreeMap::new(),
+        });
+    }
+    // ADR 0140: the level from the plan's `level.N`, set and unmuted in the helper's own process; verified by reading
+    // the volume back (exactly N, give or take 1). No level, nothing to set: the layers asked, so this can't happen
+    // on a plan they made; an older or hand-made plan holds.
+    if mv == SET_VOLUME_MOVE {
+        let Some(level) = chosen.get(&Node::ChooseTarget).and_then(|o| level_of(o)) else {
+            return Some(Step::Hold(HoldReason::NoRoute));
+        };
+        return Some(Step::Act {
+            routes: vec![Route::Workspace(WorkspaceOp::SetVolume { level })],
+            verify: Verify {
+                check: Check::OutputVolume,
+                expect: Expect::Level(i64::from(level)),
             },
             content: BTreeMap::new(),
         });
@@ -270,6 +287,7 @@ pub fn judge_verify(expect: Expect, before: Option<i64>, after: Option<i64>) -> 
     let ok = match (expect, before, after) {
         (Expect::Zero, _, Some(a)) => a == 0,
         (Expect::One, _, Some(a)) => a == 1,
+        (Expect::Level(n), _, Some(a)) => (a - n).abs() <= 1,
         (Expect::Decreased, Some(b), Some(a)) => a < b,
         (Expect::Increased, Some(b), Some(a)) => a > b,
         _ => return VerifyOutcome::Unverifiable,

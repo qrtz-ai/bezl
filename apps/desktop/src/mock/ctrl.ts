@@ -86,6 +86,7 @@ const INTENTS = {
   hide_others: opt('intent.hide_others', 'hide your other apps', 0.07),
   mute: opt('intent.mute', 'mute your mac', 0.07),
   unmute: opt('intent.unmute', 'unmute your mac', 0.07),
+  set_volume: opt('intent.set_volume', 'set the volume', 0.07),
   dark_mode: opt('intent.dark_mode', 'switch dark mode', 0.07),
   light_mode: opt('intent.dark_mode', 'switch dark mode', 0.07),
   open_email: opt('intent.open_app', 'open an app', 0.07),
@@ -103,6 +104,7 @@ type Intent =
   | 'hide_others'
   | 'mute'
   | 'unmute'
+  | 'set_volume'
   | 'dark_mode'
   | 'light_mode'
   | 'open_email';
@@ -181,6 +183,16 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
     act('choose_app', [opt('app.com.apple.mail', 'mail', 0.95)]),
     act('choose_move', [
       opt('route.workspace.launch_hidden', 'start it hidden', 0.95),
+    ]),
+  ],
+  // ADR 0140: the level is the task's own number (choose_target, added in finishChain); reversible, no card.
+  set_volume: [
+    act('choose_move', [
+      opt(
+        'route.system.set_volume',
+        'set the sound output to that level',
+        0.97,
+      ),
     ]),
   ],
   // ADR 0139: the reverse of mute; reversible, no card, no app question.
@@ -308,41 +320,53 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
   ],
 };
 
+/** ADR 0140: the level a volume task names (the number after "to" / "volume"), 0–100. */
+const levelOf = (text: string): number | null => {
+  const m = /\b(?:to|volume)\s+(\d{1,3})\b/i.exec(text);
+  const n = m ? Number(m[1]) : NaN;
+  return n >= 0 && n <= 100 ? n : null;
+};
+
 const intentOf = (text: string): Intent | null =>
-  /\b(unmute|unsilence)\b/i.test(text)
-    ? 'unmute'
-    : /\b(dark|light)\s+mode\b/i.test(text)
-      ? /\b(light|off|disable)\b/i.test(text)
-        ? 'light_mode'
-        : 'dark_mode'
-      : /\b(open|check)\b/i.test(text) && /\b(email|emails|inbox)\b/i.test(text)
-        ? 'open_email'
-        : /\b(mute|silence)\b/i.test(text)
-          ? 'mute'
-          : /\bhide\b/i.test(text) &&
-              /\b(apps|applications|other|others|everything|all)\b/i.test(text)
-            ? 'hide_others'
-            : /\b(quit|close)\b/i.test(text) &&
-                /\bapps?\b/i.test(text) &&
-                /\b(unused|used|using|idle)\b/i.test(text)
-              ? 'quit_unused'
-              : /\bquit\b/i.test(text)
-                ? 'quit_app'
-                : /\bcalendar\b/i.test(text)
-                  ? 'open_calendar'
-                  : /\bempty\b/i.test(text) && /\b(trash|bin)\b/i.test(text)
-                    ? 'empty_trash'
-                    : /\btabs?\b/i.test(text)
-                      ? 'close_tabs'
-                      : /\bdocuments\b/i.test(text)
-                        ? 'tidy_documents'
-                        : /\b(desktop|screenshots?)\b/i.test(text)
-                          ? 'tidy_desktop'
-                          : /download|folder/i.test(text)
-                            ? /\b(delete|trash|old)\b/i.test(text)
-                              ? 'trash_old'
-                              : 'clean_folder'
-                            : null;
+  /\b(volume|sound)\b/i.test(text) && levelOf(text) !== null
+    ? 'set_volume'
+    : /\b(unmute|unsilence)\b/i.test(text)
+      ? 'unmute'
+      : /\b(dark|light)\s+mode\b/i.test(text)
+        ? /\b(light|off|disable)\b/i.test(text)
+          ? 'light_mode'
+          : 'dark_mode'
+        : /\b(open|check)\b/i.test(text) &&
+            /\b(email|emails|inbox)\b/i.test(text)
+          ? 'open_email'
+          : /\b(mute|silence)\b/i.test(text)
+            ? 'mute'
+            : /\bhide\b/i.test(text) &&
+                /\b(apps|applications|other|others|everything|all)\b/i.test(
+                  text,
+                )
+              ? 'hide_others'
+              : /\b(quit|close)\b/i.test(text) &&
+                  /\bapps?\b/i.test(text) &&
+                  /\b(unused|used|using|idle)\b/i.test(text)
+                ? 'quit_unused'
+                : /\bquit\b/i.test(text)
+                  ? 'quit_app'
+                  : /\bcalendar\b/i.test(text)
+                    ? 'open_calendar'
+                    : /\bempty\b/i.test(text) && /\b(trash|bin)\b/i.test(text)
+                      ? 'empty_trash'
+                      : /\btabs?\b/i.test(text)
+                        ? 'close_tabs'
+                        : /\bdocuments\b/i.test(text)
+                          ? 'tidy_documents'
+                          : /\b(desktop|screenshots?)\b/i.test(text)
+                            ? 'tidy_desktop'
+                            : /download|folder/i.test(text)
+                              ? /\b(delete|trash|old)\b/i.test(text)
+                                ? 'trash_old'
+                                : 'clean_folder'
+                              : null;
 
 const PREVIEW: CtrlConfirm['items'] = [
   { key: '3f2a9c1d0b7e#0', kind: 'window', label: 'notes.txt', unsaved: false },
@@ -517,7 +541,17 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
     a('verify.result', { verified: { actionId: 'a0', outcome: 'passed' } });
     push(r, 'task.finished', { finished: 'done' });
   };
-  const finishChain = (r: { run: CtrlRun; recs: Rec[] }, intent: Intent) => {
+  const finishChain = (
+    r: { run: CtrlRun; recs: Rec[] },
+    intent: Intent,
+    text = '',
+  ) => {
+    const level = intent === 'set_volume' ? levelOf(text) : null;
+    if (level !== null)
+      decide(
+        r,
+        act('choose_target', [opt(`level.${level}`, `${level}%`, 0.96)]),
+      );
     for (const d of REST[intent]) decide(r, d);
     const s = stateAt(r.recs, r.recs.length);
     push(r, 'plan.produced', {
@@ -724,7 +758,7 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
       const intent = intentOf(t.text);
       if (intent) {
         decide(r, act('choose_intent', [{ ...INTENTS[intent], p: 0.93 }]));
-        finishChain(r, intent);
+        finishChain(r, intent, t.text);
       } else {
         decide(r, {
           ...act('choose_intent', ASKED),

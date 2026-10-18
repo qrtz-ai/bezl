@@ -54,7 +54,7 @@ final class CtrlProtocolTests: XCTestCase {
     func testEveryHostLineOfTheFixtureParses() throws {
         let all = try lines()
         let host = all.filter { !(($0["type"] as! String).hasSuffix(".result")) && $0["type"] as! String != "ctrl.error" }
-        XCTAssertEqual(host.count, 19)
+        XCTAssertEqual(host.count, 21)
         for o in host {
             let line = String(decoding: try JSONSerialization.data(withJSONObject: o), as: UTF8.self)
             XCTAssertNotNil(CtrlRequest.parse(line), "\(o["type"]!)")
@@ -180,6 +180,18 @@ final class CtrlProtocolTests: XCTestCase {
         let unLine = String(decoding: try JSONSerialization.data(withJSONObject: un), as: UTF8.self)
         XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: unLine))["ok"] as? Bool, true)
         XCTAssertEqual(fake.acted, [.muteOutput, .unmuteOutput])
+        // ADR 0140: set_volume with a whole level 0–100 from the fixture; anything else is a bad request.
+        let sv = all.first { ($0["route"] as? [String: Any])?["op"] as? String == "set_volume" }!
+        let svLine = String(decoding: try JSONSerialization.data(withJSONObject: sv), as: UTF8.self)
+        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: svLine))["ok"] as? Bool, true)
+        XCTAssertEqual(fake.acted, [.muteOutput, .unmuteOutput, .setVolume(level: 30)])
+        for bad in [#"101"#, #"-1"#, #""30""#, #"30.5"#, #"null"#] {
+            XCTAssertNil(CtrlRequest.parse(#"{"type":"ctrl.act","id":"x","actionId":"a","route":{"route":"workspace","op":"set_volume","level":"# + bad + #"},"content":{}}"#), bad)
+        }
+        guard case let .measure(_, vcheck, vapp)? = CtrlRequest.parse(#"{"type":"ctrl.measure","id":"c20","check":{"check":"output_volume"}}"#)
+        else { return XCTFail("output_volume") }
+        XCTAssertEqual(vcheck, "output_volume")
+        XCTAssertEqual(vapp, "")
         guard case let .measure(_, check, app)? = CtrlRequest.parse(#"{"type":"ctrl.measure","id":"c15","check":{"check":"output_muted"}}"#)
         else { return XCTFail("output_muted") }
         XCTAssertEqual(check, "output_muted")

@@ -21,6 +21,8 @@ public enum CtrlRoute: Equatable, Sendable {
     case muteOutput
     /// ADR 0139: the reverse (same process, same rules).
     case unmuteOutput
+    /// ADR 0140: set the output volume to `level` percent (0–100) and unmute (same process, same rules).
+    case setVolume(level: Int)
     case scripting(app: String, verb: String)
     case axPerform(app: String, role: String, element: String, action: String)
     case axSet(app: String, role: String, element: String, attribute: String)
@@ -35,6 +37,8 @@ public enum CtrlRoute: Equatable, Sendable {
     /// ADR 0137: the appearance verbs, only ever to System Events (a faceless agent, never brought forward).
     public static let appearanceVerbs: Set<String> = ["set_dark_mode", "set_light_mode"]
     public static let systemEvents = "com.apple.systemevents"
+    /// ADR 0135 / 0137 / 0140: the measures that read the Mac itself, not an app.
+    public static let applessChecks: Set<String> = ["output_muted", "dark_mode", "output_volume"]
     /// Slice 7b's selective closes (ADR 0114 / 0119) have no fixed script: the backend reads the tabs first
     /// (`CtrlTabs`) and closes only the ones it can tell about; a backend that can't tell refuses, and the host asks.
     public static let tabVerbs: Set<String> = ["close_saved_tabs", "close_unpinned_tabs"]
@@ -51,6 +55,10 @@ public enum CtrlRoute: Equatable, Sendable {
             case "hide_apps": if let a = o["apps"] as? [String] { return .hideApps(apps: a) }
             case "mute_output": return .muteOutput
             case "unmute_output": return .unmuteOutput
+            // ADR 0140: a whole number 0–100 only; anything else is a bad request, never clamped.
+            case "set_volume":
+                guard !(o["level"] is Bool), let l = o["level"] as? Int, (0...100).contains(l) else { return nil }
+                return .setVolume(level: l)
             default: return nil
             }
             return nil
@@ -110,9 +118,9 @@ public enum CtrlRequest: Equatable, Sendable {
                   let c = o["content"] as? [String: String] else { return nil }
             return .act(id: id, actionId: a, route: r, content: c)
         case "ctrl.measure":
-            // ADR 0135 / 0137: `output_muted` and `dark_mode` have no app.
+            // ADR 0135 / 0137 / 0140: `output_muted`, `dark_mode` and `output_volume` have no app.
             guard let c = o["check"] as? [String: Any], let k = c["check"] as? String,
-                  let a = (c["app"] as? String) ?? (k == "output_muted" || k == "dark_mode" ? "" : nil) else { return nil }
+                  let a = (c["app"] as? String) ?? (CtrlRoute.applessChecks.contains(k) ? "" : nil) else { return nil }
             return .measure(id: id, check: k, app: a)
         case "ctrl.restore": return .restore(id: id, frontmostPid: (o["frontmostPid"] as? NSNumber).map { $0.int32Value })
         case "ctrl.laya":
@@ -220,7 +228,7 @@ public final class CtrlServer {
         case let .pidKey(_, combo):
             guard let t = targetPid else { throw CtrlFailure("app.not_running") }
             do { try CtrlPolicy.checkKey(combo, targetPid: t, frontmostPid: frontmostPid) } catch { throw CtrlFailure("policy.refused") }
-        case .files, .openURL, .launchHidden, .quitApps, .hideApps, .muteOutput, .unmuteOutput: break
+        case .files, .openURL, .launchHidden, .quitApps, .hideApps, .muteOutput, .unmuteOutput, .setVolume: break
         }
     }
 
@@ -228,7 +236,7 @@ public final class CtrlServer {
         switch r {
         case let .openURL(a, _), let .launchHidden(a), let .scripting(a, _), let .axPerform(a, _, _, _), let .axSet(a, _, _, _),
              let .pidKey(a, _): return a
-        case .files, .takesOver, .quitApps, .hideApps, .muteOutput, .unmuteOutput: return nil
+        case .files, .takesOver, .quitApps, .hideApps, .muteOutput, .unmuteOutput, .setVolume: return nil
         }
     }
 

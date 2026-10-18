@@ -415,6 +415,8 @@ enum Slot {
     TabScope,
     Url,
     SearchText,
+    /// ADR 0140: a volume level, 0–100 (`level.N`), read from the task's own number.
+    Level,
 }
 
 struct IntentDef {
@@ -488,6 +490,13 @@ const INTENTS: &[IntentDef] = &[
         id: "unmute",
         app: AppMode::None,
         slot: Slot::None,
+        irreversible: false,
+    },
+    // ADR 0140: set the output volume to a level; reversible (set it again), no gate, no app.
+    IntentDef {
+        id: "set_volume",
+        app: AppMode::None,
+        slot: Slot::Level,
         irreversible: false,
     },
     IntentDef {
@@ -680,6 +689,14 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
                 && has(toks, &["on"])
                 && has(toks, &["turn", "back"]);
             if (has(toks, &["unmute", "unsilence"]) || sound_on) && !named_app {
+                p += 8500;
+            }
+        }
+        "set_volume" => {
+            // "set the volume to 30", "volume 40%", "turn the sound to half". Only with a level in the task and no
+            // app named ("set spotify's volume to 30" is that app's own slider, not this).
+            p -= 3000;
+            if has(toks, &["volume", "sound"]) && !levels(toks).is_empty() && !named_app {
                 p += 8500;
             }
         }
@@ -877,6 +894,76 @@ fn scope_question(toks: &[Tok]) -> Question {
     )
 }
 
+/// ADR 0140: the volume levels a task names, with how sure each is. A number right after "to" / "volume" or before
+/// "%" / "percent" is the level; one after "at" or before "am" / "pm" / ":" is a time ("every day at 8"), never
+/// offered. "half" is 50, "max" / "full" / "maximum" 100, "zero" / "silent" 0. Only 0–100.
+fn levels(toks: &[Tok]) -> Vec<(u8, i64)> {
+    let mut out: Vec<(u8, i64)> = Vec::new();
+    for (i, t) in toks.iter().enumerate() {
+        let word = match t.w.as_str() {
+            "half" => Some(50),
+            "max" | "maximum" | "full" => Some(100),
+            "zero" => Some(0),
+            _ => None,
+        };
+        let n: Option<u8> = word.or_else(|| {
+            (t.w.chars().all(|c| c.is_ascii_digit()) && t.w.len() <= 3)
+                .then(|| t.w.parse().ok())
+                .flatten()
+        });
+        let Some(n) = n.filter(|n| *n <= 100) else {
+            continue;
+        };
+        let prev = i.checked_sub(1).map(|j| toks[j].w.as_str());
+        let next = toks.get(i + 1).map(|n| n.w.as_str());
+        let timeish = prev == Some("at")
+            || matches!(next, Some("am" | "pm" | "o'clock"))
+            || (i > 0
+                && toks[i - 1].end + 1 == t.start
+                && prev.is_some_and(|p| p.chars().all(|c| c.is_ascii_digit())))
+            || toks
+                .get(i + 1)
+                .is_some_and(|nx| nx.start == t.end + 1 && nx.w.chars().all(|c| c.is_ascii_digit()));
+        if timeish {
+            continue;
+        }
+        let mut p = 2000;
+        if matches!(prev, Some("to" | "volume" | "sound")) {
+            p += 3000;
+        }
+        if matches!(next, Some("percent" | "%")) || t.w.parse::<u8>().is_ok() && next.is_none() {
+            p += 1000;
+        }
+        if word.is_some() && !matches!(prev, Some("to" | "volume" | "sound")) {
+            p -= 1000;
+        }
+        match out.iter_mut().find(|(m, _)| *m == n) {
+            Some(e) => e.1 = e.1.max(p),
+            None => out.push((n, p)),
+        }
+    }
+    out
+}
+
+fn level_question(toks: &[Tok]) -> Question {
+    let mut cs: Vec<Choice> = levels(toks)
+        .into_iter()
+        .map(|(n, p)| {
+            choice(
+                opt(format!("{}{n}", crate::apps::LEVEL_PREFIX), OptionKind::Scope),
+                p,
+            )
+        })
+        .collect();
+    // Two numbers, neither clearly the level: neither is sure (the run asks).
+    if cs.len() > 1 && cs.iter().filter(|c| c.prior >= 5000).count() != 1 {
+        for c in &mut cs {
+            c.prior = c.prior.min(2500);
+        }
+    }
+    finish(Node::ChooseTarget, cs)
+}
+
 fn span_ref(goal: &Goal, toks: &[Tok], s: usize, e: usize) -> String {
     format!("{}#{}..{}", goal.task_id, toks[s].start, toks[e - 1].end)
 }
@@ -974,6 +1061,7 @@ fn move_question(
         "hide_others" => vec![route("workspace.hide_others", 4500)],
         "mute" => vec![route("system.mute", 4500)],
         "unmute" => vec![route("system.unmute", 4500)],
+        "set_volume" => vec![route("system.set_volume", 4500)],
         // ADR 0124: on the Desktop only the screenshots and screen recordings are ctrl's; the Downloads routes
         // would act on another folder, so they aren't offered here.
         "clean_folder" if matches!(target, Some("folder.desktop" | "folder.screenshots")) => {
@@ -1116,7 +1204,7 @@ pub fn next_question_obs(
     }
     let slot_node = match def.slot {
         Slot::None => None,
-        Slot::Folder | Slot::TabScope => Some(Node::ChooseTarget),
+        Slot::Folder | Slot::TabScope | Slot::Level => Some(Node::ChooseTarget),
         Slot::Url | Slot::SearchText => Some(Node::ChooseText),
     };
     if let Some(n) = slot_node {
@@ -1126,6 +1214,7 @@ pub fn next_question_obs(
                 Slot::TabScope => scope_question(&toks),
                 Slot::Url => url_question(goal, &toks),
                 Slot::SearchText => search_question(goal, &toks),
+                Slot::Level => level_question(&toks),
                 Slot::None => unreachable!(),
             });
         }
@@ -1191,6 +1280,7 @@ fn intent_label(id: &str) -> &'static str {
         "hide_others" => "hide your other apps",
         "mute" => "mute your mac",
         "unmute" => "unmute your mac",
+        "set_volume" => "set the volume",
         "empty_trash" => "empty the trash",
         "dark_mode" => "switch dark mode",
         "search" => "search in an app",
@@ -1211,6 +1301,7 @@ fn route_label(id: &str) -> &'static str {
         "workspace.hide_others" => "hide them, the app you're in stays",
         "system.mute" => "mute the sound output",
         "system.unmute" => "turn the sound output back on",
+        "system.set_volume" => "set the sound output to that level",
         "scripting.dark_mode_on" => "switch to dark mode",
         "scripting.dark_mode_off" => "switch to light mode",
         "files.tidy" => "sort by kind, nothing deleted",
@@ -1275,6 +1366,8 @@ pub fn label(o: &Opt, goal: Option<&Goal>) -> String {
         "app" => app_label(rest),
         "folder" => rest.into(),
         "scope" => rest.replace('_', " "),
+        // ADR 0140: a volume level, a number from 0 to 100.
+        "level" => format!("{rest}%"),
         "route" => route_label(rest).into(),
         "shortcut" => shortcut_label(rest),
         // `ax.<handle>.<role slug>`: the element's role ("close button", "toolbar"); its title is never kept.

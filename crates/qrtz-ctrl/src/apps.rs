@@ -49,6 +49,16 @@ pub fn unused_today(
 pub const MUTE_MOVE: &str = "route.system.mute";
 /// ADR 0139: "unmute my mac", the reverse of [`MUTE_MOVE`].
 pub const UNMUTE_MOVE: &str = "route.system.unmute";
+/// ADR 0140: "set the volume to N"; the level is the plan's `choose_target` option `level.N`.
+pub const SET_VOLUME_MOVE: &str = "route.system.set_volume";
+/// ADR 0140: the `choose_target` option prefix of a volume level (`level.0` … `level.100`).
+pub const LEVEL_PREFIX: &str = "level.";
+
+/// ADR 0140: the level a `level.N` option names, only 0–100.
+pub fn level_of(opt: &str) -> Option<u8> {
+    let n: u8 = opt.strip_prefix(LEVEL_PREFIX)?.parse().ok()?;
+    (n <= 100).then_some(n)
+}
 
 /// ADR 0134: the move of "hide other apps" / "hide all my apps" (reversible, no gate).
 pub const HIDE_OTHERS_MOVE: &str = "route.workspace.hide_others";
