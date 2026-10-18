@@ -1,4 +1,5 @@
 import {
+  lazy,
   Suspense,
   useCallback,
   useEffect,
@@ -16,13 +17,18 @@ import {
 import { AppFrame, TabBar, ThemeProvider, ToastProvider } from '@qrtz/ui';
 import { onNavigateRequest } from '@qrtz/core';
 import type { SubAppRoute } from '@qrtz/core/react';
-import { Palette } from './Palette';
 import { registry } from './subapps';
 import { SubAppHost } from './SubAppHost';
 import { useConfigTheme } from './useConfigTheme';
-import { Onboarding } from './Onboarding';
 import { useOnboarded } from './useOnboarded';
 import { joinRoute, navTarget, resolveRoute, splitRoute } from './routes';
+
+// Not needed to paint the shell (ADR 0093): onboarding shows once, the palette on ⌘K (preloaded when idle).
+const loadPalette = () => import('./Palette');
+const Palette = lazy(() => loadPalette().then((m) => ({ default: m.Palette })));
+const Onboarding = lazy(() =>
+  import('./Onboarding').then((m) => ({ default: m.Onboarding })),
+);
 
 /** One splat route: the shell owns the whole path and stays mounted across every navigation (ADR 0091). */
 export const routes: RouteObject[] = [{ path: '*', element: <Shell /> }];
@@ -79,7 +85,14 @@ export function Shell() {
   };
 
   const [palette, setPalette] = useState(false);
+  // Mounted from the first open on, so closing and reopening is instant.
+  const [paletteUsed, setPaletteUsed] = useState(false);
+  if (palette && !paletteUsed) setPaletteUsed(true);
   const closePalette = useCallback(() => setPalette(false), []);
+  useEffect(() => {
+    const h = setTimeout(() => void loadPalette(), 1500);
+    return () => clearTimeout(h);
+  }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -100,14 +113,24 @@ export function Shell() {
     return (
       <ThemeProvider mode={theme}>
         <ToastProvider>
-          <Onboarding onDone={() => setOnboarded(true)} />
+          <Suspense fallback={null}>
+            <Onboarding onDone={() => setOnboarded(true)} />
+          </Suspense>
         </ToastProvider>
       </ThemeProvider>
     );
   return (
     <ThemeProvider mode={theme}>
       <ToastProvider>
-        <Palette open={palette} onClose={closePalette} onNavigate={selectApp} />
+        {paletteUsed ? (
+          <Suspense fallback={null}>
+            <Palette
+              open={palette}
+              onClose={closePalette}
+              onNavigate={selectApp}
+            />
+          </Suspense>
+        ) : null}
         <AppFrame
           tabs={
             <TabBar

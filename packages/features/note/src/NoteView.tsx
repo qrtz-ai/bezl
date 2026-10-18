@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import {
   Button,
   Callout,
@@ -8,6 +8,7 @@ import {
   Input,
   MeetingRow,
   SplitView,
+  Spinner,
   Stack,
   Toolbar,
   useToast,
@@ -29,8 +30,14 @@ import {
 } from '@qrtz/core/react';
 import { Hud } from './Hud';
 import { isCapturingPhase, useSession } from './useRecording';
-import { MeetingDetail } from './MeetingDetail';
 import { fmtDate } from './format';
+
+// The detail (transcript, summary, notes, player) isn't needed to paint the list: its own chunk, preloaded
+// as soon as the list mounts so opening a meeting never waits on it (ADR 0093).
+const loadDetail = () => import('./MeetingDetail');
+const MeetingDetail = lazy(() =>
+  loadDetail().then((m) => ({ default: m.MeetingDetail })),
+);
 
 const UNDO_MS = 6000;
 
@@ -54,6 +61,9 @@ export default function NoteView() {
   >([]);
   // The open meeting and its tab are the route (#/note/meetings/:id/:tab?, ADR 0091), so deep links, the
   // palette and notifications open them and the tab bar returns to them.
+  useEffect(() => {
+    void loadDetail();
+  }, []);
   const route = useSubAppRoute();
   const { meetingId: selected, tab } = parseMeetingPath(route.path);
   const { navigate } = route;
@@ -270,12 +280,14 @@ export default function NoteView() {
           onOpen={(id) => setSelected(id)}
         />
         {selected ? (
-          <MeetingDetail
-            id={selected}
-            tab={tab}
-            onTab={setTab}
-            onDelete={(title) => requestDelete(selected, title)}
-          />
+          <Suspense fallback={<Spinner />}>
+            <MeetingDetail
+              id={selected}
+              tab={tab}
+              onTab={setTab}
+              onDelete={(title) => requestDelete(selected, title)}
+            />
+          </Suspense>
         ) : isCapturingPhase(session.phase) ? null : (
           <EmptyState title="no meeting selected" />
         )}

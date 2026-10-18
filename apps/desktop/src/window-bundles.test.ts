@@ -14,14 +14,17 @@ type Chunk = Rolldown.OutputChunk;
 function closure(
   chunks: Map<string, Chunk>,
   entry: Chunk,
-  lazy = false,
+  lazy: boolean | ((c: Chunk) => boolean) = false,
 ): Chunk[] {
   const seen = new Map<string, Chunk>();
   const walk = (c: Chunk) => {
     if (seen.has(c.fileName)) return;
     seen.set(c.fileName, c);
-    for (const i of lazy ? [...c.imports, ...c.dynamicImports] : c.imports)
-      walk(chunks.get(i)!);
+    for (const i of c.imports) walk(chunks.get(i)!);
+    for (const i of c.dynamicImports) {
+      const d = chunks.get(i)!;
+      if (lazy === true || (lazy && lazy(d))) walk(d);
+    }
   };
   walk(entry);
   return [...seen.values()];
@@ -74,6 +77,28 @@ describe('window pages', () => {
         .flatMap((c) => c.moduleIds)
         .some((m) => /packages\/features\/note\//.test(m)),
     ).toBe(true);
+    // ADR 0093: first paint of the main window is the shell and the note list. The meeting detail, the
+    // palette, onboarding, settings and the gallery are their own chunks, loaded when needed.
+    const first = closure(chunks, entry('main'), (c) =>
+      c.moduleIds.some((m) =>
+        /src\/renderer\.tsx$|note\/src\/NoteView\.tsx$/.test(m),
+      ),
+    ).flatMap((c) => c.moduleIds);
+    expect(first.some((m) => /note\/src\/NoteView\.tsx$/.test(m))).toBe(true);
+    const LATER =
+      /note\/src\/(MeetingDetail|Speakers)\.tsx$|shell\/(Palette|Onboarding)\.tsx$|features\/(settings|gallery|talk)\/src\/\w+View\.tsx$|ui\/src\/gallery\//;
+    expect(first.filter((m) => LATER.test(m))).toEqual([]);
+    for (const later of ['MeetingDetail', 'Palette', 'Onboarding'])
+      expect(
+        main.flatMap((c) => c.moduleIds).some((m) => m.includes(later)),
+      ).toBe(true);
+    // With the UI package side-effect free, the pill doesn't carry the meeting or setup components.
+    const pill = closure(chunks, entry('pill')).flatMap((c) => c.moduleIds);
+    expect(
+      pill.filter((m) =>
+        /ui\/src\/(Meeting|Setup|Lifecycle|Overlay)\.tsx$/.test(m),
+      ),
+    ).toEqual([]);
     console.info('[window-bundles] js bytes loaded per page', sizes);
   }, 60_000);
 
