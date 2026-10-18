@@ -27,6 +27,8 @@ pub struct EventDef {
     pub name: String,
     pub capability: String,
     pub payload: Validator,
+    /// High-rate: delivered over a per-window `Channel` stream, never the broadcast event (ADR 0095).
+    pub stream: bool,
 }
 
 pub struct Contract {
@@ -88,6 +90,7 @@ impl Contract {
                         name: name.clone(),
                         capability: d["capability"].as_str().expect("capability").to_owned(),
                         payload: compile(&d["payload"], &format!("{name} event")),
+                        stream: d["stream"].as_bool().unwrap_or(false),
                     },
                 )
             })

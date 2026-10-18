@@ -1,6 +1,6 @@
 // Installs `window.qrtzTransport` (the only platform seam the React app uses). Every page entry (index, hud)
 // calls this first, then renders only its own view.
-import { invoke } from '@tauri-apps/api/core';
+import { Channel, invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { createTauriTransport, type TauriBridge } from '@qrtz/core';
 
@@ -15,7 +15,15 @@ async function bridge(): Promise<TauriBridge> {
     const { createMockBridge } = await import('./mock/backend');
     return createMockBridge();
   }
-  return { invoke, listen };
+  return {
+    invoke,
+    listen,
+    channel: (onmessage) => {
+      const c = new Channel<unknown>();
+      c.onmessage = onmessage;
+      return c;
+    },
+  };
 }
 
 export async function installTransport(): Promise<void> {

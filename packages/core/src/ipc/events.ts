@@ -9,6 +9,11 @@ import { SpeechSetupStatus } from '../speech/setup';
 export interface EventDef<P extends z.ZodType = z.ZodType> {
   capability: Capability;
   payload: P;
+  /**
+   * High-rate (several a second while recording, downloading or backing up): delivered to each window over its
+   * own Tauri `Channel` stream instead of the broadcast event (ADR 0095).
+   */
+  stream?: true;
 }
 const defineEvent = <P extends z.ZodType>(d: EventDef<P>) => d;
 
@@ -25,6 +30,7 @@ export const eventContract = {
   'note:session': defineEvent({
     capability: 'note.read',
     payload: SessionView,
+    stream: true,
   }),
   'note:pipeline': defineEvent({
     capability: 'note.read',
@@ -33,6 +39,7 @@ export const eventContract = {
   'note:transcript': defineEvent({
     capability: 'note.read',
     payload: LiveTranscriptDelta,
+    stream: true,
   }),
   'note:changed': defineEvent({
     capability: 'note.read',
@@ -46,6 +53,7 @@ export const eventContract = {
       done: z.number(),
       total: z.number(),
     }),
+    stream: true,
   }),
   'talk:state': defineEvent({ capability: 'talk.read', payload: TalkView }),
   'talk:history-changed': defineEvent({
@@ -59,6 +67,7 @@ export const eventContract = {
   'speech:status': defineEvent({
     capability: 'speech.read',
     payload: SpeechSetupStatus,
+    stream: true,
   }),
 } as const satisfies Record<string, EventDef>;
 
@@ -67,6 +76,10 @@ export type EventName = keyof EventContract;
 export type EventPayload<E extends EventName> = z.output<
   EventContract[E]['payload']
 >;
+
+/** Events delivered over streams (ADR 0095). */
+export const isStreamEvent = (e: string): boolean =>
+  isEventName(e) && (eventContract[e] as EventDef).stream === true;
 
 export const isEventName = (e: unknown): e is EventName =>
   typeof e === 'string' &&

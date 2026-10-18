@@ -10,12 +10,16 @@ import {
   AppError,
   TAURI_EVENT,
   TAURI_INVOKE_CMD,
+  TAURI_STREAM_CLOSE_CMD,
+  TAURI_STREAM_JOIN_CMD,
+  TAURI_STREAM_OPEN_CMD,
   TAURI_SUBSCRIBE_CMD,
   applyConfigPatch,
   createRouter,
   defaultConfig,
   eventContract,
   isEventName,
+  isStreamEvent,
   type Config,
   type EventName,
   type Handlers,
@@ -43,6 +47,12 @@ const SCRIPT = [
 export function createMockBridge(): TauriBridge {
   const listeners = new Set<(e: { payload: unknown }) => void>();
   const subs = new Map<EventName, Set<string>>();
+  // ADR 0095 streams, as the Rust backend holds them for this one window: id → event + channel callback.
+  const streams = new Map<
+    number,
+    { event: string; send: (p: unknown) => void }
+  >();
+  let nextStream = 1;
   const calls: { channel: string; subApp: string }[] = [];
   let config: Config = defaultConfig();
   const meetings: Json[] = [];
@@ -129,6 +139,11 @@ export function createMockBridge(): TauriBridge {
 
   const emit = (event: EventName, payload: unknown) => {
     const parsed = eventContract[event].payload.parse(payload);
+    if (isStreamEvent(event)) {
+      for (const st of streams.values())
+        if (st.event === event) st.send(parsed);
+      return;
+    }
     const allowed = [...(subs.get(event) ?? [])];
     if (!allowed.length) return;
     for (const l of listeners)
@@ -511,12 +526,41 @@ export function createMockBridge(): TauriBridge {
         });
         return router.dispatch(args?.envelope);
       }
+      const mayHear = (subApp: string, event: string) => {
+        const m = resolveManifest(subApp);
+        return (
+          isEventName(event) &&
+          !!m?.capabilities.includes(eventContract[event].capability)
+        );
+      };
+      if (cmd === TAURI_STREAM_OPEN_CMD) {
+        const event = String(args?.event);
+        if (!isStreamEvent(event) || !mayHear(String(args?.subApp), event))
+          return {
+            ok: false,
+            error: new AppError('E_FORBIDDEN', 'no').toJSON(),
+          };
+        for (const [id, st] of streams)
+          if (st.event === event) streams.delete(id);
+        const id = nextStream++;
+        const ch = args?.channel as { onmessage: (p: unknown) => void };
+        streams.set(id, { event, send: (p) => ch.onmessage(p) });
+        return { ok: true, id };
+      }
+      if (cmd === TAURI_STREAM_JOIN_CMD) {
+        const st = streams.get(Number(args?.id));
+        return { ok: !!st && mayHear(String(args?.subApp), st.event) };
+      }
+      if (cmd === TAURI_STREAM_CLOSE_CMD) {
+        return { ok: streams.delete(Number(args?.id)) };
+      }
       if (cmd === TAURI_SUBSCRIBE_CMD) {
         const subApp = String(args?.subApp);
         const event = String(args?.event);
         const m = resolveManifest(subApp);
         if (
           !isEventName(event) ||
+          isStreamEvent(event) ||
           !m?.capabilities.includes(eventContract[event].capability)
         )
           return {
@@ -533,6 +577,7 @@ export function createMockBridge(): TauriBridge {
       }
       throw new Error(`unknown command ${cmd}`);
     },
+    channel: (onmessage) => ({ onmessage }),
     async listen(event, cb) {
       if (event !== TAURI_EVENT) throw new Error(`unexpected event ${event}`);
       listeners.add(cb);

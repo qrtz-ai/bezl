@@ -8,4 +8,4 @@ pub mod subscriptions;
 pub use contract::{contract, idle_response, samples, Contract};
 pub use error::{AppError, ErrorCode};
 pub use router::{no_handler, CallContext, Handler, Router};
-pub use subscriptions::{validate_event, validate_event_paths, Subscriptions};
+pub use subscriptions::{is_stream, validate_event, validate_event_paths, Streams, Subscriptions};

@@ -6,12 +6,13 @@ use qrtz_app::storage_port::StorageShell;
 use qrtz_app::wiring::{build_app, AppBuild, DevKnobs};
 use qrtz_app::{AppInfo, AppService, Shared};
 use qrtz_helper_bridge::SupervisorOptions;
-use qrtz_ipc::{Router, Subscriptions};
+use qrtz_ipc::{Router, Streams, Subscriptions};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
+use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, EventTarget, Manager};
 use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_clipboard_manager::ClipboardExt as _;
@@ -153,6 +154,8 @@ pub struct Backend {
     pub db: qrtz_storage::StorageHandle,
     pub router: Router<Shared>,
     pub subs: Mutex<Subscriptions>,
+    /// High-rate events, per window over a `Channel` (ADR 0095).
+    pub streams: Mutex<Streams<Channel<InvokeResponseBody>>>,
     started: Instant,
     ready: AtomicBool,
     session: Mutex<Value>,
@@ -268,6 +271,7 @@ pub fn setup(app: &mut tauri::App, started: Instant) -> Result<(), Box<dyn std::
         db: built.db.clone(),
         router,
         subs: Mutex::default(),
+        streams: Mutex::default(),
         started,
         ready: AtomicBool::new(false),
         session: Mutex::new(json!({"phase": "idle", "helper": "ok", "elapsedMs": 0})),
@@ -325,6 +329,9 @@ fn pump_events(app: &AppHandle) {
                 Err(_) => break,
             };
             let b = app.state::<Backend>();
+            if qrtz_ipc::is_stream(&event) {
+                send_stream(&b, &event, &payload);
+            }
             let targets = b.subs.lock().unwrap().fanout(&event);
             for (label, sub_apps) in targets {
                 let msg = json!({"event": event, "payload": payload, "subApps": sub_apps});
@@ -351,6 +358,24 @@ fn pump_events(app: &AppHandle) {
             }
         }
     });
+}
+
+/// ADR 0095: the payload is serialized once and the same JSON goes to every window's stream for `event` (the
+/// broadcast path built and serialized a message per window). A send that fails means the page is gone: drop it.
+fn send_stream(b: &Backend, event: &str, payload: &Value) {
+    let mut streams = b.streams.lock().unwrap();
+    let mut chans = streams.fanout(event).peekable();
+    if chans.peek().is_none() {
+        return;
+    }
+    let body = payload.to_string();
+    let dead: Vec<u64> = chans
+        .filter_map(|(id, ch)| ch.send(InvokeResponseBody::Json(body.clone())).err().map(|_| id))
+        .collect();
+    for id in dead {
+        tracing::warn!(event, id, "stream send failed; dropping it");
+        streams.drop_id(id);
+    }
 }
 
 fn on_session(app: &AppHandle, session: Value) {
@@ -508,6 +533,7 @@ pub fn tray_action(app: &AppHandle, id: &str) {
 pub fn forget_webview(app: &AppHandle, label: &str) {
     if let Some(b) = app.try_state::<Backend>() {
         b.subs.lock().unwrap().remove_target(label);
+        b.streams.lock().unwrap().remove_target(label);
     }
 }
 

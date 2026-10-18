@@ -19,6 +19,7 @@ import {
   defaultConfig,
   eventContract,
   ipcContract,
+  type EventDef,
 } from '@qrtz/core';
 import {
   eventSamples,
@@ -75,7 +76,11 @@ export function renderContracts() {
     events: Object.fromEntries(
       Object.entries(eventContract).map(([name, d]) => [
         name,
-        { capability: d.capability, payload: schema(d.payload, 'output') },
+        {
+          capability: d.capability,
+          payload: schema(d.payload, 'output'),
+          ...((d as EventDef).stream ? { stream: true } : {}),
+        },
       ]),
     ),
     manifests: manifests.map((m) => ({

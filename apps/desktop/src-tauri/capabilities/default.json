@@ -1,12 +1,15 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "qrtz-windows",
-  "description": "Bundled renderer windows may only listen for events and call the two qrtz IPC commands. Per-sub-app capability scoping happens in the qrtz-ipc router.",
+  "description": "Bundled renderer windows may only listen for events and call the qrtz IPC commands (invoke, subscribe and the ADR 0095 stream open/join/close). Per-sub-app capability scoping happens in the qrtz-ipc router.",
   "windows": ["main", "hud"],
   "permissions": [
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "allow-qrtz-invoke",
-    "allow-qrtz-subscribe"
+    "allow-qrtz-subscribe",
+    "allow-qrtz-stream-open",
+    "allow-qrtz-stream-join",
+    "allow-qrtz-stream-close"
   ]
 }

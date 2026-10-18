@@ -77,7 +77,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::qrtz_invoke,
-            commands::qrtz_subscribe
+            commands::qrtz_subscribe,
+            commands::qrtz_stream_open,
+            commands::qrtz_stream_join,
+            commands::qrtz_stream_close
         ])
         .on_page_load(|webview, payload| {
             // A reload starts a fresh renderer that re-subscribes; drop the old page's subscriptions.

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-qrtz-stream-join"
+description = "Enables the qrtz_stream_join command without any pre-configured scope."
+commands.allow = ["qrtz_stream_join"]
+
+[[permission]]
+identifier = "deny-qrtz-stream-join"
+description = "Denies the qrtz_stream_join command without any pre-configured scope."
+commands.deny = ["qrtz_stream_join"]

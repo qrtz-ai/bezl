@@ -57,6 +57,66 @@ pub fn qrtz_subscribe(sub_app: String, event: String, webview: Webview) -> Value
     }
 }
 
+/// ADR 0095: open this window's stream for a high-rate event, delivered on `channel`. Same capability rule as
+/// `qrtz_subscribe`; a window holds one stream per event (other sub apps join it).
+#[tauri::command]
+pub fn qrtz_stream_open(
+    sub_app: String,
+    event: String,
+    channel: tauri::ipc::Channel<tauri::ipc::InvokeResponseBody>,
+    webview: Webview,
+) -> Value {
+    if !sender_ok(&webview) {
+        return json!({"ok": false, "error": forbidden().to_json()});
+    }
+    let backend = webview.state::<Backend>();
+    let r = backend
+        .streams
+        .lock()
+        .unwrap()
+        .open(webview.label(), &sub_app, &event, channel);
+    if webview.label() == crate::windows::MAIN {
+        backend.mark_ready();
+    }
+    match r {
+        Ok(id) => json!({"ok": true, "id": id}),
+        Err(e) => json!({"ok": false, "error": e.to_json()}),
+    }
+}
+
+/// Another sub app in the same window listens on stream `id`.
+#[tauri::command]
+pub fn qrtz_stream_join(id: u64, sub_app: String, webview: Webview) -> Value {
+    if !sender_ok(&webview) {
+        return json!({"ok": false, "error": forbidden().to_json()});
+    }
+    let r = webview
+        .state::<Backend>()
+        .streams
+        .lock()
+        .unwrap()
+        .join(webview.label(), id, &sub_app);
+    match r {
+        Ok(()) => json!({"ok": true}),
+        Err(e) => json!({"ok": false, "error": e.to_json()}),
+    }
+}
+
+/// The window's last listener on stream `id` went away.
+#[tauri::command]
+pub fn qrtz_stream_close(id: u64, webview: Webview) -> Value {
+    if !sender_ok(&webview) {
+        return json!({"ok": false, "error": forbidden().to_json()});
+    }
+    let closed = webview
+        .state::<Backend>()
+        .streams
+        .lock()
+        .unwrap()
+        .close(webview.label(), id);
+    json!({"ok": closed})
+}
+
 #[cfg(test)]
 mod tests {
     use super::trusted_origin;

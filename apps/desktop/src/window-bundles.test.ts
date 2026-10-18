@@ -82,7 +82,7 @@ describe('window pages', () => {
         /src\/renderer\.tsx$|note\/src\/NoteView\.tsx$/.test(m),
       ),
     ).flatMap((c) => c.moduleIds);
-    expect(first.some((m) => /note\/src\/NoteView\.tsx$/.test(m))).toBe(true);
+    expect(first.some((m) => m.endsWith('note/src/NoteView.tsx'))).toBe(true);
     const LATER =
       /note\/src\/(MeetingDetail|Speakers)\.tsx$|shell\/(Palette|Onboarding)\.tsx$|features\/(settings|gallery|talk)\/src\/\w+View\.tsx$|ui\/src\/gallery\//;
     expect(first.filter((m) => LATER.test(m))).toEqual([]);

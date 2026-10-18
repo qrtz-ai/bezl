@@ -193,19 +193,20 @@ fn contract_is_complete() {
 
 #[test]
 fn subscriptions_follow_capabilities_and_targets() {
+    // note:pipeline: a low-rate event on the broadcast path (the high-rate ones are streams, tests/streams.rs).
     let mut s = Subscriptions::default();
-    s.subscribe("main", "note", "note:session").unwrap();
-    s.subscribe("main", "shell", "note:session").unwrap();
-    s.subscribe("hud", "shell", "note:session").unwrap();
+    s.subscribe("main", "note", "note:pipeline").unwrap();
+    s.subscribe("main", "shell", "note:pipeline").unwrap();
+    s.subscribe("hud", "shell", "note:pipeline").unwrap();
     assert_eq!(
-        s.subscribe("main", "gallery", "note:session").unwrap_err().code,
+        s.subscribe("main", "gallery", "note:pipeline").unwrap_err().code,
         ErrorCode::Forbidden
     );
     assert_eq!(
         s.subscribe("main", "note", "nope").unwrap_err().code,
         ErrorCode::UnknownChannel
     );
-    let mut f = s.fanout("note:session");
+    let mut f = s.fanout("note:pipeline");
     f.sort();
     assert_eq!(
         f,
@@ -215,7 +216,7 @@ fn subscriptions_follow_capabilities_and_targets() {
         ]
     );
     s.remove_target("main");
-    assert_eq!(s.fanout("note:session").len(), 1);
+    assert_eq!(s.fanout("note:pipeline").len(), 1);
     assert!(s.fanout("note:changed").is_empty());
 }
 

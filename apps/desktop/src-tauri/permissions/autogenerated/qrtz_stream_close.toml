@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-qrtz-stream-close"
+description = "Enables the qrtz_stream_close command without any pre-configured scope."
+commands.allow = ["qrtz_stream_close"]
+
+[[permission]]
+identifier = "deny-qrtz-stream-close"
+description = "Denies the qrtz_stream_close command without any pre-configured scope."
+commands.deny = ["qrtz_stream_close"]

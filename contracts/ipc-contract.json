@@ -7828,7 +7828,8 @@
           "degraded"
         ],
         "additionalProperties": false
-      }
+      },
+      "stream": true
     },
     "note:pipeline": {
       "capability": "note.read",
@@ -8284,7 +8285,8 @@
           "partial"
         ],
         "additionalProperties": false
-      }
+      },
+      "stream": true
     },
     "note:changed": {
       "capability": "note.read",
@@ -8337,7 +8339,8 @@
           "total"
         ],
         "additionalProperties": false
-      }
+      },
+      "stream": true
     },
     "talk:state": {
       "capability": "talk.read",
@@ -8647,7 +8650,8 @@
           "download"
         ],
         "additionalProperties": false
-      }
+      },
+      "stream": true
     }
   },
   "manifests": [
