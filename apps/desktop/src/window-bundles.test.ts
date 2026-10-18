@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { build, type Rolldown } from 'vite';
 
-// ADR 0090: the HUD and the talk pill are their own pages. Their bundles must not pull in the shell, its
+// ADR 0090: the HUD is its own page (echo's pill is native, ADR 0092). Its bundle must not pull in the shell, its
 // router or any sub app, and every page carries the same dev CSP.
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -34,7 +34,7 @@ const SHELL_ONLY =
   /packages\/features\/|src\/shell\/(App|SubAppHost|subapps|Palette|Onboarding)\.tsx?$|src\/renderer\.tsx$|node_modules\/react-router/;
 
 describe('window pages', () => {
-  it('the hud and pill bundles include no shell, router or sub app modules', async () => {
+  it('the hud bundle includes no shell, router or sub app modules', async () => {
     // A production build, as `vite build` makes it (vitest sets NODE_ENV=test, which keeps DEV-only code).
     const env = process.env.NODE_ENV;
     process.env.NODE_ENV = 'production';
@@ -55,14 +55,12 @@ describe('window pages', () => {
     const entry = (name: string) =>
       [...chunks.values()].find((c) => c.isEntry && c.name === name)!;
     const sizes: Record<string, number> = {};
-    for (const name of ['hud', 'pill', 'main']) {
+    for (const name of ['hud', 'main']) {
       const loaded = closure(chunks, entry(name));
       sizes[name] = loaded.reduce((n, c) => n + c.code.length, 0);
       if (name === 'main') continue;
       const modules = loaded.flatMap((c) => c.moduleIds);
-      expect(modules.some((m) => /src\/(hud|pill)-main\.tsx$/.test(m))).toBe(
-        true,
-      );
+      expect(modules.some((m) => m.endsWith('src/hud-main.tsx'))).toBe(true);
       expect(modules.filter((m) => SHELL_ONLY.test(m))).toEqual([]);
       // Nor can it lazily reach a sub app.
       expect(loaded.flatMap((c) => c.dynamicImports)).toEqual([]);
@@ -92,23 +90,20 @@ describe('window pages', () => {
       expect(
         main.flatMap((c) => c.moduleIds).some((m) => m.includes(later)),
       ).toBe(true);
-    // With the UI package side-effect free, the pill doesn't carry the meeting or setup components.
-    const pill = closure(chunks, entry('pill')).flatMap((c) => c.moduleIds);
+    // No pill page any more: echo's pill is drawn by the helper (ADR 0092).
+    expect(chunks.has('pill.html')).toBe(false);
     expect(
-      pill.filter((m) =>
-        /ui\/src\/(Meeting|Setup|Lifecycle|Overlay)\.tsx$/.test(m),
-      ),
-    ).toEqual([]);
+      [...chunks.values()].some((c) => c.isEntry && c.name === 'pill'),
+    ).toBe(false);
     console.info('[window-bundles] js bytes loaded per page', sizes);
   }, 60_000);
 
-  it('hud.html and pill.html carry the same CSP as index.html', () => {
+  it('hud.html carries the same CSP as index.html', () => {
     const csp = (f: string) =>
       /http-equiv="Content-Security-Policy"\s+content="([^"]+)"/.exec(
         readFileSync(join(root, f), 'utf8'),
       )?.[1];
     expect(csp('index.html')).toBeTruthy();
     expect(csp('hud.html')).toBe(csp('index.html'));
-    expect(csp('pill.html')).toBe(csp('index.html'));
   });
 });

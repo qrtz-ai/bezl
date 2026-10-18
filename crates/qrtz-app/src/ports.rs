@@ -102,6 +102,8 @@ pub trait TalkPort: Send + Sync {
     /// `config:set` happened: push `dictation.configure` (Electron
     /// `config.onChange(() => talk.configure())`).
     fn config_changed(&self) {}
+    /// ADR 0092: a pill flash for the helper's native pill (`pill.flash`).
+    fn pill_flash(&self, _kind: &str, _message: &str) {}
 }
 
 /// OS notifications the core asks the shell for. Not IPC events: the shell decides whether a window is focused

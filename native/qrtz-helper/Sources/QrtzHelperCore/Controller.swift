@@ -381,7 +381,8 @@ public actor HelperController {
         case .recordingResume: paused = false; send(.log(level: .info, msg: "capture resumed"))
         case .modelsWarm: await warmModels()
         case .shutdown: await shutdown()
-        case .dictationConfigure(let warm, let pre, let stream, let key, let consume):
+        case .dictationConfigure(let warm, let pre, let stream, let key, let consume, let showPill):
+            pill?.enabled = showPill ?? true
             await dictation.configure(warmMic: warm, preRollMs: pre, streamAudio: stream, pushKey: key, consumeFn: consume ?? true)
             _ = await admit(.configure(warmMic: warm))
             watchPermissions()
@@ -400,6 +401,7 @@ public actor HelperController {
             await dictation.cancel(id: id)
             _ = await admit(.cmd("dictation.cancel"))
         case .insertText(let id, let text, let restore): await dictation.insert(id: id, text: text, restoreClipboard: restore)
+        case .pillFlash: break  // the pill driver took it (`pill?.host`); without a native pill there is nothing to show
         case .speechAttach(let sid, let target, let channels):
             if let why = speech.accept(deps.speechFds, sessionId: sid, target: target, channels: channels) {
                 send(.speechAttachRejected(sessionId: sid, reason: why))

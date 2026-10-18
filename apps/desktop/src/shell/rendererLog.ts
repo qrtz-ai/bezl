@@ -61,7 +61,7 @@ export function describeMediaError(el: HTMLMediaElement): string {
   return `${el.tagName.toLowerCase()} error ${code} (${MEDIA_ERR[code] ?? 'unknown'})${msg}; src ${scheme}:; network ${el.networkState}, ready ${el.readyState}`;
 }
 
-/** Install the listeners on `win`; returns an uninstall function. `scope` names the window (main, hud, pill). */
+/** Install the listeners on `win`; returns an uninstall function. `scope` names the window (main, hud). */
 export function installRendererLogging(
   sink: LogSink,
   scope: string,

@@ -8,6 +8,8 @@ import Foundation
 public enum PillPhase: Equatable, Sendable {
     case hidden, listening, processing
     case error(String)
+    /// A notice, not a failure (the host's "copied to clipboard"): the text without the alert icon.
+    case info(String)
 
     /// The accessibility label (the pill draws no words outside an error).
     public var accessibilityLabel: String {
@@ -15,7 +17,7 @@ public enum PillPhase: Equatable, Sendable {
         case .hidden: "echo"
         case .listening: "listening"
         case .processing: "processing"
-        case .error(let m): m
+        case .error(let m), .info(let m): m
         }
     }
 }
@@ -32,12 +34,15 @@ public protocol PillView: AnyObject, Sendable {
 /// error has shown for `errorFlashMs`. Timeouts hide a pill whose dictation never started or whose text was never
 /// inserted, so it can't stick on screen.
 public final class PillDriver: @unchecked Sendable {
-    public enum State: Equatable, Sendable { case hidden, listening, finalizing, inserting, error(String) }
+    public enum State: Equatable, Sendable { case hidden, listening, finalizing, inserting, error(String), info(String) }
 
     public struct Timing: Sendable {
         public var errorFlashMs = 1_600
         public var startTimeoutMs = 2_000
         public var insertTimeoutMs = 5_000
+        /// After a failed insert: how long the pill waits for the host's `pill.flash` (it knows whether the words
+        /// went to the clipboard) before it shows the helper's own error.
+        public var hostFlashWaitMs = 400
         public init() {}
     }
 
@@ -47,6 +52,17 @@ public final class PillDriver: @unchecked Sendable {
     private var current: State = .hidden
     private var gen = 0
     private var started = false
+    private var on = true
+    private var pendingInsertError: String?
+
+    /// `talk.showPill` (`dictation.configure{pill}`). Off: nothing shows (the host notifies instead).
+    public var enabled: Bool {
+        get { lock.withLock { on } }
+        set {
+            lock.withLock { on = newValue }
+            if !newValue { go(.hidden) }
+        }
+    }
 
     public init(view: PillView, timing: Timing = Timing()) { self.view = view; self.timing = timing }
 
@@ -71,7 +87,17 @@ public final class PillDriver: @unchecked Sendable {
             else if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { go(.hidden) }
             else { go(.inserting, timeoutMs: timing.insertTimeoutMs) }
         case .insertResult(_, _, let ok, _, let error):
-            if ok { go(.hidden) } else { go(.error(Self.lower(error ?? "couldn't insert the text")), timeoutMs: timing.errorFlashMs) }
+            if ok { go(.hidden); return }
+            // The host answers a failed insert with `pill.flash` (error, or info "copied to clipboard"): stay on
+            // processing for it; show this error only if it doesn't come.
+            let msg = Self.lower(error ?? "couldn't insert the text")
+            let g: Int = lock.withLock { pendingInsertError = msg; return gen }
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(self?.timing.hostFlashWaitMs ?? 0) * 1_000_000)
+                guard let self else { return }
+                let m: String? = self.lock.withLock { self.gen == g ? self.pendingInsertError : nil }
+                if let m { self.go(.error(m), timeoutMs: self.timing.errorFlashMs) }
+            }
         case .error(let code, let message, _, _, _, _, _):
             // Only while the pill is up (a configure-time hotkey error must not pop it), and a refused second press
             // (`dictation.busy`) leaves the first dictation's pill alone.
@@ -92,6 +118,9 @@ public final class PillDriver: @unchecked Sendable {
             go(.hidden)
         case .insertText:
             if state != .inserting { go(.inserting, timeoutMs: timing.insertTimeoutMs) }
+        case .pillFlash(let kind, let message):
+            let m = Self.lower(message)
+            go(kind == .error ? .error(m) : .info(m), timeoutMs: timing.errorFlashMs)
         default: break
         }
     }
@@ -102,6 +131,7 @@ public final class PillDriver: @unchecked Sendable {
         case .listening: .listening
         case .finalizing, .inserting: .processing
         case .error(let m): .error(m)
+        case .info(let m): .info(m)
         }
     }
 
@@ -117,12 +147,16 @@ public final class PillDriver: @unchecked Sendable {
         return t.isEmpty ? "something went wrong" : t
     }
 
-    private func isError(_ s: State) -> Bool { if case .error = s { true } else { false } }
+    private func isError(_ s: State) -> Bool {
+        switch s { case .error, .info: true; default: false }
+    }
 
     private func go(_ s: State, timeoutMs: Int? = nil) {
         let (g, changed): (Int, Bool) = lock.withLock {
+            // Off (`talk.showPill` false): track nothing, show nothing.
+            let s = on ? s : .hidden
             let changed = Self.phase(current) != Self.phase(s)
-            current = s; gen += 1
+            current = s; gen += 1; pendingInsertError = nil
             return (gen, changed)
         }
         if changed { view.show(Self.phase(s)) }

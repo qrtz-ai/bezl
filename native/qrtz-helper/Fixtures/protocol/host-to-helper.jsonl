@@ -20,3 +20,6 @@
 {"id":"s1","type":"summarize.cancel"}
 {"id":"c1","type":"summarize.check"}
 {"type":"models.warm"}
+{"consumeFn":true,"pill":false,"preRollMs":300,"pushKey":"fn","streamAudio":false,"type":"dictation.configure","warmMic":true}
+{"kind":"info","message":"copied to clipboard","type":"pill.flash"}
+{"kind":"error","message":"couldn't insert; copied to clipboard","type":"pill.flash"}

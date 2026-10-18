@@ -147,14 +147,6 @@ struct Linger {
     hiding: AtomicBool,
 }
 
-/// The pill's error flash (`qrtz_app::pill`): which failures were shown (`PillGate`), and whether a flash is on
-/// screen now.
-#[derive(Default)]
-struct Flash {
-    gate: Mutex<qrtz_app::pill::PillGate>,
-    on: AtomicBool,
-}
-
 pub struct Backend {
     pub service: Arc<AppService>,
     /// The app's database (playback asks it which meeting owns a recording, N140).
@@ -165,8 +157,8 @@ pub struct Backend {
     ready: AtomicBool,
     session: Mutex<Value>,
     hud: Linger,
-    pill: Linger,
-    flash: Flash,
+    /// Which talk failures were flashed or notified (`qrtz_app::pill`).
+    flash: Mutex<qrtz_app::pill::PillGate>,
     hotkeys: Mutex<Vec<(String, &'static str)>>,
 }
 
@@ -280,8 +272,7 @@ pub fn setup(app: &mut tauri::App, started: Instant) -> Result<(), Box<dyn std::
         ready: AtomicBool::new(false),
         session: Mutex::new(json!({"phase": "idle", "helper": "ok", "elapsedMs": 0})),
         hud: Linger::default(),
-        pill: Linger::default(),
-        flash: Flash::default(),
+        flash: Mutex::default(),
         hotkeys: Mutex::default(),
     });
 
@@ -370,56 +361,35 @@ fn on_session(app: &AppHandle, session: Value) {
     linger(app, &b.hud, windows::HUD, want, policy::HUD_LINGER, true);
 }
 
-/// The pill is up from the press until the dictation is done (text inserted); a failure flashes it (or notifies,
-/// with the pill off) once (`qrtz_app::pill`).
+/// ADR 0092: the helper draws echo's pill from its own talk state (shown from the press until the text is in).
+/// The shell only adds what the helper can't know: a failure flashes on the helper's pill (`pill.flash`, the
+/// clipboard fallback as info "copied to clipboard"), or posts an OS notification with the pill turned off, once
+/// each (`qrtz_app::pill`).
 fn on_talk(app: &AppHandle, talk: &Value) {
-    use qrtz_app::pill::{PillAction, ERROR_FLASH};
+    use qrtz_app::pill::{flash_kind, PillAction};
     let b = app.state::<Backend>();
     let action = b
         .flash
-        .gate
         .lock()
         .unwrap_or_else(|p| p.into_inner())
         .next(&b.service.config(), talk);
-    match action {
-        PillAction::Show => {
-            b.pill.gen.fetch_add(1, Ordering::SeqCst);
-            b.flash.on.store(false, Ordering::SeqCst);
-            windows::show_pill(app);
+    let PillAction::Flash { error, notify, .. } = action else {
+        return; // shown and hidden by the helper
+    };
+    if notify || !cfg!(target_os = "macos") {
+        if let Err(e) = app
+            .notification()
+            .builder()
+            .title(crate::strings::UI_TALK_FAILED)
+            .body(&error)
+            .show()
+        {
+            tracing::warn!(err = %e, "notification failed");
         }
-        PillAction::Hide => {
-            if !b.flash.on.load(Ordering::SeqCst) {
-                b.pill.gen.fetch_add(1, Ordering::SeqCst);
-                windows::hide(app, windows::PILL);
-            }
-        }
-        PillAction::Flash { error, notify, .. } => {
-            if notify {
-                if let Err(e) = app
-                    .notification()
-                    .builder()
-                    .title(crate::strings::UI_TALK_FAILED)
-                    .body(&error)
-                    .show()
-                {
-                    tracing::warn!(err = %e, "notification failed");
-                }
-                return;
-            }
-            let g = b.pill.gen.fetch_add(1, Ordering::SeqCst) + 1;
-            b.flash.on.store(true, Ordering::SeqCst);
-            windows::show_pill(app);
-            let app = app.clone();
-            tauri::async_runtime::spawn(async move {
-                tokio::time::sleep(ERROR_FLASH).await;
-                let b = app.state::<Backend>();
-                if b.pill.gen.load(Ordering::SeqCst) == g {
-                    b.flash.on.store(false, Ordering::SeqCst);
-                    windows::hide(&app, windows::PILL);
-                }
-            });
-        }
+        return;
     }
+    let (kind, message) = flash_kind(&error);
+    b.service.talk.pill_flash(kind, &message);
 }
 
 /// Show now, or hide/close after `delay` unless something wants it back first.

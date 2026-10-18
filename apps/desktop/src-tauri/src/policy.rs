@@ -15,7 +15,7 @@ pub fn hud_wanted(config: &Value, session: &Value) -> bool {
 /// Linger so "summarizing…" → done is visible, then close.
 pub const HUD_LINGER: Duration = Duration::from_millis(1500);
 
-// The talk pill's rule is `qrtz_app::pill::pill_action` (shared with the E2E).
+// The talk pill's flash/notify rule is `qrtz_app::pill::pill_action` (shared with the E2E); the helper draws it.
 
 /// Global shortcuts the config asks for: (accelerator, action). Empty strings mean unbound.
 pub fn hotkeys(config: &Value) -> Vec<(String, &'static str)> {

@@ -161,6 +161,16 @@ The helper carries out exactly the `mic.subscribe` / `mic.unsubscribe` effects t
   the engine is told `micDropped()`, so it forgets the dead reader. When the mic is granted again, the arbiter
   resubscribes the warm reader, so the next dictation hears audio. A re-grant never resubscribes a running recording.
 
+### The pill (ADR 0092)
+
+With `QRTZ_NATIVE_PILL=1` (macOS; `hello.features` carries `talk.pill.native`) the helper draws echo's pill from
+its own talk state.
+
+- `dictation.configure{pill}`: optional bool, default true (`talk.showPill`). Off means the helper never shows it.
+- `pill.flash {kind: "error" | "info", message}`: a failure only the host knows (an older dictation's insert, the
+  clipboard fallback as `info` `copied to clipboard`). The message is lowercased, 1–200 chars; no reply. After an
+  `insert.result ok:false` the helper waits up to 400 ms for this line before it shows its own error.
+
 ## Diarization (ADR 0079)
 
 In a recording with per-channel transcription (both Nemotron instances and both diarizers loaded), each channel's

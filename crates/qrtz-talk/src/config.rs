@@ -16,6 +16,8 @@ pub struct TalkConfig {
     pub auto_insert: bool,
     pub restore_clipboard: bool,
     pub save_history: bool,
+    /// `talk.showPill`: the helper's native pill (ADR 0092, `dictation.configure{pill}`).
+    pub show_pill: bool,
 }
 
 impl TalkConfig {
@@ -32,6 +34,7 @@ impl TalkConfig {
             auto_insert: b("autoInsert", true),
             restore_clipboard: b("restoreClipboard", true),
             save_history: b("saveHistory", true),
+            show_pill: b("showPill", true),
         }
     }
 }

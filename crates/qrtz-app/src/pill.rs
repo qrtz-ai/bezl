@@ -1,3 +1,6 @@
+//! ADR 0092: the helper draws the pill from its own talk state; the shell uses [`PillGate`] for what only it knows
+//! (a flash forwarded as `pill.flash`, or a notification with the pill off).
+//!
 //! When the talk pill is on screen. Pure, so the shell (`apps/desktop/src-tauri/src/backend.rs::on_talk`) and
 //! the E2E (`tests/e2e_talk.rs`) use the same rule.
 //!
@@ -14,6 +17,17 @@ use serde_json::Value;
 use std::time::Duration;
 
 pub const ERROR_FLASH: Duration = Duration::from_millis(2500);
+
+/// ADR 0092: what the helper's native pill shows for a flash: the clipboard fallback is a notice ("copied to
+/// clipboard", info), anything else an error, lowercase.
+pub fn flash_kind(error: &str) -> (&'static str, String) {
+    let e = error.trim().to_lowercase();
+    if e.ends_with("copied to clipboard") {
+        ("info", "copied to clipboard".to_owned())
+    } else {
+        ("error", e)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PillAction {
@@ -43,7 +57,7 @@ fn last_failure(talk: &Value) -> Option<(String, String)> {
 
 /// A dictation is in flight (the pill shows it while `talk.showPill` is on).
 fn busy(phase: &str) -> bool {
-    matches!(phase, "listening" | "finalizing" | "cleaning" | "inserting")
+    matches!(phase, "listening" | "finalizing" | "inserting")
 }
 
 pub fn pill_action(config: &Value, talk: &Value) -> PillAction {
@@ -125,6 +139,20 @@ impl PillGate {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn the_clipboard_fallback_is_info() {
+        assert_eq!(
+            flash_kind("No focused field; copied to clipboard"),
+            ("info", "copied to clipboard".to_owned())
+        );
+        assert_eq!(flash_kind("Offline"), ("error", "offline".to_owned()));
+        // There is no cleanup step any more (ADR 0071): a stale "cleaning" phase is not a busy pill.
+        assert_eq!(
+            pill_action(&json!({}), &json!({"phase": "cleaning", "id": "d1"})),
+            PillAction::Hide
+        );
+    }
 
     #[test]
     fn shown_until_the_dictation_is_done_and_flashed_on_failure() {

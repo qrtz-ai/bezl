@@ -1,5 +1,5 @@
-// Installs `window.qrtzTransport` (the only platform seam the React app uses). Every page entry (index, hud,
-// pill) calls this first, then renders only its own view.
+// Installs `window.qrtzTransport` (the only platform seam the React app uses). Every page entry (index, hud)
+// calls this first, then renders only its own view.
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { createTauriTransport, type TauriBridge } from '@qrtz/core';

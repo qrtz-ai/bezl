@@ -173,7 +173,6 @@ mod tests {
         for s in [
             UI_APP,
             UI_HUD,
-            UI_PILL,
             UI_OPEN,
             UI_QUIT,
             UI_START,

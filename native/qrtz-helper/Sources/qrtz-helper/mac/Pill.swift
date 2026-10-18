@@ -183,17 +183,24 @@ final class PillContentView: NSView {
 
     private func layoutPhase() {
         setAccessibilityLabel(phase.accessibilityLabel)
-        if case .error(let message) = phase {
+        let words: (String, Bool)? = {
+            switch phase {
+            case .error(let m): return (m, true)
+            case .info(let m): return (m, false)
+            default: return nil
+            }
+        }()
+        if let (message, alert) = words {
+            // An error: the alert icon and the text; a notice ("copied to clipboard"): the text alone.
             waveBox.isHidden = true
             label.stringValue = message
             label.sizeToFit()
-            let tw = min(label.frame.width, PillGeometry.errorTextWidth)
-            let total = PillGeometry.iconSize + PillGeometry.gap + tw
-            let x0 = (bounds.width - total) / 2
+            let iconW = alert ? PillGeometry.iconSize + PillGeometry.gap : 0
+            let tw = min(label.frame.width, PillGeometry.errorTextWidth + (alert ? 0 : PillGeometry.iconSize + PillGeometry.gap))
+            let x0 = (bounds.width - iconW - tw) / 2
             icon.frame = NSRect(x: x0, y: (bounds.height - PillGeometry.iconSize) / 2, width: PillGeometry.iconSize, height: PillGeometry.iconSize)
-            label.frame = NSRect(x: x0 + PillGeometry.iconSize + PillGeometry.gap, y: (bounds.height - label.frame.height) / 2,
-                                 width: tw, height: label.frame.height)
-            icon.isHidden = false; label.isHidden = false
+            label.frame = NSRect(x: x0 + iconW, y: (bounds.height - label.frame.height) / 2, width: tw, height: label.frame.height)
+            icon.isHidden = !alert; label.isHidden = false
         } else {
             waveBox.isHidden = false
             icon.isHidden = true; label.isHidden = true

@@ -75,7 +75,7 @@ const viewFor = (app: SubApp): ComponentType => {
 
 /**
  * The module load suspends here, above this sub app's own boundary, so a first visit suspends the shell's
- * boundary inside the router's transition (the previous app stays on screen). Once loaded, anything the view
+ * boundary inside the router's transition, and the previous app stays on screen. Once loaded, anything the view
  * suspends on is caught by its own boundary: a hidden app can never blank the visible one.
  */
 function ViewGate({ app }: { app: SubApp }) {

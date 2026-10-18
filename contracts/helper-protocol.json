@@ -51,6 +51,7 @@
     "recording.resume",
     "models.warm",
     "dictation.configure",
+    "pill.flash",
     "dictation.start",
     "dictation.stop",
     "dictation.cancel",
@@ -1318,6 +1319,9 @@
           },
           "consumeFn": {
             "type": "boolean"
+          },
+          "pill": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -1326,6 +1330,32 @@
           "preRollMs",
           "streamAudio",
           "pushKey"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "pill.flash"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "error",
+              "info"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "type",
+          "kind",
+          "message"
         ]
       },
       {

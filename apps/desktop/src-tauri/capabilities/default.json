@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "qrtz-windows",
   "description": "Bundled renderer windows may only listen for events and call the two qrtz IPC commands. Per-sub-app capability scoping happens in the qrtz-ipc router.",
-  "windows": ["main", "hud", "pill"],
+  "windows": ["main", "hud"],
   "permissions": [
     "core:event:allow-listen",
     "core:event:allow-unlisten",

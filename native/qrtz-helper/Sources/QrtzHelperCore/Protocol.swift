@@ -18,6 +18,7 @@ public enum PermissionState: String, Sendable { case granted, denied, notDetermi
 public enum MeetingPlatform: String, Sendable { case zoom, googleMeet = "google-meet", teams, slackHuddle = "slack-huddle", webex, other }
 public enum InsertMethod: String, Sendable { case axSelectedText = "ax-selected-text", axValue = "ax-value", paste, none }
 public enum HotkeyAction: String, Sendable { case down, up }
+public enum PillFlashKind: String, Sendable { case error, info }
 public enum LogLevel: String, Sendable { case debug, info, warn, error }
 
 public enum AsrEvent: Equatable, Sendable {
@@ -119,7 +120,10 @@ public enum HostMessage: Equatable, Sendable {
     case recordingPause
     case recordingResume
     /// consumeFn: nil = not sent (an older host): the helper's default, on.
-    case dictationConfigure(warmMic: Bool, preRollMs: Int, streamAudio: Bool, pushKey: String, consumeFn: Bool? = nil)
+    /// pill (ADR 0092): `talk.showPill`; nil = not sent: shown.
+    case dictationConfigure(warmMic: Bool, preRollMs: Int, streamAudio: Bool, pushKey: String, consumeFn: Bool? = nil, pill: Bool? = nil)
+    /// ADR 0092: a failure (or notice) only the host knows, shown on the native pill: lowercase, ≤ 200 chars.
+    case pillFlash(kind: PillFlashKind, message: String)
     case dictationStart(id: String)
     case dictationStop(id: String)
     case dictationCancel(id: String)
@@ -433,10 +437,12 @@ extension HostMessage {
         case .recordingPause: return .object(["type": s("recording.pause")])
         case .recordingResume: return .object(["type": s("recording.resume")])
         case .modelsWarm: return .object(["type": s("models.warm")])
-        case .dictationConfigure(let warm, let pre, let stream, let key, let consume):
+        case .dictationConfigure(let warm, let pre, let stream, let key, let consume, let pill):
             var o: [String: JSONValue] = ["type": s("dictation.configure"), "warmMic": .bool(warm), "preRollMs": n(Double(pre)), "streamAudio": .bool(stream), "pushKey": s(key)]
             if let consume { o["consumeFn"] = .bool(consume) }
+            if let pill { o["pill"] = .bool(pill) }
             return .object(o)
+        case .pillFlash(let kind, let message): return .object(["type": s("pill.flash"), "kind": s(kind.rawValue), "message": s(message)])
         case .dictationStart(let id): return .object(["type": s("dictation.start"), "id": s(id)])
         case .dictationStop(let id): return .object(["type": s("dictation.stop"), "id": s(id)])
         case .dictationCancel(let id): return .object(["type": s("dictation.cancel"), "id": s(id)])
@@ -472,8 +478,13 @@ extension HostMessage {
         case "dictation.configure":
             guard let warm = f.o["warmMic"]?.bool, let stream = f.o["streamAudio"]?.bool else { throw ProtocolError("missing bool") }
             if let c = f.o["consumeFn"], c.bool == nil { throw ProtocolError("consumeFn must be a bool") }
+            if let c = f.o["pill"], c.bool == nil { throw ProtocolError("pill must be a bool") }
             self = .dictationConfigure(warmMic: warm, preRollMs: Int(try f.num("preRollMs")), streamAudio: stream, pushKey: try f.str("pushKey"),
-                                       consumeFn: f.o["consumeFn"]?.bool)
+                                       consumeFn: f.o["consumeFn"]?.bool, pill: f.o["pill"]?.bool)
+        case "pill.flash":
+            let m = try f.str("message")
+            guard !m.isEmpty, m.utf16.count <= 200 else { throw ProtocolError("bad pill message") }
+            self = .pillFlash(kind: try f.enumValue("kind", PillFlashKind.self), message: m)
         case "dictation.start": self = .dictationStart(id: try f.str("id"))
         case "dictation.stop": self = .dictationStop(id: try f.str("id"))
         case "dictation.cancel": self = .dictationCancel(id: try f.str("id"))

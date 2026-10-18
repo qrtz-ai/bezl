@@ -503,7 +503,21 @@ impl TalkService {
             "streamAudio": false, // the mic audio is only ever for a host-side engine; there is none
             "pushKey": if cfg.enabled { cfg.push_key.clone() } else { String::new() },
             "consumeFn": cfg.block_globe_key,
+            "pill": cfg.show_pill,
         }));
+    }
+
+    /// ADR 0092: show a failure or notice only the host knows on the helper's native pill (`kind`: error|info).
+    /// The text is sent lowercase and capped at the contract's 200 characters.
+    pub fn pill_flash(&self, kind: &str, message: &str) {
+        let mut m: String = message.trim().to_lowercase();
+        if m.is_empty() {
+            return;
+        }
+        if m.chars().count() > 200 {
+            m = m.chars().take(199).collect::<String>() + "…";
+        }
+        self.send(json!({"type": "pill.flash", "kind": kind, "message": m}));
     }
 
     // --------------------------------------------------------------------------------------------- helper in

@@ -361,6 +361,10 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     let (supervisor, availability) = match b.helper {
         Some((mut spawn, av)) => (
             Some({
+                // ADR 0092: the macOS helper draws echo's pill (no web pill window).
+                if cfg!(target_os = "macos") {
+                    spawn.env.push(("QRTZ_NATIVE_PILL".to_owned(), "1".to_owned()));
+                }
                 if let Some(l) = &local_models {
                     spawn.env.push((
                         crate::local_models::ENV.to_owned(),

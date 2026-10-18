@@ -60,11 +60,13 @@ final class PillDriverTests: XCTestCase {
         XCTAssertEqual(v.all, [.listening, .error("speech recognition isn't ready yet"), .hidden])
     }
 
-    func testFailedInsertAndLostMicAreErrors() {
+    func testFailedInsertAndLostMicAreErrors() async {
         let v = FakePillView(), d = PillDriver(view: v)
         d.helper(.dictationStarted(id: "a", preRollMs: 0))
         d.helper(.dictationStopped(id: "a", text: "hi", durationMs: 100))
         d.helper(.insertResult(id: "a", method: .none, ok: false, app: nil, error: "No Focused Field"))
+        XCTAssertEqual(d.state, .inserting, "waits for the host's pill.flash")
+        try? await Task.sleep(nanoseconds: 600_000_000)  // no flash from the host: the helper's own error
         XCTAssertEqual(d.state, .error("no focused field"))
         d.helper(.dictationStarted(id: "b", preRollMs: 0))
         d.helper(.dictationStopped(id: "b", text: "", durationMs: 100, reason: .micLost))
@@ -130,6 +132,54 @@ final class PillDriverTests: XCTestCase {
         let c = HelperController(deps: deps, send: { _ in }, now: { 0 })
         await c.handle(.dictationStart(id: "d1"))
         guard case .error = c.pill?.state else { return XCTFail("\(String(describing: c.pill?.state))") }
+    }
+}
+
+final class PillHostTests: XCTestCase {
+    func testAClipboardFallbackIsInfoNotAnError() async {
+        let v = FakePillView(), d = PillDriver(view: v)
+        d.helper(.dictationStarted(id: "a", preRollMs: 0))
+        d.helper(.dictationStopped(id: "a", text: "hi", durationMs: 100))
+        d.helper(.insertResult(id: "a", method: .none, ok: false, app: nil, error: "no focused field"))
+        d.host(.pillFlash(kind: .info, message: "Copied to clipboard"))
+        try? await Task.sleep(nanoseconds: 600_000_000)
+        XCTAssertEqual(v.all, [.listening, .processing, .info("copied to clipboard")], "no error shown first")
+        XCTAssertEqual(PillPhase.info("copied to clipboard").accessibilityLabel, "copied to clipboard")
+    }
+
+    func testAHostOnlyFailureFlashesOnAHiddenPill() async {
+        var t = PillDriver.Timing(); t.errorFlashMs = 40
+        let v = FakePillView(), d = PillDriver(view: v, timing: t)
+        d.host(.pillFlash(kind: .error, message: "Couldn't insert; copied to clipboard"))
+        XCTAssertEqual(d.state, .error("couldn't insert; copied to clipboard"))
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertEqual(d.state, .hidden)
+    }
+
+    func testShowPillOffShowsNothing() async {
+        let v = FakePillView()
+        var deps = HelperDeps(permissions: FakePerms(), meetings: nil, audio: [], transcribers: [], helperVersion: "t", os: "linux",
+                              features: [], dictationMic: FakeMic(), dictationTranscribers: [RecordingASR()], insertion: FakeInsertion())
+        deps.pill = v
+        deps.preloadDictationAsr = false
+        let c = HelperController(deps: deps, send: { _ in }, now: { 0 })
+        await c.handle(.dictationConfigure(warmMic: false, preRollMs: 0, streamAudio: false, pushKey: "", pill: false))
+        await c.handle(.dictationStart(id: "d1"))
+        await c.handle(.pillFlash(kind: .error, message: "x"))
+        XCTAssertFalse(v.all.contains { $0 != .hidden })
+        await c.handle(.dictationCancel(id: "d1"))
+        await c.handle(.dictationConfigure(warmMic: false, preRollMs: 0, streamAudio: false, pushKey: "", pill: true))
+        await c.handle(.dictationStart(id: "d2"))
+        XCTAssertEqual(v.all.last, .listening)
+    }
+
+    func testTheLinesRoundTrip() throws {
+        for m: HostMessage in [.pillFlash(kind: .info, message: "copied to clipboard"),
+                               .dictationConfigure(warmMic: true, preRollMs: 0, streamAudio: false, pushKey: "fn", consumeFn: false, pill: false)] {
+            XCTAssertEqual(try HostMessage.parse(line: m.json.serialized()).get(), m)
+        }
+        XCTAssertThrowsError(try HostMessage.parse(line: #"{"type":"pill.flash","kind":"warn","message":"x"}"#).get())
+        XCTAssertThrowsError(try HostMessage.parse(line: #"{"type":"pill.flash","kind":"info","message":""}"#).get())
     }
 }
 

@@ -323,18 +323,6 @@ for (const theme of ['dark', 'light'] as const) {
   });
 }
 
-test('the talk pill is its own page: the pill only, no shell or sub apps', async ({
-  page,
-}) => {
-  const errors = watch(page);
-  await page.goto('/pill.html?dev=1');
-  await expect(page.getByTestId('talk-pill')).toBeAttached();
-  await expect(
-    page.locator('[data-subapp], [data-testid^="nav-"]'),
-  ).toHaveCount(0);
-  expect(errors).toEqual([]);
-});
-
 test('mini hud follows the light theme; notes toggle; axe', async ({
   page,
 }) => {

@@ -1,6 +1,6 @@
 import { createClient, type QrtzTransport } from '@qrtz/core';
 
-// Lives here, not in SubAppHost, so the HUD and pill pages don't bundle the sub app host (ADR 0090).
+// Lives here, not in SubAppHost, so the HUD page doesn't bundle the sub app host (ADR 0090).
 export const noTransport: QrtzTransport = {
   invoke: async (e) => ({
     ok: false,

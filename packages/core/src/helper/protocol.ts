@@ -376,6 +376,15 @@ export const HostToHelper = z.discriminatedUnion('type', [
     /** With pushKey 'fn': swallow the Fn/globe events so macOS doesn't also run its globe action (switch input
      * source, emoji). Absent = on (`talk.blockGlobeKey`). */
     consumeFn: z.boolean().optional(),
+    /** ADR 0092: `talk.showPill` for the helper's native pill. Absent = shown. */
+    pill: z.boolean().optional(),
+  }),
+  /** ADR 0092: a failure or notice only the host knows (an older dictation's failed insert, the clipboard
+   * fallback: info "copied to clipboard"), shown on the helper's native pill. Lowercase text. */
+  z.object({
+    type: z.literal('pill.flash'),
+    kind: z.enum(['error', 'info']),
+    message: z.string().min(1).max(200),
   }),
   z.object({ type: z.literal('dictation.start'), id: z.string() }),
   z.object({ type: z.literal('dictation.stop'), id: z.string() }),

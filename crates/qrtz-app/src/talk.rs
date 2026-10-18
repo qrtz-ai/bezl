@@ -37,6 +37,9 @@ impl TalkPort for Talk {
     fn config_changed(&self) {
         self.0.configure()
     }
+    fn pill_flash(&self, kind: &str, message: &str) {
+        self.0.pill_flash(kind, message)
+    }
 }
 
 /// Talk → helper lines over the supervisor (`false` when it isn't running or there is no helper).

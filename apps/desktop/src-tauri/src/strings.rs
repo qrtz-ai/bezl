@@ -2,7 +2,6 @@
 //! scripts/check-titles.mjs scans `UI_*` consts and `.title(…)`/menu literals in this crate.
 pub const UI_APP: &str = "qrtz";
 pub const UI_HUD: &str = "qrtz hud";
-pub const UI_PILL: &str = "qrtz echo";
 pub const UI_TALK_FAILED: &str = "dictation didn't go through";
 pub const UI_OPEN: &str = "open qrtz";
 pub const UI_QUIT: &str = "quit qrtz";

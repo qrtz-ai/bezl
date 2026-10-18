@@ -27,9 +27,10 @@ export default defineConfig(({ command }) => ({
     target: 'safari16',
     outDir: 'dist',
     emptyOutDir: true,
-    // One page per window (ADR 0090): the HUD and the pill never load the shell or its sub apps.
+    // One page per window (ADR 0090): the HUD never loads the shell or its sub apps. echo's pill is native
+    // (the helper draws it, ADR 0092).
     rollupOptions: {
-      input: { main: 'index.html', hud: 'hud.html', pill: 'pill.html' },
+      input: { main: 'index.html', hud: 'hud.html' },
     },
   },
 }));
