@@ -341,6 +341,9 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
 
 /** ADR 0140: the level a volume task names (the number after "to" / "volume"), 0–100. */
 const levelOf = (text: string): number | null => {
+  // ADR 0143: "all the way up / down" is the end of the range.
+  const end = /\ball the way (up|down)\b/i.exec(text);
+  if (end) return end[1]?.toLowerCase() === 'up' ? 100 : 0;
   const m = /\b(?:to|volume)\s+(\d{1,3})\b/i.exec(text);
   const n = m ? Number(m[1]) : NaN;
   return n >= 0 && n <= 100 ? n : null;

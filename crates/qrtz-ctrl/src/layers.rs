@@ -965,6 +965,18 @@ fn levels(toks: &[Tok]) -> Vec<(u8, i64)> {
             None => out.push((n, p)),
         }
     }
+    // ADR 0143: "all the way up / down" is the end of the range, a sure level (not a step).
+    for w in toks.windows(4) {
+        let n = match (w[0].w.as_str(), w[1].w.as_str(), w[2].w.as_str(), w[3].w.as_str()) {
+            ("all", "the", "way", "up") => 100,
+            ("all", "the", "way", "down") => 0,
+            _ => continue,
+        };
+        match out.iter_mut().find(|(m, _)| *m == n) {
+            Some(e) => e.1 = e.1.max(5000),
+            None => out.push((n, 5000)),
+        }
+    }
     out
 }
 

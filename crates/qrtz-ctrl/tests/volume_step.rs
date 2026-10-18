@@ -164,6 +164,8 @@ fn a_sure_level_is_still_set_volume_and_an_app_or_no_direction_is_not_this() {
     for (text, level) in [
         ("turn the volume down to 20", 20u8),
         ("lower the volume to 15", 15),
+        ("turn the volume all the way up", 100),
+        ("turn the sound all the way down", 0),
     ] {
         let d = tempfile::tempdir().unwrap();
         let (s, fake) = rig(d.path(), at(50));
