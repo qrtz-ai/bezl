@@ -121,7 +121,7 @@ public enum HostMessage: Equatable, Sendable {
     case recordingResume
     /// consumeFn: nil = not sent (an older host): the helper's default, on.
     /// pill (ADR 0092): `talk.showPill`; nil = not sent: shown.
-    case dictationConfigure(warmMic: Bool, preRollMs: Int, streamAudio: Bool, pushKey: String, consumeFn: Bool? = nil, pill: Bool? = nil)
+    case dictationConfigure(warmMic: Bool, preRollMs: Int, streamAudio: Bool, pushKey: String, consumeFn: Bool? = nil, pill: Bool? = nil, autoInsert: Bool? = nil)
     /// ADR 0092: a failure (or notice) only the host knows, shown on the native pill: lowercase, ≤ 200 chars.
     case pillFlash(kind: PillFlashKind, message: String)
     case dictationStart(id: String)
@@ -437,10 +437,11 @@ extension HostMessage {
         case .recordingPause: return .object(["type": s("recording.pause")])
         case .recordingResume: return .object(["type": s("recording.resume")])
         case .modelsWarm: return .object(["type": s("models.warm")])
-        case .dictationConfigure(let warm, let pre, let stream, let key, let consume, let pill):
+        case .dictationConfigure(let warm, let pre, let stream, let key, let consume, let pill, let autoInsert):
             var o: [String: JSONValue] = ["type": s("dictation.configure"), "warmMic": .bool(warm), "preRollMs": n(Double(pre)), "streamAudio": .bool(stream), "pushKey": s(key)]
             if let consume { o["consumeFn"] = .bool(consume) }
             if let pill { o["pill"] = .bool(pill) }
+            if let autoInsert { o["autoInsert"] = .bool(autoInsert) }
             return .object(o)
         case .pillFlash(let kind, let message): return .object(["type": s("pill.flash"), "kind": s(kind.rawValue), "message": s(message)])
         case .dictationStart(let id): return .object(["type": s("dictation.start"), "id": s(id)])
@@ -479,8 +480,9 @@ extension HostMessage {
             guard let warm = f.o["warmMic"]?.bool, let stream = f.o["streamAudio"]?.bool else { throw ProtocolError("missing bool") }
             if let c = f.o["consumeFn"], c.bool == nil { throw ProtocolError("consumeFn must be a bool") }
             if let c = f.o["pill"], c.bool == nil { throw ProtocolError("pill must be a bool") }
+            if let c = f.o["autoInsert"], c.bool == nil { throw ProtocolError("autoInsert must be a bool") }
             self = .dictationConfigure(warmMic: warm, preRollMs: Int(try f.num("preRollMs")), streamAudio: stream, pushKey: try f.str("pushKey"),
-                                       consumeFn: f.o["consumeFn"]?.bool, pill: f.o["pill"]?.bool)
+                                       consumeFn: f.o["consumeFn"]?.bool, pill: f.o["pill"]?.bool, autoInsert: f.o["autoInsert"]?.bool)
         case "pill.flash":
             let m = try f.str("message")
             guard !m.isEmpty, m.utf16.count <= 200 else { throw ProtocolError("bad pill message") }

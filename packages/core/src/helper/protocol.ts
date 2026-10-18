@@ -378,6 +378,7 @@ export const HostToHelper = z.discriminatedUnion('type', [
     consumeFn: z.boolean().optional(),
     /** ADR 0092: `talk.showPill` for the helper's native pill. Absent = shown. */
     pill: z.boolean().optional(),
+    autoInsert: z.boolean().optional(),
   }),
   /** ADR 0092: a failure or notice only the host knows (an older dictation's failed insert, the clipboard
    * fallback: info "copied to clipboard"), shown on the helper's native pill. Lowercase text. */

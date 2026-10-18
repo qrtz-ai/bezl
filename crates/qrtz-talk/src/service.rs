@@ -504,6 +504,7 @@ impl TalkService {
             "pushKey": if cfg.enabled { cfg.push_key.clone() } else { String::new() },
             "consumeFn": cfg.block_globe_key,
             "pill": cfg.show_pill,
+            "autoInsert": cfg.auto_insert,
         }));
     }
 

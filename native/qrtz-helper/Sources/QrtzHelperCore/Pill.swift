@@ -29,20 +29,29 @@ public protocol PillView: AnyObject, Sendable {
     func level(_ rms: Double)
 }
 
-/// Follows the helper's talk flow: the push key and the dictation lines it sends, and the host's stop, cancel and
-/// insert. Up through finalizing and inserting; hidden on insert, on an empty or cancelled dictation, or after an
-/// error has shown for `errorFlashMs`. Timeouts hide a pill whose dictation never started or whose text was never
-/// inserted, so it can't stick on screen.
+/// Follows the helper's talk flow: the push key and the dictation lines it sends, and the host's start, stop, cancel
+/// and insert. Up through finalizing and inserting; hidden on insert, on an empty or cancelled dictation, or after an
+/// error has shown for `errorFlashMs`. Timeouts hide a pill whose dictation never started, never finished or whose
+/// text was never inserted, so it can't stick on screen.
+///
+/// N146: the pill follows one dictation at a time. A press starts a new attempt (also during an older dictation's
+/// finalizing or inserting, N110); the older dictation's id is retired and its later lines (stopped, insert.result,
+/// errors) are ignored, so they can't hide the newer one's pill.
 public final class PillDriver: @unchecked Sendable {
     public enum State: Equatable, Sendable { case hidden, listening, finalizing, inserting, error(String), info(String) }
 
     public struct Timing: Sendable {
         public var errorFlashMs = 1_600
+        /// From the press until the host's `dictation.start` (N147: only that long; the recogniser's load after it,
+        /// up to ~26 s cold, doesn't hide the pill while the key is held).
         public var startTimeoutMs = 2_000
         public var insertTimeoutMs = 5_000
         /// After a failed insert: how long the pill waits for the host's `pill.flash` (it knows whether the words
         /// went to the clipboard) before it shows the helper's own error.
         public var hostFlashWaitMs = 400
+        /// N145: the most a started dictation's release can take (`DictationTail`: tail + the whole drain/finalize
+        /// budget, plus a second). nil: the controller fills it from its `DictationTail`.
+        public var finalizeBackstopMs: Int?
         public init() {}
     }
 
@@ -52,7 +61,12 @@ public final class PillDriver: @unchecked Sendable {
     private var current: State = .hidden
     private var gen = 0
     private var started = false
+    /// The host sent `dictation.start` for this attempt.
+    private var hostAsked = false
+    private var currentId: String?
+    private var retired: [String] = []
     private var on = true
+    private var inserts = true
     private var pendingInsertError: String?
 
     /// `talk.showPill` (`dictation.configure{pill}`). Off: nothing shows (the host notifies instead).
@@ -64,29 +78,65 @@ public final class PillDriver: @unchecked Sendable {
         }
     }
 
+    /// `talk.autoInsert` (`dictation.configure{autoInsert}`). Off: the host inserts nothing, so the pill ends at
+    /// `dictation.stopped` instead of waiting out the insert timeout (N147).
+    public var autoInsert: Bool {
+        get { lock.withLock { inserts } }
+        set { lock.withLock { inserts = newValue } }
+    }
+
     public init(view: PillView, timing: Timing = Timing()) { self.view = view; self.timing = timing }
 
     public var state: State { lock.withLock { current } }
+    /// The dictation the pill follows (nil: a press the host hasn't started yet).
+    public var dictationId: String? { lock.withLock { currentId } }
+
+    private var backstopMs: Int { timing.finalizeBackstopMs ?? DictationTail().tailMs + DictationTail().maxWaitMs + 1_000 }
+
+    /// This id's lines move the pill: not an older, retired dictation's.
+    private func isCurrent(_ id: String) -> Bool {
+        lock.withLock { !retired.contains(id) && (currentId == nil || currentId == id) }
+    }
+
+    /// A new attempt: the dictation the pill followed (if any) is retired.
+    private func newAttempt(id: String?) {
+        lock.withLock {
+            if let c = currentId, c != id {
+                retired.append(c)
+                if retired.count > 8 { retired.removeFirst(retired.count - 8) }
+            }
+            currentId = id; started = false; hostAsked = false
+        }
+    }
 
     /// A line the helper sends (seen before it is written, so a key press shows the pill at once).
     public func helper(_ m: HelperMessage) {
         switch m {
         case .hotkey(.down):
-            let s = state
-            if s == .hidden || isError(s) { lock.withLock { started = false }; go(.listening, timeoutMs: timing.startTimeoutMs) }
+            guard state != .listening else { return }
+            newAttempt(id: nil)
+            go(.listening, timeoutMs: timing.startTimeoutMs)
         case .hotkey(.up):
-            if state == .listening { go(.finalizing) }
-        case .dictationStarted:
-            lock.withLock { started = true }
+            guard state == .listening else { return }
+            // N145: a press the host never started (refused before dictation.start) can't wait for a stop.
+            go(.finalizing, timeoutMs: lock.withLock { hostAsked || started } ? backstopMs : timing.startTimeoutMs)
+        case .dictationStarted(let id, _):
+            // A started dictation is the newest one, unless it is a retired id.
+            guard lock.withLock({ !retired.contains(id) }) else { return }
+            if lock.withLock({ currentId != nil && currentId != id }) { newAttempt(id: id) }
+            lock.withLock { currentId = id; started = true }
             let s = state
             if s == .hidden || s == .listening || isError(s) { go(.listening) }
+            else if s == .finalizing { go(.finalizing, timeoutMs: backstopMs) }
         case .dictationLevel(let rms):
             if state == .listening { view.level(rms) }
-        case .dictationStopped(_, let text, _, let reason):
+        case .dictationStopped(let id, let text, _, let reason):
+            guard isCurrent(id) else { return }
             if let reason { go(.error(Self.words(reason)), timeoutMs: timing.errorFlashMs) }
-            else if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { go(.hidden) }
+            else if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !autoInsert { go(.hidden) }
             else { go(.inserting, timeoutMs: timing.insertTimeoutMs) }
-        case .insertResult(_, _, let ok, _, let error):
+        case .insertResult(let id, _, let ok, _, let error):
+            guard isCurrent(id) else { return }
             if ok { go(.hidden); return }
             // The host answers a failed insert with `pill.flash` (error, or info "copied to clipboard"): stay on
             // processing for it; show this error only if it doesn't come.
@@ -98,10 +148,12 @@ public final class PillDriver: @unchecked Sendable {
                 let m: String? = self.lock.withLock { self.gen == g ? self.pendingInsertError : nil }
                 if let m { self.go(.error(m), timeoutMs: self.timing.errorFlashMs) }
             }
-        case .error(let code, let message, _, _, _, _, _):
-            // Only while the pill is up (a configure-time hotkey error must not pop it), and a refused second press
-            // (`dictation.busy`) leaves the first dictation's pill alone.
-            guard code.hasPrefix("dictation."), code != "dictation.busy", state != .hidden else { return }
+        case .error(let code, let message, _, let id, _, _, _):
+            // Only while the pill is up (a configure-time hotkey error must not pop it), and only for the dictation
+            // it follows. A refused press (`dictation.busy`) has nothing to show: it ends quietly.
+            guard code.hasPrefix("dictation."), state != .hidden else { return }
+            if let id, !isCurrent(id) { return }
+            if code == "dictation.busy" { go(.hidden); return }
             go(.error(Self.lower(message)), timeoutMs: timing.errorFlashMs)
         default: break
         }
@@ -110,14 +162,21 @@ public final class PillDriver: @unchecked Sendable {
     /// A line the host sends.
     public func host(_ m: HostMessage) {
         switch m {
-        case .dictationStart:
-            if state == .hidden { go(.listening, timeoutMs: timing.startTimeoutMs) }
-        case .dictationStop:
-            if state == .listening { go(.finalizing) }
-        case .dictationCancel:
-            go(.hidden)
-        case .insertText:
-            if state != .inserting { go(.inserting, timeoutMs: timing.insertTimeoutMs) }
+        case .dictationStart(let id):
+            if lock.withLock({ currentId != nil && currentId != id }) { newAttempt(id: id) }
+            lock.withLock { currentId = id; hostAsked = true }
+            // N147: the host answered, so the start timeout is disarmed (same phase, no redraw).
+            switch state {
+            case .listening, .hidden, .error, .info: go(.listening)
+            case .finalizing: go(.finalizing, timeoutMs: backstopMs)
+            case .inserting: break
+            }
+        case .dictationStop(let id):
+            if isCurrent(id), state == .listening { go(.finalizing, timeoutMs: backstopMs) }
+        case .dictationCancel(let id):
+            if isCurrent(id) { go(.hidden) }
+        case .insertText(let id, _, _):
+            if isCurrent(id), state != .inserting { go(.inserting, timeoutMs: timing.insertTimeoutMs) }
         case .pillFlash(let kind, let message):
             let m = Self.lower(message)
             go(kind == .error ? .error(m) : .info(m), timeoutMs: timing.errorFlashMs)

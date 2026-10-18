@@ -167,6 +167,12 @@ With `QRTZ_NATIVE_PILL=1` (macOS; `hello.features` carries `talk.pill.native`) t
 its own talk state.
 
 - `dictation.configure{pill}`: optional bool, default true (`talk.showPill`). Off means the helper never shows it.
+- `dictation.configure{autoInsert}`: optional bool, default true (`talk.autoInsert`). Off: the host inserts nothing,
+  so the pill ends at `dictation.stopped` (N147).
+- The pill follows one dictation (N146): a press starts a new attempt, and an older id's `dictation.stopped`,
+  `insert.result` or `error` no longer moves it. The 2 s start timeout runs only until the host's `dictation.start`
+  (N147; a cold recogniser load after it doesn't hide the pill). A release the host never started ends after that
+  timeout; a started one after echo's release budget (`DictationTail` tail + maxWait + 1 s, N145).
 - `pill.flash {kind: "error" | "info", message}`: a failure only the host knows (an older dictation's insert, the
   clipboard fallback as `info` `copied to clipboard`). The message is lowercased, 1–200 chars; no reply. After an
   `insert.result ok:false` the helper waits up to 400 ms for this line before it shows its own error.

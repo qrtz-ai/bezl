@@ -88,14 +88,23 @@ pub fn pill_action(config: &Value, talk: &Value) -> PillAction {
 
 /// [`pill_action`] with each failure flashed (or notified) once. A failure that lands while the pill is showing a
 /// newer dictation is kept and flashed when that one is done. The shell keeps one per app.
+///
+/// N145: a refusal (`phase: error`) is one attempt. Its flash is deduplicated only while the view stays on that
+/// error (a re-emitted view); once the view leaves the error phase, the same refusal on the next press flashes
+/// again. A `last` failure (an insert) stays deduplicated for good: `last` is kept across views.
 #[derive(Debug, Default)]
 pub struct PillGate {
     flashed: Option<String>,
+    error_flashed: Option<String>,
     pending: Option<(String, String)>,
 }
 
 impl PillGate {
     pub fn next(&mut self, config: &Value, talk: &Value) -> PillAction {
+        let attempt_error = talk["phase"] == "error" && talk["error"].is_string();
+        if !attempt_error {
+            self.error_flashed = None;
+        }
         match pill_action(config, talk) {
             PillAction::Show => {
                 if let Some((key, error)) = last_failure(talk) {
@@ -105,14 +114,21 @@ impl PillGate {
                 }
                 PillAction::Show
             }
-            PillAction::Flash { key, .. } if self.flashed.as_deref() == Some(key.as_str()) => {
+            PillAction::Flash { key, .. }
+                if self.flashed.as_deref() == Some(key.as_str())
+                    || self.error_flashed.as_deref() == Some(key.as_str()) =>
+            {
                 self.take_pending()
             }
             PillAction::Flash { key, error, notify } => {
                 if self.pending.as_ref().is_some_and(|(k, _)| *k == key) {
                     self.pending = None;
                 }
-                self.flashed = Some(key.clone());
+                if attempt_error {
+                    self.error_flashed = Some(key.clone());
+                } else {
+                    self.flashed = Some(key.clone());
+                }
                 PillAction::Flash { key, error, notify }
             }
             PillAction::Hide => self.take_pending(),
@@ -257,5 +273,31 @@ mod tests {
             g.next(&off, &json!({"phase": "idle", "last": ok})),
             PillAction::Hide
         );
+    }
+
+    #[test]
+    fn the_same_refusal_on_the_next_press_flashes_again() {
+        // N145: refusal, idle, the same refusal: each press is told (was Flash, Hide, Hide).
+        let cfg = json!({});
+        let refused =
+            json!({"phase": "error", "error": "speech isn't ready", "last": {"id": "d1", "inserted": true}});
+        let idle = json!({"phase": "idle", "last": {"id": "d1", "inserted": true}});
+        let mut g = PillGate::default();
+        assert!(matches!(g.next(&cfg, &refused), PillAction::Flash { .. }));
+        assert_eq!(
+            g.next(&cfg, &refused),
+            PillAction::Hide,
+            "a re-emitted view doesn't flash twice"
+        );
+        assert_eq!(g.next(&cfg, &idle), PillAction::Hide);
+        assert!(
+            matches!(g.next(&cfg, &refused), PillAction::Flash { .. }),
+            "the next press's refusal flashes"
+        );
+        // An insert failure in `last` stays flashed once across views.
+        let failed = json!({"phase": "idle", "last": {"id": "d2", "inserted": false, "error": "no focus"}});
+        assert!(matches!(g.next(&cfg, &failed), PillAction::Flash { .. }));
+        assert_eq!(g.next(&cfg, &idle), PillAction::Hide);
+        assert_eq!(g.next(&cfg, &failed), PillAction::Hide);
     }
 }

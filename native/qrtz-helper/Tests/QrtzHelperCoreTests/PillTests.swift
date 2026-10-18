@@ -100,6 +100,114 @@ final class PillDriverTests: XCTestCase {
         XCTAssertEqual(d.state, .hidden)
     }
 
+    func testARefusedPressEndsAfterTheStartTimeoutEvenIfReleased() async {
+        // N145: the host refused the press before dictation.start (and its repeated flash may be deduplicated):
+        // the release can't wait for a stop that never comes.
+        let v = FakePillView(), d = PillDriver(view: v, timing: fast())
+        d.helper(.hotkey(.down))
+        d.helper(.hotkey(.up))
+        XCTAssertEqual(d.state, .finalizing)
+        await sleep(150)
+        XCTAssertEqual(d.state, .hidden)
+    }
+
+    func testAStartedReleaseThatNeverStopsHitsTheFinalizeBackstop() async {
+        // N145: a started dictation's release is bounded by echo's own release budget.
+        var t = fast(); t.finalizeBackstopMs = 80
+        let v = FakePillView(), d = PillDriver(view: v, timing: t)
+        d.helper(.hotkey(.down))
+        d.host(.dictationStart(id: "d1"))
+        d.helper(.dictationStarted(id: "d1", preRollMs: 0))
+        d.helper(.hotkey(.up))
+        await sleep(40)
+        XCTAssertEqual(d.state, .finalizing, "not cut by the 60 ms start timeout")
+        await sleep(120)
+        XCTAssertEqual(d.state, .hidden)
+        XCTAssertEqual(PillDriver.Timing().finalizeBackstopMs, nil, "the controller fills it from its DictationTail")
+    }
+
+    func testBackToBackDictationsKeepTheNewerPill() {
+        // N146 / N110: d2 is pressed while d1 inserts; d1's insert.result must not hide d2, and d2's levels show.
+        let v = FakePillView(), d = PillDriver(view: v)
+        d.helper(.hotkey(.down))
+        d.host(.dictationStart(id: "d1"))
+        d.helper(.dictationStarted(id: "d1", preRollMs: 0))
+        d.helper(.hotkey(.up))
+        d.helper(.dictationStopped(id: "d1", text: "one", durationMs: 500))
+        d.host(.insertText(id: "d1", text: "one", restoreClipboard: true))
+        XCTAssertEqual(d.state, .inserting)
+        d.helper(.hotkey(.down))
+        XCTAssertEqual(d.state, .listening, "a press during the insert shows the next dictation")
+        d.host(.dictationStart(id: "d2"))
+        d.helper(.dictationStarted(id: "d2", preRollMs: 0))
+        d.helper(.insertResult(id: "d1", method: .axSelectedText, ok: true, app: "Notes", error: nil))
+        XCTAssertEqual(d.state, .listening)
+        XCTAssertEqual(d.dictationId, "d2")
+        d.helper(.dictationLevel(rms: 0.4))
+        XCTAssertEqual(v.levels, [0.4])
+        d.helper(.insertResult(id: "d1", method: .axSelectedText, ok: false, app: "Notes", error: "late"))
+        d.helper(.error(code: "dictation.asr", message: "old", fatal: false, id: "d1"))
+        XCTAssertEqual(d.state, .listening, "nothing of d1 moves the pill any more")
+        d.helper(.hotkey(.up))
+        d.helper(.dictationStopped(id: "d2", text: "two", durationMs: 500))
+        d.helper(.insertResult(id: "d2", method: .axSelectedText, ok: true, app: "Notes", error: nil))
+        XCTAssertEqual(v.all, [.listening, .processing, .listening, .processing, .hidden])
+    }
+
+    func testAPressQueuedDuringFinalizingFollowsTheNewDictation() {
+        // N146, the other order: d1 still finalizing when d2 is pressed; d1's stopped arrives while d2 listens.
+        let v = FakePillView(), d = PillDriver(view: v)
+        d.helper(.hotkey(.down))
+        d.host(.dictationStart(id: "d1"))
+        d.helper(.dictationStarted(id: "d1", preRollMs: 0))
+        d.helper(.hotkey(.up))
+        d.helper(.hotkey(.down))
+        d.helper(.dictationStopped(id: "d1", text: "one", durationMs: 500))
+        XCTAssertEqual(d.state, .listening)
+        d.host(.insertText(id: "d1", text: "one", restoreClipboard: true))
+        XCTAssertEqual(d.state, .listening)
+        d.host(.dictationStart(id: "d2"))
+        d.helper(.dictationStarted(id: "d2", preRollMs: 0))
+        XCTAssertEqual(d.state, .listening)
+    }
+
+    func testAColdLoadAfterTheHostsStartDoesntHideThePill() async {
+        // N147: the start timeout runs only until the host's dictation.start; the recogniser may load for ~26 s.
+        let v = FakePillView(), d = PillDriver(view: v, timing: fast())
+        d.helper(.hotkey(.down))
+        d.host(.dictationStart(id: "d1"))
+        await sleep(150)
+        XCTAssertEqual(d.state, .listening)
+        XCTAssertEqual(v.all, [.listening])
+        d.helper(.dictationStarted(id: "d1", preRollMs: 0))
+        XCTAssertEqual(d.state, .listening)
+    }
+
+    func testWithAutoInsertOffThePillEndsAtStopped() async {
+        // N147: no insert.text will come; don't sit on processing for the insert timeout.
+        let v = FakePillView(), d = PillDriver(view: v)
+        d.autoInsert = false
+        d.helper(.hotkey(.down))
+        d.host(.dictationStart(id: "d1"))
+        d.helper(.dictationStarted(id: "d1", preRollMs: 0))
+        d.helper(.hotkey(.up))
+        d.helper(.dictationStopped(id: "d1", text: "hello", durationMs: 500))
+        XCTAssertEqual(d.state, .hidden)
+    }
+
+    func testConfigureCarriesAutoInsertToThePill() async {
+        let v = FakePillView()
+        var deps = HelperDeps(permissions: FakePerms(), meetings: nil, audio: [], transcribers: [], helperVersion: "t", os: "linux",
+                              features: [], dictationMic: FakeMic(), dictationTranscribers: [])
+        deps.pill = v
+        let c = HelperController(deps: deps, send: { _ in }, now: { 0 })
+        await c.handle(.dictationConfigure(warmMic: false, preRollMs: 0, streamAudio: false, pushKey: "", autoInsert: false))
+        XCTAssertEqual(c.pill?.autoInsert, false)
+        let line = HostMessage.parse(line: #"{"type":"dictation.configure","warmMic":false,"preRollMs":0,"streamAudio":false,"pushKey":"","autoInsert":false}"#)
+        guard case .success(.dictationConfigure(_, _, _, _, _, _, false)) = line else { return XCTFail("autoInsert parsed: \(line)") }
+        guard case .failure = HostMessage.parse(line: #"{"type":"dictation.configure","warmMic":false,"preRollMs":0,"streamAudio":false,"pushKey":"","autoInsert":1}"#) else { return XCTFail("a non-bool autoInsert is refused") }
+    }
+
     func testAccessibilityLabels() {
         XCTAssertEqual(PillPhase.listening.accessibilityLabel, "listening")
         XCTAssertEqual(PillPhase.processing.accessibilityLabel, "processing")

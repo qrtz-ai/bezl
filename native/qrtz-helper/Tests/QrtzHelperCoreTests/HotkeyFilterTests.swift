@@ -118,7 +118,7 @@ final class HotkeyFilterTests: XCTestCase {
     }
 
     func testConsumeFnOnTheWire() {
-        guard case .success(.dictationConfigure(_, _, _, "fn", false, _)) =
+        guard case .success(.dictationConfigure(_, _, _, "fn", false, _, _)) =
                 HostMessage.parse(line: #"{"preRollMs":0,"pushKey":"fn","streamAudio":false,"type":"dictation.configure","warmMic":false,"consumeFn":false}"#)
         else { return XCTFail() }
         guard case .failure = HostMessage.parse(line: #"{"preRollMs":0,"pushKey":"fn","streamAudio":false,"type":"dictation.configure","warmMic":false,"consumeFn":"yes"}"#)

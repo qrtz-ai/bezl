@@ -314,7 +314,10 @@ public actor HelperController {
 
     public init(deps: HelperDeps, send: @escaping @Sendable (HelperMessage) -> Void, now: @escaping @Sendable () -> Double) {
         // ADR 0092: the pill sees every line before it is written, so a key press shows it at once.
-        let pill = deps.pill.map { PillDriver(view: $0, timing: deps.pillTiming) }
+        var pillTiming = deps.pillTiming
+        // N145: a release can't take longer than echo's own release budget (then the pill gives up on it).
+        if pillTiming.finalizeBackstopMs == nil { pillTiming.finalizeBackstopMs = deps.dictationTail.tailMs + deps.dictationTail.maxWaitMs + 1_000 }
+        let pill = deps.pill.map { PillDriver(view: $0, timing: pillTiming) }
         let raw = send
         let send: @Sendable (HelperMessage) -> Void
         if let pill { send = { m in pill.helper(m); raw(m) } } else { send = raw }
@@ -391,8 +394,9 @@ public actor HelperController {
         case .recordingResume: paused = false; send(.log(level: .info, msg: "capture resumed"))
         case .modelsWarm: await warmModels()
         case .shutdown: await shutdown()
-        case .dictationConfigure(let warm, let pre, let stream, let key, let consume, let showPill):
+        case .dictationConfigure(let warm, let pre, let stream, let key, let consume, let showPill, let autoInsert):
             pill?.enabled = showPill ?? true
+            pill?.autoInsert = autoInsert ?? true
             await dictation.configure(warmMic: warm, preRollMs: pre, streamAudio: stream, pushKey: key, consumeFn: consume ?? true)
             _ = await admit(.configure(warmMic: warm))
             watchPermissions()
