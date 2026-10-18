@@ -132,6 +132,19 @@ impl SqliteStorage {
     ) -> Result<R, AppError> {
         self.db.call(f).await.map_err(storage_error)
     }
+    /// N148 (ADR 0094): a meeting pending delete (undo window, or a deferred delete that failed and waits for
+    /// the next launch) reads as not found, as it is hidden from `note:list` and from playback (N133). Since ADR
+    /// 0091 a meeting is an address (`#/note/meetings/:id`) that a notification or the palette can open, so the
+    /// readers by id must agree with the list. Writes are left alone (harmless on a meeting about to go).
+    fn refuse_hidden(&self, id: &str) -> Result<(), AppError> {
+        match &self.hidden {
+            Some(h) if h().iter().any(|g| g == id) => Err(AppError::new(
+                ErrorCode::NotFound,
+                format!("meeting {id} not found"),
+            )),
+            _ => Ok(()),
+        }
+    }
     fn json<T: serde::Serialize>(v: T) -> Result<Value, AppError> {
         serde_json::to_value(v).map_err(|e| AppError::new(ErrorCode::Internal, e.to_string()))
     }
@@ -155,6 +168,7 @@ impl StoragePort for SqliteStorage {
             }
             "note:get" => {
                 let id = need_str(&p, "id")?;
+                self.refuse_hidden(&id)?;
                 Self::json(self.run(move |db| db.notes().detail(&id)).await?)
             }
             "note:list-notes" => {
@@ -163,7 +177,10 @@ impl StoragePort for SqliteStorage {
                     .map(str::to_owned)
                     .or_else(|| (self.live_meeting)());
                 match id {
-                    Some(id) => Self::json(self.run(move |db| db.notes().get_notes(&id)).await?),
+                    Some(id) => {
+                        self.refuse_hidden(&id)?;
+                        Self::json(self.run(move |db| db.notes().get_notes(&id)).await?)
+                    }
                     None => Ok(json!([])),
                 }
             }
@@ -195,6 +212,7 @@ impl StoragePort for SqliteStorage {
             }
             "note:export" => {
                 let id = need_str(&p, "id")?;
+                self.refuse_hidden(&id)?;
                 let e = self.run(move |db| qrtz_backup::export_meeting(db, &id)).await?;
                 let mut out = json!({ "filename": e.filename, "markdown": e.markdown });
                 if p["save"].as_bool() != Some(true) {
