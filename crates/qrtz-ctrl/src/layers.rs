@@ -489,12 +489,13 @@ const INTENTS: &[IntentDef] = &[
         slot: Slot::None,
         irreversible: true,
     },
-    // A system settings change (spec §9).
+    // ADR 0137: the system appearance, through System Events (faceless); reversible (the opposite task undoes it),
+    // so no gate.
     IntentDef {
         id: "dark_mode",
-        app: AppMode::Fixed("com.apple.systempreferences"),
+        app: AppMode::Fixed("com.apple.systemevents"),
         slot: Slot::None,
-        irreversible: true,
+        irreversible: false,
     },
     IntentDef {
         id: "search",
@@ -516,6 +517,12 @@ const INTENTS: &[IntentDef] = &[
 
 fn intent_def(id: &str) -> Option<&'static IntentDef> {
     INTENTS.iter().find(|d| d.id == id)
+}
+
+/// ADR 0138: the words that mean "my email" (the Mail app when no mail app is named).
+pub const MAIL_APP: &str = "com.apple.mail";
+fn mail_words(toks: &[Tok]) -> bool {
+    has(toks, &["email", "emails", "inbox", "e-mail", "mail"])
 }
 
 const FOLDER_WORDS: &[&str] = &[
@@ -590,6 +597,14 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
         "open_app" => {
             if open {
                 p += 1500;
+            }
+            // ADR 0138: "open my email" / "check my inbox" means the mail app (Mail, or the one named).
+            if mail_words(toks)
+                && !named_app
+                && (open || has(toks, &["check", "read"]))
+                && !has(toks, &["send", "reply", "write"])
+            {
+                p += if open { 3000 } else { 4500 };
             }
             if named_app && (!site || full_named) {
                 p += 3000;
@@ -762,6 +777,12 @@ fn app_question(def: &IntentDef, toks: &[Tok], apps: &AppsObs) -> Question {
             }
         }
         AppMode::Named { fallback } => {
+            // ADR 0138: "my email" with no app named is the Mac's Mail, as "my calendar" is Calendar (ADR 0128).
+            if def.id == "open_app" && named.is_empty() && mail_words(toks) {
+                if let Some(m) = apps.apps.iter().find(|a| a.id == MAIL_APP) {
+                    cs.push(choice(app_opt(&m.id), 6000 + if m.running { 500 } else { 0 }));
+                }
+            }
             if let Some(f) = fallback {
                 let o = if f == "app.default_browser" {
                     opt(f, OptionKind::App)
@@ -964,7 +985,15 @@ fn move_question(
             irreversible(route("files.empty_trash", 4000)),
             irreversible(shortcut("cmd+shift+delete", 1500)),
         ],
-        "dark_mode" => vec![irreversible(route("scripting.set_dark_mode", 4000))],
+        // ADR 0137: on or off from the words ("light mode", "turn off dark mode" → off); "toggle" alone asks.
+        "dark_mode" => {
+            let off = has(toks, &["light", "off", "disable"]);
+            let on = !off && has(toks, &["dark", "on", "enable"]) && !has(toks, &["toggle"]);
+            vec![
+                route("scripting.dark_mode_on", if on { 4500 } else { 2000 }),
+                route("scripting.dark_mode_off", if off { 4500 } else { 2000 }),
+            ]
+        }
         "search" => vec![shortcut("cmd+f", 3000)],
         "send_message" => vec![shortcut("cmd+n", 3000), irreversible(shortcut("cmd+return", 0))],
         _ => vec![],
@@ -1162,6 +1191,8 @@ fn route_label(id: &str) -> &'static str {
         "workspace.quit_unused" => "quit them without bringing anything forward",
         "workspace.hide_others" => "hide them, the app you're in stays",
         "system.mute" => "mute the sound output",
+        "scripting.dark_mode_on" => "switch to dark mode",
+        "scripting.dark_mode_off" => "switch to light mode",
         "files.tidy" => "sort by kind, nothing deleted",
         "files.sort_by_kind" => "sort files into folders by kind",
         "files.trash_old" => "move old installers to the trash",

@@ -17,6 +17,8 @@ public enum CtrlScripts {
     /// `saving no`, which would throw away unsaved work).
     public static func source(verb: String, bundleId: String) -> String? {
         guard safeBundleId(bundleId), CtrlRoute.scriptVerbs.contains(verb) else { return nil }
+        // ADR 0137: the appearance verbs go to System Events and nothing else; nothing else goes to System Events.
+        guard CtrlRoute.appearanceVerbs.contains(verb) == (bundleId == CtrlRoute.systemEvents) else { return nil }
         let body: String
         switch verb {
         case "count_tabs":
@@ -33,6 +35,8 @@ public enum CtrlScripts {
         case "close_tab": body = "if (count of windows) > 0 then close current tab of front window"
         case "count_windows": body = "return count of windows"
         case "close_window": body = "if (count of windows) > 0 then close front window"
+        case "set_dark_mode": body = "tell appearance preferences to set dark mode to true"
+        case "set_light_mode": body = "tell appearance preferences to set dark mode to false"
         default: return nil
         }
         return "tell application id \"\(bundleId)\"\n\(body)\nend tell"
@@ -63,5 +67,12 @@ public struct CtrlKeyCombo: Equatable, Sendable {
         guard let code = keys[key] else { return nil }
         return CtrlKeyCombo(keyCode: code, command: parts.contains("cmd"), shift: parts.contains("shift"),
                             option: parts.contains("option"), control: parts.contains("ctrl"))
+    }
+}
+
+/// ADR 0137: reads the global domain's `AppleInterfaceStyle` ("Dark" in dark mode, absent in light mode).
+public enum CtrlAppearance {
+    public static func isDark(_ global: [String: Any]?) -> Bool {
+        (global?["AppleInterfaceStyle"] as? String)?.caseInsensitiveCompare("dark") == .orderedSame
     }
 }

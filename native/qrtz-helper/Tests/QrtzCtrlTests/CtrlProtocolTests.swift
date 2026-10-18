@@ -54,7 +54,7 @@ final class CtrlProtocolTests: XCTestCase {
     func testEveryHostLineOfTheFixtureParses() throws {
         let all = try lines()
         let host = all.filter { !(($0["type"] as! String).hasSuffix(".result")) && $0["type"] as! String != "ctrl.error" }
-        XCTAssertEqual(host.count, 16)
+        XCTAssertEqual(host.count, 18)
         for o in host {
             let line = String(decoding: try JSONSerialization.data(withJSONObject: o), as: UTF8.self)
             XCTAssertNotNil(CtrlRequest.parse(line), "\(o["type"]!)")
@@ -180,6 +180,33 @@ final class CtrlProtocolTests: XCTestCase {
         XCTAssertEqual(check, "output_muted")
         XCTAssertEqual(app, "")
         XCTAssertNil(CtrlRequest.parse(#"{"type":"ctrl.measure","id":"x","check":{"check":"tab_count"}}"#), "other checks still need an app")
+    }
+
+    func testDarkModeGoesOnlyToSystemEventsAndItsMeasureHasNoApp() throws {
+        // ADR 0137: set_dark_mode parses from the fixture and reaches the backend; its script goes to System Events
+        // only, never another app, and no other verb goes to System Events; dark_mode is measured without an app.
+        let all = try lines()
+        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["verb"] as? String == "set_dark_mode" }!
+        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
+        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("set_dark_mode") }
+        XCTAssertEqual(route, .scripting(app: "com.apple.systemevents", verb: "set_dark_mode"))
+        let fake = Fake()
+        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: line))["ok"] as? Bool, true)
+        XCTAssertEqual(fake.acted, [route])
+        let dark = CtrlScripts.source(verb: "set_dark_mode", bundleId: "com.apple.systemevents")!
+        XCTAssertTrue(dark.contains("tell application id \"com.apple.systemevents\""))
+        XCTAssertTrue(dark.contains("set dark mode to true"))
+        XCTAssertFalse(dark.contains("activate") || dark.contains("launch") || dark.contains("reopen"))
+        XCTAssertTrue(CtrlScripts.source(verb: "set_light_mode", bundleId: "com.apple.systemevents")!.contains("set dark mode to false"))
+        XCTAssertNil(CtrlScripts.source(verb: "set_dark_mode", bundleId: "com.apple.Safari"))
+        XCTAssertNil(CtrlScripts.source(verb: "close_all_tabs", bundleId: "com.apple.systemevents"))
+        guard case let .measure(_, check, app)? = CtrlRequest.parse(#"{"type":"ctrl.measure","id":"c17","check":{"check":"dark_mode"}}"#)
+        else { return XCTFail("dark_mode") }
+        XCTAssertEqual(check, "dark_mode")
+        XCTAssertEqual(app, "")
+        XCTAssertTrue(CtrlAppearance.isDark(["AppleInterfaceStyle": "Dark"]))
+        XCTAssertFalse(CtrlAppearance.isDark([:]))
+        XCTAssertFalse(CtrlAppearance.isDark(nil))
     }
 
     func testTheLastUsedRecordKeepsTheLatestActivationAndMidnightIsLocal() {

@@ -64,8 +64,10 @@ final class CtrlStdioTests: XCTestCase {
 
     func testScriptsNeverLaunchActivateOrTakeArbitraryIds() {
         for v in CtrlRoute.scriptVerbs {
-            let s = CtrlScripts.source(verb: v, bundleId: "com.apple.Safari")!
-            XCTAssertTrue(s.hasPrefix("tell application id \"com.apple.Safari\"\n"))
+            // ADR 0137: the appearance verbs exist only for System Events.
+            let id = CtrlRoute.appearanceVerbs.contains(v) ? CtrlRoute.systemEvents : "com.apple.Safari"
+            let s = CtrlScripts.source(verb: v, bundleId: id)!
+            XCTAssertTrue(s.hasPrefix("tell application id \"\(id)\"\n"))
             for word in ["activate", "launch", "open", "reopen", "saving no", "do shell script", "keystroke"] {
                 XCTAssertFalse(s.contains(word), "\(v): \(word)")
             }

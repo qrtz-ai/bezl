@@ -429,8 +429,8 @@ fn the_ctrl_protocol_fixture_round_trips() {
     }
     assert_eq!(
         (host, helper),
-        (16, 11),
-        "every message, five act routes (ADR 0130 quit_apps, ADR 0134 hide_apps, ADR 0135 mute_output), the app-less output_muted measure, laya with and without a model, laya.warm (ADR 0133)"
+        (18, 11),
+        "every message, six act routes (ADR 0130 quit_apps, ADR 0134 hide_apps, ADR 0135 mute_output, ADR 0137 set_dark_mode), the app-less output_muted and dark_mode measures, laya with and without a model, laya.warm (ADR 0133)"
     );
 }
 

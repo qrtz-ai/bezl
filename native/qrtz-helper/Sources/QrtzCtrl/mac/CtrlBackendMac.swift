@@ -139,6 +139,8 @@ public final class MacCtrlBackend: CtrlBackend {
         for id in ids where browsers.contains(id) || Self.scriptable.contains(id) {
             if let c = Self.automation(id) { automation[id] = c }
         }
+        // ADR 0137: System Events is background-only (not in `ids`); checked without asking, only while it runs.
+        if let c = Self.automation(CtrlRoute.systemEvents) { automation[CtrlRoute.systemEvents] = c }
         var env: [String: Any] = [
             "secure_input": CtrlProbe.secureInput,
             // Files: never probed by touching a protected folder (that would prompt); slice 7 decides how.
@@ -344,6 +346,8 @@ public final class MacCtrlBackend: CtrlBackend {
         // ADR 0135: read back by Standard Additions in this process (no app asked, no prompt); nil without an
         // output that can mute.
         case "output_muted": return (try? Self.runScript(Self.outputMutedSource)).map { Int($0.int32Value) }
+        // ADR 0137: the global appearance, read in this process (no app asked, no prompt): "Dark" or absent.
+        case "dark_mode": return CtrlAppearance.isDark(UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)) ? 1 : 0
         case "tab_count":
             return (try? script("count_tabs", app: app)).map { Int($0.int32Value) }
         case "saved_tabs", "unpinned_tabs":

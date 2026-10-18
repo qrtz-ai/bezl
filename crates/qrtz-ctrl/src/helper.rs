@@ -47,6 +47,9 @@ pub enum Check {
     AppsVisible { apps: Vec<String> },
     /// ADR 0135: 1 if the Mac's sound output is muted, 0 if not (`null`: no output device that can mute).
     OutputMuted,
+    /// ADR 0137: 1 if the Mac is in dark mode, 0 in light mode (read in the helper's own process from the global
+    /// `AppleInterfaceStyle`; no app asked, no prompt).
+    DarkMode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -540,6 +543,8 @@ pub struct FakeWorld {
     pub day_start_ms: u64,
     /// ADR 0135: the sound output's mute (`None`: no output that can mute).
     pub muted: Option<bool>,
+    /// ADR 0137: the system appearance (true = dark).
+    pub dark: bool,
 }
 
 pub struct FakeHelper(pub Mutex<FakeWorld>);
@@ -593,6 +598,7 @@ impl FakeWorld {
             watch_since_ms: None,
             day_start_ms: 0,
             muted: Some(false),
+            dark: false,
         }
     }
 
@@ -645,6 +651,17 @@ impl FakeWorld {
             return Ok(());
         }
         match route {
+            // ADR 0137: the appearance, through System Events only.
+            Route::Scripting {
+                app,
+                verb: v @ (ScriptVerb::SetDarkMode | ScriptVerb::SetLightMode),
+            } => {
+                if app != crate::exec::SYSTEM_EVENTS {
+                    return Err("policy.refused".into());
+                }
+                self.dark = *v == ScriptVerb::SetDarkMode;
+                Ok(())
+            }
             Route::Scripting { app, verb } => {
                 let a = self.app_mut(app).ok_or("app.not_running")?;
                 if !a.scriptable || !a.running {
@@ -664,6 +681,9 @@ impl FakeWorld {
                     ScriptVerb::CloseTab => a.tabs = (a.tabs - 1).max(0),
                     ScriptVerb::CloseWindow => a.windows = (a.windows - 1).max(0),
                     ScriptVerb::CountTabs | ScriptVerb::CountWindows => {}
+                    ScriptVerb::SetDarkMode | ScriptVerb::SetLightMode => {
+                        return Err("script.unsupported".into())
+                    }
                 }
                 Ok(())
             }
@@ -826,6 +846,7 @@ impl FakeWorld {
                     | Check::AppsRemaining { .. }
                     | Check::AppsVisible { .. } => None,
                     Check::OutputMuted => self.muted.map(i64::from),
+                    Check::DarkMode => Some(i64::from(self.dark)),
                 };
                 HelperMsg::MeasureResult { id, value }
             }

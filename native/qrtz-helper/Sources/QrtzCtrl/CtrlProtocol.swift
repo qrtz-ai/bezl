@@ -28,7 +28,11 @@ public enum CtrlRoute: Equatable, Sendable {
 
     /// The only Apple Event verbs (Rust `ScriptVerb`): none of them can activate, launch, open or reopen.
     /// These have a fixed script (`CtrlScripts.source`).
-    public static let scriptVerbs: Set<String> = ["count_tabs", "close_all_tabs", "close_tab", "count_windows", "close_window"]
+    public static let scriptVerbs: Set<String> = ["count_tabs", "close_all_tabs", "close_tab", "count_windows", "close_window",
+                                                  "set_dark_mode", "set_light_mode"]
+    /// ADR 0137: the appearance verbs, only ever to System Events (a faceless agent, never brought forward).
+    public static let appearanceVerbs: Set<String> = ["set_dark_mode", "set_light_mode"]
+    public static let systemEvents = "com.apple.systemevents"
     /// Slice 7b's selective closes (ADR 0114 / 0119) have no fixed script: the backend reads the tabs first
     /// (`CtrlTabs`) and closes only the ones it can tell about; a backend that can't tell refuses, and the host asks.
     public static let tabVerbs: Set<String> = ["close_saved_tabs", "close_unpinned_tabs"]
@@ -103,9 +107,9 @@ public enum CtrlRequest: Equatable, Sendable {
                   let c = o["content"] as? [String: String] else { return nil }
             return .act(id: id, actionId: a, route: r, content: c)
         case "ctrl.measure":
-            // ADR 0135: `output_muted` has no app.
+            // ADR 0135 / 0137: `output_muted` and `dark_mode` have no app.
             guard let c = o["check"] as? [String: Any], let k = c["check"] as? String,
-                  let a = (c["app"] as? String) ?? (k == "output_muted" ? "" : nil) else { return nil }
+                  let a = (c["app"] as? String) ?? (k == "output_muted" || k == "dark_mode" ? "" : nil) else { return nil }
             return .measure(id: id, check: k, app: a)
         case "ctrl.restore": return .restore(id: id, frontmostPid: (o["frontmostPid"] as? NSNumber).map { $0.int32Value })
         case "ctrl.laya":

@@ -85,6 +85,9 @@ const INTENTS = {
   },
   hide_others: opt('intent.hide_others', 'hide your other apps', 0.07),
   mute: opt('intent.mute', 'mute your mac', 0.07),
+  dark_mode: opt('intent.dark_mode', 'switch dark mode', 0.07),
+  light_mode: opt('intent.dark_mode', 'switch dark mode', 0.07),
+  open_email: opt('intent.open_app', 'open an app', 0.07),
 };
 type Intent =
   | 'close_tabs'
@@ -97,7 +100,10 @@ type Intent =
   | 'quit_app'
   | 'quit_unused'
   | 'hide_others'
-  | 'mute';
+  | 'mute'
+  | 'dark_mode'
+  | 'light_mode'
+  | 'open_email';
 /** What an unclear task is asked (the three most likely intents). */
 const ASKED = [INTENTS.close_tabs, INTENTS.clean_folder, INTENTS.close_windows];
 
@@ -147,6 +153,32 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
         "hide them, the app you're in stays",
         0.97,
       ),
+    ]),
+  ],
+  // ADR 0137: the appearance, through system events (faceless); reversible, no card.
+  dark_mode: [
+    act('choose_app', [
+      opt('app.com.apple.systemevents', 'systemevents', 0.95),
+    ]),
+    act('choose_move', [
+      opt('route.scripting.dark_mode_on', 'switch to dark mode', 0.9),
+      opt('route.scripting.dark_mode_off', 'switch to light mode', 0.05),
+    ]),
+  ],
+  light_mode: [
+    act('choose_app', [
+      opt('app.com.apple.systemevents', 'systemevents', 0.95),
+    ]),
+    act('choose_move', [
+      opt('route.scripting.dark_mode_off', 'switch to light mode', 0.9),
+      opt('route.scripting.dark_mode_on', 'switch to dark mode', 0.05),
+    ]),
+  ],
+  // ADR 0138: "my email" is mail, already running, so it's already open (nothing comes forward).
+  open_email: [
+    act('choose_app', [opt('app.com.apple.mail', 'mail', 0.95)]),
+    act('choose_move', [
+      opt('route.workspace.launch_hidden', 'start it hidden', 0.95),
     ]),
   ],
   // ADR 0135: the sound output, muted in the helper's own process; reversible, no card, no app question.
@@ -269,32 +301,38 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
 };
 
 const intentOf = (text: string): Intent | null =>
-  /\b(mute|silence)\b/i.test(text)
-    ? 'mute'
-    : /\bhide\b/i.test(text) &&
-        /\b(apps|applications|other|others|everything|all)\b/i.test(text)
-      ? 'hide_others'
-      : /\b(quit|close)\b/i.test(text) &&
-          /\bapps?\b/i.test(text) &&
-          /\b(unused|used|using|idle)\b/i.test(text)
-        ? 'quit_unused'
-        : /\bquit\b/i.test(text)
-          ? 'quit_app'
-          : /\bcalendar\b/i.test(text)
-            ? 'open_calendar'
-            : /\bempty\b/i.test(text) && /\b(trash|bin)\b/i.test(text)
-              ? 'empty_trash'
-              : /\btabs?\b/i.test(text)
-                ? 'close_tabs'
-                : /\bdocuments\b/i.test(text)
-                  ? 'tidy_documents'
-                  : /\b(desktop|screenshots?)\b/i.test(text)
-                    ? 'tidy_desktop'
-                    : /download|folder/i.test(text)
-                      ? /\b(delete|trash|old)\b/i.test(text)
-                        ? 'trash_old'
-                        : 'clean_folder'
-                      : null;
+  /\b(dark|light)\s+mode\b/i.test(text)
+    ? /\b(light|off|disable)\b/i.test(text)
+      ? 'light_mode'
+      : 'dark_mode'
+    : /\b(open|check)\b/i.test(text) && /\b(email|emails|inbox)\b/i.test(text)
+      ? 'open_email'
+      : /\b(mute|silence)\b/i.test(text)
+        ? 'mute'
+        : /\bhide\b/i.test(text) &&
+            /\b(apps|applications|other|others|everything|all)\b/i.test(text)
+          ? 'hide_others'
+          : /\b(quit|close)\b/i.test(text) &&
+              /\bapps?\b/i.test(text) &&
+              /\b(unused|used|using|idle)\b/i.test(text)
+            ? 'quit_unused'
+            : /\bquit\b/i.test(text)
+              ? 'quit_app'
+              : /\bcalendar\b/i.test(text)
+                ? 'open_calendar'
+                : /\bempty\b/i.test(text) && /\b(trash|bin)\b/i.test(text)
+                  ? 'empty_trash'
+                  : /\btabs?\b/i.test(text)
+                    ? 'close_tabs'
+                    : /\bdocuments\b/i.test(text)
+                      ? 'tidy_documents'
+                      : /\b(desktop|screenshots?)\b/i.test(text)
+                        ? 'tidy_desktop'
+                        : /download|folder/i.test(text)
+                          ? /\b(delete|trash|old)\b/i.test(text)
+                            ? 'trash_old'
+                            : 'clean_folder'
+                          : null;
 
 const PREVIEW: CtrlConfirm['items'] = [
   { key: '3f2a9c1d0b7e#0', kind: 'window', label: 'notes.txt', unsaved: false },

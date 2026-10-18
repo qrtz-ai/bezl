@@ -99,6 +99,11 @@ pub enum ScriptVerb {
     /// Close every tab that is not pinned, unsaved input included. Only after an approved confirm gate on the held
     /// tabs (`replay_check` refuses it otherwise).
     CloseUnpinnedTabs,
+    /// ADR 0137: System Events `tell appearance preferences to set dark mode to true` (only to
+    /// `com.apple.systemevents`, a faceless agent: nothing comes forward, no key event). Reversible.
+    SetDarkMode,
+    /// ADR 0137: the same with `false` (light mode).
+    SetLightMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -114,6 +114,26 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
             content: BTreeMap::new(),
         });
     }
+    // ADR 0137: the appearance, through System Events (a faceless agent) only; verified by reading the global
+    // appearance back in the helper.
+    if mv == DARK_MODE_ON_MOVE || mv == DARK_MODE_OFF_MOVE {
+        let on = mv == DARK_MODE_ON_MOVE;
+        return Some(Step::Act {
+            routes: vec![Route::Scripting {
+                app: SYSTEM_EVENTS.into(),
+                verb: if on {
+                    ScriptVerb::SetDarkMode
+                } else {
+                    ScriptVerb::SetLightMode
+                },
+            }],
+            verify: Verify {
+                check: Check::DarkMode,
+                expect: if on { Expect::One } else { Expect::Zero },
+            },
+            content: BTreeMap::new(),
+        });
+    }
     let Some(app) = chosen_app(&apps, &chosen) else {
         return Some(Step::Hold(HoldReason::UnknownApp));
     };
@@ -431,6 +451,12 @@ impl Clock for DynClock<'_> {
 /// The gate's move for the tabs "close all my tabs" held back because they hold unsaved input (or the helper
 /// couldn't tell): approving it closes every unpinned tab ([`ScriptVerb::CloseUnpinnedTabs`]).
 pub const HELD_TABS_MOVE: &str = "route.scripting.close_unsaved_tabs";
+/// ADR 0137: the only app ctrl scripts for the appearance (faceless: it never comes forward).
+pub const SYSTEM_EVENTS: &str = "com.apple.systemevents";
+/// ADR 0137: "turn on dark mode" / "turn off dark mode" (reversible, no gate).
+pub const DARK_MODE_ON_MOVE: &str = "route.scripting.dark_mode_on";
+pub const DARK_MODE_OFF_MOVE: &str = "route.scripting.dark_mode_off";
+
 pub const CLOSE_ALL_TABS_MOVE: &str = "route.scripting.close_all_tabs";
 
 /// "Close all my tabs" (slice 7b): the browser's tabs, split into the ones closed without asking (not pinned, no
