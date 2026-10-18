@@ -764,4 +764,3 @@ The slow floor is the more accurate one (mean 2.98 % vs 3.18 % and 3.29 %): fewe
 context, as with the 2 s minimum segment in §11. What it costs is release decode, bounded by the cap (tens of ms
 on the ANE). Kept as shipped. On the Mac, a noisy room shows `cap_cuts=` 1–2 and a higher `tail_decode_ms=`;
 that is expected. Revisit (carry the floor across dictations) only if `tail_decode_ms` p90 tops ~150 ms there.
-
