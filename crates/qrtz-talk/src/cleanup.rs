@@ -18,17 +18,78 @@ static NEW_LINE: LazyLock<Regex> =
     LazyLock::new(|| re(&format!(r"(?i)\s*(?<![{W}])new line(?![{W}])[,.]?\s*")));
 static FILLERS: LazyLock<Regex> =
     LazyLock::new(|| re(r"(?i)(^|[\s,])(?:u+m+|u+h+|e+r+m+|e+r|a+h+|h+m+|m+h*m+)(?=[\s,.!?]|$),?"));
+// ADR 0101: an immediate repeat of a whole word. The apostrophe is part of a word on both sides, so "you, you're"
+// and "it, it's" are not repeats. Which repeats collapse is [`collapses`]'s call.
 static REPEATS: LazyLock<Regex> =
-    LazyLock::new(|| re(&format!(r"(?i)(?<![{W}])([{W}]+)(?:[\s,]+\1(?![{W}]))+")));
+    LazyLock::new(|| re(&format!(r"(?i)(?<![{W}'])([{W}]+)(?:[\s,]+\1(?![{W}']))+")));
 static TABS: LazyLock<Regex> = LazyLock::new(|| re(r"[ \t]+"));
 static NL_SPACES: LazyLock<Regex> = LazyLock::new(|| re(r" *\n *"));
 static SPACE_BEFORE_PUNCT: LazyLock<Regex> = LazyLock::new(|| re(r"\s+([,.!?;:])"));
-static SPACE_AFTER_PUNCT: LazyLock<Regex> = LazyLock::new(|| re(r#"([,.!?;:])(?=[^\s0-9"')\]])"#));
+// ADR 0101 (N160): only a comma or semicolon gets a space after it. A dot, colon, "!" or "?" with no space after it
+// is part of a token the recogniser wrote that way ("qrtz.ai", "config.json", "p.m.", "...", "https://").
+static SPACE_AFTER_PUNCT: LazyLock<Regex> = LazyLock::new(|| re(r#"([,;])(?=[^\s0-9"')\]])"#));
 static COMMAS: LazyLock<Regex> = LazyLock::new(|| re(r",+"));
 static EDGES: LazyLock<Regex> = LazyLock::new(|| re(r"^[\s,]+|[\s,]+$"));
-static SENTENCE_START: LazyLock<Regex> = LazyLock::new(|| re(r"(^|[.!?]\s+|\n)([a-z])"));
-static LONE_I: LazyLock<Regex> = LazyLock::new(|| re(&format!(r"(?<![{W}])i(?![{W}])(?=[\s,.!?']|$)")));
+// ADR 0101 (N160): not after a dotted abbreviation ("e.g. the", "3 p.m. today").
+static SENTENCE_START: LazyLock<Regex> =
+    LazyLock::new(|| re(r"(^|(?<![A-Za-z]\.[A-Za-z])[.!?]\s+|\n)([a-z])"));
+// ADR 0101 (N160): "i" before a dot only at a sentence end, not the "i" of "i.e.".
+static LONE_I: LazyLock<Regex> =
+    LazyLock::new(|| re(&format!(r"(?<![{W}])i(?![{W}])(?=[\s,!?']|\.(?![A-Za-z])|$)")));
 static ENDS_WORD: LazyLock<Regex> = LazyLock::new(|| re(r"[\p{L}\p{N}]$"));
+/// A sentence end inside the text (not a decimal point, not the dots of "p.m.").
+static INNER_END: LazyLock<Regex> = LazyLock::new(|| re(r"[.!?]\s"));
+
+/// ADR 0101: the stutter-prone words, the only ones whose immediate repeat collapses ("I I think", "the the").
+/// Everything else is kept as said: numbers ("10 10", "1 1 2 3"), grammatical doubles ("had had", "that that",
+/// "is is", "what it was was", "her her", "come in in the morning", "turn it on on Friday", "Will will"), and
+/// emphasis or idiom ("very very", "no no", "bye bye", "so so", "my my", "there there").
+const STUTTERS: &[&str] = &[
+    "i", "a", "an", "the", "to", "and", "but", "or", "of", "at", "for", "with", "from", "we", "you", "he",
+    "she", "it", "they", "me", "our", "your", "his", "their", "this", "be", "would", "can", "could",
+    "should", "did", "have", "has", "if", "when", "what", "just",
+];
+/// Repeats across a comma ("I love you, you know", "take it, it is yours") are a clause boundary as often as a
+/// stutter; only these collapse there ("I, I think", "the, the plan").
+const COMMA_STUTTERS: &[&str] = &["i", "a", "an", "the"];
+
+/// ADR 0101: does this repeat (the whole match `all`, its word `word`) collapse to one word?
+fn collapses(word: &str, all: &str) -> bool {
+    let w = word.to_ascii_lowercase();
+    let list = if all.contains(',') {
+        COMMA_STUTTERS
+    } else {
+        STUTTERS
+    };
+    list.contains(&w.as_str())
+}
+
+/// ADR 0101: up to this many words is a short dictation (a reply, a search, a field): no "." is added, and a lone
+/// "." the recogniser ended it with is dropped ("Yes", "Sounds good", "Friday at 3"). "?" and "!" stay.
+pub const SHORT_DICTATION_WORDS: usize = 3;
+
+fn is_short(t: &str) -> bool {
+    !t.contains('\n')
+        && t.split_whitespace().count() <= SHORT_DICTATION_WORDS
+        && !INNER_END.is_match(t).unwrap_or(true)
+}
+
+/// The terminal punctuation (ADR 0101): a short dictation ends as said, without a period; a longer one gets a "."
+/// when it ends on a word.
+fn terminal_punctuation(mut t: String) -> String {
+    if is_short(&t) {
+        // A lone final "." only: not "...", not the last dot of "p.m." or "U.S.".
+        let last = t.split_whitespace().last().unwrap_or_default();
+        if let Some(body) = last.strip_suffix('.') {
+            if !body.is_empty() && !body.contains('.') {
+                t.pop();
+            }
+        }
+    } else if ENDS_WORD.is_match(&t).unwrap_or(false) {
+        t.push('.');
+    }
+    t
+}
 
 fn rep(r: &Regex, s: &str, with: &str) -> String {
     r.replace_all(s, with).into_owned()
@@ -56,13 +117,22 @@ pub fn apply_dictionary(text: &str, dict: &[DictionaryEntry]) -> String {
     out
 }
 
-/// On-device cleanup: spoken commands, fillers, stutters, spacing, capitalization, terminal punctuation.
+/// On-device cleanup: spoken commands, fillers, stutters, spacing, capitalization, terminal punctuation (ADR 0101:
+/// which repeats collapse, and no "." on a short dictation).
 pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
     let mut t = format!(" {raw} ");
     t = rep(&NEW_PARAGRAPH, &t, "\n\n");
     t = rep(&NEW_LINE, &t, "\n");
     t = rep(&FILLERS, &t, "${1}");
-    t = rep(&REPEATS, &t, "${1}");
+    t = REPEATS
+        .replace_all(&t, |c: &Captures| {
+            if collapses(&c[1], &c[0]) {
+                c[1].to_owned()
+            } else {
+                c[0].to_owned()
+            }
+        })
+        .into_owned();
     t = rep(&TABS, &t, " ");
     t = rep(&NL_SPACES, &t, "\n");
     t = rep(&SPACE_BEFORE_PUNCT, &t, "${1}");
@@ -74,10 +144,7 @@ pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
         .into_owned();
     t = rep(&LONE_I, &t, "I");
     t = apply_dictionary(&t, dict);
-    if ENDS_WORD.is_match(&t).unwrap_or(false) {
-        t.push('.');
-    }
-    t
+    terminal_punctuation(t)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

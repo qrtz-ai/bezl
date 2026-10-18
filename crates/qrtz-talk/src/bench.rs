@@ -251,14 +251,14 @@ mod tests {
     #[test]
     fn rescore_applies_the_rules_and_the_dictionary() {
         let report = json!({"runs": [
-            {"clip": "c", "engine": "e", "variant": "shipped", "reference": "Ship qrtz today.", "hypothesis": "um ship cue arts today"},
+            {"clip": "c", "engine": "e", "variant": "shipped", "reference": "Ship qrtz to everyone today.", "hypothesis": "um ship cue arts to everyone today"},
         ]});
         let dict = vec![DictionaryEntry {
             term: "qrtz".into(),
             aliases: vec!["cue arts".into()],
         }];
         let r = rescore(&report, &dict);
-        assert_eq!(r["runs"][0]["cleaned"], "Ship qrtz today.");
+        assert_eq!(r["runs"][0]["cleaned"], "Ship qrtz to everyone today.");
         let s = &r["summary"][0];
         assert_eq!(s["cleanedWer"], 0.0);
         assert_eq!(s["exactAfterCleanup"], 1);

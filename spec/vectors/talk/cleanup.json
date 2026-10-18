@@ -54,17 +54,17 @@
     {
       "raw": "the the the cat sat",
       "dict": false,
-      "expect": "The cat sat."
+      "expect": "The cat sat"
     },
     {
       "raw": "Umm, hmm, well erm okay",
       "dict": false,
-      "expect": "Well okay."
+      "expect": "Well okay"
     },
     {
       "raw": "so i said,hello.and then left",
       "dict": false,
-      "expect": "So I said, hello. And then left."
+      "expect": "So I said, hello.and then left."
     },
     {
       "raw": "price is 3.50 dollars",
@@ -74,12 +74,12 @@
     {
       "raw": "mhm yes uh-huh right",
       "dict": false,
-      "expect": "Yes uh-huh right."
+      "expect": "Yes uh-huh right"
     },
     {
       "raw": "I I I I",
       "dict": false,
-      "expect": "I."
+      "expect": "I"
     },
     {
       "raw": "hello world!",
@@ -89,7 +89,7 @@
     {
       "raw": "café au lait",
       "dict": false,
-      "expect": "Café au lait."
+      "expect": "Café au lait"
     },
     {
       "raw": "ends with a number 42",
@@ -99,12 +99,12 @@
     {
       "raw": "quote \"hi\" there",
       "dict": false,
-      "expect": "Quote \"hi\" there."
+      "expect": "Quote \"hi\" there"
     },
     {
       "raw": "new paragraph start here",
       "dict": false,
-      "expect": "Start here."
+      "expect": "Start here"
     },
     {
       "raw": "one,, two,,, three",
@@ -124,7 +124,7 @@
     {
       "raw": "ahh what was it",
       "dict": false,
-      "expect": "What was it."
+      "expect": "What was it"
     },
     {
       "raw": "we need the The plan",
@@ -134,7 +134,7 @@
     {
       "raw": "  lots   of\tspaces  ",
       "dict": false,
-      "expect": "Lots of spaces."
+      "expect": "Lots of spaces"
     },
     {
       "raw": "question? answer. exclamation! next",
@@ -144,17 +144,227 @@
     {
       "raw": "日本語のテキスト",
       "dict": false,
-      "expect": "日本語のテキスト."
+      "expect": "日本語のテキスト"
     },
     {
       "raw": "hello 世界",
       "dict": false,
-      "expect": "Hello 世界."
+      "expect": "Hello 世界"
     },
     {
       "raw": "I use see plus plus and post gres daily",
       "dict": true,
-      "expect": "I use see plus and Postgres daily."
+      "expect": "I use C++ and Postgres daily."
+    },
+    {
+      "raw": "my pin is 1 1 2 3",
+      "dict": false,
+      "expect": "My pin is 1 1 2 3."
+    },
+    {
+      "raw": "the room code is 4 4 7 2",
+      "dict": false,
+      "expect": "The room code is 4 4 7 2."
+    },
+    {
+      "raw": "10 10",
+      "dict": false,
+      "expect": "10 10"
+    },
+    {
+      "raw": "she had had enough by then",
+      "dict": false,
+      "expect": "She had had enough by then."
+    },
+    {
+      "raw": "I said that that was fine",
+      "dict": false,
+      "expect": "I said that that was fine."
+    },
+    {
+      "raw": "what it is is a bug",
+      "dict": false,
+      "expect": "What it is is a bug."
+    },
+    {
+      "raw": "thank you, you're the best",
+      "dict": false,
+      "expect": "Thank you, you're the best."
+    },
+    {
+      "raw": "look at it, it's broken",
+      "dict": false,
+      "expect": "Look at it, it's broken."
+    },
+    {
+      "raw": "I love you, you know",
+      "dict": false,
+      "expect": "I love you, you know."
+    },
+    {
+      "raw": "it was very very good",
+      "dict": false,
+      "expect": "It was very very good."
+    },
+    {
+      "raw": "bye bye",
+      "dict": false,
+      "expect": "Bye bye"
+    },
+    {
+      "raw": "no no no",
+      "dict": false,
+      "expect": "No no no"
+    },
+    {
+      "raw": "Will will be there at noon",
+      "dict": false,
+      "expect": "Will will be there at noon."
+    },
+    {
+      "raw": "come in in the morning",
+      "dict": false,
+      "expect": "Come in in the morning."
+    },
+    {
+      "raw": "um so I I think we should",
+      "dict": false,
+      "expect": "So I think we should."
+    },
+    {
+      "raw": "the the plan is ready",
+      "dict": false,
+      "expect": "The plan is ready."
+    },
+    {
+      "raw": "I, I think it works",
+      "dict": false,
+      "expect": "I think it works."
+    },
+    {
+      "raw": "we we we need to go now",
+      "dict": false,
+      "expect": "We need to go now."
+    },
+    {
+      "raw": "The the report",
+      "dict": false,
+      "expect": "The report"
+    },
+    {
+      "raw": "yes",
+      "dict": false,
+      "expect": "Yes"
+    },
+    {
+      "raw": "Yes.",
+      "dict": false,
+      "expect": "Yes"
+    },
+    {
+      "raw": "sounds good",
+      "dict": false,
+      "expect": "Sounds good"
+    },
+    {
+      "raw": "Sounds good.",
+      "dict": false,
+      "expect": "Sounds good"
+    },
+    {
+      "raw": "great!",
+      "dict": false,
+      "expect": "Great!"
+    },
+    {
+      "raw": "at 3 p.m.",
+      "dict": false,
+      "expect": "At 3 p.m."
+    },
+    {
+      "raw": "wait...",
+      "dict": false,
+      "expect": "Wait..."
+    },
+    {
+      "raw": "um yes",
+      "dict": false,
+      "expect": "Yes"
+    },
+    {
+      "raw": "see you friday",
+      "dict": false,
+      "expect": "See you friday"
+    },
+    {
+      "raw": "Yes. Sure",
+      "dict": false,
+      "expect": "Yes. Sure."
+    },
+    {
+      "raw": "four words get a period",
+      "dict": false,
+      "expect": "Four words get a period."
+    },
+    {
+      "raw": "first line new line second",
+      "dict": false,
+      "expect": "First line\nSecond."
+    },
+    {
+      "raw": "price 3.50",
+      "dict": false,
+      "expect": "Price 3.50"
+    },
+    {
+      "raw": "open config.json and fix it",
+      "dict": false,
+      "expect": "Open config.json and fix it."
+    },
+    {
+      "raw": "the site is qrtz.ai now",
+      "dict": false,
+      "expect": "The site is qrtz.ai now."
+    },
+    {
+      "raw": "email jlgrimes@users.noreply.github.com today",
+      "dict": false,
+      "expect": "Email jlgrimes@users.noreply.github.com today"
+    },
+    {
+      "raw": "go to https://qrtz.ai/docs please",
+      "dict": false,
+      "expect": "Go to https://qrtz.ai/docs please."
+    },
+    {
+      "raw": "use node.js, i.e. the runtime",
+      "dict": false,
+      "expect": "Use node.js, i.e. the runtime."
+    },
+    {
+      "raw": "bring snacks e.g. chips or fruit",
+      "dict": false,
+      "expect": "Bring snacks e.g. chips or fruit."
+    },
+    {
+      "raw": "meet at 3 p.m. today with the team",
+      "dict": false,
+      "expect": "Meet at 3 p.m. today with the team."
+    },
+    {
+      "raw": "i think so. i can come",
+      "dict": false,
+      "expect": "I think so. I can come."
+    },
+    {
+      "raw": "well, i guess",
+      "dict": false,
+      "expect": "Well, I guess"
+    },
+    {
+      "raw": "red,green and blue",
+      "dict": false,
+      "expect": "Red, green and blue."
     }
   ],
   "dictionaryOnly": [
