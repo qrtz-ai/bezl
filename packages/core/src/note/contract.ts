@@ -19,6 +19,8 @@ export const MeetingWithDuration = Meeting.extend({
 
 export const SessionView = z.object({
   phase: RecordingPhase,
+  /** N155: increases with every view the app builds; a snapshot older than an applied event is ignored. */
+  seq: z.number().int().nonnegative().optional(),
   detected: z
     .object({
       key: z.string(),
@@ -83,6 +85,15 @@ export const SessionView = z.object({
   noAudio: z.literal(true).optional(),
 });
 export type SessionView = z.infer<typeof SessionView>;
+
+/** N155: whether `next` may replace `cur` (an older snapshot must not overwrite a newer event). Unordered views
+ * (no seq) always apply. */
+export function sessionIsNewer(
+  cur: SessionView | null,
+  next: SessionView,
+): boolean {
+  return !cur?.seq || !next.seq || next.seq >= cur.seq;
+}
 
 export const PermissionState = z.enum([
   'granted',

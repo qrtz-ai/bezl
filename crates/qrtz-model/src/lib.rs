@@ -808,6 +808,14 @@ pub struct SessionView {
     /// N29: every source still delivered is silent ("no audio at all"); omitted when false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub no_audio: bool,
+    /// N155: increases with every view the runtime builds (snapshot or event), so a window applies a `note:session`
+    /// snapshot only if no newer event was applied meanwhile. 0 (omitted): unordered, always applied.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub seq: u64,
+}
+
+fn is_zero_u64(v: &u64) -> bool {
+    *v == 0
 }
 
 #[cfg(test)]

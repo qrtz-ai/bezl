@@ -21,6 +21,9 @@ use tokio::task::AbortHandle;
 
 use super::api::*;
 use crate::pipeline::max_retry_delay;
+
+/// N155: the order of session views (see `SessionView::seq`).
+static SESSION_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 use crate::transcript::TranscriptAssembler;
 use crate::{
     can_start, capture_report, initial_state, is_capturing, new_pipeline, next_runnable_step,
@@ -585,6 +588,7 @@ impl State {
             pipeline: pipeline.map(to_view),
             silent,
             no_audio,
+            seq: 0,
         }
     }
 }
@@ -656,7 +660,9 @@ impl Shared {
     }
     fn view(&self) -> SessionView {
         let now = self.now();
-        self.lock().view(now)
+        let mut v = self.lock().view(now);
+        v.seq = SESSION_SEQ.fetch_add(1, Ordering::Relaxed) + 1;
+        v
     }
     fn emit_session(&self) {
         let v = self.view();

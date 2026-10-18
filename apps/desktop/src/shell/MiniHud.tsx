@@ -10,7 +10,12 @@ import {
   Text,
   ThemeProvider,
 } from '@qrtz/ui';
-import { clockLabel, type MeetingNote, type SessionView } from '@qrtz/core';
+import {
+  clockLabel,
+  sessionIsNewer,
+  type MeetingNote,
+  type SessionView,
+} from '@qrtz/core';
 import { shellClient } from './shellClient';
 import { useConfigTheme } from './useConfigTheme';
 
@@ -27,8 +32,11 @@ function Hud() {
   const [s, setS] = useState<SessionView | null>(null);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
-    client.invoke('note:session').then(setS, () => {});
-    const off = client.on('note:session', setS);
+    // N155: an older snapshot never overwrites a newer event.
+    const apply = (v: SessionView) =>
+      setS((cur) => (sessionIsNewer(cur, v) ? v : cur));
+    client.invoke('note:session').then(apply, () => {});
+    const off = client.on('note:session', apply);
     const tick = setInterval(() => setNow(Date.now()), 500);
     return () => {
       off();

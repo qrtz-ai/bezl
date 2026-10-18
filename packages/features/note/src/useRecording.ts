@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   SessionView,
   applyTranscriptDelta,
+  sessionIsNewer,
   type LiveTranscript,
   type PipelineView,
   type StepId,
@@ -20,9 +21,12 @@ export function useSession(): SessionView {
   );
   useEffect(() => {
     let alive = true;
-    const off = qrtz.on('note:session', setS);
+    // N155: the snapshot may answer after a newer event was applied; keep whichever view is newer.
+    const apply = (v: SessionView) =>
+      setS((cur) => (sessionIsNewer(cur, v) ? v : cur));
+    const off = qrtz.on('note:session', apply);
     void qrtz.invoke('note:session').then(
-      (v) => alive && setS(v),
+      (v) => alive && apply(v),
       () => {},
     );
     return () => {
