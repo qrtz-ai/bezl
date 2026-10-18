@@ -9,6 +9,37 @@ pub struct ConfigStore {
     cfg: Value,
 }
 
+/// ADR 0146 M1.2: each module's config sections live in that module's own settings file
+/// (`modules/<id>/settings.json` next to config.json; `talk` is echo's, `note` and `speech` are nano's), and
+/// config.json keeps the global ones. `config:get` / `config:set` still see one merged config.
+fn module_store(file: &Path) -> Option<qrtz_modules::settings::ModuleSettingsStore> {
+    file.parent()
+        .filter(|_| !file.as_os_str().is_empty())
+        .map(qrtz_modules::settings::ModuleSettingsStore::new)
+}
+
+/// Overlay each module's stored sections on the raw config.json value. Returns whether config.json still holds a
+/// section that belongs in a module file (an older layout, moved on the next write).
+fn overlay_modules(file: &Path, raw: &mut Map<String, Value>) -> bool {
+    let Some(store) = module_store(file) else {
+        return false;
+    };
+    let mut legacy = false;
+    for m in &crate::modules::bundled().manifests {
+        let stored = store.stored(&m.id).unwrap_or_default();
+        for sec in &m.settings.legacy_sections {
+            if raw.contains_key(sec) {
+                legacy = true;
+            }
+            // The module's file wins: a crash between its write and config.json's leaves the newer value there.
+            if let Some(v) = stored.get(sec) {
+                raw.insert(sec.clone(), v.clone());
+            }
+        }
+    }
+    legacy
+}
+
 fn is_obj(v: &Value) -> bool {
     v.is_object()
 }
@@ -119,9 +150,17 @@ impl ConfigStore {
         let raw: Option<Value> = std::fs::read_to_string(&file)
             .ok()
             .and_then(|t| serde_json::from_str(&t).ok());
-        let cfg = load_config(raw.as_ref());
+        let memo = raw.as_ref().is_some_and(|r| migrate_legacy(r).1);
+        let mut merged = raw
+            .as_ref()
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+        let legacy = overlay_modules(&file, &mut merged);
+        let any = raw.is_some() || !merged.is_empty();
+        let cfg = load_config(any.then_some(&Value::Object(merged)));
         let mut s = Self { file, cfg };
-        if raw.as_ref().is_some_and(|r| migrate_legacy(r).1) {
+        if memo || legacy {
             let _ = s.persist();
         }
         s
@@ -157,8 +196,28 @@ impl ConfigStore {
         if self.file.as_os_str().is_empty() {
             return Ok(());
         }
+        // ADR 0146 M1.2: module sections first (their file wins on load), then the global rest.
+        let split = qrtz_modules::settings::split_legacy(&self.cfg, &crate::modules::bundled().manifests);
+        if let Some(store) = module_store(&self.file) {
+            for (id, sections) in &split.modules {
+                let mut v = store.stored(id).unwrap_or_default();
+                for (k, sv) in sections.as_object().into_iter().flatten() {
+                    v.insert(k.clone(), sv.clone());
+                }
+                store
+                    .replace(id, &Value::Object(v))
+                    .map_err(|e| std::io::Error::other(e.to_string()))?;
+            }
+        }
+        let mut global = split.global.as_object().cloned().unwrap_or_default();
+        for k in &split.unowned {
+            global.insert(k.clone(), self.cfg[k].clone());
+        }
         // N25 dir 0700 + T4 stale-tmp removal + 0600 atomic rename (shared with the secret store).
-        crate::secrets::write_private_atomic(&self.file, serde_json::to_string_pretty(&self.cfg)?.as_bytes())
+        crate::secrets::write_private_atomic(
+            &self.file,
+            serde_json::to_string_pretty(&Value::Object(global))?.as_bytes(),
+        )
     }
 
     /// Typed accessors the shell uses to apply toggles.
@@ -182,6 +241,67 @@ impl ConfigStore {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn read(p: &Path) -> Value {
+        serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap()
+    }
+
+    /// ADR 0146 M1.2: an old single-file config moves its module sections into the modules' files once; the
+    /// merged config is unchanged.
+    #[test]
+    fn module_sections_move_into_their_modules_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("config.json");
+        let old = json!({"theme": "light", "talk": {"pushKey": "right-option"}, "note": {"autoRecord": true},
+                         "speech": {"speakerMode": "accurate"}, "privacy": {"excludedApps": ["Slack"]}});
+        std::fs::write(&f, old.to_string()).unwrap();
+        let before = load_config(Some(&old));
+        let s = ConfigStore::open(&f);
+        assert_eq!(s.get(), &before);
+        let global = read(&f);
+        for k in ["talk", "note", "speech"] {
+            assert!(global.get(k).is_none(), "{k} still in config.json: {global}");
+        }
+        assert_eq!(global["theme"], "light");
+        assert_eq!(global["privacy"]["excludedApps"], json!(["Slack"]));
+        let echo = read(&dir.path().join("modules/echo/settings.json"));
+        assert_eq!(echo["talk"]["pushKey"], "right-option");
+        let nano = read(&dir.path().join("modules/nano/settings.json"));
+        assert_eq!(nano["note"]["autoRecord"], true);
+        assert_eq!(nano["speech"]["speakerMode"], "accurate");
+        assert!(!dir.path().join("modules/ctrl/settings.json").exists());
+        assert_eq!(ConfigStore::open(&f).get(), &before, "reload");
+    }
+
+    #[test]
+    fn a_write_lands_in_the_owning_file_and_the_modules_file_wins_on_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("config.json");
+        let mut s = ConfigStore::open(&f);
+        s.set(&json!({"talk": {"showPill": false}, "theme": "light"}))
+            .unwrap();
+        assert_eq!(
+            read(&dir.path().join("modules/echo/settings.json"))["talk"]["showPill"],
+            false
+        );
+        assert!(read(&f).get("talk").is_none());
+        // A stale talk section left in config.json (crash mid-write, or an older build) loses to echo's file.
+        let mut g = read(&f);
+        g["talk"] = json!({"showPill": true});
+        std::fs::write(&f, g.to_string()).unwrap();
+        let s = ConfigStore::open(&f);
+        assert!(!s.bool_at(&["talk", "showPill"]));
+        assert!(read(&f).get("talk").is_none(), "moved again");
+        // Other keys a module keeps in its file survive the shell's writes.
+        let p = dir.path().join("modules/echo/settings.json");
+        let mut e = read(&p);
+        e["native"] = json!({"x": 1});
+        std::fs::write(&p, e.to_string()).unwrap();
+        let mut s = ConfigStore::open(&f);
+        s.set(&json!({"talk": {"warmMic": true}})).unwrap();
+        assert_eq!(read(&p)["native"]["x"], 1);
+        assert_eq!(read(&p)["talk"]["warmMic"], true);
+    }
 
     /// ADR 0076 (and ADR 0067): a config from before qrtz went fully offline loads. The cloud settings are dropped
     /// (unknown keys), every other setting is kept, and nothing needs rewriting.

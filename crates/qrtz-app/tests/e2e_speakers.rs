@@ -72,7 +72,9 @@ async fn speaker_rename_merge_and_search_hides_a_meeting_pending_delete() {
 }
 
 fn auto_record(data: &std::path::Path) -> Value {
-    let cfg: Value = serde_json::from_slice(&std::fs::read(data.join("config.json")).unwrap()).unwrap();
+    // ADR 0146 M1.2: note.* is nano's, in its own settings file.
+    let cfg: Value =
+        serde_json::from_slice(&std::fs::read(data.join("modules/nano/settings.json")).unwrap()).unwrap();
     cfg["note"]["autoRecord"].clone()
 }
 

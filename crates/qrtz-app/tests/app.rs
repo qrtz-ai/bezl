@@ -227,6 +227,17 @@ fn config_load_falls_back_per_field_and_migrates_memo() {
     assert!(!c.bool_at(&["note", "floatingHud"]));
     let on_disk: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
     assert!(on_disk.get("memo").is_none(), "legacy file rewritten once");
+    // ADR 0146 M1.2: note.* now lives in nano's own file; a corrupt config.json resets the global settings only.
+    assert!(on_disk.get("note").is_none());
+    std::fs::write(&file, "{garbage").unwrap();
+    let c = ConfigStore::open(&file);
+    assert_eq!(c.get()["theme"], contract().config_defaults["theme"]);
+    assert_eq!(c.get()["logLevel"], contract().config_defaults["logLevel"]);
+    assert!(
+        c.bool_at(&["note", "autoRecord"]),
+        "nano's settings file is separate"
+    );
+    std::fs::remove_dir_all(dir.path().join("modules")).unwrap();
     std::fs::write(&file, "{garbage").unwrap();
     assert_eq!(ConfigStore::open(&file).get(), &contract().config_defaults);
 }

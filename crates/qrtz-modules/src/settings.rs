@@ -157,6 +157,37 @@ impl ModuleSettingsStore {
         Ok(out)
     }
 
+    /// Replace module `id`'s whole settings object (the shell's config store writes a module's sections this way).
+    /// Same rules as [`ModuleSettingsStore::set`]: an object, no global keys, size-capped.
+    pub fn replace(&self, id: &str, value: &Value) -> Result<(), ModuleError> {
+        let Some(o) = value.as_object() else {
+            return Err(ModuleError::invalid("settings", "an object"));
+        };
+        if let Some(k) = o.keys().find(|k| GLOBAL_SECTIONS.contains(&k.as_str())) {
+            return Err(ModuleError::invalid(
+                format!("settings.{k}"),
+                "a global setting; change it in the global settings",
+            ));
+        }
+        let bytes = serde_json::to_vec_pretty(value).expect("json");
+        if bytes.len() > MAX_SETTINGS_BYTES {
+            return Err(ModuleError::invalid("settings", "too large"));
+        }
+        write_private(&self.path(id)?, &bytes)
+    }
+
+    /// The stored object if the file exists and parses (`None` otherwise, unlike [`ModuleSettingsStore::get`]).
+    pub fn stored(&self, id: &str) -> Option<Map<String, Value>> {
+        let b = std::fs::read(self.path(id).ok()?).ok()?;
+        if b.len() > MAX_SETTINGS_BYTES {
+            return None;
+        }
+        match serde_json::from_slice(&b).ok()? {
+            Value::Object(o) => Some(o),
+            _ => None,
+        }
+    }
+
     /// What a module sees: its own settings plus a read-only copy of the global ones (theme, log level, its
     /// switch). The module never writes through this.
     pub fn effective(&self, id: &str, global_cfg: &Value) -> Result<Value, ModuleError> {
