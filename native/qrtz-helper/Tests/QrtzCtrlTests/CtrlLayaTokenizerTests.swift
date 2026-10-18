@@ -15,7 +15,7 @@ private struct Cases: Decodable {
 }
 
 /// JSONDecoder may drop a leading U+FEFF from a string, so case texts are re-read with the tokenizer's own scanner.
-private func load(_ url: URL = fixtures.appendingPathComponent("laya-tokenizer-cases.json")) throws -> (Cases, [String]) {
+private func loadCases(_ url: URL = fixtures.appendingPathComponent("laya-tokenizer-cases.json")) throws -> (Cases, [String]) {
     let data = try Data(contentsOf: url)
     let c = try JSONDecoder().decode(Cases.self, from: data)
     guard case let .object(top) = try CtrlJSON.parse(data), case let .array(enc)? = top.first(where: { $0.0 == "encode" })?.1 else { throw CtrlFailure("fixture") }
@@ -33,7 +33,7 @@ final class CtrlLayaTokenizerTests: XCTestCase {
     }
 
     func testEncodeMatchesReferenceIds() throws {
-        let (c, texts) = try load()
+        let (c, texts) = try loadCases()
         XCTAssertEqual(texts.count, c.encode.count)
         XCTAssertTrue(texts.contains("\u{FEFF}bom"), "the BOM case survives the fixture read")
         for (name, t) in try tokenizers() {
@@ -49,14 +49,14 @@ final class CtrlLayaTokenizerTests: XCTestCase {
         let env = ProcessInfo.processInfo.environment
         guard let full = env["QRTZ_CTRL_LAYA_TOKENIZER_FULL"], let sweep = env["QRTZ_CTRL_LAYA_CASES"] else { throw XCTSkip("no sweep") }
         let t = try CtrlLayaTokenizer(contentsOf: URL(fileURLWithPath: full))
-        let (c, texts) = try load(URL(fileURLWithPath: sweep))
+        let (c, texts) = try loadCases(URL(fileURLWithPath: sweep))
         var bad = 0
         for (text, e) in zip(texts, c.encode) where t.encode(text) != e.ids { bad += 1; XCTFail(text.debugDescription) }
         print("laya tokenizer sweep: \(texts.count - bad)/\(texts.count) match")
     }
 
     func testSequencesMatchLayaBuildSequence() throws {
-        let (c, _) = try load()
+        let (c, _) = try loadCases()
         for (name, t) in try tokenizers() {
             for s in c.sequences {
                 let x = try XCTUnwrap(CtrlLayaInputs.build(tokenizer: t, state: s.state, question: s.question, options: s.options))
