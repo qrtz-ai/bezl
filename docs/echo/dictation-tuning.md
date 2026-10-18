@@ -577,3 +577,26 @@ whole clip has "." ("the wound, the quiver"); a wider window doesn't fix them (�
 On the Mac: record 3-5 long dictations (30-60 s) with natural pauses mid-sentence into `~/qrtz-echo-bench/my-clips`
 (with `.txt` references, §5), run `bash native/qrtz-helper/scripts/echo-bench.sh --clips ~/qrtz-echo-bench/my-clips`,
 and compare the `ends vs whole` lines of `parakeet-segmented-win` and `parakeet-segmented` in the summary.
+
+## 14. Cycle 40: pause length doesn't break cut-window ties (ADR 0123)
+
+The windows' lost sentence ends (13 → 23 after cleanup, §13) are mostly the window decoding "," where the segment
+and the whole clip have ".". `linux-crosscheck/seg/pause_keep.py` replays the helper as landed in `1c73921`
+(windows on pause and cap cuts), measures the silence run at each cut with the segmenter's own detector, and tries
+two tie-breakers. One keeps the segment's end when the pause is ≥ P. The other drops the window's end when the
+pause is < Q. Through the cleanup on both sides, against the whole clip:
+
+| Rule                  | false / strict / lost | formatted diff |
+| --------------------- | --------------------: | -------------: |
+| as landed (`1c73921`) |          23 / 11 / 23 |         6.13 % |
+| keep ≥ 700 ms         |          36 / 18 / 13 |         6.10 % |
+| keep ≥ 800 ms         |          30 / 16 / 14 |         5.97 % |
+| keep ≥ 1000 ms        |          26 / 13 / 19 |         6.02 % |
+| drop < 400 ms         |          22 / 11 / 39 |         6.80 % |
+
+Rejected. The best rule trades 9 lost ends (a comma where a period could go) for 5 strict false ends (a capital
+in the middle of a sentence) and gains only 0.16 pp. The set's pauses between utterances are synthetic
+(0.25-1.1 s), so even that gain may not carry over to real speech. The cut windows stay as landed, and so does the
+gate (§12). The baseline matches §13's "+ windows on cap cuts" row exactly, so the replay is right about the
+helper. On the Mac the `lost` column of `parakeet-segmented-win` in `echo-bench.sh --clips` tells whether the lost
+ends matter on Jared's speech.
