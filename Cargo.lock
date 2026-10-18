@@ -3442,6 +3442,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "qrtz-ctrl"
+version = "0.2.0"
+dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "qrtz-desktop"
 version = "0.2.0"
 dependencies = [

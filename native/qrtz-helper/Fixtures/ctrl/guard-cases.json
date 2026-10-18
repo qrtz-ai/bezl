@@ -1,0 +1,174 @@
+{
+  "schema_v": 1,
+  "note": "UI guard comparison cases (ADR 0100). A field that is null on either side is inconclusive, never a violation. A change while the user was physically active (hid_idle_ms < elapsed_ms) is attributed to the user.",
+  "cases": [
+    {
+      "name": "nothing changed",
+      "elapsed_ms": 40,
+      "before": {
+        "frontmost_pid": 501,
+        "cursor": { "x": 100.0, "y": 200.0 },
+        "focused_element": "e:1a2b",
+        "key_window": 77,
+        "hid_idle_ms": 9000
+      },
+      "after": {
+        "frontmost_pid": 501,
+        "cursor": { "x": 100.0, "y": 200.0 },
+        "focused_element": "e:1a2b",
+        "key_window": 77,
+        "hid_idle_ms": 9040
+      },
+      "violations": [],
+      "inconclusive": [],
+      "user_input": false
+    },
+    {
+      "name": "frontmost app stolen",
+      "elapsed_ms": 120,
+      "before": {
+        "frontmost_pid": 501,
+        "cursor": { "x": 100.0, "y": 200.0 },
+        "focused_element": "e:1a2b",
+        "key_window": 77,
+        "hid_idle_ms": 9000
+      },
+      "after": {
+        "frontmost_pid": 733,
+        "cursor": { "x": 100.0, "y": 200.0 },
+        "focused_element": "e:ffff",
+        "key_window": 91,
+        "hid_idle_ms": 9120
+      },
+      "violations": ["frontmost_app", "focused_element", "key_window"],
+      "inconclusive": [],
+      "user_input": false
+    },
+    {
+      "name": "cursor warped",
+      "elapsed_ms": 30,
+      "before": {
+        "frontmost_pid": 501,
+        "cursor": { "x": 100.0, "y": 200.0 },
+        "focused_element": "e:1a2b",
+        "key_window": 77,
+        "hid_idle_ms": 9000
+      },
+      "after": {
+        "frontmost_pid": 501,
+        "cursor": { "x": 640.0, "y": 410.0 },
+        "focused_element": "e:1a2b",
+        "key_window": 77,
+        "hid_idle_ms": 9030
+      },
+      "violations": ["cursor"],
+      "inconclusive": [],
+      "user_input": false
+    },
+    {
+      "name": "sub-point cursor jitter is not a move",
+      "elapsed_ms": 30,
+      "before": {
+        "frontmost_pid": 501,
+        "cursor": { "x": 100.0, "y": 200.0 },
+        "focused_element": null,
+        "key_window": 77,
+        "hid_idle_ms": 9000
+      },
+      "after": {
+        "frontmost_pid": 501,
+        "cursor": { "x": 100.25, "y": 199.75 },
+        "focused_element": null,
+        "key_window": 77,
+        "hid_idle_ms": 9030
+      },
+      "violations": [],
+      "inconclusive": ["focused_element"],
+      "user_input": false
+    },
+    {
+      "name": "user moved the mouse during the action",
+      "elapsed_ms": 300,
+      "before": {
+        "frontmost_pid": 501,
+        "cursor": { "x": 100.0, "y": 200.0 },
+        "focused_element": "e:1a2b",
+        "key_window": 77,
+        "hid_idle_ms": 9000
+      },
+      "after": {
+        "frontmost_pid": 501,
+        "cursor": { "x": 180.0, "y": 260.0 },
+        "focused_element": "e:1a2b",
+        "key_window": 77,
+        "hid_idle_ms": 12
+      },
+      "violations": [],
+      "inconclusive": ["cursor"],
+      "user_input": true
+    },
+    {
+      "name": "no ax trust: focus unknown, frontmost still checked",
+      "elapsed_ms": 50,
+      "before": {
+        "frontmost_pid": 501,
+        "cursor": { "x": 10.0, "y": 20.0 },
+        "focused_element": null,
+        "key_window": null,
+        "hid_idle_ms": null
+      },
+      "after": {
+        "frontmost_pid": 602,
+        "cursor": { "x": 10.0, "y": 20.0 },
+        "focused_element": null,
+        "key_window": null,
+        "hid_idle_ms": null
+      },
+      "violations": ["frontmost_app"],
+      "inconclusive": ["focused_element", "key_window"],
+      "user_input": false
+    },
+    {
+      "name": "focus moved inside the user's app",
+      "elapsed_ms": 60,
+      "before": {
+        "frontmost_pid": 501,
+        "cursor": { "x": 10.0, "y": 20.0 },
+        "focused_element": "e:aaaa",
+        "key_window": 77,
+        "hid_idle_ms": 5000
+      },
+      "after": {
+        "frontmost_pid": 501,
+        "cursor": { "x": 10.0, "y": 20.0 },
+        "focused_element": "e:bbbb",
+        "key_window": 77,
+        "hid_idle_ms": 5060
+      },
+      "violations": ["focused_element"],
+      "inconclusive": [],
+      "user_input": false
+    },
+    {
+      "name": "frontmost became unknown",
+      "elapsed_ms": 50,
+      "before": {
+        "frontmost_pid": 501,
+        "cursor": { "x": 10.0, "y": 20.0 },
+        "focused_element": "e:aaaa",
+        "key_window": 77,
+        "hid_idle_ms": 5000
+      },
+      "after": {
+        "frontmost_pid": null,
+        "cursor": { "x": 10.0, "y": 20.0 },
+        "focused_element": "e:aaaa",
+        "key_window": 77,
+        "hid_idle_ms": 5050
+      },
+      "violations": [],
+      "inconclusive": ["frontmost_app"],
+      "user_input": false
+    }
+  ]
+}

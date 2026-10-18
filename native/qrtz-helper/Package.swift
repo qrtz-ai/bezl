@@ -33,5 +33,9 @@ let package = Package(
             // across SDKs; Swift 5 mode keeps strict-concurrency findings as warnings so SDK drift can't break the build.
             swiftSettings: [.swiftLanguageMode(.v5)]),
         .testTarget(name: "QrtzHelperCoreTests", dependencies: ["QrtzHelperCore"]),
+        // ctrl (ADR 0100): the never-takes-over-the-ui guard, policy and background actions. Its own module, kept
+        // apart from the echo/nano code; Foundation-only parts build on Linux, Sources/QrtzCtrl/mac on macOS only.
+        .target(name: "QrtzCtrl", swiftSettings: [.swiftLanguageMode(.v5)]),
+        .testTarget(name: "QrtzCtrlTests", dependencies: ["QrtzCtrl"], swiftSettings: [.swiftLanguageMode(.v5)]),
     ]
 )

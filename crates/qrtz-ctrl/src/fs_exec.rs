@@ -1,0 +1,71 @@
+//! Rung 1: plain file operations. Downloads cleanup needs no UI, no Accessibility and no Apple Events; only the
+//! Files and Folders grant for ~/Downloads, which the user gives in the foreground.
+//!
+//! Paths live in a [`ContentStore`] and the log only sees [`ContentRef`]s. Moves never overwrite, and "delete"
+//! means move to the Trash (the macOS executor uses `FileManager.trashItem`; here it is a configured directory),
+//! so every file action has an inverse.
+use crate::ladder::{ContentRef, FsOp, Route};
+use crate::runner::Executor;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+
+pub trait ContentStore {
+    fn path(&self, r: &ContentRef) -> Option<PathBuf>;
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct MemStore(pub BTreeMap<ContentRef, PathBuf>);
+
+impl MemStore {
+    pub fn put(&mut self, id: &str, p: impl Into<PathBuf>) -> ContentRef {
+        let r = ContentRef(id.to_string());
+        self.0.insert(r.clone(), p.into());
+        r
+    }
+}
+
+impl ContentStore for MemStore {
+    fn path(&self, r: &ContentRef) -> Option<PathBuf> {
+        self.0.get(r).cloned()
+    }
+}
+
+pub struct FsExecutor<S: ContentStore> {
+    pub store: S,
+    pub trash_dir: PathBuf,
+}
+
+fn move_into(src: &Path, dir: &Path) -> Result<(), String> {
+    let name = src.file_name().ok_or("fs.no_name")?;
+    if !dir.is_dir() {
+        return Err("fs.no_dir".into());
+    }
+    let dst = dir.join(name);
+    // Never overwrite: an existing name is an error the planner sees, not data loss.
+    if dst.symlink_metadata().is_ok() {
+        return Err("fs.exists".into());
+    }
+    std::fs::rename(src, &dst).map_err(|e| format!("fs.rename:{:?}", e.kind()))
+}
+
+impl<S: ContentStore> Executor for FsExecutor<S> {
+    fn execute(&mut self, route: &Route) -> Result<(), String> {
+        let Route::Files(op) = route else {
+            return Err("fs.not_a_file_route".into());
+        };
+        match op {
+            FsOp::MoveInto { src, dst_dir } => {
+                let (s, d) = (
+                    self.store.path(src).ok_or("fs.ref")?,
+                    self.store.path(dst_dir).ok_or("fs.ref")?,
+                );
+                move_into(&s, &d)
+            }
+            FsOp::Trash { src } => {
+                let s = self.store.path(src).ok_or("fs.ref")?;
+                std::fs::create_dir_all(&self.trash_dir).map_err(|e| format!("fs.trash:{:?}", e.kind()))?;
+                move_into(&s, &self.trash_dir)
+            }
+        }
+    }
+}

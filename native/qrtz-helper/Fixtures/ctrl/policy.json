@@ -1,0 +1,50 @@
+{
+  "schema_v": 1,
+  "note": "ctrl never-takes-over-the-ui policy (ADR 0100). Both crates/qrtz-ctrl and native/qrtz-helper/Sources/QrtzCtrl test their built-in tables against this file.",
+  "forbidden_ax_actions": ["AXRaise", "AXShowMenu", "AXPick"],
+  "forbidden_ax_set_attributes": [
+    "AXFocused",
+    "AXMain",
+    "AXFrontmost",
+    "AXPosition",
+    "AXSize",
+    "AXFullScreen"
+  ],
+  "menu_opening_roles": [
+    "AXMenuBar",
+    "AXMenuBarItem",
+    "AXMenuItem",
+    "AXMenuButton",
+    "AXPopUpButton",
+    "AXComboBox"
+  ],
+  "secure_roles": ["AXSecureTextField"],
+  "focus_intent_shortcuts": [
+    "cmd+l",
+    "cmd+shift+g",
+    "cmd+tab",
+    "cmd+grave",
+    "cmd+space",
+    "cmd+1",
+    "cmd+2",
+    "cmd+3",
+    "cmd+4",
+    "cmd+5",
+    "cmd+6",
+    "cmd+7",
+    "cmd+8",
+    "cmd+9",
+    "cmd+[",
+    "cmd+]",
+    "cmd+shift+[",
+    "cmd+shift+]",
+    "ctrl+tab",
+    "ctrl+shift+tab",
+    "ctrl+left",
+    "ctrl+right",
+    "ctrl+up",
+    "ctrl+down"
+  ],
+  "user_active_window_ms": 2000,
+  "cursor_tolerance_pt": 0.5
+}
