@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **echo keeps your last words when the Mac is busy (N139):** if speech recognition is running slowly when you release fn (for example during a meeting recording), echo now waits for it within its usual time limit and inserts the full text, instead of the shorter preview.
 - **echo's pill appears the moment you press fn:** the pill is now drawn natively by qrtz's helper instead of a web window. It shows at the press (even the first one after launch), on every Space and over full-screen apps, on the screen you're working on. It looks the same: a moving waveform, never your words.
 
 - **echo is ready from launch:** qrtz loads echo's speech recogniser when it starts (if the speech models are downloaded) and keeps it loaded, so the first fn press doesn't wait for a model load. A press during that load uses it instead of loading a second copy. This keeps about 62 MB in memory while qrtz runs. Meeting models still load only for a recording.

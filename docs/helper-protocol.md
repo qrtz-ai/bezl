@@ -56,8 +56,10 @@ Rules (the arbiter's `cmd` events):
    its finish returns. The pill stays up the whole time. `durationMs` counts captured audio only, not the pad. A
    second stop while stopping is ignored. `dictation.cancel` or a mic loss while stopping answers one
    `stopped` (`text: ""`, or the text with the `reason`).
-   N131: nothing on the release path waits without a bound. Waiting for an append still in flight uses what is left
-   of the drain's limit, and the pad runs inside the finalize deadline. If either runs out, the last partial is
+   N131/N139: nothing on the release path waits without a bound. There is one deadline, drain limit + finalize
+   limit from the start of the drain. Waiting for an append still in flight may use all of it except half the
+   finalize limit, which is kept for pad + finish. So a drain that timed out still finalizes a slow append's audio.
+   The pad and finish run inside what is left. If either runs out, the last partial is
    sent and that recogniser is held until its call returns. So `dictation.stopped` always comes within
    `budgetMs(audioMs:queuedMs:)`, the same formula qrtz-talk's `HelperTail` mirrors.
    N134: a start that no recogniser can take (each one busy or failing to load, and no speech module attached) is

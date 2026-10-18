@@ -433,10 +433,13 @@ public actor DictationEngine {
         let drainStart = ContinuousClock.now
         let drained = await drainMic(limitMs: drainLimit)
         guard session?.id == id else { return }
-        // N131: close() gets what is left of the drain's budget; past it the last partial is the answer.
-        let used = drainStart.duration(to: .now)
-        let usedMs = Int(used.components.seconds) * 1000 + Int(used.components.attoseconds / 1_000_000_000_000_000)
-        let idle = await close(limitMs: drainLimit - usedMs)
+        // N139: one deadline for the whole release (drain + finalize; `budgetMs` unchanged). close() may use all of
+        // it except a reserve for pad + finish, so a drain that timed out still waits for a slow (not hung) append and
+        // finalizes its audio; past that the last partial is the answer (N131).
+        let finalizeLimit = tail.finalizeLimitMs(audioMs: (session?.samples ?? 0) / 16, queuedMs: queuedMs)
+        let deadline = drainStart + .milliseconds(drainLimit + finalizeLimit)
+        let reserveMs = finalizeLimit / 2
+        let idle = await close(limitMs: max(0, Self.msLeft(until: deadline) - reserveMs))
         if !drained { _ = preRoll.drain() }  // what was still queued is this dictation's stale audio, not pre-roll
         guard var s = session, s.id == id else { return }
         tick?.cancel(); tick = nil
@@ -450,8 +453,7 @@ public actor DictationEngine {
             for e in s.segmenter.flush(cumulative: text, nowMs: now() - s.startMs) { send(.dictationAsr(id: s.id, event: e)) }
         } else if let tr = s.transcriber {
             // 3. Pad and finalize: silence after the last word puts it in a full chunk; the final text is awaited.
-            let limit = tail.finalizeLimitMs(audioMs: s.samples / 16, queuedMs: queuedMs)
-            text = await finalText(tr, limitMs: limit, partial: s.lastPartial).trimmingCharacters(in: .whitespacesAndNewlines)
+            text = await finalText(tr, limitMs: max(0, Self.msLeft(until: deadline)), partial: s.lastPartial).trimmingCharacters(in: .whitespacesAndNewlines)
             for e in s.segmenter.flush(cumulative: text, nowMs: now() - s.startMs) { send(.dictationAsr(id: s.id, event: e)) }
         }
         let end = session
@@ -463,6 +465,11 @@ public actor DictationEngine {
         } else {
             send(.dictationStopped(id: id, text: text, durationMs: Double(s.samples) * 1000 / 16_000, reason: end?.abortReason))
         }
+    }
+
+    static func msLeft(until t: ContinuousClock.Instant) -> Int {
+        let d = ContinuousClock.now.duration(to: t)
+        return Int(d.components.seconds) * 1000 + Int(d.components.attoseconds / 1_000_000_000_000_000)
     }
 
     /// Waits (bounded) until the mic stream has handed over every block it had queued. False: it timed out.

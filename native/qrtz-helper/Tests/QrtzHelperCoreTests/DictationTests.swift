@@ -443,6 +443,28 @@ final class DictationBoundsTests: XCTestCase {
         await c.handle(.dictationStop(id: "d3"))
     }
 
+    func testASlowAppendAfterADrainTimeoutIsAwaitedAndFinalized() async {
+        // N139: 200 ms per 85 ms block (under half real time) with ~0.7 s queued at the release: the drain times out
+        // while an append is in flight. close() now has the release deadline minus a reserve, so that append is
+        // awaited and pad + finish run: the text has the last words, not the last partial.
+        let mic = FakeMic()
+        let asr = ChunkASR(appendNs: 200_000_000)
+        let tail = DictationTail(tailMs: 0, drainTimeoutMs: 100, padMs: 640, finalizeTimeoutMs: 300)
+        let (c, out) = controller([asr], tail, mic: mic)
+        await c.handle(.dictationStart(id: "d1"))
+        guard let cb = mic.cb else { return XCTFail("mic attached") }
+        cb(level(1, 8960))
+        try? await Task.sleep(nanoseconds: 350_000_000)  // decoded and polled: the partial is "w1"
+        for _ in 0..<8 { cb(level(5, 1360)) }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        let t = Date()
+        await c.handle(.dictationStop(id: "d1"))
+        let ms = Date().timeIntervalSince(t) * 1000
+        XCTAssertLessThan(ms, Double(tail.budgetMs(audioMs: 560 + 680, queuedMs: 680)) + 150, "within the helper's budget")
+        XCTAssertFalse(warned(out.value, "append still running"), "the slow append was awaited")
+        XCTAssertEqual(stoppedText(out.value, "d1"), "w1 w5", "finish(), with the words after the partial")
+    }
+
     func testAHungPadIsInsideTheFinalizeDeadline() async {
         // N131: the pad's own append hangs; the deadline started before it, so the stop still answers in time.
         let asr = BlockingASR(blockPad: true)
