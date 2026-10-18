@@ -117,6 +117,8 @@ public struct DictationTail: Sendable, Equatable {
     /// tail, so the block the tap was still filling at the release (~85 ms) is in before the barrier. The short tail
     /// relies on this, and the pad protects the last word's decoding.
     public var nextBlockWaitMs: Int
+    /// The block is waited on until its due time (the last block's arrival + its length) plus this much jitter.
+    public var nextBlockSlackMs = 40
     public init(tailMs: Int = 50, drainTimeoutMs: Int = 300, padMs: Int = 640, finalizeTimeoutMs: Int = 1500,
                 maxWaitMs: Int = 20_000, backlogCapMs: Int = 20_000, nextBlockWaitMs: Int = 120) {
         self.tailMs = tailMs; self.drainTimeoutMs = drainTimeoutMs; self.padMs = padMs; self.finalizeTimeoutMs = finalizeTimeoutMs
@@ -146,6 +148,7 @@ final class FirstOf: @unchecked Sendable {
 final class MicBacklog: @unchecked Sendable {
     private let lock = NSLock()
     private var queued = 0, dropped = 0, down = false, yielded = 0
+    private var lastAt: ContinuousClock.Instant?, lastMs = 0
     let cap: Int
     init(cap: Int) { self.cap = cap }
     /// `ok`: yield it. `first`: this is the block that stood the mic down.
@@ -153,13 +156,15 @@ final class MicBacklog: @unchecked Sendable {
         lock.withLock {
             if down { dropped += n; return (false, false) }
             if queued + n > cap { down = true; dropped += n; return (false, true) }
-            queued += n; yielded += 1; return (true, false)
+            queued += n; yielded += 1; lastAt = .now; lastMs = n / 16; return (true, false)
         }
     }
     func took(_ n: Int) { lock.withLock { queued -= n } }
     var queuedSamples: Int { lock.withLock { queued } }
     /// Blocks the tap handed to the stream so far.
     var yieldedBlocks: Int { lock.withLock { yielded } }
+    /// When the tap's next block is due: the last one's arrival plus its length (nil: none yet).
+    var nextDue: ContinuousClock.Instant? { lock.withLock { lastAt.map { $0 + .milliseconds(lastMs) } } }
     var droppedSamples: Int { lock.withLock { dropped } }
     var stoodDown: Bool { lock.withLock { down } }
     func rearm() { lock.withLock { down = false; dropped = 0 } }
@@ -512,7 +517,10 @@ public actor DictationEngine {
     func nextBlock(limitMs: Int, since: Int? = nil) async {
         guard let bl = backlog else { return }
         let seen = since ?? bl.yieldedBlocks
-        let deadline = ContinuousClock.now + .milliseconds(limitMs)
+        // Not past the block's due time plus jitter: a tap that has stopped delivering (the device went quiet, a
+        // file-fed bench) isn't waited on for the whole limit; a live tap's block lands well inside it.
+        var deadline = ContinuousClock.now + .milliseconds(limitMs)
+        if let due = bl.nextDue { deadline = min(deadline, due + .milliseconds(tail.nextBlockSlackMs)) }
         while bl.yieldedBlocks == seen, ContinuousClock.now < deadline { try? await Task.sleep(nanoseconds: 5_000_000) }
     }
 
