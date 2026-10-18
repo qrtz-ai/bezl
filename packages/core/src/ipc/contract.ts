@@ -15,6 +15,13 @@ import { SummaryTemplateId } from '../note/templates';
 import { DictionaryEntry, TalkEntry, TalkView } from '../talk/contract';
 import { SpeechSetupStatus } from '../speech/setup';
 import {
+  PackageOp,
+  PackagePlan,
+  PackagesApplied,
+  PackagesPruned,
+  PackagesState,
+} from '../packages/contract';
+import {
   CTRL_TEXT_MAX,
   CtrlRun,
   CtrlRunView,
@@ -403,6 +410,45 @@ export const ipcContract = {
     capability: 'talk.write',
     request: z.object({ entries: z.array(DictionaryEntry).max(500) }),
     response: z.array(DictionaryEntry),
+  }),
+  // --- the package manager (ADR 0157): the Extensions screen ---
+  /** Installed packages and the stored index; local only. */
+  'packages:list': defineChannel({
+    version: 1,
+    capability: 'packages.read',
+    request: z.void(),
+    response: PackagesState,
+  }),
+  /** Check the package hosts for a newer signed index (the user pressed "check"). */
+  'packages:refresh': defineChannel({
+    version: 1,
+    capability: 'packages.manage',
+    request: z.void(),
+    response: PackagesState,
+  }),
+  /** What a change would add, remove and download; changes nothing. */
+  'packages:plan': defineChannel({
+    version: 1,
+    capability: 'packages.manage',
+    request: PackageOp,
+    response: PackagePlan,
+  }),
+  /** Carry out the plan the user saw, named by its hash and download size. */
+  'packages:apply': defineChannel({
+    version: 1,
+    capability: 'packages.manage',
+    request: z.object({
+      planSha256: z.string().regex(/^[0-9a-f]{64}$/),
+      downloadBytes: z.number().int().nonnegative(),
+    }),
+    response: PackagesApplied,
+  }),
+  /** Delete package dirs and store blobs nothing in qrtz.lock references. */
+  'packages:prune': defineChannel({
+    version: 1,
+    capability: 'packages.manage',
+    request: z.void(),
+    response: PackagesPruned,
   }),
   // --- qrtz speech setup (ADR 0046 §7) ---
   'speech:status': defineChannel({

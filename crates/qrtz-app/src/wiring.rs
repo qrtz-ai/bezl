@@ -499,6 +499,11 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         events,
     });
     service.set_setup(setup.clone());
+    // ADR 0157: the Extensions screen's package manager, on the app's data dir (nothing is reached until the user
+    // asks: `packages:refresh`, or a plan that needs the network).
+    if let Some(p) = crate::module_hosting::Packages::pinned(Some(dirs.data.clone())) {
+        service.set_packages(Arc::new(crate::packages_ipc::PackagesIpc::new(p)));
+    }
     if let Some(h) = &helpers {
         service.set_module_helpers(h.clone());
     }

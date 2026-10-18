@@ -29,6 +29,9 @@ export const Capability = z.enum([
   'logs.export',
   /** ADR 0146 M1.4: read and write the calling module's own settings (its settings page), nothing else. */
   'module.settings',
+  /** ADR 0157: the Extensions screen: list installed packages; check, plan, apply and prune. */
+  'packages.read',
+  'packages.manage',
 ]);
 export type Capability = z.infer<typeof Capability>;
 

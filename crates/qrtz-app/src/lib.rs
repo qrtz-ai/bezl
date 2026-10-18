@@ -13,7 +13,11 @@ pub mod module_helpers;
 pub mod module_hosting;
 pub mod modules;
 #[cfg(feature = "runtime")]
+pub mod packages_ipc;
+#[cfg(feature = "runtime")]
 pub mod pill;
+#[cfg(feature = "runtime")]
+pub mod pm_cli;
 pub mod ports;
 #[cfg(feature = "runtime")]
 pub mod runtime_port;

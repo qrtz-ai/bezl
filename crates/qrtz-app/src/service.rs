@@ -86,6 +86,7 @@ pub struct AppService {
     helper: Option<Supervisor>,
     pub events: Events,
     setup: std::sync::OnceLock<Arc<dyn crate::ports::SetupPort>>,
+    packages: std::sync::OnceLock<Arc<dyn crate::ports::PackagesPort>>,
     ctrl: std::sync::OnceLock<Arc<qrtz_ctrl::service::CtrlService>>,
     /// ADR 0116: ctrl's Laya model (consent + download), behind `ctrl:model` / `ctrl:model-consent`.
     #[cfg(feature = "runtime")]
@@ -125,6 +126,7 @@ impl AppService {
             helper: d.helper,
             events: d.events,
             setup: std::sync::OnceLock::new(),
+            packages: std::sync::OnceLock::new(),
             ctrl: std::sync::OnceLock::new(),
             #[cfg(feature = "runtime")]
             ctrl_model: std::sync::OnceLock::new(),
@@ -204,6 +206,12 @@ impl AppService {
     /// samples and the actions are `E_UNAVAILABLE`).
     pub fn set_setup(&self, setup: Arc<dyn crate::ports::SetupPort>) {
         let _ = self.setup.set(setup);
+    }
+
+    /// Plug in the package manager (set once by `build_app`; without it `packages:list` answers its idle sample and
+    /// the rest are `E_UNAVAILABLE`).
+    pub fn set_packages(&self, p: Arc<dyn crate::ports::PackagesPort>) {
+        let _ = self.packages.set(p);
     }
 
     /// Plug in ctrl (set once by `build_app`; without it every `ctrl:*` call is `E_UNAVAILABLE`).
@@ -629,6 +637,8 @@ impl AppService {
             Some("talk")
         } else if channel.starts_with(CTRL_PREFIX) {
             Some("ctrl")
+        } else if channel.starts_with(PACKAGES_PREFIX) {
+            Some("packages")
         } else {
             None
         }
@@ -652,6 +662,16 @@ impl Handler for AppService {
                     AppError::new(
                         ErrorCode::Unavailable,
                         "speech setup is not available in this build",
+                    )
+                    .retryable(false)
+                }),
+            },
+            Some("packages") => match self.packages.get() {
+                Some(p) => p.call(channel, payload).await,
+                None => qrtz_ipc::idle_response(channel).ok_or_else(|| {
+                    AppError::new(
+                        ErrorCode::Unavailable,
+                        "the package manager is not available in this build",
                     )
                     .retryable(false)
                 }),

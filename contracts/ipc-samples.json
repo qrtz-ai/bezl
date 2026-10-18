@@ -627,6 +627,157 @@
         "bytes": 48213
       }
     },
+    "packages:list": {
+      "request": null,
+      "response": {
+        "packages": [
+          {
+            "name": "echo",
+            "version": "0.3.0",
+            "kind": "extension",
+            "requested": "^0.3.0",
+            "requiredBy": [],
+            "disabled": null,
+            "sizeBytes": 9400000
+          },
+          {
+            "name": "inference.voice",
+            "version": "1.0.0",
+            "kind": "service",
+            "requested": null,
+            "requiredBy": [
+              "echo@0.3.0"
+            ],
+            "disabled": null,
+            "sizeBytes": 4100000
+          },
+          {
+            "name": "model.parakeet-tdt-v2-en",
+            "version": "1.0.0",
+            "kind": "model",
+            "requested": null,
+            "requiredBy": [
+              "echo@0.3.0"
+            ],
+            "disabled": null,
+            "sizeBytes": 615000000
+          }
+        ],
+        "index": {
+          "version": 12,
+          "issuedMs": 1790000000000
+        }
+      },
+      "idle": {
+        "packages": [],
+        "index": null
+      }
+    },
+    "packages:refresh": {
+      "request": null,
+      "response": {
+        "packages": [
+          {
+            "name": "echo",
+            "version": "0.3.0",
+            "kind": "extension",
+            "requested": "^0.3.0",
+            "requiredBy": [],
+            "disabled": null,
+            "sizeBytes": 9400000
+          },
+          {
+            "name": "inference.voice",
+            "version": "1.0.0",
+            "kind": "service",
+            "requested": null,
+            "requiredBy": [
+              "echo@0.3.0"
+            ],
+            "disabled": null,
+            "sizeBytes": 4100000
+          },
+          {
+            "name": "model.parakeet-tdt-v2-en",
+            "version": "1.0.0",
+            "kind": "model",
+            "requested": null,
+            "requiredBy": [
+              "echo@0.3.0"
+            ],
+            "disabled": null,
+            "sizeBytes": 615000000
+          }
+        ],
+        "index": {
+          "version": 12,
+          "issuedMs": 1790000000000
+        }
+      }
+    },
+    "packages:plan": {
+      "request": {
+        "op": "install",
+        "names": [
+          "echo"
+        ]
+      },
+      "response": {
+        "planSha256": "abababababababababababababababababababababababababababababababab",
+        "changes": [
+          {
+            "change": "add",
+            "name": "echo",
+            "version": "0.3.0"
+          },
+          {
+            "change": "add",
+            "name": "inference.voice",
+            "version": "1.0.0"
+          },
+          {
+            "change": "add",
+            "name": "model.parakeet-tdt-v2-en",
+            "version": "1.0.0"
+          }
+        ],
+        "downloadBytes": 628500000
+      }
+    },
+    "packages:apply": {
+      "request": {
+        "planSha256": "abababababababababababababababababababababababababababababababab",
+        "downloadBytes": 628500000
+      },
+      "response": {
+        "changes": [
+          {
+            "change": "add",
+            "name": "echo",
+            "version": "0.3.0"
+          },
+          {
+            "change": "add",
+            "name": "inference.voice",
+            "version": "1.0.0"
+          },
+          {
+            "change": "add",
+            "name": "model.parakeet-tdt-v2-en",
+            "version": "1.0.0"
+          }
+        ],
+        "staleRevocation": false
+      }
+    },
+    "packages:prune": {
+      "request": null,
+      "response": {
+        "dirs": 1,
+        "blobs": 4,
+        "bytes": 615000000
+      }
+    },
     "speech:status": {
       "request": null,
       "response": {

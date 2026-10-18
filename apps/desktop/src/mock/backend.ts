@@ -395,6 +395,12 @@ export function createMockBridge(): TauriBridge {
         { installed: null, bytes: 0 },
       );
     },
+    // ADR 0157: the Extensions screen against the golden samples (no store, nothing downloads).
+    'packages:list': () => ipcSamples['packages:list'].response,
+    'packages:refresh': () => ipcSamples['packages:refresh'].response,
+    'packages:plan': () => ipcSamples['packages:plan'].response,
+    'packages:apply': () => ipcSamples['packages:apply'].response,
+    'packages:prune': () => ipcSamples['packages:prune'].response,
     'note:session': () => session as never,
     'note:dismiss': () => {
       if (['done', 'error'].includes(String(session.phase)))

@@ -10,8 +10,14 @@ use serde_json::Value;
 use std::sync::OnceLock;
 
 /// Capabilities the shell itself needs whatever is installed: onboarding asks for permissions, and settings
-/// manages the speech downloads.
-const SHELL_SHARED: &[&str] = &["os.permissions", "speech.read", "speech.manage"];
+/// manages the speech downloads and the packages (ADR 0157's Extensions screen).
+const SHELL_SHARED: &[&str] = &[
+    "os.permissions",
+    "speech.read",
+    "speech.manage",
+    "packages.read",
+    "packages.manage",
+];
 
 pub struct Bundled {
     pub manifests: Vec<ModuleManifest>,

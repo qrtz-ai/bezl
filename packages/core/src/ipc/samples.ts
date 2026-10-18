@@ -354,6 +354,52 @@ const ctrlSamples = {
   },
 } satisfies { [C in Extract<IpcChannel, `ctrl:${string}`>]: ChannelSample<C> };
 
+const packagesState = {
+  packages: [
+    {
+      name: 'echo',
+      version: '0.3.0',
+      kind: 'extension' as const,
+      requested: '^0.3.0',
+      requiredBy: [],
+      disabled: null,
+      sizeBytes: 9_400_000,
+    },
+    {
+      name: 'inference.voice',
+      version: '1.0.0',
+      kind: 'service' as const,
+      requested: null,
+      requiredBy: ['echo@0.3.0'],
+      disabled: null,
+      sizeBytes: 4_100_000,
+    },
+    {
+      name: 'model.parakeet-tdt-v2-en',
+      version: '1.0.0',
+      kind: 'model' as const,
+      requested: null,
+      requiredBy: ['echo@0.3.0'],
+      disabled: null,
+      sizeBytes: 615_000_000,
+    },
+  ],
+  index: { version: 12, issuedMs: 1_790_000_000_000 },
+};
+const packagePlan = {
+  planSha256: 'ab'.repeat(32),
+  changes: [
+    { change: 'add' as const, name: 'echo', version: '0.3.0' },
+    { change: 'add' as const, name: 'inference.voice', version: '1.0.0' },
+    {
+      change: 'add' as const,
+      name: 'model.parakeet-tdt-v2-en',
+      version: '1.0.0',
+    },
+  ],
+  downloadBytes: 628_500_000,
+};
+
 export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
   'app:get-info': {
     request: undefined,
@@ -542,6 +588,23 @@ export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
       bytes: 48_213,
     },
   },
+  'packages:list': { request: undefined, response: packagesState },
+  'packages:refresh': { request: undefined, response: packagesState },
+  'packages:plan': {
+    request: { op: 'install', names: ['echo'] },
+    response: packagePlan,
+  },
+  'packages:apply': {
+    request: {
+      planSha256: packagePlan.planSha256,
+      downloadBytes: packagePlan.downloadBytes,
+    },
+    response: { changes: packagePlan.changes, staleRevocation: false },
+  },
+  'packages:prune': {
+    request: undefined,
+    response: { dirs: 1, blobs: 4, bytes: 615_000_000 },
+  },
   'speech:status': { request: undefined, response: speechInstalled },
   'speech:check': { request: undefined, response: speechInstalled },
   'speech:download': { request: {}, response: speechDownloading },
@@ -593,4 +656,5 @@ export const idleResponses: Partial<Record<IpcChannel, unknown>> = {
   'talk:dictionary': [],
   'speech:status': { ...speechNone, configured: false },
   'ctrl:tasks': [],
+  'packages:list': { packages: [], index: null },
 };

@@ -1,12 +1,13 @@
-//! ADR 0153 end to end on loopback: `qrtz-publish` builds a signed output dir with test keys made at runtime, two
-//! local servers play `modules.qrtz.ai` and its B2 mirror, and the shell's installer (`module_hosting`) refreshes,
-//! plans, installs under a consent, resumes, falls back to the mirror, and refuses freeze, rollback and revoked
+//! ADR 0153/0157 end to end on loopback: `qrtz-publish` builds a signed output dir with test keys made at runtime,
+//! two local servers play `modules.qrtz.ai` and its B2 mirror (a third plays Hugging Face), and the shell's
+//! package manager (`module_hosting::Packages`) refreshes, plans, installs a dependency tree under a consent in
+//! parallel byte ranges, resumes, falls back to the mirror, removes, prunes, and refuses freeze, rollback and revoked
 //! releases. Sideloads go through the same installer from a `.qrtzpkg` (Bozniak's rules).
 #![cfg(feature = "runtime")]
-use qrtz_app::module_hosting::{InstallError, ModuleHosting, RefreshConsent};
+use qrtz_app::module_hosting::{HttpTransport, InstallError, Op, Packages, RefreshConsent};
 use qrtz_modules::index::{layout, DAY_MS};
-use qrtz_modules::install::InstallConsent;
-use qrtz_modules::lock::Source;
+use qrtz_modules::install::{InstallConsent, Installer};
+use qrtz_modules::qrtz_lock::Source;
 use qrtz_modules::sideload::{Confirmation, Refusal, Revoked, SideloadOrigin};
 use qrtz_publish::dry_run::{sample, NoAppleChecks};
 use qrtz_publish::keys::Keys;
@@ -60,7 +61,8 @@ async fn world() -> World {
     let keys = Keys::ephemeral();
     let now = qrtz_publish::now_ms();
     let (_, pin) = write_root(&out, &keys, None, 1, now).unwrap();
-    let spec = sample(&dir, false).unwrap();
+    // The model's weights are 20 MiB: three 8 MiB ranges.
+    let spec = sample(&dir, true).unwrap();
     build(&out, &spec, &keys, now).unwrap();
     let (primary, mirror) = (Server::start().await, Server::start().await);
     serve(&out, &primary);
@@ -78,19 +80,23 @@ async fn world() -> World {
 }
 
 impl World {
-    fn client(&self, name: &str, hosts: &[&Server]) -> ModuleHosting {
+    fn client(&self, name: &str, hosts: &[&Server]) -> Packages {
         let bases: Vec<String> = hosts.iter().map(|s| s.base.clone()).collect();
-        ModuleHosting::with(
-            self.dir.join(name),
-            &bases,
-            Some(self.pin.clone()),
-            Box::new(NoAppleChecks),
+        Packages::with(
+            Installer::new(
+                self.dir.join(name),
+                Some(self.pin.clone()),
+                Box::new(NoAppleChecks),
+            ),
+            HttpTransport::new(&bases, &[]),
         )
     }
     fn republish(&self, revoked: Vec<Revoked>, now: u64) {
         let spec = Spec {
             team_id: qrtz_publish::dry_run::TEAM.into(),
             packages: vec![],
+            pinned_models: vec![],
+            models: vec![],
             revoked,
         };
         build(&self.out, &spec, &self.keys, now).unwrap();
@@ -106,34 +112,40 @@ impl World {
 
 fn no_progress(_: u64, _: u64) {}
 
-/// Ask without a yes; return the yes the prompt allows.
-async fn ask(c: &ModuleHosting, f: &Path, now: u64) -> Confirmation {
-    match c
-        .installer
-        .sideload(f, SideloadOrigin::UserPickedFile, None, now)
-        .await
-    {
-        Err(InstallError::Refused(Refusal::NeedsConfirmation(p))) => Confirmation {
-            package_sha256: p.package_sha256,
-            revocation_issued_ms: p.revocation_issued_ms,
-        },
-        other => panic!("no prompt: {other:?}"),
-    }
+fn echo() -> Op {
+    Op::Install(vec![("echo".into(), None)])
+}
+
+async fn install(c: &Packages, now: u64) -> Result<qrtz_app::module_hosting::Applied, InstallError> {
+    let plan = c.plan(echo())?;
+    c.apply(&plan, &plan.consent(), now, &no_progress).await
+}
+
+fn echo_lock(c: &Packages) -> qrtz_modules::qrtz_lock::Locked {
+    c.installer
+        .lock()
+        .unwrap()
+        .get("echo", "0.3.0")
+        .cloned()
+        .expect("echo locked")
 }
 
 #[tokio::test]
-async fn publish_serve_refresh_plan_and_install_over_localhost() {
+async fn publish_serve_refresh_plan_and_install_a_tree_over_localhost() {
     let w = world().await;
     let c = w.client("client", &[&w.primary, &w.mirror]);
     // No consent, no request: planning reads only the local cache.
-    assert!(matches!(c.plan("echo", None), Err(InstallError::NoIndex)));
+    assert!(matches!(c.plan(echo()), Err(InstallError::NoIndex)));
     assert_eq!(w.hits(), 0, "nothing may reach a host before a consent");
     let r = c.refresh(&RefreshConsent::user_asked(), w.now).await.unwrap();
     assert_eq!((r.timestamp_version, r.index_version), (1, 1));
-    let plan = c.plan("echo", None).unwrap();
-    assert_eq!(plan.version, "0.3.0");
-    assert_eq!(plan.packages.len(), 2, "echo and the model set it pins");
-    assert!(plan.download_bytes > 300_000);
+    let plan = c.plan(echo()).unwrap();
+    assert_eq!(
+        plan.changes.len(),
+        3,
+        "echo, the service and the model it depends on"
+    );
+    assert!(plan.download_bytes > 20 * 1024 * 1024);
     // A consent for another plan (or a smaller download than this one) is refused before any blob moves.
     let low = InstallConsent {
         download_bytes: 1,
@@ -141,33 +153,58 @@ async fn publish_serve_refresh_plan_and_install_over_localhost() {
     };
     let before = w.hits();
     assert!(matches!(
-        c.install(&low, w.now, &no_progress).await,
+        c.apply(&plan, &low, w.now, &no_progress).await,
         Err(InstallError::ConsentMismatch)
     ));
     assert_eq!(w.hits(), before);
-    let done = c.install(&plan.consent(), w.now, &no_progress).await.unwrap();
-    assert_eq!(
-        (done.module.as_str(), done.version.as_str(), done.stale_revocation),
-        ("echo", "0.3.0", false)
-    );
+    let done = c
+        .apply(&plan, &plan.consent(), w.now, &no_progress)
+        .await
+        .unwrap();
+    assert!(!done.stale_revocation);
     let root = c.installer.root();
-    let lock = c.installer.lock().unwrap();
-    assert_eq!(lock.modules["echo"].source, Source::Network);
-    assert!(lock.package("model:sample", "1.0.0").is_some());
-    assert!(root.join("modules/echo/0.3.0/module.json").exists());
-    assert!(root.join("packages/model/sample/1.0.0/weights/a.bin").exists());
+    assert_eq!(echo_lock(&c).source, Source::Network);
+    assert!(root.join("qrtz.lock").exists());
+    assert!(root.join("packages/echo/0.3.0/qrtz.json").exists());
+    assert!(root.join("packages/model.sample/1.0.0/weights/a.bin").exists());
+    assert!(root
+        .join("packages/inference.sample/1.0.0/sample.xpc/Contents/MacOS/sample")
+        .exists());
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let mode = |p: &str| std::fs::metadata(root.join(p)).unwrap().permissions().mode() & 0o777;
         assert_eq!(
-            mode("modules/echo/0.3.0/qrtz-echo.app/Contents/MacOS/qrtz-echo"),
-            0o500
+            mode("packages/echo/0.3.0/bin/qrtz-echo"),
+            0o500,
+            "code is copied, owner-only"
         );
-        assert_eq!(mode("modules/echo/0.3.0/module.json"), 0o400);
-        assert_eq!(mode("packages/model/sample/1.0.0"), 0o500);
+        // Data is a store link (a clone on APFS, a hardlink here): never writable.
+        assert_eq!(mode("packages/echo/0.3.0/qrtz.json") & 0o222, 0);
+        assert_eq!(mode("packages/model.sample/1.0.0"), 0o500);
     }
-    // Blobs only came from the primary; the mirror wasn't needed.
+    // The big blob came in closed 8 MiB ranges, from the primary only.
+    let big = layout::blob(&qrtz_modules::sha256_hex(&vec![7u8; 20 * 1024 * 1024]));
+    let ranges: Vec<String> = w
+        .primary
+        .faults
+        .lock()
+        .unwrap()
+        .ranges
+        .iter()
+        .filter(|(p, _)| *p == big)
+        .map(|(_, r)| r.clone())
+        .collect();
+    let mut sorted = ranges.clone();
+    sorted.sort();
+    assert_eq!(
+        sorted,
+        [
+            "bytes=0-8388607",
+            "bytes=16777216-20971519",
+            "bytes=8388608-16777215"
+        ]
+    );
     let mirror_blobs = w
         .mirror
         .faults
@@ -179,16 +216,23 @@ async fn publish_serve_refresh_plan_and_install_over_localhost() {
         .count();
     assert_eq!(mirror_blobs, 0);
     // A second install of the same thing fetches nothing.
-    let again = c.plan("echo", Some("0.3.0")).unwrap();
-    assert!(again.fetch.is_empty() && again.packages.iter().all(|p| p.installed));
+    let again = c.plan(echo()).unwrap();
+    assert!(again.fetch.is_empty() && again.changes.is_empty());
+    // Remove and prune: the dirs and the blobs go.
+    let rm = c.plan(Op::Remove(vec!["echo".into()])).unwrap();
+    c.apply(&rm, &rm.consent(), w.now, &no_progress).await.unwrap();
+    let p = c.prune().unwrap();
+    assert_eq!(p.dirs.len(), 3);
+    assert!(p.bytes > 20 * 1024 * 1024);
+    assert!(!root.join("packages/echo").exists());
 }
 
 #[tokio::test]
-async fn a_cut_download_resumes_with_a_range_request() {
+async fn a_cut_range_is_fetched_again_and_only_it() {
     let w = world().await;
     let c = w.client("client", &[&w.primary]);
     c.refresh(&RefreshConsent::user_asked(), w.now).await.unwrap();
-    let plan = c.plan("echo", None).unwrap();
+    let plan = c.plan(echo()).unwrap();
     let big = plan.fetch.iter().max_by_key(|b| b.size).unwrap().clone();
     let path = layout::blob(&big.sha256);
     w.primary
@@ -197,19 +241,20 @@ async fn a_cut_download_resumes_with_a_range_request() {
         .unwrap()
         .truncate_once
         .insert(path.clone(), 100_000);
-    let e = c.install(&plan.consent(), w.now, &no_progress).await.unwrap_err();
+    let e = c
+        .apply(&plan, &plan.consent(), w.now, &no_progress)
+        .await
+        .unwrap_err();
     assert!(matches!(e, InstallError::Network(_)), "{e:?}");
     assert!(
-        c.installer.lock().unwrap().modules.is_empty(),
+        c.installer.lock().unwrap().packages.is_empty(),
         "nothing is installed by a failed download"
     );
-    let plan = c.plan("echo", None).unwrap();
-    c.install(&plan.consent(), w.now, &no_progress).await.unwrap();
-    let ranges = w.primary.faults.lock().unwrap().ranges.clone();
-    assert!(
-        ranges.iter().any(|(p, r)| *p == path && r == "bytes=100000-"),
-        "{ranges:?}"
-    );
+    c.apply(&plan, &plan.consent(), w.now, &no_progress)
+        .await
+        .unwrap();
+    let hits = w.primary.faults.lock().unwrap().hits[&path];
+    assert_eq!(hits, 4, "three ranges, one of them twice");
 }
 
 #[tokio::test]
@@ -218,14 +263,75 @@ async fn the_mirror_serves_when_the_primary_is_down_or_corrupt() {
     let empty = Server::start().await;
     let c = w.client("client", &[&empty, &w.mirror]);
     c.refresh(&RefreshConsent::user_asked(), w.now).await.unwrap();
+    install(&c, w.now).await.unwrap();
     // The primary is back but serves a corrupted blob: the mirror's copy is used, checked against the index.
     let c2 = w.client("client2", &[&w.primary, &w.mirror]);
     c2.refresh(&RefreshConsent::user_asked(), w.now).await.unwrap();
-    let plan = c2.plan("echo", None).unwrap();
-    let blob = layout::blob(&plan.fetch[0].sha256);
+    let plan = c2.plan(echo()).unwrap();
+    let small = plan.fetch.iter().min_by_key(|b| b.size).unwrap();
+    let blob = layout::blob(&small.sha256);
     w.primary.faults.lock().unwrap().corrupt.insert(blob.clone());
-    c2.install(&plan.consent(), w.now, &no_progress).await.unwrap();
+    c2.apply(&plan, &plan.consent(), w.now, &no_progress)
+        .await
+        .unwrap();
     assert!(w.mirror.faults.lock().unwrap().hits.contains_key(&blob));
+}
+
+#[tokio::test]
+async fn a_model_file_falls_back_to_its_pinned_hugging_face_url_and_only_that_host() {
+    use qrtz_modules::models::{ModelFile, ModelSource};
+    let w = world().await;
+    let hf = Server::start().await;
+    let src = ModelSource {
+        package: "model.parakeet-tdt-v2-en".into(),
+        version: "1.0.0".into(),
+        task: "asr".into(),
+        repo: "org/parakeet".into(),
+        revision: "e".repeat(40),
+        license: String::new(),
+        files: vec![ModelFile {
+            remote: "Encoder.mlmodelc/weights/weight.bin".into(),
+            path: "Encoder.mlmodelc/weights/weight.bin".into(),
+            size: 6,
+            sha256: qrtz_modules::sha256_hex(b"weight"),
+        }],
+    };
+    hf.put(
+        &format!(
+            "org/parakeet/resolve/{}/Encoder.mlmodelc/weights/weight.bin",
+            "e".repeat(40)
+        ),
+        b"weight".to_vec(),
+    );
+    // The package hosts don't have it (yet): the signed tree's Hugging Face URL serves it, by the same sha256.
+    let c = Packages::with(
+        Installer::new(w.dir.join("c"), Some(w.pin.clone()), Box::new(NoAppleChecks)),
+        HttpTransport::new(
+            std::slice::from_ref(&w.primary.base),
+            &[("https://huggingface.co".into(), hf.base.clone())],
+        ),
+    );
+    let plan = c.plan(Op::Pinned(vec![src.pinned("ABCDE12345")])).unwrap();
+    c.apply(&plan, &plan.consent(), w.now, &no_progress)
+        .await
+        .unwrap();
+    assert!(c
+        .installer
+        .root()
+        .join("packages/model.parakeet-tdt-v2-en/1.0.0/Encoder.mlmodelc/weights/weight.bin")
+        .exists());
+    // A URL under any other host is refused by the transport, whatever the tree says.
+    let only_hf = HttpTransport::new(&[], &[("https://huggingface.co".into(), hf.base.clone())]);
+    let e = qrtz_modules::fetch::Transport::get_range(
+        &only_hf,
+        &qrtz_modules::fetch::Source::Url("https://huggingface.co.evil.example/x".into()),
+        &"0".repeat(64),
+        0,
+        1,
+    )
+    .await
+    .unwrap_err();
+    assert!(e.contains("not under a pinned model mirror host"), "{e}");
 }
 
 #[tokio::test]
@@ -238,8 +344,11 @@ async fn a_frozen_timestamp_is_refused_and_installs_stop() {
     let later = w.now + 9 * DAY_MS;
     let e = c.refresh(&RefreshConsent::user_asked(), later).await.unwrap_err();
     assert!(e.to_string().contains("expired"), "{e}");
-    let plan = c.plan("echo", None).unwrap();
-    let e = c.install(&plan.consent(), later, &no_progress).await.unwrap_err();
+    let plan = c.plan(echo()).unwrap();
+    let e = c
+        .apply(&plan, &plan.consent(), later, &no_progress)
+        .await
+        .unwrap_err();
     assert_eq!(e, InstallError::Refused(Refusal::RevocationListExpired));
     // Winding the clock back doesn't help: expiry is measured against the high-water mark.
     let t = c.installer.trust().unwrap().unwrap();
@@ -275,12 +384,11 @@ async fn an_older_timestamp_or_index_is_a_rollback() {
 }
 
 #[tokio::test]
-async fn a_revocation_disables_the_installed_module_and_refuses_new_installs() {
+async fn a_revocation_disables_the_installed_extension_and_refuses_new_installs() {
     let w = world().await;
     let c = w.client("client", &[&w.primary, &w.mirror]);
     c.refresh(&RefreshConsent::user_asked(), w.now).await.unwrap();
-    let plan = c.plan("echo", None).unwrap();
-    c.install(&plan.consent(), w.now, &no_progress).await.unwrap();
+    install(&c, w.now).await.unwrap();
     let pulled = Revoked {
         package: "echo".into(),
         versions: vec!["0.3.0".into()],
@@ -293,25 +401,16 @@ async fn a_revocation_disables_the_installed_module_and_refuses_new_installs() {
         .unwrap();
     assert_eq!(r.notices.len(), 1);
     assert_eq!(r.notices[0].module, "echo");
-    assert_eq!(
-        c.installer.lock().unwrap().modules["echo"].disabled.as_deref(),
-        Some("pulled: crash on launch")
-    );
-    // A fresh client can't install it either.
+    assert_eq!(echo_lock(&c).disabled.as_deref(), Some("pulled: crash on launch"));
+    // A fresh client can't install it either: resolution skips revoked versions.
     let c2 = w.client("client2", &[&w.primary]);
     c2.refresh(&RefreshConsent::user_asked(), w.now + 2000)
         .await
         .unwrap();
-    assert!(c2.plan("echo", None).is_err(), "latest skips revoked versions");
-    let plan = c2.plan("echo", Some("0.3.0")).unwrap();
-    let e = c2
-        .install(&plan.consent(), w.now + 2000, &no_progress)
-        .await
-        .unwrap_err();
-    assert!(
-        matches!(e, InstallError::Refused(Refusal::Revoked { .. })),
-        "{e:?}"
-    );
+    assert!(c2.plan(echo()).is_err(), "no unrevoked echo");
+    assert!(c2
+        .plan(Op::Install(vec![("echo".into(), Some("=0.3.0".into()))]))
+        .is_err());
 }
 
 #[tokio::test]
@@ -340,7 +439,7 @@ async fn sideload_follows_bozniaks_rules() {
     assert!(p.revocation_expired);
     assert!(p.revocation_age_ms.unwrap() >= 20 * DAY_MS);
     assert!(
-        c.installer.lock().unwrap().modules.is_empty(),
+        c.installer.lock().unwrap().packages.is_empty(),
         "the prompt installs nothing"
     );
     // Rule 2/6: an expired carried list still installs after the yes, marked stale-revocation.
@@ -354,10 +453,8 @@ async fn sideload_follows_bozniaks_rules() {
         .await
         .unwrap();
     assert!(done.stale_revocation);
-    assert_eq!(
-        c.installer.lock().unwrap().modules["echo"].source,
-        Source::Sideload
-    );
+    assert_eq!(done.changes.len(), 3, "echo with its service and model");
+    assert_eq!(echo_lock(&c).source, Source::Sideload);
 
     // Rule 3: a Mac that already has a newer list refuses the file's older one as a rollback.
     w.republish(vec![], w.now + 1000);
@@ -391,10 +488,10 @@ async fn sideload_follows_bozniaks_rules() {
         .refresh(&RefreshConsent::user_asked(), late)
         .await
         .unwrap();
-    let yes2 = ask(&revoker, &pkg2, late).await;
+    // Rule 2 comes before the prompt: a revoked file is refused outright, so there is nothing to say yes to.
     let e = revoker
         .installer
-        .sideload(&pkg2, SideloadOrigin::UserPickedFile, Some(&yes2), late)
+        .sideload(&pkg2, SideloadOrigin::UserPickedFile, None, late)
         .await
         .unwrap_err();
     assert!(
@@ -404,21 +501,17 @@ async fn sideload_follows_bozniaks_rules() {
 
     // Rules 3 and 6: the air-gapped Mac takes the newer list another file carries. It is fresh and revokes the
     // echo it sideloaded earlier, so that echo is disabled at once, and this file is refused.
-    assert!(c.installer.lock().unwrap().modules["echo"].disabled.is_none());
-    let yes3 = ask(&c, &pkg2, late).await;
-    assert!(
-        c.installer.lock().unwrap().modules["echo"].disabled.is_some(),
-        "rule 6 on adoption"
-    );
+    assert!(echo_lock(&c).disabled.is_none());
     let e = c
         .installer
-        .sideload(&pkg2, SideloadOrigin::UserPickedFile, Some(&yes3), late)
+        .sideload(&pkg2, SideloadOrigin::UserPickedFile, None, late)
         .await
         .unwrap_err();
     assert!(
         matches!(e, InstallError::Refused(Refusal::Revoked { .. })),
         "{e:?}"
     );
+    assert!(echo_lock(&c).disabled.is_some(), "rule 6 on adoption");
     // And the old file can't take it back (its list is older now).
     let e = c
         .installer
@@ -457,19 +550,15 @@ async fn a_root_rotation_needs_the_old_and_the_new_root_keys() {
 #[tokio::test]
 async fn an_unpinned_root_is_refused() {
     let w = world().await;
-    let c = ModuleHosting::with(
-        w.dir.join("c"),
-        std::slice::from_ref(&w.primary.base),
-        Some("00".repeat(32)),
-        Box::new(NoAppleChecks),
+    let c = Packages::with(
+        Installer::new(w.dir.join("c"), Some("00".repeat(32)), Box::new(NoAppleChecks)),
+        HttpTransport::new(std::slice::from_ref(&w.primary.base), &[]),
     );
     let e = c.refresh(&RefreshConsent::user_asked(), w.now).await.unwrap_err();
     assert!(e.to_string().contains("pinned"), "{e}");
-    let none = ModuleHosting::with(
-        w.dir.join("d"),
-        std::slice::from_ref(&w.primary.base),
-        None,
-        Box::new(NoAppleChecks),
+    let none = Packages::with(
+        Installer::new(w.dir.join("d"), None, Box::new(NoAppleChecks)),
+        HttpTransport::new(std::slice::from_ref(&w.primary.base), &[]),
     );
     let before = w.hits();
     let e = none
@@ -478,4 +567,158 @@ async fn an_unpinned_root_is_refused() {
         .unwrap_err();
     assert!(e.to_string().contains("no root is pinned"), "{e}");
     assert_eq!(w.hits(), before, "no pin, no request");
+}
+
+#[tokio::test]
+async fn the_qrtz_cli_drives_the_same_installer() {
+    use qrtz_app::pm_cli::{parse, run, Io};
+    let w = world().await;
+    let c = w.client("cli", &[&w.primary]);
+    let mut out: Vec<u8> = vec![];
+    let mut answers = vec![false];
+    let mut asked = vec![];
+    async fn go(
+        c: &Packages,
+        line: &str,
+        out: &mut Vec<u8>,
+        answers: &mut Vec<bool>,
+        asked: &mut Vec<String>,
+    ) -> Result<(), String> {
+        let args: Vec<String> = line.split_whitespace().map(str::to_owned).collect();
+        let (cmd, f) = parse(&args)?;
+        let mut ask = |q: &str| {
+            asked.push(q.to_owned());
+            answers.pop().unwrap_or(false)
+        };
+        let mut io = Io { out, ask: &mut ask };
+        run(c, cmd, &f, &mut io).await
+    }
+    // Asked, said no: nothing changes.
+    go(&c, "install echo", &mut out, &mut answers, &mut asked)
+        .await
+        .unwrap();
+    assert_eq!(asked, ["Proceed?"]);
+    assert!(c.installer.lock().unwrap().packages.is_empty());
+    let text = String::from_utf8_lossy(&out).to_string();
+    assert!(
+        text.contains("+ echo@0.3.0")
+            && text.contains("+ model.sample@1.0.0")
+            && text.contains("nothing changed"),
+        "{text}"
+    );
+    // --dry-run shows and stops; -y installs.
+    go(&c, "install echo --dry-run", &mut out, &mut answers, &mut asked)
+        .await
+        .unwrap();
+    assert!(c.installer.lock().unwrap().packages.is_empty());
+    go(&c, "install echo -y", &mut out, &mut answers, &mut asked)
+        .await
+        .unwrap();
+    assert_eq!(c.installer.lock().unwrap().packages.len(), 3);
+    out.clear();
+    go(&c, "ls", &mut out, &mut answers, &mut asked).await.unwrap();
+    let ls = String::from_utf8_lossy(&out).to_string();
+    assert!(
+        ls.contains("echo@0.3.0  Extension") && ls.contains("requested ^0.3.0"),
+        "{ls}"
+    );
+    assert!(
+        ls.contains("model.sample@1.0.0  Model") && ls.contains("for echo@0.3.0"),
+        "{ls}"
+    );
+    // Frozen and offline: nothing to do, no request.
+    let before = w.hits();
+    go(&c, "install --frozen -y", &mut out, &mut answers, &mut asked)
+        .await
+        .unwrap();
+    assert_eq!(w.hits(), before);
+    go(&c, "remove echo -y", &mut out, &mut answers, &mut asked)
+        .await
+        .unwrap();
+    assert_eq!(w.hits(), before, "remove is local");
+    out.clear();
+    go(&c, "prune", &mut out, &mut answers, &mut asked).await.unwrap();
+    assert!(String::from_utf8_lossy(&out).starts_with("pruned 3 package dirs"));
+}
+
+#[tokio::test]
+async fn the_extensions_screen_applies_only_the_plan_it_was_shown() {
+    use qrtz_app::packages_ipc::PackagesIpc;
+    use qrtz_app::ports::PackagesPort;
+    use serde_json::json;
+    let w = world().await;
+    let ipc = PackagesIpc::new(w.client("ui", &[&w.primary]));
+    let c = qrtz_ipc::contract();
+    let check = |ch: &str, v: &serde_json::Value| {
+        assert!(c.channels[ch].response.is_valid(v), "{ch}: {v}");
+    };
+    let s = ipc.call("packages:list", json!(null)).await.unwrap();
+    check("packages:list", &s);
+    assert_eq!(s, json!({"packages": [], "index": null}));
+    assert_eq!(w.hits(), 0, "listing is local");
+    let s = ipc.call("packages:refresh", json!(null)).await.unwrap();
+    assert_eq!(s["index"]["version"], 1);
+    let plan = ipc
+        .call("packages:plan", json!({"op": "install", "names": ["echo"]}))
+        .await
+        .unwrap();
+    check("packages:plan", &plan);
+    assert_eq!(plan["changes"].as_array().unwrap().len(), 3);
+    // Another hash, or a smaller download than shown: refused, nothing moves.
+    let before = w.hits();
+    let e = ipc
+        .call(
+            "packages:apply",
+            json!({"planSha256": "0".repeat(64), "downloadBytes": plan["downloadBytes"]}),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, qrtz_ipc::ErrorCode::Validation);
+    let e = ipc
+        .call(
+            "packages:apply",
+            json!({"planSha256": plan["planSha256"], "downloadBytes": 1}),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, qrtz_ipc::ErrorCode::Validation);
+    assert_eq!(w.hits(), before);
+    let a = ipc
+        .call(
+            "packages:apply",
+            json!({"planSha256": plan["planSha256"], "downloadBytes": plan["downloadBytes"]}),
+        )
+        .await
+        .unwrap();
+    check("packages:apply", &a);
+    // A plan is used once.
+    assert!(ipc
+        .call(
+            "packages:apply",
+            json!({"planSha256": plan["planSha256"], "downloadBytes": plan["downloadBytes"]})
+        )
+        .await
+        .is_err());
+    let s = ipc.call("packages:list", json!(null)).await.unwrap();
+    check("packages:list", &s);
+    let kinds: Vec<&str> = s["packages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(kinds, ["extension", "service", "model"]);
+    let plan = ipc
+        .call("packages:plan", json!({"op": "remove", "names": ["echo"]}))
+        .await
+        .unwrap();
+    ipc.call(
+        "packages:apply",
+        json!({"planSha256": plan["planSha256"], "downloadBytes": 0}),
+    )
+    .await
+    .unwrap();
+    let p = ipc.call("packages:prune", json!(null)).await.unwrap();
+    check("packages:prune", &p);
+    assert_eq!(p["dirs"], 3);
 }

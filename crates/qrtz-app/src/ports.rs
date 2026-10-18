@@ -72,6 +72,15 @@ pub const SETUP_CHANNELS: &[&str] = &[
     "speech:delete",
 ];
 
+/// The package manager (ADR 0157; the Extensions screen): `crate::packages_ipc`.
+pub const PACKAGES_PREFIX: &str = "packages:";
+
+/// `packages:*` (list, refresh, plan, apply, prune).
+#[async_trait]
+pub trait PackagesPort: Send + Sync {
+    async fn call(&self, channel: &str, payload: Value) -> Result<Value, AppError>;
+}
+
 #[async_trait]
 pub trait RuntimePort: Send + Sync {
     async fn call(&self, channel: &str, payload: Value) -> Result<Value, AppError>;

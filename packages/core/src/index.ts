@@ -13,6 +13,7 @@ export * from './helper/mock';
 export * from './helper/arbiter';
 export * from './speech/protocol';
 export * from './speech/setup';
+export * from './packages/contract';
 export * from './config';
 export * from './modules';
 export * from './db/migrate';

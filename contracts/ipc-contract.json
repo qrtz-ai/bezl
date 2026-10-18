@@ -6534,6 +6534,471 @@
         }
       }
     },
+    "packages:list": {
+      "version": 1,
+      "capability": "packages.read",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "packages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[a-z][a-z0-9-]*(\\.[a-z0-9][a-z0-9-]*)*$"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "extension",
+                    "service",
+                    "model"
+                  ]
+                },
+                "requested": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "requiredBy": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "disabled": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sizeBytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "name",
+                "version",
+                "kind",
+                "requested",
+                "requiredBy",
+                "disabled",
+                "sizeBytes"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "index": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "issuedMs": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "version",
+                  "issuedMs"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "packages",
+          "index"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "packages:refresh": {
+      "version": 1,
+      "capability": "packages.manage",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "packages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[a-z][a-z0-9-]*(\\.[a-z0-9][a-z0-9-]*)*$"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "extension",
+                    "service",
+                    "model"
+                  ]
+                },
+                "requested": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "requiredBy": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "disabled": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sizeBytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "name",
+                "version",
+                "kind",
+                "requested",
+                "requiredBy",
+                "disabled",
+                "sizeBytes"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "index": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "issuedMs": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "version",
+                  "issuedMs"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "packages",
+          "index"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "packages:plan": {
+      "version": 1,
+      "capability": "packages.manage",
+      "request": {
+        "optional": false,
+        "schema": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "type": "string",
+                  "const": "install"
+                },
+                "names": {
+                  "minItems": 1,
+                  "maxItems": 16,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9-]*(\\.[a-z0-9][a-z0-9-]*)*$"
+                  }
+                }
+              },
+              "required": [
+                "op",
+                "names"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "type": "string",
+                  "const": "remove"
+                },
+                "names": {
+                  "minItems": 1,
+                  "maxItems": 16,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9-]*(\\.[a-z0-9][a-z0-9-]*)*$"
+                  }
+                }
+              },
+              "required": [
+                "op",
+                "names"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "type": "string",
+                  "const": "update"
+                },
+                "names": {
+                  "maxItems": 16,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9-]*(\\.[a-z0-9][a-z0-9-]*)*$"
+                  }
+                },
+                "latest": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "op"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "type": "string",
+                  "const": "engine"
+                },
+                "extension": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[a-z][a-z0-9-]*(\\.[a-z0-9][a-z0-9-]*)*$"
+                },
+                "model": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[a-z][a-z0-9-]*(\\.[a-z0-9][a-z0-9-]*)*$"
+                }
+              },
+              "required": [
+                "op",
+                "extension",
+                "model"
+              ]
+            }
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "planSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "change": {
+                  "type": "string",
+                  "enum": [
+                    "add",
+                    "remove"
+                  ]
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[a-z][a-z0-9-]*(\\.[a-z0-9][a-z0-9-]*)*$"
+                },
+                "version": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "change",
+                "name",
+                "version"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "downloadBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "planSha256",
+          "changes",
+          "downloadBytes"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "packages:apply": {
+      "version": 1,
+      "capability": "packages.manage",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "planSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "downloadBytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "planSha256",
+            "downloadBytes"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "change": {
+                  "type": "string",
+                  "enum": [
+                    "add",
+                    "remove"
+                  ]
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[a-z][a-z0-9-]*(\\.[a-z0-9][a-z0-9-]*)*$"
+                },
+                "version": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "change",
+                "name",
+                "version"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "staleRevocation": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "changes",
+          "staleRevocation"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "packages:prune": {
+      "version": 1,
+      "capability": "packages.manage",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "dirs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "blobs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "dirs",
+          "blobs",
+          "bytes"
+        ],
+        "additionalProperties": false
+      }
+    },
     "speech:status": {
       "version": 1,
       "capability": "speech.read",
@@ -12659,7 +13124,9 @@
         "data.backup",
         "speech.read",
         "speech.manage",
-        "logs.export"
+        "logs.export",
+        "packages.read",
+        "packages.manage"
       ]
     }
   ],

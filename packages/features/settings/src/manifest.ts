@@ -16,5 +16,8 @@ export const manifest = SubAppManifest.parse({
     'speech.read',
     'speech.manage',
     'logs.export',
+    // ADR 0157: the Extensions screen.
+    'packages.read',
+    'packages.manage',
   ],
 });

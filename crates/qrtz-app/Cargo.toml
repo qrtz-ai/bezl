@@ -19,6 +19,12 @@ runtime = [
   "dep:qrtz-speech",
 ]
 
+# ADR 0157 §9: the package manager's command line, shipped inside qrtz.app (Contents/MacOS/qrtz).
+[[bin]]
+name = "qrtz"
+path = "src/bin/qrtz.rs"
+required-features = ["runtime"]
+
 [dependencies]
 qrtz-lifecycle = { workspace = true, features = ["runtime"], optional = true }
 qrtz-storage = { workspace = true, optional = true }
