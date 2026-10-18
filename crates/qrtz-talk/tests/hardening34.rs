@@ -22,7 +22,7 @@ fn swift_static(src: &str, name: &str) -> u64 {
 fn the_host_copy_of_the_arm_cap_matches_echo_controller_swift() {
     let src = std::fs::read_to_string(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../native/qrtz-helper/Sources/QrtzHelperCore/EchoController.swift"),
+            .join("../../native/qrtz-helper/Sources/QrtzEcho/EchoController.swift"),
     )
     .unwrap();
     assert_eq!(swift_static(&src, "armMaxMs"), HelperTail::default().arm_max_ms);

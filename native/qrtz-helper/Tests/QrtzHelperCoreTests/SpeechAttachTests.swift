@@ -8,6 +8,9 @@ import Darwin
 import Foundation
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 private func socketPair() -> (Int32, Int32) {
     var fds: [Int32] = [0, 0]

@@ -1,75 +1,9 @@
 import Foundation
+import QrtzShared
 
 // N143: echo's dictation hears what the speakers play. Without headphones the mic picks up the system audio (a video,
 // a call), and the recogniser types it. While dictating, the mic is gated against the system audio: the meeting's
 // system channel when a recording runs, otherwise a system tap that runs for the dictation's length only.
-
-/// What the Mac plays (16 kHz mono). Only started for a dictation when `echoLikely()` and the screen & system
-/// audio recording grant is already given (a dictation never prompts). `start` / `stop` are called in order.
-public protocol SystemAudioTap: AnyObject, Sendable {
-    var name: String { get }
-    /// The output is speakers (not headphones) and something is playing.
-    func echoLikely() -> Bool
-    func start(onSamples: @escaping @Sendable ([Float]) -> Void) async throws
-    func stop() async
-}
-
-/// The system audio lined up with the mic, for the dictation's gate. Fed by whoever runs a system tap ("recording"
-/// or "dictation"); the recording wins when both do, so samples are never counted twice.
-public final class EchoReference: @unchecked Sendable {
-    private let lock = NSLock()
-    private var holders: [String] = []
-    /// N152: each attach's token; a detach with a stale token (an older dictation's tap failing late) is a no-op.
-    private var tokens: [String: Int] = [:]
-    private var nextToken = 0
-    private var buf: [Float] = []
-    private var last: [Float] = []
-    /// System audio more than this ahead of the mic is dropped (the two clocks drift; the gate needs the level only).
-    public let maxLagSamples: Int
-    public init(maxLagMs: Int = 250) { maxLagSamples = 16 * maxLagMs }
-
-    public var isLive: Bool { lock.withLock { !holders.isEmpty } }
-    public func has(_ who: String) -> Bool { lock.withLock { holders.contains(who) } }
-
-    /// Returns the token that `detach(_:token:)` must present.
-    @discardableResult
-    public func attach(_ who: String) -> Int {
-        lock.withLock {
-            if !holders.contains(who) { holders.append(who) }
-            nextToken += 1; tokens[who] = nextToken
-            return nextToken
-        }
-    }
-    /// Detaches `who`; with a `token`, only if it is still that attach (not a later one by the same holder).
-    public func detach(_ who: String, token: Int? = nil) {
-        lock.withLock {
-            if let token, tokens[who] != token { return }
-            tokens[who] = nil
-            holders.removeAll { $0 == who }
-            buf.removeAll(); last.removeAll()  // the other holder (if any) refills it from its own clock
-        }
-    }
-
-    public func push(_ s: [Float], from who: String) {
-        lock.withLock {
-            guard let lead = holders.contains("recording") ? "recording" : holders.first, lead == who else { return }
-            buf += s
-            if buf.count > maxLagSamples { buf.removeFirst(buf.count - maxLagSamples) }
-        }
-    }
-
-    /// The system audio for the next `n` mic samples, oldest first. Nil when no tap feeds the reference; the last
-    /// block again when the tap is a block behind the mic.
-    public func take(_ n: Int) -> [Float]? {
-        lock.withLock {
-            guard !holders.isEmpty else { return nil }
-            let k = min(n, buf.count)
-            guard k > 0 else { return last }
-            last = Array(buf.prefix(k)); buf.removeFirst(k)
-            return last
-        }
-    }
-}
 
 /// The dictation side of N143. Owned by the dictation engine (its actor calls everything here).
 public final class DictationEcho: @unchecked Sendable {
@@ -87,6 +21,20 @@ public final class DictationEcho: @unchecked Sendable {
     /// N158: `enabled` as it was at `begin()`, until `end()`: a settings change mid-dictation applies from the next
     /// dictation, so a running one keeps its gate (and its tap). nil outside a dictation.
     private var latched: Bool?
+    /// ADR 0150 N173: how this dictation's mic is gated, for the timing line (`gate=`): `meeting`, `tap`, or off with
+    /// its reason: `off-setting`, `off-no-grant` (no screen & system audio grant on this app: the split echo needs
+    /// its own), `off-quiet` (headphones or nothing playing), `off-no-tap` (no tap on this platform), `off-tap-failed`.
+    /// "" before the first dictation.
+    public var mode: String { modeState.value }
+    private let modeState = ModeState()
+    final class ModeState: @unchecked Sendable {
+        private let lock = NSLock()
+        private var started = ""
+        private var failed = false
+        var value: String { lock.withLock { failed ? "off-tap-failed" : started } }
+        func set(_ m: String) { lock.withLock { started = m; failed = false } }
+        func tapFailed() { lock.withLock { failed = true } }
+    }
 
     public init(reference: EchoReference, tap: SystemAudioTap?, permitted: @escaping @Sendable () -> Bool) {
         self.reference = reference; self.tap = tap; self.permitted = permitted
@@ -98,22 +46,25 @@ public final class DictationEcho: @unchecked Sendable {
     public func begin() -> String? {
         blocks = 0; ducked = 0
         latched = enabled
-        guard enabled else { return nil }
+        func mode(_ m: String) { modeState.set(m) }
+        guard enabled else { mode("off-setting"); return nil }
         // In a meeting the warm mic's blocks already taught the gate the echo path: keep it.
-        if reference.has("recording") { return "echo gate: the meeting's system audio" }
+        if reference.has("recording") { mode("meeting"); return "echo gate: the meeting's system audio" }
         gate.reset()
-        guard let tap else { return nil }
-        guard permitted() else { return "echo gate: off (no system audio grant, raw mic)" }
-        guard tap.echoLikely() else { return "echo gate: off (headphones or nothing playing)" }
+        guard let tap else { mode("off-no-tap"); return nil }
+        guard permitted() else { mode("off-no-grant"); return "echo gate: off (no system audio grant, raw mic)" }
+        guard tap.echoLikely() else { mode("off-quiet"); return "echo gate: off (headphones or nothing playing)" }
+        mode("tap")
         let token = reference.attach("dictation")
         tapToken = token
-        let ref = reference, prev = lastStop, log = onLog
+        let ref = reference, prev = lastStop, log = onLog, ms = modeState
         // The tap starts in the background (tens of ms): the mic is not held for it; blocks before its first
         // samples pass ungated.
         tapTask = Task {
             await prev?.value
             do { try await tap.start(onSamples: { ref.push($0, from: "dictation") }) } catch {
                 ref.detach("dictation", token: token)  // N152: never the next dictation's hold
+                ms.tapFailed()
                 log?(.warn, "echo gate: \(tap.name) didn't start (\(error)), raw mic")
             }
         }

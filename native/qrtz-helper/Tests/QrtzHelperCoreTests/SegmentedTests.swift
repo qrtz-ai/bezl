@@ -1,6 +1,9 @@
 import Foundation
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 /// A batch recogniser over synthetic audio: a word is a burst of constant level `0.01 * k` (word "w<k>"); it is
 /// heard only when silence (or the pad) follows it inside the decoded audio, the way a recogniser needs end context.

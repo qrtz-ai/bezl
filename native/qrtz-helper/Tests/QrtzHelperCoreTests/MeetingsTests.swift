@@ -1,5 +1,8 @@
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 final class MeetingsTests: XCTestCase {
     func w(_ b: String, _ t: String, _ u: String? = nil) -> WindowInfo { WindowInfo(pid: 7, bundleId: b, appName: "x", title: t, url: u) }

@@ -2,7 +2,7 @@
 //! scores the recogniser's raw text; this adds what talk does to it before the insert (the rules cleanup and the
 //! dictionary, [`cleanup_dictation`]), so the cleanup's effect on content and on formatting is measured on the same
 //! clips. Pure functions over local JSON; `examples/echo_score.rs` is the command line. The word normalisation is
-//! the helper's `EchoWER` (QrtzHelperCore/EchoBench.swift), kept equal by the unit tests on both sides (the
+//! the helper's `EchoWER` (QrtzEcho/EchoBench.swift), kept equal by the unit tests on both sides (the
 //! typographic-quote folding of N162 is Rust-only until the helper's side takes it, review §12.31).
 use crate::cleanup::cleanup_dictation;
 use crate::contract::DictionaryEntry;

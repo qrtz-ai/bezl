@@ -1,24 +1,8 @@
 import Foundation
+import QrtzShared
 
 // qrtz talk: push-to-talk dictation. Foundation-only so the logic (pre-roll, insertion fallback order,
 // clipboard restore, PCM framing) is tested on Linux; the macOS executable supplies the real seams.
-
-/// Microphone only, 16 kHz mono Float32. Kept running between dictations when the warm mic is on.
-public protocol MicSource: AnyObject, Sendable {
-    func start(onSamples: @escaping @Sendable ([Float]) -> Void) throws
-    func stop()
-    /// N138: called once when the input device went away and didn't come back. A device switch the source recovers
-    /// from (it re-opens the new input and keeps delivering to the same `onSamples`) is not reported.
-    func onDeviceLost(_ cb: @escaping @Sendable (String) -> Void)
-    /// ADR 0115: hands what the source's resampler still holds back (its filter's last few ms) to `onSamples` now,
-    /// as an end of stream, and goes on capturing. A dictation stop calls it after the drain, before the pad.
-    func flush()
-}
-
-public extension MicSource {
-    func onDeviceLost(_ cb: @escaping @Sendable (String) -> Void) {}
-    func flush() {}
-}
 
 /// Native key monitor for push-to-talk (Electron global shortcuts only report key-down).
 public protocol HotkeyMonitor: AnyObject, Sendable {
@@ -282,8 +266,9 @@ public actor DictationEngine {
         if warmMic { startMic() } else if session == nil { stopMic() }
     }
 
-    /// `prewarm()` when a push key is set (after the models were downloaded and warmed).
-    public func prewarmIfKeyed() { if !pushKey.isEmpty { prewarm() } }
+    /// `prewarm()` when a push key is set (after the models were downloaded and warmed). `log`: say how long it took
+    /// (N174: a split echo's prewarm after a download, so the first press can be checked against it).
+    public func prewarmIfKeyed(log: Bool = false) { if !pushKey.isEmpty { preload(log: log) } }
 
     /// Loads the first recogniser that can load, in the background (idempotent: a loaded one returns at once).
     public func prewarm() { preload(log: false) }
@@ -565,7 +550,7 @@ public actor DictationEngine {
         timing.audioMs = s.samples / 16
         if let seg = s.transcriber as? PaddedFinishing { timing.segments = await seg.segmentStats() }
         timing.words = text.split(whereSeparator: { $0.isWhitespace }).count
-        timing.gateDucked = echo?.ducked ?? 0; timing.gateBlocks = echo?.blocks ?? 0
+        timing.gateDucked = echo?.ducked ?? 0; timing.gateBlocks = echo?.blocks ?? 0; timing.gate = echo?.mode ?? ""
         session = nil
         echo?.end()
         speech?.end(.dictation(id: id))

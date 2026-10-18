@@ -5,21 +5,22 @@ import Foundation
 /// ADR 0079: the helper's models are files the host downloaded and verified (pinned sha256s, onboarding or settings).
 /// The helper never fetches a model: it reads `$QRTZ_MODELS_DIR/<set>/` only once the host has written the set's
 /// `.qrtz-verified` marker, and throws otherwise (the caller falls back or reports "speech not downloaded").
-enum LocalModels {
+public enum LocalModels {
     /// Recordings (nano) only since echo moved to Parakeet.
-    static let asr = "nemotron-560ms"
+    public static let asr = "nemotron-560ms"
     /// Echo dictation: Parakeet TDT v2 English (`local_models.json` set `echo-asr`).
-    static let echoAsr = "parakeet-tdt-v2"
-    static let diarizer = "nemotron3-diarizer"
-    static let echo = "localvqe"
-    static let marker = ".qrtz-verified"
+    public static let echoAsr = "parakeet-tdt-v2"
+    public static let diarizer = "nemotron3-diarizer"
+    public static let echo = "localvqe"
+    public static let marker = ".qrtz-verified"
 
-    struct Missing: Error, CustomStringConvertible {
-        let set: String
-        var description: String { "speech models not downloaded (\(set))" }
+    public struct Missing: Error, CustomStringConvertible {
+        public let set: String
+        public init(set: String) { self.set = set }
+        public var description: String { "speech models not downloaded (\(set))" }
     }
 
-    static func dir(_ set: String) throws -> URL {
+    public static func dir(_ set: String) throws -> URL {
         guard let root = ProcessInfo.processInfo.environment["QRTZ_MODELS_DIR"], !root.isEmpty else { throw Missing(set: set) }
         let d = URL(fileURLWithPath: root, isDirectory: true).appendingPathComponent(set, isDirectory: true)
         guard FileManager.default.fileExists(atPath: d.appendingPathComponent(marker).path) else { throw Missing(set: set) }
@@ -34,15 +35,16 @@ enum LocalModels {
 /// (`<data>/models/<set>`), are loaded with one configuration, and this stamp in `<data>/models/compiled/<set>.json`
 /// records the key (model files hash + OS build + path) of the last load and its time. A key change means Core ML will
 /// specialize again (logged as such); a slow load under an unchanged key means the OS evicted its cache (also logged).
-struct CompiledModelStamp {
-    let set: String
-    let dir: URL
-    var file: URL { dir.deletingLastPathComponent().appendingPathComponent("compiled", isDirectory: true).appendingPathComponent(set + ".json") }
+public struct CompiledModelStamp {
+    public let set: String
+    public let dir: URL
+    public init(set: String, dir: URL) { self.set = set; self.dir = dir }
+    public var file: URL { dir.deletingLastPathComponent().appendingPathComponent("compiled", isDirectory: true).appendingPathComponent(set + ".json") }
 
-    struct Key: Codable, Equatable { var model: String; var osBuild: String; var path: String }
-    struct Saved: Codable { var key: Key; var loadMs: Int; var at: String }
+    public struct Key: Codable, Equatable { var model: String; var osBuild: String; var path: String }
+    public struct Saved: Codable { var key: Key; var loadMs: Int; var at: String }
 
-    static func osBuild() -> String {
+    public static func osBuild() -> String {
         var n = 0
         guard sysctlbyname("kern.osversion", nil, &n, nil, 0) == 0, n > 0 else { return "?" }
         var b = [CChar](repeating: 0, count: n)
@@ -52,7 +54,7 @@ struct CompiledModelStamp {
 
     /// sha256 over the marker (manifest version) and every file's relative path, size and mtime: cheap (no reading
     /// of the weights) and changes whenever a file is replaced or touched, which is also what drops Core ML's cache.
-    func modelHash() -> String {
+    public func modelHash() -> String {
         var h = SHA256()
         if let m = try? Data(contentsOf: dir.appendingPathComponent(LocalModels.marker)) { h.update(data: m) }
         let fm = FileManager.default
@@ -69,12 +71,12 @@ struct CompiledModelStamp {
         return h.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
-    func key() -> Key { Key(model: modelHash(), osBuild: Self.osBuild(), path: dir.standardizedFileURL.path) }
+    public func key() -> Key { Key(model: modelHash(), osBuild: Self.osBuild(), path: dir.standardizedFileURL.path) }
 
-    func saved() -> Saved? { (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode(Saved.self, from: $0) } }
+    public func saved() -> Saved? { (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode(Saved.self, from: $0) } }
 
     /// Whether this load should find Core ML's specialization cached, and if not, why.
-    func expectCached() -> (cached: Bool, why: String) {
+    public func expectCached() -> (cached: Bool, why: String) {
         guard let s = saved() else { return (false, "first load on this Mac") }
         let k = key()
         if s.key.osBuild != k.osBuild { return (false, "os updated (\(s.key.osBuild) -> \(k.osBuild))") }
@@ -83,7 +85,7 @@ struct CompiledModelStamp {
         return (true, "")
     }
 
-    func record(loadMs: Int) {
+    public func record(loadMs: Int) {
         let fm = FileManager.default
         let d = file.deletingLastPathComponent()
         try? fm.createDirectory(at: d, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])

@@ -1,6 +1,9 @@
 import Foundation
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 /// ADR 0118: the segmented release budget, the same numbers as qrtz-talk's `HelperTail::segmented_budget_ms`
 /// (crates/qrtz-talk/tests/segmented_tail.rs: talk waits budget + pad 640 + slack 1500 = 6926 ms for 60 s, 4554 for 5 s).

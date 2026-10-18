@@ -1,6 +1,9 @@
 import Foundation
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 /// A mic whose device can be switched under it, recovering the way mac `MicCapture` does (`MicRestart`).
 final class SwitchMic: MicSource, @unchecked Sendable {

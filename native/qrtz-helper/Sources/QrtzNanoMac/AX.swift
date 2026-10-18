@@ -2,42 +2,44 @@
 import AppKit
 import ApplicationServices
 import Foundation
-import QrtzHelperCore
+import QrtzMacShared
+import QrtzNano
+import QrtzShared
 
 /// Thin, failure-tolerant wrappers over the AX C API.
-enum AX {
-    static func element(_ v: CFTypeRef?) -> AXUIElement? {
+public enum AX {
+    public static func element(_ v: CFTypeRef?) -> AXUIElement? {
         guard let v, CFGetTypeID(v) == AXUIElementGetTypeID() else { return nil }
         return (v as! AXUIElement)
     }
 
-    static func raw(_ el: AXUIElement, _ name: String) -> CFTypeRef? {
+    public static func raw(_ el: AXUIElement, _ name: String) -> CFTypeRef? {
         var v: CFTypeRef?
         return AXUIElementCopyAttributeValue(el, name as CFString, &v) == .success ? v : nil
     }
 
-    static func string(_ el: AXUIElement, _ name: String) -> String? {
+    public static func string(_ el: AXUIElement, _ name: String) -> String? {
         guard let v = raw(el, name), CFGetTypeID(v) == CFStringGetTypeID() else { return nil }
         return (v as! CFString) as String
     }
 
-    static func elements(_ el: AXUIElement, _ name: String) -> [AXUIElement] {
+    public static func elements(_ el: AXUIElement, _ name: String) -> [AXUIElement] {
         guard let v = raw(el, name), CFGetTypeID(v) == CFArrayGetTypeID() else { return [] }
         return (((v as! CFArray) as NSArray) as [AnyObject]).compactMap { element($0) }
     }
 
-    static func url(_ el: AXUIElement) -> String? {
+    public static func url(_ el: AXUIElement) -> String? {
         guard let v = raw(el, kAXURLAttribute) else { return nil }
         if CFGetTypeID(v) == CFURLGetTypeID() { return ((v as! CFURL) as URL).absoluteString }
         if CFGetTypeID(v) == CFStringGetTypeID() { return (v as! CFString) as String }
         return nil
     }
 
-    static let snapshotAttrs = [kAXRoleAttribute, kAXSubroleAttribute, kAXTitleAttribute, kAXValueAttribute, kAXDescriptionAttribute, kAXIdentifierAttribute, kAXChildrenAttribute] as [String]
+    public static let snapshotAttrs = [kAXRoleAttribute, kAXSubroleAttribute, kAXTitleAttribute, kAXValueAttribute, kAXDescriptionAttribute, kAXIdentifierAttribute, kAXChildrenAttribute] as [String]
 
     /// Copies an AX subtree into a value type, bounded by depth and node count (AX calls are synchronous IPC into the
     /// target app; a full Meet DOM can be tens of thousands of nodes).
-    static func snapshot(_ root: AXUIElement, maxDepth: Int = 40, budget: Int = 4000) -> AXNode {
+    public static func snapshot(_ root: AXUIElement, maxDepth: Int = 40, budget: Int = 4000) -> AXNode {
         var remaining = budget
         func copy(_ el: AXUIElement, _ depth: Int) -> AXNode {
             remaining -= 1
@@ -66,7 +68,7 @@ enum AX {
     }
 
     /// Breadth-first search for the first AXWebArea (the page content of a browser window).
-    static func webArea(in window: AXUIElement, maxNodes: Int = 400) -> AXUIElement? {
+    public static func webArea(in window: AXUIElement, maxNodes: Int = 400) -> AXUIElement? {
         var queue = [window]
         var seen = 0
         while !queue.isEmpty, seen < maxNodes {
@@ -81,7 +83,7 @@ enum AX {
 
 /// Watches running meeting apps through Accessibility: polls once a second (robust to apps that don't post
 /// notifications, e.g. Chrome web content) and scrapes immediately on AXObserver notifications from the live meeting.
-final class AXMeetingSource: MeetingSource, @unchecked Sendable {
+public final class AXMeetingSource: MeetingSource, @unchecked Sendable {
     private let queue = DispatchQueue(label: "qrtz.ax")
     private var emit: (@Sendable (HelperMessage) -> Void)?
     private var clock: (@Sendable () -> Double)?
@@ -95,12 +97,12 @@ final class AXMeetingSource: MeetingSource, @unchecked Sendable {
     private var scrapeScheduled = false
     private var warnedTrust = false
     private let context: MeetingContext
-    init(context: MeetingContext) { self.context = context }
+    public init(context: MeetingContext) { self.context = context }
 
-    static let chromium: Set<String> = ["com.google.Chrome", "com.google.Chrome.beta", "company.thebrowser.Browser", "com.microsoft.edgemac", "com.brave.Browser"]
-    static let watched: Set<String> = Set(MeetingClassifier.browsers.keys).union([MeetingClassifier.zoomApp]).union(MeetingClassifier.teamsApps)
+    public static let chromium: Set<String> = ["com.google.Chrome", "com.google.Chrome.beta", "company.thebrowser.Browser", "com.microsoft.edgemac", "com.brave.Browser"]
+    public static let watched: Set<String> = Set(MeetingClassifier.browsers.keys).union([MeetingClassifier.zoomApp]).union(MeetingClassifier.teamsApps)
 
-    func start(emit: @escaping @Sendable (HelperMessage) -> Void, clock: @escaping @Sendable () -> Double) {
+    public func start(emit: @escaping @Sendable (HelperMessage) -> Void, clock: @escaping @Sendable () -> Double) {
         queue.async {
             self.emit = emit
             self.clock = clock
@@ -112,7 +114,7 @@ final class AXMeetingSource: MeetingSource, @unchecked Sendable {
         }
     }
 
-    func stop() {
+    public func stop() {
         queue.sync {
             timer?.cancel(); timer = nil
             for (_, o) in observers { CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(o), .defaultMode) }
@@ -209,8 +211,8 @@ final class AXMeetingSource: MeetingSource, @unchecked Sendable {
 }
 
 /// `qrtz-helper --dump-ax`: prints AX snapshots of meeting windows as JSON, for recording test fixtures.
-enum AXDump {
-    static func json(_ n: AXNode) -> JSONValue {
+public enum AXDump {
+    public static func json(_ n: AXNode) -> JSONValue {
         var o: [String: JSONValue] = ["role": .string(n.role)]
         for (k, v) in [("subrole", n.subrole), ("title", n.title), ("value", n.value), ("desc", n.desc), ("identifier", n.identifier)] {
             if let v, !v.isEmpty { o[k] = .string(v) }
@@ -219,7 +221,7 @@ enum AXDump {
         return .object(o)
     }
 
-    static func run() {
+    public static func run() {
         guard AXIsProcessTrusted() else { logErr("grant Accessibility to the terminal first"); return }
         for app in NSWorkspace.shared.runningApplications {
             guard let bid = app.bundleIdentifier, AXMeetingSource.watched.contains(bid) else { continue }

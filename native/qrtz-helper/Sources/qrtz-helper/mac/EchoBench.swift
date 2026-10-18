@@ -3,7 +3,10 @@ import AVFoundation
 import CoreML
 import FluidAudio
 import Foundation
+import QrtzEchoMac
 import QrtzHelperCore
+import QrtzMacShared
+import QrtzNanoMac
 
 /// `qrtz-helper --echo-bench <clips dir> [--out results.json] [--engines a,b] [--variants a,b|all] [--speed 1]
 ///  [--speaker speaker.aiff] [--bench-models <dir>] [--resample linear|converter]` (ADR 0099, docs/echo/dictation-tuning.md): every clip

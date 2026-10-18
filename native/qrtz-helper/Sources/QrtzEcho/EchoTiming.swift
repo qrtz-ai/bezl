@@ -1,4 +1,5 @@
 import Foundation
+import QrtzShared
 
 // Echo tuning (docs/echo/dictation-tuning.md, ADR 0099): where one dictation's time went, measured by the engine
 // itself. One `echo timing:` info line per dictation goes to the host log (~/Library/Logs/qrtz/qrtz.log, target
@@ -37,6 +38,8 @@ public struct DictationTiming: Sendable, Equatable {
     /// Echo gate: mic blocks held down / gated blocks seen (0/0 = no gate ran).
     public var gateDucked = 0
     public var gateBlocks = 0
+    /// ADR 0150 N173: how the gate ran (`DictationEcho.mode`: `tap`, `meeting`, or `off-<reason>`); "" = no gate.
+    public var gate = ""
     /// The press opened the mic before the host's `dictation.start` (armed): `preRollMs` is then the head that the
     /// round trip would have cut off.
     public var armed = false
@@ -63,6 +66,7 @@ public struct DictationTiming: Sendable, Equatable {
         if !drained { p.append("drain_timed_out=1") }
         if finalTimedOut { p.append("final_timed_out=1") }
         if appendHeld { p.append("append_held=1") }
+        if !gate.isEmpty { p.append("gate=\(gate)") }
         if gateBlocks > 0 { p.append("gate_ducked=\(gateDucked)/\(gateBlocks)") }
         if armed { p.append("armed=1") }
         if let g = segments {
@@ -90,7 +94,7 @@ public struct DictationTiming: Sendable, Equatable {
             "tailMs": tailMs, "drainMs": drainMs, "closeMs": closeMs, "finalizeMs": finalizeMs,
             "releaseToStoppedMs": releaseToStoppedMs, "queuedAtReleaseMs": queuedAtReleaseMs, "drained": drained,
             "finalTimedOut": finalTimedOut, "appendHeld": appendHeld, "words": words,
-            "gateDucked": gateDucked, "gateBlocks": gateBlocks, "armed": armed,
+            "gateDucked": gateDucked, "gateBlocks": gateBlocks, "gate": gate, "armed": armed,
         ]
         if let g = segments {
             j["segments"] = g.segments; j["backgroundSegments"] = g.backgroundSegments; j["capCuts"] = g.capCuts

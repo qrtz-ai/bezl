@@ -1,6 +1,9 @@
 import Foundation
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 /// BurstBatch's words, with a confidence per decode: `tail` for any decode that contains the word "w9" or later
 /// (the release tail in these tests), 0.95 otherwise; nil when `reports` is false.

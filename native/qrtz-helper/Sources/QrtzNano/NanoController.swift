@@ -1,28 +1,92 @@
 import Foundation
+import QrtzShared
 
 /// Nano's half of the helper (ADR 0146 M2): one recording at a time (capture, WAV, per-channel ASR, diarizers,
-/// silence, the speech module's recording sinks, `models.warm`). The mic and the TCC arbiter belong to the wrapper
-/// (`HelperController`), which admits every command before it reaches this actor; nothing here touches echo's state.
-/// When nano runs as its own app (qrtz-nano) this actor is its controller, with an arbiter of its own.
-public actor NanoController {
-    private let deps: HelperDeps
+/// silence, the speech module's recording sinks, `models.warm`), meeting detection and on-device summaries. The mic
+/// and the TCC arbiter belong to its app's host (`ModuleHost`), reached through the `HostLink`; nothing here touches
+/// echo's state. In qrtz-nano this is the app's only part, with the app's own arbiter; in the monolith it shares one
+/// with echo.
+public actor NanoController: ModulePart {
+    private let deps: NanoDeps
     private let send: @Sendable (HelperMessage) -> Void
     private let now: @Sendable () -> Double  // monotonic ms
     private let speech: SpeechSinks
-    /// N143: a running recording publishes its system channel here (echo's gate reads it).
+    private let link: HostLink
+    /// N143: a running recording publishes its system channel here (echo's gate reads it in the monolith).
     nonisolated let echoReference: EchoReference
     /// Runs after a `models.warm` that wasn't cancelled (the monolith prewarms echo's recogniser then).
     private let afterWarm: @Sendable () async -> Void
+    /// ADR 0075: summarize requests, off the message queue.
+    public nonisolated let summaries: SummarizeService
     private var recording: Recording?
     private var tick: Task<Void, Never>?
     public private(set) var paused = false
     nonisolated(unsafe) private var recordingStartMs: Double?
 
-    init(deps: HelperDeps, send: @escaping @Sendable (HelperMessage) -> Void, now: @escaping @Sendable () -> Double,
-         speech: SpeechSinks, echoReference: EchoReference, afterWarm: @escaping @Sendable () async -> Void = {}) {
-        self.deps = deps; self.send = send; self.now = now
+    public init(deps: NanoDeps, link: HostLink, now: @escaping @Sendable () -> Double,
+                speech: SpeechSinks, echoReference: EchoReference, afterWarm: @escaping @Sendable () async -> Void = {}) {
+        let send = link.sender
+        self.deps = deps; self.send = send; self.now = now; self.link = link
         self.speech = speech; self.echoReference = echoReference; self.afterWarm = afterWarm
+        self.summaries = SummarizeService(model: deps.summarizer, send: send)
     }
+
+    public func start() {
+        deps.meetings?.start(emit: send, clock: { [weak self] in self?.relativeMs() ?? 0 })
+    }
+
+    public nonisolated func owns(_ m: HostMessage) -> Bool {
+        switch m {
+        case .recordingStart, .recordingStop, .recordingAbort, .recordingPause, .recordingResume, .modelsWarm,
+             .summarize, .summarizeCancel, .summarizeCheck: return true
+        default: return false
+        }
+    }
+
+    public func handle(_ m: HostMessage) async {
+        switch m {
+        case .recordingStart(let path):
+            guard await link.admit(.cmd("recording.start", audioPath: path), audioPath: path) else { return }
+            await startAdmitted(path)
+        case .recordingStop(let path):
+            // A stop aimed at another file (the host's stale-start cleanup racing a newer recording) is ignored.
+            if let path, let current = audioPath, current != path {
+                send(.log(level: .warn, msg: "recording.stop for \(path) while recording \(current); ignored")); return
+            }
+            guard await link.admit(.cmd("recording.stop")) else { return }
+            await stopRecording()
+        case .recordingAbort(let path):
+            // N2: releases the reader through the arbiter if the stop never got this far (usually the stop already
+            // did: then a quiet no-op), then tears the recording down and answers recording.aborted.
+            await link.step(.cmd("recording.abort", audioPath: path))
+            abortRecording(path)
+        case .recordingPause: setPaused(true)
+        case .recordingResume: setPaused(false)
+        case .modelsWarm: await warmModels()
+        case .summarize(let id, let stage, let prompt): await summaries.start(id: id, stage: stage, prompt: prompt)
+        case .summarizeCancel(let id): await summaries.cancel(id: id)
+        case .summarizeCheck(let id):
+            // Availability can take a moment (model assets); answer off the queue too.
+            let svc = summaries
+            Task { await svc.check(id: id) }
+        default: break
+        }
+    }
+
+    /// An admitted recording.start: a file that can't be opened releases the admission (its mic reader and permit)
+    /// and tells the host which start died.
+    private func startAdmitted(_ path: String) async {
+        if let err = await startRecording(path) {
+            await link.step(.recordingFileFailed(audioPath: path))
+            send(.error(code: "recording.file", message: err, fatal: false, audioPath: path))
+            return
+        }
+        await link.watchPermissions()
+    }
+
+    public nonisolated func clockMs() -> Double? { relativeMs() }
+    public func beginShutdown() async { await stopRecording() }
+    public func shutdown() { deps.meetings?.stop() }
 
     final class Recording: @unchecked Sendable {
         let wav: WavWriter
@@ -65,7 +129,7 @@ public actor NanoController {
     struct AsrBlock { let mix: [Float]; let system: [Float]; let mic: [Float]; let paused: Bool }
 
     /// One channel's diarizer for one recording: its own stream and task, so a model call never holds up capture.
-    /// N121: the queue is bounded by `HelperDeps.diarizerBacklogSamples`; past it the run stands down (whole, never
+    /// N121: the queue is bounded by `NanoDeps.diarizerBacklogSamples`; past it the run stands down (whole, never
     /// by dropping blocks, so the turns it sent stay on the recording's timeline). After it stood down or closed out
     /// nothing more is sent from it.
     final class DiarRun: @unchecked Sendable {
@@ -265,7 +329,7 @@ public actor NanoController {
 
     /// N138: the mic's device went away and didn't come back: a recording goes on with system audio and says so
     /// once (`capture.degraded{no-mic}`).
-    func micDeviceLost(_ reason: String) {
+    public func micDeviceLost(_ reason: String) {
         if let rec = recording { sourceDegraded(.noMic, reason: "microphone lost: \(reason)", of: rec) }
     }
 
@@ -522,8 +586,8 @@ public actor NanoController {
     /// closed so no writer remains, its mic reader and permit are released through the arbiter, and a dictation is
     /// untouched. Always answers recording.aborted{audioPath}, also when nothing records that file (idempotent).
     func abortRecording(_ path: String) {
-        // The wrapper already ran recording.abort through the arbiter (releasing the reader if the stop never got
-        // that far).
+        // `handle` already ran recording.abort through the arbiter (releasing the reader if the stop never got that
+        // far).
         speech.end(.recording(audioPath: path))
         if let rec = recording, rec.wav.url.path == path {
             rec.aborted = true

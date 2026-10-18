@@ -1,6 +1,9 @@
 import Foundation
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 /// A scripted on-device model: records prompts, returns `out` (or `fail`), optionally waits until cancelled.
 final class FakeSummarizer: OnDeviceSummarizer, @unchecked Sendable {

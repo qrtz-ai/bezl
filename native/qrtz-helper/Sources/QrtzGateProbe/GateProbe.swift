@@ -1,5 +1,5 @@
 // ADR 0144 gate probe mode for the M1 module apps (ADR 0146 M1.3). Every module app (qrtz-echo, qrtz-nano,
-// qrtz-ctrl) runs `--qrtz-gate-probe <ax|mic|socket|ae>` before anything else, so scripts/modules/mac-gate.sh can
+// qrtz-ctrl) runs `--qrtz-gate-probe <ax|mic|socket|ae|sysaudio>` before anything else, so scripts/modules/mac-gate.sh can
 // launch the real signed bundle through LaunchServices and TCC attributes the check to that bundle. The result is
 // one line in the stand-in probe's format (scripts/modules/gate-probe.swift), `probe <cmd> key=value ...`, written
 // to stdout and to `--out <path>` (default <home>/qrtz-gate-probe.out, the container home when sandboxed).
@@ -8,6 +8,10 @@
 //   --qrtz-gate-probe mic [--open] [--ask]  microphone authorization; --open tries the default input (gate b)
 //   --qrtz-gate-probe socket [<port>]       TCP and UDP connect() to 127.0.0.1:<port> (default 9); loopback only (gate c)
 //   --qrtz-gate-probe ae [--ask]            Automation of System Events: permission, then one read-only event (gate e)
+//   --qrtz-gate-probe sysaudio [--open] [--ask]
+//                                           screen & system audio recording, the grant echo's speaker gate needs
+//                                           (ADR 0150 N173); --open creates and destroys one process tap, as a
+//                                           dictation does, only when the grant is already there
 //
 // It never prompts without --ask. Foundation-only; the Apple calls are behind `GateProbeBackend` (mac/ on macOS).
 import Foundation
@@ -15,7 +19,7 @@ import Foundation
 public let gateProbeFlag = "--qrtz-gate-probe"
 
 public enum GateProbeCommand: String, CaseIterable, Sendable {
-    case ax, mic, socket, ae
+    case ax, mic, socket, ae, sysaudio
 }
 
 public struct GateProbeRequest: Equatable, Sendable {
@@ -45,7 +49,7 @@ public struct GateProbeRequest: Equatable, Sendable {
     public static func parse(_ argv: [String]) -> Parse {
         guard let i = argv.firstIndex(of: gateProbeFlag) else { return .absent }
         var rest = Array(argv[(i + 1)...])
-        guard let first = rest.first else { return .invalid("usage: \(gateProbeFlag) <ax|mic|socket|ae>") }
+        guard let first = rest.first else { return .invalid("usage: \(gateProbeFlag) <ax|mic|socket|ae|sysaudio>") }
         guard let cmd = GateProbeCommand(rawValue: first) else { return .invalid("unknown probe: \(first)") }
         rest.removeFirst()
         var r = GateProbeRequest(command: cmd)
@@ -77,6 +81,13 @@ public protocol GateProbeBackend {
     func mic(ask: Bool, open: Bool) -> [(String, String)]
     /// `permission` (an OSStatus), `sent` (ok, failed, no) and `ae_error` when an event failed.
     func automateSystemEvents(ask: Bool) -> [(String, String)]
+    /// ADR 0150 N173: `screen` (CGPreflightScreenCaptureAccess, what echo's gate checks), `requested` and
+    /// `screen_after` with `ask`, `tap` (ok, an OSStatus, or skipped without the grant) with `open`.
+    func systemAudio(ask: Bool, open: Bool) -> [(String, String)]
+}
+
+public extension GateProbeBackend {
+    func systemAudio(ask: Bool, open: Bool) -> [(String, String)] { [("screen", "unsupported")] }
 }
 
 /// Off macOS: there's no TCC, so every Apple check reports `unsupported`.
@@ -109,6 +120,8 @@ public enum GateProbe {
             ]
         case .ae:
             return head + backend.automateSystemEvents(ask: r.ask)
+        case .sysaudio:
+            return head + backend.systemAudio(ask: r.ask, open: r.openMic)
         }
     }
 

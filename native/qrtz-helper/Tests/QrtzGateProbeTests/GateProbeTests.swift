@@ -13,7 +13,7 @@ final class GateProbeTests: XCTestCase {
         for c in GateProbeCommand.allCases {
             XCTAssertEqual(GateProbeRequest.parse(["app", gateProbeFlag, c.rawValue]), .probe(GateProbeRequest(command: c)))
         }
-        XCTAssertEqual(GateProbeCommand.allCases.map(\.rawValue), ["ax", "mic", "socket", "ae"])
+        XCTAssertEqual(GateProbeCommand.allCases.map(\.rawValue), ["ax", "mic", "socket", "ae", "sysaudio"])
     }
 
     func testOptions() {
@@ -42,6 +42,7 @@ final class GateProbeTests: XCTestCase {
         func axTrusted(ask: Bool) -> Bool { trusted && !ask }
         func mic(ask: Bool, open: Bool) -> [(String, String)] { [("status", open ? "authorized" : "denied")] }
         func automateSystemEvents(ask: Bool) -> [(String, String)] { [("permission", "0"), ("sent", "ok")] }
+        func systemAudio(ask: Bool, open: Bool) -> [(String, String)] { [("screen", "true")] + (open ? [("tap", "ok")] : []) }
     }
 
     func line(_ argv: [String], module: String = "echo", backend: GateProbeBackend = Fake()) -> String {
@@ -55,6 +56,8 @@ final class GateProbeTests: XCTestCase {
         XCTAssertEqual(line([gateProbeFlag, "ax", "--ask"], module: "ctrl"), "probe ax bundle=ai.qrtz.ctrl module=ctrl trusted=false")
         XCTAssertEqual(line([gateProbeFlag, "mic", "--open"], module: "nano"), "probe mic bundle=ai.qrtz.nano module=nano status=authorized")
         XCTAssertEqual(line([gateProbeFlag, "ae"], module: "ctrl"), "probe ae bundle=ai.qrtz.ctrl module=ctrl permission=0 sent=ok")
+        // ADR 0150 N173: the screen & system audio grant echo's speaker gate uses (qrtz's, inherited).
+        XCTAssertEqual(line([gateProbeFlag, "sysaudio", "--open"]), "probe sysaudio bundle=ai.qrtz.echo module=echo screen=true tap=ok")
         XCTAssertEqual(GateProbe.line("x", [("error", "unknown probe: a b")]), "probe x error=unknown_probe:_a_b")
     }
 
@@ -64,6 +67,7 @@ final class GateProbeTests: XCTestCase {
         XCTAssertEqual(line([gateProbeFlag, "ax"], backend: u), "probe ax bundle=ai.qrtz.echo module=echo trusted=false")
         XCTAssertEqual(line([gateProbeFlag, "mic"], backend: u), "probe mic bundle=ai.qrtz.echo module=echo status=unsupported")
         XCTAssertEqual(line([gateProbeFlag, "ae"], backend: u), "probe ae bundle=ai.qrtz.echo module=echo permission=unsupported sent=no")
+        XCTAssertEqual(line([gateProbeFlag, "sysaudio"], backend: u), "probe sysaudio bundle=ai.qrtz.echo module=echo screen=unsupported")
     }
 
     /// The socket check is real on Linux too: a closed loopback port answers ECONNREFUSED (it reached the stack).

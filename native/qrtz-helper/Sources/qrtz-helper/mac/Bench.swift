@@ -1,7 +1,10 @@
 #if os(macOS)
 import AVFoundation
 import Foundation
+import QrtzEchoMac
 import QrtzHelperCore
+import QrtzMacShared
+import QrtzNanoMac
 
 /// `qrtz-helper --bench --mic a.aiff[,b.aiff…] [--system c.aiff[,…]] [--dictation d.aiff]` (ADR 0079 verification on a Mac): runs the real
 /// Nemotron transcribers and Nemotron 3 diarizers from `$QRTZ_MODELS_DIR` on audio files (several files per channel

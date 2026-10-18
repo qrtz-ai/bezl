@@ -114,7 +114,7 @@ pub struct Timeouts {
     /// Cap of the scaled wait (a helper that never answers still ends the dictation). Never below the helper's own
     /// worst case when `helper_tail` is set (N130).
     pub stopped_max: u64,
-    /// N130 (ADR 0084): the helper's release path (`DictationTail` in `QrtzHelperCore/Dictation.swift`). The helper
+    /// N130 (ADR 0084): the helper's release path (`DictationTail` in `QrtzEcho/Dictation.swift`). The helper
     /// owns the stop deadline (it knows its backlog) and always answers inside it, with its own last partial at
     /// worst; talk never gives up first. `None`: the scaled wait alone (test rigs with a mock helper).
     pub helper_tail: Option<HelperTail>,
@@ -168,7 +168,7 @@ impl Timeouts {
     }
 }
 
-/// N130 (ADR 0084): the helper's `DictationTail` defaults and formulas (`QrtzHelperCore/Dictation.swift`; held equal
+/// N130 (ADR 0084): the helper's `DictationTail` defaults and formulas (`QrtzEcho/Dictation.swift`; held equal
 /// by `tests/hardening27.rs`, which reads the Swift source). After `dictation.stop` the helper keeps capturing
 /// `tail_ms`, drains the mic blocks still queued (`drain_timeout_ms` + 2 ms per ms queued), pads `pad_ms` of
 /// silence, then waits for the recogniser's final (`finalize_timeout_ms` + 100 ms per second of audio + 1 ms per

@@ -1,5 +1,8 @@
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 func text(_ s: String) -> AXNode { AXNode(role: "AXStaticText", value: s) }
 func group(_ desc: String? = nil, _ c: [AXNode]) -> AXNode { AXNode(role: "AXGroup", desc: desc, children: c) }

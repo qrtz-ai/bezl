@@ -1,5 +1,8 @@
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 /// N29: per-source silent-capture detection (capture.silent / capture.audible).
 final class SilenceTests: XCTestCase {

@@ -1,4 +1,5 @@
 import Foundation
+import QrtzShared
 
 /// The decision half of the native push-to-talk key monitor, kept free of CoreGraphics so it is tested on any
 /// platform. `MacHotkeys` (mac/Talk.swift) feeds it every event its session-level CGEvent tap sees and drops the

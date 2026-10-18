@@ -2,12 +2,12 @@ import Foundation
 import QrtzCtrl
 import QrtzGateProbe
 
-// qrtz-ctrl: ctrl's own module app (ADR 0146 M1.3, ADR 0144). It links only QrtzCtrl and the shared gate probe, so
-// its bundle (ai.qrtz.ctrl, ai.qrtz.ctrl.entitlements) holds ctrl's Accessibility and Automation grants and nothing
-// else. It speaks ctrl's `ctrl.*` JSON lines on stdio exactly as qrtz-helper's ctrl queue does (ADR 0110); any other
-// line but the host's `shutdown` is ignored with a note on stderr, since echo and nano lines belong to their own apps.
+// qrtz-ctrl: ctrl's extension helper (ADR 0146 M1.3, M2.5). It links only QrtzCtrl and the shared gate probe. An
+// executable inside the installed ctrl extension, spawned by qrtz, so it uses qrtz's own grants (Accessibility,
+// Automation). It speaks ctrl's `ctrl.*` JSON lines on stdio exactly as qrtz-helper's ctrl queue does (ADR 0110); any other
+// line but the host's `shutdown` is ignored with a note on stderr, since echo and nano lines belong to their own helpers.
 // Its first line is a hello (run 31): the host's supervisor counts it as running only once it has said something.
-// Usage: qrtz-ctrl --stdio | --version | --qrtz-gate-probe <ax|mic|socket|ae>
+// Usage: qrtz-ctrl --stdio | --version | --qrtz-gate-probe <ax|mic|socket|ae|sysaudio>
 
 let ctrlAppVersion = "0.1.0"
 GateProbe.runIfRequested(module: "ctrl")

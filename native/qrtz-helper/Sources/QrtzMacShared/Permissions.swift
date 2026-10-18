@@ -3,7 +3,7 @@ import AVFoundation
 import ApplicationServices
 import AppKit
 import CoreGraphics
-import QrtzHelperCore
+import QrtzShared
 
 /// TCC attributes the helper's requests to the responsible process (the qrtz.app that spawned it), so grants show
 /// up under "qrtz" in System Settings. [MAC-VERIFY]
@@ -11,8 +11,9 @@ import QrtzHelperCore
 /// Screen recording covers ScreenCaptureKit audio. Core Audio process taps use the separate "System Audio Recording
 /// Only" TCC service (kTCCServiceAudioCapture), which has no public preflight API: we report screen-recording and let
 /// the first tap attempt trigger the system-audio prompt.
-struct MacPermissions: PermissionsProvider {
-    func status() -> [OsPermission: PermissionState] {
+public struct MacPermissions: PermissionsProvider {
+    public init() {}
+    public func status() -> [OsPermission: PermissionState] {
         let mic: PermissionState
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized: mic = .granted
@@ -27,7 +28,7 @@ struct MacPermissions: PermissionsProvider {
         ]
     }
 
-    func request(_ p: OsPermission) async {
+    public func request(_ p: OsPermission) async {
         switch p {
         case .accessibility:
             let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary

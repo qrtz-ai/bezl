@@ -1,6 +1,9 @@
 import Foundation
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 final class Box<T>: @unchecked Sendable { var v: T; let lock = NSLock(); init(_ v: T) { self.v = v }
     func mutate(_ f: (inout T) -> Void) { lock.lock(); f(&v); lock.unlock() }

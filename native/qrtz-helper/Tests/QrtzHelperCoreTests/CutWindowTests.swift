@@ -1,6 +1,9 @@
 import Foundation
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 /// BurstBatch's words, punctuated the way Parakeet does a segment decoded alone: the last word of the decoded audio
 /// ends in "." and the first is capitalized; `ends` are true sentence ends ("w3." then "W4") wherever they fall.

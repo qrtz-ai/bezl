@@ -1,4 +1,5 @@
 import Foundation
+import QrtzShared
 
 // ADR 0079: per-channel on-device diarization for nano (never for echo). Foundation-only so the turn logic is tested on
 // Linux; the macOS executable supplies the model (FluidAudio Nemotron 3 diarization).

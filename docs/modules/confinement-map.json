@@ -25,6 +25,11 @@
     "QrtzCtrl": "ctrl",
     "QrtzGateProbe": "shared",
     "QrtzShared": "shared",
+    "QrtzMacShared": "shared",
+    "QrtzEcho": "echo",
+    "QrtzEchoMac": "echo",
+    "QrtzNano": "nano",
+    "QrtzNanoMac": "nano",
     "qrtz-echo": "echo",
     "qrtz-nano": "nano",
     "qrtz-ctrl": "ctrl"
@@ -44,7 +49,13 @@
   "monolithSwiftTargets": ["qrtz-helper", "QrtzHelperCore"],
   "monolithSwiftImports": [
     ["qrtz-helper", "FluidAudio"],
-    ["qrtz-helper", "QrtzCtrl"]
+    ["qrtz-helper", "QrtzCtrl"],
+    ["qrtz-helper", "QrtzEchoMac"],
+    ["qrtz-helper", "QrtzNanoMac"],
+    ["QrtzHelperCore", "QrtzEcho"],
+    ["QrtzHelperCore", "QrtzNano"],
+    ["QrtzEchoMac", "FluidAudio"],
+    ["QrtzNanoMac", "FluidAudio"]
   ],
   "appTccEntitlements": {
     "com.apple.security.device.audio-input": "ADR 0154: the microphone, for echo dictation and nano recordings (held by qrtz.app since M4.7)",

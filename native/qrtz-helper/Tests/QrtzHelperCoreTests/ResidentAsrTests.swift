@@ -1,6 +1,9 @@
 import Foundation
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 /// A recogniser whose load takes `loadMs` and is shared the way NemotronTranscriber shares it (`SharedLoad`).
 final class SlowLoadASR: StreamingTranscriber, @unchecked Sendable {

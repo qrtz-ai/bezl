@@ -1,4 +1,5 @@
 import Foundation
+import QrtzShared
 
 // ADR 0092: echo's dictation pill drawn by the helper (a native panel), driven by the helper's own talk state.
 // This file is the platform-free part: the state machine, the wave math (the same as packages/ui/src/Waveform.tsx,

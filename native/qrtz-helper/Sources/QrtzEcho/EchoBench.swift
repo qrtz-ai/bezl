@@ -1,4 +1,5 @@
 import Foundation
+import QrtzShared
 
 // Echo tuning bench (docs/echo/dictation-tuning.md, ADR 0099). Runs fixed clips through the real DictationEngine
 // (pre-roll, tail, drain, pad, finalize, echo gate) with a clip-playing mic, once per (engine, variant), and reports

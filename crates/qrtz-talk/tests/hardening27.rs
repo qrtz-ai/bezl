@@ -1,6 +1,6 @@
 //! Hardening cycle 27, N130 (ADR 0084): talk's stop wait was shorter than the helper's own release budget whenever
 //! the recogniser had a backlog at the release (a long dictation, system audio and a meeting's ASR sharing the
-//! Neural Engine). The helper (`DictationTail`, `QrtzHelperCore/Dictation.swift`) scales its drain and finalize waits
+//! Neural Engine). The helper (`DictationTail`, `QrtzEcho/Dictation.swift`) scales its drain and finalize waits
 //! to what is still queued, which talk can't see; talk scaled to the audio length only (3 s + 100 ms/s, cap 20 s).
 //! A 1 s dictation with its second still queued may take the helper ~5 s; talk gave up at 3.1 s and pasted the last
 //! partial: the tail Jared hears cut off, with the full text only fixing history (MSG_LATE_FINAL). Now talk's bound
@@ -23,7 +23,7 @@ fn swift_default(src: &str, name: &str) -> u64 {
 fn the_host_copy_of_the_helper_tail_matches_dictation_swift() {
     let src = std::fs::read_to_string(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../native/qrtz-helper/Sources/QrtzHelperCore/Dictation.swift"),
+            .join("../../native/qrtz-helper/Sources/QrtzEcho/Dictation.swift"),
     )
     .unwrap();
     let init = &src[src.find("public init(tailMs:").expect("DictationTail.init")..];
@@ -148,7 +148,7 @@ async fn a_helper_that_never_answers_still_ends_the_dictation_inside_the_bound()
 }
 
 /// ADR 0118: the segmented copy (`HelperTail::segment_*`) follows the helper's `SegmentRule` defaults
-/// (`QrtzHelperCore/Segmented.swift`, Bobs) once that file is in the tree: the cap counts the segment pad, which is
+/// (`QrtzEcho/Segmented.swift`, Bobs) once that file is in the tree: the cap counts the segment pad, which is
 /// the release pad, and the default overlap is the one talk budgets. Before it lands, only the host-side numbers
 /// are pinned (the rule chosen in docs/echo/dictation-tuning.md §11).
 #[test]
@@ -159,7 +159,7 @@ fn the_segmented_copy_matches_the_helper_segment_rule() {
         (15_000, SEGMENT_OVERLAP_MS)
     );
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../native/qrtz-helper/Sources/QrtzHelperCore/Segmented.swift");
+        .join("../../native/qrtz-helper/Sources/QrtzEcho/Segmented.swift");
     let Ok(src) = std::fs::read_to_string(path) else {
         return;
     };

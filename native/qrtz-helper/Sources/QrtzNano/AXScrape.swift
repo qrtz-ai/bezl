@@ -1,4 +1,5 @@
 import Foundation
+import QrtzShared
 
 /// A copied, framework-free view of an AX subtree (built from AXUIElement on macOS, from fixtures in tests).
 public struct AXNode: Equatable, Sendable {

@@ -1,6 +1,9 @@
 import Foundation
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 /// Synthetic AX trees (Fixtures/ax/*.json, same shape as `qrtz-helper --dump-ax`) covering layout variance:
 /// Zoom app gallery/speaker ± captions, Zoom web, Meet in Chrome and Safari (grid, presenting, captions on/off,

@@ -1,5 +1,5 @@
 //! Helper session arbiter, ported from `packages/core/src/helper/arbiter.ts` (Swift twin:
-//! `native/qrtz-helper/Sources/QrtzHelperCore/Arbiter.swift`). The rules for running a meeting recording and a
+//! `native/qrtz-helper/Sources/QrtzShared/Arbiter.swift`). The rules for running a meeting recording and a
 //! dictation side by side on one helper (shared, refcounted mic tap; one instance per kind), the warm mic, and
 //! what a mid-capture TCC revocation does to each (docs/helper-protocol.md, ADR 0004).
 //!

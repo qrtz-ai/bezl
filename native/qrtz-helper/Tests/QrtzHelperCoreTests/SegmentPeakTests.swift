@@ -1,6 +1,9 @@
 import Foundation
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 /// Records the audio of every decode (peak and length), hears nothing.
 final class PeakBatch: BatchRecognizer, @unchecked Sendable {

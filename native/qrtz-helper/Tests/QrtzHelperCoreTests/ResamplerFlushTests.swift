@@ -1,6 +1,9 @@
 import Foundation
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 /// A mic whose resampler holds back `held` samples until a flush (ADR 0115).
 final class FlushingMic: MicSource, @unchecked Sendable {

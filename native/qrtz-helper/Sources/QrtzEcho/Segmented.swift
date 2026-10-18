@@ -1,4 +1,5 @@
 import Foundation
+import QrtzShared
 
 // Echo on Parakeet (Jared, 2026-10-18): a batch recogniser (Parakeet TDT v2: whole-utterance decoding, no partials)
 // fed in segments cut at the speaker's pauses while the key is held. Finished segments decode in the background

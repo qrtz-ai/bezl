@@ -3,6 +3,8 @@
 // line reads like its stand-in's). No prompt unless asked.
 import ApplicationServices
 import AVFoundation
+import CoreAudio
+import CoreGraphics
 import CoreServices
 import Foundation
 
@@ -42,6 +44,32 @@ public struct MacGateProbeBackend: GateProbeBackend {
             opened = granted && (try? AVCaptureDeviceInput(device: d)) != nil ? "yes" : "no"
         }
         fields += [("granted", String(granted)), ("opened", opened), ("status_after", micStatus())]
+        return fields
+    }
+
+    /// ADR 0150 N173: echo's speaker gate runs only with the screen & system audio recording grant already given to
+    /// qrtz (a dictation never prompts). Run as a child of qrtz, this checks that the helper inherits qrtz's grant.
+    public func systemAudio(ask: Bool, open: Bool) -> [(String, String)] {
+        let granted = CGPreflightScreenCaptureAccess()
+        var fields = [("screen", String(granted))]
+        if ask && !granted {
+            fields.append(("requested", String(CGRequestScreenCaptureAccess())))
+            fields.append(("screen_after", String(CGPreflightScreenCaptureAccess())))
+        }
+        guard open else { return fields }
+        guard CGPreflightScreenCaptureAccess() else { fields.append(("tap", "skipped")); return fields }
+        if #available(macOS 14.2, *) {
+            // The dictation tap's shape: a private global tap, created and destroyed at once.
+            let desc = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
+            desc.isPrivate = true
+            desc.muteBehavior = .unmuted
+            desc.name = "qrtz gate probe"
+            var tap = AudioObjectID(kAudioObjectUnknown)
+            let st = AudioHardwareCreateProcessTap(desc, &tap)
+            if st == noErr { AudioHardwareDestroyProcessTap(tap); fields.append(("tap", "ok")) } else { fields.append(("tap", "osstatus\(st)")) }
+        } else {
+            fields.append(("tap", "unsupported"))
+        }
         return fields
     }
 

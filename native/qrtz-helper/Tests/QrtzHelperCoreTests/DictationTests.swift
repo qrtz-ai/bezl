@@ -1,6 +1,9 @@
 import Foundation
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 /// Scheduling slack for wall-clock bounds on shared CI runners (a loaded macOS runner ran ~50 ms late). Locally 0,
 /// so the bounds stay tight where they are measured.

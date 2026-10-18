@@ -1,6 +1,9 @@
 import Foundation
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 /// Hears "hello world" once it has been fed any non-silent audio; its partial appears after 0.2 s of audio.
 final class BenchFakeASR: StreamingTranscriber, @unchecked Sendable {

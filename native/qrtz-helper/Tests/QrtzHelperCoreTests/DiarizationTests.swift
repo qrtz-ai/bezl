@@ -1,6 +1,9 @@
 import Foundation
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 /// A recogniser that "loads" slowly (like Nemotron), so a recording starts before it is ready.
 final class SlowASR: StreamingTranscriber, @unchecked Sendable {

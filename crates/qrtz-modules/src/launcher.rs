@@ -7,17 +7,18 @@
 //! failure stops that module.
 //!
 //! M0 has no behaviour change: the host still spawns the one bundled helper. The plan is what M3 (one helper per
-//! module) and M6 (LaunchServices) execute.
+//! module) executes. Extensions are not apps: the host spawns each helper executable directly and stays its
+//! responsible process, so every extension uses qrtz's own TCC grants (ADR 0146 M2.5; no LaunchServices).
 use crate::lock::{LockedModule, Lockfile};
 use crate::manifest::{DependencyKind, LaunchKind, ModuleManifest};
 use crate::settings::GlobalSettings;
 use crate::ModuleError;
 use std::path::{Path, PathBuf};
 
-/// ADR 0144 §5: from M1 every module app accepts `--qrtz-gate-probe <ax|mic|socket|ae>` for the Mac gates. The
-/// launcher never passes it; only `scripts/modules/mac-gate.sh` does.
+/// ADR 0144 §5: from M1 every extension helper accepts `--qrtz-gate-probe <ax|mic|socket|ae|sysaudio>` for the Mac
+/// gates (`sysaudio`: ADR 0150 N173). The launcher never passes it; only `scripts/modules/mac-gate.sh` does.
 pub const GATE_PROBE_FLAG: &str = "--qrtz-gate-probe";
-pub const GATE_PROBES: &[&str] = &["ax", "mic", "socket", "ae"];
+pub const GATE_PROBES: &[&str] = &["ax", "mic", "socket", "ae", "sysaudio"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Policy {

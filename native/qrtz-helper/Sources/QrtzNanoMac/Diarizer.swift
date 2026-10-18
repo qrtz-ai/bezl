@@ -1,13 +1,16 @@
 #if os(macOS)
 import FluidAudio
 import Foundation
-import QrtzHelperCore
+import QrtzMacShared
+import QrtzNano
+import QrtzShared
 
 /// ADR 0079: FluidAudio Nemotron 3 diarization (`fast32`: 2.56 s of audio per call, about 2.9 s behind), one instance
 /// per raw channel of a recording. Loads only from the verified local set (`LocalModels.diarizer`); never downloads.
 /// Core ML calls are synchronous, so they run on the instance's own queue, off the cooperative pool.
-final class NemotronChannelDiarizer: ChannelDiarizer, @unchecked Sendable {
-    let name = "nemotron3-fast32"
+public final class NemotronChannelDiarizer: ChannelDiarizer, @unchecked Sendable {
+    public let name = "nemotron3-fast32"
+    public init() {}
     private let config = Nemotron3Config.fast32
     private let queue = DispatchQueue(label: "qrtz.diarizer", qos: .userInitiated)
     private var diarizer: Nemotron3Diarizer?
@@ -19,7 +22,7 @@ final class NemotronChannelDiarizer: ChannelDiarizer, @unchecked Sendable {
         await withCheckedContinuation { c in queue.async { c.resume(returning: f()) } }
     }
 
-    func prepare() async throws {
+    public func prepare() async throws {
         if await onQueue({ self.diarizer != nil }) { return }
         let dir = try LocalModels.dir(LocalModels.diarizer)
         let models = try await Nemotron3Models.load(config: config, directory: dir)
@@ -27,7 +30,7 @@ final class NemotronChannelDiarizer: ChannelDiarizer, @unchecked Sendable {
         await onQueue { if self.diarizer == nil { self.diarizer = d } }
     }
 
-    func reset() async { await onQueue { self.diarizer?.reset(); self.trackerLock.withLock { self.tracker.reset() } } }
+    public func reset() async { await onQueue { self.diarizer?.reset(); self.trackerLock.withLock { self.tracker.reset() } } }
 
     private func turns(_ rs: [Nemotron3ChunkResult]) -> [DiarizedTurn] {
         var out: [DiarizedTurn] = []
@@ -37,7 +40,7 @@ final class NemotronChannelDiarizer: ChannelDiarizer, @unchecked Sendable {
         return out
     }
 
-    func append(_ s: [Float]) async -> [DiarizedTurn] {
+    public func append(_ s: [Float]) async -> [DiarizedTurn] {
         await onQueue {
             guard let d = self.diarizer else { return [] }
             d.appendAudio(s)
@@ -45,7 +48,7 @@ final class NemotronChannelDiarizer: ChannelDiarizer, @unchecked Sendable {
         }
     }
 
-    func finish() async -> [DiarizedTurn] {
+    public func finish() async -> [DiarizedTurn] {
         await onQueue {
             guard let d = self.diarizer else { return [] }
             var out: [DiarizedTurn] = []
@@ -54,8 +57,8 @@ final class NemotronChannelDiarizer: ChannelDiarizer, @unchecked Sendable {
         }
     }
 
-    func unload() async { await onQueue { self.diarizer = nil; self.trackerLock.withLock { self.tracker.reset() } } }
+    public func unload() async { await onQueue { self.diarizer = nil; self.trackerLock.withLock { self.tracker.reset() } } }
 
-    func abandon() -> [DiarizedTurn] { trackerLock.withLock { tracker.flush() } }
+    public func abandon() -> [DiarizedTurn] { trackerLock.withLock { tracker.flush() } }
 }
 #endif

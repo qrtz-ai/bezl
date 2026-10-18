@@ -1,6 +1,9 @@
 import Foundation
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 /// N143: a system tap for the dictation's length, in order.
 final class FakeTap: SystemAudioTap, @unchecked Sendable {
@@ -77,6 +80,13 @@ final class DictationEchoTests: XCTestCase {
         msgs.compactMap { if case .dictationStopped(_, let t, _, _, _) = $0 { t } else { nil } }.first
     }
     func logged(_ msgs: [HelperMessage], _ s: String) -> Bool { msgs.contains { if case .log(_, let m) = $0 { m.contains(s) } else { false } } }
+    /// ADR 0150 N173: the `gate=` field of the dictation's timing line.
+    func timingGate(_ msgs: [HelperMessage]) -> String? {
+        for case .log(_, let m) in msgs where m.hasPrefix("echo timing: ") {
+            return m.split(separator: " ").first { $0.hasPrefix("gate=") }.map { String($0.dropFirst(5)) } ?? ""
+        }
+        return nil
+    }
 
     /// The system plays the sentence the whole time; the mic hears it at -20 dB, plus the user's words in blocks 4–5
     /// (over the sentence) and 9–10. `system` feeds whatever reference is running before each mic block.
@@ -95,6 +105,7 @@ final class DictationEchoTests: XCTestCase {
         let (c, out, _) = controller(tap: nil)
         await dictate(c, system: nil)
         XCTAssertEqual(stoppedText(out.value), "echo u3 echo u4 echo", "the test hears the echo when nothing gates it")
+        XCTAssertEqual(timingGate(out.value), "off-no-tap")
     }
 
     func testTheDictationTapGatesTheSentenceAndKeepsTheUsersWords() async {
@@ -121,6 +132,7 @@ final class DictationEchoTests: XCTestCase {
         await c.handle(.dictationStop(id: "d1"))
         XCTAssertEqual(stoppedText(out.value), "u3 u4", "only the user's words")
         XCTAssertTrue(logged(out.value, "echo gate: fake-tap for this dictation"))
+        XCTAssertEqual(timingGate(out.value), "tap")
         await c.dictation.echo?.settled()
         XCTAssertEqual(tap.calls.value, ["start", "stop", "start", "stop", "start", "stop"], "one tap per dictation, stopped before the next starts")
         XCTAssertFalse(c.echoReference.isLive)
@@ -149,6 +161,7 @@ final class DictationEchoTests: XCTestCase {
         await dictate(c, system: { s in cb(CaptureBlock(system: s, mic: [Float](repeating: 0, count: s.count))) })
         XCTAssertEqual(stoppedText(out.value), "u3 u4")
         XCTAssertTrue(logged(out.value, "echo gate: the meeting's system audio"))
+        XCTAssertEqual(timingGate(out.value), "meeting")
         XCTAssertEqual(tap.calls.value, [], "the meeting's channel, not a second tap")
         await c.handle(.recordingStop())
         XCTAssertFalse(c.echoReference.isLive)
@@ -161,6 +174,8 @@ final class DictationEchoTests: XCTestCase {
         XCTAssertEqual(tap.calls.value, [])
         XCTAssertTrue(logged(out.value, "no system audio grant"))
         XCTAssertEqual(stoppedText(out.value), "echo u3 echo u4 echo")
+        // N173: without the screen & system audio grant, echo says why its gate was off on the line people read.
+        XCTAssertEqual(timingGate(out.value), "off-no-grant")
     }
 
     func testHeadphonesOrSilenceStartNoTap() async {
@@ -170,6 +185,7 @@ final class DictationEchoTests: XCTestCase {
         await dictate(c, system: nil)
         XCTAssertEqual(tap.calls.value, [])
         XCTAssertTrue(logged(out.value, "headphones or nothing playing"))
+        XCTAssertEqual(timingGate(out.value), "off-quiet")
     }
 
     func testATapThatFailsLeavesTheRawMic() async {
@@ -183,6 +199,7 @@ final class DictationEchoTests: XCTestCase {
         await c.dictation.onSamples(sentence(0).map { 0.1 * $0 })
         await c.handle(.dictationStop(id: "d1"))
         XCTAssertEqual(stoppedText(out.value), "echo")
+        XCTAssertEqual(timingGate(out.value), "off-tap-failed")
     }
 
     func testALateTapFailureNeverDetachesTheNextDictationsHold() async {
@@ -213,6 +230,7 @@ final class DictationEchoTests: XCTestCase {
         await dictate(c, system: { tap.cb.value?($0) })
         XCTAssertEqual(tap.calls.value, [])
         XCTAssertEqual(stoppedText(out.value), "echo u3 echo u4 echo")
+        XCTAssertEqual(timingGate(out.value), "off-setting")
     }
 
     func testARunningDictationKeepsItsGateWhenTheSettingChanges() {

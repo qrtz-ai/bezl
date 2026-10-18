@@ -1,4 +1,5 @@
 import Foundation
+import QrtzShared
 
 /// What the AX layer can see about a top-level window, independent of the AX API (so it is testable on Linux).
 public struct WindowInfo: Equatable, Sendable {

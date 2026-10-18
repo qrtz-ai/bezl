@@ -1,5 +1,8 @@
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 /// The Fn/globe fix: with `fn` as the talk key and `talk.blockGlobeKey` on, the session tap swallows the Fn/globe
 /// events (so macOS doesn't switch the input source) but still reports push-to-talk edges; nothing else is eaten.

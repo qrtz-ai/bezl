@@ -1,6 +1,9 @@
 import Foundation
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 /// ADR 0132 (review §12.39): FluidAudio's placeholder confidences aren't reported (N170), the timing line prints
 /// three places (P5), and `dictation.stopped` carries `tailConf` / `tailDropped` for talk's latency line.

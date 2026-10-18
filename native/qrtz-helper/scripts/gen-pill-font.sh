@@ -1,5 +1,5 @@
 #!/bin/bash
-# Regenerates Sources/QrtzHelperCore/PillFont.swift from the renderer's bundled font, so the native echo pill draws
+# Regenerates Sources/QrtzEcho/PillFont.swift from the renderer's bundled font, so the native echo pill draws
 # with the same file (Core Text reads WOFF2 directly). PillTests fails if the two drift apart.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -14,4 +14,4 @@ SRC=../../packages/ui/src/fonts/GeistPixel-Circle.woff2
   echo "    public static var woff2: Data { Data(base64Encoded: base64)! }"
   printf '    static let base64 = "%s"\n' "$(base64 < "$SRC" | tr -d '\n')"
   echo "}"
-} > Sources/QrtzHelperCore/PillFont.swift
+} > Sources/QrtzEcho/PillFont.swift

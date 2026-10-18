@@ -3,28 +3,13 @@ import AppKit
 import ApplicationServices
 import CoreGraphics
 import Foundation
-import QrtzHelperCore
+import QrtzEcho
+import QrtzMacShared
+import QrtzShared
 
-// qrtz talk on macOS: mic-only capture, AX/pasteboard text insertion, and the native push-to-talk key monitor.
-// None of this compiles on Linux; the logic it plugs into (QrtzHelperCore/Dictation.swift) is tested there. [MAC-VERIFY]
+// ADR 0146 M2.5: split out of qrtz-helper/mac/Talk.swift (owner: echo: insertion and the push key).
 
-/// The physical mic (one AVAudioEngine input tap). Wrapped by MicHub so meeting capture and dictation share it (H6).
-final class DictationMicSource: MicSource, @unchecked Sendable {
-    private var mic: MicCapture?
-    private var lost: (@Sendable (String) -> Void)?
-    func start(onSamples: @escaping @Sendable ([Float]) -> Void) throws {
-        let m = MicCapture()
-        m.onLost = lost
-        try m.start(onSamples)
-        mic = m
-    }
-    func stop() { mic?.stop(); mic = nil }
-    func flush() { mic?.flush() }
-    /// N138: MicHub registers here; each MicCapture reports a device that didn't come back.
-    func onDeviceLost(_ cb: @escaping @Sendable (String) -> Void) { lost = cb }
-}
-
-final class MacInsertion: InsertionBackend, @unchecked Sendable {
+public final class MacInsertion: InsertionBackend, @unchecked Sendable {
     private func focused() -> AXUIElement? {
         let sys = AXUIElementCreateSystemWide()
         var v: CFTypeRef?
@@ -33,9 +18,9 @@ final class MacInsertion: InsertionBackend, @unchecked Sendable {
         return (v as! AXUIElement)
     }
 
-    func focusedAppName() -> String? { NSWorkspace.shared.frontmostApplication?.localizedName }
+    public func focusedAppName() -> String? { NSWorkspace.shared.frontmostApplication?.localizedName }
 
-    func axSetSelectedText(_ text: String) -> Bool {
+    public func axSetSelectedText(_ text: String) -> Bool {
         guard let el = focused() else { return false }
         var settable: DarwinBoolean = false
         guard AXUIElementIsAttributeSettable(el, kAXSelectedTextAttribute as CFString, &settable) == .success, settable.boolValue else { return false }
@@ -46,7 +31,7 @@ final class MacInsertion: InsertionBackend, @unchecked Sendable {
         return value(el) != b
     }
 
-    func axInsertIntoValue(_ text: String) -> Bool {
+    public func axInsertIntoValue(_ text: String) -> Bool {
         guard let el = focused(), let cur = value(el) else { return false }
         var settable: DarwinBoolean = false
         guard AXUIElementIsAttributeSettable(el, kAXValueAttribute as CFString, &settable) == .success, settable.boolValue else { return false }
@@ -71,7 +56,7 @@ final class MacInsertion: InsertionBackend, @unchecked Sendable {
         return v as? String
     }
 
-    func pasteboardSnapshot() -> Any? {
+    public func pasteboardSnapshot() -> Any? {
         let pb = NSPasteboard.general
         return (pb.pasteboardItems ?? []).map { item -> [NSPasteboard.PasteboardType: Data] in
             var d: [NSPasteboard.PasteboardType: Data] = [:]
@@ -79,14 +64,14 @@ final class MacInsertion: InsertionBackend, @unchecked Sendable {
             return d
         }
     }
-    func pasteboardSetString(_ text: String) {
+    public func pasteboardSetString(_ text: String) {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(text, forType: .string)
         // Ask clipboard managers not to record the transient dictation text.
         pb.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
     }
-    func pasteboardRestore(_ snapshot: Any?) {
+    public func pasteboardRestore(_ snapshot: Any?) {
         let pb = NSPasteboard.general
         pb.clearContents()
         guard let items = snapshot as? [[NSPasteboard.PasteboardType: Data]], !items.isEmpty else { return }
@@ -96,8 +81,8 @@ final class MacInsertion: InsertionBackend, @unchecked Sendable {
             return it
         })
     }
-    func pasteboardChangeCount() -> Int { NSPasteboard.general.changeCount }
-    func postPaste() -> Bool {
+    public func pasteboardChangeCount() -> Int { NSPasteboard.general.changeCount }
+    public func postPaste() -> Bool {
         guard AXIsProcessTrusted() else { return false }
         let src = CGEventSource(stateID: .combinedSessionState)
         let v: CGKeyCode = 9  // kVK_ANSI_V
@@ -121,7 +106,7 @@ final class MacInsertion: InsertionBackend, @unchecked Sendable {
 ///   nothing; if macOS withholds events from it, talk still works and only the globe action runs too.
 /// The blocker is created first and the listener inserted at the head after it, so the listener sees every Fn event
 /// before the blocker drops it.
-final class MacHotkeys: HotkeyMonitor, @unchecked Sendable {
+public final class MacHotkeys: HotkeyMonitor, @unchecked Sendable {
     private var listenTap: CFMachPort?
     private var listenSource: CFRunLoopSource?
     private var blockTap: CFMachPort?
@@ -132,7 +117,7 @@ final class MacHotkeys: HotkeyMonitor, @unchecked Sendable {
     /// Consume decisions (block tap only; its edges are ignored).
     fileprivate var blocker: HotkeyFilter?
 
-    func start(key: String, consumeFn: Bool, onChange: @escaping @Sendable (HotkeyAction) -> Void) -> Bool {
+    public func start(key: String, consumeFn: Bool, onChange: @escaping @Sendable (HotkeyAction) -> Void) -> Bool {
         stop()
         guard let f = HotkeyFilter(key: key, consumeFn: consumeFn) else { return false }
         filter = f
@@ -196,7 +181,7 @@ final class MacHotkeys: HotkeyMonitor, @unchecked Sendable {
         return true
     }
 
-    func stop() {
+    public func stop() {
         for (t, s) in [(listenTap, listenSource), (blockTap, blockSource)] {
             if let t { CGEvent.tapEnable(tap: t, enable: false) }
             if let s { CFRunLoopRemoveSource(CFRunLoopGetMain(), s, .commonModes) }

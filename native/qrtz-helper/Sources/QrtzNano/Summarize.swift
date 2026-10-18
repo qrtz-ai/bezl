@@ -1,4 +1,5 @@
 import Foundation
+import QrtzShared
 
 // ADR 0075: the summarize service. Its wire types live in QrtzShared (SummarizeTypes.swift).
 

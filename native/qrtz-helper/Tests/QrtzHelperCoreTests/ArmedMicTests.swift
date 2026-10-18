@@ -1,6 +1,9 @@
 import Foundation
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 /// Item 2 (docs/echo/dictation-tuning.md): the press opens the mic, not the host's dictation.start.
 final class ArmedMicTests: XCTestCase {

@@ -1,6 +1,9 @@
 import Foundation
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 final class AudioTests: XCTestCase {
     func testWavHeaderRewrittenOnFinish() throws {

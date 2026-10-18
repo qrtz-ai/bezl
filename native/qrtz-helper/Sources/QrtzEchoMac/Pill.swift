@@ -1,7 +1,9 @@
 #if os(macOS)
 import AppKit
 import CoreText
-import QrtzHelperCore
+import QrtzEcho
+import QrtzMacShared
+import QrtzShared
 import QuartzCore
 
 /// ADR 0092: echo's dictation pill as a native panel. It doesn't activate, is borderless, ignores the mouse, shows on
@@ -10,18 +12,18 @@ import QuartzCore
 /// transcript; a 240 pt pill; three layered tapered sines eased to the mic level every display frame; a slow low
 /// swell while processing; an alert icon and lowercase error text truncated with an ellipsis. With reduced motion
 /// the wave's phase stands still and only the amplitude follows the level. `PillDriver` (core) decides the phase.
-final class NativePill: PillView, @unchecked Sendable {
+public final class NativePill: PillView, @unchecked Sendable {
     private var panel: NSPanel?
     private var view: PillContentView?
 
-    init() {
+    public init() {
         if Thread.isMainThread { build() } else { DispatchQueue.main.sync { build() } }
     }
 
-    func show(_ phase: PillPhase) { DispatchQueue.main.async { [self] in apply(phase) } }
-    func level(_ rms: Double) { DispatchQueue.main.async { [self] in view?.level = rms } }
+    public func show(_ phase: PillPhase) { DispatchQueue.main.async { [self] in apply(phase) } }
+    public func level(_ rms: Double) { DispatchQueue.main.async { [self] in view?.level = rms } }
 
-    static func registerFont() {
+    public static func registerFont() {
         let data = PillFont.woff2 as CFData
         guard let provider = CGDataProvider(data: data), let font = CGFont(provider) else { logErr("pill: font unreadable"); return }
         var err: Unmanaged<CFError>?
@@ -79,7 +81,7 @@ final class NativePill: PillView, @unchecked Sendable {
     }
 
     /// The screen of the frontmost app's frontmost normal window (window bounds need no permission).
-    static func activeScreen() -> NSScreen? {
+    public static func activeScreen() -> NSScreen? {
         guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier,
               let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
         else { return nil }
@@ -94,7 +96,7 @@ final class NativePill: PillView, @unchecked Sendable {
 }
 
 /// The pill's drawing: a rounded surface with a 1 pt border, the wave (three CAShapeLayers), or the error row.
-final class PillContentView: NSView {
+public final class PillContentView: NSView {
     private let surface = CAShapeLayer()
     private let waves = PillWave.layers.map { _ in CAShapeLayer() }
     private let waveBox = CALayer()
@@ -105,9 +107,9 @@ final class PillContentView: NSView {
     private var phaseRad = 0.0
     private var last: CFTimeInterval?
 
-    var level = 0.0
-    var phase: PillPhase = .hidden { didSet { layoutPhase() } }
-    var running = false {
+    public var level = 0.0
+    public var phase: PillPhase = .hidden { didSet { layoutPhase() } }
+    public var running = false {
         didSet {
             guard running != oldValue else { return }
             link?.isPaused = !running
@@ -115,7 +117,7 @@ final class PillContentView: NSView {
         }
     }
 
-    override init(frame: NSRect) {
+    public override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
         layer?.addSublayer(surface)
@@ -149,11 +151,11 @@ final class PillContentView: NSView {
         draw(amp: amp)
     }
 
-    required init?(coder: NSCoder) { nil }
+    public required init?(coder: NSCoder) { nil }
 
-    override var isFlipped: Bool { false }
+    public override var isFlipped: Bool { false }
 
-    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); recolor() }
+    public override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); recolor() }
 
     /// packages/ui tokens: surface, borderStrong and text, dark and light.
     private func recolor() {
@@ -174,7 +176,7 @@ final class PillContentView: NSView {
         label.textColor = NSColor(cgColor: text)
     }
 
-    func resetAmp() {
+    public func resetAmp() {
         amp = PillWave.target(mode, phase == .listening ? level : 0)
         draw(amp: amp)
     }

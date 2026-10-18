@@ -1,6 +1,9 @@
 import Foundation
 import XCTest
 @testable import QrtzHelperCore
+@testable import QrtzEcho
+@testable import QrtzNano
+@testable import QrtzShared
 
 /// Mutable TCC state, so a test can revoke a permission mid-capture.
 final class MutablePerms: PermissionsProvider, @unchecked Sendable {

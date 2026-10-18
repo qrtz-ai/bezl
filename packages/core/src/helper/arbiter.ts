@@ -1,7 +1,7 @@
 /**
  * Helper session arbiter: the child-protocol rules for concurrent recording.* and dictation.* on one helper, the
  * warm mic, and what a mid-capture TCC revocation does to each. Pure and deterministic. The Swift helper mirrors
- * it (native/qrtz-helper/Sources/QrtzHelperCore/Arbiter.swift) and both are tested against the same vectors
+ * it (native/qrtz-helper/Sources/QrtzShared/Arbiter.swift) and both are tested against the same vectors
  * (spec/vectors/helper/arbiter.json, arbiter-edges.json). Spec: docs/helper-protocol.md.
  *
  * Decision: MUX. A meeting recording and a dictation run side by side. Both read the microphone through one
