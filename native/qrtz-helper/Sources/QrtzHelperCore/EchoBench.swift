@@ -275,6 +275,7 @@ public struct EchoVariant: Sendable {
         x = EchoVariant(name: "cold-mic-300"); x.dropHeadMs = 300; v.append(x)
         x = EchoVariant(name: "warm-preroll-300"); x.preRollMs = 300; v.append(x)
         x = EchoVariant(name: "quiet-0.1"); x.gain = 0.1; v.append(x)
+        x = EchoVariant(name: "quiet-0.03"); x.gain = 0.03; v.append(x)
         x = EchoVariant(name: "quiet-0.1-normalized"); x.gain = 0.1; x.normalizePeakDb = -3; v.append(x)
         x = EchoVariant(name: "noise-15db"); x.noiseSnrDb = 15; v.append(x)
         x = EchoVariant(name: "echo-raw"); x.echoCoupling = 0.3; x.echoGate = false; v.append(x)
@@ -432,7 +433,7 @@ public enum EchoBench {
                 var wer = EchoWER.Score(), fwer = EchoWER.Score()
                 var rel: [Double] = [], first: [Double] = [], fin: [Double] = [], rtf: [Double] = []
                 var tailDecode: [Double] = [], segments: [Double] = [], bgSegments: [Double] = [], backlog: [Double] = []
-                var windows: [Double] = [], windowFixes: [Double] = [], windowsSkipped: [Double] = []
+                var windows: [Double] = [], windowFixes: [Double] = [], windowsSkipped: [Double] = [], peakGained: [Double] = []
                 var tailLost = 0, headLost = 0
                 for clip in clips {
                     let r = await runClip(clip, engine: engine, variant: variant, options: options)
@@ -454,6 +455,7 @@ public enum EchoBench {
                         if let x = st["cutWindows"] as? Int { windows.append(Double(x)) }
                         if let x = st["windowFixes"] as? Int { windowFixes.append(Double(x)) }
                         if let x = st["windowsSkipped"] as? Int { windowsSkipped.append(Double(x)) }
+                        if let x = st["peakGained"] as? Int { peakGained.append(Double(x)) }
                     }
                     progress("\(engine.name) \(variant.name) \(clip.name): wer \(String(format: "%.3f", EchoWER.score(ref: refN, hyp: EchoWER.normalize(hyp)).wer)) release→final \(Int(r["releaseToStoppedMs"] as? Double ?? -1)) ms")
                 }
@@ -470,6 +472,8 @@ public enum EchoBench {
                 if windows.reduce(0, +) + windowsSkipped.reduce(0, +) > 0 {
                     row["cutWindows"] = stats(windows); row["windowFixes"] = stats(windowFixes); row["windowsSkipped"] = stats(windowsSkipped)
                 }
+                // ADR 0127: segments the gated peak scaled (present only with the gate on).
+                if !peakGained.isEmpty { row["peakGained"] = stats(peakGained) }
                 summary.append(row)
             }
             await engine.unload()

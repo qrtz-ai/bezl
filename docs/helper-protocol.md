@@ -75,7 +75,9 @@ Rules (the arbiter's `cmd` events):
    segment with no speech (a pause before the release) isn't decoded. ADR 0120 (off by default, `QRTZ_ECHO_CUT_WINDOW`):
    a background window decoded across each pause cut sets the cut word's punctuation and the next word's case; the
    release never waits for a window that hasn't started. The timing line then adds `cut_windows=`,
-   `window_fixes=` and `windows_skipped=`; `dictation.stopped` is unchanged. Every knob of the rule is an environment
+   `window_fixes=` and `windows_skipped=`; `dictation.stopped` is unchanged. ADR 0127 (off by default, `QRTZ_ECHO_SEG_PEAK`): a decode of
+   a segment, window or tail whose peak is below 0.1 is scaled to peak 0.9 (at most 10×) on the decode copy only;
+   the timing line then adds `peak_gained=`. Every knob of the rule is an environment
    override (`QRTZ_ECHO_SEGMENT_PAUSE_MS`, `_CAP_MS`, `_OVERLAP_MS`, `_OVERLAP_MODE` = `all`|`cap`, `_MIN_MS`). The
    fallback is Apple SpeechAnalyzer (macOS 26). Recordings keep Nemotron streaming, and it loads only for a
    recording.

@@ -72,6 +72,12 @@ public struct SegmentRule: Sendable, Equatable {
     /// diff 7.46 → 6.10 %. Off until the Mac gate (tuning §12): `QRTZ_ECHO_CUT_WINDOW=on`, sizes
     /// `QRTZ_ECHO_CUT_WINDOW_BEFORE_MS` / `_AFTER_MS`, bench engine `parakeet-segmented-win`.
     public var cutWindow = false
+    /// ADR 0127 / review §12.37: a gated per-segment peak gain on the decode path only (`SegmentPeak`): a segment,
+    /// cut window or tail whose peak is below 0.1 is scaled so its peak is 0.9 (gain at most 10×) before Parakeet;
+    /// louder audio is untouched. The VAD, nano and the shared mic stream never see it. Off by default
+    /// (`QRTZ_ECHO_SEG_PEAK=on`); never always-on: an ungated peak to 0.9 cost normal speech +11 % errors (Linux,
+    /// 2.57 → 2.85 %), while the gate leaves normal alone and recovers ×0.03 (4.15 → 2.94 %).
+    public var segPeak = false
     public var windowBeforeMs = 3_000
     public var windowAfterMs = 2_000
 
@@ -103,6 +109,11 @@ public struct SegmentRule: Sendable, Equatable {
         switch env["QRTZ_ECHO_SEGMENT_OVERLAP_MODE"] {
         case "cap": r.overlapOnPause = false
         case "all": r.overlapOnPause = true
+        default: break
+        }
+        switch env["QRTZ_ECHO_SEG_PEAK"]?.trimmingCharacters(in: .whitespaces).lowercased() {
+        case "on", "1", "true", "yes": r.segPeak = true
+        case "off", "0", "false", "no": r.segPeak = false
         default: break
         }
         switch env["QRTZ_ECHO_CUT_WINDOW"]?.trimmingCharacters(in: .whitespaces).lowercased() {
@@ -139,6 +150,9 @@ public struct SegmentStats: Sendable, Equatable {
     public var cutWindows = 0
     public var windowFixes = 0
     public var windowsSkipped = 0
+    /// ADR 0127: the gated peak gain was on for this dictation, and how many segments (the tail included) it scaled.
+    public var peakGate = false
+    public var peakGained = 0
     public init() {}
 }
 
@@ -180,6 +194,30 @@ public struct SegmentedTail: Sendable, Equatable {
     }
 
     static func sat(_ a: Int, _ b: Int) -> Int { let (r, o) = a.addingReportingOverflow(b); return o ? .max : r }
+}
+
+/// ADR 0127: the gated per-segment peak gain (decode path only). Below `threshold` peak abs the audio is scaled so
+/// its peak becomes `target`, with the gain capped at `maxGain`; anything louder (and pure silence) is returned
+/// unchanged.
+public enum SegmentPeak {
+    public static let threshold: Float = 0.1
+    public static let target: Float = 0.9
+    public static let maxGain: Float = 10
+
+    /// The gain for audio with this peak: 1 at or above the threshold (or for silence).
+    public static func gain(peak: Float) -> Float {
+        guard peak > 0, peak < threshold else { return 1 }
+        return min(maxGain, target / peak)
+    }
+
+    /// The audio to decode, and whether it was scaled.
+    public static func apply(_ x: [Float]) -> (audio: [Float], gained: Bool) {
+        var peak: Float = 0
+        for v in x { peak = max(peak, abs(v)) }
+        let g = gain(peak: peak)
+        guard g != 1 else { return (x, false) }
+        return (x.map { $0 * g }, true)
+    }
 }
 
 public protocol PaddedFinishing: StreamingTranscriber {
@@ -402,6 +440,7 @@ public actor SegmentedTranscriber: PaddedFinishing {
     public init(_ batch: BatchRecognizer, rule: SegmentRule = SegmentRule(), name: String? = nil) {
         self.batch = batch; self.rule = rule; self.name = name ?? batch.name
         self.seg = PauseSegmenter(rule: rule)
+        self.stats.peakGate = rule.segPeak
     }
 
     public func prepare() async throws { try await batch.prepare() }
@@ -411,7 +450,7 @@ public actor SegmentedTranscriber: PaddedFinishing {
         generation += 1
         seg = PauseSegmenter(rule: rule)
         buf.removeAll(); bufStart = 0
-        stitched = WordStitcher(); stats = SegmentStats()
+        stitched = WordStitcher(); stats = SegmentStats(); stats.peakGate = rule.segPeak
         chain = nil; boundaryOfOpen = nil
         hist.removeAll(); histStart = 0; total = 0; lastCut = 0; pending.removeAll(); releasing = false
     }
@@ -437,7 +476,17 @@ public actor SegmentedTranscriber: PaddedFinishing {
         if hist.count > keep + 16 * 1_000 { let d = hist.count - keep; hist.removeFirst(d); histStart += d }
     }
 
+    /// ADR 0127: the decode-path copy of a segment, gained when the gate is on and it is quiet (`count`: a segment
+    /// or the tail, not a cut window).
+    func forDecode(_ audio: [Float], count: Bool) -> [Float] {
+        guard rule.segPeak else { return audio }
+        let (a, gained) = SegmentPeak.apply(audio)
+        if gained, count { stats.peakGained += 1 }
+        return a
+    }
+
     func enqueueWindow(_ audio: [Float], origin: Double, at: Int) {
+        let audio = forDecode(audio, count: false)
         let prev = chain, gen = generation, batch = self.batch, pad = rule.segmentPadMs
         chain = Task {
             await prev?.value
@@ -491,6 +540,7 @@ public actor SegmentedTranscriber: PaddedFinishing {
     }
 
     func enqueue(_ audio: [Float], origin: Double, boundary: Double?, padMs: Int) {
+        let audio = forDecode(audio, count: true)
         let prev = chain, gen = generation, batch = self.batch
         chain = Task {
             await prev?.value
@@ -522,7 +572,7 @@ public actor SegmentedTranscriber: PaddedFinishing {
         // The tail: the open segment (with its overlap). A tail with no speech (the speaker paused before letting
         // go) needs no decode: its words, if any, were the previous segment's.
         if seg.openHasSpeech, !buf.isEmpty {
-            let audio = buf + [Float](repeating: 0, count: max(0, padSamples))
+            let audio = forDecode(buf, count: true) + [Float](repeating: 0, count: max(0, padSamples))
             let t1 = ContinuousClock.now
             let r = try? await batch.decode(audio)
             guard gen == generation else { return stitched.text }

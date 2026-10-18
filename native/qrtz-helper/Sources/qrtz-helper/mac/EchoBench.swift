@@ -15,6 +15,7 @@ import QrtzHelperCore
 ///
 /// Engines: `parakeet-segmented` (shipped for echo: Parakeet TDT v2 cut at pauses, `QRTZ_ECHO_SEGMENT_PAUSE_MS` /
 /// `QRTZ_ECHO_SEGMENT_CAP_MS` apply), `parakeet-segmented-win` (the same with ADR 0120's cut windows on),
+/// `parakeet-segmented-peak` (the same with ADR 0127's gated segment peak on),
 /// `parakeet-whole` (the same model on the whole clip at the release; the other engines' `sentenceEndsVsWhole`),
 /// `parakeet-seg-<pauseMs>-<capMs>` (a rule candidate; 0 = that cut off), `nemotron-560` (echo's recogniser before
 /// Parakeet; recordings still use it), `nemotron-1120`, `nemotron-2240` (chunk
@@ -72,6 +73,10 @@ enum EchoBenchCLI {
             switch n {
             case "parakeet-segmented": out.append(SegmentedTranscriber(parakeet, rule: .fromEnvironment(), name: n))
             case "parakeet-whole": out.append(SegmentedTranscriber(parakeet, rule: .wholeClip, name: n))
+            case "parakeet-segmented-peak":
+                // ADR 0127: the shipped rule with the gated segment peak on (decode path only).
+                var rule = SegmentRule.fromEnvironment(); rule.segPeak = true
+                out.append(SegmentedTranscriber(parakeet, rule: rule, name: n))
             case "parakeet-segmented-win":
                 // ADR 0120: the shipped rule with the cut windows on (sizes from QRTZ_ECHO_CUT_WINDOW_BEFORE_MS/_AFTER_MS).
                 var rule = SegmentRule.fromEnvironment(); rule.cutWindow = true

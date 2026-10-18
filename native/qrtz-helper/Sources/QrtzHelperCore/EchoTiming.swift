@@ -73,6 +73,8 @@ public struct DictationTiming: Sendable, Equatable {
             if g.cutWindows + g.windowsSkipped > 0 {
                 p += ["cut_windows=\(g.cutWindows)", "window_fixes=\(g.windowFixes)", "windows_skipped=\(g.windowsSkipped)"]
             }
+            // ADR 0127 gated segment peak (only when the gate is on: off by default).
+            if g.peakGate { p.append("peak_gained=\(g.peakGained)") }
         }
         return "echo timing: " + p.joined(separator: " ")
     }
@@ -91,6 +93,7 @@ public struct DictationTiming: Sendable, Equatable {
             j["segments"] = g.segments; j["backgroundSegments"] = g.backgroundSegments; j["capCuts"] = g.capCuts
             j["tailDecodeMs"] = g.tailDecodeMs; j["backlogWaitMs"] = g.backlogWaitMs; j["decodeFailures"] = g.failures
             j["cutWindows"] = g.cutWindows; j["windowFixes"] = g.windowFixes; j["windowsSkipped"] = g.windowsSkipped
+            if g.peakGate { j["peakGained"] = g.peakGained }
         }
         return j
     }
