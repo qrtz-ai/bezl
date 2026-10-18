@@ -40,6 +40,14 @@ struct NoScreenPerms: PermissionsProvider {
     func request(_ p: OsPermission) async {}
 }
 
+/// Up to 1 s for the tap to deliver (it starts in the background).
+func tapStarted(_ tap: FakeTap) async {
+    for _ in 0..<200 {
+        if tap.cb.value != nil { return }
+        try? await Task.sleep(nanoseconds: 5_000_000)
+    }
+}
+
 final class DictationEchoTests: XCTestCase {
     static let n = 1360
     /// The known sentence the Mac plays: a 0.5 sine.
@@ -75,14 +83,6 @@ final class DictationEchoTests: XCTestCase {
         await c.handle(.dictationStop(id: "d1"))
     }
 
-    func waitFor(_ cond: @Sendable () -> Bool) async {
-        var tries = 0
-        while tries < 200, !cond() {
-            tries += 1
-            try? await Task.sleep(nanoseconds: 5_000_000)
-        }
-    }
-
     func testWithoutAGateTheSentenceOnTheSpeakersIsTyped() async {
         let (c, out, _) = controller(tap: nil)
         await dictate(c, system: nil)
@@ -95,7 +95,7 @@ final class DictationEchoTests: XCTestCase {
         // Two short presses first: each starts and stops its own tap.
         for id in ["p1", "p2"] {
             await c.handle(.dictationStart(id: id))
-            await waitFor { tap.cb.value != nil }
+            await tapStarted(tap)
             await c.handle(.dictationCancel(id: id))
             await c.dictation.echo?.settled()
         }
@@ -103,7 +103,7 @@ final class DictationEchoTests: XCTestCase {
 
         // The real run: the tap is up before the first mic block.
         await c.handle(.dictationStart(id: "d1"))
-        await waitFor { tap.cb.value != nil }
+        await tapStarted(tap)
         for k in 0..<12 {
             let sys = (9...10).contains(k) ? silence : sentence(k)
             tap.cb.value?(sys)
