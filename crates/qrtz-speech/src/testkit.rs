@@ -189,17 +189,32 @@ impl Server {
                     if over {
                         body.extend_from_slice(&[0u8; 1000]);
                     }
-                    let (status, start) = match range
+                    // `bytes=N-` and `bytes=a-b` (closed, inclusive), answered 206 with a Content-Range.
+                    let want = range
                         .as_deref()
                         .and_then(|r| r.strip_prefix("bytes="))
-                        .and_then(|r| r.trim_end_matches('-').parse::<usize>().ok())
-                    {
-                        Some(n) if n < body.len() => ("206 Partial Content", n),
-                        _ => ("200 OK", 0),
+                        .and_then(|r| {
+                            let (a, b) = r.split_once('-')?;
+                            let a = a.parse::<usize>().ok()?;
+                            let b = if b.is_empty() {
+                                body.len().checked_sub(1)?
+                            } else {
+                                b.parse::<usize>().ok()?
+                            };
+                            (a <= b && a < body.len()).then_some((a, b.min(body.len() - 1)))
+                        });
+                    let (status, start, end) = match want {
+                        Some((a, b)) => ("206 Partial Content", a, b + 1),
+                        None => ("200 OK", 0, body.len()),
                     };
-                    let part = &body[start..];
+                    let part = &body[start..end];
+                    let extra = if want.is_some() {
+                        format!("Content-Range: bytes {start}-{}/{}\r\n", end - 1, body.len())
+                    } else {
+                        String::new()
+                    };
                     let head = format!(
-                        "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        "HTTP/1.1 {status}\r\nContent-Length: {}\r\n{extra}Connection: close\r\n\r\n",
                         part.len()
                     );
                     let _ = c.write_all(head.as_bytes()).await;

@@ -106,6 +106,56 @@ impl Downloader {
         Ok(Some(out))
     }
 
+    /// Bytes `start..start+len` of `<base>/<path>` (ADR 0157's package fetcher: whole blobs in parallel ranges,
+    /// resumed range by range). The host must answer 206 with exactly `len` bytes, or 200 with the whole body when
+    /// that is exactly the range asked for; anything longer is cut off and refused. The caller checks the sha256.
+    /// A pause stops it between body chunks (`Paused`; the range is fetched again on resume).
+    pub async fn fetch_range(
+        &self,
+        path: &str,
+        start: u64,
+        len: u64,
+        ctl: &DownloadControl,
+    ) -> Result<Vec<u8>, SpeechError> {
+        if len == 0 {
+            return Ok(vec![]);
+        }
+        let r = self
+            .client
+            .get(format!("{}/{path}", self.base))
+            .header(
+                reqwest::header::RANGE,
+                format!("bytes={start}-{}", start + len - 1),
+            )
+            .send()
+            .await
+            .map_err(|e| SpeechError::Network(e.to_string()))?;
+        let st = r.status();
+        let whole = st == reqwest::StatusCode::OK && start == 0;
+        if st != reqwest::StatusCode::PARTIAL_CONTENT && !whole {
+            return Err(SpeechError::Network(format!("{path}: http {st} for a range")));
+        }
+        if r.content_length().is_some_and(|n| n != len) {
+            return Err(SpeechError::Network(format!("{path}: range of the wrong length")));
+        }
+        let mut out = Vec::with_capacity(len.min(16 << 20) as usize);
+        let mut s = r.bytes_stream();
+        while let Some(c) = s.next().await {
+            if ctl.is_paused() {
+                return Err(SpeechError::Paused);
+            }
+            let c = c.map_err(|e| SpeechError::Network(e.to_string()))?;
+            if (out.len() + c.len()) as u64 > len {
+                return Err(SpeechError::TooLarge);
+            }
+            out.extend_from_slice(&c);
+        }
+        if out.len() as u64 != len {
+            return Err(SpeechError::Network(format!("{path}: short range")));
+        }
+        Ok(out)
+    }
+
     /// Download every file of `m` into `staging` (resuming `.part` files, skipping finished ones). Each file is
     /// capped at its manifest size and checked against its sha256 before it is renamed into place.
     pub async fn download_bundle(
