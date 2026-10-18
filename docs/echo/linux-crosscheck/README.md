@@ -85,3 +85,19 @@ bash seg/grid.sh                          # every row of §11; seg/table.py prin
 Flags: `--whole`, `--silence MS`, `--cap S`, `--overlap S`, `--ovmode all|cap` (overlap on every cut, or after cap
 cuts only), `--stitch mid|dedupe`, `--retry` (re-decode a blank segment from its cut, without the overlap),
 `--pause2 MS --after S` (a shorter pause once the segment is that long), `--minseg S`, `--pad S`, `--nosave` (don't write the cache, for re-scoring next to a running job).
+
+Non-speech release tails (cycle 42, ADR 0129, tuning §16): `nonspeech.py` builds dictations of one utterance, a
+500 ms pause and 1.5 s of a non-speech sound as the release tail (breath, key clicks, a mouth click, real
+LibriSpeech room tone; `--bg` puts room tone under everything so the VAD floor sees the room), at five peak levels,
+on a normal and a ×0.1 mic, and decodes the helper's segments plain and with the gated peak (ADR 0127). It counts
+tails Parakeet puts words on and the insertions. `tailguard.py` scores a minimum-speech-frames rule on the tail
+(refuted); `confguard.py` and `confwords.py` read Parakeet's per-token confidence (`ys_log_probs`) of
+hallucinated tails, real long tails, short utterances and one-word tails. Caches: `seg/cache-ns*.json`.
+
+```bash
+venv/bin/python seg/nonspeech.py selfcheck                       # peak_gain = SegmentPeakTests.swift
+venv/bin/python seg/nonspeech.py --n 60 --out results/c42-ns-a.json
+venv/bin/python seg/nonspeech.py --n 60 --kinds room --out results/c42-ns-room.json
+venv/bin/python seg/nonspeech.py --n 60 --bg --out results/c42-ns-bg.json
+venv/bin/python seg/tailguard.py && venv/bin/python seg/confguard.py && venv/bin/python seg/confwords.py
+```
