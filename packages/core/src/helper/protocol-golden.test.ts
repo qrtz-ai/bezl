@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { HelperToHost, HostToHelper, parseHelperLine } from './protocol';
 
-// Shared contract with the Swift helper: native/qrtz-helper/Tests/QrtzHelperCoreTests/ProtocolGoldenTests.swift
+// Shared contract with the Swift helper: native/qrtz-helper/Tests/QrtzSharedTests/ProtocolGoldenTests.swift
 // round-trips these same files byte-for-byte.
 const dir = path.resolve(
   __dirname,

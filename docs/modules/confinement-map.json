@@ -22,6 +22,7 @@
     "QrtzHelperCore": "monolith",
     "QrtzCtrl": "ctrl",
     "QrtzGateProbe": "shared",
+    "QrtzShared": "shared",
     "qrtz-echo": "echo",
     "qrtz-nano": "nano",
     "qrtz-ctrl": "ctrl"

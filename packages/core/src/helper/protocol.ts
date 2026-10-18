@@ -27,7 +27,7 @@ export const CAPTURE_SILENCE = { floorRms: 0.0003, afterMs: 60_000 } as const;
 /**
  * Wire protocol between the app (host) and the native Swift helper (`qrtz-helper`).
  * Transport: newline-delimited JSON over stdio. One message per line.
- * This file is the source of truth; the Swift side mirrors it (native/qrtz-helper/Sources/Protocol.swift).
+ * This file is the source of truth; the Swift side mirrors it (native/qrtz-helper/Sources/QrtzShared/Protocol.swift).
  */
 export const HELPER_PROTOCOL_VERSION = 1;
 

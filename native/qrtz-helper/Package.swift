@@ -33,13 +33,16 @@ let package = Package(
     ],
     dependencies: platformDeps,
     targets: [
-        .target(name: "QrtzHelperCore"),
+        // ADR 0146 M1.5: the wire protocol and the module-agnostic helpers, shared by every module app (owner: shared).
+        .target(name: "QrtzShared"),
+        .testTarget(name: "QrtzSharedTests", dependencies: ["QrtzShared"]),
+        .target(name: "QrtzHelperCore", dependencies: ["QrtzShared"]),
         .executableTarget(
             name: "qrtz-helper", dependencies: execDeps,
             // Apple framework types (AVAudioPCMBuffer, AXUIElement, SCStream) are not Sendable-annotated consistently
             // across SDKs; Swift 5 mode keeps strict-concurrency findings as warnings so SDK drift can't break the build.
             swiftSettings: [.swiftLanguageMode(.v5)]),
-        .testTarget(name: "QrtzHelperCoreTests", dependencies: ["QrtzHelperCore"]),
+        .testTarget(name: "QrtzHelperCoreTests", dependencies: ["QrtzHelperCore", "QrtzShared"]),
         // ctrl (ADR 0100): the never-takes-over-the-ui guard, policy and background actions. Its own module, kept
         // apart from the echo/nano code; Foundation-only parts build on Linux, Sources/QrtzCtrl/mac on macOS only.
         // The executable links it only to route `ctrl.*` lines to it (ADR 0110).

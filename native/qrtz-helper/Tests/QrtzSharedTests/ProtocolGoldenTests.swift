@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import QrtzHelperCore
+@testable import QrtzShared
 
 /// Shared contract with packages/core/src/helper/protocol-golden.test.ts (zod validates the same files).
 final class ProtocolGoldenTests: XCTestCase {

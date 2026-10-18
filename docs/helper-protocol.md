@@ -2,7 +2,7 @@
 
 The wire format is newline-delimited JSON over stdio. The source of truth is
 `packages/core/src/helper/protocol.ts`, mirrored in Swift by
-`native/qrtz-helper/Sources/QrtzHelperCore/Protocol.swift`. Golden lines live in
+`native/qrtz-helper/Sources/QrtzShared/Protocol.swift`. Golden lines live in
 `native/qrtz-helper/Fixtures/protocol/*.jsonl`, and the generated JSON schema is in `contracts/helper-protocol.json`.
 This document covers two areas the per-message schema can't express:
 
