@@ -37,6 +37,9 @@ public struct DictationTiming: Sendable, Equatable {
     /// Echo gate: mic blocks held down / gated blocks seen (0/0 = no gate ran).
     public var gateDucked = 0
     public var gateBlocks = 0
+    /// The press opened the mic before the host's `dictation.start` (armed): `preRollMs` is then the head that the
+    /// round trip would have cut off.
+    public var armed = false
 
     public init() {}
 
@@ -58,6 +61,7 @@ public struct DictationTiming: Sendable, Equatable {
         if finalTimedOut { p.append("final_timed_out=1") }
         if appendHeld { p.append("append_held=1") }
         if gateBlocks > 0 { p.append("gate_ducked=\(gateDucked)/\(gateBlocks)") }
+        if armed { p.append("armed=1") }
         return "echo timing: " + p.joined(separator: " ")
     }
 
@@ -69,7 +73,7 @@ public struct DictationTiming: Sendable, Equatable {
             "tailMs": tailMs, "drainMs": drainMs, "closeMs": closeMs, "finalizeMs": finalizeMs,
             "releaseToStoppedMs": releaseToStoppedMs, "queuedAtReleaseMs": queuedAtReleaseMs, "drained": drained,
             "finalTimedOut": finalTimedOut, "appendHeld": appendHeld, "words": words,
-            "gateDucked": gateDucked, "gateBlocks": gateBlocks,
+            "gateDucked": gateDucked, "gateBlocks": gateBlocks, "armed": armed,
         ]
     }
 }

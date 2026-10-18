@@ -43,7 +43,41 @@ final class FakeInsertion: InsertionBackend, @unchecked Sendable {
     }
 }
 
+/// Hears the last word only when the release pad reached it before finish() (a streaming recogniser's last chunk).
+final class PadNeedingASR: StreamingTranscriber, @unchecked Sendable {
+    let name = "pad-needing"
+    let padSamples: Int
+    private let lock = NSLock()
+    private var heard = 0, trailingZeros = 0
+    init(padMs: Int) { padSamples = 16 * padMs }
+    func prepare() async throws {}
+    func append(_ s: [Float]) async {
+        lock.withLock {
+            if s.allSatisfy({ $0 == 0 }) { trailingZeros += s.count } else { heard += s.count; trailingZeros = 0 }
+        }
+    }
+    func transcript() async -> String { lock.withLock { heard > 0 ? "hello" : "" } }
+    func finish() async -> String { lock.withLock { heard == 0 ? "" : trailingZeros >= padSamples ? "hello world" : "hello" } }
+    func reset() async { lock.withLock { heard = 0; trailingZeros = 0 } }
+}
+
 final class DictationTests: XCTestCase {
+    func testAnAbortPadsBeforeFinishLikeARelease() async {
+        // N164: a mic lost mid-dictation keeps the last word (the pad goes in before finish()).
+        let out = Box<[HelperMessage]>([])
+        let mic = FakeMic(), asr = PadNeedingASR(padMs: 640)
+        let e = DictationEngine(mic: mic, transcribers: [asr], inserter: nil, hotkeys: nil, send: { m in out.mutate { $0.append(m) } },
+                                now: { 0 }, tail: DictationTail(tailMs: 0, padMs: 640))
+        await e.start(id: "d1")
+        await e.onSamples([Float](repeating: 0.2, count: 3_200))
+        await e.abort(reason: .micLost)
+        let stopped = out.value.compactMap { m -> (String, DictationStopReason?)? in
+            if case .dictationStopped(_, let t, _, let r) = m { (t, r) } else { nil }
+        }
+        XCTAssertEqual(stopped.first?.0, "hello world")
+        XCTAssertEqual(stopped.first?.1, .micLost)
+    }
+
     func testPreRollKeepsOnlyTheLastWindow() {
         var b = PreRollBuffer(capacity: 4)
         b.append([1, 2, 3]); b.append([4, 5, 6])
@@ -67,17 +101,43 @@ final class DictationTests: XCTestCase {
         var r = await TextInserter(backend: be, restoreDelayMs: 0).insert("Hi.", restoreClipboard: true)
         XCTAssertEqual(r.method, .axValue)
         be.axValue = false; be.log = []
-        r = await TextInserter(backend: be, restoreDelayMs: 0).insert("Hi.", restoreClipboard: true)
+        let ins = TextInserter(backend: be, restoreDelayMs: 0)
+        r = await ins.insert("Hi.", restoreClipboard: true)
         XCTAssertEqual(r.method, .paste); XCTAssertTrue(r.ok)
+        await ins.restored()
         XCTAssertEqual(be.log, ["sel", "val", "cmd-v", "restore"])
         XCTAssertEqual(be.clipboard, "user clipboard")
     }
 
     func testPasteDoesNotClobberAClipboardWrittenMeanwhile() async {
         let be = FakeInsertion(); be.axSelected = false; be.axValue = false; be.otherWriterDuringPaste = true
-        let r = await TextInserter(backend: be, restoreDelayMs: 0).insert("Hi.", restoreClipboard: true)
+        let ins = TextInserter(backend: be, restoreDelayMs: 0)
+        let r = await ins.insert("Hi.", restoreClipboard: true)
         XCTAssertEqual(r.method, .paste)
+        await ins.restored()
         XCTAssertEqual(be.clipboard, "copied meanwhile")
+    }
+
+    /// Item 3 (docs/echo/dictation-tuning.md): the paste fallback answers at Cmd-V; the clipboard comes back later.
+    func testPasteAnswersBeforeTheClipboardRestore() async {
+        let be = FakeInsertion(); be.axSelected = false; be.axValue = false
+        let ins = TextInserter(backend: be, restoreDelayMs: 1_000)
+        let r = await ins.insert("Hi.", restoreClipboard: true)
+        XCTAssertEqual(r.method, .paste); XCTAssertTrue(r.ok)
+        XCTAssertFalse(be.log.contains("restore"), "insert.result must not wait for the restore")
+        XCTAssertEqual(be.clipboard, "Hi.")
+        await ins.restored()
+        XCTAssertEqual(be.clipboard, "user clipboard")
+    }
+
+    /// A second paste right after the first waits for the first restore, so the user's clipboard survives both.
+    func testBackToBackPastesKeepTheUsersClipboard() async {
+        let be = FakeInsertion(); be.axSelected = false; be.axValue = false
+        let ins = TextInserter(backend: be, restoreDelayMs: 50)
+        _ = await ins.insert("One.", restoreClipboard: true)
+        _ = await ins.insert("Two.", restoreClipboard: true)
+        await ins.restored()
+        XCTAssertEqual(be.clipboard, "user clipboard")
     }
 
     func testPasteFailureReportsAndRestores() async {

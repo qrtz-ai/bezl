@@ -64,18 +64,29 @@ public enum PCM16 {
 
 /// Inserts text into the focused app: AX selected text (replaces the selection / types at the caret), then AX value
 /// splice, then pasteboard + Cmd-V with the user's clipboard put back afterwards.
+///
+/// The paste fallback answers as soon as Cmd-V is posted (the text is in): the user's clipboard is put back
+/// `restoreDelayMs` later in the background. A next insert waits for that restore before it touches the pasteboard,
+/// so back-to-back pastes never lose the user's clipboard.
 public final class TextInserter: @unchecked Sendable {
     let backend: InsertionBackend
     let restoreDelayNs: UInt64
+    private let lock = NSLock()
+    private var pendingRestore: Task<Void, Never>?
     public init(backend: InsertionBackend, restoreDelayMs: Int = 250) {
         self.backend = backend; self.restoreDelayNs = UInt64(restoreDelayMs) * 1_000_000
     }
+
+    /// The clipboard restore of the last paste, if one is still waiting (tests, shutdown).
+    public func restored() async { await lock.withLock { pendingRestore }?.value }
 
     public func insert(_ text: String, restoreClipboard: Bool) async -> (method: InsertMethod, ok: Bool, app: String?, error: String?) {
         let app = backend.focusedAppName()
         guard !text.isEmpty else { return (.none, true, app, nil) }
         if backend.axSetSelectedText(text) { return (.axSelectedText, true, app, nil) }
         if backend.axInsertIntoValue(text) { return (.axValue, true, app, nil) }
+        // The previous paste's restore first: its snapshot is the user's clipboard, not our text.
+        await restored()
         let snap = restoreClipboard ? backend.pasteboardSnapshot() : nil
         backend.pasteboardSetString(text)
         let ours = backend.pasteboardChangeCount()
@@ -85,9 +96,13 @@ public final class TextInserter: @unchecked Sendable {
         }
         if restoreClipboard {
             // Give the target app time to read the pasteboard, then put the user's clipboard back unless
-            // something else wrote to it meanwhile.
-            try? await Task.sleep(nanoseconds: restoreDelayNs)
-            if backend.pasteboardChangeCount() == ours { backend.pasteboardRestore(snap) }
+            // something else wrote to it meanwhile. Not awaited: insert.result goes out now.
+            let backend = self.backend, delay = restoreDelayNs
+            let t = Task {
+                try? await Task.sleep(nanoseconds: delay)
+                if backend.pasteboardChangeCount() == ours { backend.pasteboardRestore(snap) }
+            }
+            lock.withLock { pendingRestore = t }
         }
         return (.paste, true, app, nil)
     }
@@ -184,6 +199,10 @@ public actor DictationEngine {
     var pushKey = ""
     var consumeFn = true
     var preRoll = PreRollBuffer(capacity: 16_000 * 300 / 1000)
+    var preRollMs = 300
+    /// The push key went down and the mic was opened for it before the host's `dictation.start` (`arm`): the ring
+    /// holds everything since the press (up to `armMaxMs`), and the next start takes it as its pre-roll.
+    var armed = false
     var micRunning = false
     /// Set by HelperController: the session arbiter owns the mic lifecycle (attachMic/detachMic per its
     /// mic.subscribe/unsubscribe:dictation effects) and configure/start/stop never touch the mic themselves.
@@ -239,7 +258,8 @@ public actor DictationEngine {
 
     public func configure(warmMic: Bool, preRollMs: Int, streamAudio: Bool, pushKey: String, consumeFn: Bool = true) {
         self.warmMic = warmMic; self.streamAudio = streamAudio
-        preRoll.setCapacity(16_000 * preRollMs / 1000)
+        self.preRollMs = preRollMs
+        if !armed { preRoll.setCapacity(16_000 * preRollMs / 1000) }
         if pushKey != self.pushKey || consumeFn != self.consumeFn {
             hotkeys?.stop()
             self.pushKey = pushKey
@@ -331,6 +351,27 @@ public actor DictationEngine {
         }
     }
 
+    /// The mic can be opened for a press: not already warm, and no dictation listening (one still finishing is
+    /// fine: talk queues the press until it is done, N110).
+    public var canArm: Bool { !warmMic && mic != nil && (session == nil || session?.stopping == true) }
+
+    /// Item 2 (docs/echo/dictation-tuning.md): the push key is down. Everything the mic hears from now on is kept
+    /// (up to `maxMs`) for the dictation the host is about to start, so its first word isn't lost to the round trip
+    /// (and the host's engine handshake) before `dictation.start`. The controller subscribes the reader.
+    public func arm(maxMs: Int) {
+        armed = true
+        _ = preRoll.drain()  // nothing from before the press
+        preRoll.setCapacity(16 * max(maxMs, preRollMs))
+    }
+
+    /// The press never became a dictation: back to the configured pre-roll.
+    public func disarm() {
+        guard armed else { return }
+        armed = false
+        _ = preRoll.drain()
+        preRoll.setCapacity(16_000 * preRollMs / 1000)
+    }
+
     public func start(id: String) async {
         if session != nil { send(.log(level: .warn, msg: "dictation.start while dictating; ignored")); return }
         guard mic != nil else { send(.error(code: "dictation.mic", message: "no microphone source", fatal: false)); return }
@@ -351,6 +392,10 @@ public actor DictationEngine {
             return
         }
         let pre = preRoll.drain()
+        if armed {
+            armed = false; s.timing.armed = true
+            preRoll.setCapacity(16_000 * preRollMs / 1000)
+        }
         s.timing.asr = s.transcriber?.name ?? ""
         s.timing.preRollMs = pre.count / 16
         session = s
@@ -617,7 +662,9 @@ public actor DictationEngine {
         let idle = await close(limitMs: tail.drainTimeoutMs)
         var text = ""
         if let tr = s.transcriber {
-            text = (idle ? await tr.finish() : s.lastPartial).trimmingCharacters(in: .whitespacesAndNewlines)
+            // N164: the same pad + finish as a release (bounded like it), so an abort keeps the last word too.
+            let limit = tail.finalizeLimitMs(audioMs: s.samples / 16, queuedMs: 0)
+            text = (idle ? await finalText(tr, limitMs: limit, partial: s.lastPartial) : s.lastPartial).trimmingCharacters(in: .whitespacesAndNewlines)
             for e in s.segmenter.flush(cumulative: text, nowMs: now() - s.startMs) { send(.dictationAsr(id: s.id, event: e)) }
         }
         session = nil

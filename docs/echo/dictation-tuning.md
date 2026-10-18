@@ -195,3 +195,52 @@ How to read it:
 Reproduce it: [`docs/echo/linux-crosscheck/`](linux-crosscheck/README.md) (`run.py`, `evalset.py`, `run-all.sh`
 for every row; dev-box only, models and LibriSpeech fetched once, nothing over the network at run time). Field
 meanings are in its README. The box copy with per-utterance hypotheses is `/workspace/echo-linux/results/*.json`.
+
+## 7. Cycle 33: tail vs pad, cold head, resampler (Linux, ADR 0104)
+
+Same harness and 300 utterances as §6, three runs at a time with 2 threads on a box loaded to ~15, so only the
+ordering of the decode times carries over. The Mac bench (`echo-bench.sh --variants shipped,tail-150,pad-1120,
+cold-mic-150,cold-mic-300,warm-preroll-300 --no-engines`) is still the gate for any default change.
+
+**Tail vs pad, emulating FluidAudio** (`--chunkpad 8960`: after the pad, `finish()` pads the remainder to one more
+chunk, which §6's rows leave out). "keep" is the audio kept after the last speech frame: 90 ms ≈ a release right at
+the word's end plus the 50 ms tail; 190 ms = the 150 ms tail.
+
+| Run (quick release)                 | all WER | last word missed | final decode p50 / p90 (CPU) | release cost on the Mac           |
+| ----------------------------------- | ------: | ---------------: | ---------------------------: | --------------------------------- |
+| `fa-keep90-pad640` (shipped 50/640) |  4.21 % |            8.7 % |                 373 / 732 ms | today                             |
+| `fa-keep190-pad640` (tail 150)      |  4.14 % |            7.7 % |                 343 / 689 ms | +100 ms (the tail is a real wait) |
+| `fa-keep90-pad1120` (pad 1120)      |  4.09 % |            6.3 % |                 649 / 977 ms | one more chunk decode, ~14 ms est |
+
+The pad wins on both counts: 28 % fewer last-word misses (8.7 → 6.3 %) for one extra 560 ms chunk through the
+encoder, against the tail's 11 % for a fixed +100 ms. The tail is out on latency alone. The pad's cost on the CPU
+(+250-275 ms here, loaded) says nothing about the Neural Engine; it ships only when the Mac bench shows the miss rate
+down and `releaseToStoppedMs` p90 up by less than 40 ms (review §12.31 (a)).
+
+**Cold head** (`--headdrop`: leading silence cut to 20 ms before the first speech, then this much dropped, like a
+mic that opens after the user starts talking):
+
+| Run            | all WER | first word missed |
+| -------------- | ------: | ----------------: |
+| `head-drop0`   |  4.07 % |             4.3 % |
+| `head-drop150` |  4.77 % |            16.7 % |
+| `head-drop300` |  6.95 % |            41.7 % |
+
+Every 150 ms of mic start the user talks into costs ~12 points of first-word misses. The press now opens the mic
+(ADR 0104), so the host's round trip and engine handshake no longer count; the device's own start still does, and
+the `armed=1` timing lines' `preroll_ms` shows how much was saved per dictation.
+
+**Resampler** (`--hf 10`: the clip at 48 kHz with 8-20 kHz noise at 10 dB SNR, a fan, hiss or sibilants above the
+band, then back to 16 kHz):
+
+| Run                                               | test-clean | test-other | all WER | last word missed |
+| ------------------------------------------------- | ---------: | ---------: | ------: | ---------------: |
+| `hf10-linear` (today's `DSP.Resampler`)           |     4.75 % |    11.82 % |  8.02 % |           12.7 % |
+| `hf10-poly` (band-limited, like AVAudioConverter) |     2.91 % |     5.46 % |  4.09 % |            7.7 % |
+
+Linear interpolation folds everything above 8 kHz back into the band the model listens to; a band-limited
+converter drops it (4.09 % is the clean 4.07 %). The size depends on how much the room puts above 8 kHz, but the
+direction is not in doubt. The helper change (AVAudioConverter, mastering quality, stateful per block in
+`MonoConverter`) and the bench's `--resample linear|converter` comparison are written and wait for a Mac build.
+Harness flags (`--keep`, `--headdrop`, `--hf`, `--resampler`, `--chunkpad` after the pad) are in the box copy,
+`/workspace/echo-linux/run.py`.

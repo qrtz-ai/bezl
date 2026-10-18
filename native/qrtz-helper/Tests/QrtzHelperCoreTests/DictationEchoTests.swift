@@ -214,4 +214,27 @@ final class DictationEchoTests: XCTestCase {
         XCTAssertEqual(tap.calls.value, [])
         XCTAssertEqual(stoppedText(out.value), "echo u3 echo u4 echo")
     }
+
+    func testARunningDictationKeepsItsGateWhenTheSettingChanges() {
+        // N158: talk.echoGate is latched at begin(); a change applies from the next dictation.
+        let ref = EchoReference()
+        ref.attach("recording")
+        let echo = DictationEcho(reference: ref, tap: nil, permitted: { true })
+        func block(_ k: Int) -> Float {
+            ref.push(sentence(k), from: "recording")
+            return Float(DSP.rms(echo.process(sentence(k).map { 0.15 * $0 })))
+        }
+        func raw(_ k: Int) -> Float { Float(DSP.rms(sentence(k).map { 0.15 * $0 })) }
+        echo.begin()
+        for k in 0..<4 { _ = block(k) }
+        XCTAssertLessThan(block(4), raw(4) / 4, "gated")
+        echo.enabled = false
+        XCTAssertLessThan(block(5), raw(5) / 4, "still gated after the setting went off mid-dictation")
+        echo.end()
+        echo.begin()
+        XCTAssertEqual(block(6), raw(6), accuracy: 1e-4, "the next dictation is raw")
+        echo.enabled = true
+        XCTAssertEqual(block(7), raw(7), accuracy: 1e-4, "and stays raw until it ends")
+        echo.end()
+    }
 }

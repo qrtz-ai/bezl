@@ -160,6 +160,12 @@ The helper carries out exactly the `mic.subscribe` / `mic.unsubscribe` effects t
 - A mic revoke drops the reader (and the hub's device) but keeps `warm`. After `dropAll` with no dictation running,
   the engine is told `micDropped()`, so it forgets the dead reader. When the mic is granted again, the arbiter
   resubscribes the warm reader, so the next dictation hears audio. A re-grant never resubscribes a running recording.
+- The press arms the mic (ADR 0104): on its own `hotkey down`, with the mic not warm and no dictation listening, the
+  helper holds `warm` on top of the host's setting, so the reader is subscribed before `dictation.start` arrives and
+  the start's pre-roll is everything since the press (up to 10 s). The hold ends with that dictation's stop or
+  cancel, or 2 s after the key comes up when no start came. No protocol change.
+- `insert.result` for the paste fallback is sent at Cmd-V; the user's clipboard is put back 250 ms later in the
+  background (the next insert waits for it).
 
 ### The pill (ADR 0092)
 

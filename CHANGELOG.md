@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **echo catches your first word (ADR 0104):** pressing fn now opens the microphone right away, so the words you start saying while echo gets ready are kept. The mic indicator lights at the press, as before, and goes out after the dictation; the mic is not kept open between dictations.
+- **Pasted text lands faster:** when echo has to paste, it reports the text as inserted as soon as it's pasted, and puts your clipboard back a moment later in the background (also when you dictate twice in a row).
+- **Changing "ignore the speakers" mid-dictation no longer changes the dictation that is running (N158).**
 - **Switching microphones mid-sentence no longer cuts echo or a meeting off (N138):** when AirPods connect or drop, or you pick another input, qrtz carries on with the new microphone. Your dictation keeps the words from both sides of the switch. If no microphone comes back, echo inserts what it heard, and a meeting carries on with system audio and notes that the mic was lost.
 - **echo keeps your last words when the Mac is busy (N139):** if speech recognition is running slowly when you release fn (for example during a meeting recording), echo now waits for it within its usual time limit and inserts the full text, instead of the shorter preview.
 - **A setting for echo's speaker filter (ADR 0097):** settings → talk → "ignore the speakers" (on by default). It only acts when the Mac plays through its speakers, not on headphones. While it listens to the speakers, macOS may show its audio recording indicator for the length of the dictation. Turn it off to keep the raw mic.

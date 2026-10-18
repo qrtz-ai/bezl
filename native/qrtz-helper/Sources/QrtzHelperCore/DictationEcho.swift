@@ -84,6 +84,9 @@ public final class DictationEcho: @unchecked Sendable {
     public var onLog: (@Sendable (LogLevel, String) -> Void)?
     /// N153: `talk.echoGate` (`dictation.configure{echoGate}`). Off: no gate and no tap, the raw mic.
     public var enabled = true
+    /// N158: `enabled` as it was at `begin()`, until `end()`: a settings change mid-dictation applies from the next
+    /// dictation, so a running one keeps its gate (and its tap). nil outside a dictation.
+    private var latched: Bool?
 
     public init(reference: EchoReference, tap: SystemAudioTap?, permitted: @escaping @Sendable () -> Bool) {
         self.reference = reference; self.tap = tap; self.permitted = permitted
@@ -94,6 +97,7 @@ public final class DictationEcho: @unchecked Sendable {
     @discardableResult
     public func begin() -> String? {
         blocks = 0; ducked = 0
+        latched = enabled
         guard enabled else { return nil }
         // In a meeting the warm mic's blocks already taught the gate the echo path: keep it.
         if reference.has("recording") { return "echo gate: the meeting's system audio" }
@@ -120,6 +124,7 @@ public final class DictationEcho: @unchecked Sendable {
     public func end() {
         if blocks > 0 { onLog?(.info, "echo gate: \(ducked) of \(blocks) mic blocks held down") }
         blocks = 0; ducked = 0
+        latched = nil
         guard let t = tapTask, let tap else { return }
         tapTask = nil
         reference.detach("dictation", token: tapToken)
@@ -128,7 +133,7 @@ public final class DictationEcho: @unchecked Sendable {
 
     /// One live mic block, gated when a tap feeds the reference.
     public func process(_ mic: [Float]) -> [Float] {
-        guard enabled, let sys = reference.take(mic.count) else { return mic }
+        guard latched ?? enabled, let sys = reference.take(mic.count) else { return mic }
         var m = mic
         gate.process(system: sys, mic: &m)
         blocks += 1

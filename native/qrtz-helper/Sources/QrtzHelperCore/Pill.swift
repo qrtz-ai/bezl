@@ -85,7 +85,19 @@ public final class PillDriver: @unchecked Sendable {
         set { lock.withLock { inserts = newValue } }
     }
 
-    public init(view: PillView, timing: Timing = Timing()) { self.view = view; self.timing = timing }
+    /// Runs `fire` after `ms` (a timeout). Tests pass a manual clock so no test races the wall clock.
+    public typealias After = @Sendable (_ ms: Int, _ fire: @escaping @Sendable () -> Void) -> Void
+    public static let wallClock: After = { ms, fire in
+        Task {
+            try? await Task.sleep(nanoseconds: UInt64(max(0, ms)) * 1_000_000)
+            fire()
+        }
+    }
+    private let after: After
+
+    public init(view: PillView, timing: Timing = Timing(), after: @escaping After = PillDriver.wallClock) {
+        self.view = view; self.timing = timing; self.after = after
+    }
 
     public var state: State { lock.withLock { current } }
     /// The dictation the pill follows (nil: a press the host hasn't started yet).
@@ -116,9 +128,9 @@ public final class PillDriver: @unchecked Sendable {
             let s = state
             guard s != .listening else { return }
             newAttempt(id: nil)
-            // N151: a press during an older dictation's finalizing is queued by talk (N110) until that finalize is
-            // done, so its dictation.start can come as late as the release budget, not within 2 s.
-            go(.listening, timeoutMs: s == .finalizing ? backstopMs : timing.startTimeoutMs)
+            // N151/N157: a press during an older dictation's finalizing or inserting is queued by talk (N110) until
+            // that dictation is done, so its dictation.start can come as late as the release budget, not within 2 s.
+            go(.listening, timeoutMs: s == .finalizing || s == .inserting ? backstopMs : timing.startTimeoutMs)
         case .hotkey(.up):
             guard state == .listening else { return }
             // N145: a press the host never started (refused before dictation.start) can't wait for a stop.
@@ -145,8 +157,7 @@ public final class PillDriver: @unchecked Sendable {
             // processing for it; show this error only if it doesn't come.
             let msg = Self.lower(error ?? "couldn't insert the text")
             let g: Int = lock.withLock { pendingInsertError = msg; return gen }
-            Task { [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(self?.timing.hostFlashWaitMs ?? 0) * 1_000_000)
+            after(timing.hostFlashWaitMs) { [weak self] in
                 guard let self else { return }
                 let m: String? = self.lock.withLock { self.gen == g ? self.pendingInsertError : nil }
                 if let m { self.go(.error(m), timeoutMs: self.timing.errorFlashMs) }
@@ -223,8 +234,7 @@ public final class PillDriver: @unchecked Sendable {
         }
         if changed { view.show(Self.phase(s)) }
         guard let ms = timeoutMs else { return }
-        Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(ms) * 1_000_000)
+        after(ms) { [weak self] in
             guard let self else { return }
             let stale: Bool = self.lock.withLock {
                 // A start timeout only fires if the dictation never started.

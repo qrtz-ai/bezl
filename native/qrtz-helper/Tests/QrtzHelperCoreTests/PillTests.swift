@@ -171,27 +171,53 @@ final class PillDriverTests: XCTestCase {
         XCTAssertEqual(d.state, .listening)
     }
 
-    func testAPressQueuedBehindALongFinalizeDoesntHideAtTheStartTimeout() async {
-        // N151: d2 is pressed while d1 finalizes for longer than the 60 ms start timeout; talk sends d2's start late.
-        var t = fast(); t.finalizeBackstopMs = 1_000
-        let v = FakePillView(), d = PillDriver(view: v, timing: t)
+    func testAPressQueuedBehindALongFinalizeDoesntHideAtTheStartTimeout() {
+        // N151: d2 is pressed while d1 finalizes for longer than the 2 s start timeout; talk sends d2's start late.
+        // A manual clock: no sleeps, nothing races the wall clock.
+        let clock = ManualClock()
+        var t = PillDriver.Timing(); t.finalizeBackstopMs = 10_000
+        let v = FakePillView(), d = PillDriver(view: v, timing: t, after: clock.after)
         d.helper(.hotkey(.down))
         d.host(.dictationStart(id: "d1"))
         d.helper(.dictationStarted(id: "d1", preRollMs: 0))
         d.helper(.hotkey(.up))
         d.helper(.hotkey(.down))
-        await sleep(150)
+        clock.advance(5_000)
         XCTAssertEqual(d.state, .listening, "not hidden at the start timeout")
         d.helper(.dictationStopped(id: "d1", text: "one", durationMs: 500))
         d.host(.dictationStart(id: "d2"))
         d.helper(.dictationStarted(id: "d2", preRollMs: 0))
-        XCTAssertEqual(d.state, .listening)
+        clock.advance(20_000)
+        XCTAssertEqual(d.state, .listening, "a started dictation has no start timeout")
         XCTAssertEqual(v.all, [.listening, .processing, .listening])
-        // A press with nothing in flight still times out at 2 s (60 ms here) if the host never starts it.
-        let d3 = PillDriver(view: FakePillView(), timing: t)
+        // A press with nothing in flight still times out at 2 s if the host never starts it.
+        let c3 = ManualClock()
+        let d3 = PillDriver(view: FakePillView(), timing: t, after: c3.after)
         d3.helper(.hotkey(.down))
-        await sleep(150)
+        c3.advance(1_999)
+        XCTAssertEqual(d3.state, .listening)
+        c3.advance(1)
         XCTAssertEqual(d3.state, .hidden)
+    }
+
+    func testAPressQueuedBehindAnInsertDoesntHideAtTheStartTimeout() {
+        // N157: same while d1 is inserting (talk queues d2 until d1's insert is done).
+        let clock = ManualClock()
+        var t = PillDriver.Timing(); t.finalizeBackstopMs = 10_000; t.insertTimeoutMs = 60_000
+        let d = PillDriver(view: FakePillView(), timing: t, after: clock.after)
+        d.helper(.hotkey(.down))
+        d.host(.dictationStart(id: "d1"))
+        d.helper(.dictationStarted(id: "d1", preRollMs: 0))
+        d.helper(.hotkey(.up))
+        d.helper(.dictationStopped(id: "d1", text: "one", durationMs: 500))
+        XCTAssertEqual(d.state, .inserting)
+        d.helper(.hotkey(.down))
+        clock.advance(5_000)
+        XCTAssertEqual(d.state, .listening, "not hidden at the start timeout")
+        d.host(.dictationStart(id: "d2"))
+        XCTAssertEqual(d.state, .listening)
+        clock.advance(9_999)
+        XCTAssertEqual(d.state, .listening)
     }
 
     func testAColdLoadAfterTheHostsStartDoesntHideThePill() async {
@@ -363,5 +389,33 @@ final class PillWaveTests: XCTestCase {
         let file = try Data(contentsOf: Self.repo.appendingPathComponent("packages/ui/src/fonts/GeistPixel-Circle.woff2"))
         XCTAssertEqual(PillFont.woff2, file, "run native/qrtz-helper/scripts/gen-pill-font.sh")
         XCTAssertEqual(String(decoding: file.prefix(4), as: UTF8.self), "wOF2")
+    }
+}
+
+/// A clock the test moves: `PillDriver`'s timeouts fire in `advance`, in due order, on the test's thread.
+final class ManualClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var now = 0
+    private var seq = 0
+    private var timers: [(due: Int, seq: Int, fire: @Sendable () -> Void)] = []
+
+    var after: PillDriver.After {
+        { [self] ms, fire in lock.withLock { seq += 1; timers.append((now + max(0, ms), seq, fire)) } }
+    }
+
+    func advance(_ ms: Int) {
+        let end = lock.withLock { now + ms }
+        while true {
+            let next: (due: Int, seq: Int, fire: @Sendable () -> Void)? = lock.withLock {
+                guard let i = timers.indices.filter({ timers[$0].due <= end }).min(by: { (timers[$0].due, timers[$0].seq) < (timers[$1].due, timers[$1].seq) })
+                else { return nil }
+                let t = timers.remove(at: i)
+                now = t.due
+                return t
+            }
+            guard let next else { break }
+            next.fire()
+        }
+        lock.withLock { now = end }
     }
 }

@@ -319,8 +319,13 @@ public actor HelperController {
         if pillTiming.finalizeBackstopMs == nil { pillTiming.finalizeBackstopMs = deps.dictationTail.tailMs + deps.dictationTail.maxWaitMs + 1_000 }
         let pill = deps.pill.map { PillDriver(view: $0, timing: pillTiming) }
         let raw = send
-        let send: @Sendable (HelperMessage) -> Void
-        if let pill { send = { m in pill.helper(m); raw(m) } } else { send = raw }
+        let press = PressRelay()
+        self.press = press
+        let send: @Sendable (HelperMessage) -> Void = { m in
+            pill?.helper(m)
+            raw(m)
+            if case .hotkey(let a) = m { press.fire(a) }
+        }
         self.pill = pill
         self.deps = deps; self.send = send; self.now = now
         let st = deps.permissions.status()
@@ -335,7 +340,58 @@ public actor HelperController {
                                          inserter: deps.insertion.map { TextInserter(backend: $0) }, hotkeys: deps.hotkeys, send: send, now: now, managedMic: true,
                                          speech: speech, tail: deps.dictationTail, echo: echo)
         self.summaries = SummarizeService(model: deps.summarizer, send: send)
+        press.set { [weak self] a in Task { await self?.pushKey(a) } }
     }
+
+    // MARK: Armed mic (docs/echo/dictation-tuning.md item 2)
+
+    /// The push key's lines, seen as they are sent (the arm doesn't wait for the host).
+    let press: PressRelay
+    /// `dictation.configure{warmMic}` as the host set it (the arm holds `warm` on top of it).
+    private var configuredWarm = false
+    /// A press opened the mic and no dictation.start has taken it yet.
+    private var armed = false
+    private var armGen = 0
+    /// The arm's mic reader belongs to the dictation that started from it: released at its stop or cancel.
+    private var armHeld = false
+    /// Everything since the press is kept this long for the start (talk can queue a press behind a finishing
+    /// dictation, N110). A press that never starts lets the mic go `armGraceMs` after the key comes up.
+    static let armMaxMs = 10_000
+    static let armGraceMs = 2_000
+
+    func pushKey(_ a: HotkeyAction) async {
+        switch a {
+        case .down:
+            guard !armed, !configuredWarm, !shuttingDown, await dictation.canArm else { return }
+            armed = true; armGen += 1
+            await dictation.arm(maxMs: Self.armMaxMs)
+            _ = await admit(.configure(warmMic: true))
+        case .up:
+            guard armed else { return }
+            let g = armGen
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(Self.armGraceMs) * 1_000_000)
+                await self?.disarmIfUnstarted(g)
+            }
+        }
+    }
+
+    private func disarmIfUnstarted(_ g: Int) async {
+        guard armed, armGen == g else { return }
+        armed = false
+        await dictation.disarm()
+        await releaseArm()
+    }
+
+    /// Back to the host's warm setting (unsubscribes the reader when nothing else holds it).
+    private func releaseArm() async {
+        guard !armed else { return }
+        armHeld = false
+        _ = await admit(.configure(warmMic: configuredWarm))
+    }
+
+    /// Test seam.
+    public var isArmed: Bool { armed }
     /// ADR 0075: summarize requests, off the message queue.
     public let summaries: SummarizeService
     public let dictation: DictationEngine
@@ -398,23 +454,32 @@ public actor HelperController {
             pill?.enabled = showPill ?? true
             pill?.autoInsert = autoInsert ?? true
             await dictation.setEchoGate(echoGate ?? true)
+            configuredWarm = warm
+            if warm, armed { armed = false; armHeld = false; await dictation.disarm() }
             await dictation.configure(warmMic: warm, preRollMs: pre, streamAudio: stream, pushKey: key, consumeFn: consume ?? true)
-            _ = await admit(.configure(warmMic: warm))
+            _ = await admit(.configure(warmMic: warm || armed || armHeld))
             watchPermissions()
         case .dictationStart(let id):
             guard await admit(.cmd("dictation.start"), id: id) else { return }
+            let fromArm = armed
+            if fromArm { armed = false; armHeld = true }
             await dictation.start(id: id)
             // The engine could not start (no source): undo through the arbiter so the reader is released too.
-            if await !dictation.isActive { _ = await admit(.cmd("dictation.cancel")) }
+            if await !dictation.isActive {
+                _ = await admit(.cmd("dictation.cancel"))
+                if armHeld { await releaseArm() }
+            }
             watchPermissions()
         case .dictationStop(let id):
             guard await dictation.activeId == id else { return }
             await dictation.stop(id: id)
             _ = await admit(.cmd("dictation.stop"))
+            if armHeld { await releaseArm() }
         case .dictationCancel(let id):
             guard await dictation.activeId == id else { return }
             await dictation.cancel(id: id)
             _ = await admit(.cmd("dictation.cancel"))
+            if armHeld { await releaseArm() }
         case .insertText(let id, let text, let restore): await dictation.insert(id: id, text: text, restoreClipboard: restore)
         case .pillFlash: break  // the pill driver took it (`pill?.host`); without a native pill there is nothing to show
         case .speechAttach(let sid, let target, let channels):
@@ -915,4 +980,12 @@ public actor HelperController {
         speech.endAll()
         deps.meetings?.stop()
     }
+}
+
+/// Forwards the push key's lines from the send path to the controller (set once its init is done).
+final class PressRelay: @unchecked Sendable {
+    private let lock = NSLock()
+    private var f: (@Sendable (HotkeyAction) -> Void)?
+    func set(_ g: @escaping @Sendable (HotkeyAction) -> Void) { lock.withLock { f = g } }
+    func fire(_ a: HotkeyAction) { lock.withLock { f }?(a) }
 }
