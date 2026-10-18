@@ -1,17 +1,22 @@
-// ADR 0144 gate probe mode for the M1 module apps (ADR 0146 M1.3). Every module app (qrtz-echo, qrtz-nano,
-// qrtz-ctrl) runs `--qrtz-gate-probe <ax|mic|socket|ae|sysaudio>` before anything else, so scripts/modules/mac-gate.sh can
-// launch the real signed bundle through LaunchServices and TCC attributes the check to that bundle. The result is
-// one line in the stand-in probe's format (scripts/modules/gate-probe.swift), `probe <cmd> key=value ...`, written
-// to stdout and to `--out <path>` (default <home>/qrtz-gate-probe.out, the container home when sandboxed).
+// ADR 0144 / ADR 0154 gate probe mode for the extension helpers (ADR 0146 M1.3, M2.5). Every helper (qrtz-echo,
+// qrtz-nano, qrtz-ctrl) runs `--qrtz-gate-probe <ax|mic|socket|ae|sysaudio>` before anything else. Extensions share
+// qrtz's identity (ADR 0154): the host spawns a helper directly and TCC charges its requests to qrtz, so this probe
+// shows what a helper inherits. scripts/modules/mac-gate.sh's gate (h) spawns a helper from the granted host
+// (`probe host spawn <helper> -- --qrtz-gate-probe ax`) and expects qrtz's Accessibility grant; `mic` is its
+// companion (the helper's status should match the host's). The result is one line in the stand-in probe's format
+// (scripts/modules/gate-probe.swift), `probe <cmd> key=value ...`, written to stdout and to `--out <path>` (default
+// <home>/qrtz-gate-probe.out, the container home when sandboxed).
 //
-//   --qrtz-gate-probe ax [--ask]            AXIsProcessTrusted (gate a)
-//   --qrtz-gate-probe mic [--open] [--ask]  microphone authorization; --open tries the default input (gate b)
+//   --qrtz-gate-probe ax [--ask]            AXIsProcessTrusted (gate h: true from qrtz's grant when spawned by qrtz)
+//   --qrtz-gate-probe mic [--open] [--ask]  microphone authorization; --open tries the default input (gate h, with
+//                                           the helper's own device.audio-input entitlement, ADR 0154)
 //   --qrtz-gate-probe socket [<port>]       TCP and UDP connect() to 127.0.0.1:<port> (default 9); loopback only (gate c)
-//   --qrtz-gate-probe ae [--ask]            Automation of System Events: permission, then one read-only event (gate e)
+//   --qrtz-gate-probe ae [--ask]            Automation of System Events: permission, then one read-only event
+//                                           (diagnostic; gate e is retired by ADR 0154)
 //   --qrtz-gate-probe sysaudio [--open] [--ask]
 //                                           screen & system audio recording, the grant echo's speaker gate needs
-//                                           (ADR 0150 N173); --open creates and destroys one process tap, as a
-//                                           dictation does, only when the grant is already there
+//                                           (ADR 0150 N173; qrtz's, inherited); --open creates and destroys one
+//                                           process tap, as a dictation does, only when the grant is already there
 //
 // It never prompts without --ask. Foundation-only; the Apple calls are behind `GateProbeBackend` (mac/ on macOS).
 import Foundation

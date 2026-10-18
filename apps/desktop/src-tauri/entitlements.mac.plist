@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Hardened-runtime entitlements for qrtz.app and the bundled qrtz-helper (M4.7). Signing is wired in M5.3. -->
+<!-- Hardened-runtime entitlements for qrtz.app and the bundled qrtz-helper (M4.7). Signing is wired in M5.3.
+     ADR 0154: one qrtz identity; Apple Events are for ctrl (its helper also carries the key in its own signature). -->
 <plist version="1.0">
 <dict>
   <key>com.apple.security.cs.allow-jit</key><true/>
   <key>com.apple.security.device.audio-input</key><true/>
+  <key>com.apple.security.automation.apple-events</key><true/>
 </dict>
 </plist>

@@ -6,6 +6,8 @@
   <string>qrtz records your side of meetings to transcribe them on-device.</string>
   <key>NSAudioCaptureUsageDescription</key>
   <string>qrtz captures meeting audio to transcribe it on-device.</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>qrtz ctrl sends Apple Events to the apps you ask it to control.</string>
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.productivity</string>
 </dict>

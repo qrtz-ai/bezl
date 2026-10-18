@@ -164,10 +164,13 @@ fn the_manifests_agree_with_the_confinement_map() {
     }
 }
 
-/// ADR 0146 M1.3: every module app exists as a Swift target with its own entitlements file, and its probe mode
-/// takes exactly the launcher's flag and probes (what scripts/modules/mac-gate.sh drives).
+/// ADR 0146 M1.3: every extension helper exists as a Swift executable, and its probe mode takes exactly the
+/// launcher's flag and probes (what scripts/modules/mac-gate.sh drives). ADR 0154: the helpers share qrtz's TCC
+/// identity, but entitlements are per process, so a helper that opens the mic (echo, nano) or sends Apple Events
+/// (ctrl) carries that one entitlement in its own signature (`entitlements/ai.qrtz.<id>.entitlements`; the
+/// offline_graph lint holds it to appTccEntitlements).
 #[test]
-fn every_module_has_an_app_target_entitlements_and_the_launchers_probe_mode() {
+fn every_extension_helper_has_a_target_its_per_process_entitlement_and_the_launchers_probe_mode() {
     use qrtz_modules::launcher::{GATE_PROBES, GATE_PROBE_FLAG};
     let pkg = root().join("native/qrtz-helper");
     let probe = std::fs::read_to_string(pkg.join("Sources/QrtzGateProbe/GateProbe.swift")).unwrap();
@@ -187,10 +190,15 @@ fn every_module_has_an_app_target_entitlements_and_the_launchers_probe_mode() {
             manifest.contains(&format!(".executable(name: \"qrtz-{id}\"")),
             "qrtz-{id} product"
         );
+        let needs = match *id {
+            "ctrl" => "com.apple.security.automation.apple-events",
+            _ => "com.apple.security.device.audio-input",
+        };
+        let ent = std::fs::read_to_string(pkg.join(format!("entitlements/ai.qrtz.{id}.entitlements")))
+            .unwrap_or_default();
         assert!(
-            pkg.join(format!("entitlements/ai.qrtz.{id}.entitlements"))
-                .is_file(),
-            "{id} entitlements"
+            ent.contains(&format!("<key>{needs}</key>")),
+            "qrtz-{id}'s own signature needs {needs}"
         );
     }
 }
