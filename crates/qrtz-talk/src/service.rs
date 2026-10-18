@@ -171,6 +171,10 @@ pub struct HelperTail {
     pub pad_ms: u64,
     pub finalize_timeout_ms: u64,
     pub max_wait_ms: u64,
+    /// N166 (ADR 0107): the helper's `HelperController.armMaxMs`. Since ADR 0104 the press opens the mic, and the
+    /// start takes everything heard since the press as its pre-roll, up to this much. That head is audio the
+    /// helper decodes and counts (`samples`), so the host's wait must count it too.
+    pub arm_max_ms: u64,
     /// Host-side slack on top: the pad's own append on a slow recogniser, the line's trip and scheduling.
     pub slack_ms: u64,
 }
@@ -183,6 +187,7 @@ impl Default for HelperTail {
             pad_ms: 640,
             finalize_timeout_ms: 1500,
             max_wait_ms: 20_000,
+            arm_max_ms: 10_000,
             slack_ms: 1500,
         }
     }
@@ -297,6 +302,12 @@ struct Inner {
     key_held: bool,
     key_down: f64,
     key_up: f64,
+    /// N166: when the push key last went down (a press queued behind a finishing dictation, N110, starts later).
+    press_at: f64,
+    /// N166 (ADR 0107): audio the helper heard before this dictation's start (its armed or warm pre-roll): the
+    /// larger of `dictation.started`'s `preRollMs` and, for a press, the time from the press to the start, both
+    /// bounded by [`HelperTail::arm_max_ms`]. Counted in the stop wait, as the helper counts it.
+    head_ms: f64,
     first_partial: Option<f64>,
     waiters: HashMap<String, oneshot::Sender<Option<Value>>>,
     attempt: Option<Attempt>,
@@ -355,6 +366,8 @@ impl TalkService {
                 key_held: false,
                 key_down: 0.0,
                 key_up: 0.0,
+                press_at: 0.0,
+                head_ms: 0.0,
                 first_partial: None,
                 waiters: HashMap::new(),
                 attempt: None,
@@ -375,6 +388,20 @@ impl TalkService {
     }
     fn mono(&self) -> f64 {
         self.deps().clock.mono_ms()
+    }
+    /// N166: a head the helper may have heard before a start, in `[0, arm_max_ms]` (0 when not finite).
+    fn head_bound(&self, ms: f64) -> f64 {
+        let max = self
+            .deps()
+            .timeouts
+            .helper_tail
+            .map(|t| t.arm_max_ms)
+            .unwrap_or(HelperTail::default().arm_max_ms) as f64;
+        if ms.is_finite() {
+            ms.clamp(0.0, max)
+        } else {
+            0.0
+        }
     }
     fn send(&self, msg: Value) -> bool {
         self.deps().helper.send(&msg)
@@ -556,6 +583,7 @@ impl TalkService {
                 let mut g = self.lock();
                 if action == "down" {
                     g.key_held = true;
+                    g.press_at = self.mono();
                     if g.view.takes_a_start() {
                         g.via_push_key = true;
                         drop(g);
@@ -582,7 +610,18 @@ impl TalkService {
                     }
                 }
             }
-            "dictation.started" => self.resolve(&format!("started:{}", s(m, "id")), m.clone()),
+            "dictation.started" => {
+                let id = s(m, "id");
+                {
+                    // N166: the helper's own count of the head it fed (armed or warm pre-roll).
+                    let mut g = self.lock();
+                    if g.view.id.as_deref() == Some(id.as_str()) {
+                        let pre = self.head_bound(m["preRollMs"].as_f64().unwrap_or(0.0));
+                        g.head_ms = g.head_ms.max(pre);
+                    }
+                }
+                self.resolve(&format!("started:{id}"), m.clone())
+            }
             "dictation.level" => {
                 let mut g = self.lock();
                 if g.view.phase == TalkPhase::Listening {
@@ -949,6 +988,13 @@ impl TalkService {
             }
             g.dictation_helper = g.hellos.max(1);
             g.key_down = self.mono();
+            // N166: a press held through the last dictation's finalizing (N110) was heard by the helper from the
+            // press on (ADR 0104), not from this start.
+            g.head_ms = if from_key {
+                self.head_bound(g.key_down - g.press_at)
+            } else {
+                0.0
+            };
             g.first_partial = None;
             g.view = TalkView {
                 phase: TalkPhase::Listening,
@@ -1038,7 +1084,10 @@ impl TalkService {
             let g = self.lock();
             (
                 g.dictation_helper,
-                self.deps().timeouts.stopped_for(g.key_up - g.key_down),
+                // N166: the helper's audio is the head it heard before the start plus the held time.
+                self.deps()
+                    .timeouts
+                    .stopped_for(g.key_up - g.key_down + g.head_ms),
             )
         };
         let r = tokio::time::timeout(Duration::from_millis(wait_ms), rx).await;
@@ -1238,10 +1287,16 @@ impl TalkService {
                 t => t.to_owned(),
             };
             // Still finalizing, so still this dictation's view and key times (no start is taken until inserting).
-            let times = (g.view.started_at, g.key_down, g.key_up, g.first_partial);
+            let times = (
+                g.view.started_at,
+                g.key_down,
+                g.key_up,
+                g.first_partial,
+                g.head_ms,
+            );
             (text, times)
         };
-        let (text, (started_at, key_down, key_up, first_partial)) = text;
+        let (text, (started_at, key_down, key_up, first_partial, head_ms)) = text;
         if text.trim().is_empty() {
             let mut g = self.lock();
             g.view = g.view.idle_keeping();
@@ -1325,6 +1380,7 @@ impl TalkService {
         tracing::info!(
             engine = entry.engine.as_str(),
             audio_ms = entry.duration_ms,
+            head_ms = head_ms.round(),
             first_partial_ms = ?entry.latency.first_partial_ms,
             final_ms = ?entry.latency.final_ms,
             cleanup_ms = ?entry.latency.cleanup_ms,

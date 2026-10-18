@@ -108,6 +108,8 @@ pub struct HelperOpts {
     /// N124: the helper's final has this many words past its last partial (the release tail and the recogniser's
     /// last chunk, which only its end-of-stream flush emits).
     pub final_tail_words: usize,
+    /// N166: `dictation.started`'s `preRollMs` (the head an armed or warm mic heard before the start, ADR 0104).
+    pub pre_roll_ms: u64,
 }
 
 struct HState {
@@ -394,8 +396,9 @@ impl HelperSink for SinkHandle {
                     Decision::Accept => {
                         st.active = Some(id.clone());
                         st.heard = 0;
+                        let pre = st.opts.pre_roll_ms;
                         drop(st);
-                        me.deliver(json!({"type": "dictation.started", "id": id, "preRollMs": 0}));
+                        me.deliver(json!({"type": "dictation.started", "id": id, "preRollMs": pre}));
                         me.clone().audio_loop(id);
                     }
                     Decision::Ignore => {
