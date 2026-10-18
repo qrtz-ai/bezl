@@ -58,7 +58,7 @@ test('ctrl: create a task, see it listed, run it, see and scrub its history', as
     'last run',
   );
   // task.started, intent.pending, obs.apps, 4 decisions, plan.produced, then one guarded batch of file moves
-  // (slice 7, ADR 0112: no gate, nothing deleted), verify.result, task.finished.
+  // (slice 7, ADR 0113: no gate, nothing deleted), verify.result, task.finished.
   await expect(ctrl.getByTestId('ctrl-event')).toHaveCount(16);
   await expect(ctrl.getByTestId('ctrl-state')).toHaveText(
     'step 16 of 16 · done · 4 decisions · 1/1 actions done · 1/1 verified',
@@ -291,7 +291,7 @@ test('ctrl: the confirm card lists what will happen; deny, approve and remember'
   expect(errors).toEqual([]);
 });
 
-// Slice 7 (ADR 0112): trashing old installers is the one downloads move that asks. The card lists the files (a
+// Slice 7 (ADR 0113): trashing old installers is the one downloads move that asks. The card lists the files (a
 // card, never a modal), approve finishes the run, and the run history shows done.
 test('ctrl: trashing old downloads waits at the card with the files, approve finishes it', async ({
   page,

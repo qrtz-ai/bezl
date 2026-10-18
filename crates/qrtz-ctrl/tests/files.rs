@@ -1,4 +1,4 @@
-//! Slice 7 (ADR 0112): downloads cleanup end to end on Linux, through the `ctrl:*` channels against a temp
+//! Slice 7 (ADR 0113): downloads cleanup end to end on Linux, through the `ctrl:*` channels against a temp
 //! "Downloads" and "Trash". The default sorts by kind (moves only, no gate), never touches what's unknown, fresh,
 //! partial, hidden or a folder, logs only hashed path refs, leaves the user's frontmost app, cursor and focus as
 //! they were, and can be undone; trashing old installers waits at the gate with a `file` preview, deny moves

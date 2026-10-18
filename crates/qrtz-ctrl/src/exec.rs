@@ -11,7 +11,7 @@
 //! **Irreversible** plans (quit, empty trash, a system setting, send) go through the confirm gate first (slice 6,
 //! ADR 0111, [`crate::gate`]): `confirm.requested` with a preview from the helper, then the user's answer (or a
 //! standing approval of the task that covers it), then `confirm.reverified` right before the one action the
-//! approval allows. **File routes** (`files.*`, slice 7, ADR 0112) expand into one batch of file moves on the
+//! approval allows. **File routes** (`files.*`, slice 7, ADR 0113) expand into one batch of file moves on the
 //! driver's [`FileRoots`] ([`crate::files`]), run by the [`FsExecutor`] between the same guard snapshots and
 //! verified by re-reading the folder; trashing waits at the gate with a `file` preview. Without roots (and for
 //! `files.empty_trash`) they still stop with `exec.held { files_not_yet }`. (Runs from before slice 6 may still hold `exec.held { irreversible }`; they replay as before.)

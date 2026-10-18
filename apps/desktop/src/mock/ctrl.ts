@@ -151,7 +151,7 @@ const PREVIEW: CtrlConfirm['items'] = [
   { key: '8c1e44a0d2f9#0', kind: 'window', label: 'draft.txt', unsaved: true },
 ];
 
-/** Slice 7 (ADR 0112): the old installers a trash_old run would send to the Trash. */
+/** Slice 7 (ADR 0113): the old installers a trash_old run would send to the Trash. */
 const FILES: CtrlConfirm['items'] = [
   { key: 'f1a2b3c4d5e6', kind: 'file', label: 'ancient.pkg', unsaved: false },
   { key: 'f6e5d4c3b2a1', kind: 'file', label: 'oldapp.dmg', unsaved: false },
@@ -320,7 +320,7 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
       }
       return;
     }
-    // Slice 7 (ADR 0112): a folder cleanup is one batch of file moves, guarded and verified like any action.
+    // Slice 7 (ADR 0113): a folder cleanup is one batch of file moves, guarded and verified like any action.
     execute(r);
   };
   const sync = (r: { run: CtrlRun; recs: Rec[] }) => {

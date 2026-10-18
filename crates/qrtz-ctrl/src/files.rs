@@ -1,4 +1,4 @@
-//! Slice 7 (ADR 0112): downloads cleanup. A `files.*` move expands into concrete file operations on a folder,
+//! Slice 7 (ADR 0113): downloads cleanup. A `files.*` move expands into concrete file operations on a folder,
 //! planned here (pure over a directory listing), run by [`crate::fs_exec::FsExecutor`] as one batch action, and
 //! verified by re-reading the folder. No UI at all, so it can't touch focus, the cursor or the frontmost app.
 //!

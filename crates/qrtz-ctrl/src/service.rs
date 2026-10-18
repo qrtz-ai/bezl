@@ -88,7 +88,7 @@ pub struct CtrlService {
     scorer: Box<dyn Scorer>,
     /// The ctrl helper (slice 5). `None`: runs stop at `planned` (nothing executes).
     helper: Option<Arc<HelperClient>>,
-    /// Where file routes act (slice 7, ADR 0112): `~/Downloads` + `~/.Trash` on macOS, a temp dir in tests.
+    /// Where file routes act (slice 7, ADR 0113): `~/Downloads` + `~/.Trash` on macOS, a temp dir in tests.
     files: Option<crate::files::FileRoots>,
     /// Gate preview item key → readable title (slice 6). Memory only: titles never reach a file.
     labels: Mutex<BTreeMap<String, String>>,
