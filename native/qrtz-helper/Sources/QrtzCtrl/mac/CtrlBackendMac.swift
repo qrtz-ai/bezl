@@ -272,6 +272,8 @@ public final class MacCtrlBackend: CtrlBackend {
 
     /// ADR 0135: the only two sound scripts (templates, never task text).
     static let muteSource = "set volume with output muted"
+    /// ADR 0139: the reverse.
+    static let unmuteSource = "set volume without output muted"
     static let outputMutedSource = "if output muted of (get volume settings) then\nreturn 1\nelse\nreturn 0\nend if"
 
     public func act(_ route: CtrlRoute, content: [String: String]) throws {
@@ -303,6 +305,9 @@ public final class MacCtrlBackend: CtrlBackend {
             // ADR 0135: Standard Additions, run in the helper's own process: no Apple Event to another app, no
             // volume HUD, no key event. The host verifies by reading the mute back.
             _ = try Self.runScript(Self.muteSource)
+        case .unmuteOutput:
+            // ADR 0139: the same, reversed.
+            _ = try Self.runScript(Self.unmuteSource)
         case let .hideApps(apps):
             // ADR 0134: `hide()` is the Dock's Hide: the app's windows go, nothing is activated or raised, no key event.
             // The frontmost app was dropped before this point (CtrlServer); re-checked here for the race.

@@ -16,7 +16,9 @@
 //! verified by re-reading the folder; trashing waits at the gate with a `file` preview. `files.empty_trash`
 //! (ADR 0122) deletes the Trash's items through the same executor, never through the Finder, only after the gate,
 //! and only the items the approved card listed. Without roots they still stop with `exec.held { files_not_yet }`. (Runs from before slice 6 may still hold `exec.held { irreversible }`; they replay as before.)
-use crate::apps::{still_visible, to_hide, unused_today, HIDE_OTHERS_MOVE, MUTE_MOVE, QUIT_UNUSED_MOVE};
+use crate::apps::{
+    still_visible, to_hide, unused_today, HIDE_OTHERS_MOVE, MUTE_MOVE, QUIT_UNUSED_MOVE, UNMUTE_MOVE,
+};
 use crate::ax::{diff, AxSnapshot};
 use crate::decide::{next_backtrack, run_chain_obs, unobserved, BacktrackReason, Goal, Node, Scorer};
 use crate::files::{
@@ -130,6 +132,17 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
             verify: Verify {
                 check: Check::DarkMode,
                 expect: if on { Expect::One } else { Expect::Zero },
+            },
+            content: BTreeMap::new(),
+        });
+    }
+    // ADR 0139: the reverse, verified the same way (expect 0).
+    if mv == UNMUTE_MOVE {
+        return Some(Step::Act {
+            routes: vec![Route::Workspace(WorkspaceOp::UnmuteOutput)],
+            verify: Verify {
+                check: Check::OutputMuted,
+                expect: Expect::Zero,
             },
             content: BTreeMap::new(),
         });

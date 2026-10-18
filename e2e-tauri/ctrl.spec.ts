@@ -733,3 +733,27 @@ test('ctrl: every morning open my email finds mail already open, nothing brought
   expect(await axe(page, 'ctrl')).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+test('ctrl: every morning unmute my mac turns the sound back on without a card (ADR 0139)', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  await ctrl.getByTestId('ctrl-task-input').fill('every morning unmute my mac');
+  await ctrl.getByTestId('ctrl-schedule-daily').click();
+  await ctrl.getByTestId('ctrl-schedule-time').fill('22:00');
+  await ctrl.getByTestId('ctrl-task-add').click();
+  await ctrl.getByTestId('ctrl-task').getByTestId('ctrl-task-run').click();
+  const run = ctrl.getByTestId('ctrl-run').first();
+  await expect(run.getByTestId('ctrl-run-status')).toHaveText('done');
+  await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
+  const decisions = ctrl.getByTestId('ctrl-decisions').first();
+  await expect(decisions).toContainText('unmute your mac');
+  await expect(decisions).toContainText('turn the sound output back on');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});

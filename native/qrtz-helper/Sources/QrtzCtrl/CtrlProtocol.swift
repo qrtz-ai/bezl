@@ -19,6 +19,8 @@ public enum CtrlRoute: Equatable, Sendable {
     case hideApps(apps: [String])
     /// ADR 0135: mute the sound output (in the helper's own process; no app, nothing shown). Reversible, no gate.
     case muteOutput
+    /// ADR 0139: the reverse (same process, same rules).
+    case unmuteOutput
     case scripting(app: String, verb: String)
     case axPerform(app: String, role: String, element: String, action: String)
     case axSet(app: String, role: String, element: String, attribute: String)
@@ -48,6 +50,7 @@ public enum CtrlRoute: Equatable, Sendable {
             case "quit_apps": if let a = o["apps"] as? [String] { return .quitApps(apps: a) }
             case "hide_apps": if let a = o["apps"] as? [String] { return .hideApps(apps: a) }
             case "mute_output": return .muteOutput
+            case "unmute_output": return .unmuteOutput
             default: return nil
             }
             return nil
@@ -217,7 +220,7 @@ public final class CtrlServer {
         case let .pidKey(_, combo):
             guard let t = targetPid else { throw CtrlFailure("app.not_running") }
             do { try CtrlPolicy.checkKey(combo, targetPid: t, frontmostPid: frontmostPid) } catch { throw CtrlFailure("policy.refused") }
-        case .files, .openURL, .launchHidden, .quitApps, .hideApps, .muteOutput: break
+        case .files, .openURL, .launchHidden, .quitApps, .hideApps, .muteOutput, .unmuteOutput: break
         }
     }
 
@@ -225,7 +228,7 @@ public final class CtrlServer {
         switch r {
         case let .openURL(a, _), let .launchHidden(a), let .scripting(a, _), let .axPerform(a, _, _, _), let .axSet(a, _, _, _),
              let .pidKey(a, _): return a
-        case .files, .takesOver, .quitApps, .hideApps, .muteOutput: return nil
+        case .files, .takesOver, .quitApps, .hideApps, .muteOutput, .unmuteOutput: return nil
         }
     }
 

@@ -54,7 +54,7 @@ final class CtrlProtocolTests: XCTestCase {
     func testEveryHostLineOfTheFixtureParses() throws {
         let all = try lines()
         let host = all.filter { !(($0["type"] as! String).hasSuffix(".result")) && $0["type"] as! String != "ctrl.error" }
-        XCTAssertEqual(host.count, 18)
+        XCTAssertEqual(host.count, 19)
         for o in host {
             let line = String(decoding: try JSONSerialization.data(withJSONObject: o), as: UTF8.self)
             XCTAssertNotNil(CtrlRequest.parse(line), "\(o["type"]!)")
@@ -175,6 +175,11 @@ final class CtrlProtocolTests: XCTestCase {
         let fake = Fake()
         XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: line))["ok"] as? Bool, true)
         XCTAssertEqual(fake.acted, [.muteOutput])
+        // ADR 0139: unmute_output, the reverse.
+        let un = all.first { ($0["route"] as? [String: Any])?["op"] as? String == "unmute_output" }!
+        let unLine = String(decoding: try JSONSerialization.data(withJSONObject: un), as: UTF8.self)
+        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: unLine))["ok"] as? Bool, true)
+        XCTAssertEqual(fake.acted, [.muteOutput, .unmuteOutput])
         guard case let .measure(_, check, app)? = CtrlRequest.parse(#"{"type":"ctrl.measure","id":"c15","check":{"check":"output_muted"}}"#)
         else { return XCTFail("output_muted") }
         XCTAssertEqual(check, "output_muted")

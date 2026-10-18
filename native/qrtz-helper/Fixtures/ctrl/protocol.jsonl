@@ -25,5 +25,6 @@
 {"type":"ctrl.measure","id":"c15","check":{"check":"output_muted"}}
 {"type":"ctrl.act","id":"c16","actionId":"a4","route":{"route":"scripting","app":"com.apple.systemevents","verb":"set_dark_mode"},"content":{}}
 {"type":"ctrl.measure","id":"c17","check":{"check":"dark_mode"}}
+{"type":"ctrl.act","id":"c18","actionId":"a5","route":{"route":"workspace","op":"unmute_output"},"content":{}}
 {"type":"ctrl.laya.warm","id":"c12","model":"/models/ctrl/laya/laya.mlmodelc"}
 {"type":"ctrl.laya.warm.result","id":"c12","state":"started"}

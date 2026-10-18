@@ -730,6 +730,13 @@ impl FakeWorld {
                 }
                 None => Err("sound.no_output".into()),
             },
+            Route::Workspace(WorkspaceOp::UnmuteOutput) => match self.muted {
+                Some(_) => {
+                    self.muted = Some(false);
+                    Ok(())
+                }
+                None => Err("sound.no_output".into()),
+            },
             Route::Ax { app, element, .. } => {
                 let a = self.app_mut(app).ok_or("app.not_running")?;
                 let before = a.ax_top.len();
