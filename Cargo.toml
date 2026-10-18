@@ -47,4 +47,5 @@ codegen-units = 1
 lto = true
 opt-level = "s"
 panic = "unwind"
-strip = true
+# strip off: true corrupts release binaries on Jared's Mac with the current Xcode.
+strip = false
