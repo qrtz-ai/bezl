@@ -47,6 +47,7 @@ public final class UnsupportedCtrlBackend: CtrlBackend {
     public func measure(check: String, app: String) -> Int? { nil }
     public func restore(frontmostPid: Int32?) -> Bool { false }
     public func laya(state: String, question: String, options: [String]) throws -> [Double] { throw Self.no }
+    public func warmLaya(model: String) throws -> CtrlLayaWarmer.State { throw Self.no }
     public func frontmostPid() -> Int32? { nil }
     public func pid(of app: String) -> Int32? { nil }
 }

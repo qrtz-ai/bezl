@@ -67,6 +67,8 @@ public enum CtrlRequest: Equatable, Sendable {
     case restore(id: String, frontmostPid: Int32?)
     /// `model`: the consented, installed model the host hands over (ADR 0116), nil when it sent none.
     case laya(id: String, model: String?, state: String, question: String, options: [String])
+    /// ADR 0133: warm the consented, installed model at `model` in the background; the reply comes at once.
+    case layaWarm(id: String, model: String)
     /// The confirm gate's preview (ADR 0111): `what` is `windows` or `tabs` of `app`.
     case preview(id: String, app: String, what: String)
     /// ADR 0130: the running apps with the last-used record (`CtrlLastUsed`).
@@ -75,7 +77,8 @@ public enum CtrlRequest: Equatable, Sendable {
     public var id: String {
         switch self {
         case let .catalog(id), let .probe(id), let .snapshot(id, _, _), let .act(id, _, _, _), let .measure(id, _, _),
-             let .restore(id, _), let .laya(id, _, _, _, _), let .preview(id, _, _), let .apps(id): return id
+             let .restore(id, _), let .laya(id, _, _, _, _), let .preview(id, _, _), let .apps(id),
+             let .layaWarm(id, _): return id
         }
     }
 
@@ -100,6 +103,7 @@ public enum CtrlRequest: Equatable, Sendable {
         case "ctrl.laya":
             guard let st = s("state"), let q = s("question"), let opts = o["options"] as? [String] else { return nil }
             return .laya(id: id, model: s("model"), state: st, question: q, options: opts)
+        case "ctrl.laya.warm": return s("model").map { .layaWarm(id: id, model: $0) }
         case "ctrl.preview":
             guard let a = s("app"), let w = s("what"), w == "windows" || w == "tabs" else { return nil }
             return .preview(id: id, app: a, what: w)
@@ -165,6 +169,8 @@ public protocol CtrlBackend: AnyObject {
     func preview(app: String, what: String) throws -> [CtrlPreviewItem]
     /// ADR 0130: running regular apps, when the last-used watch began (nil: not watching) and local midnight.
     func runningApps() throws -> (apps: [CtrlRunningApp], sinceMs: UInt64?, dayStartMs: UInt64)
+    /// ADR 0133: start warming the model at `model` off the request queue and return at once.
+    func warmLaya(model: String) throws -> CtrlLayaWarmer.State
 }
 
 public extension CtrlBackend {
@@ -175,6 +181,8 @@ public extension CtrlBackend {
     func preview(app: String, what: String) throws -> [CtrlPreviewItem] { throw CtrlFailure("preview.unsupported") }
     /// A backend without the activation watch: the host then quits nothing.
     func runningApps() throws -> (apps: [CtrlRunningApp], sinceMs: UInt64?, dayStartMs: UInt64) { throw CtrlFailure("apps.not_watching") }
+    /// A backend without a Laya runtime has nothing to warm.
+    func warmLaya(model: String) throws -> CtrlLayaWarmer.State { throw CtrlFailure("laya.no_runtime") }
 }
 
 public final class CtrlServer {
@@ -243,6 +251,8 @@ public final class CtrlServer {
                 return ["type": "ctrl.restore.result", "id": id, "ok": backend.restore(frontmostPid: pid)]
             case let .laya(_, model, state, question, options):
                 return ["type": "ctrl.laya.result", "id": id, "p": try backend.laya(model: model, state: state, question: question, options: options)]
+            case let .layaWarm(_, model):
+                return ["type": "ctrl.laya.warm.result", "id": id, "state": try backend.warmLaya(model: model).rawValue]
             case .apps:
                 let r = try backend.runningApps()
                 return ["type": "ctrl.apps.result", "id": id, "sinceMs": r.sinceMs.map { NSNumber(value: $0) } as Any? ?? NSNull(),

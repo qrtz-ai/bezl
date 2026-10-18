@@ -104,6 +104,11 @@ pub enum HostMsg {
         question: String,
         options: Vec<String>,
     },
+    /// ADR 0133: warm the consented, installed model at `model` (its tokenizer, then the Core ML load and compiled
+    /// cache) on the helper's background queue. The helper answers at once (`started`, `warming` or `warm`) and
+    /// does the work off its ctrl queue; nothing is downloaded. Sent only when [`crate::laya::LayaWarmer`] says so.
+    #[serde(rename = "ctrl.laya.warm")]
+    LayaWarm { id: String, model: String },
     /// The confirm gate's preview (slice 6, ADR 0111): what an irreversible action would touch in `app`, one item
     /// per window or tab, with its title (hashed by the host before anything is logged) and unsaved state.
     #[serde(rename = "ctrl.preview")]
@@ -193,6 +198,9 @@ pub enum HelperMsg {
     RestoreResult { id: String, ok: bool },
     #[serde(rename = "ctrl.laya.result")]
     LayaResult { id: String, p: Vec<f32> },
+    /// ADR 0133: `state` is `started` (queued now), `warming` (already in flight) or `warm` (loaded).
+    #[serde(rename = "ctrl.laya.warm.result")]
+    LayaWarmResult { id: String, state: String },
     #[serde(rename = "ctrl.preview.result")]
     PreviewResult { id: String, items: Vec<PreviewItemWire> },
     #[serde(rename = "ctrl.apps.result")]
@@ -219,6 +227,7 @@ impl HelperMsg {
             | HelperMsg::MeasureResult { id, .. }
             | HelperMsg::RestoreResult { id, .. }
             | HelperMsg::LayaResult { id, .. }
+            | HelperMsg::LayaWarmResult { id, .. }
             | HelperMsg::PreviewResult { id, .. }
             | HelperMsg::AppsResult { id, .. }
             | HelperMsg::Error { id, .. } => id,
@@ -274,6 +283,7 @@ impl HelperClient {
             | HostMsg::Measure { id, .. }
             | HostMsg::Restore { id, .. }
             | HostMsg::Laya { id, .. }
+            | HostMsg::LayaWarm { id, .. }
             | HostMsg::Preview { id, .. }
             | HostMsg::Apps { id } => id.clone(),
         };
@@ -382,6 +392,17 @@ impl HelperClient {
             options: options.to_vec(),
         })? {
             HelperMsg::LayaResult { p, .. } => Ok(p),
+            _ => Err(proto_err("unexpected")),
+        }
+    }
+
+    /// ADR 0133: ask the helper to warm the model at `model` in the background; the reply comes at once.
+    pub fn laya_warm(&self, model: &std::path::Path) -> Result<String, String> {
+        match self.call(HostMsg::LayaWarm {
+            id: self.id(),
+            model: model.to_string_lossy().into_owned(),
+        })? {
+            HelperMsg::LayaWarmResult { state, .. } => Ok(state),
             _ => Err(proto_err("unexpected")),
         }
     }
@@ -500,6 +521,8 @@ pub struct FakeWorld {
     pub laya: Option<Vec<f32>>,
     /// The `model` of every `ctrl.laya` request, for assertions (ADR 0116).
     pub laya_models: Vec<Option<String>>,
+    /// ADR 0133: the `model` of every `ctrl.laya.warm` request, in order.
+    pub laya_warms: Vec<String>,
     /// ADR 0130: last activation per bundle id, when the watch began (`None`: `ctrl.apps` errors), local midnight.
     pub last_active: BTreeMap<String, u64>,
     pub watch_since_ms: Option<u64>,
@@ -552,6 +575,7 @@ impl FakeWorld {
             opened_urls: Vec::new(),
             laya: None,
             laya_models: Vec::new(),
+            laya_warms: Vec::new(),
             last_active: BTreeMap::new(),
             watch_since_ms: None,
             day_start_ms: 0,
@@ -849,6 +873,14 @@ impl FakeWorld {
                     day_start_ms: self.day_start_ms,
                 },
             },
+            HostMsg::LayaWarm { id, model } => {
+                let again = self.laya_warms.contains(&model);
+                self.laya_warms.push(model);
+                HelperMsg::LayaWarmResult {
+                    id,
+                    state: if again { "warm" } else { "started" }.into(),
+                }
+            }
             HostMsg::Laya {
                 id, options, model, ..
             } => {

@@ -185,3 +185,74 @@ impl Scorer for LiveScorer {
         }
     }
 }
+
+/// ADR 0133: warm the Laya model on the helper as soon as it can be used, so the first question of a run doesn't
+/// pay the tokenizer read and the Core ML load (and, once, the compile). The app calls [`LayaWarmer::tick`] from
+/// a low-priority thread every few seconds. A tick sends `ctrl.laya.warm` only when the helper is up, this build
+/// has the runtime, the user consented and the installed model is on disk, and only once per helper start and
+/// model path: a helper restart, or a download that finishes while the app runs, warms again; nothing else does.
+/// The helper answers at once and does the work on its own background queue, so neither the host nor echo/nano
+/// wait for it; nothing is downloaded and there is no network.
+pub struct LayaWarmer {
+    pub consent: Box<dyn Fn() -> ModelConsent + Send + Sync>,
+    pub helper: std::sync::Arc<crate::helper::HelperClient>,
+    /// [`RUNTIME_BUILD`] in the app; tests set it to exercise the warm-up on Linux.
+    pub runtime_build: bool,
+    /// Ticks the helper must have been up before the warm-up is sent (0: at the first tick), so echo's and nano's
+    /// own start (their model loads) has the machine first.
+    pub settle_ticks: u32,
+    warmed: std::sync::Mutex<(u32, Option<PathBuf>)>,
+}
+
+impl LayaWarmer {
+    pub fn new(
+        consent: Box<dyn Fn() -> ModelConsent + Send + Sync>,
+        helper: std::sync::Arc<crate::helper::HelperClient>,
+        runtime_build: bool,
+    ) -> Self {
+        LayaWarmer {
+            consent,
+            helper,
+            runtime_build,
+            settle_ticks: 0,
+            warmed: std::sync::Mutex::new((0, None)),
+        }
+    }
+
+    pub fn with_settle(mut self, ticks: u32) -> Self {
+        self.settle_ticks = ticks;
+        self
+    }
+
+    /// One check. `None`: nothing sent (helper down, no runtime, no consent, no model on disk, or already warmed
+    /// for this helper start). `Some(reply)`: the helper's answer to the one `ctrl.laya.warm` sent (a state, or an
+    /// error code such as `laya.no_model` or `helper.timeout`; either way it isn't sent again until the helper
+    /// restarts or the model path changes, so an older helper is asked once, not every tick).
+    pub fn tick(&self) -> Option<Result<String, String>> {
+        let mut g = self.warmed.lock().unwrap_or_else(|e| e.into_inner());
+        let (up_ticks, warmed) = &mut *g;
+        if !self.helper.is_up() {
+            *up_ticks = 0;
+            *warmed = None;
+            return None;
+        }
+        if !self.runtime_build {
+            return None;
+        }
+        if *up_ticks < self.settle_ticks {
+            *up_ticks += 1;
+            return None;
+        }
+        let c = (self.consent)();
+        let Some(path) = c.installed.filter(|p| c.consented && p.exists()) else {
+            // An off (or a deleted model) forgets the warm-up, so a later yes + download warms again.
+            *warmed = None;
+            return None;
+        };
+        if warmed.as_ref() == Some(&path) {
+            return None;
+        }
+        *warmed = Some(path.clone());
+        Some(self.helper.laya_warm(&path))
+    }
+}

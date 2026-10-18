@@ -46,13 +46,15 @@ private final class Fake: CtrlBackend {
           CtrlRunningApp(bundleId: "com.apple.Notes", name: "Notes", lastActiveMs: nil, frontmost: true, unsaved: false)],
          1_789_950_000_000, 1_789_989_200_000)
     }
+    var warms: [String] = []
+    func warmLaya(model: String) throws -> CtrlLayaWarmer.State { warms.append(model); return .started }
 }
 
 final class CtrlProtocolTests: XCTestCase {
     func testEveryHostLineOfTheFixtureParses() throws {
         let all = try lines()
         let host = all.filter { !(($0["type"] as! String).hasSuffix(".result")) && $0["type"] as! String != "ctrl.error" }
-        XCTAssertEqual(host.count, 12)
+        XCTAssertEqual(host.count, 13)
         for o in host {
             let line = String(decoding: try JSONSerialization.data(withJSONObject: o), as: UTF8.self)
             XCTAssertNotNil(CtrlRequest.parse(line), "\(o["type"]!)")
@@ -75,6 +77,8 @@ final class CtrlProtocolTests: XCTestCase {
         XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.probe","id":"c8"}"#)), want("ctrl.error"))
         XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.preview","id":"c9","app":"com.apple.TextEdit","what":"windows"}"#)),
                        want("ctrl.preview.result"))
+        XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.laya.warm","id":"c12","model":"/models/ctrl/laya/laya.mlmodelc"}"#)),
+                       want("ctrl.laya.warm.result"))
     }
 
     func testTheConsentedModelPathReachesTheBackend() throws {

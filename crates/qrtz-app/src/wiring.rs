@@ -510,6 +510,33 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
             },
             runtime_build: qrtz_ctrl::laya::RUNTIME_BUILD,
         };
+        // ADR 0133: warm the model on the helper once it can be used (consent + the installed model on disk +
+        // the helper up and settled), from a low-priority thread of its own. The helper answers at once and loads
+        // on its background queue, so no echo/nano start or ctrl question waits on it; nothing is downloaded.
+        if qrtz_ctrl::laya::RUNTIME_BUILD {
+            let warm_model = crate::ctrl_model::CtrlLayaModel::new(
+                dirs.data.join("models").join("ctrl"),
+                &dirs.data.join("ctrl"),
+                None,
+            );
+            let warmer = qrtz_ctrl::laya::LayaWarmer::new(
+                Box::new(move || warm_model.consent()),
+                helper.clone(),
+                true,
+            )
+            .with_settle(2);
+            let spawned = std::thread::Builder::new()
+                .name("ctrl-laya-warm".into())
+                .spawn(move || loop {
+                    if let Some(r) = warmer.tick() {
+                        tracing::info!(?r, "ctrl.laya: warm-up asked");
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                });
+            if spawned.is_err() {
+                tracing::warn!("ctrl.laya: no warm-up thread; the first question loads the model");
+            }
+        }
         ctrl = ctrl.with_helper(helper).with_scorer(Box::new(scorer));
     }
     service.set_ctrl(Arc::new(ctrl));

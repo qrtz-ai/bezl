@@ -409,6 +409,10 @@ public final class MacCtrlBackend: CtrlBackend {
     public func laya(model: String?, state: String, question: String, options: [String]) throws -> [Double] {
         try layaRuntime.choice(model: model, state: state, question: question, options: options)
     }
+
+    public func warmLaya(model: String) throws -> CtrlLayaWarmer.State {
+        try layaRuntime.warmer.start(model)
+    }
 }
 
 /// The Core ML Laya runtime (ADR 0106 / 0109 / 0116). It runs only a model the user consented to download: the host
@@ -417,7 +421,7 @@ public final class MacCtrlBackend: CtrlBackend {
 /// `.mlpackage` / `.mlmodel` is compiled once into a sibling `.mlmodelc` (the persisted cache, reused while it is
 /// newer than its source). Without a usable model every question answers `laya.no_model` / `laya.load_failed` and
 /// the host keeps the heuristic scorer for that question.
-final class CtrlLayaRuntime {
+final class CtrlLayaRuntime: @unchecked Sendable {
     private var models: [String: MLModel] = [:]
     private var failed: Set<String> = []
     private let lock = NSLock()
@@ -467,18 +471,20 @@ final class CtrlLayaRuntime {
         }
     }
 
-    private var tokenizers: [String: CtrlLayaTokenizer] = [:]
+    private let tokenizers = CtrlLayaTokenizerCache()
+
+    /// ADR 0133: the warm-up the host asks for at helper start: the tokenizer, then the model (and its compiled
+    /// cache), on the warmer's background queue. Errors are left for the first question to report.
+    lazy var warmer: CtrlLayaWarmer = CtrlLayaWarmer { [weak self] path in
+        guard let self else { return }
+        _ = try? self.tokenizer(for: path)
+        _ = try? self.load(path)
+    }
 
     /// The tokenizer next to the model (`<set dir>/tokenizer.json`, ADR 0129) or `QRTZ_CTRL_LAYA_TOKENIZER`; read
     /// once per path. A missing or unreadable file answers `laya.no_tokenizer` and the host keeps the heuristic.
     func tokenizer(for modelPath: String) throws -> CtrlLayaTokenizer {
-        let env = ProcessInfo.processInfo.environment["QRTZ_CTRL_LAYA_TOKENIZER"]
-        let path = (env?.isEmpty == false ? env! : URL(fileURLWithPath: modelPath).deletingLastPathComponent().appendingPathComponent("tokenizer.json").path)
-        lock.lock(); defer { lock.unlock() }
-        if let t = tokenizers[path] { return t }
-        guard let t = try? CtrlLayaTokenizer(contentsOf: URL(fileURLWithPath: path)) else { throw CtrlFailure("laya.no_tokenizer") }
-        tokenizers[path] = t
-        return t
+        try tokenizers.tokenizer(at: CtrlLayaWarmer.tokenizerPath(for: modelPath))
     }
 
     static func array(_ shape: [Int], int32 xs: [Int32]) throws -> MLMultiArray {
@@ -498,8 +504,10 @@ final class CtrlLayaRuntime {
     /// `probabilities` [1, 32]; the first `options.count` slots, renormalised, are the answer. Any other interface
     /// answers `laya.bad_model`; more than 32 options, or none, `laya.bad_question`.
     func choice(model: String?, state: String, question: String, options: [String]) throws -> [Double] {
-        let m = try load(model)
         let path = (model?.isEmpty == false ? model! : ProcessInfo.processInfo.environment["QRTZ_CTRL_LAYA_MODEL"] ?? "")
+        // ADR 0133: don't queue behind the warm-up's load; the host's heuristic takes this one question.
+        if warmer.isWarming(path) { throw CtrlFailure("laya.warming") }
+        let m = try load(model)
         let t = try tokenizer(for: path)
         guard let x = CtrlLayaInputs.build(tokenizer: t, state: state, question: question, options: options) else {
             throw CtrlFailure("laya.bad_question")
