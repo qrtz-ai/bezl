@@ -6,7 +6,10 @@
 //! `.qrtz-verified` marker is written; the helper reads only marked sets (`QRTZ_MODELS_DIR`) and never fetches
 //! anything itself.
 use qrtz_speech::bundle::FileEntry;
-use qrtz_speech::download::{DownloadControl, Downloader, Progress};
+use qrtz_speech::download::Downloader;
+/// The download's control and progress types, for the model sets that go through here (ctrl's Laya model, ADR
+/// 0116): this module is the only qrtz-app caller of the downloader besides `setup.rs` (ADR 0078/0079).
+pub use qrtz_speech::download::{DownloadControl, Progress};
 use qrtz_speech::{fsx, SpeechError};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};

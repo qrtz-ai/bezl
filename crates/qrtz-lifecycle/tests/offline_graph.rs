@@ -12,6 +12,8 @@
 //! 4. Helper: no Private Cloud Compute model and no network entitlement.
 //! 5. ADR 0079: the downloader's only callers are qrtz-app's `setup.rs` (the signed module) and `local_models.rs`
 //!    (the helper's pinned models), and the pinned models come only from `https://huggingface.co` at fixed revisions.
+//!    ctrl's Laya model (ADR 0116) goes through `local_models.rs` too: `ctrl_model.rs` names no downloader, and its
+//!    manifest is pinned the same way (or a placeholder, which is refused before any request).
 //!
 //! A new network path has to change this test and its ADR, on purpose.
 use serde_json::Value;
@@ -319,21 +321,29 @@ fn only_setup_and_the_pinned_local_models_call_the_downloader() {
         bad.join("\n")
     );
 
-    let m: Value = serde_json::from_str(
-        &std::fs::read_to_string(r.join("crates/qrtz-app/src/local_models.json")).unwrap(),
-    )
-    .unwrap();
-    assert_eq!(m["base"], "https://huggingface.co");
-    for set in m["sets"].as_array().unwrap() {
-        let rev = set["revision"].as_str().unwrap();
-        assert!(
-            rev.len() == 40 && rev.bytes().all(|b| b.is_ascii_hexdigit()),
-            "{set}: a fixed commit, not a branch"
-        );
-        for f in set["files"].as_array().unwrap() {
-            assert_eq!(f["sha256"].as_str().unwrap().len(), 64, "{f}");
+    for manifest in ["local_models.json", "ctrl_laya_model.json"] {
+        let m: Value = serde_json::from_str(
+            &std::fs::read_to_string(r.join("crates/qrtz-app/src").join(manifest)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(m["base"], "https://huggingface.co", "{manifest}");
+        for set in m["sets"].as_array().unwrap() {
+            let rev = set["revision"].as_str().unwrap();
+            assert!(
+                rev.len() == 40 && rev.bytes().all(|b| b.is_ascii_hexdigit()),
+                "{manifest} {set}: a fixed commit, not a branch"
+            );
+            for f in set["files"].as_array().unwrap() {
+                assert_eq!(f["sha256"].as_str().unwrap().len(), 64, "{manifest} {f}");
+            }
         }
     }
+    // ADR 0116: ctrl's model is fetched through the pinned path, not a downloader of its own.
+    let ctrl = std::fs::read_to_string(r.join("crates/qrtz-app/src/ctrl_model.rs")).unwrap();
+    assert!(
+        ctrl.contains("LocalModels"),
+        "ctrl_model.rs downloads through local_models"
+    );
 }
 
 #[test]
