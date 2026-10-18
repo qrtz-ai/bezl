@@ -431,6 +431,9 @@ public actor DictationEngine {
     public func stop(id: String) async {
         guard let s0 = session, s0.id == id, !s0.stopping else { return }
         session?.stopping = true
+        // The tap's block count at the release: the block it was filling then is the one the drain must wait for.
+        // A block that lands during the tail already is it (no second wait for the block after it).
+        let releaseBlocks = backlog?.yieldedBlocks
         // 1. The tail: keep capturing (onSamples still feeds this session while we wait).
         if tail.tailMs > 0 { try? await Task.sleep(nanoseconds: UInt64(tail.tailMs) * 1_000_000) }
         guard session?.id == id else { return }  // cancelled or aborted meanwhile (that path answered)
@@ -438,7 +441,7 @@ public actor DictationEngine {
         let queuedMs = (backlog?.queuedSamples ?? 0) / 16
         let drainLimit = tail.drainLimitMs(queuedMs: queuedMs)
         let drainStart = ContinuousClock.now
-        let drained = await drainMic(limitMs: drainLimit)
+        let drained = await drainMic(limitMs: drainLimit, sinceBlocks: releaseBlocks)
         guard session?.id == id else { return }
         // N139: one deadline for the whole release (drain + finalize; `budgetMs` unchanged). close() may use all of
         // it except a reserve for pad + finish, so a drain that timed out still waits for a slow (not hung) append and
@@ -480,10 +483,10 @@ public actor DictationEngine {
     }
 
     /// Waits (bounded) until the mic stream has handed over every block it had queued. False: it timed out.
-    func drainMic(limitMs: Int) async -> Bool {
+    func drainMic(limitMs: Int, sinceBlocks: Int? = nil) async -> Bool {
         guard let input = micIn, micRunning else { return true }
         let start = ContinuousClock.now
-        if tail.nextBlockWaitMs > 0, limitMs > 0 { await nextBlock(limitMs: min(tail.nextBlockWaitMs, limitMs)) }
+        if tail.nextBlockWaitMs > 0, limitMs > 0 { await nextBlock(limitMs: min(tail.nextBlockWaitMs, limitMs), since: sinceBlocks) }
         let used = start.duration(to: .now)
         let limitMs = max(0, limitMs - Int(used.components.seconds) * 1000 - Int(used.components.attoseconds / 1_000_000_000_000_000))
         drainTimedOut = false
@@ -499,11 +502,11 @@ public actor DictationEngine {
     }
     var drainTimedOut = false
 
-    /// Waits (bounded; a timeout is not a failure) until the tap has yielded a block after this call, so that block
-    /// (the one it was filling at the release) is queued ahead of the drain barrier.
-    func nextBlock(limitMs: Int) async {
+    /// Waits (bounded; a timeout is not a failure) until the tap has yielded a block after `since` (the count at the
+    /// release; default now), so that block (the one it was filling at the release) is queued ahead of the barrier.
+    func nextBlock(limitMs: Int, since: Int? = nil) async {
         guard let bl = backlog else { return }
-        let seen = bl.yieldedBlocks
+        let seen = since ?? bl.yieldedBlocks
         let deadline = ContinuousClock.now + .milliseconds(limitMs)
         while bl.yieldedBlocks == seen, ContinuousClock.now < deadline { try? await Task.sleep(nanoseconds: 5_000_000) }
     }

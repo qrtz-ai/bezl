@@ -312,6 +312,24 @@ final class DictationTailTests: XCTestCase {
         }
     }
 
+    func testABlockThatLandsDuringTheTailIsTheOneWaitedFor() async {
+        // The tap's block lands 20 ms into the 50 ms tail: that is the block it was filling at the release, so the
+        // drain doesn't wait another whole block (was: tail + up to one more block, ~135 ms on the Mac).
+        let mic = FakeMic()
+        let (c, out) = controller(ChunkASR(), DictationTail(tailMs: 50, padMs: 640, nextBlockWaitMs: 120), mic: mic)
+        await c.handle(.dictationStart(id: "d1"))
+        guard let cb = mic.cb else { return XCTFail("mic attached") }
+        cb(level(1, 8960))
+        let t = Date()
+        let stop = Task { await c.handle(.dictationStop(id: "d1")) }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        cb(level(7, 1360))
+        await stop.value
+        let ms = Date().timeIntervalSince(t) * 1000
+        XCTAssertEqual(stoppedText(out.value), "w1 w7")
+        XCTAssertLessThan(ms, 50 + 100, "the tail, then pad/finish: no wait for a second block")
+    }
+
     func testTheDrainLimitScalesToWhatIsQueued() async {
         // The recogniser takes 60 ms per 85 ms block; 8 blocks queued at the release need ~480 ms, far past the
         // 50 ms base, within 50 + 2 × 680 ms.
