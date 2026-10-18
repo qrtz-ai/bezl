@@ -15,6 +15,8 @@ public enum CtrlRoute: Equatable, Sendable {
     case launchHidden(app: String)
     /// ADR 0130: terminate each running app (no activation). Only behind the host's approved confirm gate.
     case quitApps(apps: [String])
+    /// ADR 0134: hide each running app (no activation, nothing raised). Reversible, so no gate; never the frontmost.
+    case hideApps(apps: [String])
     case scripting(app: String, verb: String)
     case axPerform(app: String, role: String, element: String, action: String)
     case axSet(app: String, role: String, element: String, attribute: String)
@@ -38,6 +40,7 @@ public enum CtrlRoute: Equatable, Sendable {
             case "open_url": if let a = s("app"), let u = s("url") { return .openURL(app: a, urlRef: u) }
             case "launch_hidden": if let a = s("app") { return .launchHidden(app: a) }
             case "quit_apps": if let a = o["apps"] as? [String] { return .quitApps(apps: a) }
+            case "hide_apps": if let a = o["apps"] as? [String] { return .hideApps(apps: a) }
             default: return nil
             }
             return nil
@@ -146,8 +149,11 @@ public struct CtrlPreviewItem: Equatable, Sendable {
 /// false only when the app has no windows, nil when the helper can't tell.
 public struct CtrlRunningApp: Equatable, Sendable {
     public let bundleId: String, name: String, lastActiveMs: UInt64?, frontmost: Bool, unsaved: Bool?
-    public init(bundleId: String, name: String, lastActiveMs: UInt64?, frontmost: Bool, unsaved: Bool?) {
+    /// ADR 0134: `isHidden`; nil leaves the field off the wire (the host then can't verify a hide).
+    public let hidden: Bool?
+    public init(bundleId: String, name: String, lastActiveMs: UInt64?, frontmost: Bool, unsaved: Bool?, hidden: Bool? = nil) {
         self.bundleId = bundleId; self.name = name; self.lastActiveMs = lastActiveMs; self.frontmost = frontmost; self.unsaved = unsaved
+        self.hidden = hidden
     }
 }
 
@@ -202,7 +208,7 @@ public final class CtrlServer {
         case let .pidKey(_, combo):
             guard let t = targetPid else { throw CtrlFailure("app.not_running") }
             do { try CtrlPolicy.checkKey(combo, targetPid: t, frontmostPid: frontmostPid) } catch { throw CtrlFailure("policy.refused") }
-        case .files, .openURL, .launchHidden, .quitApps: break
+        case .files, .openURL, .launchHidden, .quitApps, .hideApps: break
         }
     }
 
@@ -210,7 +216,7 @@ public final class CtrlServer {
         switch r {
         case let .openURL(a, _), let .launchHidden(a), let .scripting(a, _), let .axPerform(a, _, _, _), let .axSet(a, _, _, _),
              let .pidKey(a, _): return a
-        case .files, .takesOver, .quitApps: return nil
+        case .files, .takesOver, .quitApps, .hideApps: return nil
         }
     }
 
@@ -239,6 +245,12 @@ public final class CtrlServer {
                    apps.contains(where: { backend.pid(of: $0) == front }) {
                     throw CtrlFailure("policy.refused")
                 }
+                // ADR 0134: the app the user is in is never hidden under them; it drops out of the list (the user may
+                // have switched to it since the host planned), the rest are hidden.
+                var route = route
+                if case let .hideApps(apps) = route, let front = backend.frontmostPid() {
+                    route = .hideApps(apps: apps.filter { backend.pid(of: $0) != front })
+                }
                 do {
                     try backend.act(route, content: content)
                     return ["type": "ctrl.act.result", "id": id, "ok": true, "err": NSNull()]
@@ -258,9 +270,11 @@ public final class CtrlServer {
                 return ["type": "ctrl.apps.result", "id": id, "sinceMs": r.sinceMs.map { NSNumber(value: $0) } as Any? ?? NSNull(),
                         "dayStartMs": NSNumber(value: r.dayStartMs),
                         "apps": r.apps.map { a -> [String: Any] in
-                            ["bundleId": a.bundleId, "name": a.name, "frontmost": a.frontmost,
-                             "lastActiveMs": a.lastActiveMs.map { NSNumber(value: $0) } as Any? ?? NSNull(),
-                             "unsaved": a.unsaved as Any? ?? NSNull()]
+                            var o: [String: Any] = ["bundleId": a.bundleId, "name": a.name, "frontmost": a.frontmost,
+                                                    "lastActiveMs": a.lastActiveMs.map { NSNumber(value: $0) } as Any? ?? NSNull(),
+                                                    "unsaved": a.unsaved as Any? ?? NSNull()]
+                            if let h = a.hidden { o["hidden"] = h }
+                            return o
                         }]
             case let .preview(_, app, what):
                 let items = try backend.preview(app: app, what: what)

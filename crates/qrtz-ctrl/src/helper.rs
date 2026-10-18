@@ -42,6 +42,9 @@ pub enum Check {
     FilesRemaining,
     /// ADR 0130: of these apps, how many still run. Measured by the host from `ctrl.apps`.
     AppsRemaining { apps: Vec<String> },
+    /// ADR 0134: of these apps, how many are still on screen (running, not hidden, not frontmost). Measured by the
+    /// host from `ctrl.apps`.
+    AppsVisible { apps: Vec<String> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -134,6 +137,9 @@ pub struct RunningAppWire {
     pub frontmost: bool,
     /// `false` only when the helper knows there's nothing to save (no windows); `null` = can't tell.
     pub unsaved: Option<bool>,
+    /// ADR 0134: `NSRunningApplication.isHidden`; absent from an older helper (`null` = can't tell).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hidden: Option<bool>,
 }
 
 /// The `ctrl.apps` reply.
@@ -473,6 +479,8 @@ pub struct FakeApp {
     /// Slice 7b: pinned tabs and tabs with unsaved form input (titles), on top of `tabs` plain ones.
     pub pinned_tabs: Vec<String>,
     pub unsaved_tabs: Vec<String>,
+    /// ADR 0134: hidden (`NSRunningApplication.hide`).
+    pub hidden: bool,
 }
 
 impl FakeApp {
@@ -492,6 +500,7 @@ impl FakeApp {
             no_preview: false,
             pinned_tabs: Vec::new(),
             unsaved_tabs: Vec::new(),
+            hidden: false,
         }
     }
     pub fn browser(mut self, tabs: i64) -> Self {
@@ -676,6 +685,18 @@ impl FakeWorld {
                 }
                 Ok(())
             }
+            // ADR 0134: hide each (no activation); never the frontmost (the helper skips it, like the Mac side).
+            Route::Workspace(WorkspaceOp::HideApps { apps }) => {
+                let front = self.frontmost_pid;
+                for id in apps {
+                    if let Some(a) = self.app_mut(id) {
+                        if a.pid != front {
+                            a.hidden = true;
+                        }
+                    }
+                }
+                Ok(())
+            }
             Route::Ax { app, element, .. } => {
                 let a = self.app_mut(app).ok_or("app.not_running")?;
                 let before = a.ax_top.len();
@@ -787,7 +808,10 @@ impl FakeWorld {
                     Check::AppRunning { app } => Some(i64::from(
                         self.apps.iter().any(|a| &a.bundle_id == app && a.running),
                     )),
-                    Check::AxScope { .. } | Check::FilesRemaining | Check::AppsRemaining { .. } => None,
+                    Check::AxScope { .. }
+                    | Check::FilesRemaining
+                    | Check::AppsRemaining { .. }
+                    | Check::AppsVisible { .. } => None,
                 };
                 HelperMsg::MeasureResult { id, value }
             }
@@ -867,6 +891,7 @@ impl FakeWorld {
                             } else {
                                 None
                             },
+                            hidden: Some(a.hidden),
                         })
                         .collect(),
                     since_ms: Some(since),

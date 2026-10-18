@@ -16,7 +16,7 @@
 //! verified by re-reading the folder; trashing waits at the gate with a `file` preview. `files.empty_trash`
 //! (ADR 0122) deletes the Trash's items through the same executor, never through the Finder, only after the gate,
 //! and only the items the approved card listed. Without roots they still stop with `exec.held { files_not_yet }`. (Runs from before slice 6 may still hold `exec.held { irreversible }`; they replay as before.)
-use crate::apps::{unused_today, QUIT_UNUSED_MOVE};
+use crate::apps::{still_visible, to_hide, unused_today, HIDE_OTHERS_MOVE, QUIT_UNUSED_MOVE};
 use crate::ax::{diff, AxSnapshot};
 use crate::decide::{next_backtrack, run_chain_obs, unobserved, BacktrackReason, Goal, Node, Scorer};
 use crate::files::{
@@ -98,8 +98,9 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
     if mv.starts_with("route.files.") {
         return Some(Step::Hold(HoldReason::FilesNotYet));
     }
-    // ADR 0130: the driver plans it from the helper's `ctrl.apps`; without that list there is nothing to quit.
-    if mv == QUIT_UNUSED_MOVE {
+    // ADR 0130 / 0134: the driver plans these from the helper's `ctrl.apps`; without that list there is nothing to
+    // quit or hide.
+    if mv == QUIT_UNUSED_MOVE || mv == HIDE_OTHERS_MOVE {
         return Some(Step::Hold(HoldReason::NoRoute));
     }
     let Some(app) = chosen_app(&apps, &chosen) else {
@@ -588,7 +589,39 @@ impl Driver<'_> {
             } else {
                 None
             };
+            // ADR 0134: "hide other apps" is planned from `ctrl.apps` too: every visible app but the frontmost and
+            // qrtz. Reversible, so no gate; already all hidden means done.
+            let hplan: Option<Vec<String>> = if fplan.is_none() && mv == HIDE_OTHERS_MOVE {
+                match self.helper.apps() {
+                    Ok(r) => match to_hide(&r.apps) {
+                        v if v.is_empty() => return sink.push(log, finish(TaskStatus::Done)),
+                        v => Some(v.into_iter().map(|a| a.bundle_id.clone()).collect()),
+                    },
+                    Err(_) => {
+                        sink.push(
+                            log,
+                            Event::ExecHeld {
+                                reason: HoldReason::NoRoute,
+                            },
+                        )?;
+                        return sink.push(log, finish(TaskStatus::AskedOut));
+                    }
+                }
+            } else {
+                None
+            };
             let step = match (&fplan, &qplan) {
+                (None, None) if hplan.is_some() => {
+                    let apps = hplan.clone().unwrap_or_default();
+                    Step::Act {
+                        routes: vec![Route::Workspace(WorkspaceOp::HideApps { apps: apps.clone() })],
+                        verify: Verify {
+                            check: Check::AppsVisible { apps },
+                            expect: Expect::Zero,
+                        },
+                        content: BTreeMap::new(),
+                    }
+                }
                 (None, Some(q)) => Step::Act {
                     routes: vec![Route::Workspace(WorkspaceOp::QuitApps { apps: q.ids() })],
                     verify: Verify {
@@ -622,6 +655,9 @@ impl Driver<'_> {
                     .apps()
                     .ok()
                     .map(|r| r.apps.iter().filter(|a| apps.contains(&a.bundle_id)).count() as i64),
+                (Check::AppsVisible { apps }, _) => {
+                    self.helper.apps().ok().and_then(|r| still_visible(&r.apps, apps))
+                }
                 _ => self.helper.measure(c),
             };
             let (routes, verify, content) = match step {
@@ -920,7 +956,11 @@ impl Driver<'_> {
             };
             // Key routes (cmd-w, …) can't skip pinned or unsaved tabs: a selective close that failed asks. A delete
             // that failed (ADR 0122) asks too: the other way to empty the Trash is the Finder, which would take focus.
-            if tabs_app.is_some() || qplan.is_some() || fplan.as_ref().is_some_and(|(_, p)| p.deletes()) {
+            if tabs_app.is_some()
+                || qplan.is_some()
+                || hplan.is_some()
+                || fplan.as_ref().is_some_and(|(_, p)| p.deletes())
+            {
                 sink.push(log, finish(TaskStatus::AskedOut))?;
                 return Ok(());
             }

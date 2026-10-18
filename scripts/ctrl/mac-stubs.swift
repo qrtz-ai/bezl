@@ -67,6 +67,8 @@ open class NSRunningApplication: NSObject {
     open var bundleURL: URL? { nil }
     open func activate(options: NSApplicationActivationOptions = []) -> Bool { false }
     open func terminate() -> Bool { false }
+    open func hide() -> Bool { false }
+    open var isHidden: Bool { false }
 }
 open class NSWorkspace: NSObject {
     public static let shared = NSWorkspace()

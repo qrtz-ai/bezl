@@ -42,7 +42,7 @@ private final class Fake: CtrlBackend {
         [CtrlPreviewItem(title: "notes.txt", unsaved: false), CtrlPreviewItem(title: "draft.txt", unsaved: true)]
     }
     func runningApps() throws -> (apps: [CtrlRunningApp], sinceMs: UInt64?, dayStartMs: UInt64) {
-        ([CtrlRunningApp(bundleId: "com.tinyspeck.slackmacgap", name: "Slack", lastActiveMs: 1_789_990_000_000, frontmost: false, unsaved: nil),
+        ([CtrlRunningApp(bundleId: "com.tinyspeck.slackmacgap", name: "Slack", lastActiveMs: 1_789_990_000_000, frontmost: false, unsaved: nil, hidden: false),
           CtrlRunningApp(bundleId: "com.apple.Notes", name: "Notes", lastActiveMs: nil, frontmost: true, unsaved: false)],
          1_789_950_000_000, 1_789_989_200_000)
     }
@@ -54,7 +54,7 @@ final class CtrlProtocolTests: XCTestCase {
     func testEveryHostLineOfTheFixtureParses() throws {
         let all = try lines()
         let host = all.filter { !(($0["type"] as! String).hasSuffix(".result")) && $0["type"] as! String != "ctrl.error" }
-        XCTAssertEqual(host.count, 13)
+        XCTAssertEqual(host.count, 14)
         for o in host {
             let line = String(decoding: try JSONSerialization.data(withJSONObject: o), as: UTF8.self)
             XCTAssertNotNil(CtrlRequest.parse(line), "\(o["type"]!)")
@@ -146,6 +146,23 @@ final class CtrlProtocolTests: XCTestCase {
         XCTAssertEqual(fake.acted, [.quitApps(apps: ["com.tinyspeck.slackmacgap"])])
         XCTAssertEqual(json(CtrlServer(backend: UnsupportedCtrlBackend()).handle(line: #"{"type":"ctrl.apps","id":"u"}"#))["code"] as? String,
                        "apps.not_watching")
+    }
+
+    func testHideAppsWireAndTheFrontmostAppIsNeverHidden() throws {
+        // ADR 0134: hide_apps parses from the fixture; the frontmost app (Notes, pid 100) drops out of the list before
+        // the backend sees it and the rest are hidden; `hidden` rides the apps report only when the backend knows it.
+        let all = try lines()
+        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["op"] as? String == "hide_apps" }!
+        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
+        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("hide_apps") }
+        XCTAssertEqual(route, .hideApps(apps: ["com.tinyspeck.slackmacgap", "com.apple.finder"]))
+        let fake = Fake()
+        let server = CtrlServer(backend: fake)
+        XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.act","id":"x","actionId":"a0","route":{"route":"workspace","op":"hide_apps","apps":["com.apple.Safari","com.apple.Notes"]},"content":{}}"#))["ok"] as? Bool, true)
+        XCTAssertEqual(fake.acted, [.hideApps(apps: ["com.apple.Safari"])])
+        let apps = json(server.handle(line: #"{"type":"ctrl.apps","id":"h"}"#))["apps"] as! [[String: Any]]
+        XCTAssertEqual(apps[0]["hidden"] as? Bool, false)
+        XCTAssertNil(apps[1]["hidden"], "unknown stays off the wire")
     }
 
     func testTheLastUsedRecordKeepsTheLatestActivationAndMidnightIsLocal() {

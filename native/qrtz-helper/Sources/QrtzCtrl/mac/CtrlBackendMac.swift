@@ -54,7 +54,7 @@ public final class MacCtrlBackend: CtrlBackend {
                 guard let id = a.bundleIdentifier else { return nil }
                 let unsaved: Bool? = trusted && CtrlActions.windows(a.processIdentifier).isEmpty ? false : nil
                 return CtrlRunningApp(bundleId: id, name: a.localizedName ?? id, lastActiveMs: lastUsed.lastActive(id),
-                                      frontmost: a.processIdentifier == front, unsaved: unsaved)
+                                      frontmost: a.processIdentifier == front, unsaved: unsaved, hidden: a.isHidden)
             }
         return (apps, lastUsed.sinceMs, CtrlLastUsed.dayStartMs(nowMs: CtrlLastUsed.nowMs()))
     }
@@ -292,6 +292,14 @@ public final class MacCtrlBackend: CtrlBackend {
             for id in apps {
                 guard let a = runningApp(id), a.processIdentifier != front else { continue }
                 _ = a.terminate()
+            }
+        case let .hideApps(apps):
+            // ADR 0134: `hide()` is the Dock's Hide: the app's windows go, nothing is activated or raised, no key event.
+            // The frontmost app was dropped before this point (CtrlServer); re-checked here for the race.
+            let front = frontmostPid()
+            for id in apps {
+                guard let a = runningApp(id), a.processIdentifier != front, !a.isHidden else { continue }
+                _ = a.hide()
             }
         case let .scripting(app, verb) where CtrlRoute.tabVerbs.contains(verb):
             try closeTabs(app: app, verb: verb)

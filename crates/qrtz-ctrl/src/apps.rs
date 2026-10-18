@@ -45,6 +45,44 @@ pub fn unused_today(
         .collect()
 }
 
+/// ADR 0134: the move of "hide other apps" / "hide all my apps" (reversible, no gate).
+pub const HIDE_OTHERS_MOVE: &str = "route.workspace.hide_others";
+
+/// Never hidden by "hide other apps": the frontmost app (the one the user is in) and qrtz itself, which shows the
+/// run. The Finder is hidden like any other app (its windows go; the desktop stays), as the system's Hide Others does.
+fn keep_visible(id: &str) -> bool {
+    id.starts_with("ai.qrtz.")
+        || matches!(
+            id,
+            "com.apple.loginwindow" | "com.apple.dock" | "com.apple.systemuiserver"
+        )
+}
+
+/// The running apps "hide other apps" would hide now, in the helper's order: every regular app that isn't frontmost,
+/// isn't qrtz, and isn't hidden already (`hidden: None`, an older helper that doesn't say, counts as visible).
+pub fn to_hide(apps: &[RunningAppWire]) -> Vec<&RunningAppWire> {
+    apps.iter()
+        .filter(|a| !a.frontmost && !keep_visible(&a.bundle_id) && a.hidden != Some(true))
+        .collect()
+}
+
+/// Of `planned`, how many are still on screen (running, not hidden, not frontmost: an app the user switched to
+/// meanwhile is theirs to see). `None` when the helper can't say whether an app is hidden.
+pub fn still_visible(apps: &[RunningAppWire], planned: &[String]) -> Option<i64> {
+    let mut n = 0;
+    for a in apps
+        .iter()
+        .filter(|a| planned.contains(&a.bundle_id) && !a.frontmost)
+    {
+        match a.hidden {
+            Some(true) => {}
+            Some(false) => n += 1,
+            None => return None,
+        }
+    }
+    Some(n)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -56,6 +94,7 @@ mod tests {
             last_active_ms: last,
             frontmost: front,
             unsaved: Some(false),
+            hidden: Some(false),
         }
     }
 
@@ -80,5 +119,29 @@ mod tests {
         assert!(unused_today(&apps, Some(MIDNIGHT + 1), MIDNIGHT).is_empty());
         // No watch at all: nothing.
         assert!(unused_today(&apps, None, MIDNIGHT).is_empty());
+    }
+
+    #[test]
+    fn hide_others_keeps_the_frontmost_and_qrtz() {
+        let mut apps = vec![
+            app("com.a.Front", None, true),
+            app("com.a.Slack", None, false),
+            app("com.apple.finder", None, false),
+            app("ai.qrtz.desktop", None, false),
+            app("com.a.Hidden", None, false),
+        ];
+        apps[4].hidden = Some(true);
+        let ids: Vec<String> = to_hide(&apps).iter().map(|a| a.bundle_id.clone()).collect();
+        assert_eq!(ids, vec!["com.a.Slack", "com.apple.finder"]);
+        assert_eq!(still_visible(&apps, &ids), Some(2));
+        apps[1].hidden = Some(true);
+        apps[2].hidden = Some(true);
+        assert_eq!(still_visible(&apps, &ids), Some(0));
+        // The user switched to Slack meanwhile: theirs, not counted.
+        apps[1].hidden = Some(false);
+        apps[1].frontmost = true;
+        assert_eq!(still_visible(&apps, &ids), Some(0));
+        apps[2].hidden = None;
+        assert_eq!(still_visible(&apps, &ids), None);
     }
 }

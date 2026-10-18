@@ -76,6 +76,9 @@ pub enum WorkspaceOp {
     /// ADR 0130: `NSRunningApplication.terminate()` each app (no activation, no key event). Only behind an approved
     /// confirm gate; never the frontmost app.
     QuitApps { apps: Vec<String> },
+    /// ADR 0134: `NSRunningApplication.hide()` each app (no activation, no key event, no window raised). Reversible
+    /// (clicking the app in the Dock brings it back), so no gate; never the frontmost app.
+    HideApps { apps: Vec<String> },
 }
 
 /// The only Apple Event verbs ctrl sends. Templates, not free text: the type can't express `activate`.
@@ -149,9 +152,9 @@ impl Route {
 
     pub fn app(&self) -> Option<&str> {
         match self {
-            Route::Files(_) | Route::GlobalKey { .. } | Route::Workspace(WorkspaceOp::QuitApps { .. }) => {
-                None
-            }
+            Route::Files(_)
+            | Route::GlobalKey { .. }
+            | Route::Workspace(WorkspaceOp::QuitApps { .. } | WorkspaceOp::HideApps { .. }) => None,
             Route::Workspace(WorkspaceOp::OpenUrl { app, .. } | WorkspaceOp::LaunchHidden { app }) => {
                 Some(app)
             }
@@ -317,8 +320,8 @@ pub fn judge(route: &Route, env: &Env) -> Verdict {
         Route::Workspace(op) => {
             let app = match op {
                 WorkspaceOp::OpenUrl { app, .. } | WorkspaceOp::LaunchHidden { app } => app,
-                WorkspaceOp::QuitApps { apps } => {
-                    // The app the user is in is never quit under them.
+                WorkspaceOp::QuitApps { apps } | WorkspaceOp::HideApps { apps } => {
+                    // The app the user is in is never quit or hidden under them.
                     if apps.iter().any(|a| env.user_in(a)) {
                         return Verdict::Refused {
                             why: Refusal::TargetIsFrontmost,

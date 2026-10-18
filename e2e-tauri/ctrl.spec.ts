@@ -628,3 +628,30 @@ test('ctrl: quit apps i have not used today waits at the card with the apps', as
   expect(await axe(page, 'ctrl')).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+// ADR 0134: "hide all my apps" hides every other app without a card (reversible), the app you're in stays.
+test('ctrl: every morning hide all my apps hides the others without a card', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  await ctrl
+    .getByTestId('ctrl-task-input')
+    .fill('every morning hide all my apps');
+  await ctrl.getByTestId('ctrl-schedule-daily').click();
+  await ctrl.getByTestId('ctrl-schedule-time').fill('09:00');
+  await ctrl.getByTestId('ctrl-task-add').click();
+  await ctrl.getByTestId('ctrl-task').getByTestId('ctrl-task-run').click();
+  const run = ctrl.getByTestId('ctrl-run').first();
+  await expect(run.getByTestId('ctrl-run-status')).toHaveText('done');
+  await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
+  const decisions = ctrl.getByTestId('ctrl-decisions').first();
+  await expect(decisions).toContainText('hide your other apps');
+  await expect(decisions).toContainText("hide them, the app you're in stays");
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});

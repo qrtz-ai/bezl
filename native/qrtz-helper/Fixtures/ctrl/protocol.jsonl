@@ -18,7 +18,8 @@
 {"type":"ctrl.preview.result","id":"c9","items":[{"title":"notes.txt","unsaved":false},{"title":"draft.txt","unsaved":true}]}
 {"type":"ctrl.error","id":"c8","code":"app.not_running"}
 {"type":"ctrl.apps","id":"c10"}
-{"type":"ctrl.apps.result","id":"c10","apps":[{"bundleId":"com.tinyspeck.slackmacgap","name":"Slack","lastActiveMs":1789990000000,"frontmost":false,"unsaved":null},{"bundleId":"com.apple.Notes","name":"Notes","lastActiveMs":null,"frontmost":true,"unsaved":false}],"sinceMs":1789950000000,"dayStartMs":1789989200000}
+{"type":"ctrl.apps.result","id":"c10","apps":[{"bundleId":"com.tinyspeck.slackmacgap","name":"Slack","lastActiveMs":1789990000000,"frontmost":false,"unsaved":null,"hidden":false},{"bundleId":"com.apple.Notes","name":"Notes","lastActiveMs":null,"frontmost":true,"unsaved":false}],"sinceMs":1789950000000,"dayStartMs":1789989200000}
 {"type":"ctrl.act","id":"c11","actionId":"a1","route":{"route":"workspace","op":"quit_apps","apps":["com.tinyspeck.slackmacgap"]},"content":{}}
+{"type":"ctrl.act","id":"c13","actionId":"a2","route":{"route":"workspace","op":"hide_apps","apps":["com.tinyspeck.slackmacgap","com.apple.finder"]},"content":{}}
 {"type":"ctrl.laya.warm","id":"c12","model":"/models/ctrl/laya/laya.mlmodelc"}
 {"type":"ctrl.laya.warm.result","id":"c12","state":"started"}

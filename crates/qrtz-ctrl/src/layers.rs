@@ -469,6 +469,13 @@ const INTENTS: &[IntentDef] = &[
         slot: Slot::None,
         irreversible: true,
     },
+    // ADR 0134: hide every other running app (never the one the user is in); reversible, no gate.
+    IntentDef {
+        id: "hide_others",
+        app: AppMode::None,
+        slot: Slot::None,
+        irreversible: false,
+    },
     IntentDef {
         id: "empty_trash",
         app: AppMode::Files,
@@ -607,6 +614,27 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
                         p += 3000;
                     }
                 }
+            }
+        }
+        "hide_others" => {
+            // "hide other apps", "hide all my apps", "hide everything else". Without "hide" it sits well below the
+            // rest (like quit_unused), so it doesn't thin out the other intents' odds.
+            // Only with a group word: "hide slack" names one app and must never hide everything else.
+            p -= 3000;
+            let group = has(
+                toks,
+                &[
+                    "apps",
+                    "applications",
+                    "programs",
+                    "other",
+                    "others",
+                    "everything",
+                    "all",
+                ],
+            );
+            if has(toks, &["hide"]) && group && !named_app {
+                p += 8500;
             }
         }
         "empty_trash" => {
@@ -891,6 +919,7 @@ fn move_question(
         "open_app" => vec![route("workspace.launch_hidden", 4500)],
         "quit_app" => vec![irreversible(shortcut("cmd+q", 4000))],
         "quit_unused" => vec![irreversible(route("workspace.quit_unused", 4500))],
+        "hide_others" => vec![route("workspace.hide_others", 4500)],
         // ADR 0124: on the Desktop only the screenshots and screen recordings are ctrl's; the Downloads routes
         // would act on another folder, so they aren't offered here.
         "clean_folder" if matches!(target, Some("folder.desktop" | "folder.screenshots")) => {
@@ -1097,6 +1126,7 @@ fn intent_label(id: &str) -> &'static str {
         "open_app" => "open an app",
         "quit_app" => "quit an app",
         "quit_unused" => "quit apps you haven't used today",
+        "hide_others" => "hide your other apps",
         "empty_trash" => "empty the trash",
         "dark_mode" => "switch dark mode",
         "search" => "search in an app",
@@ -1114,6 +1144,7 @@ fn route_label(id: &str) -> &'static str {
         "workspace.open_url" => "open the address in the background",
         "workspace.launch_hidden" => "start it hidden",
         "workspace.quit_unused" => "quit them without bringing anything forward",
+        "workspace.hide_others" => "hide them, the app you're in stays",
         "files.tidy" => "sort by kind, nothing deleted",
         "files.sort_by_kind" => "sort files into folders by kind",
         "files.trash_old" => "move old installers to the trash",
