@@ -55,6 +55,7 @@ fn rig() -> Rig {
     let roots = FileRoots {
         downloads: d.path().join("Downloads"),
         trash: d.path().join("Trash"),
+        desktop: d.path().join("Desktop"),
     };
     fs::create_dir_all(&roots.downloads).unwrap();
     fs::create_dir_all(&roots.trash).unwrap();

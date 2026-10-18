@@ -676,13 +676,18 @@ fn folder_question(toks: &[Tok]) -> Question {
         ("documents", &["documents", "docs"]),
         ("screenshots", &["screenshots", "screenshot"]),
     ];
+    // "my screenshots on the desktop" names one place, not two (ADR 0124): the Desktop is where macOS saves them.
+    let on_desktop = has(toks, &["desktop"]);
     let cs = folders
         .iter()
         .map(|(id, words)| {
-            choice(
-                opt(format!("folder.{id}"), OptionKind::Folder),
-                5000 * count(toks, words).min(1),
-            )
+            let named = count(toks, words).min(1);
+            let p = if *id == "screenshots" && on_desktop {
+                0
+            } else {
+                5000 * named
+            };
+            choice(opt(format!("folder.{id}"), OptionKind::Folder), p)
         })
         .collect();
     finish(Node::ChooseTarget, cs)
@@ -793,6 +798,20 @@ fn move_question(
         ],
         "open_app" => vec![route("workspace.launch_hidden", 4500)],
         "quit_app" => vec![irreversible(shortcut("cmd+q", 4000))],
+        // ADR 0124: on the Desktop only the screenshots and screen recordings are ctrl's; the Downloads routes
+        // would act on another folder, so they aren't offered here.
+        "clean_folder" if matches!(target, Some("folder.desktop" | "folder.screenshots")) => {
+            let trash = has(toks, &["delete", "trash", "remove", "bin"]);
+            vec![
+                route("files.desktop_screenshots", 4500),
+                irreversible(route(
+                    "files.trash_screenshots",
+                    500 + if trash { 4500 } else { 0 },
+                )),
+            ]
+        }
+        // No routes for the Documents folder yet: the Downloads ones would act on another folder (ADR 0124).
+        "clean_folder" if target == Some("folder.documents") => vec![],
         "clean_folder" => {
             let sort = has(toks, &["sort", "organize", "organise"]);
             let old = has(toks, &["old", "delete", "trash", "remove"]);
@@ -1003,6 +1022,8 @@ fn route_label(id: &str) -> &'static str {
         "files.sort_by_kind" => "sort files into folders by kind",
         "files.trash_old" => "move old installers to the trash",
         "files.empty_trash" => "empty the trash",
+        "files.desktop_screenshots" => "move screenshots into a folder, nothing deleted",
+        "files.trash_screenshots" => "move screenshots to the trash",
         _ => "a route",
     }
 }

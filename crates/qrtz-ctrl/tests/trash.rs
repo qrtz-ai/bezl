@@ -74,6 +74,7 @@ fn rig_at(wall: u64) -> Rig {
     let roots = FileRoots {
         downloads: d.path().join("Downloads"),
         trash: d.path().join("Trash"),
+        desktop: d.path().join("Desktop"),
     };
     fs::create_dir_all(&roots.downloads).unwrap();
     fs::create_dir_all(&roots.trash).unwrap();
@@ -389,6 +390,7 @@ fn the_planner_skips_just_trashed_and_the_executor_only_deletes_inside_the_trash
     let roots = FileRoots {
         downloads: d.path().join("Downloads"),
         trash: d.path().join("Trash"),
+        desktop: d.path().join("Desktop"),
     };
     // No Trash folder yet: nothing to do.
     assert!(plan_empty_trash(&roots, SystemTime::now())

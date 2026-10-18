@@ -18,7 +18,10 @@
 //! and only the items the approved card listed. Without roots they still stop with `exec.held { files_not_yet }`. (Runs from before slice 6 may still hold `exec.held { irreversible }`; they replay as before.)
 use crate::ax::{diff, AxSnapshot};
 use crate::decide::{next_backtrack, run_chain_obs, unobserved, BacktrackReason, Goal, Node, Scorer};
-use crate::files::{path_ref, plan_cleanup, FilePlan, FileRoots, Planned, EMPTY_TRASH_MOVE};
+use crate::files::{
+    path_ref, plan_cleanup, FilePlan, FileRoots, Planned, DESKTOP_SCREENSHOTS_MOVE, EMPTY_TRASH_MOVE,
+    TRASH_SCREENSHOTS_MOVE,
+};
 use crate::fs_exec::{FsExecutor, MemStore};
 use crate::gate::{
     counted_items, hash_items, intent_and_move, preview_what, rules, Approval, ConfirmAnswer, ItemKind,
@@ -363,7 +366,12 @@ pub fn files_preview(s: &CtrlState, plan: &FilePlan) -> (Preview, Vec<(String, S
 fn file_move(mv: &str) -> bool {
     matches!(
         mv,
-        "route.files.tidy" | "route.files.sort_by_kind" | "route.files.trash_old" | EMPTY_TRASH_MOVE
+        "route.files.tidy"
+            | "route.files.sort_by_kind"
+            | "route.files.trash_old"
+            | EMPTY_TRASH_MOVE
+            | DESKTOP_SCREENSHOTS_MOVE
+            | TRASH_SCREENSHOTS_MOVE
     )
 }
 

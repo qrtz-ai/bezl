@@ -11,6 +11,10 @@
 //! `files.empty_trash` (ADR 0122) plans one [`Planned::Delete`] per top-level item of the Trash, skipping what
 //! was trashed in the last [`SETTLE`] (it may still be put back), locked items and the Finder's own hidden files.
 //! It is the one plan that deletes, so it is always gated and has no undo.
+//!
+//! `files.desktop_screenshots` (ADR 0124) moves the screenshots and screen recordings macOS saved on the Desktop
+//! (matched by the system's own file names and kind) into `Desktop/screenshots`; nothing else on the Desktop moves.
+//! `files.trash_screenshots` (the task says trash / delete) sends the same files to the Trash behind the gate.
 use crate::fs_exec::MemStore;
 use crate::ladder::FsOp;
 use serde::{Deserialize, Serialize};
@@ -24,10 +28,12 @@ pub struct FileRoots {
     pub downloads: PathBuf,
     /// The user's Trash (`~/.Trash` on macOS); a move there is undone by moving back.
     pub trash: PathBuf,
+    /// The Desktop (`~/Desktop` on macOS): only its screenshots and screen recordings are ctrl's (ADR 0124).
+    pub desktop: PathBuf,
 }
 
 impl FileRoots {
-    /// `~/Downloads` and `~/.Trash` on macOS; nothing elsewhere (tests pass a temp dir).
+    /// `~/Downloads`, `~/.Trash` and `~/Desktop` on macOS; nothing elsewhere (tests pass a temp dir).
     pub fn default_for_os() -> Option<Self> {
         if !cfg!(target_os = "macos") {
             return None;
@@ -36,6 +42,7 @@ impl FileRoots {
         Some(Self {
             downloads: home.join("Downloads"),
             trash: home.join(".Trash"),
+            desktop: home.join("Desktop"),
         })
     }
 }
@@ -171,6 +178,9 @@ pub fn plan_cleanup(roots: &FileRoots, mv: &str, now: SystemTime) -> std::io::Re
     if mv == EMPTY_TRASH_MOVE {
         return plan_empty_trash(roots, now);
     }
+    if mv == DESKTOP_SCREENSHOTS_MOVE || mv == TRASH_SCREENSHOTS_MOVE {
+        return plan_desktop_screenshots(roots, mv == TRASH_SCREENSHOTS_MOVE, now);
+    }
     let trash_old = mv == "route.files.trash_old";
     let mut entries: Vec<(PathBuf, String, SystemTime)> = Vec::new();
     for e in std::fs::read_dir(&roots.downloads)? {
@@ -211,6 +221,110 @@ pub fn plan_cleanup(roots: &FileRoots, mv: &str, now: SystemTime) -> std::io::Re
         plan.ops.push(Planned::Move {
             src: path,
             dst_dir: dir,
+        });
+    }
+    Ok(plan)
+}
+
+/// The move that sorts the Desktop's screenshots and screen recordings into [`SCREENSHOTS_DIR`] (ADR 0124).
+pub const DESKTOP_SCREENSHOTS_MOVE: &str = "route.files.desktop_screenshots";
+/// The move that sends them to the Trash instead (only when the task says so; irreversible, gated).
+pub const TRASH_SCREENSHOTS_MOVE: &str = "route.files.trash_screenshots";
+/// The Desktop folder screenshots go into.
+pub const SCREENSHOTS_DIR: &str = "screenshots";
+
+/// A screenshot or screen recording by the name and kind macOS gives it: `Screenshot 2026-10-18 at 6.37.12 AM.png`
+/// (`Screen Shot …` before macOS 10.14 / 13), `Screen Recording 2026-10-18 at 6.37.12 AM.mov`, also with a ` (2)`
+/// or `-1` suffix. The prefix is followed by a `yyyy-mm-dd` date; the kind must match the prefix (an image for a
+/// screenshot, a movie for a recording), so `screenshot ideas.txt` or a renamed file stays put.
+pub fn is_screen_capture(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    let Some(ext) = Path::new(&lower).extension().and_then(|e| e.to_str()) else {
+        return false;
+    };
+    let image = matches!(
+        ext,
+        "png" | "jpg" | "jpeg" | "heic" | "tiff" | "gif" | "bmp" | "pdf"
+    );
+    let movie = matches!(ext, "mov" | "mp4");
+    let rest = if let Some(r) = lower
+        .strip_prefix("screenshot ")
+        .or_else(|| lower.strip_prefix("screen shot "))
+    {
+        if !image {
+            return false;
+        }
+        r
+    } else if let Some(r) = lower.strip_prefix("screen recording ") {
+        if !movie {
+            return false;
+        }
+        r
+    } else {
+        return false;
+    };
+    let b = rest.as_bytes();
+    b.len() >= 10
+        && b[..4].iter().all(u8::is_ascii_digit)
+        && b[4] == b'-'
+        && b[5..7].iter().all(u8::is_ascii_digit)
+        && b[7] == b'-'
+        && b[8..10].iter().all(u8::is_ascii_digit)
+}
+
+/// Plan the Desktop's screenshots (ADR 0124): every settled top-level screenshot / screen recording moves into
+/// `Desktop/screenshots` (created if needed; a same-named file there keeps the new one where it is), or with
+/// `trash` to the Trash (a same-named item there keeps it too). Everything else on the Desktop stays. Pure over the
+/// listing and `now`; at most [`MAX_EMPTY`] per run.
+pub fn plan_desktop_screenshots(
+    roots: &FileRoots,
+    trash: bool,
+    now: SystemTime,
+) -> std::io::Result<FilePlan> {
+    let mut found: Vec<(PathBuf, String)> = Vec::new();
+    for e in std::fs::read_dir(&roots.desktop)? {
+        let e = e?;
+        let meta = e.path().symlink_metadata()?;
+        if !meta.file_type().is_file() {
+            continue;
+        }
+        let name = e.file_name().to_string_lossy().into_owned();
+        // A screenshot still being written (a recording in progress) has a fresh mtime: it waits.
+        let fresh = meta
+            .modified()
+            .ok()
+            .filter(|t| *t <= now)
+            .is_none_or(|t| now.duration_since(t).unwrap_or_default() < SETTLE);
+        if fresh || !is_screen_capture(&name) || locked(&meta) {
+            continue;
+        }
+        found.push((e.path(), name));
+    }
+    found.sort();
+    found.truncate(MAX_EMPTY);
+    let dir = roots.desktop.join(SCREENSHOTS_DIR);
+    let mut plan = FilePlan::default();
+    if trash {
+        for (path, name) in found {
+            if !roots.trash.join(&name).exists() {
+                plan.ops.push(Planned::Trash { src: path });
+            }
+        }
+        return Ok(plan);
+    }
+    if dir.exists() && !dir.is_dir() {
+        return Ok(plan);
+    }
+    for (path, name) in found {
+        if dir.join(&name).exists() {
+            continue;
+        }
+        if plan.ops.is_empty() && !dir.exists() {
+            plan.ops.push(Planned::MakeDir { dir: dir.clone() });
+        }
+        plan.ops.push(Planned::Move {
+            src: path,
+            dst_dir: dir.clone(),
         });
     }
     Ok(plan)
@@ -387,14 +501,23 @@ pub fn plan_undo(op: &FsOp, roots: &FileRoots) -> UndoPlan {
     let mut dirs: std::collections::BTreeMap<String, PathBuf> = KINDS
         .iter()
         .map(|k| roots.downloads.join(k))
+        .chain([roots.desktop.join(SCREENSHOTS_DIR)])
         .map(|d| (path_ref(&d), d))
         .collect();
     dirs.insert(path_ref(&roots.trash), roots.trash.clone());
-    let find = |dir: &Path, src: &str| -> Option<String> {
+    // (the name now, where it came from): the ref says which folder it left (Downloads or the Desktop, ADR 0124).
+    let find = |dir: &Path, src: &str| -> Option<(String, PathBuf)> {
         std::fs::read_dir(dir).ok()?.filter_map(Result::ok).find_map(|e| {
             let name = e.file_name().to_string_lossy().into_owned();
             let is_file = e.path().symlink_metadata().is_ok_and(|m| m.file_type().is_file());
-            (is_file && path_ref(&roots.downloads.join(&name)) == src).then_some(name)
+            if !is_file {
+                return None;
+            }
+            [&roots.downloads, &roots.desktop]
+                .into_iter()
+                .map(|root| root.join(&name))
+                .find(|from| path_ref(from) == src)
+                .map(|from| (name.clone(), from))
         })
     };
     let mut plan = UndoPlan::default();
@@ -415,7 +538,7 @@ pub fn plan_undo(op: &FsOp, roots: &FileRoots) -> UndoPlan {
             file: src.0.clone(),
             why,
         };
-        match dir.and_then(|d| find(d, &src.0).map(|n| (d.join(&n), roots.downloads.join(n)))) {
+        match dir.and_then(|d| find(d, &src.0).map(|(n, from)| (d.join(&n), from))) {
             None => plan.skipped.push(skip(UndoWhy::Moved)),
             Some((_, to)) if to.symlink_metadata().is_ok() => plan.skipped.push(skip(UndoWhy::Occupied)),
             Some((from, to)) => {
