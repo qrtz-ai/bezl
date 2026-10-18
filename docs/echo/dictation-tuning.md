@@ -256,6 +256,21 @@ Harness flags (`--keep`, `--headdrop`, `--hf`, `--resampler`, `--chunkpad` after
   final at 6.5 s. Nothing changes when the helper keeps up.
 - **Harness:** the §7 flags (`--keep`, `--headdrop`, `--hf`, `--resampler`) and cycle 33's DSP and paired
   comparison (`dsp.py`, `compare.py`, `score.py`) are now in `linux-crosscheck/`, with the §7 rows in `run-all.sh`.
-  Re-running `hf10-linear` (first 20 utterances) with the repo copy gave the same hypotheses as §7's run, 20 of 20. The input-side rows cycle 33 wrote (48 kHz mic, white noise, quiet mic with a normaliser, Nemotron 3.5
-  forced to English) are in `run-all.sh` but **not run yet**: no numbers from them here.
+  Re-running `hf10-linear` (first 20 utterances) with the repo copy gave the same hypotheses as §7's run, 20 of 20.
 - **Still the gate:** items 1 (two-pass final) and 2 (pad 1120) need the Mac bench before a default changes.
+
+## 9. Cycle 35: skip the module flush wait (ADR 0109); input-side Linux rows
+
+- **Fixed, talk side (N165, `crates/qrtz-talk`):** when `dictation.stopped` text is non-empty it already wins, so
+  `finish_inner` no longer waits up to `final_ms` (1.5 s) for a speech-module flush. Still calls `finish` so the
+  session exits. Shipped builds (`HelperAsrSpeech`) are unchanged. Rig: a 2 s module flush used to pin
+  `talk latency` `final_ms` at 1500; it is now under 500 ms.
+- **Input-side Linux cross-check** (harness rows from cycle 33, run this cycle; 300 utterances, 6 threads): 48 kHz
+  mic through the helper's linear resampler vs a windowed sinc (clean, white noise 15 dB, 8–20 kHz noise 15 dB);
+  quiet mic ×0.1 raw / peak / causal AGC; Nemotron 3.5 with language forced to English. Numbers fill in below as
+  the queue finishes; paired bootstrap comparisons land next to the table.
+
+| Row | WER all | Last word missed | Notes |
+| --- | ------- | ---------------- | ----- |
+| *(pending — queue running)* | | | |
+

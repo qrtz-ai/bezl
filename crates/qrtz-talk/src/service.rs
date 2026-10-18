@@ -1259,19 +1259,26 @@ impl TalkService {
 
     async fn finish_inner(&self, id: String, local_text: String, duration_ms: f64) -> bool {
         let t = self.deps().timeouts;
+        // N165 (ADR 0109): the helper's `dictation.stopped` text wins when non-empty, so don't wait up to
+        // `final_ms` for a speech-module flush we won't use. Still call `finish` so the session exits cleanly.
+        let wait_for_module = local_text.trim().is_empty();
         let local_rx = {
             let mut g = self.lock();
             let Some(a) = g.attempt.as_mut().filter(|a| a.id == id) else {
                 return g.view.id.as_deref() == Some(id.as_str());
             };
-            a.local.as_ref().map(|l| {
-                let (tx, rx) = oneshot::channel();
-                a.local_done = Some(tx);
+            a.local.as_ref().and_then(|l| {
                 l.finish();
-                rx
+                if wait_for_module {
+                    let (tx, rx) = oneshot::channel();
+                    a.local_done = Some(tx);
+                    Some(rx)
+                } else {
+                    None
+                }
             })
         };
-        // The on-device engine's last finals (bounded by the flush timeout).
+        // The on-device engine's last finals (only when the helper sent no text; bounded by the flush timeout).
         if let Some(l) = local_rx {
             let _ = tokio::time::timeout(Duration::from_millis(t.final_ms), l).await;
         }

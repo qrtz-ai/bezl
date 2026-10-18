@@ -489,6 +489,8 @@ pub struct RigOpts {
     pub timeouts: Timeouts,
     /// The on-device engine's `start` (module spawn + handshake) takes this long.
     pub local_start_delay_ms: u64,
+    /// N165: the on-device session's `finish` (module flush) takes this long.
+    pub local_finish_delay_ms: u64,
 }
 impl Default for RigOpts {
     fn default() -> Self {
@@ -509,6 +511,7 @@ impl Default for RigOpts {
                 final_ms: 300,
             },
             local_start_delay_ms: 0,
+            local_finish_delay_ms: 0,
         }
     }
 }
@@ -529,6 +532,48 @@ impl qrtz_talk::qrtz_speech::SpeechEngine for SlowStart {
     ) -> Result<Box<dyn qrtz_talk::qrtz_speech::SpeechSession>, qrtz_talk::qrtz_speech::SpeechError> {
         tokio::time::sleep(Duration::from_millis(self.delay_ms)).await;
         self.inner.start(spec).await
+    }
+}
+
+/// An on-device engine whose session `finish` takes a while (a real module's end-of-stream flush).
+pub struct SlowFinish {
+    pub inner: Arc<dyn qrtz_talk::qrtz_speech::SpeechEngine>,
+    pub delay_ms: u64,
+}
+struct SlowFinishSession {
+    inner: Box<dyn qrtz_talk::qrtz_speech::SpeechSession>,
+    delay_ms: u64,
+}
+#[async_trait::async_trait]
+impl qrtz_talk::qrtz_speech::SpeechSession for SlowFinishSession {
+    fn version(&self) -> &str {
+        self.inner.version()
+    }
+    fn events(&mut self) -> &mut tokio::sync::mpsc::Receiver<qrtz_talk::qrtz_speech::SpeechEvent> {
+        self.inner.events()
+    }
+    async fn finish(&mut self) -> Result<(), qrtz_talk::qrtz_speech::SpeechError> {
+        tokio::time::sleep(Duration::from_millis(self.delay_ms)).await;
+        self.inner.finish().await
+    }
+    async fn cancel(&mut self) {
+        self.inner.cancel().await
+    }
+}
+#[async_trait::async_trait]
+impl qrtz_talk::qrtz_speech::SpeechEngine for SlowFinish {
+    fn info(&self) -> qrtz_talk::qrtz_speech::EngineInfo {
+        self.inner.info()
+    }
+    async fn start(
+        &self,
+        spec: qrtz_talk::qrtz_speech::SessionSpec,
+    ) -> Result<Box<dyn qrtz_talk::qrtz_speech::SpeechSession>, qrtz_talk::qrtz_speech::SpeechError> {
+        let inner = self.inner.start(spec).await?;
+        Ok(Box::new(SlowFinishSession {
+            inner,
+            delay_ms: self.delay_ms,
+        }))
     }
 }
 
@@ -554,6 +599,14 @@ pub fn rig(o: RigOpts) -> Rig {
         Arc::new(SlowStart {
             inner: local,
             delay_ms: o.local_start_delay_ms,
+        })
+    } else {
+        local
+    };
+    let local: Arc<dyn qrtz_talk::qrtz_speech::SpeechEngine> = if o.local_finish_delay_ms > 0 {
+        Arc::new(SlowFinish {
+            inner: local,
+            delay_ms: o.local_finish_delay_ms,
         })
     } else {
         local
