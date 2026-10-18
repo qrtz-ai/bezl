@@ -31,7 +31,7 @@ $P run.py $M5 --name head-drop150 --headdrop 150
 $P run.py $M5 --name head-drop300 --headdrop 300
 $P run.py $M5 --name hf10-linear --hf 10 --resampler linear
 $P run.py $M5 --name hf10-poly --hf 10 --resampler poly
-# Written in cycle 33, NOT RUN YET (no numbers in the tuning doc from these): the input side. A 48 kHz mic through the helper's linear resampler vs a windowed sinc, clean, A 48 kHz mic through the helper's linear resampler vs a windowed sinc, clean,
+# Written in cycle 33, run in cycles 35-37 (tuning doc §9, ADR 0115): the input side. A 48 kHz mic through the helper's linear resampler vs a windowed sinc, clean, A 48 kHz mic through the helper's linear resampler vs a windowed sinc, clean,
 # with white noise at 15 dB and with 8-20 kHz noise at 15 dB; a quiet mic (x0.1) raw, peak-normalised (oracle) and
 # with the causal per-block normaliser; Nemotron 3.5 with the language forced to English.
 $P run.py $M5 --name nem560-r48lin-pad640 --via48 linear
@@ -45,6 +45,12 @@ $P run.py $M5 --name nem560-q01-pad640 --scale 0.1
 $P run.py $M5 --name nem560-q01-peak-pad640 --scale 0.1 --norm peak
 $P run.py $M5 --name nem560-q01-agc-pad640 --scale 0.1 --norm agc
 $P run.py $M35 --name nem35-560-en-pad640 --lang en
+# Cycle 37 (ADR 0115): the same causal normaliser on a mic at normal level, clean and with 15 dB white noise.
+$P run.py $M5 --name nem560-agc-pad640 --norm agc
+$P run.py $M5 --name nem560-wn15-agc-pad640 --noise 15 --norm agc
 # Paired comparisons (95 % bootstrap interval over utterances), e.g.:
 $P compare.py results/nem560-r48lin-wn15-pad640.json results/nem560-r48sinc-wn15-pad640.json
 $P compare.py results/nem560-q01-pad640.json results/nem560-q01-agc-pad640.json
+$P compare.py results/nem560-r48lin-hf15-pad640.json results/nem560-r48sinc-hf15-pad640.json
+$P compare.py results/nem560-pad640.json results/nem560-agc-pad640.json
+$P compare.py results/nem560-wn15-pad640.json results/nem560-wn15-agc-pad640.json
