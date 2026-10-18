@@ -79,7 +79,7 @@ Gain is the expected user-visible effect; risk is what could regress. Every item
 | 4    | ~~Cleanup: no "." on short (≤ 3 word) dictations; keep the repeats rule off digits and intentional doubles~~ **Done** in cycle 32 (`cda052c`, ADR 0101), with the dot-spacing fix (N159-N161) | fewer manual fixes on short replies, search boxes, PINs, domains and file names; 44 hand-written vectors                                                                                                                                                                                                                                                                           | a style change users will notice                                                                                                                                               | `echo_score` cleaned vs raw formatted WER and exactAfterCleanup on the short clips (03-yes, chat prompts)                |
 | 5    | **Resampler: AVAudioConverter (or a windowed sinc) instead of linear**                                                                                                                        | small WER gain on sibilants and in noisy rooms; removes aliasing                                                                                                                                                                                                                                                                                                                   | tiny CPU cost on the audio thread; a behaviour change in Bobs's capture code                                                                                                   | bench on 48 kHz recordings of Jared's voice, before and after; noise-15db variant                                        |
 | 6    | Nemotron 1120 ms tier for long dictations                                                                                                                                                     | Punctuation kept on long dictations (FluidAudio #687). Not a WER lever: with a pad that covers its chunk (1280 ms) it scored 3.93 % vs 4.02 % for 560 ms at pad 1120 on Linux (FluidAudio 2.71 → 2.58 %). The 4.35 % at pad 640 was the pad being shorter than one 1120 chunk                                                                                                      | partials every 1.1 s, so the pill feels slower; a separate model set                                                                                                           | bench engine `nemotron-1120` (`--extra`): wer, fwer, firstPartial                                                        |
-| 7    | Input peak normalization for quiet mics                                                                                                                                                       | robustness on quiet or far mics                                                                                                                                                                                                                                                                                                                                                    | clipping or noise boost                                                                                                                                                        | `quiet-0.1` vs `quiet-0.1-normalized`                                                                                    |
+| 7    | Input peak normalization for quiet mics (Linux, §9: a mic 20 dB down costs +23 % errors; whether Jared's mics are that quiet is now on the `talk latency` line, §10)                            | robustness on quiet or far mics                                                                                                                                                                                                                                                                                                                                                    | clipping or noise boost                                                                                                                                                        | `quiet-0.1` vs `quiet-0.1-normalized`                                                                                    |
 | 8    | Decode-time vocabulary biasing                                                                                                                                                                | names and jargon right the first time                                                                                                                                                                                                                                                                                                                                              | needs a different model. Nemotron 3.5 multilingual scored 6.59 % on English (§6, auto language), so CTC boosting (Unified/TDT) is the likelier route, plus a signed conversion | later; measure on a names clip set                                                                                       |
 
 Not on the list: moving the encoder to the GPU (FluidAudio: int8 on GPU is ~10× slower and can abort in MPSGraph;
@@ -134,7 +134,7 @@ Every dictation writes one content-free line to `~/Library/Logs/qrtz/qrtz.log` (
 
 ```
 [helper] echo timing: asr=nemotron-560ms audio_ms=4210 preroll_ms=0 first_partial_ms=890 appends=49 append_total_ms=181.2 append_max_ms=17.4 live_rtf=0.043 tail_ms=51 drain_ms=118 close_ms=118 finalize_ms=146 release_to_stopped_ms=147 queued_ms=0 word_count=11
-talk latency engine=... audio_ms=4210 head_ms=0 first_partial_ms=... final_ms=... cleanup_ms=... inserted_ms=... insert=AxSelectedText cleanup=Rules raw_chars=58 inserted_chars=59
+talk latency engine=... audio_ms=4210 head_ms=0 first_partial_ms=... final_ms=... cleanup_ms=... inserted_ms=... insert=AxSelectedText cleanup=Rules raw_chars=58 inserted_chars=59 level_blocks=49 level_p10_dbfs=-61 level_p90_dbfs=-24
 ```
 
 `tail_ms`, `drain_ms`, `close_ms` and `finalize_ms` are cumulative: each is the time from the release to the end of that
@@ -142,7 +142,8 @@ stage, so `finalize_ms − close_ms` is the pad + finish decode. No transcript, 
 counts, and the recogniser's name only. Flags
 `drain_timed_out`, `final_timed_out`, `append_held`, `gate_ducked=x/y` appear only when they happen. `armed=1` (ADR 0104)
 means the press opened the mic; talk's `head_ms` (ADR 0107) is the audio the helper heard before talk's start (a
-press queued behind a finishing dictation shows seconds here).
+press queued behind a finishing dictation shows seconds here). `level_p10_dbfs` / `level_p90_dbfs` (ADR 0112) are the
+mic's floor between words and about its speech level, in dBFS, after the echo gate; §10 says how to read them.
 `grep "echo timing" ~/Library/Logs/qrtz/qrtz.log` after a day of normal use is the most useful thing to send back.
 
 ## 6. Linux cross-check (same model family, ONNX)
@@ -270,7 +271,52 @@ Harness flags (`--keep`, `--headdrop`, `--hf`, `--resampler`, `--chunkpad` after
   quiet mic ×0.1 raw / peak / causal AGC; Nemotron 3.5 with language forced to English. Numbers fill in below as
   the queue finishes; paired bootstrap comparisons land next to the table.
 
-| Row | WER all | Last word missed | Notes |
-| --- | ------- | ---------------- | ----- |
-| *(pending — queue running)* | | | |
+Paired comparisons are `compare.py` (95 % bootstrap interval of the difference over utterances). Rows marked
+⁴ ran four at a time with 4 threads on a box loaded to ~17, so only WER and last-word numbers compare.
 
+| Row                                                   | WER all | Last word missed | vs                     | Difference (95 % interval)                     |
+| ----------------------------------------------------- | ------: | ---------------: | ---------------------- | ---------------------------------------------- |
+| `nem560-pad640` (16 kHz clip, §6)                      |  4.06 % |            6.7 % |                        |                                                |
+| `nem560-r48lin-pad640` (48 kHz mic, helper's linear)   |  4.28 % |            7.7 % | `nem560-pad640`        | +0.23 pts (+6 %), [-0.11, +0.61]: not resolved |
+| `nem560-r48sinc-pad640` (48 kHz mic, windowed sinc)    |  4.25 % |            7.0 % | `r48lin`               | -0.03 pts, [-0.20, +0.13]: no difference       |
+| `nem560-wn15-pad640` (white noise 15 dB)               |  5.55 % |            9.3 % | `nem560-pad640`        | +1.49 pts (+37 %), [+0.89, +2.15]              |
+| `nem560-r48lin-wn15-pad640` ⁴ (48 kHz, linear, wn 15)  |  5.75 % |           10.0 % | `wn15`                 | +0.21 pts, [-0.29, +0.69]: not resolved        |
+| `nem560-r48lin-hf15-pad640` ⁴ (48 kHz, linear, 8-20 kHz noise 15 dB) | 5.82 % | 9.0 % | `nem560-pad640` | +1.77 pts (+44 %), [+1.12, +2.49]; the sinc pair is pending |
+| `nem560-q01-pad640` ⁴ (quiet mic, ×0.1)                |  4.99 % |            9.0 % | `nem560-pad640`        | +0.94 pts (+23 %), [+0.39, +1.56]              |
+| `nem560-r48sinc-wn15`, `r48sinc-hf15`, `q01-peak`, `q01-agc`, `nem35-560-en` | *(running at the end of cycle 36; the next cycle lands them)* | | | |
+
+What this says so far:
+
+- **Resampler (rank 5):** on clean speech, and with white noise, the helper's linear resampler costs nothing
+  measurable against a windowed sinc. The aliasing cost is real only when the room puts energy above 8 kHz (§7's
+  `hf10`: 8.02 vs 4.09 %); the `hf15` pair says how big that is at a milder 15 dB. Rank 5 stays where it is: worth
+  doing (AVAudioConverter, written, waiting for a Mac build), not urgent.
+- **Quiet mic (rank 7):** 20 dB down costs about a quarter more errors, outside the noise of 300 clips. Whether a
+  normaliser recovers it is the `q01-peak` / `q01-agc` pair; whether Jared's mics are that quiet is §10.
+- **Noise:** 15 dB of white noise is the biggest input-side cost measured (+37 %). A normaliser can't fix that (it
+  raises the floor with the speech); it shows up as a small floor-to-speech spread in §10.
+
+## 10. Cycle 36: the mic level on the `talk latency` line (ADR 0112)
+
+Talk now logs `level_p10_dbfs` and `level_p90_dbfs` per dictation: the 10th and 90th percentile of the helper's
+per-block level (`dictation.level`, block RMS, 1 dB bins), after the echo gate. `levels.py` in
+`linux-crosscheck/` runs the same meter over the eval set's clips in each input condition:
+
+| Condition (row)              | `level_p90_dbfs` median (10th–90th pct of clips) | `level_p10_dbfs` median | spread p90 − p10 | WER    |
+| ---------------------------- | -----------------------------------------------: | ----------------------: | ---------------: | -----: |
+| clean (`nem560-pad640`)      |                                  -21 (-26 … -18) |                     -58 |            36 dB | 4.06 % |
+| quiet mic ×0.1 (`q01`)       |                                  -41 (-46 … -38) |                     -78 |            36 dB | 4.99 % |
+| white noise 15 dB (`wn15`)   |                                  -21 (-26 … -18) |                     -40 |            19 dB | 5.55 % |
+
+How to read Jared's lines (`grep "talk latency" ~/Library/Logs/qrtz/qrtz.log`):
+
+- `level_p90_dbfs` of about -30 or louder: near the eval set's level, where 4.06 % was measured; a normaliser has
+  little to gain.
+- Around -40 or quieter: the quiet-mic regime. If most lines from one mic look like this, rank 7 (a normaliser in
+  the helper) is worth building, provided the `q01-agc` row shows it recovers the loss.
+- A spread (`level_p90_dbfs − level_p10_dbfs`) near 20 dB or less: a noisy room or a noisy mic. Level fixes
+  don't help; the mic choice or the echo gate does.
+- `level_saturated=n`: blocks at or above -12 dBFS (the helper's meter clamp), a hot mic; only a problem if most
+  of a dictation is there.
+- LibriSpeech is read speech recorded close; real dictation pauses more, so expect a lower p10 than the table.
+  Compare mics with each other rather than with the table's exact numbers.
