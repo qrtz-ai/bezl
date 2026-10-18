@@ -88,7 +88,9 @@ final class MicSwitchTests: XCTestCase {
         mic.deliver(level(1, 8960))
         await sleep(30)
         mic.switchDevice()
-        await sleep(300)
+        // The restart's tries run out (a few hundred ms here); a loaded CI runner may take longer: poll, then settle.
+        for _ in 0..<60 where stopped(out.value).isEmpty { await sleep(50) }
+        await sleep(100)
         let s = stopped(out.value)
         XCTAssertEqual(s.count, 1, "exactly one stop")
         XCTAssertEqual(s.first?.1, .micLost)
