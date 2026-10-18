@@ -69,6 +69,20 @@ final class CutWindowTests: XCTestCase {
         XCTAssertLessThanOrEqual(b.decodes.max() ?? 0, 16 * (3_000 + 1_000 + 640))
     }
 
+    /// ADR 0121: cap cuts get a window too (the cut lands in the quietest gap of the cap's search window).
+    func testACapCutIsRepunctuatedToo() async {
+        var r = Self.rule(); r.capMs = 3_000
+        let b = PunctBatch()
+        let t = SegmentedTranscriber(b, rule: r)
+        await t.reset(); await feed(t, burstSpeech(20) + [Float](repeating: 0, count: 16 * 1_000))
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        let text = await t.finish(padSamples: 16 * 640)
+        let st = await t.segmentStats()
+        XCTAssertGreaterThanOrEqual(st.capCuts, 2)
+        XCTAssertEqual(st.windowFixes, st.capCuts, "every cap cut fixed")
+        XCTAssertEqual(text, "W1 " + words(19, first: 2) + ".")
+    }
+
     func testATrueSentenceEndStays() async {
         let t = SegmentedTranscriber(PunctBatch(ends: ["w3"]), rule: Self.rule())
         await t.reset(); await feed(t, speech)
@@ -150,7 +164,11 @@ final class CutWindowTests: XCTestCase {
     func testSentenceEndsAgainstTheWholeClip() {
         let whole = "I went to the store, and then I came back. It was late."
         let seg = "I went to the store. And then I came back. It was late"
-        XCTAssertEqual(EchoWER.sentenceEnds(hyp: seg, ref: whole), .init(agreeing: 1, spurious: 1, lost: 1))
+        XCTAssertEqual(EchoWER.sentenceEnds(hyp: seg, ref: whole), .init(agreeing: 1, spurious: 1, lost: 1, spuriousWholeContinues: 1))
+        // The whole clip's next word is capitalized: spurious, but not the strict count.
+        let s2 = EchoWER.sentenceEnds(hyp: "I went home. Then I slept", ref: "I went home Then I slept")
+        XCTAssertEqual(s2, .init(spurious: 1))
+        XCTAssertEqual(EchoWER.SentenceEnds(spurious: 2, spuriousWholeContinues: 1).json["spuriousWholeContinues"] as? Int, 1)
         XCTAssertEqual(EchoWER.sentenceEnds(hyp: whole, ref: whole), .init(agreeing: 2))
         XCTAssertEqual(EchoWER.sentenceEnds(hyp: "", ref: whole), .init())
     }

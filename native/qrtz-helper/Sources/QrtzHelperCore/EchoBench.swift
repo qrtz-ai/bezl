@@ -43,21 +43,31 @@ public enum EchoWER {
     /// ADR 0120 gate: sentence ends (a word ending in `.?!`) of `hyp` against `ref` (on the bench: a segmented
     /// engine against `parakeet-whole` on the same clip), over the words the two share in order (LCS of their
     /// lowercased letters/digits/apostrophes). `spurious`: an end `hyp` has and `ref` doesn't (a cut's false
-    /// sentence end); `lost`: the reverse.
+    /// sentence end); `lost`: the reverse. `spuriousWholeContinues` (ADR 0121, the strict gate count): the spurious
+    /// ends where the whole clip's next word starts lowercase, so its sentence clearly goes on (the rest may be the
+    /// whole-clip decode dropping a sentence end on a long clip).
     public struct SentenceEnds: Sendable, Equatable {
-        public var agreeing = 0, spurious = 0, lost = 0
-        public init(agreeing: Int = 0, spurious: Int = 0, lost: Int = 0) { self.agreeing = agreeing; self.spurious = spurious; self.lost = lost }
-        public mutating func add(_ o: SentenceEnds) { agreeing += o.agreeing; spurious += o.spurious; lost += o.lost }
-        public var json: [String: Any] { ["agreeing": agreeing, "spurious": spurious, "lost": lost] }
+        public var agreeing = 0, spurious = 0, lost = 0, spuriousWholeContinues = 0
+        public init(agreeing: Int = 0, spurious: Int = 0, lost: Int = 0, spuriousWholeContinues: Int = 0) {
+            self.agreeing = agreeing; self.spurious = spurious; self.lost = lost; self.spuriousWholeContinues = spuriousWholeContinues
+        }
+        public mutating func add(_ o: SentenceEnds) {
+            agreeing += o.agreeing; spurious += o.spurious; lost += o.lost; spuriousWholeContinues += o.spuriousWholeContinues
+        }
+        public var json: [String: Any] {
+            ["agreeing": agreeing, "spurious": spurious, "lost": lost, "spuriousWholeContinues": spuriousWholeContinues]
+        }
     }
 
     public static func sentenceEnds(hyp: String, ref: String) -> SentenceEnds {
-        func toks(_ s: String) -> [(key: String, end: Bool)] {
-            formatted(s).compactMap { w in
+        /// Words (with a key), whether each ends a sentence, and whether the next word starts lowercase.
+        func toks(_ s: String) -> [(key: String, end: Bool, nextLower: Bool)] {
+            let ws: [(key: String, end: Bool, lower: Bool)] = formatted(s).compactMap { w in
                 let k = w.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "'" }
                 let t = w.reversed().drop(while: { "\"')]".contains($0) })
-                return k.isEmpty ? nil : (k, t.first.map { ".?!".contains($0) } ?? false)
+                return k.isEmpty ? nil : (k, t.first.map { ".?!".contains($0) } ?? false, w.first(where: \.isLetter)?.isLowercase ?? false)
             }
+            return ws.indices.map { (ws[$0].key, ws[$0].end, $0 + 1 < ws.count && ws[$0 + 1].lower) }
         }
         let a = toks(hyp), b = toks(ref)
         guard !a.isEmpty, !b.isEmpty else { return SentenceEnds() }
@@ -73,7 +83,7 @@ public enum EchoWER {
             if a[i].key == b[j].key {
                 switch (a[i].end, b[j].end) {
                 case (true, true): r.agreeing += 1
-                case (true, false): r.spurious += 1
+                case (true, false): r.spurious += 1; if b[j].nextLower { r.spuriousWholeContinues += 1 }
                 case (false, true): r.lost += 1
                 default: break
                 }

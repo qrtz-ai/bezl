@@ -5,7 +5,7 @@ import Foundation
 // on one serial chain, so at the release only the last segment (plus a short overlap with the one before) is left
 // to decode, and the words are stitched at word boundaries. Every segment is decoded with 640 ms of silence after
 // it (end context), added after the cut points are fixed, so it never looks like a pause. Nano keeps Nemotron
-// streaming. ADR 0120 (off by default): a window decoded across each pause cut fixes the cut's punctuation.
+// streaming. ADR 0120 (off by default): a window decoded across each cut (pause or cap) fixes the cut's punctuation.
 
 /// A recogniser that decodes a whole stretch of 16 kHz mono audio at once.
 public protocol BatchRecognizer: AnyObject, Sendable {
@@ -62,9 +62,9 @@ public struct SegmentRule: Sendable, Equatable {
     public var vadMinRms: Float
     public var vadMarginDb: Float
     public var vadSpeechRelDb: Float
-    /// ADR 0120 / review §12.35 (N167): re-punctuate pause cuts from a window. Each segment is decoded alone and
+    /// ADR 0120 / review §12.35 (N167): re-punctuate cuts from a window (pause cuts, and cap cuts since ADR 0121). Each segment is decoded alone and
     /// Parakeet ends almost every one with a sentence end, so a pause mid-sentence came out as "store. And then".
-    /// With this on, once a pause cut has `windowAfterMs` of audio after it, a background decode of
+    /// With this on, once a cut has `windowAfterMs` of audio after it, a background decode of
     /// `[max(previous cut, cut − windowBeforeMs), cut + windowAfterMs]` (+ the segment pad) runs on the same serial
     /// chain, and its words decide only the cut word's trailing punctuation and the next word's first-letter case
     /// (words and times stay). A window not decoded by the release is skipped, never waited for. Linux
@@ -134,7 +134,7 @@ public struct SegmentStats: Sendable, Equatable {
     public var backlogWaitMs = 0.0
     /// Background or tail decodes that threw (their words are missing).
     public var failures = 0
-    /// ADR 0120 cut windows: decoded, the cuts whose punctuation or case they changed, and the pause cuts left
+    /// ADR 0120 cut windows: decoded, the cuts whose punctuation or case they changed, and the cuts left
     /// as stitched because their window wasn't decoded (or applicable) by the release.
     public var cutWindows = 0
     public var windowFixes = 0
@@ -389,7 +389,7 @@ public actor SegmentedTranscriber: PaddedFinishing {
     var chain: Task<Void, Never>?
     var generation = 0
     var boundaryOfOpen: Double?
-    /// ADR 0120 cut windows: recent audio (global index `histStart`), the pause cuts waiting for theirs, the last
+    /// ADR 0120 cut windows: recent audio (global index `histStart`), the cuts waiting for theirs, the last
     /// cut, samples seen, and the release (windows not started by then are skipped).
     var hist: [Float] = []
     var histStart = 0
@@ -424,7 +424,7 @@ public actor SegmentedTranscriber: PaddedFinishing {
         if rule.cutWindow { queueWindows() }
     }
 
-    /// Queues the window of every pause cut that has `windowAfterMs` of audio after it, and trims the history.
+    /// Queues the window of every cut that has `windowAfterMs` of audio after it, and trims the history.
     func queueWindows() {
         let after = 16 * rule.windowAfterMs
         for i in pending.indices where !pending[i].queued && total >= pending[i].at + after {
@@ -474,7 +474,7 @@ public actor SegmentedTranscriber: PaddedFinishing {
 
     func cut(_ c: PauseSegmenter.Cut) {
         if rule.cutWindow {
-            if !c.byCap, c.hadSpeech { pending.append(PendingCut(at: c.at, lo: max(lastCut, c.at - 16 * rule.windowBeforeMs))) }
+            if c.hadSpeech { pending.append(PendingCut(at: c.at, lo: max(lastCut, c.at - 16 * rule.windowBeforeMs))) }
             lastCut = c.at
         }
         if c.byCap { stats.capCuts += 1 }
