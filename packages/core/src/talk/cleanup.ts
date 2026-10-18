@@ -69,6 +69,39 @@ function terminalPunctuation(t: string): string {
   return /[\p{L}\p{N}]$/u.test(t) ? `${t}.` : t;
 }
 
+// ADR 0120 (N167): a lone "." on a word with a lowercase word after it is not a sentence end (the recogniser
+// lowercased what follows; on a segmented recogniser, ADR 0118, it is the "." each segment's decode writes at its cut).
+// The dot is dropped unless the word is an abbreviation; either way the next word stays lowercase. Only when the raw
+// text has a capital letter somewhere (the recogniser writes case).
+const CONTINUED_DOT = /(?<![\w.])([A-Za-z]+)\.(?=\s+[a-z])/g;
+/** ADR 0120: an abbreviation's "." is never a sentence end before a lowercase word. Same list in cleanup.rs. */
+export const ABBREVIATIONS = new Set([
+  'mr',
+  'mrs',
+  'ms',
+  'dr',
+  'prof',
+  'sr',
+  'jr',
+  'st',
+  'vs',
+  'etc',
+  'approx',
+  'inc',
+  'ltd',
+  'corp',
+  'mt',
+  'dept',
+  'ave',
+  'blvd',
+]);
+const isAbbreviation = (w: string) => ABBREVIATIONS.has(w.toLowerCase());
+/** Does `before` (the text up to a ". ") end with a whole abbreviation word ("... Mr", not "... Amr")? */
+const endsWithAbbreviation = (before: string) => {
+  const m = /(?<![\w.])([A-Za-z]+)$/.exec(before);
+  return m !== null && isAbbreviation(m[1]);
+};
+
 const FILLERS =
   /(^|[\s,])(?:u+m+|u+h+|e+r+m+|e+r|a+h+|h+m+|m+h*m+)(?=[\s,.!?]|$)[,]?/gi;
 
@@ -117,10 +150,18 @@ export function ruleCleanup(
     // ADR 0101 (N160): only "," and ";" get a space after them ("qrtz.ai", "p.m.", "https://" stay as written).
     .replace(/([,;])(?=[^\s\d"')\]])/g, '$1 ');
   t = t.replace(/,+/g, ',').replace(/^[\s,]+|[\s,]+$/g, '');
+  // Only for a recogniser that writes capitals: an all-lowercase text's "so. i can" is its own sentence end.
+  if (/[A-Z]/.test(raw))
+    t = t.replace(CONTINUED_DOT, (all: string, w: string) =>
+      isAbbreviation(w) ? all : w,
+    );
   t = t.replace(
-    // Not after a dotted abbreviation ("e.g. the", "3 p.m. today").
+    // Not after a dotted abbreviation ("e.g. the", "3 p.m. today"), nor after "Mr." / "etc." (ADR 0120).
     /(^|(?<![A-Za-z]\.[A-Za-z])[.!?]\s+|\n)([a-z])/g,
-    (_m, p: string, c: string) => p + c.toUpperCase(),
+    (all: string, p: string, c: string, at: number, src: string) =>
+      p.startsWith('.') && endsWithAbbreviation(src.slice(0, at))
+        ? all
+        : p + c.toUpperCase(),
   );
   // "i" before a dot only at a sentence end, not the "i" of "i.e." (ADR 0101, N160).
   t = t.replace(/\bi\b(?=[\s,!?']|\.(?![A-Za-z])|$)/g, 'I');

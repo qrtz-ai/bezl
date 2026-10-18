@@ -37,6 +37,12 @@ static SENTENCE_START: LazyLock<Regex> =
 static LONE_I: LazyLock<Regex> =
     LazyLock::new(|| re(&format!(r"(?<![{W}])i(?![{W}])(?=[\s,!?']|\.(?![A-Za-z])|$)")));
 static ENDS_WORD: LazyLock<Regex> = LazyLock::new(|| re(r"[\p{L}\p{N}]$"));
+// ADR 0120 (N167): a lone "." on a word with a lowercase word after it. The recogniser lowercased what follows, so
+// it is not a sentence end: on a segmented recogniser (ADR 0118) it is the "." each segment's decode writes at its cut.
+// The dot is dropped unless the word is an abbreviation ([`ABBREVIATIONS`]); either way the next word stays lowercase.
+// Only when the raw text has a capital letter somewhere (the recogniser writes case).
+static CONTINUED_DOT: LazyLock<Regex> =
+    LazyLock::new(|| re(&format!(r"(?<![{W}.])([A-Za-z]+)\.(?=\s+[a-z])")));
 /// A sentence end inside the text (not a decimal point, not the dots of "p.m.").
 static INNER_END: LazyLock<Regex> = LazyLock::new(|| re(r"[.!?]\s"));
 
@@ -52,6 +58,30 @@ const STUTTERS: &[&str] = &[
 /// Repeats across a comma ("I love you, you know", "take it, it is yours") are a clause boundary as often as a
 /// stutter; only these collapse there ("I, I think", "the, the plan").
 const COMMA_STUTTERS: &[&str] = &["i", "a", "an", "the"];
+
+/// ADR 0120: words whose "." is an abbreviation's, never a sentence end before a lowercase word ("Mr. and Mrs.",
+/// "etc. and so on", "vs. them"). Their dot is kept and the next word is not capitalized. Same list in cleanup.ts.
+pub const ABBREVIATIONS: &[&str] = &[
+    "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "vs", "etc", "approx", "inc", "ltd", "corp", "mt",
+    "dept", "ave", "blvd",
+];
+
+fn is_abbreviation(word: &str) -> bool {
+    ABBREVIATIONS.contains(&word.to_ascii_lowercase().as_str())
+}
+
+/// Does `before` (the text up to a ". ") end with a whole abbreviation word ("... Mr", not "... Amr")?
+fn ends_with_abbreviation(before: &str) -> bool {
+    let word: String = before
+        .chars()
+        .rev()
+        .take_while(|c| c.is_ascii_alphabetic())
+        .collect();
+    let rest = &before[..before.len() - word.len()];
+    let whole = !rest.ends_with(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '.');
+    let word: String = word.chars().rev().collect();
+    !word.is_empty() && whole && is_abbreviation(&word)
+}
 
 /// ADR 0101: does this repeat (the whole match `all`, its word `word`) collapse to one word?
 fn collapses(word: &str, all: &str) -> bool {
@@ -139,8 +169,28 @@ pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
     t = rep(&SPACE_AFTER_PUNCT, &t, "${1} ");
     t = rep(&COMMAS, &t, ",");
     t = rep(&EDGES, &t, "");
+    // Only for a recogniser that writes capitals: an all-lowercase text's "so. i can" is its own sentence end.
+    if raw.chars().any(|c| c.is_ascii_uppercase()) {
+        t = CONTINUED_DOT
+            .replace_all(&t, |c: &Captures| {
+                if is_abbreviation(&c[1]) {
+                    c[0].to_owned()
+                } else {
+                    c[1].to_owned()
+                }
+            })
+            .into_owned();
+    }
+    let src = t.clone();
     t = SENTENCE_START
-        .replace_all(&t, |c: &Captures| format!("{}{}", &c[1], c[2].to_uppercase()))
+        .replace_all(&src, |c: &Captures| {
+            let start = c.get(0).map_or(0, |m| m.start());
+            if c[1].starts_with('.') && ends_with_abbreviation(&src[..start]) {
+                c[0].to_owned()
+            } else {
+                format!("{}{}", &c[1], c[2].to_uppercase())
+            }
+        })
         .into_owned();
     t = rep(&LONE_I, &t, "I");
     t = apply_dictionary(&t, dict);

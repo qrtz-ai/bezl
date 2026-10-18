@@ -365,6 +365,61 @@
       "raw": "red,green and blue",
       "dict": false,
       "expect": "Red, green and blue."
+    },
+    {
+      "raw": "Upon the farthest earth. removed from thee",
+      "dict": false,
+      "expect": "Upon the farthest earth removed from thee."
+    },
+    {
+      "raw": "The germ an insignificant seed. hardly to be seen",
+      "dict": false,
+      "expect": "The germ an insignificant seed hardly to be seen."
+    },
+    {
+      "raw": "Send it to the team. then we can ship",
+      "dict": false,
+      "expect": "Send it to the team then we can ship."
+    },
+    {
+      "raw": "Send it to the team. Then we ship",
+      "dict": false,
+      "expect": "Send it to the team. Then we ship."
+    },
+    {
+      "raw": "Ralph Thurston, Mr. and Mrs. Smith",
+      "dict": false,
+      "expect": "Ralph Thurston, Mr. and Mrs. Smith."
+    },
+    {
+      "raw": "Bring apples, pears, etc. and some bread",
+      "dict": false,
+      "expect": "Bring apples, pears, etc. and some bread."
+    },
+    {
+      "raw": "It is Lakers vs. them tonight",
+      "dict": false,
+      "expect": "It is Lakers vs. them tonight."
+    },
+    {
+      "raw": "Meet Dr. Lee at 3 p.m. today",
+      "dict": false,
+      "expect": "Meet Dr. Lee at 3 p.m. today."
+    },
+    {
+      "raw": "Is it ready? then go",
+      "dict": false,
+      "expect": "Is it ready? Then go."
+    },
+    {
+      "raw": "we shipped it. now we rest",
+      "dict": false,
+      "expect": "We shipped it. Now we rest."
+    },
+    {
+      "raw": "Amr. and then",
+      "dict": false,
+      "expect": "Amr and then"
     }
   ],
   "dictionaryOnly": [

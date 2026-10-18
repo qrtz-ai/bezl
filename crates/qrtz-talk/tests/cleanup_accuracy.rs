@@ -59,6 +59,38 @@ const VECTORS: &[(&str, &str)] = &[
     ("i think so. i can come", "I think so. I can come."),
     ("well, i guess", "Well, I guess"),
     ("red,green and blue", "Red, green and blue."),
+    // ADR 0120 (N167): a segmented recogniser's "." at a cut, with the next segment lowercase, is no sentence end.
+    (
+        "Upon the farthest earth. removed from thee",
+        "Upon the farthest earth removed from thee.",
+    ),
+    (
+        "The germ an insignificant seed. hardly to be seen",
+        "The germ an insignificant seed hardly to be seen.",
+    ),
+    (
+        "Send it to the team. then we can ship",
+        "Send it to the team then we can ship.",
+    ),
+    // A capitalized next word is a sentence; an abbreviation's dot stays and does not capitalize.
+    (
+        "Send it to the team. Then we ship",
+        "Send it to the team. Then we ship.",
+    ),
+    (
+        "Ralph Thurston, Mr. and Mrs. Smith",
+        "Ralph Thurston, Mr. and Mrs. Smith.",
+    ),
+    (
+        "Bring apples, pears, etc. and some bread",
+        "Bring apples, pears, etc. and some bread.",
+    ),
+    ("It is Lakers vs. them tonight", "It is Lakers vs. them tonight."),
+    ("Meet Dr. Lee at 3 p.m. today", "Meet Dr. Lee at 3 p.m. today."),
+    ("Is it ready? then go", "Is it ready? Then go."),
+    // An all-lowercase recogniser's "." is its own sentence end (the gate on capitals).
+    ("i think so. i can come", "I think so. I can come."),
+    ("we shipped it. now we rest", "We shipped it. Now we rest."),
 ];
 
 #[test]
