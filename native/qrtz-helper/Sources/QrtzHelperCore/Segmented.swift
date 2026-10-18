@@ -26,7 +26,12 @@ public struct BatchResult: Sendable, Equatable {
         public var start: Double
         public init(_ text: String, start: Double) { self.text = text; self.start = start }
     }
-    public init(text: String, words: [Word]? = nil) { self.text = text; self.words = words }
+    /// The recogniser's own confidence in the result (Parakeet: FluidAudio's `ASRResult.confidence`, the mean TDT
+    /// token confidence), when it reports one. ADR 0131 uses it to drop a short, unsure release tail.
+    public var confidence: Float?
+    public init(text: String, words: [Word]? = nil, confidence: Float? = nil) {
+        self.text = text; self.words = words; self.confidence = confidence
+    }
 }
 
 /// Where segments are cut. Every knob is configurable (Bozniak's Linux eval sets the final rule):
@@ -78,6 +83,12 @@ public struct SegmentRule: Sendable, Equatable {
     /// (`QRTZ_ECHO_SEG_PEAK=on`); never always-on: an ungated peak to 0.9 cost normal speech +11 % errors (Linux,
     /// 2.57 → 2.85 %), while the gate leaves normal alone and recovers ×0.03 (4.15 → 2.94 %).
     public var segPeak = false
+    /// ADR 0131 / review §12.38 (N169): a release tail of at most `tailMaxWords` words whose decode confidence is
+    /// below this floor isn't stitched (Parakeet hears "Yeah." in a second of room tone before the release); the
+    /// earlier segments' text stays. nil (the default): off. `QRTZ_ECHO_TAIL_CONF=0.6` (0 < floor ≤ 1). Linux: 0.6
+    /// drops 76 of 122 phantom tails and 0 of 161 real ones; set the Mac floor from real `tail_conf=` values.
+    public var tailConfFloor: Float?
+    public static let tailMaxWords = 4
     public var windowBeforeMs = 3_000
     public var windowAfterMs = 2_000
 
@@ -116,6 +127,10 @@ public struct SegmentRule: Sendable, Equatable {
         case "off", "0", "false", "no": r.segPeak = false
         default: break
         }
+        if let v = env["QRTZ_ECHO_TAIL_CONF"]?.trimmingCharacters(in: .whitespaces).lowercased(), !v.isEmpty {
+            if v == "off" || v == "0" { r.tailConfFloor = nil }
+            else if let f = Float(v), f > 0, f <= 1 { r.tailConfFloor = f }
+        }
         switch env["QRTZ_ECHO_CUT_WINDOW"]?.trimmingCharacters(in: .whitespaces).lowercased() {
         case "on", "1", "true", "yes": r.cutWindow = true
         case "off", "0", "false", "no": r.cutWindow = false
@@ -153,6 +168,10 @@ public struct SegmentStats: Sendable, Equatable {
     /// ADR 0127: the gated peak gain was on for this dictation, and how many segments (the tail included) it scaled.
     public var peakGate = false
     public var peakGained = 0
+    /// ADR 0131: the release tail decode's confidence (when the recogniser reports one), and whether the tail was
+    /// dropped under `tailConfFloor`.
+    public var tailConf: Float?
+    public var tailDropped = false
     public init() {}
 }
 
@@ -578,7 +597,11 @@ public actor SegmentedTranscriber: PaddedFinishing {
             guard gen == generation else { return stitched.text }
             stats.tailDecodeMs = t1.msToNow()
             stats.segments += 1
-            if let r { stitched.add(r, origin: Double(bufStart) / 16_000, boundary: boundaryOfOpen) } else { stats.failures += 1 }
+            if let r {
+                stats.tailConf = r.confidence
+                if Self.dropsTail(r, floor: rule.tailConfFloor) { stats.tailDropped = true }
+                else { stitched.add(r, origin: Double(bufStart) / 16_000, boundary: boundaryOfOpen) }
+            } else { stats.failures += 1 }
         }
         if rule.cutWindow { applyWindows(final: true) }
         buf.removeAll()
@@ -587,4 +610,12 @@ public actor SegmentedTranscriber: PaddedFinishing {
     }
 
     public func segmentStats() async -> SegmentStats { stats }
+
+    /// ADR 0131: a tail of at most `tailMaxWords` words with a confidence below the floor (set) is dropped. No floor,
+    /// no confidence, or a longer tail: kept.
+    static func dropsTail(_ r: BatchResult, floor: Float?) -> Bool {
+        guard let floor, let c = r.confidence, c < floor else { return false }
+        let n = r.text.split(whereSeparator: { $0.isWhitespace }).count
+        return n > 0 && n <= SegmentRule.tailMaxWords
+    }
 }

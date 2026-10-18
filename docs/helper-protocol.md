@@ -77,7 +77,9 @@ Rules (the arbiter's `cmd` events):
    release never waits for a window that hasn't started. The timing line then adds `cut_windows=`,
    `window_fixes=` and `windows_skipped=`; `dictation.stopped` is unchanged. ADR 0127 (off by default, `QRTZ_ECHO_SEG_PEAK`): a decode of
    a segment, window or tail whose peak is below 0.1 is scaled to peak 0.9 (at most 10×) on the decode copy only;
-   the timing line then adds `peak_gained=`. Every knob of the rule is an environment
+   the timing line then adds `peak_gained=`. ADR 0131 (off by default, `QRTZ_ECHO_TAIL_CONF`): a release tail
+   of at most 4 words whose decode confidence is below the floor isn't stitched. The timing line carries
+   `tail_conf=` whenever the recogniser reports a confidence, and `tail_dropped=1` when the tail was dropped. Every knob of the rule is an environment
    override (`QRTZ_ECHO_SEGMENT_PAUSE_MS`, `_CAP_MS`, `_OVERLAP_MS`, `_OVERLAP_MODE` = `all`|`cap`, `_MIN_MS`). The
    fallback is Apple SpeechAnalyzer (macOS 26). Recordings keep Nemotron streaming, and it loads only for a
    recording.

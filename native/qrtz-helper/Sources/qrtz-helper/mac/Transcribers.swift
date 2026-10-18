@@ -107,12 +107,14 @@ final class ParakeetBatch: BatchRecognizer, @unchecked Sendable {
         // Word starts from the token timings (for the stitch). The words themselves are the final text's when they
         // line up one to one (its spacing and punctuation as the manager formatted it), else the tokens' own.
         let timed = buildWordTimings(from: r.tokenTimings ?? [])
-        guard !timed.isEmpty else { return BatchResult(text: r.text) }
+        // ADR 0131: the mean TDT token confidence, for the release tail's floor (tail_conf= on the timing line).
+        let conf = r.confidence.isFinite ? Float(r.confidence) : nil
+        guard !timed.isEmpty else { return BatchResult(text: r.text, confidence: conf) }
         let textWords = r.text.split(whereSeparator: { $0.isWhitespace }).map(String.init)
         let words = textWords.count == timed.count
             ? zip(textWords, timed).map { BatchResult.Word($0.0, start: $0.1.startTime) }
             : timed.map { BatchResult.Word($0.word, start: $0.startTime) }
-        return BatchResult(text: r.text, words: words)
+        return BatchResult(text: r.text, words: words, confidence: conf)
     }
 
     func unload() async {

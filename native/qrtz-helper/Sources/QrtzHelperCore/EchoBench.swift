@@ -434,6 +434,7 @@ public enum EchoBench {
                 var rel: [Double] = [], first: [Double] = [], fin: [Double] = [], rtf: [Double] = []
                 var tailDecode: [Double] = [], segments: [Double] = [], bgSegments: [Double] = [], backlog: [Double] = []
                 var windows: [Double] = [], windowFixes: [Double] = [], windowsSkipped: [Double] = [], peakGained: [Double] = []
+                var tailConf: [Double] = [], tailDropped = 0
                 var tailLost = 0, headLost = 0
                 for clip in clips {
                     let r = await runClip(clip, engine: engine, variant: variant, options: options)
@@ -456,6 +457,8 @@ public enum EchoBench {
                         if let x = st["windowFixes"] as? Int { windowFixes.append(Double(x)) }
                         if let x = st["windowsSkipped"] as? Int { windowsSkipped.append(Double(x)) }
                         if let x = st["peakGained"] as? Int { peakGained.append(Double(x)) }
+                        if let x = st["tailConf"] as? Double { tailConf.append(x) }
+                        if st["tailDropped"] as? Bool == true { tailDropped += 1 }
                     }
                     progress("\(engine.name) \(variant.name) \(clip.name): wer \(String(format: "%.3f", EchoWER.score(ref: refN, hyp: EchoWER.normalize(hyp)).wer)) release→final \(Int(r["releaseToStoppedMs"] as? Double ?? -1)) ms")
                 }
@@ -474,6 +477,9 @@ public enum EchoBench {
                 }
                 // ADR 0127: segments the gated peak scaled (present only with the gate on).
                 if !peakGained.isEmpty { row["peakGained"] = stats(peakGained) }
+                // ADR 0131: the release tail's decode confidence, and the clips whose tail the floor dropped.
+                if !tailConf.isEmpty { row["tailConf"] = stats(tailConf); row["tailConfMin"] = tailConf.min() ?? 0 }
+                if !segments.isEmpty { row["tailDropped"] = tailDropped }
                 summary.append(row)
             }
             await engine.unload()

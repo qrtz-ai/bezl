@@ -75,6 +75,9 @@ public struct DictationTiming: Sendable, Equatable {
             }
             // ADR 0127 gated segment peak (only when the gate is on: off by default).
             if g.peakGate { p.append("peak_gained=\(g.peakGained)") }
+            // ADR 0131: the tail decode's confidence whenever it reports one; the floor's drop when it acted.
+            if let c = g.tailConf { p.append("tail_conf=" + String(format: "%.2f", c)) }
+            if g.tailDropped { p.append("tail_dropped=1") }
         }
         return "echo timing: " + p.joined(separator: " ")
     }
@@ -94,6 +97,8 @@ public struct DictationTiming: Sendable, Equatable {
             j["tailDecodeMs"] = g.tailDecodeMs; j["backlogWaitMs"] = g.backlogWaitMs; j["decodeFailures"] = g.failures
             j["cutWindows"] = g.cutWindows; j["windowFixes"] = g.windowFixes; j["windowsSkipped"] = g.windowsSkipped
             if g.peakGate { j["peakGained"] = g.peakGained }
+            if let c = g.tailConf { j["tailConf"] = Double(c) }
+            j["tailDropped"] = g.tailDropped
         }
         return j
     }

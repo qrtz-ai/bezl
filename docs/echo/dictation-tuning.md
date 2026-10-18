@@ -688,3 +688,12 @@ Floor 0.6 drops 76 / 122 hallucinated tails and 0 / 161 real ones. Floor 0.7 dro
 but it is close to the one-word p5. Proposed to Bobs as rank 10 (review §12.38): 0.6, tails of at most 4 words,
 off by default. On the Mac: record clips that end with 1–2 s of room, breath or typing before the release, plus
 short replies, and read `tail_conf=` in the timing log. The Core ML (ANE) confidences need their own calibration.
+
+Helper side, implemented (review §12.38 (a), off by default): `BatchResult.confidence` (ParakeetBatch fills it from
+`ASRResult.confidence`) and `SegmentRule.tailConfFloor` (`QRTZ_ECHO_TAIL_CONF=0.6`, 0 < floor ≤ 1, else ignored).
+After the release tail's decode, a tail of at most 4 words below the floor isn't stitched; the earlier segments'
+text stays. The timing line has `tail_conf=` whenever the decode reports a confidence (so the floor can be set from
+real values with it off) and `tail_dropped=1` when it acted; bench `tailConf` / `tailDropped` per clip, and
+`tailConf` stats, `tailConfMin` and `tailDropped` (clips) per summary row. Mac gate (§12.38 (b)): `bash
+native/qrtz-helper/scripts/echo-bench.sh --clips ~/qrtz-echo-bench/my-clips --tail-conf 0.6` runs
+`parakeet-segmented` without and with the floor and prints each dropped tail with its `tail_conf`.
