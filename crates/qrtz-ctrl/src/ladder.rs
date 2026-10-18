@@ -2,7 +2,8 @@
 //! lowest rung that is allowed right now. Lower rungs touch less of the user's session:
 //!
 //! 1. [`Rung::Files`]: FileManager / `std::fs`. No UI at all.
-//! 2. [`Rung::Workspace`]: `NSWorkspace` open/launch with `activates = false`, wrapped in the focus-restore guard.
+//! 2. [`Rung::Workspace`]: `NSWorkspace` open with `activates = false`, only for apps that are already running (a cold
+//!    launch activates anyway, so it needs the user's OK: [`Grant::Foreground`]).
 //! 3. [`Rung::Scripting`]: an app's scripting dictionary over Apple Events, from a fixed set of verbs that never
 //!    `activate`, `launch`, `open` or `reopen`.
 //! 4. [`Rung::AxAction`]: an AX action or attribute write on a background app's element (no raise, no menus, no
@@ -156,6 +157,11 @@ pub enum Grant {
     Accessibility,
     /// `kTCCServicePostEvent` (`CGPreflightPostEventAccess`).
     PostEvent,
+    /// Not a TCC grant: the user's OK to bring `app` forward once. Starting an app that isn't running activates it
+    /// even with `activates = false` (measured on macOS 26 CI, ADR 0100), so a cold launch is never silent.
+    Foreground {
+        app: String,
+    },
 }
 
 /// What the session looks like right now, from the helper's probes.
@@ -173,6 +179,8 @@ pub struct Env {
     pub automation: BTreeMap<String, Consent>,
     /// (app, rung) pairs that already caused a guard violation in this run (derived from the log).
     pub quarantined: BTreeSet<(String, Rung)>,
+    /// Bundle ids of running apps. Workspace routes to an app that isn't running would cold-launch it.
+    pub running_apps: BTreeSet<String>,
 }
 
 impl Env {
@@ -281,6 +289,11 @@ pub fn judge(route: &Route, env: &Env) -> Verdict {
             let app = match op {
                 WorkspaceOp::OpenUrl { app, .. } | WorkspaceOp::LaunchHidden { app } => app,
             };
+            if !env.running_apps.contains(app) {
+                return Verdict::NeedsGrant {
+                    grant: Grant::Foreground { app: app.clone() },
+                };
+            }
             if env.user_in(app) && env.user_active() {
                 return Verdict::Defer {
                     why: DeferReason::UserActiveInTarget,

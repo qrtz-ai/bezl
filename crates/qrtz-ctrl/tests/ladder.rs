@@ -14,6 +14,7 @@ fn granted() -> Env {
         post_event: Some(Consent::Granted),
         automation: [(SAFARI.to_string(), Consent::Granted)].into(),
         quarantined: Default::default(),
+        running_apps: [SAFARI.to_string(), EDITOR.to_string()].into(),
     }
 }
 
@@ -306,6 +307,28 @@ fn a_quarantined_rung_falls_through_to_the_next_one() {
         }
     );
     assert_eq!(refused(&v[0]), Some(&Refusal::Quarantined));
+}
+
+#[test]
+fn a_cold_launch_is_never_silent() {
+    // Measured on macOS 26 CI: opening a document in a TextEdit that wasn't running activated it despite
+    // `activates = false`. So workspace routes only run against running apps; a cold launch asks.
+    let open = |app: &str| {
+        Route::Workspace(WorkspaceOp::OpenUrl {
+            app: app.into(),
+            url: r("u"),
+        })
+    };
+    let env = granted();
+    assert_eq!(judge(&open(SAFARI), &env), Verdict::Allowed);
+    assert_eq!(
+        choose(&[open("com.google.Chrome")], &env).0,
+        Decision::Ask {
+            grants: vec![Grant::Foreground {
+                app: "com.google.Chrome".into()
+            }]
+        }
+    );
 }
 
 #[test]

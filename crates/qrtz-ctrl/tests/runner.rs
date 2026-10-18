@@ -72,6 +72,7 @@ fn env() -> Env {
         accessibility: Some(Consent::Granted),
         post_event: Some(Consent::Granted),
         automation: [(SAFARI.to_string(), Consent::Granted)].into(),
+        running_apps: [SAFARI.to_string(), "com.apple.TextEdit".to_string()].into(),
         ..Default::default()
     }
 }

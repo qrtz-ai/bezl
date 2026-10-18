@@ -98,7 +98,12 @@ final class CtrlMacGuardTests: XCTestCase {
         try Data("qrtz ctrl background probe\n".utf8).write(to: doc)
         var launched: NSRunningApplication?
         defer {
-            if !wasRunning { launched?.terminate() }
+            if !wasRunning, let app = launched {
+                app.terminate()
+                // Wait it out: a TextEdit still quitting would load the runner during later timing-sensitive tests.
+                spin(5) { app.isTerminated }
+                if !app.isTerminated { app.forceTerminate() }
+            }
             try? FileManager.default.removeItem(at: doc)
         }
 
@@ -168,7 +173,10 @@ final class CtrlMacGuardTests: XCTestCase {
         }
         spin(10) { finished }
         defer {
-            launched?.forceTerminate()
+            if let app = launched {
+                app.forceTerminate()
+                spin(5) { app.isTerminated }
+            }
             try? FileManager.default.removeItem(at: doc)
         }
         guard let app = launched else { return XCTFail("TextEdit did not open") }
