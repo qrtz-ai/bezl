@@ -1,4 +1,4 @@
-"""Cycle 42 (ADR 0129): token confidence of SHORT real release tails, the risk of a confidence rule (confguard.py's
+"""Cycle 42 (ADR 0131): token confidence of SHORT real release tails, the risk of a confidence rule (confguard.py's
 real tails are mostly long). Two sets, each after an utterance and a 500 ms pause, at x1 and x0.1 (gated peak):
   word  : tailguard.py's one-word tails (the first word of another utterance, cut at Parakeet's next-word stamp)
   short : a whole short LibriSpeech utterance (<= 4 words, 0.5-2.5 s) as the tail ("Yes, sir." kind of replies)

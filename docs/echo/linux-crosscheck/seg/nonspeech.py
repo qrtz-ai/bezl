@@ -1,4 +1,4 @@
-"""Cycle 42 (ADR 0129): does the gated segment peak (ADR 0127, helper `SegmentPeak`, landed e5818b3) make Parakeet
+"""Cycle 42 (ADR 0131): does the gated segment peak (ADR 0127, helper `SegmentPeak`, landed e5818b3) make Parakeet
 put words on non-speech? A dictation here is one LibriSpeech utterance, a 500 ms pause (the helper cuts there), then
 1.5 s of a non-speech sound before a quick release (50 ms): a breath, key clicks, a lip/mouth click, room tone. The
 sound is the release tail, so `PauseSegmenter.openHasSpeech` decides whether it is decoded, and the gate (peak < 0.1

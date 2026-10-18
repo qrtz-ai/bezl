@@ -1,4 +1,4 @@
-"""Cycle 42 (ADR 0129, N169): can the decoder's own token confidence tell a hallucinated release tail from a real
+"""Cycle 42 (ADR 0131, N169): can the decoder's own token confidence tell a hallucinated release tail from a real
 one? Parakeet TDT gives each emitted token a probability (sherpa-onnx `ys_log_probs`; FluidAudio's TDT decoder keeps
 the same per-token softmax confidences and averages them into `ASRResult.confidence`). Tails:
   hallucinated : every noise-only tail nonspeech.py's runs put words on (strict room tone, --bg), plain and gated

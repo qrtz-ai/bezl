@@ -1,4 +1,4 @@
-"""Cycle 42 (ADR 0129, N169): would a minimum of speech in the release tail stop Parakeet's words on non-speech
+"""Cycle 42 (ADR 0131, N169): would a minimum of speech in the release tail stop Parakeet's words on non-speech
 tails without losing a short last word? For each dictation the helper's PauseSegmenter (helper_seg.py) is fed the
 whole clip; at the release its open segment's `speechFrames` (20 ms frames the VAD took for speech) is what a rule
 `decode the tail only if speechFrames * 20 >= K ms` would look at (today K = 20: one frame, `openHasSpeech`).
