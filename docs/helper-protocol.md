@@ -199,6 +199,12 @@ for the helper's life (about 62 MB). A `dictation.start` during that load joins 
 The recording's recognisers and speaker models stay per recording. Each Nemotron load logs whether Core ML's
 specialization was expected to be cached (`<data>/models/compiled/<set>.json`).
 
+N138: a mic device switch (AirPods, a USB mic, Control Center) re-opens the input on the new device within about a
+second, so the meeting and the dictation keep reading. The helper logs `mic: input changed (...) to <name>
+(<rate> Hz), restarted in N ms`. If no input comes back, it sends one `log{warn, "mic: input device lost (…)"}`.
+A dictation then ends with `dictation.stopped{text: what was heard, reason: mic-lost}`, and a recording sends
+`capture.degraded{degraded: [no-mic]}` once and carries on with system audio.
+
 ADR 0092: with `QRTZ_NATIVE_PILL=1` in its environment, the macOS helper draws echo's dictation pill itself
 (`hello.features` gets `talk.pill.native`), driven by the lines above: the push key, `dictation.started`,
 `dictation.level`, `dictation.stop`, `dictation.stopped`, `insert.text` and `insert.result`, and `error{dictation.*}`.

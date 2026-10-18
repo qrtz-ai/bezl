@@ -174,7 +174,19 @@ public final class MicHub: @unchecked Sendable {
     /// not permitted is skipped, so a recording started with the mic denied never opens the device.
     private var gated: Set<String> = []
     private var permits: Set<String> = []
-    public init(source: MicSource) { self.source = source }
+    private var lostListeners: [@Sendable (String) -> Void] = []
+    public init(source: MicSource) {
+        self.source = source
+        // N138: the readers stay subscribed across a device switch (the source re-opens the new input and keeps
+        // calling fanOut); a device that doesn't come back is reported to the listeners (the controller).
+        source.onDeviceLost { [weak self] reason in
+            guard let self else { return }
+            self.lock.lock(); let ls = self.lostListeners; self.lock.unlock()
+            for l in ls { l(reason) }
+        }
+    }
+
+    public func addLostListener(_ cb: @escaping @Sendable (String) -> Void) { lock.lock(); lostListeners.append(cb); lock.unlock() }
 
     public var subscribers: [String] { lock.lock(); defer { lock.unlock() }; return subs.map(\.id) }
     public var isRunning: Bool { lock.lock(); defer { lock.unlock() }; return running }

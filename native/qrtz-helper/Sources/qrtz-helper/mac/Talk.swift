@@ -11,12 +11,16 @@ import QrtzHelperCore
 /// The physical mic (one AVAudioEngine input tap). Wrapped by MicHub so meeting capture and dictation share it (H6).
 final class DictationMicSource: MicSource, @unchecked Sendable {
     private var mic: MicCapture?
+    private var lost: (@Sendable (String) -> Void)?
     func start(onSamples: @escaping @Sendable ([Float]) -> Void) throws {
         let m = MicCapture()
+        m.onLost = lost
         try m.start(onSamples)
         mic = m
     }
     func stop() { mic?.stop(); mic = nil }
+    /// N138: MicHub registers here; each MicCapture reports a device that didn't come back.
+    func onDeviceLost(_ cb: @escaping @Sendable (String) -> Void) { lost = cb }
 }
 
 final class MacInsertion: InsertionBackend, @unchecked Sendable {

@@ -341,6 +341,7 @@ public actor HelperController {
         send(.hello(protocol: helperProtocolVersion, helperVersion: deps.helperVersion, os: deps.os, features: deps.features))
         send(.permissionsStatus(deps.permissions.status()))
         deps.meetings?.start(emit: send, clock: { [weak self] in self?.relativeMs() ?? 0 })
+        deps.micHub?.addLostListener { [weak self] reason in Task { await self?.micDeviceLost(reason) } }
         if deps.preloadDictationAsr {
             // Inside the "asr" gate (N137), so it never compiles alongside a recording's loads; a press meanwhile
             // doesn't wait for the gate: it starts (or joins) the transcriber's one load itself.
@@ -594,6 +595,15 @@ public actor HelperController {
                 await self?.pollTranscript()
             }
         }
+    }
+
+    /// N138: the mic's device went away and didn't come back. A dictation ends with what was heard
+    /// (`dictation.stopped{reason: mic-lost}`); a recording goes on with system audio and says so once
+    /// (`capture.degraded{no-mic}`).
+    func micDeviceLost(_ reason: String) async {
+        send(.log(level: .warn, msg: "mic: input device lost (\(reason))"))
+        if await dictation.isActive { await dictation.abort(reason: .micLost) }
+        if let rec = recording { sourceDegraded(.noMic, reason: "microphone lost: \(reason)", of: rec) }
     }
 
     /// N35: a started source lost part of its input (its in-source mic). `capture.degraded` once per flag per

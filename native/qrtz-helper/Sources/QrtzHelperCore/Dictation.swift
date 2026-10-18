@@ -7,6 +7,13 @@ import Foundation
 public protocol MicSource: AnyObject, Sendable {
     func start(onSamples: @escaping @Sendable ([Float]) -> Void) throws
     func stop()
+    /// N138: called once when the input device went away and didn't come back. A device switch the source recovers
+    /// from (it re-opens the new input and keeps delivering to the same `onSamples`) is not reported.
+    func onDeviceLost(_ cb: @escaping @Sendable (String) -> Void)
+}
+
+public extension MicSource {
+    func onDeviceLost(_ cb: @escaping @Sendable (String) -> Void) {}
 }
 
 /// Native key monitor for push-to-talk (Electron global shortcuts only report key-down).

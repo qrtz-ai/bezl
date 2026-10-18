@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Switching microphones mid-sentence no longer cuts echo or a meeting off (N138):** when AirPods connect or drop, or you pick another input, qrtz carries on with the new microphone. Your dictation keeps the words from both sides of the switch. If no microphone comes back, echo inserts what it heard, and a meeting carries on with system audio and notes that the mic was lost.
 - **echo keeps your last words when the Mac is busy (N139):** if speech recognition is running slowly when you release fn (for example during a meeting recording), echo now waits for it within its usual time limit and inserts the full text, instead of the shorter preview.
 - **echo's pill appears the moment you press fn:** the pill is now drawn natively by qrtz's helper instead of a web window. It shows at the press (even the first one after launch), on every Space and over full-screen apps, on the screen you're working on. It looks the same: a moving waveform, never your words.
 

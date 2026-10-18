@@ -40,20 +40,99 @@ final class MonoConverter: @unchecked Sendable {
 }
 
 /// The user's microphone via AVAudioEngine. Mixed with system audio so both sides of the call are captured.
+/// N138: a device switch (AirPods connect or drop, a USB mic, the input picked in Control Center) stops Apple's
+/// engine. Both `AVAudioEngineConfigurationChange` and a change of the default input device re-open the input on
+/// a fresh engine (`MicRestart`: a few tries over ~1 s), delivering to the same `onSamples`, so every MicHub reader
+/// keeps its subscription. A device that doesn't come back is reported once through `onLost`.
 final class MicCapture: @unchecked Sendable {
-    private let engine = AVAudioEngine()
+    private let lock = NSLock()
+    private var engine = AVAudioEngine()
     private let conv = MonoConverter()
+    private var onSamples: (@Sendable ([Float]) -> Void)?
+    private var configObserver: NSObjectProtocol?
+    private var defaultInputListener: AudioObjectPropertyListenerBlock?
+    private let restartQueue = DispatchQueue(label: "qrtz.mic.restart")
+    private lazy var restart = MicRestart(queue: restartQueue)
+    private var stopped = false
+    var onLost: (@Sendable (String) -> Void)?
+
+    private static var defaultInputAddress = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyDefaultInputDevice, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+
     func start(_ onSamples: @escaping @Sendable ([Float]) -> Void) throws {
-        let input = engine.inputNode
-        let fmt = input.outputFormat(forBus: 0)
-        guard fmt.sampleRate > 0 else { throw AudioError("no microphone input device") }
-        input.installTap(onBus: 0, bufferSize: 4096, format: fmt) { [conv] buf, _ in onSamples(conv.convert(buf)) }
-        engine.prepare()
-        try engine.start()
+        lock.withLock { self.onSamples = onSamples; stopped = false }
+        try open()
+        let l: AudioObjectPropertyListenerBlock = { [weak self] _, _ in self?.changed("default input") }
+        if AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &Self.defaultInputAddress, restartQueue, l) == noErr {
+            defaultInputListener = l
+        }
     }
+
+    /// Opens the input on the current engine (installs the tap at the device's own format) and starts it.
+    private func open() throws {
+        let (e, cb) = lock.withLock { (engine, onSamples) }
+        guard let cb else { return }
+        let input = e.inputNode
+        let fmt = input.outputFormat(forBus: 0)
+        guard fmt.sampleRate > 0, fmt.channelCount > 0 else { throw AudioError("no microphone input device") }
+        input.installTap(onBus: 0, bufferSize: 4096, format: fmt) { [conv] buf, _ in cb(conv.convert(buf)) }
+        e.prepare()
+        do { try e.start() } catch { input.removeTap(onBus: 0); throw error }
+        if let o = configObserver { NotificationCenter.default.removeObserver(o) }
+        configObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: e, queue: nil) { [weak self] _ in
+            self?.changed("configuration")
+        }
+    }
+
+    private func changed(_ why: String) {
+        guard !lock.withLock({ stopped }) else { return }
+        restart.deviceChanged(attempt: { [weak self] in
+            guard let self else { return nil }
+            if self.lock.withLock({ self.stopped }) { return nil }
+            let old = self.lock.withLock { self.engine }
+            old.inputNode.removeTap(onBus: 0)
+            old.stop()
+            // A fresh engine binds to the new default input; the old one keeps the device it was built on.
+            self.lock.withLock { self.engine = AVAudioEngine() }
+            do { try self.open(); return nil } catch { return "\(error)" }
+        }, done: { [weak self] r in
+            guard let self else { return }
+            switch r {
+            case .success(let ms):
+                let fmt = self.lock.withLock { self.engine }.inputNode.outputFormat(forBus: 0)
+                logErr("mic: input changed (\(why)) to \(Self.defaultInputName() ?? "?") (\(Int(fmt.sampleRate)) Hz), restarted in \(ms) ms")
+            case .failure(let e):
+                logErr("mic: input lost (\(why)): \(e.reason)")
+                // Off the restart queue: the loss stops this capture (stop() syncs on that queue).
+                let lost = self.onLost
+                DispatchQueue.global().async { lost?(e.reason) }
+            }
+        })
+    }
+
+    static func defaultInputName() -> String? {
+        var dev = AudioObjectID(kAudioObjectUnknown)
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &defaultInputAddress, 0, nil, &size, &dev) == noErr else { return nil }
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioObjectPropertyName, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        var name: CFString = "" as CFString
+        size = UInt32(MemoryLayout<CFString>.size)
+        let st = withUnsafeMutablePointer(to: &name) { AudioObjectGetPropertyData(dev, &addr, 0, nil, &size, $0) }
+        return st == noErr ? name as String : nil
+    }
+
     func stop() {
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
+        lock.withLock { stopped = true; onSamples = nil }
+        restart.cancel()
+        if let l = defaultInputListener {
+            AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &Self.defaultInputAddress, restartQueue, l)
+            defaultInputListener = nil
+        }
+        if let o = configObserver { NotificationCenter.default.removeObserver(o); configObserver = nil }
+        restartQueue.sync {}  // no restart attempt runs past here
+        let e = lock.withLock { engine }
+        e.inputNode.removeTap(onBus: 0)
+        e.stop()
     }
 }
 
