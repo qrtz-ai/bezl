@@ -6,11 +6,19 @@ import XCTest
 final class FakeTap: SystemAudioTap, @unchecked Sendable {
     let name = "fake-tap"
     var likely = true, fails = false
+    /// Fail only the first start, after this delay (N152).
+    var failFirstAfterMs: UInt64 = 0
+    var starts = 0
     let calls = Box<[String]>([])
     let cb = Box<(@Sendable ([Float]) -> Void)?>(nil)
     func echoLikely() -> Bool { likely }
     func start(onSamples: @escaping @Sendable ([Float]) -> Void) async throws {
         calls.mutate { $0.append("start") }
+        starts += 1
+        if failFirstAfterMs > 0, starts == 1 {
+            try? await Task.sleep(nanoseconds: failFirstAfterMs * 1_000_000)
+            throw ProtocolError("slow failure")
+        }
         if fails { throw ProtocolError("no tap") }
         cb.mutate { $0 = onSamples }
     }
@@ -175,5 +183,35 @@ final class DictationEchoTests: XCTestCase {
         await c.dictation.onSamples(sentence(0).map { 0.1 * $0 })
         await c.handle(.dictationStop(id: "d1"))
         XCTAssertEqual(stoppedText(out.value), "echo")
+    }
+
+    func testALateTapFailureNeverDetachesTheNextDictationsHold() async {
+        // N152: d1's tap fails 100 ms in, after d1 ended and d2 began: d2 keeps its reference.
+        let tap = FakeTap()
+        tap.failFirstAfterMs = 100
+        let (c, out, _) = controller(tap: tap)
+        await c.handle(.dictationStart(id: "d1"))
+        await c.handle(.dictationCancel(id: "d1"))
+        await c.handle(.dictationStart(id: "d2"))
+        XCTAssertTrue(c.echoReference.isLive)
+        await tapStarted(tap)
+        XCTAssertTrue(c.echoReference.isLive, "d1's failure didn't drop d2's hold")
+        XCTAssertNotNil(tap.cb.value)
+        tap.cb.value?(sentence(0))
+        XCTAssertNotNil(c.echoReference.take(1360), "d2's tap samples are kept")
+        await c.handle(.dictationCancel(id: "d2"))
+        await c.dictation.echo?.settled()
+        XCTAssertFalse(c.echoReference.isLive)
+        XCTAssertTrue(logged(out.value, "slow failure"))
+    }
+
+    func testTheEchoGateSettingOffMeansNoTapAndTheRawMic() async {
+        // N153: talk.echoGate off.
+        let tap = FakeTap()
+        let (c, out, _) = controller(tap: tap)
+        await c.handle(.dictationConfigure(warmMic: false, preRollMs: 0, streamAudio: false, pushKey: "", echoGate: false))
+        await dictate(c, system: { tap.cb.value?($0) })
+        XCTAssertEqual(tap.calls.value, [])
+        XCTAssertEqual(stoppedText(out.value), "echo u3 echo u4 echo")
     }
 }

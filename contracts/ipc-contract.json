@@ -376,6 +376,11 @@
               "error"
             ]
           },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
           "detected": {
             "type": "object",
             "properties": {
@@ -1023,6 +1028,11 @@
               "error"
             ]
           },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
           "detected": {
             "type": "object",
             "properties": {
@@ -1660,6 +1670,11 @@
               "done",
               "error"
             ]
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
           },
           "detected": {
             "type": "object",
@@ -3192,6 +3207,11 @@
               "done",
               "error"
             ]
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
           },
           "detected": {
             "type": "object",
@@ -4851,6 +4871,11 @@
               "done",
               "error"
             ]
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
           },
           "detected": {
             "type": "object",
@@ -7215,6 +7240,11 @@
               "error"
             ]
           },
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
           "detected": {
             "type": "object",
             "properties": {
@@ -8740,6 +8770,7 @@
         "autoInsert": true,
         "restoreClipboard": true,
         "showPill": true,
+        "echoGate": true,
         "saveHistory": true
       },
       "speech": {
@@ -8910,6 +8941,10 @@
               "default": true,
               "type": "boolean"
             },
+            "echoGate": {
+              "default": true,
+              "type": "boolean"
+            },
             "saveHistory": {
               "default": true,
               "type": "boolean"
@@ -8926,6 +8961,7 @@
             "autoInsert",
             "restoreClipboard",
             "showPill",
+            "echoGate",
             "saveHistory"
           ],
           "additionalProperties": false

@@ -113,9 +113,12 @@ public final class PillDriver: @unchecked Sendable {
     public func helper(_ m: HelperMessage) {
         switch m {
         case .hotkey(.down):
-            guard state != .listening else { return }
+            let s = state
+            guard s != .listening else { return }
             newAttempt(id: nil)
-            go(.listening, timeoutMs: timing.startTimeoutMs)
+            // N151: a press during an older dictation's finalizing is queued by talk (N110) until that finalize is
+            // done, so its dictation.start can come as late as the release budget, not within 2 s.
+            go(.listening, timeoutMs: s == .finalizing ? backstopMs : timing.startTimeoutMs)
         case .hotkey(.up):
             guard state == .listening else { return }
             // N145: a press the host never started (refused before dictation.start) can't wait for a stop.

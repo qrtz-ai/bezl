@@ -367,6 +367,7 @@ test('talk: settings has a toggle for every automatic behaviour; each writes con
     ['talk-auto-insert', 'autoInsert'],
     ['talk-restore-clipboard', 'restoreClipboard'],
     ['talk-show-pill', 'showPill'],
+    ['talk-echo-gate', 'echoGate'],
     ['talk-save-history', 'saveHistory'],
   ];
   const talk = async () =>

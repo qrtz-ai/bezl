@@ -19,6 +19,9 @@ public protocol SystemAudioTap: AnyObject, Sendable {
 public final class EchoReference: @unchecked Sendable {
     private let lock = NSLock()
     private var holders: [String] = []
+    /// N152: each attach's token; a detach with a stale token (an older dictation's tap failing late) is a no-op.
+    private var tokens: [String: Int] = [:]
+    private var nextToken = 0
     private var buf: [Float] = []
     private var last: [Float] = []
     /// System audio more than this ahead of the mic is dropped (the two clocks drift; the gate needs the level only).
@@ -28,9 +31,20 @@ public final class EchoReference: @unchecked Sendable {
     public var isLive: Bool { lock.withLock { !holders.isEmpty } }
     public func has(_ who: String) -> Bool { lock.withLock { holders.contains(who) } }
 
-    public func attach(_ who: String) { lock.withLock { if !holders.contains(who) { holders.append(who) } } }
-    public func detach(_ who: String) {
+    /// Returns the token that `detach(_:token:)` must present.
+    @discardableResult
+    public func attach(_ who: String) -> Int {
         lock.withLock {
+            if !holders.contains(who) { holders.append(who) }
+            nextToken += 1; tokens[who] = nextToken
+            return nextToken
+        }
+    }
+    /// Detaches `who`; with a `token`, only if it is still that attach (not a later one by the same holder).
+    public func detach(_ who: String, token: Int? = nil) {
+        lock.withLock {
+            if let token, tokens[who] != token { return }
+            tokens[who] = nil
             holders.removeAll { $0 == who }
             buf.removeAll(); last.removeAll()  // the other holder (if any) refills it from its own clock
         }
@@ -64,9 +78,12 @@ public final class DictationEcho: @unchecked Sendable {
     let permitted: @Sendable () -> Bool
     let gate = DictationEchoGate()
     var tapTask: Task<Void, Never>?
+    var tapToken: Int?
     var lastStop: Task<Void, Never>?
     var blocks = 0, ducked = 0
     public var onLog: (@Sendable (LogLevel, String) -> Void)?
+    /// N153: `talk.echoGate` (`dictation.configure{echoGate}`). Off: no gate and no tap, the raw mic.
+    public var enabled = true
 
     public init(reference: EchoReference, tap: SystemAudioTap?, permitted: @escaping @Sendable () -> Bool) {
         self.reference = reference; self.tap = tap; self.permitted = permitted
@@ -77,20 +94,22 @@ public final class DictationEcho: @unchecked Sendable {
     @discardableResult
     public func begin() -> String? {
         blocks = 0; ducked = 0
+        guard enabled else { return nil }
         // In a meeting the warm mic's blocks already taught the gate the echo path: keep it.
         if reference.has("recording") { return "echo gate: the meeting's system audio" }
         gate.reset()
         guard let tap else { return nil }
         guard permitted() else { return "echo gate: off (no system audio grant, raw mic)" }
         guard tap.echoLikely() else { return "echo gate: off (headphones or nothing playing)" }
-        reference.attach("dictation")
+        let token = reference.attach("dictation")
+        tapToken = token
         let ref = reference, prev = lastStop, log = onLog
         // The tap starts in the background (tens of ms): the mic is not held for it; blocks before its first
         // samples pass ungated.
         tapTask = Task {
             await prev?.value
             do { try await tap.start(onSamples: { ref.push($0, from: "dictation") }) } catch {
-                ref.detach("dictation")
+                ref.detach("dictation", token: token)  // N152: never the next dictation's hold
                 log?(.warn, "echo gate: \(tap.name) didn't start (\(error)), raw mic")
             }
         }
@@ -103,13 +122,13 @@ public final class DictationEcho: @unchecked Sendable {
         blocks = 0; ducked = 0
         guard let t = tapTask, let tap else { return }
         tapTask = nil
-        reference.detach("dictation")
+        reference.detach("dictation", token: tapToken)
         lastStop = Task { await t.value; await tap.stop() }
     }
 
     /// One live mic block, gated when a tap feeds the reference.
     public func process(_ mic: [Float]) -> [Float] {
-        guard let sys = reference.take(mic.count) else { return mic }
+        guard enabled, let sys = reference.take(mic.count) else { return mic }
         var m = mic
         gate.process(system: sys, mic: &m)
         blocks += 1

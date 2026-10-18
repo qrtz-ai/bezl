@@ -171,6 +171,29 @@ final class PillDriverTests: XCTestCase {
         XCTAssertEqual(d.state, .listening)
     }
 
+    func testAPressQueuedBehindALongFinalizeDoesntHideAtTheStartTimeout() async {
+        // N151: d2 is pressed while d1 finalizes for longer than the 60 ms start timeout; talk sends d2's start late.
+        var t = fast(); t.finalizeBackstopMs = 1_000
+        let v = FakePillView(), d = PillDriver(view: v, timing: t)
+        d.helper(.hotkey(.down))
+        d.host(.dictationStart(id: "d1"))
+        d.helper(.dictationStarted(id: "d1", preRollMs: 0))
+        d.helper(.hotkey(.up))
+        d.helper(.hotkey(.down))
+        await sleep(150)
+        XCTAssertEqual(d.state, .listening, "not hidden at the start timeout")
+        d.helper(.dictationStopped(id: "d1", text: "one", durationMs: 500))
+        d.host(.dictationStart(id: "d2"))
+        d.helper(.dictationStarted(id: "d2", preRollMs: 0))
+        XCTAssertEqual(d.state, .listening)
+        XCTAssertEqual(v.all, [.listening, .processing, .listening])
+        // A press with nothing in flight still times out at 2 s (60 ms here) if the host never starts it.
+        let d3 = PillDriver(view: FakePillView(), timing: t)
+        d3.helper(.hotkey(.down))
+        await sleep(150)
+        XCTAssertEqual(d3.state, .hidden)
+    }
+
     func testAColdLoadAfterTheHostsStartDoesntHideThePill() async {
         // N147: the start timeout runs only until the host's dictation.start; the recogniser may load for ~26 s.
         let v = FakePillView(), d = PillDriver(view: v, timing: fast())
@@ -204,7 +227,7 @@ final class PillDriverTests: XCTestCase {
         await c.handle(.dictationConfigure(warmMic: false, preRollMs: 0, streamAudio: false, pushKey: "", autoInsert: false))
         XCTAssertEqual(c.pill?.autoInsert, false)
         let line = HostMessage.parse(line: #"{"type":"dictation.configure","warmMic":false,"preRollMs":0,"streamAudio":false,"pushKey":"","autoInsert":false}"#)
-        guard case .success(.dictationConfigure(_, _, _, _, _, _, false)) = line else { return XCTFail("autoInsert parsed: \(line)") }
+        guard case .success(.dictationConfigure(_, _, _, _, _, _, false, _)) = line else { return XCTFail("autoInsert parsed: \(line)") }
         guard case .failure = HostMessage.parse(line: #"{"type":"dictation.configure","warmMic":false,"preRollMs":0,"streamAudio":false,"pushKey":"","autoInsert":1}"#) else { return XCTFail("a non-bool autoInsert is refused") }
     }
 

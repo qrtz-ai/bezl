@@ -234,8 +234,9 @@ final class CoreAudioTapSource: QrtzHelperCore.AudioSource, @unchecked Sendable 
     }
 }
 
-/// N143: what the Mac plays, for echo's gate while dictating without a meeting. A private global process tap (our own
-/// process excluded) on the default output, system audio only; created per dictation and destroyed after it. Started
+/// N143: what the Mac plays, for echo's gate while dictating without a meeting. A private global process tap on the
+/// default output, system audio only, excluding the helper's own process (N152; the helper plays nothing today, and
+/// the qrtz app is deliberately not excluded: its meeting playback is echo too); created per dictation and destroyed after it. Started
 /// only with the screen & system audio recording grant already given (the controller checks), so it never prompts.
 @available(macOS 14.2, *)
 final class MacDictationTap: SystemAudioTap, @unchecked Sendable {
@@ -276,8 +277,19 @@ final class MacDictationTap: SystemAudioTap, @unchecked Sendable {
         }
     }
 
+    /// The helper's own Core Audio process object (nil until it has one: a process that never touched audio).
+    static func ownProcessObject() -> AudioObjectID? {
+        var pid = getpid()
+        var obj = AudioObjectID(kAudioObjectUnknown)
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyTranslatePIDToProcessObject,
+                                              mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        let st = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, UInt32(MemoryLayout<pid_t>.size), &pid, &size, &obj)
+        return st == noErr && obj != kAudioObjectUnknown ? obj : nil
+    }
+
     func start(onSamples: @escaping @Sendable ([Float]) -> Void) async throws {
-        let desc = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
+        let desc = CATapDescription(stereoGlobalTapButExcludeProcesses: Self.ownProcessObject().map { [$0] } ?? [])
         desc.uuid = UUID()
         desc.muteBehavior = .unmuted
         desc.isPrivate = true

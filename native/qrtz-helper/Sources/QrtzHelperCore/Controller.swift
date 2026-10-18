@@ -394,9 +394,10 @@ public actor HelperController {
         case .recordingResume: paused = false; send(.log(level: .info, msg: "capture resumed"))
         case .modelsWarm: await warmModels()
         case .shutdown: await shutdown()
-        case .dictationConfigure(let warm, let pre, let stream, let key, let consume, let showPill, let autoInsert):
+        case .dictationConfigure(let warm, let pre, let stream, let key, let consume, let showPill, let autoInsert, let echoGate):
             pill?.enabled = showPill ?? true
             pill?.autoInsert = autoInsert ?? true
+            await dictation.setEchoGate(echoGate ?? true)
             await dictation.configure(warmMic: warm, preRollMs: pre, streamAudio: stream, pushKey: key, consumeFn: consume ?? true)
             _ = await admit(.configure(warmMic: warm))
             watchPermissions()

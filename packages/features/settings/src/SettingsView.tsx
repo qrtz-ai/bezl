@@ -160,6 +160,7 @@ export default function SettingsView() {
     autoInsert?: boolean;
     restoreClipboard?: boolean;
     showPill?: boolean;
+    echoGate?: boolean;
     saveHistory?: boolean;
   };
   const patchTalk = (p: Record<string, unknown>) => {
@@ -349,6 +350,13 @@ export default function SettingsView() {
           talkCfg.showPill,
           true,
           (v) => void patchTalk({ showPill: v }),
+        )}
+        {toggle(
+          'ignore the speakers',
+          'talk-echo-gate',
+          talkCfg.echoGate,
+          true,
+          (v) => void patchTalk({ echoGate: v }),
         )}
         {toggle(
           'keep history',

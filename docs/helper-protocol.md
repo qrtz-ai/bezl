@@ -192,7 +192,9 @@ the system audio (`DictationEcho`, no protocol change; `hello.features` carries 
   release tail, and LocalVQE's state belongs to the recording.
 - The tap starts in the background (tens of ms); blocks before its first samples pass ungated. Log lines:
   `echo gate: …` at the start (which reference, or why off) and `echo gate: N of M mic blocks held down` at the end.
-  `QRTZ_ECHO_GATE=0` turns it off.
+  `QRTZ_ECHO_GATE=0` turns it off; so does `dictation.configure{echoGate: false}` (`talk.echoGate`, ADR 0097).
+- Each attach of the reference has a token; a tap that fails late detaches only its own hold (N152). The tap
+  excludes the helper's own process, not the qrtz app (its playback is echo too).
 
 ## Diarization (ADR 0079)
 

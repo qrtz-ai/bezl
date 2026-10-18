@@ -65,6 +65,10 @@ export const ConfigSchema = z.object({
       restoreClipboard: z.boolean().default(true),
       /** Floating pill with the level and live text while dictating. */
       showPill: z.boolean().default(true),
+      /** ADR 0097: while dictating with the speakers playing (not headphones), hold the mic down when it only hears
+       * the speakers. Uses a short system-audio tap under the screen & system audio grant (macOS may show its
+       * recording indicator). */
+      echoGate: z.boolean().default(true),
       saveHistory: z.boolean().default(true),
     })
     .prefault({}),

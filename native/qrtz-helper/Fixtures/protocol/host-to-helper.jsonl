@@ -22,5 +22,6 @@
 {"type":"models.warm"}
 {"consumeFn":true,"pill":false,"preRollMs":300,"pushKey":"fn","streamAudio":false,"type":"dictation.configure","warmMic":true}
 {"autoInsert":false,"consumeFn":true,"pill":true,"preRollMs":300,"pushKey":"fn","streamAudio":false,"type":"dictation.configure","warmMic":true}
+{"echoGate":false,"preRollMs":300,"pushKey":"fn","streamAudio":false,"type":"dictation.configure","warmMic":false}
 {"kind":"info","message":"copied to clipboard","type":"pill.flash"}
 {"kind":"error","message":"couldn't insert; copied to clipboard","type":"pill.flash"}

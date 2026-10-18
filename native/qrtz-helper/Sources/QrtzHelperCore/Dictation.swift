@@ -223,6 +223,9 @@ public actor DictationEngine {
         self.mic = mic; self.transcribers = transcribers; self.inserter = inserter; self.hotkeys = hotkeys; self.send = send; self.now = now
     }
 
+    /// N153: `talk.echoGate`. Takes effect at the next dictation's start (a running one keeps its gate).
+    public func setEchoGate(_ on: Bool) { echo?.enabled = on }
+
     public var isActive: Bool { session != nil }
     public var activeId: String? { session?.id }
     public var isMicRunning: Bool { micRunning }

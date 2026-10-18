@@ -18,6 +18,9 @@ pub struct TalkConfig {
     pub save_history: bool,
     /// `talk.showPill`: the helper's native pill (ADR 0092, `dictation.configure{pill}`).
     pub show_pill: bool,
+    /// `talk.echoGate` (ADR 0097, N153): while dictating with the speakers playing, gate the mic against the
+    /// system audio (a short-lived system tap under the screen & system audio grant). `dictation.configure{echoGate}`.
+    pub echo_gate: bool,
 }
 
 impl TalkConfig {
@@ -35,6 +38,7 @@ impl TalkConfig {
             restore_clipboard: b("restoreClipboard", true),
             save_history: b("saveHistory", true),
             show_pill: b("showPill", true),
+            echo_gate: b("echoGate", true),
         }
     }
 }

@@ -162,6 +162,7 @@ async fn talk_settings_has_a_key_for_every_automatic_behavior_and_show_pill_off_
         ("autoInsert", true),
         ("restoreClipboard", true),
         ("showPill", true),
+        ("echoGate", true),
         ("saveHistory", true),
         ("blockGlobeKey", true),
     ] {
