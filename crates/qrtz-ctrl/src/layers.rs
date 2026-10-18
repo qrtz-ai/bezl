@@ -480,6 +480,13 @@ const INTENTS: &[IntentDef] = &[
         slot: Slot::None,
         irreversible: false,
     },
+    // ADR 0149: hide one named app (never the one the user is in); reversible, no gate.
+    IntentDef {
+        id: "hide_app",
+        app: AppMode::Named { fallback: None },
+        slot: Slot::None,
+        irreversible: false,
+    },
     // ADR 0135: mute the Mac's sound output; reversible, no gate, no app.
     IntentDef {
         id: "mute",
@@ -682,6 +689,26 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             );
             if has(toks, &["hide"]) && group && !named_app {
                 p += 8500;
+            }
+        }
+        "hide_app" => {
+            // ADR 0149: "hide slack", "hide spotify every evening": "hide" plus one named app and no group word.
+            // Without both it sits well below the rest, like hide_others. (Before this, "hide slack" scored as
+            // open_app on the app name alone.)
+            p -= 3000;
+            let group = has(
+                toks,
+                &[
+                    "apps",
+                    "applications",
+                    "programs",
+                    "other",
+                    "others",
+                    "everything",
+                ],
+            );
+            if has(toks, &["hide"]) && named_app && !group {
+                p += 9000;
             }
         }
         "mute" => {
@@ -1152,6 +1179,9 @@ fn move_question(
         "quit_app" => vec![irreversible(route("workspace.quit_app", 4500))],
         "quit_unused" => vec![irreversible(route("workspace.quit_unused", 4500))],
         "hide_others" => vec![route("workspace.hide_others", 4500)],
+        // ADR 0149: `NSRunningApplication.hide()` of the one named app; no key event (⌘H would go to the app the user
+        // is in), so nothing to backtrack into.
+        "hide_app" => vec![route("workspace.hide_app", 4500)],
         "mute" => vec![route("system.mute", 4500)],
         "unmute" => vec![route("system.unmute", 4500)],
         "set_volume" => vec![route("system.set_volume", 4500)],
@@ -1384,6 +1414,7 @@ fn intent_label(id: &str) -> &'static str {
         "quit_app" => "quit an app",
         "quit_unused" => "quit apps you haven't used today",
         "hide_others" => "hide your other apps",
+        "hide_app" => "hide an app",
         "mute" => "mute your mac",
         "unmute" => "unmute your mac",
         "set_volume" => "set the volume",
@@ -1407,6 +1438,7 @@ fn route_label(id: &str) -> &'static str {
         "workspace.quit_unused" => "quit them without bringing anything forward",
         "workspace.quit_app" => "quit it without bringing it forward",
         "workspace.hide_others" => "hide them, the app you're in stays",
+        "workspace.hide_app" => "hide it, nothing comes forward",
         "system.mute" => "mute the sound output",
         "system.unmute" => "turn the sound output back on",
         "system.set_volume" => "set the sound output to that level",

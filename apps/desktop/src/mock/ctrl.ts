@@ -84,6 +84,7 @@ const INTENTS = {
     irreversible: true,
   },
   hide_others: opt('intent.hide_others', 'hide your other apps', 0.07),
+  hide_app: opt('intent.hide_app', 'hide an app', 0.07),
   mute: opt('intent.mute', 'mute your mac', 0.07),
   unmute: opt('intent.unmute', 'unmute your mac', 0.07),
   set_volume: opt('intent.set_volume', 'set the volume', 0.07),
@@ -105,6 +106,7 @@ type Intent =
   | 'quit_app'
   | 'quit_unused'
   | 'hide_others'
+  | 'hide_app'
   | 'mute'
   | 'unmute'
   | 'set_volume'
@@ -171,6 +173,16 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
         "hide them, the app you're in stays",
         0.97,
       ),
+    ]),
+  ],
+  // ADR 0149: one named app hidden through the workspace (no key event, no activation); reversible, no card.
+  hide_app: [
+    act('choose_app', [
+      opt('app.com.tinyspeck.slackmacgap', 'slack', 0.9),
+      opt('app.com.apple.Notes', 'notes', 0.03),
+    ]),
+    act('choose_move', [
+      opt('route.workspace.hide_app', 'hide it, nothing comes forward', 0.95),
     ]),
   ],
   // ADR 0137: the appearance, through system events (faceless); reversible, no card.
@@ -415,27 +427,30 @@ const intentOf = (text: string): Intent | null =>
                     text,
                   )
                 ? 'hide_others'
-                : /\b(quit|close)\b/i.test(text) &&
-                    /\bapps?\b/i.test(text) &&
-                    /\b(unused|used|using|idle)\b/i.test(text)
-                  ? 'quit_unused'
-                  : /\bquit\b/i.test(text)
-                    ? 'quit_app'
-                    : /\bcalendar\b/i.test(text)
-                      ? 'open_calendar'
-                      : /\bempty\b/i.test(text) && /\b(trash|bin)\b/i.test(text)
-                        ? 'empty_trash'
-                        : /\btabs?\b/i.test(text)
-                          ? 'close_tabs'
-                          : /\bdocuments\b/i.test(text)
-                            ? 'tidy_documents'
-                            : /\b(desktop|screenshots?)\b/i.test(text)
-                              ? 'tidy_desktop'
-                              : /download|folder/i.test(text)
-                                ? /\b(delete|trash|old)\b/i.test(text)
-                                  ? 'trash_old'
-                                  : 'clean_folder'
-                                : null;
+                : /\bhide\b/i.test(text)
+                  ? 'hide_app'
+                  : /\b(quit|close)\b/i.test(text) &&
+                      /\bapps?\b/i.test(text) &&
+                      /\b(unused|used|using|idle)\b/i.test(text)
+                    ? 'quit_unused'
+                    : /\bquit\b/i.test(text)
+                      ? 'quit_app'
+                      : /\bcalendar\b/i.test(text)
+                        ? 'open_calendar'
+                        : /\bempty\b/i.test(text) &&
+                            /\b(trash|bin)\b/i.test(text)
+                          ? 'empty_trash'
+                          : /\btabs?\b/i.test(text)
+                            ? 'close_tabs'
+                            : /\bdocuments\b/i.test(text)
+                              ? 'tidy_documents'
+                              : /\b(desktop|screenshots?)\b/i.test(text)
+                                ? 'tidy_desktop'
+                                : /download|folder/i.test(text)
+                                  ? /\b(delete|trash|old)\b/i.test(text)
+                                    ? 'trash_old'
+                                    : 'clean_folder'
+                                  : null;
 
 const PREVIEW: CtrlConfirm['items'] = [
   { key: '3f2a9c1d0b7e#0', kind: 'window', label: 'notes.txt', unsaved: false },
@@ -460,6 +475,14 @@ const QUIT_FRONT = [
       ),
       irreversible: true,
     },
+  ]),
+];
+
+/** ADR 0149: "hide notes", the frontmost app in the mock: the plan, then held. */
+const HIDE_FRONT = [
+  act('choose_app', [opt('app.com.apple.Notes', 'notes', 0.9)]),
+  act('choose_move', [
+    opt('route.workspace.hide_app', 'hide it, nothing comes forward', 0.95),
   ]),
 ];
 
@@ -642,7 +665,14 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
     }
     // ADR 0148: notes is the app the user is in (the mock's frontmost), so "quit notes" is held before the card.
     const quitFront = intent === 'quit_app' && /\bnotes\b/i.test(text);
-    for (const d of quitFront ? QUIT_FRONT : REST[intent]) decide(r, d);
+    // ADR 0149: likewise "hide notes" is held (hiding the app you're in would bring another app forward).
+    const hideFront = intent === 'hide_app' && /\bnotes\b/i.test(text);
+    for (const d of quitFront
+      ? QUIT_FRONT
+      : hideFront
+        ? HIDE_FRONT
+        : REST[intent])
+      decide(r, d);
     const s = stateAt(r.recs, r.recs.length);
     push(r, 'plan.produced', {
       plan: {
@@ -658,7 +688,7 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
         })),
       },
     });
-    if (quitFront) {
+    if (quitFront || hideFront) {
       push(r, 'exec.held', { held: 'no-route' });
       push(r, 'task.finished', { finished: 'asked-out' });
       return;

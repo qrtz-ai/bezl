@@ -17,9 +17,9 @@
 //! (ADR 0122) deletes the Trash's items through the same executor, never through the Finder, only after the gate,
 //! and only the items the approved card listed. Without roots they still stop with `exec.held { files_not_yet }`. (Runs from before slice 6 may still hold `exec.held { irreversible }`; they replay as before.)
 use crate::apps::{
-    level_of, step_of, stepped, still_visible, to_hide, unused_today, DEFAULT_VOLUME_STEP, HIDE_OTHERS_MOVE,
-    MUTE_MOVE, QUIT_APP_MOVE, QUIT_UNUSED_MOVE, SET_VOLUME_MOVE, UNMUTE_MOVE, VOLUME_DOWN_MOVE,
-    VOLUME_UP_MOVE,
+    hide_one, level_of, step_of, stepped, still_visible, to_hide, unused_today, DEFAULT_VOLUME_STEP,
+    HIDE_APP_MOVE, HIDE_OTHERS_MOVE, MUTE_MOVE, QUIT_APP_MOVE, QUIT_UNUSED_MOVE, SET_VOLUME_MOVE,
+    UNMUTE_MOVE, VOLUME_DOWN_MOVE, VOLUME_UP_MOVE,
 };
 use crate::ax::{diff, AxSnapshot};
 use crate::decide::{next_backtrack, run_chain_obs, unobserved, BacktrackReason, Goal, Node, Scorer};
@@ -106,8 +106,10 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
     // quit or hide.
     // ADR 0143: a relative volume step is planned from the level the driver reads just before; not pure.
     // ADR 0145: so is a toggle (it's planned from the appearance read just before).
+    // ADR 0149: "hide <app>" too (the driver reads whether the app is frontmost, hidden or running just before).
     if mv == QUIT_UNUSED_MOVE
         || mv == HIDE_OTHERS_MOVE
+        || mv == HIDE_APP_MOVE
         || mv == VOLUME_UP_MOVE
         || mv == VOLUME_DOWN_MOVE
         || mv == DARK_MODE_TOGGLE_MOVE
@@ -706,8 +708,34 @@ impl Driver<'_> {
             };
             // ADR 0134: "hide other apps" is planned from `ctrl.apps` too: every visible app but the frontmost and
             // qrtz. Reversible, so no gate; already all hidden means done.
-            let hplan: Option<Vec<String>> = if fplan.is_none() && mv == HIDE_OTHERS_MOVE {
+            // ADR 0149: "hide <app>" is the same act for the one named app, read from `ctrl.apps` just before: the app
+            // the user is in is held (hiding it would bring another app forward), not running or hidden already is
+            // done with nothing acted.
+            let one = (mv == HIDE_APP_MOVE)
+                .then(|| {
+                    s.chosen()
+                        .get(&Node::ChooseApp)
+                        .and_then(|o| o.strip_prefix("app."))
+                        .map(str::to_string)
+                })
+                .flatten();
+            let hplan: Option<Vec<String>> = if fplan.is_none()
+                && (mv == HIDE_OTHERS_MOVE || mv == HIDE_APP_MOVE)
+            {
                 match self.helper.apps() {
+                    Ok(r) if mv == HIDE_APP_MOVE => match one.as_deref().map(|id| hide_one(&r.apps, id)) {
+                        Some(Ok(Some(id))) => Some(vec![id]),
+                        Some(Ok(None)) => return sink.push(log, finish(TaskStatus::Done)),
+                        _ => {
+                            sink.push(
+                                log,
+                                Event::ExecHeld {
+                                    reason: HoldReason::NoRoute,
+                                },
+                            )?;
+                            return sink.push(log, finish(TaskStatus::AskedOut));
+                        }
+                    },
                     Ok(r) => match to_hide(&r.apps) {
                         v if v.is_empty() => return sink.push(log, finish(TaskStatus::Done)),
                         v => Some(v.into_iter().map(|a| a.bundle_id.clone()).collect()),

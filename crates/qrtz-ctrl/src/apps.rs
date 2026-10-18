@@ -89,6 +89,22 @@ pub fn stepped(before: i64, step: u8, up: bool) -> u8 {
 /// ADR 0134: the move of "hide other apps" / "hide all my apps" (reversible, no gate).
 pub const HIDE_OTHERS_MOVE: &str = "route.workspace.hide_others";
 
+/// ADR 0149: the move of "hide <app>" (one named app, reversible, no gate, never the frontmost).
+pub const HIDE_APP_MOVE: &str = "route.workspace.hide_app";
+
+/// ADR 0149: what "hide <app>" does with `id` now. `Err(())` holds it (the app the user is in: hiding it would bring
+/// another app forward), `Ok(None)` is done with nothing to do (not running, or hidden already), `Ok(Some(id))` hides
+/// it. An older helper that doesn't say whether the app is hidden (`hidden: None`) counts as visible.
+#[allow(clippy::result_unit_err)]
+pub fn hide_one(apps: &[RunningAppWire], id: &str) -> Result<Option<String>, ()> {
+    match apps.iter().find(|a| a.bundle_id == id) {
+        None => Ok(None),
+        Some(a) if a.frontmost => Err(()),
+        Some(a) if a.hidden == Some(true) => Ok(None),
+        Some(a) => Ok(Some(a.bundle_id.clone())),
+    }
+}
+
 /// Never hidden by "hide other apps": the frontmost app (the one the user is in) and qrtz itself, which shows the
 /// run. The Finder is hidden like any other app (its windows go; the desktop stays), as the system's Hide Others does.
 fn keep_visible(id: &str) -> bool {

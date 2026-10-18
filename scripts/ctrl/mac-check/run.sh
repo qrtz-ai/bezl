@@ -43,6 +43,14 @@ echo "warnings in QrtzCtrl: $(grep -E 'Sources/QrtzCtrl/.*warning:' "$D/helper-b
 grep -E 'Sources/QrtzCtrl/.*warning:' "$D/helper-build.log" | sort -u | head -20
 echo "warnings total: $(grep -E 'warning:' "$D/helper-build.log" | sort -u | wc -l)"
 tail -3 "$D/helper-build.log"
+echo "== build qrtz-ctrl"
+# The ctrl module app (ADR 0146 M1.3a): QrtzCtrl + QrtzGateProbe only, same scratch path so it reuses the helper build.
+s=$(date +%s)
+capped 600 "$D/ctrl-build.log" "$D/qrtz-helper" build --product qrtz-ctrl "${SP[@]}" --scratch-path "$D/b-helper"
+echo "exit $? in $(( $(date +%s) - s ))s"
+grep -E "error:" "$D/ctrl-build.log" | sort -u | head -30
+grep -E 'Sources/(QrtzCtrl|qrtz-ctrl)/.*warning:' "$D/ctrl-build.log" | sort -u | head -10
+tail -2 "$D/ctrl-build.log"
 echo "== QrtzCtrlTests"
 # ADR 0141: the Mac check is read-only end to end. These CtrlMacGuardTests open TextEdit, press its close button,
 # post key events (to the test process) or call AX actions on Finder, so they're skipped here unless

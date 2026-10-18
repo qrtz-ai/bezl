@@ -695,6 +695,42 @@ test('ctrl: every morning hide all my apps hides the others without a card', asy
   expect(errors).toEqual([]);
 });
 
+// ADR 0149: "hide slack" hides that one app without a card; the app you're in ("hide notes") is never hidden.
+test('ctrl: hide slack hides only slack without a card, never the app you are in', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  await ctrl.getByTestId('ctrl-task-input').fill('hide slack');
+  await ctrl.getByTestId('ctrl-task-add').click();
+  await ctrl.getByTestId('ctrl-task').getByTestId('ctrl-task-run').click();
+  const run = ctrl.getByTestId('ctrl-run').first();
+  await expect(run.getByTestId('ctrl-run-status')).toHaveText('done');
+  await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
+  const decisions = ctrl.getByTestId('ctrl-decisions').first();
+  await expect(decisions).toContainText('hide an app');
+  await expect(decisions).toContainText('hide it, nothing comes forward');
+  await expect(decisions).not.toContainText('hide your other apps');
+
+  await ctrl.getByTestId('ctrl-task-input').fill('hide notes');
+  await ctrl.getByTestId('ctrl-task-add').click();
+  const notes = ctrl.getByTestId('ctrl-task').filter({ hasText: 'hide notes' });
+  await notes.getByTestId('ctrl-task-run').click();
+  await expect(
+    ctrl.getByTestId('ctrl-run').first().getByTestId('ctrl-run-status'),
+  ).toHaveText('needs you');
+  await expect(ctrl.getByTestId('ctrl-state').first()).toContainText(
+    'no way to do it in the background',
+  );
+  await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 // ADR 0135: "every night at 10 mute my mac" mutes the sound output without a card (reversible), no app touched.
 test('ctrl: every night mute my mac mutes the sound without a card', async ({
   page,

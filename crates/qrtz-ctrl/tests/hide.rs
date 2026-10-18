@@ -183,8 +183,11 @@ fn hiding_one_named_app_is_not_this_intent_and_quit_unused_still_wins_its_phrasi
     let t = create(&s, "quit unused apps");
     let v = run_now(&s, &t);
     assert_eq!(v["state"]["decisions"][0]["chosen"], "intent.quit_unused", "{v}");
-    // "hide slack" names one app: never "hide everything else".
-    for text in ["hide slack", "hide safari"] {
+    // "hide slack" names one app: never "hide everything else" (ADR 0149 hides only that app).
+    for (text, id) in [
+        ("hide slack", "com.tinyspeck.slackmacgap"),
+        ("hide safari", "com.apple.Safari"),
+    ] {
         let d = tempfile::tempdir().unwrap();
         let (s, fake) = rig(d.path(), world());
         let t = create(&s, text);
@@ -194,12 +197,11 @@ fn hiding_one_named_app_is_not_this_intent_and_quit_unused_still_wins_its_phrasi
             "{text}: {v}"
         );
         assert!(
-            !fake
-                .world()
-                .acted
-                .iter()
-                .any(|a| matches!(a.1, Route::Workspace(WorkspaceOp::HideApps { .. }))),
-            "{text}"
+            fake.world().acted.iter().all(|a| match &a.1 {
+                Route::Workspace(WorkspaceOp::HideApps { apps }) => apps == &vec![id.to_string()],
+                _ => true,
+            }),
+            "{text}: only the named app"
         );
     }
     let d = tempfile::tempdir().unwrap();
