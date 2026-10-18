@@ -29,6 +29,12 @@ echo "exit $?"; grep -E "error:" "$D/check-build.log" | head -40; tail -3 "$D/ch
 echo "== check"
 if [ -x "$D/b-check/debug/ctrl-check" ]; then "$D/b-check/debug/ctrl-check"; echo "exit $?"; fi
 echo "== build qrtz-helper"
+# ADR 0142: FluidAudio and its NemoTextProcessing artifact come in the bundle (checksummed on the box), so this build
+# fetches nothing. ditto keeps the xcframework layout.
+if [ -f "$D/FluidAudio/NemoTextProcessing.xcframework.zip" ]; then
+  ditto -x -k "$D/FluidAudio/NemoTextProcessing.xcframework.zip" "$D/FluidAudio" && rm -f "$D/FluidAudio/NemoTextProcessing.xcframework.zip"
+  echo "artifact unpacked: $(ls -d "$D/FluidAudio/NemoTextProcessing.xcframework" 2>&1)"
+fi
 s=$(date +%s)
 capped 900 "$D/helper-build.log" "$D/qrtz-helper" build --product qrtz-helper "${SP[@]}" --scratch-path "$D/b-helper"
 echo "exit $? in $(( $(date +%s) - s ))s"
