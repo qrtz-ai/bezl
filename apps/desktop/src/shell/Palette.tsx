@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CommandPalette, isIconName, useToast } from '@qrtz/ui';
-import { requestNavigate, type SessionView } from '@qrtz/core';
+import { isViewOn, requestNavigate, type SessionView } from '@qrtz/core';
 import { registry } from './subapps';
 import { shellClient } from './shellClient';
 import { filterCommands, type Command } from './filter';
+import { useModuleSwitches } from './useModuleSwitches';
 
 type Client = ReturnType<typeof shellClient>;
 const listMeetings = (c: Client, query: string) =>
@@ -24,6 +25,9 @@ export function Palette({
   const [i, setI] = useState(0);
   const [session, setSession] = useState<SessionView | null>(null);
   const client = useMemo(shellClient, []);
+  // ADR 0146: no commands or meetings for a module switched off in settings → modules.
+  const switches = useModuleSwitches();
+  const nanoOn = isViewOn(switches, 'note');
   useEffect(() => {
     if (!open) return;
     setQ('');
@@ -36,7 +40,7 @@ export function Palette({
   >([]);
   useEffect(() => {
     const query = q.trim();
-    if (!open || query.length < 2) return setMeetings([]);
+    if (!open || !nanoOn || query.length < 2) return setMeetings([]);
     const h = setTimeout(() => {
       client.invoke('note:list', { query }).then(
         (r) => setMeetings(r.slice(0, 6)),
@@ -44,7 +48,7 @@ export function Palette({
       );
     }, 120);
     return () => clearTimeout(h);
-  }, [q, open, client]);
+  }, [q, open, client, nanoOn]);
 
   const commands = useMemo<Command[]>(() => {
     const recording = ['starting', 'recording', 'reconnecting'].includes(
@@ -73,16 +77,19 @@ export function Palette({
             }),
         };
     return [
-      rec,
-      ...registry.list().map(({ manifest }) => ({
-        id: `nav.${manifest.id}`,
-        title: `go to ${manifest.name}`,
-        icon: manifest.icon,
-        keywords: `open ${manifest.id}`,
-        run: () => onNavigate(manifest.id),
-      })),
+      ...(nanoOn ? [rec] : []),
+      ...registry
+        .list()
+        .filter(({ manifest }) => isViewOn(switches, manifest.id))
+        .map(({ manifest }) => ({
+          id: `nav.${manifest.id}`,
+          title: `go to ${manifest.name}`,
+          icon: manifest.icon,
+          keywords: `open ${manifest.id}`,
+          run: () => onNavigate(manifest.id),
+        })),
     ];
-  }, [session, client, onNavigate, toast]);
+  }, [session, client, onNavigate, toast, nanoOn, switches]);
 
   const results = [
     ...filterCommands(commands, q),

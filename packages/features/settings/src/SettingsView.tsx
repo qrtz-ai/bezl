@@ -124,6 +124,22 @@ export default function SettingsView() {
       .then(setCfg)
       .catch((e: Error) => setError(e.message));
   };
+  // ADR 0146: the global switches that control every module; each module's own settings stay in its section.
+  const modulesCfg = (cfg?.modules ?? {}) as {
+    enabled?: boolean;
+    echo?: { enabled?: boolean };
+    nano?: { enabled?: boolean };
+    ctrl?: { enabled?: boolean };
+  };
+  const patchModules = (p: Record<string, unknown>) => {
+    setCfg((prev) =>
+      prev ? { ...prev, modules: { ...(prev.modules as object), ...p } } : prev,
+    );
+    return qrtz
+      .invoke('config:set', { patch: { modules: p } })
+      .then(setCfg)
+      .catch((e: Error) => setError(e.message));
+  };
   const patchNote = (p: Record<string, unknown>) => {
     setCfg((prev) =>
       prev ? { ...prev, note: { ...(prev.note as object), ...p } } : prev,
@@ -187,6 +203,40 @@ export default function SettingsView() {
           }
         />
       ) : null}
+      <SettingsSection title="modules" data-testid="modules-settings">
+        {toggle(
+          'all modules',
+          'modules-all',
+          modulesCfg.enabled,
+          true,
+          (v) => void patchModules({ enabled: v }),
+        )}
+        {toggle(
+          'echo (dictation)',
+          'module-echo',
+          modulesCfg.echo?.enabled,
+          true,
+          (v) => void patchModules({ echo: { enabled: v } }),
+        )}
+        {toggle(
+          'nano (meetings)',
+          'module-nano',
+          modulesCfg.nano?.enabled,
+          true,
+          (v) => void patchModules({ nano: { enabled: v } }),
+        )}
+        {toggle(
+          'ctrl (tasks)',
+          'module-ctrl',
+          modulesCfg.ctrl?.enabled,
+          true,
+          (v) => void patchModules({ ctrl: { enabled: v } }),
+        )}
+        <Text variant="caption" muted data-testid="modules-note">
+          a module that is off has no tab, no hotkeys and runs nothing. its own
+          settings are kept.
+        </Text>
+      </SettingsSection>
       <SettingsSection title="recording">
         {toggle(
           'detect meetings',

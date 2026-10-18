@@ -31,6 +31,8 @@ qrtz-speech = { path = "../qrtz-speech", optional = true, features = ["net"] }
 rand.workspace = true
 unicode-normalization.workspace = true
 qrtz-ipc = { path = "../qrtz-ipc" }
+# ADR 0146: module manifests, lockfile and the global module switches (pure Rust, no network).
+qrtz-modules = { path = "../qrtz-modules" }
 qrtz-helper-bridge = { path = "../qrtz-helper-bridge" }
 # ctrl (ADR 0100, 0103): the task store and run logs behind the `ctrl:*` channels. Pure Rust, no network.
 qrtz-ctrl = { path = "../qrtz-ctrl" }

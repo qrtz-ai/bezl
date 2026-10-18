@@ -15,11 +15,12 @@ import {
   type RouteObject,
 } from 'react-router';
 import { AppFrame, TabBar, ThemeProvider, ToastProvider } from '@qrtz/ui';
-import { onNavigateRequest } from '@qrtz/core';
+import { isViewOn, onNavigateRequest } from '@qrtz/core';
 import type { SubAppRoute } from '@qrtz/core/react';
 import { registry } from './subapps';
 import { SubAppHost } from './SubAppHost';
 import { useConfigTheme } from './useConfigTheme';
+import { useModuleSwitches } from './useModuleSwitches';
 import { useOnboarded } from './useOnboarded';
 import { joinRoute, navTarget, resolveRoute, splitRoute } from './routes';
 
@@ -41,7 +42,13 @@ export function App() {
 }
 
 export function Shell() {
-  const apps = useMemo(() => registry.list().map((a) => a.manifest.id), []);
+  // ADR 0146: a module switched off in settings → modules has no tab and no view.
+  const switches = useModuleSwitches();
+  const visible = useMemo(
+    () => registry.list().filter((a) => isViewOn(switches, a.manifest.id)),
+    [switches],
+  );
+  const apps = useMemo(() => visible.map((a) => a.manifest.id), [visible]);
   const location = useLocation();
   const navigate = useNavigate();
   const path = resolveRoute(location.pathname, apps);
@@ -134,7 +141,7 @@ export function Shell() {
         <AppFrame
           tabs={
             <TabBar
-              items={registry.list().map(({ manifest }) => ({
+              items={visible.map(({ manifest }) => ({
                 id: manifest.id,
                 label: manifest.name,
               }))}
@@ -146,8 +153,7 @@ export function Shell() {
           {/* Only a first visit's module load reaches this boundary (it suspends inside the router's
               transition, so the previous app stays up); each sub app has its own boundary after that. */}
           <Suspense fallback={null}>
-            {registry
-              .list()
+            {visible
               .filter(
                 (a) => a.manifest.id === active || visited.has(a.manifest.id),
               )

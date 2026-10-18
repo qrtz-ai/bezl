@@ -27,8 +27,12 @@ impl TalkConfig {
     pub fn from_app_config(cfg: &Value) -> Self {
         let t = &cfg["talk"];
         let b = |k: &str, d: bool| t[k].as_bool().unwrap_or(d);
+        // ADR 0146: the global module switches control echo too (`modules.enabled`, `modules.echo.enabled`).
+        let m = &cfg["modules"];
+        let module_on =
+            m["enabled"].as_bool().unwrap_or(true) && m["echo"]["enabled"].as_bool().unwrap_or(true);
         Self {
-            enabled: b("enabled", true),
+            enabled: module_on && b("enabled", true),
             push_key: t["pushKey"].as_str().unwrap_or("fn").to_owned(),
             block_globe_key: b("blockGlobeKey", true),
             warm_mic: b("warmMic", false),
@@ -40,5 +44,20 @@ impl TalkConfig {
             show_pill: b("showPill", true),
             echo_gate: b("echoGate", true),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn the_global_module_switches_turn_echo_off() {
+        assert!(TalkConfig::from_app_config(&json!({})).enabled);
+        assert!(!TalkConfig::from_app_config(&json!({"modules": {"echo": {"enabled": false}}})).enabled);
+        assert!(!TalkConfig::from_app_config(&json!({"modules": {"enabled": false}})).enabled);
+        assert!(!TalkConfig::from_app_config(&json!({"talk": {"enabled": false}})).enabled);
+        assert!(TalkConfig::from_app_config(&json!({"modules": {"nano": {"enabled": false}}})).enabled);
     }
 }

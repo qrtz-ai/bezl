@@ -216,11 +216,16 @@ impl AppService {
         };
         let events = self.events.clone();
         let shell = self.shell.clone();
+        let config = self.config.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             loop {
                 interval.tick().await;
+                // ADR 0146: ctrl switched off pauses its cadences; nothing runs until it's back on.
+                if !crate::modules::is_on(&config.get(), "ctrl") {
+                    continue;
+                }
                 let c = ctrl.clone();
                 let fired = match tokio::task::spawn_blocking(move || c.tick()).await {
                     Ok(Ok(ids)) => ids,
@@ -360,6 +365,10 @@ impl AppService {
         match parse_helper_line(line) {
             Ok(msg) => {
                 let ty = msg["type"].as_str().unwrap_or_default();
+                // ADR 0146: meeting detection is nano's; with nano switched off nothing prompts.
+                if crate::modules::drops_helper_event(&self.config.get(), ty) {
+                    return;
+                }
                 if ty == "log" {
                     crate::logging::helper_log(
                         msg["level"].as_str().unwrap_or("info"),
@@ -488,7 +497,9 @@ impl AppService {
 
 #[async_trait]
 impl Handler for AppService {
-    async fn handle(&self, channel: &str, payload: Value, _ctx: &CallContext) -> Result<Value, AppError> {
+    async fn handle(&self, channel: &str, payload: Value, ctx: &CallContext) -> Result<Value, AppError> {
+        // ADR 0146: a switched-off module's views and channels are refused (config stays reachable).
+        crate::modules::gate(&self.config.get(), &ctx.sub_app, channel)?;
         match Self::owner(channel) {
             Some("runtime") => self.runtime.call(channel, payload).await,
             Some("storage") => self.storage.call(channel, payload).await,

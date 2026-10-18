@@ -3433,6 +3433,7 @@ dependencies = [
  "qrtz-lifecycle",
  "qrtz-llm",
  "qrtz-model",
+ "qrtz-modules",
  "qrtz-speech",
  "qrtz-storage",
  "qrtz-talk",
