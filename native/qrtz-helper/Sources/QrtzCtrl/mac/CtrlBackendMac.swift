@@ -325,6 +325,14 @@ public final class MacCtrlBackend: CtrlBackend {
                 guard let a = runningApp(id), a.processIdentifier != front, !a.isHidden else { continue }
                 _ = a.hide()
             }
+        case let .unhideApps(apps):
+            // ADR 0152: `unhide()` brings the app's windows back where they were without activating it (unlike
+            // `NSApplication.unhide(_:)` in-process): the frontmost app keeps the menu bar and the keyboard, no key
+            // event. Minimized windows stay in the Dock. An app that isn't running or isn't hidden is skipped.
+            for id in apps {
+                guard let a = runningApp(id), a.isHidden else { continue }
+                _ = a.unhide()
+            }
         case let .scripting(app, verb) where CtrlRoute.tabVerbs.contains(verb):
             try closeTabs(app: app, verb: verb)
         case let .scripting(app, verb):

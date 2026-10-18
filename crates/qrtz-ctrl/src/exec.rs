@@ -17,9 +17,9 @@
 //! (ADR 0122) deletes the Trash's items through the same executor, never through the Finder, only after the gate,
 //! and only the items the approved card listed. Without roots they still stop with `exec.held { files_not_yet }`. (Runs from before slice 6 may still hold `exec.held { irreversible }`; they replay as before.)
 use crate::apps::{
-    hide_one, level_of, step_of, stepped, still_visible, to_hide, unused_today, DEFAULT_VOLUME_STEP,
-    HIDE_APP_MOVE, HIDE_OTHERS_MOVE, MUTE_MOVE, QUIT_APP_MOVE, QUIT_UNUSED_MOVE, SET_VOLUME_MOVE,
-    UNMUTE_MOVE, VOLUME_DOWN_MOVE, VOLUME_UP_MOVE,
+    hide_one, level_of, show_one, step_of, stepped, still_hidden, still_visible, to_hide, unused_today,
+    DEFAULT_VOLUME_STEP, HIDE_APP_MOVE, HIDE_OTHERS_MOVE, MUTE_MOVE, QUIT_APP_MOVE, QUIT_UNUSED_MOVE,
+    SET_VOLUME_MOVE, SHOW_APP_MOVE, UNMUTE_MOVE, VOLUME_DOWN_MOVE, VOLUME_UP_MOVE,
 };
 use crate::ax::{diff, AxSnapshot};
 use crate::decide::{next_backtrack, run_chain_obs, unobserved, BacktrackReason, Goal, Node, Scorer};
@@ -107,9 +107,11 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
     // ADR 0143: a relative volume step is planned from the level the driver reads just before; not pure.
     // ADR 0145: so is a toggle (it's planned from the appearance read just before).
     // ADR 0149: "hide <app>" too (the driver reads whether the app is frontmost, hidden or running just before).
+    // ADR 0152: and "show <app>", its pair.
     if mv == QUIT_UNUSED_MOVE
         || mv == HIDE_OTHERS_MOVE
         || mv == HIDE_APP_MOVE
+        || mv == SHOW_APP_MOVE
         || mv == VOLUME_UP_MOVE
         || mv == VOLUME_DOWN_MOVE
         || mv == DARK_MODE_TOGGLE_MOVE
@@ -711,7 +713,7 @@ impl Driver<'_> {
             // ADR 0149: "hide <app>" is the same act for the one named app, read from `ctrl.apps` just before: the app
             // the user is in is held (hiding it would bring another app forward), not running or hidden already is
             // done with nothing acted.
-            let one = (mv == HIDE_APP_MOVE)
+            let one = (mv == HIDE_APP_MOVE || mv == SHOW_APP_MOVE)
                 .then(|| {
                     s.chosen()
                         .get(&Node::ChooseApp)
@@ -741,6 +743,37 @@ impl Driver<'_> {
                         v => Some(v.into_iter().map(|a| a.bundle_id.clone()).collect()),
                     },
                     Err(_) => {
+                        sink.push(
+                            log,
+                            Event::ExecHeld {
+                                reason: HoldReason::NoRoute,
+                            },
+                        )?;
+                        return sink.push(log, finish(TaskStatus::AskedOut));
+                    }
+                }
+            } else {
+                None
+            };
+            // ADR 0152: "show <app>" unhides the one named app, read from `ctrl.apps` just before: not running is held
+            // (showing it would mean starting it; that's "open <app>"), on screen already or the app the user is in is
+            // done with nothing acted. Nothing is activated, so the app the user is in stays frontmost.
+            let uplan: Option<Vec<String>> = if fplan.is_none() && mv == SHOW_APP_MOVE {
+                match (self.helper.apps(), one.as_deref()) {
+                    (Ok(r), Some(id)) => match show_one(&r.apps, id) {
+                        Ok(Some(id)) => Some(vec![id]),
+                        Ok(None) => return sink.push(log, finish(TaskStatus::Done)),
+                        Err(()) => {
+                            sink.push(
+                                log,
+                                Event::ExecHeld {
+                                    reason: HoldReason::NoRoute,
+                                },
+                            )?;
+                            return sink.push(log, finish(TaskStatus::AskedOut));
+                        }
+                    },
+                    _ => {
                         sink.push(
                             log,
                             Event::ExecHeld {
@@ -812,6 +845,17 @@ impl Driver<'_> {
                         content: BTreeMap::new(),
                     }
                 }
+                (None, None) if uplan.is_some() => {
+                    let apps = uplan.clone().unwrap_or_default();
+                    Step::Act {
+                        routes: vec![Route::Workspace(WorkspaceOp::UnhideApps { apps: apps.clone() })],
+                        verify: Verify {
+                            check: Check::AppsHidden { apps },
+                            expect: Expect::Zero,
+                        },
+                        content: BTreeMap::new(),
+                    }
+                }
                 (None, None) if hplan.is_some() => {
                     let apps = hplan.clone().unwrap_or_default();
                     Step::Act {
@@ -858,6 +902,9 @@ impl Driver<'_> {
                     .map(|r| r.apps.iter().filter(|a| apps.contains(&a.bundle_id)).count() as i64),
                 (Check::AppsVisible { apps }, _) => {
                     self.helper.apps().ok().and_then(|r| still_visible(&r.apps, apps))
+                }
+                (Check::AppsHidden { apps }, _) => {
+                    self.helper.apps().ok().and_then(|r| still_hidden(&r.apps, apps))
                 }
                 _ => self.helper.measure(c),
             };

@@ -85,6 +85,7 @@ const INTENTS = {
   },
   hide_others: opt('intent.hide_others', 'hide your other apps', 0.07),
   hide_app: opt('intent.hide_app', 'hide an app', 0.07),
+  show_app: opt('intent.show_app', 'show a hidden app', 0.07),
   mute: opt('intent.mute', 'mute your mac', 0.07),
   unmute: opt('intent.unmute', 'unmute your mac', 0.07),
   set_volume: opt('intent.set_volume', 'set the volume', 0.07),
@@ -107,6 +108,7 @@ type Intent =
   | 'quit_unused'
   | 'hide_others'
   | 'hide_app'
+  | 'show_app'
   | 'mute'
   | 'unmute'
   | 'set_volume'
@@ -183,6 +185,20 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
     ]),
     act('choose_move', [
       opt('route.workspace.hide_app', 'hide it, nothing comes forward', 0.95),
+    ]),
+  ],
+  // ADR 0152: one named hidden app unhidden through the workspace (nothing activated); reversible, no card.
+  show_app: [
+    act('choose_app', [
+      opt('app.com.apple.TextEdit', 'textedit', 0.9),
+      opt('app.com.apple.Notes', 'notes', 0.03),
+    ]),
+    act('choose_move', [
+      opt(
+        'route.workspace.show_app',
+        "show its windows, the app you're in stays in front",
+        0.95,
+      ),
     ]),
   ],
   // ADR 0137: the appearance, through system events (faceless); reversible, no card.
@@ -429,28 +445,31 @@ const intentOf = (text: string): Intent | null =>
                 ? 'hide_others'
                 : /\bhide\b/i.test(text)
                   ? 'hide_app'
-                  : /\b(quit|close)\b/i.test(text) &&
-                      /\bapps?\b/i.test(text) &&
-                      /\b(unused|used|using|idle)\b/i.test(text)
-                    ? 'quit_unused'
-                    : /\bquit\b/i.test(text)
-                      ? 'quit_app'
-                      : /\bcalendar\b/i.test(text)
-                        ? 'open_calendar'
-                        : /\bempty\b/i.test(text) &&
-                            /\b(trash|bin)\b/i.test(text)
-                          ? 'empty_trash'
-                          : /\btabs?\b/i.test(text)
-                            ? 'close_tabs'
-                            : /\bdocuments\b/i.test(text)
-                              ? 'tidy_documents'
-                              : /\b(desktop|screenshots?)\b/i.test(text)
-                                ? 'tidy_desktop'
-                                : /download|folder/i.test(text)
-                                  ? /\b(delete|trash|old)\b/i.test(text)
-                                    ? 'trash_old'
-                                    : 'clean_folder'
-                                  : null;
+                  : /\bunhide\b/i.test(text) ||
+                      (/\bshow\b/i.test(text) && !/\b(me|my)\b/i.test(text))
+                    ? 'show_app'
+                    : /\b(quit|close)\b/i.test(text) &&
+                        /\bapps?\b/i.test(text) &&
+                        /\b(unused|used|using|idle)\b/i.test(text)
+                      ? 'quit_unused'
+                      : /\bquit\b/i.test(text)
+                        ? 'quit_app'
+                        : /\bcalendar\b/i.test(text)
+                          ? 'open_calendar'
+                          : /\bempty\b/i.test(text) &&
+                              /\b(trash|bin)\b/i.test(text)
+                            ? 'empty_trash'
+                            : /\btabs?\b/i.test(text)
+                              ? 'close_tabs'
+                              : /\bdocuments\b/i.test(text)
+                                ? 'tidy_documents'
+                                : /\b(desktop|screenshots?)\b/i.test(text)
+                                  ? 'tidy_desktop'
+                                  : /download|folder/i.test(text)
+                                    ? /\b(delete|trash|old)\b/i.test(text)
+                                      ? 'trash_old'
+                                      : 'clean_folder'
+                                    : null;
 
 const PREVIEW: CtrlConfirm['items'] = [
   { key: '3f2a9c1d0b7e#0', kind: 'window', label: 'notes.txt', unsaved: false },

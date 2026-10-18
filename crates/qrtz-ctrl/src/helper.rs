@@ -45,6 +45,9 @@ pub enum Check {
     /// ADR 0134: of these apps, how many are still on screen (running, not hidden, not frontmost). Measured by the
     /// host from `ctrl.apps`.
     AppsVisible { apps: Vec<String> },
+    /// ADR 0152: of these apps, how many are still hidden (running and hidden). Measured by the host from
+    /// `ctrl.apps`.
+    AppsHidden { apps: Vec<String> },
     /// ADR 0135: 1 if the Mac's sound output is muted, 0 if not (`null`: no output device that can mute).
     OutputMuted,
     /// ADR 0137: 1 if the Mac is in dark mode, 0 in light mode (read in the helper's own process from the global
@@ -731,6 +734,17 @@ impl FakeWorld {
                 }
                 Ok(())
             }
+            // ADR 0152: unhide each (no activation: the frontmost app stays frontmost); one not running is skipped.
+            Route::Workspace(WorkspaceOp::UnhideApps { apps }) => {
+                for id in apps {
+                    if let Some(a) = self.app_mut(id) {
+                        if a.running {
+                            a.hidden = false;
+                        }
+                    }
+                }
+                Ok(())
+            }
             // ADR 0135: no output that can mute fails like the Mac's `set volume` would.
             Route::Workspace(WorkspaceOp::MuteOutput) => match self.muted {
                 Some(_) => {
@@ -868,7 +882,8 @@ impl FakeWorld {
                     Check::AxScope { .. }
                     | Check::FilesRemaining
                     | Check::AppsRemaining { .. }
-                    | Check::AppsVisible { .. } => None,
+                    | Check::AppsVisible { .. }
+                    | Check::AppsHidden { .. } => None,
                     Check::OutputMuted => self.muted.map(i64::from),
                     Check::DarkMode => Some(i64::from(self.dark)),
                     Check::OutputVolume => match self.muted {

@@ -105,6 +105,37 @@ pub fn hide_one(apps: &[RunningAppWire], id: &str) -> Result<Option<String>, ()>
     }
 }
 
+/// ADR 0152: the move of "show <app>" (one named app unhidden, reversible, no gate, nothing activated).
+pub const SHOW_APP_MOVE: &str = "route.workspace.show_app";
+
+/// ADR 0152: what "show <app>" does with `id` now. `Err(())` holds it (not running: showing it would mean starting
+/// it, which is "open <app>"), `Ok(None)` is done with nothing to do (on screen already, or the app the user is in),
+/// `Ok(Some(id))` unhides it. An older helper that doesn't say whether the app is hidden (`hidden: None`) counts as
+/// hidden, so the unhide is sent (a no-op on a visible app) and the verify decides.
+#[allow(clippy::result_unit_err)]
+pub fn show_one(apps: &[RunningAppWire], id: &str) -> Result<Option<String>, ()> {
+    match apps.iter().find(|a| a.bundle_id == id) {
+        None => Err(()),
+        Some(a) if a.frontmost => Ok(None),
+        Some(a) if a.hidden == Some(false) => Ok(None),
+        Some(a) => Ok(Some(a.bundle_id.clone())),
+    }
+}
+
+/// ADR 0152: of the planned apps, how many are still hidden (an app that quit since counts as not hidden: nothing
+/// left to show). `None` when the helper doesn't say whether one is hidden.
+pub fn still_hidden(apps: &[RunningAppWire], planned: &[String]) -> Option<i64> {
+    let mut n = 0;
+    for a in apps.iter().filter(|a| planned.contains(&a.bundle_id)) {
+        match a.hidden {
+            Some(true) => n += 1,
+            Some(false) => {}
+            None => return None,
+        }
+    }
+    Some(n)
+}
+
 /// Never hidden by "hide other apps": the frontmost app (the one the user is in) and qrtz itself, which shows the
 /// run. The Finder is hidden like any other app (its windows go; the desktop stays), as the system's Hide Others does.
 fn keep_visible(id: &str) -> bool {

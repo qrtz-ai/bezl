@@ -68,6 +68,7 @@ open class NSRunningApplication: NSObject {
     open func activate(options: NSApplicationActivationOptions = []) -> Bool { false }
     open func terminate() -> Bool { false }
     open func hide() -> Bool { false }
+    open func unhide() -> Bool { false }
     open var isHidden: Bool { false }
 }
 open class NSWorkspace: NSObject {

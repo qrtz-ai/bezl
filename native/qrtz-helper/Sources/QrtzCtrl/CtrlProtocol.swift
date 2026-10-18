@@ -17,6 +17,8 @@ public enum CtrlRoute: Equatable, Sendable {
     case quitApps(apps: [String])
     /// ADR 0134: hide each running app (no activation, nothing raised). Reversible, so no gate; never the frontmost.
     case hideApps(apps: [String])
+    /// ADR 0152: unhide each running app (no activation: the app the user is in stays frontmost). Reversible, no gate.
+    case unhideApps(apps: [String])
     /// ADR 0135: mute the sound output (in the helper's own process; no app, nothing shown). Reversible, no gate.
     case muteOutput
     /// ADR 0139: the reverse (same process, same rules).
@@ -53,6 +55,7 @@ public enum CtrlRoute: Equatable, Sendable {
             case "launch_hidden": if let a = s("app") { return .launchHidden(app: a) }
             case "quit_apps": if let a = o["apps"] as? [String] { return .quitApps(apps: a) }
             case "hide_apps": if let a = o["apps"] as? [String] { return .hideApps(apps: a) }
+            case "unhide_apps": if let a = o["apps"] as? [String] { return .unhideApps(apps: a) }
             case "mute_output": return .muteOutput
             case "unmute_output": return .unmuteOutput
             // ADR 0140: a whole number 0–100 only; anything else is a bad request, never clamped.
@@ -231,7 +234,7 @@ public final class CtrlServer {
         case let .pidKey(_, combo):
             guard let t = targetPid else { throw CtrlFailure("app.not_running") }
             do { try CtrlPolicy.checkKey(combo, targetPid: t, frontmostPid: frontmostPid) } catch { throw CtrlFailure("policy.refused") }
-        case .files, .openURL, .launchHidden, .quitApps, .hideApps, .muteOutput, .unmuteOutput, .setVolume: break
+        case .files, .openURL, .launchHidden, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume: break
         }
     }
 
@@ -239,7 +242,7 @@ public final class CtrlServer {
         switch r {
         case let .openURL(a, _), let .launchHidden(a), let .scripting(a, _), let .axPerform(a, _, _, _), let .axSet(a, _, _, _),
              let .pidKey(a, _): return a
-        case .files, .takesOver, .quitApps, .hideApps, .muteOutput, .unmuteOutput, .setVolume: return nil
+        case .files, .takesOver, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume: return nil
         }
     }
 

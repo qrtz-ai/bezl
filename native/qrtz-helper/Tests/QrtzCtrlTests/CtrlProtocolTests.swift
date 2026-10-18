@@ -165,6 +165,18 @@ final class CtrlProtocolTests: XCTestCase {
         XCTAssertNil(apps[1]["hidden"], "unknown stays off the wire")
     }
 
+    func testUnhideAppsWireReachesTheBackendWithNoFrontmostFilter() throws {
+        // ADR 0152: unhide_apps parses and reaches the backend as sent (unhiding activates nothing, so the app the
+        // user is in needs no filtering); a malformed list is a bad request.
+        let line = #"{"type":"ctrl.act","id":"u","actionId":"a0","route":{"route":"workspace","op":"unhide_apps","apps":["com.apple.TextEdit"]},"content":{}}"#
+        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("unhide_apps") }
+        XCTAssertEqual(route, .unhideApps(apps: ["com.apple.TextEdit"]))
+        let fake = Fake()
+        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: line))["ok"] as? Bool, true)
+        XCTAssertEqual(fake.acted, [.unhideApps(apps: ["com.apple.TextEdit"])])
+        XCTAssertNil(CtrlRequest.parse(#"{"type":"ctrl.act","id":"u","actionId":"a0","route":{"route":"workspace","op":"unhide_apps","apps":"x"},"content":{}}"#))
+    }
+
     func testMuteOutputWireAndItsMeasureHasNoApp() throws {
         // ADR 0135: mute_output and the app-less output_muted measure parse from the fixture and reach the backend.
         let all = try lines()

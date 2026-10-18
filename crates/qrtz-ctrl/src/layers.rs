@@ -487,6 +487,13 @@ const INTENTS: &[IntentDef] = &[
         slot: Slot::None,
         irreversible: false,
     },
+    // ADR 0152: show (unhide) one named app without bringing it forward; reversible, no gate.
+    IntentDef {
+        id: "show_app",
+        app: AppMode::Named { fallback: None },
+        slot: Slot::None,
+        irreversible: false,
+    },
     // ADR 0135: mute the Mac's sound output; reversible, no gate, no app.
     IntentDef {
         id: "mute",
@@ -708,6 +715,29 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
                 ],
             );
             if has(toks, &["hide"]) && named_app && !group {
+                p += 9000;
+            }
+        }
+        "show_app" => {
+            // ADR 0152: "show slack", "unhide spotify": "show"/"unhide" plus one named app, no group word and no site
+            // ("show me nytimes.com" stays open_url). Before this, "show slack" scored as open_app (a hidden launch
+            // of a running app: nothing came back).
+            p -= 3000;
+            let group = has(
+                toks,
+                &[
+                    "apps",
+                    "applications",
+                    "programs",
+                    "other",
+                    "others",
+                    "everything",
+                ],
+            );
+            // "show me my calendar" / "show my calendar" mean open it (ADR 0138's calendar), so "show" counts only
+            // without "me" / "my"; "unhide" always does.
+            let asks = has(toks, &["unhide"]) || (has(toks, &["show"]) && !has(toks, &["me", "my"]));
+            if asks && named_app && !group && (!site || full_named) {
                 p += 9000;
             }
         }
@@ -1182,6 +1212,8 @@ fn move_question(
         // ADR 0149: `NSRunningApplication.hide()` of the one named app; no key event (⌘H would go to the app the user
         // is in), so nothing to backtrack into.
         "hide_app" => vec![route("workspace.hide_app", 4500)],
+        // ADR 0152: `NSRunningApplication.unhide()` of the one named app; no activation, no key event.
+        "show_app" => vec![route("workspace.show_app", 4500)],
         "mute" => vec![route("system.mute", 4500)],
         "unmute" => vec![route("system.unmute", 4500)],
         "set_volume" => vec![route("system.set_volume", 4500)],
@@ -1415,6 +1447,7 @@ fn intent_label(id: &str) -> &'static str {
         "quit_unused" => "quit apps you haven't used today",
         "hide_others" => "hide your other apps",
         "hide_app" => "hide an app",
+        "show_app" => "show a hidden app",
         "mute" => "mute your mac",
         "unmute" => "unmute your mac",
         "set_volume" => "set the volume",
@@ -1439,6 +1472,7 @@ fn route_label(id: &str) -> &'static str {
         "workspace.quit_app" => "quit it without bringing it forward",
         "workspace.hide_others" => "hide them, the app you're in stays",
         "workspace.hide_app" => "hide it, nothing comes forward",
+        "workspace.show_app" => "show its windows, the app you're in stays in front",
         "system.mute" => "mute the sound output",
         "system.unmute" => "turn the sound output back on",
         "system.set_volume" => "set the sound output to that level",

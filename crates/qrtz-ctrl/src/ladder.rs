@@ -79,6 +79,9 @@ pub enum WorkspaceOp {
     /// ADR 0134: `NSRunningApplication.hide()` each app (no activation, no key event, no window raised). Reversible
     /// (clicking the app in the Dock brings it back), so no gate; never the frontmost app.
     HideApps { apps: Vec<String> },
+    /// ADR 0152: `NSRunningApplication.unhide()` each app: its windows come back where they were, nothing is
+    /// activated (the app the user is in stays frontmost and keeps the keyboard), no key event. Reversible, no gate.
+    UnhideApps { apps: Vec<String> },
     /// ADR 0135: mute the Mac's sound output (Standard Additions `set volume with output muted`, in the helper's
     /// own process: no app is told anything, nothing is shown, no key event). Reversible, no gate.
     MuteOutput,
@@ -172,6 +175,7 @@ impl Route {
             | Route::Workspace(
                 WorkspaceOp::QuitApps { .. }
                 | WorkspaceOp::HideApps { .. }
+                | WorkspaceOp::UnhideApps { .. }
                 | WorkspaceOp::MuteOutput
                 | WorkspaceOp::UnmuteOutput
                 | WorkspaceOp::SetVolume { .. },
@@ -350,6 +354,8 @@ pub fn judge(route: &Route, env: &Env) -> Verdict {
                     }
                     return Verdict::Allowed;
                 }
+                // ADR 0152: unhiding activates nothing and sends no input; the app the user is in can't be hidden.
+                WorkspaceOp::UnhideApps { .. } => return Verdict::Allowed,
                 // No app, no window, no input: nothing on screen to take over.
                 WorkspaceOp::MuteOutput | WorkspaceOp::UnmuteOutput | WorkspaceOp::SetVolume { .. } => {
                     return Verdict::Allowed
