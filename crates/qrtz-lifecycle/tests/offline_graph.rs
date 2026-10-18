@@ -15,6 +15,11 @@
 //!    ctrl's Laya model (ADR 0116) goes through `local_models.rs` too: `ctrl_model.rs` names no downloader, and its
 //!    manifest is pinned the same way (or a placeholder, which is refused before any request).
 //!
+//! 6. ADR 0144 (module confinement, M0): every crate and Swift target has an owner in `docs/modules/confinement-map.json`
+//!    (shell / shared / echo / nano / ctrl / voice / monolith); module-owned and shared crates reach no network crate in
+//!    their own build and name no downloader; cross-owner edges (the monolith) are an exact allowlist that may only
+//!    shrink; module and inference XPC entitlements files are linted by name.
+//!
 //! A new network path has to change this test and its ADR, on purpose.
 use serde_json::Value;
 use std::collections::{BTreeSet, HashMap, VecDeque};
@@ -538,5 +543,470 @@ fn qrtz_talk_and_qrtz_lifecycle_build_with_no_http_client() {
             .lines()
             .any(|l| NET_CRATES.contains(&l.split_whitespace().next().unwrap_or(""))),
         "qrtz-speech without `net` reaches the network:\n{tree}"
+    );
+}
+
+// ---- ADR 0144: module confinement, M0 ratchets -------------------------------------------------------------------
+
+/// The M0 ownership map (confinement track). Bobs's module manifests replace its owner fields in M1.
+fn confinement_map() -> Value {
+    let p = root().join("docs/modules/confinement-map.json");
+    serde_json::from_str(&std::fs::read_to_string(&p).unwrap())
+        .unwrap_or_else(|e| panic!("{}: {e}", p.display()))
+}
+
+fn str_map(v: &Value) -> HashMap<String, String> {
+    v.as_object()
+        .unwrap()
+        .iter()
+        .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_owned()))
+        .collect()
+}
+
+fn pairs(v: &Value) -> BTreeSet<(String, String)> {
+    v.as_array()
+        .unwrap()
+        .iter()
+        .map(|p| {
+            (
+                p[0].as_str().unwrap().to_owned(),
+                p[1].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect()
+}
+
+const MODULES: &[&str] = &["echo", "nano", "ctrl"];
+
+/// A cross-owner edge that the module split has to remove: anything from one owner into another, except into
+/// `shared` (which may itself only depend on `shared`). Same-owner edges are internal to a module.
+fn is_boundary(from: &str, to: &str) -> bool {
+    from != to && to != "shared"
+}
+
+/// Compares the edges found with the allowlist both ways, so the list ratchets: a new edge fails, and an edge
+/// that went away fails until the allowlist is trimmed.
+fn ratchet(what: &str, found: &BTreeSet<(String, String)>, allowed: &BTreeSet<(String, String)>) {
+    let new: Vec<_> = found.difference(allowed).collect();
+    let gone: Vec<_> = allowed.difference(found).collect();
+    assert!(
+        new.is_empty(),
+        "{what}: new cross-module edges (ADR 0144: the monolith may only shrink): {new:?}"
+    );
+    assert!(
+        gone.is_empty(),
+        "{what}: allowlisted edges no longer exist; trim them from docs/modules/confinement-map.json: {gone:?}"
+    );
+}
+
+#[test]
+fn every_crate_has_one_known_owner() {
+    let map = confinement_map();
+    let owners: BTreeSet<String> = map["owners"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| o.as_str().unwrap().to_owned())
+        .collect();
+    let crates = str_map(&map["crates"]);
+    let m = metadata();
+    let members: BTreeSet<String> = m["packages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["name"].as_str().unwrap().to_owned())
+        .collect();
+    let mapped: BTreeSet<String> = crates.keys().cloned().collect();
+    assert_eq!(
+        mapped, members,
+        "confinement-map.json crates vs workspace members"
+    );
+    for (c, o) in &crates {
+        assert!(owners.contains(o), "{c}: unknown owner {o}");
+        assert_ne!(
+            o, "monolith",
+            "{c}: a Rust crate can't be newly owned by the monolith"
+        );
+    }
+    for m in MODULES {
+        assert!(crates.values().any(|o| o == m), "no crate is owned by {m}");
+    }
+}
+
+#[test]
+fn module_crate_edges_are_the_shrinking_monolith_allowlist() {
+    let map = confinement_map();
+    let owner = str_map(&map["crates"]);
+    let m = metadata();
+    let mut found = BTreeSet::new();
+    for p in m["packages"].as_array().unwrap() {
+        let from = p["name"].as_str().unwrap();
+        for d in p["dependencies"].as_array().unwrap() {
+            let to = d["name"].as_str().unwrap();
+            // Normal and build edges are linked into the product; dev edges are tests only.
+            if d["kind"] == "dev" || to == from || !owner.contains_key(to) {
+                continue;
+            }
+            if is_boundary(&owner[from], &owner[to]) {
+                found.insert((from.to_owned(), to.to_owned()));
+            }
+        }
+    }
+    ratchet("crates", &found, &pairs(&map["monolithCrateEdges"]));
+}
+
+#[test]
+fn module_and_shared_crates_reach_no_network_crate_in_their_own_build() {
+    let map = confinement_map();
+    let owner = str_map(&map["crates"]);
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    let mut checked = 0;
+    for (c, o) in &owner {
+        if o == "shell" {
+            continue;
+        }
+        for t in TARGETS {
+            // Features resolved for this crate alone: what its own module binary would get.
+            let out = std::process::Command::new(&cargo)
+                .current_dir(root())
+                .args([
+                    "tree",
+                    "-p",
+                    c,
+                    "-e",
+                    "normal,build",
+                    "--prefix",
+                    "none",
+                    "--all-features",
+                    "--target",
+                    t,
+                ])
+                .output()
+                .expect("cargo tree");
+            assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+            let tree = String::from_utf8_lossy(&out.stdout);
+            let net: BTreeSet<&str> = tree
+                .lines()
+                .filter_map(|l| l.split_whitespace().next())
+                .filter(|n| NET_CRATES.contains(n))
+                .collect();
+            assert!(net.is_empty(), "{c} ({o}) on {t} reaches the network: {net:?}");
+            checked += 1;
+        }
+    }
+    assert!(checked >= 10 * TARGETS.len(), "checked only {checked}");
+    // And no module or shared crate can switch the download channel on (ADR 0078's `net` users are shell only).
+    for u in NET_FEATURE_USERS {
+        assert_eq!(
+            owner[*u], "shell",
+            "{u} enables qrtz-speech/net but isn't the shell"
+        );
+    }
+}
+
+#[test]
+fn module_and_shared_crate_sources_name_no_downloader() {
+    let map = confinement_map();
+    let owner = str_map(&map["crates"]);
+    let r = root();
+    let mut bad = vec![];
+    let mut seen = 0;
+    for (c, o) in &owner {
+        if o == "shell" {
+            continue;
+        }
+        let dir = r.join("crates").join(c).join("src");
+        let mut files = vec![];
+        rust_sources(&dir, &mut files);
+        seen += files.len();
+        for f in &files {
+            let rel = f.strip_prefix(&r).unwrap().to_string_lossy().replace('\\', "/");
+            for (n, l) in code(f) {
+                if [
+                    "Downloader",
+                    "LocalModels",
+                    "speech::download",
+                    "speech::update",
+                    "local_models",
+                    "reqwest",
+                    "tungstenite",
+                    "ureq::",
+                ]
+                .iter()
+                .any(|k| l.contains(k))
+                {
+                    bad.push(format!("{rel}:{n} ({o}): {}", l.trim()));
+                }
+            }
+        }
+    }
+    assert!(seen > 30, "found only {seen} module/shared sources");
+    assert!(
+        bad.is_empty(),
+        "ADR 0144: only the shell downloads (download.rs via LocalModels):\n{}",
+        bad.join("\n")
+    );
+}
+
+/// `import X` lines of a Swift file (any attribute prefix), outside `//` comments.
+fn swift_imports(src: &str) -> BTreeSet<String> {
+    src.lines()
+        .map(str::trim_start)
+        .filter(|l| !l.starts_with("//"))
+        .filter_map(|l| {
+            let mut w = l.split_whitespace().skip_while(|w| w.starts_with('@'));
+            (w.next() == Some("import")).then(|| w.next()).flatten()
+        })
+        .map(|m| m.split('.').next().unwrap().to_owned())
+        .collect()
+}
+
+#[test]
+fn swift_target_imports_are_the_shrinking_monolith_allowlist() {
+    let map = confinement_map();
+    let targets = str_map(&map["swiftTargets"]);
+    let mut owner = targets.clone();
+    owner.extend(str_map(&map["swiftPackages"]));
+    let src = root().join("native/qrtz-helper/Sources");
+    let dirs: BTreeSet<String> = std::fs::read_dir(&src)
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    let mapped: BTreeSet<String> = targets.keys().cloned().collect();
+    assert_eq!(
+        mapped, dirs,
+        "confinement-map.json swiftTargets vs native/qrtz-helper/Sources"
+    );
+    let monolith: BTreeSet<String> = map["monolithSwiftTargets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_owned())
+        .collect();
+    let now: BTreeSet<String> = targets
+        .iter()
+        .filter(|(_, o)| *o == "monolith")
+        .map(|(t, _)| t.clone())
+        .collect();
+    assert_eq!(
+        now, monolith,
+        "monolith Swift targets may only shrink (trim monolithSwiftTargets with them)"
+    );
+    let mut found = BTreeSet::new();
+    for (t, o) in &targets {
+        let mut files = vec![];
+        fn walk(d: &Path, out: &mut Vec<PathBuf>) {
+            for e in std::fs::read_dir(d).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    walk(&p, out)
+                } else if p.extension().is_some_and(|x| x == "swift") {
+                    out.push(p)
+                }
+            }
+        }
+        walk(&src.join(t), &mut files);
+        for f in files {
+            for i in swift_imports(&std::fs::read_to_string(&f).unwrap()) {
+                // Apple SDK modules aren't in the map; their TCC side is the entitlements lint and the Mac gates.
+                if let Some(io) = owner.get(&i) {
+                    if &i != t && is_boundary(o, io) && !(o == "monolith" && io == "monolith") {
+                        found.insert((t.clone(), i));
+                    }
+                }
+            }
+        }
+    }
+    ratchet("swift imports", &found, &pairs(&map["monolithSwiftImports"]));
+}
+
+#[test]
+fn swift_import_parser_sees_attributed_imports() {
+    let i = swift_imports(
+        "import Foundation\n@preconcurrency import FluidAudio\n// import QrtzCtrl\n  import AppKit.NSView\n",
+    );
+    assert_eq!(
+        i,
+        BTreeSet::from(["Foundation".into(), "FluidAudio".into(), "AppKit".into()])
+    );
+}
+
+/// The keys set to `<true/>` in an entitlements plist (a flat dict; arrays and strings count as granted too).
+fn granted(plist: &str) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let mut rest = plist;
+    while let Some(i) = rest.find("<key>") {
+        rest = &rest[i + 5..];
+        let Some(j) = rest.find("</key>") else { break };
+        let key = rest[..j].trim().to_owned();
+        rest = &rest[j + 6..];
+        let v = rest.trim_start();
+        if !v.starts_with("<false/>") {
+            out.insert(key);
+        }
+    }
+    out
+}
+
+/// What ADR 0144 lets each module's and each inference XPC service's entitlements grant, by file name.
+fn lint_entitlements(name: &str, plist: &str, map: &Value) -> Result<(), String> {
+    let e = &map["entitlements"];
+    let class = if name.starts_with("ai.qrtz.inference.") {
+        "inference".to_owned()
+    } else {
+        name.trim_start_matches("ai.qrtz.")
+            .trim_end_matches(".entitlements")
+            .to_owned()
+    };
+    let list = |k: &str| -> BTreeSet<String> {
+        e[k][&class]
+            .as_array()
+            .map(|a| a.iter().map(|v| v.as_str().unwrap().to_owned()).collect())
+            .unwrap_or_default()
+    };
+    if e["allowedTrue"][&class].is_null() {
+        return Err(format!(
+            "{name}: no module or inference class `{class}` in ADR 0144's map"
+        ));
+    }
+    let g = granted(plist);
+    let mut errs = vec![];
+    if class == "inference" {
+        for k in &g {
+            if k.starts_with("com.apple.security.network.")
+                || k.starts_with("com.apple.security.device.")
+                || k.starts_with("com.apple.security.personal-information.")
+                || k.starts_with("com.apple.security.automation.")
+                || k.starts_with("com.apple.developer.private-cloud-compute")
+            {
+                errs.push(format!("{name}: an inference XPC service may not hold {k}"));
+            }
+        }
+    }
+    let allowed = list("allowedTrue");
+    for k in g.difference(&allowed) {
+        let msg = format!("{name}: {k} is not in ADR 0144's allowed set for {class}");
+        if !errs.iter().any(|e| e.ends_with(k.as_str())) {
+            errs.push(msg);
+        }
+    }
+    for k in list("requiredTrue").difference(&g) {
+        errs.push(format!("{name}: {class} must set {k}"));
+    }
+    if errs.is_empty() {
+        Ok(())
+    } else {
+        Err(errs.join("\n"))
+    }
+}
+
+fn entitlements_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    for e in std::fs::read_dir(dir).unwrap().flatten() {
+        let p = e.path();
+        let n = p.file_name().unwrap().to_string_lossy().into_owned();
+        if p.is_dir() {
+            if !["node_modules", "target", ".build", ".git", "dist"].contains(&n.as_str()) {
+                entitlements_files(&p, out);
+            }
+        } else if n.ends_with(".entitlements") {
+            out.push(p);
+        }
+    }
+}
+
+#[test]
+fn module_and_inference_entitlements_grant_only_their_own_tcc() {
+    let map = confinement_map();
+    let mut files = vec![];
+    entitlements_files(&root(), &mut files);
+    let mut errs = vec![];
+    for f in &files {
+        let name = f.file_name().unwrap().to_string_lossy().into_owned();
+        // Anything named *.entitlements must follow ADR 0144's naming, so a service can't dodge the lint by name.
+        if !name.starts_with("ai.qrtz.") {
+            errs.push(format!("{}: entitlements files are named ai.qrtz.<module>.entitlements or ai.qrtz.inference.<name>.entitlements", f.display()));
+            continue;
+        }
+        if let Err(e) = lint_entitlements(&name, &std::fs::read_to_string(f).unwrap(), &map) {
+            errs.push(e);
+        }
+    }
+    // Vacuous until M1 adds the module bundles (today the one plist is the monolith's entitlements.mac.plist).
+    assert!(errs.is_empty(), "{}", errs.join("\n"));
+}
+
+#[test]
+fn the_entitlements_lint_refuses_network_and_tcc_on_an_inference_service() {
+    let map = confinement_map();
+    let p = |keys: &[(&str, bool)]| {
+        let mut s = String::from("<plist version=\"1.0\"><dict>\n");
+        for (k, v) in keys {
+            s += &format!("  <key>{k}</key><{}/>\n", if *v { "true" } else { "false" });
+        }
+        s + "</dict></plist>"
+    };
+    let sb = ("com.apple.security.app-sandbox", true);
+    let voice = "ai.qrtz.inference.voice.entitlements";
+    assert!(lint_entitlements(voice, &p(&[sb]), &map).is_ok());
+    assert!(lint_entitlements(
+        voice,
+        &p(&[sb, ("com.apple.security.network.client", false)]),
+        &map
+    )
+    .is_ok());
+    for bad in [
+        "com.apple.security.network.client",
+        "com.apple.security.network.server",
+        "com.apple.security.device.audio-input",
+        "com.apple.security.device.camera",
+        "com.apple.security.personal-information.location",
+        "com.apple.security.automation.apple-events",
+    ] {
+        let e = lint_entitlements(voice, &p(&[sb, (bad, true)]), &map).unwrap_err();
+        assert!(e.contains(bad), "{e}");
+    }
+    assert!(lint_entitlements(voice, &p(&[]), &map)
+        .unwrap_err()
+        .contains("app-sandbox"));
+    // Modules: each its own TCC only (ADR 0144 table); the shell gets no module file.
+    let ae = ("com.apple.security.automation.apple-events", true);
+    let mic = ("com.apple.security.device.audio-input", true);
+    assert!(lint_entitlements("ai.qrtz.ctrl.entitlements", &p(&[ae]), &map).is_ok());
+    assert!(lint_entitlements("ai.qrtz.ctrl.entitlements", &p(&[mic]), &map).is_err());
+    assert!(lint_entitlements("ai.qrtz.echo.entitlements", &p(&[mic]), &map).is_ok());
+    assert!(lint_entitlements("ai.qrtz.echo.entitlements", &p(&[ae]), &map).is_err());
+    assert!(lint_entitlements(
+        "ai.qrtz.nano.entitlements",
+        &p(&[mic, ("com.apple.security.network.client", true)]),
+        &map
+    )
+    .is_err());
+    assert!(lint_entitlements("ai.qrtz.shell.entitlements", &p(&[]), &map).is_err());
+}
+
+#[test]
+fn the_shell_entitlements_tcc_set_only_shrinks() {
+    let map = confinement_map();
+    let ent = std::fs::read_to_string(root().join("apps/desktop/src-tauri/entitlements.mac.plist")).unwrap();
+    let tcc: BTreeSet<String> = granted(&ent)
+        .into_iter()
+        .filter(|k| {
+            k.starts_with("com.apple.security.device.")
+                || k.starts_with("com.apple.security.personal-information.")
+                || k.starts_with("com.apple.security.automation.")
+        })
+        .collect();
+    let allowed: BTreeSet<String> = map["shellTccEntitlements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_owned())
+        .collect();
+    // Today's monolith holds the mic for echo and nano; ADR 0144's target shell holds none.
+    assert_eq!(
+        tcc, allowed,
+        "shell TCC entitlements vs shellTccEntitlements (it may only shrink, to empty)"
     );
 }

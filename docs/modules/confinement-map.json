@@ -1,0 +1,56 @@
+{
+  "about": "ADR 0144 M0 stand-in owned by the confinement track (Bozniak). Read by crates/qrtz-lifecycle/tests/offline_graph.rs. It maps today's code to the module that will own it. Bobs's module manifests (bundle split, M1) replace the owner fields; the ratchet lists only shrink.",
+  "owners": ["shell", "shared", "echo", "nano", "ctrl", "voice", "monolith"],
+  "crates": {
+    "qrtz-desktop": "shell",
+    "qrtz-app": "shell",
+    "qrtz-speech": "shell",
+    "qrtz-ipc": "shared",
+    "qrtz-helper-bridge": "shared",
+    "qrtz-cloexec": "shared",
+    "qrtz-model": "shared",
+    "qrtz-talk": "echo",
+    "qrtz-lifecycle": "nano",
+    "qrtz-storage": "nano",
+    "qrtz-llm": "nano",
+    "qrtz-backup": "nano",
+    "qrtz-ctrl": "ctrl"
+  },
+  "swiftTargets": {
+    "qrtz-helper": "monolith",
+    "QrtzHelperCore": "monolith",
+    "QrtzCtrl": "ctrl"
+  },
+  "swiftPackages": {
+    "FluidAudio": "voice"
+  },
+  "monolithCrateEdges": [
+    ["qrtz-app", "qrtz-backup"],
+    ["qrtz-app", "qrtz-ctrl"],
+    ["qrtz-app", "qrtz-lifecycle"],
+    ["qrtz-app", "qrtz-llm"],
+    ["qrtz-app", "qrtz-storage"],
+    ["qrtz-app", "qrtz-talk"],
+    ["qrtz-desktop", "qrtz-storage"],
+    ["qrtz-lifecycle", "qrtz-speech"],
+    ["qrtz-talk", "qrtz-speech"]
+  ],
+  "monolithSwiftTargets": ["qrtz-helper", "QrtzHelperCore"],
+  "monolithSwiftImports": [
+    ["qrtz-helper", "FluidAudio"],
+    ["qrtz-helper", "QrtzCtrl"]
+  ],
+  "shellTccEntitlements": ["com.apple.security.device.audio-input"],
+  "entitlements": {
+    "naming": "ai.qrtz.<module>.entitlements for a module app (echo, nano, ctrl); ai.qrtz.inference.<name>.entitlements for a sandboxed inference XPC service (e.g. ai.qrtz.inference.voice.entitlements)",
+    "allowedTrue": {
+      "echo": ["com.apple.security.device.audio-input"],
+      "nano": ["com.apple.security.device.audio-input"],
+      "ctrl": ["com.apple.security.automation.apple-events"],
+      "inference": ["com.apple.security.app-sandbox"]
+    },
+    "requiredTrue": {
+      "inference": ["com.apple.security.app-sandbox"]
+    }
+  }
+}
