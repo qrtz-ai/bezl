@@ -14,6 +14,7 @@ export * from './helper/arbiter';
 export * from './speech/protocol';
 export * from './speech/setup';
 export * from './config';
+export * from './modules';
 export * from './db/migrate';
 export * from './note/types';
 export * from './note/transcript';

@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "id": "nano",
+  "name": "nano",
+  "version": "0.2.0",
+  "protocol": 1,
+  "minApp": "0.2.0",
+  "code": {
+    "bundleId": "ai.qrtz.nano",
+    "teamId": "0000000000",
+    "designatedRequirement": "identifier \"ai.qrtz.nano\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"0000000000\""
+  },
+  "launch": {
+    "kind": "bundled-helper",
+    "entry": "qrtz-helper",
+    "channels": [
+      "recording.*",
+      "meeting.*",
+      "ax.*",
+      "capture.*",
+      "diarization.*",
+      "summarize.*",
+      "audio.*"
+    ]
+  },
+  "views": ["note"],
+  "capabilities": [
+    "note.read",
+    "note.record",
+    "note.write",
+    "os.permissions",
+    "speech.read"
+  ],
+  "permissions": ["microphone", "screen-recording", "accessibility"],
+  "entitlements": ["com.apple.security.device.audio-input"],
+  "settings": {
+    "namespace": "nano",
+    "legacySections": ["note", "speech"]
+  },
+  "provides": [],
+  "dependencies": [
+    {
+      "id": "model:nemotron-560ms",
+      "kind": "data",
+      "version": "1.0.0",
+      "sha256": "190d68226457494a8328888429b970df8cfbbb434623a1bf964b6090ec81e8f5",
+      "teamId": "0000000000"
+    },
+    {
+      "id": "model:nemotron3-diarizer",
+      "kind": "data",
+      "version": "1.0.0",
+      "sha256": "8ee15189a310bedc9cc7b9626b3a1ca19c03a82ccd91853bcd3bd75829f3d869",
+      "teamId": "0000000000"
+    },
+    {
+      "id": "model:localvqe",
+      "kind": "data",
+      "version": "1.0.0",
+      "sha256": "78f730775e0d2411a70d2728eea9b32c12f830582808dd7485816575c7a0ba0a",
+      "teamId": "0000000000"
+    }
+  ]
+}

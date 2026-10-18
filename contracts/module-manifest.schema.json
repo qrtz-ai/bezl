@@ -1,0 +1,262 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qrtz:module-manifest/1",
+  "title": "qrtz module manifest (ADR 0146)",
+  "description": "Structural schema. crates/qrtz-modules ModuleManifest::parse is the authority (it also checks the designated requirement text, the bundle id per module and duplicate pins).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "name",
+    "version",
+    "protocol",
+    "minApp",
+    "code",
+    "launch",
+    "views",
+    "capabilities",
+    "permissions",
+    "entitlements",
+    "settings",
+    "dependencies"
+  ],
+  "properties": {
+    "schema": {
+      "const": 1
+    },
+    "id": {
+      "enum": [
+        "echo",
+        "nano",
+        "ctrl"
+      ]
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[^A-Z]+$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "protocol": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "minApp": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "maxApp": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "code": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bundleId",
+        "teamId",
+        "designatedRequirement"
+      ],
+      "properties": {
+        "bundleId": {
+          "type": "string",
+          "pattern": "^ai\\.qrtz\\.[a-z0-9-]+(\\.[a-z0-9-]+)*$"
+        },
+        "teamId": {
+          "type": "string",
+          "pattern": "^[0-9A-Z]{10}$"
+        },
+        "designatedRequirement": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "launch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "entry"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "bundled-helper",
+            "launch-services"
+          ]
+        },
+        "entry": {
+          "type": "string",
+          "minLength": 1
+        },
+        "channels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*\\.\\*$"
+          }
+        }
+      }
+    },
+    "views": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "microphone",
+          "accessibility",
+          "screen-recording",
+          "automation",
+          "files-and-folders"
+        ]
+      }
+    },
+    "entitlements": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "namespace"
+      ],
+      "properties": {
+        "namespace": {
+          "type": "string"
+        },
+        "legacySections": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "provides": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^xpc:[a-z][a-z0-9-]*$"
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "version",
+          "sha256",
+          "teamId"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^(model|xpc):[a-z][a-z0-9-]*$"
+          },
+          "kind": {
+            "enum": [
+              "data",
+              "xpc-service"
+            ],
+            "description": "no dylib/framework: shared code is an xpc-service in its own process"
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$",
+            "description": "exact; no ranges, no build metadata"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "teamId": {
+            "type": "string",
+            "pattern": "^[0-9A-Z]{10}$"
+          },
+          "bundleId": {
+            "type": "string"
+          },
+          "designatedRequirement": {
+            "type": "string"
+          },
+          "optional": {
+            "type": "boolean"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "xpc-service"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "bundleId",
+                "designatedRequirement"
+              ],
+              "properties": {
+                "id": {
+                  "pattern": "^xpc:"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "data"
+                }
+              }
+            },
+            "then": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "bundleId"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "designatedRequirement"
+                    ]
+                  }
+                ]
+              },
+              "properties": {
+                "id": {
+                  "pattern": "^model:"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

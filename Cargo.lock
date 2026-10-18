@@ -3581,6 +3581,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "qrtz-modules"
+version = "0.2.0"
+dependencies = [
+ "hex",
+ "jsonschema",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "qrtz-speech"
 version = "0.2.0"
 dependencies = [

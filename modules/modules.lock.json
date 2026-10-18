@@ -1,0 +1,106 @@
+{
+  "lockVersion": 1,
+  "modules": {
+    "ctrl": {
+      "code": {
+        "bundleId": "ai.qrtz.ctrl",
+        "designatedRequirement": "identifier \"ai.qrtz.ctrl\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"0000000000\"",
+        "teamId": "0000000000"
+      },
+      "dependencies": [
+        {
+          "id": "model:laya",
+          "version": "1.0.0"
+        }
+      ],
+      "manifestSha256": "887e4c9856324e760daebfc27b6b3662547e86b80b92789ba9d69823f79ae6d8",
+      "source": "bundled",
+      "staleRevocation": false,
+      "version": "0.2.0"
+    },
+    "echo": {
+      "code": {
+        "bundleId": "ai.qrtz.echo",
+        "designatedRequirement": "identifier \"ai.qrtz.echo\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"0000000000\"",
+        "teamId": "0000000000"
+      },
+      "dependencies": [
+        {
+          "id": "model:parakeet-tdt-v2",
+          "version": "1.0.0"
+        }
+      ],
+      "manifestSha256": "b11b2a1314c6e8eb9192671215eb44e14431970a8729810aa11610959455552e",
+      "source": "bundled",
+      "staleRevocation": false,
+      "version": "0.2.0"
+    },
+    "nano": {
+      "code": {
+        "bundleId": "ai.qrtz.nano",
+        "designatedRequirement": "identifier \"ai.qrtz.nano\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"0000000000\"",
+        "teamId": "0000000000"
+      },
+      "dependencies": [
+        {
+          "id": "model:nemotron-560ms",
+          "version": "1.0.0"
+        },
+        {
+          "id": "model:nemotron3-diarizer",
+          "version": "1.0.0"
+        },
+        {
+          "id": "model:localvqe",
+          "version": "1.0.0"
+        }
+      ],
+      "manifestSha256": "6800f5831a364fe562f69ce9bff9ff6b163af5b62915e5d2bf481048e739dbca",
+      "source": "bundled",
+      "staleRevocation": false,
+      "version": "0.2.0"
+    }
+  },
+  "packages": {
+    "model:laya": {
+      "1.0.0": {
+        "kind": "data",
+        "path": "models/laya",
+        "sha256": "e93ef91d200f82a997e7b7aae28804af72594bd56e4963aee6f889bc83ffad22",
+        "teamId": "0000000000"
+      }
+    },
+    "model:localvqe": {
+      "1.0.0": {
+        "kind": "data",
+        "path": "models/localvqe",
+        "sha256": "78f730775e0d2411a70d2728eea9b32c12f830582808dd7485816575c7a0ba0a",
+        "teamId": "0000000000"
+      }
+    },
+    "model:nemotron-560ms": {
+      "1.0.0": {
+        "kind": "data",
+        "path": "models/nemotron-560ms",
+        "sha256": "190d68226457494a8328888429b970df8cfbbb434623a1bf964b6090ec81e8f5",
+        "teamId": "0000000000"
+      }
+    },
+    "model:nemotron3-diarizer": {
+      "1.0.0": {
+        "kind": "data",
+        "path": "models/nemotron3-diarizer",
+        "sha256": "8ee15189a310bedc9cc7b9626b3a1ca19c03a82ccd91853bcd3bd75829f3d869",
+        "teamId": "0000000000"
+      }
+    },
+    "model:parakeet-tdt-v2": {
+      "1.0.0": {
+        "kind": "data",
+        "path": "models/parakeet-tdt-v2",
+        "sha256": "08834dd5e130c78b57f68d9c52265036ba3cf9c3ebe2cd092f4d0322bcd77730",
+        "teamId": "0000000000"
+      }
+    }
+  }
+}

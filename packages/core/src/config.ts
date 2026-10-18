@@ -84,6 +84,19 @@ export const ConfigSchema = z.object({
       warmAfterDownload: z.boolean().default(true),
     })
     .prefault({}),
+  /**
+   * Global module switches (ADR 0146): the global settings control every module; each module's own settings live
+   * with the module. Off stops the module and hides its view. Everything defaults to on, so M0 changes nothing.
+   */
+  modules: z
+    .object({
+      /** Every module at once. */
+      enabled: z.boolean().default(true),
+      echo: z.object({ enabled: z.boolean().default(true) }).prefault({}),
+      nano: z.object({ enabled: z.boolean().default(true) }).prefault({}),
+      ctrl: z.object({ enabled: z.boolean().default(true) }).prefault({}),
+    })
+    .prefault({}),
   /** First-run setup (welcome, permissions, speech download). */
   onboarding: z.object({ done: z.boolean().default(false) }).prefault({}),
   privacy: z

@@ -12647,6 +12647,18 @@
         "autoUpdate": true,
         "warmAfterDownload": true
       },
+      "modules": {
+        "enabled": true,
+        "echo": {
+          "enabled": true
+        },
+        "nano": {
+          "enabled": true
+        },
+        "ctrl": {
+          "enabled": true
+        }
+      },
       "onboarding": {
         "done": false
       },
@@ -12862,6 +12874,61 @@
           ],
           "additionalProperties": false
         },
+        "modules": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "default": true,
+              "type": "boolean"
+            },
+            "echo": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "default": true,
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "enabled"
+              ],
+              "additionalProperties": false
+            },
+            "nano": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "default": true,
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "enabled"
+              ],
+              "additionalProperties": false
+            },
+            "ctrl": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "default": true,
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "enabled"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "enabled",
+            "echo",
+            "nano",
+            "ctrl"
+          ],
+          "additionalProperties": false
+        },
         "onboarding": {
           "type": "object",
           "properties": {
@@ -12909,6 +12976,7 @@
         "note",
         "talk",
         "speech",
+        "modules",
         "onboarding",
         "privacy"
       ],

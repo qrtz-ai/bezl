@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qrtz:modules-lock/1",
+  "title": "modules.lock.json (ADR 0146)",
+  "description": "The local record of installed modules and the exact packages they pin. Resolution is a lookup in this file; there are no ranges and no network resolution.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "lockVersion"
+  ],
+  "properties": {
+    "lockVersion": {
+      "const": 1
+    },
+    "modules": {
+      "type": "object",
+      "propertyNames": {
+        "enum": [
+          "echo",
+          "nano",
+          "ctrl"
+        ]
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "manifestSha256",
+          "code",
+          "source",
+          "dependencies"
+        ],
+        "properties": {
+          "version": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+          },
+          "manifestSha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "code": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "bundleId",
+              "teamId",
+              "designatedRequirement"
+            ],
+            "properties": {
+              "bundleId": {
+                "type": "string",
+                "pattern": "^ai\\.qrtz\\.[a-z0-9-]+(\\.[a-z0-9-]+)*$"
+              },
+              "teamId": {
+                "type": "string",
+                "pattern": "^[0-9A-Z]{10}$"
+              },
+              "designatedRequirement": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "source": {
+            "enum": [
+              "bundled",
+              "network",
+              "sideload"
+            ]
+          },
+          "staleRevocation": {
+            "type": "boolean"
+          },
+          "disabled": {
+            "type": "string"
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "version"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "packages": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^(model|xpc):[a-z][a-z0-9-]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "propertyNames": {
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$"
+        },
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "sha256",
+            "teamId",
+            "path"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "data",
+                "xpc-service"
+              ]
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "teamId": {
+              "type": "string",
+              "pattern": "^[0-9A-Z]{10}$"
+            },
+            "bundleId": {
+              "type": "string"
+            },
+            "designatedRequirement": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    }
+  }
+}

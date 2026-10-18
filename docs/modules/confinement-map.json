@@ -5,6 +5,7 @@
     "qrtz-desktop": "shell",
     "qrtz-app": "shell",
     "qrtz-speech": "shell",
+    "qrtz-modules": "shell",
     "qrtz-ipc": "shared",
     "qrtz-helper-bridge": "shared",
     "qrtz-cloexec": "shared",
