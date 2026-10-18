@@ -57,10 +57,22 @@ pub fn run() {
                 paths::recordings_dir(ctx.app_handle()),
                 paths::data_dir(ctx.app_handle()),
             );
-            // N133: the runtime's tombstones (same file); N135: a fixed pool, not a thread per request.
+            // N140: the meeting rows say which files play (none until the app is built); N133: the runtime's
+            // tombstones (same file); N135: a fixed pool, not a thread per request.
+            let db = ctx
+                .app_handle()
+                .try_state::<backend::Backend>()
+                .map(|b| b.db.clone());
             media::spawn(move || {
                 let pending = qrtz_storage::PendingDeletes::new(&data);
-                responder.respond(media::serve(&dir, &pending, &req))
+                let owner = |name: &str| {
+                    let name = name.to_string();
+                    db.as_ref()?
+                        .call_blocking(move |d| d.notes().meeting_id_by_audio_name(&name))
+                        .ok()
+                        .flatten()
+                };
+                responder.respond(media::serve(&dir, &pending, &owner, &req))
             });
         })
         .invoke_handler(tauri::generate_handler![

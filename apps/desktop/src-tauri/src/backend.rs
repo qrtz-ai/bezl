@@ -157,6 +157,8 @@ struct Flash {
 
 pub struct Backend {
     pub service: Arc<AppService>,
+    /// The app's database (playback asks it which meeting owns a recording, N140).
+    pub db: qrtz_storage::StorageHandle,
     pub router: Router<Shared>,
     pub subs: Mutex<Subscriptions>,
     started: Instant,
@@ -271,6 +273,7 @@ pub fn setup(app: &mut tauri::App, started: Instant) -> Result<(), Box<dyn std::
     let router = Router::new(Shared(service.clone())).validate_responses(cfg!(debug_assertions));
     app.manage(Backend {
         service: service.clone(),
+        db: built.db.clone(),
         router,
         subs: Mutex::default(),
         started,

@@ -56,3 +56,31 @@ fn meeting_files_survives_a_corrupt_pipeline_record() {
     db.notes().upsert_meeting(&meeting("m6", None)).unwrap();
     assert!(db.notes().meeting_files("m6").unwrap().is_empty());
 }
+
+/// N140: playback asks which meeting owns a recording file name; the whole last path component must match
+/// (case, `_` and `%` taken literally), and an orphan name no row references has no owner.
+#[test]
+fn a_recording_file_name_resolves_to_the_meeting_that_owns_it() {
+    let db = Db::open_in_memory().unwrap();
+    let n = db.notes();
+    n.upsert_meeting(&meeting("m1", Some("/r/m1-restored-1760745600000.wav")))
+        .unwrap();
+    n.upsert_meeting(&meeting("m2", Some("C:\\r\\m2.wav"))).unwrap();
+    n.upsert_meeting(&meeting("m3", Some("/r/a_b%.wav"))).unwrap();
+    n.upsert_meeting(&meeting("m4", None)).unwrap();
+    let owner = |name: &str| n.meeting_id_by_audio_name(name).unwrap();
+    assert_eq!(owner("m1-restored-1760745600000.wav").as_deref(), Some("m1"));
+    assert_eq!(owner("m2.wav").as_deref(), Some("m2"));
+    assert_eq!(owner("a_b%.wav").as_deref(), Some("m3"));
+    for none in [
+        "m1.wav",
+        "restored-1760745600000.wav",
+        "M2.wav",
+        "axb%.wav",
+        "a_bc.wav",
+        "",
+        "r/m2.wav",
+    ] {
+        assert_eq!(owner(none), None, "{none}");
+    }
+}

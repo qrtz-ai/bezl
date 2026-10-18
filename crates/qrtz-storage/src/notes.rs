@@ -260,6 +260,26 @@ impl<'a> NoteRepo<'a> {
         rows.next()?.map(to_meeting).transpose()
     }
 
+    /// The meeting whose recording has this file name (the last component of `audio_path`), if any. Playback
+    /// serves a file only when a meeting owns it (N140).
+    pub fn meeting_id_by_audio_name(&self, name: &str) -> Result<Option<String>> {
+        if name.is_empty() {
+            return Ok(None);
+        }
+        let esc = name.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+        let mut st = self.conn.prepare_cached(
+            "SELECT id, audio_path FROM meetings WHERE audio_path LIKE ?1 ESCAPE '\\' ORDER BY id",
+        )?;
+        let mut rows = st.query([format!("%{esc}")])?;
+        while let Some(r) = rows.next()? {
+            let (id, path): (String, String) = (r.get(0)?, r.get(1)?);
+            if path.rsplit(['/', '\\']).next() == Some(name) {
+                return Ok(Some(id));
+            }
+        }
+        Ok(None)
+    }
+
     /// `need()`: the meeting or `NotFound` ("meeting <id> not found", E_NOT_FOUND).
     pub fn need(&self, id: &str) -> Result<Meeting> {
         self.get_meeting(id)?.ok_or_else(|| StorageError::NotFound {

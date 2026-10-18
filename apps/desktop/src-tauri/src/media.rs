@@ -1,5 +1,7 @@
-//! `qrtz-media://rec/<uuid>.wav`: recordings for the renderer's <audio>, nothing else (same rule as the
-//! Electron `protocol.handle('qrtz-media')`). Supports single byte ranges so WebKit can seek.
+//! `qrtz-media://rec/<name>.wav`: recordings for the renderer's <audio>, nothing else. The name is the file name
+//! of a meeting's `audio_path` (the renderer's `audioName`): a request is served only when a meeting row owns a
+//! recording by that name (N140), so a restored `<id>-restored-<ms>.wav` plays and an orphan `<uuid>.wav` no row
+//! references is 404. Supports single byte ranges so WebKit can seek.
 //!
 //! A Tauri protocol response is one in-memory body, so no response is larger than [`MAX_CHUNK`]: a request
 //! with no Range header for a bigger file gets `206` with the first chunk, and a range (WebKit asks for
@@ -15,13 +17,20 @@ use std::path::Path;
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use tauri::http::{header, Request, Response, StatusCode};
 
+/// A plain recording file name: `[A-Za-z0-9][A-Za-z0-9._-]*\.wav`, at most 128 bytes. No separator, no `..`
+/// prefix, no percent escapes: the file is always looked up inside the recordings directory by this name.
 pub fn valid_name(name: &str) -> bool {
-    name.len() == 40
+    let b = name.as_bytes();
+    (5..=128).contains(&b.len())
         && name.ends_with(".wav")
-        && name[..36]
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b) || b == b'-')
+        && b[0].is_ascii_alphanumeric()
+        && b.iter()
+            .all(|&c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b'-'))
 }
+
+/// The meeting that owns a recording file name (its `audio_path` ends in that name), if any (N140). The app
+/// asks storage (`NoteRepo::meeting_id_by_audio_name`).
+pub type Owner<'a> = &'a dyn Fn(&str) -> Option<String>;
 
 /// A `Range` header against a file of `len` bytes (RFC 9110 §14).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,8 +122,14 @@ pub fn spawn(job: impl FnOnce() + Send + 'static) {
     let _ = tx.send(Box::new(job));
 }
 
-/// `pending`: the app's tombstones (`PendingDeletes` on the data dir); a meeting on it is 404 (N133).
-pub fn serve(recordings: &Path, pending: &PendingDeletes, req: &Request<Vec<u8>>) -> Response<Vec<u8>> {
+/// `owner`: which meeting has this recording (none: 404, N140). `pending`: the app's tombstones (`PendingDeletes`
+/// on the data dir); an owner on it is 404 (N133).
+pub fn serve(
+    recordings: &Path,
+    pending: &PendingDeletes,
+    owner: Owner<'_>,
+    req: &Request<Vec<u8>>,
+) -> Response<Vec<u8>> {
     // macOS/Linux: qrtz-media://rec/<name>; Windows: http://qrtz-media.localhost/rec/<name>.
     let path = req.uri().path().trim_start_matches('/');
     let name = path.strip_prefix("rec/").unwrap_or(path);
@@ -122,7 +137,10 @@ pub fn serve(recordings: &Path, pending: &PendingDeletes, req: &Request<Vec<u8>>
     if !valid_name(&name) {
         return status(StatusCode::FORBIDDEN);
     }
-    if pending.has(&name[..36]) {
+    let Some(id) = owner(&name) else {
+        return status(StatusCode::NOT_FOUND); // an orphan file, or no such recording
+    };
+    if pending.has(&id) {
         return status(StatusCode::NOT_FOUND);
     }
     // N132 (ADR 0086): the regular file under that name, never a symlink's target, a FIFO (would block this
@@ -188,21 +206,42 @@ fn serve_file(f: &mut std::fs::File, len: u64, req: &Request<Vec<u8>>, chunk: u6
 mod tests {
     use super::*;
 
-    /// `serve` with no tombstones (tests that aren't about pending deletes).
+    /// The rule before N140 as a stand-in for the meeting rows: a lowercase `<uuid>.wav` belongs to `<uuid>`.
+    fn uuid_owner(name: &str) -> Option<String> {
+        let ok = name.len() == 40
+            && name.ends_with(".wav")
+            && name[..36]
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b) || b == b'-');
+        ok.then(|| name[..36].to_string())
+    }
+
+    /// `serve` with no tombstones and [`uuid_owner`] (tests that aren't about rows or pending deletes).
     fn serve(recordings: &Path, req: &Request<Vec<u8>>) -> Response<Vec<u8>> {
-        super::serve(recordings, &PendingDeletes::new(recordings), req)
+        super::serve(recordings, &PendingDeletes::new(recordings), &uuid_owner, req)
     }
 
     const ID: &str = "0b9f6a2e-6c1d-4e7a-9a43-2f1d0c8e5b71.wav";
 
     #[test]
-    fn only_uuid_wavs() {
+    fn only_plain_wav_names() {
         assert!(valid_name(ID));
+        assert!(valid_name(
+            "0b9f6a2e-6c1d-4e7a-9a43-2f1d0c8e5b71-restored-1760745600000.wav"
+        ));
+        assert!(valid_name("2026-10-17-weekly-sync.wav"));
         for bad in [
             "../config.json",
-            "x.wav",
-            "0B9F6A2E-6C1D-4E7A-9A43-2F1D0C8E5B71.wav",
+            "..wav",
+            ".hidden.wav",
+            "a/b.wav",
+            "a\\b.wav",
+            "a%2Fb.wav",
+            "a b.wav",
+            ".wav",
+            "x.wav.stitch",
             &ID.replace(".wav", ".mp3"),
+            &format!("{}.wav", "a".repeat(125)),
         ] {
             assert!(!valid_name(bad), "{bad}");
         }
@@ -534,7 +573,7 @@ mod tests {
             if let Some(h) = range {
                 r = r.header(header::RANGE, h);
             }
-            super::serve(&rec, &pending, &r.body(Vec::new()).unwrap())
+            super::serve(&rec, &pending, &uuid_owner, &r.body(Vec::new()).unwrap())
         };
         assert_eq!(get(ID, None).status(), StatusCode::OK);
         pending.add(&ID[..36]).unwrap();
@@ -578,5 +617,48 @@ mod tests {
         }
         assert_eq!(done.len(), n);
         assert!(threads.len() <= WORKERS, "{threads:?}");
+    }
+
+    /// N140: playback follows the meeting rows. A restored recording under its renamed file plays; an orphan
+    /// `<uuid>.wav` no row owns is 404; the owner's tombstone still hides its renamed file.
+    #[test]
+    fn a_recording_is_served_only_when_a_meeting_owns_it() {
+        let data = tempfile::tempdir().unwrap();
+        let rec = data.path().join("recordings");
+        std::fs::create_dir(&rec).unwrap();
+        let id = &ID[..36];
+        let restored = format!("{id}-restored-1760745600000.wav");
+        std::fs::write(rec.join(&restored), b"RIFFrestored").unwrap();
+        std::fs::write(rec.join(ID), b"RIFForphan").unwrap(); // the clash the import moved aside of
+        let rows = [(id.to_string(), restored.clone())];
+        let owner = |name: &str| {
+            rows.iter()
+                .find(|(_, file)| file == name)
+                .map(|(id, _)| id.clone())
+        };
+        let pending = PendingDeletes::new(data.path());
+        let get = |name: &str| {
+            let r = Request::builder()
+                .uri(format!("qrtz-media://rec/{name}"))
+                .body(Vec::new())
+                .unwrap();
+            super::serve(&rec, &pending, &owner, &r)
+        };
+        let r = get(&restored);
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(r.body(), b"RIFFrestored");
+        let orphan = get(ID);
+        assert_eq!(orphan.status(), StatusCode::NOT_FOUND, "no row owns the orphan");
+        assert!(orphan.body().is_empty());
+        // A row whose file is missing is 404 too, not a 500.
+        std::fs::rename(rec.join(&restored), rec.join("moved.wav")).unwrap();
+        assert_eq!(get(&restored).status(), StatusCode::NOT_FOUND);
+        std::fs::rename(rec.join("moved.wav"), rec.join(&restored)).unwrap();
+        pending.add(id).unwrap();
+        assert_eq!(get(&restored).status(), StatusCode::NOT_FOUND, "tombstoned owner");
+        pending.remove(id).unwrap();
+        assert_eq!(get(&restored).status(), StatusCode::OK);
+        // The name rule still applies before any lookup.
+        assert_eq!(get("..%2Fconfig.json").status(), StatusCode::FORBIDDEN);
     }
 }
