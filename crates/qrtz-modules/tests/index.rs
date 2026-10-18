@@ -1,7 +1,6 @@
-//! ADR 0153: the signed index format and the trust checks, without a publisher or a network.
+//! ADR 0153/0157: the signed index format and the trust checks, without a publisher or a network.
 use ed25519_dalek::{Signer, SigningKey};
 use qrtz_modules::index::*;
-use qrtz_modules::lock::content_digest;
 use qrtz_modules::trust::{Mode, Trust};
 use std::collections::BTreeMap;
 
@@ -63,34 +62,52 @@ fn root(version: u64, roots: &[&SigningKey], threshold: u32, ts: &SigningKey, ix
     })
 }
 
-fn index(version: u64) -> Vec<u8> {
-    let files = vec![IndexFile {
-        path: "a.bin".into(),
-        size: 3,
-        sha256: qrtz_modules::sha256_hex(b"abc"),
-        executable: false,
-        chunks: vec![],
-    }];
-    let e = PackageEntry {
-        kind: PackageKind::Data,
+fn entry() -> PackageEntry {
+    let m = br#"{"kind":"model","model":{"task":"asr"},"name":"model.x","version":"1.0.0"}"#;
+    let tree = Tree::new(vec![
+        IndexFile {
+            path: "a.bin".into(),
+            size: 3,
+            sha256: qrtz_modules::sha256_hex(b"abc"),
+            executable: false,
+            mirrors: vec!["https://huggingface.co/o/r/resolve/0123abc/a.bin".into()],
+        },
+        IndexFile {
+            path: "qrtz.json".into(),
+            size: m.len() as u64,
+            sha256: qrtz_modules::sha256_hex(m),
+            executable: false,
+            mirrors: vec![],
+        },
+    ]);
+    PackageEntry {
+        kind: PackageKind::Model,
         team_id: "ABCDE12345".into(),
-        sha256: content_digest(files.iter().map(|f| (f.path.as_str(), f.size, f.sha256.as_str()))),
-        size: 3,
-        files,
-        bundle_id: None,
+        sha256: tree.sha256(),
+        size: tree.size(),
+        manifest_sha256: qrtz_modules::sha256_hex(m),
+        files: tree.files,
+        dependencies: BTreeMap::new(),
+        identifier: None,
         designated_requirement: None,
-        manifest_sha256: None,
-        requires: vec![],
+        task: Some("asr".into()),
+        models: vec![],
         platform: PLATFORM.into(),
         min_os: None,
-    };
+    }
+}
+
+fn index(version: u64) -> Vec<u8> {
     canonical(&Index {
         kind: "index".into(),
         version,
         issued_ms: NOW - 1000,
         expires_ms: NOW + 300 * DAY_MS,
         revoked: vec![],
-        packages: BTreeMap::from([("model:x".to_string(), BTreeMap::from([("1.0.0".to_string(), e)]))]),
+        packages: BTreeMap::from([(
+            "model.x".to_string(),
+            BTreeMap::from([("1.0.0".to_string(), entry())]),
+        )]),
     })
 }
 
@@ -156,13 +173,26 @@ fn layout_paths_are_the_four_kinds_and_nothing_else() {
 }
 
 #[test]
-fn chunks_are_128_mib_and_validated() {
-    assert_eq!(CHUNK_SIZE, 128 * 1024 * 1024);
-    assert_eq!(chunk_sizes(5), vec![5]);
-    assert_eq!(chunk_sizes(CHUNK_SIZE), vec![CHUNK_SIZE]);
-    assert_eq!(chunk_sizes(2 * CHUNK_SIZE + 1), vec![CHUNK_SIZE, CHUNK_SIZE, 1]);
-    // 589 MB (the Nemotron encoder) is 5 chunks, each under the 512 MB cache limit.
-    assert_eq!(chunk_sizes(589_000_000).len(), 5);
+fn a_package_is_its_tree_and_the_tree_hash_is_its_sha256() {
+    let e = entry();
+    assert_eq!(e.sha256, qrtz_modules::sha256_hex(&e.tree().bytes()));
+    // Its blobs: the tree itself, then each distinct file, with the file's mirrors.
+    let b = e.blobs();
+    assert_eq!(b[0].sha256, e.sha256);
+    assert_eq!(b.len(), 3);
+    assert!(b
+        .iter()
+        .any(|x| x.mirrors == vec!["https://huggingface.co/o/r/resolve/0123abc/a.bin".to_string()]));
+    for bad in [
+        "http://huggingface.co/x",
+        "https://user@huggingface.co/x",
+        "https://huggingface.co/x?download=1",
+        "https://huggingface.co/../x",
+        "https://huggingface.co",
+        "file:///etc/passwd",
+    ] {
+        assert!(!is_mirror_url(bad), "{bad}");
+    }
 }
 
 #[test]
@@ -179,21 +209,38 @@ fn documents_must_be_canonical() {
 #[test]
 fn index_entries_are_checked() {
     let mut v: serde_json::Value = serde_json::from_slice(&index(1)).unwrap();
-    let e = &mut v["packages"]["model:x"]["1.0.0"];
+    let e = &mut v["packages"]["model.x"]["1.0.0"];
     e["sha256"] = serde_json::json!("0".repeat(64));
     assert!(Index::parse(&serde_json::to_vec(&v).unwrap())
         .unwrap_err()
         .to_string()
-        .contains("content digest"));
+        .contains("sha256 of the tree"));
     let mut v: serde_json::Value = serde_json::from_slice(&index(1)).unwrap();
-    v["packages"]["model:x"]["1.0.0"]["files"][0]["path"] = serde_json::json!("../a.bin");
+    v["packages"]["model.x"]["1.0.0"]["files"][0]["path"] = serde_json::json!("../a.bin");
     assert!(Index::parse(&serde_json::to_vec(&v).unwrap()).is_err());
+    for (field, value) in [
+        ("kind", serde_json::json!("extension")),
+        ("identifier", serde_json::json!("ai.qrtz.other")),
+        ("dependencies", serde_json::json!({"model.y": "^1.0.0"})),
+        ("task", serde_json::Value::Null),
+    ] {
+        let mut v: serde_json::Value = serde_json::from_slice(&index(1)).unwrap();
+        if value.is_null() {
+            v["packages"]["model.x"]["1.0.0"]
+                .as_object_mut()
+                .unwrap()
+                .remove(field);
+        } else {
+            v["packages"]["model.x"]["1.0.0"][field] = value;
+        }
+        assert!(Index::parse(&serde_json::to_vec(&v).unwrap()).is_err(), "{field}");
+    }
+    // A name that isn't a package name, or whose kind isn't what it says.
     let mut v: serde_json::Value = serde_json::from_slice(&index(1)).unwrap();
-    v["packages"]["model:x"]["1.0.0"]["kind"] = serde_json::json!("module");
-    assert!(
-        Index::parse(&serde_json::to_vec(&v).unwrap()).is_err(),
-        "kind must match the id"
-    );
+    let e = v["packages"]["model.x"].take();
+    v["packages"].as_object_mut().unwrap().remove("model.x");
+    v["packages"]["evil"] = e;
+    assert!(Index::parse(&serde_json::to_vec(&v).unwrap()).is_err());
 }
 
 #[test]

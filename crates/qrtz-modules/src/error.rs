@@ -22,6 +22,8 @@ pub enum ModuleError {
     },
     #[error("{id}@{version}: already installed with different content; an installed version never changes")]
     ContentChanged { id: String, version: String },
+    #[error("{0}: packages can't run anything at install time; qrtz has no install scripts (ADR 0157)")]
+    InstallScript(String),
     #[error("lockfile: {0}")]
     Lock(String),
     #[error("io: {0}")]

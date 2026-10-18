@@ -100,10 +100,11 @@ pub enum Permission {
     FilesAndFolders,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SettingsDecl {
     /// The module's settings file: `modules/<id>/settings.json` under the app data dir.
+    #[serde(default)]
     pub namespace: String,
     /// Today's config.json sections that move into this module's settings ([`crate::settings::split_legacy`]).
     #[serde(default)]

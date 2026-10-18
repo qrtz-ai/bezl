@@ -1,14 +1,16 @@
-//! The signed module index (ADR 0153, a TUF-lite successor to ADR 0046 §4): three canonical JSON documents, each
-//! with a detached Ed25519 signature file, and the URL layout they are served under.
+//! The signed package index (ADR 0153, a TUF-lite successor to ADR 0046 §4; package format from ADR 0157): three
+//! canonical JSON documents, each with a detached Ed25519 signature file, and the URL layout they are served under.
 //!
 //! - `root`: the keys of the `root`, `timestamp` and `index` roles, a threshold per role, a version and an expiry
 //!   (at most 366 days). Root `N+1` must be signed by a threshold of root `N`'s root keys *and* of its own.
 //! - `timestamp`: `{version, issuedMs, expiresMs, index: {sha256, size, version}}`; expires at most 8 days after it
 //!   was issued (the ADR 0046 clamp). This is the freshness of everything, revocations included.
 //! - `index`: content-addressed (`/v1/index/<sha256>.json`), `{version, issuedMs, expiresMs, revoked, packages}`.
-//!   `revoked` is the revocation list (it replaces ADR 0046's separate denylist). `packages` maps an id (`echo`,
-//!   `model:parakeet-tdt-v2`, `xpc:voice`) to its exact versions, each listing every file with its size, sha256
-//!   and, past [`CHUNK_SIZE`], its chunks.
+//!   `revoked` is the revocation list (it replaces ADR 0046's separate denylist). `packages` maps a package name
+//!   (`echo`, `inference.voice`, `model.parakeet-tdt-v2-en`) to its exact versions. Each entry is its package's
+//!   `qrtz.json` facts (kind, dependency ranges, code identity) plus its **tree**: every file with its size, sha256,
+//!   executable bit and any extra mirror URLs. The entry's `sha256` is the sha256 of the tree's canonical bytes,
+//!   which are also served as a blob, so a frozen lockfile can fetch a package by that one hash (ADR 0157 §4).
 //!
 //! Every document is canonical JSON (keys sorted, no whitespace, integers only); a document whose bytes aren't
 //! canonical is refused, so there is exactly one byte string for each signed value. Signatures are over the exact
@@ -20,9 +22,6 @@ use std::collections::BTreeMap;
 
 /// Every URL starts here, on the primary and on each mirror.
 pub const LAYOUT_VERSION: &str = "v1";
-/// Files above this are split into chunks of this size (the last may be shorter). 128 MiB keeps every object under
-/// Cloudflare's 512 MB cache limit and makes a resume lose at most one chunk.
-pub const CHUNK_SIZE: u64 = 128 * 1024 * 1024;
 /// The ADR 0046 clamp: a timestamp is valid for at most 8 days.
 pub const MAX_TIMESTAMP_VALIDITY_MS: u64 = 8 * DAY_MS;
 /// Roots and indexes are valid for at most a year (plus a day of slack for re-signing).
@@ -32,7 +31,7 @@ pub const DAY_MS: u64 = 86_400_000;
 /// Root, timestamp and signature files are small; the index is at most 4 MiB.
 pub const MAX_META_BYTES: usize = 256 * 1024;
 pub const MAX_INDEX_BYTES: usize = 4 * 1024 * 1024;
-/// A package (all its files) is at most 4 GiB; the largest model set today is 845 MB.
+/// A package (all its files) is at most 4 GiB; the largest model set today is 626 MB.
 pub const MAX_PACKAGE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 pub const MAX_FILES: usize = 20_000;
 
@@ -56,7 +55,8 @@ pub mod layout {
     pub fn sig(doc_path: &str) -> String {
         format!("{doc_path}.sig")
     }
-    /// True for exactly the paths above (used by `.qrtzpkg` readers and the publisher's output check).
+    /// True for exactly the paths above (used by `.qrtzpkg` readers and the publisher's output check). Blobs are
+    /// whole files (and package trees), never chunks: a big file is fetched with parallel range requests (ADR 0157).
     pub fn is_valid(p: &str) -> bool {
         let Some(rest) = p.strip_prefix(&format!("{LAYOUT_VERSION}/")) else {
             return false;
@@ -223,78 +223,201 @@ pub struct Timestamp {
     pub index: IndexRef,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+/// What a package is (ADR 0157 §1). The name says it too: `model.*` is a model, `inference.*` a service, and an
+/// extension is one of [`crate::EXTENSION_NAMES`]; the index refuses an entry whose kind and name disagree.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "kebab-case")]
 pub enum PackageKind {
-    /// echo, nano, ctrl: a signed `.app` plus its `module.json`.
-    Module,
-    /// A model set: read-only files.
-    Data,
-    /// Shared code in its own sandboxed XPC service (ADR 0144 §2).
-    XpcService,
+    /// echo, nano, ctrl: a helper qrtz spawns itself, inside qrtz's own TCC identity (ADR 0157 §2).
+    Extension,
+    /// A sandboxed XPC service (`inference.voice`): no network, no TCC, reached only over XPC.
+    Service,
+    /// Data only (`model.parakeet-tdt-v2-en`): read-only files, readable only by the services that declare them.
+    Model,
     /// The qrtz shell itself (reserved; shell updates come later).
     Shell,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Chunk {
-    pub sha256: String,
-    pub size: u64,
+impl PackageKind {
+    /// Code runs from it (Apple signature checks and the revocation freshness rule apply).
+    pub fn has_code(self) -> bool {
+        matches!(self, Self::Extension | Self::Service | Self::Shell)
+    }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// One file of a package tree.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct IndexFile {
     /// Relative to the package dir; no `..`, no absolute paths, no backslashes.
     pub path: String,
     pub size: u64,
     pub sha256: String,
-    /// The file gets 0500 instead of 0400 (a `.app`'s `Contents/MacOS/*`).
+    /// The file gets 0500 instead of 0400 (a helper binary, a `.xpc`'s `Contents/MacOS/*`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub executable: bool,
-    /// Present exactly when `size > CHUNK_SIZE`: every chunk but the last is `CHUNK_SIZE` long.
+    /// Extra places the same bytes can be fetched from, after the module hosts (ADR 0157 §6: a model's pinned
+    /// Hugging Face URL). Absolute `https://` URLs; checked by the same sha256 through the same fetcher, and the
+    /// shell only uses the ones on its pinned mirror-host list.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub chunks: Vec<Chunk>,
+    pub mirrors: Vec<String>,
 }
 
-impl IndexFile {
-    /// The blobs this file is served as: itself, or its chunks.
-    pub fn blobs(&self) -> Vec<Chunk> {
-        if self.chunks.is_empty() {
-            vec![Chunk {
-                sha256: self.sha256.clone(),
-                size: self.size,
-            }]
-        } else {
-            self.chunks.clone()
+/// A package's file list. Its canonical bytes are served as `v1/blobs/sha256/<sha256 of them>` and that hash is
+/// the package's `sha256` everywhere (index entry, `qrtz.lock`, `.qrtzpkg`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Tree {
+    /// Sorted by path.
+    pub files: Vec<IndexFile>,
+}
+
+impl Tree {
+    pub fn new(mut files: Vec<IndexFile>) -> Self {
+        files.sort_by(|a, b| a.path.cmp(&b.path));
+        Self { files }
+    }
+    pub fn bytes(&self) -> Vec<u8> {
+        canonical(self)
+    }
+    pub fn sha256(&self) -> String {
+        crate::sha256_hex(&self.bytes())
+    }
+    pub fn size(&self) -> u64 {
+        self.files.iter().map(|f| f.size).sum()
+    }
+    pub fn parse(bytes: &[u8]) -> Result<Self, IndexError> {
+        let t: Self = parse_canonical("tree", bytes, MAX_INDEX_BYTES)?;
+        t.validate().map_err(|why| bad("tree", why))?;
+        Ok(t)
+    }
+
+    /// Paths safe and unique, sorted, sizes summed within bounds, hashes well formed, mirrors `https://`.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.files.is_empty() || self.files.len() > MAX_FILES {
+            return Err("files: 1 to 20000".into());
         }
+        let mut paths = std::collections::BTreeSet::new();
+        let mut total = 0u64;
+        let mut prev: Option<&str> = None;
+        for f in &self.files {
+            if !safe_rel(&f.path) || !paths.insert(f.path.as_str()) {
+                return Err(format!("{:?}: unsafe or repeated path", f.path));
+            }
+            if prev.is_some_and(|p| p >= f.path.as_str()) {
+                return Err("files must be sorted by path".into());
+            }
+            prev = Some(&f.path);
+            if !crate::manifest::is_sha256(&f.sha256) {
+                return Err(format!("{}: sha256", f.path));
+            }
+            for m in &f.mirrors {
+                if !is_mirror_url(m) {
+                    return Err(format!("{}: mirror {m:?} must be a plain https URL", f.path));
+                }
+            }
+            total = total.checked_add(f.size).ok_or("size overflow")?;
+        }
+        for p in &paths {
+            let dir = format!("{p}/");
+            if paths
+                .range(dir.as_str()..)
+                .next()
+                .is_some_and(|q| q.starts_with(&dir))
+            {
+                return Err(format!("{p:?} is both a file and a directory"));
+            }
+        }
+        if total > MAX_PACKAGE_BYTES {
+            return Err("a package is at most 4 GiB".into());
+        }
+        Ok(())
+    }
+
+    pub fn file(&self, path: &str) -> Option<&IndexFile> {
+        self.files.iter().find(|f| f.path == path)
+    }
+
+    /// Every distinct blob of the package (a blob shared by two files is listed once), with its mirrors.
+    pub fn blobs(&self) -> Vec<BlobRef> {
+        let mut out: BTreeMap<&str, BlobRef> = BTreeMap::new();
+        for f in &self.files {
+            let b = out.entry(&f.sha256).or_insert_with(|| BlobRef {
+                sha256: f.sha256.clone(),
+                size: f.size,
+                mirrors: vec![],
+            });
+            for m in &f.mirrors {
+                if !b.mirrors.contains(m) {
+                    b.mirrors.push(m.clone());
+                }
+            }
+        }
+        out.into_values().collect()
     }
 }
 
+/// One blob to fetch: its hash and size (what is checked), and the extra URLs it may come from.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct BlobRef {
+    pub sha256: String,
+    pub size: u64,
+    pub mirrors: Vec<String>,
+}
+
+/// `https://host/path` with no user info, query, fragment, whitespace or `..`.
+pub fn is_mirror_url(u: &str) -> bool {
+    let Some(rest) = u.strip_prefix("https://") else {
+        return false;
+    };
+    let Some((host, path)) = rest.split_once('/') else {
+        return false;
+    };
+    !host.is_empty()
+        && host
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-')
+        && u.len() <= 2048
+        && !path.is_empty()
+        && path
+            .bytes()
+            .all(|b| b.is_ascii_graphic() && !b"?#@\\".contains(&b))
+        && path.split('/').all(|c| c != "..")
+}
+
+/// An index entry: one exact version of one package.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PackageEntry {
     pub kind: PackageKind,
-    /// Developer ID team (code) or the publisher's team (data). The lockfile pins it.
+    /// The Developer ID team that signed the code (extensions and services), or the publisher's team (models).
     pub team_id: String,
-    /// [`crate::lock::content_digest`] of `files`: the hash a module manifest pins its dependencies by.
+    /// sha256 of the package tree's canonical bytes (also served as a blob).
     pub sha256: String,
     /// Sum of the file sizes.
     pub size: u64,
+    /// The tree, inline, so a plan can show sizes before anything is fetched.
     pub files: Vec<IndexFile>,
-    /// `xpc-service` only (with `designatedRequirement`); a module's identity is in its `module.json`.
+    /// sha256 of the package's `qrtz.json`, which must be one of `files`.
+    pub manifest_sha256: String,
+    /// The `qrtz.json` dependency ranges, copied here so resolution needs only the index. The installer checks the
+    /// staged `qrtz.json` says the same.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dependencies: BTreeMap<String, String>,
+    /// Extension: the helper's code signing identifier (`ai.qrtz.echo`); service: its bundle id
+    /// (`ai.qrtz.inference.voice`). A package signing identity, never a TCC identity (ADR 0154 §1).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bundle_id: Option<String>,
+    pub identifier: Option<String>,
+    /// Extension and service only: exactly [`crate::manifest::designated_requirement`] of `identifier`, `teamId`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub designated_requirement: Option<String>,
-    /// Module only: sha256 of its `module.json`, which must be one of `files`.
+    /// Model only: what it is for (`asr`, `diarization`, `echo-cancellation`, `decision`). An engine swap may only
+    /// replace a model with one of the same task.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub manifest_sha256: Option<String>,
-    /// Module only: every dependency its `module.json` pins (optional ones too), so the download size can be shown
-    /// before anything is fetched. The installer checks it equals the manifest's list.
+    pub task: Option<String>,
+    /// Service only: the models it may be handed (ADR 0157 §7).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub requires: Vec<crate::lock::PinnedRef>,
+    pub models: Vec<String>,
     /// `macos-arm64`.
     pub platform: String,
     /// The lowest macOS this runs on (`14.2`).
@@ -312,12 +435,12 @@ pub struct Index {
     pub expires_ms: u64,
     #[serde(default)]
     pub revoked: Vec<Revoked>,
-    /// id → exact version → entry.
+    /// name → exact version → entry.
     pub packages: BTreeMap<String, BTreeMap<String, PackageEntry>>,
 }
 
-/// The manifest file inside a module package.
-pub const MODULE_MANIFEST_FILE: &str = "module.json";
+/// The manifest file inside every package (ADR 0157 §3).
+pub const MANIFEST_FILE: &str = "qrtz.json";
 pub const PLATFORM: &str = "macos-arm64";
 
 fn bad(what: &'static str, why: impl Into<String>) -> IndexError {
@@ -350,7 +473,6 @@ fn check_role(what: &'static str, keys: &BTreeMap<String, PublicKey>, r: &Role) 
     }
     Ok(())
 }
-
 impl Root {
     pub fn parse(bytes: &[u8]) -> Result<Self, IndexError> {
         let r: Self = parse_canonical("root", bytes, MAX_META_BYTES)?;
@@ -460,6 +582,7 @@ impl Index {
             }
         }
         for (id, versions) in &self.packages {
+            crate::qrtz_json::check_name(id).map_err(|e| bad("index", e.to_string()))?;
             for (v, e) in versions {
                 crate::manifest::exact_version("index.packages", v)
                     .map_err(|e| bad("index", e.to_string()))?;
@@ -474,32 +597,49 @@ impl Index {
         self.packages.get(id).and_then(|v| v.get(version))
     }
 
+    pub fn is_revoked(&self, id: &str, version: &str) -> bool {
+        self.revoked
+            .iter()
+            .any(|r| r.package == id && (r.versions.is_empty() || r.versions.iter().any(|v| v == version)))
+    }
+
     /// The highest version of `id` that isn't revoked.
     pub fn latest(&self, id: &str) -> Option<(&str, &PackageEntry)> {
         self.packages
             .get(id)?
             .iter()
-            .filter(|(v, _)| {
-                !self
-                    .revoked
-                    .iter()
-                    .any(|r| r.package == id && (r.versions.is_empty() || r.versions.contains(v)))
-            })
+            .filter(|(v, _)| !self.is_revoked(id, v))
             .max_by_key(|(v, _)| semver::Version::parse(v).ok())
             .map(|(v, e)| (v.as_str(), e))
+    }
+
+    /// Every unrevoked version of `id` matching `req`, highest first.
+    pub fn matching(&self, id: &str, req: &semver::VersionReq) -> Vec<(semver::Version, &PackageEntry)> {
+        let mut v: Vec<_> = self
+            .packages
+            .get(id)
+            .into_iter()
+            .flatten()
+            .filter(|(v, _)| !self.is_revoked(id, v))
+            .filter_map(|(v, e)| semver::Version::parse(v).ok().map(|s| (s, e)))
+            .filter(|(s, _)| req.matches(s))
+            .collect();
+        v.sort_by(|a, b| b.0.cmp(&a.0));
+        v
     }
 }
 
 impl PackageEntry {
-    fn validate(&self, id: &str) -> Result<(), String> {
-        let prefix_ok = match self.kind {
-            PackageKind::Module => crate::MODULE_IDS.contains(&id),
-            PackageKind::Data => id.starts_with("model:"),
-            PackageKind::XpcService => id.starts_with("xpc:"),
-            PackageKind::Shell => id == "shell",
-        };
-        if !prefix_ok {
-            return Err(format!("kind {:?} doesn't match the id", self.kind));
+    pub fn tree(&self) -> Tree {
+        Tree {
+            files: self.files.clone(),
+        }
+    }
+
+    pub fn validate(&self, name: &str) -> Result<(), String> {
+        let want = crate::qrtz_json::kind_of(name).map_err(|e| e.to_string())?;
+        if want != self.kind {
+            return Err(format!("kind {:?} doesn't match the name", self.kind));
         }
         if !crate::manifest::is_team_id(&self.team_id) || !crate::manifest::is_sha256(&self.sha256) {
             return Err("teamId or sha256 malformed".into());
@@ -507,117 +647,61 @@ impl PackageEntry {
         if self.platform != PLATFORM {
             return Err(format!("platform must be {PLATFORM}"));
         }
-        if self.files.is_empty() || self.files.len() > MAX_FILES {
-            return Err("files: 1 to 20000".into());
+        let tree = self.tree();
+        tree.validate()?;
+        if tree.size() != self.size {
+            return Err("size must be the sum of the files".into());
         }
-        let mut paths = std::collections::BTreeSet::new();
-        let mut total = 0u64;
-        for f in &self.files {
-            if !safe_rel(&f.path) || !paths.insert(f.path.as_str()) {
-                return Err(format!("{:?}: unsafe or repeated path", f.path));
-            }
-            if !crate::manifest::is_sha256(&f.sha256) {
-                return Err(format!("{}: sha256", f.path));
-            }
-            if f.size > CHUNK_SIZE {
-                let n = f.size.div_ceil(CHUNK_SIZE) as usize;
-                if f.chunks.len() != n {
-                    return Err(format!("{}: {n} chunks expected", f.path));
-                }
-                for (i, c) in f.chunks.iter().enumerate() {
-                    let want = if i + 1 < n {
-                        CHUNK_SIZE
-                    } else {
-                        f.size - CHUNK_SIZE * (n as u64 - 1)
-                    };
-                    if c.size != want || !crate::manifest::is_sha256(&c.sha256) {
-                        return Err(format!("{}: chunk {i}", f.path));
-                    }
-                }
-            } else if !f.chunks.is_empty() {
-                return Err(format!("{}: chunks only above {CHUNK_SIZE} bytes", f.path));
-            }
-            total = total.checked_add(f.size).ok_or("size overflow")?;
+        if tree.sha256() != self.sha256 {
+            return Err("sha256 must be the sha256 of the tree".into());
         }
-        for p in &paths {
-            let dir = format!("{p}/");
-            if paths
-                .range(dir.as_str()..)
-                .next()
-                .is_some_and(|q| q.starts_with(&dir))
-            {
-                return Err(format!("{p:?} is both a file and a directory"));
-            }
+        if !self
+            .files
+            .iter()
+            .any(|f| f.path == MANIFEST_FILE && f.sha256 == self.manifest_sha256)
+        {
+            return Err("manifestSha256 must be the qrtz.json in files".into());
         }
-        if total != self.size || total > MAX_PACKAGE_BYTES {
-            return Err("size must be the sum of the files, at most 4 GiB".into());
-        }
-        let digest = crate::lock::content_digest(
-            self.files
-                .iter()
-                .map(|f| (f.path.as_str(), f.size, f.sha256.as_str())),
-        );
-        if digest != self.sha256 {
-            return Err("sha256 must be the content digest of files".into());
-        }
-        let code = self.kind == PackageKind::XpcService;
-        if code != self.bundle_id.is_some() || code != self.designated_requirement.is_some() {
-            return Err("bundleId and designatedRequirement only (and always) on xpc-service".into());
+        crate::qrtz_json::check_dependencies(name, self.kind, &self.dependencies)
+            .map_err(|e| e.to_string())?;
+        let code = self.kind.has_code();
+        if code != self.identifier.is_some() || code != self.designated_requirement.is_some() {
+            return Err("identifier and designatedRequirement only (and always) on code".into());
         }
         if code {
-            let name = id.trim_start_matches("xpc:");
-            let b = format!("ai.qrtz.inference.{name}");
-            if self.bundle_id.as_deref() != Some(&b)
+            let id = self.identifier.as_deref().unwrap_or_default();
+            if Some(id.to_owned()) != crate::qrtz_json::identifier_for(name, self.kind)
                 || self.designated_requirement.as_deref()
-                    != Some(&crate::manifest::designated_requirement(&b, &self.team_id))
+                    != Some(&crate::manifest::designated_requirement(id, &self.team_id))
             {
                 return Err(
-                    "xpc-service identity must be the Developer ID requirement for its bundle id".into(),
+                    "identity must be the Developer ID requirement for the package's identifier".into(),
                 );
             }
         }
-        match (self.kind, &self.manifest_sha256) {
-            (PackageKind::Module, Some(h)) => {
-                if !self
-                    .files
-                    .iter()
-                    .any(|f| f.path == MODULE_MANIFEST_FILE && &f.sha256 == h)
-                {
-                    return Err("manifestSha256 must be the module.json in files".into());
-                }
+        if (self.kind == PackageKind::Model) != self.task.is_some() {
+            return Err("task only (and always) on models".into());
+        }
+        if self.kind != PackageKind::Service && !self.models.is_empty() {
+            return Err("models is for services".into());
+        }
+        for m in &self.models {
+            if crate::qrtz_json::kind_of(m).ok() != Some(PackageKind::Model) {
+                return Err(format!("models: {m} is not a model"));
             }
-            (PackageKind::Module, None) => return Err("a module names its manifestSha256".into()),
-            (_, None) if !self.requires.is_empty() => return Err("requires is for modules".into()),
-            (_, Some(_)) => return Err("manifestSha256 is for modules".into()),
-            _ => {}
         }
         Ok(())
     }
 
-    /// Every blob this package is served as, in file order (a blob shared by two files is listed once).
-    pub fn blobs(&self) -> Vec<Chunk> {
-        let mut seen = std::collections::BTreeSet::new();
-        self.files
-            .iter()
-            .flat_map(IndexFile::blobs)
-            .filter(|c| seen.insert(c.sha256.clone()))
-            .collect()
+    /// Every blob this package needs: its tree and each distinct file.
+    pub fn blobs(&self) -> Vec<BlobRef> {
+        let tree_bytes = self.tree().bytes();
+        let mut v = vec![BlobRef {
+            sha256: self.sha256.clone(),
+            size: tree_bytes.len() as u64,
+            mirrors: vec![],
+        }];
+        v.extend(self.tree().blobs());
+        v
     }
-}
-
-/// Split `size` bytes into the chunk sizes the index uses.
-pub fn chunk_sizes(size: u64) -> Vec<u64> {
-    if size <= CHUNK_SIZE {
-        return vec![size];
-    }
-    let n = size.div_ceil(CHUNK_SIZE);
-    (0..n)
-        .map(|i| {
-            if i + 1 < n {
-                CHUNK_SIZE
-            } else {
-                size - CHUNK_SIZE * (n - 1)
-            }
-        })
-        .collect()
 }

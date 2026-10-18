@@ -3589,6 +3589,7 @@ version = "0.2.0"
 dependencies = [
  "async-trait",
  "ed25519-dalek",
+ "futures-util",
  "hex",
  "jsonschema",
  "semver",
@@ -3604,10 +3605,12 @@ dependencies = [
 name = "qrtz-publish"
 version = "0.2.0"
 dependencies = [
+ "async-trait",
  "ed25519-dalek",
  "hex",
  "qrtz-modules",
  "rand 0.8.8",
+ "semver",
  "serde",
  "serde_json",
  "sha2",

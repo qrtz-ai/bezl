@@ -9,10 +9,14 @@
 //! - [`launcher`]: which modules start, and the code checks run before each launch.
 //! - [`ipc`]: the XPC service scaffolding: who may connect to a shared service and per-connection state.
 //! - [`settings`]: each module's own settings, plus the global settings that control all of them.
-//! - [`index`], [`trust`], [`pkg`], [`install`] (ADR 0153): the signed root/timestamp/index served from
-//!   `modules.qrtz.ai` and its mirror, the client's trust state, the `.qrtzpkg` sideload file, and the installer.
-//!   The installer has no network code: bytes come through its `Transport` trait (the shell's HTTPS transport in
-//!   qrtz-app, or a `.qrtzpkg`).
+//! - [`index`], [`trust`], [`pkg`] (ADR 0153): the signed root/timestamp/index served from `modules.qrtz.ai` and
+//!   its mirror, the client's trust state, and the `.qrtzpkg` sideload file.
+//! - The package manager (ADR 0157): [`qrtz_json`] (the manifest in every package: extension, service or model,
+//!   with semver ranges), [`resolve`] (ranges, online only, deduped), [`qrtz_lock`] (the text lockfile), [`store`]
+//!   (the content-addressed store, cloned into place), [`fetch`] (the one fetcher: parallel resumable ranges from
+//!   the hosts and signed mirror URLs), [`models`] (today's model sets as packages) and [`install`] (plan, consent,
+//!   rules, swap; `install`, `remove`, `update`, `prune`). No network code: bytes come through
+//!   [`fetch::Transport`] (the shell's HTTPS transport in qrtz-app, or a `.qrtzpkg`).
 //!
 //! Shared code is never loaded into a module: a dependency with code is a sandboxed XPC service in its own process
 //! (`kind: "xpc-service"`); everything else is read-only data (`kind: "data"`, e.g. a model set). A dylib or
@@ -21,6 +25,7 @@
 //! This crate has no network, no process spawning and no platform code. The macOS bindings (LaunchServices,
 //! `SecStaticCodeCheckValidity`, `NSXPCConnection`) plug in through the traits in [`launcher`] and [`ipc`] in M1.
 pub mod error;
+pub mod fetch;
 pub mod fsutil;
 pub mod index;
 pub mod install;
@@ -28,9 +33,14 @@ pub mod ipc;
 pub mod launcher;
 pub mod lock;
 pub mod manifest;
+pub mod models;
 pub mod pkg;
+pub mod qrtz_json;
+pub mod qrtz_lock;
+pub mod resolve;
 pub mod settings;
 pub mod sideload;
+pub mod store;
 pub mod trust;
 
 pub use error::ModuleError;
@@ -38,6 +48,9 @@ pub use manifest::{Dependency, DependencyKind, ModuleManifest};
 
 /// The modules this shell knows. A manifest with any other id is refused (an allowlist, like ADR 0046's module name).
 pub const MODULE_IDS: &[&str] = &["echo", "nano", "ctrl"];
+/// The extensions this shell knows (ADR 0157 §2). An extension runs inside qrtz's own TCC identity, so the list is
+/// part of the shell: a new extension needs a shell release, never just an index entry.
+pub const EXTENSION_NAMES: &[&str] = &["echo", "nano", "ctrl"];
 
 /// The manifests that ship in this repo (`modules/<id>/module.json`) and the lockfile for the bundled state.
 pub mod bundled {

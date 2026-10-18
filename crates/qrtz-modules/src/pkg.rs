@@ -1,10 +1,12 @@
-//! `.qrtzpkg`, the offline sideload file (ADR 0153 §5): a small mirror of the URL layout in one file, so a
-//! sideload goes through the same verification as a download (Bozniak's rule 7).
+//! `.qrtzpkg`, the offline sideload file (ADR 0153 §5, ADR 0157 §8): a small mirror of the URL layout in one file,
+//! so a sideload goes through the same verification as a download (Bozniak's rule 7).
 //!
 //! ```text
 //! "QRTZPKG1" | toc length (u32 LE) | toc (canonical json) | data
-//! toc = {format: 1, module, version, entries: [{path, offset, size}]}
+//! toc = {format: 2, target: {name, version}, packages: [{name, version}], entries: [{path, offset, size}]}
 //! ```
+//! `packages` is the resolved set the file installs (the target and every dependency, resolved by the publisher
+//! against the index it carries): a sideload installs exactly that set (rule 5), checked against the carried index.
 //! `path` is a layout path (`v1/root/1.root.json`, `v1/timestamp.json(.sig)`, `v1/index/<sha>.json(.sig)`,
 //! `v1/blobs/sha256/<hex>`); offsets are into `data`. Entries are sorted by path, may not overlap, and must lie
 //! inside the file. Nothing in a `.qrtzpkg` is trusted by itself: roots chain to the pinned root, the timestamp
@@ -16,7 +18,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 pub const MAGIC: &[u8; 8] = b"QRTZPKG1";
-pub const FORMAT: u32 = 1;
+pub const FORMAT: u32 = 2;
 pub const MAX_TOC_BYTES: usize = 1024 * 1024;
 pub const EXTENSION: &str = "qrtzpkg";
 
@@ -28,12 +30,19 @@ pub struct Entry {
     pub size: u64,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PkgRef {
+    pub name: String,
+    pub version: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Toc {
     pub format: u32,
-    pub module: String,
-    pub version: String,
+    pub target: PkgRef,
+    pub packages: Vec<PkgRef>,
     pub entries: Vec<Entry>,
 }
 
@@ -65,6 +74,15 @@ impl Qrtzpkg {
         let toc: Toc = parse_canonical("qrtzpkg toc", &toc, MAX_TOC_BYTES)?;
         if toc.format != FORMAT {
             return Err(bad("unsupported format"));
+        }
+        if !toc.packages.contains(&toc.target) {
+            return Err(bad("the target must be in packages"));
+        }
+        let mut names: Vec<&str> = toc.packages.iter().map(|p| p.name.as_str()).collect();
+        names.sort();
+        names.dedup();
+        if names.len() != toc.packages.len() {
+            return Err(bad("one version per package in a file"));
         }
         let data_start = 12 + n as u64;
         let data_len = len - data_start;
@@ -127,6 +145,20 @@ impl Qrtzpkg {
         Ok(true)
     }
 
+    /// `len` bytes at `start` of an entry (the fetcher's range reads).
+    pub fn read_range(&self, p: &str, start: u64, len: u64) -> Result<Option<Vec<u8>>, IndexError> {
+        let Some(e) = self.entry(p) else { return Ok(None) };
+        if start.checked_add(len).is_none_or(|end| end > e.size) || len > 64 * 1024 * 1024 {
+            return Err(bad(format!("{p}: range outside the entry")));
+        }
+        let mut f = File::open(&self.path).map_err(|e| bad(e.to_string()))?;
+        f.seek(SeekFrom::Start(self.data_start + e.offset + start))
+            .map_err(|e| bad(e.to_string()))?;
+        let mut b = vec![0u8; len as usize];
+        f.read_exact(&mut b).map_err(|e| bad(e.to_string()))?;
+        Ok(Some(b))
+    }
+
     /// sha256 of the whole file: what the user's confirmation binds to.
     pub fn sha256(&self) -> Result<String, IndexError> {
         crate::fsutil::sha256_file(&self.path)
@@ -145,7 +177,14 @@ fn private_create(p: &Path) -> std::io::Result<File> {
 
 /// Write a `.qrtzpkg` from `(layout path, source file)` pairs (the publisher's `pack`). Deterministic: entries are
 /// sorted by path, so the same inputs give the same bytes (and the same sha256 for the confirmation).
-pub fn write(dest: &Path, module: &str, version: &str, files: &[(String, PathBuf)]) -> std::io::Result<()> {
+pub fn write(
+    dest: &Path,
+    target: &PkgRef,
+    packages: &[PkgRef],
+    files: &[(String, PathBuf)],
+) -> std::io::Result<()> {
+    let mut packages = packages.to_vec();
+    packages.sort();
     let mut files = files.to_vec();
     files.sort_by(|a, b| a.0.cmp(&b.0));
     files.dedup_by(|a, b| a.0 == b.0);
@@ -165,8 +204,8 @@ pub fn write(dest: &Path, module: &str, version: &str, files: &[(String, PathBuf
     }
     let toc = crate::index::canonical(&Toc {
         format: FORMAT,
-        module: module.into(),
-        version: version.into(),
+        target: target.clone(),
+        packages,
         entries,
     });
     let tmp = dest.with_extension("qrtzpkg.tmp");
