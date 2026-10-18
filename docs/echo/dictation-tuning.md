@@ -772,3 +772,12 @@ runtime. Switching echo off while fn is held used to leave the mic open (no rele
 dictation is cancelled at once and nothing is inserted (`38e1ae0`). On the Mac: hold fn, turn off the "echo (dictation)" switch in
 Settings (modules section) while still holding, and check that the pill and the orange mic dot go away immediately and no
 text appears. The ranked plan above is unchanged; its open items still wait on the helper side or the Mac bench.
+
+## 20. Cycle 46: the module split, reviewed (ADR 0150, N173, N174)
+
+No speed or accuracy change in the default layout: the helper's `EchoController` split (`254078a`) is a faithful
+move. Two requirements for the split layout (`QRTZ_MODULE_HELPERS=split`, off by default, and qrtz-echo does not run
+dictation yet): echo's own bundle needs the system audio grant or the speaker gate goes off silently (N173), and echo
+must be prewarmed after a download or the first press is cold (N174). Both are on the helper side; checks are in
+ADR 0150. Nothing new to test on the Mac in the default layout. The ranked plan above is unchanged.
+
