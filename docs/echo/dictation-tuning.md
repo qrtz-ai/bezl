@@ -81,7 +81,7 @@ Gain is the expected user-visible effect; risk is what could regress. Every item
 | 4    | **Head: warm the mic while the hotkey is armed (or `warmMic` on by default with the 300 ms pre-roll)**, at least for Bluetooth inputs                                                                                                                | Stops first-word clipping. Not measured yet (LibriSpeech clips start with silence); bench `cold-mic-*` gives the size on Jared's Mac                                                                                                                                                                                                                                               | mic indicator stays lit; battery; privacy perception                                                                                                                                                                                                        | bench `cold-mic-150/300` vs `warm-preroll-300`: headWordsLost; log `preroll_ms`                                                                                     |
 | 5    | ~~Cleanup: no "." on short (≤ 3 word) dictations; keep the repeats rule off digits and intentional doubles~~ **Done** in cycle 32 (`cda052c`, ADR 0101), with the dot-spacing fix (N159-N161)                                                        | fewer manual fixes on short replies, search boxes, PINs, domains and file names; 44 hand-written vectors                                                                                                                                                                                                                                                                           | a style change users will notice                                                                                                                                                                                                                            | `echo_score` cleaned vs raw formatted WER and exactAfterCleanup on the short clips (03-yes, chat prompts)                                                           |
 | 6    | Nemotron 1120 ms tier for long dictations                                                                                                                                                                                                            | Punctuation kept on long dictations (FluidAudio #687). Not a WER lever: with a pad that covers its chunk (1280 ms) it scored 3.93 % vs 4.02 % for 560 ms at pad 1120 on Linux (FluidAudio 2.71 → 2.58 %). The 4.35 % at pad 640 was the pad being shorter than one 1120 chunk                                                                                                      | partials every 1.1 s, so the pill feels slower; a separate model set                                                                                                                                                                                        | bench engine `nemotron-1120` (`--extra`): wer, fwer, firstPartial                                                                                                   |
-| 7    | Input normalization for quiet mics, **quiet-mic only** (§9: a mic 20 dB down costs +23 % errors and a causal AGC recovers it all, but the same AGC on a normal mic costs +9 %; ADR 0115)                                                             | robustness on quiet or far mics                                                                                                                                                                                                                                                                                                                                                    | an always-on normaliser hurts normal mics (measured); needs a gated design (gain 1 until the speech level is known to be low) and its own Linux rows first                                                                                                  | `talk latency` `level_p90_dbfs` (§10) decides whether it is needed at all; then `quiet-0.1` vs `quiet-0.1-normalized` and a normal-level clip, both                 |
+| 7    | Input / segment normalisation for quiet mics, **quiet-mic only** (§9 Nemotron; §15 Parakeet, ADR 0127). Always-on per-segment peak **rejected**. Gated peak (peak < 0.1 → 0.9, cap 10×) proposed to Bobs (§12.37) | Parakeet whole-clip is already robust at ×0.1 (+2.4 % relative); gated segment peak recovers ×0.03 (4.15 → 2.94) at zero cost on normal (2.57)                                                                                                                                                                                                                                     | always-on segment peak hurts normal (+11 % errors, 2.57 → 2.85); ×0.01 still ~8 % (VAD over-segments)                                                                                                                                                        | `talk latency` `level_p90_dbfs` (§10); Mac: `echo-bench` quiet/far vs normal, WER + `level_p90_dbfs`; Linux: `seg_eval.py --vad helper --segnorm --seggate 0.1`   |
 | 8    | Decode-time vocabulary biasing                                                                                                                                                                                                                       | names and jargon right the first time                                                                                                                                                                                                                                                                                                                                              | needs a different model. Nemotron 3.5 multilingual scored 6.59 % on English (§6, auto language) and 5.72 % with English forced (§9, still +41 % errors vs the shipped model), so CTC boosting (Unified/TDT) is the likelier route, plus a signed conversion | later; measure on a names clip set                                                                                                                                  |
 | 9    | **Re-punctuate each pause cut from a short window decoded across it** (3 s before, 2 s after, background; formatting, not WER; §12, ADR 0120). **Landed off by default** (`faff542`, `QRTZ_ECHO_CUT_WINDOW=on`); checked as landed in §13 (ADR 0121) | Measured (§12): false sentence ends at cuts 99 → 24 against the whole-clip decode, formatted diff 7.46 → 6.10 %; with the cleanup rule already landed (89b97ab) the talk side alone is 99 → 58. As landed, through the cleanup (§13): 58 → 23, formatted diff 7.34 → 6.23 %                                                                                                        | one extra ~5.6 s decode per pause cut in the background (252 ms box CPU p50, tens of ms on ANE); 22 vs 5 sentence ends lost against the whole clip                                                                                                          | Linux `seg/helper_win.py` (as landed, §13); Mac: `echo-bench.sh --clips` on Jared's long clips, `ends vs whole` of `parakeet-segmented-win` vs `parakeet-segmented` |
 
@@ -600,3 +600,49 @@ in the middle of a sentence) and gains only 0.16 pp. The set's pauses between ut
 gate (§12). The baseline matches §13's "+ windows on cap cuts" row exactly, so the replay is right about the
 helper. On the Mac the `lost` column of `parakeet-segmented-win` in `echo-bench.sh --clips` tells whether the lost
 ends matter on Jared's speech.
+
+## 15. Cycle 41: helper VAD on Linux; always-on segment peak rejected (ADR 0127, N168)
+
+`linux-crosscheck/seg/helper_seg.py` ports the helper's `PauseSegmenter` (vadMinRms 0.0002, minSpeechMs 200,
+smoothed cap search, pad counted in the cap). `seg_eval.py run --vad helper` uses it; `--vad sketch` keeps the
+earlier tables. Quiet-mic and per-segment peak rows below all use the helper VAD.
+
+Whole-clip Parakeet TDT v2 int8 (300 LibriSpeech) is far more level-robust than Nemotron (§9: quiet ×0.1 was
++23 % errors). Quiet ×0.1 is only +2.4 % relative (2.86 → 2.93). Peak recovers quiet fully and does not hurt
+normal on the whole clip:
+
+| name         | scale | norm             | werAll | tailLost | headLost |
+| ------------ | ----: | ---------------- | -----: | -------: | -------: |
+| pk-base      |     — | —                |   2.86 |      4.7 |      2.0 |
+| pk-peak      |     — | peak→0.9, cap 10 |   2.81 |      4.7 |      2.0 |
+| pk-agc       |     — | agc              |   2.82 |      5.0 |      3.3 |
+| pk-q01       |   ×0.1 | —               |   2.93 |      4.7 |      1.7 |
+| pk-q01-peak  |   ×0.1 | peak            |   2.79 |      4.7 |      1.7 |
+| pk-q01-agc   |   ×0.1 | agc             |   2.74 |      4.3 |      1.7 |
+| pk-q003      |  ×0.03 | —               |   3.12 |      5.3 |      3.3 |
+| pk-q003-peak |  ×0.03 | peak            |   2.79 |      4.3 |      2.7 |
+
+Segmented (40 long dictations, helper VAD, s300-c15). Always-on per-segment peak to 0.9 hurts normal
+(2.57 → 2.85 / +11 % errors) and is **rejected**. Gating on `peak < 0.1` leaves normal alone and recovers
+×0.03 (4.15 → 2.94). At ×0.01 the VAD over-segments (cuts 286 → 407) and WER stays ~8 % even with peak — a
+floor, not a gain bug. Candidate for Bobs (§12.37); rank 7 stays quiet-mic-only via `level_p90_dbfs`.
+
+| name             | scale | segnorm  | gate      |  WER | errors |
+| ---------------- | ----: | -------- | --------- | ---: | -----: |
+| c41-seg          |     — | no       | —         | 2.57 |    119 |
+| c41-seg-pk       |     — | yes →0.9 | always    | 2.85 |    132 |
+| c41-seg-g01      |     — | yes →0.9 | peak <0.1 | 2.57 |    119 |
+| c41-whole        |     — | no       | —         | 2.96 |    137 |
+| c41-q01-seg      |   ×0.1 | no      | —         | 2.94 |    136 |
+| c41-q01-seg-pk   |   ×0.1 | yes     | always    | 2.72 |    126 |
+| c41-q01-seg-g01  |   ×0.1 | yes     | <0.1      | 2.81 |    130 |
+| c41-q003-seg     |  ×0.03 | no      | —         | 4.15 |    192 |
+| c41-q003-seg-pk  |  ×0.03 | yes     | always    | 2.92 |    135 |
+| c41-q003-seg-g01 |  ×0.03 | yes     | <0.1      | 2.94 |    136 |
+| c41-q001-seg     |  ×0.01 | no      | —         |14.36 |    665 |
+| c41-q001-seg-pk  |  ×0.01 | yes     | always    | 8.25 |    382 |
+| c41-q001-seg-g01 |  ×0.01 | yes     | <0.1      | 8.29 |    384 |
+
+On the Mac: record quiet/far mic clips (and matching normal-level ones) into `~/qrtz-echo-bench/my-clips`, run
+`bash native/qrtz-helper/scripts/echo-bench.sh --clips ~/qrtz-echo-bench/my-clips`, and compare WER plus the
+`talk latency` `level_p90_dbfs` of the quiet set against the normal set before turning a gated peak on.
