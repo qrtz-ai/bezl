@@ -64,3 +64,24 @@ with a 95 % paired bootstrap interval over utterances, so a change can be told f
   final text, i.e. pad + finish + decode, the release-side compute. Offline: the batch decode of the whole utterance.
   CPU, contended (the thread count is in the row's note).
 - `rtf`: total compute / audio duration.
+
+## Long dictations, segmented at pauses (ADR 0118, tuning §11)
+
+`seg/` holds the eval behind echo's Parakeet segmenting rule. `seg_eval.py build` makes 40 long dictations
+(20–60 s, seed 11, half test-clean, half test-other): consecutive utterances of one LibriSpeech chapter (one
+speaker), each trimmed to its speech ± 60 ms, joined with gaps drawn from 0.25–1.1 s, 0.3 s of lead and 0.05 s
+after the last word (a quick release). `seg_eval.py run` segments each one with the streaming silence detector the
+helper uses (`PauseSegmenter`), decodes every segment with Parakeet TDT v2 (sherpa-onnx offline, 640 ms pad on
+every segment), stitches the words, and scores WER, last-word misses, errors within 0.5 s of a cut, and the
+release-time work (seconds of audio decoded after the release, and their CPU ms with a serial background decoder).
+Decodes are cached per exact sample range in `seg/cache.json`, so configs sharing segments decode once.
+
+```bash
+mkdir -p seg && cp <repo>/docs/echo/linux-crosscheck/seg/* seg/
+venv/bin/python seg/seg_eval.py build     # -> seg/dictations.json, seg/wav/
+bash seg/grid.sh                          # every row of §11; seg/table.py prints the table
+```
+
+Flags: `--whole`, `--silence MS`, `--cap S`, `--overlap S`, `--ovmode all|cap` (overlap on every cut, or after cap
+cuts only), `--stitch mid|dedupe`, `--retry` (re-decode a blank segment from its cut, without the overlap),
+`--pause2 MS --after S` (a shorter pause once the segment is that long), `--minseg S`, `--pad S`, `--nosave` (don't write the cache, for re-scoring next to a running job).

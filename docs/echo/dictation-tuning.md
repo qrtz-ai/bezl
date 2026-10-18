@@ -5,6 +5,8 @@ Status: phase 1 (measure). Nothing in this document changes runtime behaviour; t
 this doc.
 Cycle 32: §6 has the Linux numbers and §4 is re-ranked from them (ADR 0102); plan item 4, the cleanup, is done
 (ADR 0101).
+2026-10-18: echo dictates with Parakeet TDT v2, segmented at pauses; nano keeps Nemotron streaming (ADR 0118). §11
+has the long-dictation eval, the rule and the helper spec. §1-§10 describe the Nemotron path as it was.
 
 ## 1. The path, key down to text
 
@@ -365,3 +367,130 @@ How to read Jared's lines (`grep "talk latency" ~/Library/Logs/qrtz/qrtz.log`):
   of a dictation is there.
 - LibriSpeech is read speech recorded close; real dictation pauses more, so expect a lower p10 than the table.
   Compare mics with each other rather than with the table's exact numbers.
+
+## 11. Echo on Parakeet: segmenting long dictations (ADR 0118)
+
+Decision (Jared, 2026-10-18): echo's recogniser is Parakeet TDT v2 English, batch, resident from app start,
+segmented while the key is held. The pill shows no text, so nothing needs a live preview. Nano keeps Nemotron
+streaming (it loads only for a recording); Apple SpeechAnalyzer is echo's fallback. Short clips (§6): Parakeet
+3.05 % WER vs Nemotron 560 ms + pad 4.06 %, last word missed 5.0 %, CPU RTF 0.077. The helper side landed in 90ae8ba (Bobs, `Segmented.swift`); his
+own run of it is in §5 (2.55 % segmented vs 2.83 % whole clip). This section is the independent check of that rule.
+
+### The eval (Linux, `linux-crosscheck/seg/`)
+
+40 long dictations, 20–60 s (mean 39 s, 4631 words), half test-clean and half test-other: consecutive utterances
+of one LibriSpeech chapter (one speaker), trimmed to speech ± 60 ms, natural gaps of 0.25–1.1 s, 0.05 s after the
+last word (a quick release). Each config segments with the streaming detector below, decodes every segment with
+Parakeet TDT v2 int8 (sherpa-onnx offline, 640 ms pad on every segment), and joins the words. "Errors ≤ 0.5 s from
+a cut" counts alignment errors whose word lies within 0.5 s of a cut (for `whole`, of the chosen rule's cuts).
+"Audio decoded after release" is the last segment plus its pad: the only decode left at the release, since the
+background decoder never had a queue (queued at release 0 in every row with a cap ≥ 8 s). Release CPU in bold was
+re-timed back to back on a quiet box (sherpa-onnx, 6 threads, RTF 0.05); `~` rows are their audio at that RTF.
+The Mac's Neural Engine is several times faster; only audio seconds and ratios carry over.
+
+| Row                  | Config                                                                        |    WER | errors | last word missed | segments / cap cuts | errors ≤ 0.5 s from a cut | audio decoded after release p50 / p90 / max | release CPU ms p50 / p90 / max |
+| -------------------- | ----------------------------------------------------------------------------- | -----: | -----: | ---------------: | ------------------: | ------------------------: | ------------------------------------------: | -----------------------------: |
+| `whole`              | whole clip                                                                    | 2.96 % |    137 |            7.5 % |           1.0 / 0.0 |             15 / 299 cuts |                        43.2 / 60.3 / 65.7 s |         **2026 / 3206 / 5351** |
+| `s300-c15-o0`        | **chosen** (= Bobs's defaults): 300 ms, 15 s cap, min segment 2 s, no overlap | 2.74 % |    127 |           10.0 % |           8.5 / 0.3 |             16 / 299 cuts |                         5.6 / 11.2 / 14.6 s |            **275 / 550 / 619** |
+| `s300-c15-o0-min0`   | same, no minimum segment                                                      | 2.92 % |    135 |           10.0 % |          15.9 / 0.3 |             32 / 597 cuts |                         4.6 / 10.6 / 14.6 s |               ~230 / 530 / 730 |
+| `s200-c15-o0`        | 200 ms pause                                                                  | 2.83 % |    131 |           12.5 % |          9.3 / 0.23 |             20 / 332 cuts |                         4.7 / 10.8 / 14.6 s |               ~235 / 540 / 730 |
+| `s500-c15-o0`        | 500 ms pause                                                                  | 2.66 % |    123 |           12.5 % |          6.6 / 0.57 |              8 / 223 cuts |                         7.0 / 13.0 / 14.7 s |               ~350 / 650 / 735 |
+| `s300-p200a6-c15-o0` | 300 ms, 200 ms once the segment is 6 s                                        | 2.79 % |    129 |           10.0 % |          8.7 / 0.25 |             16 / 307 cuts |                         5.1 / 11.2 / 14.6 s |               ~255 / 560 / 730 |
+| `s300-p150a6-c15-o0` | 300 ms, 150 ms once the segment is 6 s                                        | 2.87 % |    133 |           12.5 % |          8.8 / 0.25 |             17 / 314 cuts |                          5.1 / 9.8 / 14.6 s |               ~255 / 490 / 730 |
+| `s300-c10-o0`        | 10 s cap                                                                      | 2.87 % |    133 |           12.5 % |          9.1 / 0.95 |             20 / 323 cuts |                           4.6 / 8.1 / 9.7 s |            **234 / 386 / 448** |
+| `s300-c8-o0`         | 8 s cap                                                                       | 2.96 % |    137 |           10.0 % |          9.8 / 1.85 |             20 / 352 cuts |                           4.5 / 7.7 / 8.1 s |            **211 / 346 / 534** |
+| `s300-p200a4-c10-o0` | 10 s cap, 200 ms once 4 s                                                     | 2.92 % |    135 |           12.5 % |          9.4 / 0.72 |             20 / 336 cuts |                           4.7 / 8.2 / 9.8 s |               ~235 / 410 / 490 |
+| `s300-c20-o0`        | 20 s cap                                                                      | 2.66 % |    123 |           10.0 % |          8.2 / 0.05 |             14 / 289 cuts |                         5.3 / 12.9 / 17.3 s |               ~265 / 645 / 865 |
+| `s300-c15-o0.5`      | 0.5 s overlap on every cut                                                    | 5.10 % |    236 |           15.0 % |           8.5 / 0.3 |             62 / 299 cuts |                         6.1 / 11.7 / 15.1 s |               ~305 / 585 / 755 |
+| `s300-c15-o1`        | 1 s overlap on every cut                                                      | 6.07 % |    281 |           12.5 % |           8.5 / 0.3 |             13 / 299 cuts |                         6.6 / 12.2 / 15.6 s |               ~330 / 610 / 780 |
+| `s300-c15-o0.5r`     | 0.5 s overlap, blank re-decoded from the cut                                  | 2.98 % |    138 |           10.0 % |           8.5 / 0.3 |             18 / 299 cuts |                         6.1 / 11.7 / 15.1 s |               ~305 / 585 / 755 |
+| `s300-c15-o1r`       | 1 s overlap, blank re-decoded                                                 | 3.99 % |    185 |            7.5 % |           8.5 / 0.3 |             13 / 299 cuts |                         6.6 / 12.2 / 15.6 s |               ~330 / 610 / 780 |
+| `s300-c15-o0.5cap`   | 0.5 s overlap after cap cuts only                                             | 3.07 % |    142 |           10.0 % |           8.5 / 0.3 |             16 / 299 cuts |                         5.6 / 11.6 / 14.6 s |               ~280 / 580 / 730 |
+| `s300-c15-o1cap`     | 1 s overlap after cap cuts only                                               | 2.81 % |    130 |           10.0 % |           8.5 / 0.3 |             14 / 299 cuts |                         5.6 / 12.1 / 14.6 s |               ~280 / 605 / 730 |
+| `s200-c15-o0.5`      | 200 ms, 0.5 s overlap                                                         | 6.00 % |    278 |           15.0 % |          9.3 / 0.23 |             91 / 332 cuts |                         5.2 / 11.3 / 15.1 s |               ~260 / 565 / 755 |
+| `s500-c15-o0.5`      | 500 ms, 0.5 s overlap                                                         | 3.80 % |    176 |           10.0 % |          6.6 / 0.57 |             14 / 223 cuts |                         7.5 / 13.5 / 15.2 s |               ~375 / 675 / 760 |
+| `s300-c10-o0.5`      | 10 s cap, 0.5 s overlap                                                       | 5.23 % |    242 |           17.5 % |          9.1 / 0.95 |             77 / 323 cuts |                          5.1 / 8.6 / 10.2 s |               ~255 / 430 / 510 |
+| `s300-c20-o0.5`      | 20 s cap, 0.5 s overlap                                                       | 4.62 % |    214 |           15.0 % |          8.2 / 0.05 |             60 / 289 cuts |                         5.8 / 13.4 / 17.8 s |               ~290 / 670 / 890 |
+| `s300-c10-o0.5cap`   | 10 s cap, 0.5 s after cap cuts                                                | 3.24 % |    150 |           12.5 % |          9.1 / 0.95 |             32 / 323 cuts |                           4.8 / 8.1 / 9.7 s |               ~240 / 405 / 485 |
+| `s300-c6-o0`         | stress: 6 s cap, no overlap                                                   | 3.58 % |    166 |           12.5 % |         11.2 / 3.42 |             37 / 409 cuts |                           3.5 / 5.9 / 6.6 s |               ~175 / 295 / 330 |
+| `s300-c6-o0.5cap`    | stress: 6 s cap, 0.5 s after cap cuts                                         | 4.28 % |    198 |           15.0 % |         11.2 / 3.42 |             50 / 409 cuts |                           4.0 / 5.9 / 7.1 s |               ~200 / 295 / 355 |
+| `s300-c6-o1cap`      | stress: 6 s cap, 1 s after cap cuts                                           | 4.23 % |    196 |           12.5 % |         11.2 / 3.42 |             27 / 409 cuts |                           4.4 / 6.0 / 7.6 s |               ~220 / 300 / 380 |
+
+Reading it:
+
+- **Segmenting costs no accuracy.** The chosen rule is 2.74 % vs 2.96 % whole-clip (127 vs 137 errors; the
+  difference is noise either way). Errors near cuts are the same as the whole clip has at those places (16 vs 15).
+- **It bounds the release.** The release decodes 5.6 s of audio at p50 and never more than one segment
+  (14.6 s max) instead of the whole dictation (43.2 s p50, 65.7 s max): 275 ms instead of 2026 ms of box CPU at
+  p50, 619 ms instead of 5351 ms worst.
+- **The p90 tail (11 s of audio) is the long sentences.** A stretch with no 300 ms pause runs to the cap. Shortening
+  the pause once a segment is long barely moves it (200 ms after 6 s: p90 11.2 s, 2.79 %; 150 ms: 9.8 s, 2.87 %).
+  Only the cap does: 10 s gives p90 8.1 s (2.87 %), 8 s gives 7.7 s (2.96 %, the whole clip's), each a few errors
+  worse as cap cuts land mid-sentence (0.95 and 1.85 per dictation). The p90 tail costs 550 ms of box CPU against
+  386 / 346 ms at the 10 / 8 s caps, and tens of ms on the Neural Engine, so the cap stays at 15 s.
+- **No overlap.** An overlap reaching back across a cut into the previous word makes things worse everywhere: 5.10 %
+  (0.5 s) and 6.07 % (1 s) on every cut; 3.07 % / 2.81 % on cap cuts only; with a 6 s cap forcing 3.4 cap cuts per
+  dictation 4.28 % / 4.23 % vs 3.58 % without. Two causes, both seen in the decodes: a segment that starts inside a
+  word is often decoded blank by TDT (15 of ~340 segments at 0.5 s, 17 at 1 s, none without overlap), and the cut
+  word is heard twice (TDT stamps it late, past the stitch point). Re-decoding a blank from its cut recovers most
+  of it (2.98 %), still not below no overlap. Pause cuts land in silence and cap cuts at the quietest frame, so
+  there is no word to recover.
+- **300 ms, 15 s cap, 2 s minimum.** 200 ms cuts mid-phrase (2.83 %, 20 errors near cuts); 500 ms is as good
+  (2.66 %) but leaves longer tails (p50 7.0 s) and twice the cap cuts; a 10 s cap triples the cap cuts (2.87 %);
+  a 20 s cap breaks Parakeet's 15 s window (tail max 17.3 s). Without the 2 s minimum segment the dictation is cut
+  twice as often (15.9 segments) for 2.92 %.
+- Last-word misses (7.5–12.5 %) differ by one or two dictations of 40 (2.5 % each): not significant.
+
+### The rule (helper spec for Bobs; `QrtzHelperCore/Segmented.swift`)
+
+`SegmentRule` on main (90ae8ba) matches this; the eval confirms it independently.
+
+1. **Detector**, 16 kHz, 20 ms frames (320 samples), frame RMS `r`. Noise floor `nf` starts at the first frame's
+   RMS; `nf = 0.9·nf + 0.1·r` when `r < nf`, otherwise `nf × 1.002`. Speech level `sp` starts at 0.02. A frame is
+   silent when `r < max(2.5·nf, 0.06·sp, 0.001)` (`vadMarginDb` 8, `vadSpeechRelDb` −24 and a 0.001 floor
+   are the same in dB); a non-silent frame updates `sp = 0.95·sp + 0.05·r`.
+2. **Pause cut:** when the silence run reaches 300 ms (15 frames) and the open segment is at least **2 s** long,
+   cut in the middle of the run so far, `(i + 1 − 15/2) × 320`, and start the next segment there (`minSegmentMs`
+   2000; without it 2.92 % vs 2.74 %). `minSpeechMs` 200 is fine on top. The helper's VAD floor is 0.0002 RMS; the
+   eval's gaps are digital silence, so the floor makes no difference here.
+3. **Cap cut:** a segment plus its pad never exceeds 15 s (your cap counts the pad: 14.36 s of audio). At the cap,
+   cut at the quietest frame of the last 1.5–2 s (yours: the latest quietest 100 ms of 1.5 s; the eval used the
+   quietest 20 ms frame of 2 s, and the cap rarely fires: 0.3 times per dictation).
+4. **Overlap 0** on every cut (`overlapMs` 0, your default). With an override set, re-decode a segment once from its
+   cut, without the overlap, when its decode is blank but it had ≥ 300 ms of speech.
+5. **Pad 640 ms of zeros after every segment**, the background ones and the last (your `segmentPadMs` 640; the
+   release pad goes on the last segment). The end of a background segment needs the same end context as the
+   release. (`helper-protocol.md` says the pad goes on the last segment only; the code pads every one, as it should.)
+6. **Stitching:** with no overlap the segments' words are appended in order. With an overlap `ov` at a cut `c`, keep
+   the earlier segment's words starting before `c − ov/2` and the later one's from there (word start times), then
+   drop the later segment's first word when it repeats or extends the earlier one's last (your `WordStitcher`).
+7. **Background decoder:** one serial chain; a segment is enqueued when it is cut and has speech. At the release, wait
+   for the chain, then decode the last segment (skip it when it has no speech). On the deadline, answer with the
+   stitched segments decoded so far and set `final_timed_out`.
+8. **Release deadline, `SegmentedTail.budgetMs(audioMs:)`**: `tailMs + drainLimitMs(queuedMs: 0) + min(1500 +
+   (min(audio, cap − pad) + overlap + pad + min(max(0, audio − (cap − pad)), cap − pad)) × 100 / 1000,
+   max(1500, maxWaitMs − drainLimitMs(queuedMs: 0)))`, i.e. the last segment and at most one more still decoding.
+   qrtz-talk's `HelperTail::segmented_budget_ms` is this formula (N130: talk's wait is it + pad + slack). **Open on
+   the helper:** its release deadline is still `DictationTail.budgetMs(audioMs:queuedMs:)`, the streaming formula
+   (about 21.5 s for a long dictation), so talk may now go ahead before the helper gives up on a hung decode. The
+   segmented recogniser should take this formula as its deadline so the two stay equal. `tests/hardening27.rs` reads `SegmentRule`'s
+   `capMs`, `overlapMs` and `segmentPadMs` defaults from `Segmented.swift` once it is on main.
+9. **Wire and log:** `dictation.stopped` carries `asr`, `segments` and `tailDecodeMs` (your fields, in
+   `protocol.ts`/`contracts/` now). The `echo timing` line carries `segments=`, `bg_segments=`, `cap_cuts=`,
+   `tail_decode_ms=` and `backlog_wait_ms=` (yours). No text in either.
+
+### qrtz-talk (this cycle)
+
+Once this helper process has answered a dictation with `segments`, talk's stop wait is the segmented budget plus
+pad and slack: it stops growing at two segments of audio, 6.9 s for a 60 s dictation (the streaming bound was
+23.7 s) and 4.6 s for 5 s (was 19.5 s). The first dictation after a helper start, or after a stop without
+`segments` (a fallback recogniser), keeps the streaming bound. The `talk latency` line adds `asr=`, `segments=` and
+`tail_decode_ms=`. Recordings (nano) are untouched. Tests: `crates/qrtz-talk/tests/segmented_tail.rs`,
+`hardening27.rs::the_segmented_copy_matches_the_helper_segment_rule`.
+
+### Bench on the Mac
+
+`echo-bench` engines `parakeet-seg-<pause>-<cap>[-<overlap>]` (Bobs's `EchoBench.swift`): run
+`parakeet-seg-300-15` (the rule), `parakeet-seg-500-15` and the whole clip on Jared's own long dictations
+(`echo-clips.tsv`). The Mac numbers that matter are `tail_decode_ms` (the release decode, expected well under
+the box's 275 ms p50) and WER against the whole clip.

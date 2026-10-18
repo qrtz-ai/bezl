@@ -146,3 +146,26 @@ async fn a_helper_that_never_answers_still_ends_the_dictation_inside_the_bound()
     until(|| !r.view().active(), bound + t.insert + 2000).await;
     assert_eq!(r.svc.history().len(), 1, "what was shown is kept");
 }
+
+/// ADR 0118: the segmented copy (`HelperTail::segment_*`) follows the helper's `SegmentRule` defaults
+/// (`QrtzHelperCore/Segmented.swift`, Bobs) once that file is in the tree: the cap counts the segment pad, which is
+/// the release pad, and the default overlap is the one talk budgets. Before it lands, only the host-side numbers
+/// are pinned (the rule chosen in docs/echo/dictation-tuning.md §11).
+#[test]
+fn the_segmented_copy_matches_the_helper_segment_rule() {
+    let t = HelperTail::default();
+    assert_eq!(
+        (t.segment_cap_ms, t.segment_overlap_ms),
+        (15_000, SEGMENT_OVERLAP_MS)
+    );
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../native/qrtz-helper/Sources/QrtzHelperCore/Segmented.swift");
+    let Ok(src) = std::fs::read_to_string(path) else {
+        return;
+    };
+    let init = &src[src.find("public init(pauseMs:").expect("SegmentRule.init")..];
+    let init = &init[..init.find('{').unwrap()];
+    assert_eq!(swift_default(init, "capMs"), t.segment_cap_ms);
+    assert_eq!(swift_default(init, "overlapMs"), t.segment_overlap_ms);
+    assert_eq!(swift_default(init, "segmentPadMs"), t.pad_ms);
+}

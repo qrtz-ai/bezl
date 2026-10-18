@@ -22,8 +22,8 @@ pub use contract::{
 /// The shared speech seam talk consumes (crates/qrtz-speech, ADR 0046).
 pub use qrtz_speech;
 pub use service::{
-    Clipboard, Clock, HelperSink, HelperTail, IdSource, RandomIds, SystemClock, TalkDeps, TalkEvents,
-    TalkService, Timeouts, MSG_LATE_FINAL,
+    AsrInfo, Clipboard, Clock, HelperSink, HelperTail, IdSource, RandomIds, SystemClock, TalkDeps,
+    TalkEvents, TalkService, Timeouts, MSG_LATE_FINAL, SEGMENT_OVERLAP_MS,
 };
 pub use speech::{HelperAsrSpeech, TalkValidator};
 pub use store::{FsIo, StoreIo};

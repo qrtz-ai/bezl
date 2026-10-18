@@ -155,6 +155,15 @@ impl Timeouts {
             None => scaled,
         }
     }
+    /// ADR 0118: the stop wait of a dictation on a segmented (batch) recogniser, which decoded what it cut during
+    /// the hold: the helper's segmented worst case, never below `stopped`. No per-second-of-dictation term past one
+    /// segment. Without a helper tail (test rigs) it's [`Timeouts::stopped_for`].
+    pub fn stopped_for_segmented(&self, audio_ms: f64) -> u64 {
+        match &self.helper_tail {
+            Some(t) => t.segmented_host_wait_ms(audio_ms).max(self.stopped),
+            None => self.stopped_for(audio_ms),
+        }
+    }
 }
 
 /// N130 (ADR 0084): the helper's `DictationTail` defaults and formulas (`QrtzHelperCore/Dictation.swift`; held equal
@@ -177,6 +186,47 @@ pub struct HelperTail {
     pub arm_max_ms: u64,
     /// Host-side slack on top: the pad's own append on a slow recogniser, the line's trip and scheduling.
     pub slack_ms: u64,
+    /// ADR 0118 (`SegmentedTail` in the helper): a segmented (batch) recogniser decodes finished segments during
+    /// the hold and only the open last segment after the release, read `segment_overlap_ms` back before its cut,
+    /// with `pad_ms` after.
+    pub segment_overlap_ms: u64,
+    /// The cap of one segment, its pad included (the batch model's 15 s window): neither the release's last segment nor a
+    /// segment still decoding at the release is longer than `segment_cap_ms - pad_ms` of audio.
+    pub segment_cap_ms: u64,
+    /// The release decode's floor, and its allowance per second of audio still to decode.
+    pub segment_decode_floor_ms: u64,
+    pub segment_decode_ms_per_audio_s: u64,
+}
+
+/// ADR 0118: what `dictation.stopped` says about the recogniser that heard the dictation (all optional on the
+/// wire): its id, and for a segmented recogniser the segments decoded and the release's tail decode (ms).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct AsrInfo {
+    /// The recogniser's id, as the helper names it; logged, never text. Capped at 48 chars.
+    pub asr: String,
+    pub segments: Option<u64>,
+    pub tail_decode_ms: Option<f64>,
+}
+
+impl AsrInfo {
+    /// From a `dictation.stopped` line; `None` without an `asr` (an older helper, or no recogniser ran).
+    pub fn from_stopped(m: &Value) -> Option<Self> {
+        let asr: String = m["asr"]
+            .as_str()
+            .filter(|a| !a.is_empty())?
+            .chars()
+            .take(48)
+            .collect();
+        Some(AsrInfo {
+            asr,
+            segments: m["segments"].as_u64(),
+            tail_decode_ms: m["tailDecodeMs"].as_f64().filter(|v| v.is_finite() && *v >= 0.0),
+        })
+    }
+    /// A segmented recogniser (it reported segments).
+    pub fn segmented(&self) -> bool {
+        self.segments.is_some()
+    }
 }
 
 impl Default for HelperTail {
@@ -189,6 +239,10 @@ impl Default for HelperTail {
             max_wait_ms: 20_000,
             arm_max_ms: 10_000,
             slack_ms: 1500,
+            segment_overlap_ms: SEGMENT_OVERLAP_MS,
+            segment_cap_ms: 15_000,
+            segment_decode_floor_ms: 1500,
+            segment_decode_ms_per_audio_s: 100,
         }
     }
 }
@@ -226,7 +280,46 @@ impl HelperTail {
             .saturating_add(self.pad_ms)
             .saturating_add(self.slack_ms)
     }
+    /// ADR 0118, `SegmentedTail.budgetMs(audioMs:)`: the segmented helper's release budget for a dictation of
+    /// `audio_ms`. Tail, the mic drain (nothing queued: a batch recogniser takes no audio during the release), then
+    /// the decode of the last segment (at most one segment: `segment_cap_ms - pad_ms`) with its overlap and the
+    /// pad, plus at most one more segment still decoding in the background, at `segment_decode_ms_per_audio_s`,
+    /// never below the floor and within `max_wait_ms` (the cap is kept). Unlike [`HelperTail::budget_ms`] it stops
+    /// growing past two segments of audio.
+    pub fn segmented_budget_ms(&self, audio_ms: u64) -> u64 {
+        let span = self.segment_cap_ms.saturating_sub(self.pad_ms).max(1);
+        let last = audio_ms.min(span);
+        let queued = audio_ms.saturating_sub(last).min(span);
+        let work = last
+            .saturating_add(self.segment_overlap_ms)
+            .saturating_add(self.pad_ms)
+            .saturating_add(queued);
+        let want = self
+            .segment_decode_floor_ms
+            .saturating_add(work.saturating_mul(self.segment_decode_ms_per_audio_s) / 1000);
+        let drain = self.drain_limit_ms(0);
+        let left = self.max_wait_ms.saturating_sub(drain);
+        self.tail_ms
+            .saturating_add(drain)
+            .saturating_add(want.min(self.segment_decode_floor_ms.max(left)))
+    }
+    /// The host's wait for a segmented dictation of `audio_ms`: the helper's segmented budget, plus the pad and
+    /// `slack_ms`.
+    pub fn segmented_host_wait_ms(&self, audio_ms: f64) -> u64 {
+        let a = if audio_ms.is_finite() {
+            audio_ms.max(0.0).ceil() as u64
+        } else {
+            0
+        };
+        self.segmented_budget_ms(a)
+            .saturating_add(self.pad_ms)
+            .saturating_add(self.slack_ms)
+    }
 }
+
+/// ADR 0118: segments don't overlap (docs/echo/dictation-tuning.md §11: every cut lands in silence, and a segment
+/// that starts inside a word is often decoded blank).
+pub const SEGMENT_OVERLAP_MS: u64 = 0;
 
 /// N124: a dictation whose `dictation.stopped` didn't come within [`Timeouts::stopped_for`]. It went ahead with what
 /// the recogniser had shown; the helper's real final may still come, and is then kept, never dropped (ADR 0081).
@@ -310,6 +403,11 @@ struct Inner {
     head_ms: f64,
     /// ADR 0112: how loud the mic was while this dictation listened (`dictation.level`), for the latency line.
     level: crate::level::LevelMeter,
+    /// ADR 0118: this helper process's last answered dictation ran on a segmented recogniser (its stop wait then
+    /// follows the last segment, not the whole dictation); cleared by a new helper process. And this dictation's
+    /// recogniser.
+    segmented_helper: bool,
+    asr: Option<AsrInfo>,
     first_partial: Option<f64>,
     waiters: HashMap<String, oneshot::Sender<Option<Value>>>,
     attempt: Option<Attempt>,
@@ -371,6 +469,8 @@ impl TalkService {
                 press_at: 0.0,
                 head_ms: 0.0,
                 level: Default::default(),
+                segmented_helper: false,
+                asr: None,
                 first_partial: None,
                 waiters: HashMap::new(),
                 attempt: None,
@@ -570,6 +670,8 @@ impl TalkService {
                     g.hellos += 1;
                     // N124: a new helper process sends no final for the old one's dictations.
                     g.late.clear();
+                    // ADR 0118: nor has it said what its recogniser is.
+                    g.segmented_helper = false;
                     g.dictation_helper < g.hellos
                 };
                 if lost {
@@ -755,6 +857,8 @@ impl TalkService {
     /// what was heard, release every waiter for its id. Idempotent; a no-op when idle.
     pub fn helper_lost(&self, why: &str) {
         let mut g = self.lock();
+        // ADR 0118: the next process says again what its recogniser is.
+        g.segmented_helper = false;
         // No insert result will come from a helper that is gone: release every outstanding insert, including an
         // older dictation's still inserting behind a newer one (N110); its words go to the clipboard.
         let inserts: Vec<String> = g
@@ -1003,6 +1107,7 @@ impl TalkService {
             };
             g.first_partial = None;
             g.level = Default::default();
+            g.asr = None;
             g.view = TalkView {
                 phase: TalkPhase::Listening,
                 id: Some(id.clone()),
@@ -1089,13 +1194,18 @@ impl TalkService {
         // length; only past that bound does the dictation go ahead on what was shown so far.
         let (helper, wait_ms) = {
             let g = self.lock();
-            (
-                g.dictation_helper,
-                // N166: the helper's audio is the head it heard before the start plus the held time.
-                self.deps()
-                    .timeouts
-                    .stopped_for(g.key_up - g.key_down + g.head_ms),
-            )
+            // N166: the helper's audio is the head it heard before the start plus the held time.
+            let audio = g.key_up - g.key_down + g.head_ms;
+            let t = self.deps().timeouts;
+            // ADR 0118: this helper's recogniser is segmented: what it cut was decoded during the hold, so wait
+            // for its last segment only. Until a dictation says so (first one after a helper start), the
+            // streaming bound, which is never shorter.
+            let wait = if g.segmented_helper {
+                t.stopped_for_segmented(audio)
+            } else {
+                t.stopped_for(audio)
+            };
+            (g.dictation_helper, wait)
         };
         let r = tokio::time::timeout(Duration::from_millis(wait_ms), rx).await;
         let (text, dur) = {
@@ -1105,6 +1215,13 @@ impl TalkService {
             g.waiters.remove(&format!("stopped:{id}"));
             let timed_out = r.is_err();
             let stopped = r.ok().and_then(|r| r.ok()).flatten();
+            if let Some(a) = stopped.as_ref().and_then(AsrInfo::from_stopped) {
+                // ADR 0118: remembered for this helper's next stop wait (a fallback recogniser clears it).
+                if g.dictation_helper == helper && g.hellos <= helper {
+                    g.segmented_helper = a.segmented();
+                }
+                g.asr = Some(a);
+            }
             if timed_out && g.dictation_helper == helper && g.hellos <= helper && g.late.len() < MAX_LATE {
                 // Timed out (a lost helper releases the waiter with nothing instead, and sends no final) and the
                 // helper is still the one that ran it, so its final may still come: keep it when it does.
@@ -1308,10 +1425,11 @@ impl TalkService {
                 g.first_partial,
                 g.head_ms,
                 g.level.summary(),
+                g.asr.clone(),
             );
             (text, times)
         };
-        let (text, (started_at, key_down, key_up, first_partial, head_ms, level)) = text;
+        let (text, (started_at, key_down, key_up, first_partial, head_ms, level, segs)) = text;
         if text.trim().is_empty() {
             let mut g = self.lock();
             g.view = g.view.idle_keeping();
@@ -1408,6 +1526,10 @@ impl TalkService {
             level_p10_dbfs = level.map(|l| l.p10_dbfs),
             level_p90_dbfs = level.map(|l| l.p90_dbfs),
             level_saturated = level.map(|l| l.saturated).filter(|n| *n > 0),
+            // ADR 0118: the recogniser that heard it, and a segmented one's counts (ids and counts only).
+            asr = segs.as_ref().map(|a| a.asr.as_str()),
+            segments = segs.as_ref().and_then(|a| a.segments),
+            tail_decode_ms = segs.as_ref().and_then(|a| a.tail_decode_ms),
             "talk latency"
         );
         if cfg.save_history {

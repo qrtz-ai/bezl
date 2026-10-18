@@ -112,6 +112,8 @@ pub struct HelperOpts {
     pub pre_roll_ms: u64,
     /// ADR 0112: the `dictation.level` values sent with each audio block, in turn (empty: always 0.2).
     pub levels: Vec<f64>,
+    /// ADR 0118: extra fields on every answered `dictation.stopped` (`asr`, `segments`, `tailDecodeMs`).
+    pub stopped_extra: Option<Value>,
 }
 
 struct HState {
@@ -305,6 +307,10 @@ impl MockHelper {
             s.helper_status(false, "crashed");
         }
     }
+    /// Changes the helper's behaviour from now on.
+    pub fn set_opts(&self, f: impl FnOnce(&mut HelperOpts)) {
+        f(&mut self.st.lock().unwrap().opts);
+    }
     /// A new helper process says hello (the old one's dictation is gone).
     pub fn restart(&self) {
         let mut st = self.st.lock().unwrap();
@@ -438,9 +444,15 @@ impl HelperSink for SinkHandle {
                         let text = heard_text(st.heard + st.opts.final_tail_words);
                         st.finals.push(text.clone());
                         let delay = st.opts.stopped_delay_ms;
+                        let st_extra = st.opts.stopped_extra.clone();
                         drop(st);
-                        let line =
+                        let mut line =
                             json!({"type": "dictation.stopped", "id": id, "text": text, "durationMs": 1000});
+                        if let Some(Value::Object(x)) = &st_extra {
+                            for (k, v) in x {
+                                line[k] = v.clone();
+                            }
+                        }
                         if delay == 0 {
                             me.deliver(line);
                         } else {

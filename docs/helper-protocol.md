@@ -90,6 +90,13 @@ Rules (the arbiter's `cmd` events):
    `recording.stop` takes an optional `audioPath`: when it names a file other than the one being recorded, the stop is
    ignored (logged). The host sends the path on every cleanup stop (a stale `recording.started{A}`, a start timeout),
    so a late ack for an abandoned start never stops the recording that replaced it.
+   ADR 0118, talk's stop wait on a segmented recogniser: `dictation.stopped`'s optional `asr`, `segments` and
+   `tailDecodeMs` (echo on Parakeet) tell qrtz-talk the helper decodes in segments. From then until the next
+   `hello` (or a stop without `segments`), talk waits for the helper's segmented budget (`HelperTail::segmented_budget_ms`,
+   mirroring the helper's `SegmentedTail.budgetMs(audioMs:)`): tail + drain + 1.5 s + 100 ms per second of the last
+   segment, its overlap (0) and pad, and at most one more segment still decoding, a segment being at most the 15 s
+   cap minus the pad. So it stops growing at about 6.9 s (with pad and slack) instead of the streaming bound's
+   `audio/10` + queued. The first dictation after a helper start keeps the streaming bound, which is never shorter.
 3. Shared mic tap (`MicHub`). The physical mic (one `AVAudioEngine` input tap) starts on the first reader and stops on
    the last. Readers are `recording` (the capture source's mic leg, mixed with system audio and echo-gated) and `dictation`.
    Every reader gets every block. When a recording and a live dictation both run, the helper logs `mux: recording and dictation share the mic tap`; a warm idle mic (the dictation reader kept open, nothing dictating) is not a mux (N5).
