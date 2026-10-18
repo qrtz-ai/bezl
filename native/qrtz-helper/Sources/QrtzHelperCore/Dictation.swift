@@ -197,7 +197,9 @@ public actor DictationEngine {
         /// The latest partial (poll), the fallback for a hung finalize: never read from a recogniser mid-finish.
         var lastPartial = ""
         /// Cancel / abort while the stop is finalizing: the stop answers them (one dictation.stopped).
-        var cancelled = false; var abortReason: DictationStopReason? }
+        var cancelled = false; var abortReason: DictationStopReason?
+        /// Echo tuning (ADR 0099): this dictation's stage timings, logged once at its stop (content-free).
+        var timing = DictationTiming(); let began = ContinuousClock.now }
     public let tail: DictationTail
     /// Waiting for the mic stream to deliver everything queued before a stop (an empty block is the barrier).
     var drainWaiters: [CheckedContinuation<Void, Never>] = []
@@ -210,6 +212,10 @@ public actor DictationEngine {
     /// Recognisers whose finish() outlived the finalize limit: not used again until it returns.
     var busy: Set<ObjectIdentifier> = []
     var session: Session?
+    /// ADR 0099: the last stopped dictation's stage timings (the bench reads them; the log line carries them).
+    public private(set) var lastTiming: DictationTiming?
+    /// ADR 0099: set by `finalText` when the final decode outlived its limit (the last partial was sent).
+    var finalTimedOut = false
     var tick: Task<Void, Never>?
     /// ADR 0046 §1: the dictation's mic audio also goes to the speech module when one is attached.
     let speech: SpeechSinks?
@@ -345,6 +351,8 @@ public actor DictationEngine {
             return
         }
         let pre = preRoll.drain()
+        s.timing.asr = s.transcriber?.name ?? ""
+        s.timing.preRollMs = pre.count / 16
         session = s
         send(.dictationStarted(id: id, preRollMs: Double(pre.count) * 1000 / 16_000))
         if let line = echo?.begin() { send(.log(level: .info, msg: line)) }
@@ -392,7 +400,13 @@ public actor DictationEngine {
         guard let tr = sess.transcriber else { return }
         let k = ObjectIdentifier(tr)
         appending[k, default: 0] += 1
+        let t0 = ContinuousClock.now
         await tr.append(s)
+        let took = t0.msToNow()
+        if var cur = session, cur.id == sess.id {
+            cur.timing.appends += 1; cur.timing.appendTotalMs += took; cur.timing.appendMaxMs = max(cur.timing.appendMaxMs, took)
+            session?.timing = cur.timing
+        }
         appending[k, default: 1] -= 1
         if appending[k] == 0 {
             appending[k] = nil
@@ -436,25 +450,32 @@ public actor DictationEngine {
         guard let s = session, let tr = s.transcriber else { return }
         guard !s.closed else { return }
         let text = await tr.transcript()
-        if session?.id == s.id { session?.lastPartial = text }
+        if session?.id == s.id {
+            session?.lastPartial = text
+            if !text.isEmpty, (session?.timing.firstPartialMs ?? 0) == -1 { let ms = Int(s.began.msToNow()); session?.timing.firstPartialMs = ms }
+        }
         for e in s.segmenter.update(cumulative: text, nowMs: now() - s.startMs) { send(.dictationAsr(id: s.id, event: e)) }
     }
 
     public func stop(id: String) async {
         guard let s0 = session, s0.id == id, !s0.stopping else { return }
         session?.stopping = true
+        let released = ContinuousClock.now
         // The tap's block count at the release: the block it was filling then is the one the drain must wait for.
         // A block that lands during the tail already is it (no second wait for the block after it).
         let releaseBlocks = backlog?.yieldedBlocks
         // 1. The tail: keep capturing (onSamples still feeds this session while we wait).
         if tail.tailMs > 0 { try? await Task.sleep(nanoseconds: UInt64(tail.tailMs) * 1_000_000) }
         guard session?.id == id else { return }  // cancelled or aborted meanwhile (that path answered)
+        session?.timing.tailMs = Int(released.msToNow())
         // 2. Drain: the mic blocks still queued in the stream reach the recogniser (bounded, scaled to the queue).
         let queuedMs = (backlog?.queuedSamples ?? 0) / 16
         let drainLimit = tail.drainLimitMs(queuedMs: queuedMs)
         let drainStart = ContinuousClock.now
         let drained = await drainMic(limitMs: drainLimit, sinceBlocks: releaseBlocks)
         guard session?.id == id else { return }
+        session?.timing.drainMs = Int(released.msToNow()); session?.timing.drained = drained
+        session?.timing.queuedAtReleaseMs = queuedMs
         // N139: one deadline for the whole release (drain + finalize; `budgetMs` unchanged). close() may use all of
         // it except a reserve for pad + finish, so a drain that timed out still waits for a slow (not hung) append and
         // finalizes its audio; past that the last partial is the answer (N131).
@@ -462,6 +483,7 @@ public actor DictationEngine {
         let deadline = drainStart + .milliseconds(drainLimit + finalizeLimit)
         let reserveMs = finalizeLimit / 2
         let idle = await close(limitMs: max(0, Self.msLeft(until: deadline) - reserveMs))
+        if session?.id == id { session?.timing.closeMs = Int(released.msToNow()); session?.timing.appendHeld = !idle }
         if !drained { _ = preRoll.drain() }  // what was still queued is this dictation's stale audio, not pre-roll
         guard var s = session, s.id == id else { return }
         tick?.cancel(); tick = nil
@@ -475,18 +497,28 @@ public actor DictationEngine {
             for e in s.segmenter.flush(cumulative: text, nowMs: now() - s.startMs) { send(.dictationAsr(id: s.id, event: e)) }
         } else if let tr = s.transcriber {
             // 3. Pad and finalize: silence after the last word puts it in a full chunk; the final text is awaited.
+            finalTimedOut = false
             text = await finalText(tr, limitMs: max(0, Self.msLeft(until: deadline)), partial: s.lastPartial).trimmingCharacters(in: .whitespacesAndNewlines)
             for e in s.segmenter.flush(cumulative: text, nowMs: now() - s.startMs) { send(.dictationAsr(id: s.id, event: e)) }
         }
         let end = session
+        var timing = end?.timing ?? s.timing
+        if s.transcriber != nil, idle { timing.finalizeMs = Int(released.msToNow()); timing.finalTimedOut = finalTimedOut }
+        timing.audioMs = s.samples / 16
+        timing.words = text.split(whereSeparator: { $0.isWhitespace }).count
+        timing.gateDucked = echo?.ducked ?? 0; timing.gateBlocks = echo?.blocks ?? 0
         session = nil
         echo?.end()
         speech?.end(.dictation(id: id))
         if end?.abortReason != nil { stopMic() } else if !warmMic && !managedMic { stopMic() }
+        timing.releaseToStoppedMs = Int(released.msToNow())
         if end?.cancelled == true {
             send(.dictationStopped(id: id, text: "", durationMs: 0))
         } else {
             send(.dictationStopped(id: id, text: text, durationMs: Double(s.samples) * 1000 / 16_000, reason: end?.abortReason))
+            // ADR 0099: one content-free timing line per dictation, after the answer (it never delays it).
+            lastTiming = timing
+            send(.log(level: .info, msg: timing.logLine))
         }
     }
 
@@ -557,6 +589,7 @@ public actor DictationEngine {
             }
         }
         if let final { return final }
+        finalTimedOut = true
         send(.log(level: .warn, msg: "dictation: \(tr.name) final text not ready in \(limitMs) ms; using the last partial (recogniser held until it finishes)"))
         return partial
     }

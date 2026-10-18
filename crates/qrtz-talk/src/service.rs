@@ -1320,11 +1320,19 @@ impl TalkService {
             },
             error,
         };
+        // ADR 0099: one content-free line per dictation (with the helper's `echo timing:` line, the real-use numbers
+        // for docs/echo/dictation-tuning.md): durations, the insert method, and sizes only.
         tracing::info!(
             engine = entry.engine.as_str(),
+            audio_ms = entry.duration_ms,
             first_partial_ms = ?entry.latency.first_partial_ms,
             final_ms = ?entry.latency.final_ms,
+            cleanup_ms = ?entry.latency.cleanup_ms,
             inserted_ms = ?entry.latency.inserted_ms,
+            insert = ?entry.insert,
+            cleanup = ?entry.cleanup,
+            raw_chars = entry.raw.chars().count(),
+            inserted_chars = entry.text.chars().count(),
             "talk latency"
         );
         if cfg.save_history {

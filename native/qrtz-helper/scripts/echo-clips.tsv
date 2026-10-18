@@ -1,0 +1,19 @@
+# name	voice	text (what is said, written the way it should be typed). Generated with `say` by echo-bench.sh.
+01-slides	Samantha	Hey, can you send me the slides before the meeting tomorrow?
+02-launch	Daniel	Let's push the launch to Thursday and add a note about pricing.
+03-late	Karen	I'll be about ten minutes late, start without me.
+04-build	Samantha	The build failed on the macOS runner again, can you take a look?
+05-review	Daniel	Please review the pull request and leave comments by Friday.
+06-dentist	Karen	Remind me to call the dentist at three thirty.
+07-revenue	Samantha	We grew revenue by twenty five percent this quarter.
+08-thanks	Daniel	Thanks so much, that works for me.
+09-one-on-one	Karen	Can we move our one on one to next week?
+10-list	Samantha	Add milk, eggs, and coffee to the shopping list.
+11-short	Daniel	Sounds good.
+12-yes	Karen	Yes.
+13-pineapple	Samantha	Please move the launch review to Thursday and add a note about pineapple.
+14-names	Daniel	Ask Priyanka to update the Kubernetes config and ping Jared on Slack.
+15-email	Karen	Hi team, quick update on the release. The installer is signed, the crash on launch is fixed, and the new onboarding flow is ready for testing. Please try it on your own Mac today and send me anything that looks off.
+16-code	Samantha	Rename the function to parse config and add a unit test for the empty case.
+17-instead	Daniel	Actually, let's do Wednesday instead.
+18-code-digits	Karen	The room code is four seven two nine.

@@ -5,6 +5,7 @@
 //! cloud engine (ADR 0076), so a missing, revoked or stale module means talk is unavailable. History and dictionary
 //! live in `talk.json`, the same file and format as Electron (owner-only, atomic). ADR 0058 (on ADR 0046); no LLM
 //! cleanup (ADR 0071).
+pub mod bench;
 pub mod cleanup;
 pub mod config;
 pub mod contract;

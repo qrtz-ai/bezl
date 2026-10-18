@@ -4,6 +4,7 @@ import QrtzHelperCore
 // qrtz-helper: stdio JSON-lines helper. stdout carries protocol messages only; diagnostics go to stderr.
 // Usage: qrtz-helper --stdio | --version | --dump-ax (macOS: print the AX tree of detected meeting windows)
 //        | --bench --mic a.aiff[,b.aiff] [--system c.aiff] (macOS: ADR 0079 model measurements, see mac/Bench.swift)
+//        | --echo-bench <clips dir> [--out f.json] (macOS: ADR 0099 dictation tuning bench, see mac/EchoBench.swift)
 
 let helperVersion = "0.1.0"
 let args = CommandLine.arguments
@@ -11,6 +12,7 @@ let args = CommandLine.arguments
 if args.contains("--version") { print(helperVersion); exit(0) }
 #if os(macOS)
 if args.contains("--dump-ax") { AXDump.run(); exit(0) }
+if args.contains("--echo-bench") { EchoBenchCLI.run(args) }
 if args.contains("--bench") { Bench.run(args) }
 #endif
 
