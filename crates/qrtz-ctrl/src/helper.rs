@@ -152,6 +152,11 @@ impl HelperMsg {
 /// `qrtz-helper-bridge` once the Swift side lands); tests use [`FakeHelper`].
 pub trait Wire: Send + Sync {
     fn roundtrip(&self, line: &str) -> Result<String, String>;
+    /// Whether the helper is there right now (slice 5b: the real helper process is supervised and may be
+    /// restarting). While it isn't, the service runs as if no helper were connected (runs stop at `planned`).
+    fn up(&self) -> bool {
+        true
+    }
 }
 
 /// The typed host side of the protocol.
@@ -170,6 +175,11 @@ impl HelperClient {
             wire,
             next: AtomicU64::new(0),
         }
+    }
+
+    /// See [`Wire::up`].
+    pub fn is_up(&self) -> bool {
+        self.wire.up()
     }
 
     fn id(&self) -> String {
@@ -613,5 +623,8 @@ impl Wire for FakeHelper {
 impl<W: Wire> Wire for std::sync::Arc<W> {
     fn roundtrip(&self, line: &str) -> Result<String, String> {
         (**self).roundtrip(line)
+    }
+    fn up(&self) -> bool {
+        (**self).up()
     }
 }

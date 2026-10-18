@@ -275,6 +275,12 @@ impl CtrlService {
         self
     }
 
+    /// The connected helper if it is up right now (slice 5b): a restarting helper process means the run
+    /// behaves as without one (stops at `planned`) instead of failing every call.
+    fn live_helper(&self) -> Option<&Arc<HelperClient>> {
+        self.helper.as_ref().filter(|h| h.is_up())
+    }
+
     /// Where the decision layers get the app catalog (default: the application folders).
     pub fn with_apps(mut self, apps: Box<dyn AppSource>) -> Self {
         self.apps = apps;
@@ -336,7 +342,7 @@ impl CtrlService {
                 (mono, Event::IntentPending { task_id: id.clone() }),
             ],
         )?;
-        let apps = match &self.helper {
+        let apps = match self.live_helper() {
             Some(h) => HelperApps(h).catalog().observe(),
             None => self.apps.catalog().observe(),
         };
@@ -356,7 +362,7 @@ impl CtrlService {
         text: &str,
     ) -> Result<(), CtrlError> {
         let goal = Goal { task_id, text };
-        if let Some(h) = &self.helper {
+        if let Some(h) = self.live_helper() {
             let driver = Driver {
                 helper: h,
                 scorer: self.scorer.as_ref(),

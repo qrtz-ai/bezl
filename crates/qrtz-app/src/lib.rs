@@ -1,6 +1,7 @@
 //! qrtz-app: the UI-free service behind the Tauri shell. See docs/tauri-migration.md.
 #[cfg(feature = "runtime")]
 pub mod config;
+pub mod ctrl_helper;
 pub mod dirs;
 #[cfg(feature = "runtime")]
 pub mod local_models;

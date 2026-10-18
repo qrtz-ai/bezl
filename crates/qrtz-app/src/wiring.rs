@@ -470,15 +470,27 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         storage: Arc::new(storage),
         talk,
         shell: b.shell,
-        helper: supervisor,
+        helper: supervisor.clone(),
         events,
     });
     service.set_setup(setup.clone());
     // ADR 0103: ctrl's task store and run logs, <data>/ctrl (0700, files 0600).
-    service.set_ctrl(Arc::new(qrtz_ctrl::service::CtrlService::open(
+    let mut ctrl = qrtz_ctrl::service::CtrlService::open(
         dirs.data.join("ctrl"),
         Box::new(qrtz_ctrl::service::SystemClock::default()),
-    )));
+    );
+    // ADR 0110: on macOS the helper process carries ctrl's `ctrl.*` protocol; runs execute through it while it is
+    // up and stop at `planned` while it isn't. Elsewhere the helper has no ctrl backend, so ctrl stays plan-only.
+    if let (true, Some(sup), Ok(rt)) = (
+        cfg!(target_os = "macos"),
+        supervisor.clone(),
+        tokio::runtime::Handle::try_current(),
+    ) {
+        ctrl = ctrl.with_helper(Arc::new(qrtz_ctrl::helper::HelperClient::new(Box::new(
+            crate::ctrl_helper::SupervisorWire::new(sup, rt),
+        ))));
+    }
+    service.set_ctrl(Arc::new(ctrl));
     service.set_speech_tap(helper_line_tap(attach.clone(), note_speech.clone(), warm));
     Ok(BuiltApp {
         service,

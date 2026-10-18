@@ -1,4 +1,5 @@
 import Foundation
+import QrtzCtrl
 import QrtzHelperCore
 
 // qrtz-helper: stdio JSON-lines helper. stdout carries protocol messages only; diagnostics go to stderr.
@@ -25,6 +26,11 @@ final class StdoutWriter: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         FileHandle.standardOutput.write(Data(line.utf8))
     }
+    /// A line that is already encoded (ctrl's replies, ADR 0110).
+    func writeLine(_ s: String) {
+        lock.lock(); defer { lock.unlock() }
+        FileHandle.standardOutput.write(Data((s + "\n").utf8))
+    }
 }
 
 let out = StdoutWriter()
@@ -33,6 +39,9 @@ var platformDeps = makePlatformDeps(version: helperVersion)
 // ADR 0046 §1 / N55: the speech socket the host inherited to us (speech.attach fds arrive on it).
 platformDeps.speechFds = SocketFdReceiver.fromEnvironment()
 let controller = HelperController(deps: platformDeps, send: { out.write($0) }, now: epochMs)
+
+// ADR 0110: `ctrl.*` lines go to ctrl's own queue, never through the echo/nano consumer below.
+let ctrl = CtrlStdio(backend: makeCtrlBackend(), write: { out.writeLine($0) })
 
 // Host messages are handled strictly in order on one consumer task.
 let (lines, linesIn) = AsyncStream<String>.makeStream()
@@ -67,7 +76,9 @@ let reader = Thread {
     while true {
         let chunk = FileHandle.standardInput.availableData
         if chunk.isEmpty { break }
-        for l in splitter.feed(chunk) { linesIn.yield(l) }
+        for l in splitter.feed(chunk) {
+            if CtrlStdio.isCtrlLine(l) { ctrl.submit(l) } else { linesIn.yield(l) }
+        }
     }
     linesIn.finish()
 }

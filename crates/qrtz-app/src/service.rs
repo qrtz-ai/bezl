@@ -344,6 +344,8 @@ impl AppService {
                     self.runtime.helper_line(&msg);
                 }
             }
+            // ADR 0110: ctrl's replies ride the same stdio but not the echo/nano schema; its wire takes them.
+            Err(_) if crate::ctrl_helper::ctrl_line_id(line).is_some() => {}
             // ADR 0083: never the line itself (an `asr` or `dictation.*` line carries what was said).
             Err(e) => tracing::warn!(err = %e, bytes = line.len(), "bad helper line"),
         }

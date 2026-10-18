@@ -1,0 +1,342 @@
+#if os(macOS)
+// The macOS ctrl backend (slice 5b, ADR 0110): what `CtrlServer` calls after its policy re-check. It observes
+// without prompting (no TCC dialog from a background run) and acts only through the background rungs of the ladder:
+// workspace opens with `activates = false`, Apple Events that can't activate, AX actions on a background app, key
+// events posted to one pid with a private event source. Nothing here activates an app, moves the cursor or posts
+// to the global event stream (ADR 0100); `restore` is the only activation and only puts the user's app back.
+//
+// Titles leave here only inside a snapshot reply (the host hashes them before anything is logged); AXValue and
+// secure fields are never read.
+import AppKit
+import ApplicationServices
+import CoreML
+import CoreServices
+import Foundation
+
+public final class MacCtrlBackend: CtrlBackend {
+    /// Opaque element ids ("e:<pid>:<n>") from the snapshots → their AX handles. A new top-level snapshot of an app
+    /// drops that app's old handles; the whole cache is bounded.
+    private var handles: [String: (pid: Int32, el: AXUIElement)] = [:]
+    private var nextHandle = 0
+    private let lock = NSLock()
+    static let maxHandles = 512
+    static let maxNodes = 40
+    let layaRuntime = CtrlLayaRuntime()
+
+    public init() {}
+
+    // MARK: apps
+
+    func runningApp(_ bundleId: String) -> NSRunningApplication? {
+        NSWorkspace.shared.runningApplications.first { $0.bundleIdentifier == bundleId && !$0.isTerminated }
+    }
+
+    public func frontmostPid() -> Int32? { NSWorkspace.shared.frontmostApplication?.processIdentifier }
+    public func pid(of app: String) -> Int32? { runningApp(app)?.processIdentifier }
+
+    static let probeURL = URL(string: "https://example.com")!
+
+    /// The default `https` handler, from LaunchServices.
+    static func defaultBrowser() -> String? {
+        guard let u = LSCopyDefaultApplicationURLForURL(probeURL as CFURL, .all, nil)?.takeRetainedValue() else { return nil }
+        return Bundle(url: u as URL)?.bundleIdentifier
+    }
+
+    static func browserIds() -> Set<String> {
+        Set(NSWorkspace.shared.urlsForApplications(toOpen: probeURL).compactMap { Bundle(url: $0)?.bundleIdentifier })
+    }
+
+    static let appDirs: [URL] = {
+        let fm = FileManager.default
+        var dirs = [URL(fileURLWithPath: "/Applications"), URL(fileURLWithPath: "/Applications/Utilities"),
+                    URL(fileURLWithPath: "/System/Applications"), URL(fileURLWithPath: "/System/Applications/Utilities")]
+        dirs.append(fm.homeDirectoryForCurrentUser.appendingPathComponent("Applications"))
+        return dirs
+    }()
+
+    public func catalog() throws -> (apps: [CtrlCatalogApp], defaultBrowser: String?) {
+        let browsers = Self.browserIds()
+        var byId: [String: CtrlCatalogApp] = [:]
+        let running = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular && !$0.isTerminated }
+        let runningIds = Set(running.compactMap(\.bundleIdentifier))
+        let fm = FileManager.default
+        for dir in Self.appDirs {
+            guard let items = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else { continue }
+            for u in items where u.pathExtension == "app" {
+                guard let b = Bundle(url: u), let id = b.bundleIdentifier, byId[id] == nil else { continue }
+                let name = (b.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
+                    ?? (b.object(forInfoDictionaryKey: "CFBundleName") as? String)
+                    ?? u.deletingPathExtension().lastPathComponent
+                byId[id] = CtrlCatalogApp(bundleId: id, name: name, browser: browsers.contains(id), running: runningIds.contains(id))
+            }
+        }
+        for app in running {
+            guard let id = app.bundleIdentifier, byId[id] == nil else { continue }
+            byId[id] = CtrlCatalogApp(bundleId: id, name: app.localizedName ?? id, browser: browsers.contains(id), running: true)
+        }
+        return (byId.values.sorted { $0.bundleId < $1.bundleId }, Self.defaultBrowser())
+    }
+
+    // MARK: probe
+
+    /// Apple Events consent for one running app, checked without asking (`askUserIfNeeded: false`).
+    static func automation(_ bundleId: String) -> String? {
+        var addr = AEAddressDesc()
+        let bytes = Array(bundleId.utf8)
+        let made = bytes.withUnsafeBytes { AECreateDesc(DescType(typeApplicationBundleID), $0.baseAddress, $0.count, &addr) }
+        guard made == 0 else { return nil }
+        defer { AEDisposeDesc(&addr) }
+        switch AEDeterminePermissionToAutomateTarget(&addr, AEEventClass(typeWildCard), AEEventID(typeWildCard), false) {
+        case 0: return "granted"
+        case -1743: return "denied" // errAEEventNotPermitted
+        case -1744: return "not_asked" // errAEEventWouldRequireUserConsent
+        default: return nil // procNotFound and friends: not running, nothing to say
+        }
+    }
+
+    /// Apps whose scripting verbs ctrl uses: browsers and TextEdit, only while running (no launch to ask).
+    static let scriptable: Set<String> = ["com.apple.TextEdit"]
+
+    public func probe() throws -> (env: [String: Any], ui: [String: Any]) {
+        let running = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular && !$0.isTerminated }
+        let ids = running.compactMap(\.bundleIdentifier)
+        let browsers = Self.browserIds()
+        var automation: [String: String] = [:]
+        for id in ids where browsers.contains(id) || Self.scriptable.contains(id) {
+            if let c = Self.automation(id) { automation[id] = c }
+        }
+        var env: [String: Any] = [
+            "secure_input": CtrlProbe.secureInput,
+            // Files: never probed by touching a protected folder (that would prompt); slice 7 decides how.
+            "files": "not_asked",
+            "accessibility": CtrlProbe.axTrusted ? "granted" : "not_asked",
+            "post_event": CtrlProbe.postEventAllowed ? "granted" : "not_asked",
+            "automation": automation,
+            "quarantined": [Any](),
+            "running_apps": ids.sorted(),
+        ]
+        env["frontmost_app"] = NSWorkspace.shared.frontmostApplication?.bundleIdentifier as Any? ?? NSNull()
+        env["user_idle_ms"] = CtrlProbe.hidIdleMs().map { NSNumber(value: $0) } as Any? ?? NSNull()
+        let data = try JSONEncoder().encode(CtrlProbe.snapshot())
+        let ui = (try JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        return (env, ui)
+    }
+
+    // MARK: AX snapshot
+
+    static func string(_ el: AXUIElement, _ name: String) -> String? {
+        guard let v = CtrlActions.raw(el, name), CFGetTypeID(v) == CFStringGetTypeID() else { return nil }
+        return (v as! CFString) as String
+    }
+
+    static func children(_ el: AXUIElement) -> [AXUIElement] {
+        guard let v = CtrlActions.raw(el, kAXChildrenAttribute), CFGetTypeID(v) == CFArrayGetTypeID() else { return [] }
+        return (((v as! CFArray) as NSArray) as [AnyObject]).compactMap { CtrlActions.element($0 as CFTypeRef) }
+    }
+
+    static func actions(_ el: AXUIElement) -> [String] {
+        var names: CFArray?
+        guard AXUIElementCopyActionNames(el, &names) == .success, let names else { return [] }
+        return ((names as NSArray) as? [String]) ?? []
+    }
+
+    static func childCount(_ el: AXUIElement) -> Int {
+        var n: CFIndex = 0
+        return AXUIElementGetAttributeValueCount(el, kAXChildrenAttribute as CFString, &n) == .success ? n : 0
+    }
+
+    func remember(_ el: AXUIElement, pid: Int32) -> String {
+        lock.lock(); defer { lock.unlock() }
+        if handles.count >= Self.maxHandles { handles.removeAll() }
+        nextHandle += 1
+        let id = "e:\(pid):\(nextHandle)"
+        handles[id] = (pid, el)
+        return id
+    }
+
+    func handle(_ id: String) -> (pid: Int32, el: AXUIElement)? {
+        lock.lock(); defer { lock.unlock() }
+        return handles[id]
+    }
+
+    func forget(pid: Int32) {
+        lock.lock(); defer { lock.unlock() }
+        handles = handles.filter { $0.value.pid != pid }
+    }
+
+    public func snapshot(app: String, scope: String?) throws -> [CtrlAXNode] {
+        guard let pid = pid(of: app) else { throw CtrlFailure("app.not_running") }
+        guard CtrlProbe.axTrusted else { throw CtrlFailure("ax.not_trusted") }
+        let root: AXUIElement
+        if let scope {
+            guard let h = handle(scope), h.pid == pid else { throw CtrlFailure("ax.stale") }
+            root = h.el
+        } else {
+            forget(pid: pid)
+            let appEl = CtrlActions.appElement(pid)
+            guard let w = CtrlActions.element(CtrlActions.raw(appEl, kAXFocusedWindowAttribute))
+                ?? CtrlActions.element(CtrlActions.raw(appEl, kAXMainWindowAttribute))
+                ?? CtrlActions.windows(pid).first
+            else { return [] }
+            root = w
+        }
+        return Self.children(root).prefix(Self.maxNodes).map { el in
+            let role = CtrlActions.role(el)
+            let subrole = Self.string(el, kAXSubroleAttribute)
+            let secure = subrole == "AXSecureTextField" || role == "AXSecureTextField"
+            let title = secure ? "" : (Self.string(el, kAXTitleAttribute) ?? Self.string(el, kAXDescriptionAttribute) ?? "")
+            return CtrlAXNode(id: remember(el, pid: pid), role: role, subrole: subrole, title: title,
+                              actions: Self.actions(el), children: Self.childCount(el))
+        }
+    }
+
+    // MARK: act
+
+    static func code(_ f: CtrlActions.Failure) -> CtrlFailure {
+        switch f {
+        case .notTrusted: return CtrlFailure("ax.not_trusted")
+        case .ax: return CtrlFailure("ax.failed")
+        case .noElement: return CtrlFailure("ax.stale")
+        case .eventSource: return CtrlFailure("keys.no_event_source")
+        case .refused: return CtrlFailure("policy.refused")
+        }
+    }
+
+    /// Wait for a workspace completion handler (they run on an arbitrary queue; this is ctrl's own queue).
+    static func wait(_ seconds: Double, _ start: (@escaping (Error?) -> Void) -> Void) throws {
+        let done = DispatchSemaphore(value: 0)
+        var err: Error?
+        start { e in err = e; done.signal() }
+        guard done.wait(timeout: .now() + seconds) == .success else { throw CtrlFailure("workspace.timeout") }
+        if err != nil { throw CtrlFailure("workspace.failed") }
+    }
+
+    /// NSAppleScript belongs on the main thread (the helper's main run loop is running).
+    static func runScript(_ source: String) throws -> NSAppleEventDescriptor {
+        var result: NSAppleEventDescriptor?
+        var failed = false
+        let run = {
+            var info: NSDictionary?
+            let r: NSAppleEventDescriptor? = NSAppleScript(source: source)?.executeAndReturnError(&info)
+            // Any error info (including -1743, Apple Events not permitted) is a failure, whatever came back.
+            failed = info != nil || r == nil
+            result = failed ? nil : r
+        }
+        if Thread.isMainThread { run() } else { DispatchQueue.main.sync(execute: run) }
+        guard let r = result, !failed else { throw CtrlFailure("script.failed") }
+        return r
+    }
+
+    func script(_ verb: String, app: String) throws -> NSAppleEventDescriptor {
+        // `tell application id` launches an app that isn't running: never.
+        guard runningApp(app) != nil else { throw CtrlFailure("app.not_running") }
+        guard let src = CtrlScripts.source(verb: verb, bundleId: app) else { throw CtrlFailure("policy.refused") }
+        return try Self.runScript(src)
+    }
+
+    public func act(_ route: CtrlRoute, content: [String: String]) throws {
+        switch route {
+        case .files: throw CtrlFailure("files.not_yet")
+        case .takesOver: throw CtrlFailure("policy.refused")
+        case let .openURL(app, ref):
+            // Only into an app that is already running: a cold launch would come to the front (run 1's finding).
+            guard let running = runningApp(app), let appURL = running.bundleURL else { throw CtrlFailure("app.not_running") }
+            guard let s = content[ref], let url = URL(string: s), ["http", "https"].contains(url.scheme?.lowercased() ?? "")
+            else { throw CtrlFailure("content.missing") }
+            try Self.wait(5) { done in CtrlActions.open([url], withApp: appURL) { _, e in done(e) } }
+        case let .launchHidden(app):
+            guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app) else { throw CtrlFailure("app.not_installed") }
+            let c = CtrlActions.backgroundConfiguration()
+            c.hides = true
+            try Self.wait(10) { done in NSWorkspace.shared.openApplication(at: appURL, configuration: c) { _, e in done(e) } }
+        case let .scripting(app, verb):
+            _ = try script(verb, app: app)
+        case let .axPerform(app, role, element, action):
+            guard let pid = pid(of: app) else { throw CtrlFailure("app.not_running") }
+            guard let h = handle(element), h.pid == pid, CtrlActions.role(h.el) == role else { throw CtrlFailure("ax.stale") }
+            do { try CtrlActions.perform(action, on: h.el) } catch let f as CtrlActions.Failure { throw Self.code(f) }
+        case let .axSet(app, role, element, attribute):
+            guard let pid = pid(of: app) else { throw CtrlFailure("app.not_running") }
+            guard let h = handle(element), h.pid == pid, CtrlActions.role(h.el) == role else { throw CtrlFailure("ax.stale") }
+            guard let value = content["value"] else { throw CtrlFailure("content.missing") }
+            do { try CtrlActions.set(attribute, value as CFString, on: h.el) } catch let f as CtrlActions.Failure { throw Self.code(f) }
+        case let .pidKey(app, combo):
+            guard let pid = pid(of: app) else { throw CtrlFailure("app.not_running") }
+            // Without the grant postToPid drops the event silently; say so instead of "succeeding".
+            guard CtrlProbe.postEventAllowed else { throw CtrlFailure("keys.not_granted") }
+            guard let k = CtrlKeyCombo.parse(combo) else { throw CtrlFailure("keys.unknown") }
+            var flags: CGEventFlags = []
+            if k.command { flags.insert(.maskCommand) }
+            if k.shift { flags.insert(.maskShift) }
+            if k.option { flags.insert(.maskAlternate) }
+            if k.control { flags.insert(.maskControl) }
+            do { try CtrlActions.postKey(CGKeyCode(k.keyCode), flags: flags, combo: combo, to: pid) } catch let f as CtrlActions.Failure { throw Self.code(f) }
+        }
+    }
+
+    // MARK: verify
+
+    public func measure(check: String, app: String) -> Int? {
+        switch check {
+        case "app_running": return runningApp(app) == nil ? 0 : 1
+        case "tab_count":
+            return (try? script("count_tabs", app: app)).map { Int($0.int32Value) }
+        case "window_count":
+            guard let pid = pid(of: app) else { return nil }
+            if let n = try? script("count_windows", app: app) { return Int(n.int32Value) }
+            return CtrlProbe.axTrusted ? CtrlActions.windows(pid).count : nil
+        default: return nil // ax_scope is verified by a re-snapshot and obs.diff on the host
+        }
+    }
+
+    public func restore(frontmostPid: Int32?) -> Bool {
+        guard let pid = frontmostPid else { return false }
+        return CtrlActions.restoreFrontmost(pid)
+    }
+
+    // MARK: Laya
+
+    public func laya(state: String, question: String, options: [String]) throws -> [Double] {
+        try layaRuntime.choice(state: state, question: question, options: options)
+    }
+}
+
+/// The Core ML Laya runtime (ADR 0106 / 0109). It runs only a model the user consented to download: the host sets
+/// `QRTZ_CTRL_LAYA_MODEL` to the installed, compiled model (`.mlmodelc`) after consent and never otherwise, and
+/// nothing here downloads anything. Without it every question answers `laya.no_model` and the host keeps the
+/// heuristic scorer.
+final class CtrlLayaRuntime {
+    private var model: MLModel?
+    private var loaded = false
+    private let lock = NSLock()
+
+    func load() throws -> MLModel {
+        lock.lock(); defer { lock.unlock() }
+        if let model { return model }
+        if loaded { throw CtrlFailure("laya.no_model") }
+        loaded = true
+        guard let path = ProcessInfo.processInfo.environment["QRTZ_CTRL_LAYA_MODEL"], !path.isEmpty,
+              FileManager.default.fileExists(atPath: path) else { throw CtrlFailure("laya.no_model") }
+        let c = MLModelConfiguration()
+        c.computeUnits = .cpuAndNeuralEngine
+        do { model = try MLModel(contentsOf: URL(fileURLWithPath: path), configuration: c) } catch { throw CtrlFailure("laya.load_failed") }
+        return model!
+    }
+
+    /// One `choice` pass: the model takes `prompt` (state, question, numbered options) and returns `scores`, one per
+    /// option; softmaxed here. A model without that interface answers `laya.bad_model`.
+    func choice(state: String, question: String, options: [String]) throws -> [Double] {
+        let m = try load()
+        let prompt = "\(state)\n\(question)\n" + options.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
+        guard let input = try? MLDictionaryFeatureProvider(dictionary: ["prompt": MLFeatureValue(string: prompt)]),
+              let out = try? m.prediction(from: input),
+              let scores = out.featureValue(for: "scores")?.multiArrayValue, scores.count == options.count
+        else { throw CtrlFailure("laya.bad_model") }
+        let xs = (0..<scores.count).map { scores[$0].doubleValue }
+        let mx = xs.max() ?? 0
+        let es = xs.map { exp($0 - mx) }
+        let sum = es.reduce(0, +)
+        return es.map { $0 / sum }
+    }
+}
+#endif
