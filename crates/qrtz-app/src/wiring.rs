@@ -497,18 +497,20 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
             None,
         );
         let consent = laya.consent();
-        let runtime = qrtz_ctrl::laya::HelperLaya {
+        let (_, fallback) = qrtz_ctrl::laya::select_scorer(&consent, None);
+        tracing::info!(?fallback, "ctrl.laya: scorer at start (re-read per question)");
+        // Run 19: re-selected per question, so a download that finishes (or an off) applies without a restart.
+        let scorer = qrtz_ctrl::laya::LiveScorer {
+            consent: Box::new(move || laya.consent()),
             helper: helper.clone(),
             model: qrtz_ctrl::decide::ModelId {
                 id: "laya".into(),
                 version: crate::ctrl_model::CtrlManifest::pinned().manifest.version,
                 quant: None,
             },
-            path: consent.installed.clone(),
+            runtime_build: qrtz_ctrl::laya::RUNTIME_BUILD,
         };
-        let (scorer, fallback) = qrtz_ctrl::laya::select_scorer(&consent, Some(Box::new(runtime)));
-        tracing::info!(?fallback, "ctrl.laya: scorer selected");
-        ctrl = ctrl.with_helper(helper).with_scorer(scorer);
+        ctrl = ctrl.with_helper(helper).with_scorer(Box::new(scorer));
     }
     service.set_ctrl(Arc::new(ctrl));
     // ADR 0116: the model's consent and verified download, on every OS (only a macOS `laya` build runs it).

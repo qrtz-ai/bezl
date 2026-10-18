@@ -210,7 +210,7 @@ impl CtrlModelSlot {
     }
 
     /// Record the answer; yes starts the download on `rt` (refused at once on the placeholder manifest), no cancels
-    /// a download in flight and deletes the model. A changed consent applies to the scorer at the next app start.
+    /// a download in flight and deletes the model. A changed consent (or a finished download) applies to the scorer at the next question (`LiveScorer`, run 19).
     pub async fn set_consent(&self, yes: bool, now_ms: u64) -> std::io::Result<LayaModelState> {
         if !yes {
             if let Some(ctl) = self.busy.lock().unwrap().take() {

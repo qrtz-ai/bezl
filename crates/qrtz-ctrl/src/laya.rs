@@ -141,3 +141,47 @@ impl LayaRuntime for HelperLaya {
             .laya(self.path.as_deref(), &r.state, &r.question, &r.options)
     }
 }
+
+/// Run 19: the scorer re-selected per question, so a model downloaded (or switched off) while the app runs takes
+/// effect at the next question instead of the next app start. Each question reads the consent (a file read, no
+/// network): with consent, an installed model on disk and a runtime build, the Laya model answers through the helper
+/// with that path; otherwise the heuristic layer does, exactly as [`select_scorer`] would have chosen at start.
+pub struct LiveScorer {
+    pub consent: Box<dyn Fn() -> ModelConsent + Send + Sync>,
+    pub helper: std::sync::Arc<crate::helper::HelperClient>,
+    pub model: ModelId,
+    /// [`RUNTIME_BUILD`] in the app; tests set it to exercise the switch on Linux.
+    pub runtime_build: bool,
+}
+
+impl LiveScorer {
+    fn active(&self) -> Option<PathBuf> {
+        if !self.runtime_build {
+            return None;
+        }
+        let c = (self.consent)();
+        c.installed.filter(|p| c.consented && p.exists())
+    }
+}
+
+impl Scorer for LiveScorer {
+    fn model(&self) -> ModelId {
+        match self.active() {
+            Some(_) => self.model.clone(),
+            None => Heuristic.model(),
+        }
+    }
+    fn logits(&self, q: &Question, goal: &Goal) -> Result<Vec<i64>, String> {
+        match self.active() {
+            Some(path) => LayaScorer {
+                runtime: HelperLaya {
+                    helper: self.helper.clone(),
+                    model: self.model.clone(),
+                    path: Some(path),
+                },
+            }
+            .logits(q, goal),
+            None => Heuristic.logits(q, goal),
+        }
+    }
+}
