@@ -25,4 +25,8 @@ tokio = { workspace = true, features = ["test-util", "net"] }
 tempfile.workspace = true
 base64 = "0.22"
 # ADR 0112: tests read the `talk latency` line.
-tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "registry", "std"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+  "fmt",
+  "registry",
+  "std",
+] }
