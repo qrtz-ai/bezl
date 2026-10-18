@@ -83,6 +83,7 @@ Gain is the expected user-visible effect; risk is what could regress. Every item
 | 6    | Nemotron 1120 ms tier for long dictations                                                                                                                                                     | Punctuation kept on long dictations (FluidAudio #687). Not a WER lever: with a pad that covers its chunk (1280 ms) it scored 3.93 % vs 4.02 % for 560 ms at pad 1120 on Linux (FluidAudio 2.71 → 2.58 %). The 4.35 % at pad 640 was the pad being shorter than one 1120 chunk                                                                                                      | partials every 1.1 s, so the pill feels slower; a separate model set                                                                                                                                                                                        | bench engine `nemotron-1120` (`--extra`): wer, fwer, firstPartial                                                                                   |
 | 7    | Input normalization for quiet mics, **quiet-mic only** (§9: a mic 20 dB down costs +23 % errors and a causal AGC recovers it all, but the same AGC on a normal mic costs +9 %; ADR 0115)      | robustness on quiet or far mics                                                                                                                                                                                                                                                                                                                                                    | an always-on normaliser hurts normal mics (measured); needs a gated design (gain 1 until the speech level is known to be low) and its own Linux rows first                                                                                                  | `talk latency` `level_p90_dbfs` (§10) decides whether it is needed at all; then `quiet-0.1` vs `quiet-0.1-normalized` and a normal-level clip, both |
 | 8    | Decode-time vocabulary biasing                                                                                                                                                                | names and jargon right the first time                                                                                                                                                                                                                                                                                                                                              | needs a different model. Nemotron 3.5 multilingual scored 6.59 % on English (§6, auto language) and 5.72 % with English forced (§9, still +41 % errors vs the shipped model), so CTC boosting (Unified/TDT) is the likelier route, plus a signed conversion | later; measure on a names clip set                                                                                                                  |
+| 9    | **Re-punctuate each pause cut from a short window decoded across it** (3 s before, 2 s after, background; formatting, not WER; §12, ADR 0120). Proposed to Bobs (review §12.35) | Measured (§12): false sentence ends at cuts 99 → 24 against the whole-clip decode, formatted diff 7.46 → 6.10 %; with the cleanup rule already landed (89b97ab) the talk side alone is 99 → 58 | one extra ~5.6 s decode per pause cut in the background (252 ms box CPU p50, tens of ms on ANE); 22 vs 5 sentence ends lost against the whole clip | Linux `seg/cutwin.py`; Mac: bench formatted text of `parakeet-segmented` vs `parakeet-whole` on Jared's long clips |
 
 Not on the list: moving the encoder to the GPU (FluidAudio: int8 on GPU is ~10× slower and can abort in MPSGraph;
 `.cpuAndNeuralEngine` is right), and lower chunk tiers (160/80 ms) for dictation (more compute and worse
@@ -494,3 +495,42 @@ pad and slack: it stops growing at two segments of audio, 6.9 s for a 60 s dicta
 `parakeet-seg-300-15` (the rule), `parakeet-seg-500-15` and the whole clip on Jared's own long dictations
 (`echo-clips.tsv`). The Mac numbers that matter are `tail_decode_ms` (the release decode, expected well under
 the box's 275 ms p50) and WER against the whole clip.
+
+## 12. Cycle 38: sentence ends at segment cuts (ADR 0120, N167)
+
+Segmenting (§11) costs no WER, but each segment is decoded alone with 640 ms of zero pad, and Parakeet ends almost
+every one with a sentence end. `WordStitcher` (`Segmented.swift:235,258`) appends the words as decoded, so the dot
+goes into the text, and talk's cleanup capitalized the word after it. Measured on the 40 long dictations of §11
+with cached decodes only (`linux-crosscheck/seg/punct.py`), rule s300-c15: 245 of 283 aligned cuts end in `.?!`
+against 152 at the same place in the whole-clip decode; 94 are sentence ends the whole clip doesn't have (70 at
+pauses inside an utterance), and 64 commas become dots. LibriSpeech has no punctuation, so the whole-clip decode
+(Parakeet with full context) is the reference: not ground truth, but the text echo would type without segmenting.
+
+Talk side, landed (`89b97ab`, ADR 0120): a lone "." followed by a lowercase word is dropped (abbreviations keep it
+and don't capitalize the next word), for cased recognisers only. Through the cleanup on both sides
+(`punct_cleanup.py`):
+
+| Rule s300-c15  | ends agreeing | false ends | lost ends | formatted diff vs whole |
+| -------------- | ------------: | ---------: | --------: | ----------------------: |
+| cleanup before |           231 |         99 |         4 |                  8.07 % |
+| cleanup after  |           221 |         58 |        13 |                  7.34 % |
+
+(500 ms pause: 60 → 31 false, 10 → 17 lost, 6.93 → 6.43 %.)
+
+Helper side, proposed (review §12.35): decode a window across each pause cut once its "after" part is captured,
+and take only the cut word's trailing punctuation and the next word's case from it (`cutwin.py`, raw text, no
+cleanup, vs the raw whole clip: 229 agreeing / 99 false / 5 lost / 7.46 % without it):
+
+| Window (before / after the cut) | ends agreeing | false ends | lost ends | formatted diff | window CPU ms p50 / p90 (box) |
+| ------------------------------- | ------------: | ---------: | --------: | -------------: | ----------------------------: |
+| 2 s / 1 s                       |           221 |         46 |        13 |         6.60 % |                     194 / 261 |
+| **3 s / 2 s**                   |           212 |     **24** |        22 |     **6.10 %** |                     252 / 373 |
+| 4 s / 3 s                       |           210 |         17 |        24 |         5.88 % |                     307 / 378 |
+
+3 s / 2 s halves the disagreements with the whole clip (104 → 46) for one background decode of ~5.6 s per cut;
+4 s / 3 s adds little (41). The window decode is background work (the cut is ≥ 2 s old by then), so it doesn't
+touch the release unless a cut is within 2 s of it; then the cleanup rule is the fallback.
+
+On the Mac: dictate a long paragraph with natural pauses mid-sentence (e.g. "I went to the store, and then,
+after a while, I came back home"), with cleanup on. Before `89b97ab` the pauses come out as ". Then" / ". After";
+now a lowercase continuation is joined. A capitalized one ("store. And then") is what §12.35 fixes.
