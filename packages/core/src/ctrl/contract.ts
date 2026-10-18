@@ -37,9 +37,14 @@ export const CtrlTask = z.object({
 });
 export type CtrlTask = z.infer<typeof CtrlTask>;
 
-/** Derived from the run's event log: `task.finished`, else waiting for an intent, else running. */
+/**
+ * Derived from the run's event log: `task.finished`, else asking the user (a decision layer wasn't sure), else
+ * waiting for an intent, else planned (the decision layers produced a plan; the executor is slice 5), else running.
+ */
 export const CtrlRunStatus = z.enum([
   'pending-intent',
+  'asking',
+  'planned',
   'running',
   'done',
   'failed',
@@ -66,6 +71,8 @@ export const CtrlEventRow = z.object({
   kind: z.string(),
   at: z.number(),
   actionId: z.string().nullable(),
+  /** `decision.made` only: which decision layer (`choose_intent`, `choose_app`, …). */
+  node: z.string().nullable().optional(),
 });
 export type CtrlEventRow = z.infer<typeof CtrlEventRow>;
 
@@ -79,6 +86,59 @@ export const CtrlActionStatus = z.enum([
   'failed',
 ]);
 
+/** The decision layers (ADR 0106): intent → app → target / text → move. */
+export const CtrlNode = z.enum([
+  'choose_intent',
+  'choose_app',
+  'choose_target',
+  'choose_text',
+  'choose_move',
+]);
+export type CtrlNode = z.infer<typeof CtrlNode>;
+
+/** One enumerated option of a decision, with its calibrated probability. `label` is lowercase UI copy. */
+export const CtrlOption = z.object({
+  id: z.string(),
+  label: z.string(),
+  p: z.number().min(0).max(1),
+  /** Can't be undone (send, empty trash, quit, a system setting): the confirm gate (slice 6) asks first. */
+  irreversible: z.boolean(),
+  /** A focus-intent shortcut the ladder refuses in the background (ADR 0100). */
+  refusedInBackground: z.boolean(),
+});
+export type CtrlOption = z.infer<typeof CtrlOption>;
+
+export const CtrlDecision = z.object({
+  id: z.string(),
+  node: CtrlNode,
+  /** act (p ≥ 0.8), tentative (≥ 0.5, alternatives kept for backtracking) or ask the user. */
+  outcome: z.enum(['act', 'tentative', 'ask']),
+  answered: z.boolean(),
+  chosen: z.string(),
+  chosenLabel: z.string(),
+  p: z.number().min(0).max(1),
+  /** "qrtz-heuristic 1" or the consented model's id and version. */
+  model: z.string(),
+  options: z.array(CtrlOption),
+});
+export type CtrlDecision = z.infer<typeof CtrlDecision>;
+
+export const CtrlPlan = z.object({
+  steps: z.array(
+    z.object({ node: CtrlNode, option: z.string(), label: z.string() }),
+  ),
+  irreversible: z.boolean(),
+});
+export type CtrlPlan = z.infer<typeof CtrlPlan>;
+
+/** The decision waiting for the user: its top three options ("which one: …"). */
+export const CtrlAsk = z.object({
+  decisionId: z.string(),
+  node: CtrlNode,
+  options: z.array(CtrlOption),
+});
+export type CtrlAsk = z.infer<typeof CtrlAsk>;
+
 /** The reducer's state after `at` events (crates/qrtz-ctrl `log::CtrlState`). */
 export const CtrlRunState = z.object({
   actions: z.array(z.object({ id: z.string(), status: CtrlActionStatus })),
@@ -86,6 +146,9 @@ export const CtrlRunState = z.object({
   inconclusive: z.number().int().nonnegative(),
   quarantined: z.array(z.object({ app: z.string(), rung: z.string() })),
   status: CtrlRunStatus,
+  decisions: z.array(CtrlDecision),
+  plan: CtrlPlan.nullable(),
+  ask: CtrlAsk.nullable(),
 });
 export type CtrlRunState = z.infer<typeof CtrlRunState>;
 

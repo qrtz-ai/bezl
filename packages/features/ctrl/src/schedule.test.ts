@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { CtrlSchedule } from '@qrtz/core';
 import {
+  decisionItem,
   describeSchedule,
   eventItem,
   runItem,
+  runStatus,
   stateSummary,
   toSchedule,
 } from './schedule';
@@ -100,7 +102,53 @@ describe('ctrl run history', () => {
         inconclusive: 0,
         quarantined: [{ app: 'com.apple.Safari', rung: 'ax_action' }],
         status: 'running',
+        decisions: [],
+        plan: null,
+        ask: null,
       }),
     ).toBe('running · 1/2 actions done · 1 guard violations · 1 routes off');
+  });
+
+  it('words the decision layers: status, event layer, inspector items', () => {
+    expect(runStatus('asking')).toEqual(['needs you', 'warning']);
+    expect(runStatus('planned')).toEqual(['planned', 'primary']);
+    expect(
+      eventItem({
+        seq: 3,
+        kind: 'decision.made',
+        at: 0,
+        actionId: null,
+        node: 'choose_app',
+      }),
+    ).toEqual({ seq: 3, label: 'decision made', meta: 'which app' });
+    const o = (id: string, p: number) => ({
+      id,
+      label: id,
+      p,
+      irreversible: id === 'b',
+      refusedInBackground: false,
+    });
+    const d = {
+      id: 'd1',
+      node: 'choose_app' as const,
+      outcome: 'ask' as const,
+      answered: true,
+      chosen: 'b',
+      chosenLabel: 'b',
+      p: 0.4,
+      model: 'qrtz-heuristic 1',
+      options: [o('a', 0.4), o('b', 0.35), o('none', 0.25)],
+    };
+    const item = decisionItem(d);
+    expect(item.question).toBe('which app');
+    expect(item.meta).toBe('40% · qrtz-heuristic 1');
+    expect(item.options.filter((x) => x.chosen).map((x) => x.id)).toEqual([
+      'b',
+    ]);
+    expect(item.options[1]!.irreversible).toBe(true);
+    // An unanswered ask has no chosen option yet.
+    expect(
+      decisionItem({ ...d, answered: false }).options.some((x) => x.chosen),
+    ).toBe(false);
   });
 });

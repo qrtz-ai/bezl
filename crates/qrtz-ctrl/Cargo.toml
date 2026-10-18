@@ -21,3 +21,8 @@ chrono-tz = "0.10"
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[features]
+# The Laya (Core ML) scorer for the decision layers (ADR 0106). macOS only, and only used with a consented,
+# installed model and a runtime; without it (and everywhere else) the deterministic heuristic layer answers.
+laya = []

@@ -5,6 +5,8 @@ import { Text } from './Text';
 import { Badge, type BadgeTone } from './Badge';
 import { IconButton, Chip } from './Layout';
 import { Input, Select } from './Input';
+import { Button } from './Button';
+import { Icon } from './Icon';
 
 /** ctrl (ADR 0103): the views' building blocks. Data in, handlers out; all copy lowercase. */
 
@@ -303,6 +305,254 @@ export function RunTimeline({
           </li>
         ))}
       </ol>
+    </div>
+  );
+}
+
+export interface DecisionOptionItem {
+  id: string;
+  label: string;
+  /** Calibrated probability, 0..1. */
+  p: number;
+  chosen?: boolean;
+  /** Can't be undone: the confirm gate asks before it runs. */
+  irreversible?: boolean;
+  /** A shortcut the never-takes-over-the-ui ladder refuses in the background. */
+  refused?: boolean;
+}
+
+export interface DecisionItem {
+  id: string;
+  /** "what kind of task", "which app", …. */
+  question: string;
+  outcome: 'act' | 'tentative' | 'ask';
+  answered?: boolean;
+  /** "93% · qrtz-heuristic 1". */
+  meta: string;
+  options: DecisionOptionItem[];
+}
+
+const OUTCOME: Record<
+  DecisionItem['outcome'] | 'answered',
+  [string, BadgeTone]
+> = {
+  act: ['sure', 'success'],
+  tentative: ['tentative', 'warning'],
+  ask: ['asked you', 'warning'],
+  answered: ['you chose', 'primary'],
+};
+
+/** One option with its probability bar. */
+function OptionBar({ o }: { o: DecisionOptionItem }) {
+  const t = useTheme();
+  const pct = Math.round(Math.max(0, Math.min(1, o.p)) * 100);
+  return (
+    <li
+      data-testid="ctrl-option"
+      data-chosen={o.chosen || undefined}
+      style={{
+        listStyle: 'none',
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1fr) 80px 36px',
+        alignItems: 'center',
+        gap: t.space[2],
+        ...typeStyle('caption', t),
+        color: o.chosen ? t.color.text : t.color.textMuted,
+      }}
+    >
+      <span
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: t.space[1],
+          minWidth: 0,
+        }}
+      >
+        {o.chosen ? <Icon name="check" size="xs" /> : null}
+        <span data-testid="ctrl-option-label">{o.label}</span>
+        {o.irreversible ? (
+          <Icon
+            name="alert"
+            size="xs"
+            tone="warning"
+            label="can't be undone"
+            data-testid="ctrl-option-irreversible"
+          />
+        ) : null}
+        {o.refused ? <span>· not in the background</span> : null}
+      </span>
+      <span
+        aria-hidden
+        style={{
+          height: 4,
+          borderRadius: t.radius.full,
+          background: t.color.border,
+          overflow: 'hidden',
+        }}
+      >
+        <span
+          style={{
+            display: 'block',
+            width: `${pct}%`,
+            height: '100%',
+            background: o.chosen ? t.color.primary : t.color.textMuted,
+          }}
+        />
+      </span>
+      <span style={{ textAlign: 'right' }}>{pct}%</span>
+    </li>
+  );
+}
+
+/**
+ * The decision inspector (decision-layer spec §13.7): each small decision of a run, its options with probability
+ * bars (the top few plus the chosen one), the outcome and the model. Data in; nothing here decides.
+ */
+export function DecisionList({
+  decisions,
+  shown = 4,
+}: {
+  decisions: DecisionItem[];
+  /** Options per decision before the rest are summarized. */
+  shown?: number;
+}) {
+  const t = useTheme();
+  return (
+    <ol
+      aria-label="decisions"
+      data-testid="ctrl-decisions"
+      style={{ margin: 0, padding: 0, display: 'grid', gap: t.space[3] }}
+    >
+      {decisions.map((d) => {
+        const ranked = [...d.options].sort((a, b) => b.p - a.p);
+        const top = ranked.slice(0, shown);
+        const chosen = ranked.find((o) => o.chosen);
+        if (chosen && !top.includes(chosen)) top.push(chosen);
+        const [word, tone] = OUTCOME[d.answered ? 'answered' : d.outcome];
+        return (
+          <li
+            key={d.id}
+            data-testid="ctrl-decision"
+            data-outcome={d.answered ? 'answered' : d.outcome}
+            style={{ listStyle: 'none', display: 'grid', gap: t.space[1] }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: t.space[2],
+              }}
+            >
+              <Text variant="label" data-testid="ctrl-decision-question">
+                {d.question}
+              </Text>
+              <Badge tone={tone} data-testid="ctrl-decision-outcome">
+                {word}
+              </Badge>
+              <Text variant="caption" muted>
+                {d.meta}
+              </Text>
+            </div>
+            <ul style={{ margin: 0, padding: 0, display: 'grid', gap: 2 }}>
+              {top.map((o) => (
+                <OptionBar key={o.id} o={o} />
+              ))}
+            </ul>
+            {d.options.length > top.length ? (
+              <Text variant="caption" muted>
+                {d.options.length - top.length} more options
+              </Text>
+            ) : null}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** The plan the decision layers produced, one step per layer, and whether it waits for an ok first. */
+export function PlanSummary({
+  steps,
+  irreversible,
+}: {
+  steps: string[];
+  irreversible: boolean;
+}) {
+  const t = useTheme();
+  return (
+    <div
+      data-testid="ctrl-plan"
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        gap: t.space[2],
+      }}
+    >
+      <Text variant="caption" data-testid="ctrl-plan-steps">
+        plan: {steps.join(' → ')}
+      </Text>
+      {irreversible ? (
+        <Badge tone="warning" data-testid="ctrl-plan-confirm">
+          asks you before it acts
+        </Badge>
+      ) : null}
+    </div>
+  );
+}
+
+/** A decision layer wasn't sure: "which one: …" with its top options, or cancel the run. */
+export function AskCard({
+  question,
+  options,
+  onPick,
+  onCancel,
+}: {
+  question: string;
+  options: { id: string; label: string }[];
+  onPick: (id: string) => void;
+  onCancel: () => void;
+}) {
+  const t = useTheme();
+  return (
+    <div
+      role="group"
+      aria-label="ctrl needs you"
+      data-testid="ctrl-ask"
+      style={{
+        display: 'grid',
+        gap: t.space[2],
+        padding: t.space[3],
+        borderRadius: t.radius.md,
+        border: `1px solid ${t.color.border}`,
+        background: t.color.accent,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: t.space[2] }}>
+        <Icon name="ask" size="sm" />
+        <Text variant="label">{question}: which one?</Text>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: t.space[2] }}>
+        {options.map((o) => (
+          <Button
+            key={o.id}
+            size="sm"
+            variant="secondary"
+            onClick={() => onPick(o.id)}
+            data-testid="ctrl-ask-option"
+          >
+            {o.label}
+          </Button>
+        ))}
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onCancel}
+          data-testid="ctrl-ask-cancel"
+        >
+          cancel run
+        </Button>
+      </div>
     </div>
   );
 }

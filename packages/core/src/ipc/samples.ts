@@ -115,9 +115,49 @@ const ctrlRun = {
   id: 'run-1',
   taskId: 'task-0',
   at: T0 + 60_000,
-  status: 'pending-intent' as const,
-  events: 2,
+  status: 'asking' as const,
+  events: 4,
   violations: 0,
+};
+const ctrlOption = (id: string, label: string, p: number) => ({
+  id,
+  label,
+  p,
+  irreversible: false,
+  refusedInBackground: false,
+});
+const ctrlAskDecision = {
+  id: 'd0',
+  node: 'choose_intent' as const,
+  outcome: 'ask' as const,
+  answered: false,
+  chosen: 'none',
+  chosenLabel: 'none of these',
+  p: 0.2,
+  model: 'qrtz-heuristic 1',
+  options: [
+    ctrlOption('intent.clean_folder', 'clean up a folder', 0.07),
+    ctrlOption('intent.close_tabs', 'close browser tabs', 0.07),
+    ctrlOption('none', 'none of these', 0.2),
+  ],
+};
+const ctrlEvents = [
+  { seq: 0, kind: 'task.started', at: T0 + 60_000, actionId: null },
+  { seq: 1, kind: 'intent.pending', at: T0 + 60_000, actionId: null },
+  { seq: 2, kind: 'obs.apps', at: T0 + 60_000, actionId: null, node: null },
+  {
+    seq: 3,
+    kind: 'decision.made',
+    at: T0 + 60_000,
+    actionId: null,
+    node: 'choose_intent',
+  },
+];
+const ctrlState = {
+  actions: [],
+  violations: 0,
+  inconclusive: 0,
+  quarantined: [],
 };
 const ctrlSamples = {
   'ctrl:tasks': { request: undefined, response: [ctrlTask] },
@@ -138,20 +178,52 @@ const ctrlSamples = {
   'ctrl:run-now': { request: { id: 'task-0' }, response: ctrlRun },
   'ctrl:runs': { request: { taskId: 'task-0' }, response: [ctrlRun] },
   'ctrl:run': {
-    request: { runId: 'run-1', at: 2 },
+    request: { runId: 'run-1', at: 4 },
     response: {
       run: ctrlRun,
-      events: [
-        { seq: 0, kind: 'task.started', at: T0 + 60_000, actionId: null },
-        { seq: 1, kind: 'intent.pending', at: T0 + 60_000, actionId: null },
-      ],
-      at: 2,
+      events: ctrlEvents,
+      at: 4,
       state: {
-        actions: [],
-        violations: 0,
-        inconclusive: 0,
-        quarantined: [],
-        status: 'pending-intent',
+        ...ctrlState,
+        status: 'asking',
+        decisions: [ctrlAskDecision],
+        plan: null,
+        ask: {
+          decisionId: 'd0',
+          node: 'choose_intent',
+          options: ctrlAskDecision.options.slice(0, 2),
+        },
+      },
+    },
+  },
+  'ctrl:answer': {
+    request: { runId: 'run-1', decisionId: 'd0', optionId: null },
+    response: {
+      run: { ...ctrlRun, status: 'cancelled', events: 6 },
+      events: [
+        ...ctrlEvents,
+        {
+          seq: 4,
+          kind: 'decision.answered_by_user',
+          at: T0 + 61_000,
+          actionId: null,
+          node: null,
+        },
+        {
+          seq: 5,
+          kind: 'task.finished',
+          at: T0 + 61_000,
+          actionId: null,
+          node: null,
+        },
+      ],
+      at: 6,
+      state: {
+        ...ctrlState,
+        status: 'cancelled',
+        decisions: [ctrlAskDecision],
+        plan: null,
+        ask: null,
       },
     },
   },

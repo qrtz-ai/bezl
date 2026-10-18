@@ -61,7 +61,8 @@ async fn create_list_run_and_scrub_through_the_router_and_a_restart() {
     );
     let id = t["data"]["id"].as_str().unwrap().to_string();
     let run = call(&r, "ctrl", "ctrl:run-now", json!({"id": id})).await;
-    assert_eq!(run["data"]["status"], "pending-intent", "{run}");
+    // The decision layers (ADR 0106) plan it right away; nothing executes (slice 5).
+    assert_eq!(run["data"]["status"], "planned", "{run}");
     let run_id = run["data"]["id"].as_str().unwrap().to_string();
 
     // A new app over the same data dir (a relaunch).
@@ -81,6 +82,65 @@ async fn create_list_run_and_scrub_through_the_router_and_a_restart() {
         assert_eq!(mode(&d.path().join("ctrl")), 0o700);
         assert_eq!(mode(&d.path().join("ctrl/tasks.jsonl")), 0o600);
     }
+}
+
+#[tokio::test]
+async fn an_unclear_task_asks_and_answers_resume_the_decision_layers_through_the_router() {
+    let d = tempfile::tempdir().unwrap();
+    let r = app(d.path(), true);
+    let t = call(
+        &r,
+        "ctrl",
+        "ctrl:create-task",
+        json!({"text": "do the thing", "schedule": {"kind": "once", "at": null}}),
+    )
+    .await;
+    let run = call(&r, "ctrl", "ctrl:run-now", json!({"id": t["data"]["id"]})).await;
+    assert_eq!(run["data"]["status"], "asking", "{run}");
+    let run_id = run["data"]["id"].clone();
+    let v = call(&r, "ctrl", "ctrl:run", json!({"runId": run_id})).await;
+    assert_eq!(v["ok"], true, "the response matches the contract: {v}");
+    let ask = &v["data"]["state"]["ask"];
+    assert_eq!(ask["node"], "choose_intent");
+    let a1 = call(
+        &r,
+        "ctrl",
+        "ctrl:answer",
+        json!({"runId": run_id, "decisionId": ask["decisionId"], "optionId": "intent.close_tabs"}),
+    )
+    .await;
+    assert_eq!(a1["data"]["run"]["status"], "asking", "{a1}");
+    let ask2 = a1["data"]["state"]["ask"].clone();
+    assert_eq!(ask2["node"], "choose_target");
+    let a2 = call(
+        &r,
+        "ctrl",
+        "ctrl:answer",
+        json!({"runId": run_id, "decisionId": ask2["decisionId"], "optionId": "scope.all_tabs"}),
+    )
+    .await;
+    assert_eq!(a2["data"]["run"]["status"], "planned", "{a2}");
+    assert_eq!(
+        a2["data"]["state"]["plan"]["steps"][1]["label"],
+        "your default browser"
+    );
+    // Answering again, or a run id that isn't one, is refused; other sub apps can't answer.
+    let again = call(
+        &r,
+        "ctrl",
+        "ctrl:answer",
+        json!({"runId": run_id, "decisionId": ask2["decisionId"], "optionId": "scope.all_tabs"}),
+    )
+    .await;
+    assert_eq!(again["error"]["code"], "E_VALIDATION", "{again}");
+    let other = call(
+        &r,
+        "talk",
+        "ctrl:answer",
+        json!({"runId": run_id, "decisionId": "d0", "optionId": null}),
+    )
+    .await;
+    assert_eq!(other["error"]["code"], "E_FORBIDDEN");
 }
 
 #[tokio::test]

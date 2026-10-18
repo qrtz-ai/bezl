@@ -173,7 +173,7 @@ fn deleted_tasks_are_not_scheduled() {
 }
 
 #[test]
-fn run_now_still_writes_pending_intent_only() {
+fn run_now_decides_and_an_unclear_task_asks() {
     let d = tempfile::tempdir().unwrap();
     let (svc, _) = svc(d.path(), FakeClock::new(ms_la(2026, 6, 1, 10, 0)));
     let t = svc
@@ -183,6 +183,7 @@ fn run_now_still_writes_pending_intent_only() {
         )
         .unwrap();
     let run = svc.call("ctrl:run-now", json!({"id": t["id"]})).unwrap();
-    assert_eq!(run["status"], "pending-intent");
-    assert_eq!(run["events"], 2);
+    // Slice 4 (ADR 0106): obs.apps + one decision whose best option is "none of these" → ask the user.
+    assert_eq!(run["status"], "asking");
+    assert_eq!(run["events"], 4);
 }

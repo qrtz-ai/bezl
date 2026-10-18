@@ -7774,6 +7774,8 @@
             "type": "string",
             "enum": [
               "pending-intent",
+              "asking",
+              "planned",
               "running",
               "done",
               "failed",
@@ -7840,6 +7842,8 @@
               "type": "string",
               "enum": [
                 "pending-intent",
+                "asking",
+                "planned",
                 "running",
                 "done",
                 "failed",
@@ -7913,6 +7917,8 @@
                 "type": "string",
                 "enum": [
                   "pending-intent",
+                  "asking",
+                  "planned",
                   "running",
                   "done",
                   "failed",
@@ -7959,6 +7965,12 @@
                   "type": "number"
                 },
                 "actionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "node": {
                   "type": [
                     "string",
                     "null"
@@ -8043,12 +8055,219 @@
                 "type": "string",
                 "enum": [
                   "pending-intent",
+                  "asking",
+                  "planned",
                   "running",
                   "done",
                   "failed",
                   "cancelled",
                   "asked-out",
                   "deferred"
+                ]
+              },
+              "decisions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "node": {
+                      "type": "string",
+                      "enum": [
+                        "choose_intent",
+                        "choose_app",
+                        "choose_target",
+                        "choose_text",
+                        "choose_move"
+                      ]
+                    },
+                    "outcome": {
+                      "type": "string",
+                      "enum": [
+                        "act",
+                        "tentative",
+                        "ask"
+                      ]
+                    },
+                    "answered": {
+                      "type": "boolean"
+                    },
+                    "chosen": {
+                      "type": "string"
+                    },
+                    "chosenLabel": {
+                      "type": "string"
+                    },
+                    "p": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "options": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "p": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "irreversible": {
+                            "type": "boolean"
+                          },
+                          "refusedInBackground": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "label",
+                          "p",
+                          "irreversible",
+                          "refusedInBackground"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "node",
+                    "outcome",
+                    "answered",
+                    "chosen",
+                    "chosenLabel",
+                    "p",
+                    "model",
+                    "options"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "plan": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "steps": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "node": {
+                              "type": "string",
+                              "enum": [
+                                "choose_intent",
+                                "choose_app",
+                                "choose_target",
+                                "choose_text",
+                                "choose_move"
+                              ]
+                            },
+                            "option": {
+                              "type": "string"
+                            },
+                            "label": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "node",
+                            "option",
+                            "label"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "irreversible": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "steps",
+                      "irreversible"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "ask": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "decisionId": {
+                        "type": "string"
+                      },
+                      "node": {
+                        "type": "string",
+                        "enum": [
+                          "choose_intent",
+                          "choose_app",
+                          "choose_target",
+                          "choose_text",
+                          "choose_move"
+                        ]
+                      },
+                      "options": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "label": {
+                              "type": "string"
+                            },
+                            "p": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            },
+                            "irreversible": {
+                              "type": "boolean"
+                            },
+                            "refusedInBackground": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "label",
+                            "p",
+                            "irreversible",
+                            "refusedInBackground"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "decisionId",
+                      "node",
+                      "options"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
                 ]
               }
             },
@@ -8057,7 +8276,440 @@
               "violations",
               "inconclusive",
               "quarantined",
-              "status"
+              "status",
+              "decisions",
+              "plan",
+              "ask"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "run",
+          "events",
+          "at",
+          "state"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "ctrl:answer": {
+      "version": 1,
+      "capability": "ctrl.write",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "runId": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "decisionId": {
+              "type": "string",
+              "maxLength": 32
+            },
+            "optionId": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "runId",
+            "decisionId",
+            "optionId"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "run": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "taskId": {
+                "type": "string"
+              },
+              "at": {
+                "type": "number"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending-intent",
+                  "asking",
+                  "planned",
+                  "running",
+                  "done",
+                  "failed",
+                  "cancelled",
+                  "asked-out",
+                  "deferred"
+                ]
+              },
+              "events": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "violations": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "id",
+              "taskId",
+              "at",
+              "status",
+              "events",
+              "violations"
+            ],
+            "additionalProperties": false
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "seq": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "number"
+                },
+                "actionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "node": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "seq",
+                "kind",
+                "at",
+                "actionId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "at": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "state": {
+            "type": "object",
+            "properties": {
+              "actions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "requested",
+                        "executing",
+                        "deferred",
+                        "asked",
+                        "refused",
+                        "done",
+                        "failed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "violations": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "inconclusive": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "quarantined": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "app": {
+                      "type": "string"
+                    },
+                    "rung": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "app",
+                    "rung"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending-intent",
+                  "asking",
+                  "planned",
+                  "running",
+                  "done",
+                  "failed",
+                  "cancelled",
+                  "asked-out",
+                  "deferred"
+                ]
+              },
+              "decisions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "node": {
+                      "type": "string",
+                      "enum": [
+                        "choose_intent",
+                        "choose_app",
+                        "choose_target",
+                        "choose_text",
+                        "choose_move"
+                      ]
+                    },
+                    "outcome": {
+                      "type": "string",
+                      "enum": [
+                        "act",
+                        "tentative",
+                        "ask"
+                      ]
+                    },
+                    "answered": {
+                      "type": "boolean"
+                    },
+                    "chosen": {
+                      "type": "string"
+                    },
+                    "chosenLabel": {
+                      "type": "string"
+                    },
+                    "p": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "options": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "p": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "irreversible": {
+                            "type": "boolean"
+                          },
+                          "refusedInBackground": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "label",
+                          "p",
+                          "irreversible",
+                          "refusedInBackground"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "node",
+                    "outcome",
+                    "answered",
+                    "chosen",
+                    "chosenLabel",
+                    "p",
+                    "model",
+                    "options"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "plan": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "steps": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "node": {
+                              "type": "string",
+                              "enum": [
+                                "choose_intent",
+                                "choose_app",
+                                "choose_target",
+                                "choose_text",
+                                "choose_move"
+                              ]
+                            },
+                            "option": {
+                              "type": "string"
+                            },
+                            "label": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "node",
+                            "option",
+                            "label"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "irreversible": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "steps",
+                      "irreversible"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "ask": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "decisionId": {
+                        "type": "string"
+                      },
+                      "node": {
+                        "type": "string",
+                        "enum": [
+                          "choose_intent",
+                          "choose_app",
+                          "choose_target",
+                          "choose_text",
+                          "choose_move"
+                        ]
+                      },
+                      "options": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "label": {
+                              "type": "string"
+                            },
+                            "p": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            },
+                            "irreversible": {
+                              "type": "boolean"
+                            },
+                            "refusedInBackground": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "label",
+                            "p",
+                            "irreversible",
+                            "refusedInBackground"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "decisionId",
+                      "node",
+                      "options"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "actions",
+              "violations",
+              "inconclusive",
+              "quarantined",
+              "status",
+              "decisions",
+              "plan",
+              "ask"
             ],
             "additionalProperties": false
           }

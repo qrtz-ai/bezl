@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { axe } from './axe';
 
-// ctrl (ADR 0103) in the shipped renderer over the mocked Tauri IPC: type a task, pick a schedule, see it listed,
-// run it now, see its run history (derived from the run's event log) and scrub the run's state.
+// ctrl (ADR 0103, 0106) in the shipped renderer over the mocked Tauri IPC: type a task, pick a schedule, see it
+// listed, run it now, see its run history (derived from the run's event log), the decision layers' plan and
+// inspector, scrub the run's state, and answer a run that asks.
 test('ctrl: create a task, see it listed, run it, see and scrub its history', async ({
   page,
 }) => {
@@ -53,18 +54,40 @@ test('ctrl: create a task, see it listed, run it, see and scrub its history', as
   const runs = ctrl.getByTestId('ctrl-run');
   await expect(runs).toHaveCount(1);
   await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText(
-    'waiting for intent',
+    'planned',
   );
   await expect(downloads.getByTestId('ctrl-task-schedule')).toContainText(
     'last run',
   );
-  await expect(ctrl.getByTestId('ctrl-event')).toHaveCount(2);
+  // task.started, intent.pending, obs.apps, 4 decisions, plan.produced.
+  await expect(ctrl.getByTestId('ctrl-event')).toHaveCount(8);
   await expect(ctrl.getByTestId('ctrl-state')).toHaveText(
-    'step 2 of 2 · waiting for intent',
+    'step 8 of 8 · planned · 4 decisions',
   );
+  await expect(ctrl.getByTestId('ctrl-plan-steps')).toHaveText(
+    'plan: clean up a folder → files (no app) → downloads → sort by kind, trash old installers',
+  );
+  const decisions = ctrl.getByTestId('ctrl-decision');
+  await expect(decisions).toHaveCount(4);
+  await expect(
+    decisions.nth(2).getByTestId('ctrl-decision-question'),
+  ).toHaveText('on what');
+  await expect(
+    decisions.nth(2).locator('[data-testid="ctrl-option"][data-chosen]'),
+  ).toContainText('downloads');
+  await expect(
+    decisions.first().getByTestId('ctrl-decision-outcome'),
+  ).toHaveText('sure');
+  // Scrub back to before the decisions: no plan, no inspector, still waiting for intent.
+  await ctrl.getByTestId('ctrl-scrub').fill('2');
+  await expect(ctrl.getByTestId('ctrl-state')).toHaveText(
+    'step 2 of 8 · waiting for intent',
+  );
+  await expect(ctrl.getByTestId('ctrl-plan')).toHaveCount(0);
+  await expect(decisions).toHaveCount(0);
   await ctrl.getByTestId('ctrl-scrub').fill('1');
   await expect(ctrl.getByTestId('ctrl-state')).toHaveText(
-    'step 1 of 2 · running',
+    'step 1 of 8 · running',
   );
   await expect(
     ctrl.locator('[data-testid="ctrl-event"][data-applied]'),
@@ -81,5 +104,64 @@ test('ctrl: create a task, see it listed, run it, see and scrub its history', as
 
   await row.first().getByTestId('ctrl-task-delete').click();
   await expect(row).toHaveCount(1);
+  expect(errors).toEqual([]);
+});
+
+test('ctrl: an unclear task asks which one, the answer plans it, cancel ends a run', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  await ctrl.getByTestId('ctrl-task-input').fill('do the thing');
+  await ctrl.getByTestId('ctrl-schedule-once').click();
+  await ctrl.getByTestId('ctrl-schedule-time').fill('');
+  await ctrl.getByTestId('ctrl-task-add').click();
+  const row = ctrl.getByTestId('ctrl-task');
+  await row.getByTestId('ctrl-task-run').click();
+
+  const runs = ctrl.getByTestId('ctrl-run');
+  await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText(
+    'needs you',
+  );
+  const ask = ctrl.getByTestId('ctrl-ask');
+  await expect(ask).toContainText('what kind of task: which one?');
+  await expect(ask.getByTestId('ctrl-ask-option')).toHaveCount(3);
+  await expect(
+    ctrl
+      .getByTestId('ctrl-decision')
+      .first()
+      .getByTestId('ctrl-decision-outcome'),
+  ).toHaveText('asked you');
+  expect(await axe(page, 'ctrl')).toEqual([]);
+
+  await ask
+    .getByTestId('ctrl-ask-option')
+    .filter({ hasText: 'close browser tabs' })
+    .click();
+  await expect(ask).toHaveCount(0);
+  await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText(
+    'planned',
+  );
+  await expect(ctrl.getByTestId('ctrl-plan-steps')).toHaveText(
+    'plan: close browser tabs → your default browser → all tabs → close every tab by script',
+  );
+  await expect(
+    ctrl
+      .getByTestId('ctrl-decision')
+      .first()
+      .getByTestId('ctrl-decision-outcome'),
+  ).toHaveText('you chose');
+
+  // A second run asks again; cancel ends it.
+  await row.getByTestId('ctrl-task-run').click();
+  await expect(runs).toHaveCount(2);
+  await ctrl.getByTestId('ctrl-ask-cancel').click();
+  await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText(
+    'cancelled',
+  );
+  await expect(ask).toHaveCount(0);
   expect(errors).toEqual([]);
 });

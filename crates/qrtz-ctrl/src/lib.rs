@@ -15,13 +15,20 @@
 //!   hash-chained files in the app data dir, and the `ctrl:*` channels the shell's ctrl view calls.
 //! - [`schedule`] (slice 3, ADR 0105): next-due math against the local zone (DST gap/overlap rules), used by the
 //!   in-process scheduler ticker on [`service::CtrlService`].
+//! - [`decide`], [`layers`], [`laya`] (slice 4, ADR 0106): the decision layers. A chain of small questions
+//!   (intent → app → target/text → move, ≤ 20 options each) answered with calibrated probabilities by the
+//!   deterministic heuristic layer (no model) or, with consent, a Laya model; act / tentative / ask outcomes and the
+//!   resulting plan are appended to the run's log and replay exactly.
 //!
 //! The macOS side (real probes, AX, `CGEventPostToPid`, `NSWorkspace`) is `native/qrtz-helper/Sources/QrtzCtrl`.
 //! Both sides test their policy tables and guard semantics against the same fixtures in
 //! `native/qrtz-helper/Fixtures/ctrl/`.
+pub mod decide;
 pub mod fs_exec;
 pub mod guard;
 pub mod ladder;
+pub mod laya;
+pub mod layers;
 pub mod log;
 pub mod policy;
 pub mod runner;

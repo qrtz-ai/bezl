@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  AskCard,
   Button,
   CtrlTaskRow,
+  DecisionList,
   EmptyState,
   Heading,
   Input,
   Page,
   PlainList,
+  PlanSummary,
   RunHistory,
   RunTimeline,
   SchedulePicker,
@@ -23,8 +26,10 @@ import {
 } from '@qrtz/core';
 import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
 import {
+  decisionItem,
   describeSchedule,
   eventItem,
+  nodeQuestion,
   runItem,
   stateSummary,
   toSchedule,
@@ -35,7 +40,8 @@ import {
 /**
  * ctrl: type a task, pick when it runs, see its runs. Runs are derived from each run's event log (crates/qrtz-ctrl);
  * the scrubber shows the state after any step without executing anything. The local scheduler (slice 3, ADR 0105)
- * records due runs in the background and pushes `ctrl:changed`; the decision layers (slice 4) still execute nothing.
+ * records due runs in the background and pushes `ctrl:changed`. The decision layers (slice 4, ADR 0106) decide each
+ * run's plan or ask which option was meant; nothing executes yet (slice 5).
  */
 export default function CtrlView() {
   const qrtz = useQrtz();
@@ -96,6 +102,13 @@ export default function CtrlView() {
       loadRuns(id);
       openRun(r.id);
     }, fail);
+  const answer = (runId: string, decisionId: string, optionId: string | null) =>
+    void qrtz
+      .invoke('ctrl:answer', { runId, decisionId, optionId })
+      .then((v) => {
+        setRun(v);
+        if (selected) loadRuns(selected);
+      }, fail);
   const togglePause = (t: CtrlTask) =>
     void qrtz
       .invoke('ctrl:set-paused', { id: t.id, paused: !t.paused })
@@ -182,6 +195,25 @@ export default function CtrlView() {
               onAt={(n) => openRun(run.run.id, n)}
               summary={stateSummary(run.state)}
             />
+          ) : null}
+          {run?.state.ask && run.at === run.events.length ? (
+            <AskCard
+              question={nodeQuestion(run.state.ask.node)}
+              options={run.state.ask.options}
+              onPick={(id) => answer(run.run.id, run.state.ask!.decisionId, id)}
+              onCancel={() =>
+                answer(run.run.id, run.state.ask!.decisionId, null)
+              }
+            />
+          ) : null}
+          {run?.state.plan ? (
+            <PlanSummary
+              steps={run.state.plan.steps.map((s) => s.label)}
+              irreversible={run.state.plan.irreversible}
+            />
+          ) : null}
+          {run?.state.decisions.length ? (
+            <DecisionList decisions={run.state.decisions.map(decisionItem)} />
           ) : null}
         </SettingsSection>
       ) : null}

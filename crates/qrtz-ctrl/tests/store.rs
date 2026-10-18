@@ -233,7 +233,7 @@ fn channels_create_list_pause_run_and_scrub() {
     let r = svc.call("ctrl:run-now", json!({"id": "task-0"})).unwrap();
     assert_eq!(
         r,
-        json!({"id": "run-1", "taskId": "task-0", "at": T0 + 2000, "status": "pending-intent", "events": 2, "violations": 0})
+        json!({"id": "run-1", "taskId": "task-0", "at": T0 + 2000, "status": "planned", "events": 8, "violations": 0})
     );
     let p = svc
         .call("ctrl:set-paused", json!({"id": "task-0", "paused": true}))
@@ -254,15 +254,20 @@ fn channels_create_list_pause_run_and_scrub() {
 
     let v = svc.call("ctrl:run", json!({"runId": "run-1", "at": 1})).unwrap();
     assert_eq!(v["at"], 1);
-    assert_eq!(v["events"].as_array().unwrap().len(), 2);
+    // task.started, intent.pending, obs.apps, 4 decisions (intent, app, folder, move), plan.produced (ADR 0106).
+    assert_eq!(v["events"].as_array().unwrap().len(), 8);
     assert_eq!(v["events"][1]["kind"], "intent.pending");
+    assert_eq!(v["events"][3]["kind"], "decision.made");
+    assert_eq!(v["events"][3]["node"], "choose_intent");
     assert_eq!(v["state"]["status"], "running", "after task.started only");
+    let at2 = svc.call("ctrl:run", json!({"runId": "run-1", "at": 2})).unwrap();
+    assert_eq!(at2["state"]["status"], "pending-intent");
     let full = svc.call("ctrl:run", json!({"runId": "run-1"})).unwrap();
-    assert_eq!(full["at"], 2);
-    assert_eq!(full["state"]["status"], "pending-intent");
+    assert_eq!(full["at"], 8);
+    assert_eq!(full["state"]["status"], "planned");
     assert_eq!(
         svc.call("ctrl:run", json!({"runId": "run-1", "at": 99})).unwrap()["at"],
-        2,
+        8,
         "clamped"
     );
 

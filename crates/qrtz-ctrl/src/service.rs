@@ -1,8 +1,12 @@
 //! The `ctrl:*` channels (slice 2) and the in-process scheduler ticker (slice 3, ADR 0105). Payloads arrive already
 //! validated against the IPC contract (`packages/core/src/ipc/contract.ts`); answers are the contract's shapes
 //! (camelCase). Nothing here executes a task yet: a due run (manual or scheduled) records `task.started` +
-//! `intent.pending`; the decision layers (slice 4) take it from there.
-use crate::log::{fold, ActionStatus, CtrlState, Event, EventLog, TaskStatus};
+//! `intent.pending`, then the decision layers (slice 4, ADR 0106) observe the app catalog and decide the intent
+//! (`decision.made` … `plan.produced`, or an ask the user answers through `ctrl:answer`). The AX executor is
+//! slice 5.
+use crate::decide::{ask_options, run_chain, Goal, Heuristic, Scorer};
+use crate::layers::{label, AppSource, ScanApps};
+use crate::log::{fold, ActionStatus, CtrlState, DecisionState, Event, EventLog, TaskStatus};
 use crate::runner::Clock;
 use crate::schedule::{is_due, next_due, LocalZone, SystemLocalZone};
 use crate::store::{Store, StoreError};
@@ -73,9 +77,12 @@ pub struct CtrlService {
     store: Mutex<Result<Store, StoreError>>,
     clock: Box<dyn Clock + Send + Sync>,
     zone: Box<dyn LocalZone>,
+    apps: Box<dyn AppSource>,
+    scorer: Box<dyn Scorer>,
 }
 
-/// The status a run shows: its `task.finished`, else waiting for an intent, else running.
+/// The status a run shows: its `task.finished`, else asking the user, else waiting for an intent, else planned
+/// (a plan and no action yet: the executor is slice 5), else running.
 pub fn run_status(s: &CtrlState) -> &'static str {
     match s.task_status {
         Some(TaskStatus::Done) => "done",
@@ -83,7 +90,9 @@ pub fn run_status(s: &CtrlState) -> &'static str {
         Some(TaskStatus::Cancelled) => "cancelled",
         Some(TaskStatus::AskedOut) => "asked-out",
         Some(TaskStatus::Deferred) => "deferred",
+        None if s.ask.is_some() => "asking",
         None if s.intent_pending => "pending-intent",
+        None if s.plan.is_some() && s.actions.is_empty() => "planned",
         None => "running",
     }
 }
@@ -108,8 +117,57 @@ fn event_action(e: &Event) -> Option<&str> {
         | Event::ActionExecuted { action_id, .. }
         | Event::GuardResult { action_id, .. }
         | Event::GuardRestored { action_id, .. } => Some(action_id),
-        Event::TaskStarted { .. } | Event::IntentPending { .. } | Event::TaskFinished { .. } => None,
+        Event::TaskStarted { .. }
+        | Event::IntentPending { .. }
+        | Event::TaskFinished { .. }
+        | Event::ObsApps { .. }
+        | Event::DecisionMade { .. }
+        | Event::DecisionAnswered { .. }
+        | Event::Backtrack { .. }
+        | Event::PlanProduced { .. } => None,
     }
+}
+
+fn event_node(e: &Event) -> Option<&'static str> {
+    match e {
+        Event::DecisionMade { node, .. } => Some(node.as_str()),
+        _ => None,
+    }
+}
+
+fn pct(bp: u32) -> f64 {
+    f64::from(bp) / 10000.0
+}
+
+fn option_json(d: &DecisionState, i: usize, goal: Option<&Goal>) -> Value {
+    let o = &d.options[i];
+    json!({
+        "id": o.id,
+        "label": label(o, goal),
+        "p": pct(d.p_bp[i]),
+        "irreversible": o.irreversible,
+        "refusedInBackground": o.ladder.is_some(),
+    })
+}
+
+fn decision_json(d: &DecisionState, goal: Option<&Goal>) -> Value {
+    let outcome = match d.outcome {
+        crate::decide::Outcome::Act => "act",
+        crate::decide::Outcome::Tentative => "tentative",
+        crate::decide::Outcome::Ask => "ask",
+    };
+    let chosen = d.options.iter().find(|o| o.id == d.chosen);
+    json!({
+        "id": d.id,
+        "node": d.node.as_str(),
+        "outcome": outcome,
+        "answered": d.answered,
+        "chosen": d.chosen,
+        "chosenLabel": chosen.map_or_else(|| d.chosen.clone(), |o| label(o, goal)),
+        "p": pct(d.p_chosen_bp),
+        "model": format!("{} {}", d.model.id, d.model.version),
+        "options": (0..d.options.len()).map(|i| option_json(d, i, goal)).collect::<Vec<_>>(),
+    })
 }
 
 fn event_kind(e: &Event) -> String {
@@ -119,8 +177,31 @@ fn event_kind(e: &Event) -> String {
         .unwrap_or_default()
 }
 
-fn state_json(s: &CtrlState) -> Value {
+fn state_json(s: &CtrlState, goal: Option<&Goal>) -> Value {
+    let ask = s
+        .ask
+        .as_ref()
+        .and_then(|id| s.decisions.iter().find(|d| &d.id == id))
+        .map(|d| {
+            json!({
+                "decisionId": d.id,
+                "node": d.node.as_str(),
+                "options": ask_options(d).into_iter().map(|i| option_json(d, i, goal)).collect::<Vec<_>>(),
+            })
+        });
+    let plan = s.plan.as_ref().map(|p| {
+        json!({
+            "irreversible": p.irreversible,
+            "steps": p.steps.iter().map(|st| {
+                let o = s.decisions.iter().filter(|d| d.node == st.node).flat_map(|d| d.options.iter()).find(|o| o.id == st.option);
+                json!({"node": st.node.as_str(), "option": st.option, "label": o.map_or_else(|| st.option.clone(), |o| label(o, goal))})
+            }).collect::<Vec<_>>(),
+        })
+    });
     json!({
+        "decisions": s.decisions.iter().map(|d| decision_json(d, goal)).collect::<Vec<_>>(),
+        "plan": plan,
+        "ask": ask,
         "actions": s.actions.iter().map(|(id, st)| json!({"id": id, "status": action_status(*st)})).collect::<Vec<_>>(),
         "violations": s.violations,
         "inconclusive": s.inconclusive,
@@ -148,7 +229,21 @@ impl CtrlService {
             store: Mutex::new(Store::open(dir)),
             clock,
             zone,
+            apps: Box::new(ScanApps::mac_default()),
+            scorer: Box::new(Heuristic),
         }
+    }
+
+    /// Where the decision layers get the app catalog (default: the application folders).
+    pub fn with_apps(mut self, apps: Box<dyn AppSource>) -> Self {
+        self.apps = apps;
+        self
+    }
+
+    /// The decision layers' scorer (default: the heuristic layer; see `laya::select_scorer`).
+    pub fn with_scorer(mut self, scorer: Box<dyn Scorer>) -> Self {
+        self.scorer = scorer;
+        self
     }
 
     fn last_run_at(store: &Store, t: &Task) -> Option<u64> {
@@ -187,24 +282,74 @@ impl CtrlService {
         })
     }
 
-    /// Record a run the same way as `ctrl:run-now` / a scheduled fire: `run.recorded` + `task.started` +
-    /// `intent.pending`.
-    fn record_pending_run(
-        store: &mut Store,
-        clock: &dyn Clock,
-        now: u64,
-        task_id: &str,
-    ) -> Result<EventLog, CtrlError> {
-        let mono = clock.mono_ns();
+    /// Record a run the same way for `ctrl:run-now` and a scheduled fire: `run.recorded` + `task.started` +
+    /// `intent.pending`, then `obs.apps` and the decision chain (ADR 0106).
+    fn record_pending_run(&self, store: &mut Store, now: u64, task_id: &str) -> Result<EventLog, CtrlError> {
+        let mono = self.clock.mono_ns();
         let id = task_id.to_string();
-        Ok(store.start_run(
+        let mut log = store.start_run(
             now,
             task_id,
             &[
                 (mono, Event::TaskStarted { task_id: id.clone() }),
-                (mono, Event::IntentPending { task_id: id }),
+                (mono, Event::IntentPending { task_id: id.clone() }),
             ],
-        )?)
+        )?;
+        let apps = self.apps.catalog().observe();
+        store.append_run_record(&mut log, self.clock.mono_ns(), now, Event::ObsApps { apps })?;
+        let text = store.task(task_id)?.text.clone();
+        self.continue_chain(store, &mut log, now, task_id, &text)?;
+        Ok(log)
+    }
+
+    /// Run the chain from the log's state and append what it decides.
+    fn continue_chain(
+        &self,
+        store: &Store,
+        log: &mut EventLog,
+        now: u64,
+        task_id: &str,
+        text: &str,
+    ) -> Result<(), CtrlError> {
+        let goal = Goal { task_id, text };
+        for e in run_chain(&goal, &log.state(), self.scorer.as_ref(), self.clock.as_ref()) {
+            store.append_run_record(log, self.clock.mono_ns(), now, e)?;
+        }
+        Ok(())
+    }
+
+    /// The run's view (`ctrl:run`): events, and the state after `at` with labels resolved from the task text.
+    fn run_view(store: &Store, log: &EventLog, at: Option<u64>) -> Value {
+        let total = log.records().len();
+        let at = at.map_or(total, |a| (a as usize).min(total));
+        let task_id = store
+            .run_meta(log.run_id())
+            .map(|m| m.0.clone())
+            .unwrap_or_default();
+        let text = store.task(&task_id).ok().map(|t| t.text.clone());
+        let goal = text.as_deref().map(|text| Goal {
+            task_id: &task_id,
+            text,
+        });
+        let events: Vec<Value> = log
+            .records()
+            .iter()
+            .map(|r| {
+                json!({
+                    "seq": r.seq,
+                    "kind": event_kind(&r.event),
+                    "at": r.t_wall_ms,
+                    "actionId": event_action(&r.event),
+                    "node": event_node(&r.event),
+                })
+            })
+            .collect();
+        json!({
+            "run": Self::run_json(store, log),
+            "events": events,
+            "at": at,
+            "state": state_json(&fold(log.events().take(at)), goal.as_ref()),
+        })
     }
 
     /// One scheduler pass (ADR 0105): for every non-paused task that is due, record exactly one run (catch-up
@@ -238,7 +383,7 @@ impl CtrlService {
             if !is_due(&t.schedule, t.created_at, last, now, zone) {
                 continue;
             }
-            Self::record_pending_run(store, self.clock.as_ref(), now, &id)?;
+            self.record_pending_run(store, now, &id)?;
             fired.push(id);
         }
         Ok(fired)
@@ -274,7 +419,7 @@ impl CtrlService {
             }
             "ctrl:run-now" => {
                 let id = str_field(&p, "id")?.to_string();
-                let log = Self::record_pending_run(store, self.clock.as_ref(), now, &id)?;
+                let log = self.record_pending_run(store, now, &id)?;
                 Ok(Self::run_json(store, &log))
             }
             "ctrl:runs" => {
@@ -289,26 +434,61 @@ impl CtrlService {
             }
             "ctrl:run" => {
                 let log = store.run(str_field(&p, "runId")?)?;
-                let total = log.records().len();
-                let at = p["at"].as_u64().map_or(total, |a| (a as usize).min(total));
-                let events: Vec<Value> = log
-                    .records()
-                    .iter()
-                    .map(|r| {
-                        json!({
-                            "seq": r.seq,
-                            "kind": event_kind(&r.event),
-                            "at": r.t_wall_ms,
-                            "actionId": event_action(&r.event),
-                        })
-                    })
-                    .collect();
-                Ok(json!({
-                    "run": Self::run_json(store, &log),
-                    "events": events,
-                    "at": at,
-                    "state": state_json(&fold(log.events().take(at))),
-                }))
+                Ok(Self::run_view(store, &log, p["at"].as_u64()))
+            }
+            // Answer the decision the run is asking about (or cancel the run), then continue the chain.
+            "ctrl:answer" => {
+                let mut log = store.run(str_field(&p, "runId")?)?;
+                let decision_id = str_field(&p, "decisionId")?.to_string();
+                let s = log.state();
+                if s.ask.as_deref() != Some(decision_id.as_str()) {
+                    return Err(CtrlError::new(
+                        CtrlErrorCode::Validation,
+                        "that question was already answered",
+                    ));
+                }
+                let task_id = store
+                    .run_meta(log.run_id())
+                    .map(|m| m.0.clone())
+                    .unwrap_or_default();
+                let text = store.task(&task_id)?.text.clone();
+                let choice = match &p["optionId"] {
+                    Value::Null => None,
+                    v => {
+                        let id = v.as_str().unwrap_or_default();
+                        let d = s.decisions.iter().find(|d| d.id == decision_id);
+                        let ok = d.is_some_and(|d| ask_options(d).iter().any(|&i| d.options[i].id == id));
+                        if !ok {
+                            return Err(CtrlError::new(
+                                CtrlErrorCode::Validation,
+                                "pick one of the options",
+                            ));
+                        }
+                        Some(id.to_string())
+                    }
+                };
+                let mono = self.clock.mono_ns();
+                let cancel = choice.is_none();
+                store.append_run_record(
+                    &mut log,
+                    mono,
+                    now,
+                    Event::DecisionAnswered { decision_id, choice },
+                )?;
+                if cancel {
+                    store.append_run_record(
+                        &mut log,
+                        mono,
+                        now,
+                        Event::TaskFinished {
+                            task_id,
+                            status: TaskStatus::Cancelled,
+                        },
+                    )?;
+                } else {
+                    self.continue_chain(store, &mut log, now, &task_id, &text)?;
+                }
+                Ok(Self::run_view(store, &log, None))
             }
             _ => Err(CtrlError::new(
                 CtrlErrorCode::Unavailable,

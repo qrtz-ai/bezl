@@ -459,7 +459,7 @@ export const ipcContract = {
     request: z.object({ id: z.string().max(64) }),
     response: z.object({ ok: z.literal(true) }),
   }),
-  /** Record a run now. Until the decision layers land it waits for an intent (`pending-intent`). */
+  /** Record a run now; the decision layers decide its intent right away (`planned` or `asking`, ADR 0106). */
   'ctrl:run-now': defineChannel({
     version: 1,
     capability: 'ctrl.write',
@@ -480,6 +480,20 @@ export const ipcContract = {
     request: z.object({
       runId: z.string().max(64),
       at: z.number().int().min(0).optional(),
+    }),
+    response: CtrlRunView,
+  }),
+  /**
+   * Answer the decision a run is asking about (one of its top three options), or cancel the run (`optionId:
+   * null`). The decision layers then continue (ADR 0106). Answers the run's view after all events.
+   */
+  'ctrl:answer': defineChannel({
+    version: 1,
+    capability: 'ctrl.write',
+    request: z.object({
+      runId: z.string().max(64),
+      decisionId: z.string().max(32),
+      optionId: z.string().max(128).nullable(),
     }),
     response: CtrlRunView,
   }),

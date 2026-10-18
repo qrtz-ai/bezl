@@ -805,8 +805,8 @@
         "id": "run-1",
         "taskId": "task-0",
         "at": 1760659260000,
-        "status": "pending-intent",
-        "events": 2,
+        "status": "asking",
+        "events": 4,
         "violations": 0
       }
     },
@@ -819,8 +819,8 @@
           "id": "run-1",
           "taskId": "task-0",
           "at": 1760659260000,
-          "status": "pending-intent",
-          "events": 2,
+          "status": "asking",
+          "events": 4,
           "violations": 0
         }
       ]
@@ -828,15 +828,15 @@
     "ctrl:run": {
       "request": {
         "runId": "run-1",
-        "at": 2
+        "at": 4
       },
       "response": {
         "run": {
           "id": "run-1",
           "taskId": "task-0",
           "at": 1760659260000,
-          "status": "pending-intent",
-          "events": 2,
+          "status": "asking",
+          "events": 4,
           "violations": 0
         },
         "events": [
@@ -851,15 +851,189 @@
             "kind": "intent.pending",
             "at": 1760659260000,
             "actionId": null
+          },
+          {
+            "seq": 2,
+            "kind": "obs.apps",
+            "at": 1760659260000,
+            "actionId": null,
+            "node": null
+          },
+          {
+            "seq": 3,
+            "kind": "decision.made",
+            "at": 1760659260000,
+            "actionId": null,
+            "node": "choose_intent"
           }
         ],
-        "at": 2,
+        "at": 4,
         "state": {
           "actions": [],
           "violations": 0,
           "inconclusive": 0,
           "quarantined": [],
-          "status": "pending-intent"
+          "status": "asking",
+          "decisions": [
+            {
+              "id": "d0",
+              "node": "choose_intent",
+              "outcome": "ask",
+              "answered": false,
+              "chosen": "none",
+              "chosenLabel": "none of these",
+              "p": 0.2,
+              "model": "qrtz-heuristic 1",
+              "options": [
+                {
+                  "id": "intent.clean_folder",
+                  "label": "clean up a folder",
+                  "p": 0.07,
+                  "irreversible": false,
+                  "refusedInBackground": false
+                },
+                {
+                  "id": "intent.close_tabs",
+                  "label": "close browser tabs",
+                  "p": 0.07,
+                  "irreversible": false,
+                  "refusedInBackground": false
+                },
+                {
+                  "id": "none",
+                  "label": "none of these",
+                  "p": 0.2,
+                  "irreversible": false,
+                  "refusedInBackground": false
+                }
+              ]
+            }
+          ],
+          "plan": null,
+          "ask": {
+            "decisionId": "d0",
+            "node": "choose_intent",
+            "options": [
+              {
+                "id": "intent.clean_folder",
+                "label": "clean up a folder",
+                "p": 0.07,
+                "irreversible": false,
+                "refusedInBackground": false
+              },
+              {
+                "id": "intent.close_tabs",
+                "label": "close browser tabs",
+                "p": 0.07,
+                "irreversible": false,
+                "refusedInBackground": false
+              }
+            ]
+          }
+        }
+      }
+    },
+    "ctrl:answer": {
+      "request": {
+        "runId": "run-1",
+        "decisionId": "d0",
+        "optionId": null
+      },
+      "response": {
+        "run": {
+          "id": "run-1",
+          "taskId": "task-0",
+          "at": 1760659260000,
+          "status": "cancelled",
+          "events": 6,
+          "violations": 0
+        },
+        "events": [
+          {
+            "seq": 0,
+            "kind": "task.started",
+            "at": 1760659260000,
+            "actionId": null
+          },
+          {
+            "seq": 1,
+            "kind": "intent.pending",
+            "at": 1760659260000,
+            "actionId": null
+          },
+          {
+            "seq": 2,
+            "kind": "obs.apps",
+            "at": 1760659260000,
+            "actionId": null,
+            "node": null
+          },
+          {
+            "seq": 3,
+            "kind": "decision.made",
+            "at": 1760659260000,
+            "actionId": null,
+            "node": "choose_intent"
+          },
+          {
+            "seq": 4,
+            "kind": "decision.answered_by_user",
+            "at": 1760659261000,
+            "actionId": null,
+            "node": null
+          },
+          {
+            "seq": 5,
+            "kind": "task.finished",
+            "at": 1760659261000,
+            "actionId": null,
+            "node": null
+          }
+        ],
+        "at": 6,
+        "state": {
+          "actions": [],
+          "violations": 0,
+          "inconclusive": 0,
+          "quarantined": [],
+          "status": "cancelled",
+          "decisions": [
+            {
+              "id": "d0",
+              "node": "choose_intent",
+              "outcome": "ask",
+              "answered": false,
+              "chosen": "none",
+              "chosenLabel": "none of these",
+              "p": 0.2,
+              "model": "qrtz-heuristic 1",
+              "options": [
+                {
+                  "id": "intent.clean_folder",
+                  "label": "clean up a folder",
+                  "p": 0.07,
+                  "irreversible": false,
+                  "refusedInBackground": false
+                },
+                {
+                  "id": "intent.close_tabs",
+                  "label": "close browser tabs",
+                  "p": 0.07,
+                  "irreversible": false,
+                  "refusedInBackground": false
+                },
+                {
+                  "id": "none",
+                  "label": "none of these",
+                  "p": 0.2,
+                  "irreversible": false,
+                  "refusedInBackground": false
+                }
+              ]
+            }
+          ],
+          "plan": null,
+          "ask": null
         }
       }
     }

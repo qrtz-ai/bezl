@@ -1,11 +1,18 @@
 import type {
+  CtrlDecision,
   CtrlEventRow,
+  CtrlNode,
   CtrlRun,
   CtrlRunState,
   CtrlRunStatus,
   CtrlSchedule,
 } from '@qrtz/core';
-import { WEEKDAYS, type BadgeTone, type ScheduleKind } from '@qrtz/ui';
+import {
+  WEEKDAYS,
+  type BadgeTone,
+  type DecisionItem,
+  type ScheduleKind,
+} from '@qrtz/ui';
 
 /** What the schedule picker holds. */
 export interface ScheduleForm {
@@ -63,6 +70,8 @@ export function describeSchedule(s: CtrlSchedule): string {
 
 const STATUS: Record<CtrlRunStatus, [string, BadgeTone]> = {
   'pending-intent': ['waiting for intent', 'neutral'],
+  asking: ['needs you', 'warning'],
+  planned: ['planned', 'primary'],
   running: ['running', 'primary'],
   done: ['done', 'success'],
   failed: ['failed', 'danger'],
@@ -88,16 +97,49 @@ export const runItem = (r: CtrlRun) => {
   };
 };
 
-/** `intent.pending` → "intent pending"; action events carry their action id. */
-export const eventItem = (e: CtrlEventRow) => ({
-  seq: e.seq,
-  label: e.kind.replace(/[._]/g, ' '),
-  ...(e.actionId ? { meta: e.actionId } : {}),
+/** What each decision layer asks (ADR 0106). */
+const QUESTION: Record<CtrlNode, string> = {
+  choose_intent: 'what kind of task',
+  choose_app: 'which app',
+  choose_target: 'on what',
+  choose_text: 'what to type',
+  choose_move: 'which move',
+};
+export const nodeQuestion = (n: CtrlNode) => QUESTION[n];
+
+/** `intent.pending` → "intent pending"; action events carry their action id, decisions their layer. */
+export const eventItem = (e: CtrlEventRow) => {
+  const meta =
+    e.actionId ??
+    (e.node && e.node in QUESTION ? QUESTION[e.node as CtrlNode] : null);
+  return {
+    seq: e.seq,
+    label: e.kind.replace(/[._]/g, ' '),
+    ...(meta ? { meta } : {}),
+  };
+};
+
+/** A decision for the inspector: its options with the chosen one marked. */
+export const decisionItem = (d: CtrlDecision): DecisionItem => ({
+  id: d.id,
+  question: QUESTION[d.node],
+  outcome: d.outcome,
+  answered: d.answered,
+  meta: `${Math.round(d.p * 100)}% · ${d.model}`,
+  options: d.options.map((o) => ({
+    id: o.id,
+    label: o.label,
+    p: o.p,
+    chosen: o.id === d.chosen && (d.outcome !== 'ask' || d.answered),
+    irreversible: o.irreversible,
+    refused: o.refusedInBackground,
+  })),
 });
 
 /** The reducer's state in one line. */
 export function stateSummary(s: CtrlRunState): string {
   const parts = [runStatus(s.status)[0]];
+  if (s.decisions.length) parts.push(`${s.decisions.length} decisions`);
   if (s.actions.length) {
     const done = s.actions.filter((a) => a.status === 'done').length;
     parts.push(`${done}/${s.actions.length} actions done`);

@@ -4,9 +4,13 @@
 //! and numbers only, never paths, labels or text (ADR 0083).
 //!
 //! Slice 2 persists each run as its own file (`store.rs`, ADR 0103). Slice 1 covers the execution events: what was decided for an action, the guard snapshots around it, the result
-//! and any violation. Observation and model-decision events (`obs.*`, `decision.made`) arrive with slices 4–5.
+//! and any violation. Slice 4 (ADR 0106) adds the decision layers' events: `obs.apps` (the app catalog the chain
+//! chose from), `decision.made` (options, probabilities, chosen option, outcome), `decision.answered_by_user`,
+//! `backtrack` and `plan.produced`. AX observations (`obs.snapshot` / `obs.diff`) arrive with slice 5.
+use crate::decide::{BacktrackReason, ModelId, Node, Opt, Outcome, Thresholds};
 use crate::guard::{Field, GuardOutcome, UiSnapshot};
 use crate::ladder::{Decision, Route, Rung, Verdict};
+use crate::layers::AppsObs;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -29,6 +33,50 @@ pub enum Event {
     /// records runs this far ("run now" in the ctrl view) so history, scrub and replay work end to end.
     #[serde(rename = "intent.pending")]
     IntentPending { task_id: String },
+    /// The app catalog the decision layers chose from: bundle ids and hashed name tokens, never names.
+    #[serde(rename = "obs.apps")]
+    ObsApps { apps: AppsObs },
+    /// One small decision (spec §13.2): the options, their logits and calibrated probabilities (basis points),
+    /// the chosen option and what the chain does with it.
+    #[serde(rename = "decision.made")]
+    DecisionMade {
+        decision_id: String,
+        node: Node,
+        options: Vec<Opt>,
+        logits_milli: Vec<i64>,
+        p_bp: Vec<u32>,
+        temperature_milli: u32,
+        chosen: String,
+        p_chosen_bp: u32,
+        thresholds: Thresholds,
+        outcome: Outcome,
+        /// Tentative only: the next-best options, the backtrack stack.
+        alternatives: Vec<String>,
+        model: ModelId,
+        seed: u64,
+        input_hash: String,
+        latency_us: u64,
+    },
+    /// The user's answer to an asked decision; `None` = cancel.
+    #[serde(rename = "decision.answered_by_user")]
+    DecisionAnswered {
+        decision_id: String,
+        choice: Option<String>,
+    },
+    /// A tentative choice didn't verify: take the next alternative; later decisions are dropped.
+    #[serde(rename = "backtrack")]
+    Backtrack {
+        decision_id: String,
+        to: String,
+        reason: BacktrackReason,
+    },
+    /// Every node has a choice: the plan the executor (slice 5) runs.
+    #[serde(rename = "plan.produced")]
+    PlanProduced {
+        steps: Vec<PlanStep>,
+        irreversible: bool,
+        model: ModelId,
+    },
     #[serde(rename = "action.requested")]
     ActionRequested { action_id: String, routes: Vec<Route> },
     #[serde(rename = "action.decided")]
@@ -254,6 +302,34 @@ pub enum ActionStatus {
     Failed,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlanStep {
+    pub node: Node,
+    pub option: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlanState {
+    pub steps: Vec<PlanStep>,
+    pub irreversible: bool,
+}
+
+/// A decision as the state holds it (from `decision.made`, then answers and backtracks).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DecisionState {
+    pub id: String,
+    pub node: Node,
+    pub options: Vec<Opt>,
+    pub p_bp: Vec<u32>,
+    pub chosen: String,
+    pub p_chosen_bp: u32,
+    pub outcome: Outcome,
+    pub alternatives: Vec<String>,
+    pub answered: bool,
+    pub backtracks: u32,
+    pub model: ModelId,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct CtrlState {
     pub actions: BTreeMap<String, ActionStatus>,
@@ -266,8 +342,30 @@ pub struct CtrlState {
     pub task_status: Option<TaskStatus>,
     /// `task.started` was seen.
     pub started: bool,
-    /// Waiting for the decision layers; cleared by the first `action.requested` or `task.finished`.
+    /// Waiting for the decision layers; cleared by `plan.produced`, the first `action.requested` or
+    /// `task.finished`.
     pub intent_pending: bool,
+    /// The app catalog of `obs.apps`.
+    pub apps: Option<AppsObs>,
+    /// The chain so far, in order (a backtrack drops the decisions after the one it changes).
+    pub decisions: Vec<DecisionState>,
+    /// Every `decision.made` ever applied (decision ids stay unique across backtracks).
+    pub decisions_made: u64,
+    pub plan: Option<PlanState>,
+    /// The decision waiting for the user's answer.
+    pub ask: Option<String>,
+    pub backtracks: u32,
+}
+
+impl CtrlState {
+    /// The option chosen at each node: acted, tentative, or answered by the user (an unanswered ask isn't).
+    pub fn chosen(&self) -> BTreeMap<Node, String> {
+        self.decisions
+            .iter()
+            .filter(|d| d.outcome != Outcome::Ask || d.answered)
+            .map(|d| (d.node, d.chosen.clone()))
+            .collect()
+    }
 }
 
 /// The reducer. Pure.
@@ -275,6 +373,68 @@ pub fn apply(mut s: CtrlState, e: &Event) -> CtrlState {
     match e {
         Event::TaskStarted { .. } => s.started = true,
         Event::IntentPending { .. } => s.intent_pending = true,
+        Event::ObsApps { apps } => s.apps = Some(apps.clone()),
+        Event::DecisionMade {
+            decision_id,
+            node,
+            options,
+            p_bp,
+            chosen,
+            p_chosen_bp,
+            outcome,
+            alternatives,
+            model,
+            ..
+        } => {
+            s.decisions_made += 1;
+            s.plan = None;
+            if *outcome == Outcome::Ask {
+                s.ask = Some(decision_id.clone());
+            }
+            s.decisions.push(DecisionState {
+                id: decision_id.clone(),
+                node: *node,
+                options: options.clone(),
+                p_bp: p_bp.clone(),
+                chosen: chosen.clone(),
+                p_chosen_bp: *p_chosen_bp,
+                outcome: *outcome,
+                alternatives: alternatives.clone(),
+                answered: false,
+                backtracks: 0,
+                model: model.clone(),
+            });
+        }
+        Event::DecisionAnswered { decision_id, choice } => {
+            if s.ask.as_deref() == Some(decision_id.as_str()) {
+                s.ask = None;
+            }
+            if let (Some(c), Some(d)) = (choice, s.decisions.iter_mut().find(|d| &d.id == decision_id)) {
+                d.chosen = c.clone();
+                d.answered = true;
+            }
+        }
+        Event::Backtrack { decision_id, to, .. } => {
+            if let Some(i) = s.decisions.iter().position(|d| &d.id == decision_id) {
+                s.decisions.truncate(i + 1);
+                let d = &mut s.decisions[i];
+                d.chosen = to.clone();
+                d.alternatives.retain(|a| a != to);
+                d.backtracks += 1;
+                s.backtracks += 1;
+                s.plan = None;
+                s.ask = None;
+            }
+        }
+        Event::PlanProduced {
+            steps, irreversible, ..
+        } => {
+            s.intent_pending = false;
+            s.plan = Some(PlanState {
+                steps: steps.clone(),
+                irreversible: *irreversible,
+            });
+        }
         Event::ActionRequested { action_id, .. } => {
             s.intent_pending = false;
             s.actions.insert(action_id.clone(), ActionStatus::Requested);
