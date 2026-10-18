@@ -206,6 +206,12 @@ pub struct AsrInfo {
     pub asr: String,
     pub segments: Option<u64>,
     pub tail_decode_ms: Option<f64>,
+    /// ADR 0131 / 0132 (N169): the release tail decode's confidence (`tailConf`, 0..=1; absent when the recogniser
+    /// reported none or no tail was decoded) and whether the helper's tail confidence floor dropped that tail
+    /// (`tailDropped`). Logged on the `talk latency` line beside `raw_chars`, so a dictation that lost its tail is
+    /// visible next to what was inserted. Additive: an older helper sends neither.
+    pub tail_conf: Option<f64>,
+    pub tail_dropped: bool,
 }
 
 impl AsrInfo {
@@ -221,6 +227,11 @@ impl AsrInfo {
             asr,
             segments: m["segments"].as_u64(),
             tail_decode_ms: m["tailDecodeMs"].as_f64().filter(|v| v.is_finite() && *v >= 0.0),
+            tail_conf: m["tailConf"]
+                .as_f64()
+                .filter(|v| (0.0..=1.0).contains(v))
+                .map(|v| (v * 1000.0).round() / 1000.0),
+            tail_dropped: m["tailDropped"].as_bool() == Some(true),
         })
     }
     /// A segmented recogniser (it reported segments).
@@ -1530,6 +1541,9 @@ impl TalkService {
             asr = segs.as_ref().map(|a| a.asr.as_str()),
             segments = segs.as_ref().and_then(|a| a.segments),
             tail_decode_ms = segs.as_ref().and_then(|a| a.tail_decode_ms),
+            // ADR 0132: the release tail's confidence, and `tail_dropped = true` only when the floor dropped it.
+            tail_conf = segs.as_ref().and_then(|a| a.tail_conf),
+            tail_dropped = segs.as_ref().map(|a| a.tail_dropped).filter(|d| *d),
             "talk latency"
         );
         if cfg.save_history {
