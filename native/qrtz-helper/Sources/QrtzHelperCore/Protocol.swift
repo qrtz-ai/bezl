@@ -18,13 +18,18 @@ public enum DictationStopReason: String, Sendable { case permissionRevoked = "pe
 /// `dictation.stopped`'s recogniser fields (additive, all optional on the wire): `asr` (the recogniser that heard
 /// it, e.g. "parakeet-tdt-v2"; absent when none did), and for a segmented batch recogniser `segments` (segments
 /// decoded, the tail included) and `tailDecodeMs` (the release's decode of the last segment; absent when the tail
-/// needed none).
+/// needed none). ADR 0132 (N169): `tailConf` (the release tail decode's confidence, 0...1, 3 places; absent when
+/// the recogniser reported none or no tail was decoded) and `tailDropped` (true only when ADR 0131's tail
+/// confidence floor dropped that tail's words; absent otherwise). Talk logs both on its `talk latency` line.
 public struct DictationAsrInfo: Sendable, Equatable {
     public var asr: String
     public var segments: Int?
     public var tailDecodeMs: Double?
-    public init(asr: String, segments: Int? = nil, tailDecodeMs: Double? = nil) {
+    public var tailConf: Double?
+    public var tailDropped: Bool?
+    public init(asr: String, segments: Int? = nil, tailDecodeMs: Double? = nil, tailConf: Double? = nil, tailDropped: Bool? = nil) {
         self.asr = asr; self.segments = segments; self.tailDecodeMs = tailDecodeMs
+        self.tailConf = tailConf; self.tailDropped = tailDropped
     }
 }
 public enum PermissionState: String, Sendable { case granted, denied, notDetermined = "not-determined", unsupported }
@@ -166,7 +171,14 @@ private extension DictationAsrInfo {
         if let g, g < 0 || g != g.rounded() { throw ProtocolError("bad segments") }
         let t = try f.optNum("tailDecodeMs")
         if let t, t < 0 { throw ProtocolError("bad tailDecodeMs") }
-        self.init(asr: a, segments: g.map { Int($0) }, tailDecodeMs: t)
+        let c = try f.optNum("tailConf")
+        if let c, !(0...1).contains(c) { throw ProtocolError("bad tailConf") }
+        var d: Bool?
+        if let v = f.o["tailDropped"], v != .null {
+            guard let b = v.bool else { throw ProtocolError("bad tailDropped") }
+            d = b
+        }
+        self.init(asr: a, segments: g.map { Int($0) }, tailDecodeMs: t, tailConf: c, tailDropped: d)
     }
 }
 
@@ -279,6 +291,8 @@ extension HelperMessage {
                 o["asr"] = s(info.asr)
                 if let g = info.segments { o["segments"] = n(Double(g)) }
                 if let t = info.tailDecodeMs { o["tailDecodeMs"] = n(t) }
+                if let c = info.tailConf { o["tailConf"] = n(c) }
+                if let d = info.tailDropped { o["tailDropped"] = .bool(d) }
             }
             return obj("dictation.stopped", o)
         case .captureSilent(let src, let since): return obj("capture.silent", ["source": s(src.rawValue), "sinceMs": n(since)])

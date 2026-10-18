@@ -33,3 +33,5 @@ not json
 {"atMs":10,"reason":"backlog","source":"camera","type":"diarization.unavailable"}
 {"asr":"parakeet-tdt-v2","durationMs":1,"id":"d","segments":-1,"text":"","type":"dictation.stopped"}
 {"asr":"","durationMs":1,"id":"d","text":"","type":"dictation.stopped"}
+{"asr":"parakeet-tdt-v2","durationMs":1,"id":"d","tailConf":1.5,"text":"","type":"dictation.stopped"}
+{"asr":"parakeet-tdt-v2","durationMs":1,"id":"d","tailDropped":"yes","text":"","type":"dictation.stopped"}

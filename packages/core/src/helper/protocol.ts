@@ -251,6 +251,10 @@ export const HelperToHost = z.discriminatedUnion('type', [
     segments: z.number().int().nonnegative().optional(),
     /** Segmented batch recogniser: the release's decode of the last segment (ms). Absent when the tail had no speech to decode. */
     tailDecodeMs: z.number().nonnegative().optional(),
+    /** ADR 0132: the release tail decode's confidence (0..1, 3 places). Absent when the recogniser reported none (or FluidAudio's placeholder) or no tail was decoded. */
+    tailConf: z.number().min(0).max(1).optional(),
+    /** ADR 0131/0132: true when the helper's tail confidence floor dropped the release tail's words; absent otherwise. */
+    tailDropped: z.boolean().optional(),
   }),
   z.object({
     /**

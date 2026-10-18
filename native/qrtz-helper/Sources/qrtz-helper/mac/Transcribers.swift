@@ -108,7 +108,8 @@ final class ParakeetBatch: BatchRecognizer, @unchecked Sendable {
         // line up one to one (its spacing and punctuation as the manager formatted it), else the tokens' own.
         let timed = buildWordTimings(from: r.tokenTimings ?? [])
         // ADR 0131: the mean TDT token confidence, for the release tail's floor (tail_conf= on the timing line).
-        let conf = r.confidence.isFinite ? Float(r.confidence) : nil
+        // ADR 0132 (N170): nil for FluidAudio's placeholders (blank text: 0.1; no token timings: 0.5).
+        let conf = BatchResult.reportedConfidence(Float(r.confidence), text: r.text, timedTokens: r.tokenTimings?.count ?? 0)
         guard !timed.isEmpty else { return BatchResult(text: r.text, confidence: conf) }
         let textWords = r.text.split(whereSeparator: { $0.isWhitespace }).map(String.init)
         let words = textWords.count == timed.count

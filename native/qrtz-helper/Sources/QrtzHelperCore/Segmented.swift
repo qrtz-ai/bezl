@@ -32,6 +32,16 @@ public struct BatchResult: Sendable, Equatable {
     public init(text: String, words: [Word]? = nil, confidence: Float? = nil) {
         self.text = text; self.words = words; self.confidence = confidence
     }
+    /// ADR 0132 (N170): the confidence worth reporting from a recogniser's raw one. FluidAudio's
+    /// `calculateConfidence` returns placeholders rather than confidences in two cases: 0.1 for an empty
+    /// transcription and 0.5 when the token confidences are missing or not one per token (`createTokenTimings`
+    /// returns `[]` exactly then). Both are nil here (so the floor keeps the tail and `tail_conf=` isn't logged), as
+    /// is a non-finite value; anything else is clamped to 0...1.
+    public static func reportedConfidence(_ raw: Float, text: String, timedTokens: Int) -> Float? {
+        guard raw.isFinite, timedTokens > 0,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return min(1, max(0, raw))
+    }
 }
 
 /// Where segments are cut. Every knob is configurable (Bozniak's Linux eval sets the final rule):

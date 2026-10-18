@@ -29,6 +29,7 @@
 {"id":"d1","pcm16":"AAABAP//","seq":0,"type":"dictation.audio"}
 {"durationMs":1820,"id":"d1","text":"hello world","type":"dictation.stopped"}
 {"asr":"parakeet-tdt-v2","durationMs":4180,"id":"d3","segments":3,"tailDecodeMs":86.4,"text":"one two three","type":"dictation.stopped"}
+{"asr":"parakeet-tdt-v2","durationMs":2950,"id":"d5","segments":2,"tailConf":0.412,"tailDecodeMs":71.2,"tailDropped":true,"text":"one two","type":"dictation.stopped"}
 {"asr":"apple-speechanalyzer","durationMs":900,"id":"d4","text":"hi","type":"dictation.stopped"}
 {"app":"Notes","id":"d1","method":"ax-selected-text","ok":true,"type":"insert.result"}
 {"error":"no focused text field","id":"d2","method":"none","ok":false,"type":"insert.result"}

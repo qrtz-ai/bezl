@@ -79,7 +79,9 @@ Rules (the arbiter's `cmd` events):
    a segment, window or tail whose peak is below 0.1 is scaled to peak 0.9 (at most 10×) on the decode copy only;
    the timing line then adds `peak_gained=`. ADR 0131 (off by default, `QRTZ_ECHO_TAIL_CONF`): a release tail
    of at most 4 words whose decode confidence is below the floor isn't stitched. The timing line carries
-   `tail_conf=` whenever the recogniser reports a confidence, and `tail_dropped=1` when the tail was dropped. Every knob of the rule is an environment
+   `tail_conf=` (3 places) whenever the recogniser reports a confidence, and `tail_dropped=1` when the tail was
+   dropped. ADR 0132: FluidAudio's placeholders (0.1 for a blank decode, 0.5 without token timings) are reported as
+   no confidence, and the floor ships only together with `QRTZ_ECHO_SEG_PEAK=on`. Every knob of the rule is an environment
    override (`QRTZ_ECHO_SEGMENT_PAUSE_MS`, `_CAP_MS`, `_OVERLAP_MS`, `_OVERLAP_MODE` = `all`|`cap`, `_MIN_MS`). The
    fallback is Apple SpeechAnalyzer (macOS 26). Recordings keep Nemotron streaming, and it loads only for a
    recording.
@@ -87,7 +89,9 @@ Rules (the arbiter's `cmd` events):
    `asr` is the recogniser id (`parakeet-tdt-v2`, `apple-speechanalyzer`, `nemotron-560ms`) and is absent when none
    ran or the dictation was cancelled. For the segmented recogniser it also carries `segments` (segments decoded,
    the tail included) and `tailDecodeMs` (the release's decode of the last segment, in ms). `tailDecodeMs` is absent
-   when the tail had no speech to decode.
+   when the tail had no speech to decode. ADR 0132: `tailConf` is the release tail decode's confidence (0..1, 3
+   places; absent when the recogniser reported none or no tail was decoded) and `tailDropped: true` says the tail
+   confidence floor dropped that tail's words (absent otherwise). qrtz-talk logs both on its `talk latency` line.
    N134: a start that no recogniser can take (each one busy or failing to load, and no speech module attached) is
    refused with `error{code: "dictation.asr", fatal: false, id}` instead of a `dictation.started` that would hear
    nothing. qrtz-talk shows it as `speech-unavailable` at once.

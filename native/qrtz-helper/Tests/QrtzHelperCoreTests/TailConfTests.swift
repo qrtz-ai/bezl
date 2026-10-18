@@ -40,7 +40,7 @@ final class TailConfTests: XCTestCase {
         XCTAssertFalse(st.tailDropped)
         XCTAssertEqual(st.tailConf ?? -1, 0.2, accuracy: 1e-6, "the confidence is still reported")
         var t = DictationTiming(); t.segments = st
-        XCTAssertTrue(t.logLine.contains(" tail_conf=0.20"), t.logLine)
+        XCTAssertTrue(t.logLine.contains(" tail_conf=0.200"), t.logLine)
         XCTAssertFalse(t.logLine.contains("tail_dropped"))
         XCTAssertEqual(t.json["tailDropped"] as? Bool, false)
     }
@@ -50,7 +50,7 @@ final class TailConfTests: XCTestCase {
         XCTAssertEqual(text, "w1 w2 w3 w4 w5 w6", "the earlier segments' text stays")
         XCTAssertTrue(st.tailDropped)
         var t = DictationTiming(); t.segments = st
-        XCTAssertTrue(t.logLine.hasSuffix("tail_conf=0.40 tail_dropped=1"), t.logLine)
+        XCTAssertTrue(t.logLine.hasSuffix("tail_conf=0.400 tail_dropped=1"), t.logLine)
         XCTAssertEqual(t.json["tailDropped"] as? Bool, true)
         XCTAssertEqual(t.json["tailConf"] as? Double ?? -1, 0.4, accuracy: 1e-6)
     }

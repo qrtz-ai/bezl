@@ -582,10 +582,17 @@ public actor DictationEngine {
         }
     }
 
-    /// `dictation.stopped`'s recogniser fields: which recogniser heard it, and a segmented one's counts.
+    /// `dictation.stopped`'s recogniser fields: which recogniser heard it, and a segmented one's counts, plus
+    /// (ADR 0132) the release tail's confidence (3 places, 0...1) and `tailDropped` only when the floor dropped it.
     static func asrInfo(_ tr: StreamingTranscriber?, _ g: SegmentStats?) -> DictationAsrInfo? {
         guard let tr else { return nil }
-        return DictationAsrInfo(asr: tr.name, segments: g?.segments, tailDecodeMs: g.flatMap { $0.tailDecodeMs < 0 ? nil : ($0.tailDecodeMs * 10).rounded() / 10 })
+        let conf = g?.tailConf.flatMap { c -> Double? in
+            let v = Double(c)
+            return v.isFinite ? (min(1, max(0, v)) * 1000).rounded() / 1000 : nil
+        }
+        return DictationAsrInfo(asr: tr.name, segments: g?.segments,
+                                tailDecodeMs: g.flatMap { $0.tailDecodeMs < 0 ? nil : ($0.tailDecodeMs * 10).rounded() / 10 },
+                                tailConf: conf, tailDropped: g?.tailDropped == true ? true : nil)
     }
 
     /// The pad + finish limit of a release: ADR 0118's segmented budget for a segmented recogniser (its decode is

@@ -881,6 +881,14 @@
           "tailDecodeMs": {
             "type": "number",
             "minimum": 0
+          },
+          "tailConf": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "tailDropped": {
+            "type": "boolean"
           }
         },
         "required": [
