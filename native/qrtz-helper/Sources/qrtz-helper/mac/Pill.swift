@@ -1,0 +1,227 @@
+#if os(macOS)
+import AppKit
+import CoreText
+import QrtzHelperCore
+import QuartzCore
+
+/// ADR 0092: echo's dictation pill as a native panel. It doesn't activate, is borderless, ignores the mouse, shows on
+/// every Space and over full-screen apps, and sits bottom-center on the screen of the active window. It is built at
+/// launch (font registered, layers made), so the first fn press only orders it front. 62b99fc's design: never any
+/// transcript; a 240 pt pill; three layered tapered sines eased to the mic level every display frame; a slow low
+/// swell while processing; an alert icon and lowercase error text truncated with an ellipsis. With reduced motion
+/// the wave's phase stands still and only the amplitude follows the level. `PillDriver` (core) decides the phase.
+final class NativePill: PillView, @unchecked Sendable {
+    private var panel: NSPanel?
+    private var view: PillContentView?
+
+    init() {
+        if Thread.isMainThread { build() } else { DispatchQueue.main.sync { build() } }
+    }
+
+    func show(_ phase: PillPhase) { DispatchQueue.main.async { [self] in apply(phase) } }
+    func level(_ rms: Double) { DispatchQueue.main.async { [self] in view?.level = rms } }
+
+    static func registerFont() {
+        let data = PillFont.woff2 as CFData
+        guard let provider = CGDataProvider(data: data), let font = CGFont(provider) else { logErr("pill: font unreadable"); return }
+        var err: Unmanaged<CFError>?
+        if !CTFontManagerRegisterGraphicsFont(font, &err) {
+            // Already registered (a second build in one process) is fine; anything else falls back to the system font.
+            if let e = err?.takeRetainedValue(), CFErrorGetCode(e) != CTFontManagerError.alreadyRegistered.rawValue { logErr("pill: font: \(e)") }
+        }
+    }
+
+    private func build() {
+        // A window needs the app object; accessory: no Dock icon, no menu bar, never frontmost.
+        let app = NSApplication.shared
+        if app.activationPolicy() != .accessory { app.setActivationPolicy(.accessory) }
+        Self.registerFont()
+        let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: PillGeometry.width, height: PillGeometry.height),
+                        styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        p.isFloatingPanel = true
+        p.level = .statusBar
+        p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        p.ignoresMouseEvents = true
+        p.hidesOnDeactivate = false
+        p.becomesKeyOnlyIfNeeded = true
+        p.isOpaque = false
+        p.backgroundColor = .clear
+        p.hasShadow = false
+        p.isReleasedWhenClosed = false
+        p.animationBehavior = .none
+        let v = PillContentView(frame: p.contentLayoutRect)
+        p.contentView = v
+        panel = p; view = v
+    }
+
+    private func apply(_ phase: PillPhase) {
+        guard let p = panel, let v = view else { return }
+        v.phase = phase
+        if phase == .hidden {
+            p.orderOut(nil)
+            v.running = false
+            return
+        }
+        if !p.isVisible {
+            place(p)
+            v.resetAmp()
+            p.orderFrontRegardless()
+        }
+        v.running = true
+        NSAccessibility.post(element: v, notification: .announcementRequested,
+                             userInfo: [.announcement: phase.accessibilityLabel, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+    }
+
+    private func place(_ p: NSPanel) {
+        let vf = (Self.activeScreen() ?? NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? .zero
+        let f = PillGeometry.frame(visibleX: vf.minX, y: vf.minY, width: vf.width, height: vf.height)
+        p.setFrame(NSRect(x: f.x, y: f.y, width: f.w, height: f.h), display: false)
+    }
+
+    /// The screen of the frontmost app's frontmost normal window (window bounds need no permission).
+    static func activeScreen() -> NSScreen? {
+        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+              let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
+        else { return nil }
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+        for w in list where (w[kCGWindowOwnerPID as String] as? pid_t) == pid && (w[kCGWindowLayer as String] as? Int) == 0 {
+            guard let b = w[kCGWindowBounds as String] as? NSDictionary, let r = CGRect(dictionaryRepresentation: b) else { continue }
+            let c = CGPoint(x: r.midX, y: primaryHeight - r.midY)  // CG (top-left) -> Cocoa (bottom-left)
+            if let s = NSScreen.screens.first(where: { $0.frame.contains(c) }) { return s }
+        }
+        return nil
+    }
+}
+
+/// The pill's drawing: a rounded surface with a 1 pt border, the wave (three CAShapeLayers), or the error row.
+final class PillContentView: NSView {
+    private let surface = CAShapeLayer()
+    private let waves = PillWave.layers.map { _ in CAShapeLayer() }
+    private let waveBox = CALayer()
+    private let icon = NSImageView()
+    private let label = NSTextField(labelWithString: "")
+    private var link: CADisplayLink?
+    private var amp = PillWave.liveFloor
+    private var phaseRad = 0.0
+    private var last: CFTimeInterval?
+
+    var level = 0.0
+    var phase: PillPhase = .hidden { didSet { layoutPhase() } }
+    var running = false {
+        didSet {
+            guard running != oldValue else { return }
+            link?.isPaused = !running
+            last = nil
+        }
+    }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.addSublayer(surface)
+        waveBox.frame = CGRect(x: (frame.width - PillWave.width) / 2, y: (frame.height - PillWave.height) / 2,
+                               width: PillWave.width, height: PillWave.height)
+        waveBox.isGeometryFlipped = true  // the wave's y runs down, like the SVG
+        for (i, l) in waves.enumerated() {
+            l.fillColor = nil
+            l.lineWidth = i == 0 ? 2 : 1.5
+            l.lineCap = .round
+            l.lineJoin = .round
+            l.opacity = Float(PillWave.layers[i].opacity)
+            waveBox.addSublayer(l)
+        }
+        layer?.addSublayer(waveBox)
+        icon.image = NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: nil)
+        icon.symbolConfiguration = .init(pointSize: 12, weight: .regular)
+        label.font = NSFont(name: PillFont.family, size: PillGeometry.fontSize) ?? .systemFont(ofSize: PillGeometry.fontSize)
+        label.lineBreakMode = .byTruncatingTail
+        label.maximumNumberOfLines = 1
+        label.cell?.truncatesLastVisibleLine = true
+        for v in [icon, label] as [NSView] { v.isHidden = true; addSubview(v) }
+        setAccessibilityElement(true)
+        setAccessibilityRole(.staticText)
+        setAccessibilityLabel(PillPhase.hidden.accessibilityLabel)
+        let l = displayLink(target: self, selector: #selector(tick(_:)))
+        l.add(to: .main, forMode: .common)
+        l.isPaused = true
+        link = l
+        recolor()
+        draw(amp: amp)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override var isFlipped: Bool { false }
+
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); recolor() }
+
+    /// packages/ui tokens: surface, borderStrong and text, dark and light.
+    private func recolor() {
+        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        func c(_ hex: UInt32) -> CGColor {
+            CGColor(red: CGFloat(hex >> 16 & 0xff) / 255, green: CGFloat(hex >> 8 & 0xff) / 255, blue: CGFloat(hex & 0xff) / 255, alpha: 1)
+        }
+        let text = c(dark ? 0xfafafa : 0x0a0a0a)
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        surface.fillColor = c(dark ? 0x111111 : 0xfafafa)
+        surface.strokeColor = c(dark ? 0x404040 : 0xd4d4d4)
+        surface.lineWidth = 1
+        let r = bounds.insetBy(dx: 0.5, dy: 0.5)
+        surface.path = CGPath(roundedRect: r, cornerWidth: r.height / 2, cornerHeight: r.height / 2, transform: nil)
+        for w in waves { w.strokeColor = text }
+        CATransaction.commit()
+        icon.contentTintColor = NSColor(cgColor: text)
+        label.textColor = NSColor(cgColor: text)
+    }
+
+    func resetAmp() {
+        amp = PillWave.target(mode, phase == .listening ? level : 0)
+        draw(amp: amp)
+    }
+
+    private var mode: PillWave.Mode { phase == .listening ? .live : .idle }
+
+    private func layoutPhase() {
+        setAccessibilityLabel(phase.accessibilityLabel)
+        if case .error(let message) = phase {
+            waveBox.isHidden = true
+            label.stringValue = message
+            label.sizeToFit()
+            let tw = min(label.frame.width, PillGeometry.errorTextWidth)
+            let total = PillGeometry.iconSize + PillGeometry.gap + tw
+            let x0 = (bounds.width - total) / 2
+            icon.frame = NSRect(x: x0, y: (bounds.height - PillGeometry.iconSize) / 2, width: PillGeometry.iconSize, height: PillGeometry.iconSize)
+            label.frame = NSRect(x: x0 + PillGeometry.iconSize + PillGeometry.gap, y: (bounds.height - label.frame.height) / 2,
+                                 width: tw, height: label.frame.height)
+            icon.isHidden = false; label.isHidden = false
+        } else {
+            waveBox.isHidden = false
+            icon.isHidden = true; label.isHidden = true
+        }
+    }
+
+    @objc private func tick(_ l: CADisplayLink) {
+        let now = l.timestamp
+        let dtMs = last.map { (now - $0) * 1000 } ?? 16
+        last = now
+        amp = PillWave.step(amp, PillWave.target(mode, phase == .listening ? level : 0), dtMs)
+        if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            phaseRad = (phaseRad + PillWave.speed(mode) * dtMs / 1000).truncatingRemainder(dividingBy: Double.pi * 200)
+        }
+        draw(amp: amp)
+    }
+
+    private func draw(amp: Double) {
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        for (layer, pts) in zip(waves, PillWave.frame(amp: amp, phase: phaseRad)) {
+            let p = CGMutablePath()
+            for (i, q) in pts.enumerated() {
+                let pt = CGPoint(x: q.x, y: q.y)
+                if i == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
+            }
+            layer.path = p
+        }
+        CATransaction.commit()
+    }
+}
+#endif

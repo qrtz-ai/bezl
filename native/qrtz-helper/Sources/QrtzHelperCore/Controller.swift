@@ -113,6 +113,9 @@ public struct HelperDeps: Sendable {
     public var modelLoads = ModelLoads()
     /// ADR 0087: load echo's recogniser when the helper starts (kept for its life). Off in tests that count loads.
     public var preloadDictationAsr = true
+    /// ADR 0092: the native dictation pill (macOS, when the host asks for it with `QRTZ_NATIVE_PILL=1`).
+    public var pill: PillView? = nil
+    public var pillTiming = PillDriver.Timing()
     /// Echo: what the helper does between the key release and `dictation.stopped` (tail, drain, pad, finalize).
     public var dictationTail = DictationTail()
     public var helperVersion: String
@@ -307,6 +310,12 @@ public actor HelperController {
     private var permWatch: Task<Void, Never>?
 
     public init(deps: HelperDeps, send: @escaping @Sendable (HelperMessage) -> Void, now: @escaping @Sendable () -> Double) {
+        // ADR 0092: the pill sees every line before it is written, so a key press shows it at once.
+        let pill = deps.pill.map { PillDriver(view: $0, timing: deps.pillTiming) }
+        let raw = send
+        let send: @Sendable (HelperMessage) -> Void
+        if let pill { send = { m in pill.helper(m); raw(m) } } else { send = raw }
+        self.pill = pill
         self.deps = deps; self.send = send; self.now = now
         let st = deps.permissions.status()
         self.lastPerms = st
@@ -345,7 +354,11 @@ public actor HelperController {
 
     public var isRecording: Bool { recording != nil }
 
+    /// ADR 0092: the native pill's state machine (nil without a pill view).
+    nonisolated public let pill: PillDriver?
+
     public func handle(_ msg: HostMessage) async {
+        pill?.host(msg)
         switch msg {
         case .ping(let id): send(.pong(id: id))
         case .permissionsCheck: send(.permissionsStatus(deps.permissions.status()))

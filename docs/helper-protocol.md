@@ -197,6 +197,11 @@ for the helper's life (about 62 MB). A `dictation.start` during that load joins 
 The recording's recognisers and speaker models stay per recording. Each Nemotron load logs whether Core ML's
 specialization was expected to be cached (`<data>/models/compiled/<set>.json`).
 
+ADR 0092: with `QRTZ_NATIVE_PILL=1` in its environment, the macOS helper draws echo's dictation pill itself
+(`hello.features` gets `talk.pill.native`), driven by the lines above: the push key, `dictation.started`,
+`dictation.level`, `dictation.stop`, `dictation.stopped`, `insert.text` and `insert.result`, and `error{dictation.*}`.
+Nothing new goes over the wire.
+
 Host → helper `{"type":"models.warm"}` (ADR 0079 / N121): sent once after the local speech models finish installing
 (`speech.warmAfterDownload`, default on). The helper loads each model once, one at a time, then unloads it, and logs
 `models warmed: …`. Ignored while recording or while a warm-up runs; an older helper logs it as an ignored line.

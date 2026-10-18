@@ -39,6 +39,11 @@ func makePlatformDeps(version: String) -> HelperDeps {
     deps.diarizers = [.mic: NemotronChannelDiarizer(), .system: NemotronChannelDiarizer()]
     let loads = deps.modelLoads
     deps.modelWarmup = { await warmModels(loads) }
+    // ADR 0092: the native echo pill, once the host asks for it (it then stops showing its web pill).
+    if ProcessInfo.processInfo.environment["QRTZ_NATIVE_PILL"] == "1" {
+        deps.pill = NativePill()
+        deps.features.append("talk.pill.native")
+    }
     return deps
 }
 
