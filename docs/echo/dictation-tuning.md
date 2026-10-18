@@ -134,13 +134,15 @@ Every dictation writes one content-free line to `~/Library/Logs/qrtz/qrtz.log` (
 
 ```
 [helper] echo timing: asr=nemotron-560ms audio_ms=4210 preroll_ms=0 first_partial_ms=890 appends=49 append_total_ms=181.2 append_max_ms=17.4 live_rtf=0.043 tail_ms=51 drain_ms=118 close_ms=118 finalize_ms=146 release_to_stopped_ms=147 queued_ms=0 word_count=11
-talk latency engine=... audio_ms=4210 first_partial_ms=... final_ms=... cleanup_ms=... inserted_ms=... insert=AxSelectedText cleanup=Rules raw_chars=58 inserted_chars=59
+talk latency engine=... audio_ms=4210 head_ms=0 first_partial_ms=... final_ms=... cleanup_ms=... inserted_ms=... insert=AxSelectedText cleanup=Rules raw_chars=58 inserted_chars=59
 ```
 
 `tail_ms`, `drain_ms`, `close_ms` and `finalize_ms` are cumulative: each is the time from the release to the end of that
 stage, so `finalize_ms − close_ms` is the pad + finish decode. No transcript, text, or dictionary content: durations,
 counts, and the recogniser's name only. Flags
-`drain_timed_out`, `final_timed_out`, `append_held`, `gate_ducked=x/y` appear only when they happen.
+`drain_timed_out`, `final_timed_out`, `append_held`, `gate_ducked=x/y` appear only when they happen. `armed=1` (ADR 0104)
+means the press opened the mic; talk's `head_ms` (ADR 0107) is the audio the helper heard before talk's start (a
+press queued behind a finishing dictation shows seconds here).
 `grep "echo timing" ~/Library/Logs/qrtz/qrtz.log` after a day of normal use is the most useful thing to send back.
 
 ## 6. Linux cross-check (same model family, ONNX)
@@ -244,3 +246,16 @@ direction is not in doubt. The helper change (AVAudioConverter, mastering qualit
 `MonoConverter`) and the bench's `--resample linear|converter` comparison are written and wait for a Mac build.
 Harness flags (`--keep`, `--headdrop`, `--hf`, `--resampler`, `--chunkpad` after the pad) are in the box copy,
 `/workspace/echo-linux/run.py`.
+
+## 8. Cycle 34: the armed head in talk's wait (ADR 0107), harness in the repo
+
+- **Fixed, talk side (N166, `crates/qrtz-talk`):** since ADR 0104 a dictation's audio starts at the press, not at
+  talk's start. Talk's stop wait now counts that head (`head_ms`), so a press held through a slow finalize gets
+  the helper's full final instead of the last partial. Rig numbers (paused clock, production timeouts): a 0.5 s
+  hold behind a 6.5 s finalize used to get 5.54 s and paste the partial; it now gets 22.2 s and the helper's
+  final at 6.5 s. Nothing changes when the helper keeps up.
+- **Harness:** the §7 flags (`--keep`, `--headdrop`, `--hf`, `--resampler`) and cycle 33's DSP and paired
+  comparison (`dsp.py`, `compare.py`, `score.py`) are now in `linux-crosscheck/`, with the §7 rows in `run-all.sh`.
+  Re-running `hf10-linear` (first 20 utterances) with the repo copy gave the same hypotheses as §7's run, 20 of 20. The input-side rows cycle 33 wrote (48 kHz mic, white noise, quiet mic with a normaliser, Nemotron 3.5
+  forced to English) are in `run-all.sh` but **not run yet**: no numbers from them here.
+- **Still the gate:** items 1 (two-pass final) and 2 (pad 1120) need the Mac bench before a default changes.
