@@ -54,6 +54,7 @@ fn rig() -> Rig {
         downloads: d.path().join("Downloads"),
         trash: d.path().join("Trash"),
         desktop: d.path().join("Desktop"),
+        capture_prefs: None,
     };
     fs::create_dir_all(&roots.downloads).unwrap();
     fs::create_dir_all(&roots.trash).unwrap();
@@ -351,6 +352,7 @@ fn a_put_back_that_fails_midway_moves_nothing() {
         downloads: a.clone(),
         trash: b,
         desktop: d.path().join("Desktop"),
+        capture_prefs: None,
     };
     assert_eq!(
         plan_undo(&qrtz_ctrl::ladder::FsOp::Batch { ops: vec![] }, &roots),

@@ -11,6 +11,8 @@ publish.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2 = "0.10"
+# Read-only parse of the Screenshot app's preferences file for a custom capture folder (ADR 0126).
+plist = "1"
 hex = "0.4"
 # Local wall-clock schedules and DST (ADR 0105): next-due math against the system zone or an injected zone in tests.
 chrono = { version = "0.4", default-features = false, features = [

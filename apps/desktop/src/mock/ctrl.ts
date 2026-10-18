@@ -68,6 +68,7 @@ const INTENTS = {
   clean_folder: opt('intent.clean_folder', 'clean up a folder', 0.07),
   trash_old: opt('intent.clean_folder', 'clean up a folder', 0.07),
   tidy_documents: opt('intent.clean_folder', 'clean up a folder', 0.07),
+  tidy_desktop: opt('intent.clean_folder', 'clean up a folder', 0.07),
   close_windows: opt('intent.close_windows', 'close windows', 0.07),
   empty_trash: {
     ...opt('intent.empty_trash', 'empty the trash', 0.07),
@@ -83,6 +84,7 @@ type Intent =
   | 'clean_folder'
   | 'trash_old'
   | 'tidy_documents'
+  | 'tidy_desktop'
   | 'empty_trash'
   | 'quit_app';
 /** What an unclear task is asked (the three most likely intents). */
@@ -145,6 +147,33 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
       ),
     ]),
   ],
+  // ADR 0124 / 0126: only macOS's own screenshots and screen recordings move, into the folder screenshots are
+  // saved to (desktop/screenshots unless the screenshot app saves them somewhere else); nothing is deleted.
+  tidy_desktop: [
+    act('choose_app', [
+      opt('app.files', 'files (no app)', 0.93),
+      opt('app.com.apple.finder', 'finder', 0.05),
+    ]),
+    act('choose_target', [
+      opt('folder.desktop', 'desktop', 0.98),
+      opt('folder.downloads', 'downloads', 0.01),
+    ]),
+    act('choose_move', [
+      opt(
+        'route.files.desktop_screenshots',
+        'move screenshots into a folder, nothing deleted',
+        0.95,
+      ),
+      {
+        ...opt(
+          'route.files.trash_screenshots',
+          'move screenshots to the trash',
+          0.02,
+        ),
+        irreversible: true,
+      },
+    ]),
+  ],
   // ADR 0122: emptying the Trash deletes through the file executor (never the finder), always behind the card.
   empty_trash: [
     act('choose_app', [
@@ -198,11 +227,13 @@ const intentOf = (text: string): Intent | null =>
         ? 'close_tabs'
         : /\bdocuments\b/i.test(text)
           ? 'tidy_documents'
-          : /download|folder/i.test(text)
-            ? /\b(delete|trash|old)\b/i.test(text)
-              ? 'trash_old'
-              : 'clean_folder'
-            : null;
+          : /\b(desktop|screenshots?)\b/i.test(text)
+            ? 'tidy_desktop'
+            : /download|folder/i.test(text)
+              ? /\b(delete|trash|old)\b/i.test(text)
+                ? 'trash_old'
+                : 'clean_folder'
+              : null;
 
 const PREVIEW: CtrlConfirm['items'] = [
   { key: '3f2a9c1d0b7e#0', kind: 'window', label: 'notes.txt', unsaved: false },
@@ -461,6 +492,16 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
     }
     // Slice 7 (ADR 0113): a folder cleanup is one batch of file moves, guarded and verified like any action.
     execute(r);
+    if (intent === 'tidy_desktop') {
+      r.recs.find((x) => x.row.kind === 'action.requested')!.batch = {
+        files: [
+          'Screenshot 2026-10-12 at 09.14.02.png',
+          'Screen Recording 2026-10-15 at 16.20.11.mov',
+        ],
+        moved: [],
+      };
+      return;
+    }
     if (intent !== 'clean_folder') return;
     const moved = /\brenamed\b/i.test(task(r.run.taskId).text)
       ? ['photo.png']

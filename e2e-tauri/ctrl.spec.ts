@@ -520,3 +520,38 @@ test('ctrl: tidy my documents stops and says it cannot tidy that folder yet', as
   expect(await axe(page, 'ctrl')).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+// ADR 0124 / 0126: "tidy my desktop" moves only macOS's screenshots and screen recordings into their folder, in
+// one batch with no card (nothing is deleted), and the run can be put back from its card.
+test('ctrl: tidy my desktop moves the screenshots without a card and puts them back', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  await ctrl.getByTestId('ctrl-task-input').fill('every week tidy my desktop');
+  await ctrl.getByTestId('ctrl-schedule-weekly').click();
+  await ctrl.getByTestId('ctrl-schedule-time').fill('18:00');
+  await ctrl.getByTestId('ctrl-task-add').click();
+  await ctrl.getByTestId('ctrl-task').getByTestId('ctrl-task-run').click();
+  const run = ctrl.getByTestId('ctrl-run').first();
+  await expect(run.getByTestId('ctrl-run-status')).toHaveText('done');
+  await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
+  await expect(ctrl.getByTestId('ctrl-decisions').first()).toContainText(
+    'move screenshots into a folder, nothing deleted',
+  );
+  const card = ctrl.getByTestId('ctrl-undo');
+  await expect(card.getByTestId('ctrl-undo-title')).toHaveText(
+    'ctrl moved 2 files',
+  );
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  await card.getByTestId('ctrl-undo-all').click();
+  await expect(card.getByTestId('ctrl-undo-title')).toHaveText(
+    'put back 2 files',
+  );
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});

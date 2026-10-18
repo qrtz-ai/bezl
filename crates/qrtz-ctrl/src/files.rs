@@ -15,6 +15,7 @@
 //! `files.desktop_screenshots` (ADR 0124) moves the screenshots and screen recordings macOS saved on the Desktop
 //! (matched by the system's own file names and kind) into `Desktop/screenshots`; nothing else on the Desktop moves.
 //! `files.trash_screenshots` (the task says trash / delete) sends the same files to the Trash behind the gate.
+//! The destination follows the folder the Screenshot app saves to when it is a safe one (ADR 0126).
 use crate::fs_exec::MemStore;
 use crate::ladder::FsOp;
 use serde::{Deserialize, Serialize};
@@ -30,6 +31,10 @@ pub struct FileRoots {
     pub trash: PathBuf,
     /// The Desktop (`~/Desktop` on macOS): only its screenshots and screen recordings are ctrl's (ADR 0124).
     pub desktop: PathBuf,
+    /// The Screenshot app's preferences (`~/Library/Preferences/com.apple.screencapture.plist`), read (never
+    /// written) when a desktop tidy plans, for the folder the user chose for captures (ADR 0126). `None`: always
+    /// `Desktop/screenshots`.
+    pub capture_prefs: Option<PathBuf>,
 }
 
 impl FileRoots {
@@ -43,8 +48,55 @@ impl FileRoots {
             downloads: home.join("Downloads"),
             trash: home.join(".Trash"),
             desktop: home.join("Desktop"),
+            capture_prefs: Some(home.join("Library/Preferences/com.apple.screencapture.plist")),
         })
     }
+
+    /// Where the desktop tidy moves screenshots (ADR 0126): the folder the Screenshot app saves to, when the user
+    /// chose one ctrl can safely use ([`capture_location`]), else `Desktop/screenshots`. Read now, each plan.
+    pub fn screenshots_dir(&self) -> PathBuf {
+        self.capture_prefs
+            .as_deref()
+            .and_then(|p| capture_location(p, self))
+            .unwrap_or_else(|| self.desktop.join(SCREENSHOTS_DIR))
+    }
+}
+
+/// Biggest preferences file read for the capture location; anything bigger isn't the Screenshot app's.
+const MAX_PREFS: u64 = 1 << 20;
+
+/// The custom screenshot folder from the Screenshot app's preferences file (its `location` key), read only: no
+/// `defaults`, no cfprefsd, no process, no network (ADR 0126). `None` (use `Desktop/screenshots`) unless it is a
+/// real folder that exists, inside the home folder, reached without `..` or a symlink at the end, and not the
+/// Desktop itself, the Downloads folder (its tidy would sort them again), the Trash, `~/Library` or the home folder.
+/// A leading `~` means the home folder (the parent of the Desktop).
+pub fn capture_location(prefs: &Path, roots: &FileRoots) -> Option<PathBuf> {
+    let home = roots.desktop.parent()?;
+    let meta = prefs.symlink_metadata().ok()?;
+    if !meta.file_type().is_file() || meta.len() > MAX_PREFS {
+        return None;
+    }
+    let value = plist::Value::from_file(prefs).ok()?;
+    let raw = value.as_dictionary()?.get("location")?.as_string()?.trim();
+    let path = match raw.strip_prefix('~') {
+        Some("") => home.to_path_buf(),
+        Some(rest) => home.join(rest.strip_prefix('/')?),
+        None => PathBuf::from(raw),
+    };
+    let ok_parts = path.is_absolute()
+        && path
+            .components()
+            .all(|c| !matches!(c, std::path::Component::ParentDir | std::path::Component::CurDir));
+    let inside = path
+        .strip_prefix(home)
+        .ok()
+        .filter(|r| !r.as_os_str().is_empty())?;
+    let banned = [&roots.desktop, &roots.downloads, &roots.trash]
+        .iter()
+        .any(|b| path == **b || path.starts_with(&roots.trash))
+        || inside.starts_with("Library");
+    let real_dir = path.symlink_metadata().is_ok_and(|m| m.file_type().is_dir());
+    (ok_parts && !banned && real_dir).then_some(path)
 }
 
 /// Files touched within this long might still be downloading or open: left alone.
@@ -305,7 +357,7 @@ pub fn plan_desktop_screenshots(
     }
     found.sort();
     found.truncate(MAX_EMPTY);
-    let dir = roots.desktop.join(SCREENSHOTS_DIR);
+    let dir = roots.screenshots_dir();
     let mut plan = FilePlan::default();
     if trash {
         for (path, name) in found {
@@ -504,7 +556,7 @@ pub fn plan_undo(op: &FsOp, roots: &FileRoots) -> UndoPlan {
     let mut dirs: std::collections::BTreeMap<String, PathBuf> = KINDS
         .iter()
         .map(|k| roots.downloads.join(k))
-        .chain([roots.desktop.join(SCREENSHOTS_DIR)])
+        .chain([roots.desktop.join(SCREENSHOTS_DIR), roots.screenshots_dir()])
         .map(|d| (path_ref(&d), d))
         .collect();
     dirs.insert(path_ref(&roots.trash), roots.trash.clone());
