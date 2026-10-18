@@ -106,3 +106,43 @@ pub fn reveal(dir: &std::path::Path) -> bool {
         }
     }
 }
+
+/// ADR 0146 M2.4: `QRTZ_MODULE_HELPERS=split` runs qrtz-nano, qrtz-echo and qrtz-ctrl instead of qrtz-helper (default
+/// off). Where a module app is (`QRTZ_<ID>_BIN`) may only be overridden in a dev build or under
+/// `QRTZ_ALLOW_DEV_KNOBS=1`; a release build runs the bundled apps next to the helper.
+pub fn helper_layout() -> qrtz_app::module_helpers::HelperLayout {
+    let dev = cfg!(debug_assertions) || std::env::var("QRTZ_ALLOW_DEV_KNOBS").as_deref() == Ok("1");
+    layout_from(dev, |k| std::env::var(k).ok())
+}
+
+fn layout_from(dev: bool, get: impl Fn(&str) -> Option<String>) -> qrtz_app::module_helpers::HelperLayout {
+    qrtz_app::module_helpers::HelperLayout::from_vars(
+        |k| if k.ends_with("_BIN") && !dev { None } else { get(k) },
+    )
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use super::layout_from;
+    use qrtz_app::module_helpers::HelperLayout;
+
+    #[test]
+    fn a_release_build_ignores_module_app_overrides() {
+        let get = |k: &str| match k {
+            "QRTZ_MODULE_HELPERS" => Some("split".to_owned()),
+            "QRTZ_ECHO_BIN" => Some("/tmp/evil".to_owned()),
+            _ => None,
+        };
+        assert_eq!(
+            layout_from(false, get),
+            HelperLayout::Split {
+                programs: Default::default()
+            }
+        );
+        let HelperLayout::Split { programs } = layout_from(true, get) else {
+            panic!()
+        };
+        assert_eq!(programs.len(), 1);
+        assert_eq!(layout_from(true, |_| None), HelperLayout::Monolith);
+    }
+}

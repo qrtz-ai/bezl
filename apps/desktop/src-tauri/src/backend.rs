@@ -262,6 +262,7 @@ pub fn setup(app: &mut tauri::App, started: Instant) -> Result<(), Box<dyn std::
         data_dir: data,
         helper,
         supervisor: SupervisorOptions::default(),
+        helper_layout: crate::paths::helper_layout(),
         shell,
         storage_shell,
         talk: None,
@@ -547,11 +548,15 @@ pub fn forget_webview(app: &AppHandle, label: &str) {
 /// Graceful helper shutdown on quit.
 pub fn shutdown(app: &AppHandle) {
     if let Some(b) = app.try_state::<Backend>() {
-        if let Some(h) = b.service.helper() {
+        let bye = qrtz_helper_bridge::encode_host_message(&json!({"type": "shutdown"})).unwrap_or_default();
+        let grace = std::time::Duration::from_millis(1500);
+        // ADR 0146 M2.4: with the split helpers every module app gets the goodbye (at once).
+        if let Some(m) = b.service.module_helpers() {
+            let m = m.clone();
+            tauri::async_runtime::block_on(async move { m.shutdown(bye, grace).await });
+        } else if let Some(h) = b.service.helper() {
             let h = h.clone();
-            let bye =
-                qrtz_helper_bridge::encode_host_message(&json!({"type": "shutdown"})).unwrap_or_default();
-            tauri::async_runtime::block_on(h.shutdown(bye, std::time::Duration::from_millis(1500)));
+            tauri::async_runtime::block_on(h.shutdown(bye, grace));
         }
     }
 }

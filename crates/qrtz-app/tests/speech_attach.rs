@@ -43,6 +43,7 @@ fn app(dir: &Path, helper: bool) -> BuiltApp {
             )
         }),
         supervisor: SupervisorOptions::default(),
+        helper_layout: Default::default(),
         shell: Arc::new(Shell),
         storage_shell: Arc::new(NoStorageShell),
         talk: None,

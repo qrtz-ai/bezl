@@ -320,6 +320,8 @@ pub struct AppBuild {
         crate::runtime_port::HelperAvailability,
     )>,
     pub supervisor: qrtz_helper_bridge::SupervisorOptions,
+    /// ADR 0146 M2.4: the monolith helper (default) or one per module (`QRTZ_MODULE_HELPERS=split`).
+    pub helper_layout: crate::module_helpers::HelperLayout,
     pub shell: Arc<dyn ShellHooks>,
     pub storage_shell: Arc<dyn crate::storage_port::StorageShell>,
     /// The speech module (store, spawn options, update server); `None` = not configured in this build.
@@ -371,18 +373,27 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
                         l.root().to_string_lossy().into_owned(),
                     ));
                 }
-                qrtz_helper_bridge::Supervisor::spawn(b.supervisor, Arc::new(spawn))
+                crate::module_helpers::ModuleHelpers::spawn(&b.helper_layout, spawn, b.supervisor)
             }),
             av,
         ),
         None => (None, HelperAvailability::Missing),
     };
+    let helpers = supervisor;
+    if helpers.as_ref().is_some_and(|h| h.is_split()) {
+        tracing::info!("module helpers: qrtz-nano, qrtz-echo, qrtz-ctrl (ADR 0146 M2.4)");
+    }
+    // Nano's helper (the monolith in the default layout) carries recordings, meetings, summaries and `models.warm`;
+    // echo's carries dictation; ctrl's carries `ctrl.*`.
+    let supervisor = helpers.as_ref().map(|h| h.nano.clone());
+    let echo_helper = helpers.as_ref().map(|h| h.echo.clone());
+    let ctrl_helper = helpers.as_ref().map(|h| h.ctrl.clone());
     let helper: Arc<dyn HelperPort> = match &supervisor {
         Some(s) => Arc::new(SupervisorHelper(s.clone())),
         None => Arc::new(NoHelper),
     };
     // ADR 0046: the speech module's audio comes from the helper (N55); note parts get a module session each.
-    let attach = crate::speech::HelperAttach::new(supervisor.clone());
+    let attach = crate::speech::HelperAttach::split(supervisor.clone(), echo_helper.clone());
     let note_speech = b
         .speech
         .as_ref()
@@ -432,7 +443,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         Some(t) => t,
         None => Arc::new(crate::talk::Talk(crate::talk::talk_service(
             crate::talk::TalkWiring {
-                helper: supervisor.clone(),
+                helper: echo_helper.clone(),
                 events: events.clone(),
                 shell: talk_shell,
                 config: config.clone(),
@@ -474,6 +485,9 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         events,
     });
     service.set_setup(setup.clone());
+    if let Some(h) = &helpers {
+        service.set_module_helpers(h.clone());
+    }
     // ADR 0103: ctrl's task store and run logs, <data>/ctrl (0700, files 0600).
     let mut ctrl = qrtz_ctrl::service::CtrlService::open(
         dirs.data.join("ctrl"),
@@ -483,7 +497,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     // up and stop at `planned` while it isn't. Elsewhere the helper has no ctrl backend, so ctrl stays plan-only.
     if let (true, Some(sup), Ok(rt)) = (
         cfg!(target_os = "macos"),
-        supervisor.clone(),
+        ctrl_helper.clone(),
         tokio::runtime::Handle::try_current(),
     ) {
         let helper = Arc::new(qrtz_ctrl::helper::HelperClient::new(Box::new(

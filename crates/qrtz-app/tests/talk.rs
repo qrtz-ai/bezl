@@ -68,6 +68,7 @@ fn app_with(dir: &Path, clip: Arc<Clip>, helper: bool, knobs: DevKnobs) -> Built
             )
         }),
         supervisor: SupervisorOptions::default(),
+        helper_layout: Default::default(),
         shell: Arc::new(Shell),
         storage_shell: clip,
         talk: None,

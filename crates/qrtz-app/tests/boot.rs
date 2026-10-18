@@ -66,6 +66,7 @@ fn app_with(
         data_dir: dir.to_path_buf(),
         helper: Some((spawn, HelperAvailability::Simulated)),
         supervisor: SupervisorOptions::default(),
+        helper_layout: Default::default(),
         shell,
         storage_shell,
         talk: None,

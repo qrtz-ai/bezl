@@ -91,6 +91,10 @@ pub struct AppService {
     #[cfg(feature = "runtime")]
     ctrl_model: std::sync::OnceLock<Arc<crate::ctrl_model::CtrlModelSlot>>,
     speech_tap: std::sync::OnceLock<SpeechTap>,
+    /// ADR 0146 M2.4: the per-module helpers (`QRTZ_MODULE_HELPERS=split`); unset = the one `helper`.
+    module_helpers: std::sync::OnceLock<crate::module_helpers::ModuleHelpers>,
+    /// Split layout: each process's last `permissions.status`, merged for `permissions:changed`.
+    split_perms: Mutex<Vec<(crate::module_helpers::HelperSource, Value)>>,
     /// The last helper status every port has seen (`on_helper_status` finished), for readiness checks.
     delivered: std::sync::Mutex<Option<HelperStatus>>,
     /// `log:write` rate limit (ADR 0083).
@@ -101,6 +105,34 @@ pub struct AppService {
 
 /// Sees every valid helper line first; `true` = consumed (not routed to talk or the runtime).
 pub type SpeechTap = Arc<dyn Fn(&Value) -> bool + Send + Sync>;
+
+/// ADR 0146 M2.4: several apps' `permissions.status` maps as one: per permission the least granted state any app
+/// reports: `denied`, then `not-determined`, then `granted`; `unsupported` (an app that doesn't use it) only when no
+/// app says more.
+pub fn merged_permissions<'a>(all: impl Iterator<Item = &'a Value>) -> Value {
+    fn rank(v: &str) -> u8 {
+        match v {
+            "denied" => 0,
+            "granted" => 2,
+            "unsupported" => 3,
+            _ => 1,
+        }
+    }
+    let mut out = serde_json::Map::new();
+    for m in all {
+        for (k, v) in m.as_object().into_iter().flatten() {
+            let worse = match (out.get(k).and_then(Value::as_str), v.as_str()) {
+                (Some(cur), Some(new)) => rank(new) < rank(cur),
+                (None, _) => true,
+                _ => false,
+            };
+            if worse {
+                out.insert(k.clone(), v.clone());
+            }
+        }
+    }
+    Value::Object(out)
+}
 
 /// Helper → host message types that belong to qrtz talk; everything else goes to the recording runtime.
 pub fn is_talk_message(ty: &str) -> bool {
@@ -123,6 +155,8 @@ impl AppService {
             #[cfg(feature = "runtime")]
             ctrl_model: std::sync::OnceLock::new(),
             speech_tap: std::sync::OnceLock::new(),
+            module_helpers: std::sync::OnceLock::new(),
+            split_perms: Mutex::default(),
             delivered: Default::default(),
             renderer_log: Mutex::new(crate::logging::RendererGate::new()),
             log_dir: std::sync::OnceLock::new(),
@@ -321,22 +355,48 @@ impl AppService {
         self.helper.as_ref()
     }
 
+    /// ADR 0146 M2.4: run with the per-module helpers (set once, before `start_helper`). A monolith set is ignored.
+    pub fn set_module_helpers(&self, h: crate::module_helpers::ModuleHelpers) {
+        if h.is_split() {
+            let _ = self.module_helpers.set(h);
+        }
+    }
+
+    /// The split helpers, when the host runs them.
+    pub fn module_helpers(&self) -> Option<&crate::module_helpers::ModuleHelpers> {
+        self.module_helpers.get()
+    }
+
     /// Start the helper and pump its lines/status into the ports and the event bus. Call once, inside tokio.
     pub fn start_helper(self: &Arc<Self>) {
-        let Some(sup) = self.helper.clone() else { return };
-        let mut lines = sup.subscribe_lines();
-        let me = self.clone();
-        tokio::spawn(async move {
-            loop {
-                match lines.recv().await {
-                    Ok(line) => me.on_helper_line(&line),
-                    Err(broadcast::error::RecvError::Lagged(n)) => {
-                        tracing::warn!(n, "helper lines lagged")
-                    }
-                    Err(_) => break,
-                }
+        if let Some(h) = self.module_helpers.get().cloned() {
+            for (src, sup) in h.processes() {
+                self.pump(src, sup);
             }
-        });
+            return;
+        }
+        let Some(sup) = self.helper.clone() else { return };
+        self.pump(crate::module_helpers::HelperSource::Monolith, sup);
+    }
+
+    fn pump(self: &Arc<Self>, src: crate::module_helpers::HelperSource, sup: Supervisor) {
+        use crate::module_helpers::HelperSource;
+        // qrtz-ctrl's lines are ctrl's own (its wire subscribes to them); only its status matters here.
+        if src != HelperSource::Ctrl {
+            let mut lines = sup.subscribe_lines();
+            let me = self.clone();
+            tokio::spawn(async move {
+                loop {
+                    match lines.recv().await {
+                        Ok(line) => me.on_helper_line_from(src, &line),
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            tracing::warn!(n, ?src, "helper lines lagged")
+                        }
+                        Err(_) => break,
+                    }
+                }
+            });
+        }
         let mut status = sup.watch_status();
         let me = self.clone();
         let sup2 = sup.clone();
@@ -344,9 +404,12 @@ impl AppService {
             let mut prev = None;
             loop {
                 let s = status.borrow_and_update().clone();
-                me.on_helper_status(&s);
+                me.on_helper_status_from(src, &s);
                 // Every (re)start of the helper: ask for permissions again (the new process may differ).
-                if s.state == qrtz_helper_bridge::HelperState::Running && prev != Some(s.state) {
+                if src != HelperSource::Ctrl
+                    && s.state == qrtz_helper_bridge::HelperState::Running
+                    && prev != Some(s.state)
+                {
                     let sup3 = sup2.clone();
                     tokio::spawn(async move {
                         let _ = sup3
@@ -364,6 +427,12 @@ impl AppService {
     }
 
     pub fn on_helper_line(&self, line: &str) {
+        self.on_helper_line_from(crate::module_helpers::HelperSource::Monolith, line)
+    }
+
+    /// A helper line from `src`. In the split layout (ADR 0146 M2.4) echo's process feeds talk only and nano's
+    /// feeds the runtime only, so one module's `hello` or revocation never resets the other.
+    pub fn on_helper_line_from(&self, src: crate::module_helpers::HelperSource, line: &str) {
         match parse_helper_line(line) {
             Ok(msg) => {
                 let ty = msg["type"].as_str().unwrap_or_default();
@@ -382,25 +451,35 @@ impl AppService {
                     tracing::warn!(from = %msg["from"], to = %msg["to"], reason = %msg["reason"], "capture fallback");
                 }
                 if ty == "permissions.status" {
-                    self.events.emit("permissions:changed", msg["status"].clone());
+                    let status = self.merge_permissions(src, &msg["status"]);
+                    self.events.emit("permissions:changed", status);
                 }
-                if self.speech_tap.get().is_some_and(|t| t(&msg)) {
+                let (echo, nano) = (src.serves_echo(), src.serves_nano());
+                // Echo's process only reaches the tap with its own speech attach answers.
+                let tap = nano || ty.starts_with("speech.");
+                if tap && self.speech_tap.get().is_some_and(|t| t(&msg)) {
                     // consumed by speech routing
                 } else if is_talk_message(ty) {
-                    self.talk.helper_line(&msg);
+                    if echo {
+                        self.talk.helper_line(&msg);
+                    }
                 } else if ty != "heartbeat" {
                     // Talk also needs its own errors (dictation.busy / dictation.mic) and mic revocations; the
                     // runtime still sees them (it logs foreign codes and owns the capture side of a revocation).
                     let code = msg["code"].as_str().unwrap_or_default();
-                    if (ty == "error" && code.starts_with("dictation.")) || ty == "permission.revoked" {
+                    if echo
+                        && ((ty == "error" && code.starts_with("dictation.")) || ty == "permission.revoked")
+                    {
                         self.talk.helper_line(&msg);
                     }
                     // A new helper process concerns both apps: the runtime re-configures, talk ends a dictation the
                     // old process owned (T2).
-                    if ty == "hello" {
+                    if echo && ty == "hello" {
                         self.talk.helper_line(&msg);
                     }
-                    self.runtime.helper_line(&msg);
+                    if nano {
+                        self.runtime.helper_line(&msg);
+                    }
                 }
             }
             // ADR 0110: ctrl's replies ride the same stdio but not the echo/nano schema; its wire takes them.
@@ -410,12 +489,37 @@ impl AppService {
         }
     }
 
+    /// The monolith's `permissions.status` as is. Split: each process reports its own app's grants, merged per
+    /// permission with the least granted state winning (one app without the microphone means it isn't granted).
+    fn merge_permissions(&self, src: crate::module_helpers::HelperSource, status: &Value) -> Value {
+        if src == crate::module_helpers::HelperSource::Monolith {
+            return status.clone();
+        }
+        let mut all = self.split_perms.lock().unwrap_or_else(|p| p.into_inner());
+        all.retain(|(s, _)| *s != src);
+        all.push((src, status.clone()));
+        merged_permissions(all.iter().map(|(_, v)| v))
+    }
+
     pub fn on_helper_status(&self, s: &HelperStatus) {
-        self.runtime.helper_status(s);
-        self.talk.helper_status(s);
+        self.on_helper_status_from(crate::module_helpers::HelperSource::Monolith, s)
+    }
+
+    /// Split: nano's status goes to the runtime, echo's to talk; the UI's `helper:status` is all of them together.
+    pub fn on_helper_status_from(&self, src: crate::module_helpers::HelperSource, s: &HelperStatus) {
+        if src.serves_nano() {
+            self.runtime.helper_status(s);
+        }
+        if src.serves_echo() {
+            self.talk.helper_status(s);
+        }
+        let shown = match (src, self.module_helpers.get()) {
+            (crate::module_helpers::HelperSource::Monolith, _) | (_, None) => s.clone(),
+            (_, Some(h)) => h.status(),
+        };
         self.events
-            .emit("helper:status", serde_json::to_value(s).unwrap());
-        *self.delivered.lock().unwrap_or_else(|p| p.into_inner()) = Some(s.clone());
+            .emit("helper:status", serde_json::to_value(&shown).unwrap());
+        *self.delivered.lock().unwrap_or_else(|p| p.into_inner()) = Some(shown);
     }
 
     /// N91: the helper is running and the runtime and talk have both been told so (the runtime's initial
@@ -464,9 +568,10 @@ impl AppService {
                 let cfg = self.set_config(&json!({"note": {"autoRecord": on}}))?;
                 Ok(json!({"autoRecord": cfg["note"]["autoRecord"]}))
             }
-            "helper:status" => Ok(match &self.helper {
-                Some(h) => serde_json::to_value(h.status()).unwrap(),
-                None => json!({"state": "stopped", "restarts": 0}),
+            "helper:status" => Ok(match (&self.helper, self.module_helpers.get()) {
+                (_, Some(m)) => serde_json::to_value(m.status()).unwrap(),
+                (Some(h), None) => serde_json::to_value(h.status()).unwrap(),
+                (None, None) => json!({"state": "stopped", "restarts": 0}),
             }),
             "log:write" => {
                 let accepted = crate::logging::renderer_log(

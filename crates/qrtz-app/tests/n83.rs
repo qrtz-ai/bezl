@@ -57,6 +57,7 @@ fn app(dir: &Path) -> BuiltApp {
             HelperAvailability::Simulated,
         )),
         supervisor: SupervisorOptions::default(),
+        helper_layout: Default::default(),
         shell: Arc::new(Shell),
         storage_shell: Arc::new(NoStorageShell),
         talk: None,

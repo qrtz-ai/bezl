@@ -41,6 +41,9 @@
 //!   QRTZ_MOCK_DIARIZE=1          ADR 0079 per-channel Nemotron + diarization (no scenario): finals `mic-u1`,
 //!                                `mic-u2`, `system-u3` and a `diarization.segment` per turn (mic 0, mic 1,
 //!                                system 0) right after recording.started, like the Swift per-channel pipeline.
+//!   QRTZ_MODULE=echo|nano|ctrl   ADR 0146 M2.4 split helpers: play that module's app. Hello carries `module:<id>`,
+//!                                only nano's detects meetings, and a command for another module is refused with an
+//!                                error log line `mock <id>: <type> is <owner>'s` (the host routed it wrong).
 //!   QRTZ_MOCK_SUMMARIZE / QRTZ_MOCK_SUMMARIZE_LOG
 //!                                ADR 0075 on-device summaries: see `mock/summarize.rs`.
 #[path = "../../mock/summarize.rs"]
@@ -236,6 +239,27 @@ fn revocation_degraded(p: &str, denied: &[String]) -> &'static str {
 /// The helper's silence threshold (CAPTURE_SILENCE.afterMs in protocol.ts).
 const SILENCE_AFTER_MS: u64 = 60_000;
 
+/// ADR 0146 M2.4: which module app a host command belongs to (`None`: every app answers it).
+fn command_owner(msg: &Value) -> Option<&'static str> {
+    let ty = msg["type"].as_str().unwrap_or_default();
+    if ty.starts_with("dictation.") || ty == "insert.text" || ty == "pill.flash" {
+        return Some("echo");
+    }
+    if ty.starts_with("recording.") || ty == "models.warm" || ty.starts_with("summarize") {
+        return Some("nano");
+    }
+    if ty.starts_with("ctrl.") {
+        return Some("ctrl");
+    }
+    if ty == "speech.attach" {
+        return match msg["target"]["kind"].as_str() {
+            Some("dictation") => Some("echo"),
+            _ => Some("nano"),
+        };
+    }
+    None
+}
+
 fn main() {
     let silent_env = env("QRTZ_MOCK_SILENT");
     // Backward compatible: `1` still means a mute helper; anything else is the N29 silence script.
@@ -314,10 +338,14 @@ fn main() {
     if scenario {
         features.push("scenario:standup".into());
     }
+    let role = env("QRTZ_MODULE");
+    if let Some(r) = &role {
+        features.push(format!("module:{r}"));
+    }
     say(
         json!({"type": "hello", "protocol": 1, "helperVersion": "0.0.0-mock", "os": "mock", "features": features}),
     );
-    if scenario {
+    if scenario && role.as_deref().is_none_or(|r| r == "nano") {
         let say = say.clone();
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(300));
@@ -378,6 +406,13 @@ fn main() {
         let Ok(msg) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
+        if let (Some(r), Some(owner)) = (&role, command_owner(&msg)) {
+            if r != owner {
+                let ty = msg["type"].as_str().unwrap_or_default();
+                say(json!({"type": "log", "level": "error", "msg": format!("mock {r}: {ty} is {owner}'s")}));
+                continue;
+            }
+        }
         match msg["type"].as_str().unwrap_or_default() {
             "summarize" | "summarize.check" | "summarize.cancel" => {
                 if let Some(reply) = mock_summarize::handle(&line, &msg) {

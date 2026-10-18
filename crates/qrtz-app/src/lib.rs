@@ -8,6 +8,7 @@ pub mod dirs;
 #[cfg(feature = "runtime")]
 pub mod local_models;
 pub mod logging;
+pub mod module_helpers;
 pub mod modules;
 #[cfg(feature = "runtime")]
 pub mod pill;

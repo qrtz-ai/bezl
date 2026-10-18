@@ -16,6 +16,9 @@ type Waiter = oneshot::Sender<Result<(), String>>;
 
 pub struct HelperAttach {
     helper: Option<Supervisor>,
+    /// ADR 0146 M2.4, split helpers: dictation audio goes to echo's process (its own speech socket); recording audio
+    /// to `helper` (nano's). `None` = one helper for both.
+    dictation_helper: Option<Supervisor>,
     waiters: Mutex<HashMap<String, Waiter>>,
     /// Recording part sessions: speech session id → that part's audio path (the module protocol caps session
     /// ids at 64 chars, so a path cannot be the id).
@@ -25,8 +28,13 @@ pub struct HelperAttach {
 
 impl HelperAttach {
     pub fn new(helper: Option<Supervisor>) -> Arc<Self> {
+        Self::split(helper, None)
+    }
+    /// Recording audio to `recordings`' process, dictation audio to `dictations`' (each its own speech socket).
+    pub fn split(recordings: Option<Supervisor>, dictations: Option<Supervisor>) -> Arc<Self> {
         Arc::new(Self {
-            helper,
+            helper: recordings,
+            dictation_helper: dictations,
             waiters: Mutex::default(),
             recordings: Mutex::default(),
             timeout: Duration::from_secs(5),
@@ -96,7 +104,11 @@ impl AudioAttach for HelperAttach {
             self.recordings.lock().unwrap().remove(&spec.session_id);
             Err(e)
         };
-        let Some(h) = &self.helper else {
+        let h = match spec.kind {
+            SessionKind::Dictation => self.dictation_helper.as_ref().or(self.helper.as_ref()),
+            _ => self.helper.as_ref(),
+        };
+        let Some(h) = h else {
             return fail(SpeechError::Module("no capture helper".into()));
         };
         let channels: Vec<Channel> = fds.iter().map(|(c, _)| *c).collect();

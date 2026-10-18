@@ -46,6 +46,7 @@ fn app(dir: &Path, env: &SpeechEnv) -> BuiltApp {
             HelperAvailability::Simulated,
         )),
         supervisor: SupervisorOptions::default(),
+        helper_layout: Default::default(),
         shell: Arc::new(Shell),
         storage_shell: Arc::new(NoStorageShell),
         speech: Some(SpeechSetup {

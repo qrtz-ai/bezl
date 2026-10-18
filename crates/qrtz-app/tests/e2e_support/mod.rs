@@ -159,6 +159,8 @@ pub struct Opts {
     /// `QRTZ_FAULT_STEP` (`DevKnobs::fault_step`): that step's first attempt per meeting fails.
     pub fault_step: Option<qrtz_model::StepId>,
     pub talk: Option<Arc<dyn TalkPort>>,
+    /// ADR 0146 M2.4: the per-module helpers (each a mock helper told its module).
+    pub helper_layout: qrtz_app::module_helpers::HelperLayout,
 }
 impl Default for Opts {
     fn default() -> Self {
@@ -168,6 +170,7 @@ impl Default for Opts {
             retry_scale: 0.001,
             fault_step: None,
             talk: None,
+            helper_layout: Default::default(),
         }
     }
 }
@@ -186,6 +189,13 @@ impl Opts {
     }
     pub fn retry_scale(mut self, s: f64) -> Self {
         self.retry_scale = s;
+        self
+    }
+    /// `QRTZ_MODULE_HELPERS=split`: qrtz-nano, qrtz-echo and qrtz-ctrl (here: the mock helper in each role).
+    pub fn split_helpers(mut self) -> Self {
+        self.helper_layout = qrtz_app::module_helpers::HelperLayout::Split {
+            programs: Default::default(),
+        };
         self
     }
     pub fn talk(mut self, t: Arc<dyn TalkPort>) -> Self {
@@ -243,6 +253,7 @@ impl App {
             data_dir: data.to_path_buf(),
             helper,
             supervisor: SupervisorOptions::default(),
+            helper_layout: o.helper_layout.clone(),
             shell: shell.clone(),
             storage_shell: storage.clone(),
             talk: o.talk,
