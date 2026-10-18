@@ -23,6 +23,17 @@ import {
   type Handlers,
 } from '@qrtz/core';
 
+/**
+ * ADR 0157: the dev mock's stand-in for "has the user made the qrtz Set Focus shortcut": `?mockFocusShortcut=1`
+ * (made), `=denied` (Automation denied), absent (not made yet).
+ */
+const focusShortcut = (): 'missing' | 'ready' | 'denied' => {
+  const v = new URLSearchParams(window.location.search).get(
+    'mockFocusShortcut',
+  );
+  return v === 'denied' ? 'denied' : v ? 'ready' : 'missing';
+};
+
 type Row = CtrlRunView['events'][number];
 interface Rec {
   row: Row;
@@ -35,7 +46,12 @@ interface Rec {
   reverified?: true;
   action?: { id: string; status: 'executing' | 'done' };
   verified?: { actionId: string; outcome: 'passed' };
-  held?: 'files-not-yet' | 'folder-not-yet' | 'no-route';
+  held?:
+    | 'files-not-yet'
+    | 'folder-not-yet'
+    | 'no-route'
+    | 'focus-no-shortcut'
+    | 'automation-denied';
   /** A folder cleanup's batch (ADR 0117): its files, and which of them moved since (a "renamed" task). */
   batch?: { files: string[]; moved: string[] };
   undone?: number;
@@ -91,6 +107,11 @@ const INTENTS = {
     'turn focus or do not disturb on or off',
     0.07,
   ),
+  focus_off: opt(
+    'intent.focus_mode',
+    'turn focus or do not disturb on or off',
+    0.07,
+  ),
   mute: opt('intent.mute', 'mute your mac', 0.07),
   unmute: opt('intent.unmute', 'unmute your mac', 0.07),
   set_volume: opt('intent.set_volume', 'set the volume', 0.07),
@@ -115,6 +136,7 @@ type Intent =
   | 'hide_app'
   | 'show_app'
   | 'focus_mode'
+  | 'focus_off'
   | 'mute'
   | 'unmute'
   | 'set_volume'
@@ -275,15 +297,14 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
       opt('route.system.unmute', 'turn the sound output back on', 0.97),
     ]),
   ],
-  // ADR 0155: no background route to set a focus yet; the one move is a hold, asked out with nothing sent.
+  // ADR 0157: the user's "qrtz Set Focus" shortcut through Shortcuts Events, with a mode from a closed set.
   focus_mode: [
     act('choose_move', [
-      opt(
-        'route.system.focus_hold',
-        'leave focus as it is, not supported yet',
-        0.97,
-      ),
+      opt('route.system.focus.do_not_disturb', 'turn on do not disturb', 0.97),
     ]),
+  ],
+  focus_off: [
+    act('choose_move', [opt('route.system.focus.off', 'turn focus off', 0.97)]),
   ],
   // ADR 0135: the sound output, muted in the helper's own process; reversible, no card, no app question.
   mute: [
@@ -446,7 +467,9 @@ const intentOf = (text: string): Intent | null =>
             /\b(on|off|turn|enable|disable|start|stop|end|mode|set|toggle)\b/i.test(
               text,
             ))
-        ? 'focus_mode'
+        ? /\b(off|disable|stop|end)\b/i.test(text)
+          ? 'focus_off'
+          : 'focus_mode'
         : /\b(unmute|unsilence)\b/i.test(text)
           ? 'unmute'
           : /\b(dark|light)\s+mode\b/i.test(text)
@@ -734,9 +757,18 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
       push(r, 'task.finished', { finished: 'asked-out' });
       return;
     }
-    if (intent === 'focus_mode') {
-      // ADR 0155: held before anything is sent to the helper; asked out with no question left open.
-      push(r, 'exec.held', { held: 'no-route' });
+    if (
+      (intent === 'focus_mode' || intent === 'focus_off') &&
+      focusShortcut() !== 'ready'
+    ) {
+      // ADR 0157: the shortcut isn't made yet (or Automation is denied): the run stops and says what to do; no
+      // fallback is tried.
+      push(r, 'exec.held', {
+        held:
+          focusShortcut() === 'denied'
+            ? 'automation-denied'
+            : 'focus-no-shortcut',
+      });
       push(r, 'task.finished', { finished: 'asked-out' });
       return;
     }

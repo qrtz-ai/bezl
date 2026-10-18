@@ -56,6 +56,9 @@ pub enum Check {
     /// ADR 0140: the Mac's output volume in percent, 0–100 (`null`: no output device with a volume, or muted, so
     /// a level that can't be heard never reads as set).
     OutputVolume,
+    /// ADR 0157: 1 if a Focus is on, 0 if off (`null`: can't tell; the Mac helper doesn't read it, since
+    /// `INFocusStatusCenter` would be another prompt, so a focus run is verified by the shortcut's reply only).
+    FocusOn,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -556,6 +559,12 @@ pub struct FakeWorld {
     pub dark: bool,
     /// ADR 0140: the output volume in percent (read back only while unmuted).
     pub volume: i64,
+    /// ADR 0157: the user made the "qrtz Set Focus" shortcut (false: `focus.no_shortcut`).
+    pub focus_shortcut: bool,
+    /// ADR 0157: Automation for Shortcuts Events was denied (`automation.denied`).
+    pub shortcuts_denied: bool,
+    /// ADR 0157: the Focus the shortcut last set (`Off`: none).
+    pub focus: crate::ladder::FocusMode,
 }
 
 pub struct FakeHelper(pub Mutex<FakeWorld>);
@@ -610,6 +619,9 @@ impl FakeWorld {
             day_start_ms: 0,
             muted: Some(false),
             dark: false,
+            focus_shortcut: false,
+            shortcuts_denied: false,
+            focus: crate::ladder::FocusMode::Off,
             volume: 50,
         }
     }
@@ -761,6 +773,17 @@ impl FakeWorld {
                 }
                 None => Err("sound.no_output".into()),
             },
+            // ADR 0157: the same answers as the Mac helper: denied Automation, then a missing shortcut, stop.
+            Route::Workspace(WorkspaceOp::SetFocus { mode }) => {
+                if self.shortcuts_denied {
+                    return Err("automation.denied".into());
+                }
+                if !self.focus_shortcut {
+                    return Err("focus.no_shortcut".into());
+                }
+                self.focus = *mode;
+                Ok(())
+            }
             Route::Workspace(WorkspaceOp::UnmuteOutput) => match self.muted {
                 Some(_) => {
                     self.muted = Some(false);
@@ -886,6 +909,7 @@ impl FakeWorld {
                     | Check::AppsHidden { .. } => None,
                     Check::OutputMuted => self.muted.map(i64::from),
                     Check::DarkMode => Some(i64::from(self.dark)),
+                    Check::FocusOn => Some(i64::from(self.focus != crate::ladder::FocusMode::Off)),
                     Check::OutputVolume => match self.muted {
                         Some(false) => Some(self.volume),
                         _ => None,

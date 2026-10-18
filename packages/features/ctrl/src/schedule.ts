@@ -147,7 +147,29 @@ const HELD: Record<NonNullable<CtrlRunState['held']>, string> = {
   'no-route': 'no way to do it in the background',
   'unknown-app': 'app not found',
   'folder-not-yet': "ctrl can't tidy this folder yet, nothing moved",
+  // ADR 0157: what the user does next; nothing else is tried.
+  'focus-no-shortcut': 'set up the shortcut',
+  'automation-denied': 'allow automation',
 };
+
+/**
+ * ADR 0157: the one shortcut ctrl runs for a focus task, made once by the user. The name is fixed in code (Rust
+ * `FOCUS_SHORTCUT`, Swift `CtrlFocus.shortcutName`); it is shown as typed because Shortcuts matches it exactly.
+ */
+export const FOCUS_SHORTCUT = 'qrtz Set Focus';
+/** ADR 0157: what the user does once, shown in ctrl's own view when a focus run stops for it. */
+export const FOCUS_SETUP_STEPS = [
+  'open shortcuts and make a new shortcut',
+  'add the set focus action and set its focus to the shortcut input',
+  `name it ${FOCUS_SHORTCUT}`,
+  'run this task again',
+];
+/** ADR 0157: where Automation is turned back on. */
+export const AUTOMATION_STEPS = [
+  'open system settings, privacy and security, automation',
+  'turn on shortcuts events under qrtz',
+  'run this task again',
+];
 
 /** The reducer's state in one line. */
 export function stateSummary(s: CtrlRunState): string {

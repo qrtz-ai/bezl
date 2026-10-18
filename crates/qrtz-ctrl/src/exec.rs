@@ -35,7 +35,7 @@ use crate::gate::{
 use crate::guard::{Field, UiSnapshot};
 use crate::helper::PreviewWhat;
 use crate::helper::{Check, Expect, HelperClient};
-use crate::ladder::{AxOp, ContentRef, Env, Route, ScriptVerb, WorkspaceOp};
+use crate::ladder::{AxOp, ContentRef, Env, FocusMode, Route, ScriptVerb, WorkspaceOp};
 use crate::layers::{branch_element, chosen_app, find_snapshot, label};
 use crate::log::{CtrlState, Event, EventLog, TaskStatus};
 use crate::runner::{Clock, Executor, RunOutcome, Runner, UiProbe};
@@ -56,6 +56,10 @@ pub enum HoldReason {
     /// ADR 0125: a folder ctrl has no routes for yet (Documents). The run stops and says so; nothing is read or
     /// moved, and no question is left open that no answer could settle.
     FolderNotYet,
+    /// ADR 0157: the "qrtz Set Focus" shortcut isn't there; the view says "set up the shortcut". No fallback.
+    FocusNoShortcut,
+    /// ADR 0157: Automation for Shortcuts Events is denied; the view says "allow automation". No fallback.
+    AutomationDenied,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,6 +97,8 @@ fn chosen_opt(s: &CtrlState, node: Node) -> Option<&crate::decide::Opt> {
 /// ADR 0155: the only move offered for "turn on do not disturb" / "turn off focus". It plans nothing: the executor
 /// holds the run with `no-route` (asked out) and sends nothing to the helper.
 pub const FOCUS_HOLD_MOVE: &str = "route.system.focus_hold";
+/// ADR 0157: `route.system.focus.<mode>` (a [`FocusMode`] spelling) runs the focus shortcut.
+pub const FOCUS_MOVE_PREFIX: &str = "route.system.focus.";
 
 /// The step a plan's move maps to. Pure.
 pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
@@ -103,6 +109,25 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
     // ADR 0155: Focus / Do Not Disturb has no background route yet; asked out before anything is read or acted.
     if mv == FOCUS_HOLD_MOVE {
         return Some(Step::Hold(HoldReason::NoRoute));
+    }
+    // ADR 0157: the user's "qrtz Set Focus" shortcut through Shortcuts Events. The mode is parsed strictly from the
+    // move id (an option the layers made, never the task's text); anything else holds before the helper is asked.
+    if let Some(m) = mv.strip_prefix(FOCUS_MOVE_PREFIX) {
+        let Some(mode) = FocusMode::parse(m) else {
+            return Some(Step::Hold(HoldReason::NoRoute));
+        };
+        return Some(Step::Act {
+            routes: vec![Route::Workspace(WorkspaceOp::SetFocus { mode })],
+            verify: Verify {
+                check: Check::FocusOn,
+                expect: if mode == FocusMode::Off {
+                    Expect::Zero
+                } else {
+                    Expect::One
+                },
+            },
+            content: BTreeMap::new(),
+        });
     }
     if mv == crate::files::DOCUMENTS_HOLD_MOVE {
         return Some(Step::Hold(HoldReason::FolderNotYet));
@@ -921,7 +946,11 @@ impl Driver<'_> {
                     sink.push(log, Event::ExecHeld { reason })?;
                     if matches!(
                         reason,
-                        HoldReason::NoRoute | HoldReason::UnknownApp | HoldReason::FolderNotYet
+                        HoldReason::NoRoute
+                            | HoldReason::UnknownApp
+                            | HoldReason::FolderNotYet
+                            | HoldReason::FocusNoShortcut
+                            | HoldReason::AutomationDenied
                     ) {
                         sink.push(log, finish(TaskStatus::AskedOut))?;
                     }
@@ -1203,6 +1232,23 @@ impl Driver<'_> {
                         return Ok(());
                     }
                     BacktrackReason::VerifyFailed
+                }
+                // ADR 0157: a missing focus shortcut or denied Automation stops the run with what to do; nothing
+                // else is tried (no CLI, no osascript, no other route).
+                RunOutcome::Failed { ref err, .. }
+                    if routes
+                        .iter()
+                        .any(|r| matches!(r, Route::Workspace(WorkspaceOp::SetFocus { .. })))
+                        && (err == "focus.no_shortcut" || err == "automation.denied") =>
+                {
+                    let reason = if err == "focus.no_shortcut" {
+                        HoldReason::FocusNoShortcut
+                    } else {
+                        HoldReason::AutomationDenied
+                    };
+                    sink.push(log, Event::ExecHeld { reason })?;
+                    sink.push(log, finish(TaskStatus::AskedOut))?;
+                    return Ok(());
                 }
                 RunOutcome::Failed { .. } | RunOutcome::Refused => BacktrackReason::ActionFailed,
                 // A grant only the user can give, in the foreground: the run asks and ends here.

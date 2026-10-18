@@ -7,7 +7,7 @@
   <key>NSAudioCaptureUsageDescription</key>
   <string>qrtz captures meeting audio to transcribe it on-device.</string>
   <key>NSAppleEventsUsageDescription</key>
-  <string>qrtz ctrl sends Apple Events to the apps you ask it to control.</string>
+  <string>qrtz ctrl sends Apple Events to the apps you ask it to control, and runs your qrtz Set Focus shortcut through Shortcuts Events to turn focus and do not disturb on or off.</string>
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.productivity</string>
 </dict>

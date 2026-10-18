@@ -92,6 +92,73 @@ pub enum WorkspaceOp {
     /// `set volume output volume N` then `set volume without output muted`, in the helper's own process, same rules
     /// as mute: no app told anything, no HUD, no key event). Reversible, no gate.
     SetVolume { level: u8 },
+    /// ADR 0157: run the one shortcut [`FOCUS_SHORTCUT`] through Shortcuts Events (`com.apple.shortcuts.events`, a
+    /// faceless agent: no activation, no window, no key event) with `mode` as its input. The user makes the shortcut
+    /// once; without it the helper answers `focus.no_shortcut`, without Automation `automation.denied`, and stops.
+    /// Reversible, no gate.
+    SetFocus { mode: FocusMode },
+}
+
+/// ADR 0157 (Bozniak's amendment 2): the only shortcut ctrl runs. A compile-time constant, never from settings, the
+/// protocol or model output; another name needs an entry in [`FOCUS_SHORTCUTS`] and an ADR note.
+pub const FOCUS_SHORTCUT: &str = "qrtz Set Focus";
+/// The in-code allowlist of shortcut names (one today).
+pub const FOCUS_SHORTCUTS: &[&str] = &[FOCUS_SHORTCUT];
+
+/// ADR 0157 (amendment 3): the shortcut's input. A closed set: no free text from a transcript, a model, Laya or the
+/// clipboard ever becomes the input. `Off` turns the current Focus off.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FocusMode {
+    DoNotDisturb,
+    Work,
+    Personal,
+    Sleep,
+    Driving,
+    Fitness,
+    Gaming,
+    Mindfulness,
+    Reading,
+    Off,
+}
+
+impl FocusMode {
+    pub const ALL: [FocusMode; 10] = [
+        FocusMode::DoNotDisturb,
+        FocusMode::Work,
+        FocusMode::Personal,
+        FocusMode::Sleep,
+        FocusMode::Driving,
+        FocusMode::Fitness,
+        FocusMode::Gaming,
+        FocusMode::Mindfulness,
+        FocusMode::Reading,
+        FocusMode::Off,
+    ];
+    /// The wire / shortcut-input spelling (`do_not_disturb`, …, `off`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            FocusMode::DoNotDisturb => "do_not_disturb",
+            FocusMode::Work => "work",
+            FocusMode::Personal => "personal",
+            FocusMode::Sleep => "sleep",
+            FocusMode::Driving => "driving",
+            FocusMode::Fitness => "fitness",
+            FocusMode::Gaming => "gaming",
+            FocusMode::Mindfulness => "mindfulness",
+            FocusMode::Reading => "reading",
+            FocusMode::Off => "off",
+        }
+    }
+    /// Exactly one of the spellings above, nothing else (no trimming, no case folding).
+    pub fn parse(s: &str) -> Option<FocusMode> {
+        FocusMode::ALL.into_iter().find(|m| m.as_str() == s)
+    }
+}
+
+/// ADR 0157: a shortcut name ctrl may run (exact match against the allowlist).
+pub fn shortcut_allowed(name: &str) -> bool {
+    FOCUS_SHORTCUTS.contains(&name)
 }
 
 /// The only Apple Event verbs ctrl sends. Templates, not free text: the type can't express `activate`.
@@ -178,7 +245,8 @@ impl Route {
                 | WorkspaceOp::UnhideApps { .. }
                 | WorkspaceOp::MuteOutput
                 | WorkspaceOp::UnmuteOutput
-                | WorkspaceOp::SetVolume { .. },
+                | WorkspaceOp::SetVolume { .. }
+                | WorkspaceOp::SetFocus { .. },
             ) => None,
             Route::Workspace(WorkspaceOp::OpenUrl { app, .. } | WorkspaceOp::LaunchHidden { app }) => {
                 Some(app)
@@ -357,9 +425,10 @@ pub fn judge(route: &Route, env: &Env) -> Verdict {
                 // ADR 0152: unhiding activates nothing and sends no input; the app the user is in can't be hidden.
                 WorkspaceOp::UnhideApps { .. } => return Verdict::Allowed,
                 // No app, no window, no input: nothing on screen to take over.
-                WorkspaceOp::MuteOutput | WorkspaceOp::UnmuteOutput | WorkspaceOp::SetVolume { .. } => {
-                    return Verdict::Allowed
-                }
+                WorkspaceOp::MuteOutput
+                | WorkspaceOp::UnmuteOutput
+                | WorkspaceOp::SetVolume { .. }
+                | WorkspaceOp::SetFocus { .. } => return Verdict::Allowed,
             };
             if !env.running_apps.contains(app) {
                 return Verdict::NeedsGrant {

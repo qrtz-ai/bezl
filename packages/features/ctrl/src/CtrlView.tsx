@@ -42,6 +42,8 @@ import {
   runItem,
   stateSummary,
   toSchedule,
+  AUTOMATION_STEPS,
+  FOCUS_SETUP_STEPS,
   when,
   type ScheduleForm,
 } from './schedule';
@@ -274,6 +276,25 @@ export default function CtrlView() {
               onAt={(n) => openRun(run.run.id, n)}
               summary={stateSummary(run.state)}
             />
+          ) : null}
+          {(run?.state.held === 'focus-no-shortcut' ||
+            run?.state.held === 'automation-denied') &&
+          run.at === run.events.length ? (
+            <Stack gap={1} data-testid="ctrl-focus-setup">
+              <Text variant="body">
+                {run.state.held === 'focus-no-shortcut'
+                  ? 'set up the shortcut once'
+                  : 'allow automation'}
+              </Text>
+              {(run.state.held === 'focus-no-shortcut'
+                ? FOCUS_SETUP_STEPS
+                : AUTOMATION_STEPS
+              ).map((step) => (
+                <Text key={step} variant="caption" muted>
+                  {step}
+                </Text>
+              ))}
+            </Stack>
           ) : null}
           {run?.state.ask && run.at === run.events.length ? (
             <AskCard

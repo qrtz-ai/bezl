@@ -141,6 +141,8 @@ public final class MacCtrlBackend: CtrlBackend {
         }
         // ADR 0137: System Events is background-only (not in `ids`); checked without asking, only while it runs.
         if let c = Self.automation(CtrlRoute.systemEvents) { automation[CtrlRoute.systemEvents] = c }
+        // ADR 0157: read-only (never asks); the prompt comes on the first focus run.
+        if let c = Self.automation(CtrlFocus.target) { automation[CtrlFocus.target] = c }
         var env: [String: Any] = [
             "secure_input": CtrlProbe.secureInput,
             // Files: never probed by touching a protected folder (that would prompt); slice 7 decides how.
@@ -263,6 +265,20 @@ public final class MacCtrlBackend: CtrlBackend {
         return r
     }
 
+    /// ADR 0157: like `runScript`, but the error number decides the code ("set up the shortcut" / "allow automation").
+    static func runFocus(_ source: String) throws {
+        var code: Int?
+        var failed = false
+        let run = {
+            var info: NSDictionary?
+            let r: NSAppleEventDescriptor? = NSAppleScript(source: source)?.executeAndReturnError(&info)
+            failed = info != nil || r == nil
+            code = (info?["NSAppleScriptErrorNumber"] as? NSNumber)?.intValue
+        }
+        if Thread.isMainThread { run() } else { DispatchQueue.main.sync(execute: run) }
+        if failed { throw CtrlFocus.failure(errorNumber: code) }
+    }
+
     func script(_ verb: String, app: String) throws -> NSAppleEventDescriptor {
         // `tell application id` launches an app that isn't running: never.
         guard runningApp(app) != nil else { throw CtrlFailure("app.not_running") }
@@ -333,6 +349,12 @@ public final class MacCtrlBackend: CtrlBackend {
                 guard let a = runningApp(id), a.isHidden else { continue }
                 _ = a.unhide()
             }
+        case let .setFocus(mode):
+            // ADR 0157: one `run` event to Shortcuts Events (faceless: no activation, no window, no key event), the
+            // name from the allowlist, the input the enum's raw value. The first run asks for Automation (the
+            // system's own prompt, the first time a task needs it). A missing shortcut or a denial stops here.
+            guard let src = CtrlFocus.source(shortcut: CtrlFocus.shortcutName, mode: mode) else { throw CtrlFailure("policy.refused") }
+            try Self.runFocus(src)
         case let .scripting(app, verb) where CtrlRoute.tabVerbs.contains(verb):
             try closeTabs(app: app, verb: verb)
         case let .scripting(app, verb):
@@ -371,6 +393,8 @@ public final class MacCtrlBackend: CtrlBackend {
         // ADR 0140: the level in this process; nil when muted or without a volume.
         case "output_volume": return (try? Self.runScript(Self.outputVolumeSource)).map { Int($0.int32Value) }.flatMap { $0 < 0 ? nil : $0 }
         // ADR 0137: the global appearance, read in this process (no app asked, no prompt): "Dark" or absent.
+        // ADR 0157: not read (INFocusStatusCenter would be another prompt); the run's verify is the shortcut's reply.
+        case "focus_on": return nil
         case "dark_mode": return CtrlAppearance.isDark(UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)) ? 1 : 0
         case "tab_count":
             return (try? script("count_tabs", app: app)).map { Int($0.int32Value) }

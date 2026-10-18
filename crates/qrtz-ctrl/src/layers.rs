@@ -1240,7 +1240,17 @@ fn move_question(
         "show_app" => vec![route("workspace.show_app", 4500)],
         // ADR 0155: no background route to set a Focus (no public API; the Shortcuts CLI needs a shortcut the user
         // makes and a process ctrl doesn't spawn yet), so the one move is a hold: asked out, nothing touched.
-        "focus_mode" => vec![route("system.focus_hold", 4500)],
+        // ADR 0157: the approved route, the user's one "qrtz Set Focus" shortcut through Shortcuts Events, with the
+        // mode from a closed set (never the task's words themselves). Off when the task says so.
+        "focus_mode" => {
+            let off = has(toks, &["off", "disable", "stop", "end"]);
+            let mode = if off {
+                crate::ladder::FocusMode::Off
+            } else {
+                focus_mode_of(toks)
+            };
+            vec![route(&format!("system.focus.{}", mode.as_str()), 4500)]
+        }
         "mute" => vec![route("system.mute", 4500)],
         "unmute" => vec![route("system.unmute", 4500)],
         "set_volume" => vec![route("system.set_volume", 4500)],
@@ -1502,6 +1512,9 @@ fn route_label(id: &str) -> &'static str {
         "workspace.hide_app" => "hide it, nothing comes forward",
         "workspace.show_app" => "show its windows, the app you're in stays in front",
         "system.focus_hold" => "leave focus as it is, not supported yet",
+        "system.focus.off" => "turn focus off",
+        "system.focus.do_not_disturb" => "turn on do not disturb",
+        m if m.starts_with("system.focus.") => "turn on that focus",
         "system.mute" => "mute the sound output",
         "system.unmute" => "turn the sound output back on",
         "system.set_volume" => "set the sound output to that level",
@@ -1600,4 +1613,24 @@ pub fn label(o: &Opt, goal: Option<&Goal>) -> String {
         }
         _ => o.id.to_lowercase(),
     }
+}
+
+/// ADR 0157: the Focus a task names, from a closed list of words; do not disturb when it names none.
+pub(crate) fn focus_mode_of(toks: &[Tok]) -> crate::ladder::FocusMode {
+    use crate::ladder::FocusMode as F;
+    let table: [(&[&str], F); 8] = [
+        (&["work", "working"], F::Work),
+        (&["personal"], F::Personal),
+        (&["sleep", "sleeping", "bedtime"], F::Sleep),
+        (&["driving", "drive"], F::Driving),
+        (&["fitness", "workout"], F::Fitness),
+        (&["gaming", "game"], F::Gaming),
+        (&["mindfulness", "mindful"], F::Mindfulness),
+        (&["reading", "read"], F::Reading),
+    ];
+    table
+        .iter()
+        .find(|(w, _)| has(toks, w))
+        .map(|(_, m)| *m)
+        .unwrap_or(F::DoNotDisturb)
 }

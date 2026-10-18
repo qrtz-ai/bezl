@@ -757,9 +757,9 @@ test('ctrl: show textedit unhides only textedit without a card', async ({
   expect(errors).toEqual([]);
 });
 
-// ADR 0155: "turn on do not disturb" is understood, but ctrl has no background way to set a focus yet. The run stops
-// and says so in lowercase; no card, no question, nothing done.
-test('ctrl: turn on do not disturb stops and says there is no background way', async ({
+// ADR 0157: "turn on do not disturb" runs the user's one "qrtz Set Focus" shortcut. Before it's made, the run stops
+// and ctrl's own view says how to make it, in lowercase; no card, no question, nothing done.
+test('ctrl: turn on do not disturb without the shortcut asks to set it up', async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -773,21 +773,63 @@ test('ctrl: turn on do not disturb stops and says there is no background way', a
   const run = ctrl.getByTestId('ctrl-run').first();
   await expect(run.getByTestId('ctrl-run-status')).toHaveText('needs you');
   await expect(ctrl.getByTestId('ctrl-state').first()).toContainText(
-    'no way to do it in the background',
+    'set up the shortcut',
   );
+  const setup = ctrl.getByTestId('ctrl-focus-setup');
+  await expect(setup).toContainText('set up the shortcut once');
+  await expect(setup).toContainText('name it qrtz Set Focus');
+  await expect(setup).toContainText('add the set focus action');
   const decisions = ctrl.getByTestId('ctrl-decisions').first();
-  await expect(decisions).toContainText(
-    'turn focus or do not disturb on or off',
-  );
-  await expect(decisions).toContainText(
-    'leave focus as it is, not supported yet',
-  );
-  await expect(decisions).not.toContainText('mute your mac');
+  await expect(decisions).toContainText('turn on do not disturb');
   await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(await axe(page, 'ctrl')).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+// ADR 0157: denied Automation stops the same way and says "allow automation".
+test('ctrl: a focus task with automation denied asks to allow it', async ({
+  page,
+}) => {
+  await page.goto('/?dev=1&mockFocusShortcut=denied');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  await ctrl.getByTestId('ctrl-task-input').fill('turn on do not disturb');
+  await ctrl.getByTestId('ctrl-task-add').click();
+  await ctrl.getByTestId('ctrl-task').getByTestId('ctrl-task-run').click();
+  await expect(ctrl.getByTestId('ctrl-state').first()).toContainText(
+    'allow automation',
+  );
+  await expect(ctrl.getByTestId('ctrl-focus-setup')).toContainText(
+    'privacy and security, automation',
+  );
+});
+
+// ADR 0157: with the shortcut made, focus goes on and off in the background with no card and no setup ask.
+for (const [text, move] of [
+  ['turn on do not disturb', 'turn on do not disturb'],
+  ['turn off do not disturb', 'turn focus off'],
+] as const) {
+  test(`ctrl: ${text} with the shortcut runs it`, async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.goto('/?dev=1&mockFocusShortcut=1');
+    await page.getByTestId('nav-ctrl').click();
+    const ctrl = page.locator('[data-subapp="ctrl"]');
+    await ctrl.getByTestId('ctrl-task-input').fill(text);
+    await ctrl.getByTestId('ctrl-task-add').click();
+    await ctrl.getByTestId('ctrl-task').getByTestId('ctrl-task-run').click();
+    const run = ctrl.getByTestId('ctrl-run').first();
+    await expect(run.getByTestId('ctrl-run-status')).toHaveText('done');
+    await expect(ctrl.getByTestId('ctrl-decisions').first()).toContainText(
+      move,
+    );
+    await expect(ctrl.getByTestId('ctrl-focus-setup')).toHaveCount(0);
+    await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+}
 
 // ADR 0135: "every night at 10 mute my mac" mutes the sound output without a card (reversible), no app touched.
 test('ctrl: every night mute my mac mutes the sound without a card', async ({

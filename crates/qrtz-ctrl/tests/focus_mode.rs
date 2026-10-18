@@ -1,11 +1,12 @@
-//! ADR 0155: "turn on do not disturb" / "turn off focus", end to end on Linux through the `ctrl:*` channels to the
-//! `FakeHelper`. macOS has no public API to set a Focus, and the one background route (the Shortcuts CLI running a
-//! shortcut the user made) isn't built, so the intent is recognised and its one move is a hold: the run is asked out
-//! with `no-route` before anything is sent to the helper, the user's frontmost app, cursor and focus are untouched,
-//! and the next scheduled run holds the same way instead of hanging on a question.
+//! ADR 0155 / 0157: "turn on do not disturb" / "turn off focus", end to end on Linux through the `ctrl:*` channels
+//! to the `FakeHelper`. The route is the user's one "qrtz Set Focus" shortcut run through Shortcuts Events with a
+//! mode from a closed set: without the shortcut the run stops with `focus.no_shortcut` (the view says "set up the
+//! shortcut"), without Automation with `automation.denied` ("allow automation"), and with both it sets the Focus.
+//! The user's frontmost app, cursor and focus are untouched either way.
 use chrono_tz::America::Los_Angeles;
 use qrtz_ctrl::decide::{replay_check, Goal};
 use qrtz_ctrl::helper::{FakeHelper, FakeWorld, HelperClient};
+use qrtz_ctrl::ladder::{shortcut_allowed, FocusMode, Route, WorkspaceOp, FOCUS_SHORTCUT};
 use qrtz_ctrl::runner::Clock;
 use qrtz_ctrl::schedule::IanaZone;
 use qrtz_ctrl::service::CtrlService;
@@ -74,13 +75,11 @@ fn world() -> FakeWorld {
 }
 
 #[test]
-fn do_not_disturb_and_focus_are_recognised_and_asked_out_with_nothing_sent() {
+fn without_the_shortcut_the_run_stops_and_asks_for_it() {
     for text in [
         "turn on do not disturb",
-        "turn off do not disturb",
-        "dnd on",
+        "dnd off",
         "turn on focus",
-        "turn off focus mode",
         "every weekday at 9am turn on do not disturb",
     ] {
         let d = tempfile::tempdir().unwrap();
@@ -91,57 +90,164 @@ fn do_not_disturb_and_focus_are_recognised_and_asked_out_with_nothing_sent() {
         let st = &v["state"];
         assert_eq!(st["decisions"][0]["chosen"], "intent.focus_mode", "{text}: {v}");
         assert_eq!(st["status"], "asked-out", "{text}: {v}");
-        assert_eq!(st["held"], "no-route", "{text}: {v}");
-        assert!(st["ask"].is_null(), "{text}: no question left open: {v}");
-        assert!(st["confirm"].is_null(), "{text}: no card");
+        assert_eq!(st["held"], "focus-no-shortcut", "{text}: {v}");
+        assert!(
+            st["ask"].is_null() && st["confirm"].is_null(),
+            "{text}: no question, no card"
+        );
+        let raw = v.to_string();
         let w = fake.world();
-        assert!(w.acted.is_empty(), "{text}: nothing sent: {:?}", w.acted);
+        assert_eq!(w.focus, FocusMode::Off, "{text}: nothing set");
         assert_eq!(w.frontmost_pid, before.frontmost_pid, "{text}");
         assert_eq!(w.cursor, before.cursor, "{text}");
         assert_eq!(w.focused, before.focused, "{text}");
+        assert!(
+            !raw.contains("/usr/bin/shortcuts") && !raw.contains("osascript"),
+            "{text}: no fallback"
+        );
 
         let store = Store::open(d.path()).unwrap();
         let log = store.run(v["run"]["id"].as_str().unwrap()).unwrap();
         log.verify().unwrap();
         replay_check(&log, &Goal { task_id: &t, text }).unwrap();
         let raw = log.to_jsonl().to_lowercase();
-        assert!(raw.contains("route.system.focus_hold"), "{text}");
+        // The move id names the mode (`route.system.focus.do_not_disturb`); the task's own text stays out.
         assert!(
-            !raw.contains("action.requested"),
-            "{text}: no action asked of the helper"
-        );
-        assert!(!raw.contains("cmd+"), "{text}: no key event planned");
-        assert!(
-            !raw.contains("disturb"),
+            !raw.contains(text),
             "{text}: the task's words stay out of the log"
         );
+        assert!(!raw.contains("cmd+"), "{text}: no key event planned");
+    }
+}
 
-        // The chosen move is the hold, labelled in lowercase.
-        let mv = st["decisions"]
+#[test]
+fn denied_automation_stops_with_allow_automation() {
+    let d = tempfile::tempdir().unwrap();
+    let mut w = world();
+    w.focus_shortcut = true;
+    w.shortcuts_denied = true;
+    let (s, fake) = rig(d.path(), w);
+    let t = create(&s, "turn on do not disturb");
+    let v = run_now(&s, &t);
+    assert_eq!(v["state"]["status"], "asked-out", "{v}");
+    assert_eq!(v["state"]["held"], "automation-denied", "{v}");
+    assert_eq!(fake.world().focus, FocusMode::Off);
+}
+
+#[test]
+fn with_the_shortcut_focus_goes_on_and_off_in_the_background() {
+    for (text, mode, mv, label) in [
+        (
+            "turn on do not disturb",
+            FocusMode::DoNotDisturb,
+            "route.system.focus.do_not_disturb",
+            "turn on do not disturb",
+        ),
+        (
+            "start a work focus",
+            FocusMode::Work,
+            "route.system.focus.work",
+            "turn on that focus",
+        ),
+        (
+            "turn on sleep focus",
+            FocusMode::Sleep,
+            "route.system.focus.sleep",
+            "turn on that focus",
+        ),
+        (
+            "turn off do not disturb",
+            FocusMode::Off,
+            "route.system.focus.off",
+            "turn focus off",
+        ),
+        (
+            "dnd off",
+            FocusMode::Off,
+            "route.system.focus.off",
+            "turn focus off",
+        ),
+    ] {
+        let d = tempfile::tempdir().unwrap();
+        let mut w = world();
+        w.focus_shortcut = true;
+        if mode == FocusMode::Off {
+            w.focus = FocusMode::DoNotDisturb;
+        }
+        let (s, fake) = rig(d.path(), w);
+        let before = fake.world();
+        let t = create(&s, text);
+        let v = run_now(&s, &t);
+        let st = &v["state"];
+        assert_eq!(st["status"], "done", "{text}: {v}");
+        let after = fake.world();
+        assert_eq!(after.focus, mode, "{text}");
+        assert_eq!(
+            after.acted.last().unwrap().1,
+            Route::Workspace(WorkspaceOp::SetFocus { mode }),
+            "{text}"
+        );
+        assert_eq!(after.frontmost_pid, before.frontmost_pid, "{text}");
+        assert_eq!(after.cursor, before.cursor, "{text}");
+        assert_eq!(after.focused, before.focused, "{text}");
+        let m = st["decisions"]
             .as_array()
             .unwrap()
             .iter()
             .find(|d| d["node"] == "choose_move")
             .unwrap()
             .clone();
-        assert_eq!(mv["chosen"], "route.system.focus_hold", "{mv}");
-        let shown = mv["chosenLabel"].as_str().unwrap();
-        assert_eq!(shown, "leave focus as it is, not supported yet");
-        assert_eq!(shown, shown.to_lowercase());
+        assert_eq!(m["chosen"], mv, "{m}");
+        assert_eq!(m["chosenLabel"], label, "{m}");
+        let store = Store::open(d.path()).unwrap();
+        let log = store.run(v["run"]["id"].as_str().unwrap()).unwrap();
+        log.verify().unwrap();
+        replay_check(&log, &Goal { task_id: &t, text }).unwrap();
     }
 }
 
 #[test]
-fn a_scheduled_focus_task_holds_again_on_its_next_run() {
-    let d = tempfile::tempdir().unwrap();
-    let (s, fake) = rig(d.path(), world());
-    let t = create(&s, "every weekday at 9am turn on do not disturb");
-    for _ in 0..2 {
-        let v = run_now(&s, &t);
-        assert_eq!(v["state"]["status"], "asked-out", "{v}");
-        assert_eq!(v["state"]["held"], "no-route", "{v}");
+fn only_the_one_shortcut_name_and_the_closed_modes_get_through() {
+    assert_eq!(FOCUS_SHORTCUT, "qrtz Set Focus");
+    assert!(shortcut_allowed("qrtz Set Focus"));
+    for n in [
+        "qrtz set focus",
+        "Set Focus",
+        "qrtz Set Focus ",
+        "",
+        "rm -rf",
+        "qrtz Set Focus\"; quit",
+    ] {
+        assert!(!shortcut_allowed(n), "{n:?}");
     }
-    assert!(fake.world().acted.is_empty());
+    for m in FocusMode::ALL {
+        assert_eq!(FocusMode::parse(m.as_str()), Some(m));
+    }
+    for bad in [
+        "",
+        "dnd",
+        "do not disturb",
+        "Do_Not_Disturb",
+        "party",
+        "work ",
+        "on",
+        "off\n",
+        "\"; quit",
+    ] {
+        assert_eq!(FocusMode::parse(bad), None, "{bad:?}");
+        let wire = json!({"route": "workspace", "op": "set_focus", "mode": bad});
+        assert!(
+            serde_json::from_value::<Route>(wire).is_err(),
+            "{bad:?} never deserializes"
+        );
+    }
+    let ok = json!({"route": "workspace", "op": "set_focus", "mode": "do_not_disturb"});
+    assert_eq!(
+        serde_json::from_value::<Route>(ok).unwrap(),
+        Route::Workspace(WorkspaceOp::SetFocus {
+            mode: FocusMode::DoNotDisturb
+        })
+    );
 }
 
 #[test]

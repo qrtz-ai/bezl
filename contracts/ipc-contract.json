@@ -8667,7 +8667,9 @@
                       "files-not-yet",
                       "no-route",
                       "unknown-app",
-                      "folder-not-yet"
+                      "folder-not-yet",
+                      "focus-no-shortcut",
+                      "automation-denied"
                     ]
                   },
                   {
@@ -9341,7 +9343,9 @@
                       "files-not-yet",
                       "no-route",
                       "unknown-app",
-                      "folder-not-yet"
+                      "folder-not-yet",
+                      "focus-no-shortcut",
+                      "automation-denied"
                     ]
                   },
                   {
@@ -10012,7 +10016,9 @@
                       "files-not-yet",
                       "no-route",
                       "unknown-app",
-                      "folder-not-yet"
+                      "folder-not-yet",
+                      "focus-no-shortcut",
+                      "automation-denied"
                     ]
                   },
                   {
@@ -10672,7 +10678,9 @@
                       "files-not-yet",
                       "no-route",
                       "unknown-app",
-                      "folder-not-yet"
+                      "folder-not-yet",
+                      "focus-no-shortcut",
+                      "automation-denied"
                     ]
                   },
                   {

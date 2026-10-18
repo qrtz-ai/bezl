@@ -25,6 +25,9 @@ public enum CtrlRoute: Equatable, Sendable {
     case unmuteOutput
     /// ADR 0140: set the output volume to `level` percent (0–100) and unmute (same process, same rules).
     case setVolume(level: Int)
+    /// ADR 0157: run the one "qrtz Set Focus" shortcut through Shortcuts Events with `mode` as its input. A mode off
+    /// the enum is a bad request (never reaches the backend). Reversible, no gate.
+    case setFocus(mode: CtrlFocusMode)
     case scripting(app: String, verb: String)
     case axPerform(app: String, role: String, element: String, action: String)
     case axSet(app: String, role: String, element: String, attribute: String)
@@ -40,7 +43,8 @@ public enum CtrlRoute: Equatable, Sendable {
     public static let appearanceVerbs: Set<String> = ["set_dark_mode", "set_light_mode"]
     public static let systemEvents = "com.apple.systemevents"
     /// ADR 0135 / 0137 / 0140: the measures that read the Mac itself, not an app.
-    public static let applessChecks: Set<String> = ["output_muted", "dark_mode", "output_volume"]
+    /// ADR 0157: `focus_on` too (the Mac backend answers nil: reading a Focus needs its own prompt).
+    public static let applessChecks: Set<String> = ["output_muted", "dark_mode", "output_volume", "focus_on"]
     /// Slice 7b's selective closes (ADR 0114 / 0119) have no fixed script: the backend reads the tabs first
     /// (`CtrlTabs`) and closes only the ones it can tell about; a backend that can't tell refuses, and the host asks.
     public static let tabVerbs: Set<String> = ["close_saved_tabs", "close_unpinned_tabs"]
@@ -65,6 +69,8 @@ public enum CtrlRoute: Equatable, Sendable {
                 guard let n = o["level"] as? NSNumber, String(cString: n.objCType) != "c", let l = o["level"] as? Int,
                       (0...100).contains(l) else { return nil }
                 return .setVolume(level: l)
+            // ADR 0157 amendment 3: the strict enum, checked before any event is built.
+            case "set_focus": return s("mode").flatMap(CtrlFocus.mode).map { .setFocus(mode: $0) }
             default: return nil
             }
             return nil
@@ -234,7 +240,8 @@ public final class CtrlServer {
         case let .pidKey(_, combo):
             guard let t = targetPid else { throw CtrlFailure("app.not_running") }
             do { try CtrlPolicy.checkKey(combo, targetPid: t, frontmostPid: frontmostPid) } catch { throw CtrlFailure("policy.refused") }
-        case .files, .openURL, .launchHidden, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume: break
+        case .files, .openURL, .launchHidden, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume,
+             .setFocus: break
         }
     }
 
@@ -242,7 +249,8 @@ public final class CtrlServer {
         switch r {
         case let .openURL(a, _), let .launchHidden(a), let .scripting(a, _), let .axPerform(a, _, _, _), let .axSet(a, _, _, _),
              let .pidKey(a, _): return a
-        case .files, .takesOver, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume: return nil
+        case .files, .takesOver, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume, .setFocus:
+            return nil
         }
     }
 

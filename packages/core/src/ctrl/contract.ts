@@ -235,6 +235,9 @@ export const CtrlRunState = z.object({
       'no-route',
       'unknown-app',
       'folder-not-yet',
+      // ADR 0157: the focus shortcut isn't made yet / Automation for Shortcuts Events is denied.
+      'focus-no-shortcut',
+      'automation-denied',
     ])
     .nullable()
     .optional(),
