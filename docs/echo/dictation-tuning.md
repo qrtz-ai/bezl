@@ -744,3 +744,24 @@ FluidAudio's 0.1 / 0.5 placeholders never reach the floor, `tail_conf=` or the b
 `QRTZ_ECHO_SEG_PEAK=on QRTZ_ECHO_TAIL_CONF=0.6`). (c) `dictation.stopped` carries `tailConf` (0..1, 3 places) and
 `tailDropped` (only `true`, only when the floor dropped the tail), optional and additive, read by talk's `AsrInfo`
 (`86c50fe`). P5: `tail_conf=` prints `%.3f`, so a 0.595 tail reads `tail_conf=0.595 tail_dropped=1`.
+
+## 18. Cycle 44: the VAD floor in a noisy room (ADR 0136)
+
+`PauseSegmenter` restarts each dictation at floor 0.001 and raises it ×1.002 per 20 ms frame (capped at speech
+×0.1), so in a fan / AC / café room the noise counts as speech for the first part of a dictation and only the 15 s
+cap cuts. `linux-crosscheck/seg/roomfloor.py`: §11's 40 long dictations with noise under everything (also the
+0.3 s before the first word), SNR against the active speech level, helper PauseSegmenter port, Parakeet TDT v2 int8.
+
+| condition   | pause / cap cuts: shipped, ×1.01 creep, 1 s min-stats | release tail p90 (s) | release CPU p90, box (ms) | WER shipped / creep / min-stats |
+| ----------- | ----------------------------------------------------- | -------------------- | ------------------------- | ------------------------------- |
+| clean       | 6.8 / 0.4, 8.0 / 0.2, 9.8 / 0.1                       | 10.1, 8.0, 6.1       | 442, 353, 374             | **2.53** / 2.79 / 2.85 %        |
+| room, 25 dB | 1.2 / 2.1, 8.3 / 0.2, 9.2 / 0.2                       | 11.8, 6.4, 6.1       | 440, 320, 306             | **3.02** / 3.07 / 3.35 %        |
+| room, 20 dB | 0.3 / 2.4, 3.7 / 1.3, 5.4 / 0.9                       | 12.5, 11.2, 9.4      | 907, 498, 390             | **3.04** / 3.41 / 3.63 %        |
+| fan, 25 dB  | 6.3 / 0.8, 9.9 / 0.1, 9.8 / 0.1                       | 6.4, 6.1, 6.1        | 377, 315, 313             | 3.15 / **3.00** / 3.15 %        |
+| fan, 20 dB  | 1.2 / 2.2, 8.7 / 0.4, 9.1 / 0.3                       | 12.5, 6.1, 6.0       | 523, 372, 372             | **3.15** / 3.61 / 3.48 %        |
+
+The slow floor is the more accurate one (mean 2.98 % vs 3.18 % and 3.29 %): fewer, longer segments keep their
+context, as with the 2 s minimum segment in §11. What it costs is release decode, bounded by the cap (tens of ms
+on the ANE). Kept as shipped. On the Mac, a noisy room shows `cap_cuts=` 1–2 and a higher `tail_decode_ms=`;
+that is expected. Revisit (carry the floor across dictations) only if `tail_decode_ms` p90 tops ~150 ms there.
+
