@@ -1,0 +1,6 @@
+{
+  "about": "ADR 0153: the only hosts the module installer may reach, on consent. The primary is Cloudflare R2 behind modules.qrtz.ai; each mirror is untrusted transport with the same /v1 layout (Backblaze B2, public bucket, S3 virtual-host URL). root1Sha256 pins v1/root/1.root.json; null until the offline root keys exist (docs/modules/hosting-setup.md), and while it is null every network install is refused. crates/qrtz-lifecycle/tests/offline_graph.rs checks this file.",
+  "primary": "https://modules.qrtz.ai",
+  "mirrors": ["https://qrtz-modules-mirror.s3.us-west-004.backblazeb2.com"],
+  "root1Sha256": null
+}

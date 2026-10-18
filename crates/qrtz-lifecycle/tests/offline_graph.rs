@@ -14,6 +14,8 @@
 //!    (the helper's pinned models), and the pinned models come only from `https://huggingface.co` at fixed revisions.
 //!    ctrl's Laya model (ADR 0116) goes through `local_models.rs` too: `ctrl_model.rs` names no downloader, and its
 //!    manifest is pinned the same way (or a placeholder, which is refused before any request).
+//!    ADR 0153: the module installer's transport (`module_hosting.rs`) is the third caller, to the hosts pinned in
+//!    `module_hosts.json` only (`https://modules.qrtz.ai` and Backblaze B2 mirrors).
 //!
 //! 6. ADR 0144 (module confinement, M0): every crate and Swift target has an owner in `docs/modules/confinement-map.json`
 //!    (shell / shared / echo / nano / ctrl / voice / monolith); module-owned and shared crates reach no network crate in
@@ -262,6 +264,8 @@ fn no_rust_source_opens_a_socket_or_names_an_http_client_outside_the_exception()
     let mut files = vec![];
     rust_sources(&r.join("crates"), &mut files);
     rust_sources(&r.join("apps/desktop/src-tauri/src"), &mut files);
+    // ADR 0153: release tools (qrtz-publish) are held to the same rule: they write files, never sockets.
+    rust_sources(&r.join("tools"), &mut files);
     assert!(files.len() > 50, "found only {} sources", files.len());
     let mut bad = vec![];
     for f in &files {
@@ -305,6 +309,8 @@ fn only_setup_and_the_pinned_local_models_call_the_downloader() {
     let allowed = [
         "crates/qrtz-app/src/setup.rs",
         "crates/qrtz-app/src/local_models.rs",
+        // ADR 0153: the module installer's HTTPS transport, to the pinned module hosts only (checked below).
+        "crates/qrtz-app/src/module_hosting.rs",
     ];
     let mut bad = vec![];
     for f in &files {
@@ -343,6 +349,37 @@ fn only_setup_and_the_pinned_local_models_call_the_downloader() {
             }
         }
     }
+    // ADR 0153: the module hosts are exactly the primary (Cloudflare R2 behind modules.qrtz.ai) and Backblaze B2
+    // mirrors, https, no path, query or credentials; adding a host changes this test and the ADR.
+    let hosts: Value = serde_json::from_str(
+        &std::fs::read_to_string(r.join("crates/qrtz-app/src/module_hosts.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        hosts["primary"], "https://modules.qrtz.ai",
+        "module_hosts.json primary"
+    );
+    let mirrors = hosts["mirrors"].as_array().unwrap();
+    assert!(mirrors.len() <= 2, "module_hosts.json: at most two mirrors");
+    for m in mirrors {
+        let m = m.as_str().unwrap();
+        let host = m.strip_prefix("https://").unwrap_or_else(|| panic!("{m}: https"));
+        assert!(
+            host.ends_with(".backblazeb2.com")
+                && host
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-'),
+            "{m}: a Backblaze B2 host and nothing after it"
+        );
+    }
+    let pin = &hosts["root1Sha256"];
+    assert!(
+        pin.is_null()
+            || pin
+                .as_str()
+                .is_some_and(|p| p.len() == 64 && p.bytes().all(|b| b.is_ascii_hexdigit())),
+        "root1Sha256: null or a sha256"
+    );
     // ADR 0116: ctrl's model is fetched through the pinned path, not a downloader of its own.
     let ctrl = std::fs::read_to_string(r.join("crates/qrtz-app/src/ctrl_model.rs")).unwrap();
     assert!(
