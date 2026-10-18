@@ -6,6 +6,8 @@ Decodes are cached per exact sample range (seg/cache.json), so configs sharing s
 """
 import argparse, glob, json, os, random, re, sys, time
 import numpy as np, soundfile as sf
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from helper_seg import segment_helper, Rule as HRule
 
 ROOT = os.path.dirname(os.path.abspath(__file__)); BASE = os.path.dirname(ROOT)
 SR = 16000; FRAME = 320  # 20 ms
@@ -95,10 +97,16 @@ class Decoder:
         d = f"{BASE}/models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"
         self.r = sherpa_onnx.OfflineRecognizer.from_transducer(encoder=f"{d}/encoder.int8.onnx", decoder=f"{d}/decoder.int8.onnx", joiner=f"{d}/joiner.int8.onnx", tokens=f"{d}/tokens.txt", num_threads=threads, model_type="nemo_transducer", feature_dim=128)
         self.cache_path = f"{ROOT}/cache.json"; self.cache = json.load(open(self.cache_path)) if os.path.exists(self.cache_path) else {}
-    def words(self, name, x, a, b, pad_s):
-        k = f"{name}:{a}:{b}:{pad_s}"
+    def words(self, name, x, a, b, pad_s, norm=None):
+        """norm: None, or (target, gate, cap): ADR 0127's per-segment peak normaliser, gain min(cap, target / peak)
+        applied only when the range's peak is below gate (a decode it leaves alone shares the plain cache entry)."""
+        y = x[a:b]; g = 1.0
+        if norm:
+            target, gate, cap = norm; pk = float(np.max(np.abs(y))) if len(y) else 0.0
+            if pk < gate: g = min(cap, target / max(pk, 1e-9))
+        k = f"{name}:{a}:{b}:{pad_s}" + (f":g{g:.6g}" if g != 1.0 else "")
         if k not in self.cache:
-            y = np.concatenate([x[a:b], np.zeros(int(pad_s * SR), np.float32)])
+            y = np.concatenate([(y * g).astype(np.float32), np.zeros(int(pad_s * SR), np.float32)])
             t = time.perf_counter(); s = self.r.create_stream(); s.accept_waveform(SR, y); self.r.decode_stream(s); ms = (time.perf_counter() - t) * 1000
             res = s.result; words = []
             for tok, ts in zip(res.tokens, res.timestamps):
@@ -129,19 +137,26 @@ def kind_speech(x, a, b):
 
 def run(args):
     dicts = json.load(open(f"{ROOT}/dictations.json")); dec = Decoder(args.threads)
+    norm = (args.segtarget, args.seggate, 10.0) if args.segnorm else None
     E = N = 0; per = []; tail_s = []; tail_ms = []; queued_ms = []; nseg = []; ncap = []; lastmiss = 0; berr = 0; bcuts = 0; bwin = []; empties = 0; retries = 0
     for d in dicts:
         x, _ = sf.read(f"{ROOT}/wav/{d['name']}.wav", dtype="float32")
+        key = d["name"] if args.scale is None else f"{d['name']}@x{args.scale}"  # decode cache per input level
+        if args.scale is not None: x = (x * args.scale).astype(np.float32)
         if args.whole: segs = [(0, len(x), "end")]
+        elif args.vad == "helper":  # ADR 0127: the helper's PauseSegmenter (helper_seg.py); its silent segments aren't decoded
+            hs = segment_helper(x, HRule(pauseMs=args.silence, capMs=int(args.cap * 1000), minSegmentMs=int(args.minseg * 1000)))
+            segs = [h[:3] for h in hs]; silent = {h[0] for h in hs if not h[3]}
         else: segs = segment(x, args.silence, args.cap, args.minseg, args.pause2, args.after)
+        if args.vad != "helper" or args.whole: silent = set()
         words = []; timeline_free = 0.0; queued = 0.0
         for k, (a, b, kind) in enumerate(segs):
             ov = args.overlap if k > 0 and (args.ovmode == "all" or segs[k - 1][2] == "cap") else 0.0
             a2 = max(0, a - int(ov * SR))
-            out = dec.words(d["name"], x, a2, b, args.pad)
+            out = dict(words=[], ms=0.0, text="") if a in silent else dec.words(key, x, a2, b, args.pad, norm)
             if not out["words"] and kind_speech(x, a, b): empties += 1
             if not out["words"] and args.retry and a2 != a and kind_speech(x, a, b):  # TDT can blank a clip that starts mid-word
-                out = dec.words(d["name"], x, a, b, args.pad); a2 = a; ov = 0.0; retries += 1
+                out = dec.words(key, x, a, b, args.pad, norm); a2 = a; ov = 0.0; retries += 1
             cut_prev = a / SR; lo = cut_prev - ov / 2 if ov else -1
             mine = [w for w in out["words"] if w[1] >= lo] if k > 0 else out["words"]
             if k > 0 and ov:
@@ -168,7 +183,7 @@ def run(args):
         bcuts += len(cuts); berr += sum(1 for t in times if any(abs(t - c) <= 0.5 for c in cuts))
     if not args.nosave: dec.save()
     q = lambda v, p: round(float(np.percentile(v, p)), 1)
-    summ = dict(name=args.name, whole=args.whole, silence=args.silence, cap=args.cap, overlap=args.overlap, ovmode=args.ovmode, stitch=args.stitch, minseg=args.minseg, pause2=args.pause2, after=args.after, pad=args.pad,
+    summ = dict(name=args.name, whole=args.whole, vad=args.vad, scale=args.scale, segnorm=args.segnorm, segtarget=args.segtarget if args.segnorm else None, seggate=args.seggate if args.segnorm else None, silence=args.silence, cap=args.cap, overlap=args.overlap, ovmode=args.ovmode, stitch=args.stitch, minseg=args.minseg, pause2=args.pause2, after=args.after, pad=args.pad,
                 n=len(dicts), wer=round(100 * E / N, 2), errors=E, words=N, lastWordMissedPct=round(100 * lastmiss / len(dicts), 1),
                 segmentsMean=round(float(np.mean(nseg)), 1), capCutsMean=round(float(np.mean(ncap)), 2),
                 boundaryErrors=berr, cuts=bcuts, boundaryErrorsPerCut=round(berr / max(1, bcuts), 3), emptySegments=empties, retries=retries,
@@ -184,4 +199,8 @@ if __name__ == "__main__":
     p.add_argument("--cap", type=float, default=15); p.add_argument("--overlap", type=float, default=0.5); p.add_argument("--ovmode", default="all"); p.add_argument("--stitch", default="mid", help="mid | dedupe"); p.add_argument("--nosave", action="store_true"); p.add_argument("--retry", action="store_true"); p.add_argument("--pause2", type=int, default=0, help="shorter pause once the segment is --after s long"); p.add_argument("--after", type=float, default=0.0)
     p.add_argument("--minseg", type=float, default=2.0); p.add_argument("--pad", type=float, default=0.64); p.add_argument("--threads", type=int, default=6)
     p.add_argument("--bsilence", type=int, default=0, help="with --whole: count boundary errors at this config's cuts"); p.add_argument("--bcap", type=float, default=15)
+    p.add_argument("--scale", type=float, default=None, help="input gain before the VAD, e.g. 0.03 for a mic 30 dB down (ADR 0127)")
+    p.add_argument("--vad", choices=("sketch", "helper"), default="sketch", help="sketch: segment() below (earlier tables); helper: helper_seg.py, the helper's PauseSegmenter (ADR 0127)")
+    p.add_argument("--segnorm", action="store_true", help="peak-normalise each decoded range to --segtarget (gain cap 10x) before the decode (ADR 0127)")
+    p.add_argument("--segtarget", type=float, default=0.9); p.add_argument("--seggate", type=float, default=float("inf"), help="--segnorm only when the range's peak is below this")
     a = p.parse_args(); build(a) if a.cmd == "build" else run(a)
