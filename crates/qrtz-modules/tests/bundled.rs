@@ -162,3 +162,34 @@ fn the_manifests_agree_with_the_confinement_map() {
         }
     }
 }
+
+/// ADR 0146 M1.3: every module app exists as a Swift target with its own entitlements file, and its probe mode
+/// takes exactly the launcher's flag and probes (what scripts/modules/mac-gate.sh drives).
+#[test]
+fn every_module_has_an_app_target_entitlements_and_the_launchers_probe_mode() {
+    use qrtz_modules::launcher::{GATE_PROBES, GATE_PROBE_FLAG};
+    let pkg = root().join("native/qrtz-helper");
+    let probe = std::fs::read_to_string(pkg.join("Sources/QrtzGateProbe/GateProbe.swift")).unwrap();
+    assert!(probe.contains(&format!("public let gateProbeFlag = \"{GATE_PROBE_FLAG}\"")));
+    assert!(
+        probe.contains(&format!("case {}\n", GATE_PROBES.join(", "))),
+        "GateProbeCommand cases"
+    );
+    let manifest = std::fs::read_to_string(pkg.join("Package.swift")).unwrap();
+    for id in qrtz_modules::MODULE_IDS {
+        let main = std::fs::read_to_string(pkg.join(format!("Sources/qrtz-{id}/main.swift"))).unwrap();
+        assert!(
+            main.contains(&format!("GateProbe.runIfRequested(module: \"{id}\")")),
+            "qrtz-{id} probe mode"
+        );
+        assert!(
+            manifest.contains(&format!(".executable(name: \"qrtz-{id}\"")),
+            "qrtz-{id} product"
+        );
+        assert!(
+            pkg.join(format!("entitlements/ai.qrtz.{id}.entitlements"))
+                .is_file(),
+            "{id} entitlements"
+        );
+    }
+}

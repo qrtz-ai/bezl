@@ -20,7 +20,11 @@
   "swiftTargets": {
     "qrtz-helper": "monolith",
     "QrtzHelperCore": "monolith",
-    "QrtzCtrl": "ctrl"
+    "QrtzCtrl": "ctrl",
+    "QrtzGateProbe": "shared",
+    "qrtz-echo": "echo",
+    "qrtz-nano": "nano",
+    "qrtz-ctrl": "ctrl"
   },
   "swiftPackages": {
     "FluidAudio": "voice"

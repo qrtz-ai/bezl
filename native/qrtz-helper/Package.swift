@@ -24,7 +24,13 @@ let execDeps: [Target.Dependency] = ["QrtzHelperCore", "QrtzCtrl"]
 let package = Package(
     name: "qrtz-helper",
     platforms: [.macOS(.v14)],
-    products: [.executable(name: "qrtz-helper", targets: ["qrtz-helper"])],
+    products: [
+        .executable(name: "qrtz-helper", targets: ["qrtz-helper"]),
+        // ADR 0146 M1.3: the module apps, one bundle each (ai.qrtz.echo, ai.qrtz.nano, ai.qrtz.ctrl).
+        .executable(name: "qrtz-echo", targets: ["qrtz-echo"]),
+        .executable(name: "qrtz-nano", targets: ["qrtz-nano"]),
+        .executable(name: "qrtz-ctrl", targets: ["qrtz-ctrl"]),
+    ],
     dependencies: platformDeps,
     targets: [
         .target(name: "QrtzHelperCore"),
@@ -39,5 +45,14 @@ let package = Package(
         // The executable links it only to route `ctrl.*` lines to it (ADR 0110).
         .target(name: "QrtzCtrl", swiftSettings: [.swiftLanguageMode(.v5)]),
         .testTarget(name: "QrtzCtrlTests", dependencies: ["QrtzCtrl"], swiftSettings: [.swiftLanguageMode(.v5)]),
+        // ADR 0146 M1.3 / ADR 0144: `--qrtz-gate-probe <ax|mic|socket|ae>`, shared by every module app (owner: shared).
+        .target(name: "QrtzGateProbe", swiftSettings: [.swiftLanguageMode(.v5)]),
+        .testTarget(name: "QrtzGateProbeTests", dependencies: ["QrtzGateProbe"]),
+        // The module apps. Each imports only shared targets and its own module's (the offline_graph ratchet): echo and
+        // nano are probe-only until their code leaves the monolith QrtzHelperCore; ctrl runs QrtzCtrl's stdio.
+        .executableTarget(name: "qrtz-echo", dependencies: ["QrtzGateProbe"], swiftSettings: [.swiftLanguageMode(.v5)]),
+        .executableTarget(name: "qrtz-nano", dependencies: ["QrtzGateProbe"], swiftSettings: [.swiftLanguageMode(.v5)]),
+        .executableTarget(
+            name: "qrtz-ctrl", dependencies: ["QrtzCtrl", "QrtzGateProbe"], swiftSettings: [.swiftLanguageMode(.v5)]),
     ]
 )
