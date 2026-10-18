@@ -73,6 +73,9 @@ pub enum WorkspaceOp {
     OpenUrl { app: String, url: ContentRef },
     /// Start an app hidden, without activating it.
     LaunchHidden { app: String },
+    /// ADR 0130: `NSRunningApplication.terminate()` each app (no activation, no key event). Only behind an approved
+    /// confirm gate; never the frontmost app.
+    QuitApps { apps: Vec<String> },
 }
 
 /// The only Apple Event verbs ctrl sends. Templates, not free text: the type can't express `activate`.
@@ -146,7 +149,9 @@ impl Route {
 
     pub fn app(&self) -> Option<&str> {
         match self {
-            Route::Files(_) | Route::GlobalKey { .. } => None,
+            Route::Files(_) | Route::GlobalKey { .. } | Route::Workspace(WorkspaceOp::QuitApps { .. }) => {
+                None
+            }
             Route::Workspace(WorkspaceOp::OpenUrl { app, .. } | WorkspaceOp::LaunchHidden { app }) => {
                 Some(app)
             }
@@ -312,6 +317,15 @@ pub fn judge(route: &Route, env: &Env) -> Verdict {
         Route::Workspace(op) => {
             let app = match op {
                 WorkspaceOp::OpenUrl { app, .. } | WorkspaceOp::LaunchHidden { app } => app,
+                WorkspaceOp::QuitApps { apps } => {
+                    // The app the user is in is never quit under them.
+                    if apps.iter().any(|a| env.user_in(a)) {
+                        return Verdict::Refused {
+                            why: Refusal::TargetIsFrontmost,
+                        };
+                    }
+                    return Verdict::Allowed;
+                }
             };
             if !env.running_apps.contains(app) {
                 return Verdict::NeedsGrant {

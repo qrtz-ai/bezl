@@ -66,11 +66,15 @@ open class NSRunningApplication: NSObject {
     open var localizedName: String? { nil }
     open var bundleURL: URL? { nil }
     open func activate(options: NSApplicationActivationOptions = []) -> Bool { false }
+    open func terminate() -> Bool { false }
 }
 open class NSWorkspace: NSObject {
     public static let shared = NSWorkspace()
     open var runningApplications: [NSRunningApplication] { [] }
     open var frontmostApplication: NSRunningApplication? { nil }
+    open var notificationCenter: NotificationCenter { NotificationCenter.default }
+    public static let didActivateApplicationNotification = Notification.Name("NSWorkspaceDidActivateApplicationNotification")
+    public static let applicationUserInfoKey = "NSWorkspaceApplicationKey"
     open func urlsForApplications(toOpen url: URL) -> [URL] { [] }
     open func urlForApplication(withBundleIdentifier bundleIdentifier: String) -> URL? { nil }
     open class OpenConfiguration: NSObject {

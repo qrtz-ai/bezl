@@ -22,8 +22,42 @@ public final class MacCtrlBackend: CtrlBackend {
     static let maxHandles = 512
     static let maxNodes = 40
     let layaRuntime = CtrlLayaRuntime()
+    /// ADR 0130: activations seen since the helper started (in memory only).
+    let lastUsed = CtrlLastUsed(sinceMs: CtrlLastUsed.nowMs())
+    private var activationObserver: NSObjectProtocol?
 
-    public init() {}
+    public init() {
+        // The app in front when the watch begins counts as used now; every later switch is recorded as it happens.
+        if let id = NSWorkspace.shared.frontmostApplication?.bundleIdentifier { lastUsed.record(id, atMs: lastUsed.sinceMs) }
+        let used = lastUsed
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: nil
+        ) { note in
+            if let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication, let id = app.bundleIdentifier {
+                used.record(id, atMs: CtrlLastUsed.nowMs())
+            }
+        }
+    }
+
+    deinit {
+        if let o = activationObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
+    }
+
+    /// ADR 0130: running regular apps with their last activation; read-only, no AX prompt (window count only when
+    /// already trusted), nothing activated.
+    public func runningApps() throws -> (apps: [CtrlRunningApp], sinceMs: UInt64?, dayStartMs: UInt64) {
+        let front = frontmostPid()
+        let trusted = CtrlProbe.axTrusted
+        let apps = NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular && !$0.isTerminated }
+            .compactMap { a -> CtrlRunningApp? in
+                guard let id = a.bundleIdentifier else { return nil }
+                let unsaved: Bool? = trusted && CtrlActions.windows(a.processIdentifier).isEmpty ? false : nil
+                return CtrlRunningApp(bundleId: id, name: a.localizedName ?? id, lastActiveMs: lastUsed.lastActive(id),
+                                      frontmost: a.processIdentifier == front, unsaved: unsaved)
+            }
+        return (apps, lastUsed.sinceMs, CtrlLastUsed.dayStartMs(nowMs: CtrlLastUsed.nowMs()))
+    }
 
     // MARK: apps
 
@@ -251,6 +285,14 @@ public final class MacCtrlBackend: CtrlBackend {
             let c = CtrlActions.backgroundConfiguration()
             c.hides = true
             try Self.wait(10) { done in NSWorkspace.shared.openApplication(at: appURL, configuration: c) { _, e in done(e) } }
+        case let .quitApps(apps):
+            // `terminate()` asks each app to quit the way the Dock's Quit does: no activation, no key event. An app
+            // that already quit is fine. The frontmost app was refused before this point (CtrlServer).
+            let front = frontmostPid()
+            for id in apps {
+                guard let a = runningApp(id), a.processIdentifier != front else { continue }
+                _ = a.terminate()
+            }
         case let .scripting(app, verb) where CtrlRoute.tabVerbs.contains(verb):
             try closeTabs(app: app, verb: verb)
         case let .scripting(app, verb):

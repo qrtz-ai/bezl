@@ -462,6 +462,13 @@ const INTENTS: &[IntentDef] = &[
         slot: Slot::None,
         irreversible: true,
     },
+    // ADR 0130: quit the running apps not used today (the helper's last-used record), behind the gate.
+    IntentDef {
+        id: "quit_unused",
+        app: AppMode::None,
+        slot: Slot::None,
+        irreversible: true,
+    },
     IntentDef {
         id: "empty_trash",
         app: AppMode::Files,
@@ -583,6 +590,23 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             }
             if named_app && (close || has(toks, &["quit", "exit"])) {
                 p += 1500;
+            }
+        }
+        "quit_unused" => {
+            // Apps as a group plus a not-used word ("quit apps i haven't used today", "quit unused apps"). Without
+            // them this intent sits well below the rest, so adding it doesn't thin out the other intents' odds.
+            p -= 3000;
+            if has(toks, &["apps", "app", "applications", "programs"]) {
+                let usage = has(
+                    toks,
+                    &["unused", "used", "using", "idle", "inactive", "untouched"],
+                );
+                if usage {
+                    p += 5500;
+                    if has(toks, &["quit", "exit", "close"]) {
+                        p += 3000;
+                    }
+                }
             }
         }
         "empty_trash" => {
@@ -866,6 +890,7 @@ fn move_question(
         ],
         "open_app" => vec![route("workspace.launch_hidden", 4500)],
         "quit_app" => vec![irreversible(shortcut("cmd+q", 4000))],
+        "quit_unused" => vec![irreversible(route("workspace.quit_unused", 4500))],
         // ADR 0124: on the Desktop only the screenshots and screen recordings are ctrl's; the Downloads routes
         // would act on another folder, so they aren't offered here.
         "clean_folder" if matches!(target, Some("folder.desktop" | "folder.screenshots")) => {
@@ -1071,6 +1096,7 @@ fn intent_label(id: &str) -> &'static str {
         "open_site" => "open a website",
         "open_app" => "open an app",
         "quit_app" => "quit an app",
+        "quit_unused" => "quit apps you haven't used today",
         "empty_trash" => "empty the trash",
         "dark_mode" => "switch dark mode",
         "search" => "search in an app",
@@ -1087,6 +1113,7 @@ fn route_label(id: &str) -> &'static str {
         "scripting.set_dark_mode" => "switch appearance by script",
         "workspace.open_url" => "open the address in the background",
         "workspace.launch_hidden" => "start it hidden",
+        "workspace.quit_unused" => "quit them without bringing anything forward",
         "files.tidy" => "sort by kind, nothing deleted",
         "files.sort_by_kind" => "sort files into folders by kind",
         "files.trash_old" => "move old installers to the trash",

@@ -586,3 +586,45 @@ test('ctrl: every morning open my calendar opens calendar without a card', async
   expect(await axe(page, 'ctrl')).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+// ADR 0130: "quit apps i haven't used today" lists the apps it would quit on the card (never the frontmost app,
+// finder or qrtz), deny keeps them running, approve quits them once.
+test('ctrl: quit apps i have not used today waits at the card with the apps', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  await ctrl
+    .getByTestId('ctrl-task-input')
+    .fill("quit apps i haven't used today");
+  await ctrl.getByTestId('ctrl-task-add').click();
+  const row = ctrl.getByTestId('ctrl-task');
+  await row.getByTestId('ctrl-task-run').click();
+  const runs = ctrl.getByTestId('ctrl-run');
+  const card = ctrl.getByTestId('ctrl-confirm');
+  await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText(
+    'needs your ok',
+  );
+  await expect(card).toContainText(
+    "quit apps you haven't used today: this can't be undone",
+  );
+  await expect(card.getByTestId('ctrl-confirm-item')).toHaveText([
+    'slack · may have unsaved changes',
+    'textedit · unsaved changes',
+  ]);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  await card.getByTestId('ctrl-confirm-deny').click();
+  await expect(runs.first().getByTestId('ctrl-run-status')).not.toHaveText(
+    'done',
+  );
+  await row.getByTestId('ctrl-task-run').click();
+  await expect(runs).toHaveCount(2);
+  await card.getByTestId('ctrl-confirm-approve').click();
+  await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText('done');
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});

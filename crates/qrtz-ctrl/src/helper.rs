@@ -40,6 +40,8 @@ pub enum Check {
     /// Planned files not yet where a file batch puts them (slice 7). Measured by the host from the disk, never
     /// sent to the helper.
     FilesRemaining,
+    /// ADR 0130: of these apps, how many still run. Measured by the host from `ctrl.apps`.
+    AppsRemaining { apps: Vec<String> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -110,6 +112,31 @@ pub enum HostMsg {
         app: String,
         what: PreviewWhat,
     },
+    /// ADR 0130: the running regular apps with the helper's last-used record of each (activation notifications it
+    /// observed, never the screen), when it began watching, and local midnight on the Mac.
+    #[serde(rename = "ctrl.apps")]
+    Apps { id: String },
+}
+
+/// One running app as `ctrl.apps` reports it. `name` labels the gate's card and is hashed before the log.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunningAppWire {
+    pub bundle_id: String,
+    pub name: String,
+    /// The last activation the helper saw (UTC ms); `null` = none since it began watching.
+    pub last_active_ms: Option<u64>,
+    pub frontmost: bool,
+    /// `false` only when the helper knows there's nothing to save (no windows); `null` = can't tell.
+    pub unsaved: Option<bool>,
+}
+
+/// The `ctrl.apps` reply.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AppsReport {
+    pub apps: Vec<RunningAppWire>,
+    pub since_ms: Option<u64>,
+    pub day_start_ms: u64,
 }
 
 /// What a confirm-gate preview enumerates.
@@ -168,6 +195,15 @@ pub enum HelperMsg {
     LayaResult { id: String, p: Vec<f32> },
     #[serde(rename = "ctrl.preview.result")]
     PreviewResult { id: String, items: Vec<PreviewItemWire> },
+    #[serde(rename = "ctrl.apps.result")]
+    AppsResult {
+        id: String,
+        apps: Vec<RunningAppWire>,
+        #[serde(rename = "sinceMs")]
+        since_ms: Option<u64>,
+        #[serde(rename = "dayStartMs")]
+        day_start_ms: u64,
+    },
     /// A short code (`ax.not_trusted`, `app.not_running`, `policy.refused`, `laya.no_model`), never content.
     #[serde(rename = "ctrl.error")]
     Error { id: String, code: String },
@@ -184,6 +220,7 @@ impl HelperMsg {
             | HelperMsg::RestoreResult { id, .. }
             | HelperMsg::LayaResult { id, .. }
             | HelperMsg::PreviewResult { id, .. }
+            | HelperMsg::AppsResult { id, .. }
             | HelperMsg::Error { id, .. } => id,
         }
     }
@@ -237,7 +274,8 @@ impl HelperClient {
             | HostMsg::Measure { id, .. }
             | HostMsg::Restore { id, .. }
             | HostMsg::Laya { id, .. }
-            | HostMsg::Preview { id, .. } => id.clone(),
+            | HostMsg::Preview { id, .. }
+            | HostMsg::Apps { id } => id.clone(),
         };
         let reply = self.wire.roundtrip(&line)?;
         let r: HelperMsg = serde_json::from_str(reply.trim()).map_err(|_| proto_err("bad_reply"))?;
@@ -361,6 +399,23 @@ impl HelperClient {
             _ => Err(proto_err("unexpected")),
         }
     }
+
+    /// ADR 0130: running apps with their last-used record (an error code when the helper doesn't watch).
+    pub fn apps(&self) -> Result<AppsReport, String> {
+        match self.call(HostMsg::Apps { id: self.id() })? {
+            HelperMsg::AppsResult {
+                apps,
+                since_ms,
+                day_start_ms,
+                ..
+            } => Ok(AppsReport {
+                apps,
+                since_ms,
+                day_start_ms,
+            }),
+            _ => Err(proto_err("unexpected")),
+        }
+    }
 }
 
 /// The app catalog from the helper (LaunchServices: running apps and the real default browser). Replaces
@@ -445,6 +500,10 @@ pub struct FakeWorld {
     pub laya: Option<Vec<f32>>,
     /// The `model` of every `ctrl.laya` request, for assertions (ADR 0116).
     pub laya_models: Vec<Option<String>>,
+    /// ADR 0130: last activation per bundle id, when the watch began (`None`: `ctrl.apps` errors), local midnight.
+    pub last_active: BTreeMap<String, u64>,
+    pub watch_since_ms: Option<u64>,
+    pub day_start_ms: u64,
 }
 
 pub struct FakeHelper(pub Mutex<FakeWorld>);
@@ -493,6 +552,9 @@ impl FakeWorld {
             opened_urls: Vec::new(),
             laya: None,
             laya_models: Vec::new(),
+            last_active: BTreeMap::new(),
+            watch_since_ms: None,
+            day_start_ms: 0,
         }
     }
 
@@ -576,6 +638,18 @@ impl FakeWorld {
             }
             Route::Workspace(WorkspaceOp::LaunchHidden { app }) => {
                 self.app_mut(app).ok_or("app.unknown")?.running = true;
+                Ok(())
+            }
+            // ADR 0130: terminate each (no activation); one that already quit is fine.
+            Route::Workspace(WorkspaceOp::QuitApps { apps }) => {
+                for id in apps {
+                    if let Some(a) = self.app_mut(id) {
+                        a.running = false;
+                        a.windows = 0;
+                        a.tabs = 0;
+                        a.docs.clear();
+                    }
+                }
                 Ok(())
             }
             Route::Ax { app, element, .. } => {
@@ -689,7 +763,7 @@ impl FakeWorld {
                     Check::AppRunning { app } => Some(i64::from(
                         self.apps.iter().any(|a| &a.bundle_id == app && a.running),
                     )),
-                    Check::AxScope { .. } | Check::FilesRemaining => None,
+                    Check::AxScope { .. } | Check::FilesRemaining | Check::AppsRemaining { .. } => None,
                 };
                 HelperMsg::MeasureResult { id, value }
             }
@@ -744,6 +818,35 @@ impl FakeWorld {
                 _ => HelperMsg::Error {
                     id,
                     code: "app.not_running".into(),
+                },
+            },
+            HostMsg::Apps { id } => match self.watch_since_ms {
+                None => HelperMsg::Error {
+                    id,
+                    code: "apps.not_watching".into(),
+                },
+                Some(since) => HelperMsg::AppsResult {
+                    id,
+                    apps: self
+                        .apps
+                        .iter()
+                        .filter(|a| a.running)
+                        .map(|a| RunningAppWire {
+                            bundle_id: a.bundle_id.clone(),
+                            name: a.name.clone(),
+                            last_active_ms: self.last_active.get(&a.bundle_id).copied(),
+                            frontmost: a.pid == self.frontmost_pid,
+                            unsaved: if !a.docs.is_empty() {
+                                Some(a.docs.iter().any(|(_, u)| *u))
+                            } else if a.windows == 0 {
+                                Some(false)
+                            } else {
+                                None
+                            },
+                        })
+                        .collect(),
+                    since_ms: Some(since),
+                    day_start_ms: self.day_start_ms,
                 },
             },
             HostMsg::Laya {

@@ -13,6 +13,8 @@ public enum CtrlRoute: Equatable, Sendable {
     case files(op: String)
     case openURL(app: String, urlRef: String)
     case launchHidden(app: String)
+    /// ADR 0130: terminate each running app (no activation). Only behind the host's approved confirm gate.
+    case quitApps(apps: [String])
     case scripting(app: String, verb: String)
     case axPerform(app: String, role: String, element: String, action: String)
     case axSet(app: String, role: String, element: String, attribute: String)
@@ -35,6 +37,7 @@ public enum CtrlRoute: Equatable, Sendable {
             switch s("op") {
             case "open_url": if let a = s("app"), let u = s("url") { return .openURL(app: a, urlRef: u) }
             case "launch_hidden": if let a = s("app") { return .launchHidden(app: a) }
+            case "quit_apps": if let a = o["apps"] as? [String] { return .quitApps(apps: a) }
             default: return nil
             }
             return nil
@@ -66,11 +69,13 @@ public enum CtrlRequest: Equatable, Sendable {
     case laya(id: String, model: String?, state: String, question: String, options: [String])
     /// The confirm gate's preview (ADR 0111): `what` is `windows` or `tabs` of `app`.
     case preview(id: String, app: String, what: String)
+    /// ADR 0130: the running apps with the last-used record (`CtrlLastUsed`).
+    case apps(id: String)
 
     public var id: String {
         switch self {
         case let .catalog(id), let .probe(id), let .snapshot(id, _, _), let .act(id, _, _, _), let .measure(id, _, _),
-             let .restore(id, _), let .laya(id, _, _, _, _), let .preview(id, _, _): return id
+             let .restore(id, _), let .laya(id, _, _, _, _), let .preview(id, _, _), let .apps(id): return id
         }
     }
 
@@ -82,6 +87,7 @@ public enum CtrlRequest: Equatable, Sendable {
         switch type {
         case "ctrl.catalog": return .catalog(id: id)
         case "ctrl.probe": return .probe(id: id)
+        case "ctrl.apps": return .apps(id: id)
         case "ctrl.snapshot": return s("app").map { .snapshot(id: id, app: $0, scope: s("scope")) }
         case "ctrl.act":
             guard let a = s("actionId"), let r = (o["route"] as? [String: Any]).flatMap(CtrlRoute.parse),
@@ -131,6 +137,16 @@ public struct CtrlPreviewItem: Equatable, Sendable {
     }
 }
 
+/// One running app for "quit unused apps" (ADR 0130). `name` labels the gate's card (the host hashes it before the
+/// log); `lastActiveMs` is the last activation the helper saw, nil if none since it began watching; `unsaved` is
+/// false only when the app has no windows, nil when the helper can't tell.
+public struct CtrlRunningApp: Equatable, Sendable {
+    public let bundleId: String, name: String, lastActiveMs: UInt64?, frontmost: Bool, unsaved: Bool?
+    public init(bundleId: String, name: String, lastActiveMs: UInt64?, frontmost: Bool, unsaved: Bool?) {
+        self.bundleId = bundleId; self.name = name; self.lastActiveMs = lastActiveMs; self.frontmost = frontmost; self.unsaved = unsaved
+    }
+}
+
 /// What the macOS side implements (and the tests fake).
 public protocol CtrlBackend: AnyObject {
     func catalog() throws -> (apps: [CtrlCatalogApp], defaultBrowser: String?)
@@ -147,6 +163,8 @@ public protocol CtrlBackend: AnyObject {
     func pid(of app: String) -> Int32?
     /// The windows or tabs an irreversible action would touch (read-only, never prompts).
     func preview(app: String, what: String) throws -> [CtrlPreviewItem]
+    /// ADR 0130: running regular apps, when the last-used watch began (nil: not watching) and local midnight.
+    func runningApps() throws -> (apps: [CtrlRunningApp], sinceMs: UInt64?, dayStartMs: UInt64)
 }
 
 public extension CtrlBackend {
@@ -155,6 +173,8 @@ public extension CtrlBackend {
     }
     /// Until a backend enumerates them, the host falls back to a count (`ctrl.measure`) for the preview.
     func preview(app: String, what: String) throws -> [CtrlPreviewItem] { throw CtrlFailure("preview.unsupported") }
+    /// A backend without the activation watch: the host then quits nothing.
+    func runningApps() throws -> (apps: [CtrlRunningApp], sinceMs: UInt64?, dayStartMs: UInt64) { throw CtrlFailure("apps.not_watching") }
 }
 
 public final class CtrlServer {
@@ -174,7 +194,7 @@ public final class CtrlServer {
         case let .pidKey(_, combo):
             guard let t = targetPid else { throw CtrlFailure("app.not_running") }
             do { try CtrlPolicy.checkKey(combo, targetPid: t, frontmostPid: frontmostPid) } catch { throw CtrlFailure("policy.refused") }
-        case .files, .openURL, .launchHidden: break
+        case .files, .openURL, .launchHidden, .quitApps: break
         }
     }
 
@@ -182,7 +202,7 @@ public final class CtrlServer {
         switch r {
         case let .openURL(a, _), let .launchHidden(a), let .scripting(a, _), let .axPerform(a, _, _, _), let .axSet(a, _, _, _),
              let .pidKey(a, _): return a
-        case .files, .takesOver: return nil
+        case .files, .takesOver, .quitApps: return nil
         }
     }
 
@@ -206,6 +226,11 @@ public final class CtrlServer {
                 }]
             case let .act(_, _, route, content):
                 try Self.recheck(route, frontmostPid: backend.frontmostPid(), targetPid: Self.appOf(route).flatMap(backend.pid(of:)))
+                // ADR 0130: the app the user is in is never quit under them.
+                if case let .quitApps(apps) = route, let front = backend.frontmostPid(),
+                   apps.contains(where: { backend.pid(of: $0) == front }) {
+                    throw CtrlFailure("policy.refused")
+                }
                 do {
                     try backend.act(route, content: content)
                     return ["type": "ctrl.act.result", "id": id, "ok": true, "err": NSNull()]
@@ -218,6 +243,15 @@ public final class CtrlServer {
                 return ["type": "ctrl.restore.result", "id": id, "ok": backend.restore(frontmostPid: pid)]
             case let .laya(_, model, state, question, options):
                 return ["type": "ctrl.laya.result", "id": id, "p": try backend.laya(model: model, state: state, question: question, options: options)]
+            case .apps:
+                let r = try backend.runningApps()
+                return ["type": "ctrl.apps.result", "id": id, "sinceMs": r.sinceMs.map { NSNumber(value: $0) } as Any? ?? NSNull(),
+                        "dayStartMs": NSNumber(value: r.dayStartMs),
+                        "apps": r.apps.map { a -> [String: Any] in
+                            ["bundleId": a.bundleId, "name": a.name, "frontmost": a.frontmost,
+                             "lastActiveMs": a.lastActiveMs.map { NSNumber(value: $0) } as Any? ?? NSNull(),
+                             "unsaved": a.unsaved as Any? ?? NSNull()]
+                        }]
             case let .preview(_, app, what):
                 let items = try backend.preview(app: app, what: what)
                 return ["type": "ctrl.preview.result", "id": id, "items": items.map { i -> [String: Any] in

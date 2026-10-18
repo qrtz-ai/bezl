@@ -26,6 +26,8 @@ pub enum ItemKind {
     Tab,
     /// A file a batch sends to the Trash (slice 7); keyed by `path_ref`, the name kept in memory.
     File,
+    /// A running app "quit unused apps" would quit (ADR 0130); keyed by its hashed name.
+    App,
     /// No enumerable items (a setting, a send): the action itself is the one item.
     Action,
 }

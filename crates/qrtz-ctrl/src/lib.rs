@@ -30,6 +30,7 @@
 //! The macOS side (real probes, AX, `CGEventPostToPid`, `NSWorkspace`) is `native/qrtz-helper/Sources/QrtzCtrl`.
 //! Both sides test their policy tables and guard semantics against the same fixtures in
 //! `native/qrtz-helper/Fixtures/ctrl/`.
+pub mod apps;
 pub mod ax;
 pub mod decide;
 pub mod exec;

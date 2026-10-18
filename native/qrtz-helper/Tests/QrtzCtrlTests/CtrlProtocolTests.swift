@@ -41,13 +41,18 @@ private final class Fake: CtrlBackend {
     func preview(app: String, what: String) throws -> [CtrlPreviewItem] {
         [CtrlPreviewItem(title: "notes.txt", unsaved: false), CtrlPreviewItem(title: "draft.txt", unsaved: true)]
     }
+    func runningApps() throws -> (apps: [CtrlRunningApp], sinceMs: UInt64?, dayStartMs: UInt64) {
+        ([CtrlRunningApp(bundleId: "com.tinyspeck.slackmacgap", name: "Slack", lastActiveMs: 1_789_990_000_000, frontmost: false, unsaved: nil),
+          CtrlRunningApp(bundleId: "com.apple.Notes", name: "Notes", lastActiveMs: nil, frontmost: true, unsaved: false)],
+         1_789_950_000_000, 1_789_989_200_000)
+    }
 }
 
 final class CtrlProtocolTests: XCTestCase {
     func testEveryHostLineOfTheFixtureParses() throws {
         let all = try lines()
         let host = all.filter { !(($0["type"] as! String).hasSuffix(".result")) && $0["type"] as! String != "ctrl.error" }
-        XCTAssertEqual(host.count, 10)
+        XCTAssertEqual(host.count, 12)
         for o in host {
             let line = String(decoding: try JSONSerialization.data(withJSONObject: o), as: UTF8.self)
             XCTAssertNotNil(CtrlRequest.parse(line), "\(o["type"]!)")
@@ -116,6 +121,39 @@ final class CtrlProtocolTests: XCTestCase {
         XCTAssertTrue(fake.acted.isEmpty, "nothing refused reached the backend")
         XCTAssertEqual(act(#"{"route":"pid_key","app":"com.apple.Safari","combo":"cmd+w"}"#)["ok"] as? Bool, true)
         XCTAssertEqual(fake.acted, [.pidKey(app: "com.apple.Safari", combo: "cmd+w")])
+    }
+
+    func testQuitUnusedAppsWireAndTheFrontmostAppIsNeverQuit() throws {
+        // ADR 0130: the apps report has the fixture's shape; quit_apps parses; a list naming the frontmost app is
+        // refused before the backend sees it; a backend without the watch says so.
+        let all = try lines()
+        let want = NSDictionary(dictionary: all.first { $0["type"] as? String == "ctrl.apps.result" }!)
+        let fake = Fake()
+        let server = CtrlServer(backend: fake)
+        XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.apps","id":"c10"}"#)), want)
+        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["op"] as? String == "quit_apps" }!
+        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
+        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("quit_apps") }
+        XCTAssertEqual(route, .quitApps(apps: ["com.tinyspeck.slackmacgap"]))
+        XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.act","id":"x","actionId":"a0","route":{"route":"workspace","op":"quit_apps","apps":["com.apple.Safari","com.apple.Notes"]},"content":{}}"#)),
+                       ["type": "ctrl.error", "id": "x", "code": "policy.refused"] as NSDictionary)
+        XCTAssertTrue(fake.acted.isEmpty)
+        XCTAssertEqual(json(server.handle(line: line))["ok"] as? Bool, true)
+        XCTAssertEqual(fake.acted, [.quitApps(apps: ["com.tinyspeck.slackmacgap"])])
+        XCTAssertEqual(json(CtrlServer(backend: UnsupportedCtrlBackend()).handle(line: #"{"type":"ctrl.apps","id":"u"}"#))["code"] as? String,
+                       "apps.not_watching")
+    }
+
+    func testTheLastUsedRecordKeepsTheLatestActivationAndMidnightIsLocal() {
+        let u = CtrlLastUsed(sinceMs: 1_000)
+        XCTAssertNil(u.lastActive("com.a"))
+        u.record("com.a", atMs: 5_000)
+        u.record("com.a", atMs: 3_000)
+        XCTAssertEqual(u.lastActive("com.a"), 5_000, "an older notification never moves it back")
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        // 2026-10-18 09:13 PDT → 2026-10-18 00:00 PDT = 07:00 UTC.
+        XCTAssertEqual(CtrlLastUsed.dayStartMs(nowMs: 1_792_339_980_000, calendar: cal), 1_792_306_800_000)
     }
 
     func testAPinnedFlagRidesThePreviewOnlyWhenKnown() {

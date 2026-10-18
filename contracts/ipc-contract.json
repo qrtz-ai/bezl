@@ -8456,6 +8456,7 @@
                                 "window",
                                 "tab",
                                 "file",
+                                "app",
                                 "action"
                               ]
                             },
@@ -9129,6 +9130,7 @@
                                 "window",
                                 "tab",
                                 "file",
+                                "app",
                                 "action"
                               ]
                             },
@@ -9799,6 +9801,7 @@
                                 "window",
                                 "tab",
                                 "file",
+                                "app",
                                 "action"
                               ]
                             },
@@ -10458,6 +10461,7 @@
                                 "window",
                                 "tab",
                                 "file",
+                                "app",
                                 "action"
                               ]
                             },

@@ -79,6 +79,10 @@ const INTENTS = {
     ...opt('intent.quit_app', 'quit an app', 0.07),
     irreversible: true,
   },
+  quit_unused: {
+    ...opt('intent.quit_unused', "quit apps you haven't used today", 0.07),
+    irreversible: true,
+  },
 };
 type Intent =
   | 'close_tabs'
@@ -88,7 +92,8 @@ type Intent =
   | 'tidy_desktop'
   | 'open_calendar'
   | 'empty_trash'
-  | 'quit_app';
+  | 'quit_app'
+  | 'quit_unused';
 /** What an unclear task is asked (the three most likely intents). */
 const ASKED = [INTENTS.close_tabs, INTENTS.clean_folder, INTENTS.close_windows];
 
@@ -115,6 +120,19 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
     ]),
     act('choose_move', [
       { ...opt('shortcut.cmd+q', 'quit', 0.95), irreversible: true },
+    ]),
+  ],
+  // ADR 0130: the apps not used today (the helper's activation record), quit behind the card; no app question.
+  quit_unused: [
+    act('choose_move', [
+      {
+        ...opt(
+          'route.workspace.quit_unused',
+          'quit them without bringing anything forward',
+          0.97,
+        ),
+        irreversible: true,
+      },
     ]),
   ],
   clean_folder: [
@@ -231,23 +249,27 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
 };
 
 const intentOf = (text: string): Intent | null =>
-  /\bquit\b/i.test(text)
-    ? 'quit_app'
-    : /\bcalendar\b/i.test(text)
-      ? 'open_calendar'
-      : /\bempty\b/i.test(text) && /\b(trash|bin)\b/i.test(text)
-        ? 'empty_trash'
-        : /\btabs?\b/i.test(text)
-          ? 'close_tabs'
-          : /\bdocuments\b/i.test(text)
-            ? 'tidy_documents'
-            : /\b(desktop|screenshots?)\b/i.test(text)
-              ? 'tidy_desktop'
-              : /download|folder/i.test(text)
-                ? /\b(delete|trash|old)\b/i.test(text)
-                  ? 'trash_old'
-                  : 'clean_folder'
-                : null;
+  /\b(quit|close)\b/i.test(text) &&
+  /\bapps?\b/i.test(text) &&
+  /\b(unused|used|using|idle)\b/i.test(text)
+    ? 'quit_unused'
+    : /\bquit\b/i.test(text)
+      ? 'quit_app'
+      : /\bcalendar\b/i.test(text)
+        ? 'open_calendar'
+        : /\bempty\b/i.test(text) && /\b(trash|bin)\b/i.test(text)
+          ? 'empty_trash'
+          : /\btabs?\b/i.test(text)
+            ? 'close_tabs'
+            : /\bdocuments\b/i.test(text)
+              ? 'tidy_documents'
+              : /\b(desktop|screenshots?)\b/i.test(text)
+                ? 'tidy_desktop'
+                : /download|folder/i.test(text)
+                  ? /\b(delete|trash|old)\b/i.test(text)
+                    ? 'trash_old'
+                    : 'clean_folder'
+                  : null;
 
 const PREVIEW: CtrlConfirm['items'] = [
   { key: '3f2a9c1d0b7e#0', kind: 'window', label: 'notes.txt', unsaved: false },
@@ -258,6 +280,12 @@ const PREVIEW: CtrlConfirm['items'] = [
 const BLIND: CtrlConfirm['items'] = [
   { key: '5d1c0a9e8f7b#0', kind: 'tab', label: 'inbox', unsaved: null },
   { key: 'a7b8c9d0e1f2#0', kind: 'tab', label: 'expense form', unsaved: null },
+];
+
+/** ADR 0130: the running apps a quit_unused run would quit (not used today; frontmost, finder and qrtz never). */
+const UNUSED: CtrlConfirm['items'] = [
+  { key: '0a1b2c3d4e5f#0', kind: 'app', label: 'slack', unsaved: null },
+  { key: '5f4e3d2c1b0a#0', kind: 'app', label: 'textedit', unsaved: true },
 ];
 
 /** ADR 0122: what an empty_trash run would delete (the Finder's own files and anything just trashed are left). */
@@ -423,6 +451,7 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
       plan: {
         irreversible:
           intent === 'quit_app' ||
+          intent === 'quit_unused' ||
           intent === 'trash_old' ||
           intent === 'empty_trash',
         steps: s.decisions.map((d) => ({
@@ -452,6 +481,26 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
           items: BLIND,
           complete: true,
           rules: ['choose_move:route.scripting.close_unsaved_tabs'],
+          answer: null,
+          reverified: null,
+          used: false,
+        },
+      });
+      return;
+    }
+    if (intent === 'quit_unused') {
+      push(r, 'confirm.requested', {
+        confirm: {
+          gateId: `g${r.recs.filter((x) => x.confirm).length}`,
+          action: "quit apps you haven't used today",
+          app: null,
+          move: 'quit them without bringing anything forward',
+          items: UNUSED,
+          complete: true,
+          rules: [
+            'choose_intent:intent.quit_unused',
+            'choose_move:route.workspace.quit_unused',
+          ],
           answer: null,
           reverified: null,
           used: false,

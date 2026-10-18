@@ -16,6 +16,7 @@
 //! verified by re-reading the folder; trashing waits at the gate with a `file` preview. `files.empty_trash`
 //! (ADR 0122) deletes the Trash's items through the same executor, never through the Finder, only after the gate,
 //! and only the items the approved card listed. Without roots they still stop with `exec.held { files_not_yet }`. (Runs from before slice 6 may still hold `exec.held { irreversible }`; they replay as before.)
+use crate::apps::{unused_today, QUIT_UNUSED_MOVE};
 use crate::ax::{diff, AxSnapshot};
 use crate::decide::{next_backtrack, run_chain_obs, unobserved, BacktrackReason, Goal, Node, Scorer};
 use crate::files::{
@@ -96,6 +97,10 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
     }
     if mv.starts_with("route.files.") {
         return Some(Step::Hold(HoldReason::FilesNotYet));
+    }
+    // ADR 0130: the driver plans it from the helper's `ctrl.apps`; without that list there is nothing to quit.
+    if mv == QUIT_UNUSED_MOVE {
+        return Some(Step::Hold(HoldReason::NoRoute));
     }
     let Some(app) = chosen_app(&apps, &chosen) else {
         return Some(Step::Hold(HoldReason::UnknownApp));
@@ -457,6 +462,54 @@ fn held_tabs_preview(s: &CtrlState, app: &str, items: Vec<PreviewItem>, complete
     }
 }
 
+/// ADR 0130: the apps "quit unused apps" would quit now, from the helper's last-used report.
+#[derive(Debug, Clone)]
+struct QuitPlan {
+    /// (bundle id, name, unsaved)
+    apps: Vec<(String, String, Option<bool>)>,
+}
+
+impl QuitPlan {
+    fn ids(&self) -> Vec<String> {
+        self.apps.iter().map(|(id, ..)| id.clone()).collect()
+    }
+}
+
+fn quit_plan(helper: &HelperClient) -> Result<QuitPlan, String> {
+    let r = helper.apps()?;
+    Ok(QuitPlan {
+        apps: unused_today(&r.apps, r.since_ms, r.day_start_ms)
+            .into_iter()
+            .map(|a| (a.bundle_id.clone(), a.name.clone(), a.unsaved))
+            .collect(),
+    })
+}
+
+/// The gate's `app` preview: one item per app, keyed by its hashed name (the name stays in memory for the card).
+fn quit_preview(s: &CtrlState, q: &QuitPlan) -> (Preview, Vec<(String, String)>) {
+    let (intent, mv) = intent_and_move(s);
+    let wire: Vec<crate::helper::PreviewItemWire> = q
+        .apps
+        .iter()
+        .map(|(_, name, unsaved)| crate::helper::PreviewItemWire {
+            title: name.clone(),
+            unsaved: *unsaved,
+            pinned: None,
+        })
+        .collect();
+    let (items, labels) = hash_items(ItemKind::App, &wire);
+    (
+        Preview {
+            intent,
+            mv,
+            app: None,
+            items,
+            complete: true,
+        },
+        labels,
+    )
+}
+
 /// Most actions one run takes (a first try plus backtracks).
 pub const MAX_ACTIONS: usize = 1 + crate::decide::BACKTRACKS_PER_TASK as usize;
 
@@ -516,8 +569,35 @@ impl Driver<'_> {
                 }
                 None => None,
             };
-            let step = match &fplan {
-                Some((roots, p)) => Step::Act {
+            // ADR 0130: "quit unused apps" is planned from the helper's last-used report each round, so the gate's
+            // re-check and the act both see the apps as they are now.
+            let qplan: Option<QuitPlan> = if fplan.is_none() && mv == QUIT_UNUSED_MOVE {
+                match quit_plan(self.helper) {
+                    Ok(q) if q.apps.is_empty() => return sink.push(log, finish(TaskStatus::Done)),
+                    Ok(q) => Some(q),
+                    Err(_) => {
+                        sink.push(
+                            log,
+                            Event::ExecHeld {
+                                reason: HoldReason::NoRoute,
+                            },
+                        )?;
+                        return sink.push(log, finish(TaskStatus::AskedOut));
+                    }
+                }
+            } else {
+                None
+            };
+            let step = match (&fplan, &qplan) {
+                (None, Some(q)) => Step::Act {
+                    routes: vec![Route::Workspace(WorkspaceOp::QuitApps { apps: q.ids() })],
+                    verify: Verify {
+                        check: Check::AppsRemaining { apps: q.ids() },
+                        expect: Expect::Zero,
+                    },
+                    content: BTreeMap::new(),
+                },
+                (Some((roots, p)), _) => Step::Act {
                     routes: vec![Route::Files(p.to_op(roots).0)],
                     verify: Verify {
                         check: Check::FilesRemaining,
@@ -525,17 +605,23 @@ impl Driver<'_> {
                     },
                     content: BTreeMap::new(),
                 },
-                None => match step_for(&s, goal) {
+                (None, None) => match step_for(&s, goal) {
                     Some(step) => step,
                     None => return Ok(()),
                 },
             };
-            let preview = |s: &CtrlState, routes: &[Route]| match &fplan {
-                Some((_, p)) => files_preview(s, p),
-                None => preview_of(self.helper, s, routes),
+            let preview = |s: &CtrlState, routes: &[Route]| match (&fplan, &qplan) {
+                (Some((_, p)), _) => files_preview(s, p),
+                (None, Some(q)) => quit_preview(s, q),
+                (None, None) => preview_of(self.helper, s, routes),
             };
             let measure = |c: &Check| match (c, &fplan) {
                 (Check::FilesRemaining, Some((roots, p))) => Some(p.remaining(roots)),
+                (Check::AppsRemaining { apps }, _) => self
+                    .helper
+                    .apps()
+                    .ok()
+                    .map(|r| r.apps.iter().filter(|a| apps.contains(&a.bundle_id)).count() as i64),
                 _ => self.helper.measure(c),
             };
             let (routes, verify, content) = match step {
@@ -834,7 +920,7 @@ impl Driver<'_> {
             };
             // Key routes (cmd-w, …) can't skip pinned or unsaved tabs: a selective close that failed asks. A delete
             // that failed (ADR 0122) asks too: the other way to empty the Trash is the Finder, which would take focus.
-            if tabs_app.is_some() || fplan.as_ref().is_some_and(|(_, p)| p.deletes()) {
+            if tabs_app.is_some() || qplan.is_some() || fplan.as_ref().is_some_and(|(_, p)| p.deletes()) {
                 sink.push(log, finish(TaskStatus::AskedOut))?;
                 return Ok(());
             }

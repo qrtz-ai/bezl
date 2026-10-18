@@ -429,8 +429,8 @@ fn the_ctrl_protocol_fixture_round_trips() {
     }
     assert_eq!(
         (host, helper),
-        (10, 9),
-        "every message, two act routes, laya with and without a model"
+        (12, 10),
+        "every message, three act routes (ADR 0130 quit_apps), laya with and without a model"
     );
 }
 

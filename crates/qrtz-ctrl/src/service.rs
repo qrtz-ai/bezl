@@ -309,6 +309,7 @@ fn confirm_json(s: &CtrlState, goal: Option<&Goal>, labels: &BTreeMap<String, St
         crate::gate::ItemKind::Window => "window",
         crate::gate::ItemKind::Tab => "tab",
         crate::gate::ItemKind::File => "file",
+        crate::gate::ItemKind::App => "app",
         crate::gate::ItemKind::Action => "action",
     };
     let action = chosen_label(s, Node::ChooseIntent, goal)
