@@ -1,10 +1,13 @@
 //! ADR 0146 M2.4: one helper process per module. With `QRTZ_MODULE_HELPERS=split` the host runs qrtz-nano
 //! (recordings, meetings, summaries), qrtz-echo (dictation, the push key, insertion) and qrtz-ctrl (`ctrl.*`), each
 //! under its own supervisor, instead of the one monolith qrtz-helper. The default stays the monolith (all three
-//! roles share one supervisor) until the Mac has checked the split (the module apps running their controllers,
-//! each with its own TCC grants).
+//! roles share one supervisor) until the Mac has checked the split (the extension helpers running their controllers).
 //!
-//! The split layout runs each module app next to the helper binary (`qrtz-<id>`; `QRTZ_<ID>_BIN` overrides one).
+//! Extensions are not apps (ADR 0146 M2.5): each helper is a plain executable the host spawns itself (fork/exec,
+//! never LaunchServices), so qrtz stays its responsible process and every extension uses qrtz's own TCC grants:
+//! one qrtz entry in Privacy settings, and echo's speaker gate uses qrtz's screen & system audio grant.
+//!
+//! The split layout runs each extension helper next to the helper binary (`qrtz-<id>`; `QRTZ_<ID>_BIN` overrides one).
 //! It passes `QRTZ_MODULE=<id>`, and every process gets its own speech socket at fd 3 (`QRTZ_SPEECH_FD`): nano's
 //! carries recording audio, echo's carries dictation audio. Lines are routed by the process they came from (see
 //! `AppService::on_helper_line_from`).
@@ -161,15 +164,14 @@ impl ModuleHelpers {
         }
     }
 
-    /// The `helper:status` the UI sees: the monolith's, or the split helpers' together.
+    /// The `helper:status` the UI sees (and readiness): the monolith's, or nano's and echo's together. Run 31:
+    /// qrtz-ctrl is left out, so a missing, crash-looping or switched-off ctrl never keeps echo and nano from
+    /// counting as running; ctrl's own state reaches ctrl's runs through its wire (`helper.not_running`).
     pub fn status(&self) -> HelperStatus {
-        aggregate(
-            &self
-                .processes()
-                .iter()
-                .map(|(_, s)| s.status())
-                .collect::<Vec<_>>(),
-        )
+        if !self.split {
+            return self.nano.status();
+        }
+        aggregate(&[self.nano.status(), self.echo.status()])
     }
 
     /// Graceful quit of every process at once (each gets `goodbye`, then `grace` before a kill).
@@ -183,7 +185,7 @@ impl ModuleHelpers {
     }
 }
 
-/// Several helpers as one status: running only when all are; otherwise the first (nano, echo, ctrl) that isn't,
+/// Several helpers as one status: running only when all are; otherwise the first (nano, echo) that isn't,
 /// with that one's error. Restarts add up.
 pub fn aggregate(all: &[HelperStatus]) -> HelperStatus {
     let restarts = all.iter().map(|s| s.restarts).sum();
@@ -274,18 +276,5 @@ mod tests {
             st(HelperState::Running, 1, None),
         ];
         assert_eq!(aggregate(&up), st(HelperState::Running, 1, None));
-    }
-
-    #[test]
-    fn split_permissions_merge_to_the_least_granted() {
-        use serde_json::json;
-        let echo =
-            json!({"microphone": "granted", "accessibility": "granted", "screen-recording": "unsupported"});
-        let nano =
-            json!({"microphone": "denied", "accessibility": "not-determined", "screen-recording": "granted"});
-        assert_eq!(
-            crate::service::merged_permissions([&echo, &nano].into_iter()),
-            json!({"microphone": "denied", "accessibility": "not-determined", "screen-recording": "granted"})
-        );
     }
 }

@@ -93,8 +93,10 @@ pub struct AppService {
     speech_tap: std::sync::OnceLock<SpeechTap>,
     /// ADR 0146 M2.4: the per-module helpers (`QRTZ_MODULE_HELPERS=split`); unset = the one `helper`.
     module_helpers: std::sync::OnceLock<crate::module_helpers::ModuleHelpers>,
-    /// Split layout: each process's last `permissions.status`, merged for `permissions:changed`.
-    split_perms: Mutex<Vec<(crate::module_helpers::HelperSource, Value)>>,
+    /// Split: whether qrtz-ctrl was last started (true) or stopped (false) for `modules.ctrl` (run 31).
+    ctrl_on: Mutex<Option<bool>>,
+    /// Split: called on every hello from echo's process (ADR 0150 N174: echo's own pending `models.warm`).
+    echo_hello: std::sync::OnceLock<Arc<dyn Fn() + Send + Sync>>,
     /// The last helper status every port has seen (`on_helper_status` finished), for readiness checks.
     delivered: std::sync::Mutex<Option<HelperStatus>>,
     /// `log:write` rate limit (ADR 0083).
@@ -105,34 +107,6 @@ pub struct AppService {
 
 /// Sees every valid helper line first; `true` = consumed (not routed to talk or the runtime).
 pub type SpeechTap = Arc<dyn Fn(&Value) -> bool + Send + Sync>;
-
-/// ADR 0146 M2.4: several apps' `permissions.status` maps as one: per permission the least granted state any app
-/// reports: `denied`, then `not-determined`, then `granted`; `unsupported` (an app that doesn't use it) only when no
-/// app says more.
-pub fn merged_permissions<'a>(all: impl Iterator<Item = &'a Value>) -> Value {
-    fn rank(v: &str) -> u8 {
-        match v {
-            "denied" => 0,
-            "granted" => 2,
-            "unsupported" => 3,
-            _ => 1,
-        }
-    }
-    let mut out = serde_json::Map::new();
-    for m in all {
-        for (k, v) in m.as_object().into_iter().flatten() {
-            let worse = match (out.get(k).and_then(Value::as_str), v.as_str()) {
-                (Some(cur), Some(new)) => rank(new) < rank(cur),
-                (None, _) => true,
-                _ => false,
-            };
-            if worse {
-                out.insert(k.clone(), v.clone());
-            }
-        }
-    }
-    Value::Object(out)
-}
 
 /// Helper → host message types that belong to qrtz talk; everything else goes to the recording runtime.
 pub fn is_talk_message(ty: &str) -> bool {
@@ -156,7 +130,8 @@ impl AppService {
             ctrl_model: std::sync::OnceLock::new(),
             speech_tap: std::sync::OnceLock::new(),
             module_helpers: std::sync::OnceLock::new(),
-            split_perms: Mutex::default(),
+            ctrl_on: Mutex::default(),
+            echo_hello: std::sync::OnceLock::new(),
             delivered: Default::default(),
             renderer_log: Mutex::new(crate::logging::RendererGate::new()),
             log_dir: std::sync::OnceLock::new(),
@@ -362,24 +337,73 @@ impl AppService {
         }
     }
 
+    /// Quit: the goodbye to every helper process (the monolith, or nano, echo and ctrl), then kill after `grace`.
+    pub async fn shutdown_helpers(&self, grace: std::time::Duration) {
+        let bye = encode_host_message(&json!({"type": "shutdown"})).unwrap_or_default();
+        if let Some(m) = self.module_helpers.get() {
+            m.shutdown(bye, grace).await;
+        } else if let Some(h) = &self.helper {
+            h.shutdown(bye, grace).await;
+        }
+    }
+
+    /// Stop every helper process at once (no goodbye).
+    pub fn stop_helpers(&self) {
+        if let Some(m) = self.module_helpers.get() {
+            for (_, s) in m.processes() {
+                s.stop();
+            }
+        } else if let Some(h) = &self.helper {
+            h.stop();
+        }
+    }
+
     /// The split helpers, when the host runs them.
     pub fn module_helpers(&self) -> Option<&crate::module_helpers::ModuleHelpers> {
         self.module_helpers.get()
     }
 
+    /// Split: `f` runs on every hello from echo's process (set once, before `start_helper`).
+    pub fn set_echo_hello_hook(&self, f: Arc<dyn Fn() + Send + Sync>) {
+        let _ = self.echo_hello.set(f);
+    }
+
     /// Start the helper and pump its lines/status into the ports and the event bus. Call once, inside tokio.
+    /// Split: qrtz-ctrl only starts while ctrl is on (run 31); `config:set` starts or stops it after.
     pub fn start_helper(self: &Arc<Self>) {
         if let Some(h) = self.module_helpers.get().cloned() {
             for (src, sup) in h.processes() {
-                self.pump(src, sup);
+                let start = src != crate::module_helpers::HelperSource::Ctrl;
+                self.pump(src, sup, start);
             }
+            self.apply_ctrl_switch(&self.config.get());
             return;
         }
         let Some(sup) = self.helper.clone() else { return };
-        self.pump(crate::module_helpers::HelperSource::Monolith, sup);
+        self.pump(crate::module_helpers::HelperSource::Monolith, sup, true);
     }
 
-    fn pump(self: &Arc<Self>, src: crate::module_helpers::HelperSource, sup: Supervisor) {
+    /// Split: qrtz-ctrl runs exactly while `modules.ctrl` (and the global switch) is on. Acts on a change only, so
+    /// an unrelated `config:set` never relaunches a ctrl whose circuit opened.
+    fn apply_ctrl_switch(&self, cfg: &Value) {
+        let Some(h) = self.module_helpers.get() else {
+            return;
+        };
+        let on = crate::modules::is_on(cfg, "ctrl");
+        let mut last = self.ctrl_on.lock().unwrap_or_else(|p| p.into_inner());
+        if *last == Some(on) {
+            return;
+        }
+        *last = Some(on);
+        if on {
+            h.ctrl.start();
+        } else {
+            tracing::info!("ctrl is off: qrtz-ctrl not running");
+            h.ctrl.stop();
+        }
+    }
+
+    fn pump(self: &Arc<Self>, src: crate::module_helpers::HelperSource, sup: Supervisor, start: bool) {
         use crate::module_helpers::HelperSource;
         // qrtz-ctrl's lines are ctrl's own (its wire subscribes to them); only its status matters here.
         if src != HelperSource::Ctrl {
@@ -423,7 +447,9 @@ impl AppService {
                 }
             }
         });
-        sup.start();
+        if start {
+            sup.start();
+        }
     }
 
     pub fn on_helper_line(&self, line: &str) {
@@ -450,9 +476,11 @@ impl AppService {
                     // H8: structured capture fallback (was a free-text log line); same surface: a warn log.
                     tracing::warn!(from = %msg["from"], to = %msg["to"], reason = %msg["reason"], "capture fallback");
                 }
-                if ty == "permissions.status" {
-                    let status = self.merge_permissions(src, &msg["status"]);
-                    self.events.emit("permissions:changed", status);
+                // The extensions share qrtz's own TCC grants (each helper is spawned by the host, which stays its
+                // responsible process), so in split nano's report is the app's; echo's says the same and isn't
+                // re-emitted.
+                if ty == "permissions.status" && src.serves_nano() {
+                    self.events.emit("permissions:changed", msg["status"].clone());
                 }
                 let (echo, nano) = (src.serves_echo(), src.serves_nano());
                 // Echo's process only reaches the tap with its own speech attach answers.
@@ -477,6 +505,11 @@ impl AppService {
                     if echo && ty == "hello" {
                         self.talk.helper_line(&msg);
                     }
+                    if src == crate::module_helpers::HelperSource::Echo && ty == "hello" {
+                        if let Some(f) = self.echo_hello.get() {
+                            f();
+                        }
+                    }
                     if nano {
                         self.runtime.helper_line(&msg);
                     }
@@ -487,18 +520,6 @@ impl AppService {
             // ADR 0083: never the line itself (an `asr` or `dictation.*` line carries what was said).
             Err(e) => tracing::warn!(err = %e, bytes = line.len(), "bad helper line"),
         }
-    }
-
-    /// The monolith's `permissions.status` as is. Split: each process reports its own app's grants, merged per
-    /// permission with the least granted state winning (one app without the microphone means it isn't granted).
-    fn merge_permissions(&self, src: crate::module_helpers::HelperSource, status: &Value) -> Value {
-        if src == crate::module_helpers::HelperSource::Monolith {
-            return status.clone();
-        }
-        let mut all = self.split_perms.lock().unwrap_or_else(|p| p.into_inner());
-        all.retain(|(s, _)| *s != src);
-        all.push((src, status.clone()));
-        merged_permissions(all.iter().map(|(_, v)| v))
     }
 
     pub fn on_helper_status(&self, s: &HelperStatus) {
@@ -541,6 +562,7 @@ impl AppService {
             .set(patch)?;
         self.events.emit("config:changed", next.clone());
         self.talk.config_changed();
+        self.apply_ctrl_switch(&next);
         Ok(next)
     }
 

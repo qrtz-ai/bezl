@@ -461,16 +461,30 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     });
     // ADR 0079 / N121: warm the just-downloaded models so the first recording doesn't spend its diarizer backlog
     // on the OS model compile; N129: a warm the helper misses is sent on its next hello.
-    let warm = supervisor.clone().map(|sup| {
+    let warm_on = {
         let cfg = config.clone();
-        let w = Arc::new(ModelsWarm::new(
-            Arc::new(SupervisorHelper(sup)),
-            Arc::new(move || cfg.get()["speech"]["warmAfterDownload"].as_bool().unwrap_or(true)),
-        ));
-        let on = w.clone();
-        setup.speech.on_installed(Arc::new(move || on.request()));
-        w
+        Arc::new(move || cfg.get()["speech"]["warmAfterDownload"].as_bool().unwrap_or(true))
+            as Arc<dyn Fn() -> bool + Send + Sync>
+    };
+    let warm = supervisor
+        .clone()
+        .map(|sup| Arc::new(ModelsWarm::new(Arc::new(SupervisorHelper(sup)), warm_on.clone())));
+    // ADR 0150 N174: in split, echo's models live in echo's process, so the end of a download also warms echo
+    // (qrtz-echo answers `models.warm` with its keyed prewarm); a warm echo's app misses is sent on its own hello.
+    let echo_warm = helpers.as_ref().filter(|h| h.is_split()).map(|h| {
+        Arc::new(ModelsWarm::new(
+            Arc::new(SupervisorHelper(h.echo.clone())),
+            warm_on.clone(),
+        ))
     });
+    if warm.is_some() || echo_warm.is_some() {
+        let (n, e) = (warm.clone(), echo_warm.clone());
+        setup.speech.on_installed(Arc::new(move || {
+            for w in n.iter().chain(e.iter()) {
+                w.request();
+            }
+        }));
+    }
     let service = crate::AppService::new(crate::AppDeps {
         info: b.info,
         config,
@@ -487,6 +501,9 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     service.set_setup(setup.clone());
     if let Some(h) = &helpers {
         service.set_module_helpers(h.clone());
+    }
+    if let Some(w) = echo_warm {
+        service.set_echo_hello_hook(Arc::new(move || w.on_hello()));
     }
     // ADR 0103: ctrl's task store and run logs, <data>/ctrl (0700, files 0600).
     let mut ctrl = qrtz_ctrl::service::CtrlService::open(

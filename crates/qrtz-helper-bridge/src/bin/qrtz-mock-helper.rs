@@ -239,13 +239,17 @@ fn revocation_degraded(p: &str, denied: &[String]) -> &'static str {
 /// The helper's silence threshold (CAPTURE_SILENCE.afterMs in protocol.ts).
 const SILENCE_AFTER_MS: u64 = 60_000;
 
-/// ADR 0146 M2.4: which module app a host command belongs to (`None`: every app answers it).
+/// ADR 0146 M2.4: which module app(s) a host command belongs to (`None`: every app answers it). `models.warm` is
+/// nano's and, in split, echo's own too (ADR 0150 N174: echo prewarms its dictation model).
 fn command_owner(msg: &Value) -> Option<&'static str> {
     let ty = msg["type"].as_str().unwrap_or_default();
     if ty.starts_with("dictation.") || ty == "insert.text" || ty == "pill.flash" {
         return Some("echo");
     }
-    if ty.starts_with("recording.") || ty == "models.warm" || ty.starts_with("summarize") {
+    if ty == "models.warm" {
+        return Some("nano|echo");
+    }
+    if ty.starts_with("recording.") || ty.starts_with("summarize") {
         return Some("nano");
     }
     if ty.starts_with("ctrl.") {
@@ -407,7 +411,7 @@ fn main() {
             continue;
         };
         if let (Some(r), Some(owner)) = (&role, command_owner(&msg)) {
-            if r != owner {
+            if !owner.split('|').any(|o| o == r) {
                 let ty = msg["type"].as_str().unwrap_or_default();
                 say(json!({"type": "log", "level": "error", "msg": format!("mock {r}: {ty} is {owner}'s")}));
                 continue;
@@ -698,7 +702,8 @@ fn main() {
             }),
             "recording.pause" => paused.store(true, Ordering::SeqCst),
             "recording.resume" => paused.store(false, Ordering::SeqCst),
-            "models.warm" => say(json!({"type": "log", "level": "info", "msg": "models warmed: mock"})),
+            "models.warm" => say(json!({"type": "log", "level": "info",
+                "msg": format!("models warmed: mock {}", role.as_deref().unwrap_or("helper"))})),
             "shutdown" => std::process::exit(0),
             _ => say(
                 json!({"type": "error", "code": "protocol.unknown", "message": "unknown message", "fatal": false}),

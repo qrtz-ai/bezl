@@ -133,6 +133,11 @@ impl SpeechManager {
         *self.on_installed.lock().unwrap() = Some(f);
     }
 
+    /// What a finished install runs (tests stand in for a download with it).
+    pub fn installed_hook(&self) -> Option<Arc<dyn Fn() + Send + Sync>> {
+        self.on_installed.lock().unwrap().clone()
+    }
+
     fn marker_path(&self) -> Option<PathBuf> {
         match (&self.setup, &self.local) {
             (Some(s), _) => Some(s.store.root().join("download.json")),

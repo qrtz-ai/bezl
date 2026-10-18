@@ -405,11 +405,11 @@ impl App {
             return;
         }
         self.quit = true;
-        if let Some(h) = self.app.service.helper() {
-            let bye =
-                qrtz_helper_bridge::encode_host_message(&json!({"type": "shutdown"})).unwrap_or_default();
-            h.shutdown(bye, Duration::from_millis(1500)).await;
-        }
+        // Every helper process (split: nano, echo and ctrl) gets the goodbye, like the app's quit.
+        self.app
+            .service
+            .shutdown_helpers(Duration::from_millis(1500))
+            .await;
         self.app.runtime.kill();
     }
 }
@@ -417,9 +417,7 @@ impl App {
 impl Drop for App {
     fn drop(&mut self) {
         if !self.quit {
-            if let Some(h) = self.app.service.helper() {
-                h.stop();
-            }
+            self.app.service.stop_helpers();
             self.app.runtime.kill();
         }
     }
