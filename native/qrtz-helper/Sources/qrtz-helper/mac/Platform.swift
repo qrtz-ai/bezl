@@ -35,6 +35,11 @@ func makePlatformDeps(version: String) -> HelperDeps {
         context: context, enhancer: LocalVqeEnhancer(),
         dictationMic: micHub.view("dictation"), dictationTranscribers: dictationAsr(), insertion: MacInsertion(), hotkeys: MacHotkeys(), micHub: micHub)
     deps.summarizer = FoundationModelsSummarizer()
+    // N143: echo gates the mic against the speakers (QRTZ_ECHO_GATE=0 turns it off).
+    if #available(macOS 14.2, *), ProcessInfo.processInfo.environment["QRTZ_ECHO_GATE"] != "0" {
+        deps.dictationTap = MacDictationTap()
+        deps.features.append("talk.echo-gate")
+    }
     deps.systemTranscribers = [NemotronTranscriber()]
     deps.diarizers = [.mic: NemotronChannelDiarizer(), .system: NemotronChannelDiarizer()]
     let loads = deps.modelLoads

@@ -127,6 +127,9 @@ public struct HelperDeps: Sendable {
     public var enhancer: MicEnhancer?
     /// qrtz talk: mic-only source, its own recogniser instances (so dictation works during a meeting), insertion, keys.
     public var dictationMic: MicSource?
+    /// N143: a system-audio tap echo runs for a dictation's length when the speakers play (nil: no gate without a
+    /// meeting). A recording's own system channel is used instead while one runs.
+    public var dictationTap: SystemAudioTap? = nil
     public var dictationTranscribers: [StreamingTranscriber]
     public var insertion: InsertionBackend?
     public var hotkeys: HotkeyMonitor?
@@ -320,14 +323,21 @@ public actor HelperController {
         let st = deps.permissions.status()
         self.lastPerms = st
         self.arbiter = ArbiterState(denied: OsPermission.allCases.filter { st[$0] == .denied })
+        // N143: granted means screen & system audio recording is already allowed, so a dictation never prompts.
+        let perms = deps.permissions
+        let echo = DictationEcho(reference: echoReference, tap: deps.dictationTap,
+                                 permitted: { perms.status()[.screenRecording] == .granted })
+        echo.onLog = { level, msg in send(.log(level: level, msg: msg)) }
         self.dictation = DictationEngine(mic: deps.dictationMic, transcribers: deps.dictationTranscribers,
                                          inserter: deps.insertion.map { TextInserter(backend: $0) }, hotkeys: deps.hotkeys, send: send, now: now, managedMic: true,
-                                         speech: speech, tail: deps.dictationTail)
+                                         speech: speech, tail: deps.dictationTail, echo: echo)
         self.summaries = SummarizeService(model: deps.summarizer, send: send)
     }
     /// ADR 0075: summarize requests, off the message queue.
     public let summaries: SummarizeService
     public let dictation: DictationEngine
+    /// N143: the system audio echo's mic is gated against (a recording's system channel, or echo's own tap).
+    nonisolated public let echoReference = EchoReference()
     /// The speech module's audio sinks (recordings and dictations).
     public let speech = SpeechSinks()
 
@@ -565,10 +575,13 @@ public actor HelperController {
                 await self?.onSamples(MicPipeline.mix(ch), of: rec, channels: ch)
             }
         }
+        let echoRef = echoReference
+        echoRef.attach("recording")
         for (i, a) in deps.audio.enumerated() {
             let inbox = DegradationInbox()
             do {
-                try await a.start(onBlock: { b in samplesIn.yield(b) }, onDegraded: { d, r in inbox.post(d, r) })
+                try await a.start(onBlock: { b in echoRef.push(b.system, from: "recording"); samplesIn.yield(b) },
+                                  onDegraded: { d, r in inbox.post(d, r) })
                 rec.audio = a
                 rec.degradations = inbox
                 send(.log(level: .info, msg: "audio: \(a.name)"))
@@ -580,6 +593,7 @@ public actor HelperController {
                 send(.captureFallback(from: a.name, to: next, reason: "\(error)"))
             }
         }
+        if rec.audio == nil { echoRef.detach("recording") }
         if rec.audio == nil { send(.error(code: "audio.unavailable", message: "no audio source could start (check Screen & System Audio Recording and Microphone permissions)", fatal: false)) }
 
         send(.recordingStarted(audioPath: path))
@@ -813,6 +827,7 @@ public actor HelperController {
         rec.degradations?.discard()
         tick?.cancel(); tick = nil
         await rec.audio?.stop()
+        echoReference.detach("recording")
         if rec.aborted { return }  // N2: recording.abort tore it down while the source was stopping
         rec.samplesIn?.finish()
         await rec.consumer?.value
@@ -870,6 +885,7 @@ public actor HelperController {
             rec.ending = true
             rec.degradations?.discard()
             tick?.cancel(); tick = nil
+            echoReference.detach("recording")
             recording = nil
             paused = false
             recordingStartMs = nil

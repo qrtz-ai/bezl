@@ -208,11 +208,13 @@ public actor DictationEngine {
     var tick: Task<Void, Never>?
     /// ADR 0046 §1: the dictation's mic audio also goes to the speech module when one is attached.
     let speech: SpeechSinks?
+    /// N143: the mic is gated against what the speakers play (a meeting's system channel or a dictation tap).
+    nonisolated public let echo: DictationEcho?
 
     public init(mic: MicSource?, transcribers: [StreamingTranscriber], inserter: TextInserter?, hotkeys: HotkeyMonitor?,
                 send: @escaping @Sendable (HelperMessage) -> Void, now: @escaping @Sendable () -> Double, managedMic: Bool = false,
-                speech: SpeechSinks? = nil, tail: DictationTail = DictationTail()) {
-        self.managedMic = managedMic; self.speech = speech; self.tail = tail
+                speech: SpeechSinks? = nil, tail: DictationTail = DictationTail(), echo: DictationEcho? = nil) {
+        self.managedMic = managedMic; self.speech = speech; self.tail = tail; self.echo = echo
         self.mic = mic; self.transcribers = transcribers; self.inserter = inserter; self.hotkeys = hotkeys; self.send = send; self.now = now
     }
 
@@ -337,6 +339,7 @@ public actor DictationEngine {
         let pre = preRoll.drain()
         session = s
         send(.dictationStarted(id: id, preRollMs: Double(pre.count) * 1000 / 16_000))
+        if let line = echo?.begin() { send(.log(level: .info, msg: line)) }
         if !managedMic { startMic() }
         if !pre.isEmpty { await feed(pre) }
         tick = Task { [weak self] in
@@ -347,13 +350,14 @@ public actor DictationEngine {
         }
     }
 
-    public func onSamples(_ s: [Float]) async {
-        guard !s.isEmpty else {
+    public func onSamples(_ raw: [Float]) async {
+        guard !raw.isEmpty else {
             // The drain barrier: every block queued before it has been fed.
             let w = drainWaiters; drainWaiters.removeAll()
             for c in w { c.resume() }
             return
         }
+        let s = echo?.process(raw) ?? raw
         // Past the stop's drain, audio is the next dictation's pre-roll (a quick re-press), never the recogniser's.
         guard let sess = session, !sess.closed else { preRoll.append(s); return }
         await feed(s)
@@ -468,6 +472,7 @@ public actor DictationEngine {
         }
         let end = session
         session = nil
+        echo?.end()
         speech?.end(.dictation(id: id))
         if end?.abortReason != nil { stopMic() } else if !warmMic && !managedMic { stopMic() }
         if end?.cancelled == true {
@@ -553,6 +558,7 @@ public actor DictationEngine {
         tick?.cancel(); tick = nil
         if await close(limitMs: tail.drainTimeoutMs) { _ = await s.transcriber?.finish() }
         session = nil
+        echo?.end()
         speech?.end(.dictation(id: id))
         if !warmMic && !managedMic { stopMic() }
         send(.dictationStopped(id: id, text: "", durationMs: 0))
@@ -571,6 +577,7 @@ public actor DictationEngine {
             for e in s.segmenter.flush(cumulative: text, nowMs: now() - s.startMs) { send(.dictationAsr(id: s.id, event: e)) }
         }
         session = nil
+        echo?.end()
         speech?.end(.dictation(id: s.id))
         stopMic()
         send(.dictationStopped(id: s.id, text: text, durationMs: Double(s.samples) * 1000 / 16_000, reason: reason))

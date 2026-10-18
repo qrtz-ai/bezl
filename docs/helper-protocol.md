@@ -171,6 +171,23 @@ its own talk state.
   clipboard fallback as `info` `copied to clipboard`). The message is lowercased, 1–200 chars; no reply. After an
   `insert.result ok:false` the helper waits up to 400 ms for this line before it shows its own error.
 
+### Echo's mic against the speakers (N143)
+
+Without headphones the mic picks up what the Mac plays. While a dictation runs, its mic blocks are gated against
+the system audio (`DictationEcho`, no protocol change; `hello.features` carries `talk.echo-gate`):
+
+- A recording runs: its system channel is the reference (pushed from the source's callback, before the ASR queue).
+- Otherwise, with the output on speakers (built-in speakers, a display, HDMI, AirPlay; not the jack's headphones,
+  Bluetooth or USB) and something playing, a private system tap runs for the dictation's length. Only with the
+  screen & system audio recording grant already given: a dictation never prompts; without it the mic is raw.
+- The gate learns the echo path's coupling (mic RMS / system RMS, fast down, slow up) and holds a block down by
+  30 dB only when the mic is within 6 dB of the predicted echo, so the user's own words pass at full gain, also over
+  a loud video. No AX speaker context. The meeting's AEC output is not used: its variable delay would break the
+  release tail, and LocalVQE's state belongs to the recording.
+- The tap starts in the background (tens of ms); blocks before its first samples pass ungated. Log lines:
+  `echo gate: …` at the start (which reference, or why off) and `echo gate: N of M mic blocks held down` at the end.
+  `QRTZ_ECHO_GATE=0` turns it off.
+
 ## Diarization (ADR 0079)
 
 In a recording with per-channel transcription (both Nemotron instances and both diarizers loaded), each channel's
