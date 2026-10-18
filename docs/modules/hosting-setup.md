@@ -1,7 +1,8 @@
 # Module hosting: what Jared sets up
 
-The code side is done ([ADR 0153](../adr/0153-module-hosting-the-signed-index-and-sideloads.md)): the signed index,
-the installer, the `.qrtzpkg` sideload and the `qrtz-publish` tool. Nothing is published and no key exists yet.
+The code side is done ([ADR 0153](../adr/0153-module-hosting-the-signed-index-and-sideloads.md), and the package
+manager on top of it, [ADR 0157](../adr/0157-qrtz-is-its-own-package-manager.md)): the signed index, the installer,
+the `qrtz` command, the `.qrtzpkg` sideload and the `qrtz-publish` tool. Nothing is published and no key exists yet.
 These steps need your accounts and your hands. They take about an hour; nothing here costs money until real
 traffic (R2: 10 GB storage and 10M reads a month free, no egress fees; B2: 10 GB free).
 
@@ -27,6 +28,8 @@ the root sha256 are fine to share.
 4. Zone `qrtz.ai` → **Caching → Cache Rules** → create a rule for hostname `modules.qrtz.ai`:
    - URI path starts with `/v1/timestamp.json`: eligible for cache, edge TTL 5 minutes.
    - everything else under `/v1/`: eligible for cache, edge TTL 1 year (those objects never change).
+   - Files are whole objects now (no chunks, ADR 0157 §5). Cloudflare doesn't edge-cache an object above 512 MB (the
+     Nemotron encoder is 589 MB); it's still served from R2, in byte ranges, so nothing to configure.
 5. Privacy: zone → **Analytics & Logs**: don't enable Logpush or Web Analytics for `modules.qrtz.ai`. Don't add
    Workers, Page Rules that set cookies, or Bot Fight Mode on that hostname (the app sends no cookies).
 6. **R2 → Manage API tokens → Create API token**: permission **Object Read & Write**, only bucket `qrtz-modules`.
@@ -96,10 +99,31 @@ rclone copy ~/qrtz-publish-out b2:qrtz-modules-mirror --exclude v1/timestamp.jso
 rclone copy ~/qrtz-publish-out b2:qrtz-modules-mirror --include 'v1/timestamp.json*'
 ```
 
-`publish.json` lists the built bundles: `{"teamId": "<Developer ID team>", "packages": [{"id": "echo", "version":
-"0.3.0", "dir": "build/echo"}, {"id": "model:parakeet-tdt-v2", "version": "1.0.0", "dir": "models/parakeet"}],
-"revoked": []}`. A module dir holds its `module.json` and its signed, notarized, **stapled** `.app`. Keep
-`~/qrtz-publish-out` (or back it up): it's the record of everything published.
+`publish.json` (paths relative to it):
+
+```json
+{
+  "teamId": "<Developer ID team>",
+  "packages": [{ "dir": "build/echo" }, { "dir": "build/inference.voice" }],
+  "pinnedModels": [
+    "crates/qrtz-app/src/local_models.json",
+    "crates/qrtz-app/src/ctrl_laya_model.json"
+  ],
+  "models": [
+    { "name": "model.parakeet-tdt-v2-en", "dir": "models/parakeet-tdt-v2" },
+    { "name": "model.nemotron", "dir": "models/nemotron-560ms" }
+  ],
+  "revoked": []
+}
+```
+
+- Each `packages` dir holds the package's `qrtz.json` (name, version, kind, dependency ranges; no `scripts`, they're
+  refused) and its files: an extension's signed, notarized, **stapled** helper, a service's `.xpc`.
+- A model is published from the files you already downloaded from Hugging Face, e.g. the app's own
+  `~/Library/Application Support/ai.qrtz.desktop/models/parakeet-tdt-v2` after onboarding. Every file must match its
+  pin in the `pinnedModels` file, and the published package is exactly the tree the app pins (same sha256), with the
+  Hugging Face URL kept as a second source. Publish only the models whose license allows mirroring.
+- Keep `~/qrtz-publish-out` (or back it up): it's the record of everything published.
 
 ## 7. Weekly
 
@@ -121,14 +145,24 @@ run step 6 again. Installed copies are disabled on their next check; new install
 ## 9. Offline file for an air-gapped Mac
 
 ```sh
-$P pack --out ~/qrtz-publish-out --module echo --version 0.3.0 --to echo-0.3.0.qrtzpkg
+$P pack --out ~/qrtz-publish-out --name echo --version 0.3.0 --to echo-0.3.0.qrtzpkg
 ```
 
-The file carries the roots, the signed index and every blob echo needs; settings → modules → install from file
+The file carries the roots, the signed index and echo with everything it depends on (`inference.voice`,
+`model.parakeet-tdt-v2-en`); on the other Mac, settings → install from file, or `qrtz install ./echo-0.3.0.qrtzpkg`,
 asks once and shows how old its revocation info is.
+
+## 10. The `qrtz` command (optional, on your Mac)
+
+`qrtz install echo`, `qrtz remove echo`, `qrtz update`, `qrtz prune`, `qrtz ls`. It's inside the app
+(`/Applications/qrtz.app/Contents/MacOS/qrtz`); to have it on `PATH`, run that once with `link` (it makes
+`~/.local/bin/qrtz`, a symlink into the app; no `sudo`, nothing in `/usr/local`). Until `root1Sha256` is pinned it
+refuses network installs, like the app.
 
 ## Still open (not blocking the setup)
 
 - Developer ID signing, notarization and stapling of the module apps (docs/release.md); until then manifests use
   the placeholder team and the installer refuses them.
-- The LocalVQE and Laya licenses must allow mirroring before those models are published.
+- The LocalVQE and Laya licenses must allow mirroring before those models are published (until then the app keeps
+  fetching them from their pinned Hugging Face URLs, verified the same way).
+- `qrtz` in the app bundle needs a Tauri `externalBin` entry in the release build.
