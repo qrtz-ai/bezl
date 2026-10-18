@@ -764,3 +764,11 @@ The slow floor is the more accurate one (mean 2.98 % vs 3.18 % and 3.29 %): fewe
 context, as with the 2 s minimum segment in §11. What it costs is release decode, bounded by the cap (tens of ms
 on the ANE). Kept as shipped. On the Mac, a noisy room shows `cap_cuts=` 1–2 and a higher `tail_decode_ms=`;
 that is expected. Revisit (carry the floor across dictations) only if `tail_decode_ms` p90 tops ~150 ms there.
+
+## 19. Cycle 45: echo switched off mid-dictation (ADR 0147, N172)
+
+Not a speed or accuracy change: a correctness fix in the push-key path after ADR 0146 made echo switchable at
+runtime. Switching echo off while fn is held used to leave the mic open (no release could arrive); now the
+dictation is cancelled at once and nothing is inserted (`38e1ae0`). On the Mac: hold fn, turn off the "echo (dictation)" switch in
+Settings (modules section) while still holding, and check that the pill and the orange mic dot go away immediately and no
+text appears. The ranked plan above is unchanged; its open items still wait on the helper side or the Mac bench.
