@@ -6,6 +6,7 @@
     "qrtz-app": "shell",
     "qrtz-speech": "shell",
     "qrtz-modules": "shell",
+    "qrtz-speech-types": "shared",
     "qrtz-ipc": "shared",
     "qrtz-helper-bridge": "shared",
     "qrtz-cloexec": "shared",
@@ -37,9 +38,7 @@
     ["qrtz-app", "qrtz-llm"],
     ["qrtz-app", "qrtz-storage"],
     ["qrtz-app", "qrtz-talk"],
-    ["qrtz-desktop", "qrtz-storage"],
-    ["qrtz-lifecycle", "qrtz-speech"],
-    ["qrtz-talk", "qrtz-speech"]
+    ["qrtz-desktop", "qrtz-storage"]
   ],
   "monolithSwiftTargets": ["qrtz-helper", "QrtzHelperCore"],
   "monolithSwiftImports": [

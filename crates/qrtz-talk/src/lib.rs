@@ -1,6 +1,6 @@
 //! qrtz talk for the Tauri build: push-to-talk dictation (the port of Electron's `TalkService`).
 //!
-//! The helper owns the mic and feeds the on-device qrtz speech module behind `qrtz_speech::SpeechEngine`
+//! The helper owns the mic and feeds the on-device qrtz speech module behind `qrtz_speech_types::SpeechEngine`
 //! (`dictation.start/stop/cancel`, busy ids, warm mic, mux with a recording). Talk is entirely offline: there is no
 //! cloud engine (ADR 0076), so a missing, revoked or stale module means talk is unavailable. History and dictionary
 //! live in `talk.json`, the same file and format as Electron (owner-only, atomic). ADR 0058 (on ADR 0046); no LLM
@@ -19,8 +19,8 @@ pub use config::TalkConfig;
 pub use contract::{
     DictionaryEntry, Engine, InsertMethod, Latency, TalkEntry, TalkErrorKind, TalkPhase, TalkView,
 };
-/// The shared speech seam talk consumes (crates/qrtz-speech, ADR 0046).
-pub use qrtz_speech;
+/// The shared speech seam talk consumes (crates/qrtz-speech-types, ADR 0046 / ADR 0146 M2), under its old path.
+pub use qrtz_speech_types as qrtz_speech;
 pub use service::{
     AsrInfo, Clipboard, Clock, HelperSink, HelperTail, IdSource, RandomIds, SystemClock, TalkDeps,
     TalkEvents, TalkService, Timeouts, MSG_LATE_FINAL, SEGMENT_OVERLAP_MS,

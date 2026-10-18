@@ -1,0 +1,17 @@
+[package]
+name = "qrtz-speech-types"
+description = "qrtz speech (ADR 0046) types every speech user shares: the model-agnostic SpeechEngine / SpeechSession / SpeechEvent seam, the speech protocol and its untrusted-output validator, and SpeechError. No process spawning, no store, no network (ADR 0146 M2: echo's and nano's crates depend on this, not on the shell's qrtz-speech)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+jsonschema.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+tokio = { workspace = true, features = ["io-util", "sync"] }

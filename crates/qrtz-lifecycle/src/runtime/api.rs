@@ -268,8 +268,8 @@ pub enum HelperInput {
     Speech {
         audio_path: Option<String>,
         /// The channels the part's session was started with (`SessionSpec::channels`).
-        channels: Vec<qrtz_speech::Channel>,
-        event: qrtz_speech::SpeechEvent,
+        channels: Vec<qrtz_speech_types::Channel>,
+        event: qrtz_speech_types::SpeechEvent,
     },
     #[serde(rename = "recording.started", rename_all = "camelCase")]
     RecordingStarted {

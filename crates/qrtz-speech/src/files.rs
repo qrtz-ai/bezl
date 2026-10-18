@@ -14,7 +14,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 
 /// Model fds inherited by a module (fds 7..7+n). macOS' default soft RLIMIT_NOFILE is 256.
-pub const MAX_MODEL_FDS: usize = 32;
+pub use qrtz_speech_types::protocol::MAX_MODEL_FDS;
 
 #[derive(Debug)]
 pub struct VerifiedFile {

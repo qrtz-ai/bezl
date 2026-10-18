@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 qrtz-cloexec = { path = "../qrtz-cloexec" }
+qrtz-speech-types = { path = "../qrtz-speech-types" }
 serde.workspace = true
 serde_json.workspace = true
 jsonschema.workspace = true

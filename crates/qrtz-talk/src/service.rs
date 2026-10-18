@@ -1,6 +1,6 @@
 //! The talk service: push-to-talk dictation. idle → listening → finalizing → inserting → idle (or
 //! error). On release the final ASR text gets the on-device cleanup only (no LLM: ADR 0071) and goes straight in.
-//! The helper opens the mic; the on-device engine (`qrtz_speech::SpeechEngine`, the qrtz speech module) is the only
+//! The helper opens the mic; the on-device engine (`qrtz_speech_types::SpeechEngine`, the qrtz speech module) is the only
 //! engine, so talk never touches the network (ADR 0076): a missing, revoked or stale module makes talk unavailable
 //! (`speech-unavailable`), never a cloud fallback. Every wait has a timeout so a dictation always ends.
 //!
@@ -13,8 +13,10 @@ use crate::speech::{
 };
 use crate::store::{self, LoadOutcome, Store, StoreIo, MAX_HISTORY};
 use qrtz_ipc::{AppError, ErrorCode};
-use qrtz_speech::engine::StatusPhase;
-use qrtz_speech::{Channel, FailReason, SessionKind, SessionSpec, SpeakerMode, SpeechEngine, SpeechEvent};
+use qrtz_speech_types::engine::StatusPhase;
+use qrtz_speech_types::{
+    Channel, FailReason, SessionKind, SessionSpec, SpeakerMode, SpeechEngine, SpeechEvent,
+};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -356,7 +358,7 @@ pub struct TalkDeps {
     pub clipboard: Arc<dyn Clipboard>,
     pub clock: Arc<dyn Clock>,
     pub ids: Arc<dyn IdSource>,
-    /// The on-device engine (`qrtz_speech::SpeechEngine`: the qrtz speech module). Talk never knows the model.
+    /// The on-device engine (`qrtz_speech_types::SpeechEngine`: the qrtz speech module). Talk never knows the model.
     pub local: Arc<dyn SpeechEngine>,
     /// Today's helper's `dictation.asr` lines as a `SpeechEngine` (transitional; pass the same instance as
     /// `local` until the module ships, or any instance once `local` is the module).

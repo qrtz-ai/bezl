@@ -332,8 +332,8 @@ impl NoteRuntime {
     pub fn speech_event(
         &self,
         audio_path: Option<&str>,
-        channels: &[qrtz_speech::Channel],
-        event: qrtz_speech::SpeechEvent,
+        channels: &[qrtz_speech_types::Channel],
+        event: qrtz_speech_types::SpeechEvent,
     ) {
         self.helper_message(HelperInput::Speech {
             audio_path: audio_path.map(str::to_owned),
@@ -596,9 +596,9 @@ impl State {
 }
 
 /// N95: the speech engine's failure, as the session records it.
-fn asr_reason(r: qrtz_speech::FailReason) -> qrtz_model::AsrUnavailableReason {
+fn asr_reason(r: qrtz_speech_types::FailReason) -> qrtz_model::AsrUnavailableReason {
     use qrtz_model::AsrUnavailableReason as R;
-    use qrtz_speech::FailReason as F;
+    use qrtz_speech_types::FailReason as F;
     match r {
         F::Crashed => R::Crashed,
         F::ProtocolViolations => R::ProtocolViolations,
@@ -916,7 +916,7 @@ impl Shared {
                 HelperInput::CaptureDegraded { .. }
                 | HelperInput::Asr { .. }
                 | HelperInput::Speech {
-                    event: qrtz_speech::SpeechEvent::Words { .. },
+                    event: qrtz_speech_types::SpeechEvent::Words { .. },
                     ..
                 }
                 | HelperInput::ActiveSpeaker { .. }
@@ -1146,8 +1146,8 @@ impl Shared {
                 end_ms,
             } => {
                 let channel = match source {
-                    qrtz_model::CaptureSource::Mic => qrtz_speech::Channel::Mic,
-                    qrtz_model::CaptureSource::System => qrtz_speech::Channel::System,
+                    qrtz_model::CaptureSource::Mic => qrtz_speech_types::Channel::Mic,
+                    qrtz_model::CaptureSource::System => qrtz_speech_types::Channel::System,
                 };
                 // N126: a channel that said it stood down sends nothing more this part (its last turns came first).
                 if self.speakers_down_in_part(&s, source) {
@@ -1157,7 +1157,7 @@ impl Shared {
                     );
                     return;
                 }
-                match qrtz_speech::SpeakerId::new(channel, speaker) {
+                match qrtz_speech_types::SpeakerId::new(channel, speaker) {
                     Some(id) => self.push_turn(&s, id.to_string(), start_ms, end_ms),
                     None => tracing::warn!(
                         speaker,
@@ -1279,11 +1279,11 @@ impl Shared {
         self: &Arc<Self>,
         s: &RecordingState,
         audio_path: Option<String>,
-        channels: &[qrtz_speech::Channel],
-        ev: qrtz_speech::SpeechEvent,
+        channels: &[qrtz_speech_types::Channel],
+        ev: qrtz_speech_types::SpeechEvent,
     ) {
-        use qrtz_speech::engine::StatusPhase;
-        use qrtz_speech::SpeechEvent as Sp;
+        use qrtz_speech_types::engine::StatusPhase;
+        use qrtz_speech_types::SpeechEvent as Sp;
         // An event from another part's session (an older part, or a start that did not take) is not this part's.
         let current = {
             let st = self.lock();
@@ -1323,8 +1323,8 @@ impl Shared {
                 }
                 // Utterance ids are per channel: keep the system channel's apart (mic keeps the helper's ids).
                 let utterance_id = match channel {
-                    qrtz_speech::Channel::System => format!("system-{utterance_id}"),
-                    qrtz_speech::Channel::Mic => utterance_id,
+                    qrtz_speech_types::Channel::System => format!("system-{utterance_id}"),
+                    qrtz_speech_types::Channel::Mic => utterance_id,
                 };
                 let text = words
                     .iter()

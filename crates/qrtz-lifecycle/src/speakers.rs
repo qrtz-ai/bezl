@@ -1,7 +1,7 @@
 //! Per-channel speaker attribution at finalize (ADR 0045 §3, ADR 0058 §12). Pure, no IO.
 //!
 //! The speech module diarizes each channel on its own: speaker ids are `mic:0`..`mic:7` and `system:0`..`system:7`
-//! (`qrtz_speech::SpeakerId`), and the runtime keeps their turns in meeting time (`PipelineContext::speaker_turns`).
+//! (`qrtz_speech_types::SpeakerId`), and the runtime keeps their turns in meeting time (`PipelineContext::speaker_turns`).
 //! Rules:
 //! - A segment's channel comes from its utterance id (`system-` ids are the system channel, every other id the mic;
 //!   `p<n>-` part prefixes are skipped). Its speaker is that channel's speaker with the most overlap; a tie goes to

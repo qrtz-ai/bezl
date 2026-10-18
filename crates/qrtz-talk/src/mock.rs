@@ -10,7 +10,7 @@ pub const MOCK_DICTATION: &str = "um so I I think we should ship cue arts talk o
 
 /// A scripted qrtz speech module behind the shared `SpeechEngine`, doing what the host's on-device engine does with
 /// a real module: the handshake at `start` (protocol, version), one session per dictation pinned to the version it
-/// started on, every raw module line through `qrtz_speech::validate::OutputValidator` (violations drop the line, the
+/// started on, every raw module line through `qrtz_speech_types::validate::OutputValidator` (violations drop the line, the
 /// third fails the session), a crash fails the session.
 #[derive(Clone, Default)]
 pub struct MockSpeech {
@@ -32,8 +32,8 @@ struct SpeechState {
 
 struct MockSpeechSession {
     version: String,
-    tx: tokio::sync::mpsc::Sender<qrtz_speech::SpeechEvent>,
-    validator: qrtz_speech::validate::OutputValidator,
+    tx: tokio::sync::mpsc::Sender<qrtz_speech_types::SpeechEvent>,
+    validator: qrtz_speech_types::validate::OutputValidator,
     /// The pinned version was revoked: the session ends at its next safe point (after the utterance in flight).
     revoked: bool,
 }
@@ -89,25 +89,25 @@ impl MockSpeech {
     }
     /// One raw module → host line for session `id` (`audio_ms` = audio written so far).
     pub fn line(&self, id: &str, line: &str, audio_ms: u64) {
-        use qrtz_speech::validate::Verdict;
+        use qrtz_speech_types::validate::Verdict;
         let mut st = self.st.lock().unwrap();
         let Some(s) = st.sessions.get_mut(id) else { return };
         match s.validator.check(line, audio_ms, audio_ms) {
             Verdict::Event(e) => {
-                let safe_point = matches!(e, qrtz_speech::SpeechEvent::Words { is_final: true, .. });
+                let safe_point = matches!(e, qrtz_speech_types::SpeechEvent::Words { is_final: true, .. });
                 let _ = s.tx.try_send(e);
                 if safe_point && s.revoked {
                     let s = st.sessions.remove(id).unwrap();
-                    let _ = s.tx.try_send(qrtz_speech::SpeechEvent::Failed {
-                        reason: qrtz_speech::FailReason::Revoked,
+                    let _ = s.tx.try_send(qrtz_speech_types::SpeechEvent::Failed {
+                        reason: qrtz_speech_types::FailReason::Revoked,
                     });
                 }
             }
             Verdict::Fail(why) => {
                 tracing::warn!(%why, "mock speech module: protocol violations");
                 let s = st.sessions.remove(id).unwrap();
-                let _ = s.tx.try_send(qrtz_speech::SpeechEvent::Failed {
-                    reason: qrtz_speech::FailReason::ProtocolViolations,
+                let _ = s.tx.try_send(qrtz_speech_types::SpeechEvent::Failed {
+                    reason: qrtz_speech_types::FailReason::ProtocolViolations,
                 });
             }
             Verdict::Ignore | Verdict::Dropped(_) => {}
@@ -116,8 +116,8 @@ impl MockSpeech {
     /// The module process dies.
     pub fn crash(&self, id: &str) {
         if let Some(s) = self.st.lock().unwrap().sessions.remove(id) {
-            let _ = s.tx.try_send(qrtz_speech::SpeechEvent::Failed {
-                reason: qrtz_speech::FailReason::Crashed,
+            let _ = s.tx.try_send(qrtz_speech_types::SpeechEvent::Failed {
+                reason: qrtz_speech_types::FailReason::Crashed,
             });
         }
     }
@@ -127,21 +127,21 @@ struct MockSpeechHandle {
     id: String,
     version: String,
     st: Arc<Mutex<SpeechState>>,
-    rx: tokio::sync::mpsc::Receiver<qrtz_speech::SpeechEvent>,
+    rx: tokio::sync::mpsc::Receiver<qrtz_speech_types::SpeechEvent>,
 }
 
 #[async_trait::async_trait]
-impl qrtz_speech::SpeechSession for MockSpeechHandle {
+impl qrtz_speech_types::SpeechSession for MockSpeechHandle {
     fn version(&self) -> &str {
         &self.version
     }
-    fn events(&mut self) -> &mut tokio::sync::mpsc::Receiver<qrtz_speech::SpeechEvent> {
+    fn events(&mut self) -> &mut tokio::sync::mpsc::Receiver<qrtz_speech_types::SpeechEvent> {
         &mut self.rx
     }
-    async fn finish(&mut self) -> Result<(), qrtz_speech::SpeechError> {
+    async fn finish(&mut self) -> Result<(), qrtz_speech_types::SpeechError> {
         if let Some(s) = self.st.lock().unwrap().sessions.remove(&self.id) {
             let _ =
-                s.tx.try_send(qrtz_speech::SpeechEvent::Finished { duration_ms: 0 });
+                s.tx.try_send(qrtz_speech_types::SpeechEvent::Finished { duration_ms: 0 });
         }
         Ok(())
     }
@@ -151,26 +151,28 @@ impl qrtz_speech::SpeechSession for MockSpeechHandle {
 }
 
 #[async_trait::async_trait]
-impl qrtz_speech::SpeechEngine for MockSpeech {
-    fn info(&self) -> qrtz_speech::EngineInfo {
-        qrtz_speech::EngineInfo {
+impl qrtz_speech_types::SpeechEngine for MockSpeech {
+    fn info(&self) -> qrtz_speech_types::EngineInfo {
+        qrtz_speech_types::EngineInfo {
             version: self.current().unwrap_or_default(),
-            kind: qrtz_speech::EngineKind::OnDevice,
+            kind: qrtz_speech_types::EngineKind::OnDevice,
         }
     }
     async fn start(
         &self,
-        spec: qrtz_speech::SessionSpec,
-    ) -> Result<Box<dyn qrtz_speech::SpeechSession>, qrtz_speech::SpeechError> {
+        spec: qrtz_speech_types::SessionSpec,
+    ) -> Result<Box<dyn qrtz_speech_types::SpeechSession>, qrtz_speech_types::SpeechError> {
         let mut st = self.st.lock().unwrap();
         let Some((p, v)) = st.installed.clone() else {
-            return Err(qrtz_speech::SpeechError::NotInstalled);
+            return Err(qrtz_speech_types::SpeechError::NotInstalled);
         };
         if st.denied.contains(&v) {
-            return Err(qrtz_speech::SpeechError::Denied(v));
+            return Err(qrtz_speech_types::SpeechError::Denied(v));
         }
-        if p != qrtz_speech::protocol::SPEECH_PROTOCOL_VERSION {
-            return Err(qrtz_speech::SpeechError::Incompatible(format!("protocol {p}")));
+        if p != qrtz_speech_types::protocol::SPEECH_PROTOCOL_VERSION {
+            return Err(qrtz_speech_types::SpeechError::Incompatible(format!(
+                "protocol {p}"
+            )));
         }
         let (tx, rx) = tokio::sync::mpsc::channel(512);
         st.sessions.insert(

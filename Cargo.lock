@@ -3547,6 +3547,7 @@ dependencies = [
  "qrtz-lifecycle",
  "qrtz-model",
  "qrtz-speech",
+ "qrtz-speech-types",
  "qrtz-storage",
  "rusqlite",
  "serde",
@@ -3607,12 +3608,26 @@ dependencies = [
  "libc",
  "qrtz-cloexec",
  "qrtz-speech",
+ "qrtz-speech-types",
  "reqwest 0.12.28",
  "semver",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "qrtz-speech-types"
+version = "0.2.0"
+dependencies = [
+ "async-trait",
+ "jsonschema",
+ "serde",
+ "serde_json",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
@@ -3646,6 +3661,7 @@ dependencies = [
  "qrtz-lifecycle",
  "qrtz-model",
  "qrtz-speech",
+ "qrtz-speech-types",
  "serde",
  "serde_json",
  "tempfile",

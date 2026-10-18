@@ -6,6 +6,8 @@ use std::sync::OnceLock;
 
 pub const SPEECH_PROTOCOL_JSON: &str = include_str!("../../../contracts/speech-protocol.json");
 pub const SPEECH_PROTOCOL_VERSION: u32 = 1;
+/// N75: at most this many model files are passed to a module (qrtz-speech `files` re-exports it).
+pub const MAX_MODEL_FDS: usize = 32;
 
 pub struct SpeechProtocol {
     pub version: u32,
@@ -101,7 +103,7 @@ pub fn start_message(
             return Err(format!("language hint {h} not allowed"));
         }
     }
-    if files.len() > crate::files::MAX_MODEL_FDS {
+    if files.len() > MAX_MODEL_FDS {
         return Err("too many model files".into());
     }
     for (i, (_, fd, _)) in files.iter().enumerate() {

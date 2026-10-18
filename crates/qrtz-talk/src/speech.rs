@@ -1,4 +1,4 @@
-//! Talk on the shared speech seam (`qrtz_speech::{SpeechEngine, SpeechSession, SpeechEvent}`, ADR 0046). Talk
+//! Talk on the shared speech seam (`qrtz_speech_types::{SpeechEngine, SpeechSession, SpeechEvent}`, ADR 0046). Talk
 //! never names a model: the on-device engine is whatever `SpeechEngine` the host injects (the qrtz speech module).
 //! There is no cloud engine (ADR 0076).
 //!
@@ -6,13 +6,13 @@
 //!   lines into `SpeechEvent::Words` so the service has one path. It goes away with the helper's asr lines.
 //! - [`drive`]: runs one `SpeechSession` on a task (audio / finish / cancel in, events out).
 //! - [`TalkValidator`]: talk's own bounds on every event it consumes. The engine validates module lines
-//!   (`qrtz_speech::validate::OutputValidator`); this is defence in depth on what reaches the dictation view, the
+//!   (`qrtz_speech_types::validate::OutputValidator`); this is defence in depth on what reaches the dictation view, the
 //!   clipboard and the focused app.
 use crate::contract::TalkErrorKind;
 use async_trait::async_trait;
-use qrtz_speech::engine::SpeechWordOut;
-use qrtz_speech::protocol::limit;
-use qrtz_speech::{
+use qrtz_speech_types::engine::SpeechWordOut;
+use qrtz_speech_types::protocol::limit;
+use qrtz_speech_types::{
     Channel, EngineInfo, EngineKind, FailReason, SessionSpec, SpeechEngine, SpeechError, SpeechEvent,
     SpeechSession,
 };
