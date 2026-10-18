@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createClient, type QrtzClient, type SubApp } from '@qrtz/core';
-import { Button, KeepAlive, Stack, Text } from '@qrtz/ui';
+import { Button, KeepAlive, PaneLoading, Stack, Text } from '@qrtz/ui';
 import {
   QrtzClientProvider,
   SubAppRouteProvider,
@@ -76,12 +76,14 @@ const viewFor = (app: SubApp): ComponentType => {
 /**
  * The module load suspends here, above this sub app's own boundary, so a first visit suspends the shell's
  * boundary inside the router's transition, and the previous app stays on screen. Once loaded, anything the view
- * suspends on is caught by its own boundary: a hidden app can never blank the visible one.
+ * suspends on is caught by its own boundary: a hidden app can never blank the visible one. That boundary shows
+ * `PaneLoading`, never nothing: a first visit whose view suspends right after its module loaded (a lazy screen,
+ * data) shows the spinner, not an empty frame. A suspend inside a transition keeps the shown content, as usual.
  */
 function ViewGate({ app }: { app: SubApp }) {
   const View = viewFor(app);
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<PaneLoading />}>
       <View />
     </Suspense>
   );

@@ -219,4 +219,42 @@ describe('SubAppHost own Suspense boundary', () => {
     });
     root.unmount();
   });
+
+  it('a first visit whose view suspends after its module loads shows the loading pane, never an empty frame', async () => {
+    let release: () => void = () => {};
+    const pending = new Promise<void>((r) => (release = r));
+    let ready = false;
+    const lazyScreen = defineSubApp({
+      manifest: { id: 'lazy', name: 'Lazy', icon: 'l' },
+      load: async () => ({
+        default: function Lazy() {
+          if (!ready) throw pending;
+          return <span data-testid="lazy">lazy</span>;
+        },
+      }),
+    });
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const root = createRoot(el);
+    await act(async () => {
+      root.render(
+        <Suspense fallback={<i data-testid="shell-fallback" />}>
+          <SubAppHost app={lazyScreen} active />
+        </Suspense>,
+      );
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    // The module loaded; the view's own suspend is caught by its boundary, which draws the spinner.
+    expect(el.querySelector('[data-testid="shell-fallback"]')).toBeNull();
+    expect(el.querySelector('[data-testid="pane-loading"]')).not.toBeNull();
+    ready = true;
+    await act(async () => {
+      release();
+      await pending;
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(el.querySelector('[data-testid="lazy"]')).not.toBeNull();
+    expect(el.querySelector('[data-testid="pane-loading"]')).toBeNull();
+    root.unmount();
+  });
 });
