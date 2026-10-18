@@ -26,6 +26,28 @@ public final class CtrlStdio: @unchecked Sendable {
         return type.hasPrefix("ctrl.")
     }
 
+    /// The host's goodbye (`{"type":"shutdown"}`, ADR 0146 M2.4's joint quit). qrtz-ctrl, which speaks only ctrl
+    /// lines, finishes its queued requests and leaves on it instead of waiting out the grace for a kill.
+    public static func isShutdownLine(_ line: String) -> Bool {
+        guard line.contains("\"shutdown\"") else { return false }
+        guard let data = line.data(using: .utf8),
+              let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return false }
+        return o["type"] as? String == "shutdown"
+    }
+
+    /// qrtz-ctrl's first line (run 31). The host's supervisor counts a helper as running from its first line, and
+    /// ctrl's wire and warmer only talk to a running one, so a qrtz-ctrl that waited for a request to say anything
+    /// would leave every run at `planned` and the app's helper status short of running. The host skips the line
+    /// (it isn't a ctrl reply); `module:ctrl` says which app this is, like the mock helper's role hello.
+    public static func helloLine(version: String) -> String {
+        let o: [String: Any] = [
+            "type": "hello", "protocol": 1, "helperVersion": version, "features": ["module:ctrl"],
+        ]
+        guard let d = try? JSONSerialization.data(withJSONObject: o, options: [.sortedKeys]),
+              let s = String(data: d, encoding: .utf8) else { return #"{"type":"hello"}"# }
+        return s
+    }
+
     /// Queue one request; its reply is written when the backend is done.
     public func submit(_ line: String) {
         queue.async { [server, write] in write(server.handle(line: line)) }

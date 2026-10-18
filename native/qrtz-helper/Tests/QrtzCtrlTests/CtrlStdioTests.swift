@@ -34,6 +34,18 @@ final class CtrlStdioTests: XCTestCase {
         XCTAssertFalse(CtrlStdio.isCtrlLine("{nope \"ctrl."))
     }
 
+    func testQrtzCtrlSaysHelloAndKnowsTheHostsGoodbye() {
+        let hello = obj(CtrlStdio.helloLine(version: "0.1.0"))
+        XCTAssertEqual(hello["type"] as? String, "hello")
+        XCTAssertEqual(hello["helperVersion"] as? String, "0.1.0")
+        XCTAssertEqual(hello["features"] as? [String], ["module:ctrl"])
+        XCTAssertFalse(CtrlStdio.isCtrlLine(CtrlStdio.helloLine(version: "0.1.0")))
+        XCTAssertTrue(CtrlStdio.isShutdownLine(#"{"type":"shutdown"}"#))
+        XCTAssertFalse(CtrlStdio.isShutdownLine(#"{"type":"ctrl.act","id":"c1","content":{"text":"shutdown"}}"#))
+        XCTAssertFalse(CtrlStdio.isShutdownLine(#"{"type":"dictation.configure","dictionary":["\"shutdown\""]}"#))
+        XCTAssertFalse(CtrlStdio.isShutdownLine("{nope \"shutdown\""))
+    }
+
     func testRepliesComeBackInOrderOnCtrlsQueue() {
         let rec = Recorder()
         let io = CtrlStdio(backend: Echoing(), write: { rec.add($0) })
