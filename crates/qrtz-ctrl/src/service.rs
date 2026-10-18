@@ -198,7 +198,12 @@ fn done_batch(log: &EventLog, n: usize) -> Option<(String, FsOp)> {
         .take(n)
         .filter_map(|e| match e {
             Event::ActionRequested { action_id, routes } => routes.iter().find_map(|r| match r {
-                Route::Files(op @ FsOp::Batch { .. }) => Some((action_id.clone(), op.clone())),
+                // Emptying the Trash (ADR 0122) has nothing to put back.
+                Route::Files(op @ FsOp::Batch { ops })
+                    if !ops.iter().any(|o| matches!(o, FsOp::Delete { .. })) =>
+                {
+                    Some((action_id.clone(), op.clone()))
+                }
                 _ => None,
             }),
             _ => None,

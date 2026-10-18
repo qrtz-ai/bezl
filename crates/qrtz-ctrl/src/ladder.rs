@@ -44,12 +44,26 @@ pub enum Rung {
 pub enum FsOp {
     /// Move `src` into the directory `dst_dir` under the same name; never overwrites.
     MoveInto { src: ContentRef, dst_dir: ContentRef },
-    /// Move to the user's Trash (reversible; ctrl never unlinks).
+    /// Move to the user's Trash (reversible).
     Trash { src: ContentRef },
+    /// Delete one top-level item of the user's Trash for good (ADR 0122, "empty the trash"): the only unlink ctrl
+    /// has, irreversible, planned only by `route.files.empty_trash` behind an approved confirm gate.
+    Delete { src: ContentRef },
     /// Create one directory (slice 7: a kind folder); undone by removing it while empty.
     MakeDir { dir: ContentRef },
     /// Ops run in order as one action (slice 7, ADR 0113); a failure rolls the done ones back.
     Batch { ops: Vec<FsOp> },
+}
+
+impl FsOp {
+    /// This op (or one inside a batch) deletes for good (ADR 0122).
+    pub fn deletes(&self) -> bool {
+        match self {
+            FsOp::Delete { .. } => true,
+            FsOp::Batch { ops } => ops.iter().any(FsOp::deletes),
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

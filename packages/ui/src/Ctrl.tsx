@@ -560,6 +560,8 @@ export function AskCard({
 export interface ConfirmItem {
   key: string;
   label: string;
+  /** window, tab, file or action (the gate's preview kind). */
+  kind?: string;
   /** null: ctrl can't tell (it asks as if it were unsaved). */
   unsaved: boolean | null;
 }
@@ -587,6 +589,11 @@ export function ConfirmCard({
 }) {
   const t = useTheme();
   const unsaved = items.filter((i) => i.unsaved !== false).length;
+  // ADR 0119: every listed tab reads "can't tell" when the browser blocks ctrl's read-only page script.
+  const blind =
+    complete &&
+    items.length > 0 &&
+    items.every((i) => i.kind === 'tab' && i.unsaved === null);
   return (
     <div
       role="group"
@@ -633,6 +640,13 @@ export function ConfirmCard({
           </li>
         ))}
       </ul>
+      {blind ? (
+        <Text variant="caption" muted data-testid="ctrl-confirm-tabs-hint">
+          ctrl can't see inside these tabs. to let it check for unsaved input,
+          turn on "allow javascript from apple events" (safari: develop menu;
+          chrome: view, developer)
+        </Text>
+      ) : null}
       {unsaved ? (
         <Text variant="caption" data-testid="ctrl-confirm-unsaved">
           {unsaved} with unsaved work: the app will ask before it discards

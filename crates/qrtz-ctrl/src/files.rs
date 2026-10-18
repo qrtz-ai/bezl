@@ -7,6 +7,10 @@
 //! inverse ([`undo_ops`]). Only `files.trash_old` (the task says trash / delete / old) moves installers older than
 //! 30 days to the Trash, and that move is irreversible in the plan, so it waits at the confirm gate with a `file`
 //! preview. Paths are referenced in the log by `f<sha256(path)[..6]>` refs; readable names stay in memory.
+//!
+//! `files.empty_trash` (ADR 0122) plans one [`Planned::Delete`] per top-level item of the Trash, skipping what
+//! was trashed in the last [`SETTLE`] (it may still be put back), locked items and the Finder's own hidden files.
+//! It is the one plan that deletes, so it is always gated and has no undo.
 use crate::fs_exec::MemStore;
 use crate::ladder::FsOp;
 use serde::{Deserialize, Serialize};
@@ -75,9 +79,20 @@ pub fn path_ref(p: &Path) -> String {
 /// One planned file op with its readable paths (memory only).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Planned {
-    MakeDir { dir: PathBuf },
-    Move { src: PathBuf, dst_dir: PathBuf },
-    Trash { src: PathBuf },
+    MakeDir {
+        dir: PathBuf,
+    },
+    Move {
+        src: PathBuf,
+        dst_dir: PathBuf,
+    },
+    Trash {
+        src: PathBuf,
+    },
+    /// Delete one top-level item of the Trash for good (ADR 0122).
+    Delete {
+        src: PathBuf,
+    },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -86,15 +101,20 @@ pub struct FilePlan {
 }
 
 impl FilePlan {
-    /// The files this plan sends to the Trash (the gate's `file` preview).
+    /// The files this plan sends to the Trash or deletes from it (the gate's `file` preview).
     pub fn trashed(&self) -> Vec<&Path> {
         self.ops
             .iter()
             .filter_map(|o| match o {
-                Planned::Trash { src } => Some(src.as_path()),
+                Planned::Trash { src } | Planned::Delete { src } => Some(src.as_path()),
                 _ => None,
             })
             .collect()
+    }
+
+    /// The plan deletes something (emptying the Trash): it can't be undone.
+    pub fn deletes(&self) -> bool {
+        self.ops.iter().any(|o| matches!(o, Planned::Delete { .. }))
     }
 
     /// Files moved or trashed (makedirs don't count).
@@ -119,6 +139,7 @@ impl FilePlan {
                     dst_dir: put(dst_dir),
                 },
                 Planned::Trash { src } => FsOp::Trash { src: put(src) },
+                Planned::Delete { src } => FsOp::Delete { src: put(src) },
             })
             .collect();
         put(&roots.trash);
@@ -139,6 +160,7 @@ impl FilePlan {
                     src.symlink_metadata().is_ok()
                         || !src.file_name().is_some_and(|n| roots.trash.join(n).exists())
                 }
+                Planned::Delete { src } => src.symlink_metadata().is_ok(),
             })
             .count() as i64
     }
@@ -146,6 +168,9 @@ impl FilePlan {
 
 /// Plan the cleanup of `roots.downloads` for a `route.files.*` move. Pure over the listing and `now`.
 pub fn plan_cleanup(roots: &FileRoots, mv: &str, now: SystemTime) -> std::io::Result<FilePlan> {
+    if mv == EMPTY_TRASH_MOVE {
+        return plan_empty_trash(roots, now);
+    }
     let trash_old = mv == "route.files.trash_old";
     let mut entries: Vec<(PathBuf, String, SystemTime)> = Vec::new();
     for e in std::fs::read_dir(&roots.downloads)? {
@@ -191,6 +216,111 @@ pub fn plan_cleanup(roots: &FileRoots, mv: &str, now: SystemTime) -> std::io::Re
     Ok(plan)
 }
 
+/// The move that empties the Trash (ADR 0122).
+pub const EMPTY_TRASH_MOVE: &str = "route.files.empty_trash";
+
+/// Most items one empty-the-trash run deletes; the rest wait for the next run (a bounded preview and log).
+pub const MAX_EMPTY: usize = 500;
+
+/// Hidden names the Finder keeps in the Trash for itself (`.DS_Store`, `.localized`): never ctrl's to delete.
+fn finder_own(name: &str) -> bool {
+    name.starts_with('.')
+}
+
+/// When the item last changed: the newer of its modification and inode-change time. Moving a file into the Trash
+/// changes the second (a rename), so a file edited long ago but trashed a minute ago reads as fresh. A time after
+/// `now` (a clock that moved) isn't evidence and is ignored.
+fn changed_at(meta: &std::fs::Metadata, now: SystemTime) -> Option<SystemTime> {
+    let m = meta.modified().ok().filter(|t| *t <= now);
+    #[cfg(unix)]
+    let c = {
+        use std::os::unix::fs::MetadataExt;
+        let secs = meta.ctime();
+        u64::try_from(secs)
+            .ok()
+            .map(|s| {
+                std::time::UNIX_EPOCH
+                    + Duration::from_secs(s)
+                    + Duration::from_nanos(meta.ctime_nsec().max(0) as u64)
+            })
+            .filter(|t| *t <= now)
+    };
+    #[cfg(not(unix))]
+    let c: Option<SystemTime> = None;
+    m.max(c)
+}
+
+/// Locked in the Finder (the user immutable flag, or the system one). Only macOS has the flags.
+fn locked(meta: &std::fs::Metadata) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::macos::fs::MetadataExt;
+        const UF_IMMUTABLE: u32 = 0x0000_0002;
+        const SF_IMMUTABLE: u32 = 0x0002_0000;
+        meta.st_flags() & (UF_IMMUTABLE | SF_IMMUTABLE) != 0
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = meta;
+        false
+    }
+}
+
+/// A folder with anything locked inside (looked at down to a bounded depth / count; past the bound it counts as
+/// locked, so the folder stays). A half-deleted folder is worse than one that waits.
+fn holds_locked(dir: &Path, budget: &mut usize, depth: usize) -> bool {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return true;
+    };
+    for e in rd {
+        let Ok(e) = e else { return true };
+        if *budget == 0 || depth == 0 {
+            return true;
+        }
+        *budget -= 1;
+        let Ok(meta) = e.path().symlink_metadata() else {
+            return true;
+        };
+        if locked(&meta) || (meta.file_type().is_dir() && holds_locked(&e.path(), budget, depth - 1)) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Plan emptying the Trash (ADR 0122): one delete per top-level item, in name order, at most [`MAX_EMPTY`]. Left
+/// alone: anything trashed (or changed) in the last [`SETTLE`], locked items or folders holding one, and the
+/// Finder's hidden files. Pure over the listing and `now`. A missing Trash is an empty one.
+pub fn plan_empty_trash(roots: &FileRoots, now: SystemTime) -> std::io::Result<FilePlan> {
+    let rd = match std::fs::read_dir(&roots.trash) {
+        Ok(rd) => rd,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(FilePlan::default()),
+        Err(e) => return Err(e),
+    };
+    let mut keep = Vec::new();
+    for e in rd {
+        let e = e?;
+        let name = e.file_name().to_string_lossy().into_owned();
+        if finder_own(&name) {
+            continue;
+        }
+        let meta = e.path().symlink_metadata()?;
+        let fresh = changed_at(&meta, now).is_none_or(|t| now.duration_since(t).unwrap_or_default() < SETTLE);
+        if fresh || locked(&meta) {
+            continue;
+        }
+        if meta.file_type().is_dir() && holds_locked(&e.path(), &mut 20_000, 32) {
+            continue;
+        }
+        keep.push(e.path());
+    }
+    keep.sort();
+    keep.truncate(MAX_EMPTY);
+    Ok(FilePlan {
+        ops: keep.into_iter().map(|src| Planned::Delete { src }).collect(),
+    })
+}
+
 /// The inverse of done ops, newest first: moves go back, created folders are removed if empty.
 pub fn undo_ops(done: &[Planned], roots: &FileRoots) -> Vec<Result<(), String>> {
     done.iter()
@@ -201,6 +331,7 @@ pub fn undo_ops(done: &[Planned], roots: &FileRoots) -> Vec<Result<(), String>> 
             }
             Planned::Move { src, dst_dir } => back(&dst_dir.join(src.file_name().unwrap_or_default()), src),
             Planned::Trash { src } => back(&roots.trash.join(src.file_name().unwrap_or_default()), src),
+            Planned::Delete { .. } => Err("fs.irreversible".into()),
         })
         .collect()
 }
@@ -277,7 +408,7 @@ pub fn plan_undo(op: &FsOp, roots: &FileRoots) -> UndoPlan {
             }
             FsOp::MoveInto { src, dst_dir } => (src, dirs.get(&dst_dir.0)),
             FsOp::Trash { src } => (src, Some(&roots.trash)),
-            FsOp::Batch { .. } => continue,
+            FsOp::Batch { .. } | FsOp::Delete { .. } => continue,
         };
         plan.files += 1;
         let skip = |why| UndoSkip {

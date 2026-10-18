@@ -329,6 +329,83 @@ test('ctrl: trashing old downloads waits at the card with the files, approve fin
   expect(errors).toEqual([]);
 });
 
+// ADR 0122: emptying the Trash can't be undone, so even a weekly run waits at the card, which lists what goes (the
+// Finder's own files and anything just trashed are left out); no put back afterwards. Deny leaves it all there.
+test('ctrl: every friday empty the trash waits at the card, deny keeps it, approve empties', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  await ctrl
+    .getByTestId('ctrl-task-input')
+    .fill('every friday empty the trash');
+  await ctrl.getByTestId('ctrl-schedule-weekly').click();
+  await ctrl.getByTestId('ctrl-schedule-time').fill('18:00');
+  await ctrl.getByTestId('ctrl-task-add').click();
+  const row = ctrl.getByTestId('ctrl-task');
+  await row.getByTestId('ctrl-task-run').click();
+  const runs = ctrl.getByTestId('ctrl-run');
+  const card = ctrl.getByTestId('ctrl-confirm');
+  await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText(
+    'needs your ok',
+  );
+  await expect(card).toContainText(
+    "empty the trash · files (no app): this can't be undone",
+  );
+  await expect(card.getByTestId('ctrl-confirm-item')).toHaveText([
+    'old folder',
+    'old.dmg',
+  ]);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  await card.getByTestId('ctrl-confirm-deny').click();
+  await expect(runs.first().getByTestId('ctrl-run-status')).not.toHaveText(
+    'done',
+  );
+  await row.getByTestId('ctrl-task-run').click();
+  await expect(runs).toHaveCount(2);
+  await expect(card.getByTestId('ctrl-confirm-item')).toHaveCount(2);
+  await card.getByTestId('ctrl-confirm-approve').click();
+  await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText('done');
+  await expect(ctrl.getByTestId('ctrl-undo')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+// ADR 0119: when the browser blocks ctrl's read-only page script every held tab reads "can't tell"; the card says
+// why, in plain lowercase text, and the answers are the same.
+test('ctrl: the tabs card says when ctrl could not look inside the tabs', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  await ctrl
+    .getByTestId('ctrl-task-input')
+    .fill('close all my tabs, scripts blocked');
+  await ctrl.getByTestId('ctrl-task-add').click();
+  await ctrl.getByTestId('ctrl-task').getByTestId('ctrl-task-run').click();
+  const card = ctrl.getByTestId('ctrl-confirm');
+  await expect(card.getByTestId('ctrl-confirm-item')).toHaveText([
+    'inbox · may have unsaved changes',
+    'expense form · may have unsaved changes',
+  ]);
+  const hint = card.getByTestId('ctrl-confirm-tabs-hint');
+  await expect(hint).toContainText('allow javascript from apple events');
+  expect(await hint.textContent()).toBe(
+    (await hint.textContent())!.toLowerCase(),
+  );
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  await card.getByTestId('ctrl-confirm-deny').click();
+  await expect(card).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 // ADR 0116: the decision model is off until the user says yes; the pinned manifest is still a placeholder, so a yes
 // is recorded and nothing is downloaded; turning it off goes back to the built-in rules.
 test('ctrl: the decision model is a choice; a yes on the placeholder downloads nothing', async ({

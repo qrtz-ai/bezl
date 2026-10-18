@@ -13,11 +13,12 @@
 //! standing approval of the task that covers it), then `confirm.reverified` right before the one action the
 //! approval allows. **File routes** (`files.*`, slice 7, ADR 0113) expand into one batch of file moves on the
 //! driver's [`FileRoots`] ([`crate::files`]), run by the [`FsExecutor`] between the same guard snapshots and
-//! verified by re-reading the folder; trashing waits at the gate with a `file` preview. Without roots (and for
-//! `files.empty_trash`) they still stop with `exec.held { files_not_yet }`. (Runs from before slice 6 may still hold `exec.held { irreversible }`; they replay as before.)
+//! verified by re-reading the folder; trashing waits at the gate with a `file` preview. `files.empty_trash`
+//! (ADR 0122) deletes the Trash's items through the same executor, never through the Finder, only after the gate,
+//! and only the items the approved card listed. Without roots they still stop with `exec.held { files_not_yet }`. (Runs from before slice 6 may still hold `exec.held { irreversible }`; they replay as before.)
 use crate::ax::{diff, AxSnapshot};
 use crate::decide::{next_backtrack, run_chain_obs, unobserved, BacktrackReason, Goal, Node, Scorer};
-use crate::files::{path_ref, plan_cleanup, FilePlan, FileRoots, Planned};
+use crate::files::{path_ref, plan_cleanup, FilePlan, FileRoots, Planned, EMPTY_TRASH_MOVE};
 use crate::fs_exec::{FsExecutor, MemStore};
 use crate::gate::{
     counted_items, hash_items, intent_and_move, preview_what, rules, Approval, ConfirmAnswer, ItemKind,
@@ -358,12 +359,32 @@ pub fn files_preview(s: &CtrlState, plan: &FilePlan) -> (Preview, Vec<(String, S
     )
 }
 
-/// The `route.files.*` moves a batch can expand (emptying the Trash can't be undone: still held).
+/// The `route.files.*` moves a batch can expand (emptying the Trash since ADR 0122: gated, no undo).
 fn file_move(mv: &str) -> bool {
     matches!(
         mv,
-        "route.files.tidy" | "route.files.sort_by_kind" | "route.files.trash_old"
+        "route.files.tidy" | "route.files.sort_by_kind" | "route.files.trash_old" | EMPTY_TRASH_MOVE
     )
+}
+
+/// ADR 0122: once the gate is approved and re-verified, a delete plan keeps only the items the card listed. Whatever
+/// landed in the Trash after the re-check waits for the next run instead of being deleted unasked.
+fn only_approved(s: &CtrlState, mut plan: FilePlan) -> FilePlan {
+    if !plan.deletes() {
+        return plan;
+    }
+    let Some(g) = s
+        .confirm
+        .as_ref()
+        .filter(|g| !g.used && g.reverified == Some(true) && g.answer.as_ref().is_some_and(|a| a.approves()))
+    else {
+        return plan;
+    };
+    plan.ops.retain(|o| match o {
+        Planned::Delete { src } => g.preview.items.iter().any(|i| i.key == path_ref(src)),
+        _ => false,
+    });
+    plan
 }
 
 struct DynClock<'a>(&'a dyn Clock);
@@ -462,7 +483,11 @@ impl Driver<'_> {
                     let now = std::time::UNIX_EPOCH + std::time::Duration::from_millis(self.clock.wall_ms());
                     match plan_cleanup(roots, &mv, now) {
                         Ok(p) if p.files() == 0 => return sink.push(log, finish(TaskStatus::Done)),
-                        Ok(p) => Some((roots, p)),
+                        Ok(p) => match only_approved(&s, p) {
+                            // Everything the card listed is gone already (the user emptied it meanwhile).
+                            p if p.files() == 0 => return sink.push(log, finish(TaskStatus::Done)),
+                            p => Some((roots, p)),
+                        },
                         // An unreadable folder (no Files and Folders grant yet): ask, nothing moved.
                         Err(_) => {
                             sink.push(
@@ -673,7 +698,9 @@ impl Driver<'_> {
                             p.ops
                                 .iter()
                                 .filter_map(|o| match o {
-                                    Planned::Move { src, .. } | Planned::Trash { src } => Some(src),
+                                    Planned::Move { src, .. }
+                                    | Planned::Trash { src }
+                                    | Planned::Delete { src } => Some(src),
                                     Planned::MakeDir { .. } => None,
                                 })
                                 .map(|src| {
@@ -788,8 +815,9 @@ impl Driver<'_> {
                     return Ok(());
                 }
             };
-            // Key routes (cmd-w, …) can't skip pinned or unsaved tabs: a selective close that failed asks.
-            if tabs_app.is_some() {
+            // Key routes (cmd-w, …) can't skip pinned or unsaved tabs: a selective close that failed asks. A delete
+            // that failed (ADR 0122) asks too: the other way to empty the Trash is the Finder, which would take focus.
+            if tabs_app.is_some() || fplan.as_ref().is_some_and(|(_, p)| p.deletes()) {
                 sink.push(log, finish(TaskStatus::AskedOut))?;
                 return Ok(());
             }

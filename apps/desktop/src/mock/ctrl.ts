@@ -68,12 +68,21 @@ const INTENTS = {
   clean_folder: opt('intent.clean_folder', 'clean up a folder', 0.07),
   trash_old: opt('intent.clean_folder', 'clean up a folder', 0.07),
   close_windows: opt('intent.close_windows', 'close windows', 0.07),
+  empty_trash: {
+    ...opt('intent.empty_trash', 'empty the trash', 0.07),
+    irreversible: true,
+  },
   quit_app: {
     ...opt('intent.quit_app', 'quit an app', 0.07),
     irreversible: true,
   },
 };
-type Intent = 'close_tabs' | 'clean_folder' | 'trash_old' | 'quit_app';
+type Intent =
+  | 'close_tabs'
+  | 'clean_folder'
+  | 'trash_old'
+  | 'empty_trash'
+  | 'quit_app';
 /** What an unclear task is asked (the three most likely intents). */
 const ASKED = [INTENTS.close_tabs, INTENTS.clean_folder, INTENTS.close_windows];
 
@@ -116,6 +125,27 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
       opt('route.files.sort_by_kind', 'sort files into folders by kind', 0.03),
     ]),
   ],
+  // ADR 0122: emptying the Trash deletes through the file executor (never the finder), always behind the card.
+  empty_trash: [
+    act('choose_app', [
+      opt('app.files', 'files (no app)', 0.93),
+      opt('app.com.apple.finder', 'finder', 0.05),
+    ]),
+    act('choose_move', [
+      {
+        ...opt('route.files.empty_trash', 'empty the trash', 0.9),
+        irreversible: true,
+      },
+      {
+        ...opt(
+          'shortcut.cmd+shift+delete',
+          'cmd-shift-delete empty trash',
+          0.05,
+        ),
+        irreversible: true,
+      },
+    ]),
+  ],
   trash_old: [
     act('choose_app', [
       opt('app.files', 'files (no app)', 0.93),
@@ -142,17 +172,31 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
 const intentOf = (text: string): Intent | null =>
   /\bquit\b/i.test(text)
     ? 'quit_app'
-    : /\btabs?\b/i.test(text)
-      ? 'close_tabs'
-      : /download|folder/i.test(text)
-        ? /\b(delete|trash|old)\b/i.test(text)
-          ? 'trash_old'
-          : 'clean_folder'
-        : null;
+    : /\bempty\b/i.test(text) && /\b(trash|bin)\b/i.test(text)
+      ? 'empty_trash'
+      : /\btabs?\b/i.test(text)
+        ? 'close_tabs'
+        : /download|folder/i.test(text)
+          ? /\b(delete|trash|old)\b/i.test(text)
+            ? 'trash_old'
+            : 'clean_folder'
+          : null;
 
 const PREVIEW: CtrlConfirm['items'] = [
   { key: '3f2a9c1d0b7e#0', kind: 'window', label: 'notes.txt', unsaved: false },
   { key: '8c1e44a0d2f9#0', kind: 'window', label: 'draft.txt', unsaved: true },
+];
+
+/** ADR 0119: tabs held because the browser blocks ctrl's page script (a task that says "blocked"): can't tell. */
+const BLIND: CtrlConfirm['items'] = [
+  { key: '5d1c0a9e8f7b#0', kind: 'tab', label: 'inbox', unsaved: null },
+  { key: 'a7b8c9d0e1f2#0', kind: 'tab', label: 'expense form', unsaved: null },
+];
+
+/** ADR 0122: what an empty_trash run would delete (the Finder's own files and anything just trashed are left). */
+const TRASH: CtrlConfirm['items'] = [
+  { key: 'f0c1d2e3f4a5', kind: 'file', label: 'old folder', unsaved: false },
+  { key: 'f5a4f3e2d1c0', kind: 'file', label: 'old.dmg', unsaved: false },
 ];
 
 /** Slice 7 (ADR 0113): the old installers a trash_old run would send to the Trash. */
@@ -310,7 +354,10 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
     const s = stateAt(r.recs, r.recs.length);
     push(r, 'plan.produced', {
       plan: {
-        irreversible: intent === 'quit_app' || intent === 'trash_old',
+        irreversible:
+          intent === 'quit_app' ||
+          intent === 'trash_old' ||
+          intent === 'empty_trash',
         steps: s.decisions.map((d) => ({
           node: d.node,
           option: d.chosen,
@@ -318,21 +365,60 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
         })),
       },
     });
-    if (intent === 'quit_app' || intent === 'trash_old') {
+    if (
+      intent === 'close_tabs' &&
+      /\bblocked\b/i.test(task(r.run.taskId).text)
+    ) {
+      // ADR 0114: the tabs ctrl can't read are held behind the card (the plain ones would have closed already).
+      push(r, 'confirm.requested', {
+        confirm: {
+          gateId: `g${r.recs.filter((x) => x.confirm).length}`,
+          action: 'close browser tabs',
+          app: 'safari',
+          move: 'close tabs with unsaved input',
+          items: BLIND,
+          complete: true,
+          rules: ['choose_move:route.scripting.close_unsaved_tabs'],
+          answer: null,
+          reverified: null,
+          used: false,
+        },
+      });
+      return;
+    }
+    if (
+      intent === 'quit_app' ||
+      intent === 'trash_old' ||
+      intent === 'empty_trash'
+    ) {
       // The confirm gate (ADR 0111): a standing approval covers it, or the run waits for the user.
       const g = r.recs.filter((x) => x.confirm).length;
       const quit = intent === 'quit_app';
+      const empty = intent === 'empty_trash';
       push(r, 'confirm.requested', {
         confirm: {
           gateId: `g${g}`,
-          action: quit ? 'quit an app' : 'clean up a folder',
+          action: quit
+            ? 'quit an app'
+            : empty
+              ? 'empty the trash'
+              : 'clean up a folder',
           app: quit ? 'textedit' : 'files (no app)',
-          move: quit ? 'quit' : 'move old installers to the trash',
-          items: quit ? PREVIEW : FILES,
+          move: quit
+            ? 'quit'
+            : empty
+              ? 'empty the trash'
+              : 'move old installers to the trash',
+          items: quit ? PREVIEW : empty ? TRASH : FILES,
           complete: true,
           rules: quit
             ? ['choose_intent:intent.quit_app', 'choose_move:shortcut.cmd+q']
-            : ['choose_move:route.files.trash_old'],
+            : empty
+              ? [
+                  'choose_intent:intent.empty_trash',
+                  'choose_move:route.files.empty_trash',
+                ]
+              : ['choose_move:route.files.trash_old'],
           answer: null,
           reverified: null,
           used: false,

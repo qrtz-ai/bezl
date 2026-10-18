@@ -153,6 +153,33 @@ describe('ctrl components', () => {
     expect(ask).toContain('cancel run');
   });
 
+  it('says why when ctrl could not look inside any of the tabs, and only then', () => {
+    const tabs = (unsaved: boolean | null) => [
+      { key: 'a#0', kind: 'tab', label: 'mail', unsaved },
+      { key: 'b#0', kind: 'tab', label: 'form', unsaved: null },
+    ];
+    const render = (items: ReturnType<typeof tabs>, complete = true) =>
+      renderToStaticMarkup(
+        <ConfirmCard
+          action="close browser tabs"
+          app="safari"
+          items={items}
+          complete={complete}
+          onApprove={noop}
+          onRemember={noop}
+          onDeny={noop}
+        />,
+      );
+    const html = render(tabs(null));
+    expect(html).toContain('ctrl-confirm-tabs-hint');
+    expect(html).toContain('allow javascript from apple events');
+    expect(html.replace(/<[^>]+>/g, '')).toBe(
+      html.replace(/<[^>]+>/g, '').toLowerCase(),
+    );
+    expect(render(tabs(true))).not.toContain('ctrl-confirm-tabs-hint');
+    expect(render(tabs(null), false)).not.toContain('ctrl-confirm-tabs-hint');
+  });
+
   it('the confirm card lists every item, flags unsaved work, and is a group, never a dialog', () => {
     const html = renderToStaticMarkup(
       <ConfirmCard

@@ -389,6 +389,23 @@ pub fn replay_check(log: &EventLog, goal: &Goal) -> Result<(), Divergence> {
                     _ => return Err(div),
                 }
             }
+            // ADR 0122: a batch that deletes (emptying the Trash) needs an approved, re-verified, unspent gate on
+            // `files.empty_trash`, whatever the plan says about itself.
+            Event::ActionRequested { routes, .. }
+                if routes
+                    .iter()
+                    .any(|r| matches!(r, crate::ladder::Route::Files(op) if op.deletes())) =>
+            {
+                let ok = s.confirm.as_ref().is_some_and(|g| {
+                    g.preview.mv == crate::files::EMPTY_TRASH_MOVE
+                        && g.answer.as_ref().is_some_and(|a| a.approves())
+                        && g.reverified == Some(true)
+                        && !g.used
+                });
+                if !ok {
+                    return Err(div);
+                }
+            }
             // The confirm gate (ADR 0111): an irreversible plan's action needs an approved, re-verified, unspent
             // gate right before it. A log that acted otherwise doesn't replay.
             Event::ActionRequested { .. } if s.plan.as_ref().is_some_and(|p| p.irreversible) => {

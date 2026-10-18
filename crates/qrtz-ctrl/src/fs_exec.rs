@@ -3,7 +3,8 @@
 //!
 //! Paths live in a [`ContentStore`] and the log only sees [`ContentRef`]s. Moves never overwrite, and "delete"
 //! means move to the Trash (the macOS executor uses `FileManager.trashItem`; here it is a configured directory),
-//! so every file action has an inverse.
+//! so every file action has an inverse, except [`FsOp::Delete`] (ADR 0122): emptying the Trash removes items that
+//! are already in it, only after the confirm gate, and can't be undone.
 use crate::ladder::{ContentRef, FsOp, Route};
 use crate::runner::Executor;
 use std::collections::BTreeMap;
@@ -48,6 +49,24 @@ fn move_into(src: &Path, dir: &Path) -> Result<(), String> {
     std::fs::rename(src, &dst).map_err(|e| format!("fs.rename:{:?}", e.kind()))
 }
 
+/// Remove one item that sits directly in `trash` (ADR 0122). Anything else is refused: the unlink can't reach
+/// outside the Trash. A symlink is removed itself (never followed); a folder goes with everything in it
+/// (`remove_dir_all` doesn't follow symlinks inside it either).
+fn delete_in(p: &Path, trash: &Path) -> Result<(), String> {
+    if p.parent() != Some(trash) || p.file_name().is_none() {
+        return Err("fs.outside_trash".into());
+    }
+    let meta = p
+        .symlink_metadata()
+        .map_err(|e| format!("fs.stat:{:?}", e.kind()))?;
+    let r = if meta.file_type().is_dir() {
+        std::fs::remove_dir_all(p)
+    } else {
+        std::fs::remove_file(p)
+    };
+    r.map_err(|e| format!("fs.delete:{:?}", e.kind()))
+}
+
 impl<S: ContentStore> FsExecutor<S> {
     fn run(&mut self, op: &FsOp) -> Result<(), String> {
         match op {
@@ -82,6 +101,10 @@ impl<S: ContentStore> FsExecutor<S> {
                 std::fs::create_dir_all(&self.trash_dir).map_err(|e| format!("fs.trash:{:?}", e.kind()))?;
                 move_into(&s, &self.trash_dir)
             }
+            FsOp::Delete { src } => {
+                let s = self.store.path(src).ok_or("fs.ref")?;
+                delete_in(&s, &self.trash_dir)
+            }
         }
     }
 
@@ -107,6 +130,7 @@ impl<S: ContentStore> FsExecutor<S> {
                 let s = self.store.path(src).ok_or("fs.ref")?;
                 back(self.trash_dir.join(s.file_name().ok_or("fs.no_name")?), s)
             }
+            FsOp::Delete { .. } => Err("fs.irreversible".into()),
             FsOp::Batch { ops } => ops.iter().rev().try_for_each(|o| self.undo(o)),
         }
     }
