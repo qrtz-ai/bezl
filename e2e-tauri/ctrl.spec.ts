@@ -843,3 +843,48 @@ test('ctrl: turn it up a bit steps the volume from where it is without a card (A
   expect(await axe(page, 'ctrl')).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+test('ctrl: switched off in settings → modules, ctrl has no tab and runs nothing; back on, its tasks are there (ADR 0146)', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  await ctrl.getByTestId('ctrl-task-input').fill('every day close all my tabs');
+  await ctrl.getByTestId('ctrl-schedule-daily').click();
+  await ctrl.getByTestId('ctrl-schedule-time').fill('09:00');
+  await ctrl.getByTestId('ctrl-task-add').click();
+  await expect(ctrl.getByTestId('ctrl-task')).toHaveCount(1);
+
+  await page.getByTestId('nav-settings').click();
+  const settings = page.locator('[data-subapp="settings"]');
+  const sw = settings.getByTestId('module-ctrl');
+  await sw.click();
+  await expect(page.getByTestId('nav-ctrl')).toHaveCount(0);
+  await expect(page.locator('[data-subapp="ctrl"]')).toHaveCount(0);
+  // Like the real gate, the mock refuses ctrl:* while ctrl is off: nothing of ctrl's is called or runs.
+  const ctrlCalls = () =>
+    page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            __qrtzMock: { calls: { channel: string }[] };
+          }
+        ).__qrtzMock.calls.filter((c) => c.channel.startsWith('ctrl:')).length,
+    );
+  const before = await ctrlCalls();
+  await page.waitForTimeout(300);
+  expect(await ctrlCalls()).toBe(before);
+  expect(await axe(page, 'settings')).toEqual([]);
+
+  await sw.click();
+  await page.getByTestId('nav-ctrl').click();
+  const task = page.locator('[data-subapp="ctrl"]').getByTestId('ctrl-task');
+  await expect(task).toHaveCount(1);
+  await expect(task.getByTestId('ctrl-task-schedule')).toHaveText(
+    'every day at 09:00 · never run',
+  );
+  expect(errors).toEqual([]);
+});

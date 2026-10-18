@@ -223,21 +223,23 @@ impl AppService {
             loop {
                 interval.tick().await;
                 // ADR 0146: ctrl switched off pauses its cadences; nothing runs until it's back on.
-                if !crate::modules::is_on(&config.get(), "ctrl") {
-                    continue;
-                }
                 let c = ctrl.clone();
-                let fired = match tokio::task::spawn_blocking(move || c.tick()).await {
-                    Ok(Ok(ids)) => ids,
-                    Ok(Err(e)) => {
-                        tracing::error!(err = %e.message, "ctrl scheduler tick");
-                        continue;
-                    }
-                    Err(_) => {
-                        tracing::error!("ctrl scheduler tick join failed");
-                        continue;
-                    }
-                };
+                let cfg = config.get();
+                let fired =
+                    match tokio::task::spawn_blocking(move || crate::modules::ctrl_scheduler_pass(&cfg, &c))
+                        .await
+                    {
+                        Ok(None) => continue,
+                        Ok(Some(Ok(ids))) => ids,
+                        Ok(Some(Err(e))) => {
+                            tracing::error!(err = %e.message, "ctrl scheduler tick");
+                            continue;
+                        }
+                        Err(_) => {
+                            tracing::error!("ctrl scheduler tick join failed");
+                            continue;
+                        }
+                    };
                 if !fired.is_empty() {
                     events.emit("ctrl:changed", serde_json::json!({ "ids": fired }));
                 }

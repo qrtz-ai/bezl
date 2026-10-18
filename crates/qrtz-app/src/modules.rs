@@ -101,6 +101,16 @@ pub fn is_on(cfg: &Value, id: &str) -> bool {
     GlobalSettings::from_config(cfg).is_on(id)
 }
 
+/// One pass of ctrl's scheduler under the switches: None (nothing ticked, nothing recorded) while ctrl or all
+/// modules are off, so a cadence that falls due meanwhile waits; back on, the next pass catches it up once
+/// (ADR 0105's one catch-up, no burst).
+pub fn ctrl_scheduler_pass(
+    cfg: &Value,
+    ctrl: &qrtz_ctrl::service::CtrlService,
+) -> Option<Result<Vec<String>, qrtz_ctrl::service::CtrlError>> {
+    is_on(cfg, "ctrl").then(|| ctrl.tick())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,5 +164,40 @@ mod tests {
         assert!(drops_helper_event(&cfg, "meeting.detected"));
         assert!(!drops_helper_event(&cfg, "dictation.started"));
         assert!(!drops_helper_event(&json!({}), "meeting.detected"));
+    }
+
+    #[test]
+    fn ctrl_scheduled_tasks_wait_while_ctrl_is_off_and_resume_when_it_is_back_on() {
+        use qrtz_ctrl::service::{CtrlService, SystemClock};
+        let d = tempfile::tempdir().unwrap();
+        let svc = CtrlService::open(d.path(), Box::new(SystemClock::default()));
+        // `once` with no time is due right away (ADR 0105).
+        let t = svc
+            .call(
+                "ctrl:create-task",
+                json!({"text": "close all my tabs", "schedule": {"kind": "once", "at": null}}),
+            )
+            .unwrap();
+        let id = t["id"].as_str().unwrap().to_string();
+        let runs = |s: &CtrlService| s.call("ctrl:tasks", json!(null)).unwrap()[0]["runs"].clone();
+        for off in [
+            json!({"modules": {"ctrl": {"enabled": false}}}),
+            json!({"modules": {"enabled": false, "ctrl": {"enabled": true}}}),
+        ] {
+            assert!(ctrl_scheduler_pass(&off, &svc).is_none(), "{off}");
+            assert_eq!(runs(&svc), 0, "nothing ran while off: {off}");
+        }
+        // Echo or nano off doesn't pause ctrl.
+        let others_off = json!({"modules": {"echo": {"enabled": false}, "nano": {"enabled": false}}});
+        let fired = ctrl_scheduler_pass(&others_off, &svc).unwrap().unwrap();
+        assert_eq!(fired, vec![id]);
+        assert_eq!(runs(&svc), 1);
+        // A `once` that already ran doesn't run again when switched off and back on.
+        assert!(ctrl_scheduler_pass(&json!({"modules": {"ctrl": {"enabled": false}}}), &svc).is_none());
+        assert_eq!(
+            ctrl_scheduler_pass(&json!({}), &svc).unwrap().unwrap(),
+            Vec::<String>::new()
+        );
+        assert_eq!(runs(&svc), 1);
     }
 }

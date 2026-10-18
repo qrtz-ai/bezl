@@ -19,6 +19,7 @@ import {
   defaultConfig,
   eventContract,
   isEventName,
+  isModuleOn,
   isStreamEvent,
   type Config,
   type EventName,
@@ -500,7 +501,8 @@ export function createMockBridge(): TauriBridge {
     'talk:state': () => ipcSamples['talk:state'].response,
     'talk:history': () => [],
     'talk:dictionary': () => [],
-    ...ctrlHandlers(),
+    // ADR 0146 parity: like the real IPC gate, every ctrl:* call is refused while ctrl (or every module) is off.
+    ...gateCtrl(ctrlHandlers(), () => isModuleOn(config, 'ctrl')),
   };
 
   const router = createRouter({ handlers, resolveSubApp: resolveManifest });
@@ -586,4 +588,20 @@ export function createMockBridge(): TauriBridge {
       return () => listeners.delete(cb);
     },
   };
+}
+
+function gateCtrl(h: Partial<Handlers>, on: () => boolean): Partial<Handlers> {
+  return Object.fromEntries(
+    Object.entries(h).map(([ch, fn]) => [
+      ch,
+      (...a: unknown[]) => {
+        if (!on())
+          throw new AppError(
+            'E_UNAVAILABLE',
+            'ctrl is switched off in settings → modules',
+          );
+        return (fn as (...b: unknown[]) => unknown)(...a);
+      },
+    ]),
+  ) as Partial<Handlers>;
 }
