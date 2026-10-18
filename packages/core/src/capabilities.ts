@@ -20,6 +20,9 @@ export const Capability = z.enum([
   /** qrtz speech (ADR 0046) and the on-device search model: read setup state / download, update, delete. */
   'speech.read',
   'speech.manage',
+  /** ctrl (ADR 0103): read tasks and run history; create, pause, delete and run tasks. */
+  'ctrl.read',
+  'ctrl.write',
   /** ADR 0083: write a line to the local log (uncaught renderer errors, the audio player's errors). */
   'log.write',
   /** ADR 0083: save a copy of the local logs, or show their folder. */

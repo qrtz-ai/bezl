@@ -11,6 +11,8 @@
 //! - [`log`]: the append-only, hash-chained event log; state is a pure fold over it (replay, scrub, fork).
 //! - [`runner`]: the effect that ties them together: decide, snapshot, execute, snapshot, record.
 //! - [`fs_exec`]: the first executor, plain file moves (downloads cleanup needs no UI at all).
+//! - [`task`], [`store`], [`service`] (slice 2, ADR 0103): typed tasks with a schedule, persisted as append-only
+//!   hash-chained files in the app data dir, and the `ctrl:*` channels the shell's ctrl view calls.
 //!
 //! The macOS side (real probes, AX, `CGEventPostToPid`, `NSWorkspace`) is `native/qrtz-helper/Sources/QrtzCtrl`.
 //! Both sides test their policy tables and guard semantics against the same fixtures in
@@ -21,3 +23,6 @@ pub mod ladder;
 pub mod log;
 pub mod policy;
 pub mod runner;
+pub mod service;
+pub mod store;
+pub mod task;

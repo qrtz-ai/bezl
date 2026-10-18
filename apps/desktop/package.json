@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@qrtz/core": "workspace:*",
+    "@qrtz/feature-ctrl": "workspace:*",
     "@qrtz/feature-gallery": "workspace:*",
     "@qrtz/feature-note": "workspace:*",
     "@qrtz/feature-settings": "workspace:*",

@@ -3399,6 +3399,7 @@ dependencies = [
  "libc",
  "qrtz-app",
  "qrtz-backup",
+ "qrtz-ctrl",
  "qrtz-helper-bridge",
  "qrtz-ipc",
  "qrtz-lifecycle",

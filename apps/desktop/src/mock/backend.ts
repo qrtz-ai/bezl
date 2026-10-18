@@ -32,6 +32,7 @@ import {
   unknownPermissions,
 } from '@qrtz/core/ipc/samples';
 import { resolveManifest } from '../shared/manifests';
+import { ctrlHandlers } from './ctrl';
 
 type Json = Record<string, unknown>;
 const params = new URLSearchParams(window.location.search);
@@ -499,6 +500,7 @@ export function createMockBridge(): TauriBridge {
     'talk:state': () => ipcSamples['talk:state'].response,
     'talk:history': () => [],
     'talk:dictionary': () => [],
+    ...ctrlHandlers(),
   };
 
   const router = createRouter({ handlers, resolveSubApp: resolveManifest });

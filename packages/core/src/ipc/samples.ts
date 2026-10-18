@@ -101,6 +101,56 @@ const note = {
 };
 const talkIdle = { phase: 'idle' as const, text: '', partial: '', level: 0 };
 
+const ctrlTask = {
+  id: 'task-0',
+  text: 'every week clean up my downloads folder',
+  schedule: { kind: 'weekly' as const, weekday: 0, hour: 18, minute: 0 },
+  paused: false,
+  createdAt: T0,
+  runs: 1,
+  lastRunAt: T0 + 60_000,
+};
+const ctrlRun = {
+  id: 'run-1',
+  taskId: 'task-0',
+  at: T0 + 60_000,
+  status: 'pending-intent' as const,
+  events: 2,
+  violations: 0,
+};
+const ctrlSamples = {
+  'ctrl:tasks': { request: undefined, response: [ctrlTask] },
+  'ctrl:create-task': {
+    request: { text: ctrlTask.text, schedule: ctrlTask.schedule },
+    response: { ...ctrlTask, runs: 0, lastRunAt: null },
+  },
+  'ctrl:set-paused': {
+    request: { id: 'task-0', paused: true },
+    response: { ...ctrlTask, paused: true },
+  },
+  'ctrl:delete-task': { request: { id: 'task-0' }, response: { ok: true } },
+  'ctrl:run-now': { request: { id: 'task-0' }, response: ctrlRun },
+  'ctrl:runs': { request: { taskId: 'task-0' }, response: [ctrlRun] },
+  'ctrl:run': {
+    request: { runId: 'run-1', at: 2 },
+    response: {
+      run: ctrlRun,
+      events: [
+        { seq: 0, kind: 'task.started', at: T0 + 60_000, actionId: null },
+        { seq: 1, kind: 'intent.pending', at: T0 + 60_000, actionId: null },
+      ],
+      at: 2,
+      state: {
+        actions: [],
+        violations: 0,
+        inconclusive: 0,
+        quarantined: [],
+        status: 'pending-intent',
+      },
+    },
+  },
+} satisfies { [C in Extract<IpcChannel, `ctrl:${string}`>]: ChannelSample<C> };
+
 export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
   'app:get-info': {
     request: undefined,
@@ -293,6 +343,7 @@ export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
   },
   'speech:resume': { request: undefined, response: speechDownloading },
   'speech:delete': { request: undefined, response: speechNone },
+  ...ctrlSamples,
 };
 
 export const eventSamples: { [E in EventName]: EventPayload<E> } = {
@@ -329,4 +380,5 @@ export const idleResponses: Partial<Record<IpcChannel, unknown>> = {
   'talk:history': [],
   'talk:dictionary': [],
   'speech:status': { ...speechNone, configured: false },
+  'ctrl:tasks': [],
 };

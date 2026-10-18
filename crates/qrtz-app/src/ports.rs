@@ -57,6 +57,8 @@ pub const APP_CHANNELS: &[&str] = &[
     "logs:export",
 ];
 pub const TALK_PREFIX: &str = "talk:";
+/// ctrl (ADR 0103): tasks, schedules and run history (`qrtz_ctrl::service::CtrlService`).
+pub const CTRL_PREFIX: &str = "ctrl:";
 /// qrtz speech setup (onboarding, settings "speech"; ADR 0046 §7).
 pub const SETUP_CHANNELS: &[&str] = &[
     "speech:status",

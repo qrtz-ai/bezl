@@ -720,6 +720,145 @@
           "total": 0
         }
       }
+    },
+    "ctrl:tasks": {
+      "request": null,
+      "response": [
+        {
+          "id": "task-0",
+          "text": "every week clean up my downloads folder",
+          "schedule": {
+            "kind": "weekly",
+            "weekday": 0,
+            "hour": 18,
+            "minute": 0
+          },
+          "paused": false,
+          "createdAt": 1760659200000,
+          "runs": 1,
+          "lastRunAt": 1760659260000
+        }
+      ],
+      "idle": []
+    },
+    "ctrl:create-task": {
+      "request": {
+        "text": "every week clean up my downloads folder",
+        "schedule": {
+          "kind": "weekly",
+          "weekday": 0,
+          "hour": 18,
+          "minute": 0
+        }
+      },
+      "response": {
+        "id": "task-0",
+        "text": "every week clean up my downloads folder",
+        "schedule": {
+          "kind": "weekly",
+          "weekday": 0,
+          "hour": 18,
+          "minute": 0
+        },
+        "paused": false,
+        "createdAt": 1760659200000,
+        "runs": 0,
+        "lastRunAt": null
+      }
+    },
+    "ctrl:set-paused": {
+      "request": {
+        "id": "task-0",
+        "paused": true
+      },
+      "response": {
+        "id": "task-0",
+        "text": "every week clean up my downloads folder",
+        "schedule": {
+          "kind": "weekly",
+          "weekday": 0,
+          "hour": 18,
+          "minute": 0
+        },
+        "paused": true,
+        "createdAt": 1760659200000,
+        "runs": 1,
+        "lastRunAt": 1760659260000
+      }
+    },
+    "ctrl:delete-task": {
+      "request": {
+        "id": "task-0"
+      },
+      "response": {
+        "ok": true
+      }
+    },
+    "ctrl:run-now": {
+      "request": {
+        "id": "task-0"
+      },
+      "response": {
+        "id": "run-1",
+        "taskId": "task-0",
+        "at": 1760659260000,
+        "status": "pending-intent",
+        "events": 2,
+        "violations": 0
+      }
+    },
+    "ctrl:runs": {
+      "request": {
+        "taskId": "task-0"
+      },
+      "response": [
+        {
+          "id": "run-1",
+          "taskId": "task-0",
+          "at": 1760659260000,
+          "status": "pending-intent",
+          "events": 2,
+          "violations": 0
+        }
+      ]
+    },
+    "ctrl:run": {
+      "request": {
+        "runId": "run-1",
+        "at": 2
+      },
+      "response": {
+        "run": {
+          "id": "run-1",
+          "taskId": "task-0",
+          "at": 1760659260000,
+          "status": "pending-intent",
+          "events": 2,
+          "violations": 0
+        },
+        "events": [
+          {
+            "seq": 0,
+            "kind": "task.started",
+            "at": 1760659260000,
+            "actionId": null
+          },
+          {
+            "seq": 1,
+            "kind": "intent.pending",
+            "at": 1760659260000,
+            "actionId": null
+          }
+        ],
+        "at": 2,
+        "state": {
+          "actions": [],
+          "violations": 0,
+          "inconclusive": 0,
+          "quarantined": [],
+          "status": "pending-intent"
+        }
+      }
     }
   },
   "events": {

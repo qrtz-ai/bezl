@@ -7177,6 +7177,878 @@
         ],
         "additionalProperties": false
       }
+    },
+    "ctrl:tasks": {
+      "version": 1,
+      "capability": "ctrl.read",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            },
+            "schedule": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "once"
+                    },
+                    "at": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "at"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "daily"
+                    },
+                    "hour": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 23
+                    },
+                    "minute": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 59
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "hour",
+                    "minute"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "weekly"
+                    },
+                    "weekday": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 6
+                    },
+                    "hour": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 23
+                    },
+                    "minute": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 59
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "weekday",
+                    "hour",
+                    "minute"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "paused": {
+              "type": "boolean"
+            },
+            "createdAt": {
+              "type": "number"
+            },
+            "runs": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "lastRunAt": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "text",
+            "schedule",
+            "paused",
+            "createdAt",
+            "runs",
+            "lastRunAt"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "ctrl:create-task": {
+      "version": 1,
+      "capability": "ctrl.write",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "schedule": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "once"
+                    },
+                    "at": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "at"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "daily"
+                    },
+                    "hour": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 23
+                    },
+                    "minute": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 59
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "hour",
+                    "minute"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "weekly"
+                    },
+                    "weekday": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 6
+                    },
+                    "hour": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 23
+                    },
+                    "minute": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 59
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "weekday",
+                    "hour",
+                    "minute"
+                  ]
+                }
+              ]
+            }
+          },
+          "required": [
+            "text",
+            "schedule"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "schedule": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "once"
+                  },
+                  "at": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "at"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "daily"
+                  },
+                  "hour": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 23
+                  },
+                  "minute": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 59
+                  }
+                },
+                "required": [
+                  "kind",
+                  "hour",
+                  "minute"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "weekly"
+                  },
+                  "weekday": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 6
+                  },
+                  "hour": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 23
+                  },
+                  "minute": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 59
+                  }
+                },
+                "required": [
+                  "kind",
+                  "weekday",
+                  "hour",
+                  "minute"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "runs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "lastRunAt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "schedule",
+          "paused",
+          "createdAt",
+          "runs",
+          "lastRunAt"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "ctrl:set-paused": {
+      "version": 1,
+      "capability": "ctrl.write",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "paused": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "paused"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "schedule": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "once"
+                  },
+                  "at": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "at"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "daily"
+                  },
+                  "hour": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 23
+                  },
+                  "minute": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 59
+                  }
+                },
+                "required": [
+                  "kind",
+                  "hour",
+                  "minute"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "weekly"
+                  },
+                  "weekday": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 6
+                  },
+                  "hour": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 23
+                  },
+                  "minute": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 59
+                  }
+                },
+                "required": [
+                  "kind",
+                  "weekday",
+                  "hour",
+                  "minute"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "runs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "lastRunAt": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "schedule",
+          "paused",
+          "createdAt",
+          "runs",
+          "lastRunAt"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "ctrl:delete-task": {
+      "version": 1,
+      "capability": "ctrl.write",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "required": [
+            "id"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "ctrl:run-now": {
+      "version": 1,
+      "capability": "ctrl.write",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "required": [
+            "id"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "taskId": {
+            "type": "string"
+          },
+          "at": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending-intent",
+              "running",
+              "done",
+              "failed",
+              "cancelled",
+              "asked-out",
+              "deferred"
+            ]
+          },
+          "events": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "violations": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "id",
+          "taskId",
+          "at",
+          "status",
+          "events",
+          "violations"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "ctrl:runs": {
+      "version": 1,
+      "capability": "ctrl.read",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "taskId": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          "required": [
+            "taskId"
+          ]
+        }
+      },
+      "response": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "taskId": {
+              "type": "string"
+            },
+            "at": {
+              "type": "number"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "pending-intent",
+                "running",
+                "done",
+                "failed",
+                "cancelled",
+                "asked-out",
+                "deferred"
+              ]
+            },
+            "events": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "violations": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "id",
+            "taskId",
+            "at",
+            "status",
+            "events",
+            "violations"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "ctrl:run": {
+      "version": 1,
+      "capability": "ctrl.read",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "runId": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "at": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "runId"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "run": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "taskId": {
+                "type": "string"
+              },
+              "at": {
+                "type": "number"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending-intent",
+                  "running",
+                  "done",
+                  "failed",
+                  "cancelled",
+                  "asked-out",
+                  "deferred"
+                ]
+              },
+              "events": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "violations": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "id",
+              "taskId",
+              "at",
+              "status",
+              "events",
+              "violations"
+            ],
+            "additionalProperties": false
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "seq": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "at": {
+                  "type": "number"
+                },
+                "actionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "seq",
+                "kind",
+                "at",
+                "actionId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "at": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "state": {
+            "type": "object",
+            "properties": {
+              "actions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "requested",
+                        "executing",
+                        "deferred",
+                        "asked",
+                        "refused",
+                        "done",
+                        "failed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "violations": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "inconclusive": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "quarantined": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "app": {
+                      "type": "string"
+                    },
+                    "rung": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "app",
+                    "rung"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending-intent",
+                  "running",
+                  "done",
+                  "failed",
+                  "cancelled",
+                  "asked-out",
+                  "deferred"
+                ]
+              }
+            },
+            "required": [
+              "actions",
+              "violations",
+              "inconclusive",
+              "quarantined",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "run",
+          "events",
+          "at",
+          "state"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "events": {
@@ -8719,6 +9591,13 @@
         "talk.dictate",
         "talk.write",
         "speech.read"
+      ]
+    },
+    {
+      "id": "ctrl",
+      "capabilities": [
+        "ctrl.read",
+        "ctrl.write"
       ]
     },
     {

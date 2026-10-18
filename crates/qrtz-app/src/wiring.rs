@@ -474,6 +474,11 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         events,
     });
     service.set_setup(setup.clone());
+    // ADR 0103: ctrl's task store and run logs, <data>/ctrl (0700, files 0600).
+    service.set_ctrl(Arc::new(qrtz_ctrl::service::CtrlService::open(
+        dirs.data.join("ctrl"),
+        Box::new(qrtz_ctrl::service::SystemClock::default()),
+    )));
     service.set_speech_tap(helper_line_tap(attach.clone(), note_speech.clone(), warm));
     Ok(BuiltApp {
         service,

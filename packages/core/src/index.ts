@@ -35,3 +35,4 @@ export * from './note/notes';
 export * from './note/lifecycle';
 export * from './ipc/tauri-transport';
 export * from './talk';
+export * from './ctrl';

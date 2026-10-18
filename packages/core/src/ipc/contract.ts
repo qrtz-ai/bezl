@@ -14,6 +14,13 @@ import { MeetingNote } from '../note/notes';
 import { SummaryTemplateId } from '../note/templates';
 import { DictionaryEntry, TalkEntry, TalkView } from '../talk/contract';
 import { SpeechSetupStatus } from '../speech/setup';
+import {
+  CTRL_TEXT_MAX,
+  CtrlRun,
+  CtrlRunView,
+  CtrlSchedule,
+  CtrlTask,
+} from '../ctrl/contract';
 
 /** Bump when the envelope shape changes (not when a channel changes). */
 export const PROTOCOL_VERSION = 1;
@@ -421,6 +428,60 @@ export const ipcContract = {
     capability: 'speech.manage',
     request: z.void(),
     response: SpeechSetupStatus,
+  }),
+  // --- qrtz ctrl (ADR 0100, 0103) ---
+  /** Every task, newest first. */
+  'ctrl:tasks': defineChannel({
+    version: 1,
+    capability: 'ctrl.read',
+    request: z.void(),
+    response: z.array(CtrlTask),
+  }),
+  'ctrl:create-task': defineChannel({
+    version: 1,
+    capability: 'ctrl.write',
+    request: z.object({
+      text: z.string().trim().min(1).max(CTRL_TEXT_MAX),
+      schedule: CtrlSchedule,
+    }),
+    response: CtrlTask,
+  }),
+  'ctrl:set-paused': defineChannel({
+    version: 1,
+    capability: 'ctrl.write',
+    request: z.object({ id: z.string().max(64), paused: z.boolean() }),
+    response: CtrlTask,
+  }),
+  /** The task leaves the list; its runs' logs stay on disk (append-only, ADR 0103). */
+  'ctrl:delete-task': defineChannel({
+    version: 1,
+    capability: 'ctrl.write',
+    request: z.object({ id: z.string().max(64) }),
+    response: z.object({ ok: z.literal(true) }),
+  }),
+  /** Record a run now. Until the decision layers land it waits for an intent (`pending-intent`). */
+  'ctrl:run-now': defineChannel({
+    version: 1,
+    capability: 'ctrl.write',
+    request: z.object({ id: z.string().max(64) }),
+    response: CtrlRun,
+  }),
+  /** A task's runs, newest first, each derived from its event log. */
+  'ctrl:runs': defineChannel({
+    version: 1,
+    capability: 'ctrl.read',
+    request: z.object({ taskId: z.string().max(64) }),
+    response: z.array(CtrlRun),
+  }),
+  /** One run's events and the state after the first `at` of them (omit `at` = all): scrub without executing. */
+  'ctrl:run': defineChannel({
+    version: 1,
+    capability: 'ctrl.read',
+    request: z.object({
+      runId: z.string().max(64),
+      at: z.number().int().min(0).optional(),
+    }),
+    response: CtrlRunView,
   }),
 } as const satisfies Record<string, ChannelDef>;
 

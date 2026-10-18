@@ -18,9 +18,10 @@
     },
     "apps/desktop": {
       "name": "@qrtz/desktop",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@qrtz/core": "workspace:*",
+        "@qrtz/feature-ctrl": "workspace:*",
         "@qrtz/feature-gallery": "workspace:*",
         "@qrtz/feature-note": "workspace:*",
         "@qrtz/feature-settings": "workspace:*",
@@ -49,6 +50,17 @@
       "devDependencies": {
         "@types/react": "^19.3.0",
         "react": "^19.3.1",
+      },
+      "peerDependencies": {
+        "react": "^19.0.0",
+      },
+    },
+    "packages/features/ctrl": {
+      "name": "@qrtz/feature-ctrl",
+      "version": "0.1.0",
+      "dependencies": {
+        "@qrtz/core": "workspace:*",
+        "@qrtz/ui": "workspace:*",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -265,6 +277,8 @@
     "@qrtz/core": ["@qrtz/core@workspace:packages/core"],
 
     "@qrtz/desktop": ["@qrtz/desktop@workspace:apps/desktop"],
+
+    "@qrtz/feature-ctrl": ["@qrtz/feature-ctrl@workspace:packages/features/ctrl"],
 
     "@qrtz/feature-gallery": ["@qrtz/feature-gallery@workspace:packages/features/gallery"],
 

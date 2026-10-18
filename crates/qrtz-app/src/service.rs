@@ -86,6 +86,7 @@ pub struct AppService {
     helper: Option<Supervisor>,
     pub events: Events,
     setup: std::sync::OnceLock<Arc<dyn crate::ports::SetupPort>>,
+    ctrl: std::sync::OnceLock<Arc<qrtz_ctrl::service::CtrlService>>,
     speech_tap: std::sync::OnceLock<SpeechTap>,
     /// The last helper status every port has seen (`on_helper_status` finished), for readiness checks.
     delivered: std::sync::Mutex<Option<HelperStatus>>,
@@ -115,6 +116,7 @@ impl AppService {
             helper: d.helper,
             events: d.events,
             setup: std::sync::OnceLock::new(),
+            ctrl: std::sync::OnceLock::new(),
             speech_tap: std::sync::OnceLock::new(),
             delivered: Default::default(),
             renderer_log: Mutex::new(crate::logging::RendererGate::new()),
@@ -188,6 +190,38 @@ impl AppService {
     /// samples and the actions are `E_UNAVAILABLE`).
     pub fn set_setup(&self, setup: Arc<dyn crate::ports::SetupPort>) {
         let _ = self.setup.set(setup);
+    }
+
+    /// Plug in ctrl (set once by `build_app`; without it every `ctrl:*` call is `E_UNAVAILABLE`).
+    pub fn set_ctrl(&self, ctrl: Arc<qrtz_ctrl::service::CtrlService>) {
+        let _ = self.ctrl.set(ctrl);
+    }
+
+    /// `ctrl:*`: the store writes and `fsync`s, so off the async runtime.
+    async fn ctrl_channel(&self, channel: &str, p: Value) -> Result<Value, AppError> {
+        use qrtz_ctrl::service::CtrlErrorCode as C;
+        let Some(ctrl) = self.ctrl.get().cloned() else {
+            return Err(
+                AppError::new(ErrorCode::Unavailable, "ctrl is not available in this build").retryable(false),
+            );
+        };
+        let ch = channel.to_owned();
+        let r = tokio::task::spawn_blocking(move || ctrl.call(&ch, p))
+            .await
+            .map_err(|_| AppError::new(ErrorCode::Internal, "ctrl call failed"))?;
+        r.map_err(|e| {
+            let code = match e.code {
+                C::Validation => ErrorCode::Validation,
+                C::NotFound => ErrorCode::NotFound,
+                C::Unavailable => ErrorCode::Unavailable,
+                C::Internal => ErrorCode::Internal,
+            };
+            if code == ErrorCode::Internal {
+                // ADR 0083: the message names a file and a line, never task text.
+                tracing::error!(channel, err = %e.message, "ctrl");
+            }
+            AppError::new(code, e.message)
+        })
     }
 
     pub fn config(&self) -> Value {
@@ -363,6 +397,8 @@ impl AppService {
             Some("setup")
         } else if channel.starts_with(TALK_PREFIX) {
             Some("talk")
+        } else if channel.starts_with(CTRL_PREFIX) {
+            Some("ctrl")
         } else {
             None
         }
@@ -377,6 +413,7 @@ impl Handler for AppService {
             Some("storage") => self.storage.call(channel, payload).await,
             Some("talk") => self.talk.call(channel, payload).await,
             Some("app") => self.app_channel(channel, payload).await,
+            Some("ctrl") => self.ctrl_channel(channel, payload).await,
             Some("setup") => match self.setup.get() {
                 Some(s) => s.call(channel, payload).await,
                 None => qrtz_ipc::idle_response(channel).ok_or_else(|| {

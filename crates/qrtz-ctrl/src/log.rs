@@ -3,7 +3,7 @@
 //! the previous one, so a rewritten or dropped record breaks [`EventLog::verify`]. Payloads hold ids, refs, enums
 //! and numbers only, never paths, labels or text (ADR 0083).
 //!
-//! Slice 1 covers the execution events: what was decided for an action, the guard snapshots around it, the result
+//! Slice 2 persists each run as its own file (`store.rs`, ADR 0103). Slice 1 covers the execution events: what was decided for an action, the guard snapshots around it, the result
 //! and any violation. Observation and model-decision events (`obs.*`, `decision.made`) arrive with slices 4–5.
 use crate::guard::{Field, GuardOutcome, UiSnapshot};
 use crate::ladder::{Decision, Route, Rung, Verdict};
@@ -25,6 +25,10 @@ pub enum Phase {
 pub enum Event {
     #[serde(rename = "task.started")]
     TaskStarted { task_id: String },
+    /// The run is waiting for an intent: the decision layers (slice 4) haven't produced a plan yet. Slice 2
+    /// records runs this far ("run now" in the ctrl view) so history, scrub and replay work end to end.
+    #[serde(rename = "intent.pending")]
+    IntentPending { task_id: String },
     #[serde(rename = "action.requested")]
     ActionRequested { action_id: String, routes: Vec<Route> },
     #[serde(rename = "action.decided")]
@@ -260,13 +264,19 @@ pub struct CtrlState {
     /// (app, rung) pairs that violated the guard: the ladder refuses them for the rest of the run.
     pub quarantined: BTreeSet<(String, Rung)>,
     pub task_status: Option<TaskStatus>,
+    /// `task.started` was seen.
+    pub started: bool,
+    /// Waiting for the decision layers; cleared by the first `action.requested` or `task.finished`.
+    pub intent_pending: bool,
 }
 
 /// The reducer. Pure.
 pub fn apply(mut s: CtrlState, e: &Event) -> CtrlState {
     match e {
-        Event::TaskStarted { .. } => {}
+        Event::TaskStarted { .. } => s.started = true,
+        Event::IntentPending { .. } => s.intent_pending = true,
         Event::ActionRequested { action_id, .. } => {
+            s.intent_pending = false;
             s.actions.insert(action_id.clone(), ActionStatus::Requested);
         }
         Event::ActionDecided {
@@ -304,7 +314,10 @@ pub fn apply(mut s: CtrlState, e: &Event) -> CtrlState {
                 s.inconclusive += 1;
             }
         }
-        Event::TaskFinished { status, .. } => s.task_status = Some(*status),
+        Event::TaskFinished { status, .. } => {
+            s.intent_pending = false;
+            s.task_status = Some(*status)
+        }
     }
     s
 }

@@ -17,6 +17,9 @@
       "path": "packages/features/talk"
     },
     {
+      "path": "packages/features/ctrl"
+    },
+    {
       "path": "packages/features/gallery"
     },
     {

@@ -19,6 +19,7 @@ export * from './Lifecycle';
 export * from './Layout';
 export * from './Meeting';
 export * from './Talk';
+export * from './Ctrl';
 export * from './Waveform';
 export * from './case';
 export * from './Setup';
