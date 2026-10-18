@@ -86,6 +86,11 @@ const INTENTS = {
   hide_others: opt('intent.hide_others', 'hide your other apps', 0.07),
   hide_app: opt('intent.hide_app', 'hide an app', 0.07),
   show_app: opt('intent.show_app', 'show a hidden app', 0.07),
+  focus_mode: opt(
+    'intent.focus_mode',
+    'turn focus or do not disturb on or off',
+    0.07,
+  ),
   mute: opt('intent.mute', 'mute your mac', 0.07),
   unmute: opt('intent.unmute', 'unmute your mac', 0.07),
   set_volume: opt('intent.set_volume', 'set the volume', 0.07),
@@ -109,6 +114,7 @@ type Intent =
   | 'hide_others'
   | 'hide_app'
   | 'show_app'
+  | 'focus_mode'
   | 'mute'
   | 'unmute'
   | 'set_volume'
@@ -269,6 +275,16 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
       opt('route.system.unmute', 'turn the sound output back on', 0.97),
     ]),
   ],
+  // ADR 0155: no background route to set a focus yet; the one move is a hold, asked out with nothing sent.
+  focus_mode: [
+    act('choose_move', [
+      opt(
+        'route.system.focus_hold',
+        'leave focus as it is, not supported yet',
+        0.97,
+      ),
+    ]),
+  ],
   // ADR 0135: the sound output, muted in the helper's own process; reversible, no card, no app question.
   mute: [
     act('choose_move', [
@@ -425,51 +441,57 @@ const intentOf = (text: string): Intent | null =>
     ? relativeOf(text)
     : /\b(volume|sound)\b/i.test(text) && levelOf(text) !== null
       ? 'set_volume'
-      : /\b(unmute|unsilence)\b/i.test(text)
-        ? 'unmute'
-        : /\b(dark|light)\s+mode\b/i.test(text)
-          ? /\b(toggle|flip)\b/i.test(text)
-            ? 'dark_toggle'
-            : /\b(light|off|disable)\b/i.test(text)
-              ? 'light_mode'
-              : 'dark_mode'
-          : /\b(open|check)\b/i.test(text) &&
-              /\b(email|emails|inbox)\b/i.test(text)
-            ? 'open_email'
-            : /\b(mute|silence)\b/i.test(text)
-              ? 'mute'
-              : /\bhide\b/i.test(text) &&
-                  /\b(apps|applications|other|others|everything|all)\b/i.test(
-                    text,
-                  )
-                ? 'hide_others'
-                : /\bhide\b/i.test(text)
-                  ? 'hide_app'
-                  : /\bunhide\b/i.test(text) ||
-                      (/\bshow\b/i.test(text) && !/\b(me|my)\b/i.test(text))
-                    ? 'show_app'
-                    : /\b(quit|close)\b/i.test(text) &&
-                        /\bapps?\b/i.test(text) &&
-                        /\b(unused|used|using|idle)\b/i.test(text)
-                      ? 'quit_unused'
-                      : /\bquit\b/i.test(text)
-                        ? 'quit_app'
-                        : /\bcalendar\b/i.test(text)
-                          ? 'open_calendar'
-                          : /\bempty\b/i.test(text) &&
-                              /\b(trash|bin)\b/i.test(text)
-                            ? 'empty_trash'
-                            : /\btabs?\b/i.test(text)
-                              ? 'close_tabs'
-                              : /\bdocuments\b/i.test(text)
-                                ? 'tidy_documents'
-                                : /\b(desktop|screenshots?)\b/i.test(text)
-                                  ? 'tidy_desktop'
-                                  : /download|folder/i.test(text)
-                                    ? /\b(delete|trash|old)\b/i.test(text)
-                                      ? 'trash_old'
-                                      : 'clean_folder'
-                                    : null;
+      : /\b(disturb|dnd)\b/i.test(text) ||
+          (/\bfocus\b/i.test(text) &&
+            /\b(on|off|turn|enable|disable|start|stop|end|mode|set|toggle)\b/i.test(
+              text,
+            ))
+        ? 'focus_mode'
+        : /\b(unmute|unsilence)\b/i.test(text)
+          ? 'unmute'
+          : /\b(dark|light)\s+mode\b/i.test(text)
+            ? /\b(toggle|flip)\b/i.test(text)
+              ? 'dark_toggle'
+              : /\b(light|off|disable)\b/i.test(text)
+                ? 'light_mode'
+                : 'dark_mode'
+            : /\b(open|check)\b/i.test(text) &&
+                /\b(email|emails|inbox)\b/i.test(text)
+              ? 'open_email'
+              : /\b(mute|silence)\b/i.test(text)
+                ? 'mute'
+                : /\bhide\b/i.test(text) &&
+                    /\b(apps|applications|other|others|everything|all)\b/i.test(
+                      text,
+                    )
+                  ? 'hide_others'
+                  : /\bhide\b/i.test(text)
+                    ? 'hide_app'
+                    : /\bunhide\b/i.test(text) ||
+                        (/\bshow\b/i.test(text) && !/\b(me|my)\b/i.test(text))
+                      ? 'show_app'
+                      : /\b(quit|close)\b/i.test(text) &&
+                          /\bapps?\b/i.test(text) &&
+                          /\b(unused|used|using|idle)\b/i.test(text)
+                        ? 'quit_unused'
+                        : /\bquit\b/i.test(text)
+                          ? 'quit_app'
+                          : /\bcalendar\b/i.test(text)
+                            ? 'open_calendar'
+                            : /\bempty\b/i.test(text) &&
+                                /\b(trash|bin)\b/i.test(text)
+                              ? 'empty_trash'
+                              : /\btabs?\b/i.test(text)
+                                ? 'close_tabs'
+                                : /\bdocuments\b/i.test(text)
+                                  ? 'tidy_documents'
+                                  : /\b(desktop|screenshots?)\b/i.test(text)
+                                    ? 'tidy_desktop'
+                                    : /download|folder/i.test(text)
+                                      ? /\b(delete|trash|old)\b/i.test(text)
+                                        ? 'trash_old'
+                                        : 'clean_folder'
+                                      : null;
 
 const PREVIEW: CtrlConfirm['items'] = [
   { key: '3f2a9c1d0b7e#0', kind: 'window', label: 'notes.txt', unsaved: false },
@@ -708,6 +730,12 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
       },
     });
     if (quitFront || hideFront) {
+      push(r, 'exec.held', { held: 'no-route' });
+      push(r, 'task.finished', { finished: 'asked-out' });
+      return;
+    }
+    if (intent === 'focus_mode') {
+      // ADR 0155: held before anything is sent to the helper; asked out with no question left open.
       push(r, 'exec.held', { held: 'no-route' });
       push(r, 'task.finished', { finished: 'asked-out' });
       return;

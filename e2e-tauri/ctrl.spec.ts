@@ -757,6 +757,38 @@ test('ctrl: show textedit unhides only textedit without a card', async ({
   expect(errors).toEqual([]);
 });
 
+// ADR 0155: "turn on do not disturb" is understood, but ctrl has no background way to set a focus yet. The run stops
+// and says so in lowercase; no card, no question, nothing done.
+test('ctrl: turn on do not disturb stops and says there is no background way', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  await ctrl.getByTestId('ctrl-task-input').fill('turn on do not disturb');
+  await ctrl.getByTestId('ctrl-task-add').click();
+  await ctrl.getByTestId('ctrl-task').getByTestId('ctrl-task-run').click();
+  const run = ctrl.getByTestId('ctrl-run').first();
+  await expect(run.getByTestId('ctrl-run-status')).toHaveText('needs you');
+  await expect(ctrl.getByTestId('ctrl-state').first()).toContainText(
+    'no way to do it in the background',
+  );
+  const decisions = ctrl.getByTestId('ctrl-decisions').first();
+  await expect(decisions).toContainText(
+    'turn focus or do not disturb on or off',
+  );
+  await expect(decisions).toContainText(
+    'leave focus as it is, not supported yet',
+  );
+  await expect(decisions).not.toContainText('mute your mac');
+  await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 // ADR 0135: "every night at 10 mute my mac" mutes the sound output without a card (reversible), no app touched.
 test('ctrl: every night mute my mac mutes the sound without a card', async ({
   page,

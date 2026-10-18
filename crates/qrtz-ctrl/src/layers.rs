@@ -494,6 +494,13 @@ const INTENTS: &[IntentDef] = &[
         slot: Slot::None,
         irreversible: false,
     },
+    // ADR 0155: turn Focus / Do Not Disturb on or off. No background route yet, so its one move is a hold that asks out.
+    IntentDef {
+        id: "focus_mode",
+        app: AppMode::None,
+        slot: Slot::None,
+        irreversible: false,
+    },
     // ADR 0135: mute the Mac's sound output; reversible, no gate, no app.
     IntentDef {
         id: "mute",
@@ -739,6 +746,23 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             let asks = has(toks, &["unhide"]) || (has(toks, &["show"]) && !has(toks, &["me", "my"]));
             if asks && named_app && !group && (!site || full_named) {
                 p += 9000;
+            }
+        }
+        "focus_mode" => {
+            // ADR 0155: "turn on do not disturb", "dnd off", "turn on focus", "start a work focus". No app named (that's
+            // one app's own setting), no site.
+            p -= 3000;
+            let dnd = has(toks, &["disturb", "dnd"]);
+            let focus = has(toks, &["focus"])
+                && has(
+                    toks,
+                    &[
+                        "on", "off", "turn", "enable", "disable", "start", "stop", "end", "mode", "set",
+                        "toggle",
+                    ],
+                );
+            if (dnd || focus) && !named_app && !site {
+                p += 9500;
             }
         }
         "mute" => {
@@ -1214,6 +1238,9 @@ fn move_question(
         "hide_app" => vec![route("workspace.hide_app", 4500)],
         // ADR 0152: `NSRunningApplication.unhide()` of the one named app; no activation, no key event.
         "show_app" => vec![route("workspace.show_app", 4500)],
+        // ADR 0155: no background route to set a Focus (no public API; the Shortcuts CLI needs a shortcut the user
+        // makes and a process ctrl doesn't spawn yet), so the one move is a hold: asked out, nothing touched.
+        "focus_mode" => vec![route("system.focus_hold", 4500)],
         "mute" => vec![route("system.mute", 4500)],
         "unmute" => vec![route("system.unmute", 4500)],
         "set_volume" => vec![route("system.set_volume", 4500)],
@@ -1448,6 +1475,7 @@ fn intent_label(id: &str) -> &'static str {
         "hide_others" => "hide your other apps",
         "hide_app" => "hide an app",
         "show_app" => "show a hidden app",
+        "focus_mode" => "turn focus or do not disturb on or off",
         "mute" => "mute your mac",
         "unmute" => "unmute your mac",
         "set_volume" => "set the volume",
@@ -1473,6 +1501,7 @@ fn route_label(id: &str) -> &'static str {
         "workspace.hide_others" => "hide them, the app you're in stays",
         "workspace.hide_app" => "hide it, nothing comes forward",
         "workspace.show_app" => "show its windows, the app you're in stays in front",
+        "system.focus_hold" => "leave focus as it is, not supported yet",
         "system.mute" => "mute the sound output",
         "system.unmute" => "turn the sound output back on",
         "system.set_volume" => "set the sound output to that level",

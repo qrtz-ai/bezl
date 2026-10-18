@@ -90,12 +90,20 @@ fn chosen_opt(s: &CtrlState, node: Node) -> Option<&crate::decide::Opt> {
     d.options.iter().find(|o| o.id == d.chosen)
 }
 
+/// ADR 0155: the only move offered for "turn on do not disturb" / "turn off focus". It plans nothing: the executor
+/// holds the run with `no-route` (asked out) and sends nothing to the helper.
+pub const FOCUS_HOLD_MOVE: &str = "route.system.focus_hold";
+
 /// The step a plan's move maps to. Pure.
 pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
     s.plan.as_ref()?;
     let apps = s.apps.clone().unwrap_or_default();
     let chosen = s.chosen();
     let mv = chosen.get(&Node::ChooseMove)?.as_str();
+    // ADR 0155: Focus / Do Not Disturb has no background route yet; asked out before anything is read or acted.
+    if mv == FOCUS_HOLD_MOVE {
+        return Some(Step::Hold(HoldReason::NoRoute));
+    }
     if mv == crate::files::DOCUMENTS_HOLD_MOVE {
         return Some(Step::Hold(HoldReason::FolderNotYet));
     }
