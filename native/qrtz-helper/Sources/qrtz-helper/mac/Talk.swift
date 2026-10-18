@@ -19,6 +19,7 @@ final class DictationMicSource: MicSource, @unchecked Sendable {
         mic = m
     }
     func stop() { mic?.stop(); mic = nil }
+    func flush() { mic?.flush() }
     /// N138: MicHub registers here; each MicCapture reports a device that didn't come back.
     func onDeviceLost(_ cb: @escaping @Sendable (String) -> Void) { lost = cb }
 }

@@ -269,6 +269,10 @@ Linear interpolation folds everything above 8 kHz back into the band the model l
 converter drops it (4.09 % is the clean 4.07 %). The size depends on how much the room puts above 8 kHz, but the
 direction is not in doubt. The helper change (AVAudioConverter, mastering quality, stateful per block in
 `MonoConverter`) and the bench's `--resample linear|converter` comparison are written and wait for a Mac build.
+Landed 2026-10-18 (ADR 0115): AVAudioConverter at `.max` quality is the default; one converter per input rate,
+kept across blocks and recreated on a rate or device change; a dictation stop flushes it (end of stream) after
+the drain and before the pad (`MicSource.flush`). `QRTZ_ECHO_RESAMPLER=linear` brings back the old path for a
+comparison. No input AGC. Still to measure on a Mac: `echo-bench.sh --resample`.
 Harness flags (`--keep`, `--headdrop`, `--hf`, `--resampler`, `--chunkpad` after the pad) are in the box copy,
 `/workspace/echo-linux/run.py`.
 

@@ -10,10 +10,14 @@ public protocol MicSource: AnyObject, Sendable {
     /// N138: called once when the input device went away and didn't come back. A device switch the source recovers
     /// from (it re-opens the new input and keeps delivering to the same `onSamples`) is not reported.
     func onDeviceLost(_ cb: @escaping @Sendable (String) -> Void)
+    /// ADR 0115: hands what the source's resampler still holds back (its filter's last few ms) to `onSamples` now,
+    /// as an end of stream, and goes on capturing. A dictation stop calls it after the drain, before the pad.
+    func flush()
 }
 
 public extension MicSource {
     func onDeviceLost(_ cb: @escaping @Sendable (String) -> Void) {}
+    func flush() {}
 }
 
 /// Native key monitor for push-to-talk (Electron global shortcuts only report key-down).
@@ -520,6 +524,12 @@ public actor DictationEngine {
         let drained = await drainMic(limitMs: drainLimit, sinceBlocks: releaseBlocks)
         guard session?.id == id else { return }
         session?.timing.drainMs = Int(released.msToNow()); session?.timing.drained = drained
+        // ADR 0115: the resampler's held-back tail (end of stream) reaches the recogniser before the pad.
+        if drained, micRunning, let mic {
+            mic.flush()
+            _ = await drainMic(limitMs: Self.flushDrainMs, waitForBlock: false)
+            guard session?.id == id else { return }
+        }
         session?.timing.queuedAtReleaseMs = queuedMs
         // N139: one deadline for the whole release (drain + finalize; `budgetMs` unchanged). close() may use all of
         // it except a reserve for pad + finish, so a drain that timed out still waits for a slow (not hung) append and
@@ -575,16 +585,20 @@ public actor DictationEngine {
         return DictationAsrInfo(asr: tr.name, segments: g?.segments, tailDecodeMs: g.flatMap { $0.tailDecodeMs < 0 ? nil : ($0.tailDecodeMs * 10).rounded() / 10 })
     }
 
+    /// How long a stop waits for the resampler's flushed tail to reach the recogniser (a few ms of audio, already
+    /// queued behind the drained blocks).
+    static let flushDrainMs = 50
+
     static func msLeft(until t: ContinuousClock.Instant) -> Int {
         let d = ContinuousClock.now.duration(to: t)
         return Int(d.components.seconds) * 1000 + Int(d.components.attoseconds / 1_000_000_000_000_000)
     }
 
     /// Waits (bounded) until the mic stream has handed over every block it had queued. False: it timed out.
-    func drainMic(limitMs: Int, sinceBlocks: Int? = nil) async -> Bool {
+    func drainMic(limitMs: Int, sinceBlocks: Int? = nil, waitForBlock: Bool = true) async -> Bool {
         guard let input = micIn, micRunning else { return true }
         let start = ContinuousClock.now
-        if tail.nextBlockWaitMs > 0, limitMs > 0 { await nextBlock(limitMs: min(tail.nextBlockWaitMs, limitMs), since: sinceBlocks) }
+        if waitForBlock, tail.nextBlockWaitMs > 0, limitMs > 0 { await nextBlock(limitMs: min(tail.nextBlockWaitMs, limitMs), since: sinceBlocks) }
         let used = start.duration(to: .now)
         let limitMs = max(0, limitMs - Int(used.components.seconds) * 1000 - Int(used.components.attoseconds / 1_000_000_000_000_000))
         drainTimedOut = false

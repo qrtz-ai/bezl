@@ -1,11 +1,12 @@
 #if os(macOS)
+import AVFoundation
 import CoreML
 import FluidAudio
 import Foundation
 import QrtzHelperCore
 
 /// `qrtz-helper --echo-bench <clips dir> [--out results.json] [--engines a,b] [--variants a,b|all] [--speed 1]
-///  [--speaker speaker.aiff] [--bench-models <dir>]` (ADR 0099, docs/echo/dictation-tuning.md): every clip
+///  [--speaker speaker.aiff] [--bench-models <dir>] [--resample linear|converter]` (ADR 0099, docs/echo/dictation-tuning.md): every clip
 /// (`<name>.wav|aiff|m4a…` + `<name>.txt`) through the real echo path (`DictationEngine`: pre-roll, tail, drain,
 /// pad, finalize, echo gate) per engine × variant, at real time by default. Writes one JSON report to `--out`
 /// (default `~/qrtz-echo-bench/results/echo-bench-<time>.json`) and prints its path. Local files only: the shipped
@@ -105,7 +106,13 @@ enum EchoBenchCLI {
         let pairs = EchoClips.pairs(in: dir)
         guard !pairs.isEmpty else { throw Bench.Failure(description: "no clips in \(dir.path) (<name>.wav|aiff|m4a + <name>.txt)") }
         var clips: [EchoClip] = []
-        for p in pairs { clips.append(EchoClip(name: p.name, samples: try Bench.load16k(p.audio.path), reference: p.reference)) }
+        // --resample linear|converter: the clip at its own rate through the live tap's MonoConverter in 4096-frame
+        // blocks (record 48 kHz clips for this), instead of one offline conversion to 16 kHz.
+        let resample = value(args, "--resample")
+        for p in pairs {
+            let s = try resample.map { try viaTap(p.audio.path, linear: $0 == "linear") } ?? Bench.load16k(p.audio.path)
+            clips.append(EchoClip(name: p.name, samples: s, reference: p.reference))
+        }
 
         var options = EchoBenchOptions()
         options.speed = Double(value(args, "--speed") ?? "1") ?? 1
@@ -131,7 +138,7 @@ enum EchoBenchCLI {
         report["bench"] = [
             "version": 1, "clipsDir": dir.path, "speed": options.speed, "startedAt": ISO8601DateFormatter().string(from: started),
             "seconds": Int(Date().timeIntervalSince(started)), "engines": engines.map(\.name), "variants": variants.map(\.name),
-            "footprintMB": Bench.footprintMB(), "shippedTail": EchoVariant(name: "x").tail.json,
+            "footprintMB": Bench.footprintMB(), "shippedTail": EchoVariant(name: "x").tail.json, "resample": resample ?? "offline",
         ] as [String: Any]
 
         let out: URL
@@ -143,6 +150,29 @@ enum EchoBenchCLI {
         let data = try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
         try data.write(to: out, options: .atomic)
         return out.path
+    }
+
+    /// The clip as the live mic delivers it: its own rate, 4096-frame blocks, MonoConverter (downmix + resample).
+    static func viaTap(_ path: String, linear: Bool) throws -> [Float] {
+        let f = try AVAudioFile(forReading: URL(fileURLWithPath: path))
+        let fmt = f.processingFormat
+        guard let all = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(f.length)) else { throw Bench.Failure(description: "buffer") }
+        try f.read(into: all)
+        let conv = MonoConverter(mode: linear ? .linear : .converter)
+        let n = Int(all.frameLength), ch = Int(fmt.channelCount), block = 4096
+        var out: [Float] = []
+        var i = 0
+        while i < n {
+            let k = min(block, n - i)
+            guard let b = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(k)), let src = all.floatChannelData, let dst = b.floatChannelData
+            else { throw Bench.Failure(description: "\(path): needs float PCM") }
+            b.frameLength = AVAudioFrameCount(k)
+            if fmt.isInterleaved { dst[0].update(from: src[0] + i * ch, count: k * ch) }
+            else { for c in 0..<ch { dst[c].update(from: src[c] + i, count: k) } }
+            out += conv.convert(b)
+            i += k
+        }
+        return out + conv.flush()  // the release's end-of-stream drain
     }
 
     /// `<clips>/speaker/*.{aiff,wav,m4a}` (the first): the speaker audio for the echo variants.

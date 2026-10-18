@@ -243,6 +243,12 @@ public final class MicHub: @unchecked Sendable {
         if needStop { source.stop() }
     }
 
+    /// ADR 0115: the device's resampler hands over its held-back tail (to every reader, in order); capture goes on.
+    public func flush() {
+        lock.lock(); let on = running; lock.unlock()
+        if on { source.flush() }
+    }
+
     /// Microphone revoked: every reader loses the tap and the device stops.
     public func dropAll() {
         lock.lock(); subs.removeAll(); permits.removeAll(); let wasRunning = running; running = false; lock.unlock()
@@ -270,4 +276,5 @@ final class HubMic: MicSource, @unchecked Sendable {
         try hub.subscribe(id, onSamples)
     }
     func stop() { hub.unsubscribe(id) }
+    func flush() { hub.flush() }
 }
