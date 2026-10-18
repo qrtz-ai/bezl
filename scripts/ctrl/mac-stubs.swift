@@ -34,7 +34,8 @@ public func AXIsProcessTrusted() -> Bool { false }
 public let kAXRoleAttribute = "AXRole", kAXSubroleAttribute = "AXSubrole", kAXTitleAttribute = "AXTitle",
     kAXDescriptionAttribute = "AXDescription", kAXChildrenAttribute = "AXChildren", kAXWindowsAttribute = "AXWindows",
     kAXFocusedWindowAttribute = "AXFocusedWindow", kAXMainWindowAttribute = "AXMainWindow",
-    kAXCloseButtonAttribute = "AXCloseButton", kAXFocusedUIElementAttribute = "AXFocusedUIElement"
+    kAXCloseButtonAttribute = "AXCloseButton", kAXFocusedUIElementAttribute = "AXFocusedUIElement",
+    kAXRoleDescriptionAttribute = "AXRoleDescription"
 // LaunchServices / AE
 public struct LSRolesMask: OptionSet { public let rawValue: UInt32; public init(rawValue: UInt32) { self.rawValue = rawValue }; public static let all = LSRolesMask(rawValue: 0xFFFFFFFF) }
 public final class CFError {}
@@ -78,7 +79,7 @@ open class NSWorkspace: NSObject {
     open func open(_ urls: [URL], withApplicationAt applicationURL: URL, configuration: NSWorkspace.OpenConfiguration, completionHandler: (@Sendable (NSRunningApplication?, (any Error)?) -> Void)? = nil) {}
     open func openApplication(at applicationURL: URL, configuration: NSWorkspace.OpenConfiguration, completionHandler: (@Sendable (NSRunningApplication?, (any Error)?) -> Void)? = nil) {}
 }
-open class NSAppleEventDescriptor: NSObject { open var int32Value: Int32 { 0 } }
+open class NSAppleEventDescriptor: NSObject { open var int32Value: Int32 { 0 }; open var stringValue: String? { nil } }
 open class NSAppleScript: NSObject {
     public init?(source: String) {}
     open func executeAndReturnError(_ errorInfo: UnsafeMutablePointer<NSDictionary?>?) -> NSAppleEventDescriptor { NSAppleEventDescriptor() }

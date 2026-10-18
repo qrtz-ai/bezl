@@ -249,6 +249,8 @@ public final class MacCtrlBackend: CtrlBackend {
             let c = CtrlActions.backgroundConfiguration()
             c.hides = true
             try Self.wait(10) { done in NSWorkspace.shared.openApplication(at: appURL, configuration: c) { _, e in done(e) } }
+        case let .scripting(app, verb) where CtrlRoute.tabVerbs.contains(verb):
+            try closeTabs(app: app, verb: verb)
         case let .scripting(app, verb):
             _ = try script(verb, app: app)
         case let .axPerform(app, role, element, action):
@@ -281,6 +283,8 @@ public final class MacCtrlBackend: CtrlBackend {
         case "app_running": return runningApp(app) == nil ? 0 : 1
         case "tab_count":
             return (try? script("count_tabs", app: app)).map { Int($0.int32Value) }
+        case "saved_tabs", "unpinned_tabs":
+            return (try? tabs(app: app)).flatMap { CtrlTabs.count($0, check: check) }
         case "window_count":
             guard let pid = pid(of: app) else { return nil }
             if let n = try? script("count_windows", app: app) { return Int(n.int32Value) }
@@ -292,6 +296,64 @@ public final class MacCtrlBackend: CtrlBackend {
     public func restore(frontmostPid: Int32?) -> Bool {
         guard let pid = frontmostPid else { return false }
         return CtrlActions.restoreFrontmost(pid)
+    }
+
+    // MARK: tabs (run 12, ADR 0119)
+
+    /// The confirm gate's preview. Tabs only: windows stay on the host's count fallback.
+    public func preview(app: String, what: String) throws -> [CtrlPreviewItem] {
+        guard what == "tabs" else { throw CtrlFailure("preview.unsupported") }
+        return CtrlTabs.preview(try tabs(app: app))
+    }
+
+    /// Every tab of a running Safari / Chromium browser with what ctrl can tell about it. One Apple Event script
+    /// (titles, URLs, the read-only page script) plus an AX read of the tab bars: no activation, no tab selected,
+    /// nothing focused. Without the AX grant every `pinned` is nil (so nothing closes unasked).
+    func tabs(app: String) throws -> [CtrlTab] {
+        guard let flavor = CtrlTabFlavor.of(app) else { throw CtrlFailure("tabs.unsupported") }
+        guard let pid = pid(of: app) else { throw CtrlFailure("app.not_running") }
+        guard let src = CtrlTabs.enumerateSource(bundleId: app, flavor: flavor) else { throw CtrlFailure("policy.refused") }
+        guard let out = try Self.runScript(src).stringValue, let rows = CtrlTabs.parse(out) else { throw CtrlFailure("tabs.unreadable") }
+        let strips = CtrlProbe.axTrusted ? CtrlActions.windows(pid).flatMap(Self.tabStrips) : []
+        let english = Locale.preferredLanguages.first?.lowercased().hasPrefix("en") ?? false
+        return CtrlTabs.join(rows, strips: strips, flavor: flavor, english: english)
+    }
+
+    /// The tab bars under one window (AXTabGroup → its AXRadioButton tabs, one AXGroup level flattened for
+    /// Chromium's tab groups), breadth-first and bounded. Reads only roles, titles and role descriptions.
+    static func tabStrips(_ window: AXUIElement) -> [[CtrlAXTab]] {
+        var strips: [[CtrlAXTab]] = []
+        var queue: [(AXUIElement, Int)] = [(window, 0)]
+        var seen = 0
+        while !queue.isEmpty, seen < 600 {
+            let (el, depth) = queue.removeFirst()
+            seen += 1
+            if CtrlActions.role(el) == "AXTabGroup" {
+                var tabs: [CtrlAXTab] = []
+                for c in children(el) {
+                    let r = CtrlActions.role(c)
+                    let members = r == "AXRadioButton" ? [c] : r == "AXGroup" ? children(c).filter { CtrlActions.role($0) == "AXRadioButton" } : []
+                    for t in members {
+                        let name = [string(t, kAXTitleAttribute), string(t, kAXDescriptionAttribute)].compactMap { $0 }.first { !$0.isEmpty } ?? ""
+                        tabs.append(CtrlAXTab(name: name, roleDescription: string(t, kAXRoleDescriptionAttribute)))
+                    }
+                }
+                if !tabs.isEmpty { strips.append(tabs); continue }
+            }
+            // Never into page content: the tab bar is browser chrome.
+            if depth < 8 { queue += children(el).filter { CtrlActions.role($0) != "AXWebArea" }.map { ($0, depth + 1) } }
+        }
+        return strips
+    }
+
+    /// `close_saved_tabs` / `close_unpinned_tabs`: read the tabs again right now, close only the ones the verb
+    /// covers (each re-checked by URL inside the script), never a tab ctrl can't tell about. Nothing to close is a
+    /// success; the host's check then verifies.
+    func closeTabs(app: String, verb: String) throws {
+        let targets = CtrlTabs.targets(try tabs(app: app), verb: verb)
+        guard !targets.isEmpty else { return }
+        guard let src = CtrlTabs.closeSource(bundleId: app, targets: targets) else { throw CtrlFailure("tabs.unreadable") }
+        _ = try Self.runScript(src)
     }
 
     // MARK: Laya

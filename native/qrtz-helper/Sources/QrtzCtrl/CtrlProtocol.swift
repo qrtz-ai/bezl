@@ -21,10 +21,11 @@ public enum CtrlRoute: Equatable, Sendable {
     case takesOver(String)
 
     /// The only Apple Event verbs (Rust `ScriptVerb`): none of them can activate, launch, open or reopen.
-    /// Slice 7b's `close_saved_tabs` / `close_unpinned_tabs` are deliberately absent: neither Safari's nor Chrome's
-    /// scripting dictionary says whether a tab is pinned or holds unsaved input, so this helper refuses them (the
-    /// host then asks) until a backend can tell (ADR 0114).
+    /// These have a fixed script (`CtrlScripts.source`).
     public static let scriptVerbs: Set<String> = ["count_tabs", "close_all_tabs", "close_tab", "count_windows", "close_window"]
+    /// Slice 7b's selective closes (ADR 0114 / 0119) have no fixed script: the backend reads the tabs first
+    /// (`CtrlTabs`) and closes only the ones it can tell about; a backend that can't tell refuses, and the host asks.
+    public static let tabVerbs: Set<String> = ["close_saved_tabs", "close_unpinned_tabs"]
 
     static func parse(_ o: [String: Any]) -> CtrlRoute? {
         let s = { (k: String) in o[k] as? String }
@@ -164,7 +165,8 @@ public final class CtrlServer {
     public static func recheck(_ route: CtrlRoute, frontmostPid: Int32?, targetPid: Int32?) throws {
         switch route {
         case .takesOver: throw CtrlFailure("policy.refused")
-        case let .scripting(_, verb): if !CtrlRoute.scriptVerbs.contains(verb) { throw CtrlFailure("policy.refused") }
+        case let .scripting(_, verb):
+            if !CtrlRoute.scriptVerbs.contains(verb) && !CtrlRoute.tabVerbs.contains(verb) { throw CtrlFailure("policy.refused") }
         case let .axPerform(_, role, _, action):
             do { try CtrlPolicy.checkAXAction(action, role: role) } catch { throw CtrlFailure("policy.refused") }
         case let .axSet(_, role, _, attribute):
