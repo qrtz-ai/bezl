@@ -403,6 +403,70 @@ fn inline_content_in(call: &str) -> Vec<String> {
     hits
 }
 
+/// A macro call's arguments split at top-level commas (strings, `()`, `[]`, `{}` and closures' `|…|` bodies kept
+/// whole), trimmed.
+fn top_level_args(inner: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let (mut cur, mut depth, mut in_str, mut esc) = (String::new(), 0i32, false, false);
+    for c in inner.chars() {
+        if in_str {
+            cur.push(c);
+            if esc {
+                esc = false;
+            } else if c == '\\' {
+                esc = true;
+            } else if c == '"' {
+                in_str = false;
+            }
+            continue;
+        }
+        match c {
+            '"' => in_str = true,
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth -= 1,
+            ',' if depth == 0 => {
+                out.push(cur.trim().to_string());
+                cur.clear();
+                continue;
+            }
+            _ => {}
+        }
+        cur.push(c);
+    }
+    if !cur.trim().is_empty() {
+        out.push(cur.trim().to_string());
+    }
+    out
+}
+
+/// N144: a plain path expression (`title`, `&m.text`, `self.req.prompt`, `a::b`) and its last segment.
+fn path_tail(expr: &str) -> Option<&str> {
+    let e = expr.trim_start_matches(['&', '*']).trim();
+    let ok = !e.is_empty()
+        && e.split(['.'])
+            .flat_map(|p| p.split("::"))
+            .all(|seg| !seg.is_empty() && seg.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_'));
+    ok.then(|| e.rsplit(['.', ':']).next().unwrap_or(e))
+}
+
+/// N144: a content field passed without a name: a positional format argument after the message
+/// (`warn!("{}", title)`, `info!("{:?}", note.text)`), or a bare field before it (`info!(title, "…")`, which
+/// tracing records as `title = title`).
+fn positional_content_in(inner: &str) -> Vec<String> {
+    let args = top_level_args(inner);
+    let Some(msg) = args.iter().position(|a| a.starts_with('"')) else {
+        return Vec::new();
+    };
+    args.iter()
+        .enumerate()
+        .filter(|(i, a)| *i > msg || !a.contains(['=', ':', '%', '?']))
+        .filter_map(|(i, a)| (i != msg).then_some(a))
+        .filter_map(|a| path_tail(a))
+        .filter(|t| CONTENT_FIELDS.contains(t))
+        .map(str::to_owned)
+        .collect()
+}
+
 /// The one inline capture allowed (N136): the helper's stderr pass-through, cut to 2000 chars and redacted by the
 /// log layer (`qrtz-helper-bridge` `process.rs` `emit_stderr_line`).
 const INLINE_ALLOWED: &[(&str, &str)] = &[("qrtz-helper-bridge/src/process.rs", "text")];
@@ -421,6 +485,27 @@ fn no_tracing_call_names_a_content_field() {
         ["title"]
     );
     assert!(content_fields_in(r#"tracing::info!(len = text.len(), "text")"#).is_empty());
+    // N144: positional arguments and bare fields.
+    assert_eq!(positional_content_in(r#""bad {}", title"#), ["title"]);
+    assert_eq!(
+        positional_content_in(r#"err = %e, "{} / {:?} / {}", &note.text, self.req.prompt, n"#),
+        ["text", "prompt"]
+    );
+    assert_eq!(positional_content_in(r#"target: "x", body, "line""#), ["body"]);
+    assert_eq!(
+        positional_content_in(r#""{}", qrtz::model::summary"#),
+        ["summary"]
+    );
+    for clean in [
+        r#""{} chars", title.len()"#,
+        r#""{}", title_len"#,
+        r#"len = text.len(), "{}", id"#,
+        r#"target: "helper", stream = "stderr", cut, "{text}""#,
+        r#""{}", f(title)"#,
+        r#"title = title.len(), "x""#,
+    ] {
+        assert!(positional_content_in(clean).is_empty(), "{clean}");
+    }
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut dirs: Vec<PathBuf> = std::fs::read_dir(root.join("crates"))
         .unwrap()
@@ -461,7 +546,10 @@ fn no_tracing_call_names_a_content_field() {
                     seen += 1;
                     let mut hits = content_fields_in(&src[open..end]);
                     let unix = p.to_string_lossy().replace('\\', "/");
-                    hits.extend(inline_content_in(&src[open..end]).into_iter().filter(|h| {
+                    let unnamed = inline_content_in(&src[open..end])
+                        .into_iter()
+                        .chain(positional_content_in(&src[open..end]));
+                    hits.extend(unnamed.filter(|h| {
                         !INLINE_ALLOWED
                             .iter()
                             .any(|(file, name)| unix.ends_with(file) && h == name)
