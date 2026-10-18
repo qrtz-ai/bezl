@@ -111,6 +111,84 @@ pub fn ctrl_scheduler_pass(
     is_on(cfg, "ctrl").then(|| ctrl.tick())
 }
 
+/// ADR 0146 M1.4: what each module's own settings page reads and writes (`module:get-settings` /
+/// `module:set-settings`): a whole config section, or one key of a section. Same table as
+/// packages/core/src/modules.ts `MODULE_SETTINGS_PATHS` (the test below reads it). Storage is M1.2's: `talk` in
+/// echo's file, `note` and `speech` in nano's; nano's two recording keys stay in the global `privacy` section, and
+/// the speech downloads stay in the global settings (echo and nano share them).
+pub const MODULE_SETTINGS_PATHS: &[(&str, &str, Option<&str>)] = &[
+    ("echo", "talk", None),
+    ("nano", "note", None),
+    ("nano", "speech", Some("speakerMode")),
+    ("nano", "privacy", Some("excludedApps")),
+    ("nano", "privacy", Some("pauseHotkey")),
+];
+
+fn settings_paths(module: &str) -> impl Iterator<Item = (&'static str, Option<&'static str>)> + '_ {
+    MODULE_SETTINGS_PATHS
+        .iter()
+        .filter(move |(m, _, _)| *m == module)
+        .map(|(_, s, k)| (*s, *k))
+}
+
+/// The module whose settings a view may use: the view's own module, or a refusal for shell views.
+pub fn settings_module_of(sub_app: &str) -> Result<&'static str, AppError> {
+    module_of_view(sub_app)
+        .ok_or_else(|| AppError::new(ErrorCode::Forbidden, format!("{sub_app} is not a module view")))
+}
+
+/// The part of the merged config a module's settings page shows.
+pub fn pick_settings(cfg: &Value, module: &str) -> Value {
+    let mut out = serde_json::Map::new();
+    for (section, key) in settings_paths(module) {
+        let Some(v) = cfg.get(section).and_then(Value::as_object) else {
+            continue;
+        };
+        let slot = out
+            .entry(section)
+            .or_insert_with(|| Value::Object(Default::default()));
+        match key {
+            None => *slot = Value::Object(v.clone()),
+            Some(k) => {
+                if let (Some(x), Some(o)) = (v.get(k), slot.as_object_mut()) {
+                    o.insert(k.to_owned(), x.clone());
+                }
+            }
+        }
+    }
+    Value::Object(out)
+}
+
+/// A patch from a module's settings page may only reach that module's settings.
+pub fn check_settings_patch(module: &str, patch: &Value) -> Result<(), AppError> {
+    let refuse = |what: String| Err(AppError::new(ErrorCode::Forbidden, what));
+    let Some(p) = patch.as_object() else {
+        return Err(AppError::new(ErrorCode::Validation, "patch must be an object"));
+    };
+    for (section, v) in p {
+        let paths: Vec<_> = settings_paths(module).filter(|(s, _)| s == section).collect();
+        if paths.iter().any(|(_, k)| k.is_none()) {
+            continue;
+        }
+        if paths.is_empty() {
+            return refuse(format!("{module} settings can't change {section}"));
+        }
+        let Some(o) = v.as_object() else {
+            return Err(AppError::new(
+                ErrorCode::Validation,
+                format!("{section} must be an object"),
+            ));
+        };
+        if let Some(bad) = o
+            .keys()
+            .find(|k| !paths.iter().any(|(_, x)| *x == Some(k.as_str())))
+        {
+            return refuse(format!("{module} settings can't change {section}.{bad}"));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,5 +277,96 @@ mod tests {
             Vec::<String>::new()
         );
         assert_eq!(runs(&svc), 1);
+    }
+
+    #[test]
+    fn a_modules_settings_page_reaches_only_its_own_settings() {
+        let cfg = json!({"theme": "dark", "talk": {"showPill": true}, "note": {"autoRecord": false},
+            "speech": {"speakerMode": "fast", "autoUpdate": true},
+            "privacy": {"excludedApps": ["Slack"], "pauseHotkey": "X"}, "modules": {"enabled": true}});
+        assert_eq!(pick_settings(&cfg, "echo"), json!({"talk": {"showPill": true}}));
+        assert_eq!(
+            pick_settings(&cfg, "nano"),
+            json!({"note": {"autoRecord": false}, "speech": {"speakerMode": "fast"},
+                   "privacy": {"excludedApps": ["Slack"], "pauseHotkey": "X"}})
+        );
+        assert_eq!(pick_settings(&cfg, "ctrl"), json!({}));
+        assert!(check_settings_patch("echo", &json!({"talk": {"showPill": false}})).is_ok());
+        assert!(check_settings_patch(
+            "nano",
+            &json!({"note": {"autoRecord": true},
+            "privacy": {"excludedApps": []}, "speech": {"speakerMode": "accurate"}})
+        )
+        .is_ok());
+        for (m, p) in [
+            ("echo", json!({"note": {"autoRecord": true}})),
+            ("echo", json!({"modules": {"enabled": false}})),
+            ("echo", json!({"theme": "light"})),
+            ("nano", json!({"talk": {"showPill": false}})),
+            ("nano", json!({"speech": {"autoUpdate": false}})),
+            ("nano", json!({"privacy": {"other": 1}})),
+            ("ctrl", json!({"talk": {}})),
+        ] {
+            let e = check_settings_patch(m, &p).unwrap_err();
+            assert_eq!(e.code, ErrorCode::Forbidden, "{m} {p}");
+        }
+        assert_eq!(
+            check_settings_patch("nano", &json!({"privacy": 1}))
+                .unwrap_err()
+                .code,
+            ErrorCode::Validation
+        );
+        assert_eq!(settings_module_of("talk").unwrap(), "echo");
+        assert_eq!(
+            settings_module_of("settings").unwrap_err().code,
+            ErrorCode::Forbidden
+        );
+    }
+
+    /// The renderer's table (packages/core/src/modules.ts) is this one.
+    #[test]
+    fn the_settings_paths_match_the_renderers() {
+        let ts = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/core/src/modules.ts"),
+        )
+        .unwrap();
+        let start = ts.find("export const MODULE_SETTINGS_PATHS").unwrap();
+        let body = &ts[start..start + ts[start..].find("};").unwrap()];
+        let mut n = 0;
+        for id in qrtz_modules::MODULE_IDS {
+            // The id's `[...]` value, matched by bracket depth.
+            let at = body.find(&format!("{id}: [")).unwrap() + id.len() + 2;
+            let mut depth = 0;
+            let end = body[at..]
+                .char_indices()
+                .find(|&(_, c)| {
+                    depth += match c {
+                        '[' => 1,
+                        ']' => -1,
+                        _ => 0,
+                    };
+                    depth == 0
+                })
+                .unwrap()
+                .0;
+            let block = &body[at..=at + end];
+            for (s, k) in settings_paths(id) {
+                let want = match k {
+                    None => format!("['{s}']"),
+                    Some(k) => format!("['{s}', '{k}']"),
+                };
+                assert!(
+                    block.contains(&want),
+                    "{id}: {want} missing from the renderer's table: {block}"
+                );
+                n += 1;
+            }
+            assert_eq!(
+                block.matches("['").count(),
+                settings_paths(id).count(),
+                "{id}: {block}"
+            );
+        }
+        assert_eq!(n, MODULE_SETTINGS_PATHS.len());
     }
 }

@@ -16,7 +16,7 @@
     "channels": ["ctrl.*"]
   },
   "views": ["ctrl"],
-  "capabilities": ["ctrl.read", "ctrl.write"],
+  "capabilities": ["ctrl.read", "ctrl.write", "module.settings"],
   "permissions": ["accessibility", "automation", "files-and-folders"],
   "entitlements": ["com.apple.security.automation.apple-events"],
   "settings": {

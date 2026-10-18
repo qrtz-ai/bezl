@@ -13,7 +13,7 @@
           "version": "1.0.0"
         }
       ],
-      "manifestSha256": "887e4c9856324e760daebfc27b6b3662547e86b80b92789ba9d69823f79ae6d8",
+      "manifestSha256": "81bb10fbce58690473932918c9f18246c3cadf570f86a7350315a220ba34f4da",
       "source": "bundled",
       "staleRevocation": false,
       "version": "0.2.0"
@@ -30,7 +30,7 @@
           "version": "1.0.0"
         }
       ],
-      "manifestSha256": "b11b2a1314c6e8eb9192671215eb44e14431970a8729810aa11610959455552e",
+      "manifestSha256": "6b8e18026edc0c97ab0a584267ac62e4f6e28af09cd1d12f0a8baf5637a50bce",
       "source": "bundled",
       "staleRevocation": false,
       "version": "0.2.0"
@@ -55,7 +55,7 @@
           "version": "1.0.0"
         }
       ],
-      "manifestSha256": "6800f5831a364fe562f69ce9bff9ff6b163af5b62915e5d2bf481048e739dbca",
+      "manifestSha256": "32a2768fa3612b21631daa25f7830b0068bbad867662c0e4595e2c72d077b3aa",
       "source": "bundled",
       "staleRevocation": false,
       "version": "0.2.0"

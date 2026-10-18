@@ -440,7 +440,7 @@ impl AppService {
         Ok(next)
     }
 
-    async fn app_channel(&self, channel: &str, p: Value) -> Result<Value, AppError> {
+    async fn app_channel(&self, channel: &str, p: Value, sub_app: &str) -> Result<Value, AppError> {
         match channel {
             "app:get-info" => Ok(json!({
                 "name": self.info.name, "version": self.info.version, "platform": self.info.platform,
@@ -448,6 +448,17 @@ impl AppService {
             })),
             "config:get" => Ok(self.config()),
             "config:set" => self.set_config(&p["patch"]),
+            // ADR 0146 M1.4: the caller's module comes from its view, so a page can only reach its own settings.
+            "module:get-settings" => {
+                let m = crate::modules::settings_module_of(sub_app)?;
+                Ok(crate::modules::pick_settings(&self.config(), m))
+            }
+            "module:set-settings" => {
+                let m = crate::modules::settings_module_of(sub_app)?;
+                crate::modules::check_settings_patch(m, &p["patch"])?;
+                let next = self.set_config(&p["patch"])?;
+                Ok(crate::modules::pick_settings(&next, m))
+            }
             "note:set-auto-record" => {
                 let on = p["enabled"].as_bool().unwrap_or(false);
                 let cfg = self.set_config(&json!({"note": {"autoRecord": on}}))?;
@@ -506,7 +517,7 @@ impl Handler for AppService {
             Some("runtime") => self.runtime.call(channel, payload).await,
             Some("storage") => self.storage.call(channel, payload).await,
             Some("talk") => self.talk.call(channel, payload).await,
-            Some("app") => self.app_channel(channel, payload).await,
+            Some("app") => self.app_channel(channel, payload, &ctx.sub_app).await,
             Some("ctrl") => self.ctrl_channel(channel, payload).await,
             Some("setup") => match self.setup.get() {
                 Some(s) => s.call(channel, payload).await,

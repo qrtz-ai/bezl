@@ -22,6 +22,8 @@ import {
   Stack,
   Text,
   useToast,
+  ModuleSettingsButton,
+  ModuleSettingsPage,
 } from '@qrtz/ui';
 import {
   CTRL_TEXT_MAX,
@@ -43,6 +45,7 @@ import {
   when,
   type ScheduleForm,
 } from './schedule';
+import CtrlSettings from './CtrlSettings';
 
 /**
  * ctrl: type a task, pick when it runs, see its runs. Runs are derived from each run's event log (crates/qrtz-ctrl);
@@ -51,6 +54,8 @@ import {
  * run's plan or ask which option was meant; nothing executes yet (slice 5).
  */
 export default function CtrlView() {
+  // ADR 0146 M1.4: this module's own settings open here, not in the global settings.
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const qrtz = useQrtz();
   const toast = useToast();
   const changed = useQrtzEvent('ctrl:changed');
@@ -155,13 +160,30 @@ export default function CtrlView() {
     }, fail);
 
   const current = tasks.find((t) => t.id === selected) ?? null;
+  if (settingsOpen)
+    return (
+      <ModuleSettingsPage
+        module="ctrl"
+        onClose={() => setSettingsOpen(false)}
+        data-testid="ctrl-settings"
+      >
+        <CtrlSettings />
+      </ModuleSettingsPage>
+    );
   return (
     <Page data-testid="ctrl">
       <Stack dir="row" align="center" justify="between">
         <Heading>ctrl</Heading>
-        <Text variant="caption" muted>
-          runs in the background, never takes over your screen
-        </Text>
+        <Stack dir="row" gap={2} align="center">
+          <Text variant="caption" muted>
+            runs in the background, never takes over your screen
+          </Text>
+          <ModuleSettingsButton
+            module="ctrl"
+            onClick={() => setSettingsOpen(true)}
+            data-testid="ctrl-settings-open"
+          />
+        </Stack>
       </Stack>
       <Stack as="form" gap={2} onSubmit={add} data-testid="ctrl-new">
         <Input

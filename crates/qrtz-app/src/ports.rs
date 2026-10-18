@@ -50,6 +50,9 @@ pub const APP_CHANNELS: &[&str] = &[
     "config:get",
     "config:set",
     "note:set-auto-record",
+    // ADR 0146 M1.4: each module's settings page.
+    "module:get-settings",
+    "module:set-settings",
     "helper:status",
     "hud:set-expanded",
     // ADR 0083: the local log.

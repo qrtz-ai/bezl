@@ -2,9 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   Button,
   Callout,
-  Field,
   Heading,
-  Input,
   Page,
   Progress,
   Select,
@@ -15,7 +13,7 @@ import {
   Switch,
   Text,
 } from '@qrtz/ui';
-import { SUMMARY_TEMPLATES, type IpcResponse } from '@qrtz/core';
+import type { IpcResponse } from '@qrtz/core';
 import { useQrtz, useQrtzEvent, useSpeechSetup } from '@qrtz/core/react';
 
 export default function SettingsView() {
@@ -50,20 +48,6 @@ export default function SettingsView() {
   };
   useEffect(refresh, [qrtz]);
   const h = live ?? helper;
-  const noteCfg = (cfg?.note ?? {}) as {
-    retainAudioDays?: number;
-    autoRecord?: boolean;
-    autoDetectMeetings?: boolean;
-    detectPrompt?: boolean;
-    notifyNoAudio?: boolean;
-    floatingHud?: boolean;
-    autoSummarize?: boolean;
-    defaultTemplate?: string;
-  };
-  const privacy = (cfg?.privacy ?? {}) as {
-    excludedApps?: string[];
-    pauseHotkey?: string;
-  };
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
   const [logsMsg, setLogsMsg] = useState<string | null>(null);
   // ADR 0083: the local logs (~/Library/Logs/qrtz), for sending to us when something breaks.
@@ -78,16 +62,6 @@ export default function SettingsView() {
     );
   };
   const [backupBusy, setBackupBusy] = useState(false);
-  const patchPrivacy = (p: Record<string, unknown>) => {
-    // Optimistic so the checkbox reflects the click immediately.
-    setCfg((prev) =>
-      prev ? { ...prev, privacy: { ...(prev.privacy as object), ...p } } : prev,
-    );
-    return qrtz
-      .invoke('config:set', { patch: { privacy: p } })
-      .then(setCfg)
-      .catch((e: Error) => setError(e.message));
-  };
   const backup = (kind: 'export' | 'import') => {
     setBackupBusy(true);
     setBackupMsg(null);
@@ -124,7 +98,7 @@ export default function SettingsView() {
       .then(setCfg)
       .catch((e: Error) => setError(e.message));
   };
-  // ADR 0146: the global switches that control every module; each module's own settings stay in its section.
+  // ADR 0146: the global switches that control every module. Each module's own settings live in its view (M1.4).
   const modulesCfg = (cfg?.modules ?? {}) as {
     enabled?: boolean;
     echo?: { enabled?: boolean };
@@ -137,15 +111,6 @@ export default function SettingsView() {
     );
     return qrtz
       .invoke('config:set', { patch: { modules: p } })
-      .then(setCfg)
-      .catch((e: Error) => setError(e.message));
-  };
-  const patchNote = (p: Record<string, unknown>) => {
-    setCfg((prev) =>
-      prev ? { ...prev, note: { ...(prev.note as object), ...p } } : prev,
-    );
-    return qrtz
-      .invoke('config:set', { patch: { note: p } })
       .then(setCfg)
       .catch((e: Error) => setError(e.message));
   };
@@ -165,29 +130,6 @@ export default function SettingsView() {
       />
     </SettingRow>
   );
-  const days = noteCfg.retainAudioDays ?? 0;
-  const talkCfg = (cfg?.talk ?? {}) as {
-    enabled?: boolean;
-    pushKey?: string;
-    blockGlobeKey?: boolean;
-    toggleHotkey?: string;
-    warmMic?: boolean;
-    autoCleanup?: boolean;
-    autoInsert?: boolean;
-    restoreClipboard?: boolean;
-    showPill?: boolean;
-    echoGate?: boolean;
-    saveHistory?: boolean;
-  };
-  const patchTalk = (p: Record<string, unknown>) => {
-    setCfg((prev) =>
-      prev ? { ...prev, talk: { ...(prev.talk as object), ...p } } : prev,
-    );
-    return qrtz
-      .invoke('config:set', { patch: { talk: p } })
-      .then(setCfg)
-      .catch((e: Error) => setError(e.message));
-  };
   return (
     <Page data-testid="settings">
       <Heading>settings</Heading>
@@ -233,188 +175,10 @@ export default function SettingsView() {
           (v) => void patchModules({ ctrl: { enabled: v } }),
         )}
         <Text variant="caption" muted data-testid="modules-note">
-          a module that is off has no tab, no hotkeys and runs nothing. its own
-          settings are kept.
+          a module that is off has no tab, no hotkeys and runs nothing. each
+          module's own settings are in its view, behind the gear, and are kept
+          while it is off.
         </Text>
-      </SettingsSection>
-      <SettingsSection title="recording">
-        {toggle(
-          'detect meetings',
-          'auto-detect',
-          noteCfg.autoDetectMeetings,
-          true,
-          (v) => void patchNote({ autoDetectMeetings: v }),
-        )}
-        {toggle(
-          'record automatically',
-          'auto-record',
-          noteCfg.autoRecord,
-          false,
-          (v) => void patchNote({ autoRecord: v }),
-        )}
-        {toggle(
-          'ask to record',
-          'detect-prompt',
-          noteCfg.detectPrompt,
-          true,
-          (v) => void patchNote({ detectPrompt: v }),
-        )}
-        {toggle(
-          'warn when no audio',
-          'notify-no-audio',
-          noteCfg.notifyNoAudio,
-          true,
-          (v) => void patchNote({ notifyNoAudio: v }),
-        )}
-        {toggle(
-          'floating hud',
-          'floating-hud',
-          noteCfg.floatingHud,
-          true,
-          (v) => void patchNote({ floatingHud: v }),
-        )}
-        {toggle(
-          'delete old recordings',
-          'retain-audio-on',
-          days > 0,
-          false,
-          (v) => void patchNote({ retainAudioDays: v ? 30 : 0 }),
-        )}
-        {days > 0 ? (
-          <SettingRow label="after">
-            <Select
-              value={String(days)}
-              onChange={(e) =>
-                void patchNote({ retainAudioDays: Number(e.target.value) })
-              }
-              data-testid="retain-audio"
-            >
-              <option value="7">7 days</option>
-              <option value="30">30 days</option>
-              <option value="90">90 days</option>
-            </Select>
-          </SettingRow>
-        ) : null}
-      </SettingsSection>
-      <SettingsSection title="summaries">
-        {toggle(
-          'summarize after meetings',
-          'auto-summarize',
-          noteCfg.autoSummarize,
-          true,
-          (v) => void patchNote({ autoSummarize: v }),
-        )}
-        <SettingRow label="template">
-          <Select
-            value={noteCfg.defaultTemplate ?? 'general'}
-            onChange={(e) =>
-              void patchNote({ defaultTemplate: e.target.value })
-            }
-            data-testid="default-template"
-          >
-            {SUMMARY_TEMPLATES.map((tp) => (
-              <option key={tp.id} value={tp.id}>
-                {tp.label}
-              </option>
-            ))}
-          </Select>
-        </SettingRow>
-        <Text variant="caption" muted data-testid="summary-availability">
-          summaries are written on this mac by apple intelligence. nothing is
-          sent anywhere.
-        </Text>
-      </SettingsSection>
-      <SettingsSection title="echo" data-testid="talk-settings">
-        {toggle(
-          'dictation',
-          'talk-enabled',
-          talkCfg.enabled,
-          true,
-          (v) => void patchTalk({ enabled: v }),
-        )}
-        <SettingRow label="hold to dictate">
-          <Select
-            value={talkCfg.pushKey ?? 'fn'}
-            onChange={(e) => void patchTalk({ pushKey: e.target.value })}
-            data-testid="talk-push-key"
-          >
-            <option value="fn">fn</option>
-            <option value="right-option">right ⌥</option>
-            <option value="right-command">right ⌘</option>
-            <option value="right-control">right ⌃</option>
-            <option value="">off</option>
-          </Select>
-        </SettingRow>
-        {(talkCfg.pushKey ?? 'fn') === 'fn'
-          ? toggle(
-              'fn only for echo (no input switch or emoji)',
-              'talk-block-globe',
-              talkCfg.blockGlobeKey,
-              true,
-              (v) => void patchTalk({ blockGlobeKey: v }),
-            )
-          : null}
-        <Field label="toggle shortcut">
-          <Input
-            key={talkCfg.toggleHotkey ?? ''}
-            defaultValue={
-              talkCfg.toggleHotkey ?? 'CommandOrControl+Shift+Space'
-            }
-            data-testid="talk-toggle-hotkey"
-            onBlur={(e) =>
-              void patchTalk({ toggleHotkey: e.target.value.trim() })
-            }
-          />
-        </Field>
-        {toggle(
-          'warm mic',
-          'talk-warm-mic',
-          talkCfg.warmMic,
-          false,
-          (v) => void patchTalk({ warmMic: v }),
-        )}
-        {toggle(
-          'clean up text',
-          'talk-auto-cleanup',
-          talkCfg.autoCleanup,
-          true,
-          (v) => void patchTalk({ autoCleanup: v }),
-        )}
-        {toggle(
-          'insert into app',
-          'talk-auto-insert',
-          talkCfg.autoInsert,
-          true,
-          (v) => void patchTalk({ autoInsert: v }),
-        )}
-        {toggle(
-          'restore clipboard',
-          'talk-restore-clipboard',
-          talkCfg.restoreClipboard,
-          true,
-          (v) => void patchTalk({ restoreClipboard: v }),
-        )}
-        {toggle(
-          'floating pill',
-          'talk-show-pill',
-          talkCfg.showPill,
-          true,
-          (v) => void patchTalk({ showPill: v }),
-        )}
-        {toggle(
-          'ignore the speakers',
-          'talk-echo-gate',
-          talkCfg.echoGate,
-          true,
-          (v) => void patchTalk({ echoGate: v }),
-        )}
-        {toggle(
-          'keep history',
-          'talk-save-history',
-          talkCfg.saveHistory,
-          true,
-          (v) => void patchTalk({ saveHistory: v }),
-        )}
       </SettingsSection>
       <SettingsSection title="speech" data-testid="speech-settings">
         {setup.error ? (
@@ -485,32 +249,6 @@ export default function SettingsView() {
           qrtz runs entirely on this computer: audio, transcripts and notes
           never leave it. it only goes online to download signed speech updates.
         </Text>
-        <Field label="never record in">
-          <Input
-            key={(privacy.excludedApps ?? []).join(',')}
-            defaultValue={(privacy.excludedApps ?? []).join(', ')}
-            placeholder="safari, zoom"
-            data-testid="excluded-apps"
-            onBlur={(e) =>
-              void patchPrivacy({
-                excludedApps: e.target.value
-                  .split(',')
-                  .map((x) => x.trim())
-                  .filter(Boolean),
-              })
-            }
-          />
-        </Field>
-        <Field label="pause shortcut">
-          <Input
-            key={privacy.pauseHotkey ?? ''}
-            defaultValue={privacy.pauseHotkey ?? 'CommandOrControl+Shift+P'}
-            data-testid="pause-hotkey"
-            onBlur={(e) =>
-              void patchPrivacy({ pauseHotkey: e.target.value.trim() })
-            }
-          />
-        </Field>
       </SettingsSection>
       <SettingsSection title="app">
         <SettingRow label="theme">

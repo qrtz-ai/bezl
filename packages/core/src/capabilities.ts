@@ -27,6 +27,8 @@ export const Capability = z.enum([
   'log.write',
   /** ADR 0083: save a copy of the local logs, or show their folder. */
   'logs.export',
+  /** ADR 0146 M1.4: read and write the calling module's own settings (its settings page), nothing else. */
+  'module.settings',
 ]);
 export type Capability = z.infer<typeof Capability>;
 

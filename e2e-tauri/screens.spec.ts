@@ -355,11 +355,13 @@ test('mini hud follows the light theme; notes toggle; axe', async ({
   expect(errors).toEqual([]);
 });
 
-test('talk: settings has a toggle for every automatic behaviour; each writes config', async ({
+test("talk: echo's own settings have a toggle for every automatic behaviour; each writes config", async ({
   page,
 }) => {
   await page.goto('/?dev=1');
-  await tab(page, 'settings').click();
+  // ADR 0146 M1.4: echo's settings live in echo's view, behind the gear.
+  await tab(page, 'talk').click();
+  await page.getByTestId('talk-settings-open').click();
   const keys: [string, string][] = [
     ['talk-enabled', 'enabled'],
     ['talk-warm-mic', 'warmMic'],

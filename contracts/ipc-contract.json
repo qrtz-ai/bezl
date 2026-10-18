@@ -4315,6 +4315,49 @@
         "additionalProperties": false
       }
     },
+    "module:get-settings": {
+      "version": 1,
+      "capability": "module.settings",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      }
+    },
+    "module:set-settings": {
+      "version": 1,
+      "capability": "module.settings",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "patch": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "required": [
+            "patch"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {}
+      }
+    },
     "note:set-auto-record": {
       "version": 1,
       "capability": "note.record",
@@ -12571,7 +12614,8 @@
         "note.record",
         "note.write",
         "os.permissions",
-        "speech.read"
+        "speech.read",
+        "module.settings"
       ]
     },
     {
@@ -12580,14 +12624,16 @@
         "talk.read",
         "talk.dictate",
         "talk.write",
-        "speech.read"
+        "speech.read",
+        "module.settings"
       ]
     },
     {
       "id": "ctrl",
       "capabilities": [
         "ctrl.read",
-        "ctrl.write"
+        "ctrl.write",
+        "module.settings"
       ]
     },
     {

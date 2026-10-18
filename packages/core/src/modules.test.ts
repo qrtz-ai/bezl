@@ -6,6 +6,8 @@ import { ConfigSchema, defaultConfig } from './config';
 import {
   GLOBAL_CONFIG_SECTIONS,
   isModuleOn,
+  modulePatchError,
+  pickModuleSettings,
   isViewOn,
   MODULE_IDS,
   MODULE_VIEWS,
@@ -83,5 +85,41 @@ describe('global module switches', () => {
     expect(isModuleOn(off, 'echo')).toBe(false);
     expect(isViewOn(off, 'settings')).toBe(true);
     expect(moduleOfView('settings')).toBeUndefined();
+  });
+});
+
+describe('module settings pages (ADR 0146 M1.4)', () => {
+  const cfg = {
+    theme: 'dark',
+    talk: { showPill: true },
+    note: { autoRecord: false },
+    speech: { speakerMode: 'fast', autoUpdate: true },
+    privacy: { excludedApps: ['slack'], pauseHotkey: 'X' },
+  };
+  it('each page sees only its own settings', () => {
+    expect(pickModuleSettings(cfg, 'echo')).toEqual({
+      talk: { showPill: true },
+    });
+    expect(pickModuleSettings(cfg, 'nano')).toEqual({
+      note: { autoRecord: false },
+      speech: { speakerMode: 'fast' },
+      privacy: { excludedApps: ['slack'], pauseHotkey: 'X' },
+    });
+    expect(pickModuleSettings(cfg, 'ctrl')).toEqual({});
+  });
+  it('a patch outside the module is refused', () => {
+    expect(modulePatchError('echo', { talk: { showPill: false } })).toBeNull();
+    expect(
+      modulePatchError('nano', {
+        note: { autoRecord: true },
+        privacy: { excludedApps: [] },
+      }),
+    ).toBeNull();
+    expect(modulePatchError('echo', { note: {} })).toContain('note');
+    expect(modulePatchError('echo', { theme: 'light' })).toContain('theme');
+    expect(modulePatchError('nano', { speech: { autoUpdate: false } })).toBe(
+      "nano settings can't change speech.autoUpdate",
+    );
+    expect(modulePatchError('ctrl', { modules: {} })).toContain('modules');
   });
 });

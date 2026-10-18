@@ -199,6 +199,20 @@ export const ipcContract = {
     request: z.object({ id: z.string().max(64) }),
     response: MeetingSummary,
   }),
+  /** ADR 0146 M1.4: the calling module's own settings (its view's settings page); see MODULE_SETTINGS_PATHS. */
+  'module:get-settings': defineChannel({
+    version: 1,
+    capability: 'module.settings',
+    request: z.void(),
+    response: z.record(z.string(), z.unknown()),
+  }),
+  /** Refused (E_FORBIDDEN) if the patch reaches outside the caller's module settings. Answers the new settings. */
+  'module:set-settings': defineChannel({
+    version: 1,
+    capability: 'module.settings',
+    request: z.object({ patch: z.record(z.string(), z.unknown()) }),
+    response: z.record(z.string(), z.unknown()),
+  }),
   /** Scoped config write so Note's prompt can enable auto-record without the broad config.write capability. */
   'note:set-auto-record': defineChannel({
     version: 1,

@@ -13,6 +13,8 @@ import {
   Toolbar,
   useToast,
   SpeechNotice,
+  ModuleSettingsButton,
+  ModuleSettingsPage,
 } from '@qrtz/ui';
 import {
   AppError,
@@ -31,6 +33,7 @@ import {
 import { Hud } from './Hud';
 import { isCapturingPhase, useSession } from './useRecording';
 import { fmtDate } from './format';
+import NoteSettings from './NoteSettings';
 
 // The detail (transcript, summary, notes, player) isn't needed to paint the list: its own chunk, preloaded
 // as soon as the list mounts so opening a meeting never waits on it (ADR 0093).
@@ -44,6 +47,8 @@ const UNDO_MS = 6000;
 const PAGE = 100;
 
 export default function NoteView() {
+  // ADR 0146 M1.4: this module's own settings open here, not in the global settings.
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const qrtz = useQrtz();
   const speechSetup = useSpeechSetup({ check: false });
   // Lifecycle state comes only from main (note:session); the view never guesses.
@@ -66,6 +71,8 @@ export default function NoteView() {
   }, []);
   const route = useSubAppRoute();
   const { meetingId: selected, tab } = parseMeetingPath(route.path);
+  // Opening a meeting (list, palette, hud) closes nano's settings.
+  useEffect(() => setSettingsOpen(false), [route.path]);
   const { navigate } = route;
   const setSelected = useCallback(
     (id: string | null, opts?: { replace?: boolean }) =>
@@ -157,6 +164,11 @@ export default function NoteView() {
           <Toolbar
             end={
               <>
+                <ModuleSettingsButton
+                  module="nano"
+                  onClick={() => setSettingsOpen(true)}
+                  data-testid="note-settings-open"
+                />
                 <IconButton
                   icon="search"
                   label="search meetings"
@@ -279,7 +291,17 @@ export default function NoteView() {
           }
           onOpen={(id) => setSelected(id)}
         />
-        {selected ? (
+        {settingsOpen ? (
+          // ADR 0146 M1.4: nano's settings open in the detail pane, so the meeting list, the hud and the record
+          // prompt stay where they are.
+          <ModuleSettingsPage
+            module="nano"
+            onClose={() => setSettingsOpen(false)}
+            data-testid="note-settings"
+          >
+            <NoteSettings />
+          </ModuleSettingsPage>
+        ) : selected ? (
           <Suspense fallback={<Spinner />}>
             <MeetingDetail
               key={selected}

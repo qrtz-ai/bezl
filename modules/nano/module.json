@@ -29,7 +29,8 @@
     "note.record",
     "note.write",
     "os.permissions",
-    "speech.read"
+    "speech.read",
+    "module.settings"
   ],
   "permissions": ["microphone", "screen-recording", "accessibility"],
   "entitlements": ["com.apple.security.device.audio-input"],

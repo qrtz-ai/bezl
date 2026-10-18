@@ -20,6 +20,9 @@ import {
   eventContract,
   isEventName,
   isModuleOn,
+  moduleOfView,
+  modulePatchError,
+  pickModuleSettings,
   isStreamEvent,
   type Config,
   type EventName,
@@ -317,6 +320,29 @@ export function createMockBridge(): TauriBridge {
       config = applyConfigPatch(config, patch);
       emit('config:changed', config);
       return config;
+    },
+    // ADR 0146 M1.4: like crates/qrtz-app, the caller's view decides which module's settings it reaches.
+    'module:get-settings': (_req, ctx) => {
+      const m = moduleOfView(ctx.subApp.id);
+      if (!m)
+        throw new AppError(
+          'E_FORBIDDEN',
+          `${ctx.subApp.id} is not a module view`,
+        );
+      return pickModuleSettings(config, m);
+    },
+    'module:set-settings': ({ patch }, ctx) => {
+      const m = moduleOfView(ctx.subApp.id);
+      if (!m)
+        throw new AppError(
+          'E_FORBIDDEN',
+          `${ctx.subApp.id} is not a module view`,
+        );
+      const err = modulePatchError(m, patch);
+      if (err) throw new AppError('E_FORBIDDEN', err);
+      config = applyConfigPatch(config, patch);
+      emit('config:changed', config);
+      return pickModuleSettings(config, m);
     },
     'note:set-auto-record': ({ enabled }) => {
       config = applyConfigPatch(config, { note: { autoRecord: enabled } });

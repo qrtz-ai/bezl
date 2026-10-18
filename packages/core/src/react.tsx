@@ -123,3 +123,42 @@ export function useSpeechSetup(_opts: { check?: boolean } = {}) {
     check: act(() => client.invoke('speech:check'), setSpeech),
   };
 }
+
+type SettingsSections = Record<string, Record<string, unknown>>;
+
+/**
+ * ADR 0146 M1.4: the calling module's own settings, for the settings page inside its view. Reads with
+ * `module:get-settings` and writes one section at a time with `module:set-settings` (optimistic, so a switch
+ * follows the click). Needs `module.settings`; the backend scopes it to the view's module.
+ */
+export function useModuleSettings() {
+  const client = useQrtz();
+  const [settings, setSettings] = useState<SettingsSections | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    client.invoke('module:get-settings').then(
+      (s) => live && setSettings(s as SettingsSections),
+      (e: Error) => live && setError(e.message),
+    );
+    return () => {
+      live = false;
+    };
+  }, [client]);
+  const patch = useCallback(
+    (section: string, p: Record<string, unknown>) => {
+      setError(null);
+      setSettings((prev) =>
+        prev ? { ...prev, [section]: { ...prev[section], ...p } } : prev,
+      );
+      return client
+        .invoke('module:set-settings', { patch: { [section]: p } })
+        .then(
+          (s) => setSettings(s as SettingsSections),
+          (e: Error) => setError(e.message),
+        );
+    },
+    [client],
+  );
+  return { settings, patch, error };
+}

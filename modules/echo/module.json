@@ -16,7 +16,13 @@
     "channels": ["dictation.*", "pill.*", "insert.*"]
   },
   "views": ["talk"],
-  "capabilities": ["talk.read", "talk.dictate", "talk.write", "speech.read"],
+  "capabilities": [
+    "talk.read",
+    "talk.dictate",
+    "talk.write",
+    "speech.read",
+    "module.settings"
+  ],
   "permissions": ["microphone", "accessibility"],
   "entitlements": ["com.apple.security.device.audio-input"],
   "settings": {

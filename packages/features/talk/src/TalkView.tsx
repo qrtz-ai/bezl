@@ -16,6 +16,8 @@ import {
   Text,
   useToast,
   SpeechNotice,
+  ModuleSettingsButton,
+  ModuleSettingsPage,
 } from '@qrtz/ui';
 import type {
   DictionaryEntry,
@@ -25,8 +27,11 @@ import type {
 import { useQrtz, useQrtzEvent, useSpeechSetup } from '@qrtz/core/react';
 import { requestNavigate } from '@qrtz/core';
 import { entryMeta, parseTerm } from './format';
+import TalkSettings from './TalkSettings';
 
 export default function TalkView() {
+  // ADR 0146 M1.4: this module's own settings open here, not in the global settings.
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const qrtz = useQrtz();
   const speechSetup = useSpeechSetup({ check: false });
   const toast = useToast();
@@ -65,6 +70,16 @@ export default function TalkView() {
     saveDict([...dict, t]);
   };
 
+  if (settingsOpen)
+    return (
+      <ModuleSettingsPage
+        module="echo"
+        onClose={() => setSettingsOpen(false)}
+        data-testid="talk-settings"
+      >
+        <TalkSettings />
+      </ModuleSettingsPage>
+    );
   return (
     <Page data-testid="talk">
       <Stack dir="row" align="center" justify="between">
@@ -81,6 +96,11 @@ export default function TalkView() {
           >
             {listening ? 'stop' : 'dictate'}
           </Button>
+          <ModuleSettingsButton
+            module="echo"
+            onClick={() => setSettingsOpen(true)}
+            data-testid="talk-settings-open"
+          />
         </Stack>
       </Stack>
       <SpeechNotice

@@ -23,3 +23,4 @@ export * from './Ctrl';
 export * from './Waveform';
 export * from './case';
 export * from './Setup';
+export * from './ModuleSettings';

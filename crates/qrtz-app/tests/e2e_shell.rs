@@ -100,3 +100,68 @@ async fn cold_start_boot_to_first_ipc_answer_within_budget() {
     assert!(cold < Duration::from_millis(budget), "cold start {cold:?}");
     a.quit().await;
 }
+
+/// ADR 0146 M1.4: each module's settings page (inside its own view) reads and writes only its own settings; the
+/// global settings page still sees everything through config:*.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn each_modules_settings_page_reaches_only_its_own_settings() {
+    let tmp = tempfile::tempdir().unwrap();
+    let data = tmp.path().join("data");
+    let a = App::launch(&data, Opts::default()).await;
+    let echo = a.call("talk", "module:get-settings", Value::Null).await;
+    assert_eq!(echo["talk"]["showPill"], true, "{echo}");
+    assert!(
+        echo.get("note").is_none() && echo.get("theme").is_none(),
+        "{echo}"
+    );
+    let after = a
+        .call(
+            "talk",
+            "module:set-settings",
+            json!({"patch": {"talk": {"showPill": false}}}),
+        )
+        .await;
+    assert_eq!(
+        after,
+        json!({"talk": a.settings("config:get", Value::Null).await["talk"]})
+    );
+    assert_eq!(after["talk"]["showPill"], false);
+    let file: Value =
+        serde_json::from_str(&std::fs::read_to_string(data.join("modules/echo/settings.json")).unwrap())
+            .unwrap();
+    assert_eq!(file["talk"]["showPill"], false, "stored in echo's own file");
+    let nano = a
+        .call(
+            "note",
+            "module:set-settings",
+            json!({"patch": {"privacy": {"excludedApps": ["zoom"]}}}),
+        )
+        .await;
+    assert_eq!(
+        nano["privacy"],
+        json!({"excludedApps": ["zoom"], "pauseHotkey": "CommandOrControl+Shift+P"})
+    );
+    assert_eq!(
+        a.call("ctrl", "module:get-settings", Value::Null).await,
+        json!({})
+    );
+    for (sub, patch) in [
+        ("talk", json!({"note": {"autoRecord": true}})),
+        ("talk", json!({"modules": {"enabled": false}})),
+        ("note", json!({"talk": {"showPill": true}})),
+        ("note", json!({"speech": {"autoUpdate": false}})),
+        ("ctrl", json!({"theme": "light"})),
+    ] {
+        let r = a.raw(sub, "module:set-settings", json!({"patch": patch})).await;
+        assert_eq!(r["error"]["code"], "E_FORBIDDEN", "{sub} {r}");
+    }
+    // Shell views have no module settings, and a view without the capability can't ask.
+    let r = a.raw("settings", "module:get-settings", Value::Null).await;
+    assert_eq!(r["error"]["code"], "E_FORBIDDEN", "{r}");
+    let r = a.raw("gallery", "module:get-settings", Value::Null).await;
+    assert_eq!(r["error"]["code"], "E_FORBIDDEN", "{r}");
+    let cfg = a.settings("config:get", Value::Null).await;
+    assert_eq!(cfg["note"]["autoRecord"], false);
+    assert_eq!(cfg["modules"]["enabled"], true);
+    a.quit().await;
+}

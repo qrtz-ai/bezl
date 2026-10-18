@@ -443,6 +443,14 @@ export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
     },
   },
   'note:resummarize': { request: { id: SAMPLE_MEETING_ID }, response: summary },
+  'module:get-settings': {
+    request: undefined,
+    response: { talk: { showPill: true } },
+  },
+  'module:set-settings': {
+    request: { patch: { talk: { showPill: false } } },
+    response: { talk: { showPill: false } },
+  },
   'note:set-auto-record': {
     request: { enabled: true },
     response: { autoRecord: true },

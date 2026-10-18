@@ -129,3 +129,65 @@ export function isViewOn(cfg: Pick<Config, 'modules'>, view: string): boolean {
   const m = moduleOfView(view);
   return m === undefined || isModuleOn(cfg, m);
 }
+
+/** A whole config section (`['talk']`) or one key of a section (`['privacy', 'excludedApps']`). */
+export type SettingsPath = readonly [string] | readonly [string, string];
+
+/**
+ * ADR 0146 M1.4: what each module's own settings page (inside its view) reads and writes, through
+ * `module:get-settings` / `module:set-settings`. The caller's module comes from its view, so echo can't touch
+ * nano's settings or the global ones. Storage doesn't change (M1.2): `talk` is in echo's file, `note` and `speech`
+ * in nano's, and nano's two recording keys stay in the global `privacy` section. The speech downloads
+ * (`speech.autoUpdate`, `speech.warmAfterDownload`) are shared by echo and nano, so they stay in the global
+ * settings. crates/qrtz-app/src/modules.rs has the same table (its test reads this one).
+ */
+export const MODULE_SETTINGS_PATHS: Readonly<
+  Record<ModuleId, readonly SettingsPath[]>
+> = {
+  echo: [['talk']],
+  nano: [
+    ['note'],
+    ['speech', 'speakerMode'],
+    ['privacy', 'excludedApps'],
+    ['privacy', 'pauseHotkey'],
+  ],
+  ctrl: [],
+};
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/** The part of the config a module's settings page shows. */
+export function pickModuleSettings(
+  cfg: Record<string, unknown>,
+  id: ModuleId,
+): Record<string, unknown> {
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const [section, key] of MODULE_SETTINGS_PATHS[id]) {
+    const v = cfg[section];
+    if (!isRecord(v)) continue;
+    if (key === undefined) out[section] = { ...v };
+    else if (key in v) out[section] = { ...out[section], [key]: v[key] };
+  }
+  return out;
+}
+
+/** Why a patch reaches outside the module's settings, or null when it stays inside them. */
+export function modulePatchError(
+  id: ModuleId,
+  patch: Record<string, unknown>,
+): string | null {
+  const paths = MODULE_SETTINGS_PATHS[id];
+  for (const [section, v] of Object.entries(patch)) {
+    if (paths.some(([s, k]) => s === section && k === undefined)) continue;
+    const keys = paths
+      .filter(([s, k]) => s === section && k !== undefined)
+      .map(([, k]) => k);
+    if (!keys.length) return `${id} settings can't change ${section}`;
+    if (!isRecord(v)) return `${section} must be an object`;
+    const bad = Object.keys(v).find((k) => !keys.includes(k));
+    if (bad !== undefined)
+      return `${id} settings can't change ${section}.${bad}`;
+  }
+  return null;
+}

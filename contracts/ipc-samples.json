@@ -338,6 +338,28 @@
         "provider": "extractive"
       }
     },
+    "module:get-settings": {
+      "request": null,
+      "response": {
+        "talk": {
+          "showPill": true
+        }
+      }
+    },
+    "module:set-settings": {
+      "request": {
+        "patch": {
+          "talk": {
+            "showPill": false
+          }
+        }
+      },
+      "response": {
+        "talk": {
+          "showPill": false
+        }
+      }
+    },
     "note:set-auto-record": {
       "request": {
         "enabled": true

@@ -193,3 +193,33 @@ fn every_module_has_an_app_target_entitlements_and_the_launchers_probe_mode() {
         );
     }
 }
+
+/// ADR 0146 M1.4: a module's capabilities are its view's (packages/features/*/src/manifest.ts, as generated into
+/// contracts/ipc-contract.json), so the gate and the router agree on what a module may call.
+#[test]
+fn module_capabilities_are_their_views_capabilities() {
+    let c: Value =
+        serde_json::from_str(&std::fs::read_to_string(root().join("contracts/ipc-contract.json")).unwrap())
+            .unwrap();
+    for (id, src) in bundled::manifests() {
+        let m = ModuleManifest::parse(src.as_bytes()).unwrap();
+        for view in &m.views {
+            let caps: Vec<String> = c["manifests"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|x| x["id"] == view.as_str())
+                .unwrap_or_else(|| panic!("{id}: no manifest for view {view}"))["capabilities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap().to_owned())
+                .collect();
+            let mut a = caps.clone();
+            let mut b = m.capabilities.clone();
+            a.sort();
+            b.sort();
+            assert_eq!(a, b, "{id} vs its view {view}");
+        }
+    }
+}
