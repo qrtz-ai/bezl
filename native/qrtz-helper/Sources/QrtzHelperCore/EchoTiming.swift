@@ -69,6 +69,10 @@ public struct DictationTiming: Sendable, Equatable {
             p += ["segments=\(g.segments)", "bg_segments=\(g.backgroundSegments)", "cap_cuts=\(g.capCuts)",
                   "tail_decode_ms=\(g.tailDecodeMs < 0 ? "-1" : r(g.tailDecodeMs))", "backlog_wait_ms=\(r(g.backlogWaitMs))"]
             if g.failures > 0 { p.append("decode_failures=\(g.failures)") }
+            // ADR 0120 cut windows (only when they ran: the knob is off by default).
+            if g.cutWindows + g.windowsSkipped > 0 {
+                p += ["cut_windows=\(g.cutWindows)", "window_fixes=\(g.windowFixes)", "windows_skipped=\(g.windowsSkipped)"]
+            }
         }
         return "echo timing: " + p.joined(separator: " ")
     }
@@ -86,6 +90,7 @@ public struct DictationTiming: Sendable, Equatable {
         if let g = segments {
             j["segments"] = g.segments; j["backgroundSegments"] = g.backgroundSegments; j["capCuts"] = g.capCuts
             j["tailDecodeMs"] = g.tailDecodeMs; j["backlogWaitMs"] = g.backlogWaitMs; j["decodeFailures"] = g.failures
+            j["cutWindows"] = g.cutWindows; j["windowFixes"] = g.windowFixes; j["windowsSkipped"] = g.windowsSkipped
         }
         return j
     }

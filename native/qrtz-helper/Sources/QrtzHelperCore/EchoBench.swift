@@ -40,6 +40,49 @@ public enum EchoWER {
     /// Words for the formatted WER: whitespace tokens as written (case and punctuation count).
     public static func formatted(_ s: String) -> [String] { asciiQuotes(s).split(whereSeparator: { $0.isWhitespace }).map(String.init) }
 
+    /// ADR 0120 gate: sentence ends (a word ending in `.?!`) of `hyp` against `ref` (on the bench: a segmented
+    /// engine against `parakeet-whole` on the same clip), over the words the two share in order (LCS of their
+    /// lowercased letters/digits/apostrophes). `spurious`: an end `hyp` has and `ref` doesn't (a cut's false
+    /// sentence end); `lost`: the reverse.
+    public struct SentenceEnds: Sendable, Equatable {
+        public var agreeing = 0, spurious = 0, lost = 0
+        public init(agreeing: Int = 0, spurious: Int = 0, lost: Int = 0) { self.agreeing = agreeing; self.spurious = spurious; self.lost = lost }
+        public mutating func add(_ o: SentenceEnds) { agreeing += o.agreeing; spurious += o.spurious; lost += o.lost }
+        public var json: [String: Any] { ["agreeing": agreeing, "spurious": spurious, "lost": lost] }
+    }
+
+    public static func sentenceEnds(hyp: String, ref: String) -> SentenceEnds {
+        func toks(_ s: String) -> [(key: String, end: Bool)] {
+            formatted(s).compactMap { w in
+                let k = w.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "'" }
+                let t = w.reversed().drop(while: { "\"')]".contains($0) })
+                return k.isEmpty ? nil : (k, t.first.map { ".?!".contains($0) } ?? false)
+            }
+        }
+        let a = toks(hyp), b = toks(ref)
+        guard !a.isEmpty, !b.isEmpty else { return SentenceEnds() }
+        // LCS table (dictations are a few hundred words).
+        var d = [[Int]](repeating: [Int](repeating: 0, count: b.count + 1), count: a.count + 1)
+        for i in stride(from: a.count - 1, through: 0, by: -1) {
+            for j in stride(from: b.count - 1, through: 0, by: -1) {
+                d[i][j] = a[i].key == b[j].key ? d[i + 1][j + 1] + 1 : max(d[i + 1][j], d[i][j + 1])
+            }
+        }
+        var r = SentenceEnds(), i = 0, j = 0
+        while i < a.count, j < b.count {
+            if a[i].key == b[j].key {
+                switch (a[i].end, b[j].end) {
+                case (true, true): r.agreeing += 1
+                case (true, false): r.spurious += 1
+                case (false, true): r.lost += 1
+                default: break
+                }
+                i += 1; j += 1
+            } else if d[i + 1][j] >= d[i][j + 1] { i += 1 } else { j += 1 }
+        }
+        return r
+    }
+
     /// Edit distance between word lists: substitutions, deletions, insertions.
     public static func edits(_ ref: [String], _ hyp: [String]) -> (sub: Int, del: Int, ins: Int) {
         let n = ref.count, m = hyp.count
@@ -379,6 +422,7 @@ public enum EchoBench {
                 var wer = EchoWER.Score(), fwer = EchoWER.Score()
                 var rel: [Double] = [], first: [Double] = [], fin: [Double] = [], rtf: [Double] = []
                 var tailDecode: [Double] = [], segments: [Double] = [], bgSegments: [Double] = [], backlog: [Double] = []
+                var windows: [Double] = [], windowFixes: [Double] = [], windowsSkipped: [Double] = []
                 var tailLost = 0, headLost = 0
                 for clip in clips {
                     let r = await runClip(clip, engine: engine, variant: variant, options: options)
@@ -397,6 +441,9 @@ public enum EchoBench {
                         if let x = st["segments"] as? Int { segments.append(Double(x)) }
                         if let x = st["backgroundSegments"] as? Int { bgSegments.append(Double(x)) }
                         if let x = st["backlogWaitMs"] as? Double { backlog.append(x) }
+                        if let x = st["cutWindows"] as? Int { windows.append(Double(x)) }
+                        if let x = st["windowFixes"] as? Int { windowFixes.append(Double(x)) }
+                        if let x = st["windowsSkipped"] as? Int { windowsSkipped.append(Double(x)) }
                     }
                     progress("\(engine.name) \(variant.name) \(clip.name): wer \(String(format: "%.3f", EchoWER.score(ref: refN, hyp: EchoWER.normalize(hyp)).wer)) release→final \(Int(r["releaseToStoppedMs"] as? Double ?? -1)) ms")
                 }
@@ -410,11 +457,35 @@ public enum EchoBench {
                     row["tailDecodeMs"] = stats(tailDecode); row["segments"] = stats(segments)
                     row["backgroundSegments"] = stats(bgSegments); row["backlogWaitMs"] = stats(backlog)
                 }
+                if windows.reduce(0, +) + windowsSkipped.reduce(0, +) > 0 {
+                    row["cutWindows"] = stats(windows); row["windowFixes"] = stats(windowFixes); row["windowsSkipped"] = stats(windowsSkipped)
+                }
                 summary.append(row)
             }
             await engine.unload()
         }
-        return ["summary": summary, "runs": runs]
+        return ["summary": sentenceEndsVsWhole(summary, runs: runs), "runs": runs]
+    }
+
+    /// ADR 0120 gate: each engine's sentence ends against `parakeet-whole` on the same clip and variant (when
+    /// that engine ran too), as `sentenceEndsVsWhole` on its summary row.
+    static let wholeEngine = "parakeet-whole"
+    static func sentenceEndsVsWhole(_ summary: [[String: Any]], runs: [[String: Any]]) -> [[String: Any]] {
+        var whole: [String: String] = [:]
+        for r in runs where r["engine"] as? String == wholeEngine {
+            if let c = r["clip"] as? String, let v = r["variant"] as? String { whole["\(c)\u{1}\(v)"] = r["hypothesis"] as? String ?? "" }
+        }
+        guard !whole.isEmpty else { return summary }
+        var ends: [String: EchoWER.SentenceEnds] = [:]
+        for r in runs {
+            guard let e = r["engine"] as? String, e != wholeEngine, let c = r["clip"] as? String, let v = r["variant"] as? String,
+                  let w = whole["\(c)\u{1}\(v)"] else { continue }
+            ends["\(e)\u{1}\(v)", default: EchoWER.SentenceEnds()].add(EchoWER.sentenceEnds(hyp: r["hypothesis"] as? String ?? "", ref: w))
+        }
+        return summary.map { row in
+            guard let e = row["engine"] as? String, let v = row["variant"] as? String, let t = ends["\(e)\u{1}\(v)"] else { return row }
+            var row = row; row["sentenceEndsVsWhole"] = t.json; return row
+        }
     }
 
     /// p50 / p90 / max / mean of a sample.

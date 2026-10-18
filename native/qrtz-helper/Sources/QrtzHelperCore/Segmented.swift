@@ -3,8 +3,9 @@ import Foundation
 // Echo on Parakeet (Jared, 2026-10-18): a batch recogniser (Parakeet TDT v2: whole-utterance decoding, no partials)
 // fed in segments cut at the speaker's pauses while the key is held. Finished segments decode in the background
 // on one serial chain, so at the release only the last segment (plus a short overlap with the one before) is left
-// to decode, and the words are stitched at word boundaries. The pad (end context) goes on the last segment only,
-// after the cut points are fixed, so it never looks like a pause. Nano keeps Nemotron streaming.
+// to decode, and the words are stitched at word boundaries. Every segment is decoded with 640 ms of silence after
+// it (end context), added after the cut points are fixed, so it never looks like a pause. Nano keeps Nemotron
+// streaming. ADR 0120 (off by default): a window decoded across each pause cut fixes the cut's punctuation.
 
 /// A recogniser that decodes a whole stretch of 16 kHz mono audio at once.
 public protocol BatchRecognizer: AnyObject, Sendable {
@@ -61,6 +62,18 @@ public struct SegmentRule: Sendable, Equatable {
     public var vadMinRms: Float
     public var vadMarginDb: Float
     public var vadSpeechRelDb: Float
+    /// ADR 0120 / review §12.35 (N167): re-punctuate pause cuts from a window. Each segment is decoded alone and
+    /// Parakeet ends almost every one with a sentence end, so a pause mid-sentence came out as "store. And then".
+    /// With this on, once a pause cut has `windowAfterMs` of audio after it, a background decode of
+    /// `[max(previous cut, cut − windowBeforeMs), cut + windowAfterMs]` (+ the segment pad) runs on the same serial
+    /// chain, and its words decide only the cut word's trailing punctuation and the next word's first-letter case
+    /// (words and times stay). A window not decoded by the release is skipped, never waited for. Linux
+    /// (`linux-crosscheck/seg/cutwin.py`, 3 s / 2 s): false sentence ends against the whole clip 99 → 24, formatted
+    /// diff 7.46 → 6.10 %. Off until the Mac gate (tuning §12): `QRTZ_ECHO_CUT_WINDOW=on`, sizes
+    /// `QRTZ_ECHO_CUT_WINDOW_BEFORE_MS` / `_AFTER_MS`, bench engine `parakeet-segmented-win`.
+    public var cutWindow = false
+    public var windowBeforeMs = 3_000
+    public var windowAfterMs = 2_000
 
     public static let wholeClip = SegmentRule(pauseMs: .max, capMs: .max)
 
@@ -92,6 +105,17 @@ public struct SegmentRule: Sendable, Equatable {
         case "all": r.overlapOnPause = true
         default: break
         }
+        switch env["QRTZ_ECHO_CUT_WINDOW"]?.trimmingCharacters(in: .whitespaces).lowercased() {
+        case "on", "1", "true", "yes": r.cutWindow = true
+        case "off", "0", "false", "no": r.cutWindow = false
+        default: break
+        }
+        func win(_ k: String) -> Int? {
+            guard let v = env[k].flatMap({ Int($0.trimmingCharacters(in: .whitespaces)) }), (200...10_000).contains(v) else { return nil }
+            return v
+        }
+        if let b = win("QRTZ_ECHO_CUT_WINDOW_BEFORE_MS") { r.windowBeforeMs = b }
+        if let a = win("QRTZ_ECHO_CUT_WINDOW_AFTER_MS") { r.windowAfterMs = a }
         return r
     }
 }
@@ -110,6 +134,11 @@ public struct SegmentStats: Sendable, Equatable {
     public var backlogWaitMs = 0.0
     /// Background or tail decodes that threw (their words are missing).
     public var failures = 0
+    /// ADR 0120 cut windows: decoded, the cuts whose punctuation or case they changed, and the pause cuts left
+    /// as stitched because their window wasn't decoded (or applicable) by the release.
+    public var cutWindows = 0
+    public var windowFixes = 0
+    public var windowsSkipped = 0
     public init() {}
 }
 
@@ -310,6 +339,37 @@ public struct WordStitcher: Sendable {
         }
         words += mine.dropFirst(drop).map { ($0, nil) }
     }
+
+    public enum WindowFix: Equatable { case changed, unchanged, noMatch, notReady }
+
+    static func key(_ w: String) -> String { w.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "'" } }
+    static func trailingPunct(_ w: String) -> Substring {
+        w[w.index(w.endIndex, offsetBy: -w.reversed().prefix(while: { ".?!,;:".contains($0) }).count)...]
+    }
+
+    /// ADR 0120: the words on each side of the cut at `cut` (global seconds) take the window's punctuation and case.
+    /// `window`: the window decode's words with global start times. The window's last word before the cut and its
+    /// first at or after `cut − 0.1 s` must match (normalized) the stitched words on each side of the cut and be
+    /// adjacent; then only the earlier word's trailing `[.?!,;:]+` and the later word's first-letter case change.
+    public mutating func repunctuate(cut: Double, window: [(String, Double)]) -> WindowFix {
+        let c = (cut * 1000).rounded() / 1000
+        guard let j = words.firstIndex(where: { ($0.1 ?? -1) >= c }) else { return .notReady }
+        guard j > 0, words[j - 1].1 != nil else { return .noMatch }
+        let before = words[j - 1].0, after = words[j].0
+        let kb = Self.key(before), ka = Self.key(after)
+        guard !kb.isEmpty, !ka.isEmpty,
+              let bi = window.lastIndex(where: { $0.1 < c && Self.key($0.0) == kb }),
+              let ai = window.firstIndex(where: { $0.1 >= c - 0.1 && Self.key($0.0) == ka }), ai == bi + 1 else { return .noMatch }
+        let wb = window[bi].0, wa = window[ai].0
+        let nb = String(before.dropLast(Self.trailingPunct(before).count)) + Self.trailingPunct(wb)
+        var na = after
+        if let f = after.first, let g = wa.first {
+            na = (g.isUppercase ? String(f).uppercased() : String(f).lowercased()) + after.dropFirst()
+        }
+        guard nb != before || na != after else { return .unchanged }
+        words[j - 1].0 = nb; words[j].0 = na
+        return .changed
+    }
 }
 
 /// Echo's recogniser: a `BatchRecognizer` behind the streaming interface the engine drives, segmented at pauses.
@@ -329,6 +389,15 @@ public actor SegmentedTranscriber: PaddedFinishing {
     var chain: Task<Void, Never>?
     var generation = 0
     var boundaryOfOpen: Double?
+    /// ADR 0120 cut windows: recent audio (global index `histStart`), the pause cuts waiting for theirs, the last
+    /// cut, samples seen, and the release (windows not started by then are skipped).
+    var hist: [Float] = []
+    var histStart = 0
+    var total = 0
+    var lastCut = 0
+    var pending: [PendingCut] = []
+    var releasing = false
+    struct PendingCut { var at: Int; var lo: Int; var queued = false; var words: [(String, Double)]? }
 
     public init(_ batch: BatchRecognizer, rule: SegmentRule = SegmentRule(), name: String? = nil) {
         self.batch = batch; self.rule = rule; self.name = name ?? batch.name
@@ -344,14 +413,70 @@ public actor SegmentedTranscriber: PaddedFinishing {
         buf.removeAll(); bufStart = 0
         stitched = WordStitcher(); stats = SegmentStats()
         chain = nil; boundaryOfOpen = nil
+        hist.removeAll(); histStart = 0; total = 0; lastCut = 0; pending.removeAll(); releasing = false
     }
 
     public func append(_ s: [Float]) async {
         buf.append(contentsOf: s)
+        if rule.cutWindow { hist.append(contentsOf: s) }
+        total += s.count
         for c in seg.feed(s) { cut(c) }
+        if rule.cutWindow { queueWindows() }
+    }
+
+    /// Queues the window of every pause cut that has `windowAfterMs` of audio after it, and trims the history.
+    func queueWindows() {
+        let after = 16 * rule.windowAfterMs
+        for i in pending.indices where !pending[i].queued && total >= pending[i].at + after {
+            pending[i].queued = true
+            let lo = max(pending[i].lo, histStart), hi = min(total, pending[i].at + after)
+            guard hi > lo else { continue }
+            enqueueWindow(Array(hist[(lo - histStart)..<(hi - histStart)]), origin: Double(lo) / 16_000, at: pending[i].at)
+        }
+        let keep = 16 * (rule.windowBeforeMs + rule.windowAfterMs + 1_000)
+        if hist.count > keep + 16 * 1_000 { let d = hist.count - keep; hist.removeFirst(d); histStart += d }
+    }
+
+    func enqueueWindow(_ audio: [Float], origin: Double, at: Int) {
+        let prev = chain, gen = generation, batch = self.batch, pad = rule.segmentPadMs
+        chain = Task {
+            await prev?.value
+            // At the release a window not started is skipped: the tail decode never waits for one.
+            guard await self.generation == gen, await !self.releasing else { return }
+            let r = try? await batch.decode(audio + [Float](repeating: 0, count: 16 * max(0, pad)))
+            await self.windowDecoded(r, gen: gen, origin: origin, at: at)
+        }
+    }
+
+    func windowDecoded(_ r: BatchResult?, gen: Int, origin: Double, at: Int) {
+        guard gen == generation, let i = pending.firstIndex(where: { $0.at == at }) else { return }
+        guard let ws = r?.words else { pending.remove(at: i); return }  // a failed decode or no word times
+        stats.cutWindows += 1
+        pending[i].words = ws.map { ($0.text, ((origin + $0.start) * 1000).rounded() / 1000) }
+        applyWindows(final: false)
+    }
+
+    /// Applies every decoded window whose cut has words stitched on both sides. `final`: the release; what is left
+    /// is skipped.
+    func applyWindows(final: Bool) {
+        var left: [PendingCut] = []
+        for p in pending {
+            guard let w = p.words else { left.append(p); continue }
+            switch stitched.repunctuate(cut: Double(p.at) / 16_000, window: w) {
+            case .changed: stats.windowFixes += 1
+            case .notReady: left.append(p)
+            case .unchanged, .noMatch: break
+            }
+        }
+        pending = left
+        if final { stats.windowsSkipped += pending.count; pending.removeAll() }
     }
 
     func cut(_ c: PauseSegmenter.Cut) {
+        if rule.cutWindow {
+            if !c.byCap, c.hadSpeech { pending.append(PendingCut(at: c.at, lo: max(lastCut, c.at - 16 * rule.windowBeforeMs))) }
+            lastCut = c.at
+        }
         if c.byCap { stats.capCuts += 1 }
         let n = c.at - bufStart
         let audio = Array(buf.prefix(n))
@@ -380,6 +505,7 @@ public actor SegmentedTranscriber: PaddedFinishing {
         stats.segments += 1
         guard let r else { stats.failures += 1; return }
         stitched.add(r, origin: origin, boundary: boundary)
+        if !pending.isEmpty { applyWindows(final: false) }
     }
 
     public func transcript() async -> String { stitched.text }
@@ -389,6 +515,7 @@ public actor SegmentedTranscriber: PaddedFinishing {
     public func finish(padSamples: Int) async -> String {
         let gen = generation
         let t0 = ContinuousClock.now
+        releasing = true  // windows still queued are skipped (one already decoding finishes first: serial decoder)
         await chain?.value
         guard gen == generation else { return stitched.text }
         stats.backlogWaitMs = t0.msToNow()
@@ -403,6 +530,7 @@ public actor SegmentedTranscriber: PaddedFinishing {
             stats.segments += 1
             if let r { stitched.add(r, origin: Double(bufStart) / 16_000, boundary: boundaryOfOpen) } else { stats.failures += 1 }
         }
+        if rule.cutWindow { applyWindows(final: true) }
         buf.removeAll()
         seg = PauseSegmenter(rule: rule)
         return stitched.text

@@ -72,7 +72,10 @@ Rules (the arbiter's `cmd` events):
    an overlap set, words are stitched by their start times at the middle of the overlap. That decode is the finish
    under the N139 single deadline, sized by `SegmentedTail.budgetMs(audioMs:)` (ADR 0118, below) instead of the
    streaming `budgetMs`. A last
-   segment with no speech (a pause before the release) isn't decoded. Every knob of the rule is an environment
+   segment with no speech (a pause before the release) isn't decoded. ADR 0120 (off by default, `QRTZ_ECHO_CUT_WINDOW`):
+   a background window decoded across each pause cut sets the cut word's punctuation and the next word's case; the
+   release never waits for a window that hasn't started. The timing line then adds `cut_windows=`,
+   `window_fixes=` and `windows_skipped=`; `dictation.stopped` is unchanged. Every knob of the rule is an environment
    override (`QRTZ_ECHO_SEGMENT_PAUSE_MS`, `_CAP_MS`, `_OVERLAP_MS`, `_OVERLAP_MODE` = `all`|`cap`, `_MIN_MS`). The
    fallback is Apple SpeechAnalyzer (macOS 26). Recordings keep Nemotron streaming, and it loads only for a
    recording.
