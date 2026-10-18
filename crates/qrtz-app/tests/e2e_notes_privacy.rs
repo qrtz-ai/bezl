@@ -181,10 +181,15 @@ async fn privacy_config_persists_and_excluded_apps_are_not_detected() {
                                       "excludedApps": ["Safari", "webex"]}}}),
     )
     .await;
+    // ADR 0146 M2.3: privacy is nano's, stored in nano's own settings file.
+    let nano: Value =
+        serde_json::from_str(&std::fs::read_to_string(data.join("modules/nano/settings.json")).unwrap())
+            .unwrap();
     assert_eq!(
-        config(&data)["privacy"],
+        nano["privacy"],
         json!({"excludedApps": ["Safari", "webex"], "pauseHotkey": "CommandOrControl+Alt+9"})
     );
+    assert!(config(&data).get("privacy").is_none());
     a.until_phase("detected").await; // zoom is not excluded
     let (id, _) = record_until(&a, None, |t| segments(t) > 1).await;
     assert!(!id.is_empty());

@@ -113,9 +113,9 @@ pub fn ctrl_scheduler_pass(
 
 /// ADR 0146 M1.4: what each module's own settings page reads and writes (`module:get-settings` /
 /// `module:set-settings`): a whole config section, or one key of a section. Same table as
-/// packages/core/src/modules.ts `MODULE_SETTINGS_PATHS` (the test below reads it). Storage is M1.2's: `talk` in
-/// echo's file, `note` and `speech` in nano's; nano's two recording keys stay in the global `privacy` section, and
-/// the speech downloads stay in the global settings (echo and nano share them).
+/// packages/core/src/modules.ts `MODULE_SETTINGS_PATHS` (the test below reads it). Storage (M2.3) follows it: `talk`
+/// in echo's file; `note`, `speech.speakerMode` and `privacy` in nano's; the speech downloads stay in config.json
+/// and the global settings (echo and nano share them; qrtz-modules `GLOBAL_KEYS`).
 pub const MODULE_SETTINGS_PATHS: &[(&str, &str, Option<&str>)] = &[
     ("echo", "talk", None),
     ("nano", "note", None),

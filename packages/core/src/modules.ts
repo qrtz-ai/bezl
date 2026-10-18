@@ -23,8 +23,16 @@ export const GLOBAL_CONFIG_SECTIONS = [
   'logLevel',
   'app',
   'onboarding',
-  'privacy',
   'modules',
+] as const;
+
+/**
+ * Keys inside a module's section that stay global in config.json (ADR 0146 M2.3; crates/qrtz-modules
+ * `GLOBAL_KEYS`): the speech downloads serve echo and nano alike, the rest of `speech` is nano's.
+ */
+export const GLOBAL_CONFIG_KEYS = [
+  ['speech', 'autoUpdate'],
+  ['speech', 'warmAfterDownload'],
 ] as const;
 
 /** An exact version: MAJOR.MINOR.PATCH with an optional pre-release. No ranges, no build metadata. */
@@ -136,10 +144,10 @@ export type SettingsPath = readonly [string] | readonly [string, string];
 /**
  * ADR 0146 M1.4: what each module's own settings page (inside its view) reads and writes, through
  * `module:get-settings` / `module:set-settings`. The caller's module comes from its view, so echo can't touch
- * nano's settings or the global ones. Storage doesn't change (M1.2): `talk` is in echo's file, `note` and `speech`
- * in nano's, and nano's two recording keys stay in the global `privacy` section. The speech downloads
- * (`speech.autoUpdate`, `speech.warmAfterDownload`) are shared by echo and nano, so they stay in the global
- * settings. crates/qrtz-app/src/modules.rs has the same table (its test reads this one).
+ * nano's settings or the global ones. Storage (M2.3) follows the same lines: `talk` is in echo's file; `note`,
+ * `speech.speakerMode` and `privacy` (excluded apps, pause hotkey) in nano's. The speech downloads
+ * (`speech.autoUpdate`, `speech.warmAfterDownload`) are shared by echo and nano, so they stay in config.json and
+ * the global settings (`GLOBAL_CONFIG_KEYS`). crates/qrtz-app/src/modules.rs has the same table (its test reads this one).
  */
 export const MODULE_SETTINGS_PATHS: Readonly<
   Record<ModuleId, readonly SettingsPath[]>

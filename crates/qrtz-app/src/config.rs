@@ -9,18 +9,22 @@ pub struct ConfigStore {
     cfg: Value,
 }
 
-/// ADR 0146 M1.2: each module's config sections live in that module's own settings file
-/// (`modules/<id>/settings.json` next to config.json; `talk` is echo's, `note` and `speech` are nano's), and
-/// config.json keeps the global ones. `config:get` / `config:set` still see one merged config.
+/// ADR 0146 M1.2 / M2.3: each module's config sections live in that module's own settings file
+/// (`modules/<id>/settings.json` next to config.json; `talk` is echo's; `note`, `speech` and `privacy` are nano's),
+/// and config.json keeps the global ones, including the global keys of a module's section (`speech.autoUpdate`,
+/// `speech.warmAfterDownload`: qrtz-modules `GLOBAL_KEYS`). `config:get` / `config:set` still see one merged config.
 fn module_store(file: &Path) -> Option<qrtz_modules::settings::ModuleSettingsStore> {
     file.parent()
         .filter(|_| !file.as_os_str().is_empty())
         .map(qrtz_modules::settings::ModuleSettingsStore::new)
 }
 
-/// Overlay each module's stored sections on the raw config.json value. Returns whether config.json still holds a
-/// section that belongs in a module file (an older layout, moved on the next write).
+/// Overlay each module's stored sections on the raw config.json value. Returns whether a file still holds
+/// something that belongs in the other one (an older layout, moved on the next write): a module section with a
+/// module key in config.json (before M1.2; `privacy` before M2.3), or a global key in a module's file (M1.2 kept
+/// the speech downloads in nano's).
 fn overlay_modules(file: &Path, raw: &mut Map<String, Value>) -> bool {
+    use qrtz_modules::settings::global_keys_of;
     let Some(store) = module_store(file) else {
         return false;
     };
@@ -28,13 +32,33 @@ fn overlay_modules(file: &Path, raw: &mut Map<String, Value>) -> bool {
     for m in &crate::modules::bundled().manifests {
         let stored = store.stored(&m.id).unwrap_or_default();
         for sec in &m.settings.legacy_sections {
-            if raw.contains_key(sec) {
-                legacy = true;
+            let globals: Vec<&str> = global_keys_of(sec).collect();
+            if let Some(v) = raw.get(sec) {
+                if v.as_object()
+                    .is_none_or(|o| o.keys().any(|k| !globals.contains(&k.as_str())))
+                {
+                    legacy = true;
+                }
             }
-            // The module's file wins: a crash between its write and config.json's leaves the newer value there.
-            if let Some(v) = stored.get(sec) {
+            let Some(v) = stored.get(sec) else { continue };
+            let (Some(mine), false) = (v.as_object(), globals.is_empty()) else {
+                // The module's file wins: a crash between its write and config.json's leaves the newer value there.
                 raw.insert(sec.clone(), v.clone());
+                continue;
+            };
+            // Module keys from the module's file; global keys from config.json, the module file's copy only
+            // filling a gap (an M1.2 file, or a crash before config.json got the key).
+            let mut out = mine.clone();
+            let cj = raw.get(sec).and_then(Value::as_object);
+            for gk in &globals {
+                if out.contains_key(*gk) {
+                    legacy = true;
+                }
+                if let Some(x) = cj.and_then(|o| o.get(*gk)) {
+                    out.insert((*gk).to_owned(), x.clone());
+                }
             }
+            raw.insert(sec.clone(), Value::Object(out));
         }
     }
     legacy
@@ -197,12 +221,27 @@ impl ConfigStore {
             return Ok(());
         }
         // ADR 0146 M1.2: module sections first (their file wins on load), then the global rest.
+        // M2.3: a global key a module's file still holds (an M1.2 file) stays there until config.json has it, and
+        // is removed after; a crash in between loses nothing (config.json's copy wins once it exists).
         let split = qrtz_modules::settings::split_legacy(&self.cfg, &crate::modules::bundled().manifests);
-        if let Some(store) = module_store(&self.file) {
+        let store = module_store(&self.file);
+        let mut moved: Vec<String> = vec![];
+        if let Some(store) = &store {
             for (id, sections) in &split.modules {
                 let mut v = store.stored(id).unwrap_or_default();
                 for (k, sv) in sections.as_object().into_iter().flatten() {
-                    v.insert(k.clone(), sv.clone());
+                    let mut nv = sv.clone();
+                    if let (Some(old), Some(n)) = (v.get(k).and_then(Value::as_object), nv.as_object_mut()) {
+                        for gk in qrtz_modules::settings::global_keys_of(k) {
+                            if let Some(x) = old.get(gk) {
+                                n.insert(gk.to_owned(), x.clone());
+                                if !moved.contains(id) {
+                                    moved.push(id.clone());
+                                }
+                            }
+                        }
+                    }
+                    v.insert(k.clone(), nv);
                 }
                 store
                     .replace(id, &Value::Object(v))
@@ -217,7 +256,23 @@ impl ConfigStore {
         crate::secrets::write_private_atomic(
             &self.file,
             serde_json::to_string_pretty(&Value::Object(global))?.as_bytes(),
-        )
+        )?;
+        if let Some(store) = &store {
+            for id in &moved {
+                let mut v = store.stored(id).unwrap_or_default();
+                for (k, sv) in v.iter_mut() {
+                    if let Some(o) = sv.as_object_mut() {
+                        for gk in qrtz_modules::settings::global_keys_of(k) {
+                            o.remove(gk);
+                        }
+                    }
+                }
+                store
+                    .replace(id, &Value::Object(v))
+                    .map_err(|e| std::io::Error::other(e.to_string()))?;
+            }
+        }
+        Ok(())
     }
 
     /// Typed accessors the shell uses to apply toggles.
@@ -259,16 +314,25 @@ mod tests {
         let s = ConfigStore::open(&f);
         assert_eq!(s.get(), &before);
         let global = read(&f);
-        for k in ["talk", "note", "speech"] {
+        for k in ["talk", "note"] {
             assert!(global.get(k).is_none(), "{k} still in config.json: {global}");
         }
+        assert_eq!(
+            global["speech"],
+            json!({"autoUpdate": true, "warmAfterDownload": true}),
+            "only the downloads"
+        );
         assert_eq!(global["theme"], "light");
-        assert_eq!(global["privacy"]["excludedApps"], json!(["Slack"]));
+        assert!(
+            global.get("privacy").is_none(),
+            "privacy is nano's (M2.3): {global}"
+        );
         let echo = read(&dir.path().join("modules/echo/settings.json"));
         assert_eq!(echo["talk"]["pushKey"], "right-option");
         let nano = read(&dir.path().join("modules/nano/settings.json"));
         assert_eq!(nano["note"]["autoRecord"], true);
         assert_eq!(nano["speech"]["speakerMode"], "accurate");
+        assert_eq!(nano["privacy"]["excludedApps"], json!(["Slack"]));
         assert!(!dir.path().join("modules/ctrl/settings.json").exists());
         assert_eq!(ConfigStore::open(&f).get(), &before, "reload");
     }
@@ -340,5 +404,99 @@ mod tests {
         let f = dir.path().join("config.json");
         std::fs::write(&f, old.to_string()).unwrap();
         assert_eq!(ConfigStore::open(&f).get(), &cfg);
+    }
+
+    fn nano(dir: &Path) -> Value {
+        read(&dir.join("modules/nano/settings.json"))
+    }
+
+    /// ADR 0146 M2.3: an M1.2 layout (privacy in config.json, the speech downloads in nano's file) moves once:
+    /// privacy to nano's file, the downloads to config.json. The merged config is unchanged and stays so.
+    #[test]
+    fn an_m1_2_layout_moves_privacy_to_nano_and_the_downloads_to_config_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("config.json");
+        std::fs::write(
+            &f,
+            json!({"theme": "dark", "privacy": {"excludedApps": ["zoom"], "pauseHotkey": "Alt+P"}})
+                .to_string(),
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("modules/nano")).unwrap();
+        std::fs::write(
+            dir.path().join("modules/nano/settings.json"),
+            json!({"note": {"autoRecord": true},
+                   "speech": {"speakerMode": "accurate", "autoUpdate": false, "warmAfterDownload": false}})
+            .to_string(),
+        )
+        .unwrap();
+        let s = ConfigStore::open(&f);
+        let cfg = s.get().clone();
+        assert_eq!(cfg["privacy"]["excludedApps"], json!(["zoom"]));
+        assert_eq!(cfg["privacy"]["pauseHotkey"], "Alt+P");
+        assert_eq!(
+            cfg["speech"],
+            json!({"speakerMode": "accurate", "autoUpdate": false, "warmAfterDownload": false})
+        );
+        assert_eq!(cfg["note"]["autoRecord"], true);
+        let g = read(&f);
+        assert!(g.get("privacy").is_none(), "{g}");
+        assert_eq!(
+            g["speech"],
+            json!({"autoUpdate": false, "warmAfterDownload": false})
+        );
+        let n = nano(dir.path());
+        assert_eq!(
+            n["privacy"],
+            json!({"excludedApps": ["zoom"], "pauseHotkey": "Alt+P"})
+        );
+        assert_eq!(n["speech"], json!({"speakerMode": "accurate"}), "{n}");
+        assert_eq!(ConfigStore::open(&f).get(), &cfg, "reload");
+        assert_eq!(read(&f), g, "nothing left to move");
+    }
+
+    /// M2.3: a crash at either point of the move loses nothing.
+    #[test]
+    fn a_crash_mid_move_loses_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("config.json");
+        let p = dir.path().join("modules/nano/settings.json");
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        // After nano's file was written, before config.json: nano has the new privacy and still the old download
+        // key; config.json still has the old privacy and no downloads.
+        std::fs::write(&f, json!({"privacy": {"excludedApps": ["old"]}}).to_string()).unwrap();
+        std::fs::write(&p, json!({"privacy": {"excludedApps": ["new"]}, "speech": {"speakerMode": "fast", "autoUpdate": false}}).to_string()).unwrap();
+        let s = ConfigStore::open(&f);
+        assert_eq!(s.get()["privacy"]["excludedApps"], json!(["new"]));
+        assert_eq!(s.get()["speech"]["autoUpdate"], false);
+        // After config.json, before nano's cleanup: both have the download key; config.json's is the current one.
+        std::fs::write(&f, json!({"speech": {"autoUpdate": true}}).to_string()).unwrap();
+        std::fs::write(&p, json!({"privacy": {"excludedApps": ["new"]}, "speech": {"speakerMode": "fast", "autoUpdate": false}}).to_string()).unwrap();
+        let s = ConfigStore::open(&f);
+        assert_eq!(s.get()["speech"]["autoUpdate"], true);
+        assert_eq!(
+            nano(dir.path())["speech"],
+            json!({"speakerMode": "fast"}),
+            "cleaned up"
+        );
+        assert_eq!(read(&f)["speech"]["autoUpdate"], true);
+    }
+
+    /// M2.3: writes land by key: privacy in nano's file, the downloads in config.json, speakerMode in nano's.
+    #[test]
+    fn writes_land_by_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("config.json");
+        let mut s = ConfigStore::open(&f);
+        s.set(&json!({"privacy": {"pauseHotkey": ""}, "speech": {"autoUpdate": false, "speakerMode": "accurate"}}))
+            .unwrap();
+        let g = read(&f);
+        assert!(g.get("privacy").is_none());
+        assert_eq!(g["speech"]["autoUpdate"], false);
+        assert!(g["speech"].get("speakerMode").is_none());
+        let n = nano(dir.path());
+        assert_eq!(n["privacy"]["pauseHotkey"], "");
+        assert_eq!(n["speech"], json!({"speakerMode": "accurate"}));
+        assert_eq!(ConfigStore::open(&f).get(), s.get());
     }
 }

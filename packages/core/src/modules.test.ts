@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { ConfigSchema, defaultConfig } from './config';
 import {
+  GLOBAL_CONFIG_KEYS,
   GLOBAL_CONFIG_SECTIONS,
   isModuleOn,
   modulePatchError,
@@ -64,6 +65,30 @@ describe('module manifests (ADR 0146)', () => {
     expect(new Set(owned).size).toBe(owned.length);
     const keys = Object.keys(ConfigSchema.shape).sort();
     expect([...GLOBAL_CONFIG_SECTIONS, ...owned].sort()).toEqual(keys);
+  });
+
+  it("keeps the speech downloads global inside nano's speech section, as the rust store does (M2.3)", () => {
+    const owned = bundled.flatMap(
+      ([, raw]) => ModuleManifest.parse(raw).settings.legacySections ?? [],
+    );
+    const cfg = defaultConfig() as unknown as Record<
+      string,
+      Record<string, unknown>
+    >;
+    for (const [section, key] of GLOBAL_CONFIG_KEYS) {
+      expect(owned).toContain(section);
+      expect(cfg[section]).toHaveProperty(key);
+    }
+    const rust = readFileSync(
+      path.join(root, 'crates/qrtz-modules/src/settings.rs'),
+      'utf8',
+    );
+    const line = rust.match(/pub const GLOBAL_KEYS[^\n]*/)?.[0] ?? '';
+    const pairs = [...line.matchAll(/\("(\w+)", "(\w+)"\)/g)].map((m) => [
+      m[1],
+      m[2],
+    ]);
+    expect(pairs).toEqual(GLOBAL_CONFIG_KEYS.map(([s, k]) => [s, k]));
   });
 });
 

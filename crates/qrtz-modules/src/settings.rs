@@ -4,8 +4,8 @@
 //! - **Module settings** belong to one module and live in its own file, `modules/<id>/settings.json` under the
 //!   app data dir. The module's view edits them; nothing else does.
 //! - **Global settings** are the few that apply across modules: the theme, the log level, the app's menu bar and
-//!   login item, onboarding, privacy, and the `modules` switches (one per module, plus all of them at once). They
-//!   stay in config.json.
+//!   login item, onboarding, the speech downloads ([`GLOBAL_KEYS`]), and the `modules` switches (one per module,
+//!   plus all of them at once). They stay in config.json.
 //!
 //! M0 adds the `modules` switches to config.json and this split. Today's per-product config sections
 //! (`talk`, `note`, `speech`) move into their module's file in M1 with [`split_legacy`]; until then they keep
@@ -24,9 +24,21 @@ pub const GLOBAL_SECTIONS: &[&str] = &[
     "logLevel",
     "app",
     "onboarding",
-    "privacy",
     "modules",
 ];
+
+/// Keys inside a module's section that stay global in config.json (ADR 0146 M2.3). The speech downloads
+/// (`speech.autoUpdate`, `speech.warmAfterDownload`) serve echo and nano alike and are shown in the global
+/// settings, while the rest of `speech` (`speakerMode`) is nano's.
+pub const GLOBAL_KEYS: &[(&str, &str)] = &[("speech", "autoUpdate"), ("speech", "warmAfterDownload")];
+
+/// The global keys of config section `section` (empty for most).
+pub fn global_keys_of(section: &str) -> impl Iterator<Item = &'static str> + '_ {
+    GLOBAL_KEYS
+        .iter()
+        .filter(move |(s, _)| *s == section)
+        .map(|(_, k)| *k)
+}
 pub const MAX_SETTINGS_BYTES: usize = 64 * 1024;
 
 /// The global switches that control every module.
@@ -71,10 +83,17 @@ pub fn split_legacy(cfg: &Value, manifests: &[ModuleManifest]) -> Split {
         if GLOBAL_SECTIONS.contains(&k.as_str()) {
             global.insert(k.clone(), v.clone());
         } else if let Some(m) = manifests.iter().find(|m| m.settings.legacy_sections.contains(k)) {
-            modules
-                .entry(m.id.clone())
-                .or_default()
-                .insert(k.clone(), v.clone());
+            // M2.3: a section's global keys go to config.json, the rest to the module.
+            let mut v = v.clone();
+            if let Some(o) = v.as_object_mut() {
+                let g: Map<String, Value> = global_keys_of(k)
+                    .filter_map(|gk| o.remove(gk).map(|x| (gk.to_owned(), x)))
+                    .collect();
+                if !g.is_empty() {
+                    global.insert(k.clone(), Value::Object(g));
+                }
+            }
+            modules.entry(m.id.clone()).or_default().insert(k.clone(), v);
         } else {
             unowned.push(k.clone());
         }
@@ -143,6 +162,14 @@ impl ModuleSettingsStore {
                 "a global setting; change it in the global settings",
             ));
         }
+        for (sec, v) in p {
+            if let Some(gk) = global_keys_of(sec).find(|gk| v.get(*gk).is_some()) {
+                return Err(ModuleError::invalid(
+                    format!("settings.{sec}.{gk}"),
+                    "a global setting; change it in the global settings",
+                ));
+            }
+        }
         let mut cur = match self.get(id)? {
             Value::Object(o) => o,
             _ => Map::new(),
@@ -158,7 +185,8 @@ impl ModuleSettingsStore {
     }
 
     /// Replace module `id`'s whole settings object (the shell's config store writes a module's sections this way).
-    /// Same rules as [`ModuleSettingsStore::set`]: an object, no global keys, size-capped.
+    /// An object, no global sections, size-capped. A [`GLOBAL_KEYS`] key may stay in it for the length of one
+    /// config write: the shell keeps the old copy until config.json has the key, then removes it (M2.3).
     pub fn replace(&self, id: &str, value: &Value) -> Result<(), ModuleError> {
         let Some(o) = value.as_object() else {
             return Err(ModuleError::invalid("settings", "an object"));
@@ -224,4 +252,42 @@ fn write_private(path: &Path, bytes: &[u8]) -> Result<(), ModuleError> {
     drop(f);
     std::fs::rename(&tmp, path)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn a_sections_global_keys_split_into_the_global_part() {
+        let m = ModuleManifest::parse(crate::bundled::NANO.as_bytes()).unwrap();
+        let cfg = json!({"theme": "dark", "speech": {"speakerMode": "accurate", "autoUpdate": false},
+                         "privacy": {"excludedApps": ["Slack"]}});
+        let s = split_legacy(&cfg, &[m]);
+        assert!(s.unowned.is_empty());
+        assert_eq!(
+            s.global,
+            json!({"theme": "dark", "speech": {"autoUpdate": false}})
+        );
+        assert_eq!(
+            s.modules["nano"],
+            json!({"speech": {"speakerMode": "accurate"}, "privacy": {"excludedApps": ["Slack"]}})
+        );
+    }
+
+    #[test]
+    fn a_module_cant_set_a_global_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let st = ModuleSettingsStore::new(dir.path());
+        let e = st
+            .set("nano", &json!({"speech": {"autoUpdate": false}}))
+            .unwrap_err();
+        assert!(e.to_string().contains("speech.autoUpdate"), "{e}");
+        st.set(
+            "nano",
+            &json!({"speech": {"speakerMode": "fast"}, "privacy": {"pauseHotkey": ""}}),
+        )
+        .unwrap();
+    }
 }

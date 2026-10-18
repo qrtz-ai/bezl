@@ -36,7 +36,7 @@
   "entitlements": ["com.apple.security.device.audio-input"],
   "settings": {
     "namespace": "nano",
-    "legacySections": ["note", "speech"]
+    "legacySections": ["note", "speech", "privacy"]
   },
   "provides": [],
   "dependencies": [
