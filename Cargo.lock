@@ -3434,6 +3434,7 @@ dependencies = [
  "qrtz-llm",
  "qrtz-model",
  "qrtz-modules",
+ "qrtz-publish",
  "qrtz-speech",
  "qrtz-storage",
  "qrtz-talk",
@@ -3586,6 +3587,8 @@ dependencies = [
 name = "qrtz-modules"
 version = "0.2.0"
 dependencies = [
+ "async-trait",
+ "ed25519-dalek",
  "hex",
  "jsonschema",
  "semver",
@@ -3594,6 +3597,22 @@ dependencies = [
  "sha2",
  "tempfile",
  "thiserror 2.0.21",
+ "tokio",
+]
+
+[[package]]
+name = "qrtz-publish"
+version = "0.2.0"
+dependencies = [
+ "ed25519-dalek",
+ "hex",
+ "qrtz-modules",
+ "rand 0.8.8",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]

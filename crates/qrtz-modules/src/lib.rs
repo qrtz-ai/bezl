@@ -9,20 +9,29 @@
 //! - [`launcher`]: which modules start, and the code checks run before each launch.
 //! - [`ipc`]: the XPC service scaffolding: who may connect to a shared service and per-connection state.
 //! - [`settings`]: each module's own settings, plus the global settings that control all of them.
+//! - [`index`], [`trust`], [`pkg`], [`install`] (ADR 0153): the signed root/timestamp/index served from
+//!   `modules.qrtz.ai` and its mirror, the client's trust state, the `.qrtzpkg` sideload file, and the installer.
+//!   The installer has no network code: bytes come through its `Transport` trait (the shell's HTTPS transport in
+//!   qrtz-app, or a `.qrtzpkg`).
 //!
 //! Shared code is never loaded into a module: a dependency with code is a sandboxed XPC service in its own process
 //! (`kind: "xpc-service"`); everything else is read-only data (`kind: "data"`, e.g. a model set). A dylib or
 //! framework dependency is refused when the manifest is parsed.
 //!
-//! This crate is pure: no network, no process spawning, no platform code. The macOS bindings (LaunchServices,
+//! This crate has no network, no process spawning and no platform code. The macOS bindings (LaunchServices,
 //! `SecStaticCodeCheckValidity`, `NSXPCConnection`) plug in through the traits in [`launcher`] and [`ipc`] in M1.
 pub mod error;
+pub mod fsutil;
+pub mod index;
+pub mod install;
 pub mod ipc;
 pub mod launcher;
 pub mod lock;
 pub mod manifest;
+pub mod pkg;
 pub mod settings;
 pub mod sideload;
+pub mod trust;
 
 pub use error::ModuleError;
 pub use manifest::{Dependency, DependencyKind, ModuleManifest};
