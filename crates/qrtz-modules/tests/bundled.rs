@@ -152,11 +152,12 @@ fn the_manifests_agree_with_the_confinement_map() {
             .values()
             .any(|o| o == m.id.as_str());
         assert!(owns, "{} owns no crate in the map", m.id);
-        let allowed = &map["entitlements"]["allowedTrue"][&m.id];
+        // ADR 0154: one qrtz identity, so a module may declare only the app's TCC allowlist.
+        let allowed = map["appTccEntitlements"].as_object().unwrap();
         for e in &m.entitlements {
             assert!(
-                allowed.as_array().unwrap().iter().any(|a| a == e),
-                "{}: {e} is not in ADR 0144's row",
+                allowed.contains_key(e.as_str()),
+                "{}: {e} is not in appTccEntitlements (ADR 0154)",
                 m.id
             );
         }

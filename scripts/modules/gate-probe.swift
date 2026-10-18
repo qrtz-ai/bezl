@@ -1,16 +1,20 @@
-// ADR 0144 gate probe: one tiny Foundation-only program that scripts/modules/mac-gate.sh compiles with plain swiftc
-// (no SwiftPM, no FluidAudio, no network) and wraps in stand-in module bundles (ai.qrtz.gate.echo-probe,
-// ai.qrtz.gate.ctrl-probe, ai.qrtz.gate.inference-probe), each signed with its own bundle id and entitlements and
-// launched through LaunchServices (`open`), so TCC attributes what it asks to that bundle, as it will for the M1
-// module apps. It never prompts unless given --ask. Every result is one line `probe <cmd> key=value ...` written to
-// --out <path> (or <home>/qrtz-gate-probe.out, the container home when sandboxed) and stdout.
+// ADR 0144 / ADR 0154 gate probe: one tiny Foundation-only program that scripts/modules/mac-gate.sh compiles with
+// plain swiftc (no SwiftPM, no FluidAudio, no network) and wraps in stand-in bundles (ai.qrtz.gate.host-probe for
+// the qrtz host, ai.qrtz.gate.inference-probe for a sandboxed inference XPC service, ai.qrtz.gate.ctrl-probe for the
+// signing-identity check) launched through LaunchServices (`open`), and in a bare extension helper binary that the
+// host spawns, as qrtz spawns a downloaded extension's helper. It never prompts unless given --ask. Every result is
+// one line `probe <cmd> key=value ...` written to --out <path> (or <home>/qrtz-gate-probe.out, the container home
+// when sandboxed) and stdout.
 //
 // Commands:
-//   ax [--ask]            AXIsProcessTrusted (gate a)
-//   mic [--open] [--ask]  microphone authorization; --open tries to open the default input (gate b)
+//   ax [--ask]            AXIsProcessTrusted (gates d and h)
+//   mic [--open] [--ask]  microphone authorization; --open tries to open the default input (gate h, info)
 //   socket <port>         TCP and UDP connect() to 127.0.0.1:<port>; loopback only, nothing leaves the Mac (gate c)
-//   ae [--ask]            Automation of System Events: permission, then one read-only Apple Event (gate e)
+//   ae [--ask]            Automation of System Events: permission, then one read-only Apple Event (kept for manual
+//                         checks; its gate (e) is retired by ADR 0154)
 //   xpc <mach-name>       one message to a mach service; reports replied or refused (gate f)
+//   spawn <path> -- <args..>  run <path> as a child of this process (posix_spawn through Process, as the qrtz host runs
+//                         an extension helper) and report its exit status; the child writes its own --out (gate h)
 //   info                  bundle id, pid, build
 // Linux: scripts/modules/probe-typecheck.sh typechecks this file against scripts/modules/probe-stubs.swift.
 import Foundation
@@ -22,6 +26,12 @@ import XPC
 #endif
 
 var args = Array(CommandLine.arguments.dropFirst())
+/// Everything after `--` goes to the spawned child untouched (spawn), so its --out and --ask aren't read here.
+var passthrough: [String] = []
+if let i = args.firstIndex(of: "--") {
+    passthrough = Array(args[(i + 1)...])
+    args.removeSubrange(i...)
+}
 func flag(_ f: String) -> Bool {
     if let i = args.firstIndex(of: f) { args.remove(at: i); return true }
     return false
@@ -169,6 +179,19 @@ case "xpc":
     guard args.count > 1 else { emit([("error", "usage: xpc <mach-name>")]) }
     emit([("bundle", bundleId), ("service", args[1]), ("result", ping(args[1]))])
 #endif
+case "spawn":
+    // A plain child, no LaunchServices and no responsibility disclaim, so TCC attributes it to this process (ADR 0154).
+    guard args.count > 1 else { emit([("error", "usage: spawn <path> -- <args..>")]) }
+    let child = Process()
+    child.executableURL = URL(fileURLWithPath: args[1])
+    child.arguments = passthrough
+    do {
+        try child.run()
+        child.waitUntilExit()
+        emit([("bundle", bundleId), ("pid", String(getpid())), ("child_exit", String(child.terminationStatus))])
+    } catch {
+        emit([("bundle", bundleId), ("child_exit", "spawn-failed")])
+    }
 default:
     emit([("error", "unknown or not on this platform: \(cmd)")])
 }

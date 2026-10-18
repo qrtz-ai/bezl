@@ -780,4 +780,3 @@ move. Two requirements for the split layout (`QRTZ_MODULE_HELPERS=split`, off by
 dictation yet): echo's own bundle needs the system audio grant or the speaker gate goes off silently (N173), and echo
 must be prewarmed after a download or the first press is cold (N174). Both are on the helper side; checks are in
 ADR 0150. Nothing new to test on the Mac in the default layout. The ranked plan above is unchanged.
-

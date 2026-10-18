@@ -1,5 +1,5 @@
 {
-  "about": "ADR 0144 M0 stand-in owned by the confinement track (Bozniak). Read by crates/qrtz-lifecycle/tests/offline_graph.rs. It maps today's code to the module that will own it. Bobs's module manifests (bundle split, M1) replace the owner fields; the ratchet lists only shrink.",
+  "about": "ADR 0144 M0 stand-in owned by the confinement track (Bozniak), amended by ADR 0154 (one qrtz identity). Read by crates/qrtz-lifecycle/tests/offline_graph.rs. It maps today's code to the module that will own it. Bobs's module manifests replace the owner fields; the ratchet lists only shrink. appTccEntitlements is the single app's TCC entitlement allowlist: every entry carries an ADR note and changes only with one.",
   "owners": ["shell", "shared", "echo", "nano", "ctrl", "voice", "monolith"],
   "crates": {
     "qrtz-desktop": "shell",
@@ -46,13 +46,15 @@
     ["qrtz-helper", "FluidAudio"],
     ["qrtz-helper", "QrtzCtrl"]
   ],
-  "shellTccEntitlements": ["com.apple.security.device.audio-input"],
+  "appTccEntitlements": {
+    "com.apple.security.device.audio-input": "ADR 0154: the microphone, for echo dictation and nano recordings (held by qrtz.app since M4.7)",
+    "com.apple.security.automation.apple-events": "ADR 0154: Apple Events for ctrl (Jared approved 2026-10-18; NSAppleEventsUsageDescription goes with it)"
+  },
   "entitlements": {
-    "naming": "ai.qrtz.<module>.entitlements for a module app (echo, nano, ctrl); ai.qrtz.inference.<name>.entitlements for a sandboxed inference XPC service (e.g. ai.qrtz.inference.voice.entitlements)",
+    "naming": "ai.qrtz.<extension>.entitlements for an extension helper (echo, nano, ctrl; accepted, not required, ADR 0154); ai.qrtz.inference.<name>.entitlements for a sandboxed inference XPC service (e.g. ai.qrtz.inference.voice.entitlements)",
+    "extensionHelpers": ["echo", "nano", "ctrl"],
+    "extensionHelpersAllowed": "appTccEntitlements: an extension helper shares qrtz's identity and may hold only what the app may (ADR 0154)",
     "allowedTrue": {
-      "echo": ["com.apple.security.device.audio-input"],
-      "nano": ["com.apple.security.device.audio-input"],
-      "ctrl": ["com.apple.security.automation.apple-events"],
       "inference": ["com.apple.security.app-sandbox"]
     },
     "requiredTrue": {

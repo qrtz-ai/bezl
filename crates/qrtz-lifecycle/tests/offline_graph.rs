@@ -21,10 +21,13 @@
 //!    (shell / shared / echo / nano / ctrl / voice / monolith); module-owned and shared crates reach no network crate in
 //!    their own build and name no downloader; cross-owner edges (the monolith) are an exact allowlist that may only
 //!    shrink; module and inference XPC entitlements files are linted by name.
+//!    ADR 0154 (one qrtz identity): extension helper entitlements (`ai.qrtz.<echo|nano|ctrl>`) are accepted, not
+//!    required, and may hold only the app's TCC allowlist (`appTccEntitlements`, each entry with an ADR note); inference
+//!    XPC services stay strict (app-sandbox, no network/device/personal-information/automation).
 //!
 //! A new network path has to change this test and its ADR, on purpose.
 use serde_json::Value;
-use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 
 /// Crates that give a process an HTTP/WebSocket/TLS client or server, or hand one to the renderer.
@@ -887,7 +890,26 @@ fn granted(plist: &str) -> BTreeSet<String> {
     out
 }
 
-/// What ADR 0144 lets each module's and each inference XPC service's entitlements grant, by file name.
+/// The TCC entitlement prefixes (the hardened-runtime keys macOS pairs with a privacy grant).
+fn is_tcc_entitlement(k: &str) -> bool {
+    k.starts_with("com.apple.security.device.")
+        || k.starts_with("com.apple.security.personal-information.")
+        || k.starts_with("com.apple.security.automation.")
+}
+
+/// ADR 0154: the single app's TCC entitlements allowlist, entitlement -> ADR note.
+fn app_tcc_allowlist(map: &Value) -> BTreeMap<String, String> {
+    map["appTccEntitlements"]
+        .as_object()
+        .expect("confinement-map.json: appTccEntitlements")
+        .iter()
+        .map(|(k, v)| (k.clone(), v.as_str().unwrap_or_default().to_owned()))
+        .collect()
+}
+
+/// What ADR 0144 (amended by ADR 0154) lets an extension helper's and an inference XPC service's entitlements grant,
+/// by file name. Extension helpers share qrtz's identity, so they may hold only the app's TCC allowlist; inference
+/// services are sandboxed with no network and no TCC.
 fn lint_entitlements(name: &str, plist: &str, map: &Value) -> Result<(), String> {
     let e = &map["entitlements"];
     let class = if name.starts_with("ai.qrtz.inference.") {
@@ -903,30 +925,28 @@ fn lint_entitlements(name: &str, plist: &str, map: &Value) -> Result<(), String>
             .map(|a| a.iter().map(|v| v.as_str().unwrap().to_owned()).collect())
             .unwrap_or_default()
     };
-    if e["allowedTrue"][&class].is_null() {
+    let extension = e["extensionHelpers"]
+        .as_array()
+        .is_some_and(|a| a.iter().any(|v| v.as_str() == Some(class.as_str())));
+    let allowed: BTreeSet<String> = if class == "inference" {
+        list("allowedTrue")
+    } else if extension {
+        app_tcc_allowlist(map).into_keys().collect()
+    } else {
         return Err(format!(
-            "{name}: no module or inference class `{class}` in ADR 0144's map"
+            "{name}: no extension helper or inference class `{class}` in the confinement map (ADR 0154)"
         ));
-    }
+    };
     let g = granted(plist);
     let mut errs = vec![];
-    if class == "inference" {
-        for k in &g {
-            if k.starts_with("com.apple.security.network.")
-                || k.starts_with("com.apple.security.device.")
-                || k.starts_with("com.apple.security.personal-information.")
-                || k.starts_with("com.apple.security.automation.")
-                || k.starts_with("com.apple.developer.private-cloud-compute")
-            {
-                errs.push(format!("{name}: an inference XPC service may not hold {k}"));
-            }
-        }
-    }
-    let allowed = list("allowedTrue");
-    for k in g.difference(&allowed) {
-        let msg = format!("{name}: {k} is not in ADR 0144's allowed set for {class}");
-        if !errs.iter().any(|e| e.ends_with(k.as_str())) {
-            errs.push(msg);
+    for k in &g {
+        let banned = k.starts_with("com.apple.security.network.")
+            || k.starts_with("com.apple.developer.private-cloud-compute")
+            || (class == "inference" && is_tcc_entitlement(k));
+        if banned {
+            errs.push(format!("{name}: {class} may not hold {k}"));
+        } else if !allowed.contains(k) {
+            errs.push(format!("{name}: {k} is not in the allowed set for {class}"));
         }
     }
     for k in list("requiredTrue").difference(&g) {
@@ -954,23 +974,23 @@ fn entitlements_files(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 #[test]
-fn module_and_inference_entitlements_grant_only_their_own_tcc() {
+fn extension_and_inference_entitlements_stay_inside_their_allowlists() {
     let map = confinement_map();
     let mut files = vec![];
     entitlements_files(&root(), &mut files);
     let mut errs = vec![];
     for f in &files {
         let name = f.file_name().unwrap().to_string_lossy().into_owned();
-        // Anything named *.entitlements must follow ADR 0144's naming, so a service can't dodge the lint by name.
+        // Anything named *.entitlements must follow the naming, so a service can't dodge the lint by name.
         if !name.starts_with("ai.qrtz.") {
-            errs.push(format!("{}: entitlements files are named ai.qrtz.<module>.entitlements or ai.qrtz.inference.<name>.entitlements", f.display()));
+            errs.push(format!("{}: entitlements files are named ai.qrtz.<extension>.entitlements or ai.qrtz.inference.<name>.entitlements", f.display()));
             continue;
         }
         if let Err(e) = lint_entitlements(&name, &std::fs::read_to_string(f).unwrap(), &map) {
             errs.push(e);
         }
     }
-    // Vacuous until M1 adds the module bundles (today the one plist is the monolith's entitlements.mac.plist).
+    // ADR 0154: per-extension files are accepted, never required (none may exist).
     assert!(errs.is_empty(), "{}", errs.join("\n"));
 }
 
@@ -1000,6 +1020,7 @@ fn the_entitlements_lint_refuses_network_and_tcc_on_an_inference_service() {
         "com.apple.security.device.camera",
         "com.apple.security.personal-information.location",
         "com.apple.security.automation.apple-events",
+        "com.apple.security.cs.allow-jit",
     ] {
         let e = lint_entitlements(voice, &p(&[sb, (bad, true)]), &map).unwrap_err();
         assert!(e.contains(bad), "{e}");
@@ -1007,43 +1028,57 @@ fn the_entitlements_lint_refuses_network_and_tcc_on_an_inference_service() {
     assert!(lint_entitlements(voice, &p(&[]), &map)
         .unwrap_err()
         .contains("app-sandbox"));
-    // Modules: each its own TCC only (ADR 0144 table); the shell gets no module file.
+    // ADR 0154: extension helpers share qrtz's identity, so any of them may hold what the app may, and nothing more.
     let ae = ("com.apple.security.automation.apple-events", true);
     let mic = ("com.apple.security.device.audio-input", true);
-    assert!(lint_entitlements("ai.qrtz.ctrl.entitlements", &p(&[ae]), &map).is_ok());
-    assert!(lint_entitlements("ai.qrtz.ctrl.entitlements", &p(&[mic]), &map).is_err());
-    assert!(lint_entitlements("ai.qrtz.echo.entitlements", &p(&[mic]), &map).is_ok());
-    assert!(lint_entitlements("ai.qrtz.echo.entitlements", &p(&[ae]), &map).is_err());
-    assert!(lint_entitlements(
-        "ai.qrtz.nano.entitlements",
-        &p(&[mic, ("com.apple.security.network.client", true)]),
-        &map
-    )
-    .is_err());
+    for m in ["echo", "nano", "ctrl"] {
+        let f = format!("ai.qrtz.{m}.entitlements");
+        assert!(lint_entitlements(&f, &p(&[]), &map).is_ok(), "{f}");
+        assert!(lint_entitlements(&f, &p(&[mic, ae]), &map).is_ok(), "{f}");
+        for bad in [
+            "com.apple.security.network.client",
+            "com.apple.security.network.server",
+            "com.apple.security.device.camera",
+            "com.apple.security.personal-information.addressbook",
+        ] {
+            let e = lint_entitlements(&f, &p(&[mic, (bad, true)]), &map).unwrap_err();
+            assert!(e.contains(bad), "{f}: {e}");
+        }
+    }
     assert!(lint_entitlements("ai.qrtz.shell.entitlements", &p(&[]), &map).is_err());
+    assert!(lint_entitlements("ai.qrtz.other.entitlements", &p(&[]), &map).is_err());
 }
 
 #[test]
-fn the_shell_entitlements_tcc_set_only_shrinks() {
+fn the_app_tcc_entitlements_are_the_adr_allowlist() {
     let map = confinement_map();
+    let allow = app_tcc_allowlist(&map);
+    // Each entry is a TCC entitlement and carries the ADR that admitted it; adding one means writing that ADR.
+    for (k, note) in &allow {
+        assert!(
+            is_tcc_entitlement(k),
+            "appTccEntitlements: {k} is not a TCC entitlement"
+        );
+        let has_adr = note
+            .match_indices("ADR ")
+            .any(|(i, _)| note[i + 4..].chars().take(4).filter(char::is_ascii_digit).count() == 4);
+        assert!(
+            has_adr,
+            "appTccEntitlements: {k} needs an ADR note (\"ADR NNNN: why\"), got {note:?}"
+        );
+    }
+    // ADR 0154: one qrtz identity, so the app's entitlements are every extension's. They stay inside the allowlist.
     let ent = std::fs::read_to_string(root().join("apps/desktop/src-tauri/entitlements.mac.plist")).unwrap();
-    let tcc: BTreeSet<String> = granted(&ent)
+    let extra: Vec<String> = granted(&ent)
         .into_iter()
-        .filter(|k| {
-            k.starts_with("com.apple.security.device.")
-                || k.starts_with("com.apple.security.personal-information.")
-                || k.starts_with("com.apple.security.automation.")
-        })
+        .filter(|k| is_tcc_entitlement(k) && !allow.contains_key(k))
         .collect();
-    let allowed: BTreeSet<String> = map["shellTccEntitlements"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|v| v.as_str().unwrap().to_owned())
-        .collect();
-    // Today's monolith holds the mic for echo and nano; ADR 0144's target shell holds none.
-    assert_eq!(
-        tcc, allowed,
-        "shell TCC entitlements vs shellTccEntitlements (it may only shrink, to empty)"
+    assert!(
+        extra.is_empty(),
+        "entitlements.mac.plist holds TCC entitlements outside appTccEntitlements: {extra:?} (add each with an ADR note)"
+    );
+    assert!(
+        map.get("shellTccEntitlements").is_none(),
+        "shellTccEntitlements is retired by ADR 0154; use appTccEntitlements"
     );
 }
