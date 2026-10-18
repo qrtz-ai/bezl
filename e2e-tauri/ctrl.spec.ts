@@ -491,3 +491,32 @@ test('ctrl: put a finished downloads cleanup back; a renamed file stays and is n
   expect(await axe(page, 'ctrl')).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+// ADR 0125: ctrl has no routes for the Documents folder yet. The run stops and says so in plain lowercase text;
+// it doesn't ask a question no answer could settle, and nothing moves (no put back offered).
+test('ctrl: tidy my documents stops and says it cannot tidy that folder yet', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  await ctrl
+    .getByTestId('ctrl-task-input')
+    .fill('every week tidy my documents');
+  await ctrl.getByTestId('ctrl-schedule-weekly').click();
+  await ctrl.getByTestId('ctrl-schedule-time').fill('18:00');
+  await ctrl.getByTestId('ctrl-task-add').click();
+  await ctrl.getByTestId('ctrl-task').getByTestId('ctrl-task-run').click();
+  const run = ctrl.getByTestId('ctrl-run').first();
+  await expect(run.getByTestId('ctrl-run-status')).toHaveText('needs you');
+  await expect(ctrl.getByTestId('ctrl-state').first()).toContainText(
+    "ctrl can't tidy this folder yet, nothing moved",
+  );
+  await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
+  await expect(ctrl.getByTestId('ctrl-undo')).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});

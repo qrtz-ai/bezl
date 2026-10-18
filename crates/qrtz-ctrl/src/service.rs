@@ -382,6 +382,7 @@ fn state_json(s: &CtrlState, goal: Option<&Goal>) -> Value {
             HoldReason::FilesNotYet => "files-not-yet",
             HoldReason::NoRoute => "no-route",
             HoldReason::UnknownApp => "unknown-app",
+            HoldReason::FolderNotYet => "folder-not-yet",
         }),
         "verified": s.verified.iter().map(|(id, v)| json!({"actionId": id, "outcome": match v {
             VerifyOutcome::Passed => "passed",

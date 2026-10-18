@@ -229,7 +229,13 @@ export const CtrlRunState = z.object({
   undo: CtrlUndo.nullable().optional(),
   /** Why the executor stopped before acting (ADR 0108). */
   held: z
-    .enum(['irreversible', 'files-not-yet', 'no-route', 'unknown-app'])
+    .enum([
+      'irreversible',
+      'files-not-yet',
+      'no-route',
+      'unknown-app',
+      'folder-not-yet',
+    ])
     .nullable()
     .optional(),
   /** Each action's verify step: did the move do what it meant? A failure backtracks. */

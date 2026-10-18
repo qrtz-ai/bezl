@@ -358,11 +358,51 @@ fn tidy_my_documents_never_sorts_another_folder() {
     put(&r.roots.downloads, "photo.png", 3 * DAY);
     let downloads = listing(&r.roots.downloads);
     let desktop = listing(&r.roots.desktop);
-    let (_, v) = run(&r.s, "every week tidy my documents");
-    // It asks (no route offered), nothing moves.
-    assert_eq!(v["state"]["status"], "asking", "{v}");
-    assert_eq!(v["state"]["ask"]["node"], "choose_move");
+    let (t, v) = run(&r.s, "every week tidy my documents");
+    // ADR 0125: it stops with a named hold (no empty question left open), nothing moves.
+    assert_eq!(v["state"]["status"], "asked-out", "{v}");
+    assert_eq!(v["state"]["held"], "folder-not-yet", "{v}");
+    assert!(v["state"]["ask"].is_null(), "{v}");
     assert_eq!(count(&v, "action.requested"), 0, "{v}");
+    assert_eq!(count(&v, "exec.held"), 1, "{v}");
     assert_eq!(listing(&r.roots.downloads), downloads);
     assert_eq!(listing(&r.roots.desktop), desktop);
+    untouched(&r);
+    no_names_on_disk(&r);
+    let log = Store::open(r.d.path().join("store"))
+        .unwrap()
+        .run(v["run"]["id"].as_str().unwrap())
+        .unwrap();
+    log.verify().unwrap();
+    replay_check(
+        &log,
+        &Goal {
+            task_id: &t,
+            text: "every week tidy my documents",
+        },
+    )
+    .unwrap();
+    // The chosen move is the hold, labelled in lowercase; the run is not left asking.
+    let mv = v["state"]["decisions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["node"] == "choose_move")
+        .unwrap()
+        .clone();
+    assert_eq!(mv["chosen"], "route.files.documents_hold", "{mv}");
+    let shown = mv["chosenLabel"].as_str().unwrap();
+    assert_eq!(shown, "leave documents as they are, not supported yet");
+    assert_eq!(shown, shown.to_lowercase(), "labels are lowercase");
+    // Other phrasings hold the same way, and next week's run holds again instead of hanging on a question.
+    for text in ["clean up my documents folder", "every week tidy my documents"] {
+        let (_, v) = run(&r.s, text);
+        assert_eq!(v["state"]["held"], "folder-not-yet", "{text}: {v}");
+        assert_eq!(count(&v, "action.requested"), 0);
+    }
+    assert_eq!(listing(&r.roots.downloads), downloads);
+    assert_eq!(listing(&r.roots.desktop), desktop);
+    // Downloads and the Desktop keep their own routes.
+    let (_, v) = run(&r.s, "every week tidy my desktop");
+    assert_eq!(v["state"]["status"], "done", "{v}");
 }

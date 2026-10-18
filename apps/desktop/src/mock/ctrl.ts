@@ -29,13 +29,13 @@ interface Rec {
   decision?: CtrlDecision;
   plan?: CtrlPlan;
   answer?: { decisionId: string; choice: string | null };
-  finished?: 'cancelled' | 'done';
+  finished?: 'cancelled' | 'done' | 'asked-out';
   confirm?: CtrlConfirm;
   answerGate?: NonNullable<CtrlConfirm['answer']>;
   reverified?: true;
   action?: { id: string; status: 'executing' | 'done' };
   verified?: { actionId: string; outcome: 'passed' };
-  held?: 'files-not-yet';
+  held?: 'files-not-yet' | 'folder-not-yet';
   /** A folder cleanup's batch (ADR 0117): its files, and which of them moved since (a "renamed" task). */
   batch?: { files: string[]; moved: string[] };
   undone?: number;
@@ -67,6 +67,7 @@ const INTENTS = {
   close_tabs: opt('intent.close_tabs', 'close browser tabs', 0.07),
   clean_folder: opt('intent.clean_folder', 'clean up a folder', 0.07),
   trash_old: opt('intent.clean_folder', 'clean up a folder', 0.07),
+  tidy_documents: opt('intent.clean_folder', 'clean up a folder', 0.07),
   close_windows: opt('intent.close_windows', 'close windows', 0.07),
   empty_trash: {
     ...opt('intent.empty_trash', 'empty the trash', 0.07),
@@ -81,6 +82,7 @@ type Intent =
   | 'close_tabs'
   | 'clean_folder'
   | 'trash_old'
+  | 'tidy_documents'
   | 'empty_trash'
   | 'quit_app';
 /** What an unclear task is asked (the three most likely intents). */
@@ -123,6 +125,24 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
     act('choose_move', [
       opt('route.files.tidy', 'sort by kind, nothing deleted', 0.89),
       opt('route.files.sort_by_kind', 'sort files into folders by kind', 0.03),
+    ]),
+  ],
+  // ADR 0125: the Documents folder has no routes yet; its one move is a hold that says so.
+  tidy_documents: [
+    act('choose_app', [
+      opt('app.files', 'files (no app)', 0.93),
+      opt('app.com.apple.finder', 'finder', 0.05),
+    ]),
+    act('choose_target', [
+      opt('folder.documents', 'documents', 0.98),
+      opt('folder.downloads', 'downloads', 0.01),
+    ]),
+    act('choose_move', [
+      opt(
+        'route.files.documents_hold',
+        'leave documents as they are, not supported yet',
+        0.97,
+      ),
     ]),
   ],
   // ADR 0122: emptying the Trash deletes through the file executor (never the finder), always behind the card.
@@ -176,11 +196,13 @@ const intentOf = (text: string): Intent | null =>
       ? 'empty_trash'
       : /\btabs?\b/i.test(text)
         ? 'close_tabs'
-        : /download|folder/i.test(text)
-          ? /\b(delete|trash|old)\b/i.test(text)
-            ? 'trash_old'
-            : 'clean_folder'
-          : null;
+        : /\bdocuments\b/i.test(text)
+          ? 'tidy_documents'
+          : /download|folder/i.test(text)
+            ? /\b(delete|trash|old)\b/i.test(text)
+              ? 'trash_old'
+              : 'clean_folder'
+            : null;
 
 const PREVIEW: CtrlConfirm['items'] = [
   { key: '3f2a9c1d0b7e#0', kind: 'window', label: 'notes.txt', unsaved: false },
@@ -365,6 +387,12 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
         })),
       },
     });
+    if (intent === 'tidy_documents') {
+      // ADR 0125: held before any folder is read; the run ends and says why.
+      push(r, 'exec.held', { held: 'folder-not-yet' });
+      push(r, 'task.finished', { finished: 'asked-out' });
+      return;
+    }
     if (
       intent === 'close_tabs' &&
       /\bblocked\b/i.test(task(r.run.taskId).text)

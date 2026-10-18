@@ -128,6 +128,20 @@ describe('ctrl run history', () => {
         held: null,
       }),
     ).toBe('done · 2/2 actions done · 1/2 verified');
+    // ADR 0125: a folder ctrl has no routes for yet says so.
+    expect(
+      stateSummary({
+        actions: [],
+        violations: 0,
+        inconclusive: 0,
+        quarantined: [],
+        status: 'asked-out',
+        decisions: [],
+        plan: null,
+        ask: null,
+        held: 'folder-not-yet',
+      }),
+    ).toBe("needs you · ctrl can't tidy this folder yet, nothing moved");
     expect(runStatus('needs-confirm')).toEqual(['needs your ok', 'warning']);
     expect(runStatus('expired')).toEqual(['expired, nothing done', 'neutral']);
     expect(

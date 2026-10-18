@@ -146,6 +146,7 @@ const HELD: Record<NonNullable<CtrlRunState['held']>, string> = {
   'files-not-yet': 'file moves come in a later version',
   'no-route': 'no way to do it in the background',
   'unknown-app': 'app not found',
+  'folder-not-yet': "ctrl can't tidy this folder yet, nothing moved",
 };
 
 /** The reducer's state in one line. */

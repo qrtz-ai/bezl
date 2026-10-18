@@ -810,8 +810,9 @@ fn move_question(
                 )),
             ]
         }
-        // No routes for the Documents folder yet: the Downloads ones would act on another folder (ADR 0124).
-        "clean_folder" if target == Some("folder.documents") => vec![],
+        // No routes for the Documents folder yet: the Downloads ones would act on another folder (ADR 0124), so its
+        // one move is a hold that says so (ADR 0125) instead of an ask with nothing to pick.
+        "clean_folder" if target == Some("folder.documents") => vec![route("files.documents_hold", 4500)],
         "clean_folder" => {
             let sort = has(toks, &["sort", "organize", "organise"]);
             let old = has(toks, &["old", "delete", "trash", "remove"]);
@@ -1024,6 +1025,7 @@ fn route_label(id: &str) -> &'static str {
         "files.empty_trash" => "empty the trash",
         "files.desktop_screenshots" => "move screenshots into a folder, nothing deleted",
         "files.trash_screenshots" => "move screenshots to the trash",
+        "files.documents_hold" => "leave documents as they are, not supported yet",
         _ => "a route",
     }
 }

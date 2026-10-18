@@ -228,6 +228,9 @@ pub fn plan_cleanup(roots: &FileRoots, mv: &str, now: SystemTime) -> std::io::Re
 
 /// The move that sorts the Desktop's screenshots and screen recordings into [`SCREENSHOTS_DIR`] (ADR 0124).
 pub const DESKTOP_SCREENSHOTS_MOVE: &str = "route.files.desktop_screenshots";
+/// ADR 0125: the only move offered for the Documents folder. It plans nothing: the executor holds the run with
+/// `folder-not-yet` before any folder is read.
+pub const DOCUMENTS_HOLD_MOVE: &str = "route.files.documents_hold";
 /// The move that sends them to the Trash instead (only when the task says so; irreversible, gated).
 pub const TRASH_SCREENSHOTS_MOVE: &str = "route.files.trash_screenshots";
 /// The Desktop folder screenshots go into.

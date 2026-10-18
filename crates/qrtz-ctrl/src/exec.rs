@@ -48,6 +48,9 @@ pub enum HoldReason {
     NoRoute,
     /// The plan's app isn't known (no default browser reported, an element that's gone).
     UnknownApp,
+    /// ADR 0125: a folder ctrl has no routes for yet (Documents). The run stops and says so; nothing is read or
+    /// moved, and no question is left open that no answer could settle.
+    FolderNotYet,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -88,6 +91,9 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
     let apps = s.apps.clone().unwrap_or_default();
     let chosen = s.chosen();
     let mv = chosen.get(&Node::ChooseMove)?.as_str();
+    if mv == crate::files::DOCUMENTS_HOLD_MOVE {
+        return Some(Step::Hold(HoldReason::FolderNotYet));
+    }
     if mv.starts_with("route.files.") {
         return Some(Step::Hold(HoldReason::FilesNotYet));
     }
@@ -535,7 +541,10 @@ impl Driver<'_> {
             let (routes, verify, content) = match step {
                 Step::Hold(reason) => {
                     sink.push(log, Event::ExecHeld { reason })?;
-                    if matches!(reason, HoldReason::NoRoute | HoldReason::UnknownApp) {
+                    if matches!(
+                        reason,
+                        HoldReason::NoRoute | HoldReason::UnknownApp | HoldReason::FolderNotYet
+                    ) {
                         sink.push(log, finish(TaskStatus::AskedOut))?;
                     }
                     return Ok(());
