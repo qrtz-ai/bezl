@@ -1188,14 +1188,20 @@ fn move_question(
             irreversible(route("files.empty_trash", 4000)),
             irreversible(shortcut("cmd+shift+delete", 1500)),
         ],
-        // ADR 0137: on or off from the words ("light mode", "turn off dark mode" → off); "toggle" alone asks.
+        // ADR 0137: on or off from the words ("light mode", "turn off dark mode" → off).
+        // ADR 0145: "toggle" / "flip" (with no on or off said) flips whatever the appearance is when it runs.
         "dark_mode" => {
-            let off = has(toks, &["light", "off", "disable"]);
-            let on = !off && has(toks, &["dark", "on", "enable"]) && !has(toks, &["toggle"]);
-            vec![
+            let flip = has(toks, &["toggle", "flip"]);
+            let off = !flip && has(toks, &["light", "off", "disable"]);
+            let on = !flip && !off && has(toks, &["dark", "on", "enable"]);
+            let mut v = vec![
                 route("scripting.dark_mode_on", if on { 4500 } else { 2000 }),
                 route("scripting.dark_mode_off", if off { 4500 } else { 2000 }),
-            ]
+            ];
+            if flip {
+                v.push(route("scripting.dark_mode_toggle", 4500));
+            }
+            v
         }
         "search" => vec![shortcut("cmd+f", 3000)],
         "send_message" => vec![shortcut("cmd+n", 3000), irreversible(shortcut("cmd+return", 0))],
@@ -1405,6 +1411,7 @@ fn route_label(id: &str) -> &'static str {
         "system.volume_down" => "turn the sound output down a step",
         "scripting.dark_mode_on" => "switch to dark mode",
         "scripting.dark_mode_off" => "switch to light mode",
+        "scripting.dark_mode_toggle" => "flip the appearance",
         "files.tidy" => "sort by kind, nothing deleted",
         "files.sort_by_kind" => "sort files into folders by kind",
         "files.trash_old" => "move old installers to the trash",

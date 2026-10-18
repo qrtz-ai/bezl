@@ -91,6 +91,7 @@ const INTENTS = {
   volume_down: opt('intent.change_volume', 'turn the volume up or down', 0.07),
   dark_mode: opt('intent.dark_mode', 'switch dark mode', 0.07),
   light_mode: opt('intent.dark_mode', 'switch dark mode', 0.07),
+  dark_toggle: opt('intent.dark_mode', 'switch dark mode', 0.07),
   open_email: opt('intent.open_app', 'open an app', 0.07),
 };
 type Intent =
@@ -111,6 +112,7 @@ type Intent =
   | 'volume_down'
   | 'dark_mode'
   | 'light_mode'
+  | 'dark_toggle'
   | 'open_email';
 /** What an unclear task is asked (the three most likely intents). */
 const ASKED = [INTENTS.close_tabs, INTENTS.clean_folder, INTENTS.close_windows];
@@ -180,6 +182,17 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
     act('choose_move', [
       opt('route.scripting.dark_mode_off', 'switch to light mode', 0.9),
       opt('route.scripting.dark_mode_on', 'switch to dark mode', 0.05),
+    ]),
+  ],
+  // ADR 0145: "toggle dark mode" takes the other appearance from the one read just before; no card.
+  dark_toggle: [
+    act('choose_app', [
+      opt('app.com.apple.systemevents', 'systemevents', 0.95),
+    ]),
+    act('choose_move', [
+      opt('route.scripting.dark_mode_toggle', 'flip the appearance', 0.9),
+      opt('route.scripting.dark_mode_on', 'switch to dark mode', 0.05),
+      opt('route.scripting.dark_mode_off', 'switch to light mode', 0.05),
     ]),
   ],
   // ADR 0138: "my email" is mail, already running, so it's already open (nothing comes forward).
@@ -379,9 +392,11 @@ const intentOf = (text: string): Intent | null =>
       : /\b(unmute|unsilence)\b/i.test(text)
         ? 'unmute'
         : /\b(dark|light)\s+mode\b/i.test(text)
-          ? /\b(light|off|disable)\b/i.test(text)
-            ? 'light_mode'
-            : 'dark_mode'
+          ? /\b(toggle|flip)\b/i.test(text)
+            ? 'dark_toggle'
+            : /\b(light|off|disable)\b/i.test(text)
+              ? 'light_mode'
+              : 'dark_mode'
           : /\b(open|check)\b/i.test(text) &&
               /\b(email|emails|inbox)\b/i.test(text)
             ? 'open_email'

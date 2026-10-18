@@ -104,7 +104,13 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
     // ADR 0130 / 0134: the driver plans these from the helper's `ctrl.apps`; without that list there is nothing to
     // quit or hide.
     // ADR 0143: a relative volume step is planned from the level the driver reads just before; not pure.
-    if mv == QUIT_UNUSED_MOVE || mv == HIDE_OTHERS_MOVE || mv == VOLUME_UP_MOVE || mv == VOLUME_DOWN_MOVE {
+    // ADR 0145: so is a toggle (it's planned from the appearance read just before).
+    if mv == QUIT_UNUSED_MOVE
+        || mv == HIDE_OTHERS_MOVE
+        || mv == VOLUME_UP_MOVE
+        || mv == VOLUME_DOWN_MOVE
+        || mv == DARK_MODE_TOGGLE_MOVE
+    {
         return Some(Step::Hold(HoldReason::NoRoute));
     }
     // ADR 0135: the system output, no app; verified by reading the mute back.
@@ -121,22 +127,7 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
     // ADR 0137: the appearance, through System Events (a faceless agent) only; verified by reading the global
     // appearance back in the helper.
     if mv == DARK_MODE_ON_MOVE || mv == DARK_MODE_OFF_MOVE {
-        let on = mv == DARK_MODE_ON_MOVE;
-        return Some(Step::Act {
-            routes: vec![Route::Scripting {
-                app: SYSTEM_EVENTS.into(),
-                verb: if on {
-                    ScriptVerb::SetDarkMode
-                } else {
-                    ScriptVerb::SetLightMode
-                },
-            }],
-            verify: Verify {
-                check: Check::DarkMode,
-                expect: if on { Expect::One } else { Expect::Zero },
-            },
-            content: BTreeMap::new(),
-        });
+        return Some(appearance_step(mv == DARK_MODE_ON_MOVE));
     }
     // ADR 0140: the level from the plan's `level.N`, set and unmuted in the helper's own process; verified by reading
     // the volume back (exactly N, give or take 1). No level, nothing to set: the layers asked, so this can't happen
@@ -486,8 +477,29 @@ pub const HELD_TABS_MOVE: &str = "route.scripting.close_unsaved_tabs";
 /// ADR 0137: the only app ctrl scripts for the appearance (faceless: it never comes forward).
 pub const SYSTEM_EVENTS: &str = "com.apple.systemevents";
 /// ADR 0137: "turn on dark mode" / "turn off dark mode" (reversible, no gate).
+/// ADR 0137: one System Events script sets the appearance; the helper's read-back verifies it.
+fn appearance_step(on: bool) -> Step {
+    Step::Act {
+        routes: vec![Route::Scripting {
+            app: SYSTEM_EVENTS.into(),
+            verb: if on {
+                ScriptVerb::SetDarkMode
+            } else {
+                ScriptVerb::SetLightMode
+            },
+        }],
+        verify: Verify {
+            check: Check::DarkMode,
+            expect: if on { Expect::One } else { Expect::Zero },
+        },
+        content: BTreeMap::new(),
+    }
+}
+
 pub const DARK_MODE_ON_MOVE: &str = "route.scripting.dark_mode_on";
 pub const DARK_MODE_OFF_MOVE: &str = "route.scripting.dark_mode_off";
+/// ADR 0145: "toggle dark mode" reads the appearance just before and takes the other one.
+pub const DARK_MODE_TOGGLE_MOVE: &str = "route.scripting.dark_mode_toggle";
 
 pub const CLOSE_ALL_TABS_MOVE: &str = "route.scripting.close_all_tabs";
 
@@ -707,7 +719,26 @@ impl Driver<'_> {
                 } else {
                     None
                 };
+            // ADR 0145: "toggle dark mode" reads the appearance now and sets the other one, verified like on/off
+            // (ADR 0137). No reading (no helper answer) asks out with nothing changed.
+            let dplan: Option<(i64, bool)> = if fplan.is_none() && mv == DARK_MODE_TOGGLE_MOVE {
+                match self.helper.measure(&Check::DarkMode) {
+                    Some(b) => Some((b, b == 0)),
+                    None => {
+                        sink.push(
+                            log,
+                            Event::ExecHeld {
+                                reason: HoldReason::NoRoute,
+                            },
+                        )?;
+                        return sink.push(log, finish(TaskStatus::AskedOut));
+                    }
+                }
+            } else {
+                None
+            };
             let step = match (&fplan, &qplan) {
+                (None, None) if dplan.is_some() => appearance_step(dplan.is_some_and(|(_, on)| on)),
                 (None, None) if vplan.is_some() => {
                     let level = vplan.map(|(_, t)| t).unwrap_or_default();
                     Step::Act {
@@ -933,9 +964,10 @@ impl Driver<'_> {
                 _ => None,
             };
             // ADR 0143: the level the step was taken from is the "before" (one read, logged with the verify).
-            let before = match vplan {
-                Some((b, _)) => Some(b),
-                None => measure(&verify.check),
+            // ADR 0145: likewise the appearance a toggle was planned from.
+            let before = match (vplan, dplan) {
+                (Some((b, _)), _) | (None, Some((b, _))) => Some(b),
+                (None, None) => measure(&verify.check),
             };
             let env: Env = self.helper.probe().map(|(e, _)| e).unwrap_or_default();
             let from = log.records().len();
