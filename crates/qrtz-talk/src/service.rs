@@ -664,7 +664,7 @@ impl TalkService {
                     // The helper couldn't watch the push key: pressing it would do nothing, so say so (never
                     // silent). An active dictation keeps going; the next press is what's broken.
                     if !self.lock().view.active() {
-                        self.refuse(TalkErrorKind::PermissionRevoked, MSG_HOTKEY);
+                        self.refuse(TalkErrorKind::PermissionRevoked, MSG_HOTKEY, None);
                     }
                 }
             }
@@ -889,10 +889,14 @@ impl TalkService {
         }
     }
 
-    fn refuse(&self, kind: TalkErrorKind, error: &str) -> TalkView {
+    /// A press refused before `dictation.start`. `attempt`: the id that press drew (N150, ADR 0096): each refused
+    /// press is its own attempt, so two in a row are two failures (the shell's `PillGate` keys a flash by the view's
+    /// id), while re-emitting the same view keeps its id and still flashes once.
+    fn refuse(&self, kind: TalkErrorKind, error: &str, attempt: Option<&str>) -> TalkView {
         let mut g = self.lock();
         g.view = TalkView {
             phase: TalkPhase::Error,
+            id: attempt.map(str::to_owned),
             error: Some(error.into()),
             error_kind: Some(kind),
             ..g.view.idle_keeping()
@@ -933,7 +937,7 @@ impl TalkService {
             Ok(sess) => sess,
             Err(e) => {
                 let (kind, msg) = start_error(&e);
-                return self.refuse(kind, &msg);
+                return self.refuse(kind, &msg, Some(&id));
             }
         };
         let now = self.deps().clock.now_ms();

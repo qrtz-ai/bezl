@@ -31,8 +31,15 @@ export function parseMeetingPath(sub: string): {
   const [kind, id, tab] = sub.split('/').filter(Boolean);
   if (kind !== 'meetings' || !id)
     return { meetingId: null, tab: DEFAULT_MEETING_TAB };
+  // N149: a malformed escape (`%E0%A4%A`) is no meeting, never a throw during render.
+  let meetingId: string;
+  try {
+    meetingId = decodeURIComponent(id);
+  } catch {
+    return { meetingId: null, tab: DEFAULT_MEETING_TAB };
+  }
   return {
-    meetingId: decodeURIComponent(id),
+    meetingId,
     tab: isMeetingTab(tab) ? tab : DEFAULT_MEETING_TAB,
   };
 }

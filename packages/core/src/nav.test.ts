@@ -41,4 +41,11 @@ describe('meeting paths', () => {
       tab: 'transcript',
     });
   });
+
+  it('a malformed escape in the id is no meeting, not a throw (N149)', () => {
+    const none = { meetingId: null, tab: 'transcript' };
+    expect(() => parseMeetingPath('meetings/%E0%A4%A')).not.toThrow();
+    expect(parseMeetingPath('meetings/%E0%A4%A/summary')).toEqual(none);
+    expect(parseMeetingPath('meetings/%')).toEqual(none);
+  });
 });
