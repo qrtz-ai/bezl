@@ -486,11 +486,39 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         supervisor.clone(),
         tokio::runtime::Handle::try_current(),
     ) {
-        ctrl = ctrl.with_helper(Arc::new(qrtz_ctrl::helper::HelperClient::new(Box::new(
+        let helper = Arc::new(qrtz_ctrl::helper::HelperClient::new(Box::new(
             crate::ctrl_helper::SupervisorWire::new(sup, rt),
-        ))));
+        )));
+        // ADR 0116: the Laya scorer only with the user's consent and the installed model, whose path rides on every
+        // `ctrl.laya`; otherwise (and on builds without the `laya` feature) the heuristic layer answers.
+        let laya = crate::ctrl_model::CtrlLayaModel::new(
+            dirs.data.join("models").join("ctrl"),
+            &dirs.data.join("ctrl"),
+            None,
+        );
+        let consent = laya.consent();
+        let runtime = qrtz_ctrl::laya::HelperLaya {
+            helper: helper.clone(),
+            model: qrtz_ctrl::decide::ModelId {
+                id: "laya".into(),
+                version: crate::ctrl_model::CtrlManifest::pinned().manifest.version,
+                quant: None,
+            },
+            path: consent.installed.clone(),
+        };
+        let (scorer, fallback) = qrtz_ctrl::laya::select_scorer(&consent, Some(Box::new(runtime)));
+        tracing::info!(?fallback, "ctrl.laya: scorer selected");
+        ctrl = ctrl.with_helper(helper).with_scorer(scorer);
     }
     service.set_ctrl(Arc::new(ctrl));
+    // ADR 0116: the model's consent and verified download, on every OS (only a macOS `laya` build runs it).
+    service.set_ctrl_model(Arc::new(crate::ctrl_model::CtrlModelSlot::new(
+        crate::ctrl_model::CtrlLayaModel::new(
+            dirs.data.join("models").join("ctrl"),
+            &dirs.data.join("ctrl"),
+            None,
+        ),
+    )));
     service.set_speech_tap(helper_line_tap(attach.clone(), note_speech.clone(), warm));
     Ok(BuiltApp {
         service,

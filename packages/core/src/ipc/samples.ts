@@ -290,6 +290,28 @@ const ctrlSamples = {
     request: { taskId: 'task-0', approvalId: 'approval-4' },
     response: { ...ctrlTask, approvals: [] },
   },
+  'ctrl:model': {
+    request: undefined,
+    response: {
+      consented: false,
+      state: 'off',
+      sizeBytes: 0,
+      bytesOnDisk: 0,
+      scorer: 'heuristic',
+      error: null,
+    },
+  },
+  'ctrl:model-consent': {
+    request: { consent: true },
+    response: {
+      consented: true,
+      state: 'unavailable',
+      sizeBytes: 0,
+      bytesOnDisk: 0,
+      scorer: 'heuristic',
+      error: 'laya.placeholder',
+    },
+  },
 } satisfies { [C in Extract<IpcChannel, `ctrl:${string}`>]: ChannelSample<C> };
 
 export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {

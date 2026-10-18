@@ -3,6 +3,7 @@ import {
   AskCard,
   ConfirmCard,
   ConfirmOutcome,
+  DecisionModelCard,
   StandingApprovals,
   Button,
   CtrlTaskRow,
@@ -25,6 +26,7 @@ import {
   CTRL_TEXT_MAX,
   type CtrlRun,
   type CtrlRunView,
+  type CtrlModelState,
   type CtrlTask,
 } from '@qrtz/core';
 import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
@@ -61,6 +63,7 @@ export default function CtrlView() {
   const [selected, setSelected] = useState<string | null>(null);
   const [runs, setRuns] = useState<CtrlRun[]>([]);
   const [run, setRun] = useState<CtrlRunView | null>(null);
+  const [model, setModel] = useState<CtrlModelState | null>(null);
 
   const fail = useCallback((e: Error) => toast(e.message, 'error'), [toast]);
   const loadTasks = useCallback(
@@ -81,6 +84,14 @@ export default function CtrlView() {
   );
 
   useEffect(loadTasks, [loadTasks, changed]);
+  // ADR 0116: a backend without the model channels simply hides the section.
+  useEffect(() => {
+    void qrtz.invoke('ctrl:model').then(setModel, () => setModel(null));
+  }, [qrtz, changed]);
+  const consent = (yes: boolean) =>
+    void qrtz
+      .invoke('ctrl:model-consent', { consent: yes })
+      .then(setModel, fail);
   useEffect(() => {
     setRun(null);
     if (selected) loadRuns(selected);
@@ -195,6 +206,14 @@ export default function CtrlView() {
           <EmptyState title="no tasks yet" icon="command" />
         )}
       </SettingsSection>
+      {model ? (
+        <SettingsSection
+          title="decision model"
+          data-testid="ctrl-model-section"
+        >
+          <DecisionModelCard model={model} onConsent={consent} />
+        </SettingsSection>
+      ) : null}
       {current?.approvals?.length ? (
         <SettingsSection
           title="allowed without asking"

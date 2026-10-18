@@ -30,7 +30,12 @@ private final class Fake: CtrlBackend {
     func act(_ route: CtrlRoute, content: [String: String]) throws { acted.append(route) }
     func measure(check: String, app: String) -> Int? { check == "tab_count" ? 0 : nil }
     func restore(frontmostPid: Int32?) -> Bool { frontmostPid != nil }
+    var layaModels: [String?] = []
     func laya(state: String, question: String, options: [String]) throws -> [Double] { [0.75, 0.25] }
+    func laya(model: String?, state: String, question: String, options: [String]) throws -> [Double] {
+        layaModels.append(model)
+        return try laya(state: state, question: question, options: options)
+    }
     func frontmostPid() -> Int32? { front }
     func pid(of app: String) -> Int32? { app == "com.apple.Notes" ? 100 : 200 }
     func preview(app: String, what: String) throws -> [CtrlPreviewItem] {
@@ -42,7 +47,7 @@ final class CtrlProtocolTests: XCTestCase {
     func testEveryHostLineOfTheFixtureParses() throws {
         let all = try lines()
         let host = all.filter { !(($0["type"] as! String).hasSuffix(".result")) && $0["type"] as! String != "ctrl.error" }
-        XCTAssertEqual(host.count, 9)
+        XCTAssertEqual(host.count, 10)
         for o in host {
             let line = String(decoding: try JSONSerialization.data(withJSONObject: o), as: UTF8.self)
             XCTAssertNotNil(CtrlRequest.parse(line), "\(o["type"]!)")
@@ -65,6 +70,21 @@ final class CtrlProtocolTests: XCTestCase {
         XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.probe","id":"c8"}"#)), want("ctrl.error"))
         XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.preview","id":"c9","app":"com.apple.TextEdit","what":"windows"}"#)),
                        want("ctrl.preview.result"))
+    }
+
+    func testTheConsentedModelPathReachesTheBackend() throws {
+        // ADR 0116: the host hands the consented model over with the question; a line without one still parses.
+        let m = try lines().first { $0["type"] as? String == "ctrl.laya" && $0["model"] != nil }!
+        let line = String(decoding: try JSONSerialization.data(withJSONObject: m), as: UTF8.self)
+        guard case let .laya(_, model, _, _, opts)? = CtrlRequest.parse(line) else { return XCTFail("laya") }
+        XCTAssertEqual(model, "/models/ctrl/laya/laya.mlmodelc")
+        XCTAssertEqual(opts.count, 2)
+        guard case let .laya(_, none, _, _, _)? = CtrlRequest.parse(#"{"type":"ctrl.laya","id":"n","state":"s","question":"q","options":["a"]}"#)
+        else { return XCTFail("laya without a model") }
+        XCTAssertNil(none)
+        let fake = Fake()
+        _ = CtrlServer(backend: fake).handle(line: line)
+        XCTAssertEqual(fake.layaModels, ["/models/ctrl/laya/laya.mlmodelc"])
     }
 
     func testABackendWithoutAPreviewSaysSoAndNeverActs() {

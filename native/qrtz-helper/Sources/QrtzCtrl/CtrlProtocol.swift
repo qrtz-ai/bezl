@@ -61,14 +61,15 @@ public enum CtrlRequest: Equatable, Sendable {
     /// `check`: tab_count / window_count / app_running / ax_scope, for `app`.
     case measure(id: String, check: String, app: String)
     case restore(id: String, frontmostPid: Int32?)
-    case laya(id: String, state: String, question: String, options: [String])
+    /// `model`: the consented, installed model the host hands over (ADR 0116), nil when it sent none.
+    case laya(id: String, model: String?, state: String, question: String, options: [String])
     /// The confirm gate's preview (ADR 0111): `what` is `windows` or `tabs` of `app`.
     case preview(id: String, app: String, what: String)
 
     public var id: String {
         switch self {
         case let .catalog(id), let .probe(id), let .snapshot(id, _, _), let .act(id, _, _, _), let .measure(id, _, _),
-             let .restore(id, _), let .laya(id, _, _, _), let .preview(id, _, _): return id
+             let .restore(id, _), let .laya(id, _, _, _, _), let .preview(id, _, _): return id
         }
     }
 
@@ -91,7 +92,7 @@ public enum CtrlRequest: Equatable, Sendable {
         case "ctrl.restore": return .restore(id: id, frontmostPid: (o["frontmostPid"] as? NSNumber).map { $0.int32Value })
         case "ctrl.laya":
             guard let st = s("state"), let q = s("question"), let opts = o["options"] as? [String] else { return nil }
-            return .laya(id: id, state: st, question: q, options: opts)
+            return .laya(id: id, model: s("model"), state: st, question: q, options: opts)
         case "ctrl.preview":
             guard let a = s("app"), let w = s("what"), w == "windows" || w == "tabs" else { return nil }
             return .preview(id: id, app: a, what: w)
@@ -139,6 +140,8 @@ public protocol CtrlBackend: AnyObject {
     func measure(check: String, app: String) -> Int?
     func restore(frontmostPid: Int32?) -> Bool
     func laya(state: String, question: String, options: [String]) throws -> [Double]
+    /// The same pass on the model at `model` (ADR 0116); defaults to the model-less call.
+    func laya(model: String?, state: String, question: String, options: [String]) throws -> [Double]
     func frontmostPid() -> Int32?
     func pid(of app: String) -> Int32?
     /// The windows or tabs an irreversible action would touch (read-only, never prompts).
@@ -146,6 +149,9 @@ public protocol CtrlBackend: AnyObject {
 }
 
 public extension CtrlBackend {
+    func laya(model: String?, state: String, question: String, options: [String]) throws -> [Double] {
+        try laya(state: state, question: question, options: options)
+    }
     /// Until a backend enumerates them, the host falls back to a count (`ctrl.measure`) for the preview.
     func preview(app: String, what: String) throws -> [CtrlPreviewItem] { throw CtrlFailure("preview.unsupported") }
 }
@@ -208,8 +214,8 @@ public final class CtrlServer {
                 return ["type": "ctrl.measure.result", "id": id, "value": backend.measure(check: check, app: app) as Any? ?? NSNull()]
             case let .restore(_, pid):
                 return ["type": "ctrl.restore.result", "id": id, "ok": backend.restore(frontmostPid: pid)]
-            case let .laya(_, state, question, options):
-                return ["type": "ctrl.laya.result", "id": id, "p": try backend.laya(state: state, question: question, options: options)]
+            case let .laya(_, model, state, question, options):
+                return ["type": "ctrl.laya.result", "id": id, "p": try backend.laya(model: model, state: state, question: question, options: options)]
             case let .preview(_, app, what):
                 let items = try backend.preview(app: app, what: what)
                 return ["type": "ctrl.preview.result", "id": id, "items": items.map { i -> [String: Any] in

@@ -20,6 +20,7 @@ import {
   CtrlRunView,
   CtrlSchedule,
   CtrlTask,
+  CtrlModelState,
 } from '../ctrl/contract';
 
 /** Bump when the envelope shape changes (not when a channel changes). */
@@ -521,6 +522,23 @@ export const ipcContract = {
       approvalId: z.string().max(64),
     }),
     response: CtrlTask,
+  }),
+  /** ctrl's decision model (ADR 0116): consent, download state and which scorer decides. */
+  'ctrl:model': defineChannel({
+    version: 1,
+    capability: 'ctrl.read',
+    request: z.void(),
+    response: CtrlModelState,
+  }),
+  /**
+   * Say yes (starts the verified download; the only network ctrl ever uses) or no (deletes the model; the heuristic
+   * scorer decides). Answers the state right after the change.
+   */
+  'ctrl:model-consent': defineChannel({
+    version: 1,
+    capability: 'ctrl.write',
+    request: z.object({ consent: z.boolean() }),
+    response: CtrlModelState,
   }),
 } as const satisfies Record<string, ChannelDef>;
 

@@ -93,6 +93,11 @@ pub enum HostMsg {
     #[serde(rename = "ctrl.laya")]
     Laya {
         id: String,
+        /// The consented, installed model the helper should run (ADR 0116). The host sends it only after the
+        /// user agreed to the download in onboarding / settings; without it the helper answers `laya.no_model`
+        /// (or uses the `QRTZ_CTRL_LAYA_MODEL` it was started with). Omitted when `None` (older fixture lines).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
         state: String,
         question: String,
         options: Vec<String>,
@@ -324,9 +329,16 @@ impl HelperClient {
         )
     }
 
-    pub fn laya(&self, state: &str, question: &str, options: &[String]) -> Result<Vec<f32>, String> {
+    pub fn laya(
+        &self,
+        model: Option<&std::path::Path>,
+        state: &str,
+        question: &str,
+        options: &[String],
+    ) -> Result<Vec<f32>, String> {
         match self.call(HostMsg::Laya {
             id: self.id(),
+            model: model.map(|p| p.to_string_lossy().into_owned()),
             state: state.into(),
             question: question.into(),
             options: options.to_vec(),
@@ -431,6 +443,8 @@ pub struct FakeWorld {
     pub acted: Vec<(String, Route)>,
     pub opened_urls: Vec<String>,
     pub laya: Option<Vec<f32>>,
+    /// The `model` of every `ctrl.laya` request, for assertions (ADR 0116).
+    pub laya_models: Vec<Option<String>>,
 }
 
 pub struct FakeHelper(pub Mutex<FakeWorld>);
@@ -478,6 +492,7 @@ impl FakeWorld {
             acted: Vec::new(),
             opened_urls: Vec::new(),
             laya: None,
+            laya_models: Vec::new(),
         }
     }
 
@@ -731,13 +746,18 @@ impl FakeWorld {
                     code: "app.not_running".into(),
                 },
             },
-            HostMsg::Laya { id, options, .. } => match &self.laya {
-                Some(p) if p.len() == options.len() => HelperMsg::LayaResult { id, p: p.clone() },
-                _ => HelperMsg::Error {
-                    id,
-                    code: "laya.no_model".into(),
-                },
-            },
+            HostMsg::Laya {
+                id, options, model, ..
+            } => {
+                self.laya_models.push(model);
+                match &self.laya {
+                    Some(p) if p.len() == options.len() => HelperMsg::LayaResult { id, p: p.clone() },
+                    _ => HelperMsg::Error {
+                        id,
+                        code: "laya.no_model".into(),
+                    },
+                }
+            }
         }
     }
 }

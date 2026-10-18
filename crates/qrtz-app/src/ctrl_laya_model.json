@@ -1,0 +1,22 @@
+{
+  "version": "0.0.0-placeholder",
+  "placeholder": true,
+  "note": "PLACEHOLDER (ADR 0116): no Core ML build of Laya with a pinned url, size and sha256 is known yet. While placeholder is true the download is refused and nothing touches the network; ctrl keeps its heuristic scorer.",
+  "base": "https://huggingface.co",
+  "sets": [
+    {
+      "id": "laya",
+      "dir": "laya",
+      "repo": "PLACEHOLDER/laya-coreml",
+      "revision": "0000000000000000000000000000000000000000",
+      "files": [
+        {
+          "remote": "laya.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+          "path": "laya.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+          "size": 0,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ]
+    }
+  ]
+}

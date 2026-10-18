@@ -1156,6 +1156,30 @@
         "nextRunAt": 1761264000000,
         "approvals": []
       }
+    },
+    "ctrl:model": {
+      "request": null,
+      "response": {
+        "consented": false,
+        "state": "off",
+        "sizeBytes": 0,
+        "bytesOnDisk": 0,
+        "scorer": "heuristic",
+        "error": null
+      }
+    },
+    "ctrl:model-consent": {
+      "request": {
+        "consent": true
+      },
+      "response": {
+        "consented": true,
+        "state": "unavailable",
+        "sizeBytes": 0,
+        "bytesOnDisk": 0,
+        "scorer": "heuristic",
+        "error": "laya.placeholder"
+      }
     }
   },
   "events": {

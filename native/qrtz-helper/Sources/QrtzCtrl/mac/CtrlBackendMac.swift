@@ -297,36 +297,74 @@ public final class MacCtrlBackend: CtrlBackend {
     // MARK: Laya
 
     public func laya(state: String, question: String, options: [String]) throws -> [Double] {
-        try layaRuntime.choice(state: state, question: question, options: options)
+        try layaRuntime.choice(model: nil, state: state, question: question, options: options)
+    }
+
+    public func laya(model: String?, state: String, question: String, options: [String]) throws -> [Double] {
+        try layaRuntime.choice(model: model, state: state, question: question, options: options)
     }
 }
 
-/// The Core ML Laya runtime (ADR 0106 / 0109). It runs only a model the user consented to download: the host sets
-/// `QRTZ_CTRL_LAYA_MODEL` to the installed, compiled model (`.mlmodelc`) after consent and never otherwise, and
-/// nothing here downloads anything. Without it every question answers `laya.no_model` and the host keeps the
-/// heuristic scorer.
+/// The Core ML Laya runtime (ADR 0106 / 0109 / 0116). It runs only a model the user consented to download: the host
+/// sends the installed model's path with each `ctrl.laya` after consent and never otherwise (`QRTZ_CTRL_LAYA_MODEL`
+/// at launch is the developer override), and nothing here downloads anything. A `.mlmodelc` loads as is; an
+/// `.mlpackage` / `.mlmodel` is compiled once into a sibling `.mlmodelc` (the persisted cache, reused while it is
+/// newer than its source). Without a usable model every question answers `laya.no_model` / `laya.load_failed` and
+/// the host keeps the heuristic scorer for that question.
 final class CtrlLayaRuntime {
-    private var model: MLModel?
-    private var loaded = false
+    private var models: [String: MLModel] = [:]
+    private var failed: Set<String> = []
     private let lock = NSLock()
+    static let kinds: Set<String> = ["mlmodelc", "mlpackage", "mlmodel"]
 
-    func load() throws -> MLModel {
+    /// The compiled cache for a source model: `<dir>/<name>.mlmodelc`.
+    static func compiledURL(for source: URL) -> URL {
+        source.deletingPathExtension().appendingPathExtension("mlmodelc")
+    }
+
+    static func modified(_ u: URL) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: u.path))?[.modificationDate] as? Date
+    }
+
+    /// Compile an `.mlpackage` / `.mlmodel` into its cache unless the cache is already newer than the source.
+    static func compiled(_ source: URL) throws -> URL {
+        if source.pathExtension == "mlmodelc" { return source }
+        let cache = compiledURL(for: source)
+        if let c = modified(cache), let s = modified(source), c >= s { return cache }
+        let tmp = try MLModel.compileModel(at: source)
+        let fm = FileManager.default
+        if fm.fileExists(atPath: cache.path) {
+            _ = try fm.replaceItemAt(cache, withItemAt: tmp)
+        } else {
+            try fm.moveItem(at: tmp, to: cache)
+        }
+        return cache
+    }
+
+    func load(_ model: String?) throws -> MLModel {
+        let env = ProcessInfo.processInfo.environment["QRTZ_CTRL_LAYA_MODEL"]
+        guard let path = (model?.isEmpty == false ? model : env), !path.isEmpty else { throw CtrlFailure("laya.no_model") }
         lock.lock(); defer { lock.unlock() }
-        if let model { return model }
-        if loaded { throw CtrlFailure("laya.no_model") }
-        loaded = true
-        guard let path = ProcessInfo.processInfo.environment["QRTZ_CTRL_LAYA_MODEL"], !path.isEmpty,
-              FileManager.default.fileExists(atPath: path) else { throw CtrlFailure("laya.no_model") }
+        if let m = models[path] { return m }
+        if failed.contains(path) { throw CtrlFailure("laya.load_failed") }
+        let url = URL(fileURLWithPath: path)
+        guard Self.kinds.contains(url.pathExtension), FileManager.default.fileExists(atPath: path) else { throw CtrlFailure("laya.no_model") }
         let c = MLModelConfiguration()
         c.computeUnits = .cpuAndNeuralEngine
-        do { model = try MLModel(contentsOf: URL(fileURLWithPath: path), configuration: c) } catch { throw CtrlFailure("laya.load_failed") }
-        return model!
+        do {
+            let m = try MLModel(contentsOf: try Self.compiled(url), configuration: c)
+            models[path] = m
+            return m
+        } catch {
+            failed.insert(path)
+            throw CtrlFailure("laya.load_failed")
+        }
     }
 
     /// One `choice` pass: the model takes `prompt` (state, question, numbered options) and returns `scores`, one per
     /// option; softmaxed here. A model without that interface answers `laya.bad_model`.
-    func choice(state: String, question: String, options: [String]) throws -> [Double] {
-        let m = try load()
+    func choice(model: String?, state: String, question: String, options: [String]) throws -> [Double] {
+        let m = try load(model)
         let prompt = "\(state)\n\(question)\n" + options.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
         guard let input = try? MLDictionaryFeatureProvider(dictionary: ["prompt": MLFeatureValue(string: prompt)]),
               let out = try? m.prediction(from: input),

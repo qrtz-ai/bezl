@@ -6,6 +6,7 @@ import {
   ConfirmOutcome,
   CtrlTaskRow,
   DecisionList,
+  DecisionModelCard,
   PlanSummary,
   RunHistory,
   RunTimeline,
@@ -190,5 +191,57 @@ describe('ctrl components', () => {
     );
     expect(list).toContain('ctrl-approval-revoke');
     expect(list).toContain('quit app in textedit, up to 2 items');
+  });
+});
+
+describe('DecisionModelCard (ADR 0116)', () => {
+  const base = {
+    consented: false,
+    state: 'off' as const,
+    sizeBytes: 0,
+    scorer: 'heuristic' as const,
+    error: null,
+  };
+  it('offers the download only as a choice, all lowercase', () => {
+    const html = renderToStaticMarkup(
+      <DecisionModelCard model={base} onConsent={noop} />,
+    );
+    expect(html).toContain('data-testid="ctrl-model-on"');
+    expect(html).not.toContain('ctrl-model-off');
+    expect(html).toContain('built-in rules');
+    expect(html.replace(/<[^>]*>/g, '')).toBe(
+      html.replace(/<[^>]*>/g, '').toLowerCase(),
+    );
+  });
+  it('after a yes on the placeholder it says nothing was downloaded and offers turning off', () => {
+    const html = renderToStaticMarkup(
+      <DecisionModelCard
+        model={{
+          ...base,
+          consented: true,
+          state: 'unavailable',
+          error: 'laya.placeholder',
+        }}
+        onConsent={noop}
+      />,
+    );
+    expect(html).toContain('data-state="unavailable"');
+    expect(html).toContain('nothing was downloaded');
+    expect(html).toContain('data-testid="ctrl-model-off"');
+  });
+  it('names the on-device model only when it decides', () => {
+    const html = renderToStaticMarkup(
+      <DecisionModelCard
+        model={{
+          ...base,
+          consented: true,
+          state: 'installed',
+          scorer: 'laya',
+          sizeBytes: 420e6,
+        }}
+        onConsent={noop}
+      />,
+    );
+    expect(html).toContain('deciding with the on-device model');
   });
 });

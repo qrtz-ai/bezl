@@ -735,3 +735,83 @@ export function StandingApprovals({
     </ul>
   );
 }
+
+export interface DecisionModelInfo {
+  consented: boolean;
+  state:
+    | 'off'
+    | 'unavailable'
+    | 'not_installed'
+    | 'downloading'
+    | 'installed'
+    | 'failed';
+  sizeBytes: number;
+  scorer: 'heuristic' | 'laya';
+  error: string | null;
+}
+
+const MODEL_LINE: Record<DecisionModelInfo['state'], string> = {
+  off: 'off: ctrl decides with its built-in rules and never goes online',
+  unavailable:
+    "you said yes, but the model isn't published yet; nothing was downloaded",
+  not_installed: 'you said yes; the model is not downloaded yet',
+  downloading: 'downloading and checking the model',
+  installed: 'downloaded and checked; runs on this mac only',
+  failed: 'the download failed its check; nothing was kept',
+};
+
+/**
+ * ctrl's decision model (ADR 0116): the only time ctrl uses the network is this download, and only after a yes
+ * here. Without it ctrl decides with its built-in rules.
+ */
+export function DecisionModelCard({
+  model,
+  onConsent,
+}: {
+  model: DecisionModelInfo;
+  onConsent: (yes: boolean) => void;
+}) {
+  const t = useTheme();
+  const mb = model.sizeBytes
+    ? ` (${Math.round(model.sizeBytes / 1e6)} mb)`
+    : '';
+  return (
+    <div
+      data-testid="ctrl-model"
+      data-state={model.state}
+      style={{ display: 'grid', gap: t.space[2] }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: t.space[2] }}>
+        <Icon name={model.state === 'installed' ? 'check' : 'download'} />
+        <Text variant="caption" data-testid="ctrl-model-line">
+          {MODEL_LINE[model.state]}
+        </Text>
+      </div>
+      <Text variant="caption" data-testid="ctrl-model-scorer">
+        {model.scorer === 'laya'
+          ? 'deciding with the on-device model'
+          : 'deciding with the built-in rules'}
+      </Text>
+      <div style={{ display: 'flex', gap: t.space[2] }}>
+        {model.consented ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onConsent(false)}
+            data-testid="ctrl-model-off"
+          >
+            turn off and delete the model
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            onClick={() => onConsent(true)}
+            data-testid="ctrl-model-on"
+          >
+            {`download the decision model${mb}`}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}

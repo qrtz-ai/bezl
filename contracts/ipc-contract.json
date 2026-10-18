@@ -9975,6 +9975,143 @@
         ],
         "additionalProperties": false
       }
+    },
+    "ctrl:model": {
+      "version": 1,
+      "capability": "ctrl.read",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "consented": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "off",
+              "unavailable",
+              "not_installed",
+              "downloading",
+              "installed",
+              "failed"
+            ]
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "bytesOnDisk": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "scorer": {
+            "type": "string",
+            "enum": [
+              "heuristic",
+              "laya"
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "consented",
+          "state",
+          "sizeBytes",
+          "bytesOnDisk",
+          "scorer",
+          "error"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "ctrl:model-consent": {
+      "version": 1,
+      "capability": "ctrl.write",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "consent": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "consent"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "consented": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "off",
+              "unavailable",
+              "not_installed",
+              "downloading",
+              "installed",
+              "failed"
+            ]
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "bytesOnDisk": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "scorer": {
+            "type": "string",
+            "enum": [
+              "heuristic",
+              "laya"
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "consented",
+          "state",
+          "sizeBytes",
+          "bytesOnDisk",
+          "scorer",
+          "error"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "events": {

@@ -73,6 +73,9 @@ pub struct ModelConsent {
     pub installed: Option<PathBuf>,
 }
 
+/// Whether this build can run Laya at all (macOS with the `laya` feature); elsewhere the heuristic always decides.
+pub const RUNTIME_BUILD: bool = cfg!(all(target_os = "macos", feature = "laya"));
+
 /// Why the heuristic layer answers instead of Laya.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Fallback {
@@ -124,6 +127,9 @@ impl LayaRuntime for Box<dyn LayaRuntime> {
 pub struct HelperLaya {
     pub helper: std::sync::Arc<crate::helper::HelperClient>,
     pub model: ModelId,
+    /// The consented, installed model the host hands the helper with every question (ADR 0116); `None` sends no
+    /// path, and a helper started without `QRTZ_CTRL_LAYA_MODEL` then answers `laya.no_model`.
+    pub path: Option<PathBuf>,
 }
 
 impl LayaRuntime for HelperLaya {
@@ -131,6 +137,7 @@ impl LayaRuntime for HelperLaya {
         self.model.clone()
     }
     fn choose(&self, r: &LayaRequest) -> Result<Vec<f32>, String> {
-        self.helper.laya(&r.state, &r.question, &r.options)
+        self.helper
+            .laya(self.path.as_deref(), &r.state, &r.question, &r.options)
     }
 }

@@ -87,6 +87,9 @@ pub struct AppService {
     pub events: Events,
     setup: std::sync::OnceLock<Arc<dyn crate::ports::SetupPort>>,
     ctrl: std::sync::OnceLock<Arc<qrtz_ctrl::service::CtrlService>>,
+    /// ADR 0116: ctrl's Laya model (consent + download), behind `ctrl:model` / `ctrl:model-consent`.
+    #[cfg(feature = "runtime")]
+    ctrl_model: std::sync::OnceLock<Arc<crate::ctrl_model::CtrlModelSlot>>,
     speech_tap: std::sync::OnceLock<SpeechTap>,
     /// The last helper status every port has seen (`on_helper_status` finished), for readiness checks.
     delivered: std::sync::Mutex<Option<HelperStatus>>,
@@ -117,6 +120,8 @@ impl AppService {
             events: d.events,
             setup: std::sync::OnceLock::new(),
             ctrl: std::sync::OnceLock::new(),
+            #[cfg(feature = "runtime")]
+            ctrl_model: std::sync::OnceLock::new(),
             speech_tap: std::sync::OnceLock::new(),
             delivered: Default::default(),
             renderer_log: Mutex::new(crate::logging::RendererGate::new()),
@@ -197,6 +202,12 @@ impl AppService {
         let _ = self.ctrl.set(ctrl);
     }
 
+    /// ADR 0116: plug in ctrl's Laya model slot (set once by `build_app`).
+    #[cfg(feature = "runtime")]
+    pub fn set_ctrl_model(&self, m: Arc<crate::ctrl_model::CtrlModelSlot>) {
+        let _ = self.ctrl_model.set(m);
+    }
+
     /// ADR 0105: in-process ctrl scheduler. Call once inside tokio (next to `start_helper`). Ticks every second
     /// and once immediately so a catch-up after sleep/quit and `once` ASAP both fire without a window.
     pub fn start_ctrl_scheduler(self: &Arc<Self>) {
@@ -240,6 +251,32 @@ impl AppService {
     /// `ctrl:*`: the store writes and `fsync`s, so off the async runtime.
     async fn ctrl_channel(&self, channel: &str, p: Value) -> Result<Value, AppError> {
         use qrtz_ctrl::service::CtrlErrorCode as C;
+        #[cfg(feature = "runtime")]
+        if let Some(m) = self
+            .ctrl_model
+            .get()
+            .filter(|_| channel.starts_with("ctrl:model"))
+        {
+            let st = match channel {
+                "ctrl:model" => m.state(),
+                "ctrl:model-consent" => {
+                    let yes = p.get("consent").and_then(Value::as_bool).ok_or_else(|| {
+                        AppError::new(ErrorCode::Validation, "consent must be true or false")
+                    })?;
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or(0);
+                    m.set_consent(yes, now).await.map_err(|e| {
+                        tracing::error!(err = %e.kind(), "ctrl.model consent");
+                        AppError::new(ErrorCode::Internal, "could not save the model consent")
+                    })?
+                }
+                _ => return Err(AppError::new(ErrorCode::NotFound, "no such ctrl channel")),
+            };
+            return serde_json::to_value(st)
+                .map_err(|_| AppError::new(ErrorCode::Internal, "ctrl model state"));
+        }
         let Some(ctrl) = self.ctrl.get().cloned() else {
             return Err(
                 AppError::new(ErrorCode::Unavailable, "ctrl is not available in this build").retryable(false),

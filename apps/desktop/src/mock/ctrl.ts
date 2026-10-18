@@ -13,6 +13,7 @@ import {
   AppError,
   type CtrlConfirm,
   type CtrlDecision,
+  type CtrlModelState,
   type CtrlOption,
   type CtrlPlan,
   type CtrlRun,
@@ -336,6 +337,14 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
       state: stateAt(r.recs, n),
     };
   };
+  let model: CtrlModelState = {
+    consented: false,
+    state: 'off',
+    sizeBytes: 0,
+    bytesOnDisk: 0,
+    scorer: 'heuristic',
+    error: null,
+  };
   const get = (runId: string) => {
     const r = runs.get(runId);
     if (!r) throw new AppError('E_NOT_FOUND', 'that task or run is gone');
@@ -468,6 +477,26 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
       }
       sync(r);
       return view(r);
+    },
+    // ADR 0116: the decision model. The pinned manifest is still a placeholder, so a yes is recorded and the
+    // download refused (no network), exactly like the Rust backend.
+    'ctrl:model': () => ({ ...model }),
+    'ctrl:model-consent': ({ consent }) => {
+      model = consent
+        ? {
+            ...model,
+            consented: true,
+            state: 'unavailable',
+            error: 'laya.placeholder',
+          }
+        : {
+            ...model,
+            consented: false,
+            state: 'off',
+            error: null,
+            bytesOnDisk: 0,
+          };
+      return { ...model };
     },
     'ctrl:revoke-approval': ({ taskId, approvalId }) => {
       const t = task(taskId);

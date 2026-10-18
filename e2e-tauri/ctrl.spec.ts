@@ -328,3 +328,33 @@ test('ctrl: trashing old downloads waits at the card with the files, approve fin
   expect(await axe(page, 'ctrl')).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+// ADR 0116: the decision model is off until the user says yes; the pinned manifest is still a placeholder, so a yes
+// is recorded and nothing is downloaded; turning it off goes back to the built-in rules.
+test('ctrl: the decision model is a choice; a yes on the placeholder downloads nothing', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  const card = ctrl.getByTestId('ctrl-model');
+  await expect(card).toHaveAttribute('data-state', 'off');
+  await expect(card.getByTestId('ctrl-model-scorer')).toHaveText(
+    'deciding with the built-in rules',
+  );
+  await card.getByTestId('ctrl-model-on').click();
+  await expect(card).toHaveAttribute('data-state', 'unavailable');
+  await expect(card.getByTestId('ctrl-model-line')).toContainText(
+    'nothing was downloaded',
+  );
+  await expect(card.getByTestId('ctrl-model-scorer')).toHaveText(
+    'deciding with the built-in rules',
+  );
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  await card.getByTestId('ctrl-model-off').click();
+  await expect(card).toHaveAttribute('data-state', 'off');
+  await expect(card.getByTestId('ctrl-model-on')).toBeVisible();
+  expect(errors).toEqual([]);
+});

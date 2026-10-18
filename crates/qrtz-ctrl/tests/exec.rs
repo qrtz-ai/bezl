@@ -427,7 +427,11 @@ fn the_ctrl_protocol_fixture_round_trips() {
         };
         assert_eq!(back, v, "{t} round-trips");
     }
-    assert_eq!((host, helper), (9, 9), "every message, two act routes");
+    assert_eq!(
+        (host, helper),
+        (10, 9),
+        "every message, two act routes, laya with and without a model"
+    );
 }
 
 #[test]
@@ -480,9 +484,15 @@ fn laya_runs_over_the_helper_protocol_and_falls_back_when_the_helper_has_no_mode
                 version: "test".into(),
                 quant: None,
             },
+            path: Some("/models/ctrl/laya/laya.mlmodelc".into()),
         },
     };
     let l = scorer.logits(&q, &goal).unwrap();
+    // ADR 0116: the consented model's path rides on every question.
+    assert_eq!(
+        fake.0.lock().unwrap().laya_models,
+        [Some("/models/ctrl/laya/laya.mlmodelc".to_string())]
+    );
     assert_eq!(l.iter().enumerate().max_by_key(|(_, x)| **x).unwrap().0, 1);
     // No model on the helper: an error, which the chain turns into the heuristic's answer.
     fake.0.lock().unwrap().laya = None;

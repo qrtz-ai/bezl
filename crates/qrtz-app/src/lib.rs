@@ -2,6 +2,8 @@
 #[cfg(feature = "runtime")]
 pub mod config;
 pub mod ctrl_helper;
+#[cfg(feature = "runtime")]
+pub mod ctrl_model;
 pub mod dirs;
 #[cfg(feature = "runtime")]
 pub mod local_models;

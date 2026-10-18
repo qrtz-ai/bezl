@@ -13,6 +13,7 @@
 {"type":"ctrl.restore.result","id":"c6","ok":true}
 {"type":"ctrl.laya","id":"c7","state":"task: close all my tabs","question":"which app should do it?","options":["safari","none of these"]}
 {"type":"ctrl.laya.result","id":"c7","p":[0.75,0.25]}
+{"type":"ctrl.laya","id":"c7m","model":"/models/ctrl/laya/laya.mlmodelc","state":"task: close all my tabs","question":"which app should do it?","options":["safari","none of these"]}
 {"type":"ctrl.preview","id":"c9","app":"com.apple.TextEdit","what":"windows"}
 {"type":"ctrl.preview.result","id":"c9","items":[{"title":"notes.txt","unsaved":false},{"title":"draft.txt","unsaved":true}]}
 {"type":"ctrl.error","id":"c8","code":"app.not_running"}
