@@ -164,3 +164,32 @@ test('seeded meeting opens; views pass axe', async ({ page }, info) => {
   if (info.project.name === 'chromium')
     expect(await axe(page, 'tauri-settings')).toEqual([]);
 });
+
+test('deep links open a meeting tab; tab switches keep the url and never refetch (ADR 0091)', async ({
+  page,
+}) => {
+  const id = '00000000-0000-4000-8000-000000000001'; // SAMPLE_MEETING_ID, seeded
+  const errors = await open(page, `seed=1#/note/meetings/${id}/summary`);
+  const note = page.locator('[data-subapp="note"]');
+  await expect(note.getByTestId('tab-summary')).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(note.locator('[data-panel="summary"]')).toBeVisible();
+  await note.getByTestId('tab-notes').click();
+  await expect(page).toHaveURL(new RegExp(`#/note/meetings/${id}/notes$`));
+  await note.getByTestId('tab-transcript').click();
+  await expect(page).toHaveURL(new RegExp(`#/note/meetings/${id}$`));
+  await expect(note.getByText("Let's start.")).toBeVisible();
+  // Another app and back: the same meeting and tab, still mounted.
+  await page.getByTestId('nav-settings').click();
+  await expect(page).toHaveURL(/#\/settings$/);
+  await expect(note).toBeHidden();
+  await page.getByTestId('nav-note').click();
+  await expect(page).toHaveURL(new RegExp(`#/note/meetings/${id}$`));
+  await expect(note.getByText("Let's start.")).toBeVisible();
+  // An unknown route goes to the default app.
+  await page.evaluate(() => (location.hash = '#/nope'));
+  await expect(page).toHaveURL(/#\/note$/);
+  expect(errors).toEqual([]);
+});

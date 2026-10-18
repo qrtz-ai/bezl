@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { act } from 'react';
+import { act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { QrtzClient } from '@qrtz/core';
+import type { MeetingTab, QrtzClient } from '@qrtz/core';
 import { QrtzClientProvider } from '@qrtz/core/react';
 import {
   SAMPLE_MEETING_ID,
@@ -15,6 +15,19 @@ import { MeetingDetail } from './MeetingDetail';
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
+
+// The note view owns the tab through its route; a plain state stands in for it here.
+function Routed() {
+  const [tab, setTab] = useState<MeetingTab>('transcript');
+  return (
+    <MeetingDetail
+      id={SAMPLE_MEETING_ID}
+      tab={tab}
+      onTab={setTab}
+      onDelete={() => {}}
+    />
+  );
+}
 
 describe('MeetingDetail tabs', () => {
   it('switching transcript/summary/notes keeps panels mounted: no refetch, no empty frame', async () => {
@@ -38,7 +51,7 @@ describe('MeetingDetail tabs', () => {
       root.render(
         <ThemeProvider mode="light">
           <QrtzClientProvider client={client}>
-            <MeetingDetail id={SAMPLE_MEETING_ID} onDelete={() => {}} />
+            <Routed />
           </QrtzClientProvider>
         </ThemeProvider>,
       ),

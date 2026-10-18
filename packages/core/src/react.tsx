@@ -1,7 +1,9 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from 'react';
@@ -21,6 +23,44 @@ export function QrtzClientProvider({
   return (
     <ClientContext.Provider value={client}>{children}</ClientContext.Provider>
   );
+}
+
+/**
+ * A sub app's slice of the shell's route (ADR 0091): `path` is what follows the app id in the hash (e.g.
+ * `meetings/m1/summary`). `active` is false while the sub app is mounted but hidden behind another one: gate
+ * global listeners on it. While hidden, `navigate` only updates the sub app's remembered path (shown on return)
+ * and never switches apps.
+ */
+export interface SubAppRoute {
+  active: boolean;
+  path: string;
+  navigate: (path: string, opts?: { replace?: boolean }) => void;
+}
+
+const RouteContext = createContext<SubAppRoute | null>(null);
+
+export function SubAppRouteProvider({
+  route,
+  children,
+}: {
+  route: SubAppRoute;
+  children: ReactNode;
+}) {
+  return (
+    <RouteContext.Provider value={route}>{children}</RouteContext.Provider>
+  );
+}
+
+/** The current sub app's route. Outside the shell (previews, tests) it is local state, always active. */
+export function useSubAppRoute(): SubAppRoute {
+  const shell = useContext(RouteContext);
+  const [path, setPath] = useState('');
+  const navigate = useCallback((p: string) => setPath(p), []);
+  const local = useMemo(
+    () => ({ active: true, path, navigate }),
+    [path, navigate],
+  );
+  return shell ?? local;
 }
 
 /** The IPC client scoped to the current sub app's identity and capabilities. */

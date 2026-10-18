@@ -32,6 +32,7 @@ import {
 } from '@qrtz/ui';
 import {
   SUMMARY_TEMPLATES,
+  type MeetingTab,
   type MeetingDetail as Detail,
   type Segment as SegmentT,
   type SummaryTemplateId,
@@ -49,14 +50,17 @@ import {
   useSession,
 } from './useRecording';
 
-type Tab = 'summary' | 'notes' | 'transcript';
-
 export function MeetingDetail({
   id,
+  tab,
+  onTab: setTab,
   onDelete,
   seekTo,
 }: {
   id: string;
+  /** The open tab; the route owns it (ADR 0091). */
+  tab: MeetingTab;
+  onTab: (tab: MeetingTab) => void;
   /** Asks the parent to delete (after the user confirmed); the parent offers Undo. */
   onDelete: (title: string) => void;
   /** Open on the transcript at this moment. */
@@ -69,15 +73,15 @@ export function MeetingDetail({
   const [reloadKey, setReloadKey] = useState(0);
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
-  // The transcript is front and center: it is the default view during and after a recording.
-  const [tab, setTab] = useState<Tab>('transcript');
   // Panels mount on first view and then stay mounted (hidden), so switching tabs never refetches notes,
   // reloads the audio or shows an empty frame.
-  const [seen, setSeen] = useState<ReadonlySet<Tab>>(() => new Set([tab]));
+  const [seen, setSeen] = useState<ReadonlySet<MeetingTab>>(
+    () => new Set([tab]),
+  );
   useEffect(() => {
     setSeen((s) => (s.has(tab) ? s : new Set(s).add(tab)));
   }, [tab]);
-  const panel = (p: Tab, node: ReactNode) =>
+  const panel = (p: MeetingTab, node: ReactNode) =>
     p === tab || seen.has(p) ? (
       <KeepAlive role="tabpanel" data-panel={p} active={p === tab}>
         {node}
@@ -174,7 +178,7 @@ export function MeetingDetail({
         .querySelector('[data-testid="transcript-segment"][data-active]')
         ?.scrollIntoView({ block: 'center' }),
     );
-  }, [seekTo, loaded]);
+  }, [seekTo, loaded, setTab]);
 
   if (!d && loadError)
     return (

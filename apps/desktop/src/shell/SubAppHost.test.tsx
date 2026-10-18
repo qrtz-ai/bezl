@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { act, useEffect, useState } from 'react';
+import { act, Suspense, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { defineSubApp } from '@qrtz/core';
 import { Dialog, ThemeProvider } from '@qrtz/ui';
@@ -30,7 +30,9 @@ describe('SubAppHost error boundary (M0.9)', () => {
         root.render(
           <div>
             <nav data-testid="shell-nav">shell</nav>
-            <SubAppHost app={boom} />
+            <Suspense fallback={null}>
+              <SubAppHost app={boom} />
+            </Suspense>
           </div>,
         );
       });
@@ -81,10 +83,10 @@ describe('SubAppHost keep-mounted tabs', () => {
     const root = createRoot(el);
     const render = (active: 'a' | 'b') =>
       root.render(
-        <>
+        <Suspense fallback={null}>
           <SubAppHost app={a} active={active === 'a'} />
           <SubAppHost app={b} active={active === 'b'} />
-        </>,
+        </Suspense>,
       );
     await act(async () => render('a'));
     await act(async () => {
@@ -142,7 +144,9 @@ describe('hidden sub app keyboard', () => {
     const render = (active: boolean) =>
       root.render(
         <ThemeProvider mode="light">
-          <SubAppHost app={withDialog} active={active} />
+          <Suspense fallback={null}>
+            <SubAppHost app={withDialog} active={active} />
+          </Suspense>
         </ThemeProvider>,
       );
     await act(async () => render(true));

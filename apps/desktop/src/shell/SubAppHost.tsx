@@ -1,15 +1,19 @@
 import {
   Component,
   lazy,
-  Suspense,
   useEffect,
+  useMemo,
   type ComponentType,
   type LazyExoticComponent,
   type ReactNode,
 } from 'react';
 import { createClient, type QrtzClient, type SubApp } from '@qrtz/core';
 import { Button, KeepAlive, Stack, Text } from '@qrtz/ui';
-import { QrtzClientProvider } from '@qrtz/core/react';
+import {
+  QrtzClientProvider,
+  SubAppRouteProvider,
+  type SubAppRoute,
+} from '@qrtz/core/react';
 import { noTransport } from './shellClient';
 
 class SubAppErrorBoundary extends Component<
@@ -52,6 +56,7 @@ const viewFor = (app: SubApp) => {
   if (!v) views.set(app.manifest.id, (v = lazy(app.load)));
   return v;
 };
+const noNavigate: SubAppRoute['navigate'] = () => {};
 const clientFor = (app: SubApp) => {
   let c = clients.get(app.manifest.id);
   if (!c)
@@ -65,17 +70,26 @@ const clientFor = (app: SubApp) => {
 /**
  * Mounts one sub app with its own scoped IPC client, error boundary and lifecycle. The shell keeps a
  * visited sub app mounted while another is shown: `active={false}` hides it (`hidden`, `inert`,
- * `aria-hidden`) and runs its `activate()` cleanup, since activate is per visible session.
+ * `aria-hidden`) and runs its `activate()` cleanup, since activate is per visible session. `path` and
+ * `navigate` are its slice of the shell's route (ADR 0091). The shell provides the Suspense boundary.
  */
 export function SubAppHost({
   app,
   active = true,
+  path = '',
+  navigate = noNavigate,
 }: {
   app: SubApp;
   active?: boolean;
+  path?: string;
+  navigate?: SubAppRoute['navigate'];
 }) {
   const View = viewFor(app);
   const client = clientFor(app);
+  const route = useMemo(
+    () => ({ active, path, navigate }),
+    [active, path, navigate],
+  );
   useEffect(() => {
     if (!active) return;
     const cleanup = app.activate?.();
@@ -86,11 +100,11 @@ export function SubAppHost({
   return (
     <KeepAlive active={active} fill data-subapp={app.manifest.id}>
       <QrtzClientProvider client={client}>
-        <SubAppErrorBoundary key={app.manifest.id} name={app.manifest.name}>
-          <Suspense fallback={null}>
+        <SubAppRouteProvider route={route}>
+          <SubAppErrorBoundary key={app.manifest.id} name={app.manifest.name}>
             <View />
-          </Suspense>
-        </SubAppErrorBoundary>
+          </SubAppErrorBoundary>
+        </SubAppRouteProvider>
       </QrtzClientProvider>
     </KeepAlive>
   );

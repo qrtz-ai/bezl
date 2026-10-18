@@ -16,11 +16,17 @@ import {
 import {
   AppError,
   SessionView,
-  onNavigateRequest,
-  takePendingMeeting,
+  meetingPath,
+  parseMeetingPath,
+  requestNavigate,
+  type MeetingTab,
 } from '@qrtz/core';
-import { useQrtz, useQrtzEvent, useSpeechSetup } from '@qrtz/core/react';
-import { requestNavigate } from '@qrtz/core';
+import {
+  useQrtz,
+  useQrtzEvent,
+  useSpeechSetup,
+  useSubAppRoute,
+} from '@qrtz/core/react';
 import { Hud } from './Hud';
 import { isCapturingPhase, useSession } from './useRecording';
 import { MeetingDetail } from './MeetingDetail';
@@ -46,16 +52,19 @@ export default function NoteView() {
       hit?: { snippet: string };
     }[]
   >([]);
-  const [selected, setSelected] = useState<string | null>(
-    () => takePendingMeeting() ?? null,
+  // The open meeting and its tab are the route (#/note/meetings/:id/:tab?, ADR 0091), so deep links, the
+  // palette and notifications open them and the tab bar returns to them.
+  const route = useSubAppRoute();
+  const { meetingId: selected, tab } = parseMeetingPath(route.path);
+  const { navigate } = route;
+  const setSelected = useCallback(
+    (id: string | null, opts?: { replace?: boolean }) =>
+      navigate(id ? meetingPath(id) : '', opts),
+    [navigate],
   );
-  useEffect(
-    () =>
-      onNavigateRequest((r) => {
-        if (r.app === 'note' && r.meetingId)
-          setSelected(takePendingMeeting() ?? null);
-      }),
-    [],
+  const setTab = useCallback(
+    (t: MeetingTab) => selected && navigate(meetingPath(selected, t)),
+    [navigate, selected],
   );
   const [error, setError] = useState<string | null>(null);
   const toast = useToast();
@@ -97,8 +106,8 @@ export default function NoteView() {
     ? session.meetingId
     : undefined;
   useEffect(() => {
-    if (liveId) setSelected(liveId);
-  }, [liveId]);
+    if (liveId) setSelected(liveId, { replace: true });
+  }, [liveId, setSelected]);
 
   const refresh = useCallback(() => {
     qrtz
@@ -263,6 +272,8 @@ export default function NoteView() {
         {selected ? (
           <MeetingDetail
             id={selected}
+            tab={tab}
+            onTab={setTab}
             onDelete={(title) => requestDelete(selected, title)}
           />
         ) : isCapturingPhase(session.phase) ? null : (
