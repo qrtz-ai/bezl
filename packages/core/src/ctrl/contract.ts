@@ -193,6 +193,26 @@ export const CtrlConfirm = z.object({
 });
 export type CtrlConfirm = z.infer<typeof CtrlConfirm>;
 
+/**
+ * Putting a finished file batch back (ADR 0117). `ready`: files that would go back now (read from the disk at the
+ * end of the log; 0 while scrubbed back). `cantUndo`: files that stay where they are: `moved` (renamed or moved
+ * since) or `occupied` (something with its name is back where it came from). `done`: the batch was put back.
+ */
+export const CtrlUndo = z.object({
+  actionId: z.string(),
+  files: z.number().int().nonnegative(),
+  ready: z.number().int().nonnegative(),
+  cantUndo: z.array(
+    z.object({
+      key: z.string(),
+      label: z.string(),
+      why: z.enum(['moved', 'occupied']),
+    }),
+  ),
+  done: z.object({ undone: z.number().int().nonnegative() }).nullable(),
+});
+export type CtrlUndo = z.infer<typeof CtrlUndo>;
+
 /** The reducer's state after `at` events (crates/qrtz-ctrl `log::CtrlState`). */
 export const CtrlRunState = z.object({
   actions: z.array(z.object({ id: z.string(), status: CtrlActionStatus })),
@@ -205,6 +225,8 @@ export const CtrlRunState = z.object({
   ask: CtrlAsk.nullable(),
   /** The confirm gate of the current plan, if it has one (ADR 0111). */
   confirm: CtrlConfirm.nullable().optional(),
+  /** The run's finished file batch and whether it can be (or was) put back (ADR 0117). */
+  undo: CtrlUndo.nullable().optional(),
   /** Why the executor stopped before acting (ADR 0108). */
   held: z
     .enum(['irreversible', 'files-not-yet', 'no-route', 'unknown-app'])

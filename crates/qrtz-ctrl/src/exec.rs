@@ -17,7 +17,7 @@
 //! `files.empty_trash`) they still stop with `exec.held { files_not_yet }`. (Runs from before slice 6 may still hold `exec.held { irreversible }`; they replay as before.)
 use crate::ax::{diff, AxSnapshot};
 use crate::decide::{next_backtrack, run_chain_obs, unobserved, BacktrackReason, Goal, Node, Scorer};
-use crate::files::{path_ref, plan_cleanup, FilePlan, FileRoots};
+use crate::files::{path_ref, plan_cleanup, FilePlan, FileRoots, Planned};
 use crate::fs_exec::{FsExecutor, MemStore};
 use crate::gate::{
     counted_items, hash_items, intent_and_move, preview_what, rules, Approval, ConfirmAnswer, ItemKind,
@@ -668,6 +668,22 @@ impl Driver<'_> {
                 let clock = DynClock(self.clock);
                 match &fplan {
                     Some((roots, p)) => {
+                        // Names stay in memory: they label what can't be put back later (ADR 0117).
+                        sink.labels(
+                            p.ops
+                                .iter()
+                                .filter_map(|o| match o {
+                                    Planned::Move { src, .. } | Planned::Trash { src } => Some(src),
+                                    Planned::MakeDir { .. } => None,
+                                })
+                                .map(|src| {
+                                    (
+                                        path_ref(src),
+                                        src.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+                                    )
+                                })
+                                .collect(),
+                        );
                         let store: MemStore = p.to_op(roots).1;
                         let mut exec = FsExecutor {
                             store,

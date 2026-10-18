@@ -5,6 +5,7 @@ import {
   ConfirmOutcome,
   DecisionModelCard,
   StandingApprovals,
+  UndoCard,
   Button,
   CtrlTaskRow,
   DecisionList,
@@ -132,6 +133,11 @@ export default function CtrlView() {
     void qrtz.invoke('ctrl:confirm', { runId, gateId, answer: a }).then((v) => {
       setRun(v);
       loadTasks();
+      if (selected) loadRuns(selected);
+    }, fail);
+  const putBack = (runId: string, rest: boolean) =>
+    void qrtz.invoke('ctrl:undo', { runId, rest }).then((v) => {
+      setRun(v);
       if (selected) loadRuns(selected);
     }, fail);
   const revoke = (taskId: string, approvalId: string) =>
@@ -278,6 +284,17 @@ export default function CtrlView() {
           ) : null}
           {run?.state.confirm?.answer ? (
             <ConfirmOutcome answer={run.state.confirm.answer} />
+          ) : null}
+          {run?.state.undo &&
+          (run.state.undo.done || run.at === run.events.length) ? (
+            <UndoCard
+              files={run.state.undo.files}
+              ready={run.state.undo.ready}
+              cantUndo={run.state.undo.cantUndo}
+              done={run.state.undo.done?.undone ?? null}
+              onUndo={() => putBack(run.run.id, false)}
+              onRest={() => putBack(run.run.id, true)}
+            />
           ) : null}
           {run?.state.plan ? (
             <PlanSummary

@@ -1135,6 +1135,90 @@
         }
       }
     },
+    "ctrl:undo": {
+      "request": {
+        "runId": "run-1",
+        "rest": true
+      },
+      "response": {
+        "run": {
+          "id": "run-1",
+          "taskId": "task-0",
+          "at": 1760659260000,
+          "status": "done",
+          "events": 6,
+          "violations": 0
+        },
+        "events": [
+          {
+            "seq": 0,
+            "kind": "task.started",
+            "at": 1760659260000,
+            "actionId": null
+          },
+          {
+            "seq": 1,
+            "kind": "intent.pending",
+            "at": 1760659260000,
+            "actionId": null
+          },
+          {
+            "seq": 2,
+            "kind": "obs.apps",
+            "at": 1760659260000,
+            "actionId": null,
+            "node": null
+          },
+          {
+            "seq": 3,
+            "kind": "decision.made",
+            "at": 1760659260000,
+            "actionId": null,
+            "node": "choose_intent"
+          },
+          {
+            "seq": 4,
+            "kind": "task.finished",
+            "at": 1760659260000,
+            "actionId": null,
+            "node": null
+          },
+          {
+            "seq": 5,
+            "kind": "undo.done",
+            "at": 1760659261000,
+            "actionId": "a0",
+            "node": null
+          }
+        ],
+        "at": 6,
+        "state": {
+          "actions": [],
+          "violations": 0,
+          "inconclusive": 0,
+          "quarantined": [],
+          "status": "done",
+          "decisions": [],
+          "plan": null,
+          "ask": null,
+          "undo": {
+            "actionId": "a0",
+            "files": 3,
+            "ready": 0,
+            "cantUndo": [
+              {
+                "key": "f3f2a9c1d0b7e",
+                "label": "photo.png",
+                "why": "moved"
+              }
+            ],
+            "done": {
+              "undone": 2
+            }
+          }
+        }
+      }
+    },
     "ctrl:revoke-approval": {
       "request": {
         "taskId": "task-0",

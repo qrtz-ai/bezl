@@ -12,6 +12,7 @@ import {
   RunTimeline,
   SchedulePicker,
   StandingApprovals,
+  UndoCard,
 } from './Ctrl';
 
 const noop = () => {};
@@ -243,5 +244,55 @@ describe('DecisionModelCard (ADR 0116)', () => {
       />,
     );
     expect(html).toContain('deciding with the on-device model');
+  });
+});
+
+describe('UndoCard', () => {
+  const card = (p: Partial<Parameters<typeof UndoCard>[0]>) =>
+    renderToStaticMarkup(
+      <UndoCard
+        files={3}
+        ready={3}
+        cantUndo={[]}
+        done={null}
+        onUndo={noop}
+        onRest={noop}
+        {...p}
+      />,
+    );
+  it('offers to put everything back when nothing changed', () => {
+    const html = card({});
+    expect(html).toContain('role="group"');
+    expect(html).not.toContain('dialog');
+    expect(html).toContain('ctrl moved 3 files');
+    expect(html).toContain('ctrl-undo-all');
+    expect(html).not.toContain('ctrl-undo-rest');
+  });
+  it("says what can't go back and only offers the rest", () => {
+    const html = card({
+      ready: 1,
+      cantUndo: [
+        { key: 'a', label: 'photo.png', why: 'moved' },
+        { key: 'b', label: 'taxes.pdf', why: 'occupied' },
+      ],
+    });
+    expect(html).toContain('2 files can&#x27;t go back');
+    expect(html).toContain('photo.png · moved or renamed since');
+    expect(html).toContain('taxes.pdf · a file with its name is back');
+    expect(html).toContain('put back the other 1');
+    expect(html).not.toContain('ctrl-undo-all');
+  });
+  it('shows nothing to press when nothing can go back, and the outcome once done', () => {
+    expect(
+      card({ ready: 0, cantUndo: [{ key: 'a', label: 'x', why: 'moved' }] }),
+    ).toContain('nothing can go back right now');
+    const done = card({
+      ready: 0,
+      done: 2,
+      cantUndo: [{ key: 'a', label: 'x', why: 'moved' }],
+    });
+    expect(done).toContain('put back 2 files');
+    expect(done).toContain('1 file stayed put');
+    expect(done).not.toContain('<button');
   });
 });

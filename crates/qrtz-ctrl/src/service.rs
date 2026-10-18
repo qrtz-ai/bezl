@@ -9,8 +9,10 @@
 //! task), denies, or the gate expires on the scheduler's tick; `ctrl:revoke-approval` drops a remembered one.
 use crate::decide::{ask_options, run_chain, Goal, Heuristic, Scorer};
 use crate::exec::{Driver, HoldReason, Sink, VerifyOutcome};
+use crate::files::{plan_undo, run_undo, UndoSkip, UndoWhy};
 use crate::gate::{needs_confirm, ConfirmAnswer, ExpiredWhy, CONFIRM_TTL_MS};
 use crate::helper::{HelperApps, HelperClient};
+use crate::ladder::{FsOp, Route};
 use crate::layers::{label, AppSource, ScanApps};
 use crate::log::{fold, ActionStatus, CtrlState, DecisionState, Event, EventLog, TaskStatus};
 use crate::runner::Clock;
@@ -182,8 +184,47 @@ fn event_action(e: &Event) -> Option<&str> {
         | Event::ConfirmRequested { .. }
         | Event::ConfirmResolved { .. }
         | Event::ConfirmReverified { .. } => None,
-        Event::ObsDiff { action_id, .. } | Event::VerifyResult { action_id, .. } => Some(action_id),
+        Event::ObsDiff { action_id, .. }
+        | Event::VerifyResult { action_id, .. }
+        | Event::UndoRefused { action_id, .. }
+        | Event::UndoDone { action_id, .. } => Some(action_id),
     }
+}
+
+/// The run's finished file batch (ADR 0117): the last `files` action that executed ok, in the first `n` events.
+fn done_batch(log: &EventLog, n: usize) -> Option<(String, FsOp)> {
+    let st = fold(log.events().take(n));
+    log.events()
+        .take(n)
+        .filter_map(|e| match e {
+            Event::ActionRequested { action_id, routes } => routes.iter().find_map(|r| match r {
+                Route::Files(op @ FsOp::Batch { .. }) => Some((action_id.clone(), op.clone())),
+                _ => None,
+            }),
+            _ => None,
+        })
+        .filter(|(id, _)| st.actions.get(id) == Some(&ActionStatus::Done))
+        .last()
+}
+
+fn why_name(w: UndoWhy) -> &'static str {
+    match w {
+        UndoWhy::Moved => "moved",
+        UndoWhy::Occupied => "occupied",
+    }
+}
+
+fn skipped_json(skipped: &[UndoSkip], labels: &BTreeMap<String, String>) -> Vec<Value> {
+    skipped
+        .iter()
+        .map(|k| {
+            json!({
+                "key": k.file,
+                "label": labels.get(&k.file).map(|l| l.to_lowercase()).unwrap_or_else(|| "a file ctrl moved".into()),
+                "why": why_name(k.why),
+            })
+        })
+        .collect()
 }
 
 fn event_node(e: &Event) -> Option<&'static str> {
@@ -330,6 +371,7 @@ fn state_json(s: &CtrlState, goal: Option<&Goal>) -> Value {
         "quarantined": s.quarantined.iter().map(|(app, rung)| json!({"app": app, "rung": rung})).collect::<Vec<_>>(),
         "status": run_status(s),
         "confirm": Value::Null,
+        "undo": Value::Null,
         "held": s.held.map(|h| match h {
             HoldReason::Irreversible => "irreversible",
             HoldReason::FilesNotYet => "files-not-yet",
@@ -625,12 +667,110 @@ impl CtrlService {
         let mut state = state_json(&st, goal.as_ref());
         let labels = self.labels.lock().unwrap_or_else(|e| e.into_inner());
         state["confirm"] = confirm_json(&st, goal.as_ref(), &labels);
+        state["undo"] = self.undo_json(log, &st, at, &labels);
         json!({
             "run": Self::run_json(store, log),
             "events": events,
             "at": at,
             "state": state,
         })
+    }
+
+    /// The put-back of the run's finished file batch (ADR 0117): what would go back now (read from the disk, only
+    /// at the end of the log), or what went back. `null`: nothing to put back.
+    fn undo_json(
+        &self,
+        log: &EventLog,
+        st: &CtrlState,
+        at: usize,
+        labels: &BTreeMap<String, String>,
+    ) -> Value {
+        let Some((action_id, op)) = done_batch(log, at) else {
+            return Value::Null;
+        };
+        if st.task_status != Some(TaskStatus::Done) {
+            return Value::Null;
+        }
+        if let Some(u) = st.undo.as_ref() {
+            return json!({
+                "actionId": u.action_id,
+                "files": u.undone as usize + u.skipped.len(),
+                "ready": 0,
+                "cantUndo": skipped_json(&u.skipped, labels),
+                "done": {"undone": u.undone},
+            });
+        }
+        let (files, ready, cant) = match (self.files.as_ref(), at == log.records().len()) {
+            (Some(roots), true) => {
+                let p = plan_undo(&op, roots);
+                (p.files, p.back.len(), skipped_json(&p.skipped, labels))
+            }
+            // Scrubbed back, or no folder to read: the batch as logged, nothing judged.
+            _ => {
+                let FsOp::Batch { ops } = &op else {
+                    return Value::Null;
+                };
+                let n = ops.iter().filter(|o| !matches!(o, FsOp::MakeDir { .. })).count();
+                (n, 0, Vec::new())
+            }
+        };
+        json!({
+            "actionId": action_id,
+            "files": files,
+            "ready": ready,
+            "cantUndo": cant,
+            "done": Value::Null,
+        })
+    }
+
+    /// `ctrl:undo` (ADR 0117): put a finished file batch back. Everything that can go back goes back together; if
+    /// anything moved since, ctrl refuses (`undo.refused`, nothing moves) unless the user said `rest`.
+    fn undo(&self, store: &Store, log: &mut EventLog, now: u64, rest: bool) -> Result<(), CtrlError> {
+        let refuse = |m: &str| Err(CtrlError::new(CtrlErrorCode::Validation, m.to_string()));
+        let s = log.state();
+        let Some((action_id, op)) = done_batch(log, log.records().len()) else {
+            return refuse("this run didn't move any files");
+        };
+        if s.task_status != Some(TaskStatus::Done) {
+            return refuse("this run didn't finish");
+        }
+        if s.undo.is_some() {
+            return refuse("this run was already put back");
+        }
+        let Some(roots) = self.files.as_ref() else {
+            return refuse("ctrl can't reach your files here");
+        };
+        let p = plan_undo(&op, roots);
+        let mono = self.clock.mono_ns();
+        if p.back.is_empty() || (!p.skipped.is_empty() && !rest) {
+            store.append_run_record(
+                log,
+                mono,
+                now,
+                Event::UndoRefused {
+                    action_id,
+                    skipped: p.skipped,
+                },
+            )?;
+            return Ok(());
+        }
+        let (ok, undone, err) = match run_undo(&p) {
+            Ok(n) => (true, n as u32, None),
+            Err(e) => (false, 0, Some(e)),
+        };
+        store.append_run_record(
+            log,
+            mono,
+            now,
+            Event::UndoDone {
+                action_id,
+                undone,
+                skipped: p.skipped,
+                ok,
+                err,
+            },
+        )?;
+        Ok(())
     }
 
     /// One scheduler pass (ADR 0105): for every non-paused task that is due, record exactly one run (catch-up
@@ -836,6 +976,11 @@ impl CtrlService {
                         },
                     )?;
                 }
+                Ok(self.run_view(store, &log, None))
+            }
+            "ctrl:undo" => {
+                let mut log = store.run(str_field(&p, "runId")?)?;
+                self.undo(store, &mut log, now, p["rest"].as_bool().unwrap_or(false))?;
                 Ok(self.run_view(store, &log, None))
             }
             "ctrl:revoke-approval" => {

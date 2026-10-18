@@ -513,6 +513,19 @@ export const ipcContract = {
     }),
     response: CtrlRunView,
   }),
+  /**
+   * Put a finished downloads cleanup back (ADR 0117): every file goes back where it was, all or nothing. If any file
+   * moved since, ctrl refuses (logged, nothing moves) unless `rest` says to put back the others. Once per run.
+   */
+  'ctrl:undo': defineChannel({
+    version: 1,
+    capability: 'ctrl.write',
+    request: z.object({
+      runId: z.string().max(64),
+      rest: z.boolean().optional(),
+    }),
+    response: CtrlRunView,
+  }),
   /** Drop a task's standing approval: the next run of that action asks again. */
   'ctrl:revoke-approval': defineChannel({
     version: 1,

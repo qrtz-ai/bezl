@@ -29,7 +29,15 @@ public enum CtrlActions {
 
     /// Open `urls` in the app at `appURL` without activating it. `done` runs on an arbitrary queue.
     public static func open(_ urls: [URL], withApp appURL: URL, done: @escaping (NSRunningApplication?, Error?) -> Void) {
-        NSWorkspace.shared.open(urls, withApplicationAt: appURL, configuration: backgroundConfiguration(), completionHandler: done)
+        // AppKit's handler is @Sendable; callers already expect any queue (see above), so hand it over unchecked.
+        let box = UncheckedDone(call: done)
+        NSWorkspace.shared.open(urls, withApplicationAt: appURL, configuration: backgroundConfiguration()) { app, err in
+            box.call(app, err)
+        }
+    }
+
+    private struct UncheckedDone: @unchecked Sendable {
+        let call: (NSRunningApplication?, Error?) -> Void
     }
 
     /// Re-activate the app the user had in front (after a guard violation). Under cooperative activation (macOS 14+)

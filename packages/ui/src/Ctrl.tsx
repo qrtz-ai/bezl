@@ -684,6 +684,112 @@ export function ConfirmOutcome({ answer }: { answer: string }) {
   );
 }
 
+export interface UndoItem {
+  key: string;
+  label: string;
+  /** moved: renamed or moved since; occupied: something with its name is back where it came from. */
+  why: 'moved' | 'occupied';
+}
+
+/**
+ * Put a finished file cleanup back (ADR 0117). A card in the run, never a modal. When some files changed since, it
+ * says which ones stay and only offers to put back the others; it never guesses where they went.
+ */
+export function UndoCard({
+  files,
+  ready,
+  cantUndo,
+  done,
+  onUndo,
+  onRest,
+}: {
+  files: number;
+  ready: number;
+  cantUndo: UndoItem[];
+  /** How many files went back, once the batch was put back. */
+  done: number | null;
+  onUndo: () => void;
+  onRest: () => void;
+}) {
+  const t = useTheme();
+  const n = (k: number) => `${k} ${k === 1 ? 'file' : 'files'}`;
+  return (
+    <div
+      role="group"
+      aria-label="put it back"
+      data-testid="ctrl-undo"
+      style={{
+        display: 'grid',
+        gap: t.space[2],
+        padding: t.space[3],
+        borderRadius: t.radius.md,
+        border: `1px solid ${t.color.border}`,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: t.space[2] }}>
+        <Icon name={done === null ? 'undo' : 'check'} size="sm" />
+        <Text variant="label" data-testid="ctrl-undo-title">
+          {done === null ? `ctrl moved ${n(files)}` : `put back ${n(done)}`}
+        </Text>
+      </div>
+      {cantUndo.length ? (
+        <>
+          <Text variant="caption" muted>
+            {done === null
+              ? `${n(cantUndo.length)} can't go back:`
+              : `${n(cantUndo.length)} stayed put:`}
+          </Text>
+          <ul
+            aria-label="can't go back"
+            data-testid="ctrl-undo-cant"
+            style={{
+              margin: 0,
+              paddingLeft: t.space[4],
+              display: 'grid',
+              gap: t.space[1],
+            }}
+          >
+            {cantUndo.map((i) => (
+              <li key={i.key} data-testid="ctrl-undo-cant-item">
+                <Text variant="caption">
+                  {i.label}
+                  {i.why === 'moved'
+                    ? ' · moved or renamed since'
+                    : ' · a file with its name is back in its place'}
+                </Text>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {done === null ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: t.space[2] }}>
+          {cantUndo.length === 0 && ready > 0 ? (
+            <Button size="sm" onClick={onUndo} data-testid="ctrl-undo-all">
+              put them back
+            </Button>
+          ) : null}
+          {cantUndo.length > 0 && ready > 0 ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={onRest}
+              data-testid="ctrl-undo-rest"
+            >
+              put back the other {ready}
+            </Button>
+          ) : null}
+          {ready === 0 ? (
+            <Text variant="caption" muted data-testid="ctrl-undo-none">
+              nothing can go back right now
+            </Text>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export interface ApprovalItem {
   id: string;
   label: string;

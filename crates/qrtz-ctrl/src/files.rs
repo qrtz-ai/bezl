@@ -9,6 +9,7 @@
 //! preview. Paths are referenced in the log by `f<sha256(path)[..6]>` refs; readable names stay in memory.
 use crate::fs_exec::MemStore;
 use crate::ladder::FsOp;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -209,4 +210,106 @@ fn back(from: &Path, to: &Path) -> Result<(), String> {
         return Err("fs.exists".into());
     }
     std::fs::rename(from, to).map_err(|e| format!("fs.rename:{:?}", e.kind()))
+}
+
+/// Every kind folder [`kind_of`] can create.
+pub const KINDS: [&str; 6] = ["images", "documents", "archives", "installers", "audio", "video"];
+
+/// Why one file of a done batch can't be put back (ADR 0117).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UndoWhy {
+    /// It isn't where ctrl put it any more: moved, renamed or deleted since.
+    Moved,
+    /// Something with its name is back where it came from: putting it back would overwrite.
+    Occupied,
+}
+
+/// One file of the batch that stays where it is, by its log ref.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UndoSkip {
+    pub file: String,
+    pub why: UndoWhy,
+}
+
+/// What putting a done batch back would do, read from the disk now. Paths are memory only.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UndoPlan {
+    /// (where the file is now, where it came from), in the batch's order.
+    pub back: Vec<(PathBuf, PathBuf)>,
+    /// (ref, path) of the files that go back (for labels).
+    pub refs: Vec<String>,
+    /// Folders the batch created: removed after the moves only if they are empty.
+    pub dirs: Vec<PathBuf>,
+    pub skipped: Vec<UndoSkip>,
+    /// Files in the batch (moves + trashes).
+    pub files: usize,
+}
+
+/// Resolve a done `FsOp::Batch` against the folder as it is now. The log holds only `f<sha256[..6]>` refs, so
+/// each file is found again by hashing the names in its kind folder (or the Trash): nothing is guessed, a ref
+/// that matches nothing is `moved`.
+pub fn plan_undo(op: &FsOp, roots: &FileRoots) -> UndoPlan {
+    let FsOp::Batch { ops } = op else {
+        return UndoPlan::default();
+    };
+    let mut dirs: std::collections::BTreeMap<String, PathBuf> = KINDS
+        .iter()
+        .map(|k| roots.downloads.join(k))
+        .map(|d| (path_ref(&d), d))
+        .collect();
+    dirs.insert(path_ref(&roots.trash), roots.trash.clone());
+    let find = |dir: &Path, src: &str| -> Option<String> {
+        std::fs::read_dir(dir).ok()?.filter_map(Result::ok).find_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            let is_file = e.path().symlink_metadata().is_ok_and(|m| m.file_type().is_file());
+            (is_file && path_ref(&roots.downloads.join(&name)) == src).then_some(name)
+        })
+    };
+    let mut plan = UndoPlan::default();
+    for o in ops {
+        let (src, dir) = match o {
+            FsOp::MakeDir { dir } => {
+                if let Some(d) = dirs.get(&dir.0) {
+                    plan.dirs.push(d.clone());
+                }
+                continue;
+            }
+            FsOp::MoveInto { src, dst_dir } => (src, dirs.get(&dst_dir.0)),
+            FsOp::Trash { src } => (src, Some(&roots.trash)),
+            FsOp::Batch { .. } => continue,
+        };
+        plan.files += 1;
+        let skip = |why| UndoSkip {
+            file: src.0.clone(),
+            why,
+        };
+        match dir.and_then(|d| find(d, &src.0).map(|n| (d.join(&n), roots.downloads.join(n)))) {
+            None => plan.skipped.push(skip(UndoWhy::Moved)),
+            Some((_, to)) if to.symlink_metadata().is_ok() => plan.skipped.push(skip(UndoWhy::Occupied)),
+            Some((from, to)) => {
+                plan.back.push((from, to));
+                plan.refs.push(src.0.clone());
+            }
+        }
+    }
+    plan
+}
+
+/// Put back every file of `plan.back`, all or nothing: a failed move puts the ones already moved where they were.
+/// Then the batch's folders are removed if they are empty (a folder with anything else in it stays). Returns how
+/// many files went back.
+pub fn run_undo(plan: &UndoPlan) -> Result<usize, String> {
+    for (i, (from, to)) in plan.back.iter().enumerate() {
+        if let Err(e) = back(from, to) {
+            for (f, t) in plan.back[..i].iter().rev() {
+                let _ = back(t, f);
+            }
+            return Err(e);
+        }
+    }
+    for d in plan.dirs.iter().rev() {
+        let _ = std::fs::remove_dir(d);
+    }
+    Ok(plan.back.len())
 }

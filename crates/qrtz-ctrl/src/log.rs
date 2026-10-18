@@ -15,6 +15,7 @@
 use crate::ax::{AxDiff, AxSnapshot};
 use crate::decide::{BacktrackReason, ModelId, Node, Opt, Outcome, Thresholds};
 use crate::exec::{HoldReason, VerifyOutcome};
+use crate::files::UndoSkip;
 use crate::gate::{ConfirmAnswer, GateState, Preview};
 use crate::guard::{Field, GuardOutcome, UiSnapshot};
 use crate::helper::{Check, Expect};
@@ -165,6 +166,31 @@ pub enum Event {
     },
     #[serde(rename = "task.finished")]
     TaskFinished { task_id: String, status: TaskStatus },
+    /// The user asked to put a finished file batch back (ADR 0117) and ctrl didn't: some files moved since and the
+    /// user hadn't said "put back the rest", or nothing could go back. Nothing moved.
+    #[serde(rename = "undo.refused")]
+    UndoRefused {
+        action_id: String,
+        skipped: Vec<UndoSkip>,
+    },
+    /// A finished file batch was put back: `undone` files moved back, `skipped` stayed (with why). `ok: false`:
+    /// a move failed and the ones already moved went where they were (nothing changed).
+    #[serde(rename = "undo.done")]
+    UndoDone {
+        action_id: String,
+        undone: u32,
+        skipped: Vec<UndoSkip>,
+        ok: bool,
+        err: Option<String>,
+    },
+}
+
+/// A put-back of a file batch (ADR 0117), as the state holds it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UndoState {
+    pub action_id: String,
+    pub undone: u32,
+    pub skipped: Vec<UndoSkip>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -418,6 +444,10 @@ pub struct CtrlState {
     pub confirm: Option<GateState>,
     /// Every `confirm.requested` ever applied (gate ids stay unique).
     pub gates: u64,
+    /// The batch that was put back (ADR 0117); a batch is put back at most once.
+    pub undo: Option<UndoState>,
+    /// `undo.refused` and failed `undo.done` events.
+    pub undo_refused: u32,
 }
 
 impl CtrlState {
@@ -601,6 +631,22 @@ pub fn apply(mut s: CtrlState, e: &Event) -> CtrlState {
         Event::TaskFinished { status, .. } => {
             s.intent_pending = false;
             s.task_status = Some(*status)
+        }
+        Event::UndoRefused { .. } | Event::UndoDone { ok: false, .. } => s.undo_refused += 1,
+        Event::UndoDone {
+            action_id,
+            undone,
+            skipped,
+            ok: true,
+            ..
+        } => {
+            if s.undo.is_none() {
+                s.undo = Some(UndoState {
+                    action_id: action_id.clone(),
+                    undone: *undone,
+                    skipped: skipped.clone(),
+                });
+            }
         }
     }
     s

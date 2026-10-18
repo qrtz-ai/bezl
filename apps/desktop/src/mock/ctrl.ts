@@ -36,6 +36,9 @@ interface Rec {
   action?: { id: string; status: 'executing' | 'done' };
   verified?: { actionId: string; outcome: 'passed' };
   held?: 'files-not-yet';
+  /** A folder cleanup's batch (ADR 0117): its files, and which of them moved since (a "renamed" task). */
+  batch?: { files: string[]; moved: string[] };
+  undone?: number;
 }
 
 const opt = (id: string, label: string, p: number): CtrlOption => ({
@@ -177,7 +180,11 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
     const verified: NonNullable<Rec['verified']>[] = [];
     let held: Rec['held'] | null = null;
     let confirm: CtrlConfirm | null = null;
+    let batch: Rec['batch'] | null = null;
+    let undone: number | null = null;
     for (const r of recs.slice(0, at)) {
+      if (r.batch) batch = r.batch;
+      if (r.undone !== undefined) undone = r.undone;
       if (r.confirm) confirm = r.confirm;
       if (r.answerGate && confirm)
         confirm = { ...confirm, answer: r.answerGate };
@@ -239,6 +246,23 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
       plan,
       ask,
       confirm,
+      undo:
+        batch && finished === 'done'
+          ? {
+              actionId: 'a0',
+              files: batch.files.length,
+              ready:
+                undone !== null || at < recs.length
+                  ? 0
+                  : batch.files.length - batch.moved.length,
+              cantUndo: batch.moved.map((f) => ({
+                key: `f-${f}`,
+                label: f,
+                why: 'moved' as const,
+              })),
+              done: undone === null ? null : { undone },
+            }
+          : null,
     };
   };
   const push = (
@@ -323,6 +347,14 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
     }
     // Slice 7 (ADR 0113): a folder cleanup is one batch of file moves, guarded and verified like any action.
     execute(r);
+    if (intent !== 'clean_folder') return;
+    const moved = /\brenamed\b/i.test(task(r.run.taskId).text)
+      ? ['photo.png']
+      : [];
+    r.recs.find((x) => x.row.kind === 'action.requested')!.batch = {
+      files: ['photo.png', 'taxes 2025.pdf', 'site.zip'],
+      moved,
+    };
   };
   const sync = (r: { run: CtrlRun; recs: Rec[] }) => {
     r.run.events = r.recs.length;
@@ -497,6 +529,30 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
             bytesOnDisk: 0,
           };
       return { ...model };
+    },
+    // ADR 0117: put a finished cleanup back. Files that moved since stay; without `rest` that refuses.
+    'ctrl:undo': ({ runId, rest }) => {
+      const r = get(runId);
+      const u = stateAt(r.recs, r.recs.length).undo;
+      if (!u)
+        throw new AppError('E_VALIDATION', "this run didn't move any files");
+      if (u.done)
+        throw new AppError('E_VALIDATION', 'this run was already put back');
+      const row = (kind: string, extra: Omit<Rec, 'row'> = {}) =>
+        r.recs.push({
+          row: {
+            seq: r.recs.length,
+            kind,
+            at: now(),
+            actionId: 'a0',
+            node: null,
+          },
+          ...extra,
+        });
+      if (u.cantUndo.length && !rest) row('undo.refused');
+      else row('undo.done', { undone: u.ready });
+      sync(r);
+      return view(r);
     },
     'ctrl:revoke-approval': ({ taskId, approvalId }) => {
       const t = task(taskId);

@@ -286,6 +286,46 @@ const ctrlSamples = {
       },
     },
   },
+  'ctrl:undo': {
+    request: { runId: 'run-1', rest: true },
+    response: {
+      run: { ...ctrlRun, status: 'done', events: 6 },
+      events: [
+        ...ctrlEvents,
+        {
+          seq: 4,
+          kind: 'task.finished',
+          at: T0 + 60_000,
+          actionId: null,
+          node: null,
+        },
+        {
+          seq: 5,
+          kind: 'undo.done',
+          at: T0 + 61_000,
+          actionId: 'a0',
+          node: null,
+        },
+      ],
+      at: 6,
+      state: {
+        ...ctrlState,
+        status: 'done',
+        decisions: [],
+        plan: null,
+        ask: null,
+        undo: {
+          actionId: 'a0',
+          files: 3,
+          ready: 0,
+          cantUndo: [
+            { key: 'f3f2a9c1d0b7e', label: 'photo.png', why: 'moved' },
+          ],
+          done: { undone: 2 },
+        },
+      },
+    },
+  },
   'ctrl:revoke-approval': {
     request: { taskId: 'task-0', approvalId: 'approval-4' },
     response: { ...ctrlTask, approvals: [] },

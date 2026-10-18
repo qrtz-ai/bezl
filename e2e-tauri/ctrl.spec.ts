@@ -358,3 +358,59 @@ test('ctrl: the decision model is a choice; a yes on the placeholder downloads n
   await expect(card.getByTestId('ctrl-model-on')).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+// ADR 0117: a finished downloads cleanup can be put back from its run. Nothing changed: one press puts every file
+// back. A file renamed since: the card says which file stays, offers only the others, and the put-back is logged.
+test('ctrl: put a finished downloads cleanup back; a renamed file stays and is named', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  const add = async (text: string) => {
+    await ctrl.getByTestId('ctrl-task-input').fill(text);
+    await ctrl.getByTestId('ctrl-schedule-weekly').click();
+    await ctrl.getByTestId('ctrl-schedule-time').fill('18:00');
+    await ctrl.getByTestId('ctrl-task-add').click();
+  };
+  const runs = ctrl.getByTestId('ctrl-run');
+  const card = ctrl.getByTestId('ctrl-undo');
+
+  await add('every week clean up my downloads folder');
+  await ctrl.getByTestId('ctrl-task').getByTestId('ctrl-task-run').click();
+  await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText('done');
+  await expect(card.getByTestId('ctrl-undo-title')).toHaveText(
+    'ctrl moved 3 files',
+  );
+  await expect(card.getByTestId('ctrl-undo-rest')).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  await card.getByTestId('ctrl-undo-all').click();
+  await expect(card.getByTestId('ctrl-undo-title')).toHaveText(
+    'put back 3 files',
+  );
+  await expect(card.getByRole('button')).toHaveCount(0);
+  await expect(ctrl.getByTestId('ctrl-event').last()).toContainText('undo');
+
+  await add('every week clean up my downloads folder, photo renamed');
+  await ctrl
+    .getByTestId('ctrl-task')
+    .filter({ hasText: 'renamed' })
+    .getByTestId('ctrl-task-run')
+    .click();
+  await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText('done');
+  await expect(card.getByTestId('ctrl-undo-cant-item')).toHaveText([
+    'photo.png · moved or renamed since',
+  ]);
+  await expect(card.getByTestId('ctrl-undo-all')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  await card.getByTestId('ctrl-undo-rest').click();
+  await expect(card.getByTestId('ctrl-undo-title')).toHaveText(
+    'put back 2 files',
+  );
+  await expect(card).toContainText('1 file stayed put');
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});
