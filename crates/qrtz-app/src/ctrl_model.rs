@@ -6,8 +6,10 @@
 //! consent, without the files, on a placeholder manifest or when the helper can't run it, the deterministic heuristic
 //! scorer answers.
 //!
-//! The pinned manifest (`ctrl_laya_model.json`) is a **placeholder** until a Core ML build of Laya with a known url,
-//! size and sha256 exists: `download` refuses it with `laya.placeholder` before any network call.
+//! The pinned manifest (`ctrl_laya_model.json`, ADR 0129) is ctrl's default decision model: FluidInference/laya-coreml
+//! @ 7b8d7a2, the e8 512-token bucket (`laya_multilingual_e8_L512_options32.mlmodelc`, 4 files) plus `tokenizer.json`
+//! beside it, about 484 MB. A manifest marked `placeholder` is still refused with `laya.placeholder` before any
+//! network call.
 // ADR 0078/0079: the download runs only through `local_models` (the pinned, sha256-checked path).
 use crate::local_models::{DownloadControl, LocalModels, Manifest, Progress};
 use qrtz_speech::{fsx, SpeechError};

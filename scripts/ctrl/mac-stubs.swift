@@ -110,8 +110,9 @@ public func IsSecureEventInputEnabled() -> Bool { false }
 // Core ML
 public enum MLComputeUnits { case cpuOnly, cpuAndGPU, all, cpuAndNeuralEngine }
 open class MLModelConfiguration: NSObject { open var computeUnits: MLComputeUnits = .all }
-open class MLMultiArray: NSObject { open var count: Int { 0 }; open subscript(idx: Int) -> NSNumber { NSNumber(value: 0) } }
-open class MLFeatureValue: NSObject { public convenience init(string: String) { self.init() }; open var multiArrayValue: MLMultiArray? { nil } }
+@objc public enum MLMultiArrayDataType: Int { case double = 65600, float64 = 65601, float32 = 65568, float16 = 65552, int32 = 131104 }
+open class MLMultiArray: NSObject { public init(shape: [NSNumber], dataType: MLMultiArrayDataType) throws {}; open var count: Int { 0 }; open subscript(idx: Int) -> NSNumber { get { NSNumber(value: 0) } set {} } }
+open class MLFeatureValue: NSObject { public convenience init(string: String) { self.init() }; public convenience init(multiArray: MLMultiArray) { self.init() }; open var multiArrayValue: MLMultiArray? { nil } }
 public protocol MLFeatureProvider { func featureValue(for featureName: String) -> MLFeatureValue? }
 open class MLDictionaryFeatureProvider: NSObject, MLFeatureProvider { public init(dictionary: [String: Any]) throws {}; public func featureValue(for featureName: String) -> MLFeatureValue? { nil } }
 open class MLModel: NSObject { public init(contentsOf url: URL, configuration: MLModelConfiguration) throws {}

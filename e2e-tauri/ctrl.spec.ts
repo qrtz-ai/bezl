@@ -406,9 +406,10 @@ test('ctrl: the tabs card says when ctrl could not look inside the tabs', async 
   expect(errors).toEqual([]);
 });
 
-// ADR 0116: the decision model is off until the user says yes; the pinned manifest is still a placeholder, so a yes
-// is recorded and nothing is downloaded; turning it off goes back to the built-in rules.
-test('ctrl: the decision model is a choice; a yes on the placeholder downloads nothing', async ({
+// ADR 0116 / 0129: the decision model is off until the user says yes and names its size (the pinned laya-coreml
+// bucket + tokenizer, 484 mb); a yes installs it (the mock fakes the checked download), the browser has no core ml
+// so the built-in rules still decide; turning it off deletes it and goes back to off.
+test('ctrl: the decision model is a choice; a yes installs the pinned model, off removes it', async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -421,10 +422,11 @@ test('ctrl: the decision model is a choice; a yes on the placeholder downloads n
   await expect(card.getByTestId('ctrl-model-scorer')).toHaveText(
     'deciding with the built-in rules',
   );
+  await expect(card.getByTestId('ctrl-model-on')).toContainText('(484 mb)');
   await card.getByTestId('ctrl-model-on').click();
-  await expect(card).toHaveAttribute('data-state', 'unavailable');
-  await expect(card.getByTestId('ctrl-model-line')).toContainText(
-    'nothing was downloaded',
+  await expect(card).toHaveAttribute('data-state', 'installed');
+  await expect(card.getByTestId('ctrl-model-line')).toHaveText(
+    'downloaded and checked; runs on this mac only',
   );
   await expect(card.getByTestId('ctrl-model-scorer')).toHaveText(
     'deciding with the built-in rules',

@@ -414,7 +414,7 @@ final class CtrlLayaRuntime {
         let url = URL(fileURLWithPath: path)
         guard Self.kinds.contains(url.pathExtension), FileManager.default.fileExists(atPath: path) else { throw CtrlFailure("laya.no_model") }
         let c = MLModelConfiguration()
-        c.computeUnits = .cpuAndNeuralEngine
+        c.computeUnits = .all // L512: GPU 9 ms vs CPU+ANE 27.5 ms warm (laya-coreml README, ADR 0129)
         do {
             let m = try MLModel(contentsOf: try Self.compiled(url), configuration: c)
             models[path] = m
@@ -425,20 +425,55 @@ final class CtrlLayaRuntime {
         }
     }
 
-    /// One `choice` pass: the model takes `prompt` (state, question, numbered options) and returns `scores`, one per
-    /// option; softmaxed here. A model without that interface answers `laya.bad_model`.
+    private var tokenizers: [String: CtrlLayaTokenizer] = [:]
+
+    /// The tokenizer next to the model (`<set dir>/tokenizer.json`, ADR 0129) or `QRTZ_CTRL_LAYA_TOKENIZER`; read
+    /// once per path. A missing or unreadable file answers `laya.no_tokenizer` and the host keeps the heuristic.
+    func tokenizer(for modelPath: String) throws -> CtrlLayaTokenizer {
+        let env = ProcessInfo.processInfo.environment["QRTZ_CTRL_LAYA_TOKENIZER"]
+        let path = (env?.isEmpty == false ? env! : URL(fileURLWithPath: modelPath).deletingLastPathComponent().appendingPathComponent("tokenizer.json").path)
+        lock.lock(); defer { lock.unlock() }
+        if let t = tokenizers[path] { return t }
+        guard let t = try? CtrlLayaTokenizer(contentsOf: URL(fileURLWithPath: path)) else { throw CtrlFailure("laya.no_tokenizer") }
+        tokenizers[path] = t
+        return t
+    }
+
+    static func array(_ shape: [Int], int32 xs: [Int32]) throws -> MLMultiArray {
+        let a = try MLMultiArray(shape: shape.map { NSNumber(value: $0) }, dataType: .int32)
+        for (i, x) in xs.enumerated() { a[i] = NSNumber(value: x) }
+        return a
+    }
+
+    static func array(_ shape: [Int], float xs: [Float]) throws -> MLMultiArray {
+        let a = try MLMultiArray(shape: shape.map { NSNumber(value: $0) }, dataType: .float32)
+        for (i, x) in xs.enumerated() { a[i] = NSNumber(value: x) } // every slot: a new MLMultiArray is not zeroed
+        return a
+    }
+
+    /// One typed `choice` pass of laya_multilingual_e8_L512_options32 (ADR 0129): the tokenizer and
+    /// `CtrlLayaInputs` build input_ids / attention_mask / marker_map / question_type, the model answers
+    /// `probabilities` [1, 32]; the first `options.count` slots, renormalised, are the answer. Any other interface
+    /// answers `laya.bad_model`; more than 32 options, or none, `laya.bad_question`.
     func choice(model: String?, state: String, question: String, options: [String]) throws -> [Double] {
         let m = try load(model)
-        let prompt = "\(state)\n\(question)\n" + options.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
-        guard let input = try? MLDictionaryFeatureProvider(dictionary: ["prompt": MLFeatureValue(string: prompt)]),
-              let out = try? m.prediction(from: input),
-              let scores = out.featureValue(for: "scores")?.multiArrayValue, scores.count == options.count
+        let path = (model?.isEmpty == false ? model! : ProcessInfo.processInfo.environment["QRTZ_CTRL_LAYA_MODEL"] ?? "")
+        let t = try tokenizer(for: path)
+        guard let x = CtrlLayaInputs.build(tokenizer: t, state: state, question: question, options: options) else {
+            throw CtrlFailure("laya.bad_question")
+        }
+        let L = CtrlLayaInputs.length, n = CtrlLayaInputs.names
+        guard let input = try? MLDictionaryFeatureProvider(dictionary: [
+            n.ids: MLFeatureValue(multiArray: try Self.array([1, L], int32: x.inputIds(pad: t.padId))),
+            n.mask: MLFeatureValue(multiArray: try Self.array([1, L], int32: x.attentionMask)),
+            n.markers: MLFeatureValue(multiArray: try Self.array([1, CtrlLayaInputs.maxOptions, L], float: x.markerMap)),
+            n.type: MLFeatureValue(multiArray: try Self.array([1, 3], float: x.questionTypeVector)),
+        ]),
+            let out = try? m.prediction(from: input),
+            let probs = out.featureValue(for: CtrlLayaInputs.outputName)?.multiArrayValue,
+            let p = CtrlLayaInputs.optionProbabilities((0..<probs.count).map { probs[$0].doubleValue }, count: options.count)
         else { throw CtrlFailure("laya.bad_model") }
-        let xs = (0..<scores.count).map { scores[$0].doubleValue }
-        let mx = xs.max() ?? 0
-        let es = xs.map { exp($0 - mx) }
-        let sum = es.reduce(0, +)
-        return es.map { $0 / sum }
+        return p
     }
 }
 #endif

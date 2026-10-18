@@ -541,7 +541,8 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
   let model: CtrlModelState = {
     consented: false,
     state: 'off',
-    sizeBytes: 0,
+    // ADR 0129: laya-coreml @ 7b8d7a2, e8 L512 bucket + tokenizer.json.
+    sizeBytes: 483_924_446,
     bytesOnDisk: 0,
     scorer: 'heuristic',
     error: null,
@@ -679,16 +680,18 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
       sync(r);
       return view(r);
     },
-    // ADR 0116: the decision model. The pinned manifest is still a placeholder, so a yes is recorded and the
-    // download refused (no network), exactly like the Rust backend.
+    // ADR 0116 / 0129: the decision model. The mock never goes online: a yes "installs" the pinned model at once
+    // (the Rust backend downloads and checks it), and the browser has no Core ML, so the built-in rules still
+    // decide, like any build without the runtime.
     'ctrl:model': () => ({ ...model }),
     'ctrl:model-consent': ({ consent }) => {
       model = consent
         ? {
             ...model,
             consented: true,
-            state: 'unavailable',
-            error: 'laya.placeholder',
+            state: 'installed',
+            bytesOnDisk: model.sizeBytes,
+            error: null,
           }
         : {
             ...model,

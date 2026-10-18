@@ -1,5 +1,6 @@
-//! ADR 0116: ctrl's Laya model. Nothing is fetched without the user's yes; the pinned placeholder manifest refuses
-//! before any network call; with a real (test) manifest the download is verified (size + sha256), a damaged file is
+//! ADR 0116 / 0129: ctrl's Laya model. Nothing is fetched without the user's yes; a placeholder manifest refuses
+//! before any network call; the pinned manifest is laya-coreml @ 7b8d7a2 (e8, L512) + tokenizer.json; with a test
+//! manifest the download is verified (size + sha256), a damaged file is
 //! refused, a partial one resumes, and only an installed, consented model reaches `select_scorer` with its path.
 //! Withdrawing consent deletes the model. Served by the qrtz-speech test kit on loopback.
 use qrtz_app::ctrl_model::{CtrlLayaModel, CtrlManifest};
@@ -30,12 +31,104 @@ fn hits(srv: &Server) -> usize {
     srv.faults.lock().unwrap().hits.values().sum()
 }
 
+const REPO: &str = "FluidInference/laya-coreml";
+const REV: &str = "7b8d7a2b7e28e746c6ecaad44bbcd5cf251a4fcc";
+const BUCKET: &str = "laya_multilingual_e8_L512_options32.mlmodelc";
+
+/// ADR 0129: the product default is pinned for real: one set, the compiled e8 L512 bucket's four files and the
+/// tokenizer next to it, each with a size and a sha256; the helper gets the `.mlmodelc` and reads
+/// `tokenizer.json` beside it.
 #[test]
-fn the_pinned_manifest_is_a_marked_placeholder() {
+fn the_pinned_manifest_is_laya_coreml_e8_l512_with_its_tokenizer() {
     let m = CtrlManifest::pinned();
-    assert!(m.placeholder, "flip only with a real url, size and sha256");
+    assert!(!m.placeholder);
+    assert_eq!(m.manifest.base, "https://huggingface.co");
     assert_eq!(m.manifest.sets.len(), 1);
-    assert_eq!(m.manifest.sets[0].dir, "laya");
+    let set = &m.manifest.sets[0];
+    assert_eq!(
+        (set.dir.as_str(), set.repo.as_str(), set.revision.as_str()),
+        ("laya", REPO, REV)
+    );
+    let paths: Vec<&str> = set.files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(
+        paths,
+        [
+            format!("{BUCKET}/coremldata.bin"),
+            format!("{BUCKET}/analytics/coremldata.bin"),
+            format!("{BUCKET}/model.mil"),
+            format!("{BUCKET}/weights/weight.bin"),
+            "tokenizer.json".into()
+        ]
+    );
+    for f in &set.files {
+        assert_eq!(f.remote, f.path, "mirrors the repo layout");
+        assert_eq!(f.sha256.len(), 64);
+        assert!(f
+            .sha256
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        assert!(f.size > 0);
+    }
+    let weights = set.files.iter().find(|f| f.path.ends_with("weight.bin")).unwrap();
+    assert_eq!(weights.size, 449_175_040);
+    assert_eq!(
+        weights.sha256,
+        "70c299c32d118ab1e2549e9c0088d712bfe2e936ad37ab8f9b7366f277afed4b"
+    );
+    let tok = set.files.iter().find(|f| f.path == "tokenizer.json").unwrap();
+    assert_eq!(tok.size, 34_363_188);
+    assert_eq!(m.manifest.total_size(), 483_924_446);
+    let d = tempfile::tempdir().unwrap();
+    let model = CtrlLayaModel::new(d.path().join("models/ctrl"), &d.path().join("ctrl"), None);
+    assert_eq!(model.model_path(), d.path().join("models/ctrl/laya").join(BUCKET));
+    assert_eq!(model.state(true).size_bytes, 483_924_446);
+}
+
+/// The real file list, served from loopback with small bodies: a consented download installs the bucket and the
+/// tokenizer side by side, and only that bucket's path reaches the scorer. Without consent nothing is requested.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_pinned_layout_installs_the_bucket_and_its_tokenizer_side_by_side() {
+    let srv = Server::start().await;
+    let mut m = CtrlManifest::pinned();
+    for (i, f) in m.manifest.sets[0].files.iter_mut().enumerate() {
+        let b: Vec<u8> = (0..1000 + i * 7).map(|j| (j % 13) as u8).collect();
+        srv.put(&format!("{REPO}/resolve/{REV}/{}", f.remote), b.clone());
+        f.size = b.len() as u64;
+        f.sha256 = sha(&b);
+    }
+    let d = tempfile::tempdir().unwrap();
+    let root = d.path().join("models/ctrl");
+    let model = CtrlLayaModel::with_manifest(&root, &d.path().join("ctrl"), m, Some(srv.base.clone()));
+    let e = model
+        .download(&DownloadControl::default(), &|_| {})
+        .await
+        .unwrap_err();
+    assert!(e.to_string().contains("laya.no_consent"), "{e}");
+    assert_eq!(hits(&srv), 0, "no request without a yes");
+    model.set_consent(true, 1).unwrap();
+    model
+        .download(&DownloadControl::default(), &|_| {})
+        .await
+        .unwrap();
+    assert_eq!(hits(&srv), 5);
+    let bucket = root.join("laya").join(BUCKET);
+    for f in [
+        "coremldata.bin",
+        "analytics/coremldata.bin",
+        "model.mil",
+        "weights/weight.bin",
+    ] {
+        assert!(bucket.join(f).is_file(), "{f}");
+    }
+    assert!(root.join("laya/tokenizer.json").is_file());
+    assert_eq!(
+        bucket.parent().unwrap().join("tokenizer.json"),
+        root.join("laya/tokenizer.json")
+    );
+    assert_eq!(model.consent().installed.as_deref(), Some(bucket.as_path()));
+    assert_eq!(model.state(true).state, "installed");
+    model.set_consent(false, 2).unwrap();
+    assert!(!root.join("laya").exists());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -152,8 +245,9 @@ mod router {
             .await
     }
 
-    /// Through the IPC router: off → yes on the pinned placeholder → `unavailable` with the refusal code and no
-    /// network → no → off again; a bad payload is a validation error.
+    /// Through the IPC router with the real pinned manifest on a loopback server that has none of the files: off
+    /// (nothing requested) → yes → the download asks loopback for the pinned bucket's first file and fails its
+    /// check → `failed` with a code, nothing kept → persisted → no → off; a bad payload is a validation error.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn consent_and_state_through_the_ctrl_channels() {
         let d = tempfile::tempdir().unwrap();
@@ -173,23 +267,40 @@ mod router {
             helper: None,
             events: Events::new(),
         });
-        // The real pinned manifest, pointed at an address nothing listens on: any fetch would fail differently.
+        let srv = qrtz_speech::testkit::Server::start().await;
         svc.set_ctrl_model(Arc::new(CtrlModelSlot::new(CtrlLayaModel::new(
             d.path().join("models/ctrl"),
             &d.path().join("ctrl"),
-            Some("http://127.0.0.1:9".into()),
+            Some(srv.base.clone()),
         ))));
         let r = Router::new(Shared(svc));
         let v = call(&r, "ctrl:model", Value::Null).await;
         assert_eq!(v["ok"], true, "{v}");
         assert_eq!(v["data"]["state"], "off", "{v}");
         assert_eq!(v["data"]["scorer"], "heuristic");
+        assert_eq!(v["data"]["sizeBytes"], 483_924_446u64);
+        let hits = || srv.faults.lock().unwrap().hits.clone();
+        assert!(hits().is_empty(), "no request before the yes");
         let v = call(&r, "ctrl:model-consent", json!({"consent": true})).await;
         assert_eq!(v["data"]["consented"], true, "{v}");
-        assert_eq!(v["data"]["state"], "unavailable", "{v}");
-        assert_eq!(v["data"]["error"], "laya.placeholder", "{v}");
+        let mut v = v;
+        for _ in 0..50 {
+            if v["data"]["state"] == "failed" {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            v = call(&r, "ctrl:model", Value::Null).await;
+        }
+        assert_eq!(v["data"]["state"], "failed", "{v}");
+        assert!(v["data"]["error"].is_string(), "{v}");
         assert_eq!(v["data"]["scorer"], "heuristic");
-        assert!(!d.path().join("models").exists(), "nothing fetched");
+        let asked: Vec<String> = hits().into_keys().collect();
+        assert_eq!(
+            asked,
+            ["FluidInference/laya-coreml/resolve/7b8d7a2b7e28e746c6ecaad44bbcd5cf251a4fcc/laya_multilingual_e8_L512_options32.mlmodelc/coremldata.bin"],
+            "only loopback, only the pinned path, stops at the first bad file"
+        );
+        assert_eq!(v["data"]["bytesOnDisk"], 0, "nothing kept: {v}");
         // The answer persists (a restart reads the same file).
         assert!(CtrlLayaModel::new(d.path().join("models/ctrl"), &d.path().join("ctrl"), None).consented());
         let v = call(&r, "ctrl:model-consent", json!({"consent": false})).await;
