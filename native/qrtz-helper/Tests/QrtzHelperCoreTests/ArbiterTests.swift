@@ -117,7 +117,7 @@ final class ArbiterTests: XCTestCase {
         XCTAssertTrue(out.value.contains(.error(code: "dictation.busy", message: "a dictation is already running", fatal: false, id: "d2", activeId: "d1")))
         mic.cb?([Float](repeating: 0.1, count: 1600))
         await c.handle(.dictationStop(id: "d1"))
-        XCTAssertTrue(out.value.contains { if case .dictationStopped("d1", _, _, nil) = $0 { true } else { false } })
+        XCTAssertTrue(out.value.contains { if case .dictationStopped("d1", _, _, nil, _) = $0 { true } else { false } })
         XCTAssertEqual(hub.subscribers, ["recording"]); XCTAssertEqual(mic.stops, 0, "meeting keeps the tap")
         await c.handle(.recordingStop())
         XCTAssertTrue(out.value.contains { if case .recordingStopped = $0 { true } else { false } })
@@ -137,7 +137,7 @@ final class ArbiterTests: XCTestCase {
         await c.checkPermissions()
         let msgs = out.value
         XCTAssertTrue(msgs.contains(.permissionRevoked(permission: .microphone, atMs: 0, degraded: [.noMic])))
-        XCTAssertTrue(msgs.contains { if case .dictationStopped("d1", _, _, .permissionRevoked) = $0 { true } else { false } })
+        XCTAssertTrue(msgs.contains { if case .dictationStopped("d1", _, _, .permissionRevoked, _) = $0 { true } else { false } })
         XCTAssertFalse(hub.isRunning, "mic tap dropped for every reader")
         let st = await c.arbiter
         XCTAssertTrue(st.recording); XCTAssertFalse(st.dictating)
@@ -194,7 +194,7 @@ final class ArbiterTests: XCTestCase {
         mic.cb?([Float](repeating: 0.1, count: 1600))
         try await Task.sleep(nanoseconds: 100_000_000)  // samples hop through the engine's ordered stream
         await c.handle(.dictationStop(id: "d1"))
-        XCTAssertTrue(out.value.contains { if case .dictationStopped("d1", let text, _, nil) = $0 { text == "hello world" } else { false } }, "dictation heard audio")
+        XCTAssertTrue(out.value.contains { if case .dictationStopped("d1", let text, _, nil, _) = $0 { text == "hello world" } else { false } }, "dictation heard audio")
         XCTAssertEqual(hub.subscribers, ["dictation"], "warm mic keeps the reader after stop")
         await c.handle(.dictationConfigure(warmMic: false, preRollMs: 300, streamAudio: false, pushKey: ""))
         XCTAssertEqual(hub.subscribers, [])

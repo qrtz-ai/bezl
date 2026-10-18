@@ -138,7 +138,7 @@ enum Bench {
         let released = Date()
         await engine.stop(id: label)
         let ms = (Date().timeIntervalSince(released) * 1000).rounded()
-        let text = out.all.compactMap { m -> String? in if case .dictationStopped(_, let t, _, _) = m { t } else { nil } }.first ?? ""
+        let text = out.all.compactMap { m -> String? in if case .dictationStopped(_, let t, _, _, _) = m { t } else { nil } }.first ?? ""
         return ["tail": label, "releaseToStoppedMs": ms, "text": text]
     }
 

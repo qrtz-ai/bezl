@@ -137,6 +137,30 @@ Every dictation writes one content-free line to `~/Library/Logs/qrtz/qrtz.log` (
 talk latency engine=... audio_ms=4210 head_ms=0 first_partial_ms=... final_ms=... cleanup_ms=... inserted_ms=... insert=AxSelectedText cleanup=Rules raw_chars=58 inserted_chars=59 level_blocks=49 level_p10_dbfs=-61 level_p90_dbfs=-24
 ```
 
+With Parakeet (echo's recogniser since 2026-10-18), `asr=parakeet-tdt-v2` and the line ends with
+`segments=3 bg_segments=2 cap_cuts=0 tail_decode_ms=84.2 backlog_wait_ms=0.0`. Those are: segments decoded (tail
+included), the ones decoded in the background while the key was held, cuts made by the 15 s cap, the release's tail
+decode (`-1`: the tail had no speech), and how long the release waited for background decodes still running.
+`decode_failures=n` appears only when a decode threw.
+
+Segment rule (Linux eval, 2026-10-18): the exact `Segmented.swift` over Parakeet TDT 0.6B v2 (sherpa-onnx int8, so
+WER is indicative, not the Core ML number) on 40 long LibriSpeech dictations (p50 43 s). Defaults: pause 300 ms,
+cap 15 s (pad included), minimum segment 2 s, no overlap, VAD floor 0.0002 RMS.
+
+| run                                    | WER    | segments | tail audio at release p50 / p90 / max |
+| -------------------------------------- | ------ | -------- | ------------------------------------- |
+| whole clip                             | 2.83 % | 1        | 43.2 / 60.3 / 65.7 s                  |
+| segmented, 480 ms overlap on every cut | 6.89 % |          |                                       |
+| segmented, overlap on cap cuts only    | 3.26 % |          |                                       |
+| segmented, defaults                    | 2.55 % | 8.2      | 5.3 / 10.7 / 14.0 s                   |
+| quiet (×0.1), whole clip               | 3.13 % | 1        |                                       |
+| quiet, VAD floor 0.001, no minimum     | 3.91 % | 12.9     |                                       |
+| quiet, defaults                        | 3.04 % | 8.8      | 5.0 / 10.7 / 14.0 s                   |
+
+Overlap hurts because Parakeet often drops a segment that starts inside a word; the cuts already land in silence.
+`QRTZ_ECHO_SEGMENT_*` overrides each knob, and `scripts/echo-bench.sh` compares `parakeet-segmented`,
+`parakeet-whole` and `nemotron-560` on the Mac (latency, WER, footprint), which this eval doesn't measure.
+
 `tail_ms`, `drain_ms`, `close_ms` and `finalize_ms` are cumulative: each is the time from the release to the end of that
 stage, so `finalize_ms − close_ms` is the pad + finish decode. No transcript, text, or dictionary content: durations,
 counts, and the recogniser's name only. Flags

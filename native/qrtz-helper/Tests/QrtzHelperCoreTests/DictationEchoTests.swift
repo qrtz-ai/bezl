@@ -74,7 +74,7 @@ final class DictationEchoTests: XCTestCase {
     }
 
     func stoppedText(_ msgs: [HelperMessage]) -> String? {
-        msgs.compactMap { if case .dictationStopped(_, let t, _, _) = $0 { t } else { nil } }.first
+        msgs.compactMap { if case .dictationStopped(_, let t, _, _, _) = $0 { t } else { nil } }.first
     }
     func logged(_ msgs: [HelperMessage], _ s: String) -> Bool { msgs.contains { if case .log(_, let m) = $0 { m.contains(s) } else { false } } }
 

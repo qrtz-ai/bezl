@@ -550,6 +550,7 @@ public actor DictationEngine {
         var timing = end?.timing ?? s.timing
         if s.transcriber != nil, idle { timing.finalizeMs = Int(released.msToNow()); timing.finalTimedOut = finalTimedOut }
         timing.audioMs = s.samples / 16
+        if let seg = s.transcriber as? PaddedFinishing { timing.segments = await seg.segmentStats() }
         timing.words = text.split(whereSeparator: { $0.isWhitespace }).count
         timing.gateDucked = echo?.ducked ?? 0; timing.gateBlocks = echo?.blocks ?? 0
         session = nil
@@ -560,11 +561,18 @@ public actor DictationEngine {
         if end?.cancelled == true {
             send(.dictationStopped(id: id, text: "", durationMs: 0))
         } else {
-            send(.dictationStopped(id: id, text: text, durationMs: Double(s.samples) * 1000 / 16_000, reason: end?.abortReason))
+            send(.dictationStopped(id: id, text: text, durationMs: Double(s.samples) * 1000 / 16_000, reason: end?.abortReason,
+                                   asr: Self.asrInfo(s.transcriber, timing.segments)))
             // ADR 0099: one content-free timing line per dictation, after the answer (it never delays it).
             lastTiming = timing
             send(.log(level: .info, msg: timing.logLine))
         }
+    }
+
+    /// `dictation.stopped`'s recogniser fields: which recogniser heard it, and a segmented one's counts.
+    static func asrInfo(_ tr: StreamingTranscriber?, _ g: SegmentStats?) -> DictationAsrInfo? {
+        guard let tr else { return nil }
+        return DictationAsrInfo(asr: tr.name, segments: g?.segments, tailDecodeMs: g.flatMap { $0.tailDecodeMs < 0 ? nil : ($0.tailDecodeMs * 10).rounded() / 10 })
     }
 
     static func msLeft(until t: ContinuousClock.Instant) -> Int {
@@ -623,8 +631,14 @@ public actor DictationEngine {
         let first = FirstOf()
         let final: String? = await withCheckedContinuation { (c: CheckedContinuation<String?, Never>) in
             Task { [weak self] in
-                if !pad.isEmpty { await tr.append(pad) }
-                let t = await tr.finish()
+                let t: String
+                if let seg = tr as? PaddedFinishing {
+                    // A segmented recogniser takes the pad as end context for its last segment (never a pause).
+                    t = await seg.finish(padSamples: pad.count)
+                } else {
+                    if !pad.isEmpty { await tr.append(pad) }
+                    t = await tr.finish()
+                }
                 await self?.finished(key)
                 first.fire { c.resume(returning: t) }
             }
@@ -645,7 +659,10 @@ public actor DictationEngine {
         guard let s = session, s.id == id else { return }
         if s.closed { session?.cancelled = true; return }  // the stop is finalizing: it answers, once
         tick?.cancel(); tick = nil
-        if await close(limitMs: tail.drainTimeoutMs) { _ = await s.transcriber?.finish() }
+        if await close(limitMs: tail.drainTimeoutMs) {
+            // A segmented recogniser just drops its segments (no tail decode for a cancelled dictation).
+            if let seg = s.transcriber as? PaddedFinishing { await seg.reset() } else { _ = await s.transcriber?.finish() }
+        }
         session = nil
         echo?.end()
         speech?.end(.dictation(id: id))
@@ -671,7 +688,9 @@ public actor DictationEngine {
         echo?.end()
         speech?.end(.dictation(id: s.id))
         stopMic()
-        send(.dictationStopped(id: s.id, text: text, durationMs: Double(s.samples) * 1000 / 16_000, reason: reason))
+        let g = await (s.transcriber as? PaddedFinishing)?.segmentStats()
+        send(.dictationStopped(id: s.id, text: text, durationMs: Double(s.samples) * 1000 / 16_000, reason: reason,
+                               asr: Self.asrInfo(s.transcriber, g)))
     }
 
     public func insert(id: String, text: String, restoreClipboard: Bool) async {

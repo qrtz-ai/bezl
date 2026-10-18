@@ -12,7 +12,10 @@ import QrtzHelperCore
 /// model from `$QRTZ_MODELS_DIR` (like the app), the bench-only sets from `--bench-models` (fetched and checked by
 /// scripts/echo-bench.sh). Nothing here is used by the app's runtime.
 ///
-/// Engines: `nemotron-560` (shipped: the app's own NemotronTranscriber), `nemotron-1120`, `nemotron-2240` (chunk
+/// Engines: `parakeet-segmented` (shipped for echo: Parakeet TDT v2 cut at pauses, `QRTZ_ECHO_SEGMENT_PAUSE_MS` /
+/// `QRTZ_ECHO_SEGMENT_CAP_MS` apply), `parakeet-whole` (the same model on the whole clip at the release),
+/// `parakeet-seg-<pauseMs>-<capMs>` (a rule candidate; 0 = that cut off), `nemotron-560` (echo's recogniser before
+/// Parakeet; recordings still use it), `nemotron-1120`, `nemotron-2240` (chunk
 /// tiers), `nemotron-560+unified` (two-pass: Nemotron partials, Parakeet Unified batch final on release), `apple`
 /// (SpeechAnalyzer, macOS 26, installed assets only). No GPU variant: the int8 encoder on the GPU is ~10× slower
 /// and can abort in MPSGraph (FluidAudio's own notes), so the Neural Engine stays.
@@ -61,8 +64,21 @@ enum EchoBenchCLI {
                   FileManager.default.fileExists(atPath: m.appendingPathComponent(".qrtz-bench-verified").path) else { return nil }
             return m
         }
+        // One Parakeet for every parakeet engine (one load at a time; the runner unloads it after each engine).
+        let parakeet = ParakeetBatch()
         for n in names {
             switch n {
+            case "parakeet-segmented": out.append(SegmentedTranscriber(parakeet, rule: .fromEnvironment(), name: n))
+            case "parakeet-whole": out.append(SegmentedTranscriber(parakeet, rule: .wholeClip, name: n))
+            case let n where n.hasPrefix("parakeet-seg-"):
+                // parakeet-seg-<pauseMs>-<capMs>[-<overlapMs>] (0 = that cut off): a rule candidate from the Linux
+                // eval; the other knobs from the environment.
+                let p = n.dropFirst("parakeet-seg-".count).split(separator: "-").compactMap { Int($0) }
+                guard (2...3).contains(p.count), p.allSatisfy({ $0 >= 0 }) else { logErr("echo-bench: \(n): want parakeet-seg-<pauseMs>-<capMs>[-<overlapMs>]"); continue }
+                var rule = SegmentRule.fromEnvironment()
+                rule.pauseMs = p[0] == 0 ? .max : p[0]; rule.capMs = p[1] == 0 ? .max : max(2_000, p[1])
+                if p.count == 3 { rule.overlapMs = p[2] }
+                out.append(SegmentedTranscriber(parakeet, rule: rule, name: n))
             case "nemotron-560": out.append(NemotronTranscriber())
             case "nemotron-1120", "nemotron-2240":
                 let tier = n.dropFirst("nemotron-".count)
@@ -99,12 +115,13 @@ enum EchoBenchCLI {
         if let want = list(args, "--variants"), want != ["all"] { variants = variants.filter { want.contains($0.name) } }
         if options.speaker.isEmpty { variants = variants.filter { $0.echoCoupling == nil } }
         let models = benchModels(args)
-        let engines = engines(list(args, "--engines") ?? ["nemotron-560"], models: models)
+        let engines = engines(list(args, "--engines") ?? ["parakeet-segmented"], models: models)
         guard !engines.isEmpty, !variants.isEmpty else { throw Bench.Failure(description: "no engine or variant to run") }
 
         let started = Date()
         logErr("echo-bench: \(clips.count) clips × \(engines.count) engines × \(variants.count) variants at \(options.speed)× (audio \(clips.map(\.audioMs).reduce(0, +) / 1000) s per pass)")
-        var report = await EchoBench.run(clips: clips, engines: engines, variants: variants, options: options, progress: { logErr("echo-bench: " + $0) })
+        var report = await EchoBench.run(clips: clips, engines: engines, variants: variants, options: options, progress: { logErr("echo-bench: " + $0) },
+                                         footprintMB: { Bench.footprintMB() })
         let v = ProcessInfo.processInfo.operatingSystemVersion
         report["machine"] = [
             "model": sysctl("hw.model"), "chip": sysctl("machdep.cpu.brand_string"), "memGB": ProcessInfo.processInfo.physicalMemory / 1_073_741_824,

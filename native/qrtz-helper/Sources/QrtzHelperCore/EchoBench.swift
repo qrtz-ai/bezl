@@ -341,7 +341,7 @@ public enum EchoBench {
         let stoppedAt = out.t0.msToNow()
         await echo?.settled()
         let msgs = out.all
-        let text = msgs.compactMap { m -> String? in if case .dictationStopped(_, let t, _, _) = m.1 { t } else { nil } }.first ?? ""
+        let text = msgs.compactMap { m -> String? in if case .dictationStopped(_, let t, _, _, _) = m.1 { t } else { nil } }.first ?? ""
         let firstPartialEvent = msgs.first { m in if case .dictationAsr(_, .partial(_, _, let t)) = m.1 { !t.isEmpty } else { false } }?.0
         let timing = await engineActor.lastTiming
         let refN = EchoWER.normalize(clip.reference), hypN = EchoWER.normalize(text)
@@ -361,7 +361,8 @@ public enum EchoBench {
 
     /// Every clip through every engine × variant. `progress` gets one line per clip (stderr in the CLI).
     public static func run(clips: [EchoClip], engines: [StreamingTranscriber], variants: [EchoVariant], options: EchoBenchOptions,
-                           progress: @Sendable (String) -> Void = { _ in }) async -> [String: Any] {
+                           progress: @Sendable (String) -> Void = { _ in },
+                           footprintMB: @Sendable () -> Double? = { nil }) async -> [String: Any] {
         var runs: [[String: Any]] = []
         var summary: [[String: Any]] = []
         for engine in engines {
@@ -372,9 +373,12 @@ public enum EchoBench {
                 continue
             }
             let loadMs = t0.msToNow().rounded()
+            // The process footprint with this engine loaded (engines run one at a time, each unloaded after).
+            let loadedMB = footprintMB()
             for variant in variants {
                 var wer = EchoWER.Score(), fwer = EchoWER.Score()
                 var rel: [Double] = [], first: [Double] = [], fin: [Double] = [], rtf: [Double] = []
+                var tailDecode: [Double] = [], segments: [Double] = [], bgSegments: [Double] = [], backlog: [Double] = []
                 var tailLost = 0, headLost = 0
                 for clip in clips {
                     let r = await runClip(clip, engine: engine, variant: variant, options: options)
@@ -388,14 +392,25 @@ public enum EchoBench {
                     if let st = r["stages"] as? [String: Any] {
                         if let f = st["finalizeMs"] as? Int, let c = st["closeMs"] as? Int, f >= 0, c >= 0 { fin.append(Double(f - c)) }
                         if let x = st["liveRtf"] as? Double { rtf.append(x) }
+                        // A segmented recogniser (parakeet): the release's tail decode and the segment counts.
+                        if let x = st["tailDecodeMs"] as? Double, x >= 0 { tailDecode.append(x) }
+                        if let x = st["segments"] as? Int { segments.append(Double(x)) }
+                        if let x = st["backgroundSegments"] as? Int { bgSegments.append(Double(x)) }
+                        if let x = st["backlogWaitMs"] as? Double { backlog.append(x) }
                     }
                     progress("\(engine.name) \(variant.name) \(clip.name): wer \(String(format: "%.3f", EchoWER.score(ref: refN, hyp: EchoWER.normalize(hyp)).wer)) release→final \(Int(r["releaseToStoppedMs"] as? Double ?? -1)) ms")
                 }
-                summary.append([
+                var row: [String: Any] = [
                     "engine": engine.name, "variant": variant.name, "clips": clips.count, "loadMs": loadMs,
                     "wer": wer.json, "formattedWer": fwer.json, "tailWordsLost": tailLost, "headWordsLost": headLost,
                     "releaseToStoppedMs": stats(rel), "firstPartialMs": stats(first), "finalDecodeMs": stats(fin), "liveRtf": stats(rtf),
-                ])
+                ]
+                if let loadedMB { row["footprintMBLoaded"] = loadedMB }
+                if !segments.isEmpty {
+                    row["tailDecodeMs"] = stats(tailDecode); row["segments"] = stats(segments)
+                    row["backgroundSegments"] = stats(bgSegments); row["backlogWaitMs"] = stats(backlog)
+                }
+                summary.append(row)
             }
             await engine.unload()
         }

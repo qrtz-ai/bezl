@@ -6,7 +6,10 @@ import Foundation
 /// The helper never fetches a model: it reads `$QRTZ_MODELS_DIR/<set>/` only once the host has written the set's
 /// `.qrtz-verified` marker, and throws otherwise (the caller falls back or reports "speech not downloaded").
 enum LocalModels {
+    /// Recordings (nano) only since echo moved to Parakeet.
     static let asr = "nemotron-560ms"
+    /// Echo dictation: Parakeet TDT v2 English (`local_models.json` set `echo-asr`).
+    static let echoAsr = "parakeet-tdt-v2"
     static let diarizer = "nemotron3-diarizer"
     static let echo = "localvqe"
     static let marker = ".qrtz-verified"

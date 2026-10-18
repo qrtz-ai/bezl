@@ -31,3 +31,5 @@ not json
 {"atMs":-1,"reason":"backlog","source":"mic","type":"diarization.unavailable"}
 {"atMs":10,"reason":"tired","source":"mic","type":"diarization.unavailable"}
 {"atMs":10,"reason":"backlog","source":"camera","type":"diarization.unavailable"}
+{"asr":"parakeet-tdt-v2","durationMs":1,"id":"d","segments":-1,"text":"","type":"dictation.stopped"}
+{"asr":"","durationMs":1,"id":"d","text":"","type":"dictation.stopped"}

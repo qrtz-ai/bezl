@@ -62,6 +62,23 @@ Rules (the arbiter's `cmd` events):
    The pad and finish run inside what is left. If either runs out, the last partial is
    sent and that recogniser is held until its call returns. So `dictation.stopped` always comes within
    `budgetMs(audioMs:queuedMs:)`, the same formula qrtz-talk's `HelperTail` mirrors.
+   Echo on Parakeet (2026-10-18): echo's recogniser is Parakeet TDT v2 (English, Core ML), a batch decoder, so
+   there are no partials within a segment. While the key is held the helper cuts the audio at pauses (≥ 300 ms
+   of silence, once the segment is at least 2 s long) or at a 15 s cap and decodes each finished segment in the background, one at a time. `dictation.asr`
+   partials then carry the segments decoded so far. On release, the 640 ms pad goes on the last segment only, as end
+   context, and only that segment is decoded. Cuts land in silence (mid-pause, or the quietest 100 ms of the cap's
+   last 1.5 s), so by default segments don't overlap: Parakeet often drops a segment that starts inside a word. With
+   an overlap set, words are stitched by their start times at the middle of the overlap. That decode is the finish
+   under the same N139 deadline. A last
+   segment with no speech (a pause before the release) isn't decoded. Every knob of the rule is an environment
+   override (`QRTZ_ECHO_SEGMENT_PAUSE_MS`, `_CAP_MS`, `_OVERLAP_MS`, `_OVERLAP_MODE` = `all`|`cap`, `_MIN_MS`). The
+   fallback is Apple SpeechAnalyzer (macOS 26). Recordings keep Nemotron streaming, and it loads only for a
+   recording.
+   `dictation.stopped` says which recogniser heard it. All of these fields are optional and additive:
+   `asr` is the recogniser id (`parakeet-tdt-v2`, `apple-speechanalyzer`, `nemotron-560ms`) and is absent when none
+   ran or the dictation was cancelled. For the segmented recogniser it also carries `segments` (segments decoded,
+   the tail included) and `tailDecodeMs` (the release's decode of the last segment, in ms). `tailDecodeMs` is absent
+   when the tail had no speech to decode.
    N134: a start that no recogniser can take (each one busy or failing to load, and no speech module attached) is
    refused with `error{code: "dictation.asr", fatal: false, id}` instead of a `dictation.started` that would hear
    nothing. qrtz-talk shows it as `speech-unavailable` at once.

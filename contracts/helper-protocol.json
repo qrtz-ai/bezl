@@ -868,6 +868,19 @@
               "permission-revoked",
               "mic-lost"
             ]
+          },
+          "asr": {
+            "type": "string",
+            "minLength": 1
+          },
+          "segments": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "tailDecodeMs": {
+            "type": "number",
+            "minimum": 0
           }
         },
         "required": [

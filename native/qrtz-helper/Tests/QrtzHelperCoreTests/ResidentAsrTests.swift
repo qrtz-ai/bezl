@@ -41,7 +41,7 @@ final class ResidentAsrTests: XCTestCase {
     }
 
     func stopped(_ out: Box<[HelperMessage]>, _ id: String) -> String? {
-        out.value.compactMap { if case .dictationStopped(id, let t, _, _) = $0 { t } else { nil } }.first
+        out.value.compactMap { if case .dictationStopped(id, let t, _, _, _) = $0 { t } else { nil } }.first
     }
 
     /// ADR 0087: the helper loads echo's recogniser as it starts, and logs it resident.

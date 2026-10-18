@@ -58,7 +58,7 @@ final class MicSwitchTests: XCTestCase {
     }
 
     func stopped(_ msgs: [HelperMessage]) -> [(String, DictationStopReason?)] {
-        msgs.compactMap { if case .dictationStopped(_, let t, _, let r) = $0 { (t, r) } else { nil } }
+        msgs.compactMap { if case .dictationStopped(_, let t, _, let r, _) = $0 { (t, r) } else { nil } }
     }
 
     func testADictationSpanningASwitchHasTheWordsFromBothSides() async {

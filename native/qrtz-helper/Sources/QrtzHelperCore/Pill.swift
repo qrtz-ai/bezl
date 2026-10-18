@@ -145,7 +145,7 @@ public final class PillDriver: @unchecked Sendable {
             else if s == .finalizing { go(.finalizing, timeoutMs: backstopMs) }
         case .dictationLevel(let rms):
             if state == .listening { view.level(rms) }
-        case .dictationStopped(let id, let text, _, let reason):
+        case .dictationStopped(let id, let text, _, let reason, _):
             guard isCurrent(id) else { return }
             if let reason { go(.error(Self.words(reason)), timeoutMs: timing.errorFlashMs) }
             else if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !autoInsert { go(.hidden) }

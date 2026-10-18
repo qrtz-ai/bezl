@@ -40,6 +40,9 @@ public struct DictationTiming: Sendable, Equatable {
     /// The press opened the mic before the host's `dictation.start` (armed): `preRollMs` is then the head that the
     /// round trip would have cut off.
     public var armed = false
+    /// A segmented batch recogniser (echo on Parakeet): its segment counts and the release's tail decode. nil for
+    /// a streaming recogniser.
+    public var segments: SegmentStats?
 
     public init() {}
 
@@ -62,12 +65,17 @@ public struct DictationTiming: Sendable, Equatable {
         if appendHeld { p.append("append_held=1") }
         if gateBlocks > 0 { p.append("gate_ducked=\(gateDucked)/\(gateBlocks)") }
         if armed { p.append("armed=1") }
+        if let g = segments {
+            p += ["segments=\(g.segments)", "bg_segments=\(g.backgroundSegments)", "cap_cuts=\(g.capCuts)",
+                  "tail_decode_ms=\(g.tailDecodeMs < 0 ? "-1" : r(g.tailDecodeMs))", "backlog_wait_ms=\(r(g.backlogWaitMs))"]
+            if g.failures > 0 { p.append("decode_failures=\(g.failures)") }
+        }
         return "echo timing: " + p.joined(separator: " ")
     }
 
     /// For the bench's JSON.
     public var json: [String: Any] {
-        [
+        var j: [String: Any] = [
             "asr": asr, "audioMs": audioMs, "preRollMs": preRollMs, "firstPartialMs": firstPartialMs,
             "appends": appends, "appendTotalMs": appendTotalMs, "appendMaxMs": appendMaxMs, "liveRtf": liveRtf,
             "tailMs": tailMs, "drainMs": drainMs, "closeMs": closeMs, "finalizeMs": finalizeMs,
@@ -75,6 +83,11 @@ public struct DictationTiming: Sendable, Equatable {
             "finalTimedOut": finalTimedOut, "appendHeld": appendHeld, "words": words,
             "gateDucked": gateDucked, "gateBlocks": gateBlocks, "armed": armed,
         ]
+        if let g = segments {
+            j["segments"] = g.segments; j["backgroundSegments"] = g.backgroundSegments; j["capCuts"] = g.capCuts
+            j["tailDecodeMs"] = g.tailDecodeMs; j["backlogWaitMs"] = g.backlogWaitMs; j["decodeFailures"] = g.failures
+        }
+        return j
     }
 }
 

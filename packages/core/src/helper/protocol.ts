@@ -245,6 +245,12 @@ export const HelperToHost = z.discriminatedUnion('type', [
      * `permission-revoked` (microphone access withdrawn mid-dictation) or `mic-lost` (the input device went away).
      */
     reason: z.enum(['permission-revoked', 'mic-lost']).optional(),
+    /** The recogniser that heard it, e.g. `parakeet-tdt-v2` (echo), `nemotron-560ms`, `apple-speechanalyzer`. Absent when none ran (or an older helper). */
+    asr: z.string().min(1).optional(),
+    /** Segmented batch recogniser (echo on Parakeet): segments decoded, the tail included. */
+    segments: z.number().int().nonnegative().optional(),
+    /** Segmented batch recogniser: the release's decode of the last segment (ms). Absent when the tail had no speech to decode. */
+    tailDecodeMs: z.number().nonnegative().optional(),
   }),
   z.object({
     /**

@@ -1,9 +1,10 @@
-//! ADR 0079: the Mac helper's own speech models (Nemotron ASR, Nemotron 3 diarization, LocalVQE echo cancellation)
-//! for builds without the signed speech module. The files and their sha256s are pinned in this binary
-//! (`local_models.json`, generated from the model host's tree at a fixed revision), downloaded only from onboarding or
-//! settings through `qrtz-speech`'s resumable, size-capped, hash-checked downloader (ADR 0078's one network path),
-//! into `<data>/models/<set>/` (0700). A set is usable once every file verified and its `.qrtz-verified` marker is
-//! written; the helper reads only marked sets (`QRTZ_MODELS_DIR`) and never fetches anything itself.
+//! ADR 0079: the Mac helper's own speech models (Nemotron ASR for recordings, Nemotron 3 diarization, LocalVQE echo
+//! cancellation, Parakeet TDT v2 for echo dictation) for builds without the signed speech module. The files and their
+//! sha256s are pinned in this binary (`local_models.json`, generated from the model host's tree at a fixed revision),
+//! downloaded only from onboarding or settings through `qrtz-speech`'s resumable, size-capped, hash-checked downloader
+//! (ADR 0078's one network path), into `<data>/models/<set>/` (0700). A set is usable once every file verified and its
+//! `.qrtz-verified` marker is written; the helper reads only marked sets (`QRTZ_MODELS_DIR`) and never fetches
+//! anything itself.
 use qrtz_speech::bundle::FileEntry;
 use qrtz_speech::download::{DownloadControl, Downloader, Progress};
 use qrtz_speech::{fsx, SpeechError};
@@ -198,10 +199,18 @@ mod tests {
     fn the_pinned_manifest_is_complete_and_safe() {
         let m = Manifest::pinned();
         let ids: Vec<&str> = m.sets.iter().map(|s| s.id.as_str()).collect();
-        assert_eq!(ids, ["asr", "diarizer", "echo"]);
+        assert_eq!(ids, ["asr", "diarizer", "echo", "echo-asr"]);
         // The dirs the helper reads (mac/Models.swift `LocalModels`).
         let dirs: Vec<&str> = m.sets.iter().map(|s| s.dir.as_str()).collect();
-        assert_eq!(dirs, ["nemotron-560ms", "nemotron3-diarizer", "localvqe"]);
+        assert_eq!(
+            dirs,
+            [
+                "nemotron-560ms",
+                "nemotron3-diarizer",
+                "localvqe",
+                "parakeet-tdt-v2"
+            ]
+        );
         assert!(m.base.starts_with("https://"));
         for s in &m.sets {
             assert_eq!(s.revision.len(), 40, "{}: a pinned commit, not a branch", s.id);
@@ -232,8 +241,21 @@ mod tests {
         ));
         assert!(has("diarizer", "learnable_sil_emb.bin"));
         assert!(has("echo", "localvqe-v1.3-4.8M-16ms.mlmodelc/coremldata.bin"));
+        // Echo's recogniser (Parakeet TDT v2, FluidAudio `AsrModels.loadLocal(version: .v2)`): its four models and
+        // the vocabulary.
+        for model in ["Preprocessor", "Encoder", "Decoder", "JointDecision"] {
+            assert!(
+                has("echo-asr", &format!("{model}.mlmodelc/coremldata.bin")),
+                "{model}"
+            );
+            assert!(
+                has("echo-asr", &format!("{model}.mlmodelc/weights/weight.bin")),
+                "{model}"
+            );
+        }
+        assert!(has("echo-asr", "parakeet_vocab.json"));
         let total = m.total_size();
-        assert!((800_000_000..900_000_000).contains(&total), "{total}");
+        assert!((1_250_000_000..1_350_000_000).contains(&total), "{total}");
     }
 
     #[test]

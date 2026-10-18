@@ -72,7 +72,7 @@ final class DictationTests: XCTestCase {
         await e.onSamples([Float](repeating: 0.2, count: 3_200))
         await e.abort(reason: .micLost)
         let stopped = out.value.compactMap { m -> (String, DictationStopReason?)? in
-            if case .dictationStopped(_, let t, _, let r) = m { (t, r) } else { nil }
+            if case .dictationStopped(_, let t, _, let r, _) = m { (t, r) } else { nil }
         }
         XCTAssertEqual(stopped.first?.0, "hello world")
         XCTAssertEqual(stopped.first?.1, .micLost)
@@ -171,7 +171,7 @@ final class DictationTests: XCTestCase {
         let msgs = out.value
         XCTAssertTrue(msgs.contains { if case .dictationAsr("d1", .partial(_, _, "hello world")) = $0 { true } else { false } })
         XCTAssertTrue(msgs.contains { if case .dictationAsr("d1", .final(_, _, _, "hello world", _)) = $0 { true } else { false } })
-        XCTAssertTrue(msgs.contains(.dictationStopped(id: "d1", text: "hello world", durationMs: 200)))
+        XCTAssertTrue(msgs.contains(.dictationStopped(id: "d1", text: "hello world", durationMs: 200, asr: .init(asr: "rec"))))
         XCTAssertEqual(msgs.filter { if case .dictationAudio = $0 { true } else { false } }.count, 2)
         XCTAssertTrue(msgs.contains { if case .dictationLevel = $0 { true } else { false } })
         XCTAssertEqual(mic.stops, 0, "warm mic stays on between dictations")
@@ -192,7 +192,7 @@ final class DictationTests: XCTestCase {
         XCTAssertEqual(mic.starts, 1)
         await c.handle(.dictationStop(id: "a"))
         XCTAssertEqual(mic.stops, 1)
-        XCTAssertTrue(out.value.contains(.dictationStopped(id: "a", text: "hello world", durationMs: 0)), "only the pad reached it: no captured audio")
+        XCTAssertTrue(out.value.contains(.dictationStopped(id: "a", text: "hello world", durationMs: 0, asr: .init(asr: "rec"))), "only the pad reached it: no captured audio")
         await c.handle(.insertText(id: "a", text: "x", restoreClipboard: true))
         XCTAssertTrue(out.value.contains { if case .insertResult("a", .none, false, _, _) = $0 { true } else { false } })
     }
@@ -249,7 +249,7 @@ final class DictationTailTests: XCTestCase {
     }
 
     func stoppedText(_ msgs: [HelperMessage]) -> String? {
-        msgs.compactMap { if case .dictationStopped(_, let t, _, _) = $0 { t } else { nil } }.first
+        msgs.compactMap { if case .dictationStopped(_, let t, _, _, _) = $0 { t } else { nil } }.first
     }
 
     func level(_ k: Int, _ n: Int) -> [Float] { [Float](repeating: Float(k) / 10, count: n) }
@@ -263,7 +263,7 @@ final class DictationTailTests: XCTestCase {
         await c.dictation.onSamples(level(2, 4000))
         await c.handle(.dictationStop(id: "d1"))
         XCTAssertEqual(stoppedText(out.value), "w1 w2", "the silence pad pushes the last partial chunk through")
-        XCTAssertTrue(out.value.contains(.dictationStopped(id: "d1", text: "w1 w2", durationMs: (8960 + 4000) / 16)),
+        XCTAssertTrue(out.value.contains(.dictationStopped(id: "d1", text: "w1 w2", durationMs: (8960 + 4000) / 16, asr: .init(asr: "chunk"))),
                       "the pad isn't counted as dictated audio")
     }
 
@@ -349,7 +349,7 @@ final class DictationTailTests: XCTestCase {
         XCTAssertEqual(asr.lock.withLock { asr.appendsWhileFinishing }, 0)
         // The first block the tap delivers after the release (the one it was filling) is in; the later ones aren't.
         XCTAssertEqual(stoppedText(out.value), "w1 w5")
-        let dur = out.value.compactMap { if case .dictationStopped(_, _, let d, _) = $0 { d } else { nil } }.first ?? 0
+        let dur = out.value.compactMap { if case .dictationStopped(_, _, let d, _, _) = $0 { d } else { nil } }.first ?? 0
         // On a loaded CI runner a second 50 ms block can land before the barrier; never all six.
         let extra = ciSlackMs > 0 ? 1360.0 : 0
         XCTAssertGreaterThanOrEqual(dur, Double(8960 + 1360) / 16)
@@ -427,7 +427,7 @@ final class DictationTailTests: XCTestCase {
         for _ in 0..<8 { cb(level(6, 1360)) }
         await c.handle(.dictationStop(id: "d1"))
         XCTAssertFalse(out.value.contains { if case .log(.warn, let m) = $0 { m.contains("not drained") } else { false } })
-        XCTAssertTrue(out.value.contains(.dictationStopped(id: "d1", text: "w6", durationMs: 8 * 1360 / 16)))
+        XCTAssertTrue(out.value.contains(.dictationStopped(id: "d1", text: "w6", durationMs: 8 * 1360 / 16, asr: .init(asr: "chunk"))))
     }
 
     func testABacklogPastTheCapStandsTheMicDownExplicitly() async {
@@ -447,7 +447,7 @@ final class DictationTailTests: XCTestCase {
         await c.handle(.dictationStart(id: "d2"))
         mic.cb?(level(2, 1360))  // a fresh tap callback (the cold mic was released after d1)
         await c.handle(.dictationStop(id: "d2"))
-        XCTAssertTrue(out.value.contains(.dictationStopped(id: "d2", text: "", durationMs: 85)))
+        XCTAssertTrue(out.value.contains(.dictationStopped(id: "d2", text: "", durationMs: 85, asr: .init(asr: "chunk"))))
     }
 
     func testCancelDuringTheTailAnswersOnce() async {
@@ -507,7 +507,7 @@ final class DictationBoundsTests: XCTestCase {
     }
     func level(_ k: Int, _ n: Int) -> [Float] { [Float](repeating: Float(k) / 10, count: n) }
     func stoppedText(_ msgs: [HelperMessage], _ id: String) -> String? {
-        msgs.compactMap { if case .dictationStopped(id, let t, _, _) = $0 { t } else { nil } }.first
+        msgs.compactMap { if case .dictationStopped(id, let t, _, _, _) = $0 { t } else { nil } }.first
     }
     func warned(_ msgs: [HelperMessage], _ s: String) -> Bool { msgs.contains { if case .log(.warn, let m) = $0 { m.contains(s) } else { false } } }
 

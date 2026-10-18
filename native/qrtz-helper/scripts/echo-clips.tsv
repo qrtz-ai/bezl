@@ -1,4 +1,6 @@
 # name	voice	text (what is said, written the way it should be typed). Generated with `say` by echo-bench.sh.
+# [[slnc N]] is a pause of N ms in the audio (`say`'s silence command), left out of the reference: the 19-21 clips
+# pause mid-dictation, so echo's segmented recogniser cuts them (segments vs whole clip).
 01-slides	Samantha	Hey, can you send me the slides before the meeting tomorrow?
 02-launch	Daniel	Let's push the launch to Thursday and add a note about pricing.
 03-late	Karen	I'll be about ten minutes late, start without me.
@@ -17,3 +19,6 @@
 16-code	Samantha	Rename the function to parse config and add a unit test for the empty case.
 17-instead	Daniel	Actually, let's do Wednesday instead.
 18-code-digits	Karen	The room code is four seven two nine.
+19-pauses	Samantha	Okay, three things for the notes. [[slnc 700]] First, the demo moved to Monday. [[slnc 600]] Second, Maria owns the budget review. [[slnc 800]] And third, we still need a name for the beta.
+20-memo	Daniel	Quick status on the migration. [[slnc 500]] The database copy finished last night and the checks passed. [[slnc 450]] We found two slow queries on the reports page, and Sam is adding an index for both. [[slnc 600]] The cutover is still planned for Saturday morning, so please don't merge anything big on Friday afternoon. [[slnc 500]] I'll send a reminder before we start.
+21-think	Karen	So the question is [[slnc 900]] whether we ship the small fix now [[slnc 700]] or wait for the full redesign next month.

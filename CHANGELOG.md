@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **echo now hears you with Parakeet:** echo's speech recognition is now Parakeet TDT v2 (English, on the Neural Engine), which makes fewer mistakes on full sentences. While you hold fn, echo transcribes each phrase as you pause, so letting go only has to finish the last one. It's a one-time download of about 460 MB from settings → speech or onboarding. Until then echo uses Apple's on-device speech on macOS 26. Meetings keep their own recogniser, and it now loads only for a recording.
 - **echo catches your first word (ADR 0104):** pressing fn now opens the microphone right away, so the words you start saying while echo gets ready are kept. The mic indicator lights at the press, as before, and goes out after the dictation; the mic is not kept open between dictations.
 - **Pasted text lands faster:** when echo has to paste, it reports the text as inserted as soon as it's pasted, and puts your clipboard back a moment later in the background (also when you dictate twice in a row).
 - **Changing "ignore the speakers" mid-dictation no longer changes the dictation that is running (N158).**

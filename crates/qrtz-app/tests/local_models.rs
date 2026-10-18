@@ -209,7 +209,7 @@ fn a_module_source_takes_precedence_over_local_models() {
     assert_eq!(local.status()["latestBytes"], Manifest::pinned().total_size());
 }
 
-/// The real pinned files from the model host (about 845 MB): `QRTZ_REAL_MODELS_DIR=/tmp/m cargo test -p qrtz-app
+/// The real pinned files from the model host (about 1.3 GB): `QRTZ_REAL_MODELS_DIR=/tmp/m cargo test -p qrtz-app
 /// --test local_models -- --ignored`. Checks the pins, redirects and range resumes against the live host.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore]

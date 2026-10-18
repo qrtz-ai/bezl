@@ -18,7 +18,7 @@ func makePlatformDeps(version: String) -> HelperDeps {
     // ADR 0079: Nemotron (local files only) on the mic and system channels, each diarized; SpeechAnalyzer on the mix
     // as the backup while Nemotron isn't downloaded (only with OS assets already installed). Echo never diarizes.
     var asr: [StreamingTranscriber] = [NemotronTranscriber()]
-    features += ["asr.nemotron", "diarize.nemotron3"]
+    features += ["asr.nemotron", "diarize.nemotron3", "talk.asr.parakeet"]
     #if compiler(>=6.2) && canImport(Speech)
     if #available(macOS 26.0, *) { asr.append(SpeechAnalyzerTranscriber()); features.append("asr.speechanalyzer") }
     #endif
@@ -52,9 +52,11 @@ func makePlatformDeps(version: String) -> HelperDeps {
     return deps
 }
 
-/// Separate recogniser instances for qrtz talk so a dictation can run during a meeting recording.
+/// Echo's recognisers (separate instances from the recording's, so a dictation can run during one): Parakeet TDT v2
+/// segmented at pauses (Jared, 2026-10-18; the rule from `QRTZ_ECHO_SEGMENT_PAUSE_MS` / `QRTZ_ECHO_SEGMENT_CAP_MS`),
+/// SpeechAnalyzer as the fallback. Nemotron is the recording's only (loaded per recording), not resident for echo.
 private func dictationAsr() -> [StreamingTranscriber] {
-    var asr: [StreamingTranscriber] = [NemotronTranscriber()]
+    var asr: [StreamingTranscriber] = [SegmentedTranscriber(ParakeetBatch(), rule: .fromEnvironment())]
     #if compiler(>=6.2) && canImport(Speech)
     if #available(macOS 26.0, *) { asr.append(SpeechAnalyzerTranscriber()) }
     #endif

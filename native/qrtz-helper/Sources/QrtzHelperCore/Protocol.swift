@@ -14,6 +14,19 @@ public enum RevocationDegradation: String, Sendable, CaseIterable {
 /// down; `model-unavailable`: its model didn't load).
 public enum DiarizationUnavailableReason: String, Sendable { case backlog, modelUnavailable = "model-unavailable" }
 public enum DictationStopReason: String, Sendable { case permissionRevoked = "permission-revoked", micLost = "mic-lost" }
+
+/// `dictation.stopped`'s recogniser fields (additive, all optional on the wire): `asr` (the recogniser that heard
+/// it, e.g. "parakeet-tdt-v2"; absent when none did), and for a segmented batch recogniser `segments` (segments
+/// decoded, the tail included) and `tailDecodeMs` (the release's decode of the last segment; absent when the tail
+/// needed none).
+public struct DictationAsrInfo: Sendable, Equatable {
+    public var asr: String
+    public var segments: Int?
+    public var tailDecodeMs: Double?
+    public init(asr: String, segments: Int? = nil, tailDecodeMs: Double? = nil) {
+        self.asr = asr; self.segments = segments; self.tailDecodeMs = tailDecodeMs
+    }
+}
 public enum PermissionState: String, Sendable { case granted, denied, notDetermined = "not-determined", unsupported }
 public enum MeetingPlatform: String, Sendable { case zoom, googleMeet = "google-meet", teams, slackHuddle = "slack-huddle", webex, other }
 public enum InsertMethod: String, Sendable { case axSelectedText = "ax-selected-text", axValue = "ax-value", paste, none }
@@ -77,7 +90,7 @@ public enum HelperMessage: Equatable, Sendable {
     case dictationAsr(id: String, event: AsrEvent)
     case dictationAudio(id: String, seq: Int, pcm16: String)
     /// reason is set only when the helper ended the dictation itself (see DictationStopReason).
-    case dictationStopped(id: String, text: String, durationMs: Double, reason: DictationStopReason? = nil)
+    case dictationStopped(id: String, text: String, durationMs: Double, reason: DictationStopReason? = nil, asr: DictationAsrInfo? = nil)
     /// A TCC permission went granted → denied while capturing or dictating. `degraded` (N4): the arbiter's
     /// `degrade:*` effects, `[]` when not recording; nil only when parsing an older helper's line.
     /// N29: `source` has been under the silence floor since `sinceMs` (recording-relative), for `SilenceConfig.afterMs`.
@@ -143,6 +156,19 @@ public enum HostMessage: Equatable, Sendable {
 
 private func s(_ v: String) -> JSONValue { .string(v) }
 private func n(_ v: Double) -> JSONValue { .number(v) }
+
+private extension DictationAsrInfo {
+    /// nil when the message has no `asr` (an older helper, or no recogniser ran).
+    init?(_ f: Fields) throws {
+        guard let a = try f.optStr("asr") else { return nil }
+        guard !a.isEmpty else { throw ProtocolError("empty asr") }
+        let g = try f.optNum("segments")
+        if let g, g < 0 || g != g.rounded() { throw ProtocolError("bad segments") }
+        let t = try f.optNum("tailDecodeMs")
+        if let t, t < 0 { throw ProtocolError("bad tailDecodeMs") }
+        self.init(asr: a, segments: g.map { Int($0) }, tailDecodeMs: t)
+    }
+}
 
 private struct Fields {
     let o: [String: JSONValue]
@@ -246,9 +272,14 @@ extension HelperMessage {
         case .dictationLevel(let rms): return obj("dictation.level", ["rms": n(min(1, max(0, rms)))])
         case .dictationAsr(let id, let e): return obj("dictation.asr", ["id": s(id), "event": e.json])
         case .dictationAudio(let id, let seq, let pcm): return obj("dictation.audio", ["id": s(id), "seq": n(Double(seq)), "pcm16": s(pcm)])
-        case .dictationStopped(let id, let text, let d, let reason):
+        case .dictationStopped(let id, let text, let d, let reason, let info):
             var o: [String: JSONValue] = ["id": s(id), "text": s(text), "durationMs": n(d)]
             if let reason { o["reason"] = s(reason.rawValue) }
+            if let info {
+                o["asr"] = s(info.asr)
+                if let g = info.segments { o["segments"] = n(Double(g)) }
+                if let t = info.tailDecodeMs { o["tailDecodeMs"] = n(t) }
+            }
             return obj("dictation.stopped", o)
         case .captureSilent(let src, let since): return obj("capture.silent", ["source": s(src.rawValue), "sinceMs": n(since)])
         case .captureAudible(let src): return obj("capture.audible", ["source": s(src.rawValue)])
@@ -348,7 +379,8 @@ extension HelperMessage {
                                      reason: try f.optStr("reason").map { r in
                                          guard let v = DictationStopReason(rawValue: r) else { throw ProtocolError("bad reason \(r)") }
                                          return v
-                                     })
+                                     },
+                                     asr: try DictationAsrInfo(f))
         case "capture.silent":
             let since = try f.num("sinceMs")
             guard since >= 0 else { throw ProtocolError("negative sinceMs") }
