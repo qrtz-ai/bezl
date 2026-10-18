@@ -199,5 +199,10 @@ test('ctrl: a close-tabs run executes in the background, verifies, and scrubs ba
   await expect(ctrl.getByTestId('ctrl-plan-steps')).toHaveText(
     'plan: close browser tabs → your default browser → all tabs → close every tab by script',
   );
+  // The rows after the scrub position are muted, and still pass axe's contrast check (run 5's finding).
+  await expect(
+    ctrl.locator('[data-testid="ctrl-event"]:not([data-applied])'),
+  ).toHaveCount(8);
+  expect(await axe(page, 'ctrl')).toEqual([]);
   expect(errors).toEqual([]);
 });

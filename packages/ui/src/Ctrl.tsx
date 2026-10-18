@@ -295,8 +295,8 @@ export function RunTimeline({
               display: 'flex',
               gap: t.space[2],
               ...typeStyle('caption', t),
+              // Events after the scrub position: the muted text colour only (no opacity, which failed contrast).
               color: i < at ? t.color.text : t.color.textMuted,
-              opacity: i < at ? 1 : 0.5,
             }}
           >
             <span>{e.seq}</span>
