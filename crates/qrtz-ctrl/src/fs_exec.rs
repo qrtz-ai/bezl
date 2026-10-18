@@ -48,12 +48,28 @@ fn move_into(src: &Path, dir: &Path) -> Result<(), String> {
     std::fs::rename(src, &dst).map_err(|e| format!("fs.rename:{:?}", e.kind()))
 }
 
-impl<S: ContentStore> Executor for FsExecutor<S> {
-    fn execute(&mut self, route: &Route) -> Result<(), String> {
-        let Route::Files(op) = route else {
-            return Err("fs.not_a_file_route".into());
-        };
+impl<S: ContentStore> FsExecutor<S> {
+    fn run(&mut self, op: &FsOp) -> Result<(), String> {
         match op {
+            FsOp::MakeDir { dir } => {
+                let d = self.store.path(dir).ok_or("fs.ref")?;
+                if d.symlink_metadata().is_ok() {
+                    return Err("fs.exists".into());
+                }
+                std::fs::create_dir(&d).map_err(|e| format!("fs.mkdir:{:?}", e.kind()))
+            }
+            FsOp::Batch { ops } => {
+                for (i, o) in ops.iter().enumerate() {
+                    if let Err(e) = self.run(o) {
+                        // Roll back what this batch did, newest first: the folder is as it was.
+                        for done in ops[..i].iter().rev() {
+                            let _ = self.undo(done);
+                        }
+                        return Err(e);
+                    }
+                }
+                Ok(())
+            }
             FsOp::MoveInto { src, dst_dir } => {
                 let (s, d) = (
                     self.store.path(src).ok_or("fs.ref")?,
@@ -67,5 +83,40 @@ impl<S: ContentStore> Executor for FsExecutor<S> {
                 move_into(&s, &self.trash_dir)
             }
         }
+    }
+
+    /// The inverse of one done op.
+    pub fn undo(&mut self, op: &FsOp) -> Result<(), String> {
+        let back = |from: PathBuf, to: PathBuf| -> Result<(), String> {
+            if to.symlink_metadata().is_ok() {
+                return Err("fs.exists".into());
+            }
+            std::fs::rename(from, to).map_err(|e| format!("fs.rename:{:?}", e.kind()))
+        };
+        match op {
+            FsOp::MakeDir { dir } => std::fs::remove_dir(self.store.path(dir).ok_or("fs.ref")?)
+                .map_err(|e| format!("fs.rmdir:{:?}", e.kind())),
+            FsOp::MoveInto { src, dst_dir } => {
+                let (s, d) = (
+                    self.store.path(src).ok_or("fs.ref")?,
+                    self.store.path(dst_dir).ok_or("fs.ref")?,
+                );
+                back(d.join(s.file_name().ok_or("fs.no_name")?), s)
+            }
+            FsOp::Trash { src } => {
+                let s = self.store.path(src).ok_or("fs.ref")?;
+                back(self.trash_dir.join(s.file_name().ok_or("fs.no_name")?), s)
+            }
+            FsOp::Batch { ops } => ops.iter().rev().try_for_each(|o| self.undo(o)),
+        }
+    }
+}
+
+impl<S: ContentStore> Executor for FsExecutor<S> {
+    fn execute(&mut self, route: &Route) -> Result<(), String> {
+        let Route::Files(op) = route else {
+            return Err("fs.not_a_file_route".into());
+        };
+        self.run(op)
     }
 }

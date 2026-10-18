@@ -24,6 +24,8 @@ pub const CONFIRM_TTL_MS: u64 = 12 * 60 * 60 * 1000;
 pub enum ItemKind {
     Window,
     Tab,
+    /// A file a batch sends to the Trash (slice 7); keyed by `path_ref`, the name kept in memory.
+    File,
     /// No enumerable items (a setting, a send): the action itself is the one item.
     Action,
 }

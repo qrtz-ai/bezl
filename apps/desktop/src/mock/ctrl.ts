@@ -62,13 +62,14 @@ const act = (
 const INTENTS = {
   close_tabs: opt('intent.close_tabs', 'close browser tabs', 0.07),
   clean_folder: opt('intent.clean_folder', 'clean up a folder', 0.07),
+  trash_old: opt('intent.clean_folder', 'clean up a folder', 0.07),
   close_windows: opt('intent.close_windows', 'close windows', 0.07),
   quit_app: {
     ...opt('intent.quit_app', 'quit an app', 0.07),
     irreversible: true,
   },
 };
-type Intent = 'close_tabs' | 'clean_folder' | 'quit_app';
+type Intent = 'close_tabs' | 'clean_folder' | 'trash_old' | 'quit_app';
 /** What an unclear task is asked (the three most likely intents). */
 const ASKED = [INTENTS.close_tabs, INTENTS.clean_folder, INTENTS.close_windows];
 
@@ -107,8 +108,29 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
       opt('folder.desktop', 'desktop', 0.01),
     ]),
     act('choose_move', [
-      opt('route.files.tidy', 'sort by kind, trash old installers', 0.89),
+      opt('route.files.tidy', 'sort by kind, nothing deleted', 0.89),
       opt('route.files.sort_by_kind', 'sort files into folders by kind', 0.03),
+    ]),
+  ],
+  trash_old: [
+    act('choose_app', [
+      opt('app.files', 'files (no app)', 0.93),
+      opt('app.com.apple.finder', 'finder', 0.05),
+    ]),
+    act('choose_target', [
+      opt('folder.downloads', 'downloads', 0.98),
+      opt('folder.desktop', 'desktop', 0.01),
+    ]),
+    act('choose_move', [
+      {
+        ...opt(
+          'route.files.trash_old',
+          'move old installers to the trash',
+          0.9,
+        ),
+        irreversible: true,
+      },
+      opt('route.files.tidy', 'sort by kind, nothing deleted', 0.05),
     ]),
   ],
 };
@@ -119,12 +141,20 @@ const intentOf = (text: string): Intent | null =>
     : /\btabs?\b/i.test(text)
       ? 'close_tabs'
       : /download|folder/i.test(text)
-        ? 'clean_folder'
+        ? /\b(delete|trash|old)\b/i.test(text)
+          ? 'trash_old'
+          : 'clean_folder'
         : null;
 
 const PREVIEW: CtrlConfirm['items'] = [
   { key: '3f2a9c1d0b7e#0', kind: 'window', label: 'notes.txt', unsaved: false },
   { key: '8c1e44a0d2f9#0', kind: 'window', label: 'draft.txt', unsaved: true },
+];
+
+/** Slice 7 (ADR 0112): the old installers a trash_old run would send to the Trash. */
+const FILES: CtrlConfirm['items'] = [
+  { key: 'f1a2b3c4d5e6', kind: 'file', label: 'ancient.pkg', unsaved: false },
+  { key: 'f6e5d4c3b2a1', kind: 'file', label: 'oldapp.dmg', unsaved: false },
 ];
 
 export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
@@ -255,7 +285,7 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
     const s = stateAt(r.recs, r.recs.length);
     push(r, 'plan.produced', {
       plan: {
-        irreversible: intent === 'quit_app',
+        irreversible: intent === 'quit_app' || intent === 'trash_old',
         steps: s.decisions.map((d) => ({
           node: d.node,
           option: d.chosen,
@@ -263,21 +293,21 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
         })),
       },
     });
-    if (intent === 'quit_app') {
+    if (intent === 'quit_app' || intent === 'trash_old') {
       // The confirm gate (ADR 0111): a standing approval covers it, or the run waits for the user.
       const g = r.recs.filter((x) => x.confirm).length;
+      const quit = intent === 'quit_app';
       push(r, 'confirm.requested', {
         confirm: {
           gateId: `g${g}`,
-          action: 'quit an app',
-          app: 'textedit',
-          move: 'quit',
-          items: PREVIEW,
+          action: quit ? 'quit an app' : 'clean up a folder',
+          app: quit ? 'textedit' : 'files (no app)',
+          move: quit ? 'quit' : 'move old installers to the trash',
+          items: quit ? PREVIEW : FILES,
           complete: true,
-          rules: [
-            'choose_intent:intent.quit_app',
-            'choose_move:shortcut.cmd+q',
-          ],
+          rules: quit
+            ? ['choose_intent:intent.quit_app', 'choose_move:shortcut.cmd+q']
+            : ['choose_move:route.files.trash_old'],
           answer: null,
           reverified: null,
           used: false,
@@ -290,11 +320,7 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
       }
       return;
     }
-    if (intent !== 'close_tabs') {
-      // File routes run in slice 7: the executor holds the plan before acting.
-      push(r, 'exec.held', { held: 'files-not-yet' });
-      return;
-    }
+    // Slice 7 (ADR 0112): a folder cleanup is one batch of file moves, guarded and verified like any action.
     execute(r);
   };
   const sync = (r: { run: CtrlRun; recs: Rec[] }) => {

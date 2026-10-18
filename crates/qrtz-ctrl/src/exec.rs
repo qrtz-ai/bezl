@@ -11,10 +11,14 @@
 //! **Irreversible** plans (quit, empty trash, a system setting, send) go through the confirm gate first (slice 6,
 //! ADR 0111, [`crate::gate`]): `confirm.requested` with a preview from the helper, then the user's answer (or a
 //! standing approval of the task that covers it), then `confirm.reverified` right before the one action the
-//! approval allows. **File routes** (`files.*`) stop with `exec.held { files_not_yet }` until slice 7 expands a
-//! folder into moves. (Runs from before slice 6 may still hold `exec.held { irreversible }`; they replay as before.)
+//! approval allows. **File routes** (`files.*`, slice 7, ADR 0112) expand into one batch of file moves on the
+//! driver's [`FileRoots`] ([`crate::files`]), run by the [`FsExecutor`] between the same guard snapshots and
+//! verified by re-reading the folder; trashing waits at the gate with a `file` preview. Without roots (and for
+//! `files.empty_trash`) they still stop with `exec.held { files_not_yet }`. (Runs from before slice 6 may still hold `exec.held { irreversible }`; they replay as before.)
 use crate::ax::{diff, AxSnapshot};
 use crate::decide::{next_backtrack, run_chain_obs, unobserved, BacktrackReason, Goal, Node, Scorer};
+use crate::files::{path_ref, plan_cleanup, FilePlan, FileRoots};
+use crate::fs_exec::{FsExecutor, MemStore};
 use crate::gate::{
     counted_items, hash_items, intent_and_move, preview_what, rules, Approval, ConfirmAnswer, ItemKind,
     Preview, PreviewItem,
@@ -312,6 +316,48 @@ pub struct Driver<'a> {
     pub clock: &'a dyn Clock,
     /// The task's standing approvals (slice 6): one that covers a gate's preview answers it without asking.
     pub standing: &'a [Approval],
+    /// Where file routes act (slice 7). `None`: they hold `files_not_yet`.
+    pub files: Option<&'a FileRoots>,
+}
+
+/// The `file` preview of a batch: the files it trashes, or the batch itself when it only moves.
+pub fn files_preview(s: &CtrlState, plan: &FilePlan) -> (Preview, Vec<(String, String)>) {
+    let (intent, mv) = intent_and_move(s);
+    let mut labels = Vec::new();
+    let items = plan
+        .trashed()
+        .into_iter()
+        .map(|p| {
+            let key = path_ref(p);
+            labels.push((
+                key.clone(),
+                p.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+            ));
+            PreviewItem {
+                kind: ItemKind::File,
+                key,
+                unsaved: Some(false),
+            }
+        })
+        .collect();
+    (
+        Preview {
+            intent,
+            mv,
+            app: None,
+            items,
+            complete: true,
+        },
+        labels,
+    )
+}
+
+/// The `route.files.*` moves a batch can expand (emptying the Trash can't be undone: still held).
+fn file_move(mv: &str) -> bool {
+    matches!(
+        mv,
+        "route.files.tidy" | "route.files.sort_by_kind" | "route.files.trash_old"
+    )
 }
 
 struct DynClock<'a>(&'a dyn Clock);
@@ -357,8 +403,49 @@ impl Driver<'_> {
                 }
                 continue;
             }
-            let Some(step) = step_for(&s, goal) else {
-                return Ok(());
+            // Slice 7: a file move on known roots becomes one batch, planned from the folder as it is now.
+            let mv = intent_and_move(&s).1;
+            let fplan: Option<(&FileRoots, FilePlan)> = match self.files.filter(|_| file_move(&mv)) {
+                Some(roots) => {
+                    let now = std::time::UNIX_EPOCH + std::time::Duration::from_millis(self.clock.wall_ms());
+                    match plan_cleanup(roots, &mv, now) {
+                        Ok(p) if p.files() == 0 => return sink.push(log, finish(TaskStatus::Done)),
+                        Ok(p) => Some((roots, p)),
+                        // An unreadable folder (no Files and Folders grant yet): ask, nothing moved.
+                        Err(_) => {
+                            sink.push(
+                                log,
+                                Event::ExecHeld {
+                                    reason: HoldReason::NoRoute,
+                                },
+                            )?;
+                            return sink.push(log, finish(TaskStatus::AskedOut));
+                        }
+                    }
+                }
+                None => None,
+            };
+            let step = match &fplan {
+                Some((roots, p)) => Step::Act {
+                    routes: vec![Route::Files(p.to_op(roots).0)],
+                    verify: Verify {
+                        check: Check::FilesRemaining,
+                        expect: Expect::Zero,
+                    },
+                    content: BTreeMap::new(),
+                },
+                None => match step_for(&s, goal) {
+                    Some(step) => step,
+                    None => return Ok(()),
+                },
+            };
+            let preview = |s: &CtrlState, routes: &[Route]| match &fplan {
+                Some((_, p)) => files_preview(s, p),
+                None => preview_of(self.helper, s, routes),
+            };
+            let measure = |c: &Check| match (c, &fplan) {
+                (Check::FilesRemaining, Some((roots, p))) => Some(p.remaining(roots)),
+                _ => self.helper.measure(c),
             };
             let (routes, verify, content) = match step {
                 Step::Hold(reason) => {
@@ -380,7 +467,7 @@ impl Driver<'_> {
                 let gate = s.confirm.as_ref().filter(|g| !g.used);
                 match gate.map(|g| (g, g.answer.as_ref())) {
                     None => {
-                        let (preview, labels) = preview_of(self.helper, &s, &routes);
+                        let (preview, labels) = preview(&s, &routes);
                         sink.labels(labels);
                         let gate_id = format!("g{}", s.gates);
                         let scope = preview.scope();
@@ -414,7 +501,7 @@ impl Driver<'_> {
                     Some((_, None)) => return Ok(()),
                     Some((_, Some(a))) if !a.approves() => return Ok(()),
                     Some((g, Some(_))) if g.reverified.is_none() => {
-                        let (fresh, labels) = preview_of(self.helper, &s, &routes);
+                        let (fresh, labels) = preview(&s, &routes);
                         sink.labels(labels);
                         let ok = fresh.within(&g.preview);
                         sink.push(
@@ -434,24 +521,42 @@ impl Driver<'_> {
                 Check::AxScope { app, scope } => find_snapshot(&s.snapshots, app, scope.as_deref()).cloned(),
                 _ => None,
             };
-            let before = self.helper.measure(&verify.check);
+            let before = measure(&verify.check);
             let env: Env = self.helper.probe().map(|(e, _)| e).unwrap_or_default();
             let from = log.records().len();
             let outcome = {
                 let probe = HelperProbe(self.helper);
-                let mut exec = HelperExec {
-                    helper: self.helper,
-                    action_id: action_id.clone(),
-                    content,
-                };
                 let clock = DynClock(self.clock);
-                Runner {
-                    log,
-                    probe: &probe,
-                    exec: &mut exec,
-                    clock: &clock,
+                match &fplan {
+                    Some((roots, p)) => {
+                        let store: MemStore = p.to_op(roots).1;
+                        let mut exec = FsExecutor {
+                            store,
+                            trash_dir: roots.trash.clone(),
+                        };
+                        Runner {
+                            log,
+                            probe: &probe,
+                            exec: &mut exec,
+                            clock: &clock,
+                        }
+                        .run(&action_id, &routes, &env)
+                    }
+                    None => {
+                        let mut exec = HelperExec {
+                            helper: self.helper,
+                            action_id: action_id.clone(),
+                            content,
+                        };
+                        Runner {
+                            log,
+                            probe: &probe,
+                            exec: &mut exec,
+                            clock: &clock,
+                        }
+                        .run(&action_id, &routes, &env)
+                    }
                 }
-                .run(&action_id, &routes, &env)
             };
             sink.flush(log, from)?;
             let reason = match outcome {
@@ -492,7 +597,7 @@ impl Driver<'_> {
                             )
                         }
                         c => {
-                            let after = self.helper.measure(c);
+                            let after = measure(c);
                             (after, judge_verify(verify.expect, before, after))
                         }
                     };

@@ -201,14 +201,14 @@ fn an_irreversible_plan_stops_at_the_confirm_gate_before_acting() {
     assert_eq!(st["confirm"]["gateId"], "g0");
     assert!(fake.world().acted.is_empty());
     assert!(!kinds(&v).iter().any(|k| k == "action.requested"));
-    // Emptying the trash is a file route: held until slice 7 (it will pass the gate then), nothing acted.
+    // Emptying the trash can't be undone: still held after slice 7 (no batch expands it), nothing acted.
     let v = run(&s, "every week empty the trash");
     assert_eq!(v["state"]["held"], "files-not-yet", "{v}");
     assert!(fake.world().acted.is_empty());
 }
 
 #[test]
-fn folder_cleanup_is_held_until_slice_7_and_executes_nothing() {
+fn folder_cleanup_without_file_roots_is_held_and_executes_nothing() {
     let d = tempfile::tempdir().unwrap();
     let (s, fake) = svc(d.path(), FakeWorld::typical(1));
     let v = run(&s, "every week clean up my downloads folder");

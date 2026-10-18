@@ -176,7 +176,7 @@ export const CtrlConfirm = z.object({
   items: z.array(
     z.object({
       key: z.string(),
-      kind: z.enum(['window', 'tab', 'action']),
+      kind: z.enum(['window', 'tab', 'file', 'action']),
       label: z.string(),
       unsaved: z.boolean().nullable(),
     }),

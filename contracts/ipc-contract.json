@@ -8455,6 +8455,7 @@
                               "enum": [
                                 "window",
                                 "tab",
+                                "file",
                                 "action"
                               ]
                             },
@@ -9045,6 +9046,7 @@
                               "enum": [
                                 "window",
                                 "tab",
+                                "file",
                                 "action"
                               ]
                             },
@@ -9632,6 +9634,7 @@
                               "enum": [
                                 "window",
                                 "tab",
+                                "file",
                                 "action"
                               ]
                             },

@@ -33,6 +33,7 @@
 pub mod ax;
 pub mod decide;
 pub mod exec;
+pub mod files;
 pub mod fs_exec;
 pub mod gate;
 pub mod guard;

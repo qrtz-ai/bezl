@@ -53,19 +53,19 @@ test('ctrl: create a task, see it listed, run it, see and scrub its history', as
   await downloads.getByTestId('ctrl-task-run').click();
   const runs = ctrl.getByTestId('ctrl-run');
   await expect(runs).toHaveCount(1);
-  await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText(
-    'planned',
-  );
+  await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText('done');
   await expect(downloads.getByTestId('ctrl-task-schedule')).toContainText(
     'last run',
   );
-  // task.started, intent.pending, obs.apps, 4 decisions, plan.produced, exec.held (file routes are slice 7).
-  await expect(ctrl.getByTestId('ctrl-event')).toHaveCount(9);
+  // task.started, intent.pending, obs.apps, 4 decisions, plan.produced, then one guarded batch of file moves
+  // (slice 7, ADR 0112: no gate, nothing deleted), verify.result, task.finished.
+  await expect(ctrl.getByTestId('ctrl-event')).toHaveCount(16);
   await expect(ctrl.getByTestId('ctrl-state')).toHaveText(
-    'step 9 of 9 · planned · 4 decisions · file moves come in a later version',
+    'step 16 of 16 · done · 4 decisions · 1/1 actions done · 1/1 verified',
   );
+  await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
   await expect(ctrl.getByTestId('ctrl-plan-steps')).toHaveText(
-    'plan: clean up a folder → files (no app) → downloads → sort by kind, trash old installers',
+    'plan: clean up a folder → files (no app) → downloads → sort by kind, nothing deleted',
   );
   const decisions = ctrl.getByTestId('ctrl-decision');
   await expect(decisions).toHaveCount(4);
@@ -81,13 +81,13 @@ test('ctrl: create a task, see it listed, run it, see and scrub its history', as
   // Scrub back to before the decisions: no plan, no inspector, still waiting for intent.
   await ctrl.getByTestId('ctrl-scrub').fill('2');
   await expect(ctrl.getByTestId('ctrl-state')).toHaveText(
-    'step 2 of 9 · waiting for intent',
+    'step 2 of 16 · waiting for intent',
   );
   await expect(ctrl.getByTestId('ctrl-plan')).toHaveCount(0);
   await expect(decisions).toHaveCount(0);
   await ctrl.getByTestId('ctrl-scrub').fill('1');
   await expect(ctrl.getByTestId('ctrl-state')).toHaveText(
-    'step 1 of 9 · running',
+    'step 1 of 16 · running',
   );
   await expect(
     ctrl.locator('[data-testid="ctrl-event"][data-applied]'),
@@ -288,5 +288,43 @@ test('ctrl: the confirm card lists what will happen; deny, approve and remember'
   await row.getByTestId('ctrl-task-run').click();
   await expect(runs).toHaveCount(5);
   await expect(card).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+// Slice 7 (ADR 0112): trashing old installers is the one downloads move that asks. The card lists the files (a
+// card, never a modal), approve finishes the run, and the run history shows done.
+test('ctrl: trashing old downloads waits at the card with the files, approve finishes it', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  await ctrl
+    .getByTestId('ctrl-task-input')
+    .fill('every week delete old installers from my downloads');
+  await ctrl.getByTestId('ctrl-schedule-weekly').click();
+  await ctrl.getByTestId('ctrl-schedule-time').fill('18:00');
+  await ctrl.getByTestId('ctrl-task-add').click();
+  await ctrl.getByTestId('ctrl-task').getByTestId('ctrl-task-run').click();
+  const runs = ctrl.getByTestId('ctrl-run');
+  const card = ctrl.getByTestId('ctrl-confirm');
+  await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText(
+    'needs your ok',
+  );
+  await expect(card.getByTestId('ctrl-confirm-item')).toHaveText([
+    'ancient.pkg',
+    'oldapp.dmg',
+  ]);
+  await expect(card.getByTestId('ctrl-confirm-unsaved')).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  await card.getByTestId('ctrl-confirm-approve').click();
+  await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText('done');
+  await expect(ctrl.getByTestId('ctrl-confirm-outcome')).toHaveText(
+    'you said yes, once',
+  );
+  expect(await axe(page, 'ctrl')).toEqual([]);
   expect(errors).toEqual([]);
 });

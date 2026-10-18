@@ -88,6 +88,8 @@ pub struct CtrlService {
     scorer: Box<dyn Scorer>,
     /// The ctrl helper (slice 5). `None`: runs stop at `planned` (nothing executes).
     helper: Option<Arc<HelperClient>>,
+    /// Where file routes act (slice 7, ADR 0112): `~/Downloads` + `~/.Trash` on macOS, a temp dir in tests.
+    files: Option<crate::files::FileRoots>,
     /// Gate preview item key → readable title (slice 6). Memory only: titles never reach a file.
     labels: Mutex<BTreeMap<String, String>>,
     /// Runs whose gate waits for the user; `None` until the first tick scanned the store.
@@ -260,6 +262,7 @@ fn confirm_json(s: &CtrlState, goal: Option<&Goal>, labels: &BTreeMap<String, St
     let kind = |k: crate::gate::ItemKind| match k {
         crate::gate::ItemKind::Window => "window",
         crate::gate::ItemKind::Tab => "tab",
+        crate::gate::ItemKind::File => "file",
         crate::gate::ItemKind::Action => "action",
     };
     let action = chosen_label(s, Node::ChooseIntent, goal)
@@ -363,6 +366,7 @@ impl CtrlService {
             apps: Box::new(ScanApps::mac_default()),
             scorer: Box::new(Heuristic),
             helper: None,
+            files: crate::files::FileRoots::default_for_os(),
             labels: Mutex::new(BTreeMap::new()),
             waiting: Mutex::new(None),
             notices: Mutex::new(Vec::new()),
@@ -370,6 +374,12 @@ impl CtrlService {
     }
 
     /// Connect the ctrl helper: the app catalog comes from it and plans execute through it (slice 5).
+    /// Act on these folders for file routes (slice 7).
+    pub fn with_files(mut self, roots: crate::files::FileRoots) -> Self {
+        self.files = Some(roots);
+        self
+    }
+
     pub fn with_helper(mut self, helper: Arc<HelperClient>) -> Self {
         self.helper = Some(helper);
         self
@@ -485,6 +495,7 @@ impl CtrlService {
                 scorer: self.scorer.as_ref(),
                 clock: self.clock.as_ref(),
                 standing: &standing,
+                files: self.files.as_ref(),
             };
             let run_id = log.run_id().to_string();
             let mut sink = StoreSink(store, now, self.clock.as_ref(), self, &run_id);

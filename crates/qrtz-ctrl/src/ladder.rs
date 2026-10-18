@@ -46,6 +46,10 @@ pub enum FsOp {
     MoveInto { src: ContentRef, dst_dir: ContentRef },
     /// Move to the user's Trash (reversible; ctrl never unlinks).
     Trash { src: ContentRef },
+    /// Create one directory (slice 7: a kind folder); undone by removing it while empty.
+    MakeDir { dir: ContentRef },
+    /// Ops run in order as one action (slice 7, ADR 0112); a failure rolls the done ones back.
+    Batch { ops: Vec<FsOp> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

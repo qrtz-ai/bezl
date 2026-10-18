@@ -33,6 +33,9 @@ pub enum Check {
     AppRunning { app: String },
     /// Re-snapshot this AX scope; verified by `obs.diff` (something changed), not by a number.
     AxScope { app: String, scope: Option<String> },
+    /// Planned files not yet where a file batch puts them (slice 7). Measured by the host from the disk, never
+    /// sent to the helper.
+    FilesRemaining,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -640,7 +643,7 @@ impl FakeWorld {
                     Check::AppRunning { app } => Some(i64::from(
                         self.apps.iter().any(|a| &a.bundle_id == app && a.running),
                     )),
-                    Check::AxScope { .. } => None,
+                    Check::AxScope { .. } | Check::FilesRemaining => None,
                 };
                 HelperMsg::MeasureResult { id, value }
             }

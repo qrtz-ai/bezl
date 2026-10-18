@@ -800,7 +800,7 @@ fn move_question(
             vec![
                 route("files.tidy", 3000 + if clean { 1500 } else { 0 }),
                 route("files.sort_by_kind", 1000 + if sort { 3500 } else { 0 }),
-                route("files.trash_old", 500 + if old { 3500 } else { 0 }),
+                irreversible(route("files.trash_old", 500 + if old { 3500 } else { 0 })),
             ]
         }
         "empty_trash" => vec![
@@ -999,9 +999,9 @@ fn route_label(id: &str) -> &'static str {
         "scripting.set_dark_mode" => "switch appearance by script",
         "workspace.open_url" => "open the address in the background",
         "workspace.launch_hidden" => "start it hidden",
-        "files.tidy" => "sort by kind, trash old installers",
+        "files.tidy" => "sort by kind, nothing deleted",
         "files.sort_by_kind" => "sort files into folders by kind",
-        "files.trash_old" => "move old files to the trash",
+        "files.trash_old" => "move old installers to the trash",
         "files.empty_trash" => "empty the trash",
         _ => "a route",
     }
