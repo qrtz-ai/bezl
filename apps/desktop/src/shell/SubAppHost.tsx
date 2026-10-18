@@ -1,10 +1,9 @@
 import {
   Component,
-  lazy,
+  Suspense,
   useEffect,
   useMemo,
   type ComponentType,
-  type LazyExoticComponent,
   type ReactNode,
 } from 'react';
 import { createClient, type QrtzClient, type SubApp } from '@qrtz/core';
@@ -47,15 +46,46 @@ class SubAppErrorBoundary extends Component<
   }
 }
 
-// One lazy view and one client per sub app id for the life of the window: a fresh `lazy()` on every
-// render would suspend (blank frame) and remount the whole sub app even when its module is cached.
-const views = new Map<string, LazyExoticComponent<ComponentType>>();
+// One module load and one client per sub app id for the life of the window: a fresh load on every render
+// would suspend (blank frame) and remount the whole sub app even when its module is cached.
+type Load =
+  | { status: 'pending'; promise: Promise<void> }
+  | { status: 'done'; View: ComponentType }
+  | { status: 'error'; error: unknown };
+const loads = new Map<string, Load>();
 const clients = new Map<string, QrtzClient>();
-const viewFor = (app: SubApp) => {
-  let v = views.get(app.manifest.id);
-  if (!v) views.set(app.manifest.id, (v = lazy(app.load)));
-  return v;
+/** The sub app's view, or suspends while its module loads (on the shell's boundary, see `ViewGate`). */
+const viewFor = (app: SubApp): ComponentType => {
+  const id = app.manifest.id;
+  let l = loads.get(id);
+  if (!l) {
+    const promise = app.load().then(
+      (m) => void loads.set(id, { status: 'done', View: m.default }),
+      (error: unknown) => void loads.set(id, { status: 'error', error }),
+    );
+    loads.set(id, (l = { status: 'pending', promise }));
+  }
+  if (l.status === 'pending') throw l.promise;
+  if (l.status === 'error') {
+    loads.delete(id); // the error boundary's retry loads it again
+    throw l.error;
+  }
+  return l.View;
 };
+
+/**
+ * The module load suspends here, above this sub app's own boundary, so a first visit suspends the shell's
+ * boundary inside the router's transition (the previous app stays on screen). Once loaded, anything the view
+ * suspends on is caught by its own boundary: a hidden app can never blank the visible one.
+ */
+function ViewGate({ app }: { app: SubApp }) {
+  const View = viewFor(app);
+  return (
+    <Suspense fallback={null}>
+      <View />
+    </Suspense>
+  );
+}
 const noNavigate: SubAppRoute['navigate'] = () => {};
 const clientFor = (app: SubApp) => {
   let c = clients.get(app.manifest.id);
@@ -71,7 +101,8 @@ const clientFor = (app: SubApp) => {
  * Mounts one sub app with its own scoped IPC client, error boundary and lifecycle. The shell keeps a
  * visited sub app mounted while another is shown: `active={false}` hides it (`hidden`, `inert`,
  * `aria-hidden`) and runs its `activate()` cleanup, since activate is per visible session. `path` and
- * `navigate` are its slice of the shell's route (ADR 0091). The shell provides the Suspense boundary.
+ * `navigate` are its slice of the shell's route (ADR 0091). The shell's boundary covers only the first module
+ * load; each sub app has its own boundary for what it suspends on after that.
  */
 export function SubAppHost({
   app,
@@ -84,7 +115,6 @@ export function SubAppHost({
   path?: string;
   navigate?: SubAppRoute['navigate'];
 }) {
-  const View = viewFor(app);
   const client = clientFor(app);
   const route = useMemo(
     () => ({ active, path, navigate }),
@@ -102,7 +132,7 @@ export function SubAppHost({
       <QrtzClientProvider client={client}>
         <SubAppRouteProvider route={route}>
           <SubAppErrorBoundary key={app.manifest.id} name={app.manifest.name}>
-            <View />
+            <ViewGate app={app} />
           </SubAppErrorBoundary>
         </SubAppRouteProvider>
       </QrtzClientProvider>

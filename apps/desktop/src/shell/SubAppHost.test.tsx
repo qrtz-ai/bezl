@@ -164,3 +164,59 @@ describe('hidden sub app keyboard', () => {
     act(() => root.unmount());
   });
 });
+
+describe('SubAppHost own Suspense boundary', () => {
+  it('a hidden sub app that suspends after loading never blanks the visible one', async () => {
+    let release: () => void = () => {};
+    const pending = new Promise<void>((r) => (release = r));
+    let suspend = false;
+    const hidden = defineSubApp({
+      manifest: { id: 'sleepy', name: 'Sleepy', icon: 's' },
+      load: async () => ({
+        default: function Sleepy() {
+          if (suspend) throw pending;
+          return <span data-testid="sleepy">sleepy</span>;
+        },
+      }),
+    });
+    const shown = defineSubApp({
+      manifest: { id: 'shown', name: 'Shown', icon: 's' },
+      load: async () => ({
+        default: () => <span data-testid="shown">shown</span>,
+      }),
+    });
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const root = createRoot(el);
+    const render = (tick: number) =>
+      root.render(
+        <Suspense fallback={<i data-testid="shell-fallback" />}>
+          <SubAppHost app={hidden} active={false} path={String(tick)} />
+          <SubAppHost app={shown} active />
+        </Suspense>,
+      );
+    await act(async () => {
+      render(0);
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(el.querySelector('[data-testid="shown"]')).not.toBeNull();
+    // The hidden app suspends (outside any transition) on a re-render.
+    suspend = true;
+    await act(async () => {
+      render(1);
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(el.querySelector('[data-testid="shell-fallback"]')).toBeNull();
+    const shownEl = el.querySelector<HTMLElement>('[data-testid="shown"]');
+    expect(shownEl).not.toBeNull();
+    expect(
+      shownEl!.closest<HTMLElement>('[style*="display: none"]'),
+    ).toBeNull();
+    suspend = false;
+    await act(async () => {
+      release();
+      await pending;
+    });
+    root.unmount();
+  });
+});

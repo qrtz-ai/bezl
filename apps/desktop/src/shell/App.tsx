@@ -143,8 +143,8 @@ export function Shell() {
             />
           }
         >
-          {/* One boundary that is already on screen: a first visit's lazy load suspends inside the router's
-              transition, so the previous app stays up instead of a blank frame. */}
+          {/* Only a first visit's module load reaches this boundary (it suspends inside the router's
+              transition, so the previous app stays up); each sub app has its own boundary after that. */}
           <Suspense fallback={null}>
             {registry
               .list()

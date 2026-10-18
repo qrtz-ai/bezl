@@ -282,6 +282,7 @@ export default function NoteView() {
         {selected ? (
           <Suspense fallback={<Spinner />}>
             <MeetingDetail
+              key={selected}
               id={selected}
               tab={tab}
               onTab={setTab}
