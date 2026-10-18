@@ -197,6 +197,37 @@ impl AppService {
         let _ = self.ctrl.set(ctrl);
     }
 
+    /// ADR 0105: in-process ctrl scheduler. Call once inside tokio (next to `start_helper`). Ticks every second
+    /// and once immediately so a catch-up after sleep/quit and `once` ASAP both fire without a window.
+    pub fn start_ctrl_scheduler(self: &Arc<Self>) {
+        let Some(ctrl) = self.ctrl.get().cloned() else {
+            return;
+        };
+        let events = self.events.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                interval.tick().await;
+                let c = ctrl.clone();
+                let fired = match tokio::task::spawn_blocking(move || c.tick()).await {
+                    Ok(Ok(ids)) => ids,
+                    Ok(Err(e)) => {
+                        tracing::error!(err = %e.message, "ctrl scheduler tick");
+                        continue;
+                    }
+                    Err(_) => {
+                        tracing::error!("ctrl scheduler tick join failed");
+                        continue;
+                    }
+                };
+                if !fired.is_empty() {
+                    events.emit("ctrl:changed", serde_json::json!({ "ids": fired }));
+                }
+            }
+        });
+    }
+
     /// `ctrl:*`: the store writes and `fsync`s, so off the async runtime.
     async fn ctrl_channel(&self, channel: &str, p: Value) -> Result<Value, AppError> {
         use qrtz_ctrl::service::CtrlErrorCode as C;

@@ -55,6 +55,10 @@ async fn create_list_run_and_scrub_through_the_router_and_a_restart() {
     )
     .await;
     assert_eq!(t["ok"], true, "{t}");
+    assert!(
+        t["data"]["nextRunAt"].as_u64().is_some(),
+        "daily has a next due: {t}"
+    );
     let id = t["data"]["id"].as_str().unwrap().to_string();
     let run = call(&r, "ctrl", "ctrl:run-now", json!({"id": id})).await;
     assert_eq!(run["data"]["status"], "pending-intent", "{run}");

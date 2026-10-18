@@ -7297,6 +7297,12 @@
                 "number",
                 "null"
               ]
+            },
+            "nextRunAt": {
+              "type": [
+                "number",
+                "null"
+              ]
             }
           },
           "required": [
@@ -7306,7 +7312,8 @@
             "paused",
             "createdAt",
             "runs",
-            "lastRunAt"
+            "lastRunAt",
+            "nextRunAt"
           ],
           "additionalProperties": false
         }
@@ -7526,6 +7533,12 @@
               "number",
               "null"
             ]
+          },
+          "nextRunAt": {
+            "type": [
+              "number",
+              "null"
+            ]
           }
         },
         "required": [
@@ -7535,7 +7548,8 @@
           "paused",
           "createdAt",
           "runs",
-          "lastRunAt"
+          "lastRunAt",
+          "nextRunAt"
         ],
         "additionalProperties": false
       }
@@ -7673,6 +7687,12 @@
               "number",
               "null"
             ]
+          },
+          "nextRunAt": {
+            "type": [
+              "number",
+              "null"
+            ]
           }
         },
         "required": [
@@ -7682,7 +7702,8 @@
           "paused",
           "createdAt",
           "runs",
-          "lastRunAt"
+          "lastRunAt",
+          "nextRunAt"
         ],
         "additionalProperties": false
       }
@@ -9554,6 +9575,24 @@
         "additionalProperties": false
       },
       "stream": true
+    },
+    "ctrl:changed": {
+      "capability": "ctrl.read",
+      "payload": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "manifests": [

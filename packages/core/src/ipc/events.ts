@@ -69,6 +69,11 @@ export const eventContract = {
     payload: SpeechSetupStatus,
     stream: true,
   }),
+  /** ctrl's scheduler recorded one or more runs (ADR 0105); the view reloads without polling. */
+  'ctrl:changed': defineEvent({
+    capability: 'ctrl.read',
+    payload: z.object({ ids: z.array(z.string()) }),
+  }),
 } as const satisfies Record<string, EventDef>;
 
 export type EventContract = typeof eventContract;

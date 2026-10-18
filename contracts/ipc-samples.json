@@ -736,7 +736,8 @@
           "paused": false,
           "createdAt": 1760659200000,
           "runs": 1,
-          "lastRunAt": 1760659260000
+          "lastRunAt": 1760659260000,
+          "nextRunAt": 1761264000000
         }
       ],
       "idle": []
@@ -763,7 +764,8 @@
         "paused": false,
         "createdAt": 1760659200000,
         "runs": 0,
-        "lastRunAt": null
+        "lastRunAt": null,
+        "nextRunAt": 1761264000000
       }
     },
     "ctrl:set-paused": {
@@ -783,7 +785,8 @@
         "paused": true,
         "createdAt": 1760659200000,
         "runs": 1,
-        "lastRunAt": 1760659260000
+        "lastRunAt": 1760659260000,
+        "nextRunAt": null
       }
     },
     "ctrl:delete-task": {
@@ -954,6 +957,11 @@
         "done": 100000000,
         "total": 412000000
       }
+    },
+    "ctrl:changed": {
+      "ids": [
+        "task-0"
+      ]
     }
   }
 }

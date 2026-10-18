@@ -109,6 +109,7 @@ const ctrlTask = {
   createdAt: T0,
   runs: 1,
   lastRunAt: T0 + 60_000,
+  nextRunAt: T0 + 7 * 86_400_000,
 };
 const ctrlRun = {
   id: 'run-1',
@@ -122,11 +123,16 @@ const ctrlSamples = {
   'ctrl:tasks': { request: undefined, response: [ctrlTask] },
   'ctrl:create-task': {
     request: { text: ctrlTask.text, schedule: ctrlTask.schedule },
-    response: { ...ctrlTask, runs: 0, lastRunAt: null },
+    response: {
+      ...ctrlTask,
+      runs: 0,
+      lastRunAt: null,
+      nextRunAt: T0 + 7 * 86_400_000,
+    },
   },
   'ctrl:set-paused': {
     request: { id: 'task-0', paused: true },
-    response: { ...ctrlTask, paused: true },
+    response: { ...ctrlTask, paused: true, nextRunAt: null },
   },
   'ctrl:delete-task': { request: { id: 'task-0' }, response: { ok: true } },
   'ctrl:run-now': { request: { id: 'task-0' }, response: ctrlRun },
@@ -364,6 +370,7 @@ export const eventSamples: { [E in EventName]: EventPayload<E> } = {
   'talk:history-changed': { id: 't1' },
   'permissions:changed': unknownPermissions,
   'speech:status': speechDownloading,
+  'ctrl:changed': { ids: ['task-0'] },
 };
 
 /** Idle answers per channel (what an empty backend says); a channel absent here has no idle answer. */

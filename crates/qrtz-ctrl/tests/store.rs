@@ -213,12 +213,23 @@ fn channels_create_list_pause_run_and_scrub() {
             json!({"text": "every week clean up my downloads folder", "schedule": {"kind": "weekly", "weekday": 0, "hour": 18, "minute": 0}}),
         )
         .unwrap();
+    assert_eq!(t["id"], "task-0");
+    assert_eq!(t["text"], "every week clean up my downloads folder");
     assert_eq!(
-        t,
-        json!({"id": "task-0", "text": "every week clean up my downloads folder",
-            "schedule": {"kind": "weekly", "weekday": 0, "hour": 18, "minute": 0},
-            "paused": false, "createdAt": T0 + 1000, "runs": 0, "lastRunAt": null})
+        t["schedule"],
+        json!({"kind": "weekly", "weekday": 0, "hour": 18, "minute": 0})
     );
+    assert_eq!(
+        (
+            t["paused"].clone(),
+            t["createdAt"].clone(),
+            t["runs"].clone(),
+            t["lastRunAt"].clone()
+        ),
+        (json!(false), json!(T0 + 1000), json!(0), json!(null))
+    );
+    // nextRunAt is the next Sunday 18:00 in the system local zone (ADR 0105).
+    assert!(t["nextRunAt"].as_u64().unwrap() > T0 + 1000, "{t}");
     let r = svc.call("ctrl:run-now", json!({"id": "task-0"})).unwrap();
     assert_eq!(
         r,
@@ -228,8 +239,13 @@ fn channels_create_list_pause_run_and_scrub() {
         .call("ctrl:set-paused", json!({"id": "task-0", "paused": true}))
         .unwrap();
     assert_eq!(
-        (p["paused"].clone(), p["runs"].clone(), p["lastRunAt"].clone()),
-        (json!(true), json!(1), json!(T0 + 2000))
+        (
+            p["paused"].clone(),
+            p["runs"].clone(),
+            p["lastRunAt"].clone(),
+            p["nextRunAt"].clone()
+        ),
+        (json!(true), json!(1), json!(T0 + 2000), json!(null))
     );
     assert_eq!(
         svc.call("ctrl:runs", json!({"taskId": "task-0"})).unwrap(),

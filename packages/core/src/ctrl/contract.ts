@@ -32,6 +32,8 @@ export const CtrlTask = z.object({
   /** How many runs it has (history, newest first, from `ctrl:runs`). */
   runs: z.number().int().nonnegative(),
   lastRunAt: z.number().nullable(),
+  /** Next due instant (epoch ms), or null when paused / once already run / no schedule left (ADR 0105). */
+  nextRunAt: z.number().nullable(),
 });
 export type CtrlTask = z.infer<typeof CtrlTask>;
 

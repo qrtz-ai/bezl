@@ -21,7 +21,7 @@ import {
   type CtrlRunView,
   type CtrlTask,
 } from '@qrtz/core';
-import { useQrtz } from '@qrtz/core/react';
+import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
 import {
   describeSchedule,
   eventItem,
@@ -34,12 +34,13 @@ import {
 
 /**
  * ctrl: type a task, pick when it runs, see its runs. Runs are derived from each run's event log (crates/qrtz-ctrl);
- * the scrubber shows the state after any step without executing anything. Nothing runs by itself yet: the
- * scheduler is slice 3 and the decision layers slice 4, so "run now" records a run that waits for an intent.
+ * the scrubber shows the state after any step without executing anything. The local scheduler (slice 3, ADR 0105)
+ * records due runs in the background and pushes `ctrl:changed`; the decision layers (slice 4) still execute nothing.
  */
 export default function CtrlView() {
   const qrtz = useQrtz();
   const toast = useToast();
+  const changed = useQrtzEvent('ctrl:changed');
   const [tasks, setTasks] = useState<CtrlTask[]>([]);
   const [text, setText] = useState('');
   const [form, setForm] = useState<ScheduleForm>({
@@ -69,12 +70,12 @@ export default function CtrlView() {
     [qrtz, fail],
   );
 
-  useEffect(loadTasks, [loadTasks]);
+  useEffect(loadTasks, [loadTasks, changed]);
   useEffect(() => {
     setRun(null);
     if (selected) loadRuns(selected);
     else setRuns([]);
-  }, [selected, loadRuns]);
+  }, [selected, loadRuns, changed]);
 
   const schedule = toSchedule(form, new Date());
   const canAdd = !!text.trim() && !!schedule;

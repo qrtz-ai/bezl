@@ -282,6 +282,8 @@ pub fn setup(app: &mut tauri::App, started: Instant) -> Result<(), Box<dyn std::
 
     pump_events(&handle);
     service.start_helper();
+    // ADR 0105: ctrl's local scheduler (catch-up + cadences) while the process is alive.
+    service.start_ctrl_scheduler();
     // A speech download a quit cut short resumes in the background (not one the user paused).
     {
         let setup = built.setup.clone();

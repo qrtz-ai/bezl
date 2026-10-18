@@ -44,6 +44,8 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
         createdAt: now(),
         runs: 0,
         lastRunAt: null,
+        // Mock has no ticker; ASAP shows as due now, cadences as null (real nextRunAt is server-side).
+        nextRunAt: schedule.kind === 'once' ? (schedule.at ?? now()) : null,
       };
       tasks.push(t);
       return t;
@@ -52,6 +54,7 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
       const t = task(id);
       if (t.paused !== paused) seq++;
       t.paused = paused;
+      if (paused) t.nextRunAt = null;
       return t;
     },
     'ctrl:delete-task': ({ id }) => {
@@ -79,6 +82,7 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
       });
       t.runs += 1;
       t.lastRunAt = at;
+      if (t.schedule.kind === 'once') t.nextRunAt = null;
       return run;
     },
     'ctrl:runs': ({ taskId }) =>

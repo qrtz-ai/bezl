@@ -13,6 +13,8 @@
 //! - [`fs_exec`]: the first executor, plain file moves (downloads cleanup needs no UI at all).
 //! - [`task`], [`store`], [`service`] (slice 2, ADR 0103): typed tasks with a schedule, persisted as append-only
 //!   hash-chained files in the app data dir, and the `ctrl:*` channels the shell's ctrl view calls.
+//! - [`schedule`] (slice 3, ADR 0105): next-due math against the local zone (DST gap/overlap rules), used by the
+//!   in-process scheduler ticker on [`service::CtrlService`].
 //!
 //! The macOS side (real probes, AX, `CGEventPostToPid`, `NSWorkspace`) is `native/qrtz-helper/Sources/QrtzCtrl`.
 //! Both sides test their policy tables and guard semantics against the same fixtures in
@@ -23,6 +25,7 @@ pub mod ladder;
 pub mod log;
 pub mod policy;
 pub mod runner;
+pub mod schedule;
 pub mod service;
 pub mod store;
 pub mod task;

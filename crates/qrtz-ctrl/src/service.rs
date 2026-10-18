@@ -1,9 +1,10 @@
-//! The `ctrl:*` channels (slice 2): what the shell's ctrl view calls, over the [`Store`]. Payloads arrive already
+//! The `ctrl:*` channels (slice 2) and the in-process scheduler ticker (slice 3, ADR 0105). Payloads arrive already
 //! validated against the IPC contract (`packages/core/src/ipc/contract.ts`); answers are the contract's shapes
-//! (camelCase). Nothing here executes a task yet: "run now" records a run that waits for an intent
-//! (`intent.pending`); the scheduler (slice 3) and the decision layers (slice 4) take it from there.
+//! (camelCase). Nothing here executes a task yet: a due run (manual or scheduled) records `task.started` +
+//! `intent.pending`; the decision layers (slice 4) take it from there.
 use crate::log::{fold, ActionStatus, CtrlState, Event, EventLog, TaskStatus};
 use crate::runner::Clock;
+use crate::schedule::{is_due, next_due, LocalZone, SystemLocalZone};
 use crate::store::{Store, StoreError};
 use crate::task::{Schedule, Task};
 use serde_json::{json, Value};
@@ -71,6 +72,7 @@ pub struct CtrlService {
     /// `Err` = the store didn't open (damaged or unreadable): every channel answers that error, nothing writes.
     store: Mutex<Result<Store, StoreError>>,
     clock: Box<dyn Clock + Send + Sync>,
+    zone: Box<dyn LocalZone>,
 }
 
 /// The status a run shows: its `task.finished`, else waiting for an intent, else running.
@@ -134,10 +136,23 @@ fn str_field<'a>(p: &'a Value, k: &str) -> Result<&'a str, CtrlError> {
 
 impl CtrlService {
     pub fn open(dir: impl Into<std::path::PathBuf>, clock: Box<dyn Clock + Send + Sync>) -> Self {
+        Self::open_with_zone(dir, clock, Box::new(SystemLocalZone))
+    }
+
+    pub fn open_with_zone(
+        dir: impl Into<std::path::PathBuf>,
+        clock: Box<dyn Clock + Send + Sync>,
+        zone: Box<dyn LocalZone>,
+    ) -> Self {
         CtrlService {
             store: Mutex::new(Store::open(dir)),
             clock,
+            zone,
         }
+    }
+
+    fn last_run_at(store: &Store, t: &Task) -> Option<u64> {
+        t.runs.last().and_then(|r| store.run_meta(r)).map(|m| m.1)
     }
 
     fn run_json(store: &Store, log: &EventLog) -> Value {
@@ -153,8 +168,13 @@ impl CtrlService {
         })
     }
 
-    fn task_json(store: &Store, t: &Task) -> Value {
-        let last = t.runs.last().and_then(|r| store.run_meta(r)).map(|m| m.1);
+    fn task_json(&self, store: &Store, t: &Task) -> Value {
+        let last = Self::last_run_at(store, t);
+        let next = if t.paused {
+            None
+        } else {
+            next_due(&t.schedule, t.created_at, last, self.zone.as_ref())
+        };
         json!({
             "id": t.id,
             "text": t.text,
@@ -163,7 +183,65 @@ impl CtrlService {
             "createdAt": t.created_at,
             "runs": t.runs.len(),
             "lastRunAt": last,
+            "nextRunAt": next,
         })
+    }
+
+    /// Record a run the same way as `ctrl:run-now` / a scheduled fire: `run.recorded` + `task.started` +
+    /// `intent.pending`.
+    fn record_pending_run(
+        store: &mut Store,
+        clock: &dyn Clock,
+        now: u64,
+        task_id: &str,
+    ) -> Result<EventLog, CtrlError> {
+        let mono = clock.mono_ns();
+        let id = task_id.to_string();
+        Ok(store.start_run(
+            now,
+            task_id,
+            &[
+                (mono, Event::TaskStarted { task_id: id.clone() }),
+                (mono, Event::IntentPending { task_id: id }),
+            ],
+        )?)
+    }
+
+    /// One scheduler pass (ADR 0105): for every non-paused task that is due, record exactly one run (catch-up
+    /// once after sleep/quit; no burst). Returns the task ids that got a run (for `ctrl:changed`).
+    pub fn tick(&self) -> Result<Vec<String>, CtrlError> {
+        let mut guard = self.store.lock().unwrap_or_else(|e| e.into_inner());
+        let store = guard.as_mut().map_err(|e| CtrlError::from(e.clone()))?;
+        let now = self.clock.wall_ms();
+        let zone = self.zone.as_ref();
+        // Snapshot ids first: recording a run mutates the fold.
+        let due: Vec<String> = store
+            .tasks()
+            .into_iter()
+            .filter(|t| !t.paused)
+            .filter(|t| {
+                let last = Self::last_run_at(store, t);
+                is_due(&t.schedule, t.created_at, last, now, zone)
+            })
+            .map(|t| t.id.clone())
+            .collect();
+        let mut fired = Vec::with_capacity(due.len());
+        for id in due {
+            // Re-check: a previous fire in this pass shouldn't matter (different tasks), but skip if gone/paused.
+            let Some(t) = store.task(&id).ok().cloned() else {
+                continue;
+            };
+            if t.paused {
+                continue;
+            }
+            let last = Self::last_run_at(store, &t);
+            if !is_due(&t.schedule, t.created_at, last, now, zone) {
+                continue;
+            }
+            Self::record_pending_run(store, self.clock.as_ref(), now, &id)?;
+            fired.push(id);
+        }
+        Ok(fired)
     }
 
     /// One `ctrl:*` call.
@@ -176,19 +254,19 @@ impl CtrlService {
                 store
                     .tasks()
                     .into_iter()
-                    .map(|t| Self::task_json(store, t))
+                    .map(|t| self.task_json(store, t))
                     .collect(),
             )),
             "ctrl:create-task" => {
                 let schedule: Schedule = serde_json::from_value(p["schedule"].clone())
                     .map_err(|_| CtrlError::new(CtrlErrorCode::Validation, "pick when the task runs"))?;
                 let t = store.create_task(now, str_field(&p, "text")?, schedule)?;
-                Ok(Self::task_json(store, &t))
+                Ok(self.task_json(store, &t))
             }
             "ctrl:set-paused" => {
                 let paused = p["paused"].as_bool().unwrap_or(true);
                 let t = store.set_paused(now, str_field(&p, "id")?, paused)?;
-                Ok(Self::task_json(store, &t))
+                Ok(self.task_json(store, &t))
             }
             "ctrl:delete-task" => {
                 store.delete_task(now, str_field(&p, "id")?)?;
@@ -196,15 +274,7 @@ impl CtrlService {
             }
             "ctrl:run-now" => {
                 let id = str_field(&p, "id")?.to_string();
-                let mono = self.clock.mono_ns();
-                let log = store.start_run(
-                    now,
-                    &id,
-                    &[
-                        (mono, Event::TaskStarted { task_id: id.clone() }),
-                        (mono, Event::IntentPending { task_id: id.clone() }),
-                    ],
-                )?;
+                let log = Self::record_pending_run(store, self.clock.as_ref(), now, &id)?;
                 Ok(Self::run_json(store, &log))
             }
             "ctrl:runs" => {
