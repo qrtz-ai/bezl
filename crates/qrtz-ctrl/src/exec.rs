@@ -17,8 +17,8 @@
 //! (ADR 0122) deletes the Trash's items through the same executor, never through the Finder, only after the gate,
 //! and only the items the approved card listed. Without roots they still stop with `exec.held { files_not_yet }`. (Runs from before slice 6 may still hold `exec.held { irreversible }`; they replay as before.)
 use crate::apps::{
-    level_of, still_visible, to_hide, unused_today, HIDE_OTHERS_MOVE, MUTE_MOVE, QUIT_UNUSED_MOVE,
-    SET_VOLUME_MOVE, UNMUTE_MOVE,
+    level_of, step_of, stepped, still_visible, to_hide, unused_today, DEFAULT_VOLUME_STEP, HIDE_OTHERS_MOVE,
+    MUTE_MOVE, QUIT_UNUSED_MOVE, SET_VOLUME_MOVE, UNMUTE_MOVE, VOLUME_DOWN_MOVE, VOLUME_UP_MOVE,
 };
 use crate::ax::{diff, AxSnapshot};
 use crate::decide::{next_backtrack, run_chain_obs, unobserved, BacktrackReason, Goal, Node, Scorer};
@@ -103,7 +103,8 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
     }
     // ADR 0130 / 0134: the driver plans these from the helper's `ctrl.apps`; without that list there is nothing to
     // quit or hide.
-    if mv == QUIT_UNUSED_MOVE || mv == HIDE_OTHERS_MOVE {
+    // ADR 0143: a relative volume step is planned from the level the driver reads just before; not pure.
+    if mv == QUIT_UNUSED_MOVE || mv == HIDE_OTHERS_MOVE || mv == VOLUME_UP_MOVE || mv == VOLUME_DOWN_MOVE {
         return Some(Step::Hold(HoldReason::NoRoute));
     }
     // ADR 0135: the system output, no app; verified by reading the mute back.
@@ -678,7 +679,46 @@ impl Driver<'_> {
             } else {
                 None
             };
+            // ADR 0143: "turn it up / down" is read-modify-write: read the level now, step from it (the plan's
+            // `step.N`, else the default), set that level, and verify the read-back against it. Muted or no output
+            // reads no level, so it asks out with nothing changed; already at the end of the range is done.
+            let vplan: Option<(i64, u8)> =
+                if fplan.is_none() && (mv == VOLUME_UP_MOVE || mv == VOLUME_DOWN_MOVE) {
+                    let step = s
+                        .chosen()
+                        .get(&Node::ChooseTarget)
+                        .and_then(|o| step_of(o))
+                        .unwrap_or(DEFAULT_VOLUME_STEP);
+                    match self.helper.measure(&Check::OutputVolume) {
+                        Some(b) => match stepped(b, step, mv == VOLUME_UP_MOVE) {
+                            t if i64::from(t) == b => return sink.push(log, finish(TaskStatus::Done)),
+                            t => Some((b, t)),
+                        },
+                        None => {
+                            sink.push(
+                                log,
+                                Event::ExecHeld {
+                                    reason: HoldReason::NoRoute,
+                                },
+                            )?;
+                            return sink.push(log, finish(TaskStatus::AskedOut));
+                        }
+                    }
+                } else {
+                    None
+                };
             let step = match (&fplan, &qplan) {
+                (None, None) if vplan.is_some() => {
+                    let level = vplan.map(|(_, t)| t).unwrap_or_default();
+                    Step::Act {
+                        routes: vec![Route::Workspace(WorkspaceOp::SetVolume { level })],
+                        verify: Verify {
+                            check: Check::OutputVolume,
+                            expect: Expect::Level(i64::from(level)),
+                        },
+                        content: BTreeMap::new(),
+                    }
+                }
                 (None, None) if hplan.is_some() => {
                     let apps = hplan.clone().unwrap_or_default();
                     Step::Act {
@@ -892,7 +932,11 @@ impl Driver<'_> {
                 Check::AxScope { app, scope } => find_snapshot(&s.snapshots, app, scope.as_deref()).cloned(),
                 _ => None,
             };
-            let before = measure(&verify.check);
+            // ADR 0143: the level the step was taken from is the "before" (one read, logged with the verify).
+            let before = match vplan {
+                Some((b, _)) => Some(b),
+                None => measure(&verify.check),
+            };
             let env: Env = self.helper.probe().map(|(e, _)| e).unwrap_or_default();
             let from = log.records().len();
             let outcome = {

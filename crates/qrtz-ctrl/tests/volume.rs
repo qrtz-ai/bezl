@@ -169,11 +169,7 @@ fn no_level_or_a_named_app_is_not_this_and_mute_unmute_are_unchanged() {
     let v = run_now(&s, &t);
     assert_eq!(intent(&v), "intent.mute", "{v}");
     assert_eq!(fake.world().muted, Some(true));
-    for text in [
-        "set safari volume to 30",
-        "turn up the volume",
-        "every day at 8 check the volume",
-    ] {
+    for text in ["set safari volume to 30", "every day at 8 check the volume"] {
         let d = tempfile::tempdir().unwrap();
         let (s, fake) = rig(d.path(), world());
         let t = create(&s, text);

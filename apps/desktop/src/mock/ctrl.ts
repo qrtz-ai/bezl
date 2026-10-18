@@ -87,6 +87,8 @@ const INTENTS = {
   mute: opt('intent.mute', 'mute your mac', 0.07),
   unmute: opt('intent.unmute', 'unmute your mac', 0.07),
   set_volume: opt('intent.set_volume', 'set the volume', 0.07),
+  volume_up: opt('intent.change_volume', 'turn the volume up or down', 0.07),
+  volume_down: opt('intent.change_volume', 'turn the volume up or down', 0.07),
   dark_mode: opt('intent.dark_mode', 'switch dark mode', 0.07),
   light_mode: opt('intent.dark_mode', 'switch dark mode', 0.07),
   open_email: opt('intent.open_app', 'open an app', 0.07),
@@ -105,6 +107,8 @@ type Intent =
   | 'mute'
   | 'unmute'
   | 'set_volume'
+  | 'volume_up'
+  | 'volume_down'
   | 'dark_mode'
   | 'light_mode'
   | 'open_email';
@@ -191,6 +195,21 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
       opt(
         'route.system.set_volume',
         'set the sound output to that level',
+        0.97,
+      ),
+    ]),
+  ],
+  // ADR 0143: a step from the level read just before (choose_target `step.N`, added in finishChain); no card.
+  volume_up: [
+    act('choose_move', [
+      opt('route.system.volume_up', 'turn the sound output up a step', 0.97),
+    ]),
+  ],
+  volume_down: [
+    act('choose_move', [
+      opt(
+        'route.system.volume_down',
+        'turn the sound output down a step',
         0.97,
       ),
     ]),
@@ -327,46 +346,70 @@ const levelOf = (text: string): number | null => {
   return n >= 0 && n <= 100 ? n : null;
 };
 
+/** ADR 0143: up / down from the words, or null (none or both). */
+const directionOf = (text: string): 'volume_up' | 'volume_down' | null => {
+  const up = /\b(up|louder|raise|increase|higher|boost)\b/i.test(text);
+  const down = /\b(down|quieter|softer|lower|decrease|reduce)\b/i.test(text);
+  return up === down ? null : up ? 'volume_up' : 'volume_down';
+};
+
+/** ADR 0143: the step of a relative change: "by N" / "up N" / "down N", "a bit" is 5, else 10. */
+const stepOf = (text: string): number => {
+  const m = /\b(?:by|up|down)\s+(\d{1,3})\b/i.exec(text);
+  const n = m ? Number(m[1]) : NaN;
+  if (n >= 1 && n <= 100) return n;
+  return /\b(bit|little|slightly|tad)\b/i.test(text) ? 5 : 10;
+};
+
+const relativeOf = (text: string): Intent | null =>
+  levelOf(text) === null &&
+  (/\b(volume|sound|audio|louder|quieter|softer)\b/i.test(text) ||
+    /\bturn\b.*\bit\b/i.test(text))
+    ? directionOf(text)
+    : null;
+
 const intentOf = (text: string): Intent | null =>
-  /\b(volume|sound)\b/i.test(text) && levelOf(text) !== null
-    ? 'set_volume'
-    : /\b(unmute|unsilence)\b/i.test(text)
-      ? 'unmute'
-      : /\b(dark|light)\s+mode\b/i.test(text)
-        ? /\b(light|off|disable)\b/i.test(text)
-          ? 'light_mode'
-          : 'dark_mode'
-        : /\b(open|check)\b/i.test(text) &&
-            /\b(email|emails|inbox)\b/i.test(text)
-          ? 'open_email'
-          : /\b(mute|silence)\b/i.test(text)
-            ? 'mute'
-            : /\bhide\b/i.test(text) &&
-                /\b(apps|applications|other|others|everything|all)\b/i.test(
-                  text,
-                )
-              ? 'hide_others'
-              : /\b(quit|close)\b/i.test(text) &&
-                  /\bapps?\b/i.test(text) &&
-                  /\b(unused|used|using|idle)\b/i.test(text)
-                ? 'quit_unused'
-                : /\bquit\b/i.test(text)
-                  ? 'quit_app'
-                  : /\bcalendar\b/i.test(text)
-                    ? 'open_calendar'
-                    : /\bempty\b/i.test(text) && /\b(trash|bin)\b/i.test(text)
-                      ? 'empty_trash'
-                      : /\btabs?\b/i.test(text)
-                        ? 'close_tabs'
-                        : /\bdocuments\b/i.test(text)
-                          ? 'tidy_documents'
-                          : /\b(desktop|screenshots?)\b/i.test(text)
-                            ? 'tidy_desktop'
-                            : /download|folder/i.test(text)
-                              ? /\b(delete|trash|old)\b/i.test(text)
-                                ? 'trash_old'
-                                : 'clean_folder'
-                              : null;
+  relativeOf(text) !== null
+    ? relativeOf(text)
+    : /\b(volume|sound)\b/i.test(text) && levelOf(text) !== null
+      ? 'set_volume'
+      : /\b(unmute|unsilence)\b/i.test(text)
+        ? 'unmute'
+        : /\b(dark|light)\s+mode\b/i.test(text)
+          ? /\b(light|off|disable)\b/i.test(text)
+            ? 'light_mode'
+            : 'dark_mode'
+          : /\b(open|check)\b/i.test(text) &&
+              /\b(email|emails|inbox)\b/i.test(text)
+            ? 'open_email'
+            : /\b(mute|silence)\b/i.test(text)
+              ? 'mute'
+              : /\bhide\b/i.test(text) &&
+                  /\b(apps|applications|other|others|everything|all)\b/i.test(
+                    text,
+                  )
+                ? 'hide_others'
+                : /\b(quit|close)\b/i.test(text) &&
+                    /\bapps?\b/i.test(text) &&
+                    /\b(unused|used|using|idle)\b/i.test(text)
+                  ? 'quit_unused'
+                  : /\bquit\b/i.test(text)
+                    ? 'quit_app'
+                    : /\bcalendar\b/i.test(text)
+                      ? 'open_calendar'
+                      : /\bempty\b/i.test(text) && /\b(trash|bin)\b/i.test(text)
+                        ? 'empty_trash'
+                        : /\btabs?\b/i.test(text)
+                          ? 'close_tabs'
+                          : /\bdocuments\b/i.test(text)
+                            ? 'tidy_documents'
+                            : /\b(desktop|screenshots?)\b/i.test(text)
+                              ? 'tidy_desktop'
+                              : /download|folder/i.test(text)
+                                ? /\b(delete|trash|old)\b/i.test(text)
+                                  ? 'trash_old'
+                                  : 'clean_folder'
+                                : null;
 
 const PREVIEW: CtrlConfirm['items'] = [
   { key: '3f2a9c1d0b7e#0', kind: 'window', label: 'notes.txt', unsaved: false },
@@ -552,6 +595,10 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
         r,
         act('choose_target', [opt(`level.${level}`, `${level}%`, 0.96)]),
       );
+    if (intent === 'volume_up' || intent === 'volume_down') {
+      const n = stepOf(text);
+      decide(r, act('choose_target', [opt(`step.${n}`, `by ${n}`, 0.96)]));
+    }
     for (const d of REST[intent]) decide(r, d);
     const s = stateAt(r.recs, r.recs.length);
     push(r, 'plan.produced', {

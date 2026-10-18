@@ -417,6 +417,8 @@ enum Slot {
     SearchText,
     /// ADR 0140: a volume level, 0–100 (`level.N`), read from the task's own number.
     Level,
+    /// ADR 0143: a relative volume step, 1–100 (`step.N`), "by N" in the task or the default.
+    Step,
 }
 
 struct IntentDef {
@@ -497,6 +499,13 @@ const INTENTS: &[IntentDef] = &[
         id: "set_volume",
         app: AppMode::None,
         slot: Slot::Level,
+        irreversible: false,
+    },
+    // ADR 0143: turn the output volume up or down by a step from the level read before; reversible, no gate.
+    IntentDef {
+        id: "change_volume",
+        app: AppMode::None,
+        slot: Slot::Step,
         irreversible: false,
     },
     IntentDef {
@@ -696,7 +705,21 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             // "set the volume to 30", "volume 40%", "turn the sound to half". Only with a level in the task and no
             // app named ("set spotify's volume to 30" is that app's own slider, not this).
             p -= 3000;
-            if has(toks, &["volume", "sound"]) && !levels(toks).is_empty() && !named_app {
+            // ADR 0143: "turn the volume down by 5" is a step, not a level; "lower the volume to 20" is still a level.
+            let relative = volume_dir(toks).is_some() && !sure_level(toks);
+            if has(toks, &["volume", "sound"]) && !levels(toks).is_empty() && !named_app && !relative {
+                p += 8500;
+            }
+        }
+        "change_volume" => {
+            // ADR 0143: "turn it up", "turn the volume down", "a bit louder", "volume up by 20". A direction plus the
+            // volume, a louder/quieter word, or "turn it"; never with a sure level ("turn it down to 20" sets 20)
+            // and never with an app named ("turn up spotify" is that app's own slider).
+            p -= 3000;
+            let sounds = has(toks, &["volume", "sound", "audio"])
+                || has(toks, &["louder", "quieter", "softer"])
+                || (has(toks, &["turn"]) && has(toks, &["it"]));
+            if volume_dir(toks).is_some() && sounds && !sure_level(toks) && !named_app {
                 p += 8500;
             }
         }
@@ -945,6 +968,62 @@ fn levels(toks: &[Tok]) -> Vec<(u8, i64)> {
     out
 }
 
+/// ADR 0143: the direction of a relative volume change: up (`true`), down (`false`), or none / both (`None`).
+fn volume_dir(toks: &[Tok]) -> Option<bool> {
+    let up = has(toks, &["up", "louder", "raise", "increase", "higher", "boost"]);
+    let down = has(
+        toks,
+        &["down", "quieter", "softer", "lower", "decrease", "reduce"],
+    );
+    match (up, down) {
+        (true, false) => Some(true),
+        (false, true) => Some(false),
+        _ => None,
+    }
+}
+
+/// ADR 0143: the task names a level outright (a number after "to", "volume" or "sound").
+fn sure_level(toks: &[Tok]) -> bool {
+    levels(toks).iter().any(|(_, p)| *p >= 5000)
+}
+
+/// ADR 0143: the step of a relative change: a number right after "by" or after the direction word ("up 20"),
+/// 1–100; else "a bit" / "a little" / "slightly" is the small step; else the default. Two different numbers ask.
+fn step_question(toks: &[Tok]) -> Question {
+    let mut steps: Vec<u8> = Vec::new();
+    for (i, t) in toks.iter().enumerate() {
+        let prev = i.checked_sub(1).map(|j| toks[j].w.as_str());
+        if !matches!(prev, Some("by" | "up" | "down")) {
+            continue;
+        }
+        let n = (t.w.chars().all(|c| c.is_ascii_digit()) && t.w.len() <= 3)
+            .then(|| t.w.parse::<u8>().ok())
+            .flatten();
+        if let Some(n) = n.filter(|n| (1..=100).contains(n)) {
+            if !steps.contains(&n) {
+                steps.push(n);
+            }
+        }
+    }
+    let small = has(toks, &["bit", "little", "slightly", "tad"]);
+    let pick = match steps.as_slice() {
+        [] if small => vec![(crate::apps::SMALL_VOLUME_STEP, 6000)],
+        [] => vec![(crate::apps::DEFAULT_VOLUME_STEP, 6000)],
+        [n] => vec![(*n, 6000)],
+        many => many.iter().map(|n| (*n, 2500)).collect(),
+    };
+    let cs = pick
+        .into_iter()
+        .map(|(n, p)| {
+            choice(
+                opt(format!("{}{n}", crate::apps::STEP_PREFIX), OptionKind::Scope),
+                p,
+            )
+        })
+        .collect();
+    finish(Node::ChooseTarget, cs)
+}
+
 fn level_question(toks: &[Tok]) -> Question {
     let mut cs: Vec<Choice> = levels(toks)
         .into_iter()
@@ -1062,6 +1141,12 @@ fn move_question(
         "mute" => vec![route("system.mute", 4500)],
         "unmute" => vec![route("system.unmute", 4500)],
         "set_volume" => vec![route("system.set_volume", 4500)],
+        // ADR 0143: only the direction the task says, so a failed verify can never backtrack into the other one.
+        "change_volume" => match volume_dir(toks) {
+            Some(true) => vec![route("system.volume_up", 4500)],
+            Some(false) => vec![route("system.volume_down", 4500)],
+            None => vec![route("system.volume_up", 2000), route("system.volume_down", 2000)],
+        },
         // ADR 0124: on the Desktop only the screenshots and screen recordings are ctrl's; the Downloads routes
         // would act on another folder, so they aren't offered here.
         "clean_folder" if matches!(target, Some("folder.desktop" | "folder.screenshots")) => {
@@ -1204,7 +1289,7 @@ pub fn next_question_obs(
     }
     let slot_node = match def.slot {
         Slot::None => None,
-        Slot::Folder | Slot::TabScope | Slot::Level => Some(Node::ChooseTarget),
+        Slot::Folder | Slot::TabScope | Slot::Level | Slot::Step => Some(Node::ChooseTarget),
         Slot::Url | Slot::SearchText => Some(Node::ChooseText),
     };
     if let Some(n) = slot_node {
@@ -1215,6 +1300,7 @@ pub fn next_question_obs(
                 Slot::Url => url_question(goal, &toks),
                 Slot::SearchText => search_question(goal, &toks),
                 Slot::Level => level_question(&toks),
+                Slot::Step => step_question(&toks),
                 Slot::None => unreachable!(),
             });
         }
@@ -1281,6 +1367,7 @@ fn intent_label(id: &str) -> &'static str {
         "mute" => "mute your mac",
         "unmute" => "unmute your mac",
         "set_volume" => "set the volume",
+        "change_volume" => "turn the volume up or down",
         "empty_trash" => "empty the trash",
         "dark_mode" => "switch dark mode",
         "search" => "search in an app",
@@ -1302,6 +1389,8 @@ fn route_label(id: &str) -> &'static str {
         "system.mute" => "mute the sound output",
         "system.unmute" => "turn the sound output back on",
         "system.set_volume" => "set the sound output to that level",
+        "system.volume_up" => "turn the sound output up a step",
+        "system.volume_down" => "turn the sound output down a step",
         "scripting.dark_mode_on" => "switch to dark mode",
         "scripting.dark_mode_off" => "switch to light mode",
         "files.tidy" => "sort by kind, nothing deleted",
@@ -1368,6 +1457,8 @@ pub fn label(o: &Opt, goal: Option<&Goal>) -> String {
         "scope" => rest.replace('_', " "),
         // ADR 0140: a volume level, a number from 0 to 100.
         "level" => format!("{rest}%"),
+        // ADR 0143: a relative step, in points of the 0–100 volume.
+        "step" => format!("by {rest}"),
         "route" => route_label(rest).into(),
         "shortcut" => shortcut_label(rest),
         // `ax.<handle>.<role slug>`: the element's role ("close button", "toolbar"); its title is never kept.

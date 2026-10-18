@@ -784,3 +784,36 @@ test('ctrl: every evening set the volume to 30 sets that level without a card (A
   expect(await axe(page, 'ctrl')).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+test('ctrl: turn it up a bit steps the volume from where it is without a card (ADR 0143)', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  for (const [text, step, move] of [
+    ['turn it up a bit', 'by 5', 'turn the sound output up a step'],
+    [
+      'turn the volume down by 20',
+      'by 20',
+      'turn the sound output down a step',
+    ],
+  ] as const) {
+    await ctrl.getByTestId('ctrl-task-input').fill(text);
+    await ctrl.getByTestId('ctrl-task-add').click();
+    const task = ctrl.getByTestId('ctrl-task').filter({ hasText: text });
+    await task.getByTestId('ctrl-task-run').click();
+    const run = ctrl.getByTestId('ctrl-run').first();
+    await expect(run.getByTestId('ctrl-run-status')).toHaveText('done');
+    await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
+    const decisions = ctrl.getByTestId('ctrl-decisions').first();
+    await expect(decisions).toContainText('turn the volume up or down');
+    await expect(decisions).toContainText(step);
+    await expect(decisions).toContainText(move);
+  }
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});

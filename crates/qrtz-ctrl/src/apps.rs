@@ -60,6 +60,29 @@ pub fn level_of(opt: &str) -> Option<u8> {
     (n <= 100).then_some(n)
 }
 
+/// ADR 0143: "turn it up" / "turn the volume down": a step from the level read just before (read-modify-write).
+pub const VOLUME_UP_MOVE: &str = "route.system.volume_up";
+pub const VOLUME_DOWN_MOVE: &str = "route.system.volume_down";
+/// ADR 0143: the `choose_target` option prefix of a relative step (`step.1` … `step.100`).
+pub const STEP_PREFIX: &str = "step.";
+/// ADR 0143: the step when the task names none ("turn it up"); "by N" in the task overrides it.
+pub const DEFAULT_VOLUME_STEP: u8 = 10;
+/// ADR 0143: the step for "a bit" / "a little" / "slightly" with no number.
+pub const SMALL_VOLUME_STEP: u8 = 5;
+
+/// ADR 0143: the step a `step.N` option names, only 1–100.
+pub fn step_of(opt: &str) -> Option<u8> {
+    let n: u8 = opt.strip_prefix(STEP_PREFIX)?.parse().ok()?;
+    (1..=100).contains(&n).then_some(n)
+}
+
+/// ADR 0143: the level a relative change aims at from the level read before, kept inside 0–100.
+pub fn stepped(before: i64, step: u8, up: bool) -> u8 {
+    let d = i64::from(step);
+    let t = if up { before + d } else { before - d };
+    t.clamp(0, 100) as u8
+}
+
 /// ADR 0134: the move of "hide other apps" / "hide all my apps" (reversible, no gate).
 pub const HIDE_OTHERS_MOVE: &str = "route.workspace.hide_others";
 
@@ -158,5 +181,23 @@ mod tests {
         assert_eq!(still_visible(&apps, &ids), Some(0));
         apps[2].hidden = None;
         assert_eq!(still_visible(&apps, &ids), None);
+    }
+
+    #[test]
+    fn a_relative_step_parses_only_1_to_100_and_clamps_the_target_to_the_range() {
+        assert_eq!(step_of("step.10"), Some(10));
+        assert_eq!(step_of("step.100"), Some(100));
+        for bad in ["step.0", "step.101", "step.-5", "step.x", "level.10", "step."] {
+            assert_eq!(step_of(bad), None, "{bad}");
+        }
+        assert_eq!(stepped(50, 10, true), 60);
+        assert_eq!(stepped(50, 10, false), 40);
+        assert_eq!(stepped(95, 10, true), 100);
+        assert_eq!(stepped(3, 10, false), 0);
+        assert_eq!(stepped(100, 5, true), 100);
+        assert_eq!(stepped(0, 5, false), 0);
+        // A read outside 0–100 (a broken report) still lands inside the range.
+        assert_eq!(stepped(140, 10, false), 100);
+        assert_eq!(stepped(-20, 10, true), 0);
     }
 }
