@@ -245,6 +245,8 @@ public final class MacCtrlBackend: CtrlBackend {
             else { throw CtrlFailure("content.missing") }
             try Self.wait(5) { done in CtrlActions.open([url], withApp: appURL) { _, e in done(e) } }
         case let .launchHidden(app):
+            // Already running: it is open, and opening it again with `hides` would hide the user's window (ADR 0128).
+            if runningApp(app) != nil { return }
             guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app) else { throw CtrlFailure("app.not_installed") }
             let c = CtrlActions.backgroundConfiguration()
             c.hides = true

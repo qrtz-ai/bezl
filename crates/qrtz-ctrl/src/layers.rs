@@ -156,7 +156,56 @@ const KNOWN_SITES: &[&str] = &[
     "figma",
     "notion",
     "maps",
+    "gcal",
 ];
+
+/// Names whose site isn't `<name>.com` (ADR 0128): the span's words, lowercase, space-joined → the address.
+const SITE_ALIASES: &[(&str, &str)] = &[
+    ("google calendar", "calendar.google.com"),
+    ("gcal", "calendar.google.com"),
+    ("outlook calendar", "outlook.office.com/calendar"),
+];
+
+/// One or two adjacent words of the goal name an aliased site ("google calendar").
+fn names_alias(toks: &[Tok]) -> bool {
+    (0..toks.len()).any(|i| {
+        site_alias(&toks[i].w).is_some()
+            || toks
+                .get(i + 1)
+                .is_some_and(|n| site_alias(&format!("{} {}", toks[i].w, n.w)).is_some())
+    })
+}
+
+/// The goal's words that can name an app: those of an aliased site ("google calendar") name the site, not Google
+/// Chrome or Calendar (ADR 0128).
+fn app_words(toks: &[Tok]) -> Vec<Tok> {
+    let mut skip = vec![false; toks.len()];
+    for i in 0..toks.len() {
+        if site_alias(&toks[i].w).is_some() {
+            skip[i] = true;
+        } else if let Some(n) = toks.get(i + 1) {
+            if site_alias(&format!("{} {}", toks[i].w, n.w)).is_some() {
+                skip[i] = true;
+                skip[i + 1] = true;
+            }
+        }
+    }
+    toks.iter()
+        .zip(skip)
+        .filter(|(_, s)| !s)
+        .map(|(t, _)| t.clone())
+        .collect()
+}
+
+/// The address a name means, if it has an alias.
+pub fn site_alias(span: &str) -> Option<&'static str> {
+    let key = span
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
+    SITE_ALIASES.iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
+}
 
 // ---------------------------------------------------------------------------------------------------------------
 // The app catalog (`obs.apps`)
@@ -460,8 +509,13 @@ const FOLDER_WORDS: &[&str] = &[
 
 /// Keyword evidence for an intent, milli-logits.
 fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
-    let named_app = !named_apps(toks, apps).is_empty();
-    let site = has(toks, KNOWN_SITES) || toks.iter().any(|t| is_domain(&t.w));
+    let named = named_apps(&app_words(toks), apps);
+    let named_app = !named.is_empty();
+    // An app named in full by two or more words ("notion calendar", "google chrome") outweighs a site word in it.
+    let full_named = named
+        .iter()
+        .any(|(a, h)| *h >= 2 && *h as usize == a.tokens.len());
+    let site = has(toks, KNOWN_SITES) || toks.iter().any(|t| is_domain(&t.w)) || names_alias(toks);
     let open = has(toks, &["open", "go", "visit", "load", "launch", "start", "show"]);
     let close = has(toks, &["close", "shut"]);
     let mut p = 0;
@@ -516,8 +570,11 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             if open {
                 p += 1500;
             }
-            if named_app && !site {
+            if named_app && (!site || full_named) {
                 p += 3000;
+            }
+            if full_named && site {
+                p += 2000;
             }
         }
         "quit_app" => {
@@ -609,7 +666,7 @@ fn app_opt(id: &str) -> Opt {
 }
 
 fn app_question(def: &IntentDef, toks: &[Tok], apps: &AppsObs) -> Question {
-    let named: BTreeMap<&str, i64> = named_apps(toks, apps)
+    let named: BTreeMap<&str, i64> = named_apps(&app_words(toks), apps)
         .into_iter()
         .map(|(a, h)| (a.id.as_str(), h))
         .collect();
@@ -651,7 +708,10 @@ fn app_question(def: &IntentDef, toks: &[Tok], apps: &AppsObs) -> Question {
             for a in &apps.apps {
                 if let Some(h) = named.get(a.id.as_str()) {
                     let running = if a.running { 500 } else { 0 };
-                    let p = 4000 + 1000 * (h - 1) + running;
+                    // The app the goal names in full ("my calendar" → Calendar) over one it names in part (Notion
+                    // Calendar), ADR 0128.
+                    let full = if *h == a.tokens.len() as i64 { 1000 } else { 0 };
+                    let p = 4000 + 1000 * (h - 1) + running + full;
                     if let Some(c) = cs.iter_mut().find(|c| c.opt.id == format!("app.{}", a.id)) {
                         c.prior = p;
                     } else {
@@ -733,10 +793,18 @@ fn url_question(goal: &Goal, toks: &[Tok]) -> Question {
                 5000,
             ));
         } else {
-            let known = e - s == 1 && KNOWN_SITES.contains(&toks[s].w.as_str());
+            let words: Vec<&str> = toks[s..e].iter().map(|t| t.w.as_str()).collect();
+            let alias = site_alias(&words.join(" ")).is_some();
+            let known = e - s == 1 && KNOWN_SITES.contains(&words[0]);
             cs.push(choice(
                 text_opt("text.url_guess", span_ref(goal, toks, s, e)),
-                if known { 3000 } else { 1500 },
+                if alias {
+                    3500
+                } else if known {
+                    3000
+                } else {
+                    1500
+                },
             ));
         }
         cs.push(choice(text_opt("text.search", span_ref(goal, toks, s, e)), 1000));
@@ -1095,7 +1163,10 @@ pub fn label(o: &Opt, goal: Option<&Goal>) -> String {
                 .map(str::to_lowercase);
             match (rest, span) {
                 ("literal", Some(s)) => s,
-                ("url_guess", Some(s)) => format!("{}.com", s.replace(' ', "")),
+                ("url_guess", Some(s)) => match site_alias(&s) {
+                    Some(a) => a.to_string(),
+                    None => format!("{}.com", s.replace(' ', "")),
+                },
                 ("search", Some(s)) => format!("search: {s}"),
                 _ => "text from the task".into(),
             }
