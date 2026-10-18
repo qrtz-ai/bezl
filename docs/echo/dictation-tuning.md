@@ -84,7 +84,7 @@ Gain is the expected user-visible effect; risk is what could regress. Every item
 | 7    | Input / segment normalisation for quiet mics, **quiet-mic only** (§9 Nemotron; §15 Parakeet, ADR 0127). Always-on per-segment peak **rejected**. Gated peak (peak < 0.1 → 0.9, cap 10×) **landed off by default** (`e5818b3`, `QRTZ_ECHO_SEG_PEAK=on`); adds no phantom words on non-speech tails (§16, ADR 0131) | Parakeet whole-clip is already robust at ×0.1 (+2.4 % relative); gated segment peak recovers ×0.03 (4.15 → 2.94) at zero cost on normal (2.57)                                                                                                                                                                                                                                     | always-on segment peak hurts normal (+11 % errors, 2.57 → 2.85); ×0.01 still ~8 % (VAD over-segments)                                                                                                                                                       | `talk latency` `level_p90_dbfs` (§10); Mac: `echo-bench` quiet/far vs normal, WER + `level_p90_dbfs`; Linux: `seg_eval.py --vad helper --segnorm --seggate 0.1`     |
 | 8    | Decode-time vocabulary biasing                                                                                                                                                                                                                                                                                    | names and jargon right the first time                                                                                                                                                                                                                                                                                                                                              | needs a different model. Nemotron 3.5 multilingual scored 6.59 % on English (§6, auto language) and 5.72 % with English forced (§9, still +41 % errors vs the shipped model), so CTC boosting (Unified/TDT) is the likelier route, plus a signed conversion | later; measure on a names clip set                                                                                                                                  |
 | 9    | **Re-punctuate each pause cut from a short window decoded across it** (3 s before, 2 s after, background; formatting, not WER; §12, ADR 0120). **Landed off by default** (`faff542`, `QRTZ_ECHO_CUT_WINDOW=on`); checked as landed in §13 (ADR 0121)                                                              | Measured (§12): false sentence ends at cuts 99 → 24 against the whole-clip decode, formatted diff 7.46 → 6.10 %; with the cleanup rule already landed (89b97ab) the talk side alone is 99 → 58. As landed, through the cleanup (§13): 58 → 23, formatted diff 7.34 → 6.23 %                                                                                                        | one extra ~5.6 s decode per pause cut in the background (252 ms box CPU p50, tens of ms on ANE); 22 vs 5 sentence ends lost against the whole clip                                                                                                          | Linux `seg/helper_win.py` (as landed, §13); Mac: `echo-bench.sh --clips` on Jared's long clips, `ends vs whole` of `parakeet-segmented-win` vs `parakeet-segmented` |
-| 10   | **Drop a short release tail Parakeet isn't sure of: mean token confidence < 0.6, at most 4 words** (N169, §16, ADR 0131). Proposed to Bobs (review §12.38), off by default                                                                                                                                        | Measured (§16): about 7 % of decoded room-tone-only tails get phantom words ("Yeah.", "Shit,"), gate or not; floor 0.6 drops 76 / 122 of them and 0 / 161 real tails (long, short replies, single words)                                                                                                                                                                           | a real one-word tail Parakeet is unsure of (one-word p5 0.72 on Linux; thin set, 6); Core ML confidences differ from ONNX int8, so calibrate                                                                                                                | Mac: `echo-bench.sh --clips` with clips that end in 1-2 s of room / breath / typing, plus short replies; `tail_conf=` in the timing log                             |
+| 10   | **Drop a short release tail Parakeet isn't sure of: mean token confidence < 0.6, at most 4 words** (N169, §16, ADR 0131). **Landed off by default** (`63aab4c`, `QRTZ_ECHO_TAIL_CONF=0.6`); as landed on Linux 70 / 122 phantom tails, 0 / 174 real (§17, ADR 0132). Default-on only with the gated peak (N171) and after N170 (sentinel confidences)                                                                                                                                        | Measured (§16): about 7 % of decoded room-tone-only tails get phantom words ("Yeah.", "Shit,"), gate or not; floor 0.6 drops 76 / 122 of them and 0 / 161 real tails (long, short replies, single words)                                                                                                                                                                           | a real one-word tail Parakeet is unsure of (one-word p5 0.72 on Linux; thin set, 6); Core ML confidences differ from ONNX int8, so calibrate                                                                                                                | Mac: `echo-bench.sh --clips` with clips that end in 1-2 s of room / breath / typing, plus short replies; `tail_conf=` in the timing log                             |
 
 Not on the list: moving the encoder to the GPU (FluidAudio: int8 on GPU is ~10× slower and can abort in MPSGraph;
 `.cpuAndNeuralEngine` is right), and lower chunk tiers (160/80 ms) for dictation (more compute and worse
@@ -697,3 +697,41 @@ real values with it off) and `tail_dropped=1` when it acted; bench `tailConf` / 
 `tailConf` stats, `tailConfMin` and `tailDropped` (clips) per summary row. Mac gate (§12.38 (b)): `bash
 native/qrtz-helper/scripts/echo-bench.sh --clips ~/qrtz-echo-bench/my-clips --tail-conf 0.6` runs
 `parakeet-segmented` without and with the floor and prints each dropped tail with its `tail_conf`.
+
+## 17. Cycle 43: the tail floor as landed; sentinel confidences, and the floor needs the gate (ADR 0132, N170, N171)
+
+`63aab4c` (Bobs) checked against §12.38 and replayed line by line on Linux (`linux-crosscheck/seg/tailfloor.py`:
+`dropsTail`, the `QRTZ_ECHO_TAIL_CONF` parsing and FluidAudio's `calculateConfidence`, selfcheck equal to
+`TailConfTests`). The semantics match: strict `<`, 1–4 whitespace words of the tail decode, no confidence kept,
+release tail only, no dangling punctuation (the last cut's window is skipped when the tail goes).
+
+| floor (landed: ≤ 4 words) | phantom tails dropped (of 122) | phantom words removed (of 216) | real tails lost, gained (of 174) | room tail WER plain / gated | room under all WER plain / gated |
+| ------------------------: | -----------------------------: | -----------------------------: | -------------------------------: | --------------------------- | -------------------------------- |
+|                       off |                              0 |                              0 |                                0 | 3.44 / 3.32                 | 3.92 / 3.67                      |
+|                       0.5 |                             39 |                             60 |                                0 | 3.39 / 3.31                 | 3.82 / 3.61                      |
+|                   **0.6** |                         **70** |                        **108** |                            **0** | **3.32 / 3.19**             | **3.77 / 3.57**                  |
+|                       0.7 |                             93 |                            146 |                                0 | 3.26 / 3.15                 | 3.72 / 3.54                      |
+|                      0.75 |                            107 |                            166 |                    2 (1 long, 1 one word) | 3.21 / 3.08                 | 3.71 / 3.52                      |
+
+Cycle 42's 76 counted the 6 phantom tails of 5+ words ("Should I just say that?", 0.29), all under 0.6; the
+4-word cap keeps them. Real tails: 132 long-tail decodes, 36 short replies, 6 one-word tails, every quiet one
+gained (cycle 42's sets).
+
+The default is the gate off, so the quiet real tails decoded plain (`tailfloor.py --ungated`):
+
+| quiet real tails, plain (no gated peak) |  n | dropped at 0.6 | dropped at 0.7 | which                                   |
+| --------------------------------------- | -: | -------------: | -------------: | --------------------------------------- |
+| ×0.1: long / short / one word           | 40 / 14 / 1 |  0 / 0 / 1 |      0 / 0 / 1 | "You" 0.54 (gained: 0.75)               |
+| ×0.03: long / short / one word          | 40 / 5 / 2  |  1 / 1 / 1 |      1 / 1 / 1 | "Oh" 0.54, "King and Shelby." 0.55, "You" 0.57 |
+
+Phantoms go either way (plain 39 / 66 dropped at 0.6, gated 31 / 56). So the floor is on by default only with
+`QRTZ_ECHO_SEG_PEAK=on` (N171). And FluidAudio reports 0.1 for an empty decode and 0.5 when token confidences
+are missing (N170): the second is under the floor, the first fills `tail_conf=` and the bench's `tailConfMin`
+with empty decodes (213 of 229 decoded room-tone tails on Linux are empty). Proposal §12.39: nil for both.
+Talk side `86c50fe`: `tail_conf=` / `tail_dropped=true` on the `talk latency` line once `dictation.stopped`
+carries `tailConf` / `tailDropped` (§12.39 (c)).
+
+Mac gate (§12.39 (b)): `QRTZ_ECHO_SEG_PEAK=on bash native/qrtz-helper/scripts/echo-bench.sh --clips
+~/qrtz-echo-bench/my-clips --tail-conf 0.6`, clips ending in 1–2 s of room / breath / typing plus short replies,
+some recorded quiet (mic far away or input gain low); read the `tail conf` and `dropped tail` lines.
+
