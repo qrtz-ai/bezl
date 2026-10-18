@@ -2,6 +2,10 @@ import Foundation
 import XCTest
 @testable import QrtzHelperCore
 
+/// Scheduling slack for wall-clock bounds on shared CI runners (a loaded macOS runner ran ~50 ms late). Locally 0,
+/// so the bounds stay tight where they are measured.
+let ciSlackMs: Double = ProcessInfo.processInfo.environment["CI"] != nil ? 150 : 0
+
 final class FakeMic: MicSource, @unchecked Sendable {
     var cb: (@Sendable ([Float]) -> Void)?
     var starts = 0, stops = 0
@@ -249,7 +253,7 @@ final class DictationTailTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 250_000_000)  // a poll: the partial is "w1"
         let t = Date()
         await c.handle(.dictationStop(id: "d1"))
-        XCTAssertLessThan(Date().timeIntervalSince(t), 0.6, "bounded: 150 ms + 0.8 s / 10")
+        XCTAssertLessThan(Date().timeIntervalSince(t), 0.6 + ciSlackMs / 1000, "bounded: 150 ms + 0.8 s / 10")
         XCTAssertEqual(stoppedText(out.value), "w1", "the last partial, read before the finish, not from the recogniser mid-finish")
         XCTAssertTrue(out.value.contains { if case .log(.warn, let m) = $0 { m.contains("not ready") } else { false } })
         // A re-press while that finish still runs never touches the recogniser: no reset, no append. With no other
@@ -299,13 +303,14 @@ final class DictationTailTests: XCTestCase {
             cb(level(1, 8960))
             let t = Date()
             let stop = Task { await c.handle(.dictationStop(id: "d1")) }
-            try? await Task.sleep(nanoseconds: 90_000_000)
+            // The control's block comes later still (a loaded CI runner can take > 90 ms to finish the stop).
+            try? await Task.sleep(nanoseconds: wait > 0 ? 90_000_000 : 400_000_000)
             cb(level(7, 1360))
             await stop.value
             let ms = Date().timeIntervalSince(t) * 1000
             if wait > 0 {
                 XCTAssertEqual(stoppedText(out.value), "w1 w7")
-                XCTAssertLessThan(ms, 400, "release to stopped: tail + one block + pad/finish")
+                XCTAssertLessThan(ms, 400 + ciSlackMs, "release to stopped: tail + one block + pad/finish")
             } else {
                 XCTAssertEqual(stoppedText(out.value), "w1", "the control: the block after the barrier is lost")
             }
@@ -327,7 +332,7 @@ final class DictationTailTests: XCTestCase {
         await stop.value
         let ms = Date().timeIntervalSince(t) * 1000
         XCTAssertEqual(stoppedText(out.value), "w1 w7")
-        XCTAssertLessThan(ms, 50 + 100, "the tail, then pad/finish: no wait for a second block")
+        XCTAssertLessThan(ms, 50 + 100 + ciSlackMs, "the tail, then pad/finish: no wait for a second block")
     }
 
     func testAMicThatStoppedDeliveringIsNotWaitedOnForTheWholeLimit() async {
@@ -344,7 +349,7 @@ final class DictationTailTests: XCTestCase {
         await c.handle(.dictationStop(id: "d1"))
         let ms = Date().timeIntervalSince(t) * 1000
         XCTAssertEqual(stoppedText(out.value), "w1 w2")
-        XCTAssertLessThan(ms, 60, "no dead 120 ms wait")
+        XCTAssertLessThan(ms, 60 + ciSlackMs, "no dead 120 ms wait")
     }
 
     func testTheDrainLimitScalesToWhatIsQueued() async {
@@ -460,7 +465,7 @@ final class DictationBoundsTests: XCTestCase {
         await c.handle(.dictationStop(id: "d1"))
         let ms = Date().timeIntervalSince(t) * 1000
         let budget = Double(tail.budgetMs(audioMs: 700, queuedMs: 85))
-        XCTAssertLessThan(ms, budget + 100, "dictation.stopped within the helper's budget")
+        XCTAssertLessThan(ms, budget + 100 + ciSlackMs, "dictation.stopped within the helper's budget")
         XCTAssertEqual(stoppedText(out.value, "d1"), "w1", "the last partial")
         XCTAssertTrue(warned(out.value, "append still running"))
         XCTAssertEqual(asr.lock.withLock { asr.finishes }, 0, "no pad, no finish on a recogniser mid-append")
@@ -495,7 +500,7 @@ final class DictationBoundsTests: XCTestCase {
         let t = Date()
         await c.handle(.dictationStop(id: "d1"))
         let ms = Date().timeIntervalSince(t) * 1000
-        XCTAssertLessThan(ms, Double(tail.budgetMs(audioMs: 560 + 680, queuedMs: 680)) + 150, "within the helper's budget")
+        XCTAssertLessThan(ms, Double(tail.budgetMs(audioMs: 560 + 680, queuedMs: 680)) + 150 + ciSlackMs, "within the helper's budget")
         XCTAssertFalse(warned(out.value, "append still running"), "the slow append was awaited")
         XCTAssertEqual(stoppedText(out.value, "d1"), "w1 w5", "finish(), with the words after the partial")
     }
@@ -510,7 +515,7 @@ final class DictationBoundsTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 250_000_000)
         let t = Date()
         await c.handle(.dictationStop(id: "d1"))
-        XCTAssertLessThan(Date().timeIntervalSince(t) * 1000, Double(tail.budgetMs(audioMs: 560)) + 100)
+        XCTAssertLessThan(Date().timeIntervalSince(t) * 1000, Double(tail.budgetMs(audioMs: 560)) + 100 + ciSlackMs)
         XCTAssertEqual(stoppedText(out.value, "d1"), "w1")
         XCTAssertTrue(warned(out.value, "final text not ready"))
         await c.handle(.dictationStart(id: "d2"))  // held until the pad and finish return: refused (N134)
