@@ -53,7 +53,10 @@ if (process.argv.includes('--test')) {
   process.stderr.write(r.stderr ?? '');
   const out = `${r.stdout}\n${r.stderr}`;
   const m = [
-    ...out.matchAll(/Executed (\d+) tests?, with (\d+) failures?/g),
+    // "Executed 6 tests, with 1 test skipped and 0 failures": XCTSkip adds the skipped clause.
+    ...out.matchAll(
+      /Executed (\d+) tests?, with (?:\d+ tests? skipped and )?(\d+) failures?/g,
+    ),
   ].at(-1);
   const executed = m ? Number(m[1]) : 0;
   const failures = m ? Number(m[2]) : 0;
