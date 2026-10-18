@@ -2,7 +2,8 @@
 //! scores the recogniser's raw text; this adds what talk does to it before the insert (the rules cleanup and the
 //! dictionary, [`cleanup_dictation`]), so the cleanup's effect on content and on formatting is measured on the same
 //! clips. Pure functions over local JSON; `examples/echo_score.rs` is the command line. The word normalisation is
-//! the helper's `EchoWER` (QrtzHelperCore/EchoBench.swift), kept equal by the unit tests on both sides.
+//! the helper's `EchoWER` (QrtzHelperCore/EchoBench.swift), kept equal by the unit tests on both sides (the
+//! typographic-quote folding of N162 is Rust-only until the helper's side takes it, review §12.31).
 use crate::cleanup::cleanup_dictation;
 use crate::contract::DictionaryEntry;
 use serde_json::{json, Value};
@@ -45,11 +46,23 @@ fn tens(w: &str) -> Option<u32> {
     })
 }
 
-/// Content words: lowercased, punctuation dropped (apostrophes kept inside words), `%` as "percent", number words
-/// 0–99 as digits.
+/// N162: a reference typed on a Mac (TextEdit, Notes) gets smart quotes, the recogniser and talk write ASCII. Both
+/// sides are scored with ASCII apostrophes and quotes, so "Don’t" and "don't" are the same word.
+fn ascii_quotes(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            '\u{2018}' | '\u{2019}' | '\u{02BC}' => '\'',
+            '\u{201C}' | '\u{201D}' => '"',
+            c => c,
+        })
+        .collect()
+}
+
+/// Content words: lowercased, punctuation dropped (apostrophes kept inside words, typographic ones as ASCII), `%` as
+/// "percent", number words 0–99 as digits.
 pub fn normalize(s: &str) -> Vec<String> {
     let mut cleaned = String::new();
-    for ch in s.to_lowercase().chars() {
+    for ch in ascii_quotes(s).to_lowercase().chars() {
         if ch.is_alphanumeric() || ch == '\'' {
             cleaned.push(ch);
         } else if ch == '%' {
@@ -86,9 +99,9 @@ pub fn normalize(s: &str) -> Vec<String> {
     out
 }
 
-/// Formatted words: whitespace tokens as written (case and punctuation count).
+/// Formatted words: whitespace tokens as written (case and punctuation count; typographic quotes as ASCII, N162).
 pub fn formatted(s: &str) -> Vec<String> {
-    s.split_whitespace().map(str::to_owned).collect()
+    ascii_quotes(s).split_whitespace().map(str::to_owned).collect()
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -238,6 +251,27 @@ mod tests {
             w("move it to thursday at 25 past 3")
         );
         assert_eq!(normalize("Don't stop—it's 50%."), w("don't stop it's 50 percent"));
+    }
+
+    #[test]
+    fn typographic_quotes_score_as_ascii() {
+        // N162: a reference with smart quotes (macOS TextEdit) against the recogniser's ASCII.
+        assert_eq!(
+            normalize("Don\u{2019}t stop, it\u{2019}s fine"),
+            w("don't stop it's fine")
+        );
+        assert_eq!(
+            score(&normalize("I\u{2019}ll be late"), &normalize("I'll be late")).errors(),
+            0
+        );
+        assert_eq!(
+            score(
+                &formatted("\u{201C}Ship it,\u{201D} he said."),
+                &formatted("\"Ship it,\" he said.")
+            )
+            .errors(),
+            0
+        );
     }
 
     #[test]
