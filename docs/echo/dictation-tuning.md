@@ -172,7 +172,8 @@ counts, and the recogniser's name only. Flags
 means the press opened the mic; talk's `head_ms` (ADR 0107) is the audio the helper heard before talk's start (a
 press queued behind a finishing dictation shows seconds here). `level_p10_dbfs` / `level_p90_dbfs` (ADR 0112) are the
 mic's floor between words and about its speech level, in dBFS, after the echo gate; §10 says how to read them.
-`grep "echo timing" ~/Library/Logs/qrtz/qrtz.log` after a day of normal use is the most useful thing to send back.
+After a day of normal use, `node scripts/echo-timing-report.mjs` (ADR 0156; reads `~/Library/Logs/qrtz`, `--since
+YYYY-MM-DD`, `--json`) summarizes both lines into the tables below; its output is the most useful thing to send back.
 
 ## 6. Linux cross-check (same model family, ONNX)
 
@@ -780,3 +781,13 @@ move. Two requirements for the split layout (`QRTZ_MODULE_HELPERS=split`, off by
 dictation yet): echo's own bundle needs the system audio grant or the speaker gate goes off silently (N173), and echo
 must be prewarmed after a download or the first press is cold (N174). Both are on the helper side; checks are in
 ADR 0150. Nothing new to test on the Mac in the default layout. The ranked plan above is unchanged.
+
+## 21. Cycle 47: the timing report (ADR 0156, N175)
+
+No speed or accuracy change: the module split's echo controller (`6c48502`) is reviewed, and N173 / N174 are closed
+(review §55). New: `node scripts/echo-timing-report.mjs` turns the local log into this plan's inputs: per recogniser,
+p50 / p90 / max of release-to-stopped, finalize, tail decode and backlog wait; the `gate=` modes; the release tail
+confidence histogram against the 0.6 floor (rank 10's Core ML calibration); talk's final / insert times; and how often
+the mic was quiet (rank 7). Its notes flag `tail_decode_ms` p90 over 150 ms (§18), timeouts, `gate=off-no-*` and too
+few tails to calibrate. Talk's latency line now has plain stage times (`final_ms=160`, not `Some(160.0)`;
+`311f89e`). No numbers from the Mac yet; the ranked plan above is unchanged.
