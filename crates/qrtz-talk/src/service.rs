@@ -308,6 +308,8 @@ struct Inner {
     /// larger of `dictation.started`'s `preRollMs` and, for a press, the time from the press to the start, both
     /// bounded by [`HelperTail::arm_max_ms`]. Counted in the stop wait, as the helper counts it.
     head_ms: f64,
+    /// ADR 0112: how loud the mic was while this dictation listened (`dictation.level`), for the latency line.
+    level: crate::level::LevelMeter,
     first_partial: Option<f64>,
     waiters: HashMap<String, oneshot::Sender<Option<Value>>>,
     attempt: Option<Attempt>,
@@ -368,6 +370,7 @@ impl TalkService {
                 key_up: 0.0,
                 press_at: 0.0,
                 head_ms: 0.0,
+                level: Default::default(),
                 first_partial: None,
                 waiters: HashMap::new(),
                 attempt: None,
@@ -626,6 +629,9 @@ impl TalkService {
                 let mut g = self.lock();
                 if g.view.phase == TalkPhase::Listening {
                     g.view.level = m["rms"].as_f64().unwrap_or(0.0);
+                    if let Some(r) = m["rms"].as_f64() {
+                        g.level.add(r);
+                    }
                     self.emit_view(&g);
                 }
             }
@@ -996,6 +1002,7 @@ impl TalkService {
                 0.0
             };
             g.first_partial = None;
+            g.level = Default::default();
             g.view = TalkView {
                 phase: TalkPhase::Listening,
                 id: Some(id.clone()),
@@ -1300,10 +1307,11 @@ impl TalkService {
                 g.key_up,
                 g.first_partial,
                 g.head_ms,
+                g.level.summary(),
             );
             (text, times)
         };
-        let (text, (started_at, key_down, key_up, first_partial, head_ms)) = text;
+        let (text, (started_at, key_down, key_up, first_partial, head_ms, level)) = text;
         if text.trim().is_empty() {
             let mut g = self.lock();
             g.view = g.view.idle_keeping();
@@ -1396,6 +1404,10 @@ impl TalkService {
             cleanup = ?entry.cleanup,
             raw_chars = entry.raw.chars().count(),
             inserted_chars = entry.text.chars().count(),
+            level_blocks = level.map(|l| l.blocks),
+            level_p10_dbfs = level.map(|l| l.p10_dbfs),
+            level_p90_dbfs = level.map(|l| l.p90_dbfs),
+            level_saturated = level.map(|l| l.saturated).filter(|n| *n > 0),
             "talk latency"
         );
         if cfg.save_history {

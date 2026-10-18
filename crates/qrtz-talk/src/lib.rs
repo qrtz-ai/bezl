@@ -9,6 +9,7 @@ pub mod bench;
 pub mod cleanup;
 pub mod config;
 pub mod contract;
+pub mod level;
 pub mod mock;
 pub mod service;
 pub mod speech;

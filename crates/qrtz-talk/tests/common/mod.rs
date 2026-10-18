@@ -110,6 +110,8 @@ pub struct HelperOpts {
     pub final_tail_words: usize,
     /// N166: `dictation.started`'s `preRollMs` (the head an armed or warm mic heard before the start, ADR 0104).
     pub pre_roll_ms: u64,
+    /// ADR 0112: the `dictation.level` values sent with each audio block, in turn (empty: always 0.2).
+    pub levels: Vec<f64>,
 }
 
 struct HState {
@@ -329,9 +331,13 @@ impl MockHelper {
                 st.heard += 1;
                 let (seq, heard) = (st.seq, st.heard);
                 let speech = st.speech.clone();
+                let level = match st.opts.levels.len() {
+                    0 => 0.2,
+                    n => st.opts.levels[(heard - 1) % n],
+                };
                 drop(st);
                 let pcm = base64::engine::general_purpose::STANDARD.encode(vec![0u8; (every as usize) * 32]);
-                self.deliver(json!({"type": "dictation.level", "rms": 0.2}));
+                self.deliver(json!({"type": "dictation.level", "rms": level}));
                 self.deliver(json!({"type": "dictation.audio", "id": id, "seq": seq, "pcm16": pcm}));
                 // The on-device recogniser: a growing partial.
                 match speech {
