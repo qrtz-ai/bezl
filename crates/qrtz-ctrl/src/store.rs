@@ -338,6 +338,15 @@ impl Store {
         Ok(())
     }
 
+    /// Persist records already appended to `log` in memory (from index `from`): the executor's runner appends the
+    /// records of one action, and they are written right after it (slice 5).
+    pub fn persist_tail(&self, log: &EventLog, from: usize) -> Result<(), StoreError> {
+        for r in log.records().iter().skip(from) {
+            append_line(&self.run_path(log.run_id()), r)?;
+        }
+        Ok(())
+    }
+
     fn run_path(&self, run_id: &str) -> PathBuf {
         self.dir.join("runs").join(format!("{run_id}.jsonl"))
     }

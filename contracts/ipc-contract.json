@@ -7775,6 +7775,7 @@
             "enum": [
               "pending-intent",
               "asking",
+              "needs-confirm",
               "planned",
               "running",
               "done",
@@ -7843,6 +7844,7 @@
               "enum": [
                 "pending-intent",
                 "asking",
+                "needs-confirm",
                 "planned",
                 "running",
                 "done",
@@ -7918,6 +7920,7 @@
                 "enum": [
                   "pending-intent",
                   "asking",
+                  "needs-confirm",
                   "planned",
                   "running",
                   "done",
@@ -8056,6 +8059,7 @@
                 "enum": [
                   "pending-intent",
                   "asking",
+                  "needs-confirm",
                   "planned",
                   "running",
                   "done",
@@ -8080,7 +8084,8 @@
                         "choose_app",
                         "choose_target",
                         "choose_text",
-                        "choose_move"
+                        "choose_move",
+                        "choose_control"
                       ]
                     },
                     "outcome": {
@@ -8173,7 +8178,8 @@
                                 "choose_app",
                                 "choose_target",
                                 "choose_text",
-                                "choose_move"
+                                "choose_move",
+                                "choose_control"
                               ]
                             },
                             "option": {
@@ -8221,7 +8227,8 @@
                           "choose_app",
                           "choose_target",
                           "choose_text",
-                          "choose_move"
+                          "choose_move",
+                          "choose_control"
                         ]
                       },
                       "options": {
@@ -8269,6 +8276,46 @@
                     "type": "null"
                   }
                 ]
+              },
+              "held": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "irreversible",
+                      "files-not-yet",
+                      "no-route",
+                      "unknown-app"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "verified": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "actionId": {
+                      "type": "string"
+                    },
+                    "outcome": {
+                      "type": "string",
+                      "enum": [
+                        "passed",
+                        "failed",
+                        "unverifiable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "actionId",
+                    "outcome"
+                  ],
+                  "additionalProperties": false
+                }
               }
             },
             "required": [
@@ -8348,6 +8395,7 @@
                 "enum": [
                   "pending-intent",
                   "asking",
+                  "needs-confirm",
                   "planned",
                   "running",
                   "done",
@@ -8486,6 +8534,7 @@
                 "enum": [
                   "pending-intent",
                   "asking",
+                  "needs-confirm",
                   "planned",
                   "running",
                   "done",
@@ -8510,7 +8559,8 @@
                         "choose_app",
                         "choose_target",
                         "choose_text",
-                        "choose_move"
+                        "choose_move",
+                        "choose_control"
                       ]
                     },
                     "outcome": {
@@ -8603,7 +8653,8 @@
                                 "choose_app",
                                 "choose_target",
                                 "choose_text",
-                                "choose_move"
+                                "choose_move",
+                                "choose_control"
                               ]
                             },
                             "option": {
@@ -8651,7 +8702,8 @@
                           "choose_app",
                           "choose_target",
                           "choose_text",
-                          "choose_move"
+                          "choose_move",
+                          "choose_control"
                         ]
                       },
                       "options": {
@@ -8699,6 +8751,46 @@
                     "type": "null"
                   }
                 ]
+              },
+              "held": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "irreversible",
+                      "files-not-yet",
+                      "no-route",
+                      "unknown-app"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "verified": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "actionId": {
+                      "type": "string"
+                    },
+                    "outcome": {
+                      "type": "string",
+                      "enum": [
+                        "passed",
+                        "failed",
+                        "unverifiable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "actionId",
+                    "outcome"
+                  ],
+                  "additionalProperties": false
+                }
               }
             },
             "required": [

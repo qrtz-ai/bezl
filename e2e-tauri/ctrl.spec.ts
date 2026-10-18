@@ -59,10 +59,10 @@ test('ctrl: create a task, see it listed, run it, see and scrub its history', as
   await expect(downloads.getByTestId('ctrl-task-schedule')).toContainText(
     'last run',
   );
-  // task.started, intent.pending, obs.apps, 4 decisions, plan.produced.
-  await expect(ctrl.getByTestId('ctrl-event')).toHaveCount(8);
+  // task.started, intent.pending, obs.apps, 4 decisions, plan.produced, exec.held (file routes are slice 7).
+  await expect(ctrl.getByTestId('ctrl-event')).toHaveCount(9);
   await expect(ctrl.getByTestId('ctrl-state')).toHaveText(
-    'step 8 of 8 · planned · 4 decisions',
+    'step 9 of 9 · planned · 4 decisions · file moves come in a later version',
   );
   await expect(ctrl.getByTestId('ctrl-plan-steps')).toHaveText(
     'plan: clean up a folder → files (no app) → downloads → sort by kind, trash old installers',
@@ -81,13 +81,13 @@ test('ctrl: create a task, see it listed, run it, see and scrub its history', as
   // Scrub back to before the decisions: no plan, no inspector, still waiting for intent.
   await ctrl.getByTestId('ctrl-scrub').fill('2');
   await expect(ctrl.getByTestId('ctrl-state')).toHaveText(
-    'step 2 of 8 · waiting for intent',
+    'step 2 of 9 · waiting for intent',
   );
   await expect(ctrl.getByTestId('ctrl-plan')).toHaveCount(0);
   await expect(decisions).toHaveCount(0);
   await ctrl.getByTestId('ctrl-scrub').fill('1');
   await expect(ctrl.getByTestId('ctrl-state')).toHaveText(
-    'step 1 of 8 · running',
+    'step 1 of 9 · running',
   );
   await expect(
     ctrl.locator('[data-testid="ctrl-event"][data-applied]'),
@@ -142,9 +142,8 @@ test('ctrl: an unclear task asks which one, the answer plans it, cancel ends a r
     .filter({ hasText: 'close browser tabs' })
     .click();
   await expect(ask).toHaveCount(0);
-  await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText(
-    'planned',
-  );
+  // With the helper connected the plan executes in the background and verifies (ADR 0108).
+  await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText('done');
   await expect(ctrl.getByTestId('ctrl-plan-steps')).toHaveText(
     'plan: close browser tabs → your default browser → all tabs → close every tab by script',
   );
@@ -163,5 +162,42 @@ test('ctrl: an unclear task asks which one, the answer plans it, cancel ends a r
     'cancelled',
   );
   await expect(ask).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('ctrl: a close-tabs run executes in the background, verifies, and scrubs back to the plan', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  await ctrl.getByTestId('ctrl-task-input').fill('every day close all my tabs');
+  await ctrl.getByTestId('ctrl-schedule-daily').click();
+  await ctrl.getByTestId('ctrl-schedule-time').fill('09:00');
+  await ctrl.getByTestId('ctrl-task-add').click();
+  await ctrl.getByTestId('ctrl-task').getByTestId('ctrl-task-run').click();
+
+  const runs = ctrl.getByTestId('ctrl-run');
+  await expect(runs.first().getByTestId('ctrl-run-status')).toHaveText('done');
+  // 3 + 4 decisions + plan.produced + one guarded action (requested, decided, 2 guard snapshots, executed,
+  // guard result) + verify.result + task.finished.
+  await expect(ctrl.getByTestId('ctrl-event')).toHaveCount(16);
+  await expect(ctrl.getByTestId('ctrl-state')).toHaveText(
+    'step 16 of 16 · done · 4 decisions · 1/1 actions done · 1/1 verified',
+  );
+  await expect(
+    ctrl.getByTestId('ctrl-event').filter({ hasText: 'verify result' }),
+  ).toHaveCount(1);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  // Scrub back to the plan, before the action: planned, nothing done yet.
+  await ctrl.getByTestId('ctrl-scrub').fill('8');
+  await expect(ctrl.getByTestId('ctrl-state')).toHaveText(
+    'step 8 of 16 · planned · 4 decisions',
+  );
+  await expect(ctrl.getByTestId('ctrl-plan-steps')).toHaveText(
+    'plan: close browser tabs → your default browser → all tabs → close every tab by script',
+  );
   expect(errors).toEqual([]);
 });

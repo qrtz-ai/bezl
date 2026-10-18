@@ -71,6 +71,7 @@ export function describeSchedule(s: CtrlSchedule): string {
 const STATUS: Record<CtrlRunStatus, [string, BadgeTone]> = {
   'pending-intent': ['waiting for intent', 'neutral'],
   asking: ['needs you', 'warning'],
+  'needs-confirm': ['asks before it acts', 'warning'],
   planned: ['planned', 'primary'],
   running: ['running', 'primary'],
   done: ['done', 'success'],
@@ -104,6 +105,7 @@ const QUESTION: Record<CtrlNode, string> = {
   choose_target: 'on what',
   choose_text: 'what to type',
   choose_move: 'which move',
+  choose_control: 'which control',
 };
 export const nodeQuestion = (n: CtrlNode) => QUESTION[n];
 
@@ -136,6 +138,14 @@ export const decisionItem = (d: CtrlDecision): DecisionItem => ({
   })),
 });
 
+/** Why the executor stopped before acting (ADR 0108); irreversible shows as the run's status. */
+const HELD: Record<NonNullable<CtrlRunState['held']>, string> = {
+  irreversible: 'asks before it acts',
+  'files-not-yet': 'file moves come in a later version',
+  'no-route': 'no way to do it in the background',
+  'unknown-app': 'app not found',
+};
+
 /** The reducer's state in one line. */
 export function stateSummary(s: CtrlRunState): string {
   const parts = [runStatus(s.status)[0]];
@@ -144,6 +154,12 @@ export function stateSummary(s: CtrlRunState): string {
     const done = s.actions.filter((a) => a.status === 'done').length;
     parts.push(`${done}/${s.actions.length} actions done`);
   }
+  const verified = s.verified ?? [];
+  if (verified.length) {
+    const ok = verified.filter((v) => v.outcome !== 'failed').length;
+    parts.push(`${ok}/${verified.length} verified`);
+  }
+  if (s.held && s.held !== 'irreversible') parts.push(HELD[s.held]);
   if (s.violations) parts.push(`${s.violations} guard violations`);
   if (s.quarantined.length) parts.push(`${s.quarantined.length} routes off`);
   return parts.join(' · ');

@@ -176,3 +176,64 @@ async fn ctrl_channels_are_validated_gated_and_honest_when_missing() {
     let v = call(&none, "ctrl", "ctrl:tasks", Value::Null).await;
     assert_eq!(v["error"]["code"], "E_UNAVAILABLE", "{v}");
 }
+
+/// Slice 5 (ADR 0108) through the router: with the ctrl helper connected (the in-memory fake speaking the real
+/// ctrl protocol), "close all my tabs" executes in the background, verifies, and every response validates against
+/// the generated contract; an irreversible task stops at needs-confirm with nothing acted.
+#[tokio::test]
+async fn with_a_helper_a_run_executes_verifies_and_holds_irreversible_plans_through_the_router() {
+    use qrtz_ctrl::helper::{FakeHelper, FakeWorld, HelperClient};
+    let d = tempfile::tempdir().unwrap();
+    let fake = Arc::new(FakeHelper::new(FakeWorld::typical(4)));
+    let svc = AppService::new(AppDeps {
+        info: AppInfo {
+            name: "qrtz".into(),
+            version: "0.1.0".into(),
+            platform: "linux".into(),
+            arch: "x64".into(),
+            shell: "tauri test".into(),
+        },
+        config: ConfigStore::open(d.path().join("config.json")).into(),
+        runtime: Arc::new(StubRuntime::default()),
+        storage: Arc::new(StubStorage),
+        talk: Arc::new(StubTalk),
+        shell: Arc::new(NoShell),
+        helper: None,
+        events: Events::new(),
+    });
+    svc.set_ctrl(Arc::new(
+        CtrlService::open(d.path().join("ctrl"), Box::new(SystemClock::default()))
+            .with_helper(Arc::new(HelperClient::new(Box::new(fake.clone())))),
+    ));
+    let r = Router::new(Shared(svc));
+    for (text, status) in [
+        ("every day close all my tabs", "done"),
+        ("every week empty the trash", "needs-confirm"),
+    ] {
+        let t = call(
+            &r,
+            "ctrl",
+            "ctrl:create-task",
+            json!({"text": text, "schedule": {"kind": "once", "at": null}}),
+        )
+        .await;
+        let id = t["data"]["id"].as_str().unwrap().to_string();
+        let run = call(&r, "ctrl", "ctrl:run-now", json!({"id": id})).await;
+        assert_eq!(run["ok"], true, "{run}");
+        assert_eq!(run["data"]["status"], status, "{run}");
+        let v = call(&r, "ctrl", "ctrl:run", json!({"runId": run["data"]["id"]})).await;
+        assert_eq!(v["ok"], true, "{v}");
+        assert_eq!(v["data"]["state"]["violations"], 0);
+    }
+    let w = fake.world();
+    assert_eq!(w.acted.len(), 1, "only the reversible task acted");
+    assert_eq!(w.frontmost_pid, 100, "the user's app stayed frontmost");
+    assert_eq!(
+        w.apps
+            .iter()
+            .find(|a| a.bundle_id == "com.apple.Safari")
+            .unwrap()
+            .tabs,
+        0
+    );
+}

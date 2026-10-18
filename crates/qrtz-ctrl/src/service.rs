@@ -2,9 +2,13 @@
 //! validated against the IPC contract (`packages/core/src/ipc/contract.ts`); answers are the contract's shapes
 //! (camelCase). Nothing here executes a task yet: a due run (manual or scheduled) records `task.started` +
 //! `intent.pending`, then the decision layers (slice 4, ADR 0106) observe the app catalog and decide the intent
-//! (`decision.made` … `plan.produced`, or an ask the user answers through `ctrl:answer`). The AX executor is
-//! slice 5.
+//! (`decision.made` … `plan.produced`, or an ask the user answers through `ctrl:answer`). With a helper connected
+//! (slice 5, ADR 0108) the catalog comes from it (running apps, the real default browser) and the plan executes
+//! through the ctrl helper protocol (`exec::Driver`): routes, guard, verify, backtrack; irreversible plans stop
+//! before acting (`needs-confirm`, slice 6).
 use crate::decide::{ask_options, run_chain, Goal, Heuristic, Scorer};
+use crate::exec::{Driver, HoldReason, Sink, VerifyOutcome};
+use crate::helper::{HelperApps, HelperClient};
 use crate::layers::{label, AppSource, ScanApps};
 use crate::log::{fold, ActionStatus, CtrlState, DecisionState, Event, EventLog, TaskStatus};
 use crate::runner::Clock;
@@ -12,7 +16,7 @@ use crate::schedule::{is_due, next_due, LocalZone, SystemLocalZone};
 use crate::store::{Store, StoreError};
 use crate::task::{Schedule, Task};
 use serde_json::{json, Value};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CtrlErrorCode {
@@ -79,6 +83,21 @@ pub struct CtrlService {
     zone: Box<dyn LocalZone>,
     apps: Box<dyn AppSource>,
     scorer: Box<dyn Scorer>,
+    /// The ctrl helper (slice 5). `None`: runs stop at `planned` (nothing executes).
+    helper: Option<Arc<HelperClient>>,
+}
+
+/// Writes the driver's events to the run's file as they happen.
+struct StoreSink<'a>(&'a Store, u64, &'a dyn Clock);
+impl Sink for StoreSink<'_> {
+    fn push(&mut self, log: &mut EventLog, e: Event) -> Result<(), String> {
+        self.0
+            .append_run_record(log, self.2.mono_ns(), self.1, e)
+            .map_err(|e| format!("{e:?}"))
+    }
+    fn flush(&mut self, log: &EventLog, from: usize) -> Result<(), String> {
+        self.0.persist_tail(log, from).map_err(|e| format!("{e:?}"))
+    }
 }
 
 /// The status a run shows: its `task.finished`, else asking the user, else waiting for an intent, else planned
@@ -91,6 +110,7 @@ pub fn run_status(s: &CtrlState) -> &'static str {
         Some(TaskStatus::AskedOut) => "asked-out",
         Some(TaskStatus::Deferred) => "deferred",
         None if s.ask.is_some() => "asking",
+        None if s.held == Some(HoldReason::Irreversible) => "needs-confirm",
         None if s.intent_pending => "pending-intent",
         None if s.plan.is_some() && s.actions.is_empty() => "planned",
         None => "running",
@@ -124,7 +144,10 @@ fn event_action(e: &Event) -> Option<&str> {
         | Event::DecisionMade { .. }
         | Event::DecisionAnswered { .. }
         | Event::Backtrack { .. }
-        | Event::PlanProduced { .. } => None,
+        | Event::PlanProduced { .. }
+        | Event::ObsSnapshot { .. }
+        | Event::ExecHeld { .. } => None,
+        Event::ObsDiff { action_id, .. } | Event::VerifyResult { action_id, .. } => Some(action_id),
     }
 }
 
@@ -207,6 +230,17 @@ fn state_json(s: &CtrlState, goal: Option<&Goal>) -> Value {
         "inconclusive": s.inconclusive,
         "quarantined": s.quarantined.iter().map(|(app, rung)| json!({"app": app, "rung": rung})).collect::<Vec<_>>(),
         "status": run_status(s),
+        "held": s.held.map(|h| match h {
+            HoldReason::Irreversible => "irreversible",
+            HoldReason::FilesNotYet => "files-not-yet",
+            HoldReason::NoRoute => "no-route",
+            HoldReason::UnknownApp => "unknown-app",
+        }),
+        "verified": s.verified.iter().map(|(id, v)| json!({"actionId": id, "outcome": match v {
+            VerifyOutcome::Passed => "passed",
+            VerifyOutcome::Failed => "failed",
+            VerifyOutcome::Unverifiable => "unverifiable",
+        }})).collect::<Vec<_>>(),
     })
 }
 
@@ -231,7 +265,14 @@ impl CtrlService {
             zone,
             apps: Box::new(ScanApps::mac_default()),
             scorer: Box::new(Heuristic),
+            helper: None,
         }
+    }
+
+    /// Connect the ctrl helper: the app catalog comes from it and plans execute through it (slice 5).
+    pub fn with_helper(mut self, helper: Arc<HelperClient>) -> Self {
+        self.helper = Some(helper);
+        self
     }
 
     /// Where the decision layers get the app catalog (default: the application folders).
@@ -295,7 +336,10 @@ impl CtrlService {
                 (mono, Event::IntentPending { task_id: id.clone() }),
             ],
         )?;
-        let apps = self.apps.catalog().observe();
+        let apps = match &self.helper {
+            Some(h) => HelperApps(h).catalog().observe(),
+            None => self.apps.catalog().observe(),
+        };
         store.append_run_record(&mut log, self.clock.mono_ns(), now, Event::ObsApps { apps })?;
         let text = store.task(task_id)?.text.clone();
         self.continue_chain(store, &mut log, now, task_id, &text)?;
@@ -312,6 +356,17 @@ impl CtrlService {
         text: &str,
     ) -> Result<(), CtrlError> {
         let goal = Goal { task_id, text };
+        if let Some(h) = &self.helper {
+            let driver = Driver {
+                helper: h,
+                scorer: self.scorer.as_ref(),
+                clock: self.clock.as_ref(),
+            };
+            let mut sink = StoreSink(store, now, self.clock.as_ref());
+            return driver.drive(&goal, log, &mut sink).map_err(|e| {
+                CtrlError::new(CtrlErrorCode::Internal, format!("couldn't save ctrl's run ({e})"))
+            });
+        }
         for e in run_chain(&goal, &log.state(), self.scorer.as_ref(), self.clock.as_ref()) {
             store.append_run_record(log, self.clock.mono_ns(), now, e)?;
         }

@@ -26,6 +26,7 @@ fn question_text(node: Node) -> &'static str {
         Node::ChooseTarget => "what should it act on?",
         Node::ChooseText => "what should be typed?",
         Node::ChooseMove => "which move does it?",
+        Node::ChooseControl => "which control in it?",
     }
 }
 
@@ -113,5 +114,23 @@ impl LayaRuntime for Box<dyn LayaRuntime> {
     }
     fn choose(&self, r: &LayaRequest) -> Result<Vec<f32>, String> {
         (**self).choose(r)
+    }
+}
+
+/// The Laya runtime behind the ctrl helper protocol (slice 5, ADR 0108): one `ctrl.laya` request per question, run
+/// by the helper's Core ML stack on the consented, installed model. The helper answers `laya.no_model` until the
+/// model is downloaded from onboarding / settings; [`decide::decide`](crate::decide::decide) then falls back to the
+/// heuristic layer for that question and the log says so. Selecting it still goes through [`select_scorer`].
+pub struct HelperLaya {
+    pub helper: std::sync::Arc<crate::helper::HelperClient>,
+    pub model: ModelId,
+}
+
+impl LayaRuntime for HelperLaya {
+    fn model(&self) -> ModelId {
+        self.model.clone()
+    }
+    fn choose(&self, r: &LayaRequest) -> Result<Vec<f32>, String> {
+        self.helper.laya(&r.state, &r.question, &r.options)
     }
 }

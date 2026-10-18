@@ -8,6 +8,7 @@
 //!
 //! App names never reach the log: `obs.apps` carries bundle ids and hashed name tokens, and the goal's tokens are
 //! hashed the same way to match them.
+use crate::ax::{role_slug, AxNode, AxSnapshot};
 use crate::decide::{Goal, LadderHint, Node, Opt, OptionKind, MAX_OPTIONS, NONE};
 use crate::log::PlanStep;
 use serde::{Deserialize, Serialize};
@@ -34,6 +35,12 @@ pub struct Question {
 pub enum Next {
     Ask(Question),
     Plan(Vec<PlanStep>),
+    /// The next question needs an AX observation first (slice 5): the helper snapshots `app`'s front window
+    /// (`scope: None`) or one element's children, the chain records `obs.snapshot`, and asks again.
+    Observe {
+        app: String,
+        scope: Option<String>,
+    },
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -170,6 +177,10 @@ pub struct AppsObs {
     /// The default `https` handler, if known (the helper reports it from slice 5). Unknown → the symbolic
     /// `app.default_browser` option, resolved at execution.
     pub default_browser: Option<String>,
+    /// The catalog came from the helper, which can also snapshot AX trees (slice 5): the move question then
+    /// observes the app's front window first. Absent (false) in older logs, which replay unchanged.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ax: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -184,6 +195,8 @@ pub struct AppEntry {
 pub struct AppCatalog {
     pub apps: Vec<AppEntry>,
     pub default_browser: Option<String>,
+    /// From the helper (LaunchServices + AX), see [`AppsObs::ax`].
+    pub ax: bool,
 }
 
 impl AppCatalog {
@@ -208,6 +221,7 @@ impl AppCatalog {
         AppsObs {
             apps,
             default_browser: self.default_browser.clone(),
+            ax: self.ax,
         }
     }
 }
@@ -322,6 +336,7 @@ impl AppSource for ScanApps {
         AppCatalog {
             apps: names.iter().map(|n| app_entry(n)).collect(),
             default_browser: None,
+            ax: false,
         }
     }
 }
@@ -751,9 +766,14 @@ fn irreversible(mut c: Choice) -> Choice {
     c
 }
 
-fn move_question(intent: &str, toks: &[Tok], chosen: &BTreeMap<Node, String>) -> Question {
+fn move_question(
+    intent: &str,
+    toks: &[Tok],
+    chosen: &BTreeMap<Node, String>,
+    snap: Option<&AxSnapshot>,
+) -> Question {
     let target = chosen.get(&Node::ChooseTarget).map(String::as_str);
-    let cs = match intent {
+    let mut cs = match intent {
         "close_tabs" => {
             let all = target == Some("scope.all_tabs");
             let front = target == Some("scope.front_tab");
@@ -792,12 +812,85 @@ fn move_question(intent: &str, toks: &[Tok], chosen: &BTreeMap<Node, String>) ->
         "send_message" => vec![shortcut("cmd+n", 3000), irreversible(shortcut("cmd+return", 0))],
         _ => vec![],
     };
+    // The front window's top-level branches join the shortcuts and routes (slice 5, ADR 0108).
+    if let Some(snap) = snap {
+        cs.extend(branch_choices(intent, toks, snap));
+    }
     finish(Node::ChooseMove, cs)
+}
+
+/// The AX option id: `ax.<element handle>.<role slug>` (the slug is only for the label).
+pub fn branch_id(n: &AxNode) -> String {
+    format!("ax.{}.{}", n.id, role_slug(n))
+}
+
+/// The element handle of an `ax.` option id.
+pub fn branch_element(option: &str) -> Option<&str> {
+    option.strip_prefix("ax.")?.split_once('.').map(|(e, _)| e)
+}
+
+/// Heuristic priors for AX elements: title overlap with the goal, the window's close button for "close windows",
+/// pressable leaves a little over panes. Below the scripting routes, so a script verb still wins when it exists.
+fn branch_choices(intent: &str, toks: &[Tok], snap: &AxSnapshot) -> Vec<Choice> {
+    let goal: BTreeSet<String> = toks
+        .iter()
+        .filter(|t| !STOP.contains(&t.w.as_str()))
+        .map(|t| tok_hash(&t.w))
+        .collect();
+    snap.nodes
+        .iter()
+        .map(|n| {
+            let overlap = n.tokens.iter().filter(|h| goal.contains(*h)).count() as i64;
+            let mut p = 200 + 1200 * overlap;
+            if intent == "close_windows" && n.subrole.as_deref() == Some("AXCloseButton") {
+                p += 3000;
+            }
+            if n.children == 0 && n.actions.iter().any(|a| a == "AXPress") {
+                p += 300;
+            }
+            choice(opt(branch_id(n), OptionKind::Branch), p)
+        })
+        .collect()
+}
+
+/// Inside a chosen branch: its children (window/pane → control).
+fn control_question(intent: &str, toks: &[Tok], snap: &AxSnapshot) -> Question {
+    finish(Node::ChooseControl, branch_choices(intent, toks, snap))
+}
+
+/// The concrete app the chain chose: a bundle id, the resolved default browser, or none (files).
+pub fn chosen_app(apps: &AppsObs, chosen: &BTreeMap<Node, String>) -> Option<String> {
+    match chosen.get(&Node::ChooseApp)?.strip_prefix("app.")? {
+        "files" => None,
+        "default_browser" => apps.default_browser.clone(),
+        id => Some(id.to_string()),
+    }
+}
+
+/// The snapshot recorded for (app, scope), if any (the latest wins).
+pub fn find_snapshot<'a>(snaps: &'a [AxSnapshot], app: &str, scope: Option<&str>) -> Option<&'a AxSnapshot> {
+    snaps
+        .iter()
+        .rev()
+        .find(|s| s.app == app && s.scope.as_deref() == scope)
 }
 
 /// The next question for a goal, given the observed apps and the choices so far; or the plan when every node the
 /// intent needs has a choice. Pure: the same inputs give the same question (replay relies on it).
 pub fn next_question(goal: &Goal, apps: &AppsObs, chosen: &BTreeMap<Node, String>) -> Next {
+    next_question_obs(goal, apps, &[], chosen)
+}
+
+/// [`next_question`] with the AX observations recorded so far (`obs.snapshot`). With a helper catalog
+/// (`apps.ax`) and a concrete app, the move question first asks to observe the app's front window; a chosen
+/// branch with children asks to observe them, then asks `choose_control` over them. An observation that failed is
+/// recorded as an empty snapshot, so the chain carries on with shortcuts and routes only.
+pub fn next_question_obs(
+    goal: &Goal,
+    apps: &AppsObs,
+    snaps: &[AxSnapshot],
+    chosen: &BTreeMap<Node, String>,
+) -> Next {
     let toks = tokens(goal.text);
     let Some(intent_id) = chosen.get(&Node::ChooseIntent) else {
         let cs = INTENTS
@@ -833,8 +926,31 @@ pub fn next_question(goal: &Goal, apps: &AppsObs, chosen: &BTreeMap<Node, String
             });
         }
     }
+    let app = chosen_app(apps, chosen);
+    let top = app.as_deref().and_then(|a| find_snapshot(snaps, a, None));
     if !chosen.contains_key(&Node::ChooseMove) {
-        return Next::Ask(move_question(def.id, &toks, chosen));
+        if let (true, Some(a), None) = (apps.ax, app.as_deref(), top) {
+            return Next::Observe {
+                app: a.to_string(),
+                scope: None,
+            };
+        }
+        return Next::Ask(move_question(def.id, &toks, chosen, top));
+    }
+    if let (Some(a), Some(el)) = (
+        app.as_deref(),
+        chosen.get(&Node::ChooseMove).and_then(|m| branch_element(m)),
+    ) {
+        let pane = top.and_then(|t| t.node(el)).is_some_and(|n| n.children > 0);
+        if pane && !chosen.contains_key(&Node::ChooseControl) {
+            return match find_snapshot(snaps, a, Some(el)) {
+                Some(inner) => Next::Ask(control_question(def.id, &toks, inner)),
+                None => Next::Observe {
+                    app: a.to_string(),
+                    scope: Some(el.to_string()),
+                },
+            };
+        }
     }
     Next::Plan(
         [
@@ -843,6 +959,7 @@ pub fn next_question(goal: &Goal, apps: &AppsObs, chosen: &BTreeMap<Node, String
             Node::ChooseTarget,
             Node::ChooseText,
             Node::ChooseMove,
+            Node::ChooseControl,
         ]
         .into_iter()
         .filter_map(|n| {
@@ -943,6 +1060,10 @@ pub fn label(o: &Opt, goal: Option<&Goal>) -> String {
         "scope" => rest.replace('_', " "),
         "route" => route_label(rest).into(),
         "shortcut" => shortcut_label(rest),
+        // `ax.<handle>.<role slug>`: the element's role ("close button", "toolbar"); its title is never kept.
+        "ax" => rest
+            .split_once('.')
+            .map_or_else(|| "an element".into(), |(_, slug)| slug.replace('_', " ")),
         "text" => {
             let span = o
                 .label_ref

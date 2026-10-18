@@ -3,6 +3,9 @@
 // `obs.apps`, then canned decision-layer chains of the same shape the real layers produce (ADR 0106): "tabs"
 // → close tabs, "downloads" / "folder" → clean up a folder, anything else asks which intent. `ctrl:run` folds the
 // first `at` events. The real layers, persistence and replay are covered by `cargo test -p qrtz-ctrl`.
+// The mock acts as if the ctrl helper were connected (ADR 0108): a close-tabs plan executes in the background
+// (one guarded action, verified) and finishes `done`; a folder cleanup stays `planned` (file routes are slice 7).
+// The real executor against a fake helper is covered by `crates/qrtz-ctrl/tests/exec.rs`.
 import {
   AppError,
   type CtrlDecision,
@@ -21,7 +24,10 @@ interface Rec {
   decision?: CtrlDecision;
   plan?: CtrlPlan;
   answer?: { decisionId: string; choice: string | null };
-  finished?: 'cancelled';
+  finished?: 'cancelled' | 'done';
+  action?: { id: string; status: 'executing' | 'done' };
+  verified?: { actionId: string; outcome: 'passed' };
+  held?: 'files-not-yet';
 }
 
 const opt = (id: string, label: string, p: number): CtrlOption => ({
@@ -106,8 +112,14 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
     let plan: CtrlPlan | null = null;
     let ask: CtrlRunState['ask'] = null;
     let pending = false;
-    let finished = false;
+    let finished: Rec['finished'] | null = null;
+    const actions = new Map<string, 'executing' | 'done'>();
+    const verified: NonNullable<Rec['verified']>[] = [];
+    let held: Rec['held'] | null = null;
     for (const r of recs.slice(0, at)) {
+      if (r.held) held = r.held;
+      if (r.action) actions.set(r.action.id, r.action.status);
+      if (r.verified) verified.push(r.verified);
       if (r.row.kind === 'intent.pending') pending = true;
       if (r.decision) {
         decisions.push(r.decision);
@@ -136,19 +148,21 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
         plan = r.plan;
         pending = false;
       }
-      if (r.finished) finished = true;
+      if (r.finished) finished = r.finished;
     }
     const status = finished
-      ? 'cancelled'
+      ? finished
       : ask
         ? 'asking'
         : pending
           ? 'pending-intent'
-          : plan
+          : plan && !actions.size
             ? 'planned'
             : 'running';
     return {
-      actions: [],
+      actions: [...actions].map(([id, st]) => ({ id, status: st })),
+      verified,
+      held,
       violations: 0,
       inconclusive: 0,
       quarantined: [],
@@ -189,6 +203,31 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
         })),
       },
     });
+    if (intent !== 'close_tabs') {
+      // File routes run in slice 7: the executor holds the plan before acting.
+      push(r, 'exec.held', { held: 'files-not-yet' });
+      return;
+    }
+    // The executor (ADR 0108): one guarded scripting action, then its verify step.
+    const a = (kind: string, extra: Omit<Rec, 'row'> = {}) =>
+      r.recs.push({
+        row: {
+          seq: r.recs.length,
+          kind,
+          at: now(),
+          actionId: 'a0',
+          node: null,
+        },
+        ...extra,
+      });
+    a('action.requested', { action: { id: 'a0', status: 'executing' } });
+    a('action.decided');
+    a('guard.snapshot');
+    a('guard.snapshot');
+    a('action.executed', { action: { id: 'a0', status: 'done' } });
+    a('guard.result');
+    a('verify.result', { verified: { actionId: 'a0', outcome: 'passed' } });
+    push(r, 'task.finished', { finished: 'done' });
   };
   const sync = (r: { run: CtrlRun; recs: Rec[] }) => {
     r.run.events = r.recs.length;

@@ -35,6 +35,8 @@ pub enum Node {
     ChooseTarget,
     ChooseText,
     ChooseMove,
+    /// Inside a chosen AX branch (window/pane → control), slice 5.
+    ChooseControl,
 }
 
 impl Node {
@@ -45,6 +47,7 @@ impl Node {
             Node::ChooseTarget => "choose_target",
             Node::ChooseText => "choose_text",
             Node::ChooseMove => "choose_move",
+            Node::ChooseControl => "choose_control",
         }
     }
 }
@@ -286,6 +289,30 @@ pub fn ask_options(d: &crate::log::DecisionState) -> Vec<usize> {
 /// Run the chain from the current state until it asks or produces a plan. Needs `obs.apps` first (the caller
 /// observes); does nothing on a run that is asking, planned or finished.
 pub fn run_chain(goal: &Goal, state: &CtrlState, scorer: &dyn Scorer, clock: &dyn Clock) -> Vec<Event> {
+    run_chain_obs(goal, state, scorer, clock, &mut |app, scope| {
+        unobserved(app, scope, "helper.none")
+    })
+}
+
+/// An observation that couldn't be made: an empty snapshot with a short code, so the chain carries on.
+pub fn unobserved(app: &str, scope: Option<&str>, code: &str) -> Event {
+    Event::ObsSnapshot {
+        app: app.into(),
+        scope: scope.map(str::to_string),
+        snapshot: None,
+        err: Some(code.into()),
+    }
+}
+
+/// [`run_chain`] with an observer for AX scopes (slice 5): when the next question needs a snapshot, `observe`
+/// returns the `obs.snapshot` event (the helper's answer, or [`unobserved`]) and the chain asks again.
+pub fn run_chain_obs(
+    goal: &Goal,
+    state: &CtrlState,
+    scorer: &dyn Scorer,
+    clock: &dyn Clock,
+    observe: &mut dyn FnMut(&str, Option<&str>) -> Event,
+) -> Vec<Event> {
     let mut s = state.clone();
     let mut out = Vec::new();
     let Some(apps) = s.apps.clone() else {
@@ -294,10 +321,11 @@ pub fn run_chain(goal: &Goal, state: &CtrlState, scorer: &dyn Scorer, clock: &dy
     if s.ask.is_some() || s.plan.is_some() || s.task_status.is_some() {
         return out;
     }
-    // Five node types; a bound so a bug can't loop forever.
-    for _ in 0..8 {
+    // Six node types and at most two observations; a bound so a bug can't loop forever.
+    for _ in 0..12 {
         let chosen = s.chosen();
-        let e = match layers::next_question(goal, &apps, &chosen) {
+        let e = match layers::next_question_obs(goal, &apps, &s.snapshots, &chosen) {
+            Next::Observe { app, scope } => observe(&app, scope.as_deref()),
             Next::Ask(q) => decide(&q, goal, &chosen, scorer, clock, format!("d{}", s.decisions_made)),
             Next::Plan(steps) => Event::PlanProduced {
                 irreversible: plan_irreversible(&s, &steps),
@@ -346,7 +374,7 @@ pub fn replay_check(log: &EventLog, goal: &Goal) -> Result<(), Divergence> {
             } => {
                 let apps = s.apps.clone().ok_or(div.clone())?;
                 let chosen = s.chosen();
-                match layers::next_question(goal, &apps, &chosen) {
+                match layers::next_question_obs(goal, &apps, &s.snapshots, &chosen) {
                     Next::Ask(q)
                         if q.node == *node
                             && q.choices.iter().map(|c| &c.opt).eq(options.iter())
@@ -356,8 +384,17 @@ pub fn replay_check(log: &EventLog, goal: &Goal) -> Result<(), Divergence> {
             }
             Event::PlanProduced { steps, .. } => {
                 let apps = s.apps.clone().ok_or(div.clone())?;
-                match layers::next_question(goal, &apps, &s.chosen()) {
+                match layers::next_question_obs(goal, &apps, &s.snapshots, &s.chosen()) {
                     Next::Plan(p) if p == *steps => {}
+                    _ => return Err(div),
+                }
+            }
+            // An observation the chain asked for (before a plan) must be the one the state asks for; the
+            // executor's re-snapshots after an action (a plan exists) aren't questions.
+            Event::ObsSnapshot { app, scope, .. } if s.plan.is_none() => {
+                let apps = s.apps.clone().ok_or(div.clone())?;
+                match layers::next_question_obs(goal, &apps, &s.snapshots, &s.chosen()) {
+                    Next::Observe { app: a, scope: sc } if a == *app && sc == *scope => {}
                     _ => return Err(div),
                 }
             }

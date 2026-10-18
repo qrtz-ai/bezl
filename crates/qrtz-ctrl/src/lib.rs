@@ -19,13 +19,19 @@
 //!   (intent → app → target/text → move, ≤ 20 options each) answered with calibrated probabilities by the
 //!   deterministic heuristic layer (no model) or, with consent, a Laya model; act / tentative / ask outcomes and the
 //!   resulting plan are appended to the run's log and replay exactly.
+//! - [`ax`], [`helper`], [`exec`] (slice 5, ADR 0108): the executor. A plan's move becomes ladder routes, each runs
+//!   through the ctrl helper protocol between two guard snapshots, a verify step checks it, and a failure
+//!   backtracks or asks; AX snapshots of a background app's front window (hashed) join the move question.
 //!
 //! The macOS side (real probes, AX, `CGEventPostToPid`, `NSWorkspace`) is `native/qrtz-helper/Sources/QrtzCtrl`.
 //! Both sides test their policy tables and guard semantics against the same fixtures in
 //! `native/qrtz-helper/Fixtures/ctrl/`.
+pub mod ax;
 pub mod decide;
+pub mod exec;
 pub mod fs_exec;
 pub mod guard;
+pub mod helper;
 pub mod ladder;
 pub mod laya;
 pub mod layers;

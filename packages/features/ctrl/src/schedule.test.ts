@@ -107,6 +107,30 @@ describe('ctrl run history', () => {
         ask: null,
       }),
     ).toBe('running · 1/2 actions done · 1 guard violations · 1 routes off');
+    expect(
+      stateSummary({
+        actions: [
+          { id: 'a0', status: 'done' },
+          { id: 'a1', status: 'done' },
+        ],
+        violations: 0,
+        inconclusive: 0,
+        quarantined: [],
+        status: 'done',
+        decisions: [],
+        plan: null,
+        ask: null,
+        verified: [
+          { actionId: 'a0', outcome: 'failed' },
+          { actionId: 'a1', outcome: 'passed' },
+        ],
+        held: null,
+      }),
+    ).toBe('done · 2/2 actions done · 1/2 verified');
+    expect(runStatus('needs-confirm')).toEqual([
+      'asks before it acts',
+      'warning',
+    ]);
   });
 
   it('words the decision layers: status, event layer, inspector items', () => {

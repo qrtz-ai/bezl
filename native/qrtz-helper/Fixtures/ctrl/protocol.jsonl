@@ -1,0 +1,16 @@
+{"type":"ctrl.catalog","id":"c0"}
+{"type":"ctrl.catalog.result","id":"c0","apps":[{"bundleId":"com.apple.Safari","name":"Safari","browser":true,"running":true},{"bundleId":"com.apple.TextEdit","name":"TextEdit","browser":false,"running":false}],"defaultBrowser":"com.apple.Safari"}
+{"type":"ctrl.probe","id":"c1"}
+{"type":"ctrl.probe.result","id":"c1","env":{"frontmost_app":"com.apple.Notes","user_idle_ms":30000,"secure_input":false,"files":"granted","accessibility":"granted","post_event":"not_asked","automation":{"com.apple.Safari":"granted"},"quarantined":[],"running_apps":["com.apple.Notes","com.apple.Safari"]},"ui":{"frontmost_pid":100,"cursor":{"x":400.0,"y":300.0},"focused_element":"e:5f3a","key_window":1,"hid_idle_ms":30000}}
+{"type":"ctrl.snapshot","id":"c2","app":"com.apple.TextEdit","scope":null}
+{"type":"ctrl.snapshot.result","id":"c2","nodes":[{"id":"e:close","role":"AXButton","subrole":"AXCloseButton","title":"","actions":["AXPress"],"children":0},{"id":"e:tools","role":"AXToolbar","title":"formatting","actions":[],"children":2}]}
+{"type":"ctrl.act","id":"c3","actionId":"a0","route":{"route":"scripting","app":"com.apple.Safari","verb":"close_all_tabs"},"content":{}}
+{"type":"ctrl.act","id":"c4","actionId":"a1","route":{"route":"workspace","op":"open_url","app":"com.apple.Safari","url":"task-1#5..12"},"content":{"task-1#5..12":"https://youtube.com"}}
+{"type":"ctrl.act.result","id":"c3","ok":true,"err":null}
+{"type":"ctrl.measure","id":"c5","check":{"check":"tab_count","app":"com.apple.Safari"}}
+{"type":"ctrl.measure.result","id":"c5","value":0}
+{"type":"ctrl.restore","id":"c6","frontmostPid":100}
+{"type":"ctrl.restore.result","id":"c6","ok":true}
+{"type":"ctrl.laya","id":"c7","state":"task: close all my tabs","question":"which app should do it?","options":["safari","none of these"]}
+{"type":"ctrl.laya.result","id":"c7","p":[0.75,0.25]}
+{"type":"ctrl.error","id":"c8","code":"app.not_running"}

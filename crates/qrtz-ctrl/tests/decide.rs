@@ -36,6 +36,7 @@ fn catalog(default: Option<&str>) -> AppsObs {
         .map(|n| app_entry(n))
         .collect(),
         default_browser: default.map(str::to_string),
+        ax: false,
     }
     .observe()
 }
@@ -335,6 +336,7 @@ fn options_are_capped_at_twenty() {
     let apps = AppCatalog {
         apps: (0..40).map(|i| app_entry(&format!("Tool {i}"))).collect(),
         default_browser: None,
+        ax: false,
     }
     .observe();
     let goal = Goal {

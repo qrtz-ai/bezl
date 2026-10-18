@@ -6,9 +6,14 @@
 //! Slice 2 persists each run as its own file (`store.rs`, ADR 0103). Slice 1 covers the execution events: what was decided for an action, the guard snapshots around it, the result
 //! and any violation. Slice 4 (ADR 0106) adds the decision layers' events: `obs.apps` (the app catalog the chain
 //! chose from), `decision.made` (options, probabilities, chosen option, outcome), `decision.answered_by_user`,
-//! `backtrack` and `plan.produced`. AX observations (`obs.snapshot` / `obs.diff`) arrive with slice 5.
+//! `backtrack` and `plan.produced`. Slice 5 (ADR 0108) adds the executor's: `obs.snapshot` (an AX scope of a
+//! background app, hashed), `obs.diff` (what an action changed in it), `verify.result` and `exec.held` (the plan
+//! stops before acting: irreversible, not yet supported, or no background route).
+use crate::ax::{AxDiff, AxSnapshot};
 use crate::decide::{BacktrackReason, ModelId, Node, Opt, Outcome, Thresholds};
+use crate::exec::{HoldReason, VerifyOutcome};
 use crate::guard::{Field, GuardOutcome, UiSnapshot};
+use crate::helper::{Check, Expect};
 use crate::ladder::{Decision, Route, Rung, Verdict};
 use crate::layers::AppsObs;
 use serde::{Deserialize, Serialize};
@@ -77,6 +82,35 @@ pub enum Event {
         irreversible: bool,
         model: ModelId,
     },
+    /// An AX scope of a background app as the helper saw it (`None` + `err`: it couldn't, e.g. not running).
+    #[serde(rename = "obs.snapshot")]
+    ObsSnapshot {
+        app: String,
+        scope: Option<String>,
+        snapshot: Option<AxSnapshot>,
+        err: Option<String>,
+    },
+    /// What an action changed in an observed scope (the new snapshot follows as `obs.snapshot`).
+    #[serde(rename = "obs.diff")]
+    ObsDiff {
+        action_id: String,
+        app: String,
+        scope: Option<String>,
+        diff: AxDiff,
+    },
+    /// Did the action do what the move meant? A failure drives `backtrack` (or asks when out of alternatives).
+    #[serde(rename = "verify.result")]
+    VerifyResult {
+        action_id: String,
+        check: Check,
+        expect: Expect,
+        before: Option<i64>,
+        after: Option<i64>,
+        outcome: VerifyOutcome,
+    },
+    /// The executor stopped before acting (slice 6's confirm gate resumes an irreversible plan).
+    #[serde(rename = "exec.held")]
+    ExecHeld { reason: HoldReason },
     #[serde(rename = "action.requested")]
     ActionRequested { action_id: String, routes: Vec<Route> },
     #[serde(rename = "action.decided")]
@@ -355,6 +389,12 @@ pub struct CtrlState {
     /// The decision waiting for the user's answer.
     pub ask: Option<String>,
     pub backtracks: u32,
+    /// AX observations (`obs.snapshot`), in order; questions read the latest per (app, scope).
+    pub snapshots: Vec<AxSnapshot>,
+    /// Verify outcomes per action.
+    pub verified: BTreeMap<String, VerifyOutcome>,
+    /// Why the executor stopped before acting, until a new plan (or the confirm gate) moves on.
+    pub held: Option<HoldReason>,
 }
 
 impl CtrlState {
@@ -388,6 +428,7 @@ pub fn apply(mut s: CtrlState, e: &Event) -> CtrlState {
         } => {
             s.decisions_made += 1;
             s.plan = None;
+            s.held = None;
             if *outcome == Outcome::Ask {
                 s.ask = Some(decision_id.clone());
             }
@@ -423,6 +464,7 @@ pub fn apply(mut s: CtrlState, e: &Event) -> CtrlState {
                 d.backtracks += 1;
                 s.backtracks += 1;
                 s.plan = None;
+                s.held = None;
                 s.ask = None;
             }
         }
@@ -450,7 +492,21 @@ pub fn apply(mut s: CtrlState, e: &Event) -> CtrlState {
             };
             s.actions.insert(action_id.clone(), st);
         }
-        Event::GuardSnapshot { .. } | Event::GuardRestored { .. } => {}
+        Event::GuardSnapshot { .. } | Event::GuardRestored { .. } | Event::ObsDiff { .. } => {}
+        Event::ObsSnapshot {
+            app, scope, snapshot, ..
+        } => s.snapshots.push(snapshot.clone().unwrap_or(AxSnapshot {
+            app: app.clone(),
+            scope: scope.clone(),
+            nodes: Vec::new(),
+            truncated: 0,
+        })),
+        Event::VerifyResult {
+            action_id, outcome, ..
+        } => {
+            s.verified.insert(action_id.clone(), *outcome);
+        }
+        Event::ExecHeld { reason } => s.held = Some(*reason),
         Event::ActionExecuted { action_id, ok, .. } => {
             s.actions.insert(
                 action_id.clone(),

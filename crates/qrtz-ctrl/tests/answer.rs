@@ -27,6 +27,7 @@ fn svc(dir: &std::path::Path) -> CtrlService {
             .map(|n| app_entry(n))
             .collect(),
         default_browser: Some("com.apple.Safari".into()),
+        ax: false,
     };
     CtrlService::open(dir, Box::new(Tick(AtomicU64::new(0)))).with_apps(Box::new(FixedApps(apps)))
 }

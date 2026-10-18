@@ -39,11 +39,13 @@ export type CtrlTask = z.infer<typeof CtrlTask>;
 
 /**
  * Derived from the run's event log: `task.finished`, else asking the user (a decision layer wasn't sure), else
- * waiting for an intent, else planned (the decision layers produced a plan; the executor is slice 5), else running.
+ * waiting for an intent, else needs-confirm (an irreversible plan held before acting, ADR 0108), else planned (a
+ * plan and no action: no helper connected, or a held file route), else running.
  */
 export const CtrlRunStatus = z.enum([
   'pending-intent',
   'asking',
+  'needs-confirm',
   'planned',
   'running',
   'done',
@@ -93,6 +95,8 @@ export const CtrlNode = z.enum([
   'choose_target',
   'choose_text',
   'choose_move',
+  /** Inside a chosen AX pane (window/pane → control), ADR 0108. */
+  'choose_control',
 ]);
 export type CtrlNode = z.infer<typeof CtrlNode>;
 
@@ -149,6 +153,20 @@ export const CtrlRunState = z.object({
   decisions: z.array(CtrlDecision),
   plan: CtrlPlan.nullable(),
   ask: CtrlAsk.nullable(),
+  /** Why the executor stopped before acting (ADR 0108). */
+  held: z
+    .enum(['irreversible', 'files-not-yet', 'no-route', 'unknown-app'])
+    .nullable()
+    .optional(),
+  /** Each action's verify step: did the move do what it meant? A failure backtracks. */
+  verified: z
+    .array(
+      z.object({
+        actionId: z.string(),
+        outcome: z.enum(['passed', 'failed', 'unverifiable']),
+      }),
+    )
+    .optional(),
 });
 export type CtrlRunState = z.infer<typeof CtrlRunState>;
 
