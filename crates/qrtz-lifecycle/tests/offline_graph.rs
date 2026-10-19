@@ -1485,6 +1485,13 @@ fn every_lock_requirement_names_the_identifier_its_module_is_signed_with() {
             )
         })
         .collect();
+    // Not vacuous (902bcab review): every module qrtz ships is in the table, so dropping one from the map, the
+    // signing script and the lock together still fails here.
+    assert_eq!(
+        mapped.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["qrtz-ctrl", "qrtz-echo", "qrtz-nano", "qrtz-snap"],
+        "moduleCode names exactly the four modules"
+    );
     // Nothing a module runs is bundled.
     let bundled = map["bundledCode"].as_object().unwrap();
     for name in mapped.keys().chain(std::iter::once(&"qrtz-helper".to_owned())) {
@@ -1549,6 +1556,17 @@ fn every_lock_requirement_names_the_identifier_its_module_is_signed_with() {
             Some(id.as_str()),
             "{owner}: the lock's DR names another identifier"
         );
+        // The whole requirement, not just its identifier: Developer ID (anchor apple generic, the Developer ID CA
+        // and leaf), team MR26CCZ496 (qrtz_modules::manifest::designated_requirement, what the installer and the
+        // launcher require).
+        assert_eq!(
+            dr,
+            format!(
+                "identifier \"{id}\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"{RELEASE_TEAM}\""
+            ),
+            "{owner}: the lock's DR"
+        );
+        assert_eq!(l["teamId"].as_str(), Some(RELEASE_TEAM), "{owner}: lock teamId");
         let m = read(&format!("modules/{owner}/module.json"));
         assert_eq!(
             m["code"]["bundleId"].as_str(),

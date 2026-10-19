@@ -436,13 +436,30 @@ impl LocalModels {
     /// gets its view linked (no download: the files are already in the store), and a set the lock no longer holds
     /// (its module was removed and nothing else uses it) loses its view. Sets an extension reads in its own process
     /// (ctrl's Laya) have no view. A set that can't be linked is skipped and reported.
+    ///
+    /// First, on the upgrade from before ADR 0169 (Bobs and Bozniak, 902bcab review): a model the app itself pinned
+    /// for a module (an `Op::Pinned` workspace request, ADR 0163, or one adopted from the old downloader) is dropped
+    /// when none of the modules it is for is installed, so an empty qrtz doesn't keep (or link) echo's and nano's
+    /// models for modules that aren't there. A model an installed module uses is never dropped, and a request the
+    /// user made (`qrtz install model.x`, from the index) is never touched ([`orphaned_app_requests`]).
     pub fn sync_views(&self) -> Vec<String> {
         let installer = self.installer();
-        let lock = match installer.lock() {
+        let mut lock = match installer.lock() {
             Ok(l) => l,
             Err(e) => return vec![format!("qrtz.lock: {e}")],
         };
         let mut problems = vec![];
+        let orphans = orphaned_app_requests(&lock);
+        if !orphans.is_empty() {
+            tracing::info!(
+                ?orphans,
+                "dropping the app's model requests for modules that aren't installed"
+            );
+            match remove_requests(&installer, orphans).and_then(|()| installer.lock()) {
+                Ok(l) => lock = l,
+                Err(e) => problems.push(format!("old model requests: {e}")),
+            }
+        }
         for s in &self.manifest.sets {
             if reader_of(&s.package).is_some() {
                 continue;
@@ -483,14 +500,51 @@ impl LocalModels {
         let requested = installer.lock().map_err(io)?.workspace.dependencies;
         let names: Vec<String> = names.into_iter().filter(|n| requested.contains_key(n)).collect();
         if !names.is_empty() {
-            let plan = installer.plan(Op::Remove(names)).map_err(io)?;
-            let t = HttpTransport::new(&[], &[]);
-            futures_lite_block(installer.apply(&t, &plan, &plan.consent(), now_ms(), &|_, _| {}))
-                .map_err(io)?;
-            installer.prune().map_err(io)?;
+            remove_requests(&installer, names).map_err(io)?;
         }
         Ok(())
     }
+}
+
+/// Drop workspace requests `names` (no network: a remove plan fetches nothing) and prune what nothing needs now.
+fn remove_requests(installer: &Installer, names: Vec<String>) -> Result<(), InstallError> {
+    let plan = installer.plan(Op::Remove(names))?;
+    let t = HttpTransport::new(&[], &[]);
+    futures_lite_block(installer.apply(&t, &plan, &plan.consent(), now_ms(), &|_, _| {}))?;
+    installer.prune()?;
+    Ok(())
+}
+
+/// The workspace requests the app made for modules that aren't installed (see [`LocalModels::sync_views`]): a
+/// `model.*` request whose resolved package came from the binary's pins (`source: pinned`, never a user's index
+/// install), that [`pinned_users`] says is for some module, when none of those modules is an installed extension
+/// and no installed extension depends on it through the lock either (an engine swap, ADR 0157 §5).
+pub fn orphaned_app_requests(lock: &qrtz_modules::qrtz_lock::QrtzLock) -> Vec<String> {
+    use qrtz_modules::index::PackageKind;
+    let installed = crate::installed::installed_extensions(lock);
+    lock.workspace
+        .dependencies
+        .keys()
+        .filter(|n| {
+            let Some(v) = lock.workspace.resolved.get(*n) else {
+                return false;
+            };
+            let Some(l) = lock.get(n, v) else {
+                return false;
+            };
+            if l.kind != PackageKind::Model || l.source != qrtz_modules::qrtz_lock::Source::Pinned {
+                return false;
+            }
+            let for_modules = pinned_users(n);
+            !for_modules.is_empty()
+                && !for_modules.iter().any(|m| installed.contains(m))
+                && !lock
+                    .users(n, v, &|_| vec![])
+                    .iter()
+                    .any(|u| installed.contains(u))
+        })
+        .cloned()
+        .collect()
 }
 
 /// A remove plan fetches nothing, so its apply completes without awaiting I/O; run it in place (`delete` is called

@@ -440,3 +440,60 @@ fn trust_state_round_trips() {
     t.save(&p).unwrap();
     assert_eq!(Trust::load(&p).unwrap().unwrap(), t);
 }
+
+/// ADR 0171 (902bcab review): a model's weight files carry exactly their Hugging Face URL at a pinned commit, and
+/// nothing else in a package carries a URL. Each mutation below must fail on the URL rule itself (the tree is
+/// recomputed, so the tree hash can't be what refuses it), and the unmutated entry must pass, so the check can't
+/// pass vacuously.
+#[test]
+fn a_model_file_has_only_its_pinned_hugging_face_url() {
+    const GOOD: &str = "https://huggingface.co/o/r/resolve/0123abc000000000000000000000000000000000/a.bin";
+    let with = |weights: Vec<&str>, manifest: Vec<&str>| -> Result<(), String> {
+        let mut e = entry();
+        e.files[0].mirrors = weights.into_iter().map(str::to_owned).collect();
+        e.files[1].mirrors = manifest.into_iter().map(str::to_owned).collect();
+        let t = Tree::new(e.files.clone());
+        e.sha256 = t.sha256();
+        e.size = t.size();
+        e.files = t.files;
+        e.validate("model.x")
+    };
+    assert_eq!(with(vec![GOOD], vec![]), Ok(()));
+    let c40 = "0123abc000000000000000000000000000000000";
+    for (bad, why) in [
+        (vec![], "needs its pinned Hugging Face URL"),
+        (
+            vec!["https://huggingface.co/o/r/resolve/main/a.bin"],
+            "pinned commit",
+        ),
+        (
+            vec!["https://huggingface.co/o/r/resolve/0123abc/a.bin"],
+            "pinned commit",
+        ),
+        (
+            vec![&*format!("https://huggingface.co/o/r/blob/{c40}/a.bin")],
+            "pinned commit",
+        ),
+        (
+            vec![&*format!("https://hf.example/o/r/resolve/{c40}/a.bin")],
+            "pinned commit",
+        ),
+        (
+            vec![&*format!("https://huggingface.co.evil/o/r/resolve/{c40}/a.bin")],
+            "pinned commit",
+        ),
+        (
+            vec![GOOD, "https://modules.qrtz.ai/v1/blobs/sha256/00"],
+            "pinned commit",
+        ),
+        (
+            vec![&*format!("http://huggingface.co/o/r/resolve/{c40}/a.bin")],
+            "https URL",
+        ),
+    ] {
+        let err = with(bad.clone(), vec![]).unwrap_err();
+        assert!(err.contains(why), "{bad:?}: {err}");
+    }
+    let err = with(vec![GOOD], vec![GOOD]).unwrap_err();
+    assert!(err.contains("only a model's files have URLs"), "{err}");
+}

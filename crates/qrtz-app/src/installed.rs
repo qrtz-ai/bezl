@@ -67,6 +67,8 @@ pub fn patch_touches_installed(patch: &Value) -> bool {
 pub struct ModuleEntry {
     pub name: String,
     pub version: String,
+    /// The installed package dir (`<root>/packages/<name>/<version>`); `program` is inside it.
+    pub dir: PathBuf,
     pub program: PathBuf,
     /// The signing identifier the lock pins (`ai.qrtz.<name>`).
     pub identifier: Option<String>,
@@ -104,6 +106,7 @@ pub fn entry(root: &Path, name: &str) -> Result<ModuleEntry, String> {
         name: name.to_owned(),
         version,
         program: dir.join(ext.entry),
+        dir,
         identifier: l.identifier.clone(),
         requirement: l.designated_requirement.clone(),
     })
@@ -148,6 +151,19 @@ fn check_requirement(_program: &Path, _requirement: &str) -> Result<(), String> 
     Err("module code checks need macOS".into())
 }
 
+/// The only requirement a release build launches module `name` under: Developer ID, team MR26CCZ496, identifier
+/// `ai.qrtz.<name>`. It is rebuilt here from the module's name and the compiled-in team, never taken from the lock's
+/// text or the binary: `qrtz.lock` is a file in the user's data dir (and `QRTZ_USER_DATA` can point qrtz at another
+/// one), so a lock edited to a looser requirement (another team, no anchor, `always`) must not let other code run
+/// with qrtz's TCC grants (ADR 0154 gate h). The lock's requirement must say exactly this too.
+pub fn launch_requirement(name: &str) -> Option<String> {
+    let id = qrtz_modules::qrtz_json::identifier_for(name, PackageKind::Extension)?;
+    Some(qrtz_modules::manifest::designated_requirement(
+        &id,
+        qrtz_modules::manifest::RELEASE_TEAM_ID,
+    ))
+}
+
 pub fn check_launch(e: &ModuleEntry, check: LaunchCheck) -> Result<(), String> {
     if !e.program.is_file() {
         return Err(format!("{}: {} is missing", e.name, e.program.display()));
@@ -155,13 +171,61 @@ pub fn check_launch(e: &ModuleEntry, check: LaunchCheck) -> Result<(), String> {
     match check {
         LaunchCheck::Dev => Ok(()),
         LaunchCheck::Release => {
-            let req = e
+            let want = launch_requirement(&e.name)
+                .ok_or_else(|| format!("{}: no signing identity for this name", e.name))?;
+            let pinned = e
                 .requirement
                 .as_deref()
                 .ok_or_else(|| format!("{}: the lock pins no designated requirement", e.name))?;
-            check_requirement(&e.program, req).map_err(|m| format!("{}: {m}", e.name))
+            if pinned != want || e.identifier.as_deref() != want_identifier(&e.name).as_deref() {
+                return Err(format!(
+                    "{}: the lock's signing requirement isn't qrtz's Developer ID requirement for it",
+                    e.name
+                ));
+            }
+            // The file checked is the file spawned: a plain file inside its package dir, no `..` and no symlink on
+            // the way (a link could be repointed between the check and the exec).
+            if !plain_file_inside(&e.program, &e.dir) {
+                return Err(format!(
+                    "{}: {} is a link, outside its package or not a plain file",
+                    e.name,
+                    e.program.display()
+                ));
+            }
+            check_requirement(&e.program, &want).map_err(|m| format!("{}: {m}", e.name))
         }
     }
+}
+
+/// `program` is a regular file under `dir`, reached by plain names only, with no symlink at `dir` or below it.
+fn plain_file_inside(program: &Path, dir: &Path) -> bool {
+    let Ok(rel) = program.strip_prefix(dir) else {
+        return false;
+    };
+    if rel.as_os_str().is_empty()
+        || !rel
+            .components()
+            .all(|c| matches!(c, std::path::Component::Normal(_)))
+    {
+        return false;
+    }
+    let mut p = dir.to_path_buf();
+    if std::fs::symlink_metadata(&p).map_or(true, |m| m.file_type().is_symlink()) {
+        return false;
+    }
+    for c in rel.components() {
+        p.push(c);
+        match std::fs::symlink_metadata(&p) {
+            Ok(m) if m.file_type().is_symlink() => return false,
+            Ok(_) => {}
+            Err(_) => return false,
+        }
+    }
+    std::fs::symlink_metadata(program).is_ok_and(|m| m.file_type().is_file())
+}
+
+fn want_identifier(name: &str) -> Option<String> {
+    qrtz_modules::qrtz_json::identifier_for(name, PackageKind::Extension)
 }
 
 /// A module helper run from its installed package (see the module doc). `base` carries the arguments and the
@@ -177,7 +241,8 @@ pub struct InstalledSpawn {
 
 impl InstalledSpawn {
     pub fn program(&self) -> Result<PathBuf, String> {
-        if let Some(p) = &self.fixed {
+        // A dev override never skips the release check: only a dev build (LaunchCheck::Dev) honours it.
+        if let (Some(p), LaunchCheck::Dev) = (&self.fixed, self.check) {
             return Ok(p.clone());
         }
         let e = entry(&self.root, &self.module)?;
@@ -245,6 +310,110 @@ mod tests {
         assert_eq!(installed_extensions(&lock), BTreeSet::from(["snap".to_owned()]));
         lock.packages.get_mut("snap@0.1.0").unwrap().disabled = Some("revoked".into());
         assert!(installed_extensions(&lock).is_empty());
+    }
+
+    fn installed_entry(root: &Path, dr: Option<String>, identifier: Option<&str>) -> ModuleEntry {
+        let dir = root.join(package_dir("snap", "0.1.0"));
+        std::fs::create_dir_all(dir.join("bin")).unwrap();
+        std::fs::write(dir.join("bin/qrtz-snap"), b"#!/bin/sh\n").unwrap();
+        ModuleEntry {
+            name: "snap".into(),
+            version: "0.1.0".into(),
+            program: dir.join("bin/qrtz-snap"),
+            dir: dir.clone(),
+            identifier: identifier.map(str::to_owned),
+            requirement: dr,
+        }
+    }
+
+    /// 902bcab review: a release launch checks the requirement rebuilt from the name and the compiled-in team; a
+    /// lock whose requirement or identifier says anything else is refused before codesign runs.
+    #[test]
+    fn a_release_launch_refuses_a_lock_with_a_loosened_requirement() {
+        let tmp = tempfile::tempdir().unwrap();
+        let want = launch_requirement("snap").unwrap();
+        assert!(want.contains("identifier \"ai.qrtz.snap\""));
+        assert!(want.contains("anchor apple generic"));
+        assert!(want.contains("certificate leaf[subject.OU] = \"MR26CCZ496\""));
+        for (dr, id) in [
+            (None, Some("ai.qrtz.snap")),
+            (Some("always".to_owned()), Some("ai.qrtz.snap")),
+            (
+                Some("identifier \"ai.qrtz.snap\"".to_owned()),
+                Some("ai.qrtz.snap"),
+            ),
+            (
+                Some(qrtz_modules::manifest::designated_requirement(
+                    "ai.qrtz.snap",
+                    "0000000000",
+                )),
+                Some("ai.qrtz.snap"),
+            ),
+            (
+                Some(qrtz_modules::manifest::designated_requirement(
+                    "ai.qrtz.ctrl",
+                    "MR26CCZ496",
+                )),
+                Some("ai.qrtz.ctrl"),
+            ),
+            (Some(want.clone()), Some("ai.qrtz.ctrl")),
+        ] {
+            let e = installed_entry(tmp.path(), dr.clone(), id);
+            let err = check_launch(&e, LaunchCheck::Release).unwrap_err();
+            assert!(err.contains("requirement"), "{dr:?} / {id:?}: {err}");
+        }
+        // A symlinked entry (or bin dir) is refused before codesign, whatever it points at.
+        #[cfg(unix)]
+        {
+            let e = installed_entry(tmp.path(), Some(want.clone()), Some("ai.qrtz.snap"));
+            let real = e.dir.join("bin/real");
+            std::fs::rename(&e.program, &real).unwrap();
+            std::os::unix::fs::symlink(&real, &e.program).unwrap();
+            let err = check_launch(&e, LaunchCheck::Release).unwrap_err();
+            assert!(err.contains("is a link"), "{err}");
+            std::fs::remove_file(&e.program).unwrap();
+            std::fs::rename(&real, &e.program).unwrap();
+            let escaped = ModuleEntry {
+                program: e.dir.join("../../../evil"),
+                ..e.clone()
+            };
+            std::fs::write(tmp.path().join("evil"), b"x").unwrap();
+            assert!(check_launch(&escaped, LaunchCheck::Release)
+                .unwrap_err()
+                .contains("outside its package"));
+        }
+        // The right lock entry gets as far as codesign (which needs macOS here).
+        let e = installed_entry(tmp.path(), Some(want), Some("ai.qrtz.snap"));
+        let r = check_launch(&e, LaunchCheck::Release);
+        if !cfg!(target_os = "macos") {
+            assert_eq!(r.unwrap_err(), "snap: module code checks need macOS");
+        }
+    }
+
+    /// A `QRTZ_<ID>_BIN` override is a dev build's only: under the release check it is ignored and the installed
+    /// entry is resolved and checked (here: nothing installed, so nothing runs).
+    #[test]
+    fn a_fixed_path_never_skips_the_release_check() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mk = |check| InstalledSpawn {
+            module: "snap".into(),
+            root: tmp.path().to_path_buf(),
+            base: ProcessSpawn {
+                program: PathBuf::from(crate::module_helpers::INSTALLED_PROGRAM),
+                args: vec![],
+                env: vec![],
+            },
+            fixed: Some(PathBuf::from("/tmp/evil")),
+            check,
+        };
+        assert_eq!(
+            mk(LaunchCheck::Dev).program().unwrap(),
+            PathBuf::from("/tmp/evil")
+        );
+        assert!(mk(LaunchCheck::Release)
+            .program()
+            .unwrap_err()
+            .contains("not installed"));
     }
 
     #[test]

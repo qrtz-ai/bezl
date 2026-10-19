@@ -5,8 +5,11 @@
 # Line Tools; no SwiftPM, no FluidAudio, no package download), signed locally with --timestamp=none, and launched
 # through LaunchServices (`open`). Stand-ins: ai.qrtz.gate.host-probe plays qrtz.app (the app's TCC entitlements),
 # ai.qrtz.gate.inference-probe a sandboxed inference XPC service, and a bare signed helper binary under
-# $QRTZ_GATE_DIR/extensions plays a downloaded extension's helper, which the host spawns. Checks that need the voice
-# service or the real bundles SKIP with the reason.
+# $QRTZ_GATE_DIR/extensions plays a downloaded extension's helper, which the host spawns. Gate (h) then runs on every
+# module the real installer put under qrtz's data dir (ADR 0169: qrtz ships empty; install one from the marketplace or
+# with `qrtz install snap`): its qrtz.lock entry, its Developer ID requirement for team MR26CCZ496, its notarized cdhash
+# and its read-only package dir must all hold, so a locally built helper never stands in for it. Checks that need the
+# voice service or the real bundles SKIP with the reason.
 #
 # Gates: (c) inference XPC has no network, (d) signing identity, (f) voice service isolation, (g) sideload freshness,
 # (h) an extension helper spawned by the host is attributed to qrtz. (a), (b) and (e) were per-module TCC checks and
@@ -16,10 +19,12 @@
 #   --interactive  the probes may prompt (Accessibility), and the script waits while you grant in System Settings;
 #                  without it nothing prompts and a check that needs a grant SKIPs with what to do.
 # Environment (all optional):
-#   QRTZ_GATE_SIGN_ID   a Developer ID Application identity to sign the probes (else ad-hoc; gate d needs it)
-#   QRTZ_GATE_TEAM_ID   that identity's team id (gate d's designated requirement)
+#   QRTZ_GATE_SIGN_ID   the identity that signs the probes (default "Developer ID Application: Jared Grimes
+#                       (MR26CCZ496)"; ad-hoc when it isn't in the keychain, or when set to the empty string)
+#   QRTZ_GATE_TEAM_ID   that identity's team id (default MR26CCZ496; gate d's and gate h's designated requirement)
 #   QRTZ_GATE_DIR       where the probe bundles live (default ~/qrtz-gate; keep it stable so TCC grants persist)
-#   QRTZ_MODULES_DIR    where extension packages are installed (default ~/Library/Application Support/ai.qrtz.desktop/modules)
+#   QRTZ_DATA_DIR       qrtz's data dir, where qrtz.lock and packages/ are (default QRTZ_USER_DATA, else
+#                       ~/Library/Application Support/ai.qrtz.desktop)
 #   QRTZ_VOICE_SERVICE  the voice inference XPC mach service name (default ai.qrtz.inference.voice)
 set -uo pipefail
 
@@ -59,10 +64,16 @@ if ! command -v xcrun >/dev/null || ! xcrun --find swiftc >/dev/null 2>&1; then
 fi
 
 gate_dir="${QRTZ_GATE_DIR:-$HOME/qrtz-gate}"
-modules_dir="${QRTZ_MODULES_DIR:-$HOME/Library/Application Support/ai.qrtz.desktop/modules}"
+data_dir="${QRTZ_DATA_DIR:-${QRTZ_USER_DATA:-$HOME/Library/Application Support/ai.qrtz.desktop}}"
 voice="${QRTZ_VOICE_SERVICE:-ai.qrtz.inference.voice}"
-sign_id="${QRTZ_GATE_SIGN_ID:-}"
-team="${QRTZ_GATE_TEAM_ID:-}"
+# Jared's Developer ID (ADR 0170: the team every release path pins). `${VAR-default}`: set to "" for ad-hoc.
+release_team="MR26CCZ496"
+sign_id="${QRTZ_GATE_SIGN_ID-Developer ID Application: Jared Grimes ($release_team)}"
+team="${QRTZ_GATE_TEAM_ID-$release_team}"
+if [[ -n "$sign_id" ]] && ! security find-identity -v -p codesigning 2>/dev/null | grep -qF "\"$sign_id\""; then
+  info "" "signing identity '$sign_id' isn't in this keychain: the probes are signed ad-hoc (gate d SKIPs)"
+  sign_id=""
+fi
 mkdir -p "$gate_dir/build"
 signing="ad-hoc"
 [[ -n "$sign_id" ]] && signing="identity '$sign_id'"
@@ -161,13 +172,65 @@ wait_user() {
   read -r -p "  -> $1 Press Enter when done. " _
 }
 
-# Installed extensions, if any (INFO only: their bundle ids and DRs are package signing identities, not TCC ones).
-for m in echo nano ctrl; do
-  b="$(find "$modules_dir" -maxdepth 4 -name "ai.qrtz.$m*" -print -quit 2>/dev/null)"
-  if [[ -n "$b" ]]; then
-    info "" "found $b; entitlements: $(codesign -d --entitlements - --xml "$b" 2>/dev/null | tr -d '\n' | grep -oE '<key>[^<]+</key><true/>' | sed -E 's/<key>([^<]+).*/\1/' | tr '\n' ' ')"
+# ---- modules the real installer put under the data dir (ADR 0169) ----------------------------------------------------
+# `installed_module <id>` prints `<helper path>\t<version>\t<source>\t<designated requirement>\t<notarized cdhash>`
+# from qrtz.lock and the package's own qrtz.json (an installed, not disabled extension), or nothing. JavaScript for
+# Automation reads the JSON: nothing to install on a stock Mac.
+installed_module() {
+  osascript -l JavaScript - "$data_dir" "$1" 2>/dev/null <<'JS'
+function run(argv) {
+  ObjC.import("Foundation");
+  const read = (p) => {
+    const s = $.NSString.stringWithContentsOfFileEncodingError(p, $.NSUTF8StringEncoding, null);
+    return s.isNil() ? null : JSON.parse(s.js);
+  };
+  const [data, id] = argv;
+  const lock = read(data + "/qrtz.lock");
+  const v = lock && lock.workspace && lock.workspace.resolved && lock.workspace.resolved[id];
+  const l = v && lock.packages[id + "@" + v];
+  if (!l || l.kind !== "extension" || l.disabled) return "";
+  const dir = data + "/packages/" + id + "/" + v;
+  const m = read(dir + "/qrtz.json");
+  if (!m || !m.extension || !m.extension.entry) return "";
+  const n = l.notarization || {};
+  return [dir + "/" + m.extension.entry, v, l.source || "", l.designatedRequirement || "", n.cdhash || ""].join("\t");
+}
+JS
+}
+# The Developer ID requirement the installer and the launcher pin for `ai.qrtz.<id>` (qrtz_modules::manifest).
+module_requirement() { # $1 = id
+  printf 'identifier "ai.qrtz.%s" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = "%s"' "$1" "$release_team"
+}
+# Why `<path>` isn't a module the real installer put there (empty = it is): a network or sideload install, the lock's
+# requirement is the release one, the file satisfies it, its cdhash is the one the signed index says Apple notarized,
+# no quarantine, and the package dir is read-only (what the installer leaves; a build-packages.sh output isn't).
+not_installed_by_qrtz() { # $1 = id, $2 = path, $3 = source, $4 = lock requirement, $5 = notarized cdhash
+  local want cd
+  want="$(module_requirement "$1")"
+  [[ "$3" == "network" || "$3" == "sideload" ]] || { echo "lock source '$3' (not a marketplace install)"; return; }
+  [[ "$4" == "$want" ]] || { echo "the lock's requirement isn't the Developer ID one for team $release_team"; return; }
+  [[ -x "$2" ]] || { echo "$2 is missing"; return; }
+  codesign --verify --strict "-R=$want" "$2" >/dev/null 2>&1 || { echo "$2 doesn't satisfy the release requirement"; return; }
+  cd="$(codesign -d -vvv "$2" 2>&1 | sed -nE 's/^CDHash=([0-9a-f]+)$/\1/p')"
+  [[ -n "$5" && "$cd" == "$5" ]] || { echo "cdhash $cd isn't the notarized ${5:-<none>}"; return; }
+  xattr -p com.apple.quarantine "$2" >/dev/null 2>&1 && { echo "$2 is quarantined"; return; }
+  [[ -w "$(dirname "$2")" || -w "$2" ]] && { echo "its package dir is writable (not the installer's)"; return; }
+  true
+}
+real_modules=() # "<id>\t<path>\t<version>" for each verified install
+for m in snap ctrl echo nano; do
+  line="$(installed_module "$m")"
+  if [[ -z "$line" ]]; then
+    info "" "$m: not installed under $data_dir"
+    continue
+  fi
+  IFS=$'\t' read -r bin ver src dr cdh <<<"$line"
+  why="$(not_installed_by_qrtz "$m" "$bin" "$src" "$dr" "$cdh")"
+  if [[ -n "$why" ]]; then
+    info "" "$m $ver: not used for gate (h): $why"
   else
-    info "" "no installed $m extension under $modules_dir: gates run on the stand-in probes"
+    real_modules+=("$m"$'\t'"$bin"$'\t'"$ver")
+    info "" "$m $ver: installed by qrtz ($src), team $release_team, notarized cdhash $cdh; entitlements: $(codesign -d --entitlements - --xml "$bin" 2>/dev/null | tr -d '\n' | grep -oE '<key>[^<]+</key><true/>' | sed -E 's/<key>([^<]+).*/\1/' | tr '\n' ' ')"
   fi
 done
 
@@ -196,15 +259,38 @@ gate_h() {
   rm -f "$out"
   s="$(probe host spawn "$ext_bin" -- ax --out "$out")"
   if [[ "$(field "$s" child_exit)" != "0" || ! -f "$out" ]]; then
-    fail "(h)" "the host couldn't run the extension helper: $s"
+    fail "(h)" "stand-in: the host couldn't run the extension helper: $s"
     return
   fi
   c="$(cat "$out")"
   if [[ "$(field "$c" trusted)" == "true" ]]; then
-    pass "(h)" "extension helper ($ext_id, outside the host bundle) spawned by the host: AXIsProcessTrusted=true from qrtz's grant, no Privacy entry of its own ($signing)"
+    pass "(h)" "stand-in: extension helper ($ext_id, outside the host bundle) spawned by the host: AXIsProcessTrusted=true from qrtz's grant, no Privacy entry of its own ($signing)"
   else
-    fail "(h)" "extension helper spawned by the granted host is not trusted ($c): it's not attributed to qrtz, so ADR 0154's single-entry model needs a launcher change"
+    fail "(h)" "stand-in: extension helper spawned by the granted host is not trusted ($c): it's not attributed to qrtz, so ADR 0154's single-entry model needs a launcher change"
   fi
+  # The real thing (ADR 0169): each module the installer put under the data dir, run from its package dir by the host
+  # (`--qrtz-gate-probe ax` runs before anything else in every module executable), so it also shows the helper runs
+  # from <data>/packages/.
+  if ((${#real_modules[@]} == 0)); then
+    skip "(h)" "no module installed through the marketplace under $data_dir (install snap or ctrl from the marketplace, or \`qrtz install snap\`, and rerun); a locally built helper doesn't count"
+  fi
+  local r id bin ver rc
+  for r in ${real_modules[@]+"${real_modules[@]}"}; do
+    IFS=$'\t' read -r id bin ver <<<"$r"
+    tccutil reset Accessibility "ai.qrtz.$id" >/dev/null 2>&1
+    rm -f "$out"
+    s="$(probe host spawn "$bin" -- --qrtz-gate-probe ax --out "$out")"
+    if [[ "$(field "$s" child_exit)" != "0" || ! -f "$out" ]]; then
+      fail "(h)" "$id $ver (installed): the host couldn't run $bin: $s"
+      continue
+    fi
+    rc="$(cat "$out")"
+    if [[ "$(field "$rc" trusted)" == "true" ]]; then
+      pass "(h)" "$id $ver, installed by qrtz's installer and run from its package dir by the host: AXIsProcessTrusted=true from qrtz's grant (ai.qrtz.$id has no Privacy entry of its own)"
+    else
+      fail "(h)" "$id $ver (installed) spawned by the granted host is not trusted ($rc): ADR 0154's single entry doesn't hold for real modules"
+    fi
+  done
   # Mic: the same attribution (INFO only, nothing prompts): the child's status should match the host's.
   rm -f "$out"
   probe host spawn "$ext_bin" -- mic --out "$out" >/dev/null
@@ -229,7 +315,7 @@ gate_c() {
     fail "(c)" "sandboxed stand-in reached the network stack: tcp=$it udp=$iu"
   fi
   local x
-  x="$(find "$modules_dir" -maxdepth 6 -name 'ai.qrtz.inference.*.xpc' -print -quit 2>/dev/null)"
+  x="$(find "$data_dir/packages" -maxdepth 6 -name 'ai.qrtz.inference.*.xpc' -print -quit 2>/dev/null)"
   if [[ -z "$x" ]]; then
     skip "(c)" "real inference XPC service: none installed yet (M1/M2); then this checks its signed entitlements too"
   else

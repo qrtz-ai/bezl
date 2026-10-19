@@ -34,10 +34,12 @@ const MOCK_ENV: &[&str] = &[
 /// ([`qrtz_app::module_helpers::INSTALLED_PROGRAM`]: each module's helper is its package's entry, see
 /// `installed_layout`). Dev and e2e knobs first:
 ///   QRTZ_SIMULATE_MISSING_HELPER=1 → none; QRTZ_MOCK_HELPER=1 → the Rust mock helper next to this binary (every
-///   module counts as installed); QRTZ_HELPER_BIN → that monolith (a debug build or QRTZ_ALLOW_DEV_KNOBS=1 only);
+///   module counts as installed); QRTZ_HELPER_BIN → that monolith (a debug build only: where code comes from is
+///   never a runtime knob, so not even QRTZ_ALLOW_DEV_KNOBS=1 lets a release build run it; Bozniak, 902bcab review);
 ///   then macOS → the installed modules; elsewhere → the mock helper if present.
 pub fn helper_spawn() -> Option<(ProcessSpawn, HelperAvailability)> {
     let dev = cfg!(debug_assertions) || std::env::var("QRTZ_ALLOW_DEV_KNOBS").as_deref() == Ok("1");
+    let code_knobs = CODE_KNOBS;
     if dev && std::env::var("QRTZ_SIMULATE_MISSING_HELPER").as_deref() == Ok("1") {
         return None;
     }
@@ -54,7 +56,7 @@ pub fn helper_spawn() -> Option<(ProcessSpawn, HelperAvailability)> {
     if std::env::var("QRTZ_MOCK_HELPER").as_deref() == Ok("1") && mock.exists() {
         return Some(mock_spawn());
     }
-    if dev {
+    if code_knobs {
         if let Some(p) = std::env::var_os("QRTZ_HELPER_BIN") {
             return Some((ProcessSpawn::helper(PathBuf::from(p)), HelperAvailability::Native));
         }
@@ -76,11 +78,16 @@ pub fn is_installed_modules(spawn: &ProcessSpawn) -> bool {
     spawn.program.as_os_str() == qrtz_app::module_helpers::INSTALLED_PROGRAM
 }
 
+/// Whether this build may take a helper executable's path from the environment (`QRTZ_HELPER_BIN`,
+/// `QRTZ_<ID>_BIN`): a debug build only, decided at compile time. ADR 0154 gate (h): whatever qrtz spawns inherits
+/// its TCC grants (microphone, Accessibility), so in a release build a path from the environment would hand those
+/// grants to any binary. `QRTZ_ALLOW_DEV_KNOBS=1` (the E2E harness's test knobs) never turns this on.
+pub const CODE_KNOBS: bool = cfg!(debug_assertions);
+
 /// ADR 0169: every module helper from its installed package under `data`. `QRTZ_<ID>_BIN` still overrides one in a
-/// dev build (or under `QRTZ_ALLOW_DEV_KNOBS=1`); a release build never takes a path from the environment.
+/// debug build; a release build never takes a path from the environment (see [`CODE_KNOBS`]).
 pub fn installed_layout(data: &std::path::Path) -> qrtz_app::module_helpers::HelperLayout {
-    let dev = cfg!(debug_assertions) || std::env::var("QRTZ_ALLOW_DEV_KNOBS").as_deref() == Ok("1");
-    installed_layout_from(data, dev, |k| std::env::var(k).ok())
+    installed_layout_from(data, CODE_KNOBS, |k| std::env::var(k).ok())
 }
 
 fn installed_layout_from(
@@ -145,11 +152,10 @@ pub fn reveal(dir: &std::path::Path) -> bool {
 }
 
 /// ADR 0146 M2.4: `QRTZ_MODULE_HELPERS=split` runs qrtz-nano, qrtz-echo and qrtz-ctrl instead of qrtz-helper (default
-/// off). Where a module app is (`QRTZ_<ID>_BIN`) may only be overridden in a dev build or under
-/// `QRTZ_ALLOW_DEV_KNOBS=1`; a release build runs the bundled apps next to the helper.
+/// off). Where a module app is (`QRTZ_<ID>_BIN`) may only be overridden in a debug build ([`CODE_KNOBS`]); a release
+/// build runs the apps next to the helper.
 pub fn helper_layout() -> qrtz_app::module_helpers::HelperLayout {
-    let dev = cfg!(debug_assertions) || std::env::var("QRTZ_ALLOW_DEV_KNOBS").as_deref() == Ok("1");
-    layout_from(dev, |k| std::env::var(k).ok())
+    layout_from(CODE_KNOBS, |k| std::env::var(k).ok())
 }
 
 fn layout_from(dev: bool, get: impl Fn(&str) -> Option<String>) -> qrtz_app::module_helpers::HelperLayout {
@@ -198,5 +204,34 @@ mod layout_tests {
             panic!()
         };
         assert_eq!(programs.len(), 1);
+    }
+
+    /// 902bcab review (Bozniak): where helper code comes from follows `cfg!(debug_assertions)` alone. A guard
+    /// against wiring `QRTZ_ALLOW_DEV_KNOBS` back into a path that picks an executable: that switch is a runtime
+    /// env var, and a release qrtz started with it would spawn any binary with qrtz's TCC grants (gate h).
+    #[test]
+    fn no_runtime_switch_picks_helper_code() {
+        let src = include_str!("paths.rs");
+        let src = &src[..src.find("#[cfg(test)]").expect("tests")];
+        assert!(src.contains("pub const CODE_KNOBS: bool = cfg!(debug_assertions);"));
+        for f in ["pub fn installed_layout(", "pub fn helper_layout("] {
+            let body = &src[src.find(f).expect(f)..];
+            let body = &body[..body.find("\n}\n").expect("end of fn")];
+            assert!(body.contains("CODE_KNOBS"), "{f}");
+            assert!(!body.contains("QRTZ_ALLOW_DEV_KNOBS"), "{f}");
+        }
+        let spawn = &src[src.find("pub fn helper_spawn(").unwrap()..];
+        let spawn = &spawn[..spawn.find("\n}\n").unwrap()];
+        assert!(
+            spawn.contains("if code_knobs {\n        if let Some(p) = std::env::var_os(\"QRTZ_HELPER_BIN\")"),
+            "QRTZ_HELPER_BIN behind CODE_KNOBS"
+        );
+        assert_eq!(spawn.matches("QRTZ_HELPER_BIN\")").count(), 1);
+        if !cfg!(debug_assertions) {
+            assert!(
+                !super::CODE_KNOBS,
+                "a release build takes no helper path from the environment"
+            );
+        }
     }
 }
