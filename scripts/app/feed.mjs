@@ -142,7 +142,8 @@ function main(argv) {
 
 if (
   process.argv[1] &&
-  path.resolve(process.argv[1]) === path.resolve(import.meta.filename)
+  // realpath: on macOS a script under /var (a symlink to /private/var) has argv[1] and import.meta.filename apart.
+  fs.realpathSync(path.resolve(process.argv[1])) === fs.realpathSync(import.meta.filename)
 ) {
   try {
     main(process.argv.slice(2));
