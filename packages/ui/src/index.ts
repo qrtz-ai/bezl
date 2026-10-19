@@ -19,6 +19,7 @@ export * from './Progress';
 export * from './Lifecycle';
 export * from './Layout';
 export * from './Meeting';
+export * from './NotesApp';
 export * from './Talk';
 export * from './Ctrl';
 export * from './Waveform';
