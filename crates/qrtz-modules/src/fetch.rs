@@ -5,6 +5,10 @@
 //!   or whose bytes don't hash right, is dropped for the next one.
 //! - **Parallel ranges**: a blob is fetched as [`RANGE_BYTES`] ranges, [`PARALLEL_RANGES`] at a time, written in
 //!   place into a preallocated `store/.tmp/<sha256>.part`; [`PARALLEL_BLOBS`] blobs go at once.
+//! - **Dead sources cost one round** (N176, ADR 0159): once a range from a source fails, that blob starts no more
+//!   ranges from it; once a module host has failed [`DEAD_HOST_AFTER`] blobs and served none, the rest of this fetch
+//!   skips it. An unpublished or unreachable host (a firewall that drops packets, a captive portal) then delays the
+//!   first install by about one timeout per host instead of one per range of every blob.
 //! - **Resumable**: finished range numbers are appended to `<sha256>.done`; a restart fetches only the rest.
 //! - **Verified**: a blob enters the store only after its whole size and sha256 match ([`Store::insert_file`]);
 //!   a mismatch discards the part and its ranges.
@@ -17,7 +21,7 @@ use futures_util::future::{BoxFuture, FutureExt};
 use futures_util::stream::{self, StreamExt};
 use std::collections::BTreeSet;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 
 /// In a fetch error, a source whose bytes didn't hash to the signed sha256 (callers report it as a checksum error).
@@ -25,6 +29,8 @@ pub const MISMATCH: &str = "bytes didn't match";
 pub const RANGE_BYTES: u64 = 8 * 1024 * 1024;
 pub const PARALLEL_RANGES: usize = 4;
 pub const PARALLEL_BLOBS: usize = 3;
+/// A module host that has failed this many blobs in one fetch, and served none, is skipped for the rest of it.
+pub const DEAD_HOST_AFTER: u64 = 2;
 
 /// Where one blob's bytes can come from.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -87,6 +93,10 @@ pub async fn fetch_blobs(
     // Boxed (`Send`) futures built up front: a closure in `StreamExt::map` makes the caller's future non-`Send`
     // under the async-trait lifetimes (rust-lang/rust#102211).
     let done = &done;
+    // Per module host: blobs it failed, blobs it served (N176).
+    let failed: Vec<AtomicU64> = (0..t.hosts()).map(|_| AtomicU64::new(0)).collect();
+    let served: Vec<AtomicU64> = (0..t.hosts()).map(|_| AtomicU64::new(0)).collect();
+    let (failed, served) = (&failed, &served);
     let futs: Vec<BoxFuture<'_, Result<(), String>>> = blobs
         .iter()
         .map(|b| {
@@ -102,7 +112,23 @@ pub async fn fetch_blobs(
                     .map(Source::Host)
                     .chain(b.mirrors.iter().cloned().map(Source::Url));
                 for src in sources {
-                    match fetch_one(t, store, b, &src, done, total, progress).await {
+                    let host = match src {
+                        Source::Host(i) => Some(i),
+                        Source::Url(_) => None,
+                    };
+                    if let Some(i) = host {
+                        let f = failed[i].load(Ordering::SeqCst);
+                        if f >= DEAD_HOST_AFTER && served[i].load(Ordering::SeqCst) == 0 {
+                            errs.push(format!("{src:?}: skipped, failed {f} blobs in this fetch"));
+                            continue;
+                        }
+                    }
+                    let r = fetch_one(t, store, b, &src, done, total, progress).await;
+                    if let Some(i) = host {
+                        let n = if matches!(r, Ok(true)) { served } else { failed };
+                        n[i].fetch_add(1, Ordering::SeqCst);
+                    }
+                    match r {
                         Ok(true) => return Ok(()),
                         Ok(false) => errs.push(format!("{src:?}: {MISMATCH}")),
                         Err(e) => errs.push(format!("{src:?}: {e}")),
@@ -155,16 +181,31 @@ async fn fetch_one(
     progress(done.fetch_add(already, Ordering::SeqCst) + already, total);
     let log = Mutex::new(());
     let pending: Vec<u64> = (0..n).filter(|i| !have.contains(i)).collect();
+    // Once a range from this source fails, ranges after the first round don't ask it (N176). The first round
+    // always runs, so a one-off failed range still leaves its neighbours on disk for the resume.
+    let gave_up = AtomicBool::new(false);
+    let gave_up = &gave_up;
     let (part_r, marks_r, log_r) = (&part, &marks, &log);
     let futs: Vec<BoxFuture<'_, Result<(), String>>> = pending
         .into_iter()
-        .map(|i| {
+        .enumerate()
+        .map(|(k, i)| {
             let (part, marks, log) = (part_r, marks_r, log_r);
             async move {
                 let start = i * RANGE_BYTES;
                 let len = (b.size - start).min(RANGE_BYTES);
-                let bytes = t.get_range(src, &b.sha256, start, len).await?;
+                if k >= PARALLEL_RANGES && gave_up.load(Ordering::SeqCst) {
+                    return Err("an earlier range from this source failed".into());
+                }
+                let bytes = match t.get_range(src, &b.sha256, start, len).await {
+                    Ok(b) => b,
+                    Err(e) => {
+                        gave_up.store(true, Ordering::SeqCst);
+                        return Err(e);
+                    }
+                };
                 if bytes.len() as u64 != len {
+                    gave_up.store(true, Ordering::SeqCst);
                     return Err(format!("range {i}: {} bytes, wanted {len}", bytes.len()));
                 }
                 write_at(part, start, &bytes).map_err(|e| e.to_string())?;
@@ -188,7 +229,10 @@ async fn fetch_one(
         .buffer_unordered(PARALLEL_RANGES)
         .collect()
         .await;
-    if let Some(e) = results.into_iter().find_map(Result::err) {
+    // The first real error, not a range that only stopped because of it.
+    let mut errs: Vec<String> = results.into_iter().filter_map(Result::err).collect();
+    errs.sort_by_key(|e| e.starts_with("an earlier range"));
+    if let Some(e) = errs.into_iter().next() {
         return Err(e);
     }
     let ok = store.insert_file(&part, &b.sha256, b.size).map_err(io)?;
