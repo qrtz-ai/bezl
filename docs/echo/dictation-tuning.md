@@ -888,7 +888,7 @@ Worked one per cycle when no polish item is ready. P1 the `local_models::speech_
 touch_only_its_models` timeout: **fixed `a8da381`** (cycle 69, ADR 0209; a lost resume, not a flake; section 41);
 P2 model download pause/resume/background/crash recovery with sha256: crash recovery **fixed `b88bae3`** (cycle 72, ADR 0218, N190-N192; section 44; N193 open, Bobs); P3 no network or a failed index refresh never
 blocks dictation with an installed model: **fixed `de03608`** (cycle 70, ADR 0210, N188; section 42), and its follow-up N189 **fixed** (`b464db9` store side, Bobs; `7cf1272` speech side, cycle 71, ADR 0213; section 43); P4 mic edge cases (unplug, AirPods profile, permission revoked,
-sleep/wake); P5 key-up to text p50/p95 budget and a bench-compare script; P6 insertion fallbacks (secure fields,
+sleep/wake): talk side **N194 fixed `88c97ae`** (cycle 73, ADR 0222; section 45), N195/N196 open (Bobs, helper), N197 open (talk, needs a Mac measurement); P5 key-up to text p50/p95 budget and a bench-compare script; P6 insertion fallbacks (secure fields,
 Electron, terminals); P7 idle memory/CPU and model unload without first-press cost; P8 crash safety (pill reset, echo
 restart with backoff).
 
@@ -1820,3 +1820,99 @@ will resume); (3) P4/P6-P8. Polish: p15 only after the Mac check in section 36 s
 6. If anything misbehaves, revert `b88bae3` (fetch.rs and its test only).
 7. Still open for p15: hold fn and say "Bring the charger comma the cable comma and the adapter period", and note
    whether Parakeet writes the words or the marks (section 36 step 5).
+
+## 45. Cycle 73: backlog P4, a mic error for another press never ends a finishing dictation (ADR 0222, `88c97ae`)
+
+Polish re-check first: nothing new clears the bar. cleanup.rs, cleanup.ts and spec/vectors/talk are unchanged since
+`342e67b`, and the 4 failing cases are the same as in section 44 (p15 waits on the Mac check in section 36 step 5;
+p19/p20 are ambiguous; p41 is ADR 0188's "don't retry"). So the cycle took the next backlog item: P4, mic edge
+cases, talk side.
+
+| Run                                                     | Result                                                                                                                               |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| old service.rs (origin/main `9a252d9`), hardening73 (3) | **3 fail**: finalizing → a new dictation listening, words lost; inserting → no history entry; another id's error fails the dictation |
+| `88c97ae`, hardening73                                  | 3 / 3 pass                                                                                                                           |
+| `88c97ae`, qrtz-talk (38 test binaries)                 | 153 passed, 0 failed; clippy `-D warnings` all targets and rustfmt clean                                                             |
+
+- **What P4 already had, talk side (unchanged):** the helper ends a dictation itself on a revoked mic or a device
+  that doesn't come back (`dictation.stopped{reason: permission-revoked | mic-lost}`); talk keeps and inserts what
+  was heard and then says why (service.rs `dictation.stopped` l.838, `ended_by_helper`). A device switch (AirPods
+  connect or drop, a USB mic, Control Center) re-opens the input on a fresh engine within ~1 s (MacAudio.swift
+  `MicCapture.changed`, N138) and the dictation goes on. A lost helper ends the dictation with what was heard
+  (`helper_lost` l.972). A revoke or loss during finalizing is answered by the stop with its reason
+  (Dictation.swift `abort`, `s.closed`).
+- **N194 (fixed `88c97ae`):** `error{dictation.mic}` names no dictation, and the helper also sends it when a new
+  press's arm fails to open the mic (`EchoController.pushKey(.down)` l.148 → `configure(warmMic: true)` →
+  `attachMic` → `startMic` l.321), which `canArm` allows while the last dictation is finalizing. Talk failed any
+  active dictation (l.887 before): a finalizing one was cancelled in the helper (its final dropped), its stop wait
+  released with nothing and its attempt cleared. The words were lost with no history entry, the pill said
+  "microphone access denied", and the queued press then started a fresh dictation. Repro: release, pull the USB
+  mic, press again within the finalize. Fix: only a `listening` dictation (the one the error names, if it names
+  one) fails; the press reports the mic through its own start.
+- **N195 (open, Bobs; likely, verify on the Mac):** with echo's managed mic (`managedMic: true`,
+  EchoController.swift l.74), `Dictation.start` doesn't open the mic itself (l.399); the arbiter's
+  `mic.subscribe:dictation` does. If that `startMic` threw at the arm, `micRunning` stays false while the arbiter
+  may count the dictation reader as subscribed. The next start then gets no new subscribe effect, runs with no mic,
+  and ends in "didn't catch any words" instead of a mic error. Proposal below.
+- **N196 (open, Bobs):** no sleep/wake handling in the helper (no `willSleepNotification` / `didWakeNotification`
+  observer in QrtzEcho / QrtzEchoMac / QrtzMacShared). A push key held when the lid closes can lose its key-up: the
+  pill stays listening after wake until the next press and release. That release does end it, so it isn't stuck
+  for good, but it looks stuck. Proposal below.
+- **N197 (open, talk side, not landed):** a mic that stops delivering blocks without a configuration change or a
+  loss (no `dictation.level` for seconds) keeps the pill listening; the release still ends it with what was heard.
+  A talk-side "no level for N s" watchdog would be mine, but N needs the Mac's real device-switch gap first
+  (`MicRestart` retries for ~1 s), or it could end a dictation that would have recovered. Below the bar this cycle.
+- **Notch surface review (`7f518b6`, ADR 0221) against the pill state:** no stuck-pill path. The pill's phases
+  still come from `PillDriver` (QrtzEcho/Pill.swift, its state machine and error-flash timeout unchanged; `notch.*`
+  only passes through at l.204). `NativePill` maps `hidden` to `dismiss(owner: echo.dictation)`, and the surface
+  drops every host `notch.show/update/dismiss` naming that owner or `system` priority (NotchSurface.swift `host`
+  l.87). A dismiss mid-grow retracts; a show mid-retract grows back (`hideGeneration`). Talk's only new code is
+  `notch_send` (a type filter); nothing calls it or `NotchBroker` yet. **N198 (low, Bobs):** `NotchBroker::tick`
+  (notch.rs l.392) is what expires module content after 10 s and isn't wired, so wire it before the module IPC
+  that feeds the broker, or a module entry stays under dictation for good. `NotchArbiter.dismiss(owner:)` takes
+  the first entry with that owner at any priority (Notch.swift l.137); that's fine while the broker gives an owner
+  one priority.
+- **Dictation path review since `67b3d58`:** no capture, VAD, model config, drain / final pass, cleanup or
+  timing-log change for a plain fn press. `389e383` (ctrl+fn H-C2) touches `stop` / `finish_inner` only behind
+  `to_ctrl`. Nano notes, ctrl, the 0.2.3 release, feed.mjs and the modules publish are off the press path.
+- **Scores at `88c97ae`:** polish set 105 / 109 exact, 42 chars (1.20 % of 3504), regressions 0; keep set 292, 0
+  hits; release cleanup_budget medians over 3 runs 0.115-0.129 / 0.118-0.148 / 0.126-0.151 ms (495 words / 504
+  ending in a question / 504 ending in a vocative question), ceiling 2 ms, the benchmark test passes. TS twin
+  (packages/core/src/talk) plus Note (packages/features/note) vitest: 290 passed (16 files).
+- **Latency:** none. One phase check on an error line; nothing on the press, release, cleanup or insert path.
+
+Proposal for Beve Bobs (N195, N196; helper, QrtzEcho / QrtzEchoMac):
+
+> Two mic edge cases from backlog P4. Talk now ignores an id-less `error{dictation.mic}` unless a dictation is
+> listening (ADR 0222, `88c97ae`), so these are what's left on the helper side.
+>
+> **N195, a failed arm mic open.** With `managedMic: true`, `Dictation.start` doesn't call `startMic` (Dictation.swift
+> l.399); the arbiter's `mic.subscribe:dictation` does, from `pushKey(.down)` → `configure(warmMic: true)`
+> (EchoController.swift l.148). Please check first: when `startMic` throws there (l.321), does the arbiter still
+> count dictation as a mic reader? If so the next `dictation.start` gets no subscribe effect and runs with no mic
+> ("didn't catch any words" after the release). Proposed: on a throw in `startMic` from `attachMic`, step the
+> arbiter back (`mic.unsubscribe:dictation`, or a `configure(warmMic: false)`) so the next start subscribes again.
+> And in `Dictation.start` with a managed mic, if `!micRunning` after the admit, call `startMic()` once; if it
+> throws, send `error{dictation.mic, id}` with the start's id (talk keys on it) instead of running deaf. Nice to
+> have: a `reason` field (`denied` | `no-device`) so talk can type it `mic-lost` instead of `mic-denied`.
+>
+> **N196, sleep/wake with the key held.** No observer for `NSWorkspace.willSleepNotification` /
+> `didWakeNotification` today. Proposed: on will-sleep, if the push key is held, send `hotkey{action: up}` (the
+> same line a real release sends), so the dictation stops and inserts what was heard before the lid closes. On
+> did-wake, if the helper still thinks the key is held, read `CGEventSource.flagsState(.combinedSessionState)` and
+> send `up` when the fn / Globe flag is clear. Talk already handles a lone `up` (it only ends what a press started,
+> N172).
+>
+> Expected gain: no "didn't catch any words" after a mic pull and re-press; no pill left listening after a lid
+> close. Latency: none on the press path. The arm's open runs as today; the only additions are a check after a
+> failed open and two notification observers.
+>
+> Mac measurement plan: (1) Release fn, pull the USB mic (or turn AirPods off), press again within ~0.5 s and
+> hold 2 s. Before (if N195 holds): the second dictation ends "didn't catch any words". After: a mic error at once. The first
+> dictation's text goes in both times (that's `88c97ae`). (2) Hold fn, close the lid, wait 10 s, open it. Before:
+> the pill is still listening. After: the text heard before the close is inserted (or on the clipboard), and the
+> pill is gone. (3) Zero latency change: 20 normal dictations before and after, then
+> `node scripts/echo-timing-report.mjs --since 2026-10-19` on ~/Library/Logs/qrtz. The key-up → text p50 / p95
+> from the `echo timing:` / `talk latency` lines must be within noise. (4) No worse transcripts:
+> `bash native/qrtz-helper/scripts/echo-bench.sh --quick` before and after; WER must be identical (the recogniser
+> path is untouched).
