@@ -318,7 +318,8 @@ export RCLONE_CONFIG_QRTZR2_NO_CHECK_BUCKET=true RCLONE_CONFIG_QRTZR2_ACL=privat
 upload() { # <remote:bucket>
   if [[ "$mode" != timestamp ]]; then
     # Everything but the timestamp: immutable, cached for a year.
-    rclone copy "$out/v1" "$1/v1" --immutable --exclude "timestamp.json*" \
+    # --checksum: an object already up with the same bytes (e.g. root 1, uploaded another way) is not "modified".
+    rclone copy "$out/v1" "$1/v1" --immutable --checksum --exclude "timestamp.json*" \
       --header-upload "Cache-Control: public, max-age=31536000, immutable" --transfers 4 --s3-chunk-size 64M -v
   fi
   # The timestamp last (its .sig first is fine: the client fetches the pair), cached 5 minutes.
