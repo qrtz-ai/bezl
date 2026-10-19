@@ -196,51 +196,145 @@ fn luhn(d: &[u8]) -> bool {
     sum.is_multiple_of(10)
 }
 
-/// The secret scanner: redact common key/token shapes, card numbers and SSNs. Returns true if anything was hit.
-fn scrub(s: &mut String) -> bool {
-    const PREFIXES: &[&str] = &[
-        "sk-",
-        "sk_live_",
-        "rk_live_",
-        "ghp_",
-        "gho_",
-        "ghs_",
-        "github_pat_",
-        "xoxb-",
-        "xoxp-",
-        "xoxa-",
-        "akia",
-        "at_",
-        "aiza",
-        "glpat-",
-        "-----begin",
-    ];
-    let mut hit = false;
-    let words: Vec<String> = s
-        .split(' ')
-        .map(|w| {
-            let lw = w.to_ascii_lowercase();
-            let core = lw.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_');
-            let keyish = PREFIXES
-                .iter()
-                .any(|p| core.starts_with(p) && core.len() >= p.len() + 12);
-            let b = core.as_bytes();
-            let ssn = b.len() == 11
-                && b[3] == b'-'
-                && b[6] == b'-'
-                && b.iter()
-                    .enumerate()
-                    .all(|(i, c)| i == 3 || i == 6 || c.is_ascii_digit());
-            let long_secret = core.len() >= 32 && core.chars().all(|c| c.is_ascii_hexdigit());
-            if keyish || ssn || long_secret {
-                hit = true;
-                "[redacted]".to_owned()
-            } else {
-                w.to_owned()
-            }
+/// Token prefixes of common keys and tokens (lowercased). A word with one of these and at least 12 more characters
+/// is redacted.
+const SECRET_PREFIXES: &[&str] = &[
+    "sk-ant-",
+    "sk-",
+    "sk_live_",
+    "rk_live_",
+    "ghp_",
+    "gho_",
+    "ghs_",
+    "ghu_",
+    "ghr_",
+    "github_pat_",
+    "xoxb-",
+    "xoxp-",
+    "xoxa-",
+    "xoxs-",
+    "xoxr-",
+    "xapp-",
+    "akia",
+    "asia",
+    "at_",
+    "aiza",
+    "glpat-",
+    "hf_",
+    "npm_",
+];
+
+/// Characters a secret can't contain, so they split words (Bozniak M1): whitespace plus `= : " ' , ; ( ) [ ] { } < >`.
+fn is_split(c: char) -> bool {
+    c.is_whitespace()
+        || matches!(
+            c,
+            '=' | ':' | '"' | '\'' | ',' | ';' | '(' | ')' | '[' | ']' | '{' | '}' | '<' | '>'
+        )
+}
+
+/// Shannon entropy in bits per character.
+fn entropy(s: &str) -> f64 {
+    let mut counts = [0u32; 256];
+    for b in s.bytes() {
+        counts[usize::from(b)] += 1;
+    }
+    let n = s.len() as f64;
+    counts
+        .iter()
+        .filter(|c| **c > 0)
+        .map(|c| {
+            let p = f64::from(*c) / n;
+            -p * p.log2()
         })
-        .collect();
-    *s = words.join(" ");
+        .sum()
+}
+
+fn is_b64url(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '-' | '_')
+}
+
+/// `eyJ…` header, three base64url segments.
+fn is_jwt(w: &str) -> bool {
+    let parts: Vec<&str> = w.split('.').collect();
+    parts.len() == 3
+        && w.starts_with("eyJ")
+        && parts[0].len() >= 10
+        && parts[1].len() >= 10
+        && parts.iter().all(|p| !p.is_empty() && p.chars().all(is_b64url))
+}
+
+/// One word (between split characters) that looks like a secret.
+fn is_secret_word(w: &str) -> bool {
+    let core = w.trim_matches(|c: char| matches!(c, '.' | '!' | '?' | '`' | '*'));
+    let lw = core.to_ascii_lowercase();
+    let keyish = SECRET_PREFIXES
+        .iter()
+        .any(|p| lw.starts_with(p) && lw.len() >= p.len() + 12);
+    let b = core.as_bytes();
+    let ssn = b.len() == 11
+        && b[3] == b'-'
+        && b[6] == b'-'
+        && b.iter()
+            .enumerate()
+            .all(|(i, c)| i == 3 || i == 6 || c.is_ascii_digit());
+    let long_hex = core.len() >= 32 && core.chars().all(|c| c.is_ascii_hexdigit());
+    // High entropy: 32+ base64 / base64url characters at 4.0+ bits per character.
+    let b64 = core.trim_end_matches('=');
+    let high_entropy = b64.len() >= 32
+        && b64
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '/' | '-' | '_'))
+        && entropy(b64) >= 4.0;
+    keyish || ssn || long_hex || high_entropy || is_jwt(core)
+}
+
+/// PEM blocks (`-----BEGIN … -----` through the matching `-----END … -----`, or to the end) are redacted whole.
+fn scrub_pem(s: &mut String) -> bool {
+    let mut hit = false;
+    while let Some(start) = s.find("-----BEGIN") {
+        let rest = &s[start..];
+        let end = rest
+            .find("-----END")
+            .map(|e| {
+                let after = &rest[e + 8..];
+                // the END line's closing dashes
+                after.find("-----").map_or(rest.len(), |d| e + 8 + d + 5)
+            })
+            .unwrap_or(rest.len());
+        s.replace_range(start..start + end, "[redacted]");
+        hit = true;
+    }
+    hit
+}
+
+/// The secret scanner: redact PEM blocks, key/token shapes, JWTs, high-entropy strings, SSNs and card numbers.
+/// Returns true if anything was hit.
+fn scrub(s: &mut String) -> bool {
+    let mut hit = scrub_pem(s);
+    let mut out = String::with_capacity(s.len());
+    let mut word = String::new();
+    let flush = |word: &mut String, out: &mut String, hit: &mut bool| {
+        if !word.is_empty() {
+            if is_secret_word(word) {
+                out.push_str("[redacted]");
+                *hit = true;
+            } else {
+                out.push_str(word);
+            }
+            word.clear();
+        }
+    };
+    for c in s.chars() {
+        if is_split(c) {
+            flush(&mut word, &mut out, &mut hit);
+            out.push(c);
+        } else {
+            word.push(c);
+        }
+    }
+    flush(&mut word, &mut out, &mut hit);
+    *s = out;
     // Card numbers: runs of digits with optional spaces/dashes, 13-19 digits, Luhn-valid.
     let chars: Vec<char> = s.chars().collect();
     let mut out = String::new();
@@ -275,22 +369,52 @@ fn scrub(s: &mut String) -> bool {
     hit
 }
 
+/// Scrub every string in a payload, object keys included (Bozniak M1).
 fn scrub_value(v: &mut Value) -> bool {
     match v {
         Value::String(s) => scrub(s),
         Value::Array(a) => a.iter_mut().fold(false, |h, x| scrub_value(x) | h),
-        Value::Object(o) => o.values_mut().fold(false, |h, x| scrub_value(x) | h),
+        Value::Object(o) => {
+            let mut hit = false;
+            let old = std::mem::take(o);
+            for (mut k, mut x) in old {
+                hit |= scrub(&mut k);
+                hit |= scrub_value(&mut x);
+                o.insert(k, x);
+            }
+            hit
+        }
         _ => false,
     }
 }
 
 const CODE_ALPHABET: &[u8] = b"23456789ABCDEFGHJKMNPQRSTVWXYZ";
 
+/// `n` characters from [`CODE_ALPHABET`], uniform: rejection sampling (bytes >= 240 = 8 x 30 are redrawn), never
+/// `% 30`, which favours the first 16 characters (Bozniak M2).
+fn code_chars(n: usize) -> String {
+    let limit = (256 / CODE_ALPHABET.len() * CODE_ALPHABET.len()) as u8;
+    let mut out = String::with_capacity(n);
+    while out.len() < n {
+        let mut b = [0u8; 16];
+        crate::crypto::os_random(&mut b);
+        for x in b {
+            if x < limit && out.len() < n {
+                out.push(char::from(CODE_ALPHABET[usize::from(x) % CODE_ALPHABET.len()]));
+            }
+        }
+    }
+    out
+}
+
 /// One dashboard.
 pub struct Dash {
     pepper: Pepper,
     deleted: bool,
     codes: Vec<Code>,
+    /// Failed enrollments in the last minute (dashboard-wide), and since the last rotation.
+    enroll_failures: VecDeque<u64>,
+    enroll_failures_total: usize,
     agents: Vec<Agent>,
     /// agent id → key → widget.
     widgets: HashMap<String, BTreeMap<String, Widget>>,
@@ -316,6 +440,8 @@ impl Dash {
             dash_writes: VecDeque::new(),
             audit: vec![],
             next_id: 1,
+            enroll_failures: VecDeque::new(),
+            enroll_failures_total: 0,
         }
     }
 
@@ -336,12 +462,7 @@ impl Dash {
         if self.deleted {
             return None;
         }
-        let mut b = [0u8; 8];
-        crate::crypto::os_random(&mut b);
-        let c: String = b
-            .iter()
-            .map(|x| CODE_ALPHABET[*x as usize % CODE_ALPHABET.len()] as char)
-            .collect();
+        let c = code_chars(8);
         let code = format!("ENR-{}-{}", &c[..4], &c[4..]);
         self.codes.push(Code {
             hash: self.pepper.hash(&code),
@@ -355,6 +476,8 @@ impl Dash {
     /// Rotate the enrollment secret: every outstanding code stops working; agent tokens are untouched.
     pub fn rotate_codes(&mut self, now: u64) {
         self.codes.clear();
+        self.enroll_failures.clear();
+        self.enroll_failures_total = 0;
         self.log("codes-rotated", None, now);
     }
 
@@ -586,6 +709,18 @@ impl Dash {
     }
 
     fn enroll(&mut self, body: &Value, now: u64) -> Response {
+        // Bozniak M2: wrong codes are rate limited dashboard-wide (not per agent: there is no agent yet).
+        let win = now.saturating_sub(60_000);
+        while self.enroll_failures.front().is_some_and(|t| *t <= win) {
+            self.enroll_failures.pop_front();
+        }
+        if self.enroll_failures.len() >= ENROLL_FAILS_PER_MIN {
+            let oldest = self.enroll_failures.front().copied().unwrap_or(now);
+            return resp(
+                429,
+                json!({"error": "too many wrong codes", "retry_after_ms": (oldest + 60_000).saturating_sub(now).max(1000)}),
+            );
+        }
         let code = body["code"].as_str().unwrap_or("").trim().to_ascii_uppercase();
         let hash = self.pepper.hash(&code);
         let Some(c) = self
@@ -593,6 +728,13 @@ impl Dash {
             .iter_mut()
             .find(|c| ct_eq(&c.hash, &hash) && !c.used && c.expires_at > now)
         else {
+            self.enroll_failures.push_back(now);
+            self.enroll_failures_total += 1;
+            if self.enroll_failures_total >= ENROLL_FAILS_BEFORE_ROTATION {
+                // Forced rotation: every outstanding code dies; the user issues a new one.
+                self.rotate_codes(now);
+                self.log("codes-rotated-after-failures", None, now);
+            }
             return fail(401, "enrollment code is used, expired or wrong");
         };
         c.used = true;
@@ -800,6 +942,89 @@ mod tests {
             assert_eq!(scrub(&mut s), inp != out);
             assert_eq!(s, out);
         }
+    }
+
+    fn red(inp: &str) -> (bool, String) {
+        let mut s = inp.to_owned();
+        (scrub(&mut s), s)
+    }
+
+    #[test]
+    fn scrub_splits_on_assignment_and_quote_punctuation() {
+        for inp in [
+            "token=ghp_abcdefghijklmnopqrstuvwx",
+            "key:sk-abcdefghijklmnop1234",
+            "\"xoxb-123456789012-abcdef\"",
+            "('AKIAABCDEFGHIJKLMNOP')",
+            "[npm_abcdefghijklmnopqrst]",
+            "{hf_abcdefghijklmnopqrstu}",
+            "<ghu_abcdefghijklmnopqrstuv>",
+            "a;ghr_abcdefghijklmnopqrstuv,b",
+        ] {
+            let (hit, out) = red(inp);
+            assert!(
+                hit && out.contains("[redacted]") && !out.contains("abcdefghijkl"),
+                "{inp} -> {out}"
+            );
+        }
+    }
+
+    #[test]
+    fn scrub_knows_the_new_prefixes() {
+        for p in [
+            "asia", "xoxs-", "xoxr-", "xapp-", "ghu_", "ghr_", "sk-ant-", "hf_", "npm_",
+        ] {
+            let (hit, out) = red(&format!("x {p}ABCDEFGH12345678 y"));
+            assert!(hit, "{p}");
+            assert_eq!(out, "x [redacted] y", "{p}");
+        }
+    }
+
+    #[test]
+    fn scrub_redacts_whole_pem_blocks() {
+        let pem = "before -----BEGIN RSA PRIVATE KEY-----\nMIIEow IBAAK CAQEA\nabc def\n-----END RSA PRIVATE KEY----- after";
+        assert_eq!(red(pem), (true, "before [redacted] after".to_owned()));
+        let open = "x -----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1r ZXktdjEAAAA";
+        assert_eq!(red(open), (true, "x [redacted]".to_owned()));
+    }
+
+    #[test]
+    fn scrub_redacts_jwts_and_high_entropy_strings() {
+        let jwt = "bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U";
+        assert_eq!(red(jwt), (true, "bearer [redacted]".to_owned()));
+        let (hit, _) = red("blob Zm9vYmFyYmF6cXV4M2tKZGw5UXpXcTdOeGI0UmY=");
+        assert!(hit, "base64 secret");
+        // low entropy, long words and paths stay
+        for keep in [
+            "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+            "internationalizationlocalizations",
+            "uploaded bank statement",
+        ] {
+            assert_eq!(red(keep), (false, keep.to_owned()), "{keep}");
+        }
+    }
+
+    #[test]
+    fn scrub_value_scans_object_keys() {
+        let mut v = json!({"ghp_abcdefghijklmnopqrstuvwx": 1, "ok": {"sk-abcdefghijklmnop1234": "x"}});
+        assert!(scrub_value(&mut v));
+        assert_eq!(v, json!({"[redacted]": 1, "ok": {"[redacted]": "x"}}));
+    }
+
+    #[test]
+    fn codes_are_uniform_over_the_alphabet() {
+        let mut counts = [0usize; 30];
+        for _ in 0..3000 {
+            for c in code_chars(8).bytes() {
+                counts[CODE_ALPHABET.iter().position(|a| *a == c).unwrap()] += 1;
+            }
+        }
+        // 24,000 draws, 800 expected each; % 30 would give the first 16 ~ 9/8 of the rest.
+        let (lo, hi) = (
+            counts[..16].iter().sum::<usize>() as f64 / 16.0,
+            counts[16..].iter().sum::<usize>() as f64 / 14.0,
+        );
+        assert!((lo / hi - 1.0).abs() < 0.06, "{lo} {hi}");
     }
 
     #[test]

@@ -60,6 +60,11 @@ export default function DashView() {
     void qrtz
       .invoke('dash:review-agent', { agentId, approve })
       .then(load, () => {});
+  const open = (url: string) =>
+    qrtz.invoke('dash:open-link', { url }).then(
+      (r) => r.opened,
+      () => false,
+    );
   const issue = () =>
     void qrtz.invoke('dash:issue-code').then(setCode, () => setCode(null));
 
@@ -142,7 +147,13 @@ export default function DashView() {
         <EmptyState icon="grid" title="no agents yet" />
       ) : null}
       {live.map((a) => (
-        <AgentSection key={a.id} agent={a} now={Date.now()} onDelete={del} />
+        <AgentSection
+          key={a.id}
+          agent={a}
+          now={Date.now()}
+          onDelete={del}
+          open={open}
+        />
       ))}
       {view && !view.deleted ? (
         <SettingsSection title="danger zone">
@@ -193,10 +204,12 @@ function AgentSection({
   agent: a,
   now,
   onDelete,
+  open,
 }: {
   agent: DashAgent;
   now: number;
   onDelete: (d: DashDelete) => void;
+  open: (url: string) => Promise<boolean>;
 }) {
   return (
     <Card padding={4} data-testid={`dash-agent-${a.id}`}>
@@ -247,7 +260,7 @@ function AgentSection({
                       }
                     />
                   </Stack>
-                  <Block widget={w} />
+                  <Block widget={w} open={open} />
                 </Stack>
               </GridCard>
             ))}

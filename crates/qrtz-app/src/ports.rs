@@ -170,6 +170,11 @@ pub trait ShellHooks: Send + Sync {
     fn restart(&self) -> bool {
         false
     }
+    /// ADR 0228: open an https link in the default browser (the Tauri opener). `false` = refused or no shell.
+    /// Implementations must check `qrtz_dash::is_https_url` themselves.
+    fn open_https(&self, _url: &str) -> bool {
+        false
+    }
 }
 
 pub struct NoShell;

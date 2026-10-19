@@ -14,13 +14,26 @@ export const DASH_STALE_AFTER_MS = 10 * 60 * 1000;
 const text = (max = 500) => z.string().max(max);
 const finite = z.number().refine(Number.isFinite);
 
-/** https only, a real host, no userinfo (the Rust `is_https_url`). */
+/** https only, a real host, ':' only before a numeric port, no userinfo (the Rust `is_https_url`). */
 export const isHttpsUrl = (u: string) => {
   const m = /^https:\/\/([^/?#]*)/.exec(u);
   if (!m || /\s/.test(u) || [...u].some((c) => c.charCodeAt(0) < 0x20))
     return false;
-  const host = m[1] ?? '';
-  return host.includes('.') && /^[A-Za-z0-9.:-]+$/.test(host);
+  const [host = '', port, ...extra] = (m[1] ?? '').split(':');
+  if (extra.length) return false;
+  if (port !== undefined) {
+    const n = Number(port);
+    if (!/^\d{1,5}$/.test(port) || n < 1 || n > 65535) return false;
+  }
+  return (
+    host.includes('.') &&
+    host.split('.').every((l) => /^[A-Za-z0-9-]+$/.test(l) && !/^-|-$/.test(l))
+  );
+};
+/** A punycode (`xn--`) label: the link may imitate another name (the Rust `is_punycode_host`). */
+export const isPunycodeHost = (u: string) => {
+  const host = (/^https:\/\/([^/?#:]*)/.exec(u)?.[1] ?? '').toLowerCase();
+  return host.split('.').some((l) => l.startsWith('xn--'));
 };
 /** Safe markdown subset: no html, autolinks or images. */
 export const isSafeMarkdown = (s: string) => !/<[A-Za-z/!]|!\[/.test(s);

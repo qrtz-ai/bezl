@@ -145,14 +145,41 @@ pub fn is_https_url(u: &str) -> bool {
     let Some(rest) = u.strip_prefix("https://") else {
         return false;
     };
-    let host = rest.split(['/', '?', '#']).next().unwrap_or("");
-    !host.is_empty()
-        && !host.contains('@')
+    if u.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return false;
+    }
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    // ':' only before a numeric port (Bozniak L5).
+    let (host, port) = match authority.split_once(':') {
+        Some((h, p)) => (h, Some(p)),
+        None => (authority, None),
+    };
+    let port_ok = port.is_none_or(|p| {
+        !p.is_empty()
+            && p.len() <= 5
+            && p.chars().all(|c| c.is_ascii_digit())
+            && p.parse::<u32>().is_ok_and(|n| (1..=65535).contains(&n))
+    });
+    port_ok
         && host.contains('.')
-        && host
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':'))
-        && !u.chars().any(|c| c.is_whitespace() || c.is_control())
+        && host.split('.').all(|l| {
+            !l.is_empty()
+                && !l.starts_with('-')
+                && !l.ends_with('-')
+                && l.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        })
+}
+
+/// The link's host has a punycode (`xn--`) label: the UI's confirm says it may imitate another name.
+pub fn is_punycode_host(u: &str) -> bool {
+    let host = u
+        .strip_prefix("https://")
+        .unwrap_or(u)
+        .split(['/', '?', '#', ':'])
+        .next()
+        .unwrap_or("");
+    host.split('.')
+        .any(|l| l.to_ascii_lowercase().starts_with("xn--"))
 }
 
 /// Safe subset: no HTML tags, no images, no autolinks (`<https://...>`).
@@ -296,6 +323,11 @@ mod tests {
         let items: Vec<_> = (0..51).map(|_| json!({"text": "x"})).collect();
         assert!(validate_put(List, &json!({ "items": items })).is_err());
         for u in [
+            "https://a.com:",
+            "https://a.com:x80",
+            "https://a.com:99999",
+            "https://a.com:1:2",
+            "https://a..com",
             "http://a.com",
             "javascript:alert(1)",
             "data:text/html,x",
@@ -320,5 +352,14 @@ mod tests {
         assert!(validate_put(Markdown, &json!({"text": "x".repeat(2001)})).is_err());
         assert!(validate_put(Table, &json!({"columns": ["a"], "rows": [["x", "y"]]})).is_err());
         assert!(BlockType::parse("action").is_none());
+        for u in [
+            "https://a.com:8443/x",
+            "https://xn--pple-43d.com/",
+            "https://a-b.c.io?q=1#f",
+        ] {
+            assert!(is_https_url(u), "{u}");
+        }
+        assert!(is_punycode_host("https://xn--pple-43d.com/login"));
+        assert!(!is_punycode_host("https://apple.com/xn--a"));
     }
 }

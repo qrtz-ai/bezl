@@ -12090,6 +12090,37 @@
         "additionalProperties": false
       }
     },
+    "dash:open-link": {
+      "version": 1,
+      "capability": "dash.read",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "maxLength": 2048
+            }
+          },
+          "required": [
+            "url"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "opened": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "opened"
+        ],
+        "additionalProperties": false
+      }
+    },
     "dash:delete": {
       "version": 1,
       "capability": "dash.manage",

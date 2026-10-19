@@ -8,7 +8,7 @@ mod blocks;
 mod crypto;
 mod store;
 
-pub use blocks::{validate_append, validate_put, BlockError, BlockType};
+pub use blocks::{is_https_url, is_punycode_host, validate_append, validate_put, BlockError, BlockType};
 pub use crypto::{hmac_sha256, Pepper};
 pub use store::{Dash, Request, Response, Scope};
 
@@ -28,6 +28,10 @@ pub const MAX_BODY_BYTES: usize = 8 * 1024;
 pub const MAX_BATCH_BODY_BYTES: usize = 64 * 1024;
 pub const WRITES_PER_MIN_AGENT: usize = 60;
 pub const WRITES_PER_MIN_DASHBOARD: usize = 300;
+/// Wrong enrollment codes per minute, dashboard-wide, before 429.
+pub const ENROLL_FAILS_PER_MIN: usize = 10;
+/// Wrong codes since the last rotation before every outstanding code is revoked (forced rotation).
+pub const ENROLL_FAILS_BEFORE_ROTATION: usize = 50;
 pub const MAX_AGENTS: usize = 50;
 pub const MAX_WIDGETS_PER_AGENT: usize = 20;
 pub const LOG_RING: usize = 500;

@@ -3452,6 +3452,7 @@ version = "0.2.3"
 dependencies = [
  "qrtz-app",
  "qrtz-cloexec",
+ "qrtz-dash",
  "qrtz-helper-bridge",
  "qrtz-ipc",
  "qrtz-storage",
@@ -3577,6 +3578,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "tokio",
+ "zeroize",
 ]
 
 [[package]]

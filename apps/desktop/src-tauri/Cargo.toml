@@ -39,6 +39,8 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-dialog = "2"
+# ADR 0228 (Bozniak M3): Agent Dash links are re-checked https in Rust before the shell opens them.
+qrtz-dash = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

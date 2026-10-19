@@ -4,6 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import {
   DashBlocks,
+  isHttpsUrl,
   DashView as DashViewSchema,
   type DashView as View,
   type QrtzClient,
@@ -196,18 +197,38 @@ describe('dash blocks', () => {
     );
   });
 
-  it('asks once per domain before opening a link, and never opens non-https', () => {
+  it('asks once per domain, warns on punycode, and opens through the host only', async () => {
     const opened: string[] = [];
-    window.open = ((u: string) => {
-      opened.push(u);
-      return null;
+    const open = async (u: string) => (opened.push(u), true);
+    const asked: string[] = [];
+    const ask = (m: string) => (asked.push(m), true);
+    window.open = (() => {
+      throw new Error('the webview must never open links');
     }) as typeof window.open;
-    let asked = 0;
-    const ask = () => (asked++, true);
-    expect(openLink('http://a.co', ask)).toBe(false);
-    expect(openLink('https://b.co/1', ask)).toBe(true);
-    expect(openLink('https://b.co/2', ask)).toBe(true);
-    expect(asked).toBe(1);
-    expect(opened).toEqual(['https://b.co/1', 'https://b.co/2']);
+    expect(await openLink('http://a.co', open, ask)).toBe(false);
+    expect(await openLink('https://a.co:x/', open, ask)).toBe(false);
+    expect(await openLink('https://b.co/1', open, ask)).toBe(true);
+    expect(await openLink('https://b.co/2', open, ask)).toBe(true);
+    expect(await openLink('https://xn--pple-43d.com/', open, ask)).toBe(true);
+    expect(asked).toHaveLength(2);
+    expect(asked[1]).toContain('xn--');
+    expect(opened).toEqual([
+      'https://b.co/1',
+      'https://b.co/2',
+      'https://xn--pple-43d.com/',
+    ]);
+  });
+
+  it('matches the rust url rules', () => {
+    for (const u of ['https://a.com:8443/x', 'https://a-b.c.io?q=1#f'])
+      expect(isHttpsUrl(u)).toBe(true);
+    for (const u of [
+      'https://a.com:',
+      'https://a.com:99999',
+      'https://a.com:1:2',
+      'https://a..com',
+      'https://user@a.com',
+    ])
+      expect(isHttpsUrl(u)).toBe(false);
   });
 });

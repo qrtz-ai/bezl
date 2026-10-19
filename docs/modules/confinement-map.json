@@ -16,6 +16,7 @@
     "qrtz-speech": "shell",
     "qrtz-modules": "shell",
     "qrtz-publish": "shell",
+    "qrtz-dash": "shell",
     "qrtz-speech-types": "shared",
     "qrtz-ipc": "shared",
     "qrtz-helper-bridge": "shared",

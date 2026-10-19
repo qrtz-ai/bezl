@@ -1629,6 +1629,14 @@
         "ok": true
       }
     },
+    "dash:open-link": {
+      "request": {
+        "url": "https://qrtz.ai/docs"
+      },
+      "response": {
+        "opened": true
+      }
+    },
     "dash:review-agent": {
       "request": {
         "agentId": "ag_2",

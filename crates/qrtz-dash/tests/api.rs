@@ -375,3 +375,41 @@ fn idempotency_rate_limits_and_the_scanner() {
     let r = post(&mut d, &tok, "/v1/heartbeat", json!({"status": "idle"}));
     assert!(r.body["retry_after_ms"].as_u64().unwrap() > 0);
 }
+
+#[test]
+fn wrong_codes_are_rate_limited_then_force_rotation() {
+    let mut d = dash();
+    let good = d.issue_code(T0).unwrap();
+    let try_code = |d: &mut Dash, c: &str, t: u64| {
+        d.handle(
+            &Request::new("POST", "/v1/enroll").json(json!({"code": c, "name": format!("a{t}")})),
+            t,
+        )
+        .status
+    };
+    for i in 0..ENROLL_FAILS_PER_MIN as u64 {
+        assert_eq!(try_code(&mut d, "ENR-AAAA-AAAA", T0 + i), 401);
+    }
+    // the 11th in the minute is refused before the code is even checked, the right one included
+    assert_eq!(try_code(&mut d, "ENR-AAAA-AAAA", T0 + 20), 429);
+    assert_eq!(try_code(&mut d, &good, T0 + 21), 429);
+    // a minute later the good code works
+    assert_eq!(try_code(&mut d, &good, T0 + 61_000), 201);
+    // ~50 failures since the last rotation revoke every outstanding code
+    let pending = d.issue_code(T0).unwrap();
+    let mut t = T0 + 120_000;
+    let mut fails = 0;
+    while fails < ENROLL_FAILS_BEFORE_ROTATION - ENROLL_FAILS_PER_MIN {
+        if try_code(&mut d, "ENR-AAAA-AAAA", t) == 401 {
+            fails += 1;
+        }
+        t += 7_000;
+    }
+    assert_eq!(
+        try_code(&mut d, &pending, t + 61_000),
+        401,
+        "the forced rotation killed it"
+    );
+    let fresh = d.issue_code(t).unwrap();
+    assert_eq!(try_code(&mut d, &fresh, t + 62_000), 201);
+}

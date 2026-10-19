@@ -870,6 +870,8 @@ export function createMockBridge(): TauriBridge {
       expiresAt: Date.now() + 15 * 60_000,
     }),
     'dash:rotate-codes': () => ({ ok: true as const }),
+    // The browser mock opens nothing; it says whether the host would (https only).
+    'dash:open-link': ({ url }) => ({ opened: url.startsWith('https://') }),
     'dash:review-agent': ({ agentId, approve }) => {
       const a = dashMock.agents.find((x) => x.id === agentId);
       if (!a || a.status !== 'pending') return { ok: false };

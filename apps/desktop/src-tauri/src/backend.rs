@@ -98,6 +98,11 @@ impl ShellHooks for TauriShell {
     fn reveal(&self, dir: &std::path::Path) -> bool {
         crate::paths::reveal(dir)
     }
+    /// ADR 0228 (Bozniak M3): an Agent Dash link, in the default browser. https only, checked again here whatever
+    /// the caller did; see `paths::open_https` for why this is not tauri-plugin-opener.
+    fn open_https(&self, url: &str) -> bool {
+        crate::paths::open_https(url)
+    }
     /// "restart qrtz" (a permission grant a running process only sees after a relaunch). Inside qrtz.app the new
     /// copy is opened through Launch Services (`open`, after this one quits) so it is its own responsible process
     /// again; elsewhere (dev) Tauri's restart.

@@ -168,6 +168,35 @@ fn installed_layout_from(
     }
 }
 
+/// ADR 0228 (Bozniak M3): open an Agent Dash link in the default browser. `qrtz_dash::is_https_url` is checked
+/// here (the IPC channel checked it too), and the program and flag are fixed: `open -u <url>` treats the argument
+/// as a URL only. Not tauri-plugin-opener: the ADR 0078 offline graph (qrtz-lifecycle tests/offline_graph.rs) counts
+/// it as a network crate, and nothing here needs more than the OS opening one checked https URL. The webview never
+/// opens links. On unix the spawn takes the N98 fork guard.
+pub fn open_https(url: &str) -> bool {
+    use std::process::{Command, Stdio};
+    if !qrtz_dash::is_https_url(url) {
+        return false;
+    }
+    let mut cmd = if cfg!(target_os = "macos") {
+        let mut c = Command::new("/usr/bin/open");
+        c.arg("-u").arg(url);
+        c
+    } else {
+        let mut c = Command::new("xdg-open");
+        c.arg(url);
+        c
+    };
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(unix)]
+    let child = qrtz_cloexec::spawn(|| cmd.spawn());
+    #[cfg(not(unix))]
+    let child = cmd.spawn();
+    child.and_then(|mut c| c.wait()).is_ok_and(|s| s.success())
+}
+
 /// Show `dir` in the file manager (Finder selects `qrtz.log` if it exists). The program is fixed and the argument
 /// is a local path, so this can't open a URL. On unix the spawn takes the N98 fork guard, like every qrtz child.
 pub fn reveal(dir: &std::path::Path) -> bool {
@@ -340,6 +369,22 @@ mod layout_tests {
                 !super::CODE_KNOBS,
                 "a release build takes no helper path from the environment"
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod open_https_tests {
+    #[test]
+    fn refuses_anything_but_https_before_spawning() {
+        for u in [
+            "http://qrtz.ai",
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "-a Calculator",
+            "https://a.com:x",
+        ] {
+            assert!(!super::open_https(u), "{u}");
         }
     }
 }

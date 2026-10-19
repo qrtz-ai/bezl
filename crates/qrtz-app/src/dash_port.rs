@@ -8,16 +8,24 @@ use std::sync::Mutex;
 
 pub const DASH_PREFIX: &str = "dash:";
 
+/// Bozniak L4: the Rust-side flag. Off in release builds, so every `dash:*` call and every agent request fails
+/// closed whatever the renderer does; on in debug builds (dev and tests). Flip with the renderer's DASH_ENABLED,
+/// and only after ADR 0228's pre-listener findings are closed.
+pub const DASH_ENABLED: bool = cfg!(debug_assertions);
+
 pub struct DashPort {
     dash: Mutex<Dash>,
+    enabled: bool,
 }
 
 impl Default for DashPort {
     fn default() -> Self {
-        DashPort {
-            dash: Mutex::new(Dash::new(Pepper::random())),
-        }
+        Self::with_enabled(DASH_ENABLED)
     }
+}
+
+fn off() -> AppError {
+    AppError::new(ErrorCode::Unavailable, "dash is off in this build").retryable(false)
 }
 
 fn now_ms() -> u64 {
@@ -31,6 +39,17 @@ fn bad(m: &str) -> AppError {
 }
 
 impl DashPort {
+    pub fn with_enabled(enabled: bool) -> Self {
+        DashPort {
+            dash: Mutex::new(Dash::new(Pepper::random())),
+            enabled,
+        }
+    }
+
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
     fn with<T>(&self, f: impl FnOnce(&mut Dash) -> T) -> T {
         let mut d = self
             .dash
@@ -41,11 +60,20 @@ impl DashPort {
 
     /// One agent request (the future HTTP listener's entry point).
     pub fn agent_request(&self, req: &Request) -> Response {
+        if !self.enabled {
+            return Response {
+                status: 503,
+                body: json!({"error": "dash is off"}),
+            };
+        }
         let now = now_ms();
         self.with(|d| d.handle(req, now))
     }
 
     pub fn call(&self, channel: &str, p: &Value) -> Result<Value, AppError> {
+        if !self.enabled {
+            return Err(off());
+        }
         let now = now_ms();
         let s = |k: &str| p.get(k).and_then(Value::as_str).unwrap_or("").to_owned();
         match channel {
@@ -82,6 +110,15 @@ impl DashPort {
                 };
                 Ok(json!({ "ok": ok }))
             }
+            // Validated here; the caller (AppService) opens it through the shell, which checks again.
+            "dash:open-link" => {
+                let url = s("url");
+                if qrtz_dash::is_https_url(&url) {
+                    Ok(json!({ "url": url }))
+                } else {
+                    Err(bad("links open only if they are https"))
+                }
+            }
             _ => Err(no_handler(channel)),
         }
     }
@@ -92,8 +129,45 @@ mod tests {
     use super::*;
 
     #[test]
+    fn off_fails_closed_for_ipc_and_agents() {
+        let port = DashPort::with_enabled(false);
+        for ch in [
+            "dash:view",
+            "dash:issue-code",
+            "dash:rotate-codes",
+            "dash:open-link",
+        ] {
+            assert_eq!(
+                port.call(ch, &Value::Null).unwrap_err().code,
+                ErrorCode::Unavailable,
+                "{ch}"
+            );
+        }
+        let r = port.agent_request(
+            &Request::new("POST", "/v1/enroll").json(json!({"code": "ENR-AAAA-AAAA", "name": "x"})),
+        );
+        assert_eq!(r.status, 503);
+    }
+
+    #[test]
+    fn open_link_takes_https_only() {
+        let port = DashPort::with_enabled(true);
+        assert!(port
+            .call("dash:open-link", &json!({"url": "https://qrtz.ai/x"}))
+            .is_ok());
+        for u in [
+            "http://qrtz.ai",
+            "javascript:alert(1)",
+            "https://a.com:x",
+            "file:///etc/passwd",
+        ] {
+            assert!(port.call("dash:open-link", &json!({"url": u})).is_err(), "{u}");
+        }
+    }
+
+    #[test]
     fn the_user_side_round_trips_and_the_view_holds_no_secrets() {
-        let port = DashPort::default();
+        let port = DashPort::with_enabled(true);
         let code = port.call("dash:issue-code", &Value::Null).unwrap()["code"]
             .as_str()
             .unwrap()

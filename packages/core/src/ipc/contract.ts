@@ -944,6 +944,16 @@ export const ipcContract = {
     }),
     response: z.object({ ok: z.boolean() }),
   }),
+  /**
+   * ADR 0228 (Bozniak M3): open an agent's link in the default browser. qrtz-app re-checks it is https and opens it
+   * through the Tauri opener; the webview never opens links itself.
+   */
+  'dash:open-link': defineChannel({
+    version: 1,
+    capability: 'dash.read',
+    request: z.object({ url: z.string().max(2048) }),
+    response: z.object({ opened: z.boolean() }),
+  }),
   /** ADR 0228: delete a widget, an agent or the dashboard; the agent learns it only as a 410. */
   'dash:delete': defineChannel({
     version: 1,

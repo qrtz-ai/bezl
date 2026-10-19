@@ -1236,6 +1236,11 @@ impl Handler for AppService {
             }
             Some("runtime") => self.runtime.call(channel, payload).await,
             Some("vault") => self.vault_channel(channel, payload).await,
+            Some("dash") if channel == "dash:open-link" => {
+                let r = self.dash.call(channel, &payload)?;
+                let url = r["url"].as_str().unwrap_or("");
+                Ok(json!({ "opened": self.shell.open_https(url) }))
+            }
             Some("dash") => self.dash.call(channel, &payload),
             Some("storage") => self.storage.call(channel, payload).await,
             Some("talk") => self.talk.call(channel, payload).await,

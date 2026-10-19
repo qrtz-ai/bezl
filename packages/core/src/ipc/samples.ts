@@ -297,6 +297,10 @@ const dashSamples = {
     response: { code: 'ENR-7F3A-91C2', expiresAt: T0 + 900_000 },
   },
   'dash:rotate-codes': { request: undefined, response: { ok: true as const } },
+  'dash:open-link': {
+    request: { url: 'https://qrtz.ai/docs' },
+    response: { opened: true },
+  },
   'dash:review-agent': {
     request: { agentId: 'ag_2', approve: true },
     response: { ok: true },

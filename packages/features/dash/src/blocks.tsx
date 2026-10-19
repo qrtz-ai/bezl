@@ -1,5 +1,7 @@
 import { Badge, Link, Progress, Stack, Text } from '@qrtz/ui';
 import {
+  isHttpsUrl,
+  isPunycodeHost,
   parseDashBlock,
   type DashBlockType,
   type DashWidget,
@@ -15,19 +17,25 @@ export const domainOf = (url: string) => {
 };
 
 const confirmed = new Set<string>();
-/** First click per domain asks first (the interstitial); https only (the block schema already refused the rest). */
-export const openLink = (
+/**
+ * First click per domain asks first (the interstitial), with a warning for punycode hosts; https only. The host
+ * opens it (`dash:open-link`: re-checked in Rust, the Tauri opener); the webview never opens links itself.
+ */
+export const openLink = async (
   url: string,
+  open: (url: string) => Promise<boolean>,
   ask: (msg: string) => boolean = (m) => window.confirm(m),
 ) => {
   const d = domainOf(url);
-  if (!d || !url.startsWith('https://')) return false;
+  if (!d || !isHttpsUrl(url)) return false;
   if (!confirmed.has(d)) {
-    if (!ask(`open ${d}? an agent put this link here.`)) return false;
+    const warn = isPunycodeHost(url)
+      ? ' this name uses look-alike letters (xn--) and may imitate another site.'
+      : '';
+    if (!ask(`open ${d}? an agent put this link here.${warn}`)) return false;
     confirmed.add(d);
   }
-  window.open(url, '_blank', 'noopener,noreferrer');
-  return true;
+  return open(url);
 };
 
 const STATUS_TONE = {
@@ -39,7 +47,13 @@ const STATUS_TONE = {
 } as const;
 
 /** One widget's body. Agent text is shown as plain text, never as html or markdown. */
-export function Block({ widget }: { widget: DashWidget }) {
+export function Block({
+  widget,
+  open,
+}: {
+  widget: DashWidget;
+  open: (url: string) => Promise<boolean>;
+}) {
   const type: DashBlockType = widget.type;
   if (type === 'log' || type === 'chart') {
     const evs = widget.events
@@ -138,7 +152,7 @@ export function Block({ widget }: { widget: DashWidget }) {
           {v.items.slice(0, 10).map((it, i) => (
             <Stack key={i} dir="row" gap={2} align="baseline">
               {it.url ? (
-                <Link onClick={() => void openLink(it.url as string)}>
+                <Link onClick={() => void openLink(it.url as string, open)}>
                   {it.text}
                 </Link>
               ) : (
