@@ -12,11 +12,7 @@
     "./ipc/samples": "./src/ipc/samples.ts"
   },
   "peerDependencies": {
-    "react": "^19.0.0"
-  },
-  "devDependencies": {
-    "@types/react": "^19.3.0",
-    "react": "^19.3.1"
+    "react": "^19.3.0"
   },
   "dependencies": {
     "zod": "^4.6.7"
