@@ -57,8 +57,9 @@ while read -r name id ent; do
   [[ -n "$name" ]] || continue
   bin="$macos/$name"
   dr="identifier \"$id\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"$team\""
-  codesign --verify --strict -R="=$dr" "$bin"
-  codesign -dv "$bin" 2>&1 | grep -q 'flags=0x10000(runtime)' || { echo "$name: no hardened runtime" >&2; exit 1; }
+  codesign --verify --strict -R="$dr" "$bin"
+  info="$(codesign -dv "$bin" 2>&1)" # not piped into grep -q: its early exit SIGPIPEs codesign under pipefail
+  grep -q 'flags=0x10000(runtime)' <<<"$info" || { echo "$name: no hardened runtime" >&2; exit 1; }
   got="$(codesign -d --entitlements - --xml "$bin" 2>/dev/null | keys || true)"
   f="$(ent_file "$ent")"
   want=""
