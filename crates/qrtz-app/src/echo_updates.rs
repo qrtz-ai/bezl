@@ -23,7 +23,9 @@
 //! compiled-in requirement; for a downloaded copy it then reads the running code's own signing information
 //! (`SecCodeCopySigningInformation`) and requires `ai.qrtz.echo`, a `CFBundleVersion` at least [`Pick::Installed`]'s
 //! `min_version` (the mark or the bundled version, whichever is higher) and microphone-only entitlements, or it
-//! SIGKILLs it (R2, B3, E1). Parakeet is not part of this: its model stays pinned by hash on its own (R7).
+//! SIGKILLs it (R2, B3, E1). All of that runs on one `SecCode` for the pid, and the signing information's cdhash
+//! (`kSecCodeInfoUnique`) is re-checked on it as `cdhash H"<unique>"`, so the Info.plist read from disk is the one
+//! sealed by the running code (F1). Parakeet is not part of this: its model stays pinned by hash on its own (R7).
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -378,7 +380,7 @@ pub fn bundled_fallback_patch(config: &serde_json::Value, fallback: bool) -> Opt
     (now != fallback).then(|| serde_json::json!({"modules": {"echo": {"bundledFallback": fallback}}}))
 }
 
-/// What the running process's own signature says (E1), read by pid after the suspended spawn.
+/// What the running process's own signature says (E1), read from its `SecCode` after the suspended spawn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunningInfo {
     pub identifier: Option<String>,
@@ -410,6 +412,20 @@ pub fn check_running_info(info: &RunningInfo, min_version: &str) -> Result<(), S
         ));
     }
     Ok(())
+}
+
+/// F1: the code requirement that only the code with this cdhash (`kSecCodeInfoUnique`, 20 bytes) satisfies. A code
+/// directory hash covers the Info.plist and entitlements slots, so code passing it is the code whose Info.plist and
+/// entitlements [`running_info`] reported.
+pub fn cdhash_requirement(unique: &[u8]) -> Result<String, String> {
+    if unique.len() != 20 {
+        return Err(format!(
+            "the running code's cdhash is {} bytes, not 20",
+            unique.len()
+        ));
+    }
+    let hex: String = unique.iter().map(|b| format!("{b:02x}")).collect();
+    Ok(format!("cdhash H\"{hex}\""))
 }
 
 /// Install a downloaded echo archive (a `.tar.gz` holding exactly `qrtz-echo.app`) as the new current copy.
@@ -690,15 +706,19 @@ impl BundleCheck for MacBundleCheck {
     }
 }
 
-/// E1: what process `pid`'s running code says about itself (`SecCodeCopySigningInformation` on the dynamic code,
-/// after `SecCodeCheckValidity` accepted it): its identifier, its Info.plist's `CFBundleVersion`, its entitlements.
+/// E1/F1: what the running `code` (the suspended process's one `SecCode`, after `SecCodeCheckValidity` accepted it)
+/// says about itself through `SecCodeCopySigningInformation`: its identifier, its Info.plist's `CFBundleVersion`, its
+/// entitlements, and its cdhash (`kSecCodeInfoUnique`). The Info.plist comes from disk, so the caller re-checks the
+/// same `code` against [`cdhash_requirement`] of that cdhash, which seals the Info.plist (F1).
 #[cfg(target_os = "macos")]
-pub fn running_info(pid: i32) -> Result<RunningInfo, String> {
+pub fn running_info(
+    code: &security_framework::os::macos::code_signing::SecCode,
+) -> Result<(RunningInfo, Vec<u8>), String> {
     use core_foundation::base::{CFType, TCFType};
     use core_foundation::boolean::CFBoolean;
+    use core_foundation::data::CFData;
     use core_foundation::dictionary::{CFDictionary, CFDictionaryRef};
     use core_foundation::string::{CFString, CFStringRef};
-    use security_framework::os::macos::code_signing::{Flags, GuestAttributes, SecCode};
 
     #[link(name = "Security", kind = "framework")]
     extern "C" {
@@ -710,30 +730,35 @@ pub fn running_info(pid: i32) -> Result<RunningInfo, String> {
         static kSecCodeInfoIdentifier: CFStringRef;
         static kSecCodeInfoPList: CFStringRef;
         static kSecCodeInfoEntitlementsDict: CFStringRef;
+        static kSecCodeInfoUnique: CFStringRef;
     }
     // kSecCSSigningInformation | kSecCSRequirementInformation (the entitlements dict comes with the latter).
     const FLAGS: u32 = (1 << 1) | (1 << 2);
 
-    let mut attrs = GuestAttributes::new();
-    attrs.set_pid(pid);
-    let code = SecCode::copy_guest_with_attribues(None, &attrs, Flags::NONE)
-        .map_err(|e| format!("no running code for pid {pid}: {e}"))?;
     let mut info: CFDictionaryRef = std::ptr::null();
     // SAFETY: a valid SecCodeRef (SecCodeCopySigningInformation takes static or dynamic code) and an out pointer.
     let st = unsafe { SecCodeCopySigningInformation(code.as_CFTypeRef(), FLAGS, &mut info) };
     if st != 0 || info.is_null() {
-        return Err(format!("no signing information for pid {pid} (OSStatus {st})"));
+        return Err(format!(
+            "no signing information for the running code (OSStatus {st})"
+        ));
     }
     // SAFETY: a +1 dictionary from a Copy function.
     let info: CFDictionary<CFString, CFType> = unsafe { CFDictionary::wrap_under_create_rule(info) };
     // SAFETY: framework constants, valid for the process's life.
-    let (k_id, k_plist, k_ent) = unsafe {
+    let (k_id, k_plist, k_ent, k_unique) = unsafe {
         (
             CFString::wrap_under_get_rule(kSecCodeInfoIdentifier),
             CFString::wrap_under_get_rule(kSecCodeInfoPList),
             CFString::wrap_under_get_rule(kSecCodeInfoEntitlementsDict),
+            CFString::wrap_under_get_rule(kSecCodeInfoUnique),
         )
     };
+    let unique = info
+        .find(&k_unique)
+        .and_then(|v| v.downcast::<CFData>())
+        .map(|d| d.bytes().to_vec())
+        .ok_or("the running code's signing information has no cdhash")?;
     let string = |v: &CFType| v.downcast::<CFString>().map(|s| s.to_string());
     let identifier = info.find(&k_id).and_then(|v| string(&v));
     let bundle_version = info
@@ -764,11 +789,14 @@ pub fn running_info(pid: i32) -> Result<RunningInfo, String> {
             }
         }
     }
-    Ok(RunningInfo {
-        identifier,
-        bundle_version,
-        entitlements,
-    })
+    Ok((
+        RunningInfo {
+            identifier,
+            bundle_version,
+            entitlements,
+        },
+        unique,
+    ))
 }
 
 #[cfg(test)]
@@ -998,12 +1026,7 @@ mod tests {
         for (target, at) in cases {
             if let Some(parent) = at.parent() {
                 if at.ends_with("Contents/MacOS") {
-                    make_bundle(
-                        parent.parent().unwrap(),
-                        ECHO_IDENTIFIER,
-                        "1.9.0",
-                        "signed",
-                    );
+                    make_bundle(parent.parent().unwrap(), ECHO_IDENTIFIER, "1.9.0", "signed");
                 } else {
                     std::fs::create_dir_all(parent).unwrap();
                 }
@@ -1169,6 +1192,19 @@ mod tests {
         let mut junk = ok;
         junk.bundle_version = Some("latest".into());
         assert!(check_running_info(&junk, "1.0.0").is_err());
+    }
+
+    /// F1: the cdhash re-check names exactly the 20-byte cdhash of the running code.
+    #[test]
+    fn the_cdhash_requirement_names_the_running_codes_cdhash() {
+        let unique: Vec<u8> = (0u8..20).map(|b| b * 13).collect();
+        assert_eq!(
+            cdhash_requirement(&unique).unwrap(),
+            "cdhash H\"000d1a2734414e5b6875828f9ca9b6c3d0ddeaf7\""
+        );
+        assert!(cdhash_requirement(&[]).is_err());
+        assert!(cdhash_requirement(&[0; 19]).is_err());
+        assert!(cdhash_requirement(&[0; 32]).is_err());
     }
 
     #[test]

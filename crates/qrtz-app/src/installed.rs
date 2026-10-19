@@ -439,7 +439,10 @@ impl Spawn for InstalledSpawn {
 }
 
 /// Start `sp` suspended, check the running code against `requirement` (and, for a downloaded echo, its own version
-/// and entitlements, E1), then let it run (or kill it).
+/// and entitlements, E1), then let it run (or kill it). F1: one `SecCode` for the pid serves every check. For a
+/// downloaded echo the signing information read from it carries the code's cdhash (`kSecCodeInfoUnique`), and that
+/// same running code must then satisfy `cdhash H"<unique>"`: the Info.plist and entitlements reported are the ones
+/// sealed by the code that is actually running, not by a bundle swapped onto disk between the checks.
 #[cfg(target_os = "macos")]
 fn spawn_checked(
     sp: &ProcessSpawn,
@@ -447,9 +450,11 @@ fn spawn_checked(
     policy: Option<&RunningPolicy>,
 ) -> std::io::Result<ChildIo> {
     sp.spawn_verified(|pid| {
-        check_running_code(pid, requirement)?;
+        let code = running_code(pid)?;
+        check_running_code(&code, requirement)?;
         if let Some(p) = policy {
-            let info = crate::echo_updates::running_info(pid)?;
+            let (info, unique) = crate::echo_updates::running_info(&code)?;
+            check_running_code(&code, &crate::echo_updates::cdhash_requirement(&unique)?)?;
             crate::echo_updates::check_running_info(&info, &p.min_version)?;
         }
         Ok(())
@@ -465,20 +470,29 @@ fn spawn_checked(
     Err(std::io::Error::other("module code checks need macOS"))
 }
 
-/// The process `pid` (our own suspended, unreaped child, so the pid can't have been reused) runs valid code that
-/// satisfies `requirement`: `SecCodeCopyGuestWithAttributes` (pid) and `SecCodeCheckValidity`.
+/// The running code of process `pid` (our own suspended, unreaped child, so the pid can't have been reused):
+/// `SecCodeCopyGuestWithAttributes`. Made once per spawn and used for every check on it (F1).
 #[cfg(target_os = "macos")]
-pub fn check_running_code(pid: i32, requirement: &str) -> Result<(), String> {
-    use security_framework::os::macos::code_signing::{Flags, GuestAttributes, SecCode, SecRequirement};
+pub fn running_code(pid: i32) -> Result<security_framework::os::macos::code_signing::SecCode, String> {
+    use security_framework::os::macos::code_signing::{Flags, GuestAttributes, SecCode};
     let mut attrs = GuestAttributes::new();
     attrs.set_pid(pid);
-    let code = SecCode::copy_guest_with_attribues(None, &attrs, Flags::NONE)
-        .map_err(|e| format!("no running code for pid {pid}: {e}"))?;
+    SecCode::copy_guest_with_attribues(None, &attrs, Flags::NONE)
+        .map_err(|e| format!("no running code for pid {pid}: {e}"))
+}
+
+/// `code` is valid and satisfies `requirement` (`SecCodeCheckValidity`).
+#[cfg(target_os = "macos")]
+pub fn check_running_code(
+    code: &security_framework::os::macos::code_signing::SecCode,
+    requirement: &str,
+) -> Result<(), String> {
+    use security_framework::os::macos::code_signing::{Flags, SecRequirement};
     let req: SecRequirement = requirement
         .parse()
         .map_err(|e| format!("requirement doesn't parse: {e}"))?;
     code.check_validity(Flags::NONE, &req)
-        .map_err(|e| format!("the running code doesn't satisfy its requirement: {e}"))
+        .map_err(|e| format!("the running code doesn't satisfy {requirement:?}: {e}"))
 }
 
 #[cfg(test)]
@@ -710,12 +724,26 @@ mod tests {
         let body = &body[..body.find("\n}\n").unwrap()];
         let release = &body[body.find("LaunchCheck::Release =>").unwrap()..];
         assert!(release.contains("launch_requirement(&self.module)"), "{release}");
-        assert!(release.contains("spawn_checked(&sp, &want, policy.as_ref())"), "{release}");
+        assert!(
+            release.contains("spawn_checked(&sp, &want, policy.as_ref())"),
+            "{release}"
+        );
         assert!(
             !release.contains(".spawn()"),
             "no unchecked spawn on the release path"
         );
-        assert!(src.contains("sp.spawn_verified(|pid| {\n        check_running_code(pid, requirement)?;"));
+        assert!(src.contains(
+            "sp.spawn_verified(|pid| {\n        let code = running_code(pid)?;\n        check_running_code(&code, requirement)?;"
+        ));
+        assert!(
+            src.contains("let (info, unique) = crate::echo_updates::running_info(&code)?;\n            check_running_code(&code, &crate::echo_updates::cdhash_requirement(&unique)?)?;"),
+            "F1: one SecCode; the signing info is bound to the running code by its cdhash"
+        );
+        assert_eq!(
+            src.matches("running_code(pid)").count(),
+            1,
+            "one SecCode per spawn (F1)"
+        );
         assert!(
             src.contains("crate::echo_updates::check_running_info(&info, &p.min_version)?;"),
             "E1: a downloaded echo's running code is bound to its version and entitlements"
