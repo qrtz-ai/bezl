@@ -1249,3 +1249,52 @@ Talk-only change (`d68b415`); the helper does not run talk's cleanup, so `echo-b
 4. Hold fn and say "Groceries, new line, eggs, new line, milk": it types three lines with no commas. Then "Hi team, new
    line, thanks, new line, Jared": the commas stay.
 5. If anything reads worse: revert `d68b415` (talk-only commit).
+
+## 35. Cycle 63: a question after a discourse opener ends with "?" (ADR 0203, `e686c05`)
+
+| Run               | Exact   | Edit distance     | Regressions | False-positive hits |
+| ----------------- | ------- | ----------------- | ----------- | ------------------- |
+| 2a414ac, 83 cases | 78 / 83 | 46 chars (1.85 %) | -           | 0 / 192             |
+| e686c05, same 83  | 78 / 83 | 46 chars (1.85 %) | 0           | -                   |
+| 2a414ac, 91 cases | 78 / 91 | 56 chars (2.02 %) | -           | -                   |
+| e686c05, 91 cases | 84 / 91 | 48 chars (1.73 %) | 0           | 0 / 219             |
+
+Regressions are counted against `2a414ac`'s own output for every case (`polish-baseline.json` then refreshed to
+`e686c05`); 8 cases better (p84-p91), none worse.
+
+- ADR 0203: "So do you want to grab lunch" → "So do you want to grab lunch?" (was "."). Also "Okay, can you send me the
+  file", "Hey are you free tomorrow afternoon", "And did you hear back from them", "So what time does the store close".
+  Openers so/okay/ok/hey/and/but/also/alright, with or without their own comma; the rest must pass every ADR 0196
+  check. A bare "So" needs do/does/did/can/could/will/would and a plain verb after the subject ("So did we last year",
+  "So do I at work" keep "."); "and"/"but" need "you" ("And was he mad" keeps "."); "well", "oh", "now", "boy", "man"
+  are not openers ("Well do I remember that day", "Oh do I love that song"). 8 positives, 27 new keep vectors, 24 new
+  cleanup.json vectors (Rust and TS same text).
+- Cost (release, box CPU; old and new `cleanup_budget` binaries interleaved 15×, median of medians): 495 words 0.120 →
+  0.114 ms; 504 words ending in a question 0.120 → 0.125 ms (min 0.114 vs 0.115). Noise: the step is one word
+  comparison on the last sentence of the final text.
+- Path review: no capture, VAD, model config, drain, insert, pill or timing-log change since `4fa7603` (origin moved by
+  Bobs's echo launch cdhash check `53b260c`, mock config `26d0f37`, qrtz-publish test `1ad50a7`, ctrl run 55 `ea16cf0`,
+  oxfmt `2a414ac`). Findings list unchanged; backlog P1-P8 still open (P1 next when no polish rule clears the bar).
+
+Still not exact (7 of 91): p10 "So we, we can" (repeat across a comma), p15 spoken "comma"/"period", p19/p20 email
+and URL, p41 a numbered list with a 4-word line, p86/p90 the comma after "Hey"/"OK" before a question.
+
+Next polish candidates, ranked: (1) spoken "comma" / "period" between list items (p15) only in an unambiguous
+enumeration ("X comma Y comma and Z period"), against "a comma splice", "the period of"; (2) p10's repeat across a
+comma for "we" / "you" only before a modal ("we, we can"); (3) the comma after "Hey" / "Okay" / "OK" only when an ADR
+0203 question follows (p86, p90), against "Hey Sam", "Okay so".
+
+### Measurement plan for Jared's Mac (cycle 63; proves no added latency and no worse transcript)
+
+Talk-only change (`e686c05`); the helper does not run talk's cleanup, so `echo-bench.sh` timings can't move from it.
+
+1. `cd ~/code/qrtz && git pull` (main at or after `e686c05`).
+2. `cargo test --release -p qrtz-talk --test cleanup_budget --test hardening60 --test hardening63 --test polish_set --
+   --nocapture`: budget medians well under 0.5 ms (box 0.11-0.13 ms), polish 84/91 exact, regressions 0, all green.
+3. Score the same raw reports with the old cleanup: `git -C ~/code/qrtz worktree add --detach /tmp/qrtz-c62 2a414ac &&
+   cd /tmp/qrtz-c62 && cargo run -q -p qrtz-talk --example echo_score -- ~/qrtz-echo-bench/results/<run>-<stamp>.json`,
+   keep a copy of `<report>.scored.json`, then score again from `~/code/qrtz`. Raw WER identical; formatted WER equal
+   or lower on every clip. `git -C ~/code/qrtz worktree remove /tmp/qrtz-c62`.
+4. Hold fn and say "So do you want to grab lunch" (no pause at the end): it types "So do you want to grab lunch?".
+   Then "I went to Paris last summer. So did we last year": it ends with ".".
+5. If anything reads worse: revert `e686c05` (talk-only commit).
