@@ -829,3 +829,11 @@ is downloaded (on a Mac without the OS dictation assets) said "speech recognitio
 moment", which never helps. It now says "echo's speech model isn't downloaded yet; open echo to download it (about
 464 MB)" (`4672ea4`, `79cfd70`); a recogniser that is only loading or busy still says "try again". The ranked plan
 above is unchanged.
+
+## 27. Cycle 54: speech status failures on echo's page (N183, N184)
+
+No dictation speed or accuracy change, and no numbers from the Mac yet. If echo's page can't read the speech model's
+status, it now says so with a retry, and the switch still works (`83fc45e`). With the status unknown, turning echo
+on asks to download Parakeet even when it is already there (N184, proposed to Bobs: check again on the click). Module
+releases in CI (ADR 0179) leave the bundled echo and its Parakeet alone. The ranked plan above is unchanged; its open
+items still wait on the helper side or the Mac bench.
