@@ -861,6 +861,27 @@ vocabulary boosting for the TDT model), checked against the FluidAudio source, a
 dictation-only spoken punctuation ("... question mark") measured against the keep set; (3) warming dictionary patterns
 off the press path.
 
+## 29. Cycle 56: an explicit "Scratch that" (ADR 0186, `fc370d3`)
+
+| Run                | Exact   | Edit distance      | Regressions | False-positive hits |
+| ------------------ | ------- | ------------------ | ----------- | ------------------- |
+| b07898b (cycle 55) | 23 / 42 | 201 chars (15.5 %) | 0           | 0 / 42              |
+| fc370d3, same 42   | 25 / 42 | 133 chars (10.2 %) | 0           | -                   |
+| fc370d3, 46 cases  | 29 / 46 | 133 chars (9.35 %) | 0           | 0 / 59              |
+
+- "Let's meet on Tuesday. Scratch that, let's meet on Wednesday." is now typed as "Let's meet on Wednesday." Only
+  when "Scratch that" is its own sentence after a clean sentence end and is followed by "," or "." and the new words;
+  the sentence before it goes. Mid-sentence ("scratch that off my list"), "Scratch that itch", "Scratch that, please",
+  dotted words or abbreviations at the edges ("3 p.m.", "Jr."), and nothing before or after are all left as spoken.
+  17 new keep vectors against 6 positive.
+- Cost: a few microseconds (0.0017 ms on 484 words without the words, 0.0037 ms with one correction, release); the
+  2 ms chain budget holds. Nothing in capture, segmenting, the decode schedule or Parakeet's settings moved.
+
+Next polish candidates, ranked: (1) what Parakeet/FluidAudio already does (punctuation, capitals, digits, vocabulary
+boosting for the TDT model), checked against the FluidAudio source, as a proposal to Bobs; (2) no "." after a list
+whose lines are all short (p12); (3) dictation-final "question mark" / "exclamation point" only where it can't be the
+noun (the keep set already has "put a question mark"); (4) warming dictionary patterns off the press path.
+
 ### Production-readiness backlog (Bobs, Oct 18 10:13 PM PT)
 
 All open; worked one per cycle when no polish item is ready. P1 the `local_models::speech_calls_scoped_to_one_module_
