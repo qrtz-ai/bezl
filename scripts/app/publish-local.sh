@@ -252,7 +252,9 @@ else
   [[ "$("$plist" -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" == "$v" ]] || die "$app isn't qrtz $v"
   [[ "$("$plist" -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" == ai.qrtz.desktop ]] || die "$app isn't ai.qrtz.desktop"
   [[ -x "$app/Contents/MacOS/qrtz-echo" ]] || die "qrtz-echo isn't bundled (ADR 0174)"
-  codesign -dv "$app/Contents/MacOS/qrtz-echo" 2>&1 | grep -qx 'Identifier=ai.qrtz.echo' || die "qrtz-echo isn't ai.qrtz.echo"
+  # Capture first: with pipefail, grep -q exiting early SIGPIPEs codesign and fails the check on a good bundle.
+  echo_info="$(codesign -dv "$app/Contents/MacOS/qrtz-echo" 2>&1)" || die "can't read qrtz-echo's signature"
+  grep -qx 'Identifier=ai.qrtz.echo' <<<"$echo_info" || die "qrtz-echo isn't ai.qrtz.echo"
   codesign --verify --strict -R='anchor apple generic and identifier "ai.qrtz.echo" and certificate leaf[subject.OU] = "MR26CCZ496"' "$app/Contents/MacOS/qrtz-echo"
   codesign --verify --deep --strict -R='anchor apple generic and identifier "ai.qrtz.desktop" and certificate leaf[subject.OU] = "MR26CCZ496" and notarized' "$app"
 fi
