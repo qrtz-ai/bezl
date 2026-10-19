@@ -102,6 +102,11 @@ pub enum WorkspaceOp {
     /// is a closed set resolved by the helper from the system's own location, never a path from the task. Reversible
     /// (close the window), no gate. Its app is always the Finder ([`FINDER`]).
     OpenFolder { folder: UserFolder },
+    /// ADR 0168: empty the general pasteboard (`NSPasteboard.general.clearContents()`, in the helper's own process: no
+    /// app is told anything, nothing is shown, no key event, and nothing on the clipboard is ever read). Not undoable,
+    /// but no gate: the task asked for exactly this. Deferred while the user is typing or clicking, since the clipboard
+    /// belongs to whatever they're doing right now.
+    ClearClipboard,
 }
 
 /// ADR 0166: the Finder, the app that shows a folder.
@@ -280,7 +285,8 @@ impl Route {
                 | WorkspaceOp::MuteOutput
                 | WorkspaceOp::UnmuteOutput
                 | WorkspaceOp::SetVolume { .. }
-                | WorkspaceOp::SetFocus { .. },
+                | WorkspaceOp::SetFocus { .. }
+                | WorkspaceOp::ClearClipboard,
             ) => None,
             Route::Workspace(WorkspaceOp::OpenUrl { app, .. } | WorkspaceOp::LaunchHidden { app }) => {
                 Some(app)
@@ -469,6 +475,16 @@ pub fn judge(route: &Route, env: &Env) -> Verdict {
                 | WorkspaceOp::UnmuteOutput
                 | WorkspaceOp::SetVolume { .. }
                 | WorkspaceOp::SetFocus { .. } => return Verdict::Allowed,
+                // ADR 0168: no app or window either, but the clipboard is the user's own working buffer: never
+                // empty it while they're in the middle of something (a copy they're about to paste). Retry later.
+                WorkspaceOp::ClearClipboard => {
+                    if env.user_active() {
+                        return Verdict::Defer {
+                            why: DeferReason::UserActiveInTarget,
+                        };
+                    }
+                    return Verdict::Allowed;
+                }
             };
             if !env.running_apps.contains(app) {
                 return Verdict::NeedsGrant {

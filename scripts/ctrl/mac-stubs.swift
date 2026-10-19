@@ -86,6 +86,8 @@ open class NSWorkspace: NSObject {
     open func open(_ urls: [URL], withApplicationAt applicationURL: URL, configuration: NSWorkspace.OpenConfiguration, completionHandler: (@Sendable (NSRunningApplication?, (any Error)?) -> Void)? = nil) {}
     open func openApplication(at applicationURL: URL, configuration: NSWorkspace.OpenConfiguration, completionHandler: (@Sendable (NSRunningApplication?, (any Error)?) -> Void)? = nil) {}
 }
+open class NSPasteboard: NSObject { open class var general: NSPasteboard { NSPasteboard() }; open var changeCount: Int { 0 }
+    @discardableResult open func clearContents() -> Int { 0 } }
 open class NSAppleEventDescriptor: NSObject { open var int32Value: Int32 { 0 }; open var stringValue: String? { nil } }
 open class NSAppleScript: NSObject {
     public init?(source: String) {}

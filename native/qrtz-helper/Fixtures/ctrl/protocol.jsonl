@@ -30,5 +30,7 @@
 {"type":"ctrl.measure","id":"c20","check":{"check":"output_volume"}}
 {"type":"ctrl.act","id":"c21","actionId":"a7","route":{"route":"workspace","op":"open_folder","folder":"downloads"},"content":{}}
 {"type":"ctrl.measure","id":"c22","check":{"check":"folder_open","folder":"downloads"}}
+{"type":"ctrl.act","id":"c23","actionId":"a8","route":{"route":"workspace","op":"clear_clipboard"},"content":{}}
+{"type":"ctrl.measure","id":"c24","check":{"check":"clipboard_cleared"}}
 {"type":"ctrl.laya.warm","id":"c12","model":"/models/ctrl/laya/laya.mlmodelc"}
 {"type":"ctrl.laya.warm.result","id":"c12","state":"started"}

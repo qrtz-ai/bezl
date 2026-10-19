@@ -25,6 +25,8 @@ public final class MacCtrlBackend: CtrlBackend {
     /// ADR 0130: activations seen since the helper started (in memory only).
     let lastUsed = CtrlLastUsed(sinceMs: CtrlLastUsed.nowMs())
     private var activationObserver: NSObjectProtocol?
+    /// ADR 0168: the general pasteboard's change count right after ctrl's last clear (nil: never cleared).
+    private var lastClipboardClear: Int?
 
     public init() {
         // The app in front when the watch begins counts as used now; every later switch is recorded as it happens.
@@ -333,6 +335,11 @@ public final class MacCtrlBackend: CtrlBackend {
         case let .setVolume(level):
             // ADR 0140: the same process and rules; the host verifies by reading the level back.
             _ = try Self.runScript(Self.setVolumeSource(level))
+        case .clearClipboard:
+            // ADR 0168: the general pasteboard, emptied in this process: no app told anything, nothing shown, no key
+            // event, and nothing read from it first. The count it returns is what the verify compares against.
+            let count = NSPasteboard.general.clearContents()
+            lock.lock(); lastClipboardClear = count; lock.unlock()
         case let .hideApps(apps):
             // ADR 0134: `hide()` is the Dock's Hide: the app's windows go, nothing is activated or raised, no key event.
             // The frontmost app was dropped before this point (CtrlServer); re-checked here for the race.
@@ -403,6 +410,10 @@ public final class MacCtrlBackend: CtrlBackend {
         // ADR 0137: the global appearance, read in this process (no app asked, no prompt): "Dark" or absent.
         // ADR 0158: not read (INFocusStatusCenter would be another prompt); the run's verify is the shortcut's reply.
         case "focus_on": return nil
+        // ADR 0168: the change count only (never an item or a type), against the one the last clear returned.
+        case CtrlClipboard.check:
+            lock.lock(); let last = lastClipboardClear; lock.unlock()
+            return CtrlClipboard.cleared(changeCount: NSPasteboard.general.changeCount, lastClear: last)
         case "dark_mode": return CtrlAppearance.isDark(UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)) ? 1 : 0
         case "tab_count":
             return (try? script("count_tabs", app: app)).map { Int($0.int32Value) }

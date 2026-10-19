@@ -857,6 +857,30 @@ test('ctrl: open my downloads opens the folder in the finder without a card', as
   expect(errors).toEqual([]);
 });
 
+// ADR 0168: "every hour clear my clipboard" empties the clipboard without a card; nothing is read from it.
+test('ctrl: clear my clipboard empties it without a card', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  await ctrl.getByTestId('ctrl-task-input').fill('clear my clipboard');
+  await ctrl.getByTestId('ctrl-task-add').click();
+  await ctrl.getByTestId('ctrl-task').getByTestId('ctrl-task-run').click();
+  const run = ctrl.getByTestId('ctrl-run').first();
+  await expect(run.getByTestId('ctrl-run-status')).toHaveText('done');
+  await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
+  const decisions = ctrl.getByTestId('ctrl-decisions').first();
+  await expect(decisions).toContainText('clear your clipboard');
+  await expect(decisions).toContainText(
+    'empty the clipboard, nothing read from it',
+  );
+  await expect(decisions).not.toContainText('clean up a folder');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 // ADR 0135: "every night at 10 mute my mac" mutes the sound output without a card (reversible), no app touched.
 test('ctrl: every night mute my mac mutes the sound without a card', async ({
   page,

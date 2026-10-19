@@ -113,6 +113,7 @@ const INTENTS = {
     'turn focus or do not disturb on or off',
     0.07,
   ),
+  clear_clipboard: opt('intent.clear_clipboard', 'clear your clipboard', 0.07),
   mute: opt('intent.mute', 'mute your mac', 0.07),
   unmute: opt('intent.unmute', 'unmute your mac', 0.07),
   set_volume: opt('intent.set_volume', 'set the volume', 0.07),
@@ -139,6 +140,7 @@ type Intent =
   | 'open_folder'
   | 'focus_mode'
   | 'focus_off'
+  | 'clear_clipboard'
   | 'mute'
   | 'unmute'
   | 'set_volume'
@@ -319,6 +321,16 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
   focus_off: [
     act('choose_move', [opt('route.system.focus.off', 'turn focus off', 0.97)]),
   ],
+  // ADR 0168: the clipboard, emptied in the helper's own process (nothing read from it); no card, no app question.
+  clear_clipboard: [
+    act('choose_move', [
+      opt(
+        'route.system.clear_clipboard',
+        'empty the clipboard, nothing read from it',
+        0.97,
+      ),
+    ]),
+  ],
   // ADR 0135: the sound output, muted in the helper's own process; reversible, no card, no app question.
   mute: [
     act('choose_move', [
@@ -485,66 +497,75 @@ const relativeOf = (text: string): Intent | null =>
     ? directionOf(text)
     : null;
 
+// ADR 0168: a clipboard word (or "what i copied") plus a clearing word.
+const clearsClipboard = (text: string): boolean =>
+  (/\b(clipboard|pasteboard)\b/i.test(text) ||
+    /\b(what|whatever|everything|i)\b.*\bcopied\b/i.test(text)) &&
+  /\b(clear|empty|wipe|erase|delete|remove|reset|flush|purge)\b/i.test(text);
+
 const intentOf = (text: string): Intent | null =>
-  relativeOf(text) !== null
-    ? relativeOf(text)
-    : /\b(volume|sound)\b/i.test(text) && levelOf(text) !== null
-      ? 'set_volume'
-      : /\b(disturb|dnd)\b/i.test(text) ||
-          (/\bfocus\b/i.test(text) &&
-            /\b(on|off|turn|enable|disable|start|stop|end|mode|set|toggle)\b/i.test(
-              text,
-            ))
-        ? /\b(off|disable|stop|end)\b/i.test(text)
-          ? 'focus_off'
-          : 'focus_mode'
-        : /\b(unmute|unsilence)\b/i.test(text)
-          ? 'unmute'
-          : /\b(dark|light)\s+mode\b/i.test(text)
-            ? /\b(toggle|flip)\b/i.test(text)
-              ? 'dark_toggle'
-              : /\b(light|off|disable)\b/i.test(text)
-                ? 'light_mode'
-                : 'dark_mode'
-            : /\b(open|check)\b/i.test(text) &&
-                /\b(email|emails|inbox)\b/i.test(text)
-              ? 'open_email'
-              : /\b(mute|silence)\b/i.test(text)
-                ? 'mute'
-                : /\bhide\b/i.test(text) &&
-                    /\b(apps|applications|other|others|everything|all)\b/i.test(
-                      text,
-                    )
-                  ? 'hide_others'
-                  : /\bhide\b/i.test(text)
-                    ? 'hide_app'
-                    : opensFolder(text)
-                      ? 'open_folder'
-                      : /\bunhide\b/i.test(text) ||
-                          (/\bshow\b/i.test(text) && !/\b(me|my)\b/i.test(text))
-                        ? 'show_app'
-                        : /\b(quit|close)\b/i.test(text) &&
-                            /\bapps?\b/i.test(text) &&
-                            /\b(unused|used|using|idle)\b/i.test(text)
-                          ? 'quit_unused'
-                          : /\bquit\b/i.test(text)
-                            ? 'quit_app'
-                            : /\bcalendar\b/i.test(text)
-                              ? 'open_calendar'
-                              : /\bempty\b/i.test(text) &&
-                                  /\b(trash|bin)\b/i.test(text)
-                                ? 'empty_trash'
-                                : /\btabs?\b/i.test(text)
-                                  ? 'close_tabs'
-                                  : /\bdocuments\b/i.test(text)
-                                    ? 'tidy_documents'
-                                    : /\b(desktop|screenshots?)\b/i.test(text)
-                                      ? 'tidy_desktop'
-                                      : /download|folder/i.test(text)
-                                        ? /\b(delete|trash|old)\b/i.test(text)
-                                          ? 'trash_old'
-                                          : 'clean_folder'
-                                        : null;
+  clearsClipboard(text)
+    ? 'clear_clipboard'
+    : relativeOf(text) !== null
+      ? relativeOf(text)
+      : /\b(volume|sound)\b/i.test(text) && levelOf(text) !== null
+        ? 'set_volume'
+        : /\b(disturb|dnd)\b/i.test(text) ||
+            (/\bfocus\b/i.test(text) &&
+              /\b(on|off|turn|enable|disable|start|stop|end|mode|set|toggle)\b/i.test(
+                text,
+              ))
+          ? /\b(off|disable|stop|end)\b/i.test(text)
+            ? 'focus_off'
+            : 'focus_mode'
+          : /\b(unmute|unsilence)\b/i.test(text)
+            ? 'unmute'
+            : /\b(dark|light)\s+mode\b/i.test(text)
+              ? /\b(toggle|flip)\b/i.test(text)
+                ? 'dark_toggle'
+                : /\b(light|off|disable)\b/i.test(text)
+                  ? 'light_mode'
+                  : 'dark_mode'
+              : /\b(open|check)\b/i.test(text) &&
+                  /\b(email|emails|inbox)\b/i.test(text)
+                ? 'open_email'
+                : /\b(mute|silence)\b/i.test(text)
+                  ? 'mute'
+                  : /\bhide\b/i.test(text) &&
+                      /\b(apps|applications|other|others|everything|all)\b/i.test(
+                        text,
+                      )
+                    ? 'hide_others'
+                    : /\bhide\b/i.test(text)
+                      ? 'hide_app'
+                      : opensFolder(text)
+                        ? 'open_folder'
+                        : /\bunhide\b/i.test(text) ||
+                            (/\bshow\b/i.test(text) &&
+                              !/\b(me|my)\b/i.test(text))
+                          ? 'show_app'
+                          : /\b(quit|close)\b/i.test(text) &&
+                              /\bapps?\b/i.test(text) &&
+                              /\b(unused|used|using|idle)\b/i.test(text)
+                            ? 'quit_unused'
+                            : /\bquit\b/i.test(text)
+                              ? 'quit_app'
+                              : /\bcalendar\b/i.test(text)
+                                ? 'open_calendar'
+                                : /\bempty\b/i.test(text) &&
+                                    /\b(trash|bin)\b/i.test(text)
+                                  ? 'empty_trash'
+                                  : /\btabs?\b/i.test(text)
+                                    ? 'close_tabs'
+                                    : /\bdocuments\b/i.test(text)
+                                      ? 'tidy_documents'
+                                      : /\b(desktop|screenshots?)\b/i.test(text)
+                                        ? 'tidy_desktop'
+                                        : /download|folder/i.test(text)
+                                          ? /\b(delete|trash|old)\b/i.test(text)
+                                            ? 'trash_old'
+                                            : 'clean_folder'
+                                          : null;
 
 const PREVIEW: CtrlConfirm['items'] = [
   { key: '3f2a9c1d0b7e#0', kind: 'window', label: 'notes.txt', unsaved: false },

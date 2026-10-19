@@ -429,8 +429,8 @@ fn the_ctrl_protocol_fixture_round_trips() {
     }
     assert_eq!(
         (host, helper),
-        (23, 11),
-        "every message, nine act routes (ADR 0130 quit_apps, ADR 0134 hide_apps, ADR 0135 mute_output, ADR 0137 set_dark_mode, ADR 0139 unmute_output, ADR 0140 set_volume, ADR 0166 open_folder), the app-less output_muted, dark_mode and output_volume measures, the folder_open measure (ADR 0166), laya with and without a model, laya.warm (ADR 0133)"
+        (25, 11),
+        "every message, ten act routes (ADR 0130 quit_apps, ADR 0134 hide_apps, ADR 0135 mute_output, ADR 0137 set_dark_mode, ADR 0139 unmute_output, ADR 0140 set_volume, ADR 0166 open_folder, ADR 0168 clear_clipboard), the app-less output_muted, dark_mode, output_volume and clipboard_cleared (ADR 0168) measures, the folder_open measure (ADR 0166), laya with and without a model, laya.warm (ADR 0133)"
     );
 }
 

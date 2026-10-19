@@ -512,6 +512,13 @@ const INTENTS: &[IntentDef] = &[
         slot: Slot::UserFolder,
         irreversible: false,
     },
+    // ADR 0168: empty the clipboard; not undoable, but no gate (the task asked for exactly this), no app.
+    IntentDef {
+        id: "clear_clipboard",
+        app: AppMode::None,
+        slot: Slot::None,
+        irreversible: false,
+    },
     // ADR 0135: mute the Mac's sound output; reversible, no gate, no app.
     IntentDef {
         id: "mute",
@@ -807,6 +814,23 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             let other_app = named.iter().any(|(a, _)| a.id != crate::ladder::FINDER);
             if folder && opens && !tidy && !other_app && !site {
                 p += 9000;
+            }
+        }
+        "clear_clipboard" => {
+            // ADR 0168: "clear my clipboard", "empty the clipboard", "wipe what i copied". A clipboard word plus a
+            // clearing word, no app named ("clear slack's clipboard" isn't a thing ctrl knows) and no site. Without
+            // both it sits well below the rest.
+            p -= 3000;
+            let clip = has(toks, &["clipboard", "pasteboard"])
+                || (has(toks, &["copied"]) && has(toks, &["what", "whatever", "everything", "i"]));
+            let clears = has(
+                toks,
+                &[
+                    "clear", "empty", "wipe", "erase", "delete", "remove", "reset", "flush", "purge",
+                ],
+            );
+            if clip && clears && !named_app && !site {
+                p += 9500;
             }
         }
         "mute" => {
@@ -1318,6 +1342,9 @@ fn move_question(
             };
             vec![route(&format!("system.focus.{}", mode.as_str()), 4500)]
         }
+        // ADR 0168: `NSPasteboard.general.clearContents()` in the helper's own process; no key event, nothing to
+        // backtrack into.
+        "clear_clipboard" => vec![route("system.clear_clipboard", 4500)],
         "mute" => vec![route("system.mute", 4500)],
         "unmute" => vec![route("system.unmute", 4500)],
         "set_volume" => vec![route("system.set_volume", 4500)],
@@ -1557,6 +1584,7 @@ fn intent_label(id: &str) -> &'static str {
         "show_app" => "show a hidden app",
         "open_folder" => "open a folder",
         "focus_mode" => "turn focus or do not disturb on or off",
+        "clear_clipboard" => "clear your clipboard",
         "mute" => "mute your mac",
         "unmute" => "unmute your mac",
         "set_volume" => "set the volume",
@@ -1587,6 +1615,7 @@ fn route_label(id: &str) -> &'static str {
         "system.focus.off" => "turn focus off",
         "system.focus.do_not_disturb" => "turn on do not disturb",
         m if m.starts_with("system.focus.") => "turn on that focus",
+        "system.clear_clipboard" => "empty the clipboard, nothing read from it",
         "system.mute" => "mute the sound output",
         "system.unmute" => "turn the sound output back on",
         "system.set_volume" => "set the sound output to that level",

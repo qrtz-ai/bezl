@@ -103,6 +103,9 @@ pub const FOCUS_MOVE_PREFIX: &str = "route.system.focus.";
 /// ADR 0166: "open my downloads" shows one of the user's folders in a Finder window.
 pub const OPEN_FOLDER_MOVE: &str = "route.workspace.open_folder";
 
+/// ADR 0168: "clear my clipboard" empties the general pasteboard in the helper's own process.
+pub const CLEAR_CLIPBOARD_MOVE: &str = "route.system.clear_clipboard";
+
 /// ADR 0166: the folder a plan chose (`folder.<name>` of the closed [`UserFolder`] set), else `None`. The task's own
 /// words never get here: only an option id the layers made.
 pub fn chosen_user_folder(s: &CtrlState) -> Option<UserFolder> {
@@ -151,6 +154,18 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
             routes: vec![Route::Workspace(WorkspaceOp::OpenFolder { folder })],
             verify: Verify {
                 check: Check::FolderOpen { folder },
+                expect: Expect::One,
+            },
+            content: BTreeMap::new(),
+        });
+    }
+    // ADR 0168: no app, no pre-check (telling whether the clipboard is empty would mean reading it); verified by
+    // the pasteboard's change count still being the one the clear left.
+    if mv == CLEAR_CLIPBOARD_MOVE {
+        return Some(Step::Act {
+            routes: vec![Route::Workspace(WorkspaceOp::ClearClipboard)],
+            verify: Verify {
+                check: Check::ClipboardCleared,
                 expect: Expect::One,
             },
             content: BTreeMap::new(),

@@ -63,6 +63,10 @@ pub enum Check {
     /// titles through AX only when it's trusted, and answers `null` rather than 0 when none matches, since a title can
     /// differ from the folder's display name).
     FolderOpen { folder: crate::ladder::UserFolder },
+    /// ADR 0168: 1 if the general pasteboard is still exactly what ctrl's last clear left (its `changeCount` hasn't
+    /// moved since), 0 if something was copied since or ctrl never cleared it (`null`: no pasteboard). Never read
+    /// from the clipboard's contents or types.
+    ClipboardCleared,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -574,6 +578,9 @@ pub struct FakeWorld {
     pub focus: crate::ladder::FocusMode,
     /// ADR 0166: the folders a Finder window shows, in the order they were opened.
     pub open_folders: Vec<crate::ladder::UserFolder>,
+    /// ADR 0168: the clipboard (`Some(true)`: holds something, `Some(false)`: what ctrl's clear left, `None`: no
+    /// pasteboard, so clearing fails like the Mac helper's `clipboard.unavailable`).
+    pub clipboard: Option<bool>,
 }
 
 pub struct FakeHelper(pub Mutex<FakeWorld>);
@@ -634,6 +641,7 @@ impl FakeWorld {
             focus: crate::ladder::FocusMode::Off,
             volume: 50,
             open_folders: Vec::new(),
+            clipboard: Some(true),
         }
     }
 
@@ -809,6 +817,14 @@ impl FakeWorld {
                 }
                 Ok(())
             }
+            // ADR 0168: nothing read, everything gone.
+            Route::Workspace(WorkspaceOp::ClearClipboard) => match self.clipboard {
+                Some(_) => {
+                    self.clipboard = Some(false);
+                    Ok(())
+                }
+                None => Err("clipboard.unavailable".into()),
+            },
             Route::Workspace(WorkspaceOp::UnmuteOutput) => match self.muted {
                 Some(_) => {
                     self.muted = Some(false);
@@ -940,6 +956,7 @@ impl FakeWorld {
                         .iter()
                         .any(|a| a.bundle_id == crate::ladder::FINDER && a.running)
                         .then(|| i64::from(self.open_folders.contains(folder))),
+                    Check::ClipboardCleared => self.clipboard.map(|has| i64::from(!has)),
                     Check::OutputVolume => match self.muted {
                         Some(false) => Some(self.volume),
                         _ => None,

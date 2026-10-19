@@ -31,6 +31,10 @@ public enum CtrlRoute: Equatable, Sendable {
     /// ADR 0166: show one of the user's folders (a closed set, resolved here from the system's own location) in the
     /// running Finder with `activates = false`. No path ever comes over the wire. Reversible, no gate.
     case openFolder(folder: CtrlFolder)
+    /// ADR 0168: empty the general pasteboard in the helper's own process (no app, nothing shown, nothing read from
+    /// the clipboard). Not undoable; no gate (the task asked for exactly this); the host defers it while the user is
+    /// typing or clicking.
+    case clearClipboard
     case scripting(app: String, verb: String)
     case axPerform(app: String, role: String, element: String, action: String)
     case axSet(app: String, role: String, element: String, attribute: String)
@@ -47,7 +51,8 @@ public enum CtrlRoute: Equatable, Sendable {
     public static let systemEvents = "com.apple.systemevents"
     /// ADR 0135 / 0137 / 0140: the measures that read the Mac itself, not an app.
     /// ADR 0158: `focus_on` too (the Mac backend answers nil: reading a Focus needs its own prompt).
-    public static let applessChecks: Set<String> = ["output_muted", "dark_mode", "output_volume", "focus_on"]
+    /// ADR 0168: `clipboard_cleared` too (the pasteboard's change count, never its contents).
+    public static let applessChecks: Set<String> = ["output_muted", "dark_mode", "output_volume", "focus_on", CtrlClipboard.check]
     /// Slice 7b's selective closes (ADR 0114 / 0119) have no fixed script: the backend reads the tabs first
     /// (`CtrlTabs`) and closes only the ones it can tell about; a backend that can't tell refuses, and the host asks.
     public static let tabVerbs: Set<String> = ["close_saved_tabs", "close_unpinned_tabs"]
@@ -65,6 +70,7 @@ public enum CtrlRoute: Equatable, Sendable {
             case "unhide_apps": if let a = o["apps"] as? [String] { return .unhideApps(apps: a) }
             case "mute_output": return .muteOutput
             case "unmute_output": return .unmuteOutput
+            case "clear_clipboard": return .clearClipboard
             // ADR 0140: a whole number 0–100 only; anything else is a bad request, never clamped.
             case "set_volume":
                 // ADR 0141: `is Bool` is true for a JSON 0 or 1 too (NSNumber bridging, Linux and macOS), so a JSON
@@ -251,7 +257,7 @@ public final class CtrlServer {
             guard let t = targetPid else { throw CtrlFailure("app.not_running") }
             do { try CtrlPolicy.checkKey(combo, targetPid: t, frontmostPid: frontmostPid) } catch { throw CtrlFailure("policy.refused") }
         case .files, .openURL, .launchHidden, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume,
-             .setFocus, .openFolder: break
+             .setFocus, .openFolder, .clearClipboard: break
         }
     }
 
@@ -260,7 +266,8 @@ public final class CtrlServer {
         case let .openURL(a, _), let .launchHidden(a), let .scripting(a, _), let .axPerform(a, _, _, _), let .axSet(a, _, _, _),
              let .pidKey(a, _): return a
         case .openFolder: return CtrlFolders.finder
-        case .files, .takesOver, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume, .setFocus:
+        case .files, .takesOver, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume, .setFocus,
+             .clearClipboard:
             return nil
         }
     }
