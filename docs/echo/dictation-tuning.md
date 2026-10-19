@@ -1988,11 +1988,11 @@ p19 / p20 ambiguous without a dictionary-known domain; p41 is ADR 0188's "don't 
 found this cycle, so none is added to the rejected list. P5's other half needs Jared's Mac numbers and P7 needs a
 Mac measurement first, so the cycle took P8, crash safety, talk side.
 
-| Run                                                     | Result                                                                                                                                  |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Run                                                     | Result                                                                                                                                                            |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | old service.rs (origin/main `dd3b591`), hardening75 (6) | **3 fail**: a dead helper's press listens on the new helper (twice: crash + respawn, and a fresh hello); a death before `started` says "Microphone did not start" |
-| `c86cb60`, hardening75                                  | 6 / 6 pass                                                                                                                              |
-| `c86cb60` rebased on `fce60f4`, qrtz-talk (41 binaries) | 165 passed, 0 failed (incl. `secure_field.rs` from ADR 0225, vectors, polish_set, cleanup_accuracy); clippy `-D warnings` all targets and rustfmt clean |
+| `c86cb60`, hardening75                                  | 6 / 6 pass                                                                                                                                                        |
+| `c86cb60` rebased on `fce60f4`, qrtz-talk (41 binaries) | 165 passed, 0 failed (incl. `secure_field.rs` from ADR 0225, vectors, polish_set, cleanup_accuracy); clippy `-D warnings` all targets and rustfmt clean           |
 
 - **What P8 already had, talk side:** a helper that goes while a dictation is listening, finalizing or inserting
   ends it with what was heard (T1 `helper_lost`, service.rs l.987; N142 no insert wait on a gone helper; cycle-28
