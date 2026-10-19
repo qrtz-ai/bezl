@@ -230,6 +230,167 @@ fn scratch_at(t: &str, at: usize) -> Option<String> {
     Some(format!("{}{rest}", &t[..start]))
 }
 
+/// ADR 0189: the spoken marks a dictation can end with, and what they become.
+const FINAL_MARKS: &[(&str, char)] = &[
+    ("question mark", '?'),
+    ("exclamation point", '!'),
+    ("exclamation mark", '!'),
+];
+
+/// ADR 0189: a sentence that ends in a spoken "question mark" must start with one of these (a question by its form),
+/// so "That's still a big question mark" stays. Same list in cleanup.ts.
+pub const QUESTION_STARTS: &[&str] = &[
+    "is",
+    "are",
+    "was",
+    "were",
+    "am",
+    "do",
+    "does",
+    "did",
+    "can",
+    "could",
+    "will",
+    "would",
+    "should",
+    "shall",
+    "may",
+    "might",
+    "must",
+    "have",
+    "has",
+    "had",
+    "what",
+    "what's",
+    "when",
+    "when's",
+    "where",
+    "where's",
+    "why",
+    "who",
+    "who's",
+    "whom",
+    "whose",
+    "which",
+    "how",
+    "how's",
+    "isn't",
+    "aren't",
+    "wasn't",
+    "weren't",
+    "don't",
+    "doesn't",
+    "didn't",
+    "can't",
+    "couldn't",
+    "won't",
+    "wouldn't",
+    "shouldn't",
+    "haven't",
+    "hasn't",
+];
+
+/// ADR 0189: right before a spoken mark, these make it the noun ("Is there a question mark", "Which key is question
+/// mark", "How do I type question mark", "Shift plus one types exclamation point"), even with the recogniser
+/// having dropped an article ("Does the title need question mark"): determiners and demonstratives, prepositions,
+/// conjunctions, copulas, and verbs that take the symbol as an object. Same list in cleanup.ts.
+pub const MARK_NOUN_BEFORE: &[&str] = &[
+    // determiners, demonstratives, possessives, quantifiers
+    "a", "an", "the", "this", "that", "these", "those", "my", "your", "his", "its", "our", "their", "no",
+    "another", "any", "each", "every", "some", "one", "which", "whose", "what", "same", "single", "extra",
+    "double", "final", "last", "first", "big", "little", "small", "huge", "giant", "lone", "stray",
+    "missing", "trailing", "closing", "inverted", // prepositions and conjunctions
+    "with", "without", "of", "for", "to", "from", "by", "after", "before", "than", "like", "as", "about",
+    "into", "onto", "at", "plus", "minus", "and", "or", "nor", "versus", "vs", "via", "per", "between",
+    // copulas and naming
+    "is", "are", "was", "were", "be", "been", "being", "isn't", "wasn't", "it's", "that's", "what's",
+    "there's", "here's", "become", "becomes", "became", "call", "called", "name", "named", "label",
+    "labeled", "labelled", "mean", "means", "meant", "spell", "spelled",
+    // verbs that take the symbol as an object
+    "say", "says", "said", "type", "types", "typed", "typing", "press", "presses", "pressed", "pressing",
+    "hit", "hits", "put", "puts", "putting", "add", "adds", "added", "adding", "use", "uses", "used",
+    "using", "insert", "inserts", "inserted", "remove", "removes", "removed", "delete", "deletes", "deleted",
+    "need", "needs", "needed", "want", "wants", "wanted", "have", "has", "had", "having", "get", "gets",
+    "got", "give", "gives", "gave", "make", "makes", "made", "include", "includes", "included", "keep",
+    "keeps", "kept", "drop", "drops", "dropped", "lose", "loses", "lost", "miss", "misses", "missed", "see",
+    "sees", "saw", "seen", "show", "shows", "showed", "showing", "print", "prints", "printed", "display",
+    "displays", "return", "returns", "returned", "write", "writes", "wrote", "end", "ends", "ended",
+    "ending", "likes", "love", "loves", "hate", "hates", "prefer", "prefers", "try", "tried", "place",
+    "append", "follow", "follows", "followed", "deserve", "deserves", "deserved", "forget", "forgets",
+    "forgot", "leave", "left", "change", "changed", "replace", "replaced", "find", "found", "click", "tap",
+    "select", "produce", "produces", "draw", "drew", "read", "reads", "count", "overuse", "overuses",
+];
+
+/// ADR 0189: "there" / "here" right after one of these, before a spoken mark, is "is there [a] question mark".
+const COPULAS: &[&str] = &["is", "are", "was", "were", "isn't", "aren't", "wasn't", "weren't"];
+
+/// ADR 0189: an article, possessive or quantifier this many words or fewer before a spoken mark makes it the noun
+/// ("Is it a big question mark", "Never end it with an emphatic exclamation point").
+const MARK_DETERMINER_WINDOW: usize = 3;
+const MARK_DETERMINERS: &[&str] = &[
+    "a", "an", "the", "my", "your", "his", "its", "our", "their", "no", "another", "every", "each", "any",
+    "some", "one",
+];
+
+/// ADR 0189: a spoken "question mark" / "exclamation point" / "exclamation mark" that ends the dictation becomes "?" /
+/// "!". Only its unambiguous form: written in lowercase, the very last words (a "." "?" or "!" the recogniser put
+/// after them aside), after one space and a plain word (ASCII letters, digits, an apostrophe; not a bare number; no
+/// comma, no dot, no sentence end before it), that word not one of [`MARK_NOUN_BEFORE`], no [`MARK_DETERMINERS`] word
+/// in the last [`MARK_DETERMINER_WINDOW`] words, and for "question mark" a sentence that starts like a question
+/// ([`QUESTION_STARTS`]). "Is the meeting still on question mark" → "Is the meeting still on?"; "Put a question mark",
+/// "Which key is question mark", "The band was called Question Mark" stay.
+fn final_mark(t: String) -> String {
+    let s = t.strip_suffix(['.', '?', '!']).unwrap_or(&t);
+    for &(phrase, mark) in FINAL_MARKS {
+        let Some(before) = s.strip_suffix(phrase) else {
+            continue;
+        };
+        let Some(body) = before.strip_suffix(' ') else {
+            return t;
+        };
+        if !body.ends_with(|c: char| c.is_ascii_alphanumeric()) {
+            return t;
+        }
+        // The sentence: after the nearest line break or ". ", "! ", "? " before it.
+        let bytes = body.as_bytes();
+        let mut start = 0;
+        for j in (1..bytes.len()).rev() {
+            if bytes[j - 1] == b'\n' || (matches!(bytes[j - 1], b'.' | b'!' | b'?') && bytes[j] == b' ') {
+                start = j;
+                break;
+            }
+        }
+        let words: Vec<String> = body[start..]
+            .split_whitespace()
+            .map(|w| w.trim_end_matches(',').to_ascii_lowercase())
+            .collect();
+        let Some(last) = words.last() else {
+            return t;
+        };
+        // A plain word: not a number ("Shift 1 exclamation point", "error 404 question mark" name a key or code).
+        if !last.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'\'')
+            || last.bytes().all(|b| b.is_ascii_digit())
+            || MARK_NOUN_BEFORE.contains(&last.as_str())
+        {
+            return t;
+        }
+        // "Is there question mark" (the noun, its article dropped), not "Are you there question mark".
+        let prev = words.len().checked_sub(2).map(|i| words[i].as_str());
+        if matches!(last.as_str(), "there" | "here") && prev.is_some_and(|p| COPULAS.contains(&p)) {
+            return t;
+        }
+        let window = &words[words.len().saturating_sub(MARK_DETERMINER_WINDOW)..];
+        if window.iter().any(|w| MARK_DETERMINERS.contains(&w.as_str())) {
+            return t;
+        }
+        if mark == '?' && !QUESTION_STARTS.contains(&words[0].as_str()) {
+            return t;
+        }
+        return format!("{body}{mark}");
+    }
+    t
+}
+
 /// ADR 0101: does this repeat (the whole match `all`, its word `word`) collapse to one word?
 fn collapses(word: &str, all: &str) -> bool {
     let w = word.to_ascii_lowercase();
@@ -251,10 +412,39 @@ fn is_short(t: &str) -> bool {
         && !INNER_END.is_match(t).unwrap_or(true)
 }
 
+/// ADR 0188: a list of short lines ("Groceries⏎Eggs⏎Milk", an address, a sign-off): at least this many lines.
+pub const SHORT_LIST_LINES: usize = 3;
+
+/// ADR 0188: is the text a list of short lines? At least [`SHORT_LIST_LINES`] lines, no blank line between them (a
+/// "new paragraph" makes it a letter), each line 1 to [`SHORT_DICTATION_WORDS`] words with no sentence mark inside it,
+/// and none but the last ending in ".", "!" or "?". Two lines ("Dear team,⏎Quick update.", "Call her⏎Then email
+/// Sam.") are not a list.
+fn is_short_list(t: &str) -> bool {
+    if t.contains("\n\n") {
+        return false;
+    }
+    let lines: Vec<&str> = t.split('\n').collect();
+    if lines.len() < SHORT_LIST_LINES {
+        return false;
+    }
+    let last = lines.len() - 1;
+    lines.iter().enumerate().all(|(i, l)| {
+        let words = l.split_whitespace().count();
+        (1..=SHORT_DICTATION_WORDS).contains(&words)
+            && !INNER_END.is_match(l).unwrap_or(true)
+            && (i == last || !l.ends_with(['.', '!', '?']))
+    })
+}
+
 /// The terminal punctuation (ADR 0101): a short dictation ends as said, without a period; a longer one gets a "."
-/// when it ends on a word.
+/// when it ends on a word. ADR 0188: a list of short lines ends like a short dictation: no "." is added, and a "."
+/// the recogniser ended it with is dropped only when it is a clean sentence end (not "p.m.", "etc.", "...").
 fn terminal_punctuation(mut t: String) -> String {
-    if is_short(&t) {
+    if is_short_list(&t) {
+        if t.ends_with('.') && clean_sentence_end(&t) {
+            t.pop();
+        }
+    } else if is_short(&t) {
         // A lone final "." only: not "...", not the last dot of "p.m." or "U.S.".
         let last = t.split_whitespace().last().unwrap_or_default();
         if let Some(body) = last.strip_suffix('.') {
@@ -333,8 +523,9 @@ pub fn apply_dictionary(text: &str, dict: &[DictionaryEntry]) -> String {
     out
 }
 
-/// On-device cleanup: spoken commands, fillers, stutters, spacing, "Scratch that" (ADR 0186), capitalization, terminal
-/// punctuation (ADR 0101: which repeats collapse, and no "." on a short dictation).
+/// On-device cleanup: spoken commands, fillers, stutters, spacing, "Scratch that" (ADR 0186), a final spoken "question
+/// mark" / "exclamation point" (ADR 0189), capitalization, terminal punctuation (ADR 0101: which repeats collapse, and
+/// no "." on a short dictation; ADR 0188: nor on a list of short lines).
 pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
     let mut t = format!(" {raw} ");
     t = layout_command(&NEW_PARAGRAPH, &t, "\n\n");
@@ -378,6 +569,7 @@ pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
             .into_owned();
     }
     t = scratch_that(t);
+    t = final_mark(t);
     let src = t.clone();
     t = SENTENCE_START
         .replace_all(&src, |c: &Captures| {

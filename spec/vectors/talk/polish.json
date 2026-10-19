@@ -299,6 +299,66 @@
       "category": "correction",
       "raw": "Hi Sam,\n\nThe launch is Monday. Scratch that, the launch is Tuesday.",
       "ideal": "Hi Sam,\n\nThe launch is Tuesday."
+    },
+    {
+      "id": "p47",
+      "category": "list",
+      "raw": "73 Naples St new line San Francisco new line CA 94112",
+      "ideal": "73 Naples St\nSan Francisco\nCA 94112"
+    },
+    {
+      "id": "p48",
+      "category": "list",
+      "raw": "To do new line laundry new line dishes new line call mom",
+      "ideal": "To do\nLaundry\nDishes\nCall mom"
+    },
+    {
+      "id": "p49",
+      "category": "list",
+      "raw": "Groceries, new line, eggs, new line, milk.",
+      "ideal": "Groceries\nEggs\nMilk"
+    },
+    {
+      "id": "p50",
+      "category": "list",
+      "raw": "Thanks new line Jared new line cue arts",
+      "ideal": "Thanks\nJared\nqrtz"
+    },
+    {
+      "id": "p51",
+      "category": "punct-cmd",
+      "raw": "Is it ready question mark.",
+      "ideal": "Is it ready?"
+    },
+    {
+      "id": "p52",
+      "category": "punct-cmd",
+      "raw": "We did it exclamation point",
+      "ideal": "We did it!"
+    },
+    {
+      "id": "p53",
+      "category": "punct-cmd",
+      "raw": "Did you call her question mark",
+      "ideal": "Did you call her?"
+    },
+    {
+      "id": "p54",
+      "category": "punct-cmd",
+      "raw": "Can you send it today question mark",
+      "ideal": "Can you send it today?"
+    },
+    {
+      "id": "p55",
+      "category": "punct-cmd",
+      "raw": "Happy birthday Sam exclamation mark",
+      "ideal": "Happy birthday Sam!"
+    },
+    {
+      "id": "p56",
+      "category": "punct-cmd",
+      "raw": "Thanks for the update. Is the demo still on question mark",
+      "ideal": "Thanks for the update. Is the demo still on?"
     }
   ],
   "keep": [
@@ -655,6 +715,216 @@
       "rule": "correction",
       "raw": "My arm itches. Scratch that, can you?",
       "expect": "My arm itches. Scratch that, can you?"
+    },
+    {
+      "id": "k60",
+      "rule": "list",
+      "raw": "Groceries new line eggs new line milk and bread for the whole week",
+      "expect": "Groceries\nEggs\nMilk and bread for the whole week."
+    },
+    {
+      "id": "k61",
+      "rule": "list",
+      "raw": "Dear team new line quick update new line the launch moved to Monday",
+      "expect": "Dear team\nQuick update\nThe launch moved to Monday."
+    },
+    {
+      "id": "k62",
+      "rule": "list",
+      "raw": "Done. New line. Next. New line. Ship it.",
+      "expect": "Done.\nNext.\nShip it."
+    },
+    {
+      "id": "k63",
+      "rule": "list",
+      "raw": "Need anything new line eggs new line milk?",
+      "expect": "Need anything\nEggs\nMilk?"
+    },
+    {
+      "id": "k64",
+      "rule": "list",
+      "raw": "Eggs new line milk new line at 3 p.m.",
+      "expect": "Eggs\nMilk\nAt 3 p.m."
+    },
+    {
+      "id": "k65",
+      "rule": "list",
+      "raw": "Pens new line paper new line staples etc.",
+      "expect": "Pens\nPaper\nStaples etc."
+    },
+    {
+      "id": "k66",
+      "rule": "list",
+      "raw": "Step one new line step two new line step three is to test everything",
+      "expect": "Step one\nStep two\nStep three is to test everything."
+    },
+    {
+      "id": "k67",
+      "rule": "list",
+      "raw": "Thanks new line Jared new line PS call me when you land",
+      "expect": "Thanks\nJared\nPS call me when you land."
+    },
+    {
+      "id": "k68",
+      "rule": "list",
+      "raw": "Milk new line eggs new line the bread we like.",
+      "expect": "Milk\nEggs\nThe bread we like."
+    },
+    {
+      "id": "k69",
+      "rule": "mark",
+      "raw": "Is that a question mark or a period",
+      "expect": "Is that a question mark or a period."
+    },
+    {
+      "id": "k70",
+      "rule": "mark",
+      "raw": "Is there a question mark",
+      "expect": "Is there a question mark."
+    },
+    {
+      "id": "k71",
+      "rule": "mark",
+      "raw": "Is there question mark",
+      "expect": "Is there question mark."
+    },
+    {
+      "id": "k72",
+      "rule": "mark",
+      "raw": "Does the title need question mark",
+      "expect": "Does the title need question mark."
+    },
+    {
+      "id": "k73",
+      "rule": "mark",
+      "raw": "Which key is question mark",
+      "expect": "Which key is question mark."
+    },
+    {
+      "id": "k74",
+      "rule": "mark",
+      "raw": "How do I type question mark",
+      "expect": "How do I type question mark."
+    },
+    {
+      "id": "k75",
+      "rule": "mark",
+      "raw": "Should the subject end with a question mark",
+      "expect": "Should the subject end with a question mark."
+    },
+    {
+      "id": "k76",
+      "rule": "mark",
+      "raw": "Is it a big question mark",
+      "expect": "Is it a big question mark."
+    },
+    {
+      "id": "k77",
+      "rule": "mark",
+      "raw": "Did you see that question mark",
+      "expect": "Did you see that question mark."
+    },
+    {
+      "id": "k78",
+      "rule": "mark",
+      "raw": "The exclamation point is overused.",
+      "expect": "The exclamation point is overused."
+    },
+    {
+      "id": "k79",
+      "rule": "mark",
+      "raw": "Use fewer exclamation points",
+      "expect": "Use fewer exclamation points."
+    },
+    {
+      "id": "k80",
+      "rule": "mark",
+      "raw": "Never end an email with an exclamation point",
+      "expect": "Never end an email with an exclamation point."
+    },
+    {
+      "id": "k81",
+      "rule": "mark",
+      "raw": "Add an exclamation point",
+      "expect": "Add an exclamation point."
+    },
+    {
+      "id": "k82",
+      "rule": "mark",
+      "raw": "My favorite key is exclamation point",
+      "expect": "My favorite key is exclamation point."
+    },
+    {
+      "id": "k83",
+      "rule": "mark",
+      "raw": "Shift plus one types exclamation point",
+      "expect": "Shift plus one types exclamation point."
+    },
+    {
+      "id": "k84",
+      "rule": "mark",
+      "raw": "Shift 1 exclamation point",
+      "expect": "Shift 1 exclamation point."
+    },
+    {
+      "id": "k85",
+      "rule": "mark",
+      "raw": "That's still a big question mark",
+      "expect": "That's still a big question mark."
+    },
+    {
+      "id": "k86",
+      "rule": "mark",
+      "raw": "The band was called Question Mark",
+      "expect": "The band was called Question Mark."
+    },
+    {
+      "id": "k87",
+      "rule": "mark",
+      "raw": "What do I add at the end, question mark",
+      "expect": "What do I add at the end, question mark."
+    },
+    {
+      "id": "k88",
+      "rule": "mark",
+      "raw": "Can you hit exclamation point",
+      "expect": "Can you hit exclamation point."
+    },
+    {
+      "id": "k89",
+      "rule": "mark",
+      "raw": "Is the last character an exclamation point",
+      "expect": "Is the last character an exclamation point."
+    },
+    {
+      "id": "k90",
+      "rule": "mark",
+      "raw": "The regex ends in a question mark",
+      "expect": "The regex ends in a question mark."
+    },
+    {
+      "id": "k91",
+      "rule": "mark",
+      "raw": "Open qrtz.ai question mark",
+      "expect": "Open qrtz.ai question mark."
+    },
+    {
+      "id": "k92",
+      "rule": "mark",
+      "raw": "What's this symbol? Question mark.",
+      "expect": "What's this symbol? Question mark."
+    },
+    {
+      "id": "k93",
+      "rule": "mark",
+      "raw": "I have one question mark",
+      "expect": "I have one question mark."
+    },
+    {
+      "id": "k94",
+      "rule": "mark",
+      "raw": "Is it error 404 question mark",
+      "expect": "Is it error 404 question mark."
     }
   ]
 }

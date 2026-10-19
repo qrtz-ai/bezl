@@ -54,7 +54,30 @@ const REPEATS = /(?<![\w'])(\w+)(?:[\s,]+\1(?![\w']))+/gi;
  * "." the recogniser ended it with is dropped ("Yes", "Sounds good", "Friday at 3"). "?" and "!" stay. */
 export const SHORT_DICTATION_WORDS = 3;
 
+/** ADR 0188: a list of short lines ("Groceries⏎Eggs⏎Milk", an address, a sign-off): at least this many lines. */
+export const SHORT_LIST_LINES = 3;
+
+/** ADR 0188: at least SHORT_LIST_LINES lines, no blank line, each 1 to SHORT_DICTATION_WORDS words with no sentence
+ * mark inside it, none but the last ending in ".", "!" or "?". Same rule in cleanup.rs. */
+function isShortList(t: string): boolean {
+  if (t.includes('\n\n')) return false;
+  const lines = t.split('\n');
+  if (lines.length < SHORT_LIST_LINES) return false;
+  return lines.every((l, i) => {
+    const n = l.split(/\s+/).filter(Boolean).length;
+    return (
+      n >= 1 &&
+      n <= SHORT_DICTATION_WORDS &&
+      !/[.!?]\s/.test(l) &&
+      (i === lines.length - 1 || !/[.!?]$/.test(l))
+    );
+  });
+}
+
 function terminalPunctuation(t: string): string {
+  // ADR 0188: a list of short lines ends like a short dictation; a recogniser's "." goes only at a clean end.
+  if (isShortList(t))
+    return t.endsWith('.') && cleanSentenceEnd(t) ? t.slice(0, -1) : t;
   const words = t.split(/\s+/).filter(Boolean);
   const short =
     !t.includes('\n') &&
@@ -233,6 +256,384 @@ function scratchThat(t: string): string {
   return t;
 }
 
+/** ADR 0189: the spoken marks a dictation can end with, and what they become. */
+const FINAL_MARKS: readonly (readonly [string, string])[] = [
+  ['question mark', '?'],
+  ['exclamation point', '!'],
+  ['exclamation mark', '!'],
+];
+/** ADR 0189: a sentence ending in a spoken "question mark" must start like a question. Same list in cleanup.rs. */
+export const QUESTION_STARTS = new Set([
+  'is',
+  'are',
+  'was',
+  'were',
+  'am',
+  'do',
+  'does',
+  'did',
+  'can',
+  'could',
+  'will',
+  'would',
+  'should',
+  'shall',
+  'may',
+  'might',
+  'must',
+  'have',
+  'has',
+  'had',
+  'what',
+  "what's",
+  'when',
+  "when's",
+  'where',
+  "where's",
+  'why',
+  'who',
+  "who's",
+  'whom',
+  'whose',
+  'which',
+  'how',
+  "how's",
+  "isn't",
+  "aren't",
+  "wasn't",
+  "weren't",
+  "don't",
+  "doesn't",
+  "didn't",
+  "can't",
+  "couldn't",
+  "won't",
+  "wouldn't",
+  "shouldn't",
+  "haven't",
+  "hasn't",
+]);
+/** ADR 0189: right before a spoken mark, these make it the noun. Same list in cleanup.rs. */
+export const MARK_NOUN_BEFORE = new Set([
+  // determiners, demonstratives, possessives, quantifiers
+  'a',
+  'an',
+  'the',
+  'this',
+  'that',
+  'these',
+  'those',
+  'my',
+  'your',
+  'his',
+  'its',
+  'our',
+  'their',
+  'no',
+  'another',
+  'any',
+  'each',
+  'every',
+  'some',
+  'one',
+  'which',
+  'whose',
+  'what',
+  'same',
+  'single',
+  'extra',
+  'double',
+  'final',
+  'last',
+  'first',
+  'big',
+  'little',
+  'small',
+  'huge',
+  'giant',
+  'lone',
+  'stray',
+  'missing',
+  'trailing',
+  'closing',
+  'inverted',
+  // prepositions and conjunctions
+  'with',
+  'without',
+  'of',
+  'for',
+  'to',
+  'from',
+  'by',
+  'after',
+  'before',
+  'than',
+  'like',
+  'as',
+  'about',
+  'into',
+  'onto',
+  'at',
+  'plus',
+  'minus',
+  'and',
+  'or',
+  'nor',
+  'versus',
+  'vs',
+  'via',
+  'per',
+  'between',
+  // copulas and naming
+  'is',
+  'are',
+  'was',
+  'were',
+  'be',
+  'been',
+  'being',
+  "isn't",
+  "wasn't",
+  "it's",
+  "that's",
+  "what's",
+  "there's",
+  "here's",
+  'become',
+  'becomes',
+  'became',
+  'call',
+  'called',
+  'name',
+  'named',
+  'label',
+  'labeled',
+  'labelled',
+  'mean',
+  'means',
+  'meant',
+  'spell',
+  'spelled',
+  // verbs that take the symbol as an object
+  'say',
+  'says',
+  'said',
+  'type',
+  'types',
+  'typed',
+  'typing',
+  'press',
+  'presses',
+  'pressed',
+  'pressing',
+  'hit',
+  'hits',
+  'put',
+  'puts',
+  'putting',
+  'add',
+  'adds',
+  'added',
+  'adding',
+  'use',
+  'uses',
+  'used',
+  'using',
+  'insert',
+  'inserts',
+  'inserted',
+  'remove',
+  'removes',
+  'removed',
+  'delete',
+  'deletes',
+  'deleted',
+  'need',
+  'needs',
+  'needed',
+  'want',
+  'wants',
+  'wanted',
+  'have',
+  'has',
+  'had',
+  'having',
+  'get',
+  'gets',
+  'got',
+  'give',
+  'gives',
+  'gave',
+  'make',
+  'makes',
+  'made',
+  'include',
+  'includes',
+  'included',
+  'keep',
+  'keeps',
+  'kept',
+  'drop',
+  'drops',
+  'dropped',
+  'lose',
+  'loses',
+  'lost',
+  'miss',
+  'misses',
+  'missed',
+  'see',
+  'sees',
+  'saw',
+  'seen',
+  'show',
+  'shows',
+  'showed',
+  'showing',
+  'print',
+  'prints',
+  'printed',
+  'display',
+  'displays',
+  'return',
+  'returns',
+  'returned',
+  'write',
+  'writes',
+  'wrote',
+  'end',
+  'ends',
+  'ended',
+  'ending',
+  'likes',
+  'love',
+  'loves',
+  'hate',
+  'hates',
+  'prefer',
+  'prefers',
+  'try',
+  'tried',
+  'place',
+  'append',
+  'follow',
+  'follows',
+  'followed',
+  'deserve',
+  'deserves',
+  'deserved',
+  'forget',
+  'forgets',
+  'forgot',
+  'leave',
+  'left',
+  'change',
+  'changed',
+  'replace',
+  'replaced',
+  'find',
+  'found',
+  'click',
+  'tap',
+  'select',
+  'produce',
+  'produces',
+  'draw',
+  'drew',
+  'read',
+  'reads',
+  'count',
+  'overuse',
+  'overuses',
+]);
+/** ADR 0189: "there" / "here" right after one of these is "is there [a] question mark". */
+const COPULAS = new Set([
+  'is',
+  'are',
+  'was',
+  'were',
+  "isn't",
+  "aren't",
+  "wasn't",
+  "weren't",
+]);
+/** ADR 0189: an article, possessive or quantifier in the last MARK_DETERMINER_WINDOW words makes it the noun. */
+const MARK_DETERMINER_WINDOW = 3;
+const MARK_DETERMINERS = new Set([
+  'a',
+  'an',
+  'the',
+  'my',
+  'your',
+  'his',
+  'its',
+  'our',
+  'their',
+  'no',
+  'another',
+  'every',
+  'each',
+  'any',
+  'some',
+  'one',
+]);
+
+/**
+ * ADR 0189: a spoken "question mark" / "exclamation point" / "exclamation mark" that ends the dictation becomes "?" /
+ * "!", only in lowercase, as the very last words, after one space and a plain word that is not in MARK_NOUN_BEFORE,
+ * with no MARK_DETERMINERS word in the last MARK_DETERMINER_WINDOW words, and for "question mark" a sentence that
+ * starts like a question. Anything else is left as spoken. Same rule in cleanup.rs.
+ */
+function finalMark(t: string): string {
+  const s = /[.?!]$/.test(t) ? t.slice(0, -1) : t;
+  for (const [phrase, mark] of FINAL_MARKS) {
+    if (!s.endsWith(phrase)) continue;
+    const before = s.slice(0, -phrase.length);
+    if (!before.endsWith(' ')) return t;
+    const body = before.slice(0, -1);
+    if (!/[A-Za-z0-9]$/.test(body)) return t;
+    let start = 0;
+    for (let j = body.length - 1; j >= 1; j--) {
+      const c = body[j - 1];
+      if (
+        c === '\n' ||
+        ((c === '.' || c === '!' || c === '?') && body[j] === ' ')
+      ) {
+        start = j;
+        break;
+      }
+    }
+    const words = body
+      .slice(start)
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((w) => asciiLower(w.replace(/,+$/, '')));
+    const last = words.at(-1);
+    if (last === undefined) return t;
+    // A plain word: not a number ("Shift 1 exclamation point", "error 404 question mark" name a key or code).
+    if (
+      !/^[a-z0-9']+$/.test(last) ||
+      /^[0-9]+$/.test(last) ||
+      MARK_NOUN_BEFORE.has(last)
+    )
+      return t;
+    const prev = words.at(-2);
+    if (
+      (last === 'there' || last === 'here') &&
+      prev !== undefined &&
+      COPULAS.has(prev)
+    )
+      return t;
+    if (
+      words.slice(-MARK_DETERMINER_WINDOW).some((w) => MARK_DETERMINERS.has(w))
+    )
+      return t;
+    if (mark === '?' && !QUESTION_STARTS.has(words[0])) return t;
+    return body + mark;
+  }
+  return t;
+}
+
 /** Writes dictionary terms the way the user spells them ("cue arts" → "qrtz" when listed as an alias). */
 export function applyDictionary(
   text: string,
@@ -253,8 +654,9 @@ export function applyDictionary(
 }
 
 /**
- * On-device cleanup: spoken commands, fillers, stutters, spacing, "Scratch that" (ADR 0186), capitalization, terminal
- * punctuation (ADR 0101: which repeats collapse, and no "." on a short dictation).
+ * On-device cleanup: spoken commands, fillers, stutters, spacing, "Scratch that" (ADR 0186), a final spoken "question
+ * mark" / "exclamation point" (ADR 0189), capitalization, terminal punctuation (ADR 0101: which repeats collapse, and
+ * no "." on a short dictation; ADR 0188: nor on a list of short lines).
  * Deterministic and instant; talk's only cleanup (no LLM pass, ADR 0071).
  */
 export function ruleCleanup(
@@ -288,6 +690,7 @@ export function ruleCleanup(
       isAbbreviation(w) ? all : w,
     );
   t = scratchThat(t);
+  t = finalMark(t);
   t = t.replace(
     // Not after a dotted abbreviation ("e.g. the", "3 p.m. today"), nor after "Mr." / "etc." (ADR 0120).
     /(^|(?<![A-Za-z]\.[A-Za-z])[.!?]\s+|\n)([a-z])/g,

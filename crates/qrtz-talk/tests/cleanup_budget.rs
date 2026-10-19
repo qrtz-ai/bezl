@@ -21,6 +21,8 @@ fn long_dictation() -> String {
         "Email jlgrimes@users.noreply.github.com or go to https://qrtz.ai/docs for details. i.e. the setup guide",
         "Mr. and Mrs. Smith will join at 3 p.m. today with the team, etc. and post gres is migrated.",
         "Book the room for Monday. Scratch that, book it for Tuesday. My back itches. Scratch that itch.",
+        // ADR 0189: the dictation ends in a spoken mark, so the final-mark step does its whole check and fires.
+        "Thanks for the update. Is the demo still on question mark",
     ];
     let mut s = String::new();
     while s.split_whitespace().count() < 400 {

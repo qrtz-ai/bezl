@@ -689,17 +689,17 @@
     {
       "raw": "Groceries new line eggs new line milk",
       "dict": false,
-      "expect": "Groceries\nEggs\nMilk."
+      "expect": "Groceries\nEggs\nMilk"
     },
     {
       "raw": "Is the meeting still on question mark",
       "dict": false,
-      "expect": "Is the meeting still on question mark."
+      "expect": "Is the meeting still on?"
     },
     {
       "raw": "Great work everyone exclamation point",
       "dict": false,
-      "expect": "Great work everyone exclamation point."
+      "expect": "Great work everyone!"
     },
     {
       "raw": "Bring the charger comma the cable comma and the adapter period",
@@ -920,6 +920,231 @@
       "raw": "My arm itches. Scratch that, can you?",
       "dict": false,
       "expect": "My arm itches. Scratch that, can you?"
+    },
+    {
+      "raw": "73 Naples St new line San Francisco new line CA 94112",
+      "dict": false,
+      "expect": "73 Naples St\nSan Francisco\nCA 94112"
+    },
+    {
+      "raw": "To do new line laundry new line dishes new line call mom",
+      "dict": false,
+      "expect": "To do\nLaundry\nDishes\nCall mom"
+    },
+    {
+      "raw": "Groceries, new line, eggs, new line, milk.",
+      "dict": false,
+      "expect": "Groceries,\nEggs,\nMilk"
+    },
+    {
+      "raw": "Thanks new line Jared new line cue arts",
+      "dict": false,
+      "expect": "Thanks\nJared\nCue arts"
+    },
+    {
+      "raw": "Is it ready question mark.",
+      "dict": false,
+      "expect": "Is it ready?"
+    },
+    {
+      "raw": "We did it exclamation point",
+      "dict": false,
+      "expect": "We did it!"
+    },
+    {
+      "raw": "Did you call her question mark",
+      "dict": false,
+      "expect": "Did you call her?"
+    },
+    {
+      "raw": "Can you send it today question mark",
+      "dict": false,
+      "expect": "Can you send it today?"
+    },
+    {
+      "raw": "Happy birthday Sam exclamation mark",
+      "dict": false,
+      "expect": "Happy birthday Sam!"
+    },
+    {
+      "raw": "Thanks for the update. Is the demo still on question mark",
+      "dict": false,
+      "expect": "Thanks for the update. Is the demo still on?"
+    },
+    {
+      "raw": "Groceries new line eggs new line milk and bread for the whole week",
+      "dict": false,
+      "expect": "Groceries\nEggs\nMilk and bread for the whole week."
+    },
+    {
+      "raw": "Dear team new line quick update new line the launch moved to Monday",
+      "dict": false,
+      "expect": "Dear team\nQuick update\nThe launch moved to Monday."
+    },
+    {
+      "raw": "Done. New line. Next. New line. Ship it.",
+      "dict": false,
+      "expect": "Done.\nNext.\nShip it."
+    },
+    {
+      "raw": "Need anything new line eggs new line milk?",
+      "dict": false,
+      "expect": "Need anything\nEggs\nMilk?"
+    },
+    {
+      "raw": "Eggs new line milk new line at 3 p.m.",
+      "dict": false,
+      "expect": "Eggs\nMilk\nAt 3 p.m."
+    },
+    {
+      "raw": "Pens new line paper new line staples etc.",
+      "dict": false,
+      "expect": "Pens\nPaper\nStaples etc."
+    },
+    {
+      "raw": "Step one new line step two new line step three is to test everything",
+      "dict": false,
+      "expect": "Step one\nStep two\nStep three is to test everything."
+    },
+    {
+      "raw": "Thanks new line Jared new line PS call me when you land",
+      "dict": false,
+      "expect": "Thanks\nJared\nPS call me when you land."
+    },
+    {
+      "raw": "Milk new line eggs new line the bread we like.",
+      "dict": false,
+      "expect": "Milk\nEggs\nThe bread we like."
+    },
+    {
+      "raw": "Is that a question mark or a period",
+      "dict": false,
+      "expect": "Is that a question mark or a period."
+    },
+    {
+      "raw": "Is there a question mark",
+      "dict": false,
+      "expect": "Is there a question mark."
+    },
+    {
+      "raw": "Is there question mark",
+      "dict": false,
+      "expect": "Is there question mark."
+    },
+    {
+      "raw": "Does the title need question mark",
+      "dict": false,
+      "expect": "Does the title need question mark."
+    },
+    {
+      "raw": "Which key is question mark",
+      "dict": false,
+      "expect": "Which key is question mark."
+    },
+    {
+      "raw": "How do I type question mark",
+      "dict": false,
+      "expect": "How do I type question mark."
+    },
+    {
+      "raw": "Should the subject end with a question mark",
+      "dict": false,
+      "expect": "Should the subject end with a question mark."
+    },
+    {
+      "raw": "Is it a big question mark",
+      "dict": false,
+      "expect": "Is it a big question mark."
+    },
+    {
+      "raw": "Did you see that question mark",
+      "dict": false,
+      "expect": "Did you see that question mark."
+    },
+    {
+      "raw": "The exclamation point is overused.",
+      "dict": false,
+      "expect": "The exclamation point is overused."
+    },
+    {
+      "raw": "Use fewer exclamation points",
+      "dict": false,
+      "expect": "Use fewer exclamation points."
+    },
+    {
+      "raw": "Never end an email with an exclamation point",
+      "dict": false,
+      "expect": "Never end an email with an exclamation point."
+    },
+    {
+      "raw": "Add an exclamation point",
+      "dict": false,
+      "expect": "Add an exclamation point."
+    },
+    {
+      "raw": "My favorite key is exclamation point",
+      "dict": false,
+      "expect": "My favorite key is exclamation point."
+    },
+    {
+      "raw": "Shift plus one types exclamation point",
+      "dict": false,
+      "expect": "Shift plus one types exclamation point."
+    },
+    {
+      "raw": "Shift 1 exclamation point",
+      "dict": false,
+      "expect": "Shift 1 exclamation point."
+    },
+    {
+      "raw": "That's still a big question mark",
+      "dict": false,
+      "expect": "That's still a big question mark."
+    },
+    {
+      "raw": "The band was called Question Mark",
+      "dict": false,
+      "expect": "The band was called Question Mark."
+    },
+    {
+      "raw": "What do I add at the end, question mark",
+      "dict": false,
+      "expect": "What do I add at the end, question mark."
+    },
+    {
+      "raw": "Can you hit exclamation point",
+      "dict": false,
+      "expect": "Can you hit exclamation point."
+    },
+    {
+      "raw": "Is the last character an exclamation point",
+      "dict": false,
+      "expect": "Is the last character an exclamation point."
+    },
+    {
+      "raw": "The regex ends in a question mark",
+      "dict": false,
+      "expect": "The regex ends in a question mark."
+    },
+    {
+      "raw": "Open qrtz.ai question mark",
+      "dict": false,
+      "expect": "Open qrtz.ai question mark."
+    },
+    {
+      "raw": "What's this symbol? Question mark.",
+      "dict": false,
+      "expect": "What's this symbol? Question mark."
+    },
+    {
+      "raw": "I have one question mark",
+      "dict": false,
+      "expect": "I have one question mark."
+    },
+    {
+      "raw": "Is it error 404 question mark",
+      "dict": false,
+      "expect": "Is it error 404 question mark."
     }
   ],
   "dictionaryOnly": [
