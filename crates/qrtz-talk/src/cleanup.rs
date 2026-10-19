@@ -1,9 +1,10 @@
 //! The on-device cleanup of a dictation (`packages/core/src/talk/cleanup.ts`'s rules). There is no LLM cleanup:
 //! it was removed for speed (ADR 0071), so the text goes in as soon as the final ASR text is in. The regexes are the JS ones with JS semantics spelled out: `\b` and `\w`
 //! are ASCII in JS, so they become explicit ASCII lookarounds/classes here. Checked byte for byte against TS by
-//! spec/vectors/talk/cleanup.json.
+//! spec/vectors/talk/cleanup.json. ADR 0199: the patterns with look-arounds or a backreference run as hand-written
+//! scans of the same patterns (same text out, ~14x faster chain).
 use crate::contract::{CleanupMethod, DictionaryEntry};
-use fancy_regex::{Captures, Regex};
+use fancy_regex::Regex;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};
 
@@ -13,19 +14,21 @@ fn re(s: &str) -> Regex {
     Regex::new(s).expect("static regex")
 }
 
-static NEW_PARAGRAPH: LazyLock<Regex> =
-    LazyLock::new(|| re(&format!(r"(?i)\s*(?<![{W}])new paragraph(?![{W}])[,.]?\s*")));
-static NEW_LINE: LazyLock<Regex> =
-    LazyLock::new(|| re(&format!(r"(?i)\s*(?<![{W}])new line(?![{W}])[,.]?\s*")));
-// The filler word is group 2; whether it goes is [`keeps_filler`]'s call (ADR 0182), and whether a comma before it
-// goes too is [`filler_takes_comma`]'s (ADR 0192).
-static FILLERS: LazyLock<Regex> =
-    LazyLock::new(|| re(r"(?i)(^|[\s,])(u+m+|u+h+|e+r+m+|e+r|a+h+|h+m+|m+h*m+)(?=[\s,.!?]|$),?"));
-// ADR 0101: an immediate repeat of a whole word. The apostrophe is part of a word on both sides, so "you, you're"
-// and "it, it's" are not repeats. Which repeats collapse is [`collapses`]'s call.
+// ADR 0199: the steps whose patterns had look-arounds or a backreference (spoken layout commands, fillers, repeats,
+// the continued dot, sentence starts, the lone "i") are hand-written scans of the same patterns; each one's doc
+// comment gives the pattern it implements, and so does a dictionary term of plain words ([`replace_plain_term`]).
+// fancy-regex ran those in its backtracking VM from every position (~1.5 ms of the 1.6 ms chain on 495 words; 0.11 ms
+// now). Same text out, byte for byte: `tests/hardening60.rs` checks the chain against the frozen cycle-59 one, and the
+// unit tests at the end check each scan against its old pattern, on generated text.
+// `\s` there is Unicode White_Space, which is `char::is_whitespace` and `str::trim_*`; `(?i)` on these letters
+// folds ASCII only (no other code point folds to n, e, w, l, i, p, a, g, h, u, m or r), but it makes `[A-Za-z0-9_]`
+// take "ſ" (U+017F) and the Kelvin sign (U+212A) too ([`is_w_folded`]).
+
+/// ADR 0101: an immediate repeat of a whole word, as the regex it was. ADR 0199: used only for a text with "ſ" or
+/// the Kelvin sign in it, where fancy-regex's case-insensitive backreference has its own rules
+/// ([`collapse_repeats`]); the recogniser never writes either.
 static REPEATS: LazyLock<Regex> =
     LazyLock::new(|| re(&format!(r"(?i)(?<![{W}'])([{W}]+)(?:[\s,]+\1(?![{W}']))+")));
-static TABS: LazyLock<Regex> = LazyLock::new(|| re(r"[ \t]+"));
 static NL_SPACES: LazyLock<Regex> = LazyLock::new(|| re(r" *\n *"));
 static SPACE_BEFORE_PUNCT: LazyLock<Regex> = LazyLock::new(|| re(r"\s+([,.!?;:])"));
 // ADR 0101 (N160): only a comma or semicolon gets a space after it. A dot, colon, "!" or "?" with no space after it
@@ -33,19 +36,28 @@ static SPACE_BEFORE_PUNCT: LazyLock<Regex> = LazyLock::new(|| re(r"\s+([,.!?;:])
 static SPACE_AFTER_PUNCT: LazyLock<Regex> = LazyLock::new(|| re(r#"([,;])(?=[^\s0-9"')\]])"#));
 static COMMAS: LazyLock<Regex> = LazyLock::new(|| re(r",+"));
 static EDGES: LazyLock<Regex> = LazyLock::new(|| re(r"^[\s,]+|[\s,]+$"));
-// ADR 0101 (N160): not after a dotted abbreviation ("e.g. the", "3 p.m. today").
-static SENTENCE_START: LazyLock<Regex> =
-    LazyLock::new(|| re(r"(^|(?<![A-Za-z]\.[A-Za-z])[.!?]\s+|\n)([a-z])"));
-// ADR 0101 (N160): "i" before a dot only at a sentence end, not the "i" of "i.e.".
-static LONE_I: LazyLock<Regex> =
-    LazyLock::new(|| re(&format!(r"(?<![{W}])i(?![{W}])(?=[\s,!?']|\.(?![A-Za-z])|$)")));
 static ENDS_WORD: LazyLock<Regex> = LazyLock::new(|| re(r"[\p{L}\p{N}]$"));
-// ADR 0120 (N167): a lone "." on a word with a lowercase word after it. The recogniser lowercased what follows, so
-// it is not a sentence end: on a segmented recogniser (ADR 0118) it is the "." each segment's decode writes at its cut.
-// The dot is dropped unless the word is an abbreviation ([`ABBREVIATIONS`]); either way the next word stays lowercase.
-// Only when the raw text has a capital letter somewhere (the recogniser writes case).
-static CONTINUED_DOT: LazyLock<Regex> =
-    LazyLock::new(|| re(&format!(r"(?<![{W}.])([A-Za-z]+)\.(?=\s+[a-z])")));
+/// ADR 0199: an ASCII word character (JS `\w`).
+fn is_w(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_'
+}
+
+/// ADR 0199: a word character as `(?i)[A-Za-z0-9_]` sees it: also "ſ" and "K" (the Kelvin sign), which fold to
+/// "s" and "k".
+fn is_w_folded(c: char) -> bool {
+    is_w(c) || c == '\u{17F}' || c == '\u{212A}'
+}
+
+/// The character before byte `at`.
+fn char_before(s: &str, at: usize) -> Option<char> {
+    s[..at].chars().next_back()
+}
+
+/// The byte length of the run of `keep` characters at the start of `s`.
+fn run_len(s: &str, keep: impl Fn(char) -> bool) -> usize {
+    s.find(|c: char| !keep(c)).unwrap_or(s.len())
+}
+
 /// A sentence end inside the text (not a decimal point, not the dots of "p.m.").
 static INNER_END: LazyLock<Regex> = LazyLock::new(|| re(r"[.!?]\s"));
 
@@ -105,17 +117,46 @@ fn ends_with_determiner(before: &str) -> bool {
     whole && COMMAND_DETERMINERS.contains(&word.as_str())
 }
 
-/// A spoken layout command (`NEW_PARAGRAPH`, `NEW_LINE`) becomes `with`, unless it is a noun phrase (ADR 0182).
-fn layout_command(r: &Regex, s: &str, with: &str) -> String {
-    r.replace_all(s, |c: &Captures| {
-        let start = c.get(0).map_or(0, |m| m.start());
-        if ends_with_determiner(s[..start].trim_end()) {
-            c[0].to_owned()
-        } else {
-            with.to_owned()
+/// The spoken layout commands, in lowercase.
+const NEW_PARAGRAPH: &str = "new paragraph";
+const NEW_LINE: &str = "new line";
+
+/// A spoken layout command (`phrase`: [`NEW_PARAGRAPH`], [`NEW_LINE`]) becomes `with`, unless it is a noun phrase
+/// (ADR 0182). ADR 0199: a scan for the pattern `(?i)\s*(?<![\w])<phrase>(?![\w])[,.]?\s*`, every match replaced
+/// left to right. A match is the first case-insensitive occurrence with no word character on either side; it takes
+/// the whitespace before it (not reaching into the previous match), then one optional "," or "." and the whitespace
+/// after it.
+fn layout_command(phrase: &str, s: &str, with: &str) -> String {
+    let lower = s.to_ascii_lowercase();
+    if !lower.contains(phrase) {
+        return s.to_owned();
+    }
+    let mut out = String::with_capacity(s.len());
+    let (mut last, mut from) = (0, 0);
+    while let Some(off) = lower[from..].find(phrase) {
+        let at = from + off;
+        let end = at + phrase.len();
+        from = at + 1;
+        if char_before(s, at).is_some_and(is_w_folded) || s[end..].chars().next().is_some_and(is_w_folded) {
+            continue;
         }
-    })
-    .into_owned()
+        let start = last + s[last..at].trim_end().len();
+        let mut stop = end;
+        if s[stop..].starts_with([',', '.']) {
+            stop += 1;
+        }
+        stop += run_len(&s[stop..], char::is_whitespace);
+        out.push_str(&s[last..start]);
+        if ends_with_determiner(s[..start].trim_end()) {
+            out.push_str(&s[start..stop]);
+        } else {
+            out.push_str(with);
+        }
+        last = stop;
+        from = stop;
+    }
+    out.push_str(&s[last..]);
+    out
 }
 
 /// ADR 0182 (N185): a filler-shaped word that is a real word here, so it stays. Only unambiguous forms:
@@ -960,6 +1001,190 @@ fn spoken_clock(w: &[&str]) -> Option<String> {
     Some(format!("{hour}:{minutes:02}"))
 }
 
+/// ADR 0101: immediate repeats of a whole word, collapsed where [`collapses`] says so. ADR 0199: a scan for the pattern
+/// `(?i)(?<![\w'])(\w+)(?:[\s,]+\1(?![\w']))+` (ASCII `\w`). The apostrophe is part of a word on both sides, so
+/// "you, you're" and "it, it's" are not repeats. The word is a whole run of word characters (a shorter one would be
+/// followed by a word character, never by `[\s,]`); each repeat is a run of whitespace or commas and the same word,
+/// in any ASCII case, with no word character or apostrophe after it. A text with "ſ" or the Kelvin sign (word
+/// characters to `(?i)`, with fancy-regex's non-ASCII backreference rules) takes the regex itself.
+fn collapse_repeats(s: &str) -> String {
+    if s.contains(['\u{17F}', '\u{212A}']) {
+        return REPEATS
+            .replace_all(s, |c: &fancy_regex::Captures| {
+                if collapses(&c[1], &c[0]) {
+                    c[1].to_owned()
+                } else {
+                    c[0].to_owned()
+                }
+            })
+            .into_owned();
+    }
+    let b = s.as_bytes();
+    let mut out = String::with_capacity(s.len());
+    let (mut last, mut p) = (0, 0);
+    while p < b.len() {
+        let c = b[p];
+        let starts = (c.is_ascii_alphanumeric() || c == b'_')
+            && !char_before(s, p).is_some_and(|q| is_w(q) || q == '\'');
+        if !starts {
+            p += s[p..].chars().next().map_or(1, char::len_utf8);
+            continue;
+        }
+        let word_end = p + run_len(&s[p..], is_w);
+        let word = &b[p..word_end];
+        let mut x = word_end;
+        loop {
+            let y = x + run_len(&s[x..], |c| c == ',' || c.is_whitespace());
+            let z = y + word.len();
+            if y == x || z > b.len() || !b[y..z].eq_ignore_ascii_case(word) {
+                break;
+            }
+            if s[z..].chars().next().is_some_and(|q| is_w(q) || q == '\'') {
+                break;
+            }
+            x = z;
+        }
+        if x > word_end {
+            let all = &s[p..x];
+            out.push_str(&s[last..p]);
+            out.push_str(if collapses(&s[p..word_end], all) {
+                &s[p..word_end]
+            } else {
+                all
+            });
+            last = x;
+            p = x;
+        } else {
+            p = word_end;
+        }
+    }
+    out.push_str(&s[last..]);
+    out
+}
+
+/// Runs of spaces and tabs as one space (the pattern `[ \t]+`).
+fn collapse_blanks(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut blank = false;
+    for c in s.chars() {
+        if c == ' ' || c == '\t' {
+            if !blank {
+                out.push(' ');
+            }
+            blank = true;
+        } else {
+            out.push(c);
+            blank = false;
+        }
+    }
+    out
+}
+
+/// ADR 0120 (N167): a lone "." on a word with a lowercase word after it. The recogniser lowercased what follows, so
+/// it is not a sentence end: on a segmented recogniser (ADR 0118) it is the "." each segment's decode writes at its cut.
+/// The dot is dropped unless the word is an abbreviation ([`ABBREVIATIONS`]); either way the next word stays lowercase.
+/// ADR 0199: a scan for the pattern `(?<![\w.])([A-Za-z]+)\.(?=\s+[a-z])`.
+fn continued_dot(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = String::with_capacity(s.len());
+    let (mut last, mut p) = (0, 0);
+    while p < b.len() {
+        if !b[p].is_ascii_alphabetic() || char_before(s, p).is_some_and(|q| is_w(q) || q == '.') {
+            p += s[p..].chars().next().map_or(1, char::len_utf8);
+            continue;
+        }
+        let word_end = p + run_len(&s[p..], |c| c.is_ascii_alphabetic());
+        if b.get(word_end) == Some(&b'.') {
+            let gap = run_len(&s[word_end + 1..], char::is_whitespace);
+            if gap > 0 && b.get(word_end + 1 + gap).is_some_and(u8::is_ascii_lowercase) {
+                let word = &s[p..word_end];
+                out.push_str(&s[last..p]);
+                out.push_str(if is_abbreviation(word) {
+                    &s[p..=word_end]
+                } else {
+                    word
+                });
+                last = word_end + 1;
+            }
+        }
+        p = word_end;
+    }
+    out.push_str(&s[last..]);
+    out
+}
+
+/// A sentence's first lowercase letter, capitalized. ADR 0101 (N160): not after a dotted abbreviation ("e.g. the",
+/// "3 p.m. today") or an abbreviation word ([`ends_with_abbreviation`]). ADR 0199: a scan for the pattern
+/// `(^|(?<![A-Za-z]\.[A-Za-z])[.!?]\s+|\n)([a-z])`.
+fn sentence_starts(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = String::with_capacity(s.len());
+    let (mut last, mut p) = (0, 0);
+    while p < b.len() {
+        // (opener end, letter) of a match at p.
+        let hit = if p == 0 && b[0].is_ascii_lowercase() {
+            Some(0)
+        } else if matches!(b[p], b'.' | b'!' | b'?')
+            && !(p >= 3
+                && b[p - 3].is_ascii_alphabetic()
+                && b[p - 2] == b'.'
+                && b[p - 1].is_ascii_alphabetic())
+        {
+            let gap = run_len(&s[p + 1..], char::is_whitespace);
+            let at = p + 1 + gap;
+            (gap > 0 && b.get(at).is_some_and(u8::is_ascii_lowercase)).then_some(at)
+        } else if b[p] == b'\n' && b.get(p + 1).is_some_and(u8::is_ascii_lowercase) {
+            Some(p + 1)
+        } else {
+            None
+        };
+        let Some(at) = hit else {
+            p += s[p..].chars().next().map_or(1, char::len_utf8);
+            continue;
+        };
+        out.push_str(&s[last..p]);
+        if b[p] == b'.' && ends_with_abbreviation(&s[..p]) {
+            out.push_str(&s[p..=at]);
+        } else {
+            out.push_str(&s[p..at]);
+            out.push(b[at].to_ascii_uppercase() as char);
+        }
+        last = at + 1;
+        p = at + 1;
+    }
+    out.push_str(&s[last..]);
+    out
+}
+
+/// A lone "i" as "I". ADR 0101 (N160): before a dot only at a sentence end, not the "i" of "i.e.". ADR 0199: a scan
+/// for the pattern `(?<![\w])i(?![\w])(?=[\s,!?']|\.(?![A-Za-z])|$)`.
+fn lone_i(s: &str) -> String {
+    if !s.contains('i') {
+        return s.to_owned();
+    }
+    let b = s.as_bytes();
+    let mut out = String::with_capacity(s.len());
+    let mut last = 0;
+    for (p, _) in s.match_indices('i') {
+        if char_before(s, p).is_some_and(is_w) {
+            continue;
+        }
+        let lone = match s[p + 1..].chars().next() {
+            None => true,
+            Some(c) if c.is_whitespace() || matches!(c, ',' | '!' | '?' | '\'') => true,
+            Some('.') => !b.get(p + 2).is_some_and(u8::is_ascii_alphabetic),
+            Some(_) => false,
+        };
+        if lone {
+            out.push_str(&s[last..p]);
+            out.push('I');
+            last = p + 1;
+        }
+    }
+    out.push_str(&s[last..]);
+    out
+}
+
 /// ADR 0101: does this repeat (the whole match `all`, its word `word`) collapse to one word?
 fn collapses(word: &str, all: &str) -> bool {
     let w = word.to_ascii_lowercase();
@@ -1162,9 +1387,12 @@ fn rep(r: &Regex, s: &str, with: &str) -> String {
 struct DictionaryRegex {
     core: regex::Regex,
     full: Regex,
+    /// ADR 0199: the lowercased words when they are all ASCII letters and digits ([`replace_plain_term`]).
+    plain: Option<Vec<String>>,
 }
 static DICTIONARY_RES: LazyLock<Mutex<HashMap<String, Option<Arc<DictionaryRegex>>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
 const DICTIONARY_CACHE_MAX: usize = 4096;
 
 fn dictionary_regex(core: String) -> Option<Arc<DictionaryRegex>> {
@@ -1179,11 +1407,53 @@ fn dictionary_regex(core: String) -> Option<Arc<DictionaryRegex>> {
     }
     let full = Regex::new(&format!("(?i)(?<![{W}]){core}(?![{W}])")).ok();
     let r = full.and_then(|full| {
+        let words: Vec<String> = core.split(r"[\s-]+").map(str::to_ascii_lowercase).collect();
+        let plain = words
+            .iter()
+            .all(|w| !w.is_empty() && w.bytes().all(|b| b.is_ascii_alphanumeric()))
+            .then_some(words);
         let core = regex::Regex::new(&format!("(?i){core}")).ok()?;
-        Some(Arc::new(DictionaryRegex { core, full }))
+        Some(Arc::new(DictionaryRegex { core, full, plain }))
     });
     cache.insert(core, r.clone());
     r
+}
+
+/// ADR 0199: a term whose spoken words are all plain ASCII letters and digits ("cue arts", "term number 3"): the
+/// pattern `(?i)(?<![\w])w1[\s-]+w2…(?![\w])` then has one way to match at each place (a word starts with a letter or
+/// digit, so the `[\s-]+` before it takes the whole run), and it is found by a scan of the lowercased text for the first
+/// word. Not for a text with "ſ" or the Kelvin sign, which `(?i)` folds into "s", "k" and the word characters: there,
+/// and for every other term, the full pattern runs. `words` are the lowercased words, `term` the replacement.
+fn replace_plain_term(text: &str, words: &[String], term: &str) -> String {
+    let lower = text.to_ascii_lowercase();
+    let mut out = String::with_capacity(text.len());
+    let (mut last, mut from) = (0, 0);
+    while let Some(off) = lower[from..].find(words[0].as_str()) {
+        let at = from + off;
+        from = at + 1;
+        if char_before(text, at).is_some_and(is_w) {
+            continue;
+        }
+        let mut end = at + words[0].len();
+        let mut whole = true;
+        for w in &words[1..] {
+            let gap = run_len(&text[end..], |c| c.is_whitespace() || c == '-');
+            if gap == 0 || !lower[end + gap..].starts_with(w.as_str()) {
+                whole = false;
+                break;
+            }
+            end += gap + w.len();
+        }
+        if !whole || text[end..].chars().next().is_some_and(is_w) {
+            continue;
+        }
+        out.push_str(&text[last..at]);
+        out.push_str(term);
+        last = end;
+        from = end;
+    }
+    out.push_str(&text[last..]);
+    out
 }
 
 /// Writes dictionary terms the way the user spells them ("cue arts" → "qrtz" when listed as an alias).
@@ -1204,14 +1474,50 @@ pub fn apply_dictionary(text: &str, dict: &[DictionaryEntry]) -> String {
             };
             // The core alone (no word-edge checks) is a DFA scan: no match there means no match at all.
             if r.core.is_match(&out) {
-                out = r
-                    .full
-                    .replace_all(&out, fancy_regex::NoExpand(&d.term))
-                    .into_owned();
+                out = match &r.plain {
+                    Some(words) if !out.contains(['\u{17F}', '\u{212A}']) => {
+                        replace_plain_term(&out, words, &d.term)
+                    }
+                    _ => r
+                        .full
+                        .replace_all(&out, fancy_regex::NoExpand(&d.term))
+                        .into_owned(),
+                };
             }
         }
     }
     out
+}
+
+/// ADR 0199: the next filler match at or after byte `from`, for the pattern
+/// `(?i)(^|[\s,])(u+m+|u+h+|e+r+m+|e+r|a+h+|h+m+|m+h*m+)(?=[\s,.!?]|$),?`: (match start, filler start, filler end,
+/// match end). The filler's letters are none of `\s,.!?`, so a filler is the whole run up to the next of those (or the
+/// end) and that run must be one [`is_filler_word`]; the separator is nothing only at the very start.
+fn next_filler(s: &str, from: usize) -> Option<(usize, usize, usize, usize)> {
+    let token = |i: usize| {
+        let j = i + run_len(&s[i..], |c| {
+            !(c.is_whitespace() || matches!(c, ',' | '.' | '!' | '?'))
+        });
+        (j > i && is_filler_word(&s[i..j])).then_some(j)
+    };
+    let hit = |start: usize, i: usize, j: usize| {
+        let end = if s[j..].starts_with(',') { j + 1 } else { j };
+        Some((start, i, j, end))
+    };
+    if from == 0 {
+        if let Some(j) = token(0) {
+            return hit(0, 0, j);
+        }
+    }
+    for (k, c) in s[from..].char_indices() {
+        if c == ',' || c.is_whitespace() {
+            let (start, i) = (from + k, from + k + c.len_utf8());
+            if let Some(j) = token(i) {
+                return hit(start, i, j);
+            }
+        }
+    }
+    None
 }
 
 /// Fillers out (ADR 0182 keeps the real words). ADR 0192: a comma right before a filler ("should, uh, ship", the
@@ -1220,17 +1526,17 @@ pub fn apply_dictionary(text: &str, dict: &[DictionaryEntry]) -> String {
 fn remove_fillers(src: &str) -> String {
     let mut out = String::with_capacity(src.len());
     let mut last = 0;
-    for c in FILLERS.captures_iter(src).flatten() {
-        let m = c.get(0).expect("whole match");
-        let sep = c.get(1).map_or("", |g| g.as_str());
-        out.push_str(&src[last..m.start()]);
-        if keeps_filler(&c[2], &c[0], &src[..m.start()]) {
-            out.push_str(&c[0]);
+    while let Some((start, word_start, word_end, end)) = next_filler(src, last) {
+        let sep = &src[start..word_start];
+        let all = &src[start..end];
+        out.push_str(&src[last..start]);
+        if keeps_filler(&src[word_start..word_end], all, &src[..start]) {
+            out.push_str(all);
         } else {
             // A ", " before the filler that no earlier match took.
-            let lead = sep == " " && m.start() > last && src[..m.start()].ends_with(',');
-            let at = if lead { m.start() - 1 } else { m.start() };
-            if (lead || sep == ",") && filler_takes_comma(&src[..at], &src[m.end()..]) {
+            let lead = sep == " " && start > last && src[..start].ends_with(',');
+            let at = if lead { start - 1 } else { start };
+            if (lead || sep == ",") && filler_takes_comma(&src[..at], &src[end..]) {
                 if lead {
                     out.pop();
                 }
@@ -1239,7 +1545,7 @@ fn remove_fillers(src: &str) -> String {
                 out.push_str(sep);
             }
         }
-        last = m.end();
+        last = end;
     }
     out.push_str(&src[last..]);
     out
@@ -1251,19 +1557,11 @@ fn remove_fillers(src: &str) -> String {
 /// nor on a list of short lines), then spoken amounts as figures (ADR 0193: "$25", "15%", "3:30 p.m.").
 pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
     let mut t = format!(" {raw} ");
-    t = layout_command(&NEW_PARAGRAPH, &t, "\n\n");
-    t = layout_command(&NEW_LINE, &t, "\n");
+    t = layout_command(NEW_PARAGRAPH, &t, "\n\n");
+    t = layout_command(NEW_LINE, &t, "\n");
     t = remove_fillers(&t);
-    t = REPEATS
-        .replace_all(&t, |c: &Captures| {
-            if collapses(&c[1], &c[0]) {
-                c[1].to_owned()
-            } else {
-                c[0].to_owned()
-            }
-        })
-        .into_owned();
-    t = rep(&TABS, &t, " ");
+    t = collapse_repeats(&t);
+    t = collapse_blanks(&t);
     t = rep(&NL_SPACES, &t, "\n");
     t = rep(&SPACE_BEFORE_PUNCT, &t, "${1}");
     t = rep(&SPACE_AFTER_PUNCT, &t, "${1} ");
@@ -1271,30 +1569,12 @@ pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
     t = rep(&EDGES, &t, "");
     // Only for a recogniser that writes capitals: an all-lowercase text's "so. i can" is its own sentence end.
     if raw.chars().any(|c| c.is_ascii_uppercase()) {
-        t = CONTINUED_DOT
-            .replace_all(&t, |c: &Captures| {
-                if is_abbreviation(&c[1]) {
-                    c[0].to_owned()
-                } else {
-                    c[1].to_owned()
-                }
-            })
-            .into_owned();
+        t = continued_dot(&t);
     }
     t = scratch_that(t);
     t = final_mark(t);
-    let src = t.clone();
-    t = SENTENCE_START
-        .replace_all(&src, |c: &Captures| {
-            let start = c.get(0).map_or(0, |m| m.start());
-            if c[1].starts_with('.') && ends_with_abbreviation(&src[..start]) {
-                c[0].to_owned()
-            } else {
-                format!("{}{}", &c[1], c[2].to_uppercase())
-            }
-        })
-        .into_owned();
-    t = rep(&LONE_I, &t, "I");
+    t = sentence_starts(&t);
+    t = lone_i(&t);
     t = apply_dictionary(&t, dict);
     spoken_amounts(terminal_punctuation(t))
 }
@@ -1317,6 +1597,235 @@ pub fn cleanup_dictation(raw: &str, dict: &[DictionaryEntry], enabled: bool) -> 
         CleanupResult {
             text: apply_dictionary(raw.trim(), dict),
             method: CleanupMethod::Off,
+        }
+    }
+}
+
+/// ADR 0199: each hand-written scan against the pattern it replaced, step by step, on generated text (the chain as a
+/// whole is checked against cycle 59's in tests/hardening60.rs).
+#[cfg(test)]
+mod scans_match_their_patterns {
+    use super::*;
+    use fancy_regex::Captures;
+
+    const PIECES: &[&str] = &[
+        "new line",
+        "New Line",
+        "new  line",
+        "renew line",
+        "new liner",
+        "new paragraph",
+        "a new line",
+        "new line,",
+        "new line.",
+        "um",
+        "Um,",
+        "UM",
+        "uh",
+        "er",
+        "err",
+        "erm",
+        "hmm",
+        "mm",
+        "mhm",
+        "mhmhm",
+        "35",
+        "i",
+        "I",
+        "i.",
+        "i.e.",
+        "e.g.",
+        "i'",
+        "the",
+        "The",
+        "the,",
+        "you",
+        "you're",
+        "it,",
+        "Mr.",
+        "etc.",
+        "p.m.",
+        "so.",
+        "So.",
+        "go.",
+        "a.b",
+        "x_y",
+        ".",
+        ",",
+        "!",
+        "?",
+        "'",
+        "_",
+        "\n",
+        "\t",
+        "  ",
+        "\u{a0}",
+        "\u{3000}",
+        "\u{85}",
+        "\u{17F}",
+        "\u{212A}",
+        "caf\u{e9}",
+        "\u{e9}a",
+        "日本",
+        "ab",
+        "AB",
+        "ab-",
+        "-",
+        "cue arts",
+        "Cue-Arts",
+        "cue  - arts",
+        "cue artsy",
+        "the new",
+        "The New",
+    ];
+
+    fn texts() -> Vec<String> {
+        let mut x: u64 = 0x2545_F491_4F6C_DD1D;
+        let mut next = move || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x as usize
+        };
+        (0..20_000)
+            .map(|_| {
+                let mut s = String::new();
+                for _ in 0..1 + next() % 16 {
+                    s.push_str(PIECES[next() % PIECES.len()]);
+                    s.push_str([" ", " ", "", ",", ", ", "\n", ". "][next() % 7]);
+                }
+                s
+            })
+            .collect()
+    }
+
+    fn check(name: &str, new: impl Fn(&str) -> String, old: impl Fn(&str) -> String) {
+        for t in texts() {
+            assert_eq!(new(&t), old(&t), "{name}({t:?})");
+        }
+    }
+
+    #[test]
+    fn layout_commands() {
+        for (phrase, with) in [(NEW_PARAGRAPH, "\n\n"), (NEW_LINE, "\n")] {
+            let r = re(&format!(r"(?i)\s*(?<![{W}]){phrase}(?![{W}])[,.]?\s*"));
+            check(
+                phrase,
+                |s| layout_command(phrase, s, with),
+                |s| {
+                    r.replace_all(s, |c: &Captures| {
+                        let start = c.get(0).map_or(0, |m| m.start());
+                        if ends_with_determiner(s[..start].trim_end()) {
+                            c[0].to_owned()
+                        } else {
+                            with.to_owned()
+                        }
+                    })
+                    .into_owned()
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn fillers() {
+        let r = re(r"(?i)(^|[\s,])(u+m+|u+h+|e+r+m+|e+r|a+h+|h+m+|m+h*m+)(?=[\s,.!?]|$),?");
+        check("fillers", remove_fillers, |src| {
+            let mut out = String::new();
+            let mut last = 0;
+            for c in r.captures_iter(src).flatten() {
+                let m = c.get(0).unwrap();
+                let sep = c.get(1).map_or("", |g| g.as_str());
+                out.push_str(&src[last..m.start()]);
+                if keeps_filler(&c[2], &c[0], &src[..m.start()]) {
+                    out.push_str(&c[0]);
+                } else {
+                    let lead = sep == " " && m.start() > last && src[..m.start()].ends_with(',');
+                    let at = if lead { m.start() - 1 } else { m.start() };
+                    if (lead || sep == ",") && filler_takes_comma(&src[..at], &src[m.end()..]) {
+                        if lead {
+                            out.pop();
+                        }
+                        out.push(' ');
+                    } else {
+                        out.push_str(sep);
+                    }
+                }
+                last = m.end();
+            }
+            out.push_str(&src[last..]);
+            out
+        });
+    }
+
+    #[test]
+    fn repeats_blanks_dots_starts_and_lone_i() {
+        let repeats = |s: &str| {
+            REPEATS
+                .replace_all(s, |c: &Captures| {
+                    if collapses(&c[1], &c[0]) {
+                        c[1].to_owned()
+                    } else {
+                        c[0].to_owned()
+                    }
+                })
+                .into_owned()
+        };
+        check("repeats", collapse_repeats, repeats);
+        let tabs = re(r"[ \t]+");
+        check("blanks", collapse_blanks, |s| {
+            tabs.replace_all(s, " ").into_owned()
+        });
+        let dot = re(&format!(r"(?<![{W}.])([A-Za-z]+)\.(?=\s+[a-z])"));
+        check("continued dot", continued_dot, |s| {
+            dot.replace_all(s, |c: &Captures| {
+                if is_abbreviation(&c[1]) {
+                    c[0].to_owned()
+                } else {
+                    c[1].to_owned()
+                }
+            })
+            .into_owned()
+        });
+        let start = re(r"(^|(?<![A-Za-z]\.[A-Za-z])[.!?]\s+|\n)([a-z])");
+        check("sentence starts", sentence_starts, |src| {
+            start
+                .replace_all(src, |c: &Captures| {
+                    let at = c.get(0).map_or(0, |m| m.start());
+                    if c[1].starts_with('.') && ends_with_abbreviation(&src[..at]) {
+                        c[0].to_owned()
+                    } else {
+                        format!("{}{}", &c[1], c[2].to_uppercase())
+                    }
+                })
+                .into_owned()
+        });
+        let i = re(&format!(r"(?<![{W}])i(?![{W}])(?=[\s,!?']|\.(?![A-Za-z])|$)"));
+        check("lone i", lone_i, |s| i.replace_all(s, "I").into_owned());
+    }
+
+    #[test]
+    fn plain_dictionary_terms() {
+        for (said, term) in [
+            ("cue arts", "qrtz"),
+            ("i", "I"),
+            ("the new", "THE NEW"),
+            ("um uh", "x"),
+            ("ab", "ab ab"),
+        ] {
+            let words: Vec<String> = said.split(' ').map(str::to_owned).collect();
+            let r = re(&format!("(?i)(?<![{W}]){}(?![{W}])", words.join(r"[\s-]+")));
+            check(
+                said,
+                |s| {
+                    if s.contains(['\u{17F}', '\u{212A}']) {
+                        r.replace_all(s, fancy_regex::NoExpand(term)).into_owned()
+                    } else {
+                        replace_plain_term(s, &words, term)
+                    }
+                },
+                |s| r.replace_all(s, fancy_regex::NoExpand(term)).into_owned(),
+            );
         }
     }
 }
