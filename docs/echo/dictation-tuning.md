@@ -1350,3 +1350,47 @@ Talk-only change (`e5568d2`); the helper does not run talk's cleanup, so `echo-b
 5. For the next cycle's p15 decision: hold fn and say "Bring the charger comma the cable comma and the adapter period";
    note whether the raw text (Echo history, raw view) has the word "comma" or a ",".
 6. If anything reads worse: revert `e5568d2` (talk-only commit).
+
+## 37. Cycle 65: a "we, we" stutter before a modal collapses (ADR 0205, `dd70d91`)
+
+| Run               | Exact   | Edit distance     | Regressions | False-positive hits |
+| ----------------- | ------- | ----------------- | ----------- | ------------------- |
+| 9681f26, 94 cases | 89 / 94 | 46 chars (1.61 %) | -           | 0 / 232             |
+| dd70d91, same 94  | 90 / 94 | 42 chars (1.47 %) | 0           | -                   |
+| 9681f26, 97 cases | 89 / 97 | 60 chars (2.00 %) | -           | -                   |
+| dd70d91, 97 cases | 93 / 97 | 42 chars (1.40 %) | 0           | 0 / 245             |
+
+Regressions are counted against `9681f26`'s own output for every case (`polish-baseline.json` then refreshed to
+`dd70d91` in the docs commit); 4 cases better (p10, p95-p97), none worse.
+
+- ADR 0205: "So we, we can ship it tomorrow." → "So we can ship it tomorrow."; also "We, we should probably push the
+  launch to next week.", "But they, they will call you back tomorrow.". Only "we"/"they", only exactly ", " between,
+  only before a plain modal, only when the first pronoun opens its sentence (alone or after so/and/but/then/because).
+  "Neither have we, we were busy", "So do we, we just", "You and we, we can", "So we, we went", "So we, we can't" keep
+  both words. 3 polish positives, 13 new keep vectors, 39 new cleanup.json vectors (Rust and TS same text).
+- Cost (release, box CPU; old and new `cleanup_budget` binaries interleaved 15×, median of medians): 495 words 0.119 →
+  0.123 ms (min 0.110 → 0.109); 504 words ending in a question 0.123 → 0.124 ms. Noise.
+- Path review: no capture, VAD, model config, drain, insert, pill or timing-log change since `9681f26` (origin moved
+  only by the benchmark method review `b458c80`). Findings list unchanged; backlog P1-P8 still open.
+
+Still not exact (4 of 97): p15 spoken "comma"/"period", p19/p20 email and URL, p41 a numbered list with a 4-word line.
+
+Next polish candidates, ranked: (1) p15 spoken "comma"/"period", only after the Mac check in section 36 step 5 shows
+whether Parakeet writes the word or the mark. (2) a vocative dictionary name after an interjection before an ADR 0203
+question ("Hey Sam are you free" → "Hey Sam, are you free?"). (3) negated modals in ADR 0205 ("So we, we can't"),
+with their own refusals. When none clears the bar, backlog P1 (the local_models test timeout).
+
+### Measurement plan for Jared's Mac (cycle 65; proves no added latency and no worse transcript)
+
+Talk-only change (`dd70d91`); the helper does not run talk's cleanup, so `echo-bench.sh` timings can't move from it.
+
+1. `cd ~/code/qrtz && git pull` (main at or after `dd70d91`).
+2. `cargo test --release -p qrtz-talk --test cleanup_budget --test hardening60 --test hardening65 --test polish_set --
+   --nocapture`: budget medians well under 0.5 ms (box 0.11-0.13 ms), polish 93/97 exact, regressions 0, all green.
+3. Score the same raw reports with the old cleanup: `git -C ~/code/qrtz worktree add --detach /tmp/qrtz-c64 9681f26 &&
+   cd /tmp/qrtz-c64 && cargo run -q -p qrtz-talk --example echo_score -- ~/qrtz-echo-bench/results/<run>-<stamp>.json`,
+   keep a copy of `<report>.scored.json`, then score again from `~/code/qrtz`. Raw WER identical; formatted WER equal
+   or lower on every clip. `git -C ~/code/qrtz worktree remove /tmp/qrtz-c64`.
+4. Hold fn and say "So we, we can ship it tomorrow" (stumble on "we" on purpose): it types "So we can ship it
+   tomorrow.". Then "Neither have we, we were busy": both words stay.
+5. If anything reads worse: revert `dd70d91` (talk-only commit).

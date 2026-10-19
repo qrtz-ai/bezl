@@ -9,7 +9,7 @@
     "p07": "I think the plan works.",
     "p08": "We need to finish the review today.",
     "p09": "The release notes are ready.",
-    "p10": "So we, we can ship it tomorrow.",
+    "p10": "So we can ship it tomorrow.",
     "p11": "Dear team,\n\nThe launch moved to Monday.",
     "p12": "Groceries\nEggs\nMilk",
     "p13": "Is the meeting still on?",
@@ -94,9 +94,9 @@
     "p92": "Ok, can you call me back?",
     "p93": "Alright, are we still on for tonight?",
     "p94": "I'm outside. Hey, are you home?",
-    "p95": "But they, they will call you back tomorrow.",
-    "p96": "We, we should probably push the launch to next week.",
-    "p97": "I checked the numbers. So we, we can afford the second server."
+    "p95": "But they will call you back tomorrow.",
+    "p96": "We should probably push the launch to next week.",
+    "p97": "I checked the numbers. So we can afford the second server."
   },
   "note": "rule_cleanup's output for each polish case at the last accepted change (ADR 0182, after N185/N186; the first baseline was origin/main d457ff0). A case may only get closer to its ideal; polish_set.rs fails on any case that moves further. Refresh with QRTZ_POLISH_BASELINE=1 cargo test -p qrtz-talk --test polish_set after an accepted change."
 }
