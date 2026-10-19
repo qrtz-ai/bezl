@@ -1298,3 +1298,55 @@ Talk-only change (`e686c05`); the helper does not run talk's cleanup, so `echo-b
 4. Hold fn and say "So do you want to grab lunch" (no pause at the end): it types "So do you want to grab lunch?".
    Then "I went to Paris last summer. So did we last year": it ends with ".".
 5. If anything reads worse: revert `e686c05` (talk-only commit).
+
+## 36. Cycle 64: an interjection before a question gets its comma (ADR 0204, `e5568d2`)
+
+| Run               | Exact   | Edit distance     | Regressions | False-positive hits |
+| ----------------- | ------- | ----------------- | ----------- | ------------------- |
+| 41e066f, 91 cases | 84 / 91 | 48 chars (1.73 %) | -           | 0 / 219             |
+| e5568d2, same 91  | 86 / 91 | 46 chars (1.66 %) | 0           | -                   |
+| 41e066f, 94 cases | 84 / 94 | 51 chars (1.78 %) | -           | -                   |
+| e5568d2, 94 cases | 89 / 94 | 46 chars (1.61 %) | 0           | 0 / 232             |
+
+Regressions are counted against `41e066f`'s own output for every case (`polish-baseline.json` then refreshed to
+`e5568d2` in the docs commit); 5 cases better (p86, p90, p92-p94), none worse.
+
+- ADR 0204: "Hey are you free tomorrow afternoon" → "Hey, are you free tomorrow afternoon?" (was "Hey are you free
+  tomorrow afternoon?"); "OK can we move the meeting to Thursday" → "OK, can we move the meeting to Thursday?". Only
+  hey/okay/ok/alright, only where ADR 0203 adds "?", only with no comma of their own. 5 polish positives, 13 new keep
+  vectors, 23 new cleanup.json vectors (Rust and TS same text).
+- Cost (release, box CPU; old and new `cleanup_budget` binaries built one after the other, copied to /tmp, interleaved
+  15×, median of medians): 495 words 0.122 → 0.119 ms; 504 words ending in a question 0.123 → 0.121 ms (noise).
+- Path review: no capture, VAD, model config, drain, insert, pill or timing-log change since `41e066f` (origin moved
+  only by the echo speed benchmark kit `00c6cc5`, which measures key-up to inserted text on the Mac and is the tool to
+  use for backlog P5). Findings list unchanged; backlog P1-P8 still open.
+- Ranked findings, refreshed (file:line on `e5568d2`): cleanup.rs `rule_cleanup` (~l.1720) runs once on the final
+  text after release, `terminal_punctuation` (~l.1493) → `unmarked_question` (~l.1434) → `opener_comma` (~l.1525); the
+  TS twin is cleanup.ts `terminalPunctuation` / `unmarkedQuestion` (~l.324) / `openerComma` (~l.409).
+
+Still not exact (5 of 94): p10 "So we, we can" (repeat across a comma), p15 spoken "comma"/"period", p19/p20 email
+and URL, p41 a numbered list with a 4-word line.
+
+Next polish candidates, ranked: (1) p10's repeat across a comma for "we"/"they" only before a modal and only when the
+word before the first "we" is a clause opener (so/and/but/then/because/sentence start), refusing "So do we, we just",
+"Neither have we, we", "than we, we"; collect 20+ refusals before landing. (2) p15 spoken "comma"/"period" only after
+measuring on the Mac how Parakeet writes a spoken "comma" (step 5 below). (3) a vocative name after an interjection
+before an ADR 0203 question ("Hey Sam are you free" → "Hey Sam, are you free?"), only for a dictionary name.
+
+### Measurement plan for Jared's Mac (cycle 64; proves no added latency and no worse transcript)
+
+Talk-only change (`e5568d2`); the helper does not run talk's cleanup, so `echo-bench.sh` timings can't move from it.
+
+1. `cd ~/code/qrtz && git pull` (main at or after `e5568d2`).
+2. `cargo test --release -p qrtz-talk --test cleanup_budget --test hardening60 --test hardening63 --test hardening64
+   --test polish_set -- --nocapture`: budget medians well under 0.5 ms (box 0.11-0.12 ms), polish 89/94 exact,
+   regressions 0, all green.
+3. Score the same raw reports with the old cleanup: `git -C ~/code/qrtz worktree add --detach /tmp/qrtz-c63 41e066f &&
+   cd /tmp/qrtz-c63 && cargo run -q -p qrtz-talk --example echo_score -- ~/qrtz-echo-bench/results/<run>-<stamp>.json`,
+   keep a copy of `<report>.scored.json`, then score again from `~/code/qrtz`. Raw WER identical; formatted WER equal
+   or lower on every clip. `git -C ~/code/qrtz worktree remove /tmp/qrtz-c63`.
+4. Hold fn and say "Hey are you free tomorrow afternoon" (no pause at the end): it types "Hey, are you free tomorrow
+   afternoon?". Then "Hey Sam are you free tomorrow": it types "Hey Sam are you free tomorrow." (no comma).
+5. For the next cycle's p15 decision: hold fn and say "Bring the charger comma the cable comma and the adapter period";
+   note whether the raw text (Echo history, raw view) has the word "comma" or a ",".
+6. If anything reads worse: revert `e5568d2` (talk-only commit).
