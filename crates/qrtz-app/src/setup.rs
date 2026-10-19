@@ -63,6 +63,14 @@ struct Marker {
     extensions: Option<Vec<String>>,
 }
 
+/// A download asked for while one was running (backlog P1, cycle 69, ADR 0209): the running task runs it when its
+/// attempt ends instead of the request being dropped.
+#[derive(Debug, Clone, PartialEq)]
+struct Again {
+    force: bool,
+    extensions: Option<Vec<String>>,
+}
+
 fn error_kind(e: &SpeechError) -> &'static str {
     match e {
         SpeechError::Network(_) => "network",
@@ -109,6 +117,10 @@ pub struct SpeechManager {
     selector: Mutex<Option<Selector>>,
     /// The extensions the current (or last) download request named.
     wanted: Mutex<Option<Vec<String>>>,
+    /// The run gate (ADR 0209): a request's "is one running?" and a running task's "do I end?" are decided under
+    /// it, so a request is either taken by the running task (kept here) or starts a new one, never dropped. Pause
+    /// and delete decide under it too. Taken before any other lock here, never while holding one.
+    again: Mutex<Option<Again>>,
 }
 
 type Selector = Arc<dyn Fn() -> Vec<String> + Send + Sync>;
@@ -137,6 +149,7 @@ impl SpeechManager {
             on_installed: Mutex::default(),
             selector: Mutex::default(),
             wanted: Mutex::default(),
+            again: Mutex::default(),
         })
     }
 
@@ -263,6 +276,10 @@ impl SpeechManager {
     /// Launch: resume a download a quit interrupted (not one the user paused: that one shows paused).
     pub fn resume_pending(self: &Arc<Self>) {
         let Some(m) = self.marker() else { return };
+        let _gate = self.again.lock().unwrap();
+        if self.running.load(Ordering::SeqCst) {
+            return;
+        }
         *self.wanted.lock().unwrap() = m.extensions.clone();
         if m.paused {
             self.ctl.pause();
@@ -291,16 +308,55 @@ impl SpeechManager {
         if self.setup.is_none() && self.local.is_none() {
             return Err(Self::unconfigured());
         }
-        if !self.running.load(Ordering::SeqCst) {
-            *self.wanted.lock().unwrap() = extensions;
-        }
+        // ADR 0209: before, a request while `running` only cleared the pause flag. A running download that had
+        // already seen the pause then ended paused (or as a "network" error) and nothing ran again: the resume was
+        // lost; a request for other models (echo's while nano's finished) was dropped outright.
+        let mut again = self.again.lock().unwrap();
         self.ctl.resume();
-        if !self.running.load(Ordering::SeqCst) {
+        if self.running.load(Ordering::SeqCst) {
+            *again = Some(Again { force, extensions });
+            self.show_resumed();
+        } else {
+            *again = None;
+            *self.wanted.lock().unwrap() = extensions;
             self.spawn(force);
         }
+        drop(again);
         Ok(self.status())
     }
 
+    /// A resume waiting for the running attempt: the row says downloading and the marker isn't paused (a quit now
+    /// resumes on the next launch). Under the run gate.
+    fn show_resumed(&self) {
+        if let Some(m) = self.marker().filter(|m| m.paused) {
+            self.set_marker(Some(Marker { paused: false, ..m }));
+        }
+        let d = self.dl.lock().unwrap().clone();
+        if d.state == "paused" {
+            self.set_dl(Dl {
+                state: "downloading",
+                done: d.done,
+                total: d.total,
+                ..Default::default()
+            });
+        }
+    }
+
+    /// Under the run gate, when an attempt ended: the request that came while it ran, if it must run now. A pause
+    /// after that request stands; a plain request for what just finished is done.
+    fn take_again(&self, again: &mut Option<Again>, ok: bool) -> Option<Again> {
+        let a = again.take()?;
+        if self.ctl.is_paused() {
+            return None;
+        }
+        let same = self.setup.is_some() || a.extensions == *self.wanted.lock().unwrap();
+        if ok && !a.force && same {
+            return None;
+        }
+        Some(a)
+    }
+
+    /// Starts the download task. Under the run gate (or at launch, before any request).
     fn spawn(self: &Arc<Self>, force: bool) {
         let Some(setup) = self.setup.clone() else {
             return self.spawn_local(force);
@@ -308,6 +364,21 @@ impl SpeechManager {
         if self.running.swap(true, Ordering::SeqCst) {
             return;
         }
+        self.begin_module(force);
+        let me = self.clone();
+        tokio::spawn(async move {
+            let mut force = force;
+            loop {
+                let r = me.module_attempt(&setup, force).await;
+                match me.end_module(r, force) {
+                    Some(a) => force = a.force,
+                    None => break,
+                }
+            }
+        });
+    }
+
+    fn begin_module(&self, force: bool) {
         self.set_marker(Some(Marker {
             force,
             paused: false,
@@ -320,90 +391,132 @@ impl SpeechManager {
             total: keep.total,
             ..Default::default()
         });
-        let me = self.clone();
-        tokio::spawn(async move {
-            let dl = Downloader::new(&setup.base_url);
-            let health = ModuleHealth {
-                opts: setup.opts.clone(),
+    }
+
+    async fn module_attempt(
+        self: &Arc<Self>,
+        setup: &SpeechSetup,
+        force: bool,
+    ) -> Result<UpdateOutcome, SpeechError> {
+        let dl = Downloader::new(&setup.base_url);
+        let health = ModuleHealth {
+            opts: setup.opts.clone(),
+        };
+        let now = wall;
+        let up = Updater {
+            store: &setup.store,
+            dl: &dl,
+            health: &health,
+            now_ms: &now,
+        };
+        if let Ok((m, _, _)) = up.latest().await {
+            *self.latest.lock().unwrap() = Some((m.version.clone(), m.total_size()));
+        }
+        let me2 = self.clone();
+        let on_progress = move |p: Progress| {
+            let installing = p.total > 0 && p.done >= p.total;
+            *me2.dl.lock().unwrap() = Dl {
+                state: if installing { "installing" } else { "downloading" },
+                done: p.done,
+                total: p.total,
+                ..Default::default()
             };
-            let now = wall;
-            let up = Updater {
-                store: &setup.store,
-                dl: &dl,
-                health: &health,
-                now_ms: &now,
-            };
-            if let Ok((m, _, _)) = up.latest().await {
-                *me.latest.lock().unwrap() = Some((m.version.clone(), m.total_size()));
-            }
-            let me2 = me.clone();
-            let on_progress = move |p: Progress| {
-                let installing = p.total > 0 && p.done >= p.total;
-                *me2.dl.lock().unwrap() = Dl {
-                    state: if installing { "installing" } else { "downloading" },
-                    done: p.done,
-                    total: p.total,
+            me2.emit(installing);
+        };
+        up.install_latest(force, &self.ctl, &on_progress).await
+    }
+
+    /// The module download's attempt ended: under the run gate, either the request that came meanwhile runs next
+    /// (returned) or the outcome is recorded and `running` goes false (N101: last, after the marker and state).
+    fn end_module(&self, r: Result<UpdateOutcome, SpeechError>, force: bool) -> Option<Again> {
+        let mut again = self.again.lock().unwrap();
+        if let Some(a) = self.take_again(&mut again, r.is_ok()) {
+            self.begin_module(a.force);
+            return Some(a);
+        }
+        match r {
+            Ok(UpdateOutcome::Quarantined { .. }) => {
+                self.set_marker(None);
+                self.set_dl(Dl {
+                    state: "error",
+                    error: Some("this release failed on this computer; re-download to try it again".into()),
+                    error_kind: Some("health"),
                     ..Default::default()
-                };
-                me2.emit(installing);
-            };
-            let r = up.install_latest(force, &me.ctl, &on_progress).await;
-            // N101: `running` goes false last, after the marker and state are final, so a download/resume that
-            // starts in between can't have its fresh marker/state overwritten by this run's outcome.
-            match r {
-                Ok(UpdateOutcome::Quarantined { .. }) => {
-                    me.set_marker(None);
-                    me.set_dl(Dl {
-                        state: "error",
-                        error: Some(
-                            "this release failed on this computer; re-download to try it again".into(),
-                        ),
-                        error_kind: Some("health"),
-                        ..Default::default()
-                    });
-                }
-                Ok(o) => {
-                    tracing::info!(outcome = ?o, "speech install");
-                    me.set_marker(None);
-                    me.set_dl(Dl::idle());
-                }
-                Err(SpeechError::Paused) => {
-                    me.set_marker(Some(Marker {
-                        force,
-                        paused: true,
-                        extensions: None,
-                    }));
-                    let d = me.dl.lock().unwrap().clone();
-                    me.set_dl(Dl {
-                        state: "paused",
-                        done: d.done,
-                        total: d.total,
-                        ..Default::default()
-                    });
-                }
-                Err(e) => {
-                    tracing::warn!(err = %e, "speech download failed");
-                    let kind = error_kind(&e);
-                    let d = me.dl.lock().unwrap().clone();
-                    me.set_dl(Dl {
-                        state: "error",
-                        done: d.done,
-                        total: d.total,
-                        error: Some(error_text(kind).into()),
-                        error_kind: Some(kind),
-                    });
-                }
+                });
             }
-            me.running.store(false, Ordering::SeqCst);
+            Ok(o) => {
+                tracing::info!(outcome = ?o, "speech install");
+                self.set_marker(None);
+                self.set_dl(Dl::idle());
+            }
+            Err(SpeechError::Paused) => {
+                self.set_marker(Some(Marker {
+                    force,
+                    paused: true,
+                    extensions: None,
+                }));
+                let d = self.dl.lock().unwrap().clone();
+                self.set_dl(Dl {
+                    state: "paused",
+                    done: d.done,
+                    total: d.total,
+                    ..Default::default()
+                });
+            }
+            Err(e) => {
+                tracing::warn!(err = %e, "speech download failed");
+                self.record_error(&e);
+            }
+        }
+        self.running.store(false, Ordering::SeqCst);
+        None
+    }
+
+    fn record_error(&self, e: &SpeechError) {
+        let kind = error_kind(e);
+        let d = self.dl.lock().unwrap().clone();
+        self.set_dl(Dl {
+            state: "error",
+            done: d.done,
+            total: d.total,
+            error: Some(error_text(kind).into()),
+            error_kind: Some(kind),
         });
     }
 
     /// The helper's pinned models: one resumable transfer, verified file by file, each set marked when complete.
+    /// Under the run gate (or at launch, before any request).
     fn spawn_local(self: &Arc<Self>, force: bool) {
         let Some(local) = self.local_view() else { return };
         if self.running.swap(true, Ordering::SeqCst) {
             return;
         }
+        self.begin_local(&local, force);
+        let me = self.clone();
+        tokio::spawn(async move {
+            let (mut local, mut force) = (local, force);
+            loop {
+                let me2 = me.clone();
+                let on_progress = move |p: Progress| {
+                    *me2.dl.lock().unwrap() = Dl {
+                        state: "downloading",
+                        done: p.done,
+                        total: p.total,
+                        ..Default::default()
+                    };
+                    me2.emit(false);
+                };
+                let r = local.download(force, &me.ctl, &on_progress).await;
+                match me.end_local(r, &local) {
+                    Some((l, f)) => (local, force) = (l, f),
+                    None => break,
+                }
+            }
+        });
+    }
+
+    /// The marker and the row for an attempt at `local` (the extensions it is for are `wanted`).
+    fn begin_local(&self, local: &LocalModels, force: bool) {
         if let Err(e) = qrtz_speech::fsx::mkdir_private(local.root()) {
             tracing::warn!(err = %e, "speech models dir");
         }
@@ -412,7 +525,7 @@ impl SpeechManager {
         self.set_marker(Some(Marker {
             force,
             paused: false,
-            extensions: extensions.clone(),
+            extensions,
         }));
         let keep = self.dl.lock().unwrap().clone();
         self.set_dl(Dl {
@@ -421,62 +534,72 @@ impl SpeechManager {
             total: local.total_size(),
             ..Default::default()
         });
-        let me = self.clone();
-        tokio::spawn(async move {
-            let me2 = me.clone();
-            let on_progress = move |p: Progress| {
-                *me2.dl.lock().unwrap() = Dl {
-                    state: "downloading",
-                    done: p.done,
-                    total: p.total,
-                    ..Default::default()
-                };
-                me2.emit(false);
-            };
-            let r = local.download(force, &me.ctl, &on_progress).await;
-            // N101: `running` goes false last (see `spawn`).
-            match r {
-                Ok(()) => {
-                    tracing::info!(version = local.version(), "speech models installed");
-                    me.set_marker(None);
-                    me.set_dl(Dl::idle());
-                    let hook = me.on_installed.lock().unwrap().clone();
-                    if let Some(f) = hook {
-                        f();
-                    }
-                }
-                Err(SpeechError::Paused) => {
-                    me.set_marker(Some(Marker {
-                        force: false,
-                        paused: true,
-                        extensions,
-                    }));
-                    let d = me.dl.lock().unwrap().clone();
-                    me.set_dl(Dl {
-                        state: "paused",
-                        done: d.done,
-                        total: d.total,
-                        ..Default::default()
-                    });
-                }
-                Err(e) => {
-                    tracing::warn!(err = %e, "speech models download failed");
-                    let kind = error_kind(&e);
-                    let d = me.dl.lock().unwrap().clone();
-                    me.set_dl(Dl {
-                        state: "error",
-                        done: d.done,
-                        total: d.total,
-                        error: Some(error_text(kind).into()),
-                        error_kind: Some(kind),
-                    });
-                }
+    }
+
+    /// The local download's attempt ended: under the run gate, either the request that came meanwhile runs next
+    /// (its view and force are returned) or the outcome is recorded and `running` goes false (N101: last, after
+    /// the marker and state). The install hook runs after the gate is released.
+    fn end_local(&self, r: Result<(), SpeechError>, local: &LocalModels) -> Option<(Arc<LocalModels>, bool)> {
+        let mut again = self.again.lock().unwrap();
+        if let Some(a) = self.take_again(&mut again, r.is_ok()) {
+            let mut wanted = self.wanted.lock().unwrap();
+            if *wanted != a.extensions {
+                // Other models: their progress starts at what they have, not at the last run's bytes.
+                self.dl.lock().unwrap().done = 0;
             }
-            me.running.store(false, Ordering::SeqCst);
-        });
+            *wanted = a.extensions;
+            drop(wanted);
+            if let Some(next) = self.local_view() {
+                self.begin_local(&next, a.force);
+                return Some((next, a.force));
+            }
+        }
+        let mut hook = None;
+        match r {
+            Ok(()) => {
+                tracing::info!(version = local.version(), "speech models installed");
+                self.set_marker(None);
+                self.set_dl(Dl::idle());
+                hook = self.on_installed.lock().unwrap().clone();
+            }
+            Err(SpeechError::Paused) => {
+                let extensions = self.wanted.lock().unwrap().clone();
+                self.set_marker(Some(Marker {
+                    force: false,
+                    paused: true,
+                    extensions,
+                }));
+                let d = self.dl.lock().unwrap().clone();
+                self.set_dl(Dl {
+                    state: "paused",
+                    done: d.done,
+                    total: d.total,
+                    ..Default::default()
+                });
+            }
+            Err(e) => {
+                tracing::warn!(err = %e, "speech models download failed");
+                self.record_error(&e);
+            }
+        }
+        self.running.store(false, Ordering::SeqCst);
+        drop(again);
+        if let Some(f) = hook {
+            f();
+        }
+        None
     }
 
     pub fn pause(&self) -> Value {
+        let gate = self.again.lock().unwrap();
+        self.pause_gated();
+        drop(gate);
+        self.status()
+    }
+
+    /// Under the run gate, so a pause can't land between a finished download's outcome and its end (a stale
+    /// "paused" marker over installed models).
+    fn pause_gated(&self) {
         self.ctl.pause();
         if let Some(m) = self.marker() {
             self.set_marker(Some(Marker {
@@ -494,7 +617,6 @@ impl SpeechManager {
                 });
             }
         }
-        self.status()
     }
 
     pub fn resume(self: &Arc<Self>) -> Result<Value, AppError> {
@@ -535,6 +657,14 @@ impl SpeechManager {
     }
 
     pub fn delete(&self) -> Result<Value, AppError> {
+        let gate = self.again.lock().unwrap();
+        let r = self.delete_gated();
+        drop(gate);
+        r.map(|()| self.status())
+    }
+
+    /// Under the run gate: a download that has recorded its outcome has also ended.
+    fn delete_gated(&self) -> Result<(), AppError> {
         if self.running.load(Ordering::SeqCst) && (self.setup.is_some() || self.local.is_some()) {
             return Err(AppError::new(ErrorCode::Unavailable, "pause the download first").retryable(true));
         }
@@ -548,7 +678,7 @@ impl SpeechManager {
             self.set_marker(None);
             self.ctl.resume();
             self.set_dl(Dl::idle());
-            return Ok(self.status());
+            return Ok(());
         };
         match setup.store.delete_all() {
             Ok(()) => {}
@@ -560,7 +690,7 @@ impl SpeechManager {
         self.set_marker(None);
         self.ctl.resume();
         self.set_dl(Dl::idle());
-        Ok(self.status())
+        Ok(())
     }
 
     // ---- ADR 0175 (N181): calls scoped to one module's own models (a module view names exactly itself) ----
@@ -583,13 +713,15 @@ impl SpeechManager {
         let Some(e) = extensions else {
             return Ok(self.pause());
         };
+        let gate = self.again.lock().unwrap();
         let busy = self.running.load(Ordering::SeqCst) || self.marker().is_some();
         if busy && self.download_scope().as_deref() != Some(e) {
             return Err(Self::scope_error("this download isn't for these models"));
         }
         if busy {
-            self.pause();
+            self.pause_gated();
         }
+        drop(gate);
         Ok(self.status_for(Some(e)))
     }
 
@@ -631,6 +763,7 @@ impl SpeechManager {
         let Some(full) = &self.local else {
             return Err(Self::unconfigured());
         };
+        let _gate = self.again.lock().unwrap();
         if self.running.load(Ordering::SeqCst) {
             return Err(AppError::new(ErrorCode::Unavailable, "pause the download first").retryable(true));
         }

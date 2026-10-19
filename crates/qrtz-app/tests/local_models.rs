@@ -325,7 +325,7 @@ async fn speech_calls_scoped_to_one_module_touch_only_its_models() {
         mgr.status_for(Some(&echo))["installed"] == "1.0.0" && mgr.status()["download"]["state"] == "idle"
     })
     .await;
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    // No sleep before the delete (cycle 69): a download that shows idle has ended for delete too (ADR 0209).
     let s = mgr.delete_for(Some(&echo)).unwrap();
     assert_eq!(s["installed"], Value::Null);
     assert!(!root.join("parakeet-tdt-v2").exists());
@@ -334,4 +334,174 @@ async fn speech_calls_scoped_to_one_module_touch_only_its_models() {
         "1.0.0"
     );
     assert_eq!(mgr.status_for(Some(&nano))["installed"], "1.0.0");
+}
+
+/// Cycle 69 (backlog P1): `until` with its own bound and the manager's state in the failure.
+async fn within(mgr: &SpeechManager, limit: Duration, what: &str, f: impl Fn() -> bool) {
+    let end = std::time::Instant::now() + limit;
+    while std::time::Instant::now() < end {
+        if f() {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    panic!("not within {limit:?}: {what}; status {}", mgr.status());
+}
+
+/// Echo's set (one small file) and nano's (a 2 MiB file and a 32 KiB one), and the two paths nano's come from.
+fn two_modules(srv: &Server, tmp: &Path) -> (Arc<SpeechManager>, String, String) {
+    let rev = "d".repeat(40);
+    let mut sets: Vec<Value> = vec![];
+    for (dir, files) in [
+        ("parakeet-tdt-v2", vec![("w.bin", bytes(64 * 1024, 5))]),
+        (
+            "nemotron-560ms",
+            vec![("a.bin", bytes(BIG, 6)), ("b.bin", bytes(32 * 1024, 7))],
+        ),
+    ] {
+        let repo = format!("org/{dir}");
+        let mut fs: Vec<Value> = vec![];
+        for (name, body) in files {
+            srv.put(&format!("{repo}/resolve/{rev}/{name}"), body.clone());
+            fs.push(json!({"remote": name, "path": name, "size": body.len(), "sha256": sha(&body)}));
+        }
+        sets.push(
+            json!({"id": dir, "package": format!("model.{dir}"), "task": "asr", "dir": dir,
+            "repo": repo, "revision": rev, "files": fs}),
+        );
+    }
+    let m: Manifest =
+        serde_json::from_value(json!({"version": "1.0.0", "base": "https://huggingface.co", "sets": sets}))
+            .unwrap();
+    let mgr = SpeechManager::with_local(
+        None,
+        Some(LocalModels::with_manifest(
+            tmp.join("models"),
+            m,
+            Some(srv.base.clone()),
+        )),
+        Events::new(),
+    );
+    mgr.select_extensions(Arc::new(|| vec!["echo".to_string(), "nano".to_string()]));
+    let path = |f: &str| format!("org/nemotron-560ms/resolve/{rev}/{f}");
+    (mgr, path("a.bin"), path("b.bin"))
+}
+
+/// Backlog P1, the root cause of the `speech_calls_scoped_to_one_module_touch_only_its_models` timeout (6 of 20
+/// runs hung at "nano installed" before cycle 69): a resume that arrives after the running download saw the pause
+/// but before that download ended was lost (`download_for` only cleared the pause flag while `running`), so the
+/// download ended paused (or as a "network" error) and nothing ran again. Made deterministic: nano's small file
+/// arrives a 16 KiB chunk per second, so its download is still running long after the big file stopped for the
+/// pause; the resume lands in that window every time.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_resume_while_the_paused_download_winds_down_is_not_lost() {
+    let tmp = tempfile::tempdir().unwrap();
+    let srv = Server::start().await;
+    let (mgr, a, b) = two_modules(&srv, tmp.path());
+    let nano = ["nano".to_string()];
+    {
+        let mut f = srv.faults.lock().unwrap();
+        f.throttle.insert(a.clone(), Duration::from_millis(5));
+        f.throttle.insert(b.clone(), Duration::from_millis(1000));
+    }
+    mgr.download_for(false, Some(nano.to_vec())).unwrap();
+    within(&mgr, Duration::from_secs(10), "both files under way", || {
+        let f = srv.faults.lock().unwrap();
+        f.hits.contains_key(&a) && f.hits.contains_key(&b)
+    })
+    .await;
+    mgr.pause_for(Some(&nano)).unwrap();
+    // The big file sees the pause at its next 5 ms chunk; the small one's next chunk is ~1 s away.
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    srv.faults.lock().unwrap().throttle.clear();
+    let s = mgr.resume_for(Some(&nano)).unwrap();
+    within(
+        &mgr,
+        Duration::from_secs(10),
+        "nano installed after the resume",
+        || mgr.status_for(Some(&nano))["installed"] == "1.0.0",
+    )
+    .await;
+    // While it waited for the running attempt, the row said it was downloading again, not "paused".
+    assert_eq!(s["download"]["state"], "downloading", "{s}");
+    within(&mgr, Duration::from_secs(5), "idle", || {
+        mgr.status()["download"]["state"] == "idle"
+    })
+    .await;
+    assert!(
+        !tmp.path().join("models/download.json").exists(),
+        "no resume marker left"
+    );
+}
+
+/// Backlog P1, the same root cause on the second leg of that test: a download asked for while another one runs
+/// (echo's while nano's is still finishing) was dropped (`download_for` neither recorded nor started it), so echo's
+/// models never came. It runs once the running one ends.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_download_asked_while_another_runs_runs_after_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let srv = Server::start().await;
+    let (mgr, _a, b) = two_modules(&srv, tmp.path());
+    let (echo, nano) = (["echo".to_string()], ["nano".to_string()]);
+    srv.faults
+        .lock()
+        .unwrap()
+        .throttle
+        .insert(b.clone(), Duration::from_millis(500));
+    mgr.download_for(false, Some(nano.to_vec())).unwrap();
+    within(&mgr, Duration::from_secs(10), "nano under way", || {
+        srv.faults.lock().unwrap().hits.contains_key(&b)
+    })
+    .await;
+    mgr.download_for(false, Some(echo.to_vec())).unwrap();
+    within(&mgr, Duration::from_secs(10), "echo and nano installed", || {
+        mgr.status_for(Some(&echo))["installed"] == "1.0.0"
+            && mgr.status_for(Some(&nano))["installed"] == "1.0.0"
+    })
+    .await;
+    within(&mgr, Duration::from_secs(5), "idle", || {
+        mgr.status()["download"]["state"] == "idle"
+    })
+    .await;
+    // Once idle, a scoped delete is accepted at once (no "pause the download first" from a run still ending).
+    mgr.delete_for(Some(&echo)).unwrap();
+    assert!(!tmp.path().join("models/parakeet-tdt-v2").exists());
+}
+
+/// A pause after a resume that is still waiting for the running download to end stands: nothing runs, the state
+/// and the marker say paused, and the next resume finishes it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_pause_after_a_waiting_resume_stands() {
+    let tmp = tempfile::tempdir().unwrap();
+    let srv = Server::start().await;
+    let (mgr, a, b) = two_modules(&srv, tmp.path());
+    let nano = ["nano".to_string()];
+    {
+        let mut f = srv.faults.lock().unwrap();
+        f.throttle.insert(a.clone(), Duration::from_millis(5));
+        f.throttle.insert(b.clone(), Duration::from_millis(1000));
+    }
+    mgr.download_for(false, Some(nano.to_vec())).unwrap();
+    within(&mgr, Duration::from_secs(10), "both files under way", || {
+        let f = srv.faults.lock().unwrap();
+        f.hits.contains_key(&a) && f.hits.contains_key(&b)
+    })
+    .await;
+    mgr.pause_for(Some(&nano)).unwrap();
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    mgr.resume_for(Some(&nano)).unwrap();
+    mgr.pause_for(Some(&nano)).unwrap();
+    // The small file's next chunk (≤ 1 s) ends the attempt; it stays paused.
+    tokio::time::sleep(Duration::from_millis(2500)).await;
+    let s = mgr.status();
+    assert_eq!(s["download"]["state"], "paused", "{s}");
+    assert_eq!(mgr.status_for(Some(&nano))["installed"], Value::Null);
+    let marker = std::fs::read_to_string(tmp.path().join("models/download.json")).unwrap();
+    assert!(marker.contains("\"paused\":true"), "{marker}");
+    srv.faults.lock().unwrap().throttle.clear();
+    mgr.resume_for(Some(&nano)).unwrap();
+    within(&mgr, Duration::from_secs(10), "nano installed", || {
+        mgr.status_for(Some(&nano))["installed"] == "1.0.0"
+    })
+    .await;
 }
