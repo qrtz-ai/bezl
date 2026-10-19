@@ -21,8 +21,14 @@ for (const c of candidates) {
   const bin = path.join(c, 'swift');
   if (!swift && fs.existsSync(bin) && ok(bin)) swift = bin;
 }
+// SWIFT_BUILD_FLAGS (e.g. `--disable-keychain`, which macOS needs so SwiftPM never stalls on a keychain prompt) is
+// split on whitespace and appended to every `swift build` / `swift test`, as scripts/modules/build-packages.sh does.
+const extraFlags = (process.env.SWIFT_BUILD_FLAGS ?? '')
+  .split(/\s+/)
+  .filter(Boolean);
+const withFlags = (args) => [...args, ...extraFlags];
 const run = (args) =>
-  spawnSync(swift, args, { cwd: dir, stdio: 'inherit' }).status ?? 1;
+  spawnSync(swift, withFlags(args), { cwd: dir, stdio: 'inherit' }).status ?? 1;
 
 if (process.argv.includes('--test')) {
   // CI-like runs must not pass silently without Swift.
@@ -45,7 +51,7 @@ if (process.argv.includes('--test')) {
   if (run(['build'])) process.exit(1);
   // XCTest only: Swift 6 also runs an (empty) swift-testing pass whose "0 tests passed" line was easy to
   // misread as "nothing ran". We count XCTest results ourselves and fail on zero.
-  const r = spawnSync(swift, ['test', '--disable-swift-testing'], {
+  const r = spawnSync(swift, withFlags(['test', '--disable-swift-testing']), {
     cwd: dir,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
@@ -111,13 +117,21 @@ if (!swift) {
 }
 const echoBuild = spawnSync(
   swift,
-  ['build', '-c', 'release', '--arch', 'arm64', '--product', 'qrtz-echo'],
+  withFlags([
+    'build',
+    '-c',
+    'release',
+    '--arch',
+    'arm64',
+    '--product',
+    'qrtz-echo',
+  ]),
   { cwd: swiftDir, stdio: 'inherit' },
 );
 if (echoBuild.status !== 0) process.exit(1);
 const echoBin = spawnSync(
   swift,
-  ['build', '-c', 'release', '--arch', 'arm64', '--show-bin-path'],
+  withFlags(['build', '-c', 'release', '--arch', 'arm64', '--show-bin-path']),
   { cwd: swiftDir, encoding: 'utf8' },
 );
 if (echoBin.status !== 0) process.exit(1);
