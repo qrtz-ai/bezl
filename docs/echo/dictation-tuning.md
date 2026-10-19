@@ -884,12 +884,13 @@ noun (the keep set already has "put a question mark"); (4) warming dictionary pa
 
 ### Production-readiness backlog (Bobs, Oct 18 10:13 PM PT)
 
-All open; worked one per cycle when no polish item is ready. P1 the `local_models::speech_calls_scoped_to_one_module_
-touch_only_its_models` timeout; P2 model download pause/resume/background/crash recovery with sha256; P3 no network
-or a failed index refresh never blocks dictation with an installed model; P4 mic edge cases (unplug, AirPods profile,
-permission revoked, sleep/wake); P5 key-up to text p50/p95 budget and a bench-compare script; P6 insertion fallbacks
-(secure fields, Electron, terminals); P7 idle memory/CPU and model unload without first-press cost; P8 crash safety
-(pill reset, echo restart with backoff).
+Worked one per cycle when no polish item is ready. P1 the `local_models::speech_calls_scoped_to_one_module_
+touch_only_its_models` timeout: **fixed `a8da381`** (cycle 69, ADR 0209; a lost resume, not a flake; section 41);
+P2 model download pause/resume/background/crash recovery with sha256; P3 no network or a failed index refresh never
+blocks dictation with an installed model; P4 mic edge cases (unplug, AirPods profile, permission revoked,
+sleep/wake); P5 key-up to text p50/p95 budget and a bench-compare script; P6 insertion fallbacks (secure fields,
+Electron, terminals); P7 idle memory/CPU and model unload without first-press cost; P8 crash safety (pill reset, echo
+restart with backoff).
 
 ## 30. Cycle 57: a list of short lines, a final spoken mark, and what FluidAudio already does (ADRs 0188-0190, `3d9b8b7`)
 
@@ -1456,11 +1457,11 @@ Talk-only change (`965b990`); the helper does not run talk's cleanup, so `echo-b
 
 ## 39. Cycle 67: a subject stutter before a negated modal collapses (ADR 0207, `dd2a416`)
 
-| Run                | Exact    | Edit distance     | Regressions | False-positive hits |
-| ------------------ | -------- | ----------------- | ----------- | ------------------- |
-| 08dae4e, 101 cases | 97 / 101 | 42 chars (1.33 %) | -           | 0 / 262             |
-| dd2a416, same 101 | 97 / 101 | 42 chars (1.33 %) | 0           | -                   |
-| 08dae4e, 105 cases | 97 / 105 | 60 chars (1.81 %) | -           | -                   |
+| Run                | Exact     | Edit distance     | Regressions | False-positive hits |
+| ------------------ | --------- | ----------------- | ----------- | ------------------- |
+| 08dae4e, 101 cases | 97 / 101  | 42 chars (1.33 %) | -           | 0 / 262             |
+| dd2a416, same 101  | 97 / 101  | 42 chars (1.33 %) | 0           | -                   |
+| 08dae4e, 105 cases | 97 / 105  | 60 chars (1.81 %) | -           | -                   |
 | dd2a416, 105 cases | 101 / 105 | 42 chars (1.27 %) | 0           | 0 / 275             |
 
 Regressions are counted against `08dae4e`'s own output for every case (`polish-baseline.json` then refreshed to
@@ -1568,3 +1569,53 @@ Talk-only change (`6f1daed`); the helper does not run talk's cleanup, so `echo-b
 5. If anything reads worse: revert `6f1daed` (talk-only commit; its vectors and tests go with it).
 6. Still open for p15: hold fn and say "Bring the charger comma the cable comma and the adapter period"; note whether
    Parakeet writes the words or the marks (section 36 step 5).
+
+## 41. Cycle 69: backlog P1, a speech download request while one runs is never lost (ADR 0209, `a8da381`)
+
+No polish item cleared the bar (section 40: p15 waits on the Mac check; p19/p20 and p41 need their own evidence), so
+the cycle took backlog P1.
+
+| Run                                                    | Result                                             |
+| ------------------------------------------------------ | -------------------------------------------------- |
+| `9ee8fb4`, P1 test, 20 sequential runs                 | 14 pass (~1.3 s), **6 hang 30 s** "nano installed" |
+| `a8da381`, P1 test, 60 sequential runs                 | 60 pass, max 1.38 s                                |
+| `a8da381`, the 5 download tests, 4 parallel loops × 15 | 60 / 60 pass                                       |
+| `9ee8fb4`, the 2 new deterministic tests, 3 runs each  | fail every run                                     |
+
+- **Verdict: a real hang, not a flake.** `SpeechManager::download_for` (setup.rs l.294-300 at `9ee8fb4`) only
+  cleared the pause flag while a download was `running`; an attempt that had already seen the pause then ended
+  paused (or as a "network" error) and nothing ran again. A request for other models while one ran was dropped
+  outright (the test's second hang point and its 100 ms sleep before the delete). Ruled out: slow box (settled state
+  in every hung run), network / index refresh (loopback only, no refresh for these sets), deadlock, blocking in
+  async, filesystem waits (ADR 0209).
+- **Fix:** a run gate under which a request and the running task's end are decided; a request while running is kept
+  and run when the attempt ends (a pause after it stands; a plain repeat of what just finished is done); the row and
+  marker stop saying paused at once; pause/delete decide under the gate.
+- **Tests:** `a_resume_while_the_paused_download_winds_down_is_not_lost`, `a_download_asked_while_another_runs_runs_
+  after_it` (fail every run on `9ee8fb4`), `a_pause_after_a_waiting_resume_stands`; qrtz-app (`--features runtime`)
+  290 passed, 0 failed; clippy `-D warnings` (all targets, with and without `runtime`); rustfmt clean on the touched
+  files.
+- **Dictation path review since `7c008f4`:** only talk cleanup moved (`6f1daed`); capture, VAD, model config,
+  drain, insert, pill and the timing log unchanged; this cycle's change is not on the press path. Polish set
+  re-run at `a8da381`: 105 / 109 exact, 42 chars, regressions 0; keep set 292, 0 hits; release cleanup_budget 0.137
+  / 0.144 / 0.153 ms median (495 words / 504 ending in a question / 504 ending in a vocative question), ceiling 2 ms.
+  Note (Qrtz Nano): packages/features/note vitest 17 passed (5 files).
+- **Latency:** none. No change to chunking, segmenting, the decode schedule, capture or insertion timing.
+
+Backlog after this cycle, ranked: (1) **P3** an installed and verified Parakeet never touches or waits on the
+network: `LocalModels::download` and `speech:status` must not refresh the index when Parakeet is installed and
+verified, with a test with the network down; (2) P2 crash recovery mid-download (resume from the `.part` + `.done`
+ranges, sha256 on the result) with a kill test; (3) P5 the key-up-to-text p50/p95 bench-compare script; (4)
+P4/P6-P8. Polish: p15 only after the Mac check in section 36 step 5.
+
+### Test on Jared's Mac (cycle 69)
+
+1. `cd ~/code/qrtz && git pull` (main at or after `a8da381`).
+2. `cargo test -p qrtz-app --features runtime --test local_models`: 7 passed, 1 ignored (the real-host download).
+3. `for i in $(seq 1 30); do cargo test -q -p qrtz-app --features runtime --test local_models speech_calls_scoped ||
+   break; done`: every run passes, each in ~1-2 s (before the fix about 1 in 3 hung 30 s).
+4. Optional, in the app (only if some module's models aren't installed yet, e.g. nano switched off and its models
+   deleted): start the download, press pause and then resume within a second, several times. The row says
+   downloading right after each resume and the download finishes; nothing is left paused or "couldn't reach the
+   download server".
+5. If anything misbehaves: revert `a8da381` (setup.rs and the tests only).
