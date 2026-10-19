@@ -106,6 +106,11 @@ pub const OPEN_FOLDER_MOVE: &str = "route.workspace.open_folder";
 /// ADR 0168: "clear my clipboard" empties the general pasteboard in the helper's own process.
 pub const CLEAR_CLIPBOARD_MOVE: &str = "route.system.clear_clipboard";
 
+/// ADR 0176: "eject my disks" / "eject all drives": every ejectable local volume the helper lists.
+pub const EJECT_ALL_MOVE: &str = "route.system.eject_all";
+/// ADR 0176: "eject the usb drive": the one ejectable volume, only while exactly one is mounted.
+pub const EJECT_ONE_MOVE: &str = "route.system.eject_one";
+
 /// ADR 0166: the folder a plan chose (`folder.<name>` of the closed [`UserFolder`] set), else `None`. The task's own
 /// words never get here: only an option id the layers made.
 pub fn chosen_user_folder(s: &CtrlState) -> Option<UserFolder> {
@@ -167,6 +172,20 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
             verify: Verify {
                 check: Check::ClipboardCleared,
                 expect: Expect::One,
+            },
+            content: BTreeMap::new(),
+        });
+    }
+    // ADR 0176: the helper picks the volumes (nothing about them comes from the task); never forced. Verified by none
+    // of them still being mounted. The driver's pre-check (count first) runs before this.
+    if mv == EJECT_ALL_MOVE || mv == EJECT_ONE_MOVE {
+        return Some(Step::Act {
+            routes: vec![Route::Workspace(WorkspaceOp::EjectVolumes {
+                single: mv == EJECT_ONE_MOVE,
+            })],
+            verify: Verify {
+                check: Check::EjectableVolumes,
+                expect: Expect::Zero,
             },
             content: BTreeMap::new(),
         });
@@ -798,6 +817,26 @@ impl Driver<'_> {
                     if self.helper.measure(&Check::FolderOpen { folder }) == Some(1) {
                         return sink.push(log, finish(TaskStatus::Done));
                     }
+                }
+            }
+            // ADR 0176: no ejectable volume mounted is done with nothing acted. A singular task ("eject the usb drive")
+            // with more than one, or a helper that can't count them, asks out with nothing ejected: a volume's name
+            // is free text, so "which one" can't be answered. An all-task the helper can't count acts; the verify
+            // decides.
+            if fplan.is_none() && (mv == EJECT_ALL_MOVE || mv == EJECT_ONE_MOVE) {
+                match self.helper.measure(&Check::EjectableVolumes) {
+                    Some(0) => return sink.push(log, finish(TaskStatus::Done)),
+                    Some(1) => {}
+                    _ if mv == EJECT_ONE_MOVE => {
+                        sink.push(
+                            log,
+                            Event::ExecHeld {
+                                reason: HoldReason::NoRoute,
+                            },
+                        )?;
+                        return sink.push(log, finish(TaskStatus::AskedOut));
+                    }
+                    _ => {}
                 }
             }
             // ADR 0130: "quit unused apps" is planned from the helper's last-used report each round, so the gate's

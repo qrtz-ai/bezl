@@ -948,6 +948,38 @@ test('ctrl: hide the dock and always show the dock set its auto-hide without a c
   expect(errors).toEqual([]);
 });
 
+// ADR 0176: "eject my disks" / "eject the usb drive" unmount the ejectable disks in the helper, never forced, no card.
+test('ctrl: eject my disks and eject the usb drive eject without a card', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  for (const [text, move] of [
+    [
+      'every day at 6pm eject all my drives',
+      'eject every external disk, none forced',
+    ],
+    ['eject the usb drive', 'eject the one external disk, never forced'],
+  ] as const) {
+    await ctrl.getByTestId('ctrl-task-input').fill(text);
+    await ctrl.getByTestId('ctrl-task-add').click();
+    const task = ctrl.getByTestId('ctrl-task').filter({ hasText: text });
+    await task.getByTestId('ctrl-task-run').click();
+    const run = ctrl.getByTestId('ctrl-run').first();
+    await expect(run.getByTestId('ctrl-run-status')).toHaveText('done');
+    await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
+    const decisions = ctrl.getByTestId('ctrl-decisions').first();
+    await expect(decisions).toContainText('eject your disks');
+    await expect(decisions).toContainText(move);
+  }
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 // ADR 0135: "every night at 10 mute my mac" mutes the sound output without a card (reversible), no app touched.
 test('ctrl: every night mute my mac mutes the sound without a card', async ({
   page,

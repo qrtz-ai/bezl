@@ -114,6 +114,8 @@ const INTENTS = {
     0.07,
   ),
   clear_clipboard: opt('intent.clear_clipboard', 'clear your clipboard', 0.07),
+  eject_all: opt('intent.eject_disks', 'eject your disks', 0.07),
+  eject_one: opt('intent.eject_disks', 'eject your disks', 0.07),
   mute: opt('intent.mute', 'mute your mac', 0.07),
   unmute: opt('intent.unmute', 'unmute your mac', 0.07),
   set_volume: opt('intent.set_volume', 'set the volume', 0.07),
@@ -143,6 +145,8 @@ type Intent =
   | 'focus_mode'
   | 'focus_off'
   | 'clear_clipboard'
+  | 'eject_all'
+  | 'eject_one'
   | 'mute'
   | 'unmute'
   | 'set_volume'
@@ -362,6 +366,26 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
       ),
     ]),
   ],
+  // ADR 0176: the ejectable local volumes, unmounted in the helper's own process (never forced); no card, no app
+  // question. One move only: a singular task never backtracks into ejecting every disk.
+  eject_all: [
+    act('choose_move', [
+      opt(
+        'route.system.eject_all',
+        'eject every external disk, none forced',
+        0.97,
+      ),
+    ]),
+  ],
+  eject_one: [
+    act('choose_move', [
+      opt(
+        'route.system.eject_one',
+        'eject the one external disk, never forced',
+        0.97,
+      ),
+    ]),
+  ],
   // ADR 0135: the sound output, muted in the helper's own process; reversible, no card, no app question.
   mute: [
     act('choose_move', [
@@ -548,6 +572,19 @@ const clearsClipboard = (text: string): boolean =>
     /\b(what|whatever|everything|i)\b.*\bcopied\b/i.test(text)) &&
   /\b(clear|empty|wipe|erase|delete|remove|reset|flush|purge)\b/i.test(text);
 
+// ADR 0176: an eject word; every disk with a plural or an all-word ("every" only right before a disk word).
+const ejectOf = (text: string): Intent | null =>
+  /\b(eject|ejects|ejecting|unmount|unmounts|unmounting)\b/i.test(text)
+    ? /\b(all|everything|both|disks|drives|volumes|sticks|cards|images|dmgs|ssds|externals|devices)\b/i.test(
+        text,
+      ) ||
+      /\bevery\s+(disk|drive|volume|stick|card|image|dmg|ssd|usb|sd|external|device)\b/i.test(
+        text,
+      )
+      ? 'eject_all'
+      : 'eject_one'
+    : null;
+
 // ADR 0173: "dock" plus a hide / show / on-off word (not a toggle); off when it says show, stop, don't, off, never.
 const dockOf = (text: string): Intent | null => {
   if (!/\bdock\b/i.test(text) || /\b(toggle|flip)\b/i.test(text)) return null;
@@ -568,7 +605,8 @@ const dockOf = (text: string): Intent | null => {
 };
 
 const intentOf = (text: string): Intent | null =>
-  clearsClipboard(text)
+  ejectOf(text) ??
+  (clearsClipboard(text)
     ? 'clear_clipboard'
     : dockOf(text) !== null
       ? dockOf(text)
@@ -635,7 +673,7 @@ const intentOf = (text: string): Intent | null =>
                                               )
                                               ? 'trash_old'
                                               : 'clean_folder'
-                                            : null;
+                                            : null);
 
 const PREVIEW: CtrlConfirm['items'] = [
   { key: '3f2a9c1d0b7e#0', kind: 'window', label: 'notes.txt', unsaved: false },

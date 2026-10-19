@@ -107,6 +107,11 @@ pub enum WorkspaceOp {
     /// but no gate: the task asked for exactly this. Deferred while the user is typing or clicking, since the clipboard
     /// belongs to whatever they're doing right now.
     ClearClipboard,
+    /// ADR 0176: unmount and eject the mounted volumes the helper lists as ejectable or removable, local and not the
+    /// root file system (`NSWorkspace.unmountAndEjectDevice(at:)`, never forced: a volume in use stays and the act
+    /// answers `volume.busy`). The helper picks the set; no path or name crosses the wire. `single`: the task named
+    /// one disk, so the helper refuses (`volumes.not_one`) unless exactly one would go. No app, no gate.
+    EjectVolumes { single: bool },
 }
 
 /// ADR 0166: the Finder, the app that shows a folder.
@@ -306,7 +311,8 @@ impl Route {
                 | WorkspaceOp::UnmuteOutput
                 | WorkspaceOp::SetVolume { .. }
                 | WorkspaceOp::SetFocus { .. }
-                | WorkspaceOp::ClearClipboard,
+                | WorkspaceOp::ClearClipboard
+                | WorkspaceOp::EjectVolumes { .. },
             ) => None,
             Route::Workspace(WorkspaceOp::OpenUrl { app, .. } | WorkspaceOp::LaunchHidden { app }) => {
                 Some(app)
@@ -495,6 +501,8 @@ pub fn judge(route: &Route, env: &Env) -> Verdict {
                 | WorkspaceOp::UnmuteOutput
                 | WorkspaceOp::SetVolume { .. }
                 | WorkspaceOp::SetFocus { .. } => return Verdict::Allowed,
+                // ADR 0176: no app or window, no input; a volume in use refuses the non-forced unmount itself.
+                WorkspaceOp::EjectVolumes { .. } => return Verdict::Allowed,
                 // ADR 0168: no app or window either, but the clipboard is the user's own working buffer: never
                 // empty it while they're in the middle of something (a copy they're about to paste). Retry later.
                 WorkspaceOp::ClearClipboard => {

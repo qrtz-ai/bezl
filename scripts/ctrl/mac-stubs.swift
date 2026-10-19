@@ -85,6 +85,7 @@ open class NSWorkspace: NSObject {
     }
     open func open(_ urls: [URL], withApplicationAt applicationURL: URL, configuration: NSWorkspace.OpenConfiguration, completionHandler: (@Sendable (NSRunningApplication?, (any Error)?) -> Void)? = nil) {}
     open func openApplication(at applicationURL: URL, configuration: NSWorkspace.OpenConfiguration, completionHandler: (@Sendable (NSRunningApplication?, (any Error)?) -> Void)? = nil) {}
+    open func unmountAndEjectDevice(at url: URL) throws {}
 }
 open class NSPasteboard: NSObject { open class var general: NSPasteboard { NSPasteboard() }; open var changeCount: Int { 0 }
     @discardableResult open func clearContents() -> Int { 0 } }

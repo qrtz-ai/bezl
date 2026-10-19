@@ -35,6 +35,9 @@ public enum CtrlRoute: Equatable, Sendable {
     /// the clipboard). Not undoable; no gate (the task asked for exactly this); the host defers it while the user is
     /// typing or clicking.
     case clearClipboard
+    /// ADR 0176: unmount and eject the volumes the helper lists as ejectable (never forced; nothing about them comes
+    /// over the wire). `single`: refuse unless exactly one would go. No app, no gate.
+    case ejectVolumes(single: Bool)
     case scripting(app: String, verb: String)
     case axPerform(app: String, role: String, element: String, action: String)
     case axSet(app: String, role: String, element: String, attribute: String)
@@ -58,7 +61,7 @@ public enum CtrlRoute: Equatable, Sendable {
     /// ADR 0168: `clipboard_cleared` too (the pasteboard's change count, never its contents).
     /// ADR 0173: `dock_autohide` too (the Dock's own defaults, read in this process).
     public static let applessChecks: Set<String> = ["output_muted", "dark_mode", "output_volume", "focus_on", CtrlClipboard.check,
-                                                    CtrlDock.check]
+                                                    CtrlDock.check, CtrlVolumes.check]
     /// Slice 7b's selective closes (ADR 0114 / 0119) have no fixed script: the backend reads the tabs first
     /// (`CtrlTabs`) and closes only the ones it can tell about; a backend that can't tell refuses, and the host asks.
     public static let tabVerbs: Set<String> = ["close_saved_tabs", "close_unpinned_tabs"]
@@ -77,6 +80,12 @@ public enum CtrlRoute: Equatable, Sendable {
             case "mute_output": return .muteOutput
             case "unmute_output": return .unmuteOutput
             case "clear_clipboard": return .clearClipboard
+            // ADR 0176: `single` must be a JSON true/false (objCType "c", ADR 0141); a number, a string or no field is
+            // a bad request.
+            case "eject_volumes":
+                guard let n = o["single"] as? NSNumber, String(cString: n.objCType) == "c", let b = o["single"] as? Bool
+                else { return nil }
+                return .ejectVolumes(single: b)
             // ADR 0140: a whole number 0–100 only; anything else is a bad request, never clamped.
             case "set_volume":
                 // ADR 0141: `is Bool` is true for a JSON 0 or 1 too (NSNumber bridging, Linux and macOS), so a JSON
@@ -263,7 +272,7 @@ public final class CtrlServer {
             guard let t = targetPid else { throw CtrlFailure("app.not_running") }
             do { try CtrlPolicy.checkKey(combo, targetPid: t, frontmostPid: frontmostPid) } catch { throw CtrlFailure("policy.refused") }
         case .files, .openURL, .launchHidden, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume,
-             .setFocus, .openFolder, .clearClipboard: break
+             .setFocus, .openFolder, .clearClipboard, .ejectVolumes: break
         }
     }
 
@@ -273,7 +282,7 @@ public final class CtrlServer {
              let .pidKey(a, _): return a
         case .openFolder: return CtrlFolders.finder
         case .files, .takesOver, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume, .setFocus,
-             .clearClipboard:
+             .clearClipboard, .ejectVolumes:
             return nil
         }
     }

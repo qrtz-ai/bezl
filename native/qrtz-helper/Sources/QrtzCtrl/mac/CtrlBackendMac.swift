@@ -340,6 +340,16 @@ public final class MacCtrlBackend: CtrlBackend {
             // event, and nothing read from it first. The count it returns is what the verify compares against.
             let count = NSPasteboard.general.clearContents()
             lock.lock(); lastClipboardClear = count; lock.unlock()
+        case let .ejectVolumes(single):
+            // ADR 0176: the volumes from the mount table (never a path from the host), each unmounted and ejected in
+            // this process without force: one in use stays mounted (a file open, a copy, a backup) and the act says
+            // so; nothing is brought forward, no key event.
+            guard let volumes = ejectableVolumes() else { throw CtrlFailure("volumes.unreadable") }
+            var busy = false
+            for url in try CtrlVolumes.plan(volumes, single: single) {
+                do { try NSWorkspace.shared.unmountAndEjectDevice(at: url) } catch { busy = true }
+            }
+            if busy { throw CtrlFailure("volume.busy") }
         case let .hideApps(apps):
             // ADR 0134: `hide()` is the Dock's Hide: the app's windows go, nothing is activated or raised, no key event.
             // The frontmost app was dropped before this point (CtrlServer); re-checked here for the race.
@@ -414,6 +424,8 @@ public final class MacCtrlBackend: CtrlBackend {
         case CtrlClipboard.check:
             lock.lock(); let last = lastClipboardClear; lock.unlock()
             return CtrlClipboard.cleared(changeCount: NSPasteboard.general.changeCount, lastClear: last)
+        // ADR 0176: the count only, from the mount table's resource values.
+        case CtrlVolumes.check: return ejectableVolumes()?.count
         case "dark_mode": return CtrlAppearance.isDark(UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)) ? 1 : 0
         // ADR 0173: the Dock's auto-hide, read from its own defaults in this process (no app asked, no prompt).
         case CtrlDock.check: return CtrlDock.autohides(UserDefaults.standard.persistentDomain(forName: CtrlDock.domain)) ? 1 : 0
@@ -430,6 +442,19 @@ public final class MacCtrlBackend: CtrlBackend {
             // prompts); nil otherwise. ax_scope is verified by a re-snapshot and obs.diff on the host.
             if let f = CtrlFolders.measured(check) { return folderShown(f) }
             return nil
+        }
+    }
+
+    /// ADR 0176: the mounted volumes an eject takes (`CtrlVolumes.ejectable`), from their resource values only;
+    /// hidden system volumes are skipped. nil when the system gives no list.
+    func ejectableVolumes() -> [URL]? {
+        let keys: [URLResourceKey] = [.volumeIsEjectableKey, .volumeIsRemovableKey, .volumeIsLocalKey, .volumeIsRootFileSystemKey]
+        guard let urls = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes])
+        else { return nil }
+        return urls.filter { url in
+            guard let r = try? url.resourceValues(forKeys: Set(keys)) else { return false }
+            return CtrlVolumes.ejectable(.init(ejectable: r.volumeIsEjectable ?? false, removable: r.volumeIsRemovable ?? false,
+                                               local: r.volumeIsLocal ?? false, root: r.volumeIsRootFileSystem ?? true))
         }
     }
 

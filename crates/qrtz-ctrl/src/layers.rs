@@ -519,6 +519,13 @@ const INTENTS: &[IntentDef] = &[
         slot: Slot::None,
         irreversible: false,
     },
+    // ADR 0176: eject the ejectable local volumes; plugging back in undoes it, so no gate; no app.
+    IntentDef {
+        id: "eject_disks",
+        app: AppMode::None,
+        slot: Slot::None,
+        irreversible: false,
+    },
     // ADR 0135: mute the Mac's sound output; reversible, no gate, no app.
     IntentDef {
         id: "mute",
@@ -647,6 +654,38 @@ fn dock_hides(toks: &[Tok]) -> bool {
         return has(toks, &["on", "enable"]) && !has(toks, &["off", "disable", "stop", "never", "unhide"]);
     }
     hide && (!shows || has(toks, &["automatically", "autohide", "auto-hide"]))
+}
+
+/// ADR 0176: the words that ask for an eject.
+const EJECT_WORDS: &[&str] = &["eject", "ejects", "ejecting", "unmount", "unmounts", "unmounting"];
+/// ADR 0176: words that make an eject task about every ejectable volume, not one. "every" counts only right before a
+/// disk word ("eject every disk"): "every day eject the usb drive" is a schedule.
+const EJECT_ALL_WORDS: &[&str] = &[
+    "all",
+    "everything",
+    "both",
+    "disks",
+    "drives",
+    "volumes",
+    "sticks",
+    "cards",
+    "images",
+    "dmgs",
+    "ssds",
+    "externals",
+    "devices",
+];
+const EJECT_ONE_WORDS: &[&str] = &[
+    "disk", "drive", "volume", "stick", "card", "image", "dmg", "ssd", "usb", "sd", "external", "device",
+];
+
+/// ADR 0176: whether an eject task means every ejectable volume ("eject my disks", "eject all drives", "eject
+/// everything", "eject every disk") rather than the one disk it names ("eject the usb drive", "eject my sd card").
+fn ejects_all(toks: &[Tok]) -> bool {
+    has(toks, EJECT_ALL_WORDS)
+        || toks
+            .windows(2)
+            .any(|w| w[0].w == "every" && (EJECT_ONE_WORDS.contains(&w[1].w.as_str())))
 }
 
 const FOLDER_WORDS: &[&str] = &[
@@ -897,6 +936,15 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
                 ],
             );
             if clip && clears && !named_app && !site {
+                p += 9500;
+            }
+        }
+        "eject_disks" => {
+            // ADR 0176: "eject my disks", "unmount the usb drive", "every day at 6pm eject all drives". An eject word,
+            // no app named but the Finder ("eject my disks in finder"), no site. Without it it sits well below.
+            p -= 3000;
+            let other_app = named.iter().any(|(a, _)| a.id != crate::ladder::FINDER);
+            if has(toks, EJECT_WORDS) && !other_app && !site {
                 p += 9500;
             }
         }
@@ -1424,6 +1472,16 @@ fn move_question(
         // ADR 0168: `NSPasteboard.general.clearContents()` in the helper's own process; no key event, nothing to
         // backtrack into.
         "clear_clipboard" => vec![route("system.clear_clipboard", 4500)],
+        // ADR 0176: one move only, from the words: a singular task that fails must never backtrack into ejecting
+        // every disk.
+        "eject_disks" => vec![route(
+            if ejects_all(toks) {
+                "system.eject_all"
+            } else {
+                "system.eject_one"
+            },
+            4500,
+        )],
         "mute" => vec![route("system.mute", 4500)],
         "unmute" => vec![route("system.unmute", 4500)],
         "set_volume" => vec![route("system.set_volume", 4500)],
@@ -1672,6 +1730,7 @@ fn intent_label(id: &str) -> &'static str {
         "open_folder" => "open a folder",
         "focus_mode" => "turn focus or do not disturb on or off",
         "clear_clipboard" => "clear your clipboard",
+        "eject_disks" => "eject your disks",
         "mute" => "mute your mac",
         "unmute" => "unmute your mac",
         "set_volume" => "set the volume",
@@ -1704,6 +1763,8 @@ fn route_label(id: &str) -> &'static str {
         "system.focus.do_not_disturb" => "turn on do not disturb",
         m if m.starts_with("system.focus.") => "turn on that focus",
         "system.clear_clipboard" => "empty the clipboard, nothing read from it",
+        "system.eject_all" => "eject every external disk, none forced",
+        "system.eject_one" => "eject the one external disk, never forced",
         "system.mute" => "mute the sound output",
         "system.unmute" => "turn the sound output back on",
         "system.set_volume" => "set the sound output to that level",

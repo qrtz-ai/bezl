@@ -70,6 +70,10 @@ pub enum Check {
     /// ADR 0173: 1 if the Dock hides itself automatically, 0 if it's always shown (read in the helper's own process
     /// from the `com.apple.dock` defaults' `autohide`; no app asked, no prompt).
     DockAutohide,
+    /// ADR 0176: how many mounted volumes "eject my disks" would eject (ejectable or removable, local, not the root
+    /// file system; `null`: the helper can't list volumes). Only the mount table's resource values are read, never
+    /// anything on a volume, and only the count crosses the wire.
+    EjectableVolumes,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -586,6 +590,9 @@ pub struct FakeWorld {
     /// ADR 0168: the clipboard (`Some(true)`: holds something, `Some(false)`: what ctrl's clear left, `None`: no
     /// pasteboard, so clearing fails like the Mac helper's `clipboard.unavailable`).
     pub clipboard: Option<bool>,
+    /// ADR 0176: the mounted volumes "eject my disks" would eject, `true` for one in use (a non-forced unmount leaves
+    /// it, like the Mac helper's `volume.busy`). `None`: the helper can't list volumes (`volumes.unreadable`).
+    pub volumes: Option<Vec<bool>>,
 }
 
 pub struct FakeHelper(pub Mutex<FakeWorld>);
@@ -648,6 +655,7 @@ impl FakeWorld {
             volume: 50,
             open_folders: Vec::new(),
             clipboard: Some(true),
+            volumes: Some(Vec::new()),
         }
     }
 
@@ -835,6 +843,19 @@ impl FakeWorld {
                 }
                 Ok(())
             }
+            // ADR 0176: never forced: a busy volume stays mounted and the act says so; the rest are ejected.
+            Route::Workspace(WorkspaceOp::EjectVolumes { single }) => match self.volumes.as_mut() {
+                None => Err("volumes.unreadable".into()),
+                Some(v) if *single && v.len() != 1 => Err("volumes.not_one".into()),
+                Some(v) => {
+                    v.retain(|busy| *busy);
+                    if v.is_empty() {
+                        Ok(())
+                    } else {
+                        Err("volume.busy".into())
+                    }
+                }
+            },
             // ADR 0168: nothing read, everything gone.
             Route::Workspace(WorkspaceOp::ClearClipboard) => match self.clipboard {
                 Some(_) => {
@@ -976,6 +997,7 @@ impl FakeWorld {
                         .any(|a| a.bundle_id == crate::ladder::FINDER && a.running)
                         .then(|| i64::from(self.open_folders.contains(folder))),
                     Check::ClipboardCleared => self.clipboard.map(|has| i64::from(!has)),
+                    Check::EjectableVolumes => self.volumes.as_ref().map(|v| v.len() as i64),
                     Check::OutputVolume => match self.muted {
                         Some(false) => Some(self.volume),
                         _ => None,
