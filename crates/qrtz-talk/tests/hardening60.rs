@@ -53,7 +53,7 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
     // a dictated list's line commas go, and a question after a discourse opener ("So do you want ...") ends with "?"
     // where cycle 59 added "."; if that opener is "hey"/"okay"/"ok"/"alright" with no comma, the comma goes after it
     // ("Hey, are you free?"). Any other difference fails.
-    // ADR 0205 (cycle 65) may also drop the second pronoun of "we, we <modal>" / "they, they <modal>".
+    // ADR 0205/0207 (cycles 65/67) may also drop the second pronoun of "we, we <modal>" / "they, they <modal>".
     // ADR 0206 (cycle 66): "Hey <term> ..." may end with "?" instead of "." and gain a comma after the term.
     let old = if new != old && new == without_subject_repeats(&old) {
         new.clone()
@@ -91,13 +91,39 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
     );
 }
 
-/// ADR 0205's one allowed edit, as a superset (written independently of cleanup.rs): every "<P>, <p> <modal>" for
-/// P in we/they loses ", <p>". Whether the sentence start allows it is checked by hardening65.rs, not here.
+/// ADR 0205 / ADR 0207's one allowed edit, as a superset (written independently of cleanup.rs): every "<P>, <p>
+/// <modal>" for P in we/they loses ", <p>" (plain modals, negated contractions, and "cannot"). Whether the sentence
+/// start allows it is checked by hardening65.rs / hardening67.rs, not here.
 fn without_subject_repeats(old: &str) -> String {
     let mut out = old.to_owned();
     for p in ["we", "they"] {
         for m in [
-            "can", "could", "will", "would", "should", "might", "must", "may", "shall",
+            "can",
+            "could",
+            "will",
+            "would",
+            "should",
+            "might",
+            "must",
+            "may",
+            "shall",
+            "can't",
+            "couldn't",
+            "won't",
+            "wouldn't",
+            "shouldn't",
+            "mustn't",
+            "mightn't",
+            "mayn't",
+            "cannot",
+            "can\u{2019}t",
+            "couldn\u{2019}t",
+            "won\u{2019}t",
+            "wouldn\u{2019}t",
+            "shouldn\u{2019}t",
+            "mustn\u{2019}t",
+            "mightn\u{2019}t",
+            "mayn\u{2019}t",
         ] {
             for first in [p.to_owned(), format!("{}{}", p[..1].to_uppercase(), &p[1..])] {
                 out = out.replace(&format!("{first}, {p} {m}"), &format!("{first} {m}"));

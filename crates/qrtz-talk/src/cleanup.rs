@@ -78,9 +78,28 @@ const COMMA_STUTTERS: &[&str] = &["i", "a", "an", "the"];
 /// <modal>" where the first <P> opens the sentence, on its own or after one opener ("So we, we can ship it" → "So we
 /// can ship it"). Same lists in cleanup.ts.
 const COMMA_SUBJECTS: &[&str] = &["we", "they"];
-/// ADR 0205: the plain modals after the second pronoun (lowercase, whole word; no contractions, no "cannot").
+/// ADR 0205 / ADR 0207: the modals after the second pronoun (lowercase, whole word). Plain forms, their
+/// negated contractions (ASCII apostrophe; curly U+2019 is folded to ASCII before the lookup), and "cannot".
+/// Not "shan't" (thin evidence) and not "cant" without an apostrophe.
 const SUBJECT_MODALS: &[&str] = &[
-    "can", "could", "will", "would", "should", "might", "must", "may", "shall",
+    "can",
+    "could",
+    "will",
+    "would",
+    "should",
+    "might",
+    "must",
+    "may",
+    "shall",
+    "can't",
+    "couldn't",
+    "won't",
+    "wouldn't",
+    "shouldn't",
+    "mustn't",
+    "mightn't",
+    "mayn't",
+    "cannot",
 ];
 /// ADR 0205: the one opener allowed before the first pronoun, itself at the start of a sentence (an optional comma
 /// after it): "So we, we can", "And they, they will". Not "You and we, we can" (a compound subject).
@@ -93,9 +112,10 @@ fn at_sentence_start(pre: &str) -> bool {
     blank.trim().is_empty() || blank.ends_with(['\n', '.', '!', '?'])
 }
 
-/// ADR 0205: is `s[p..x]` (a repeat whose word ends at `word_end`) a subject stutter "we, we" / "they, they" that
-/// opens its sentence (alone or after one [`SUBJECT_OPENERS`] word) and is followed by a plain modal? The repeat is
-/// exactly one ", " and the second pronoun is lowercase.
+/// ADR 0205 / ADR 0207: is `s[p..x]` (a repeat whose word ends at `word_end`) a subject stutter "we, we" / "they,
+/// they" that opens its sentence (alone or after one [`SUBJECT_OPENERS`] word) and is followed by a modal (plain or
+/// negated, or "cannot")? The repeat is exactly one ", " and the second pronoun is lowercase. A curly apostrophe in
+/// the modal is folded to ASCII for the list lookup so both apostrophe forms match the same entry.
 fn subject_stutter(s: &str, p: usize, word_end: usize, x: usize) -> bool {
     let word = s[p..word_end].to_ascii_lowercase();
     if !COMMA_SUBJECTS.contains(&word.as_str()) || s[word_end..x] != format!(", {word}") {
@@ -104,9 +124,11 @@ fn subject_stutter(s: &str, p: usize, word_end: usize, x: usize) -> bool {
     let Some(after) = s[x..].strip_prefix(' ') else {
         return false;
     };
-    let len = run_len(after, |c| c.is_ascii_lowercase());
-    if !SUBJECT_MODALS.contains(&&after[..len])
-        || after[len..].starts_with(|c: char| is_w_folded(c) || c == '\'' || !c.is_ascii())
+    // Letters plus an ASCII or curly apostrophe, so contractions and "cannot" are one word.
+    let len = run_len(after, |c| c.is_ascii_lowercase() || c == '\'' || c == '\u{2019}');
+    let modal = after[..len].replace('\u{2019}', "'");
+    if !SUBJECT_MODALS.contains(&modal.as_str())
+        || after[len..].starts_with(|c: char| is_w_folded(c) || c == '\'' || c == '\u{2019}' || !c.is_ascii())
     {
         return false;
     }

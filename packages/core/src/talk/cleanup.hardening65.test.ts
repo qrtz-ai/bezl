@@ -55,8 +55,6 @@ describe('ADR 0205 a subject stutter before a modal collapses', () => {
       "Where are they, they can't be far.",
     ],
     ['So we, we went home early.', 'So we, we went home early.'],
-    ["So we, we can't make it.", "So we, we can't make it."],
-    ['So we, we cannot make it.', 'So we, we cannot make it.'],
     ['So we, we candidly told them.', 'So we, we candidly told them.'],
     ['So they, they May be back.', 'So they, they May be back.'],
     ["So we, we're going home.", "So we, we're going home."],

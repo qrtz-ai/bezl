@@ -635,6 +635,30 @@
       "category": "vocative",
       "raw": "I just landed. Hey pria where are you parked",
       "ideal": "I just landed. Hey Priya, where are you parked?"
+    },
+    {
+      "id": "p102",
+      "category": "repeat",
+      "raw": "So we, we can't make it to the dinner.",
+      "ideal": "So we can't make it to the dinner."
+    },
+    {
+      "id": "p103",
+      "category": "repeat",
+      "raw": "So we, we cannot join the call this afternoon.",
+      "ideal": "So we cannot join the call this afternoon."
+    },
+    {
+      "id": "p104",
+      "category": "repeat",
+      "raw": "But they, they won't be ready until Friday.",
+      "ideal": "But they won't be ready until Friday."
+    },
+    {
+      "id": "p105",
+      "category": "repeat",
+      "raw": "We, we shouldn't ship without the tests.",
+      "ideal": "We shouldn't ship without the tests."
     }
   ],
   "keep": [
@@ -2079,12 +2103,6 @@
       "expect": "So we, we went home early that night."
     },
     {
-      "id": "k241",
-      "rule": "subject-repeat",
-      "raw": "So we, we can't make it to the dinner.",
-      "expect": "So we, we can't make it to the dinner."
-    },
-    {
       "id": "k242",
       "rule": "subject-repeat",
       "raw": "So we, we're going to need a bigger room.",
@@ -2226,6 +2244,90 @@
       "dict": true,
       "raw": "Hey Priya can be late sometimes",
       "expect": "Hey Priya can be late sometimes."
+    },
+    {
+      "id": "k263",
+      "rule": "subject-repeat",
+      "raw": "So we, we candidly told them the truth.",
+      "expect": "So we, we candidly told them the truth."
+    },
+    {
+      "id": "k264",
+      "rule": "subject-repeat",
+      "raw": "So we, we canned the whole project last week.",
+      "expect": "So we, we canned the whole project last week."
+    },
+    {
+      "id": "k265",
+      "rule": "subject-repeat",
+      "raw": "So we, we cant make it tonight.",
+      "expect": "So we, we cant make it tonight."
+    },
+    {
+      "id": "k266",
+      "rule": "subject-repeat",
+      "raw": "Neither have we, we can't wait forever on this.",
+      "expect": "Neither have we, we can't wait forever on this."
+    },
+    {
+      "id": "k267",
+      "rule": "subject-repeat",
+      "raw": "You and we, we can't share the cost of the venue.",
+      "expect": "You and we, we can't share the cost of the venue."
+    },
+    {
+      "id": "k268",
+      "rule": "subject-repeat",
+      "raw": "Tell them we, we can't do it by Friday.",
+      "expect": "Tell them we, we can't do it by Friday."
+    },
+    {
+      "id": "k269",
+      "rule": "subject-repeat",
+      "raw": "And then we, we can't see how it goes.",
+      "expect": "And then we, we can't see how it goes."
+    },
+    {
+      "id": "k270",
+      "rule": "subject-repeat",
+      "raw": "Okay we, we can't do that after lunch.",
+      "expect": "Okay we, we can't do that after lunch."
+    },
+    {
+      "id": "k271",
+      "rule": "subject-repeat",
+      "raw": "Well we, we can't stay past midnight.",
+      "expect": "Well we, we can't stay past midnight."
+    },
+    {
+      "id": "k272",
+      "rule": "subject-repeat",
+      "raw": "Hey we, we can't leave the keys here.",
+      "expect": "Hey we, we can't leave the keys here."
+    },
+    {
+      "id": "k273",
+      "rule": "subject-repeat",
+      "raw": "So we, we shan't need another room.",
+      "expect": "So we, we shan't need another room."
+    },
+    {
+      "id": "k274",
+      "rule": "subject-repeat",
+      "raw": "So we, we CAN'T make the dinner reservation.",
+      "expect": "So we, we CAN'T make the dinner reservation."
+    },
+    {
+      "id": "k275",
+      "rule": "subject-repeat",
+      "raw": "So he, he can't drive us to the airport.",
+      "expect": "So he, he can't drive us to the airport."
+    },
+    {
+      "id": "k276",
+      "rule": "subject-repeat",
+      "raw": "They're faster than we, we can't keep up at all.",
+      "expect": "They're faster than we, we can't keep up at all."
     }
   ]
 }

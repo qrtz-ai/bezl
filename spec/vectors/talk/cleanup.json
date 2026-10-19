@@ -2200,12 +2200,12 @@
     {
       "raw": "So we, we can't make it.",
       "dict": false,
-      "expect": "So we, we can't make it."
+      "expect": "So we can't make it."
     },
     {
       "raw": "So we, we cannot make it.",
       "dict": false,
-      "expect": "So we, we cannot make it."
+      "expect": "So we cannot make it."
     },
     {
       "raw": "So we, we candidly told them.",
@@ -2431,6 +2431,181 @@
       "raw": "Hey Priya, are you free tomorrow",
       "dict": true,
       "expect": "Hey Priya, are you free tomorrow."
+    },
+    {
+      "raw": "We, we won't be there tonight.",
+      "dict": false,
+      "expect": "We won't be there tonight."
+    },
+    {
+      "raw": "They, they shouldn't wait any longer.",
+      "dict": false,
+      "expect": "They shouldn't wait any longer."
+    },
+    {
+      "raw": "But we, we couldn't finish on time.",
+      "dict": false,
+      "expect": "But we couldn't finish on time."
+    },
+    {
+      "raw": "And they, they wouldn't agree to that.",
+      "dict": false,
+      "expect": "And they wouldn't agree to that."
+    },
+    {
+      "raw": "Because we, we mustn't tell anyone yet.",
+      "dict": false,
+      "expect": "Because we mustn't tell anyone yet."
+    },
+    {
+      "raw": "Then they, they mightn't come at all.",
+      "dict": false,
+      "expect": "Then they mightn't come at all."
+    },
+    {
+      "raw": "So we, we mayn't need it.",
+      "dict": false,
+      "expect": "So we mayn't need it."
+    },
+    {
+      "raw": "So, we, we can't ship it today.",
+      "dict": false,
+      "expect": "So, we can't ship it today."
+    },
+    {
+      "raw": "I'm sorry. So we, we can't make the dinner.",
+      "dict": false,
+      "expect": "I'm sorry. So we can't make the dinner."
+    },
+    {
+      "raw": "So they, they won't call you back.",
+      "dict": false,
+      "expect": "So they won't call you back."
+    },
+    {
+      "raw": "Notes new line we, we can't finish today",
+      "dict": false,
+      "expect": "Notes\nWe can't finish today."
+    },
+    {
+      "raw": "Um, so we, we cannot join",
+      "dict": false,
+      "expect": "So we cannot join."
+    },
+    {
+      "raw": "So we, we can’t make it.",
+      "dict": false,
+      "expect": "So we can’t make it."
+    },
+    {
+      "raw": "But they, they won’t be ready.",
+      "dict": false,
+      "expect": "But they won’t be ready."
+    },
+    {
+      "raw": "So we, we canned the whole project.",
+      "dict": false,
+      "expect": "So we, we canned the whole project."
+    },
+    {
+      "raw": "So we, we cant make it.",
+      "dict": false,
+      "expect": "So we, we cant make it."
+    },
+    {
+      "raw": "So we, we cann't make it.",
+      "dict": false,
+      "expect": "So we, we cann't make it."
+    },
+    {
+      "raw": "So we, we Cannot make it.",
+      "dict": false,
+      "expect": "So we, we Cannot make it."
+    },
+    {
+      "raw": "So we, we CAN'T make it.",
+      "dict": false,
+      "expect": "So we, we CAN'T make it."
+    },
+    {
+      "raw": "So we, we can'tt make it.",
+      "dict": false,
+      "expect": "So we, we can'tt make it."
+    },
+    {
+      "raw": "So we, we shan't make it.",
+      "dict": false,
+      "expect": "So we, we shan't make it."
+    },
+    {
+      "raw": "Neither have we, we can't wait forever.",
+      "dict": false,
+      "expect": "Neither have we, we can't wait forever."
+    },
+    {
+      "raw": "So do we, we can't ever say it.",
+      "dict": false,
+      "expect": "So do we, we can't ever say it."
+    },
+    {
+      "raw": "You and we, we can't share the cost.",
+      "dict": false,
+      "expect": "You and we, we can't share the cost."
+    },
+    {
+      "raw": "Tell them we, we can't do it.",
+      "dict": false,
+      "expect": "Tell them we, we can't do it."
+    },
+    {
+      "raw": "And then we, we can't see.",
+      "dict": false,
+      "expect": "And then we, we can't see."
+    },
+    {
+      "raw": "Okay we, we can't do that.",
+      "dict": false,
+      "expect": "Okay we, we can't do that."
+    },
+    {
+      "raw": "Well we, we can't stay.",
+      "dict": false,
+      "expect": "Well we, we can't stay."
+    },
+    {
+      "raw": "Hey we, we can't leave yet.",
+      "dict": false,
+      "expect": "Hey we, we can't leave yet."
+    },
+    {
+      "raw": "They're faster than we, we can't keep up.",
+      "dict": false,
+      "expect": "They're faster than we, we can't keep up."
+    },
+    {
+      "raw": "Thank you, you can't go yet.",
+      "dict": false,
+      "expect": "Thank you, you can't go yet."
+    },
+    {
+      "raw": "So he, he can't drive.",
+      "dict": false,
+      "expect": "So he, he can't drive."
+    },
+    {
+      "raw": "So we, we, we can't ship it.",
+      "dict": false,
+      "expect": "So we, we, we can't ship it."
+    },
+    {
+      "raw": "So we,  we can't ship it.",
+      "dict": false,
+      "expect": "So we, we can't ship it."
+    },
+    {
+      "raw": "We, WE can't do it.",
+      "dict": false,
+      "expect": "We, WE can't do it."
     }
   ],
   "dictionaryOnly": [

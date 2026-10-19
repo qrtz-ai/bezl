@@ -47,8 +47,9 @@ const STUTTERS = new Set([
 // Repeats across a comma ("I love you, you know", "take it, it is yours") are a clause boundary as often as a
 // stutter; only these collapse there ("I, I think", "the, the plan").
 const COMMA_STUTTERS = new Set(['i', 'a', 'an', 'the']);
-// ADR 0205: "we, we" / "they, they" collapses only before a plain modal, with the first pronoun opening its sentence
-// (alone or after one opener): "So we, we can ship it" -> "So we can ship it". Same lists as cleanup.rs.
+// ADR 0205 / ADR 0207: "we, we" / "they, they" collapses before a plain or negated modal (or "cannot"), with the
+// first pronoun opening its sentence (alone or after one opener): "So we, we can ship it" / "So we, we can't" ->
+// "So we can ship it" / "So we can't". Curly apostrophe folds to ASCII for the lookup. Same lists as cleanup.rs.
 const COMMA_SUBJECTS = new Set(['we', 'they']);
 const SUBJECT_MODALS = new Set([
   'can',
@@ -60,6 +61,15 @@ const SUBJECT_MODALS = new Set([
   'must',
   'may',
   'shall',
+  "can't",
+  "couldn't",
+  "won't",
+  "wouldn't",
+  "shouldn't",
+  "mustn't",
+  "mightn't",
+  "mayn't",
+  'cannot',
 ]);
 const SUBJECT_OPENERS = new Set(['so', 'and', 'but', 'then', 'because']);
 
@@ -69,7 +79,8 @@ function atSentenceStart(pre: string): boolean {
   return blank.trim() === '' || /[\n.!?]$/.test(blank);
 }
 
-/** ADR 0205: is the repeat `all` (word `w`) at `at` in `src` a subject stutter before a plain modal? */
+/** ADR 0205 / ADR 0207: is the repeat `all` (word `w`) at `at` in `src` a subject stutter before a modal
+ * (plain, negated contraction, or "cannot")? Curly apostrophe folds to ASCII for the list lookup. */
 function subjectStutter(
   all: string,
   w: string,
@@ -81,12 +92,14 @@ function subjectStutter(
     return false;
   const after = src.slice(at + all.length);
   if (!after.startsWith(' ')) return false;
-  const modal = /^[a-z]*/.exec(after.slice(1))![0];
-  const next = after.slice(1 + modal.length);
+  // Letters plus an ASCII or curly apostrophe, so "can't" / curly-"can't" / "cannot" are one word.
+  const modalRaw = /^[a-z'\u2019]*/.exec(after.slice(1))![0];
+  const modal = modalRaw.replace(/\u2019/g, "'");
+  const next = after.slice(1 + modalRaw.length);
   if (
     !SUBJECT_MODALS.has(modal) ||
-    /^[\w']/.test(next) ||
-    next.charCodeAt(0) > 0x7f
+    /^[\w'\u2019]/.test(next) ||
+    (next.length > 0 && next.charCodeAt(0) > 0x7f)
   )
     return false;
   let pre = src.slice(0, at).replace(/[ \t]+$/, '');

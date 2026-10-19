@@ -85,10 +85,8 @@ fn every_other_subject_repeat_is_kept() {
             "Where are they, they can't be far.",
             "Where are they, they can't be far.",
         ),
-        // no plain modal after the second pronoun
+        // no modal after the second pronoun (negated forms are covered in hardening67)
         ("So we, we went home early.", "So we, we went home early."),
-        ("So we, we can't make it.", "So we, we can't make it."),
-        ("So we, we cannot make it.", "So we, we cannot make it."),
         ("So we, we candidly told them.", "So we, we candidly told them."),
         ("So they, they May be back.", "So they, they May be back."),
         ("So we, we're going home.", "So we, we're going home."),
