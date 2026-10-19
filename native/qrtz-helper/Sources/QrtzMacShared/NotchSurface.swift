@@ -25,6 +25,15 @@ public final class NotchSurface: @unchecked Sendable {
     private var arbiter = NotchArbiter()
     private var screenObserver: NSObjectProtocol?
     private var secureTimer: Timer?
+    /// Event-driven secure-input re-checks while module content holds the surface (see `watchSecureInput`).
+    private var activationObserver: NSObjectProtocol?
+    private var focusObserver: (obs: AXObserver, app: AXUIElement)?
+    /// The backstop poll's period while module content holds the surface.
+    static let securePollInterval: TimeInterval = 0.05
+    /// Test seam: whether the secure-input watch (poll + observers) is running.
+    var secureWatchActive: Bool { secureTimer != nil || activationObserver != nil }
+    var focusObserverAttached: Bool { focusObserver != nil }
+    var panelVisible: Bool { panel.isVisible }
     /// What is drawn now (nil: hidden or retracting).
     private var drawn: NotchEntry?
     private var hideGeneration = 0
@@ -67,7 +76,7 @@ public final class NotchSurface: @unchecked Sendable {
 
     deinit {
         if let o = screenObserver { NotificationCenter.default.removeObserver(o) }
-        secureTimer?.invalidate()
+        stopSecureWatch()
     }
 
     /// qrtz's theme (ADR 0211) on the panel: the shape stays black either way; it only reaches the content's accent.
@@ -155,15 +164,57 @@ public final class NotchSurface: @unchecked Sendable {
         }
     }
 
-    /// While module content holds the surface, re-check secure input twice a second (it can turn on at any time).
+    /// While module content holds the surface (drawn, or held back by secure input), re-check secure input on every
+    /// app activation and every focus change in the frontmost app (AX, under echo's existing Accessibility grant;
+    /// without it, quietly just the poll), plus a 50 ms backstop poll. All of it stops when no module content is held.
+    /// Before any module content is drawn, `target()` checks synchronously (`render`), so it never appears while
+    /// secure input is already on.
     private func watchSecureInput(_ on: Bool) {
         if on, secureTimer == nil {
-            let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in self?.recheckSecureInput() }
+            let t = Timer(timeInterval: Self.securePollInterval, repeats: true) { [weak self] _ in self?.recheckSecureInput() }
             RunLoop.main.add(t, forMode: .common)
             secureTimer = t
+            activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                self?.attachFocusObserver()
+                self?.recheckSecureInput()
+            }
+            attachFocusObserver()
         } else if !on {
-            secureTimer?.invalidate(); secureTimer = nil
+            stopSecureWatch()
         }
+    }
+
+    private func stopSecureWatch() {
+        secureTimer?.invalidate(); secureTimer = nil
+        if let o = activationObserver { NSWorkspace.shared.notificationCenter.removeObserver(o); activationObserver = nil }
+        detachFocusObserver()
+    }
+
+    /// (Re)attach the focus-change observer to the frontmost app. Quietly nothing without the Accessibility grant.
+    private func attachFocusObserver() {
+        detachFocusObserver()
+        guard AXIsProcessTrusted(), let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
+        var obs: AXObserver?
+        let cb: AXObserverCallback = { _, _, _, refcon in
+            guard let refcon else { return }
+            // Unretained: the observer is removed (stopSecureWatch, deinit) before the surface goes.
+            Unmanaged<NotchSurface>.fromOpaque(refcon).takeUnretainedValue().recheckSecureInput()
+        }
+        guard AXObserverCreate(pid, cb, &obs) == .success, let obs else { return }
+        let app = AXUIElementCreateApplication(pid)
+        let me = Unmanaged.passUnretained(self).toOpaque()
+        guard AXObserverAddNotification(obs, app, kAXFocusedUIElementChangedNotification as CFString, me) == .success else { return }
+        CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(obs), .defaultMode)
+        focusObserver = (obs, app)
+    }
+
+    private func detachFocusObserver() {
+        guard let f = focusObserver else { return }
+        AXObserverRemoveNotification(f.obs, f.app, kAXFocusedUIElementChangedNotification as CFString)
+        CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(f.obs), .defaultMode)
+        focusObserver = nil
     }
 
     /// The secure-input poll's tick: secure input turning on while module content is drawn hides it through
@@ -265,6 +316,7 @@ final class NotchStageView: NSView {
         shape.strokeColor = nil
         layer?.addSublayer(shape)
         row.wantsLayer = true
+        row.layer?.opacity = 0  // nothing shows until expand() draws content
         addSubview(row)
         waveBox.isGeometryFlipped = true  // the wave's y runs down, like the SVG
         for (i, l) in waves.enumerated() {
