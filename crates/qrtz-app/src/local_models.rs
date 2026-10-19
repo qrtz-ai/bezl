@@ -7,6 +7,10 @@
 //! content-addressed store, then installed read-only under `<data>/packages/`. The helper's view is unchanged:
 //! `<data>/models/<set>/` (0700) holds store links of the files, and a set is usable once its `.qrtz-verified` marker
 //! is written; the helper reads only marked sets (`QRTZ_MODELS_DIR`) and never fetches anything itself.
+//!
+//! A model an extension reads in its own process (ctrl's `model.laya`, ADR 0157 §9) gets no view: it is loaded
+//! read-only straight from its store-linked package dir ([`LocalModels::read_dir`]), and, like code, it installs
+//! only under a fresh signed revocation list (§6), so its download refreshes the index first.
 use crate::module_hosting::{AppleCodeChecks, Hosts, HttpTransport, InstallError, Op};
 use qrtz_modules::install::{Installer, PinnedPackage};
 use qrtz_modules::models::{ModelFile as PinnedFile, ModelSource};
@@ -71,6 +75,16 @@ pub struct LocalModels {
     manifest: Manifest,
     /// The Hugging Face host actually reached (tests: a loopback server); `None` = the pinned hosts.
     base: Option<String>,
+    /// The root pin and package hosts for the signed index (tests: loopback); `None` = `Hosts::pinned()`.
+    index: Option<(Option<String>, Vec<String>)>,
+}
+
+/// The extension whose own process reads `package` ([`qrtz_modules::qrtz_json::EXTENSION_READS`]).
+fn reader_of(package: &str) -> Option<&'static str> {
+    qrtz_modules::qrtz_json::EXTENSION_READS
+        .iter()
+        .find(|(_, m)| *m == package)
+        .map(|(e, _)| *e)
 }
 
 fn safe_rel(p: &str) -> bool {
@@ -99,6 +113,7 @@ impl LocalModels {
             packages_root,
             manifest,
             base,
+            index: None,
         };
         for s in &m.manifest.sets {
             assert!(safe_rel(&s.dir), "model set dir {}", s.dir);
@@ -116,6 +131,31 @@ impl LocalModels {
     pub fn with_packages_root(mut self, p: impl Into<PathBuf>) -> Self {
         self.packages_root = p.into();
         self
+    }
+
+    /// The signed index's root pin and package hosts (tests serve a published index from loopback).
+    pub fn with_index(mut self, root_pin: Option<String>, hosts: Vec<String>) -> Self {
+        self.index = Some((root_pin, hosts));
+        self
+    }
+
+    /// Every set is read by an extension's own process: no view dir, loaded from the package (ADR 0157 §9).
+    fn extension_read(&self) -> bool {
+        !self.manifest.sets.is_empty() && self.manifest.sets.iter().all(|s| reader_of(&s.package).is_some())
+    }
+
+    /// ADR 0157 §9: the store-linked package dir an extension loads `set` from, read-only, never a writable copy.
+    /// `verify_sha256` re-hashes every file (the install already did, right after linking); without it the check is
+    /// modes and sizes.
+    pub fn read_dir(&self, set: &str, verify_sha256: bool) -> Option<PathBuf> {
+        let s = self.manifest.sets.iter().find(|s| s.id == set)?;
+        let ext = reader_of(&s.package)?;
+        let dir = self
+            .installer()
+            .extension_read_path(ext, &s.package, verify_sha256)
+            .ok()?;
+        let want = self.source(s).version;
+        (dir == self.installer().package_path(&s.package, &want)).then_some(dir)
     }
 
     fn source(&self, s: &ModelSet) -> ModelSource {
@@ -155,18 +195,24 @@ impl LocalModels {
     }
 
     fn installer(&self) -> Installer {
-        Installer::new(
-            &self.packages_root,
-            Hosts::pinned().root1_sha256,
-            Box::new(AppleCodeChecks),
-        )
+        let pin = match &self.index {
+            Some((pin, _)) => pin.clone(),
+            None => Hosts::pinned().root1_sha256,
+        };
+        Installer::new(&self.packages_root, pin, Box::new(AppleCodeChecks))
     }
 
     fn transport(&self, ctl: &DownloadControl) -> HttpTransport {
         let t = match &self.base {
             None => HttpTransport::pinned(),
             // The signed trees name Hugging Face; a test serves those paths from loopback.
-            Some(b) => HttpTransport::new(&[], &[(qrtz_modules::models::HUGGING_FACE.to_owned(), b.clone())]),
+            Some(b) => {
+                let hosts = self.index.as_ref().map(|(_, h)| h.clone()).unwrap_or_default();
+                HttpTransport::new(
+                    &hosts,
+                    &[(qrtz_modules::models::HUGGING_FACE.to_owned(), b.clone())],
+                )
+            }
         };
         t.with_control(ctl.clone())
     }
@@ -182,6 +228,9 @@ impl LocalModels {
     }
 
     fn set_ok(&self, s: &ModelSet) -> bool {
+        if reader_of(&s.package).is_some() {
+            return self.read_dir(&s.id, false).is_some();
+        }
         let dir = self.root.join(&s.dir);
         std::fs::read_to_string(dir.join(MARKER)).is_ok_and(|v| v.trim() == self.manifest.version)
             && s.files
@@ -194,7 +243,7 @@ impl LocalModels {
         self.manifest.sets.iter().all(|s| self.set_ok(s))
     }
 
-    /// Bytes under the models root (finished files and `.part`s).
+    /// Bytes under the models root (finished files), or in the installed packages an extension reads.
     pub fn bytes_on_disk(&self) -> u64 {
         fn walk(d: &Path) -> u64 {
             std::fs::read_dir(d)
@@ -208,6 +257,15 @@ impl LocalModels {
                         .sum()
                 })
                 .unwrap_or(0)
+        }
+        if self.extension_read() {
+            return self
+                .manifest
+                .sets
+                .iter()
+                .filter_map(|s| self.read_dir(&s.id, false))
+                .map(|d| walk(&d))
+                .sum();
         }
         walk(&self.root)
     }
@@ -224,12 +282,27 @@ impl LocalModels {
         if force {
             self.delete()?;
         }
-        fsx::mkdir_private(&self.root)?;
         let installer = self.installer();
+        let t = self.transport(ctl);
+        if self.manifest.sets.iter().any(|s| reader_of(&s.package).is_some()) {
+            // ADR 0157 §6: a model an extension reads needs a fresh signed list, like code. The user's yes to this
+            // download is the consent to refresh; if it can't (no pinned root yet, offline), apply refuses below.
+            if let Err(e) = installer
+                .refresh(&t, &qrtz_modules::install::RefreshConsent::user_asked(), now_ms())
+                .await
+            {
+                if ctl.is_paused() {
+                    return Err(SpeechError::Paused);
+                }
+                tracing::info!(error = %e, "model index refresh failed");
+            }
+        }
+        if !self.extension_read() {
+            fsx::mkdir_private(&self.root)?;
+        }
         let plan = installer
             .plan(Op::Pinned(self.packages()))
             .map_err(|e| pm_error(e, ctl))?;
-        let t = self.transport(ctl);
         let total = self.total_size();
         let have = total.saturating_sub(plan.download_bytes);
         installer
@@ -242,8 +315,23 @@ impl LocalModels {
             .await
             .map_err(|e| pm_error(e, ctl))?;
         for s in &self.manifest.sets {
-            if self.set_ok(s) {
+            if reader_of(&s.package).is_none() && self.set_ok(s) {
                 continue;
+            }
+            if reader_of(&s.package).is_some() {
+                // An older build's writable view of it goes; ctrl never loads from there.
+                match qrtz_modules::fsutil::remove_tree(&self.root.join(&s.dir)) {
+                    Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
+                    _ => {}
+                }
+                if self.set_ok(s) {
+                    continue;
+                }
+                // Installed and re-verified by `apply`; a failing load check here means it changed since.
+                return Err(SpeechError::Checksum(format!(
+                    "{}: not read-only or changed",
+                    s.package
+                )));
             }
             let src = self.source(s);
             let dir = self.root.join(&s.dir);
@@ -320,6 +408,9 @@ fn pm_error(e: InstallError, ctl: &DownloadControl) -> SpeechError {
     match e {
         InstallError::Network(m) if m.contains(qrtz_modules::fetch::MISMATCH) => SpeechError::Checksum(m),
         InstallError::Network(m) => SpeechError::Network(m),
+        InstallError::Refused(qrtz_modules::sideload::Refusal::RevocationListExpired) => {
+            SpeechError::RevocationExpired
+        }
         e => SpeechError::Invalid(e.to_string()),
     }
 }

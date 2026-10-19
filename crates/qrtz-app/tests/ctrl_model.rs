@@ -3,11 +3,16 @@
 //! manifest the download is verified (size + sha256) through the package manager, a damaged file is
 //! refused and fetched again, and only an installed, consented model reaches `select_scorer` with its path.
 //! Withdrawing consent deletes the model. Served by the qrtz-speech test kit on loopback.
+//!
+//! ADR 0157 §6/§9 (Bozniak): model.laya is the one model an extension reads in its own process, so it installs only
+//! under a fresh signed list (a loopback-published index here; none at all is refused before any model request),
+//! and ctrl loads it read-only straight from its store-linked package dir, never from a writable view.
 use qrtz_app::ctrl_model::{CtrlLayaModel, CtrlManifest};
 use qrtz_speech::download::DownloadControl;
 use qrtz_speech::testkit::{sha, Server};
 use serde_json::json;
 use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 
 fn body() -> Vec<u8> {
     (0..300_000).map(|i| (i % 251) as u8).collect()
@@ -25,6 +30,57 @@ fn manifest(srv: &Server, placeholder: bool) -> CtrlManifest {
              "size": b.len(), "sha256": sha(&b)}]}]
     }))
     .unwrap()
+}
+
+/// A signed, empty index (root, timestamp, revocations) on its own loopback server, and its root pin.
+struct Index {
+    _out: tempfile::TempDir,
+    srv: Server,
+    pin: String,
+}
+
+async fn index() -> Index {
+    let out = tempfile::tempdir().unwrap();
+    let keys = qrtz_publish::keys::Keys::ephemeral();
+    let now = qrtz_publish::now_ms();
+    let (_, pin) = qrtz_publish::write_root(out.path(), &keys, None, 1, now).unwrap();
+    let spec = qrtz_publish::Spec {
+        team_id: qrtz_publish::dry_run::TEAM.into(),
+        packages: vec![],
+        pinned_models: vec![],
+        models: vec![],
+        revoked: vec![],
+    };
+    qrtz_publish::build(out.path(), &spec, &keys, now).unwrap();
+    let srv = Server::start().await;
+    fn serve(dir: &Path, base: &Path, srv: &Server) {
+        for e in std::fs::read_dir(dir).unwrap().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                serve(&p, base, srv);
+            } else {
+                let rel = p.strip_prefix(base).unwrap().to_string_lossy().into_owned();
+                srv.put(&rel, std::fs::read(&p).unwrap());
+            }
+        }
+    }
+    serve(out.path(), out.path(), &srv);
+    Index { _out: out, srv, pin }
+}
+
+impl Index {
+    fn on(&self, m: CtrlLayaModel) -> CtrlLayaModel {
+        m.with_index(Some(self.pin.clone()), vec![self.srv.base.clone()])
+    }
+}
+
+/// Installed package dirs are read-only.
+fn cleanup(d: tempfile::TempDir) {
+    let _ = qrtz_modules::fsutil::remove_tree(d.path());
+}
+
+fn package(d: &Path) -> PathBuf {
+    d.join("packages/model.laya/1.0.0")
 }
 
 fn hits(srv: &Server) -> usize {
@@ -80,7 +136,7 @@ fn the_pinned_manifest_is_laya_coreml_e8_l512_with_its_tokenizer() {
     assert_eq!(m.manifest.total_size(), 483_924_446);
     let d = tempfile::tempdir().unwrap();
     let model = CtrlLayaModel::new(d.path().join("models/ctrl"), &d.path().join("ctrl"), None);
-    assert_eq!(model.model_path(), d.path().join("models/ctrl/laya").join(BUCKET));
+    assert_eq!(model.model_path(), None, "not installed");
     assert_eq!(model.state(true).size_bytes, 483_924_446);
 }
 
@@ -98,7 +154,13 @@ async fn the_pinned_layout_installs_the_bucket_and_its_tokenizer_side_by_side() 
     }
     let d = tempfile::tempdir().unwrap();
     let root = d.path().join("models/ctrl");
-    let model = CtrlLayaModel::with_manifest(&root, &d.path().join("ctrl"), m, Some(srv.base.clone()));
+    let idx = index().await;
+    let model = idx.on(CtrlLayaModel::with_manifest(
+        &root,
+        &d.path().join("ctrl"),
+        m,
+        Some(srv.base.clone()),
+    ));
     let e = model
         .download(&DownloadControl::default(), &|_| {})
         .await
@@ -111,24 +173,49 @@ async fn the_pinned_layout_installs_the_bucket_and_its_tokenizer_side_by_side() 
         .await
         .unwrap();
     assert_eq!(hits(&srv), 5);
-    let bucket = root.join("laya").join(BUCKET);
+    // Straight from the store-linked package, read-only; no view copy under models/.
+    let bucket = package(d.path()).join(BUCKET);
     for f in [
         "coremldata.bin",
         "analytics/coremldata.bin",
         "model.mil",
         "weights/weight.bin",
     ] {
-        assert!(bucket.join(f).is_file(), "{f}");
+        let m = std::fs::metadata(bucket.join(f)).unwrap();
+        assert!(m.is_file(), "{f}");
+        assert_eq!(m.permissions().mode() & 0o222, 0, "{f} is read-only");
     }
-    assert!(root.join("laya/tokenizer.json").is_file());
-    assert_eq!(
-        bucket.parent().unwrap().join("tokenizer.json"),
-        root.join("laya/tokenizer.json")
-    );
+    assert!(package(d.path()).join("tokenizer.json").is_file());
+    assert!(!root.join("laya").exists(), "no writable copy");
     assert_eq!(model.consent().installed.as_deref(), Some(bucket.as_path()));
     assert_eq!(model.state(true).state, "installed");
     model.set_consent(false, 2).unwrap();
-    assert!(!root.join("laya").exists());
+    assert!(!package(d.path()).exists(), "removed and pruned");
+    assert_eq!(model.consent().installed, None);
+    cleanup(d);
+}
+
+/// No fresh signed list (none pinned, none served): refused before any model request, the heuristic answers.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn without_a_fresh_signed_list_model_laya_is_refused_like_code() {
+    let srv = Server::start().await;
+    let d = tempfile::tempdir().unwrap();
+    let m = CtrlLayaModel::with_manifest(
+        d.path().join("models/ctrl"),
+        &d.path().join("ctrl"),
+        manifest(&srv, false),
+        Some(srv.base.clone()),
+    );
+    m.set_consent(true, 1).unwrap();
+    let e = m
+        .download(&DownloadControl::default(), &|_| {})
+        .await
+        .unwrap_err();
+    assert!(matches!(e, qrtz_speech::SpeechError::RevocationExpired), "{e}");
+    assert_eq!(hits(&srv), 0, "no model request");
+    assert_eq!(m.consent().installed, None);
+    assert_eq!(m.state(true).scorer, "heuristic");
+    cleanup(d);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -172,12 +259,13 @@ async fn a_consented_download_is_verified_resumable_and_reaches_the_scorer() {
     let srv = Server::start().await;
     let d = tempfile::tempdir().unwrap();
     let root = d.path().join("models/ctrl");
-    let m = CtrlLayaModel::with_manifest(
+    let idx = index().await;
+    let m = idx.on(CtrlLayaModel::with_manifest(
         &root,
         &d.path().join("ctrl"),
         manifest(&srv, false),
         Some(srv.base.clone()),
-    );
+    ));
     m.set_consent(true, 1).unwrap();
     assert_eq!(m.state(true).state, "not_installed");
     // A damaged file is refused and nothing is installed.
@@ -212,18 +300,24 @@ async fn a_consented_download_is_verified_resumable_and_reaches_the_scorer() {
     assert_eq!(m.state(false).scorer, "heuristic", "no runtime in this build");
     let c = m.consent();
     assert!(c.consented);
-    assert_eq!(
-        c.installed.as_deref(),
-        Some(root.join("laya/laya.mlpackage").as_path())
-    );
+    let entry = package(d.path()).join("laya.mlpackage");
+    assert_eq!(c.installed.as_deref(), Some(entry.as_path()));
+    // Checked at every load: a file made writable (or changed in size) is not handed to the helper.
+    let f = entry.join("Data/com.apple.CoreML/model.mlmodel");
+    let ro = std::fs::metadata(&f).unwrap().permissions();
+    std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o644)).unwrap();
+    assert_eq!(m.consent().installed, None, "writable: refused");
+    std::fs::set_permissions(&f, ro).unwrap();
+    assert_eq!(m.consent().installed.as_deref(), Some(entry.as_path()));
     // Off this macOS `laya` build the heuristic still answers.
     let (_s, why) = qrtz_ctrl::laya::select_scorer(&c, None);
     assert_eq!(why, Some(qrtz_ctrl::laya::Fallback::NotThisBuild));
     // Withdrawing consent deletes the model; the path no longer reaches the scorer.
     m.set_consent(false, 2).unwrap();
-    assert!(!root.join("laya").exists());
+    assert!(!package(d.path()).exists());
     assert_eq!(m.consent().installed, None);
     assert_eq!(m.state(true).state, "off");
+    cleanup(d);
 }
 
 mod router {
@@ -239,9 +333,10 @@ mod router {
             .await
     }
 
-    /// Through the IPC router with the real pinned manifest on a loopback server that has none of the files: off
-    /// (nothing requested) → yes → the download asks loopback for the pinned bucket's first file and fails its
-    /// check → `failed` with a code, nothing kept → persisted → no → off; a bad payload is a validation error.
+    /// Through the IPC router with the real pinned manifest and no signed index (as today, before modules.qrtz.ai
+    /// is live): off (nothing requested) → yes → the download is refused like code (ADR 0157 §6) → `failed` with
+    /// `laya.needs_signed_index`, nothing requested or kept → persisted → no → off; a bad payload is a validation
+    /// error.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn consent_and_state_through_the_ctrl_channels() {
         let d = tempfile::tempdir().unwrap();
@@ -286,17 +381,9 @@ mod router {
             v = call(&r, "ctrl:model", Value::Null).await;
         }
         assert_eq!(v["data"]["state"], "failed", "{v}");
-        assert!(v["data"]["error"].is_string(), "{v}");
+        assert_eq!(v["data"]["error"], "laya.needs_signed_index", "{v}");
         assert_eq!(v["data"]["scorer"], "heuristic");
-        // Only loopback, only the pinned paths (files are fetched in parallel now, so several may be asked for).
-        let pinned: Vec<String> = super::CtrlManifest::pinned().manifest.sets[0]
-            .files
-            .iter()
-            .map(|f| format!("{}/resolve/{}/{}", super::REPO, super::REV, f.remote))
-            .collect();
-        let asked: Vec<String> = hits().into_keys().collect();
-        assert!(!asked.is_empty());
-        assert!(asked.iter().all(|a| pinned.contains(a)), "{asked:?}");
+        assert!(hits().is_empty(), "no model request without a fresh signed list");
         assert_eq!(v["data"]["bytesOnDisk"], 0, "nothing kept: {v}");
         // The answer persists (a restart reads the same file).
         assert!(CtrlLayaModel::new(d.path().join("models/ctrl"), &d.path().join("ctrl"), None).consented());

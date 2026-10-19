@@ -1,6 +1,14 @@
 //! ADR 0116: ctrl's Laya model on disk. ctrl is offline: the model is fetched only after the user says yes in
 //! onboarding or ctrl's settings, through the same pinned-manifest, resumable, size- and sha256-checked path as the
-//! speech models (ADR 0079, `local_models`), into `<data>/models/ctrl/` (0700). The consent is persisted next to
+//! speech models (ADR 0079, `local_models`), as the `model.laya` package.
+//!
+//! ADR 0157 §9 (Bozniak's ruling): ctrl reading `model.laya` in its own process is a time-boxed exception, the
+//! only `extension.reads` there is ([`qrtz_modules::qrtz_json::EXTENSION_READS`]); its exit is moving Laya into a
+//! sandboxed `inference.laya` XPC service. Until then the model is loaded read-only straight from its store-linked
+//! package dir (`<data>/packages/model.laya/<version>/`, files 0444/0400, every sha256 re-checked right after
+//! linking, modes and sizes checked at every load), never from a writable copy; and it installs only under a fresh
+//! signed revocation list, like code (§6), so the download refreshes the index first and is refused
+//! (`laya.needs_signed_index`) until `modules.qrtz.ai` is live and its root is pinned. The consent is persisted next to
 //! ctrl's store (`<data>/ctrl/laya.json`, 0600); withdrawing it deletes the model. The host hands the installed
 //! model's path to the helper with every `ctrl.laya` question ([`qrtz_ctrl::laya::HelperLaya::path`]); without
 //! consent, without the files, on a placeholder manifest or when the helper can't run it, the deterministic heuristic
@@ -59,7 +67,8 @@ pub struct CtrlLayaModel {
     models: LocalModels,
     placeholder: bool,
     consent_file: PathBuf,
-    /// `<set dir>/<first path component>`, e.g. `laya/laya.mlpackage`.
+    set: String,
+    /// The first path component in the package, e.g. `laya.mlpackage`.
     entry: PathBuf,
 }
 
@@ -81,8 +90,9 @@ impl CtrlLayaModel {
             .first()
             .and_then(|f| Path::new(&f.path).components().next())
             .expect("one model file");
-        let entry = Path::new(&set.dir).join(first);
+        let entry = PathBuf::from(first.as_os_str());
         CtrlLayaModel {
+            set: set.id.clone(),
             entry,
             placeholder: m.placeholder,
             // The packages live in `<data>`, the parent of `ctrl_dir`.
@@ -90,6 +100,12 @@ impl CtrlLayaModel {
                 .with_packages_root(ctrl_dir.parent().unwrap_or(ctrl_dir)),
             consent_file: ctrl_dir.join("laya.json"),
         }
+    }
+
+    /// Tests: the signed index's root pin and hosts (loopback).
+    pub fn with_index(mut self, root_pin: Option<String>, hosts: Vec<String>) -> Self {
+        self.models = self.models.with_index(root_pin, hosts);
+        self
     }
 
     pub fn consented(&self) -> bool {
@@ -119,9 +135,16 @@ impl CtrlLayaModel {
         !self.placeholder && self.models.installed()
     }
 
-    /// The model the helper should run: the set's first top-level entry (`laya.mlpackage` / `laya.mlmodelc`).
-    pub fn model_path(&self) -> PathBuf {
-        self.models.root().join(&self.entry)
+    /// The model the helper should run, when installed: the package's first top-level entry (`laya.mlpackage` /
+    /// `laya.mlmodelc`) inside the read-only, store-linked package dir. Checked at every call: every file read-only
+    /// and of its pinned size.
+    pub fn model_path(&self) -> Option<PathBuf> {
+        if self.placeholder {
+            return None;
+        }
+        self.models
+            .read_dir(&self.set, false)
+            .map(|d| d.join(&self.entry))
     }
 
     /// What `select_scorer` reads: consent, and the path only when installed.
@@ -129,7 +152,7 @@ impl CtrlLayaModel {
         let consented = self.consented();
         qrtz_ctrl::laya::ModelConsent {
             consented,
-            installed: (consented && self.installed()).then(|| self.model_path()),
+            installed: consented.then(|| self.model_path()).flatten(),
         }
     }
 
@@ -184,6 +207,7 @@ fn code(e: &SpeechError) -> String {
     let s = match e {
         SpeechError::Denied(c) => c.as_str(),
         SpeechError::Checksum(_) => "checksum",
+        SpeechError::RevocationExpired => "laya.needs_signed_index",
         _ => "download.failed",
     };
     s.chars().take(64).collect()
