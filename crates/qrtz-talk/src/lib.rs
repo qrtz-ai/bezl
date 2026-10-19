@@ -24,7 +24,7 @@ pub use qrtz_speech_types as qrtz_speech;
 pub use service::{
     nothing_heard, AsrInfo, Clipboard, Clock, HelperSink, HelperTail, IdSource, RandomIds, SystemClock,
     TalkDeps, TalkEvents, TalkService, Timeouts, MSG_LATE_FINAL, MSG_NOTHING_HEARD, MSG_SILENT_MIC,
-    SEGMENT_OVERLAP_MS,
+    MSG_SPEECH_MISSING, SEGMENT_OVERLAP_MS,
 };
 pub use speech::{HelperAsrSpeech, TalkValidator};
 pub use store::{FsIo, StoreIo};

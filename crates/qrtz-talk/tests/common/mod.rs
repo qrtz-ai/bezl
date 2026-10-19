@@ -517,6 +517,8 @@ pub struct RigOpts {
     pub local_start_delay_ms: u64,
     /// N165: the on-device session's `finish` (module flush) takes this long.
     pub local_finish_delay_ms: u64,
+    /// N182: the app's "echo's speech model isn't downloaded" probe answers this.
+    pub speech_missing: bool,
 }
 impl Default for RigOpts {
     fn default() -> Self {
@@ -538,6 +540,7 @@ impl Default for RigOpts {
             },
             local_start_delay_ms: 0,
             local_finish_delay_ms: 0,
+            speech_missing: false,
         }
     }
 }
@@ -649,6 +652,10 @@ pub fn rig(o: RigOpts) -> Rig {
         store_path: store.clone(),
         store_io: io.clone(),
         timeouts: o.timeouts,
+        speech_missing: {
+            let m = o.speech_missing;
+            Arc::new(move || m)
+        },
     });
     helper.attach(svc.clone());
     Rig {

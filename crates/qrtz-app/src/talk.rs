@@ -82,6 +82,8 @@ pub struct TalkWiring {
     /// The on-device engine: the speech module with its audio from the helper; `None` = the helper's
     /// `dictation.asr` lines (no module configured in this build).
     pub local: Option<Arc<dyn qrtz_speech::SpeechEngine>>,
+    /// N182 (ADR 0177): echo's own speech model isn't on this Mac (`false` when this build has no local models).
+    pub speech_missing: Arc<dyn Fn() -> bool + Send + Sync>,
 }
 
 /// Build the service. The on-device engine is today's helper's `dictation.asr` lines until the qrtz speech
@@ -101,5 +103,18 @@ pub fn talk_service(w: TalkWiring) -> TalkService {
         store_path: w.store_path,
         store_io: Arc::new(qrtz_talk::FsIo),
         timeouts: Timeouts::default(),
+        speech_missing: w.speech_missing,
     })
+}
+
+/// N182 (ADR 0177): talk's "echo's speech model isn't downloaded" probe. Echo's sets in `local` (Parakeet's
+/// `echo-asr`), checked the cheap way (marker + sizes) and only when the helper refuses a start for want of a
+/// recogniser. `false` when this build has no local models or echo needs none, so the old message stands.
+pub fn echo_speech_missing(
+    local: Option<&crate::local_models::LocalModels>,
+) -> Arc<dyn Fn() -> bool + Send + Sync> {
+    match local.map(|l| l.for_extensions(&["echo"])) {
+        Some(echo) if !echo.set_ids().is_empty() => Arc::new(move || !echo.installed()),
+        _ => Arc::new(|| false),
+    }
 }

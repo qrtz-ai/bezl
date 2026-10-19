@@ -369,6 +369,10 @@ pub struct TalkDeps {
     pub store_path: PathBuf,
     pub store_io: Arc<dyn StoreIo>,
     pub timeouts: Timeouts,
+    /// N182 (ADR 0177): `true` while echo's own speech model isn't on this Mac (a fresh qrtz has echo on before
+    /// its model is downloaded, ADR 0175). Read only when the helper refuses a start for want of a recogniser, so
+    /// the pill points at the download instead of saying "try again in a moment". Talk never learns which model.
+    pub speech_missing: Arc<dyn Fn() -> bool + Send + Sync>,
 }
 
 // ------------------------------------------------------------------------------------------------- state
@@ -449,6 +453,9 @@ const MSG_BUSY: &str = "another dictation is still running";
 const MSG_NO_HELPER_INSERT: &str = "the capture helper could not take the text, so it was not pasted";
 /// N134: the helper refused the start because no recogniser could take it (all busy finishing, or none loads).
 const MSG_ASR: &str = "speech recognition isn't ready yet; try again in a moment";
+/// N182 (ADR 0177): ...and echo's speech model isn't downloaded, so trying again won't help until it is.
+pub const MSG_SPEECH_MISSING: &str =
+    "echo's speech model isn't downloaded yet. open echo in qrtz to download it, then try again";
 /// A dictation ended with no words although the mic was open (see `nothing_heard`).
 pub const MSG_NOTHING_HEARD: &str = "didn't catch any words. hold the key while you speak, then let go";
 /// ...and the mic sent (next to) digital silence the whole time: macOS gave qrtz no sound.
@@ -865,7 +872,12 @@ impl TalkService {
                     let mut g = self.lock();
                     let ours = m["id"].as_str().is_none_or(|id| g.view.id.as_deref() == Some(id));
                     if g.view.active() && ours {
-                        self.fail(&mut g, TalkErrorKind::SpeechUnavailable, MSG_ASR, false);
+                        let msg = if (self.deps().speech_missing)() {
+                            MSG_SPEECH_MISSING
+                        } else {
+                            MSG_ASR
+                        };
+                        self.fail(&mut g, TalkErrorKind::SpeechUnavailable, msg, false);
                     }
                 } else if code == "dictation.hotkey" {
                     // The helper couldn't watch the push key: pressing it would do nothing, so say so (never

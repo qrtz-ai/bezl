@@ -484,6 +484,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
                         .with_attach(attach.clone());
                     Arc::new(e) as Arc<dyn qrtz_speech::SpeechEngine>
                 }),
+                speech_missing: crate::talk::echo_speech_missing(local_models.as_ref()),
             },
         ))),
     };
