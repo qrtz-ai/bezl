@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Capability } from '../capabilities';
 import { AppErrorJSON } from '../errors';
-import { OsPermission } from '../capabilities';
+import { OsPermission, SettingsPane } from '../capabilities';
 import {
   MeetingDetail,
   MeetingListItem,
@@ -133,6 +133,20 @@ export const ipcContract = {
     capability: 'os.permissions',
     request: z.object({ permission: OsPermission }),
     response: PermissionsStatus,
+  }),
+  /** A permission prompt's button: System Settings at that pane. `restart`: the grant needs qrtz relaunched. */
+  'permissions:open-settings': defineChannel({
+    version: 1,
+    capability: 'os.permissions',
+    request: z.object({ pane: SettingsPane }),
+    response: z.object({ opened: z.boolean(), restart: z.boolean() }),
+  }),
+  /** "restart qrtz" for a grant a running qrtz only sees after a relaunch (screen recording). */
+  'app:restart': defineChannel({
+    version: 1,
+    capability: 'os.permissions',
+    request: z.void(),
+    response: z.object({ restarting: z.boolean() }),
   }),
   'note:session': defineChannel({
     version: 1,
@@ -672,6 +686,16 @@ export const ipcContract = {
     capability: 'snap.read',
     request: z.void(),
     response: SnapStatus,
+  }),
+  /**
+   * snap's accessibility prompt: qrtz-app asks macOS (which adds qrtz to the list and shows its prompt) and opens the
+   * Accessibility pane. The view then polls `snap:status`, which reads the grant live.
+   */
+  'snap:request-access': defineChannel({
+    version: 1,
+    capability: 'snap.read',
+    request: z.void(),
+    response: z.object({ opened: z.boolean(), axTrusted: z.boolean() }),
   }),
 } as const satisfies Record<string, ChannelDef>;
 

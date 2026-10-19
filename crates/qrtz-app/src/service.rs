@@ -747,6 +747,18 @@ impl AppService {
                 )
                 .await
             }
+            // Every permission prompt's button: System Settings at that permission's pane (never a hunt).
+            "permissions:open-settings" => {
+                let pane = p["pane"].as_str().unwrap_or_default();
+                if crate::tcc::settings_url(pane).is_none() {
+                    return Err(AppError::new(ErrorCode::Validation, "unknown settings pane"));
+                }
+                Ok(
+                    json!({"opened": crate::tcc::open_settings(pane), "restart": crate::tcc::needs_restart(pane)}),
+                )
+            }
+            // "restart qrtz", for a permission a running process only sees after a relaunch.
+            "app:restart" => Ok(json!({"restarting": self.shell.restart()})),
             "hud:set-expanded" => {
                 let e = self
                     .shell
@@ -755,6 +767,30 @@ impl AppService {
             }
             _ => Err(no_handler(channel)),
         }
+    }
+
+    /// `permissions:get` / `permissions:request`: the runtime's (helper's) answer with qrtz-app's own live reads on
+    /// top. Accessibility and screen recording are asked from this process, so macOS lists qrtz itself; the
+    /// microphone stays with the helper (AVFoundation). Every answer is re-read, never cached.
+    async fn permissions_channel(&self, channel: &str, p: Value) -> Result<Value, AppError> {
+        let native = crate::tcc::native_status();
+        let base = || qrtz_ipc::idle_response("permissions:get").unwrap_or(Value::Null);
+        let mut v = if channel == "permissions:request" {
+            let perm = p["permission"].as_str().unwrap_or_default();
+            if native.iter().any(|(k, _)| *k == perm) {
+                crate::tcc::request(perm);
+                self.runtime
+                    .call("permissions:get", Value::Null)
+                    .await
+                    .unwrap_or_else(|_| base())
+            } else {
+                self.runtime.call(channel, p).await?
+            }
+        } else {
+            self.runtime.call(channel, p).await.unwrap_or_else(|_| base())
+        };
+        crate::tcc::overlay(&mut v, &native);
+        Ok(v)
     }
 
     /// Which port owns a channel (None = unrouted).
@@ -787,15 +823,32 @@ impl Handler for AppService {
         // ADR 0146: a switched-off module's views and channels are refused (config stays reachable).
         crate::modules::gate(&self.config.get(), &ctx.sub_app, channel)?;
         match Self::owner(channel) {
+            Some("runtime") if channel.starts_with("permissions:") => {
+                self.permissions_channel(channel, payload).await
+            }
             Some("runtime") => self.runtime.call(channel, payload).await,
             Some("storage") => self.storage.call(channel, payload).await,
             Some("talk") => self.talk.call(channel, payload).await,
             Some("app") => self.app_channel(channel, payload, &ctx.sub_app).await,
             Some("ctrl") => self.ctrl_channel(channel, payload).await,
-            Some("snap") => Ok(self.snap.get().map_or_else(
-                || json!({"running": false, "axTrusted": false, "registered": {}, "refused": {}}),
-                |s| s.status(),
-            )),
+            Some("snap") => {
+                if channel == "snap:request-access" {
+                    // The banner's button: qrtz-app asks (macOS adds qrtz to the list and prompts) and opens the
+                    // Accessibility pane; snap's view polls snap:status until it's on.
+                    let opened = crate::tcc::request("accessibility");
+                    return Ok(json!({"opened": opened, "axTrusted": crate::tcc::ax_trusted()}));
+                }
+                let mut st = self.snap.get().map_or_else(
+                    || json!({"running": false, "axTrusted": false, "registered": {}, "refused": {}}),
+                    |s| s.status(),
+                );
+                // qrtz-snap reports trust when it (re)configures; the grant is qrtz-app's (its responsible
+                // process), so the live read here wins over a report from before the user switched qrtz on.
+                if st["running"].as_bool() == Some(true) && crate::tcc::ax_trusted() {
+                    st["axTrusted"] = json!(true);
+                }
+                Ok(st)
+            }
             Some("setup") => match self.setup.get() {
                 Some(s) => s.call(channel, payload).await,
                 None => qrtz_ipc::idle_response(channel).ok_or_else(|| {

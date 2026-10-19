@@ -11,6 +11,7 @@ import {
 import { QrtzClientProvider } from '@qrtz/core/react';
 import { ipcSamples } from '@qrtz/core/ipc/samples';
 import { ThemeProvider, ToastProvider } from '@qrtz/ui';
+import { AppError } from '@qrtz/core';
 import MarketplaceView from './MarketplaceView';
 
 (
@@ -115,6 +116,29 @@ describe('marketplace view (ADR 0161)', () => {
     expect(
       f.calls.filter((c) => c.channel === 'packages:refresh'),
     ).toHaveLength(1);
+  });
+
+  it("says 'coming soon' instead of a raw error while modules.qrtz.ai isn't live", async () => {
+    const f = fake({
+      'packages:refresh': () => {
+        throw new AppError(
+          'E_UNAVAILABLE',
+          "marketplace coming soon. modules will appear here once qrtz.ai's module server is live.",
+          { retryable: false, details: { reason: 'not-set-up' } },
+        );
+      },
+    });
+    await render(f.client);
+    await click('marketplace-check');
+    expect(q('marketplace-error')).toBeNull();
+    const soon = q('marketplace-soon');
+    expect(soon?.textContent).toContain('marketplace coming soon');
+    expect(soon?.textContent).toContain(
+      "modules will appear here once qrtz.ai's module server is live",
+    );
+    expect(soon?.textContent).not.toContain('root');
+    // The built-in extensions still list.
+    expect(q('extension-card-echo')).not.toBeNull();
   });
 
   it('installs through a plan the user confirms, with progress', async () => {
@@ -325,5 +349,72 @@ describe('no onboarding: permissions and the speech yes live at the switch (ADR 
     await click('module-enabled-echo');
     await click('module-enabled-echo');
     expect(f.calls.map((c) => c.channel)).not.toContain('speech:download');
+  });
+});
+
+describe('every permission is granted from inside qrtz', () => {
+  const tab = async (overrides: Record<string, (p: unknown) => unknown>) => {
+    const f = fake(overrides);
+    await render(f.client);
+    await act(async () => q('tab-installed')!.click());
+    await settle();
+    return f;
+  };
+  const wait = (ms: number) =>
+    act(async () => {
+      await new Promise((r) => setTimeout(r, ms));
+    });
+
+  it('allow asks qrtz, says "switch on qrtz", and flips to allowed by itself once switched on', async () => {
+    let ax = 'not-determined';
+    const perms = () => ({
+      microphone: 'granted',
+      accessibility: ax,
+      'screen-recording': 'granted',
+    });
+    const f = await tab({
+      'permissions:get': perms,
+      'permissions:request': perms,
+    });
+    const row = () => q('perm-echo-accessibility');
+    await act(async () => row()!.querySelector('button')!.click());
+    await settle();
+    expect(f.calls.filter((c) => c.channel === 'permissions:request')).toEqual([
+      {
+        channel: 'permissions:request',
+        payload: { permission: 'accessibility' },
+      },
+    ]);
+    expect(q('perm-echo-accessibility-hint')?.textContent).toBe(
+      'switch on qrtz',
+    );
+    ax = 'granted';
+    await wait(1100);
+    expect(row()?.textContent).toContain('allowed');
+    expect(q('perm-echo-accessibility-hint')).toBeNull();
+  });
+
+  it('screen recording offers "restart qrtz" after asking; automation opens its own pane', async () => {
+    const perms = () => ({
+      microphone: 'granted',
+      accessibility: 'granted',
+      'screen-recording': 'not-determined',
+    });
+    const f = await tab({
+      'permissions:get': perms,
+      'permissions:request': perms,
+    });
+    expect(q('perm-nano-screen-recording-restart')).toBeNull();
+    await act(async () =>
+      q('perm-nano-screen-recording')!.querySelector('button')!.click(),
+    );
+    await settle();
+    await click('perm-nano-screen-recording-restart');
+    expect(f.calls.map((c) => c.channel)).toContain('app:restart');
+    await click('perm-ctrl-automation-open');
+    expect(
+      f.calls.find((c) => c.channel === 'permissions:open-settings')?.payload,
+    ).toEqual({ pane: 'automation' });
+    expect(el.textContent).toBe(el.textContent?.toLowerCase());
   });
 });

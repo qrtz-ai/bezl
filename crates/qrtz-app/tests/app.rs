@@ -131,6 +131,56 @@ async fn app_channels_and_capabilities() {
         call(&r, "gallery", "note:list", json!({})).await["error"]["code"],
         "E_FORBIDDEN"
     );
+    // Permission prompts: the exact settings pane (only known panes), "restart qrtz" (this test shell can't), and
+    // snap's button reachable from snap's own view. Off macOS nothing opens.
+    let pane = call(
+        &r,
+        "marketplace",
+        "permissions:open-settings",
+        json!({"pane": "automation"}),
+    )
+    .await;
+    assert_eq!(
+        pane["data"],
+        json!({"opened": cfg!(target_os = "macos"), "restart": false}),
+        "{pane}"
+    );
+    let sr = call(
+        &r,
+        "marketplace",
+        "permissions:open-settings",
+        json!({"pane": "screen-recording"}),
+    )
+    .await;
+    assert_eq!(sr["data"]["restart"], true);
+    assert_eq!(
+        call(
+            &r,
+            "marketplace",
+            "permissions:open-settings",
+            json!({"pane": "camera"})
+        )
+        .await["error"]["code"],
+        "E_VALIDATION"
+    );
+    assert_eq!(
+        call(&r, "marketplace", "app:restart", Value::Null).await["data"]["restarting"],
+        false
+    );
+    assert_eq!(
+        call(&r, "gallery", "app:restart", Value::Null).await["error"]["code"],
+        "E_FORBIDDEN"
+    );
+    if !cfg!(target_os = "macos") {
+        let snap = call(&r, "snap", "snap:request-access", Value::Null).await;
+        assert_eq!(
+            snap["data"],
+            json!({"opened": false, "axTrusted": false}),
+            "{snap}"
+        );
+        let perms = call(&r, "marketplace", "permissions:get", Value::Null).await;
+        assert!(perms["ok"].as_bool().unwrap(), "{perms}");
+    }
     // ADR 0078: qrtz keeps no keys, so there are no secrets channels.
     for ch in ["secrets:set", "secrets:list"] {
         let v = call(&r, "settings", ch, json!({"name": "test.token", "value": "sk"})).await;

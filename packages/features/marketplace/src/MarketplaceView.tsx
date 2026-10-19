@@ -41,6 +41,7 @@ import {
   type PackagePlan,
   type PackagesProgress,
   type PackagesState,
+  type SettingsPane,
 } from '@qrtz/core';
 import { useQrtz, useSubAppRoute } from '@qrtz/core/react';
 import {
@@ -60,6 +61,10 @@ import {
 import { ModulePermissions, usePermissions } from './ModulePermissions';
 
 type Verb = 'install' | 'update' | 'remove';
+/** The host's answer while modules.qrtz.ai isn't live (packages_ipc NOT_SET_UP: details.reason "not-set-up"). */
+export const isNotSetUp = (e: unknown) =>
+  (e as { options?: { details?: { reason?: string } } } | null)?.options
+    ?.details?.reason === 'not-set-up';
 /** The modules whose models are the speech download (ctrl's model has its own yes in ctrl's settings, ADR 0116). */
 const SPEECH_MODULES = ['echo', 'nano'] as const;
 const isSpeechModule = (n: string): n is (typeof SPEECH_MODULES)[number] =>
@@ -104,7 +109,12 @@ export default function MarketplaceView() {
   );
   const [progress, setProgress] = useState<PackagesProgress | null>(null);
 
-  const fail = useCallback((e: Error) => setError(e.message), []);
+  // modules.qrtz.ai isn't live yet (no root pinned in this build): a friendly "coming soon", not an error.
+  const [soon, setSoon] = useState(false);
+  const fail = useCallback((e: Error) => {
+    if (isNotSetUp(e)) setSoon(true);
+    else setError(e.message);
+  }, []);
   const load = useCallback(
     () => qrtz.invoke('packages:list').then(setState, fail),
     [qrtz, fail],
@@ -179,8 +189,10 @@ export default function MarketplaceView() {
           ),
         fail,
       );
-  const { perms, ask } = usePermissions();
+  const { perms, ask, open, restart, pending: asking } = usePermissions();
   const allow = (p: OsPermission) => void ask(p).catch(fail);
+  const openPane = (p: SettingsPane) => void open(p).catch(fail);
+  const relaunch = () => void restart().catch(fail);
   // ADR 0163: switching echo or nano on is the user's yes to that extension's speech models, and only those
   // (speech:download {extensions: [name]}, resolved from its module.json model deps, audit P0-3): echo fetches
   // Parakeet, nano Nemotron + the diarizer + LocalVQE. speech:status reports for the switched-on set, so the
@@ -314,6 +326,17 @@ export default function MarketplaceView() {
     </Dialog>
   ) : null;
 
+  const soonBox = soon ? (
+    <Callout
+      tone="info"
+      title="marketplace coming soon"
+      data-testid="marketplace-soon"
+    >
+      modules will appear here once qrtz.ai's module server is live. the ones
+      built into qrtz work now.
+    </Callout>
+  ) : null;
+
   const errorBox = error ? (
     <Callout
       tone="danger"
@@ -380,6 +403,7 @@ export default function MarketplaceView() {
       <Page width={760} data-testid="module-manager">
         <Heading>marketplace</Heading>
         {tabs}
+        {soonBox}
         {errorBox}
         {installBar}
         <SettingsSection title="extensions" data-testid="module-list">
@@ -465,6 +489,9 @@ export default function MarketplaceView() {
                     module={name}
                     perms={perms}
                     onAsk={allow}
+                    onOpen={openPane}
+                    onRestart={relaunch}
+                    pending={asking}
                   />
                 ) : null}
                 {deps.length ? (
@@ -549,6 +576,7 @@ export default function MarketplaceView() {
             : 'checking goes online to modules.qrtz.ai for the signed list. opening this page never does.'}
         </Text>
       </Toolbar>
+      {soonBox}
       {errorBox}
       {installBar}
       <ExtensionGrid data-testid="marketplace-grid">

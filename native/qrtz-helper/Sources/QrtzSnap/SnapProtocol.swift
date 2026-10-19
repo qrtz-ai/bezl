@@ -93,6 +93,8 @@ public final class SnapServer {
     let backend: SnapBackend
     let write: (String) -> Void
     public private(set) var config = SnapConfig()
+    /// The last status sent, so a change of the Accessibility grant re-sends it (nil before the first configure).
+    var last: (axTrusted: Bool, registered: [SnapAction: SnapShortcut], refused: [SnapAction: String])?
 
     public init(backend: SnapBackend, write: @escaping (String) -> Void) {
         self.backend = backend
@@ -122,7 +124,20 @@ public final class SnapServer {
             registered[a] = nil
             refused[a] = why
         }
+        last = (backend.axTrusted, registered, refused)
         write(SnapLines.status(axTrusted: backend.axTrusted, registered: registered, refused: refused))
+    }
+
+    /// Called every second by the helper: when the user switches qrtz on (or off) in System Settings the status
+    /// goes out again, so snap's view drops its prompt without a relaunch. Answers whether a line was sent.
+    @discardableResult
+    public func refreshTrust() -> Bool {
+        guard let l = last else { return false }
+        let now = backend.axTrusted
+        guard now != l.axTrusted else { return false }
+        last = (now, l.registered, l.refused)
+        write(SnapLines.status(axTrusted: now, registered: l.registered, refused: l.refused))
+        return true
     }
 }
 

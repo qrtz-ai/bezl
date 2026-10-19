@@ -761,7 +761,19 @@ export function CommandPalette({
 export function PermissionList({
   items,
 }: {
-  items: { id: string; label: string; state: string; onGrant?: () => void }[];
+  items: {
+    id: string;
+    label: string;
+    state: string;
+    /** Asks for it (qrtz asks macOS, then opens its settings pane). */
+    onGrant?: () => void;
+    /** No preflight: opens its System Settings pane, beside the state. */
+    onOpen?: () => void;
+    /** Asked: the one line for the settings pane ("switch on qrtz"). */
+    hint?: string;
+    /** The grant needs qrtz relaunched to take effect. */
+    onRestart?: () => void;
+  }[];
 }) {
   const t = useTheme();
   return (
@@ -781,8 +793,18 @@ export function PermissionList({
           data-testid={`perm-${p.id}`}
         >
           <Text style={{ flex: 1 }}>{p.label}</Text>
+          {p.hint ? (
+            <Text variant="caption" muted data-testid={`perm-${p.id}-hint`}>
+              {p.hint}
+            </Text>
+          ) : null}
           {p.onGrant ? (
-            <Button size="sm" variant="secondary" onClick={p.onGrant}>
+            <Button
+              size="sm"
+              variant="secondary"
+              icon="open"
+              onClick={p.onGrant}
+            >
               allow
             </Button>
           ) : (
@@ -790,6 +812,28 @@ export function PermissionList({
               {p.state}
             </Text>
           )}
+          {p.onOpen ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon="open"
+              onClick={p.onOpen}
+              data-testid={`perm-${p.id}-open`}
+            >
+              settings
+            </Button>
+          ) : null}
+          {p.onRestart ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              icon="restart"
+              onClick={p.onRestart}
+              data-testid={`perm-${p.id}-restart`}
+            >
+              restart qrtz
+            </Button>
+          ) : null}
         </li>
       ))}
     </ul>

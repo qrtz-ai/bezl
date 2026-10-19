@@ -96,6 +96,31 @@ final class SnapProtocolTests: XCTestCase {
         XCTAssertNil((st["registered"] as! [String: String])["undo"])
     }
 
+    /// Jared, 6:18 PM: snap worked but its view still said "needs accessibility access": the status went out once,
+    /// before qrtz was switched on. A change of the grant now re-sends it, with the shortcuts it already holds.
+    func testAGrantSwitchedOnLaterIsReportedWithoutARestart() {
+        let b = FakeBackend()
+        b.axTrusted = false
+        var lines: [String] = []
+        let s = SnapServer(backend: b, write: { lines.append($0) })
+        XCTAssertFalse(s.refreshTrust(), "nothing before the first configure")
+        s.configure(SnapConfig())
+        XCTAssertEqual(obj(lines.last!)["axTrusted"] as? Bool, false)
+        let n = lines.count
+        XCTAssertFalse(s.refreshTrust(), "unchanged: nothing sent")
+        XCTAssertEqual(lines.count, n)
+        b.axTrusted = true
+        XCTAssertTrue(s.refreshTrust())
+        let st = obj(lines.last!)
+        XCTAssertEqual(st["type"] as? String, "snap.status")
+        XCTAssertEqual(st["axTrusted"] as? Bool, true)
+        XCTAssertEqual((st["registered"] as! [String: String])["leftHalf"], "alt+cmd+left")
+        XCTAssertFalse(s.refreshTrust())
+        b.axTrusted = false
+        XCTAssertTrue(s.refreshTrust(), "switched off again: reported too")
+        XCTAssertEqual(obj(lines.last!)["axTrusted"] as? Bool, false)
+    }
+
     func testActAndShutdown() {
         var lines: [String] = []
         let s = SnapServer(backend: FakeBackend(), write: { lines.append($0) })

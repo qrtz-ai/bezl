@@ -144,7 +144,19 @@ fn changes(c: &[Change]) -> Value {
     )
 }
 
+/// What the marketplace says while modules.qrtz.ai isn't live (no root pinned in this build).
+pub const NOT_SET_UP: &str =
+    "marketplace coming soon. modules will appear here once qrtz.ai's module server is live.";
+
 fn err(e: InstallError) -> AppError {
+    if matches!(
+        e,
+        InstallError::Index(qrtz_modules::index::IndexError::NoPinnedRoot)
+    ) {
+        return AppError::new(ErrorCode::Unavailable, NOT_SET_UP)
+            .retryable(false)
+            .details(json!({"reason": "not-set-up"}));
+    }
     let (code, retry) = match &e {
         InstallError::Network(_) | InstallError::Busy => (ErrorCode::Unavailable, true),
         InstallError::NoIndex => (ErrorCode::NotFound, false),
@@ -299,5 +311,22 @@ impl PackagesPort for PackagesIpc {
             }
             _ => Err(AppError::new(ErrorCode::UnknownChannel, channel.to_owned())),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_pinned_root_is_the_friendly_coming_soon_not_an_error() {
+        let e = err(InstallError::Index(qrtz_modules::index::IndexError::NoPinnedRoot));
+        assert_eq!(e.code, ErrorCode::Unavailable);
+        assert!(!e.is_retryable());
+        assert_eq!(e.message, NOT_SET_UP);
+        assert!(!e.message.contains("root"), "no build internals in the ui");
+        assert_eq!(e.details, Some(json!({"reason": "not-set-up"})));
+        assert_eq!(err(InstallError::Busy).code, ErrorCode::Unavailable);
+        assert_eq!(err(InstallError::Busy).details, None);
     }
 }

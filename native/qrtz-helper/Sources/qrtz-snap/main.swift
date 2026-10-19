@@ -58,6 +58,10 @@ let reader = Thread {
 }
 reader.start()
 
+// The Accessibility grant changes in System Settings while snap runs: re-read it every second (a cheap TCC read)
+// and report a change, so snap's view and the host see it live.
+Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in server.refreshTrust() }
+
 #if os(macOS)
 app.run()
 #else

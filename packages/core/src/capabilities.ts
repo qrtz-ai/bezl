@@ -46,3 +46,17 @@ export const OsPermission = z.enum([
   'microphone',
 ]);
 export type OsPermission = z.infer<typeof OsPermission>;
+
+/**
+ * System Settings → Privacy & Security panes a permission prompt opens (`permissions:open-settings`): the ones qrtz
+ * reads and asks for, plus those macOS only lets the user switch on there.
+ */
+export const SettingsPane = z.enum([
+  'accessibility',
+  'screen-recording',
+  'microphone',
+  'input-monitoring',
+  'automation',
+  'files-and-folders',
+]);
+export type SettingsPane = z.infer<typeof SettingsPane>;

@@ -364,6 +364,10 @@ const snapSamples = {
       refused: { undo: 'another app uses these keys' },
     },
   },
+  'snap:request-access': {
+    request: undefined,
+    response: { opened: true, axTrusted: false },
+  },
 } satisfies { [C in Extract<IpcChannel, `snap:${string}`>]: ChannelSample<C> };
 
 const packagesState = {
@@ -534,6 +538,11 @@ export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
     request: { permission: 'microphone' },
     response: { ...unknownPermissions, microphone: 'granted' },
   },
+  'permissions:open-settings': {
+    request: { pane: 'accessibility' },
+    response: { opened: true, restart: false },
+  },
+  'app:restart': { request: undefined, response: { restarting: true } },
   'note:session': { request: undefined, response: idleSession },
   'note:start': { request: { title: 'Standup' }, response: recordingSession },
   'note:stop': {

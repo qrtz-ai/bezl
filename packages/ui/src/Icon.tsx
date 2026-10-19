@@ -18,9 +18,11 @@ import {
   Command,
   Copy,
   Download,
+  ExternalLink,
   Edit2,
   Grid,
   Info,
+  Lock,
   MessageCircle,
   Mic,
   MicOff,
@@ -29,6 +31,7 @@ import {
   Play,
   RefreshCw,
   RotateCcw,
+  RotateCw,
   Search,
   Settings,
   Square,
@@ -83,6 +86,10 @@ export const ICONS = {
   todo: Square,
   trash: Trash2,
   'no-audio': VolumeX,
+  // Permission prompts: open the settings pane, the permission itself, and "restart qrtz".
+  open: ExternalLink,
+  permission: Lock,
+  restart: RotateCw,
 } satisfies Record<string, FeatherIcon>;
 
 export type IconName = keyof typeof ICONS;

@@ -13,6 +13,7 @@ export * from './Tabs';
 export * from './EmptyState';
 export * from './Overlay';
 export * from './Callout';
+export * from './Permission';
 export * from './tokens-doc';
 export * from './Progress';
 export * from './Lifecycle';

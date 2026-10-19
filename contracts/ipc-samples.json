@@ -69,6 +69,21 @@
         "microphone": "granted"
       }
     },
+    "permissions:open-settings": {
+      "request": {
+        "pane": "accessibility"
+      },
+      "response": {
+        "opened": true,
+        "restart": false
+      }
+    },
+    "app:restart": {
+      "request": null,
+      "response": {
+        "restarting": true
+      }
+    },
     "note:session": {
       "request": null,
       "response": {
@@ -1674,6 +1689,13 @@
         "refused": {
           "undo": "another app uses these keys"
         }
+      }
+    },
+    "snap:request-access": {
+      "request": null,
+      "response": {
+        "opened": true,
+        "axTrusted": false
       }
     }
   },

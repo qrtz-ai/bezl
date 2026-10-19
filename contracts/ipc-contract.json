@@ -372,6 +372,67 @@
         ]
       }
     },
+    "permissions:open-settings": {
+      "version": 1,
+      "capability": "os.permissions",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "pane": {
+              "type": "string",
+              "enum": [
+                "accessibility",
+                "screen-recording",
+                "microphone",
+                "input-monitoring",
+                "automation",
+                "files-and-folders"
+              ]
+            }
+          },
+          "required": [
+            "pane"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "opened": {
+            "type": "boolean"
+          },
+          "restart": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "opened",
+          "restart"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "app:restart": {
+      "version": 1,
+      "capability": "os.permissions",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "restarting": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "restarting"
+        ],
+        "additionalProperties": false
+      }
+    },
     "note:session": {
       "version": 1,
       "capability": "note.read",
@@ -11957,6 +12018,29 @@
           "axTrusted",
           "registered",
           "refused"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "snap:request-access": {
+      "version": 1,
+      "capability": "snap.read",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "opened": {
+            "type": "boolean"
+          },
+          "axTrusted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "opened",
+          "axTrusted"
         ],
         "additionalProperties": false
       }

@@ -31,6 +31,15 @@ Certificates) for grants that survive rebuilds. The first signing can show a key
 
 ## Granting
 
+Users never hunt in System Settings. Every permission prompt in qrtz is a button, "open … settings", with one line,
+"switch on qrtz": qrtz-app (the responsible process) first asks macOS itself (`AXIsProcessTrustedWithOptions` with
+the prompt option, `CGRequestScreenCaptureAccess`), which adds **qrtz** to that list, then opens the exact pane
+(`x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility`, `…Privacy_ScreenCapture`,
+`…Privacy_Microphone`, `…Privacy_ListenEvent`, `…Privacy_Automation`, `…Privacy_FilesAndFolders`). The prompt
+re-reads the grant every second (`permissions:get` and `snap:status` read it live in qrtz-app; qrtz-snap re-sends
+its status when its own read changes), so it disappears and snap works the moment qrtz is switched on. Screen
+recording reaches a running qrtz only after a relaunch, so its row adds "restart qrtz" (`app:restart`).
+
 - **Dev build:** start it with `bun start`. When qrtz asks, or in System Settings → Privacy & Security →
   Accessibility, switch on **qrtz-app** (click **+** and pick `target/debug/qrtz-app` if it's not listed). Grant the
   app, not your terminal. It stays granted across rebuilds as long as the same certificate signs it.

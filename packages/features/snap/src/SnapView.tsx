@@ -7,6 +7,7 @@ import {
   ModuleSettingsButton,
   ModuleSettingsPage,
   Page,
+  PermissionPrompt,
   SettingRow,
   SettingsSection,
   Stack,
@@ -46,6 +47,22 @@ export default function SnapView() {
     [qrtz],
   );
   useEffect(load, [load, changed, settingsOpen]);
+  // The accessibility prompt is showing: read the grant every second (qrtz-app reads it live), so the prompt goes
+  // away and the shortcuts work the moment the user switches qrtz on, no relaunch.
+  const needsAx = !!status?.running && !status.axTrusted;
+  const [waiting, setWaiting] = useState(false);
+  useEffect(() => {
+    if (!needsAx) {
+      setWaiting(false);
+      return;
+    }
+    const id = setInterval(load, 1000);
+    return () => clearInterval(id);
+  }, [needsAx, load]);
+  const askAx = () => {
+    setWaiting(true);
+    void qrtz.invoke('snap:request-access').then(load, () => {});
+  };
 
   if (settingsOpen)
     return (
@@ -81,15 +98,14 @@ export default function SnapView() {
           it starts when snap is on and qrtz is open.
         </Callout>
       ) : null}
-      {status?.running && !status.axTrusted ? (
-        <Callout
-          tone="warning"
+      {needsAx ? (
+        <PermissionPrompt
           title="snap needs accessibility access"
+          pane="accessibility"
+          onOpen={askAx}
+          waiting={waiting}
           data-testid="snap-no-ax"
-        >
-          give qrtz accessibility access in system settings → privacy &
-          security. snap uses qrtz's one grant.
-        </Callout>
+        />
       ) : null}
       {SNAP_GROUPS.map((group, i) => (
         <SettingsSection

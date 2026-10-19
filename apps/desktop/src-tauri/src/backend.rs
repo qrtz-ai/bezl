@@ -98,6 +98,45 @@ impl ShellHooks for TauriShell {
     fn reveal(&self, dir: &std::path::Path) -> bool {
         crate::paths::reveal(dir)
     }
+    /// "restart qrtz" (a permission grant a running process only sees after a relaunch). Inside qrtz.app the new
+    /// copy is opened through Launch Services (`open`, after this one quits) so it is its own responsible process
+    /// again; elsewhere (dev) Tauri's restart.
+    fn restart(&self) -> bool {
+        let Some(app) = self.0.get().cloned() else {
+            return false;
+        };
+        let bundle = std::env::current_exe().ok().and_then(|exe| {
+            exe.ancestors()
+                .find(|a| a.extension().is_some_and(|e| e == "app"))
+                .map(|a| a.to_path_buf())
+        });
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            match bundle {
+                Some(b) if cfg!(target_os = "macos") => {
+                    let pid = std::process::id();
+                    // Waits for this pid to exit, then opens the bundle again (detached from us).
+                    let script =
+                        format!("while kill -0 {pid} 2>/dev/null; do sleep 0.2; done; /usr/bin/open \"$0\"");
+                    let spawned = std::process::Command::new("/bin/sh")
+                        .arg("-c")
+                        .arg(script)
+                        .arg(&b)
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .spawn();
+                    if spawned.is_ok() {
+                        app.exit(0);
+                    } else {
+                        app.request_restart();
+                    }
+                }
+                _ => app.request_restart(),
+            }
+        });
+        true
+    }
 }
 
 /// Clipboard + save dialog for `note:export`.

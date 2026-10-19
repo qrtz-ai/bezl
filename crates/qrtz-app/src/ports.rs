@@ -62,12 +62,15 @@ pub const APP_CHANNELS: &[&str] = &[
     "logs:export",
     // ADR 0161: the module manager's on/off switch (packages.manage; writes only `modules.<id>.enabled`).
     "packages:set-enabled",
+    // System Settings at a permission's pane, and "restart qrtz" for a grant that needs one.
+    "permissions:open-settings",
+    "app:restart",
 ];
 pub const TALK_PREFIX: &str = "talk:";
 /// ctrl (ADR 0103): tasks, schedules and run history (`qrtz_ctrl::service::CtrlService`).
 pub const CTRL_PREFIX: &str = "ctrl:";
 /// qrtz snap (ADR 0159): what qrtz-snap last reported (`crate::snap::SnapHost`).
-pub const SNAP_CHANNELS: &[&str] = &["snap:status"];
+pub const SNAP_CHANNELS: &[&str] = &["snap:status", "snap:request-access"];
 /// qrtz speech setup (settings "speech" and the modules switches; ADR 0046 §7, ADR 0163).
 pub const SETUP_CHANNELS: &[&str] = &[
     "speech:status",
@@ -152,6 +155,10 @@ pub trait ShellHooks: Send + Sync {
     }
     /// `logs:export {reveal}`: show `dir` in Finder (blocking, off the async runtime). `false` = couldn't.
     fn reveal(&self, _dir: &std::path::Path) -> bool {
+        false
+    }
+    /// `app:restart`: quit and relaunch qrtz (soon after answering). `false` = this build can't.
+    fn restart(&self) -> bool {
         false
     }
 }

@@ -92,6 +92,7 @@ export function createMockBridge(): TauriBridge {
   };
   let speechTimer: ReturnType<typeof setInterval> | undefined;
   let speechFailed = false;
+  let snapAx = params.get('snapAx') !== '0';
   let perms: Json =
     params.get('mockPerms') === 'denied'
       ? {
@@ -368,6 +369,11 @@ export function createMockBridge(): TauriBridge {
       emit('permissions:changed', perms);
       return perms as never;
     },
+    'permissions:open-settings': ({ pane }) => ({
+      opened: true,
+      restart: pane === 'screen-recording',
+    }),
+    'app:restart': () => ({ restarting: true }),
     'speech:status': () => speech as never,
     'speech:check': () => speech as never,
     'speech:download': ({ force }) => {
@@ -564,7 +570,12 @@ export function createMockBridge(): TauriBridge {
           ...overrides,
         }))
           if (b) registered[a] = b;
-      return { running: on, axTrusted: on, registered, refused: {} };
+      return { running: on, axTrusted: on && snapAx, registered, refused: {} };
+    },
+    // `?snapAx=0` starts snap untrusted; the button grants it (as switching qrtz on in system settings would).
+    'snap:request-access': () => {
+      snapAx = true;
+      return { opened: true, axTrusted: false };
     },
   };
 

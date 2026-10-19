@@ -41,6 +41,7 @@ pub mod storage_port;
 pub mod summary;
 #[cfg(feature = "runtime")]
 pub mod talk;
+pub mod tcc;
 #[cfg(feature = "runtime")]
 pub mod wiring;
 
