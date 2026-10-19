@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.1 (2026-10-19)
+
 - **echo's pill follows qrtz's theme (ADR 0211):** the dictation pill now draws in qrtz's own light or dark setting (or follows macOS when qrtz is set to system) instead of always following macOS, and changes the moment you switch it.
 - **System audio is asked only with nano (ADR 0184 amendment):** the first-launch permissions screen and qrtz settings → permissions list system audio only when nano is installed; without nano qrtz never asks for it. Install nano later and it is asked the first time nano records, or on the permissions screen when you reopen it.
 - **A permissions screen on first launch (ADR 0184):** before the qrtz page, one short screen lists the microphone, system audio and accessibility with their live state (granted, not granted, needs restart), an "allow" button that asks macOS and a "settings" button that opens the right pane. Continue or skip; anything left off is still asked the first time an app needs it. It shows once, and qrtz settings → permissions opens it again. It downloads nothing: models stay in each app's detail on the qrtz page.
