@@ -26,6 +26,9 @@
       "path": "packages/features/gallery"
     },
     {
+      "path": "packages/features/dash"
+    },
+    {
       "path": "packages/features/marketplace"
     },
     {

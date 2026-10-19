@@ -279,6 +279,34 @@ const snapSamples = {
   },
 } satisfies { [C in Extract<IpcChannel, `snap:${string}`>]: ChannelSample<C> };
 
+/** ADR 0228: Agent Dash. */
+const dashSamples = {
+  'dash:view': {
+    request: undefined,
+    response: {
+      origin: 'https://dash.qrtz.ai',
+      readmeVersion: '2.1',
+      deleted: false,
+      retentionDays: 30,
+      agents: [],
+      audit: [],
+    },
+  },
+  'dash:issue-code': {
+    request: undefined,
+    response: { code: 'ENR-7F3A-91C2', expiresAt: T0 + 900_000 },
+  },
+  'dash:rotate-codes': { request: undefined, response: { ok: true as const } },
+  'dash:review-agent': {
+    request: { agentId: 'ag_2', approve: true },
+    response: { ok: true },
+  },
+  'dash:delete': {
+    request: { scope: 'widget' as const, agentId: 'ag_2', key: 'state-farm' },
+    response: { ok: true },
+  },
+} satisfies { [C in Extract<IpcChannel, `dash:${string}`>]: ChannelSample<C> };
+
 /** ADR 0217: nano's Apple Calendar. */
 const calendarStatus = {
   enabled: true,
@@ -754,6 +782,7 @@ export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
   'speech:delete': { request: undefined, response: speechNone },
   ...ctrlSamples,
   ...snapSamples,
+  ...dashSamples,
   ...calendarSamples,
   ...docSamples,
 };

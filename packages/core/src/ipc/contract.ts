@@ -31,6 +31,7 @@ import {
 } from '../ctrl/contract';
 import { SnapStatus } from '../snap/contract';
 import { AppUpdateStatus } from '../app-update/contract';
+import { DashDelete, DashView } from '../dash/contract';
 
 /** Bump when the envelope shape changes (not when a channel changes). */
 export const PROTOCOL_VERSION = 1;
@@ -908,6 +909,47 @@ export const ipcContract = {
     capability: 'note.write',
     request: z.void(),
     response: z.object({ count: z.number().int().nonnegative() }),
+  }),
+  /** ADR 0228: Agent Dash's read-only view (agents, their widgets, the audit log). Holds no token or code. */
+  'dash:view': defineChannel({
+    version: 1,
+    capability: 'dash.read',
+    request: z.void(),
+    response: DashView,
+  }),
+  /** ADR 0228: a single-use enrollment code (15 min) the user hands one agent. Shown once, kept only hashed. */
+  'dash:issue-code': defineChannel({
+    version: 1,
+    capability: 'dash.manage',
+    request: z.void(),
+    response: z.object({
+      code: z.string().regex(/^ENR-[A-Z0-9]{4}-[A-Z0-9]{4}$/),
+      expiresAt: z.number(),
+    }),
+  }),
+  /** ADR 0228: invalidate every outstanding code (agent tokens keep working). */
+  'dash:rotate-codes': defineChannel({
+    version: 1,
+    capability: 'dash.manage',
+    request: z.void(),
+    response: z.object({ ok: z.literal(true) }),
+  }),
+  /** ADR 0228: approve or reject a pending agent (account security, not a channel to the agent). */
+  'dash:review-agent': defineChannel({
+    version: 1,
+    capability: 'dash.manage',
+    request: z.object({
+      agentId: z.string().max(64),
+      approve: z.boolean(),
+    }),
+    response: z.object({ ok: z.boolean() }),
+  }),
+  /** ADR 0228: delete a widget, an agent or the dashboard; the agent learns it only as a 410. */
+  'dash:delete': defineChannel({
+    version: 1,
+    capability: 'dash.manage',
+    request: DashDelete,
+    response: z.object({ ok: z.boolean() }),
   }),
 } as const satisfies Record<string, ChannelDef>;
 

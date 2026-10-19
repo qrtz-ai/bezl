@@ -12,6 +12,7 @@ pub mod config;
 pub mod ctrl_helper;
 #[cfg(feature = "runtime")]
 pub mod ctrl_model;
+pub mod dash_port;
 pub mod diagnostics;
 pub mod dirs;
 pub mod echo_updates;

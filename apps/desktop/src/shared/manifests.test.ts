@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { manifests } from './manifests';
 import { QRTZ_PAGE_PARTS, SIDEBAR_FOOT, sidebarItems } from '../shell/App';
+import { DASH_ENABLED } from '../shell/subapps';
 
 describe('manifests', () => {
   it('are unique, with no Home dashboard and a capability-free gallery', () => {
@@ -20,7 +21,9 @@ describe('manifests', () => {
 
   it('the sidebar is echo, nano, ctrl, snap, then apps and opts (no icons) pinned to the bottom', () => {
     const sorted = manifests
+      // ADR 0228: dash is behind DASH_ENABLED (off) in packaged builds.
       .filter((m) => m.id !== 'shell' && m.id !== 'gallery')
+      .filter((m) => m.id !== 'dash' || DASH_ENABLED)
       .toSorted((a, b) => (a.order ?? 100) - (b.order ?? 100))
       .map((manifest) => ({ manifest }));
     const items = sidebarItems(sorted);
@@ -45,5 +48,15 @@ describe('manifests', () => {
         .map((manifest) => ({ manifest })),
     );
     expect(withGallery.map((i) => i.id)).toEqual(['apps', 'opts']);
+  });
+
+  it('dash is off by default and holds the dash capabilities alone (ADR 0228)', () => {
+    expect(DASH_ENABLED).toBe(false);
+    const holders = manifests
+      .filter((m) =>
+        m.capabilities.some((c) => c === 'dash.read' || c === 'dash.manage'),
+      )
+      .map((m) => m.id);
+    expect(holders).toEqual(['dash']);
   });
 });

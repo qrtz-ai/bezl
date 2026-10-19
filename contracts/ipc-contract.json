@@ -11816,6 +11816,350 @@
         ],
         "additionalProperties": false
       }
+    },
+    "dash:view": {
+      "version": 1,
+      "capability": "dash.read",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "origin": {
+            "type": "string"
+          },
+          "readmeVersion": {
+            "type": "string"
+          },
+          "deleted": {
+            "type": "boolean"
+          },
+          "retentionDays": {
+            "type": "number"
+          },
+          "agents": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "fingerprint": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "approved"
+                  ]
+                },
+                "heartbeat": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "running",
+                        "idle"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "lastSeen": {
+                  "type": "number"
+                },
+                "stale": {
+                  "type": "boolean"
+                },
+                "flagged": {
+                  "type": "boolean"
+                },
+                "createdAt": {
+                  "type": "number"
+                },
+                "widgets": {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "key": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "status",
+                          "stat",
+                          "progress",
+                          "list",
+                          "table",
+                          "log",
+                          "chart",
+                          "markdown"
+                        ]
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "state": {
+                        "anyOf": [
+                          {},
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "events": {
+                        "maxItems": 50,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "at": {
+                              "type": "number"
+                            },
+                            "data": {}
+                          },
+                          "required": [
+                            "at",
+                            "data"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "updatedAt": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "key",
+                      "type",
+                      "title",
+                      "state",
+                      "events",
+                      "updatedAt"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "description",
+                "fingerprint",
+                "status",
+                "heartbeat",
+                "lastSeen",
+                "stale",
+                "flagged",
+                "createdAt",
+                "widgets"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "audit": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "event": {
+                  "type": "string"
+                },
+                "agentId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "at": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "event",
+                "agentId",
+                "at"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "origin",
+          "readmeVersion",
+          "deleted",
+          "retentionDays",
+          "agents",
+          "audit"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "dash:issue-code": {
+      "version": 1,
+      "capability": "dash.manage",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^ENR-[A-Z0-9]{4}-[A-Z0-9]{4}$"
+          },
+          "expiresAt": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "code",
+          "expiresAt"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "dash:rotate-codes": {
+      "version": 1,
+      "capability": "dash.manage",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "dash:review-agent": {
+      "version": 1,
+      "capability": "dash.manage",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "agentId": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "approve": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "agentId",
+            "approve"
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "dash:delete": {
+      "version": 1,
+      "capability": "dash.manage",
+      "request": {
+        "optional": false,
+        "schema": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "scope": {
+                  "type": "string",
+                  "const": "widget"
+                },
+                "agentId": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "scope",
+                "agentId",
+                "key"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "scope": {
+                  "type": "string",
+                  "const": "agent"
+                },
+                "agentId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "scope",
+                "agentId"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "scope": {
+                  "type": "string",
+                  "const": "dashboard"
+                }
+              },
+              "required": [
+                "scope"
+              ]
+            }
+          ]
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "events": {
@@ -13678,6 +14022,13 @@
       "capabilities": [
         "snap.read",
         "module.settings"
+      ]
+    },
+    {
+      "id": "dash",
+      "capabilities": [
+        "dash.read",
+        "dash.manage"
       ]
     },
     {

@@ -3378,6 +3378,7 @@ dependencies = [
  "qrtz-app",
  "qrtz-backup",
  "qrtz-ctrl",
+ "qrtz-dash",
  "qrtz-helper-bridge",
  "qrtz-ipc",
  "qrtz-lifecycle",
@@ -3432,6 +3433,17 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
+]
+
+[[package]]
+name = "qrtz-dash"
+version = "0.2.3"
+dependencies = [
+ "hex",
+ "rand 0.9.5",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

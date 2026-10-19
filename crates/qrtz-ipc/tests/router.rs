@@ -299,3 +299,48 @@ fn doc_read_is_pinned_to_note_alone() {
         );
     }
 }
+
+/// ADR 0228: Agent Dash's view and controls are dash's view's alone. The shell and every other module are
+/// refused every dash:* channel; dash's view gets them all.
+#[tokio::test]
+async fn only_dash_reads_and_manages_the_dashboard() {
+    struct Any;
+    #[async_trait]
+    impl Handler for Any {
+        async fn handle(&self, _c: &str, _p: Value, _x: &CallContext) -> Result<Value, AppError> {
+            Ok(Value::Null)
+        }
+    }
+    let r = Router::new(Any).validate_responses(false);
+    let channels: Vec<&String> = contract()
+        .channels
+        .keys()
+        .filter(|c| c.starts_with("dash:"))
+        .collect();
+    assert_eq!(channels.len(), 5);
+    let others: Vec<&String> = contract().manifests.keys().filter(|k| *k != "dash").collect();
+    assert!(others.len() >= 7);
+    for ch in &channels {
+        let payload = match ch.as_str() {
+            "dash:review-agent" => json!({"agentId": "ag_1", "approve": true}),
+            "dash:delete" => json!({"scope": "dashboard"}),
+            _ => Value::Null,
+        };
+        let call =
+            |sub: &str| json!({"v":1,"id":"c","channel":ch,"version":1,"subApp":sub,"payload":payload});
+        for sub in &others {
+            let res = r.dispatch(call(sub)).await;
+            assert_eq!(res["error"]["code"], "E_FORBIDDEN", "{sub} {ch}: {res}");
+        }
+        assert_eq!(r.dispatch(call("dash")).await["ok"], true, "dash {ch}");
+    }
+    for cap in ["dash.read", "dash.manage"] {
+        let holders: Vec<&String> = contract()
+            .manifests
+            .iter()
+            .filter(|(_, caps)| caps.contains(cap))
+            .map(|(k, _)| k)
+            .collect();
+        assert_eq!(holders, ["dash"], "{cap} is dash's alone");
+    }
+}

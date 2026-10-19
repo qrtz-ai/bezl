@@ -46,6 +46,74 @@ import { SNAP_DEFAULT_SHORTCUTS } from '@qrtz/core';
 import { packagesHandlers } from './packages';
 // The real notices, as the Rust backend builds them in (audit P0-4).
 import notices from '../../../../THIRD_PARTY_NOTICES.md?raw';
+import type { DashView } from '@qrtz/core';
+
+const dashDemo = (): DashView => {
+  const now = Date.now();
+  return {
+    origin: 'https://dash.qrtz.ai',
+    readmeVersion: '2.1',
+    deleted: false,
+    retentionDays: 30,
+    audit: [],
+    agents: [
+      {
+        id: 'ag_1',
+        name: 'grok bot',
+        description: "jared's assistant",
+        fingerprint: '7F3A-91C2',
+        status: 'approved',
+        heartbeat: 'running',
+        lastSeen: now - 60_000,
+        stale: false,
+        flagged: false,
+        createdAt: now - 86_400_000,
+        widgets: [
+          {
+            key: 'state-farm',
+            type: 'status',
+            title: 'state farm ca policy',
+            state: { status: 'blocked', text: 'waiting on user id' },
+            events: [],
+            updatedAt: now,
+          },
+          {
+            key: 'upload',
+            type: 'progress',
+            title: 'documents',
+            state: { done: 3, total: 5, step: 'bank statement' },
+            events: [],
+            updatedAt: now,
+          },
+          {
+            key: 'activity',
+            type: 'log',
+            title: 'activity',
+            state: null,
+            events: [
+              { at: now - 5000, data: { line: 'uploaded bank statement' } },
+            ],
+            updatedAt: now,
+          },
+        ],
+      },
+      {
+        id: 'ag_2',
+        name: 'backend barry',
+        description: '',
+        fingerprint: '1C0D-44AE',
+        status: 'pending',
+        heartbeat: null,
+        lastSeen: now,
+        stale: false,
+        flagged: false,
+        createdAt: now,
+        widgets: [],
+      },
+    ],
+  };
+};
+let dashMock = dashDemo();
 
 type Json = Record<string, unknown>;
 const params = new URLSearchParams(window.location.search);
@@ -795,6 +863,32 @@ export function createMockBridge(): TauriBridge {
     'talk:dictionary': () => [],
     // ADR 0146 parity: like the real IPC gate, every ctrl:* call is refused while ctrl (or every module) is off.
     ...gateCtrl(ctrlHandlers(), () => isModuleOn(config, 'ctrl')),
+    // ADR 0228: the browser mock's dashboard: one demo agent with a few widgets; deletes and reviews apply.
+    'dash:view': () => dashMock,
+    'dash:issue-code': () => ({
+      code: 'ENR-7F3A-91C2',
+      expiresAt: Date.now() + 15 * 60_000,
+    }),
+    'dash:rotate-codes': () => ({ ok: true as const }),
+    'dash:review-agent': ({ agentId, approve }) => {
+      const a = dashMock.agents.find((x) => x.id === agentId);
+      if (!a || a.status !== 'pending') return { ok: false };
+      if (approve) a.status = 'approved';
+      else dashMock.agents = dashMock.agents.filter((x) => x !== a);
+      return { ok: true };
+    },
+    'dash:delete': (d) => {
+      if (d.scope === 'dashboard') {
+        dashMock = { ...dashMock, deleted: true, agents: [] };
+      } else if (d.scope === 'agent') {
+        dashMock.agents = dashMock.agents.filter((a) => a.id !== d.agentId);
+      } else {
+        for (const a of dashMock.agents)
+          if (a.id === d.agentId)
+            a.widgets = a.widgets.filter((w) => w.key !== d.key);
+      }
+      return { ok: true };
+    },
     // ADR 0159: the browser mock has no qrtz-snap; it reports Spectacle's defaults as held (and nothing while off).
     'snap:status': () => {
       const on = isModuleOn(config, 'snap');

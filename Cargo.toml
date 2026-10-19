@@ -47,6 +47,7 @@ base64 = "0.22"
 qrtz-app = { path = "crates/qrtz-app" }
 qrtz-cloexec = { path = "crates/qrtz-cloexec" }
 qrtz-ctrl = { path = "crates/qrtz-ctrl" }
+qrtz-dash = { path = "crates/qrtz-dash" }
 qrtz-helper-bridge = { path = "crates/qrtz-helper-bridge" }
 qrtz-ipc = { path = "crates/qrtz-ipc" }
 qrtz-llm = { path = "crates/qrtz-llm" }

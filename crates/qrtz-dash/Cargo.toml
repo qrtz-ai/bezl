@@ -1,0 +1,15 @@
+[package]
+name = "qrtz-dash"
+description = "Agent Dash (ADR 0228): enrollment, write-only agent API, typed blocks, tombstones, heartbeat, retention. UI-free and transport-free."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+rand = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }

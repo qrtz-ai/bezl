@@ -35,6 +35,9 @@ export const Capability = z.enum([
    * note.read (meetings, transcripts) never reaches the note files.
    */
   'doc.read',
+  /** ADR 0228: Agent Dash's read-only view, and the user's controls (codes, approve, delete). dash's view only. */
+  'dash.read',
+  'dash.manage',
   /** ADR 0083: write a line to the local log (uncaught renderer errors, the audio player's errors). */
   'log.write',
   /** ADR 0083: save a copy of the local logs, or show their folder. */

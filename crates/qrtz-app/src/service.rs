@@ -105,6 +105,8 @@ pub struct AppService {
     relaunch: Relaunch,
     /// ADR 0159: qrtz-snap (its own process in either layout), set once before `start_helper`.
     snap: std::sync::OnceLock<Arc<crate::snap::SnapHost>>,
+    /// ADR 0228: Agent Dash (`dash:*`), in memory.
+    dash: crate::dash_port::DashPort,
     #[cfg(feature = "runtime")]
     calendar: std::sync::OnceLock<Arc<crate::calendar::NanoCalendar>>,
     /// ADR 0220: nano's notes vault (`doc:*`, `vault:*`).
@@ -180,6 +182,7 @@ impl AppService {
             module_sync: std::sync::OnceLock::new(),
             relaunch: Relaunch::default(),
             snap: std::sync::OnceLock::new(),
+            dash: crate::dash_port::DashPort::default(),
             #[cfg(feature = "runtime")]
             calendar: std::sync::OnceLock::new(),
             #[cfg(feature = "runtime")]
@@ -1205,6 +1208,8 @@ impl AppService {
             Some("calendar")
         } else if channel.starts_with("doc:") || channel.starts_with("vault:") {
             Some("vault")
+        } else if channel.starts_with(crate::dash_port::DASH_PREFIX) {
+            Some("dash")
         } else {
             None
         }
@@ -1231,6 +1236,7 @@ impl Handler for AppService {
             }
             Some("runtime") => self.runtime.call(channel, payload).await,
             Some("vault") => self.vault_channel(channel, payload).await,
+            Some("dash") => self.dash.call(channel, &payload),
             Some("storage") => self.storage.call(channel, payload).await,
             Some("talk") => self.talk.call(channel, payload).await,
             Some("app") => self.app_channel(channel, payload, &ctx.sub_app).await,

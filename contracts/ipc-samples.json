@@ -1605,6 +1605,49 @@
         "axTrusted": false
       }
     },
+    "dash:view": {
+      "request": null,
+      "response": {
+        "origin": "https://dash.qrtz.ai",
+        "readmeVersion": "2.1",
+        "deleted": false,
+        "retentionDays": 30,
+        "agents": [],
+        "audit": []
+      }
+    },
+    "dash:issue-code": {
+      "request": null,
+      "response": {
+        "code": "ENR-7F3A-91C2",
+        "expiresAt": 1760660100000
+      }
+    },
+    "dash:rotate-codes": {
+      "request": null,
+      "response": {
+        "ok": true
+      }
+    },
+    "dash:review-agent": {
+      "request": {
+        "agentId": "ag_2",
+        "approve": true
+      },
+      "response": {
+        "ok": true
+      }
+    },
+    "dash:delete": {
+      "request": {
+        "scope": "widget",
+        "agentId": "ag_2",
+        "key": "state-farm"
+      },
+      "response": {
+        "ok": true
+      }
+    },
     "calendar:status": {
       "request": null,
       "response": {
