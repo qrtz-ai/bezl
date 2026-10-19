@@ -1453,3 +1453,58 @@ Talk-only change (`965b990`); the helper does not run talk's cleanup, so `echo-b
    tomorrow": it types "Hey Priya, are you free tomorrow?". Then "Hey Priya has it covered": it types "Hey Priya has
    it covered." (no comma, "."). A name not in the dictionary ("Hey Sam are you free tomorrow") types as before.
 5. If anything reads worse: revert `965b990` (talk-only commit; its vectors and tests go with it).
+
+## 39. Cycle 67: a subject stutter before a negated modal collapses (ADR 0207, `dd2a416`)
+
+| Run                | Exact    | Edit distance     | Regressions | False-positive hits |
+| ------------------ | -------- | ----------------- | ----------- | ------------------- |
+| 08dae4e, 101 cases | 97 / 101 | 42 chars (1.33 %) | -           | 0 / 262             |
+| dd2a416, same 101 | 97 / 101 | 42 chars (1.33 %) | 0           | -                   |
+| 08dae4e, 105 cases | 97 / 105 | 60 chars (1.81 %) | -           | -                   |
+| dd2a416, 105 cases | 101 / 105 | 42 chars (1.27 %) | 0           | 0 / 275             |
+
+Regressions are counted against `08dae4e`'s own output for every case (`polish-baseline.json` then refreshed to
+`dd2a416` in the docs commit); 4 cases better (p102-p105), none worse.
+
+- ADR 0207: "So we, we can't make it to the dinner." → "So we can't make it to the dinner."; also "So we, we cannot
+  join the call this afternoon.", "But they, they won't be ready until Friday.", "We, we shouldn't ship without the
+  tests.". Same sentence-start / opener / comma / lowercase-second-pronoun guards as ADR 0205; modal list gains
+  can't/couldn't/won't/wouldn't/shouldn't/mustn't/mightn't/mayn't/cannot (ASCII and curly apostrophe). "So we, we
+  candidly told them", "So we, we cant make it", "Neither have we, we can't wait", "You and we, we can't share" keep
+  both words. 4 polish positives (k241 moved off the keep set), 14 new keep vectors, 35 new cleanup.json vectors plus
+  2 flipped (Rust and TS same text).
+- Cost (release, box CPU; old and new `cleanup_budget` binaries built one after the other, copied to /tmp,
+  interleaved 15×, median of medians): 495 words 0.110 → 0.126 ms; 504 words ending in a question 0.120 → 0.130 ms;
+  504 words ending in a vocative question 0.123 → 0.136 ms. Noise; ceiling 2 ms.
+- Path review: origin/main had not moved since `08dae4e`; no capture, VAD, model config, drain, insert, pill or
+  timing-log change (talk's cleanup is still the only post-processing, cleanup.rs `rule_cleanup`, run once on the
+  final text). Findings list unchanged; backlog P1-P8 still open.
+
+Still not exact (4 of 105): p15 spoken "comma"/"period", p19/p20 email and URL, p41 a numbered list with a 4-word line.
+
+Rejected this cycle (details in ADR 0207): `shan't`; "cant" without an apostrophe; capitalised modals; reopening
+ADR 0205's rejected openings (you/he/it, any verb, mid-sentence openers, triples, okay/well/hey); p15 (still waiting
+on the Mac check).
+
+Next polish candidates, ranked: (1) p15 spoken "comma"/"period", only after the Mac check in section 36 step 5. (2)
+"Hey Jared did you <verb>" for verbs outside the 25 (needs a closed verb list with its own refusals). When none
+clears the bar, backlog P1 (the local_models test timeout).
+
+### Measurement plan for Jared's Mac (cycle 67; proves no added latency and no worse transcript)
+
+Talk-only change (`dd2a416`); the helper does not run talk's cleanup, so `echo-bench.sh` timings can't move from it.
+
+1. `cd ~/code/qrtz && git pull` (main at or after `dd2a416`).
+2. `cargo test --release -p qrtz-talk --test cleanup_budget --test hardening60 --test hardening67 --test polish_set --
+   --nocapture`: three budget medians well under 0.5 ms (box 0.11-0.14 ms), polish 101/105 exact, regressions 0, all
+   green.
+3. Score the same raw reports with the old cleanup: `git -C ~/code/qrtz worktree add --detach /tmp/qrtz-c66 08dae4e &&
+   cd /tmp/qrtz-c66 && cargo run -q -p qrtz-talk --example echo_score -- ~/qrtz-echo-bench/results/<run>-<stamp>.json`,
+   keep a copy of `<report>.scored.json`, then score again from `~/code/qrtz`. Raw WER identical; formatted WER equal
+   or lower on every clip. `git -C ~/code/qrtz worktree remove /tmp/qrtz-c66`.
+4. Hold fn and say "So we, we can't make it to the dinner" (stumble on "we" on purpose): it types "So we can't make it
+   to the dinner.". Then "So we, we candidly told them": both words stay. Then "Neither have we, we can't wait": both
+   words stay.
+5. If anything reads worse: revert `dd2a416` (talk-only commit; its vectors and tests go with it).
+6. Still open for the next cycle's p15 decision: hold fn and say "Bring the charger comma the cable comma and the
+   adapter period"; note whether Parakeet writes the words or the marks (section 36 step 5).
