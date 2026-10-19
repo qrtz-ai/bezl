@@ -461,18 +461,53 @@ fn a_homoglyph_send_is_still_gated() {
 }
 
 #[test]
-fn an_approval_is_void_when_the_tree_moves_before_acting() {
-    let mut r = mail_send(false, ConfirmAnswer::Approve);
-    // Between the approval and the act, the window changes (the button is now the spoofed one, another sig).
+fn an_approval_is_void_when_the_target_changes_before_acting() {
+    // Approve the toolbar button, then it changes under the approval (another fingerprint): asked again.
+    let mut r = mail_send(true, ConfirmAnswer::Approve);
     r.fake
-        .with(|w| w.state.insert("com.apple.mail".into(), "draft_spoof".into()));
-    // (the menu path: the window behind it moved, so the tree hash differs)
+        .with(|w| w.state.insert("com.apple.mail".into(), "draft".into()));
     assert_eq!(r.drive(), Step::Confirming, "re-asked");
     assert!(r
         .log
         .events()
         .any(|e| matches!(e, Event::ConfirmReverified { ok: false, .. })));
     assert!(!r.acts().iter().any(|a| a.starts_with("press")));
+}
+
+/// Review M1: a full re-read gives out fresh ids (the real helper does, every time). The approval binds to the
+/// element's fingerprint, not its id, so it still acts, once, on the same element under its new handle.
+#[test]
+fn an_approval_survives_a_re_read_with_fresh_ids() {
+    fn renumber(n: &mut qrtz_ctrl::ax::AxNodeWire) {
+        n.id = n.id.replace("e:50:", "e:77:");
+        n.children.iter_mut().for_each(renumber);
+    }
+    let mut r = mail_send(true, ConfirmAnswer::Approve);
+    r.fake.with(|w| {
+        let mail = w
+            .apps
+            .iter_mut()
+            .find(|a| a.bundle_id == "com.apple.mail")
+            .unwrap();
+        let mut fresh = mail.states["draft_spoof"].clone();
+        renumber(&mut fresh);
+        mail.states.insert("draft_fresh".into(), fresh);
+        let mut t = mail.transitions[0].clone();
+        t.on = "press:e:77:2".into();
+        mail.transitions.push(t);
+        w.state.insert("com.apple.mail".into(), "draft_fresh".into());
+    });
+    assert_eq!(
+        r.drive(),
+        Step::Finished(TaskStatus::Done),
+        "{:#?}",
+        decisions(&r.log)
+    );
+    assert_eq!(r.acts().iter().filter(|a| *a == "press:e:77:2").count(), 1);
+    assert!(r
+        .log
+        .events()
+        .any(|e| matches!(e, Event::ConfirmReverified { ok: true, handle: Some(h), .. } if h == "e:77:2")));
 }
 
 #[test]

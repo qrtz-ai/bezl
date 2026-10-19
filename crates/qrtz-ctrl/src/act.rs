@@ -71,6 +71,22 @@ impl Action {
         }
     }
 
+    /// The same action on another element (an approval re-bound after a re-read gave out fresh ids, review M1).
+    pub fn with_handle(&self, h: &str) -> Action {
+        let mut a = self.clone();
+        match &mut a {
+            Action::Press { handle }
+            | Action::SetValue { handle, .. }
+            | Action::Increment { handle }
+            | Action::Decrement { handle }
+            | Action::ShowMenu { handle }
+            | Action::Focus { handle }
+            | Action::Scroll { handle, .. } => *handle = h.to_string(),
+            Action::KeyCombo { .. } | Action::OpenUrl { .. } | Action::OpenApp { .. } => {}
+        }
+        a
+    }
+
     pub fn kind(&self) -> &'static str {
         match self {
             Action::Press { .. } => "press",

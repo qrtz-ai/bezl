@@ -14,6 +14,7 @@ use crate::guard::StopReason;
 use crate::helper::HelperClient;
 use crate::log::{CtrlState, Event, EventLog, Phase, TaskStatus};
 use crate::runner::{Clock, Ran, Runner};
+use sha2::Digest;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -174,11 +175,38 @@ impl Driver<'_> {
     }
 
     fn binding(st: &CtrlState, a: &Action) -> Binding {
+        let t = st.tree.as_ref();
+        // The element acted on, or for a key combo the focused one; a menu item (not in the tree) by its id.
+        let target = a
+            .handle()
+            .map(str::to_string)
+            .or_else(|| t.and_then(|t| t.focused.clone()));
+        // A menu item (not in the tree) or a key combo binds to the item and to the window it acts on: the
+        // window's own role and label and the focused element's fingerprint.
+        let window = |t: &crate::ax::TreeObs| {
+            let f = t
+                .focused
+                .as_deref()
+                .and_then(|f| crate::ax::target_fingerprint(&t.root, f))
+                .unwrap_or_default();
+            format!("{}|{}|{f}", t.root.role, t.root.tokens.join(","))
+        };
+        let fp = match (t, target.as_deref()) {
+            (Some(t), Some(h)) => crate::ax::target_fingerprint(&t.root, h).unwrap_or_else(|| {
+                let d = sha2::Sha256::digest(format!("{h}|{}", window(t)).as_bytes());
+                format!("menu:{}", hex::encode(&d[..8]))
+            }),
+            (Some(t), None) => {
+                let d = sha2::Sha256::digest(window(t).as_bytes());
+                format!("win:{}", hex::encode(&d[..8]))
+            }
+            _ => "-".into(),
+        };
         Binding {
             app: st.app.clone().unwrap_or_default(),
             handle: a.handle().map(str::to_string),
             action: a.binding_key(),
-            tree_hash: st.tree.as_ref().map_or_else(|| "-".into(), |t| t.hash.clone()),
+            tree_hash: fp,
         }
     }
 
@@ -247,13 +275,30 @@ impl Driver<'_> {
                     let gate_id = g.id.clone();
                     self.read_tree(st, app.clone(), None);
                     let now = self.log.state();
-                    let ok = Self::binding(&now, a) == binding && now.tree.as_ref().is_some();
-                    self.push(Event::ConfirmReverified { gate_id, ok });
+                    // Review M1: find the approved element again by its fingerprint (exactly one), not its old id.
+                    let fresh = match (a.handle(), now.tree.as_ref()) {
+                        (Some(_), Some(t)) if !binding.tree_hash.starts_with("menu:") => {
+                            let hits = crate::ax::find_by_fingerprint(&t.root, &binding.tree_hash);
+                            (hits.len() == 1).then(|| hits[0].clone())
+                        }
+                        _ => None,
+                    };
+                    let rebound = fresh.as_deref().map_or_else(|| a.clone(), |h| a.with_handle(h));
+                    let ok = Self::binding(&now, &rebound) == binding && now.tree.as_ref().is_some();
+                    self.push(Event::ConfirmReverified {
+                        gate_id,
+                        ok,
+                        handle: fresh.filter(|_| ok),
+                    });
                     return None;
                 }
                 Some(g) if !g.allows(&binding) => {
                     let gate_id = g.id.clone();
-                    self.push(Event::ConfirmReverified { gate_id, ok: false });
+                    self.push(Event::ConfirmReverified {
+                        gate_id,
+                        ok: false,
+                        handle: None,
+                    });
                     return None;
                 }
                 Some(_) => {}

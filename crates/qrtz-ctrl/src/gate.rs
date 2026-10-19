@@ -394,13 +394,21 @@ pub fn submit_exempt(target: Option<&AxNode>, last: Option<&Action>) -> bool {
     t.focused && matches!(last, Some(Action::KeyCombo { combo, .. }) if normalize_combo(combo) == "cmd+l")
 }
 
-/// What an approval covers: exactly this action on this element in this tree.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// What an approval covers: exactly this action on this element. Review M1: `tree_hash` is the target's
+/// fingerprint ([`crate::ax::target_fingerprint`]: no ids, no values), and equality ignores the handle (a re-read
+/// gives out fresh ids), so an approval survives a re-read of the same window and only that.
+#[derive(Debug, Clone, Eq, Serialize, Deserialize)]
 pub struct Binding {
     pub app: String,
     pub handle: Option<String>,
     pub action: String,
     pub tree_hash: String,
+}
+
+impl PartialEq for Binding {
+    fn eq(&self, o: &Self) -> bool {
+        self.app == o.app && self.action == o.action && self.tree_hash == o.tree_hash
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

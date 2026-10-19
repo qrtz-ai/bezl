@@ -360,6 +360,63 @@ pub fn tree_hash(root: &AxNode) -> String {
     hex::encode(&Sha256::digest(serde_json::to_vec(root).expect("serializes"))[..8])
 }
 
+/// Review M1: what an approval binds to, with no ids and no values: the element's role, subrole, label tokens and
+/// helper fingerprint, the role and label of every ancestor, the enclosing sheet or dialog, and its siblings'
+/// labels. A full re-read gives out fresh ids but the same fingerprint. `None`: the handle isn't in the tree.
+pub fn target_fingerprint(root: &AxNode, handle: &str) -> Option<String> {
+    fn path<'a>(n: &'a AxNode, h: &str, out: &mut Vec<&'a AxNode>) -> bool {
+        out.push(n);
+        if n.id == h || n.children.iter().any(|c| path(c, h, out)) {
+            return true;
+        }
+        out.pop();
+        false
+    }
+    let mut chain = Vec::new();
+    if !path(root, handle, &mut chain) {
+        return None;
+    }
+    let mut h = Sha256::new();
+    let me = chain.last().copied()?;
+    let parent = chain.len().checked_sub(2).map(|i| chain[i]);
+    for n in &chain {
+        h.update(n.role.as_bytes());
+        h.update([0]);
+        h.update(n.subrole.as_deref().unwrap_or("").as_bytes());
+        h.update([0]);
+        h.update(n.tokens.join(",").as_bytes());
+        h.update([1]);
+        if is_dialog(&n.role, n.subrole.as_deref()) {
+            h.update(b"dialog");
+        }
+    }
+    h.update(me.sig.as_bytes());
+    h.update([2]);
+    if let Some(p) = parent {
+        for c in &p.children {
+            if !std::ptr::eq(c, me) {
+                h.update(c.role.as_bytes());
+                h.update(c.tokens.join(",").as_bytes());
+                h.update([3]);
+            }
+        }
+    }
+    Some(hex::encode(&h.finalize()[..8]))
+}
+
+/// Every element with this fingerprint.
+pub fn find_by_fingerprint(root: &AxNode, fp: &str) -> Vec<String> {
+    fn walk(root: &AxNode, n: &AxNode, fp: &str, out: &mut Vec<String>) {
+        if target_fingerprint(root, &n.id).as_deref() == Some(fp) {
+            out.push(n.id.clone());
+        }
+        n.children.iter().for_each(|c| walk(root, c, fp, out));
+    }
+    let mut out = Vec::new();
+    walk(root, root, fp, &mut out);
+    out
+}
+
 pub fn find<'a>(n: &'a AxNode, id: &str) -> Option<&'a AxNode> {
     if n.id == id {
         return Some(n);

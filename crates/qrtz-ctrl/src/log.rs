@@ -89,7 +89,13 @@ pub enum Event {
     ConfirmResolved { gate_id: String, answer: ConfirmAnswer },
     /// Right before acting, the tree was read again: the same (`ok`), or it moved and the gate asks again.
     #[serde(rename = "confirm.reverified")]
-    ConfirmReverified { gate_id: String, ok: bool },
+    ConfirmReverified {
+        gate_id: String,
+        ok: bool,
+        /// Review M1: the approved element's handle in the fresh tree (ids change on every full read).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        handle: Option<String>,
+    },
     #[serde(rename = "action.requested")]
     ActionRequested { action_id: String, action: Action },
     /// The host's policy refused the action before sending it (stale handle, combo not allowed, …).
@@ -667,11 +673,17 @@ pub fn apply(mut s: CtrlState, e: &Event) -> CtrlState {
                 g.answer = Some(*answer);
             }
         }
-        Event::ConfirmReverified { gate_id, ok } => {
+        Event::ConfirmReverified { gate_id, ok, handle } => {
             if s.confirm.as_ref().is_some_and(|g| &g.id == gate_id) {
                 if *ok {
                     if let Some(g) = s.confirm.as_mut() {
                         g.reverified = Some(true);
+                        if let Some(h) = handle {
+                            g.binding.handle = Some(h.clone());
+                        }
+                    }
+                    if let (Some(h), Phase::Act { action }) = (handle, &mut s.phase) {
+                        *action = action.with_handle(h);
                     }
                 } else {
                     s.confirm = None;
