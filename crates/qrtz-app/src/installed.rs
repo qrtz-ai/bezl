@@ -7,8 +7,9 @@
 //! - [`InstalledSpawn`] is how the host runs a module's helper: at every (re)start it reads the lock, takes the
 //!   extension's `extension.entry` from its installed `qrtz.json` under `packages/<name>/<version>/`, and, in a
 //!   release build, checks the executable against the designated requirement the lock pins for it (the install
-//!   already checked signature, team and notarization; this catches a changed file). A module that isn't
-//!   installed, is revoked, or fails the check never starts.
+//!   already checked signature, team and notarization; this catches a changed file), then starts it suspended
+//!   and checks the running code by pid before letting it run (no window between the check and the exec). A
+//!   module that isn't installed, is revoked, or fails either check never runs.
 use qrtz_helper_bridge::{ChildIo, ProcessSpawn, Spawn};
 use qrtz_modules::index::PackageKind;
 use qrtz_modules::qrtz_json::PackageManifest;
@@ -317,15 +318,56 @@ impl InstalledSpawn {
 }
 
 impl Spawn for InstalledSpawn {
+    /// The file is checked first ([`check_launch`]); a release launch then checks the code that is actually running
+    /// too, before it runs a single instruction (Bozniak's 902bcab review, design call (a)): the checked path
+    /// could be swapped between `codesign -R` and the exec, so the helper starts suspended
+    /// (`POSIX_SPAWN_START_SUSPENDED`), the kernel's view of what it mapped is checked by pid against
+    /// [`launch_requirement`], and it gets `SIGCONT`, or `SIGKILL` and an error.
     fn spawn(&self) -> std::io::Result<ChildIo> {
         let program = self.program().map_err(std::io::Error::other)?;
-        ProcessSpawn {
+        let sp = ProcessSpawn {
             program,
             args: self.base.args.clone(),
             env: self.base.env.clone(),
+        };
+        match self.check {
+            LaunchCheck::Dev => sp.spawn(),
+            LaunchCheck::Release => {
+                let want = launch_requirement(&self.module).ok_or_else(|| {
+                    std::io::Error::other(format!("{}: no signing identity for this name", self.module))
+                })?;
+                spawn_checked(&sp, &want)
+                    .map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", self.module)))
+            }
         }
-        .spawn()
     }
+}
+
+/// Start `sp` suspended, check the running code against `requirement`, then let it run (or kill it).
+#[cfg(target_os = "macos")]
+fn spawn_checked(sp: &ProcessSpawn, requirement: &str) -> std::io::Result<ChildIo> {
+    sp.spawn_verified(|pid| check_running_code(pid, requirement))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn spawn_checked(_sp: &ProcessSpawn, _requirement: &str) -> std::io::Result<ChildIo> {
+    Err(std::io::Error::other("module code checks need macOS"))
+}
+
+/// The process `pid` (our own suspended, unreaped child, so the pid can't have been reused) runs valid code that
+/// satisfies `requirement`: `SecCodeCopyGuestWithAttributes` (pid) and `SecCodeCheckValidity`.
+#[cfg(target_os = "macos")]
+pub fn check_running_code(pid: i32, requirement: &str) -> Result<(), String> {
+    use security_framework::os::macos::code_signing::{Flags, GuestAttributes, SecCode, SecRequirement};
+    let mut attrs = GuestAttributes::new();
+    attrs.set_pid(pid);
+    let code = SecCode::copy_guest_with_attribues(None, &attrs, Flags::NONE)
+        .map_err(|e| format!("no running code for pid {pid}: {e}"))?;
+    let req: SecRequirement = requirement
+        .parse()
+        .map_err(|e| format!("requirement doesn't parse: {e}"))?;
+    code.check_validity(Flags::NONE, &req)
+        .map_err(|e| format!("the running code doesn't satisfy its requirement: {e}"))
 }
 
 #[cfg(test)]
@@ -540,6 +582,36 @@ mod tests {
             .program()
             .unwrap_err()
             .contains("not installed"));
+    }
+
+    /// Design call (a): the release launch is the verified one (suspended, checked by pid, then resumed); the
+    /// decision itself is tested in qrtz-helper-bridge's `suspended` module. Here: nothing else, and no
+    /// unchecked spawn, sits on the release path.
+    #[test]
+    fn a_release_launch_checks_the_running_code_before_it_runs() {
+        let src = include_str!("installed.rs");
+        let src = &src[..src.find("#[cfg(test)]").expect("tests")];
+        let body = &src[src.find("impl Spawn for InstalledSpawn").unwrap()..];
+        let body = &body[..body.find("\n}\n").unwrap()];
+        let release = &body[body.find("LaunchCheck::Release =>").unwrap()..];
+        assert!(release.contains("launch_requirement(&self.module)"), "{release}");
+        assert!(release.contains("spawn_checked(&sp, &want)"), "{release}");
+        assert!(
+            !release.contains(".spawn()"),
+            "no unchecked spawn on the release path"
+        );
+        assert!(src.contains("sp.spawn_verified(|pid| check_running_code(pid, requirement))"));
+        if !cfg!(target_os = "macos") {
+            let sp = ProcessSpawn {
+                program: "/bin/true".into(),
+                args: vec![],
+                env: vec![],
+            };
+            assert_eq!(
+                spawn_checked(&sp, "always").err().unwrap().to_string(),
+                "module code checks need macOS"
+            );
+        }
     }
 
     #[test]

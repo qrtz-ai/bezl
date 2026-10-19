@@ -5,6 +5,7 @@ pub mod fdpass;
 pub mod process;
 pub mod protocol;
 pub mod supervisor;
+pub mod suspended;
 
 pub use process::ProcessSpawn;
 pub use protocol::{encode_host_message, message_type, parse_helper_line, protocol};

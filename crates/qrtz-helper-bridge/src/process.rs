@@ -44,13 +44,18 @@ pub fn is_dev_stub(program: &std::path::Path) -> bool {
 #[cfg(unix)]
 fn signal_name(st: &std::process::ExitStatus) -> Option<String> {
     use std::os::unix::process::ExitStatusExt;
-    st.signal().map(|s| match s {
+    st.signal().map(signal_number_name)
+}
+
+/// `SIGKILL`, `SIGTERM`, ... for a signal number (the names the supervisor logs and the UI shows).
+pub(crate) fn signal_number_name(n: i32) -> String {
+    match n {
         9 => "SIGKILL".to_string(),
         15 => "SIGTERM".to_string(),
         6 => "SIGABRT".to_string(),
         11 => "SIGSEGV".to_string(),
         n => format!("SIG{n}"),
-    })
+    }
 }
 #[cfg(not(unix))]
 fn signal_name(_: &std::process::ExitStatus) -> Option<String> {
@@ -155,42 +160,9 @@ impl Spawn for ProcessSpawn {
         // The helper end now lives in the child only.
         let speech = speech.map(|(host, _helper)| host);
         let stdout = child.stdout.take().expect("piped stdout");
-        let mut stdin = child.stdin.take().expect("piped stdin");
+        let stdin = child.stdin.take().expect("piped stdin");
         let stderr = child.stderr.take().expect("piped stderr");
-        let (line_tx, line_rx) = mpsc::unbounded_channel();
-        let (in_tx, mut in_rx) = mpsc::unbounded_channel::<String>();
-        let (exit_tx, exit_rx) = oneshot::channel();
-        let (kill_tx, kill_rx) = oneshot::channel::<()>();
-
-        tokio::spawn(async move {
-            let mut r = BufReader::new(stdout);
-            let mut buf = Vec::new();
-            loop {
-                buf.clear();
-                match r.read_until(b'\n', &mut buf).await {
-                    Ok(0) | Err(_) => break,
-                    Ok(_) => {
-                        if buf.len() > MAX_LINE {
-                            continue;
-                        }
-                        let line = String::from_utf8_lossy(&buf);
-                        let line = line.trim_end_matches(['\n', '\r']).to_owned();
-                        if line_tx.send(line).is_err() {
-                            break;
-                        }
-                    }
-                }
-            }
-        });
-        tokio::spawn(async move {
-            while let Some(line) = in_rx.recv().await {
-                if stdin.write_all(line.as_bytes()).await.is_err() || stdin.flush().await.is_err() {
-                    break;
-                }
-            }
-        });
-        tokio::spawn(log_stderr(stderr));
-        tokio::spawn(async move {
+        Ok(child_io(stdout, stdin, stderr, speech, |kill_rx| async move {
             let status = tokio::select! {
                 s = child.wait() => s,
                 _ = kill_rx => {
@@ -198,7 +170,7 @@ impl Spawn for ProcessSpawn {
                     child.wait().await
                 }
             };
-            let info = match status {
+            match status {
                 Ok(st) => ExitInfo {
                     code: st.code(),
                     signal: signal_name(&st),
@@ -207,15 +179,70 @@ impl Spawn for ProcessSpawn {
                     code: None,
                     signal: Some("EWAIT".into()),
                 },
-            };
-            let _ = exit_tx.send(info);
-        });
-        Ok(ChildIo {
-            lines: line_rx,
-            stdin: in_tx,
-            exit: exit_rx,
-            kill: kill_tx,
-            speech,
-        })
+            }
+        }))
+    }
+}
+
+/// A started child's pipes as the supervisor's [`ChildIo`]: stdout lines in (over-long lines dropped), stdin lines
+/// out, stderr into the log, and `exit` (given the kill switch: resolved when the supervisor kills the child or
+/// drops it) as the exit report. Shared by [`ProcessSpawn::spawn`] and the verified macOS launch
+/// ([`crate::suspended`]).
+pub(crate) fn child_io<R, W, E, F>(
+    stdout: R,
+    mut stdin: W,
+    stderr: E,
+    speech: Option<std::os::fd::OwnedFd>,
+    exit: impl FnOnce(oneshot::Receiver<()>) -> F,
+) -> ChildIo
+where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+    W: tokio::io::AsyncWrite + Unpin + Send + 'static,
+    E: tokio::io::AsyncRead + Unpin + Send + 'static,
+    F: std::future::Future<Output = ExitInfo> + Send + 'static,
+{
+    let (line_tx, line_rx) = mpsc::unbounded_channel();
+    let (in_tx, mut in_rx) = mpsc::unbounded_channel::<String>();
+    let (exit_tx, exit_rx) = oneshot::channel();
+    let (kill_tx, kill_rx) = oneshot::channel::<()>();
+
+    tokio::spawn(async move {
+        let mut r = BufReader::new(stdout);
+        let mut buf = Vec::new();
+        loop {
+            buf.clear();
+            match r.read_until(b'\n', &mut buf).await {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {
+                    if buf.len() > MAX_LINE {
+                        continue;
+                    }
+                    let line = String::from_utf8_lossy(&buf);
+                    let line = line.trim_end_matches(['\n', '\r']).to_owned();
+                    if line_tx.send(line).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+    tokio::spawn(async move {
+        while let Some(line) = in_rx.recv().await {
+            if stdin.write_all(line.as_bytes()).await.is_err() || stdin.flush().await.is_err() {
+                break;
+            }
+        }
+    });
+    tokio::spawn(log_stderr(stderr));
+    let wait = exit(kill_rx);
+    tokio::spawn(async move {
+        let _ = exit_tx.send(wait.await);
+    });
+    ChildIo {
+        lines: line_rx,
+        stdin: in_tx,
+        exit: exit_rx,
+        kill: kill_tx,
+        speech,
     }
 }
