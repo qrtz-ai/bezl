@@ -177,7 +177,16 @@ export function tokensToCssVars(t: Tokens = tokens): Record<string, string> {
   return out;
 }
 
-/** Global stylesheet: vars, reset, focus ring, scrollbars and the qrtz blink/underline motions. */
+/**
+ * Global stylesheet: vars, reset, focus ring, scrollbars and the qrtz blink/underline motions.
+ *
+ * Every page scroll root (`[data-scroll-root]`: the AppFrame main, the onboarding frame) always shows its vertical
+ * scrollbar track (`overflow-y: scroll`), so every page gets the same content width whether it overflows or not.
+ * `scrollbar-gutter: stable` alone is not enough: WebKit (the macOS WKWebView qrtz ships in) ignores it for the
+ * styled `::-webkit-scrollbar` below, which always takes 10px of layout on macOS, so a page that scrolled (the qrtz
+ * page) lost 10px and its centered 880px column moved 5px against one that didn't. The thumb only draws when the
+ * page actually scrolls; the track is transparent.
+ */
 export function globalCss(t: Tokens = tokens, fontUrl?: string): string {
   const vars = Object.entries(tokensToCssVars(t))
     .map(([k, v]) => `${k}:${v};`)
@@ -194,6 +203,7 @@ h1,h2,h3,h4,h5,h6,strong,b,th{font-weight:inherit;}
 :focus-visible{outline:var(--q-focus-width) var(--q-focus-style) var(--q-color-ring)!important;outline-offset:var(--q-focus-offset)!important;}
 [data-q-no-ring]:focus-visible{outline:none!important;}
 ::selection{background:var(--q-color-selection);}
+[data-scroll-root]{overflow-y:scroll!important;scrollbar-gutter:stable;}
 ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:var(--q-color-scrollbar);border-radius:9999px;border:2px solid transparent;background-clip:content-box}
 @keyframes q-blink{0%,49%{opacity:1}50%,100%{opacity:0}}
 @keyframes q-spin{to{transform:rotate(360deg)}}

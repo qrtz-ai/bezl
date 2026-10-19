@@ -143,7 +143,9 @@ export function AppFrame({
           minWidth: 0,
           minHeight: 0,
           overflowX: 'hidden',
-          overflowY: 'auto',
+          // Always a scrollbar track, so every page has the same width (see globalCss: WebKit ignores
+          // scrollbar-gutter for the styled scrollbar).
+          overflowY: 'scroll',
           overscrollBehavior: 'none',
           scrollbarGutter: 'stable',
         }}
@@ -269,7 +271,8 @@ export function SideNav({
  * The one page geometry every routed view shares, so nothing moves when you switch pages in the sidebar:
  * content column max 880px, centered in the main area; 40px top (level with the sidebar's first row), 32px
  * gutters, 48px bottom; a 40px header row (title left, actions right); 24px between sections. Pages never
- * scroll sideways (the AppFrame main scrolls vertically only and keeps a stable scrollbar gutter).
+ * scroll sideways (the AppFrame main scrolls vertically only and always reserves its scrollbar track, so a page
+ * that overflows and one that doesn't have the same column).
  */
 export const PAGE = {
   maxWidth: 880,
