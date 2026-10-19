@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+## 0.2.3 (2026-10-19)
+
+- docs: renumber the notch surface ADR to 0221 (0218 was taken by the resumable-download ADR) (ef27730c)
+- notch surface: echo's pill becomes one client of a shared, host-driven notch surface (Jared; ADR 0218) (7f518b62)
+- e2e: ctrl asks for accessibility only (no automation row); format run.ts (066b58a0)
+- ctrl: a stop without the watcher names what's missing: accessibility, input monitoring or secure input ((d)) (0e767fb2)
+- ctrl: fingerprint ancestry built once per walk, window title left out (H-D); only a hardware ctrl makes ctrl+fn (M-E) (2a8fb609)
+- ctrl+fn: a timed-out final runs nothing and is never delivered late (H-C); a refused ctrl:do corrects the pill (b7e958ee)
+- ctrl do: arm the stop key at every drive start (H-A), web/floating dialogs (H-B), cmd-L exemption only in browsers, ADR 0214 refs (663a4d2c)
+- docs: nano notes app ADR is 0219 (0218 was taken by download crash recovery) (184ac94f)
+- nano notes: a real notes app (list, search, new, full-height autosaving editor, confirm delete) over the existing note channels (ADR 0218) (36fc077f)
+- modules: a download cut short by a crash or a kill resumes cleanly (backlog P2, ADR 0218). fetch.rs: each range mark is one write (writeln! was two: digits,… (b88bae32)
+- copy: user-facing 'settings' becomes 'opts' (strings only) (361e154f)
+- nano calendar host: sync, calendar:* channels, titles from the overlapping event, start prompt (ADR 0217) (2b512353)
+- nano helper: EventKit calendar reader, read-only (ADR 0217) (190b7ffc)
+- helper protocol: calendar.check/request/read -> calendar.access/events/changed (ADR 0217) (22872366)
+- nano calendar: ADR 0217 (Apple Calendar via EventKit, read-only, offline); storage refs renumbered from 0216 (taken by ctrl+fn), migration 6 sha updated (2318c498)
+- echo/ctrl: ctrl+fn records through echo's dictation and runs the words as ctrl do, never inserting them (ADR 0216; ADR 0214 review amendment) (85a126ff)
+- chore: oxfmt and rustfmt the ctrl review files (134d5184)
+- nano calendar storage: migration 6 (calendar_calendars, calendar_events, meetings.calendar_event_id; ADR 0216) (566c9547)
+- ctrl do: one generated secure-word list, Luhn and URL scrubbing, richer fingerprints, helper-side open and clipboard limits (review H4, M2, low) (663fdac5)
+- ctrl do: approvals bind to the target's fingerprint, not ids, and re-bind after a fresh read (review M1) (fab458c5)
+- ctrl do gate: dialogs, ancestors and unlabeled buttons confirm; every submit confirms; non-empty fields and menu-shortcut combos inherit rules (review H1, H2… (1b2842ed)
+- ctrl do: no backtrack once an action ran; a failed check hands back (review (b), ruling 2) (ad08602d)
+- fix(helper): restore Package.resolved pin (a5f5c5a, audit P1-5) (f8d370b1)
+- ctrl: accessibility only; drop automation, files-and-folders and qrtz-ctrl's Apple Events entitlement (ADR 0214 review) (b156d8b1)
+- ctrl do: stop latched per run, helper refuses after a stop, focus checked before typing (review C1, C2, H3, M5, M6, (c), (d)) (6006bf0f)
+- docs: the revocation ADR is 0215 (0214 was taken by ctrl do in 2e34980) (06796c3b)
+- modules: revoke nano 0.2.0/0.2.1 through modules/revoked.json; publish.sh --only and a side-effect-free --out-only (ADR 0214) (8db3f16a)
+
 ## 0.2.2 (2026-10-19)
 
 - **update test release:** exercises the in-app update from 0.2.1 (settings → qrtz → update, then restart to update).
