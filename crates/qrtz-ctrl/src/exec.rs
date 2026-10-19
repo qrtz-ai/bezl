@@ -56,9 +56,9 @@ pub enum HoldReason {
     /// ADR 0125: a folder ctrl has no routes for yet (Documents). The run stops and says so; nothing is read or
     /// moved, and no question is left open that no answer could settle.
     FolderNotYet,
-    /// ADR 0157: the "qrtz Set Focus" shortcut isn't there; the view says "set up the shortcut". No fallback.
+    /// ADR 0158: the "qrtz Set Focus" shortcut isn't there; the view says "set up the shortcut". No fallback.
     FocusNoShortcut,
-    /// ADR 0157: Automation for Shortcuts Events is denied; the view says "allow automation". No fallback.
+    /// ADR 0158: Automation for Shortcuts Events is denied; the view says "allow automation". No fallback.
     AutomationDenied,
 }
 
@@ -97,7 +97,7 @@ fn chosen_opt(s: &CtrlState, node: Node) -> Option<&crate::decide::Opt> {
 /// ADR 0155: the only move offered for "turn on do not disturb" / "turn off focus". It plans nothing: the executor
 /// holds the run with `no-route` (asked out) and sends nothing to the helper.
 pub const FOCUS_HOLD_MOVE: &str = "route.system.focus_hold";
-/// ADR 0157: `route.system.focus.<mode>` (a [`FocusMode`] spelling) runs the focus shortcut.
+/// ADR 0158: `route.system.focus.<mode>` (a [`FocusMode`] spelling) runs the focus shortcut.
 pub const FOCUS_MOVE_PREFIX: &str = "route.system.focus.";
 
 /// The step a plan's move maps to. Pure.
@@ -110,7 +110,7 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
     if mv == FOCUS_HOLD_MOVE {
         return Some(Step::Hold(HoldReason::NoRoute));
     }
-    // ADR 0157: the user's "qrtz Set Focus" shortcut through Shortcuts Events. The mode is parsed strictly from the
+    // ADR 0158: the user's "qrtz Set Focus" shortcut through Shortcuts Events. The mode is parsed strictly from the
     // move id (an option the layers made, never the task's text); anything else holds before the helper is asked.
     if let Some(m) = mv.strip_prefix(FOCUS_MOVE_PREFIX) {
         let Some(mode) = FocusMode::parse(m) else {
@@ -1233,7 +1233,7 @@ impl Driver<'_> {
                     }
                     BacktrackReason::VerifyFailed
                 }
-                // ADR 0157: a missing focus shortcut or denied Automation stops the run with what to do; nothing
+                // ADR 0158: a missing focus shortcut or denied Automation stops the run with what to do; nothing
                 // else is tried (no CLI, no osascript, no other route).
                 RunOutcome::Failed { ref err, .. }
                     if routes

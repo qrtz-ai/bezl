@@ -24,7 +24,7 @@ import {
 } from '@qrtz/core';
 
 /**
- * ADR 0157: the dev mock's stand-in for "has the user made the qrtz Set Focus shortcut": `?mockFocusShortcut=1`
+ * ADR 0158: the dev mock's stand-in for "has the user made the qrtz Set Focus shortcut": `?mockFocusShortcut=1`
  * (made), `=denied` (Automation denied), absent (not made yet).
  */
 const focusShortcut = (): 'missing' | 'ready' | 'denied' => {
@@ -297,7 +297,7 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
       opt('route.system.unmute', 'turn the sound output back on', 0.97),
     ]),
   ],
-  // ADR 0157: the user's "qrtz Set Focus" shortcut through Shortcuts Events, with a mode from a closed set.
+  // ADR 0158: the user's "qrtz Set Focus" shortcut through Shortcuts Events, with a mode from a closed set.
   focus_mode: [
     act('choose_move', [
       opt('route.system.focus.do_not_disturb', 'turn on do not disturb', 0.97),
@@ -761,7 +761,7 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
       (intent === 'focus_mode' || intent === 'focus_off') &&
       focusShortcut() !== 'ready'
     ) {
-      // ADR 0157: the shortcut isn't made yet (or Automation is denied): the run stops and says what to do; no
+      // ADR 0158: the shortcut isn't made yet (or Automation is denied): the run stops and says what to do; no
       // fallback is tried.
       push(r, 'exec.held', {
         held:

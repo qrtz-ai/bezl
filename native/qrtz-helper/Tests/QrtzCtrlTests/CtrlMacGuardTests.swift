@@ -27,6 +27,14 @@ private func describe(_ s: UiSnapshot) -> String {
 }
 
 final class CtrlMacGuardTests: XCTestCase {
+    /// ADR 0141 (run 35): the active tests post key events (to this test process) or open TextEdit / press AX actions,
+    /// so a plain `swift test` on a Mac is read-only too, not only scripts/ctrl/mac-check/run.sh's --skip.
+    private func requireActive() throws {
+        guard ProcessInfo.processInfo.environment["QRTZ_CTRL_MAC_ACTIVE"] == "1" else {
+            throw XCTSkip("active Mac check: set QRTZ_CTRL_MAC_ACTIVE=1 (read-only by default)")
+        }
+    }
+
     func testProbeReadsTheSessionWithoutPrompting() {
         let s = fresh()
         print("[ctrl-probe] axTrusted=\(CtrlProbe.axTrusted) postEvent=\(CtrlProbe.postEventAllowed) secureInput=\(CtrlProbe.secureInput) \(describe(s))")
@@ -62,6 +70,7 @@ final class CtrlMacGuardTests: XCTestCase {
     /// Rung 5's precondition: a private event source doesn't leak modifiers into the session's key state.
     /// Posts ⌘F19 (bound to nothing) to this test process itself, so no other app can act on it.
     func testPrivateSourceKeyEventsDontTouchTheUsersModifierState() throws {
+        try requireActive()
         let flagsBefore = CGEventSource.flagsState(.combinedSessionState)
         let me = ProcessInfo.processInfo.processIdentifier
         let r = CtrlGuard.guarded(probe: fresh) {
@@ -87,6 +96,7 @@ final class CtrlMacGuardTests: XCTestCase {
     /// Rungs 2 + 4: open a document in TextEdit without activating it, then close its window with AXPress on the
     /// close button. Needs Accessibility trust for the AX half.
     func testBackgroundTextEditOpenAndAXCloseDontTakeOver() throws {
+        try requireActive()
         guard CtrlProbe.axTrusted else {
             throw XCTSkip("ctrl AX check skipped: this test process has no Accessibility trust (AXIsProcessTrusted() == false). Run on a Mac with the terminal trusted; see docs/ctrl/LOG.md")
         }
@@ -210,6 +220,7 @@ final class CtrlMacGuardTests: XCTestCase {
 
     /// The executor refuses forbidden AX actions before they reach the target.
     func testForbiddenAXActionsAreRefusedBeforeTheCall() throws {
+        try requireActive()
         guard CtrlProbe.axTrusted else { throw XCTSkip("needs Accessibility trust (AXIsProcessTrusted() == false)") }
         let finder = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder").first
         guard let finder else { throw XCTSkip("Finder is not running") }

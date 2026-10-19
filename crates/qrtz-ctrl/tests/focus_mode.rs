@@ -1,4 +1,4 @@
-//! ADR 0155 / 0157: "turn on do not disturb" / "turn off focus", end to end on Linux through the `ctrl:*` channels
+//! ADR 0155 / 0158: "turn on do not disturb" / "turn off focus", end to end on Linux through the `ctrl:*` channels
 //! to the `FakeHelper`. The route is the user's one "qrtz Set Focus" shortcut run through Shortcuts Events with a
 //! mode from a closed set: without the shortcut the run stops with `focus.no_shortcut` (the view says "set up the
 //! shortcut"), without Automation with `automation.denied` ("allow automation"), and with both it sets the Focus.

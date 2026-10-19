@@ -141,7 +141,7 @@ public final class MacCtrlBackend: CtrlBackend {
         }
         // ADR 0137: System Events is background-only (not in `ids`); checked without asking, only while it runs.
         if let c = Self.automation(CtrlRoute.systemEvents) { automation[CtrlRoute.systemEvents] = c }
-        // ADR 0157: read-only (never asks); the prompt comes on the first focus run.
+        // ADR 0158: read-only (never asks); the prompt comes on the first focus run.
         if let c = Self.automation(CtrlFocus.target) { automation[CtrlFocus.target] = c }
         var env: [String: Any] = [
             "secure_input": CtrlProbe.secureInput,
@@ -265,7 +265,7 @@ public final class MacCtrlBackend: CtrlBackend {
         return r
     }
 
-    /// ADR 0157: like `runScript`, but the error number decides the code ("set up the shortcut" / "allow automation").
+    /// ADR 0158: like `runScript`, but the error number decides the code ("set up the shortcut" / "allow automation").
     static func runFocus(_ source: String) throws {
         var code: Int?
         var failed = false
@@ -350,7 +350,7 @@ public final class MacCtrlBackend: CtrlBackend {
                 _ = a.unhide()
             }
         case let .setFocus(mode):
-            // ADR 0157: one `run` event to Shortcuts Events (faceless: no activation, no window, no key event), the
+            // ADR 0158: one `run` event to Shortcuts Events (faceless: no activation, no window, no key event), the
             // name from the allowlist, the input the enum's raw value. The first run asks for Automation (the
             // system's own prompt, the first time a task needs it). A missing shortcut or a denial stops here.
             guard let src = CtrlFocus.source(shortcut: CtrlFocus.shortcutName, mode: mode) else { throw CtrlFailure("policy.refused") }
@@ -393,7 +393,7 @@ public final class MacCtrlBackend: CtrlBackend {
         // ADR 0140: the level in this process; nil when muted or without a volume.
         case "output_volume": return (try? Self.runScript(Self.outputVolumeSource)).map { Int($0.int32Value) }.flatMap { $0 < 0 ? nil : $0 }
         // ADR 0137: the global appearance, read in this process (no app asked, no prompt): "Dark" or absent.
-        // ADR 0157: not read (INFocusStatusCenter would be another prompt); the run's verify is the shortcut's reply.
+        // ADR 0158: not read (INFocusStatusCenter would be another prompt); the run's verify is the shortcut's reply.
         case "focus_on": return nil
         case "dark_mode": return CtrlAppearance.isDark(UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)) ? 1 : 0
         case "tab_count":

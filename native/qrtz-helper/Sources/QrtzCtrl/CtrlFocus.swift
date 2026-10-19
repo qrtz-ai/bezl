@@ -1,4 +1,4 @@
-// ADR 0157: the focus / do not disturb route, the plain-data half (Foundation-only, tested on Linux). ctrl runs one
+// ADR 0158: the focus / do not disturb route, the plain-data half (Foundation-only, tested on Linux). ctrl runs one
 // shortcut the user made once, "qrtz Set Focus", through Shortcuts Events (`com.apple.shortcuts.events`, a faceless
 // agent: no activation, no window, no key event), with a mode from a closed set as its input. Bozniak's amendments:
 // the target is that bundle id only; the name is a compile-time constant on an in-code allowlist; the mode is a strict

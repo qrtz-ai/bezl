@@ -92,20 +92,20 @@ pub enum WorkspaceOp {
     /// `set volume output volume N` then `set volume without output muted`, in the helper's own process, same rules
     /// as mute: no app told anything, no HUD, no key event). Reversible, no gate.
     SetVolume { level: u8 },
-    /// ADR 0157: run the one shortcut [`FOCUS_SHORTCUT`] through Shortcuts Events (`com.apple.shortcuts.events`, a
+    /// ADR 0158: run the one shortcut [`FOCUS_SHORTCUT`] through Shortcuts Events (`com.apple.shortcuts.events`, a
     /// faceless agent: no activation, no window, no key event) with `mode` as its input. The user makes the shortcut
     /// once; without it the helper answers `focus.no_shortcut`, without Automation `automation.denied`, and stops.
     /// Reversible, no gate.
     SetFocus { mode: FocusMode },
 }
 
-/// ADR 0157 (Bozniak's amendment 2): the only shortcut ctrl runs. A compile-time constant, never from settings, the
+/// ADR 0158 (Bozniak's amendment 2): the only shortcut ctrl runs. A compile-time constant, never from settings, the
 /// protocol or model output; another name needs an entry in [`FOCUS_SHORTCUTS`] and an ADR note.
 pub const FOCUS_SHORTCUT: &str = "qrtz Set Focus";
 /// The in-code allowlist of shortcut names (one today).
 pub const FOCUS_SHORTCUTS: &[&str] = &[FOCUS_SHORTCUT];
 
-/// ADR 0157 (amendment 3): the shortcut's input. A closed set: no free text from a transcript, a model, Laya or the
+/// ADR 0158 (amendment 3): the shortcut's input. A closed set: no free text from a transcript, a model, Laya or the
 /// clipboard ever becomes the input. `Off` turns the current Focus off.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -156,7 +156,7 @@ impl FocusMode {
     }
 }
 
-/// ADR 0157: a shortcut name ctrl may run (exact match against the allowlist).
+/// ADR 0158: a shortcut name ctrl may run (exact match against the allowlist).
 pub fn shortcut_allowed(name: &str) -> bool {
     FOCUS_SHORTCUTS.contains(&name)
 }

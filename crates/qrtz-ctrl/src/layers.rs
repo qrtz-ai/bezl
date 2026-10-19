@@ -1240,7 +1240,7 @@ fn move_question(
         "show_app" => vec![route("workspace.show_app", 4500)],
         // ADR 0155: no background route to set a Focus (no public API; the Shortcuts CLI needs a shortcut the user
         // makes and a process ctrl doesn't spawn yet), so the one move is a hold: asked out, nothing touched.
-        // ADR 0157: the approved route, the user's one "qrtz Set Focus" shortcut through Shortcuts Events, with the
+        // ADR 0158: the approved route, the user's one "qrtz Set Focus" shortcut through Shortcuts Events, with the
         // mode from a closed set (never the task's words themselves). Off when the task says so.
         "focus_mode" => {
             let off = has(toks, &["off", "disable", "stop", "end"]);
@@ -1615,7 +1615,7 @@ pub fn label(o: &Opt, goal: Option<&Goal>) -> String {
     }
 }
 
-/// ADR 0157: the Focus a task names, from a closed list of words; do not disturb when it names none.
+/// ADR 0158: the Focus a task names, from a closed list of words; do not disturb when it names none.
 pub(crate) fn focus_mode_of(toks: &[Tok]) -> crate::ladder::FocusMode {
     use crate::ladder::FocusMode as F;
     let table: [(&[&str], F); 8] = [
