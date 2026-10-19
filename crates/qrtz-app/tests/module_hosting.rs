@@ -241,6 +241,18 @@ async fn publish_serve_refresh_plan_and_install_a_tree_over_localhost() {
     let again = c.plan(echo()).unwrap();
     assert!(again.fetch.is_empty() && again.changes.is_empty());
     // Remove and prune: the dirs and the blobs go.
+    // ADR 0174: echo is bundled; neither the Extensions screen nor the `qrtz` command plans it as a package.
+    for op in [
+        Op::Install(vec![("echo".into(), None)]),
+        Op::Remove(vec!["echo".into()]),
+        Op::Update {
+            names: vec!["echo".into()],
+            latest: true,
+        },
+    ] {
+        let e = c.plan(op).unwrap_err().to_string();
+        assert!(e.contains("built into qrtz.app"), "{e}");
+    }
     let rm = c.plan(Op::Remove(vec!["nano".into()])).unwrap();
     c.apply(&rm, &rm.consent(), w.now, &no_progress).await.unwrap();
     let p = c.prune().unwrap();

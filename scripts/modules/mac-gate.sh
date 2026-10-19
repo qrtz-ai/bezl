@@ -4,16 +4,18 @@
 # Needs no network: the probe (scripts/modules/gate-probe.swift) is compiled with plain swiftc (Xcode or the Command
 # Line Tools; no SwiftPM, no FluidAudio, no package download), signed locally with --timestamp=none, and launched
 # through LaunchServices (`open`). Stand-ins: ai.qrtz.gate.host-probe plays qrtz.app (the app's TCC entitlements),
-# ai.qrtz.gate.inference-probe a sandboxed inference XPC service, and a bare signed helper binary under
+# and a bare signed helper binary under
 # $QRTZ_GATE_DIR/extensions plays a downloaded extension's helper, which the host spawns. Gate (h) then runs on every
 # module the real installer put under qrtz's data dir (ADR 0169: qrtz ships empty; install one from the marketplace or
 # with `qrtz install snap`): its qrtz.lock entry, its Developer ID requirement for team MR26CCZ496, its notarized cdhash
-# and its read-only package dir must all hold, so a locally built helper never stands in for it. Checks that need the
-# voice service or the real bundles SKIP with the reason.
+# and its read-only package dir must all hold, so a locally built helper never stands in for it. Gate (h) also runs
+# bundled echo (ADR 0174: qrtz.app/Contents/MacOS/qrtz-echo, no lock entry) once it is a plain file in the signed app
+# satisfying its Developer ID requirement for ai.qrtz.echo, team MR26CCZ496. Checks that need a real bundle SKIP with
+# the reason.
 #
-# Gates: (c) inference XPC has no network, (d) signing identity, (f) voice service isolation, (g) sideload freshness,
-# (h) an extension helper spawned by the host is attributed to qrtz. (a), (b) and (e) were per-module TCC checks and
-# are RETIRED by ADR 0154 (Jared chose one qrtz entry in Privacy settings).
+# Gates: (d) signing identity, (g) sideload freshness, (h) an extension helper spawned by the host is attributed to
+# qrtz. (a), (b) and (e) were per-module TCC checks and are RETIRED by ADR 0154 (Jared chose one qrtz entry in Privacy
+# settings); (c) and (f) checked the inference XPC services, which ADR 0174 cut from v1 (RETIRED).
 #
 # Usage: scripts/modules/mac-gate.sh [--interactive]
 #   --interactive  the probes may prompt (Accessibility), and the script waits while you grant in System Settings;
@@ -25,7 +27,7 @@
 #   QRTZ_GATE_DIR       where the probe bundles live (default ~/qrtz-gate; keep it stable so TCC grants persist)
 #   QRTZ_DATA_DIR       qrtz's data dir, where qrtz.lock and packages/ are (default QRTZ_USER_DATA, else
 #                       ~/Library/Application Support/ai.qrtz.desktop)
-#   QRTZ_VOICE_SERVICE  the voice inference XPC mach service name (default ai.qrtz.inference.voice)
+#   QRTZ_APP            the signed qrtz.app whose bundled echo gate (h) runs (default /Applications/qrtz.app)
 set -uo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -47,10 +49,12 @@ g_retired() {
   retired "(a)" "per-module Accessibility separation: given up by choice, extensions share qrtz's grants (ADR 0154)"
   retired "(b)" "ctrl can't open the mic: extensions share qrtz's grants, module switches are in-app policy (ADR 0154)"
   retired "(e)" "only ctrl may send Apple Events: extensions share qrtz's grants (ADR 0154)"
+  retired "(c)" "inference XPC has no network: no inference XPC service ships in v1 (inference.voice cut, ADR 0174)"
+  retired "(f)" "voice service isolation: no voice inference service in v1 (inference.voice cut, ADR 0174)"
 }
 g_skip_all() {
   g_retired
-  for g in c d f g h; do skip "($g)" "$1"; done
+  for g in d g h; do skip "($g)" "$1"; done
 }
 
 echo "qrtz module confinement gates (ADR 0144, amended by ADR 0154)"
@@ -65,7 +69,7 @@ fi
 
 gate_dir="${QRTZ_GATE_DIR:-$HOME/qrtz-gate}"
 data_dir="${QRTZ_DATA_DIR:-${QRTZ_USER_DATA:-$HOME/Library/Application Support/ai.qrtz.desktop}}"
-voice="${QRTZ_VOICE_SERVICE:-ai.qrtz.inference.voice}"
+qrtz_app="${QRTZ_APP:-/Applications/qrtz.app}"
 # Jared's Developer ID (ADR 0170: the team every release path pins). `${VAR-default}`: set to "" for ad-hoc.
 release_team="MR26CCZ496"
 sign_id="${QRTZ_GATE_SIGN_ID-Developer ID Application: Jared Grimes ($release_team)}"
@@ -97,7 +101,7 @@ plist_bool_dict() { # key... -> plist with each key true
   for k in "$@"; do printf '  <key>%s</key><true/>\n' "$k"; done
   printf '</dict></plist>\n'
 }
-make_bundle() { # $1 = role (host|inference), $2.. = entitlements set true
+make_bundle() { # $1 = role (host), $2.. = entitlements set true
   local role="$1" id="ai.qrtz.gate.$1-probe"
   shift
   local app="$gate_dir/$id.app"
@@ -134,7 +138,6 @@ make_bundle host com.apple.security.device.audio-input com.apple.security.automa
   g_skip_all "codesign failed"
   exit 1
 }
-make_bundle inference com.apple.security.app-sandbox
 # A downloaded extension's helper: a bare binary outside the host bundle, with its own signing identifier and the
 # hardened-runtime entitlements its process needs (entitlements are per process; TCC grants are qrtz's, ADR 0154).
 ext_dir="$gate_dir/extensions/echo"
@@ -156,10 +159,8 @@ probe() {
   local role="$1" id="ai.qrtz.gate.$1-probe"
   shift
   local out="$gate_dir/build/$role.out"
-  [[ "$role" == "inference" ]] && out="$HOME/Library/Containers/$id/Data/qrtz-gate-probe.out"
   rm -f "$out"
-  local extra=()
-  [[ "$role" != "inference" ]] && extra=(--out "$out")
+  local extra=(--out "$out")
   # ${a[@]+"${a[@]}"}: macOS's bash 3.2 treats an empty array as unset under set -u.
   open -n -W -g -a "$gate_dir/$id.app" --args ${extra[@]+"${extra[@]}"} "$@" >/dev/null 2>&1
   [[ -f "$out" ]] && cat "$out" || echo "probe $1 error=no-output"
@@ -218,7 +219,8 @@ not_installed_by_qrtz() { # $1 = id, $2 = path, $3 = source, $4 = lock requireme
   true
 }
 real_modules=() # "<id>\t<path>\t<version>" for each verified install
-for m in snap ctrl echo nano; do
+# echo is bundled (ADR 0174): never from the lock, see bundled_echo below.
+for m in snap ctrl nano; do
   line="$(installed_module "$m")"
   if [[ -z "$line" ]]; then
     info "" "$m: not installed under $data_dir"
@@ -233,6 +235,26 @@ for m in snap ctrl echo nano; do
     info "" "$m $ver: installed by qrtz ($src), team $release_team, notarized cdhash $cdh; entitlements: $(codesign -d --entitlements - --xml "$bin" 2>/dev/null | tr -d '\n' | grep -oE '<key>[^<]+</key><true/>' | sed -E 's/<key>([^<]+).*/\1/' | tr '\n' ' ')"
   fi
 done
+# Bundled echo (ADR 0174): qrtz.app/Contents/MacOS/qrtz-echo, a plain file (no symlink) in a signed qrtz.app, satisfying
+# the requirement rebuilt from its name and team (never read from a lock). Empty = it is.
+not_bundled_by_qrtz() { # $1 = path
+  local macos
+  macos="$(dirname "$1")"
+  [[ -d "$qrtz_app" ]] || { echo "no qrtz.app at $qrtz_app (set QRTZ_APP)"; return; }
+  [[ -L "$qrtz_app" || -L "$qrtz_app/Contents" || -L "$macos" || -L "$1" ]] && { echo "a symlink on the way to $1"; return; }
+  [[ -f "$1" ]] || { echo "$1 is missing or not a plain file"; return; }
+  codesign --verify --strict "$qrtz_app" >/dev/null 2>&1 || { echo "$qrtz_app doesn't verify"; return; }
+  codesign --verify --strict "-R=$(module_requirement echo)" "$1" >/dev/null 2>&1 || { echo "$1 doesn't satisfy ai.qrtz.echo's release requirement"; return; }
+  true
+}
+echo_bin="$qrtz_app/Contents/MacOS/qrtz-echo"
+why="$(not_bundled_by_qrtz "$echo_bin")"
+if [[ -n "$why" ]]; then
+  info "" "echo (bundled): not used for gate (h): $why"
+else
+  real_modules+=("echo"$'\t'"$echo_bin"$'\t'"bundled")
+  info "" "echo (bundled in $qrtz_app), team $release_team; entitlements: $(codesign -d --entitlements - --xml "$echo_bin" 2>/dev/null | tr -d '\n' | grep -oE '<key>[^<]+</key><true/>' | sed -E 's/<key>([^<]+).*/\1/' | tr '\n' ' ')"
+fi
 
 # ---- (h) an extension helper spawned by the host is attributed to qrtz -------------------------------------------
 # ADR 0154: qrtz spawns an extension's helper (no LaunchServices), so TCC charges the helper's requests to qrtz: it
@@ -272,7 +294,7 @@ gate_h() {
   # (`--qrtz-gate-probe ax` runs before anything else in every module executable), so it also shows the helper runs
   # from <data>/packages/.
   if ((${#real_modules[@]} == 0)); then
-    skip "(h)" "no module installed through the marketplace under $data_dir (install snap or ctrl from the marketplace, or \`qrtz install snap\`, and rerun); a locally built helper doesn't count"
+    skip "(h)" "no bundled echo in a signed $qrtz_app and no module installed through the marketplace under $data_dir (install snap or ctrl from the marketplace, or \`qrtz install snap\`, and rerun); a locally built helper doesn't count"
   fi
   local r id bin ver rc
   for r in ${real_modules[@]+"${real_modules[@]}"}; do
@@ -286,7 +308,7 @@ gate_h() {
     fi
     rc="$(cat "$out")"
     if [[ "$(field "$rc" trusted)" == "true" ]]; then
-      pass "(h)" "$id $ver, installed by qrtz's installer and run from its package dir by the host: AXIsProcessTrusted=true from qrtz's grant (ai.qrtz.$id has no Privacy entry of its own)"
+      pass "(h)" "$id $ver, installed by qrtz's installer (or bundled in qrtz.app) and run by the host: AXIsProcessTrusted=true from qrtz's grant (ai.qrtz.$id has no Privacy entry of its own)"
     else
       fail "(h)" "$id $ver (installed) spawned by the granted host is not trusted ($rc): ADR 0154's single entry doesn't hold for real modules"
     fi
@@ -297,38 +319,6 @@ gate_h() {
   info "(h)" "mic status: host=$(field "$(probe host mic)" status) extension helper=$(field "$(cat "$out" 2>/dev/null)" status) (should match)"
   # Contrast (not a gate): the same helper run from this shell is attributed to the terminal, not to qrtz.
   info "(h)" "run from this shell instead (attributed to the terminal): $("$ext_bin" ax --out /dev/null | tr -d '\n')"
-}
-
-# ---- (c) an inference XPC service has no network -------------------------------------------------------------------
-gate_c() {
-  local i e port=9
-  i="$(probe inference socket "$port")"
-  e="$(probe host socket "$port")"
-  local it iu
-  it="$(field "$i" tcp)"
-  iu="$(field "$i" udp)"
-  if [[ -z "$it" ]]; then
-    fail "(c)" "no sandboxed probe result: $i"
-  elif [[ "$it" =~ ^(EPERM|EACCES|socket-EPERM|socket-EACCES)$ && "$iu" =~ ^(EPERM|EACCES|socket-EPERM|socket-EACCES)$ ]]; then
-    pass "(c)" "sandboxed stand-in (app-sandbox, no network.client): loopback tcp=$it udp=$iu; unsandboxed host probe got tcp=$(field "$e" tcp)"
-  else
-    fail "(c)" "sandboxed stand-in reached the network stack: tcp=$it udp=$iu"
-  fi
-  local x
-  x="$(find "$data_dir/packages" -maxdepth 6 -name 'ai.qrtz.inference.*.xpc' -print -quit 2>/dev/null)"
-  if [[ -z "$x" ]]; then
-    skip "(c)" "real inference XPC service: none installed yet (M1/M2); then this checks its signed entitlements too"
-  else
-    local ent
-    ent="$(codesign -d --entitlements - --xml "$x" 2>/dev/null)"
-    if grep -qE 'security\.(network|device|personal-information|automation)\.' <<<"$ent"; then
-      fail "(c)" "$x holds a network or TCC entitlement"
-    elif grep -q 'com.apple.security.app-sandbox' <<<"$ent"; then
-      pass "(c)" "$x: sandboxed, no network or TCC entitlement"
-    else
-      fail "(c)" "$x is not sandboxed"
-    fi
-  fi
 }
 
 # ---- (d) signing identity: other team refused, same-team update keeps grants -----------------------------------------
@@ -366,33 +356,14 @@ gate_d() {
   skip "(d)" "installer refuses another team's package: covered by the installer's tests (crates/qrtz-app/tests/module_hosting.rs), not run here"
 }
 
-# ---- (f) voice service: undeclared and unsigned clients refused, no cross-session reads -----------------------------
-gate_f() {
-  if ! launchctl print "gui/$(id -u)/$voice" >/dev/null 2>&1; then
-    skip "(f)" "the voice inference service $voice isn't installed (M2); then: an unsigned client and an undeclared client are refused"
-  else
-    local r
-    r="$(probe host xpc "$voice")"
-    # The stand-in's signature declares no dependency on the voice service, so it must be refused.
-    if [[ "$(field "$r" result)" == refused-* ]]; then
-      pass "(f)" "undeclared client refused by $voice: $(field "$r" result)"
-    else
-      fail "(f)" "undeclared client got a reply from $voice"
-    fi
-  fi
-  skip "(f)" "nano can't read an in-flight echo session: needs the echo and nano modules on the voice service (M2)"
-}
-
 # ---- (g) sideload freshness ---------------------------------------------------------------------------------------
 gate_g() {
   skip "(g)" "sideload freshness is installer logic, not a Mac property: cargo test -p qrtz-publish --test gate_g runs ADR 0144's four cases on ADR 0157's installer (expired-list sideload installs marked stale, revoked id refused before the prompt, older snapshot refused, later fresh index disables a revoked module) plus the freshness exemption"
 }
 
 g_retired
-gate_c
 gate_h
 gate_d
-gate_f
 gate_g
 if ((fails)); then
   echo "$fails gate check(s) FAILED."

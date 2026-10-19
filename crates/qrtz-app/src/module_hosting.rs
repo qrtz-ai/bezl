@@ -427,7 +427,19 @@ impl Packages {
         self.installer.refresh(&self.transport, consent, now_ms).await
     }
 
+    /// ADR 0174: a bundled extension (echo) is never a package, from the Extensions screen or the `qrtz` command.
     pub fn plan(&self, op: Op) -> Result<Plan, InstallError> {
+        let named: Vec<&String> = match &op {
+            Op::Install(reqs) => reqs.iter().map(|(n, _)| n).collect(),
+            Op::Remove(names) | Op::Update { names, .. } => names.iter().collect(),
+            Op::Pinned(pkgs) => pkgs.iter().map(|p| &p.name).collect(),
+            Op::Engine { .. } | Op::Frozen => vec![],
+        };
+        if let Some(n) = named.into_iter().find(|n| qrtz_modules::is_bundled_extension(n)) {
+            return Err(InstallError::NotLocked(format!(
+                "{n} is built into qrtz.app (never installed, updated or removed as a package)"
+            )));
+        }
         self.installer.plan(op)
     }
 

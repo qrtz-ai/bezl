@@ -285,6 +285,22 @@ mod tests {
         assert!(only(serde_json::json!({"modules": {"enabled": true}})).is_err());
         assert!(only(serde_json::json!({"modules": {"echo": {"enabled": true}}, "theme": "dark"})).is_err());
         assert!(only(serde_json::json!({"talk": {"enabled": true}})).is_err());
+        // Nested, aliased and array shapes can't reach another key.
+        for p in [
+            serde_json::json!({"modules": {"echo": {"enabled": true, "hosts": ["x"]}}}),
+            serde_json::json!({"modules": {"echo": {"enabled": "true"}}}),
+            serde_json::json!({"modules": {"echo": {"enabled": [true]}}}),
+            serde_json::json!({"modules": [{"echo": {"enabled": true}}]}),
+            serde_json::json!([{"modules": {"echo": {"enabled": true}}}]),
+            serde_json::json!({"modules.nano.enabled": true}),
+            serde_json::json!({"modules": {"echo.enabled": true}}),
+            serde_json::json!({"modules": {"ctrl": {"enabled": false}}}),
+            serde_json::json!({"hosts": {"modules": "x"}}),
+            serde_json::json!(null),
+        ] {
+            assert!(only(p.clone()).is_err(), "{p}");
+        }
+        assert!(check_view_config_patch("talk", "config:set", &serde_json::json!({})).is_err());
         assert!(check_view_config_patch(
             "settings",
             "config:set",

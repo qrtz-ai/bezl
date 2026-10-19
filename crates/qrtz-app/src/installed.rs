@@ -160,6 +160,12 @@ pub fn bundled_entry(name: &str, program: &Path) -> Result<ModuleEntry, String> 
             "{name}: the bundled manifest doesn't launch a bundled helper"
         ));
     }
+    if !program.is_absolute() {
+        return Err(format!(
+            "{name}: {} isn't an absolute path in qrtz.app",
+            program.display()
+        ));
+    }
     let dir = program
         .parent()
         .ok_or_else(|| format!("{name}: {} has no parent dir", program.display()))?;
@@ -461,6 +467,10 @@ mod tests {
         assert!(check_launch(&e, LaunchCheck::Dev).is_ok());
         // A release build runs codesign -R; an unsigned file fails it (or, off macOS, the check refuses outright).
         assert!(check_launch(&e, LaunchCheck::Release).is_err());
+        assert!(
+            bundled_entry("echo", Path::new("qrtz-echo")).is_err(),
+            "relative (no app dir) never starts"
+        );
         for other in ["nano", "ctrl", "snap"] {
             assert!(bundled_entry(other, &exe).is_err(), "{other}");
         }

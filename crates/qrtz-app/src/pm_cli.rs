@@ -281,6 +281,13 @@ async fn sideload(p: &Packages, file: &Path, f: &Flags, io: &mut Io<'_>, now: u6
         Err(x) => return Err(x.to_string()),
         Ok(_) => return Err("installed without a confirmation".into()),
     };
+    // ADR 0174: a file can't shadow an extension qrtz.app bundles (echo).
+    if qrtz_modules::is_bundled_extension(&prompt.module) {
+        return Err(format!(
+            "{} is built into qrtz.app: a file can't replace it",
+            prompt.module
+        ));
+    }
     let age = match (prompt.revocation_expired, prompt.revocation_age_ms) {
         (true, Some(a)) => format!(" (its revocation list is {} days old)", a / 86_400_000),
         (true, None) => " (no revocation list)".into(),

@@ -117,11 +117,27 @@ pub const CODE_KNOBS: bool = cfg!(debug_assertions);
 /// debug build; a release build never takes a path from the environment (see [`CODE_KNOBS`]).
 pub fn installed_layout(data: &std::path::Path) -> qrtz_app::module_helpers::HelperLayout {
     // ADR 0174: echo ships in qrtz.app next to the app binary (Contents/MacOS/qrtz-echo).
+    // Resolved through any symlink (macOS reports the path the app was exec'd by); a release build only takes a dir
+    // that is really `<something>.app/Contents/MacOS`, else bundled echo has no path and never starts.
     let exe_dir = std::env::current_exe()
         .ok()
+        .and_then(|p| std::fs::canonicalize(p).ok())
         .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
+        .filter(|d| CODE_KNOBS || is_app_macos_dir(d))
         .unwrap_or_default();
     installed_layout_from(data, &exe_dir, CODE_KNOBS, |k| std::env::var(k).ok())
+}
+
+/// `dir` is `<name>.app/Contents/MacOS` (ADR 0174: where qrtz-echo is bundled).
+fn is_app_macos_dir(dir: &std::path::Path) -> bool {
+    let mut c = dir.components().rev();
+    matches!(
+        (c.next(), c.next(), c.next()),
+        (Some(m), Some(k), Some(app))
+            if m.as_os_str() == "MacOS"
+                && k.as_os_str() == "Contents"
+                && app.as_os_str().to_string_lossy().ends_with(".app")
+    )
 }
 
 fn installed_layout_from(
@@ -205,6 +221,23 @@ fn layout_from(dev: bool, get: impl Fn(&str) -> Option<String>) -> qrtz_app::mod
 
 #[cfg(test)]
 mod layout_tests {
+    #[test]
+    fn bundled_echo_only_from_an_app_macos_dir() {
+        use std::path::Path;
+        assert!(super::is_app_macos_dir(Path::new(
+            "/Applications/qrtz.app/Contents/MacOS"
+        )));
+        for d in [
+            "/tmp",
+            "/tmp/MacOS",
+            "/x/Contents/MacOS",
+            "/x.app/MacOS",
+            "/x.app/Contents/MacOS/..",
+        ] {
+            assert!(!super::is_app_macos_dir(Path::new(d)), "{d}");
+        }
+    }
+
     use super::layout_from;
     use qrtz_app::module_helpers::HelperLayout;
 
