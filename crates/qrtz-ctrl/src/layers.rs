@@ -561,6 +561,13 @@ const INTENTS: &[IntentDef] = &[
         slot: Slot::None,
         irreversible: false,
     },
+    // ADR 0173: the Dock's auto-hide, through System Events (faceless), like the appearance; reversible, no gate.
+    IntentDef {
+        id: "dock_autohide",
+        app: AppMode::Fixed("com.apple.systemevents"),
+        slot: Slot::None,
+        irreversible: false,
+    },
     IntentDef {
         id: "search",
         app: AppMode::Named {
@@ -596,6 +603,51 @@ const USER_FOLDER_WORDS: &[&str] = &["downloads", "download", "desktop", "docume
 const MEDIA_FOLDER_WORDS: &[&str] = &["pictures", "pics", "movies", "videos"];
 /// The Music app, which "open my music" means (run 40).
 const MUSIC_APP: &str = "com.apple.Music";
+/// ADR 0173: the Dock. "hide the dock" means its auto-hide, never `NSRunningApplication.hide()` of the Dock.
+const DOCK_APP: &str = "com.apple.dock";
+/// ADR 0173: words that say the Dock should hide itself.
+const DOCK_HIDE_WORDS: &[&str] = &[
+    "hide",
+    "hides",
+    "hiding",
+    "hidden",
+    "autohide",
+    "auto-hide",
+    "autohiding",
+    "auto-hiding",
+    "automatically",
+];
+/// ADR 0173: words that say the Dock should stay on screen.
+const DOCK_SHOW_WORDS: &[&str] = &["show", "shows", "shown", "showing", "visible", "unhide", "always"];
+/// ADR 0173: words that turn the hiding off ("stop hiding the dock", "turn off dock auto-hide").
+const DOCK_NOT_WORDS: &[&str] = &[
+    "stop", "don't", "dont", "never", "off", "disable", "no", "not", "unhide",
+];
+
+/// ADR 0173: the task is about the Dock's auto-hide: "dock" plus a hide / show / on-off word. Not a toggle ("toggle
+/// dock hiding" would need a read first, like ADR 0145; left out until asked for).
+fn dock_task(toks: &[Tok]) -> bool {
+    has(toks, &["dock"])
+        && !has(toks, &["toggle", "flip"])
+        && (has(toks, DOCK_HIDE_WORDS)
+            || has(toks, DOCK_SHOW_WORDS)
+            || has(toks, &["turn", "enable", "disable", "on", "off", "keep"]))
+}
+
+/// ADR 0173: whether the task wants the Dock hidden (auto-hide on). "show the dock", "always show the dock",
+/// "stop hiding the dock", "turn off dock hiding" and "keep the dock visible" are off; "automatically hide and show
+/// the dock" (System Settings' own words) is on.
+fn dock_hides(toks: &[Tok]) -> bool {
+    let hide = has(toks, DOCK_HIDE_WORDS);
+    let negated = has(toks, DOCK_NOT_WORDS);
+    let shows = has(toks, DOCK_SHOW_WORDS);
+    if negated {
+        // "turn off dock hiding", "stop hiding the dock", "don't hide the dock": off, unless only an "on" is said
+        // beside a "not" ("turn on auto-hide, not always shown").
+        return has(toks, &["on", "enable"]) && !has(toks, &["off", "disable", "stop", "never", "unhide"]);
+    }
+    hide && (!shows || has(toks, &["automatically", "autohide", "auto-hide"]))
+}
 
 const FOLDER_WORDS: &[&str] = &[
     "downloads",
@@ -747,7 +799,8 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
                     "everything",
                 ],
             );
-            if has(toks, &["hide"]) && named_app && !group {
+            // ADR 0173: "hide the dock" is the Dock's auto-hide, not hiding the Dock app.
+            if has(toks, &["hide"]) && named_app && !group && !dock_task(toks) {
                 p += 9000;
             }
         }
@@ -770,7 +823,8 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             // "show me my calendar" / "show my calendar" mean open it (ADR 0138's calendar), so "show" counts only
             // without "me" / "my"; "unhide" always does.
             let asks = has(toks, &["unhide"]) || (has(toks, &["show"]) && !has(toks, &["me", "my"]));
-            if asks && named_app && !group && (!site || full_named) {
+            // ADR 0173: "show the dock" turns its auto-hide off, it doesn't unhide the Dock app.
+            if asks && named_app && !group && (!site || full_named) && !dock_task(toks) {
                 p += 9000;
             }
         }
@@ -891,6 +945,15 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             }
             if has(toks, &["trash", "bin"]) {
                 p += 3000;
+            }
+        }
+        "dock_autohide" => {
+            // ADR 0173: "hide the dock", "auto-hide the dock", "always show the dock", "stop hiding the dock". The
+            // Dock plus a hide / show / on-off word, no other app named, no site. Without it it sits well below.
+            p -= 3000;
+            let other_app = named.iter().any(|(a, _)| a.id != DOCK_APP);
+            if dock_task(toks) && !other_app && !site {
+                p += 9500;
             }
         }
         "dark_mode" => {
@@ -1414,6 +1477,14 @@ fn move_question(
             }
             v
         }
+        // ADR 0173: hidden or shown from the words (see `dock_hides`).
+        "dock_autohide" => {
+            let hide = dock_hides(toks);
+            vec![
+                route("scripting.dock_autohide_on", if hide { 4500 } else { 2000 }),
+                route("scripting.dock_autohide_off", if hide { 2000 } else { 4500 }),
+            ]
+        }
         "search" => vec![shortcut("cmd+f", 3000)],
         "send_message" => vec![shortcut("cmd+n", 3000), irreversible(shortcut("cmd+return", 0))],
         _ => vec![],
@@ -1607,6 +1678,7 @@ fn intent_label(id: &str) -> &'static str {
         "change_volume" => "turn the volume up or down",
         "empty_trash" => "empty the trash",
         "dark_mode" => "switch dark mode",
+        "dock_autohide" => "hide or show the dock",
         "search" => "search in an app",
         "send_message" => "send a message",
         _ => "something else",
@@ -1640,6 +1712,8 @@ fn route_label(id: &str) -> &'static str {
         "scripting.dark_mode_on" => "switch to dark mode",
         "scripting.dark_mode_off" => "switch to light mode",
         "scripting.dark_mode_toggle" => "flip the appearance",
+        "scripting.dock_autohide_on" => "hide the dock until the pointer reaches it",
+        "scripting.dock_autohide_off" => "always show the dock",
         "files.tidy" => "sort by kind, nothing deleted",
         "files.sort_by_kind" => "sort files into folders by kind",
         "files.trash_old" => "move old installers to the trash",

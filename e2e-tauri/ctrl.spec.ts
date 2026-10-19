@@ -917,6 +917,37 @@ test('ctrl: clear my clipboard empties it without a card', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+// ADR 0173: "hide the dock" / "always show the dock" set the dock's auto-hide through system events, no card.
+test('ctrl: hide the dock and always show the dock set its auto-hide without a card', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  for (const [text, move] of [
+    ['hide the dock', 'hide the dock until the pointer reaches it'],
+    ['always show the dock', 'always show the dock'],
+  ] as const) {
+    await ctrl.getByTestId('ctrl-task-input').fill(text);
+    await ctrl.getByTestId('ctrl-task-add').click();
+    const task = ctrl.getByTestId('ctrl-task').filter({ hasText: text });
+    await task.getByTestId('ctrl-task-run').click();
+    const run = ctrl.getByTestId('ctrl-run').first();
+    await expect(run.getByTestId('ctrl-run-status')).toHaveText('done');
+    await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
+    const decisions = ctrl.getByTestId('ctrl-decisions').first();
+    await expect(decisions).toContainText('hide or show the dock');
+    await expect(decisions).toContainText(move);
+    await expect(decisions).not.toContainText('hide an app');
+    await expect(decisions).not.toContainText('show a hidden app');
+  }
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 // ADR 0135: "every night at 10 mute my mac" mutes the sound output without a card (reversible), no app touched.
 test('ctrl: every night mute my mac mutes the sound without a card', async ({
   page,

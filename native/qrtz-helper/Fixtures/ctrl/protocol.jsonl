@@ -32,5 +32,7 @@
 {"type":"ctrl.measure","id":"c22","check":{"check":"folder_open","folder":"downloads"}}
 {"type":"ctrl.act","id":"c23","actionId":"a8","route":{"route":"workspace","op":"clear_clipboard"},"content":{}}
 {"type":"ctrl.measure","id":"c24","check":{"check":"clipboard_cleared"}}
+{"type":"ctrl.act","id":"c25","actionId":"a9","route":{"route":"scripting","app":"com.apple.systemevents","verb":"set_dock_autohide"},"content":{}}
+{"type":"ctrl.measure","id":"c26","check":{"check":"dock_autohide"}}
 {"type":"ctrl.laya.warm","id":"c12","model":"/models/ctrl/laya/laya.mlmodelc"}
 {"type":"ctrl.laya.warm.result","id":"c12","state":"started"}

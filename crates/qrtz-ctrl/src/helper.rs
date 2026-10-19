@@ -67,6 +67,9 @@ pub enum Check {
     /// moved since), 0 if something was copied since or ctrl never cleared it (`null`: no pasteboard). Never read
     /// from the clipboard's contents or types.
     ClipboardCleared,
+    /// ADR 0173: 1 if the Dock hides itself automatically, 0 if it's always shown (read in the helper's own process
+    /// from the `com.apple.dock` defaults' `autohide`; no app asked, no prompt).
+    DockAutohide,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -568,6 +571,8 @@ pub struct FakeWorld {
     pub muted: Option<bool>,
     /// ADR 0137: the system appearance (true = dark).
     pub dark: bool,
+    /// ADR 0173: the Dock hides itself automatically.
+    pub dock_autohide: bool,
     /// ADR 0140: the output volume in percent (read back only while unmuted).
     pub volume: i64,
     /// ADR 0158: the user made the "qrtz Set Focus" shortcut (false: `focus.no_shortcut`).
@@ -636,6 +641,7 @@ impl FakeWorld {
             day_start_ms: 0,
             muted: Some(false),
             dark: false,
+            dock_autohide: false,
             focus_shortcut: false,
             shortcuts_denied: false,
             focus: crate::ladder::FocusMode::Off,
@@ -705,6 +711,17 @@ impl FakeWorld {
                 self.dark = *v == ScriptVerb::SetDarkMode;
                 Ok(())
             }
+            // ADR 0173: the Dock's auto-hide, through System Events only.
+            Route::Scripting {
+                app,
+                verb: v @ (ScriptVerb::SetDockAutohide | ScriptVerb::SetDockShown),
+            } => {
+                if app != crate::exec::SYSTEM_EVENTS {
+                    return Err("policy.refused".into());
+                }
+                self.dock_autohide = *v == ScriptVerb::SetDockAutohide;
+                Ok(())
+            }
             Route::Scripting { app, verb } => {
                 let a = self.app_mut(app).ok_or("app.not_running")?;
                 if !a.scriptable || !a.running {
@@ -724,9 +741,10 @@ impl FakeWorld {
                     ScriptVerb::CloseTab => a.tabs = (a.tabs - 1).max(0),
                     ScriptVerb::CloseWindow => a.windows = (a.windows - 1).max(0),
                     ScriptVerb::CountTabs | ScriptVerb::CountWindows => {}
-                    ScriptVerb::SetDarkMode | ScriptVerb::SetLightMode => {
-                        return Err("script.unsupported".into())
-                    }
+                    ScriptVerb::SetDarkMode
+                    | ScriptVerb::SetLightMode
+                    | ScriptVerb::SetDockAutohide
+                    | ScriptVerb::SetDockShown => return Err("script.unsupported".into()),
                 }
                 Ok(())
             }
@@ -950,6 +968,7 @@ impl FakeWorld {
                     | Check::AppsHidden { .. } => None,
                     Check::OutputMuted => self.muted.map(i64::from),
                     Check::DarkMode => Some(i64::from(self.dark)),
+                    Check::DockAutohide => Some(i64::from(self.dock_autohide)),
                     Check::FocusOn => Some(i64::from(self.focus != crate::ladder::FocusMode::Off)),
                     Check::FolderOpen { folder } => self
                         .apps

@@ -54,7 +54,7 @@ final class CtrlProtocolTests: XCTestCase {
     func testEveryHostLineOfTheFixtureParses() throws {
         let all = try lines()
         let host = all.filter { !(($0["type"] as! String).hasSuffix(".result")) && $0["type"] as! String != "ctrl.error" }
-        XCTAssertEqual(host.count, 25)
+        XCTAssertEqual(host.count, 27)
         for o in host {
             let line = String(decoding: try JSONSerialization.data(withJSONObject: o), as: UTF8.self)
             XCTAssertNotNil(CtrlRequest.parse(line), "\(o["type"]!)")
@@ -242,6 +242,36 @@ final class CtrlProtocolTests: XCTestCase {
         XCTAssertTrue(CtrlAppearance.isDark(["AppleInterfaceStyle": "Dark"]))
         XCTAssertFalse(CtrlAppearance.isDark([:]))
         XCTAssertFalse(CtrlAppearance.isDark(nil))
+    }
+
+    func testTheDockGoesOnlyToSystemEventsAndItsMeasureHasNoApp() throws {
+        // ADR 0173: set_dock_autohide parses from the fixture and reaches the backend; its script goes to System
+        // Events only, sets nothing but the Dock's autohide, and dock_autohide is measured without an app.
+        let all = try lines()
+        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["verb"] as? String == "set_dock_autohide" }!
+        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
+        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("set_dock_autohide") }
+        XCTAssertEqual(route, .scripting(app: "com.apple.systemevents", verb: "set_dock_autohide"))
+        let fake = Fake()
+        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: line))["ok"] as? Bool, true)
+        XCTAssertEqual(fake.acted, [route])
+        let hide = CtrlScripts.source(verb: "set_dock_autohide", bundleId: "com.apple.systemevents")!
+        XCTAssertEqual(hide, "tell application id \"com.apple.systemevents\"\ntell dock preferences to set autohide to true\nend tell")
+        XCTAssertEqual(CtrlScripts.source(verb: "set_dock_shown", bundleId: "com.apple.systemevents"),
+                       "tell application id \"com.apple.systemevents\"\ntell dock preferences to set autohide to false\nend tell")
+        for id in ["com.apple.dock", "com.apple.Safari", "com.apple.finder"] {
+            XCTAssertNil(CtrlScripts.source(verb: "set_dock_autohide", bundleId: id), id)
+            XCTAssertNil(CtrlScripts.source(verb: "set_dock_shown", bundleId: id), id)
+        }
+        guard case let .measure(_, check, app)? = CtrlRequest.parse(#"{"type":"ctrl.measure","id":"c26","check":{"check":"dock_autohide"}}"#)
+        else { return XCTFail("dock_autohide") }
+        XCTAssertEqual(check, "dock_autohide")
+        XCTAssertEqual(app, "")
+        XCTAssertTrue(CtrlDock.autohides(["autohide": true]))
+        XCTAssertTrue(CtrlDock.autohides(["autohide": NSNumber(value: 1)]))
+        XCTAssertFalse(CtrlDock.autohides(["autohide": false]))
+        XCTAssertFalse(CtrlDock.autohides(["orientation": "left"]), "absent: always shown (the default)")
+        XCTAssertFalse(CtrlDock.autohides(nil))
     }
 
     func testTheLastUsedRecordKeepsTheLatestActivationAndMidnightIsLocal() {

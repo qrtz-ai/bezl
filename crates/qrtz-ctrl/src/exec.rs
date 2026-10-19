@@ -209,6 +209,10 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
     if mv == DARK_MODE_ON_MOVE || mv == DARK_MODE_OFF_MOVE {
         return Some(appearance_step(mv == DARK_MODE_ON_MOVE));
     }
+    // ADR 0173: the Dock's auto-hide, the same way (System Events only, read back in the helper).
+    if mv == DOCK_AUTOHIDE_ON_MOVE || mv == DOCK_AUTOHIDE_OFF_MOVE {
+        return Some(dock_step(mv == DOCK_AUTOHIDE_ON_MOVE));
+    }
     // ADR 0140: the level from the plan's `level.N`, set and unmuted in the helper's own process; verified by reading
     // the volume back (exactly N, give or take 1). No level, nothing to set: the layers asked, so this can't happen
     // on a plan they made; an older or hand-made plan holds.
@@ -588,6 +592,29 @@ fn appearance_step(on: bool) -> Step {
         content: BTreeMap::new(),
     }
 }
+
+/// ADR 0173: one System Events script sets the Dock's auto-hide; the helper's read of the Dock's defaults verifies it.
+fn dock_step(hide: bool) -> Step {
+    Step::Act {
+        routes: vec![Route::Scripting {
+            app: SYSTEM_EVENTS.into(),
+            verb: if hide {
+                ScriptVerb::SetDockAutohide
+            } else {
+                ScriptVerb::SetDockShown
+            },
+        }],
+        verify: Verify {
+            check: Check::DockAutohide,
+            expect: if hide { Expect::One } else { Expect::Zero },
+        },
+        content: BTreeMap::new(),
+    }
+}
+
+/// ADR 0173: "hide the dock automatically" / "always show the dock" (reversible, no gate).
+pub const DOCK_AUTOHIDE_ON_MOVE: &str = "route.scripting.dock_autohide_on";
+pub const DOCK_AUTOHIDE_OFF_MOVE: &str = "route.scripting.dock_autohide_off";
 
 pub const DARK_MODE_ON_MOVE: &str = "route.scripting.dark_mode_on";
 pub const DARK_MODE_OFF_MOVE: &str = "route.scripting.dark_mode_off";

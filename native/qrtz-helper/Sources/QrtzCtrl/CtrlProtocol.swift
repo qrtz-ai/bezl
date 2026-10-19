@@ -45,14 +45,20 @@ public enum CtrlRoute: Equatable, Sendable {
     /// The only Apple Event verbs (Rust `ScriptVerb`): none of them can activate, launch, open or reopen.
     /// These have a fixed script (`CtrlScripts.source`).
     public static let scriptVerbs: Set<String> = ["count_tabs", "close_all_tabs", "close_tab", "count_windows", "close_window",
-                                                  "set_dark_mode", "set_light_mode"]
+                                                  "set_dark_mode", "set_light_mode", "set_dock_autohide", "set_dock_shown"]
     /// ADR 0137: the appearance verbs, only ever to System Events (a faceless agent, never brought forward).
     public static let appearanceVerbs: Set<String> = ["set_dark_mode", "set_light_mode"]
+    /// ADR 0173: the Dock's auto-hide verbs, likewise only ever to System Events.
+    public static let dockVerbs: Set<String> = ["set_dock_autohide", "set_dock_shown"]
+    /// The verbs that go to System Events, and the only ones that may (ADR 0137, ADR 0173).
+    public static let systemEventsVerbs: Set<String> = appearanceVerbs.union(dockVerbs)
     public static let systemEvents = "com.apple.systemevents"
     /// ADR 0135 / 0137 / 0140: the measures that read the Mac itself, not an app.
     /// ADR 0158: `focus_on` too (the Mac backend answers nil: reading a Focus needs its own prompt).
     /// ADR 0168: `clipboard_cleared` too (the pasteboard's change count, never its contents).
-    public static let applessChecks: Set<String> = ["output_muted", "dark_mode", "output_volume", "focus_on", CtrlClipboard.check]
+    /// ADR 0173: `dock_autohide` too (the Dock's own defaults, read in this process).
+    public static let applessChecks: Set<String> = ["output_muted", "dark_mode", "output_volume", "focus_on", CtrlClipboard.check,
+                                                    CtrlDock.check]
     /// Slice 7b's selective closes (ADR 0114 / 0119) have no fixed script: the backend reads the tabs first
     /// (`CtrlTabs`) and closes only the ones it can tell about; a backend that can't tell refuses, and the host asks.
     public static let tabVerbs: Set<String> = ["close_saved_tabs", "close_unpinned_tabs"]

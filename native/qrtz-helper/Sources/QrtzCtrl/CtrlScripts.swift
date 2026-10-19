@@ -17,8 +17,9 @@ public enum CtrlScripts {
     /// `saving no`, which would throw away unsaved work).
     public static func source(verb: String, bundleId: String) -> String? {
         guard safeBundleId(bundleId), CtrlRoute.scriptVerbs.contains(verb) else { return nil }
-        // ADR 0137: the appearance verbs go to System Events and nothing else; nothing else goes to System Events.
-        guard CtrlRoute.appearanceVerbs.contains(verb) == (bundleId == CtrlRoute.systemEvents) else { return nil }
+        // ADR 0137 / 0173: the appearance and Dock verbs go to System Events and nothing else; nothing else goes to
+        // System Events.
+        guard CtrlRoute.systemEventsVerbs.contains(verb) == (bundleId == CtrlRoute.systemEvents) else { return nil }
         let body: String
         switch verb {
         case "count_tabs":
@@ -37,6 +38,10 @@ public enum CtrlScripts {
         case "close_window": body = "if (count of windows) > 0 then close front window"
         case "set_dark_mode": body = "tell appearance preferences to set dark mode to true"
         case "set_light_mode": body = "tell appearance preferences to set dark mode to false"
+        // ADR 0173: the Dock's "automatically hide and show the Dock" (System Events tells the Dock; no app comes
+        // forward).
+        case "set_dock_autohide": body = "tell dock preferences to set autohide to true"
+        case "set_dock_shown": body = "tell dock preferences to set autohide to false"
         default: return nil
         }
         return "tell application id \"\(bundleId)\"\n\(body)\nend tell"
@@ -74,5 +79,21 @@ public struct CtrlKeyCombo: Equatable, Sendable {
 public enum CtrlAppearance {
     public static func isDark(_ global: [String: Any]?) -> Bool {
         (global?["AppleInterfaceStyle"] as? String)?.caseInsensitiveCompare("dark") == .orderedSame
+    }
+}
+
+/// ADR 0173: reads the Dock's own defaults domain (`com.apple.dock`): `autohide` true when the Dock hides itself,
+/// absent or false when it's always shown. Nothing else in the domain is looked at.
+public enum CtrlDock {
+    public static let check = "dock_autohide"
+    public static let domain = "com.apple.dock"
+
+    public static func autohides(_ dock: [String: Any]?) -> Bool {
+        switch dock?["autohide"] {
+        case let b as Bool: return b
+        case let n as NSNumber: return n.boolValue
+        case let s as String: return ["1", "true", "yes"].contains(s.lowercased())
+        default: return false
+        }
     }
 }

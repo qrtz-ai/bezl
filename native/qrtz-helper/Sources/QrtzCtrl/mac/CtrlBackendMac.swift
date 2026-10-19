@@ -415,6 +415,8 @@ public final class MacCtrlBackend: CtrlBackend {
             lock.lock(); let last = lastClipboardClear; lock.unlock()
             return CtrlClipboard.cleared(changeCount: NSPasteboard.general.changeCount, lastClear: last)
         case "dark_mode": return CtrlAppearance.isDark(UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)) ? 1 : 0
+        // ADR 0173: the Dock's auto-hide, read from its own defaults in this process (no app asked, no prompt).
+        case CtrlDock.check: return CtrlDock.autohides(UserDefaults.standard.persistentDomain(forName: CtrlDock.domain)) ? 1 : 0
         case "tab_count":
             return (try? script("count_tabs", app: app)).map { Int($0.int32Value) }
         case "saved_tabs", "unpinned_tabs":

@@ -235,6 +235,11 @@ pub enum ScriptVerb {
     SetDarkMode,
     /// ADR 0137: the same with `false` (light mode).
     SetLightMode,
+    /// ADR 0173: System Events `tell dock preferences to set autohide to true` (the Dock slides away until the
+    /// pointer reaches its edge; only to `com.apple.systemevents`, nothing comes forward, no key event). Reversible.
+    SetDockAutohide,
+    /// ADR 0173: the same with `false` (the Dock always shown).
+    SetDockShown,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
