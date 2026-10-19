@@ -359,6 +359,78 @@
       "category": "punct-cmd",
       "raw": "Thanks for the update. Is the demo still on question mark",
       "ideal": "Thanks for the update. Is the demo still on?"
+    },
+    {
+      "id": "p57",
+      "category": "filler",
+      "raw": "We need to talk to the, um, design team.",
+      "ideal": "We need to talk to the design team."
+    },
+    {
+      "id": "p58",
+      "category": "filler",
+      "raw": "I fixed the bug and, uh, pushed the change.",
+      "ideal": "I fixed the bug and pushed the change."
+    },
+    {
+      "id": "p59",
+      "category": "filler",
+      "raw": "The new build is, uh, really fast.",
+      "ideal": "The new build is really fast."
+    },
+    {
+      "id": "p60",
+      "category": "filler",
+      "raw": "Could you, um, review my PR?",
+      "ideal": "Could you review my PR?"
+    },
+    {
+      "id": "p61",
+      "category": "filler",
+      "raw": "I left because, um, the commute was too long.",
+      "ideal": "I left because the commute was too long."
+    },
+    {
+      "id": "p62",
+      "category": "filler",
+      "raw": "The launch will, um, probably slip a week.",
+      "ideal": "The launch will probably slip a week."
+    },
+    {
+      "id": "p63",
+      "category": "itn",
+      "raw": "Lunch was twelve dollars.",
+      "ideal": "Lunch was $12."
+    },
+    {
+      "id": "p64",
+      "category": "itn",
+      "raw": "Sales are up 15 percent.",
+      "ideal": "Sales are up 15%."
+    },
+    {
+      "id": "p65",
+      "category": "itn",
+      "raw": "Call me at nine a.m. tomorrow.",
+      "ideal": "Call me at 9 a.m. tomorrow."
+    },
+    {
+      "id": "p66",
+      "category": "itn",
+      "raw": "The budget is two thousand five hundred dollars.",
+      "ideal": "The budget is $2,500."
+    },
+    {
+      "id": "p67",
+      "category": "itn",
+      "raw": "The flight leaves at ten oh five a.m.",
+      "ideal": "The flight leaves at 10:05 a.m."
+    },
+    {
+      "id": "p68",
+      "category": "itn",
+      "raw": "I'm one hundred percent sure.",
+      "ideal": "I'm 100% sure."
     }
   ],
   "keep": [
@@ -925,6 +997,300 @@
       "rule": "mark",
       "raw": "Is it error 404 question mark",
       "expect": "Is it error 404 question mark."
+    },
+    {
+      "id": "k95",
+      "rule": "filler-comma",
+      "raw": "Well, um, I guess so.",
+      "expect": "Well, I guess so."
+    },
+    {
+      "id": "k96",
+      "rule": "filler-comma",
+      "raw": "When we can, um, the team will ship it.",
+      "expect": "When we can, the team will ship it."
+    },
+    {
+      "id": "k97",
+      "rule": "filler-comma",
+      "raw": "If we can, um, we should ship it today.",
+      "expect": "If we can, we should ship it today."
+    },
+    {
+      "id": "k98",
+      "rule": "filler-comma",
+      "raw": "Whatever it is, um, the answer is no.",
+      "expect": "Whatever it is, the answer is no."
+    },
+    {
+      "id": "k99",
+      "rule": "filler-comma",
+      "raw": "Yes we can, um, Sam.",
+      "expect": "Yes we can, Sam."
+    },
+    {
+      "id": "k100",
+      "rule": "filler-comma",
+      "raw": "Thank you, um, Sam.",
+      "expect": "Thank you, Sam"
+    },
+    {
+      "id": "k101",
+      "rule": "filler-comma",
+      "raw": "Do you, um, Jared, want coffee?",
+      "expect": "Do you, Jared, want coffee?"
+    },
+    {
+      "id": "k102",
+      "rule": "filler-comma",
+      "raw": "I know you can, um, honey.",
+      "expect": "I know you can, honey."
+    },
+    {
+      "id": "k103",
+      "rule": "filler-comma",
+      "raw": "We should, um, but we won't.",
+      "expect": "We should, but we won't."
+    },
+    {
+      "id": "k104",
+      "rule": "filler-comma",
+      "raw": "It is, um, it really is.",
+      "expect": "It is, it really is."
+    },
+    {
+      "id": "k105",
+      "rule": "filler-comma",
+      "raw": "The thing is, um, we're late.",
+      "expect": "The thing is, we're late."
+    },
+    {
+      "id": "k106",
+      "rule": "filler-comma",
+      "raw": "The question is, um, do we ship?",
+      "expect": "The question is, do we ship?"
+    },
+    {
+      "id": "k107",
+      "rule": "filler-comma",
+      "raw": "That's how it is, um, honestly.",
+      "expect": "That's how it is, honestly."
+    },
+    {
+      "id": "k108",
+      "rule": "filler-comma",
+      "raw": "Here it is, um, finally.",
+      "expect": "Here it is, finally."
+    },
+    {
+      "id": "k109",
+      "rule": "filler-comma",
+      "raw": "Plan A, um, then plan B.",
+      "expect": "Plan A, then plan B."
+    },
+    {
+      "id": "k110",
+      "rule": "filler-comma",
+      "raw": "We were, um, like, so close.",
+      "expect": "We were, like, so close."
+    },
+    {
+      "id": "k111",
+      "rule": "filler-comma",
+      "raw": "You should, um, you know, try it.",
+      "expect": "You should, you know, try it."
+    },
+    {
+      "id": "k112",
+      "rule": "filler-comma",
+      "raw": "I will, um, if I can.",
+      "expect": "I will, if I can."
+    },
+    {
+      "id": "k113",
+      "rule": "filler-comma",
+      "raw": "Is it, um, Sam?",
+      "expect": "Is it, Sam?"
+    },
+    {
+      "id": "k114",
+      "rule": "filler-comma",
+      "raw": "We can, um, or we can wait.",
+      "expect": "We can, or we can wait."
+    },
+    {
+      "id": "k115",
+      "rule": "filler-comma",
+      "raw": "I think it is, um, though.",
+      "expect": "I think it is, though."
+    },
+    {
+      "id": "k116",
+      "rule": "filler-comma",
+      "raw": "Tell me what you think, um, honestly.",
+      "expect": "Tell me what you think, honestly."
+    },
+    {
+      "id": "k117",
+      "rule": "filler-comma",
+      "raw": "So, um, the build is green.",
+      "expect": "So, the build is green."
+    },
+    {
+      "id": "k118",
+      "rule": "amount",
+      "raw": "Give it a hundred percent.",
+      "expect": "Give it a hundred percent."
+    },
+    {
+      "id": "k119",
+      "rule": "amount",
+      "raw": "It costs a couple of dollars.",
+      "expect": "It costs a couple of dollars."
+    },
+    {
+      "id": "k120",
+      "rule": "amount",
+      "raw": "It was a few hundred dollars.",
+      "expect": "It was a few hundred dollars."
+    },
+    {
+      "id": "k121",
+      "rule": "amount",
+      "raw": "It costs one or two dollars.",
+      "expect": "It costs one or two dollars."
+    },
+    {
+      "id": "k122",
+      "rule": "amount",
+      "raw": "It costs between ten and twenty dollars.",
+      "expect": "It costs between ten and twenty dollars."
+    },
+    {
+      "id": "k123",
+      "rule": "amount",
+      "raw": "Rates rose two point five percent.",
+      "expect": "Rates rose two point five percent."
+    },
+    {
+      "id": "k124",
+      "rule": "amount",
+      "raw": "It was five dollars and fifty cents.",
+      "expect": "It was five dollars and fifty cents."
+    },
+    {
+      "id": "k125",
+      "rule": "amount",
+      "raw": "Ten Percent Happier is a good book.",
+      "expect": "Ten Percent Happier is a good book."
+    },
+    {
+      "id": "k126",
+      "rule": "amount",
+      "raw": "I have twenty five dollar bills.",
+      "expect": "I have twenty five dollar bills."
+    },
+    {
+      "id": "k127",
+      "rule": "amount",
+      "raw": "Prices are in 2025 dollars.",
+      "expect": "Prices are in 2025 dollars."
+    },
+    {
+      "id": "k128",
+      "rule": "amount",
+      "raw": "It cost two million dollars.",
+      "expect": "It cost two million dollars."
+    },
+    {
+      "id": "k129",
+      "rule": "amount",
+      "raw": "It cost fifteen hundred dollars.",
+      "expect": "It cost fifteen hundred dollars."
+    },
+    {
+      "id": "k130",
+      "rule": "amount",
+      "raw": "It cost nineteen ninety nine dollars.",
+      "expect": "It cost nineteen ninety nine dollars."
+    },
+    {
+      "id": "k131",
+      "rule": "amount",
+      "raw": "Growth was ten to fifteen percent.",
+      "expect": "Growth was ten to fifteen percent."
+    },
+    {
+      "id": "k132",
+      "rule": "amount",
+      "raw": "The tip was fifteen percent to twenty percent.",
+      "expect": "The tip was fifteen percent to twenty percent."
+    },
+    {
+      "id": "k133",
+      "rule": "amount",
+      "raw": "Millions of dollars were spent.",
+      "expect": "Millions of dollars were spent."
+    },
+    {
+      "id": "k134",
+      "rule": "amount",
+      "raw": "What percent of users stayed?",
+      "expect": "What percent of users stayed?"
+    },
+    {
+      "id": "k135",
+      "rule": "amount",
+      "raw": "I need ten dollars for two tickets.",
+      "expect": "I need ten dollars for two tickets."
+    },
+    {
+      "id": "k136",
+      "rule": "amount",
+      "raw": "Meet at three p.m. to five p.m.",
+      "expect": "Meet at three p.m. to five p.m."
+    },
+    {
+      "id": "k137",
+      "rule": "amount",
+      "raw": "It went from two to three p.m.",
+      "expect": "It went from two to three p.m."
+    },
+    {
+      "id": "k138",
+      "rule": "amount",
+      "raw": "Twenty five dollars is too much.",
+      "expect": "Twenty five dollars is too much."
+    },
+    {
+      "id": "k139",
+      "rule": "amount",
+      "raw": "Ninety nine percent of the time it works.",
+      "expect": "Ninety nine percent of the time it works."
+    },
+    {
+      "id": "k140",
+      "rule": "amount",
+      "raw": "I'd bet one dollar on it.",
+      "expect": "I'd bet one dollar on it."
+    },
+    {
+      "id": "k141",
+      "rule": "amount",
+      "raw": "price is 3.50 dollars",
+      "expect": "Price is 3.50 dollars."
+    },
+    {
+      "id": "k142",
+      "rule": "amount",
+      "raw": "Let's meet at three. I am free all day.",
+      "expect": "Let's meet at three. I am free all day."
+    },
+    {
+      "id": "k143",
+      "rule": "amount",
+      "raw": "The 1990s dollars were worth more.",
+      "expect": "The 1990s dollars were worth more."
     }
   ]
 }

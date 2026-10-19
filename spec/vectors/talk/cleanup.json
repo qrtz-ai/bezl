@@ -634,7 +634,7 @@
     {
       "raw": "Um, so I think we should, uh, ship it on Friday.",
       "dict": false,
-      "expect": "So I think we should, ship it on Friday."
+      "expect": "So I think we should ship it on Friday."
     },
     {
       "raw": "So, uh, the build is green now.",
@@ -644,12 +644,12 @@
     {
       "raw": "Can you, um, send me the deck?",
       "dict": false,
-      "expect": "Can you, send me the deck?"
+      "expect": "Can you send me the deck?"
     },
     {
       "raw": "The demo is, um, basically done.",
       "dict": false,
-      "expect": "The demo is, basically done."
+      "expect": "The demo is basically done."
     },
     {
       "raw": "Hmm, let me think about it.",
@@ -709,17 +709,17 @@
     {
       "raw": "The meeting is at three thirty p.m.",
       "dict": false,
-      "expect": "The meeting is at three thirty p.m."
+      "expect": "The meeting is at 3:30 p.m."
     },
     {
       "raw": "It costs twenty five dollars.",
       "dict": false,
-      "expect": "It costs twenty five dollars."
+      "expect": "It costs $25."
     },
     {
       "raw": "We grew by fifteen percent this quarter.",
       "dict": false,
-      "expect": "We grew by fifteen percent this quarter."
+      "expect": "We grew by 15% this quarter."
     },
     {
       "raw": "Email me at jared at gmail dot com.",
@@ -779,7 +779,7 @@
     {
       "raw": "So, um, I talked to the team and, uh, we we think the launch should move to next week because the the docs aren't ready.",
       "dict": false,
-      "expect": "So, I talked to the team and, we think the launch should move to next week because the docs aren't ready."
+      "expect": "So, I talked to the team and we think the launch should move to next week because the docs aren't ready."
     },
     {
       "raw": "Yeah.",
@@ -1145,6 +1145,391 @@
       "raw": "Is it error 404 question mark",
       "dict": false,
       "expect": "Is it error 404 question mark."
+    },
+    {
+      "raw": "We need to talk to the, um, design team.",
+      "dict": false,
+      "expect": "We need to talk to the design team."
+    },
+    {
+      "raw": "I fixed the bug and, uh, pushed the change.",
+      "dict": false,
+      "expect": "I fixed the bug and pushed the change."
+    },
+    {
+      "raw": "The new build is, uh, really fast.",
+      "dict": false,
+      "expect": "The new build is really fast."
+    },
+    {
+      "raw": "Could you, um, review my PR?",
+      "dict": false,
+      "expect": "Could you review my PR?"
+    },
+    {
+      "raw": "I left because, um, the commute was too long.",
+      "dict": false,
+      "expect": "I left because the commute was too long."
+    },
+    {
+      "raw": "The launch will, um, probably slip a week.",
+      "dict": false,
+      "expect": "The launch will probably slip a week."
+    },
+    {
+      "raw": "Lunch was twelve dollars.",
+      "dict": false,
+      "expect": "Lunch was $12."
+    },
+    {
+      "raw": "Sales are up 15 percent.",
+      "dict": false,
+      "expect": "Sales are up 15%."
+    },
+    {
+      "raw": "Call me at nine a.m. tomorrow.",
+      "dict": false,
+      "expect": "Call me at 9 a.m. tomorrow."
+    },
+    {
+      "raw": "The budget is two thousand five hundred dollars.",
+      "dict": false,
+      "expect": "The budget is $2,500."
+    },
+    {
+      "raw": "The flight leaves at ten oh five a.m.",
+      "dict": false,
+      "expect": "The flight leaves at 10:05 a.m."
+    },
+    {
+      "raw": "I'm one hundred percent sure.",
+      "dict": false,
+      "expect": "I'm 100% sure."
+    },
+    {
+      "raw": "Well, um, I guess so.",
+      "dict": false,
+      "expect": "Well, I guess so."
+    },
+    {
+      "raw": "When we can, um, the team will ship it.",
+      "dict": false,
+      "expect": "When we can, the team will ship it."
+    },
+    {
+      "raw": "If we can, um, we should ship it today.",
+      "dict": false,
+      "expect": "If we can, we should ship it today."
+    },
+    {
+      "raw": "Whatever it is, um, the answer is no.",
+      "dict": false,
+      "expect": "Whatever it is, the answer is no."
+    },
+    {
+      "raw": "Yes we can, um, Sam.",
+      "dict": false,
+      "expect": "Yes we can, Sam."
+    },
+    {
+      "raw": "Thank you, um, Sam.",
+      "dict": false,
+      "expect": "Thank you, Sam"
+    },
+    {
+      "raw": "Do you, um, Jared, want coffee?",
+      "dict": false,
+      "expect": "Do you, Jared, want coffee?"
+    },
+    {
+      "raw": "I know you can, um, honey.",
+      "dict": false,
+      "expect": "I know you can, honey."
+    },
+    {
+      "raw": "We should, um, but we won't.",
+      "dict": false,
+      "expect": "We should, but we won't."
+    },
+    {
+      "raw": "It is, um, it really is.",
+      "dict": false,
+      "expect": "It is, it really is."
+    },
+    {
+      "raw": "The thing is, um, we're late.",
+      "dict": false,
+      "expect": "The thing is, we're late."
+    },
+    {
+      "raw": "The question is, um, do we ship?",
+      "dict": false,
+      "expect": "The question is, do we ship?"
+    },
+    {
+      "raw": "That's how it is, um, honestly.",
+      "dict": false,
+      "expect": "That's how it is, honestly."
+    },
+    {
+      "raw": "Here it is, um, finally.",
+      "dict": false,
+      "expect": "Here it is, finally."
+    },
+    {
+      "raw": "Plan A, um, then plan B.",
+      "dict": false,
+      "expect": "Plan A, then plan B."
+    },
+    {
+      "raw": "We were, um, like, so close.",
+      "dict": false,
+      "expect": "We were, like, so close."
+    },
+    {
+      "raw": "You should, um, you know, try it.",
+      "dict": false,
+      "expect": "You should, you know, try it."
+    },
+    {
+      "raw": "I will, um, if I can.",
+      "dict": false,
+      "expect": "I will, if I can."
+    },
+    {
+      "raw": "Is it, um, Sam?",
+      "dict": false,
+      "expect": "Is it, Sam?"
+    },
+    {
+      "raw": "We can, um, or we can wait.",
+      "dict": false,
+      "expect": "We can, or we can wait."
+    },
+    {
+      "raw": "I think it is, um, though.",
+      "dict": false,
+      "expect": "I think it is, though."
+    },
+    {
+      "raw": "Tell me what you think, um, honestly.",
+      "dict": false,
+      "expect": "Tell me what you think, honestly."
+    },
+    {
+      "raw": "So, um, the build is green.",
+      "dict": false,
+      "expect": "So, the build is green."
+    },
+    {
+      "raw": "Give it a hundred percent.",
+      "dict": false,
+      "expect": "Give it a hundred percent."
+    },
+    {
+      "raw": "It costs a couple of dollars.",
+      "dict": false,
+      "expect": "It costs a couple of dollars."
+    },
+    {
+      "raw": "It was a few hundred dollars.",
+      "dict": false,
+      "expect": "It was a few hundred dollars."
+    },
+    {
+      "raw": "It costs one or two dollars.",
+      "dict": false,
+      "expect": "It costs one or two dollars."
+    },
+    {
+      "raw": "It costs between ten and twenty dollars.",
+      "dict": false,
+      "expect": "It costs between ten and twenty dollars."
+    },
+    {
+      "raw": "Rates rose two point five percent.",
+      "dict": false,
+      "expect": "Rates rose two point five percent."
+    },
+    {
+      "raw": "It was five dollars and fifty cents.",
+      "dict": false,
+      "expect": "It was five dollars and fifty cents."
+    },
+    {
+      "raw": "Ten Percent Happier is a good book.",
+      "dict": false,
+      "expect": "Ten Percent Happier is a good book."
+    },
+    {
+      "raw": "I have twenty five dollar bills.",
+      "dict": false,
+      "expect": "I have twenty five dollar bills."
+    },
+    {
+      "raw": "Prices are in 2025 dollars.",
+      "dict": false,
+      "expect": "Prices are in 2025 dollars."
+    },
+    {
+      "raw": "It cost two million dollars.",
+      "dict": false,
+      "expect": "It cost two million dollars."
+    },
+    {
+      "raw": "It cost fifteen hundred dollars.",
+      "dict": false,
+      "expect": "It cost fifteen hundred dollars."
+    },
+    {
+      "raw": "It cost nineteen ninety nine dollars.",
+      "dict": false,
+      "expect": "It cost nineteen ninety nine dollars."
+    },
+    {
+      "raw": "Growth was ten to fifteen percent.",
+      "dict": false,
+      "expect": "Growth was ten to fifteen percent."
+    },
+    {
+      "raw": "The tip was fifteen percent to twenty percent.",
+      "dict": false,
+      "expect": "The tip was fifteen percent to twenty percent."
+    },
+    {
+      "raw": "Millions of dollars were spent.",
+      "dict": false,
+      "expect": "Millions of dollars were spent."
+    },
+    {
+      "raw": "What percent of users stayed?",
+      "dict": false,
+      "expect": "What percent of users stayed?"
+    },
+    {
+      "raw": "I need ten dollars for two tickets.",
+      "dict": false,
+      "expect": "I need ten dollars for two tickets."
+    },
+    {
+      "raw": "Meet at three p.m. to five p.m.",
+      "dict": false,
+      "expect": "Meet at three p.m. to five p.m."
+    },
+    {
+      "raw": "It went from two to three p.m.",
+      "dict": false,
+      "expect": "It went from two to three p.m."
+    },
+    {
+      "raw": "Twenty five dollars is too much.",
+      "dict": false,
+      "expect": "Twenty five dollars is too much."
+    },
+    {
+      "raw": "Ninety nine percent of the time it works.",
+      "dict": false,
+      "expect": "Ninety nine percent of the time it works."
+    },
+    {
+      "raw": "I'd bet one dollar on it.",
+      "dict": false,
+      "expect": "I'd bet one dollar on it."
+    },
+    {
+      "raw": "Let's meet at three. I am free all day.",
+      "dict": false,
+      "expect": "Let's meet at three. I am free all day."
+    },
+    {
+      "raw": "The 1990s dollars were worth more.",
+      "dict": false,
+      "expect": "The 1990s dollars were worth more."
+    },
+    {
+      "raw": "Umm, so, uh, we should, um ship it",
+      "dict": false,
+      "expect": "So, we should ship it."
+    },
+    {
+      "raw": "The demo is, um, uh, basically done.",
+      "dict": false,
+      "expect": "The demo is basically done."
+    },
+    {
+      "raw": "and, um, and then we left",
+      "dict": false,
+      "expect": "And then we left."
+    },
+    {
+      "raw": "the, um, the plan works",
+      "dict": false,
+      "expect": "The plan works"
+    },
+    {
+      "raw": "Can I, um, borrow your charger?",
+      "dict": false,
+      "expect": "Can I borrow your charger?"
+    },
+    {
+      "raw": "Is it, uh, ready?",
+      "dict": false,
+      "expect": "Is it ready?"
+    },
+    {
+      "raw": "It costs twenty-five dollars.",
+      "dict": false,
+      "expect": "It costs $25."
+    },
+    {
+      "raw": "We are fifteen percent done new line next we ship",
+      "dict": false,
+      "expect": "We are 15% done\nNext we ship."
+    },
+    {
+      "raw": "A 15 percent tip, please",
+      "dict": false,
+      "expect": "A 15% tip, please."
+    },
+    {
+      "raw": "at twelve oh one a.m.",
+      "dict": false,
+      "expect": "At 12:01 a.m."
+    },
+    {
+      "raw": "At eleven fifty nine p.m. we ship.",
+      "dict": false,
+      "expect": "At 11:59 p.m. we ship."
+    },
+    {
+      "raw": "zero percent of users",
+      "dict": false,
+      "expect": "Zero percent of users."
+    },
+    {
+      "raw": "It costs zero dollars",
+      "dict": false,
+      "expect": "It costs $0."
+    },
+    {
+      "raw": "nine thirty p.m.",
+      "dict": false,
+      "expect": "Nine thirty p.m."
+    },
+    {
+      "raw": "The tax is seven point two five percent.",
+      "dict": false,
+      "expect": "The tax is seven point two five percent."
+    },
+    {
+      "raw": "We grew fifteen percent, then twenty percent.",
+      "dict": false,
+      "expect": "We grew fifteen percent, then twenty percent."
+    },
+    {
+      "raw": "Sales and fifteen percent bonus are due.",
+      "dict": false,
+      "expect": "Sales and 15% bonus are due."
     }
   ],
   "dictionaryOnly": [

@@ -22,6 +22,10 @@ fn long_dictation() -> String {
         "Mr. and Mrs. Smith will join at 3 p.m. today with the team, etc. and post gres is migrated.",
         "Book the room for Monday. Scratch that, book it for Tuesday. My back itches. Scratch that itch.",
         // ADR 0189: the dictation ends in a spoken mark, so the final-mark step does its whole check and fires.
+        // ADR 0192: fillers between commas, after a word a comma can't follow (and the refusals' checks).
+        "The demo is, um, basically done and, uh, we think the, um, docs are ready. If we can, um, we ship.",
+        // ADR 0193: spoken amounts, converted and refused.
+        "It costs twenty five dollars, up fifteen percent, at three thirty p.m. Between ten and twenty dollars.",
         "Thanks for the update. Is the demo still on question mark",
     ];
     let mut s = String::new();

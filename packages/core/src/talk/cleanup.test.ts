@@ -45,4 +45,40 @@ describe('talk cleanup', () => {
     expect(applyDictionary('Cue-Arts and QUARTZ', dict)).toBe('qrtz and qrtz');
     expect(applyDictionary('quartzite stays', dict)).toBe('quartzite stays');
   });
+  it('ADR 0192: a filler takes its comma only after a word no comma follows', () => {
+    expect(ruleCleanup('The demo is, um, basically done.')).toBe(
+      'The demo is basically done.',
+    );
+    expect(ruleCleanup('Can you, um, send me the deck?')).toBe(
+      'Can you send me the deck?',
+    );
+    expect(ruleCleanup('I fixed the bug and, uh, pushed the change.')).toBe(
+      'I fixed the bug and pushed the change.',
+    );
+    expect(ruleCleanup('So, uh, the build is green now.')).toBe(
+      'So, the build is green now.',
+    );
+    expect(ruleCleanup('If we can, um, we should ship it today.')).toBe(
+      'If we can, we should ship it today.',
+    );
+    expect(ruleCleanup('Yes we can, um, Sam.')).toBe('Yes we can, Sam.');
+  });
+
+  it('ADR 0193: spoken amounts become figures only where the reading is certain', () => {
+    expect(ruleCleanup('It costs twenty five dollars.')).toBe('It costs $25.');
+    expect(ruleCleanup('We grew by fifteen percent this quarter.')).toBe(
+      'We grew by 15% this quarter.',
+    );
+    expect(ruleCleanup('The meeting is at three thirty p.m.')).toBe(
+      'The meeting is at 3:30 p.m.',
+    );
+    for (const raw of [
+      'It costs between ten and twenty dollars.',
+      'Give it a hundred percent.',
+      'I have twenty five dollar bills.',
+      'Twenty five dollars is too much.',
+      'It was five dollars and fifty cents.',
+    ])
+      expect(ruleCleanup(raw), raw).toBe(raw);
+  });
 });
