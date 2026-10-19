@@ -62,12 +62,12 @@ describe('NotchSurface (ADR 0221)', () => {
 });
 
 describe('springStep (the native surface springs)', () => {
-  it('bouncy expand overshoots then settles; no-bounce retract never overshoots', () => {
+  it('snappy expand overshoots then settles; no-bounce retract never overshoots', () => {
     const { expand, retract } = NOTCH_MOTION;
     let peak = 0;
     for (let t = 0; t < 1.5; t += 0.005)
       peak = Math.max(peak, springStep(t, expand.duration, expand.bounce));
-    expect(peak).toBeGreaterThan(1.02);
+    expect(peak).toBeGreaterThan(1.003);
     expect(springStep(1.5, expand.duration, expand.bounce)).toBeCloseTo(1, 2);
     for (let t = 0; t < 1; t += 0.005)
       expect(

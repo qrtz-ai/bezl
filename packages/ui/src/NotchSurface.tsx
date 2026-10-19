@@ -122,16 +122,16 @@ export function springStep(
 }
 
 /**
- * The native surface's motion (NotchSurface.swift, ADR 0221). Show: the shape on a bouncy system spring
- * (perceptual 0.35 s, bounce 0.25), content fading in from 0.13 s over 0.10 s. Hide: content fades out over 0.06 s,
+ * The native surface's motion (NotchSurface.swift, ADR 0221). Show: the shape on a snappy system spring
+ * (perceptual 0.3 s, bounce 0.15), content fading in from 0.11 s over 0.09 s. Hide: content fades out over 0.06 s,
  * the shape retracts from 0.04 s on a no-bounce spring (perceptual 0.3 s). Seconds.
  */
 export const NOTCH_MOTION = {
   expand: {
-    duration: 0.35,
-    bounce: 0.25,
-    contentDelay: 0.13,
-    contentFade: 0.1,
+    duration: 0.3,
+    bounce: 0.15,
+    contentDelay: 0.11,
+    contentFade: 0.09,
   },
   retract: { duration: 0.3, bounce: 0, delay: 0.04, contentFade: 0.06 },
 } as const;

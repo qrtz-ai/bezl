@@ -330,6 +330,12 @@ final class NotchStageView: NSView {
         return path(width: r.width, height: r.height, radius: NotchGeometry.restRadius, ear: 0)
     }
 
+    /// Rest and expanded paths share `NotchShape.path`'s ten steps, and every point in them is linear in
+    /// (w, h, radius, ear). Core Animation lerps path points with the spring's progress k (overshoot included), so
+    /// mid-flight the shape is exactly `path(lerp(w), lerp(h), lerp(r), lerp(e))`: the bottom radius grows as
+    /// r = restRadius + (expandedRadius - restRadius) * p and the shoulders as e = expandedEar * p, where
+    /// p = (h - h_rest) / (h_expanded - h_rest) = k. Both endpoints satisfy the clamp (r <= h - e, e <= h / 2), and
+    /// those are linear, so every in-between frame does too; the <1% overshoot keeps that margin.
     private var expandedPath: CGPath {
         let s = NotchGeometry.expanded(notchWidth: notchWidth, notchHeight: contentTop, extra: extra)
         return path(width: s.w, height: s.h, radius: NotchGeometry.expandedRadius, ear: NotchGeometry.expandedEar)
@@ -460,8 +466,8 @@ final class NotchStageView: NSView {
     private func presentedOpacity(_ l: CALayer) -> Float { (l.presentation() ?? l).opacity }
 
     /// Show: the shape springs from the rest rect (or from where a retract left it) to the expanded size on a system
-    /// spring with a `.bouncy` feel (perceptual 0.35 s, bounce 0.25); the content fades in as the shape arrives
-    /// (from 0.13 s over 0.10 s). The overshoot (~3% of the travel: about 2 pt each side, 1-2 pt down) stays inside
+    /// spring with `.snappy`'s bounce (perceptual 0.3 s, bounce 0.15); the content fades in as the shape arrives
+    /// (from 0.11 s over 0.09 s). The overshoot (~0.6% of the travel: under 1 pt each side and down) stays inside
     /// the panel, which has `widenMax` + ear spare each side and 4 pt below (`NotchGeometry.panelSize`), so nothing
     /// clips and it reaches no further over the menu bar than the panel already does. Reduce Motion: a 120 ms fade.
     func expand(fromCurrent: Bool) {
@@ -484,15 +490,15 @@ final class NotchStageView: NSView {
         CATransaction.begin(); CATransaction.setDisableActions(true)
         root.opacity = 1; shape.path = to; rowLayer.opacity = 1
         CATransaction.commit()
-        let grow = CASpringAnimation(perceptualDuration: 0.35, bounce: 0.25)
+        let grow = CASpringAnimation(perceptualDuration: 0.3, bounce: 0.15)
         grow.keyPath = "path"
         grow.fromValue = from; grow.toValue = to
         grow.duration = grow.settlingDuration
         shape.add(grow, forKey: "notch.path")
         let fade = CABasicAnimation(keyPath: "opacity")
         fade.fromValue = c0; fade.toValue = 1
-        fade.beginTime = CACurrentMediaTime() + (fromCurrent ? 0.04 : 0.13)
-        fade.duration = 0.10
+        fade.beginTime = CACurrentMediaTime() + (fromCurrent ? 0.04 : 0.11)
+        fade.duration = 0.09
         fade.fillMode = .backwards
         fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
         rowLayer.add(fade, forKey: "notch.content")
