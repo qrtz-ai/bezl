@@ -15,5 +15,7 @@ final class SecureFieldTests: XCTestCase {
 
     func testTheRefusalCodeMatchesTheHost() {
         XCTAssertEqual(SecureField.insertRefused, "secure-field")  // qrtz-talk INSERT_REFUSED_SECURE
+        XCTAssertEqual(SecureField.notice, "echo won't type into password fields")  // qrtz-talk MSG_SECURE_FIELD
+        XCTAssertEqual(SecureField.notice, SecureField.notice.lowercased())
     }
 }

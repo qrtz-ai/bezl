@@ -11,5 +11,9 @@ trap 'rm -rf "$tmp"' EXIT
 for f in "$src"/mac/*.swift; do
   grep -v -E '^#if os\(macOS\)|^#endif|^import (AppKit|ApplicationServices|CoreML|CoreServices|Carbon|CoreGraphics|IOKit|CoreWLAN|CoreAudio)' "$f" >"$tmp/mac_$(basename "$f")"
 done
-swiftc -typecheck -swift-version 5 -module-name QrtzCtrl "$root/scripts/ctrl/mac-stubs.swift" "$src"/*.swift "$tmp"/mac_*.swift
+# QrtzCtrl imports QrtzShared (CtrlMarker, SecureField): build its module first (Foundation-only, as in Package.swift).
+mkdir -p "$tmp/mods"
+swiftc -emit-module -parse-as-library -swift-version 6 -module-name QrtzShared -emit-module-path "$tmp/mods/QrtzShared.swiftmodule" \
+  "$root"/native/qrtz-helper/Sources/QrtzShared/*.swift
+swiftc -typecheck -swift-version 5 -I "$tmp/mods" -module-name QrtzCtrl "$root/scripts/ctrl/mac-stubs.swift" "$src"/*.swift "$tmp"/mac_*.swift
 echo "QrtzCtrl mac sources typecheck against the stubs"

@@ -160,10 +160,14 @@ public final class PillDriver: @unchecked Sendable {
         case .insertResult(let id, _, let ok, _, let error):
             guard isCurrent(id) else { return }
             if ok { go(.hidden); return }
+            // ADR 0225: a password field: say so at once (nothing of the dictation stays on the pill).
+            if error == SecureField.insertRefused {
+                lock.withLock { pendingInsertError = nil }
+                go(.error(SecureField.notice), timeoutMs: timing.errorFlashMs); return
+            }
             // The host answers a failed insert with `pill.flash` (error, or info "copied to clipboard"): stay on
             // processing for it; show this error only if it doesn't come.
-            let msg = error == SecureField.insertRefused ? "echo won't type into password fields"
-                : Self.lower(error ?? "couldn't insert the text")
+            let msg = Self.lower(error ?? "couldn't insert the text")
             let g: Int = lock.withLock { pendingInsertError = msg; return gen }
             after(timing.hostFlashWaitMs) { [weak self] in
                 guard let self else { return }

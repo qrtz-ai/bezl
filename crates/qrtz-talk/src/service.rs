@@ -897,7 +897,16 @@ impl TalkService {
                     tracing::warn!("microphone revoked mid-dictation");
                 }
             }
-            "insert.result" => self.resolve(&format!("insert:{}", s(m, "id")), m.clone()),
+            "insert.result" => {
+                let id = s(m, "id");
+                let key = format!("insert:{id}");
+                let waited = self.lock().waiters.contains_key(&key);
+                if !waited && m["error"].as_str() == Some(INSERT_REFUSED_SECURE) {
+                    self.secure_after_timeout(&id);
+                } else {
+                    self.resolve(&key, m.clone());
+                }
+            }
             "error" => {
                 let code = s(m, "code");
                 if !code.starts_with("dictation.") {
@@ -1029,6 +1038,28 @@ impl TalkService {
                 )
                 .await
             });
+        }
+    }
+
+    /// ADR 0225 (follow-up 1): the helper's secure refusal came after talk stopped waiting (the insert bound ran
+    /// out). The words were already kept as for a failed insert: take the history entry (and the view's `last`)
+    /// back out, and drop a real final still to come. The clipboard write can't be taken back (ADR 0225, limits).
+    fn secure_after_timeout(&self, id: &str) {
+        tracing::info!("talk: secure refusal after the insert bound; history entry removed");
+        let removed = self.delete_entry(id);
+        let mut g = self.lock();
+        g.late.remove(id);
+        // Still finishing (the refusal beat the history write): `finish` sees this and keeps nothing.
+        if !removed {
+            g.secure_refused.insert(id.to_owned());
+        }
+        if g.view.last.as_ref().is_some_and(|l| l.id == id) {
+            g.view.last = None;
+        }
+        self.emit_view(&g);
+        drop(g);
+        if removed {
+            self.pill_flash("info", MSG_SECURE_FIELD);
         }
     }
 
@@ -1731,7 +1762,9 @@ impl TalkService {
                 self.pill_flash("info", MSG_SECURE_FIELD);
                 return own;
             }
-            if insert.as_ref().map(|m| m["ok"] == true) != Some(true) {
+            // ADR 0225: a secure refusal that came after the bound, in this gap, keeps the clipboard out of it too.
+            let refused_late = self.lock().secure_refused.contains(&id);
+            if insert.as_ref().map(|m| m["ok"] == true) != Some(true) && !refused_late {
                 // Never lose the words: leave them on the clipboard to paste by hand.
                 self.deps().clipboard.write(&pasted);
                 let why = insert
@@ -1802,6 +1835,15 @@ impl TalkService {
             tail_dropped = segs.as_ref().map(|a| a.tail_dropped).filter(|d| *d),
             "talk latency"
         );
+        if g.secure_refused.contains(&id) {
+            // ADR 0225: the refusal came after the insert bound but before this write: keep nothing.
+            let own = g.view.id.as_deref() == Some(id.as_str());
+            if own {
+                g.view = g.view.idle_keeping();
+            }
+            self.emit_view(&g);
+            return own;
+        }
         if cfg.save_history {
             g.store.history.insert(0, entry.clone());
             g.store.history.truncate(MAX_HISTORY);
