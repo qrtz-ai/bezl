@@ -234,13 +234,14 @@ public struct NotchMotion: Equatable, Sendable {
         ("radiusCollapsed", 0, 16), ("radiusExpanded", 0, 32), ("shoulder", 0, 16),
     ]
 
-    private static let keys: [(String, WritableKeyPath<NotchMotion, Double>)] = [
+    /// Computed, not a stored static: key paths aren't Sendable, so a stored global fails Swift 6's concurrency check.
+    private static var keys: [(String, WritableKeyPath<NotchMotion, Double>)] { [
         ("expandDuration", \.expandDuration), ("expandBounce", \.expandBounce),
         ("collapseDuration", \.collapseDuration), ("collapseBounce", \.collapseBounce),
         ("fadeInDelay", \.fadeInDelay), ("fadeInDuration", \.fadeInDuration), ("fadeOutDuration", \.fadeOutDuration),
         ("widenDuration", \.widenDuration), ("widenBounce", \.widenBounce),
         ("radiusCollapsed", \.radiusCollapsed), ("radiusExpanded", \.radiusExpanded), ("shoulder", \.shoulder),
-    ]
+    ] }
 
     /// From the wire object: unknown keys ignored, a missing or non-number key keeps its default, values clamped.
     public init(json o: [String: JSONValue]) {

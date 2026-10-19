@@ -199,21 +199,23 @@ public final class NotchSurface: @unchecked Sendable {
         var obs: AXObserver?
         let cb: AXObserverCallback = { _, _, _, refcon in
             guard let refcon else { return }
-            // Unretained: the observer is removed (stopSecureWatch, deinit) before the surface goes.
-            Unmanaged<NotchSurface>.fromOpaque(refcon).takeUnretainedValue().recheckSecureInput()
+            // Unretained: the observer is removed (stopSecureWatch, deinit) before the surface goes. The source is on
+            // the main run loop, so this runs on the main thread; assumeIsolated states (and checks) that.
+            let surface = Unmanaged<NotchSurface>.fromOpaque(refcon).takeUnretainedValue()
+            MainActor.assumeIsolated { surface.recheckSecureInput() }
         }
         guard AXObserverCreate(pid, cb, &obs) == .success, let obs else { return }
         let app = AXUIElementCreateApplication(pid)
         let me = Unmanaged.passUnretained(self).toOpaque()
         guard AXObserverAddNotification(obs, app, kAXFocusedUIElementChangedNotification as CFString, me) == .success else { return }
-        CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(obs), .defaultMode)
+        CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(obs), .commonModes)
         focusObserver = (obs, app)
     }
 
     private func detachFocusObserver() {
         guard let f = focusObserver else { return }
         AXObserverRemoveNotification(f.obs, f.app, kAXFocusedUIElementChangedNotification as CFString)
-        CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(f.obs), .defaultMode)
+        CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(f.obs), .commonModes)
         focusObserver = nil
     }
 
