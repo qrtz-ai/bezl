@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   ArrowUpCircle,
+  Video,
   ChevronLeft,
   Cpu,
   Database,
@@ -98,6 +99,8 @@ export const ICONS = {
   open: ExternalLink,
   permission: Lock,
   restart: RotateCw,
+  // ADR 0217: an upcoming event's video-call link.
+  video: Video,
 } satisfies Record<string, FeatherIcon>;
 
 export type IconName = keyof typeof ICONS;

@@ -7,6 +7,7 @@
 //   ?mockPerms=denied (every OS permission starts not-determined)   ?theme=light | dark | system
 //   ?onboarding=1 (first run: the permissions onboarding shows, ADR 0184; otherwise it is already done)
 //   ?mockNano=missing (nano not installed: the host's modules.nano.installed is false; onboarding skips system audio)
+//   ?mockCalendar=denied | granted (ADR 0217: Apple Calendar access; default not-determined, connect grants it)
 import {
   AppError,
   TAURI_EVENT,
@@ -92,6 +93,57 @@ export function createMockBridge(): TauriBridge {
     config = applyConfigPatch(config, {
       modules: { nano: { installed: false } },
     });
+  const mockCal = params.get('mockCalendar');
+  let calendarAccess: 'not-determined' | 'granted' | 'denied' =
+    mockCal === 'granted' || mockCal === 'denied' ? mockCal : 'not-determined';
+  if (mockCal === 'granted')
+    config = applyConfigPatch(config, {
+      note: { calendar: { enabled: true } },
+    });
+  const calendarAt = Date.now();
+  const calendarEvents = () => [
+    {
+      id: 'ev-standup',
+      calendarId: 'cal-work',
+      title: 'weekly sync',
+      startAt: calendarAt + 30 * 60_000,
+      endAt: calendarAt + 60 * 60_000,
+      allDay: false,
+      attendeeCount: 4,
+      meetingUrl: 'https://meet.google.com/abc-defg-hij',
+    },
+    {
+      id: 'ev-dentist',
+      calendarId: 'cal-home',
+      title: 'dentist',
+      startAt: calendarAt + 26 * 3_600_000,
+      endAt: calendarAt + 27 * 3_600_000,
+      allDay: false,
+      attendeeCount: 0,
+    },
+  ];
+  const calendarStatus = () => {
+    const c = (
+      config.note as {
+        calendar?: { enabled?: boolean; calendars?: string[] | null };
+      }
+    ).calendar;
+    return {
+      enabled: c?.enabled ?? false,
+      access: calendarAccess,
+      calendars:
+        calendarAccess === 'granted'
+          ? [
+              // check-titles-ignore (user calendar names)
+              { id: 'cal-work', title: 'Work' },
+              // check-titles-ignore (user calendar names)
+              { id: 'cal-home', title: 'Home' },
+            ]
+          : [],
+      chosen: c?.calendars ?? null,
+      lastSyncAt: calendarAccess === 'granted' ? calendarAt : null,
+    };
+  };
   const theme = params.get('theme');
   if (theme === 'light' || theme === 'dark' || theme === 'system')
     config = applyConfigPatch(config, { theme });
@@ -370,7 +422,33 @@ export function createMockBridge(): TauriBridge {
       if (err) throw new AppError('E_FORBIDDEN', err);
       config = applyConfigPatch(config, patch);
       emit('config:changed', config);
+      if ((patch as { note?: { calendar?: unknown } }).note?.calendar)
+        emit('calendar:changed', calendarStatus());
       return pickModuleSettings(config, m);
+    },
+    // ADR 0217: nano's Apple Calendar, two calendars and three events from now on.
+    'calendar:status': () => calendarStatus(),
+    'calendar:refresh': () => calendarStatus(),
+    'calendar:connect': () => {
+      if (calendarAccess === 'not-determined') calendarAccess = 'granted';
+      if (calendarAccess === 'granted') {
+        config = applyConfigPatch(config, {
+          note: { calendar: { enabled: true } },
+        });
+        emit('config:changed', config);
+      }
+      const s = calendarStatus();
+      emit('calendar:changed', s);
+      return s;
+    },
+    'calendar:upcoming': () => {
+      const s = calendarStatus();
+      if (!s.enabled || s.access !== 'granted') return { events: [] };
+      return {
+        events: calendarEvents().filter(
+          (e) => s.chosen == null || s.chosen.includes(e.calendarId),
+        ),
+      };
     },
     'note:set-auto-record': ({ enabled }) => {
       config = applyConfigPatch(config, { note: { autoRecord: enabled } });

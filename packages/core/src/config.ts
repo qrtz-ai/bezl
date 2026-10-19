@@ -63,7 +63,11 @@ export const ConfigSchema = z.object({
       calendar: z
         .object({
           enabled: z.boolean().default(false),
-          calendars: z.array(z.string().min(1).max(512)).max(200).nullable().default(null),
+          calendars: z
+            .array(z.string().min(1).max(512))
+            .max(200)
+            .nullable()
+            .default(null),
         })
         .prefault({}),
     })

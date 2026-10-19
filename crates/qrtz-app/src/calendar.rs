@@ -321,19 +321,16 @@ impl NanoCalendar {
     }
 
     async fn wipe(&self) {
-        let had = {
+        {
             let mut s = self.lock();
-            let had = !s.events.is_empty() || !s.calendars.is_empty();
             s.events.clear();
             s.calendars.clear();
-            had
-        };
+        }
         if let Err(e) = self.db.call(|db| db.calendar().clear()).await {
             tracing::warn!(error = %e, "calendar: cache wipe failed");
         }
-        if had {
-            self.emit_changed();
-        }
+        // Also the answer to turning it off: the views re-read on/off from this.
+        self.emit_changed();
     }
 
     /// The sync loop: loads the cache, then re-reads on `calendar.changed`, settings changes, a kick and every

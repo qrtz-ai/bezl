@@ -69,6 +69,14 @@ bun start                      # tauri dev (or `bun run make` for the .app + .dm
 - [ ] The summary's source reads "on-device · apple intelligence" (ADR 0075; Apple Intelligence on in System Settings › Apple Intelligence & Siri). With Apple Intelligence off, the meeting shows "summary unavailable: apple intelligence is turned off…" with retry, and the transcript-based summary.
 - [ ] Helper only: `printf '{"type":"summarize.check","id":"c1"}\n' | .build/debug/qrtz-helper` (from `native/qrtz-helper`) answers `summarize.status` with `"available":true` and `"contextTokens":4096`.
 
+## nano calendar (ADR 0217, 5 min)
+
+1. Fresh install with nano: onboarding lists "calendar (optional)"; nothing prompts until you click allow. Allow: the macOS Calendars prompt names qrtz.
+2. Skip onboarding instead, open nano: the upcoming block shows "connect calendar"; click it, grant, and the next 14 days of events appear (titles as in Calendar.app).
+3. nano settings → calendar: untick a calendar, its events leave the block; turn calendar off, the block goes back to "connect calendar" and the cache is wiped.
+4. Add an event in Calendar.app starting in 2 min: within seconds (EKEventStoreChanged) it shows; at its start the meeting prompt appears (no auto-record unless auto-record is on). Record: the note is titled after the event.
+5. Revoke in System Settings › Privacy › Calendars: the block says access is off; nothing crashes.
+
 ## Known gaps
 
 - **No real echo cancellation:** the echo gate is a heuristic. The upgrade path is FluidAudio LocalVQE AEC with the system tap as the far-end reference.

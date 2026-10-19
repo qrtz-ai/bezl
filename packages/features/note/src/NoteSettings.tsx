@@ -10,6 +10,7 @@ import {
 } from '@qrtz/ui';
 import { SUMMARY_TEMPLATES } from '@qrtz/core';
 import { useModuleSettings } from '@qrtz/core/react';
+import { CalendarSettings } from './Calendar';
 
 /**
  * ADR 0146 M1.4: nano's own settings, inside nano's view: recording and summaries (`note`, in nano's settings
@@ -141,6 +142,7 @@ export default function NoteSettings() {
           />
         </Field>
       </SettingsSection>
+      <CalendarSettings patch={setNote} />
       <SettingsSection title="speakers" data-testid="note-settings-speakers">
         <SettingRow label="speaker labels">
           <Select

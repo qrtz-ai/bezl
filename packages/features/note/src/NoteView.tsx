@@ -35,6 +35,7 @@ import { Hud } from './Hud';
 import { isCapturingPhase, useSession } from './useRecording';
 import { fmtDate } from './format';
 import NoteSettings from './NoteSettings';
+import { Upcoming } from './Calendar';
 
 // The detail (transcript, summary, notes, player) isn't needed to paint the list: its own chunk, preloaded
 // as soon as the list mounts so opening a meeting never waits on it (ADR 0093).
@@ -228,6 +229,13 @@ export default function NoteView() {
               status={speechSetup.speech}
               onOpen={() => requestNavigate({ app: 'qrtz', item: 'nano' })}
             />
+            {searching || busy ? null : (
+              <Upcoming
+                onRecord={(title) =>
+                  void act(qrtz.invoke('note:start', title ? { title } : {}))
+                }
+              />
+            )}
             <Stack as="ul" gap={0} scroll grow aria-label="meetings">
               {visible.length === 0 ? (
                 <Stack as="li">

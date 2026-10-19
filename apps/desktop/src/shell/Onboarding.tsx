@@ -12,6 +12,7 @@ import {
 } from '@qrtz/ui';
 import {
   loadConfig,
+  type CalendarStatus,
   type ModuleId,
   type OsPermission,
   type PermissionsStatus,
@@ -75,6 +76,24 @@ export function onboardingPermissions(cfg: unknown) {
   );
 }
 
+/**
+ * ADR 0217: nano's optional Apple Calendar row, listed only while nano is installed. It is not an OS permission
+ * qrtz needs (nothing waits on it, so it never counts toward "open qrtz"), and its allow is nano's connect.
+ */
+export function showCalendarRow(cfg: unknown) {
+  return cfg != null && (loadConfig(cfg).modules?.nano?.installed ?? false);
+}
+
+/** The calendar row's state from nano's calendar status. */
+export function calendarSetupState(
+  st: CalendarStatus | null,
+): PermissionSetupState {
+  if (!st) return 'checking';
+  if (st.access === 'granted') return 'granted';
+  if (st.access === 'unsupported') return 'not-needed';
+  return 'not-granted';
+}
+
 /** One row's state from the live status and whether the user has asked for it yet. */
 export function setupState(
   st: string | undefined,
@@ -118,6 +137,9 @@ function Steps({ onDone }: { onDone: () => void }) {
   const [cfg, setCfg] = useState<Record<string, unknown> | null>(null);
   const liveCfg = useQrtzEvent('config:changed');
   const fail = (e: Error) => setError(e.message);
+  const [cal, setCal] = useState<CalendarStatus | null>(null);
+  const liveCal = useQrtzEvent('calendar:changed');
+  const calShown = showCalendarRow(cfg);
 
   const read = useCallback(
     () => void qrtz.invoke('permissions:get').then(setPerms, fail),
@@ -138,6 +160,19 @@ function Steps({ onDone }: { onDone: () => void }) {
   useEffect(() => {
     if (liveCfg) setCfg(liveCfg);
   }, [liveCfg]);
+  // Reads only (calendar:status never prompts); the ask is the row's allow.
+  useEffect(() => {
+    if (calShown)
+      void qrtz.invoke('calendar:status').then(setCal, () => setCal(null));
+  }, [qrtz, calShown]);
+  useEffect(() => {
+    if (liveCal) setCal(liveCal);
+  }, [liveCal]);
+  const connectCalendar = () => {
+    setError(null);
+    void qrtz.invoke('calendar:connect').then(setCal, fail);
+  };
+  const calState = calendarSetupState(cal);
   const shown = onboardingPermissions(cfg);
   // After an ask, re-read every second until the grant shows (System Settings may still be in front).
   const watching = asked.p.some(
@@ -231,6 +266,22 @@ function Steps({ onDone }: { onDone: () => void }) {
             {...(r.state === 'needs-restart' ? { onRestart: restart } : {})}
           />
         ))}
+        {calShown ? (
+          <PermissionSetupRow
+            id="calendar"
+            icon="calendar"
+            label="calendar (optional)"
+            reason={
+              cal?.access === 'denied'
+                ? 'turned off: allow qrtz in system settings › privacy › calendars'
+                : "nano names notes after your meetings and lists what's next; read only, never leaves your mac"
+            }
+            state={calState}
+            {...(calState === 'not-granted' && cal?.access !== 'denied'
+              ? { onAllow: connectCalendar }
+              : {})}
+          />
+        ) : null}
       </PermissionSetupList>
       <Stack dir="row" justify="end" gap={2}>
         {/* Hidden until config is read: the rows (and so "open qrtz" vs "continue") depend on it. */}

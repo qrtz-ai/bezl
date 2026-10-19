@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- nano: read-only Apple Calendar on the Mac (ADR 0217): opt-in 'connect calendar', an upcoming block, notes named after the overlapping event, a start-of-meeting prompt; offline, no auto-record by default.
+
 ## 0.2.3 (2026-10-19)
 
 - docs: renumber the notch surface ADR to 0221 (0218 was taken by the resumable-download ADR) (ef27730c)

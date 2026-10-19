@@ -466,3 +466,11 @@ On the host side:
 - e2e: `e2e/permissions.spec.ts`. Uses `QRTZ_MOCK_REVOKE="screen-recording@800,microphone@2000"` to revoke TCC that
   many ms after the first capture.
 - On a real Mac: see `mac-verify.md` (revoking in System Settings mid-capture, and two readers on one input device).
+
+## Calendar (ADR 0217)
+
+nano's helper only, feature `calendar.eventkit`. Host → helper: `calendar.check` (reads the access state, never prompts),
+`calendar.request` (prompts only from not-determined), `calendar.read {from, to}` (window capped at 15 days). Helper →
+host: `calendar.access {state}`, `calendar.events {calendars, events}` (title, start/end, all-day, attendee count, a
+cleaned https meeting URL; no notes, locations or attendee names), `calendar.changed` (EKEventStoreChanged). Limits in
+`CALENDAR_LIMITS` (packages/core/src/helper/protocol.ts).
