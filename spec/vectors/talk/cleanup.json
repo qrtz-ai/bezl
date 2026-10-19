@@ -2405,7 +2405,7 @@
     {
       "raw": "Hey Priya did you finish the report",
       "dict": true,
-      "expect": "Hey Priya did you finish the report."
+      "expect": "Hey Priya, did you finish the report?"
     },
     {
       "raw": "Hey Priya are you",
@@ -2606,6 +2606,146 @@
       "raw": "We, WE can't do it.",
       "dict": false,
       "expect": "We, WE can't do it."
+    },
+    {
+      "raw": "Hey Priya did you hear back from them",
+      "dict": true,
+      "expect": "Hey Priya, did you hear back from them?"
+    },
+    {
+      "raw": "hey pria did you read my notes",
+      "dict": true,
+      "expect": "Hey Priya, did you read my notes?"
+    },
+    {
+      "raw": "Hey Priya did you try the new build",
+      "dict": true,
+      "expect": "Hey Priya, did you try the new build?"
+    },
+    {
+      "raw": "Hey Priya did you sign the lease yet",
+      "dict": true,
+      "expect": "Hey Priya, did you sign the lease yet?"
+    },
+    {
+      "raw": "Hey Priya did you pick up the keys",
+      "dict": true,
+      "expect": "Hey Priya, did you pick up the keys?"
+    },
+    {
+      "raw": "Hey Priya did you merge the pull request",
+      "dict": true,
+      "expect": "Hey Priya, did you merge the pull request?"
+    },
+    {
+      "raw": "Hey Priya did you eat lunch already",
+      "dict": true,
+      "expect": "Hey Priya, did you eat lunch already?"
+    },
+    {
+      "raw": "Thanks for the update. Hey Priya did you ship the fix",
+      "dict": true,
+      "expect": "Thanks for the update. Hey Priya, did you ship the fix?"
+    },
+    {
+      "raw": "Hey Priya did you talk to the landlord",
+      "dict": true,
+      "expect": "Hey Priya, did you talk to the landlord?"
+    },
+    {
+      "raw": "Hey Priya did you email the client",
+      "dict": true,
+      "expect": "Hey Priya, did you email the client?"
+    },
+    {
+      "raw": "Hey Priya did you a solid last week",
+      "dict": true,
+      "expect": "Hey Priya did you a solid last week."
+    },
+    {
+      "raw": "Hey Priya did you good with that advice",
+      "dict": true,
+      "expect": "Hey Priya did you good with that advice."
+    },
+    {
+      "raw": "Hey Priya did you wrong",
+      "dict": true,
+      "expect": "Hey Priya did you wrong."
+    },
+    {
+      "raw": "Hey Priya did you proud at the recital",
+      "dict": true,
+      "expect": "Hey Priya did you proud at the recital."
+    },
+    {
+      "raw": "Hey Priya did you justice in that review",
+      "dict": true,
+      "expect": "Hey Priya did you justice in that review."
+    },
+    {
+      "raw": "Hey Priya did you dirty in that meeting",
+      "dict": true,
+      "expect": "Hey Priya did you dirty in that meeting."
+    },
+    {
+      "raw": "Hey Priya did you like a pro on that deal",
+      "dict": true,
+      "expect": "Hey Priya did you like a pro on that deal."
+    },
+    {
+      "raw": "Hey Priya did you a good turn yesterday",
+      "dict": true,
+      "expect": "Hey Priya did you a good turn yesterday."
+    },
+    {
+      "raw": "Hey Priya did you right by fixing it",
+      "dict": true,
+      "expect": "Hey Priya did you right by fixing it."
+    },
+    {
+      "raw": "Hey Priya did you no harm by staying",
+      "dict": true,
+      "expect": "Hey Priya did you no harm by staying."
+    },
+    {
+      "raw": "Hey Priya did you well in the end",
+      "dict": true,
+      "expect": "Hey Priya did you well in the end."
+    },
+    {
+      "raw": "Hey Sam did you finish the report",
+      "dict": true,
+      "expect": "Hey Sam did you finish the report."
+    },
+    {
+      "raw": "Okay Priya did you finish the report",
+      "dict": true,
+      "expect": "Okay Priya did you finish the report."
+    },
+    {
+      "raw": "Hey Priya, did you finish the report",
+      "dict": true,
+      "expect": "Hey Priya, did you finish the report."
+    },
+    {
+      "raw": "Hey Priya did you ever finish the book",
+      "dict": true,
+      "expect": "Hey Priya did you ever finish the book."
+    },
+    {
+      "raw": "So I said hey Priya did you finish the report",
+      "dict": true,
+      "expect": "So I said hey Priya did you finish the report."
+    },
+    {
+      "raw": "Hey Priya did you finish the report that I sent",
+      "dict": true,
+      "expect": "Hey Priya did you finish the report that I sent."
+    },
+    {
+      "raw": "Hey Priya did you finish",
+      "dict": true,
+      "expect": "Hey Priya, did you finish?"
     }
   ],
   "dictionaryOnly": [

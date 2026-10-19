@@ -1623,6 +1623,21 @@ fn opener_comma(mut t: String) -> String {
 /// "Okay Sam is that kind of guy", "Sam has it covered", "Sam is there a lot").
 pub const VOCATIVE_SUBJECTS: &[&str] = &["i", "you", "we", "they", "he", "she"];
 
+/// ADR 0208: after "Hey <name> did you", these verbs also open the question, besides [`SO_QUESTION_VERBS`] ("Hey
+/// Jared did you finish the report"). "did you" is the one opening where "you" can also be the object of a statement
+/// about the name ("Jared did you a favor", "did you good", "did you wrong", "did you proud", "did you justice",
+/// "did you credit"), so the list is closed and holds only plain base-form verbs that never stand bare as that
+/// complement. Left out on purpose: "like" ("did you like a pro"), "turn" ("did you a good turn"), "forward", "save",
+/// "close", "clean", "open", "fine", "miss", "love", "harm", "damage", "service", "honor", "right", "wrong", "good",
+/// "well". Same list in cleanup.ts.
+pub const VOCATIVE_DID_VERBS: &[&str] = &[
+    "finish", "hear", "read", "try", "find", "eat", "sign", "pick", "bring", "buy", "pay", "book", "order",
+    "review", "fix", "push", "merge", "ship", "submit", "reply", "talk", "speak", "ask", "watch", "catch",
+    "grab", "reach", "leave", "notice", "forget", "decide", "start", "test", "update", "install", "email",
+    "text", "invite", "confirm", "cancel", "print", "meet", "move", "share", "write", "say", "run", "put",
+    "play", "plan", "visit", "enjoy", "sleep",
+];
+
 /// ADR 0206: words the question test reads; a dictionary term spelled like one of them is never taken for a name.
 const VOCATIVE_NOT_NAMES: &[&str] = &[
     "there",
@@ -1647,7 +1662,7 @@ fn vocative_name(word: &str, dict: &[DictionaryEntry]) -> bool {
         return false;
     }
     let lower = word.to_ascii_lowercase();
-    let reads: [&[&str]; 10] = [
+    let reads: [&[&str]; 11] = [
         QUESTION_OPENERS,
         WH_WORDS,
         WH_MODIFIERS,
@@ -1656,6 +1671,7 @@ fn vocative_name(word: &str, dict: &[DictionaryEntry]) -> bool {
         LATER_CLAUSE,
         VOCATIVE_SUBJECTS,
         SO_QUESTION_VERBS,
+        VOCATIVE_DID_VERBS,
         SUBJECT_MODALS,
         VOCATIVE_NOT_NAMES,
     ];
@@ -1684,8 +1700,8 @@ fn last_sentence_start(t: &str) -> usize {
 /// are you free tomorrow?". Called only where [`unmarked_question`] found no question. The last sentence must be
 /// exactly "Hey" (no comma), one [`vocative_name`], then words that [`unmarked_question`] takes as a question after
 /// "Hey" ("Hey are you free tomorrow"), with no comma anywhere, at most [`QUESTION_MAX_WORDS`] words counting the
-/// name, a [`VOCATIVE_SUBJECTS`] subject for a yes/no question, after "did you" one of [`SO_QUESTION_VERBS`] ("Hey,
-/// Sam did you a favor" is a statement), and no "who" ("Hey Sam who is our lead" can be a relative clause). Returns
+/// name, a [`VOCATIVE_SUBJECTS`] subject for a yes/no question, after "did you" one of [`SO_QUESTION_VERBS`] or
+/// (ADR 0208) [`VOCATIVE_DID_VERBS`] ("Hey, Sam did you a favor" is a statement), and no "who" ("Hey Sam who is our lead" can be a relative clause). Returns
 /// the byte after the name, where the comma goes. Only "hey": after "okay"/"ok"/"alright" a term is as often a topic
 /// or a subject ("Okay Teams have you covered").
 fn vocative_question(t: &str, dict: &[DictionaryEntry]) -> Option<usize> {
@@ -1708,11 +1724,15 @@ fn vocative_question(t: &str, dict: &[DictionaryEntry]) -> Option<usize> {
         return None;
     }
     let w: Vec<String> = words[2..].iter().map(|w| w.to_ascii_lowercase()).collect();
+    // ADR 0206 / 0208: after "did you" only a listed verb ("Hey, Sam did you a favor" is a statement).
+    let did_you_verb = w[0] != "did"
+        || w[1] != "you"
+        || SO_QUESTION_VERBS.contains(&w[2].as_str())
+        || VOCATIVE_DID_VERBS.contains(&w[2].as_str());
     let subject_ok = if WH_WORDS.contains(&w[0].as_str()) {
         w[0] != "who"
     } else {
-        VOCATIVE_SUBJECTS.contains(&w[1].as_str())
-            && !(w[0] == "did" && w[1] == "you" && !SO_QUESTION_VERBS.contains(&w[2].as_str()))
+        VOCATIVE_SUBJECTS.contains(&w[1].as_str()) && did_you_verb
     };
     if !subject_ok || !unmarked_question(&format!("{} {}", words[0], words[2..].join(" "))) {
         return None;

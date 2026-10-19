@@ -474,6 +474,64 @@ function terminalPunctuation(
 
 /** ADR 0206: the subjects a question may have after a vocative name. Same as cleanup.rs VOCATIVE_SUBJECTS. */
 export const VOCATIVE_SUBJECTS = ['i', 'you', 'we', 'they', 'he', 'she'];
+/** ADR 0208: after "Hey <name> did you", these verbs also open the question, besides SO_QUESTION_VERBS. Closed list
+ * of plain base-form verbs that never stand bare as the complement of "did you" in a statement ("did you a favor",
+ * "did you good"). Same as cleanup.rs VOCATIVE_DID_VERBS. */
+export const VOCATIVE_DID_VERBS = [
+  'finish',
+  'hear',
+  'read',
+  'try',
+  'find',
+  'eat',
+  'sign',
+  'pick',
+  'bring',
+  'buy',
+  'pay',
+  'book',
+  'order',
+  'review',
+  'fix',
+  'push',
+  'merge',
+  'ship',
+  'submit',
+  'reply',
+  'talk',
+  'speak',
+  'ask',
+  'watch',
+  'catch',
+  'grab',
+  'reach',
+  'leave',
+  'notice',
+  'forget',
+  'decide',
+  'start',
+  'test',
+  'update',
+  'install',
+  'email',
+  'text',
+  'invite',
+  'confirm',
+  'cancel',
+  'print',
+  'meet',
+  'move',
+  'share',
+  'write',
+  'say',
+  'run',
+  'put',
+  'play',
+  'plan',
+  'visit',
+  'enjoy',
+  'sleep',
+];
 /** ADR 0206: words the question test reads that are never taken for a name. Same as cleanup.rs. */
 const VOCATIVE_NOT_NAMES = [
   'there',
@@ -503,6 +561,7 @@ function vocativeName(word: string, dict: readonly DictionaryEntry[]): boolean {
     LATER_CLAUSE,
     VOCATIVE_SUBJECTS,
     SO_QUESTION_VERBS,
+    VOCATIVE_DID_VERBS,
     [...SUBJECT_MODALS],
     VOCATIVE_NOT_NAMES,
   ];
@@ -537,7 +596,12 @@ function vocativeQuestion(
   const subjectOk = WH_WORDS.includes(w[0])
     ? w[0] !== 'who'
     : VOCATIVE_SUBJECTS.includes(w[1]) &&
-      !(w[0] === 'did' && w[1] === 'you' && !SO_QUESTION_VERBS.includes(w[2]));
+      !(
+        w[0] === 'did' &&
+        w[1] === 'you' &&
+        !SO_QUESTION_VERBS.includes(w[2]) &&
+        !VOCATIVE_DID_VERBS.includes(w[2])
+      );
   if (
     !subjectOk ||
     !unmarkedQuestion(`${words[0]} ${words.slice(2).join(' ')}`)

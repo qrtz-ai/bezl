@@ -659,6 +659,30 @@
       "category": "repeat",
       "raw": "We, we shouldn't ship without the tests.",
       "ideal": "We shouldn't ship without the tests."
+    },
+    {
+      "id": "p106",
+      "category": "vocative",
+      "raw": "Hey Jared did you finish the report",
+      "ideal": "Hey Jared, did you finish the report?"
+    },
+    {
+      "id": "p107",
+      "category": "vocative",
+      "raw": "hey priya did you hear back from the landlord",
+      "ideal": "Hey Priya, did you hear back from the landlord?"
+    },
+    {
+      "id": "p108",
+      "category": "vocative",
+      "raw": "I sent the draft last night. Hey Jared did you read it yet",
+      "ideal": "I sent the draft last night. Hey Jared, did you read it yet?"
+    },
+    {
+      "id": "p109",
+      "category": "vocative",
+      "raw": "Hey pria did you book the flights for Friday",
+      "ideal": "Hey Priya, did you book the flights for Friday?"
     }
   ],
   "keep": [
@@ -2328,6 +2352,125 @@
       "rule": "subject-repeat",
       "raw": "They're faster than we, we can't keep up at all.",
       "expect": "They're faster than we, we can't keep up at all."
+    },
+    {
+      "id": "k277",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Jared did you a solid last week",
+      "expect": "Hey Jared did you a solid last week."
+    },
+    {
+      "id": "k278",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Jared did you good with that advice",
+      "expect": "Hey Jared did you good with that advice."
+    },
+    {
+      "id": "k279",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Jared did you wrong",
+      "expect": "Hey Jared did you wrong."
+    },
+    {
+      "id": "k280",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Priya did you proud at the recital",
+      "expect": "Hey Priya did you proud at the recital."
+    },
+    {
+      "id": "k281",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Jared did you justice in that review",
+      "expect": "Hey Jared did you justice in that review."
+    },
+    {
+      "id": "k282",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Jared did you dirty in that meeting",
+      "expect": "Hey Jared did you dirty in that meeting."
+    },
+    {
+      "id": "k283",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Jared did you like a pro on that deal",
+      "expect": "Hey Jared did you like a pro on that deal."
+    },
+    {
+      "id": "k284",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Priya did you a good turn yesterday",
+      "expect": "Hey Priya did you a good turn yesterday."
+    },
+    {
+      "id": "k285",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Priya did you right by fixing it",
+      "expect": "Hey Priya did you right by fixing it."
+    },
+    {
+      "id": "k286",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Jared did you no harm by staying",
+      "expect": "Hey Jared did you no harm by staying."
+    },
+    {
+      "id": "k287",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Sam did you finish the report",
+      "expect": "Hey Sam did you finish the report."
+    },
+    {
+      "id": "k288",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Okay Jared did you finish the report",
+      "expect": "Okay Jared did you finish the report."
+    },
+    {
+      "id": "k289",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Jared, did you finish the report",
+      "expect": "Hey Jared, did you finish the report."
+    },
+    {
+      "id": "k290",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Jared did you ever finish the book",
+      "expect": "Hey Jared did you ever finish the book."
+    },
+    {
+      "id": "k291",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "So I said hey Jared did you finish the report",
+      "expect": "So I said hey Jared did you finish the report."
+    },
+    {
+      "id": "k292",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Jared did you finish the report that I sent",
+      "expect": "Hey Jared did you finish the report that I sent."
+    },
+    {
+      "id": "k293",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Priya did you credit in the writeup",
+      "expect": "Hey Priya did you credit in the writeup."
     }
   ]
 }

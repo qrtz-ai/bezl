@@ -110,11 +110,10 @@ fn everything_else_ends_as_before() {
         "Hey Jared are you free or should we wait",
         "Hey Jared can't you just wait",
         "So I said hey Jared are you coming",
-        // only "hey"; a comma already there; "did you" before a verb outside the list
+        // only "hey"; a comma already there ("did you finish" moved to hardening68, ADR 0208)
         "Okay Jared can you send it over",
         "Okay Teams have you covered",
         "Hey Jared, are you free tomorrow",
-        "Hey Jared did you finish the report",
         // too short, and a question that is not the last sentence
         "Hey Jared are you",
         "Hey Jared are you free. Thanks",

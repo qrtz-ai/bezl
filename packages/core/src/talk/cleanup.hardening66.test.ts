@@ -79,7 +79,6 @@ describe('ADR 0206 a dictionary name after hey before a question', () => {
     'Okay Jared can you send it over',
     'Okay Teams have you covered',
     'Hey Jared, are you free tomorrow',
-    'Hey Jared did you finish the report',
     'Hey Jared are you',
     'Hey Jared are you free. Thanks',
   ])('keeps %s', (raw) => {
