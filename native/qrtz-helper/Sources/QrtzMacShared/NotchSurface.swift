@@ -459,8 +459,9 @@ final class NotchStageView: NSView {
     private func presentedPath() -> CGPath? { (shape.presentation() ?? shape).path }
     private func presentedOpacity(_ l: CALayer) -> Float { (l.presentation() ?? l).opacity }
 
-    /// Show: the shape springs from the rest rect (or from where a retract left it) to the expanded size in about
-    /// 230 ms with very little overshoot; the content fades in over the last ~40%. Reduce Motion: a 120 ms fade.
+    /// Show: the shape springs from the rest rect (or from where a retract left it) to the expanded size on Apple's
+    /// system `.bouncy` spring (perceptual 0.5 s, bounce 0.3, the SwiftUI preset's values); the content fades in as the
+    /// shape arrives. Reduce Motion: a 120 ms fade.
     func expand(fromCurrent: Bool) {
         generation += 1
         guard let root = layer, let rowLayer = row.layer else { return }
@@ -481,22 +482,23 @@ final class NotchStageView: NSView {
         CATransaction.begin(); CATransaction.setDisableActions(true)
         root.opacity = 1; shape.path = to; rowLayer.opacity = 1
         CATransaction.commit()
-        let grow = CASpringAnimation(perceptualDuration: 0.23, bounce: 0.05)
+        let grow = CASpringAnimation(perceptualDuration: 0.5, bounce: 0.3)
         grow.keyPath = "path"
         grow.fromValue = from; grow.toValue = to
         grow.duration = grow.settlingDuration
         shape.add(grow, forKey: "notch.path")
         let fade = CABasicAnimation(keyPath: "opacity")
         fade.fromValue = c0; fade.toValue = 1
-        fade.beginTime = CACurrentMediaTime() + (fromCurrent ? 0.04 : 0.14)
-        fade.duration = 0.09
+        fade.beginTime = CACurrentMediaTime() + (fromCurrent ? 0.04 : 0.18)
+        fade.duration = 0.12
         fade.fillMode = .backwards
         fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
         rowLayer.add(fade, forKey: "notch.content")
     }
 
-    /// Hide: the content fades out, then the shape retracts into the rest rect (about 180 ms in all); `done` unless
-    /// a show took over.
+    /// Hide: the content fades out, then the shape retracts into the rest rect on a no-bounce system spring
+    /// (`.smooth`'s bounce 0 at a 0.3 s perceptual duration, so nothing pokes back out of the notch); `done` unless a
+    /// show took over.
     func retract(_ done: @escaping () -> Void) {
         generation += 1
         let gen = generation
@@ -525,12 +527,12 @@ final class NotchStageView: NSView {
             fade.fromValue = c0; fade.toValue = 0; fade.duration = 0.06
             fade.timingFunction = CAMediaTimingFunction(name: .easeIn)
             rowLayer.add(fade, forKey: "notch.content")
-            let shrink = CABasicAnimation(keyPath: "path")
+            let shrink = CASpringAnimation(perceptualDuration: 0.3, bounce: 0)
+            shrink.keyPath = "path"
             shrink.fromValue = from; shrink.toValue = to
             shrink.beginTime = CACurrentMediaTime() + 0.04
-            shrink.duration = 0.15
+            shrink.duration = shrink.settlingDuration
             shrink.fillMode = .backwards
-            shrink.timingFunction = CAMediaTimingFunction(controlPoints: 0.4, 0, 0.9, 0.6)
             shape.add(shrink, forKey: "notch.path")
         }
         CATransaction.commit()
