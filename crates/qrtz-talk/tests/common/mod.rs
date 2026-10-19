@@ -94,7 +94,7 @@ pub struct HelperOpts {
     /// N134: refuse every dictation.start with error{dictation.asr} (no recogniser could take it).
     pub no_recogniser: bool,
     pub insert_fails: bool,
-    /// ADR 0224: the focused field is a password field: `insert.text` is refused with `secure-field`.
+    /// ADR 0225: the focused field is a password field: `insert.text` is refused with `secure-field`.
     pub insert_secure: bool,
     /// Audio chunk period (ms) while dictating.
     pub audio_every_ms: u64,

@@ -32,7 +32,7 @@ final class FakeInsertion: InsertionBackend, @unchecked Sendable {
     var changes = 0
     var log: [String] = []
     var otherWriterDuringPaste = false
-    /// ADR 0224: answers for each `focusedFieldIsSecure()` call in turn (the last one repeats); empty = never secure.
+    /// ADR 0225: answers for each `focusedFieldIsSecure()` call in turn (the last one repeats); empty = never secure.
     var secure: [Bool] = []
     var secureChecks = 0
     func focusedFieldIsSecure() -> Bool {
@@ -107,7 +107,7 @@ final class DictationTests: XCTestCase {
         XCTAssertEqual(be.clipboard, "user clipboard")
     }
 
-    /// ADR 0224: a password field gets nothing: no AX write, no pasteboard, no Cmd-V, and the refusal says why.
+    /// ADR 0225: a password field gets nothing: no AX write, no pasteboard, no Cmd-V, and the refusal says why.
     func testInsertionRefusesASecureField() async {
         let be = FakeInsertion(); be.secure = [true]
         let r = await TextInserter(backend: be, restoreDelayMs: 0).insert("hunter2 ", restoreClipboard: true)
@@ -115,7 +115,7 @@ final class DictationTests: XCTestCase {
         XCTAssertEqual(be.log, []); XCTAssertEqual(be.clipboard, "user clipboard"); XCTAssertEqual(be.changes, 0)
     }
 
-    /// ADR 0224: checked again at the paste step (focus moved into a password field after the AX tries).
+    /// ADR 0225: checked again at the paste step (focus moved into a password field after the AX tries).
     func testInsertionRechecksBeforeThePasteboard() async {
         let be = FakeInsertion(); be.axSelected = false; be.axValue = false; be.secure = [false, true]
         let r = await TextInserter(backend: be, restoreDelayMs: 0).insert("Hi.", restoreClipboard: true)

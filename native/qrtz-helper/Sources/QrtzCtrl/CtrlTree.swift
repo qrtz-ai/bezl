@@ -52,7 +52,7 @@ public struct CtrlTreeNode: Equatable, Sendable {
 }
 
 public enum CtrlTreeRules {
-    /// ADR 0224: the secure-field rule lives in QrtzShared (`SecureField`), shared with echo's insertion.
+    /// ADR 0225: the secure-field rule lives in QrtzShared (`SecureField`), shared with echo's insertion.
     public static var secureRoles: Set<String> { SecureField.roles }
     public static var secureSubroles: Set<String> { SecureField.subroles }
     public static let textRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]

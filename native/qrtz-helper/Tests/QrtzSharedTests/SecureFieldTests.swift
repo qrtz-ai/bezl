@@ -1,7 +1,7 @@
 import XCTest
 @testable import QrtzShared
 
-/// ADR 0224: the one secure-field rule (ctrl's tree reader and echo's insertion both use it).
+/// ADR 0225: the one secure-field rule (ctrl's tree reader and echo's insertion both use it).
 final class SecureFieldTests: XCTestCase {
     func testRoleOrSubroleMarksAPasswordField() {
         XCTAssertTrue(SecureField.isSecure(role: "AXSecureTextField", subrole: nil))

@@ -19,7 +19,7 @@ public final class MacInsertion: InsertionBackend, @unchecked Sendable {
         return (v as! AXUIElement)
     }
 
-    /// ADR 0224: a password field (role or subrole `AXSecureTextField`, `SecureField`) or secure event input on.
+    /// ADR 0225: a password field (role or subrole `AXSecureTextField`, `SecureField`) or secure event input on.
     /// An element whose role can't be read is not taken as secure; secure event input still covers most prompts.
     public func focusedFieldIsSecure() -> Bool {
         if IsSecureEventInputEnabled() { return true }
@@ -83,7 +83,7 @@ public final class MacInsertion: InsertionBackend, @unchecked Sendable {
         }
     }
     public func pasteboardSetString(_ text: String) {
-        if focusedFieldIsSecure() { return }  // ADR 0224: never stage words for a password field
+        if focusedFieldIsSecure() { return }  // ADR 0225: never stage words for a password field
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(text, forType: .string)

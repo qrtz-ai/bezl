@@ -30,7 +30,7 @@ public protocol InsertionBackend: AnyObject, Sendable {
     func pasteboardChangeCount() -> Int
     /// Posts Cmd-V to the focused app. False if events can't be posted (Accessibility not granted).
     func postPaste() -> Bool
-    /// ADR 0224: the focused element is a password field (`SecureField`), or secure event input is on. Asked right
+    /// ADR 0225: the focused element is a password field (`SecureField`), or secure event input is on. Asked right
     /// before every insert step, never cached from the press: focus can move while the user speaks.
     func focusedFieldIsSecure() -> Bool
 }
@@ -80,21 +80,21 @@ public final class TextInserter: @unchecked Sendable {
     public func insert(_ text: String, restoreClipboard: Bool) async -> (method: InsertMethod, ok: Bool, app: String?, error: String?) {
         let app = backend.focusedAppName()
         guard !text.isEmpty else { return (.none, true, app, nil) }
-        // ADR 0224: never type into a password field: nothing is inserted and the pasteboard is not touched.
+        // ADR 0225: never type into a password field: nothing is inserted and the pasteboard is not touched.
         let refused: (method: InsertMethod, ok: Bool, app: String?, error: String?) = (.none, false, app, SecureField.insertRefused)
         if backend.focusedFieldIsSecure() { return refused }
         if backend.axSetSelectedText(text) { return (.axSelectedText, true, app, nil) }
         if backend.axInsertIntoValue(text) { return (.axValue, true, app, nil) }
         // The previous paste's restore first: its snapshot is the user's clipboard, not our text.
         await restored()
-        // ADR 0224: again right before the pasteboard (the AX tries and the restore wait take time).
+        // ADR 0225: again right before the pasteboard (the AX tries and the restore wait take time).
         if backend.focusedFieldIsSecure() { return refused }
         let snap = restoreClipboard ? backend.pasteboardSnapshot() : nil
         backend.pasteboardSetString(text)
         let ours = backend.pasteboardChangeCount()
         guard backend.postPaste() else {
             if restoreClipboard { backend.pasteboardRestore(snap) }
-            // ADR 0224: focus moved into a password field between the check and Cmd-V: say so, so the host keeps nothing.
+            // ADR 0225: focus moved into a password field between the check and Cmd-V: say so, so the host keeps nothing.
             if backend.focusedFieldIsSecure() { return refused }
             return (.none, false, app, "cannot post Cmd-V (Accessibility permission?)")
         }

@@ -440,7 +440,7 @@ struct Inner {
     attempt: Option<Attempt>,
     /// N124: dictations whose real final may still arrive after the stop wait ran out.
     late: HashMap<String, Late>,
-    /// ADR 0224: dictations whose insert the helper refused because the focused field is secure (a password).
+    /// ADR 0225: dictations whose insert the helper refused because the focused field is secure (a password).
     /// Nothing of them is kept: no history, no clipboard, and a real final that comes later is dropped.
     secure_refused: HashSet<String>,
 }
@@ -470,9 +470,9 @@ const MSG_ASR: &str = "speech recognition isn't ready yet; try again in a moment
 /// text as the speech module's not-installed refusal (ADR 0175 decision 5), so every route says one thing.
 pub const MSG_SPEECH_MISSING: &str = crate::speech::MSG_NOT_INSTALLED;
 /// A dictation ended with no words although the mic was open (see `nothing_heard`).
-/// ADR 0224: the helper's `insert.result` error when the focused field is a password field (or secure input is on).
+/// ADR 0225: the helper's `insert.result` error when the focused field is a password field (or secure input is on).
 pub const INSERT_REFUSED_SECURE: &str = "secure-field";
-/// ADR 0224: the pill's notice for that refusal.
+/// ADR 0225: the pill's notice for that refusal.
 pub const MSG_SECURE_FIELD: &str = "echo won't type into password fields";
 pub const MSG_CTRL_CUT_SHORT: &str = "didn't catch it all, so ctrl didn't run it. try again";
 pub const MSG_NOTHING_HEARD: &str = "didn't catch any words. hold the key while you speak, then let go";
@@ -1450,7 +1450,7 @@ impl TalkService {
         let stashed = {
             let mut g = self.lock();
             if g.secure_refused.remove(&id) {
-                // ADR 0224: a secure refusal keeps nothing, so a real final still to come has nowhere to go.
+                // ADR 0225: a secure refusal keeps nothing, so a real final still to come has nowhere to go.
                 g.late.remove(&id);
                 return own;
             }
@@ -1681,7 +1681,7 @@ impl TalkService {
                 self.lock().waiters.remove(&format!("insert:{id}"));
             }
             if insert.as_ref().and_then(|m| m["error"].as_str()) == Some(INSERT_REFUSED_SECURE) {
-                // ADR 0224: the focused field is a password field. Nothing was typed and nothing may be kept:
+                // ADR 0225: the focused field is a password field. Nothing was typed and nothing may be kept:
                 // no clipboard, no history entry, no transcript in the view; only the pill's notice.
                 tracing::info!(
                     audio_ms = duration_ms.max(0.0).round(),

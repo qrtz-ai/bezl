@@ -1,4 +1,4 @@
-// ADR 0224: the one secure-field rule, shared by ctrl's tree reader (CtrlTreeRules) and echo's text insertion
+// ADR 0225: the one secure-field rule, shared by ctrl's tree reader (CtrlTreeRules) and echo's text insertion
 // (TextInserter / MacInsertion). Foundation-only, so it builds and tests on Linux.
 
 /// An accessibility element is a password field when its role or its subrole is `AXSecureTextField` (a plain
