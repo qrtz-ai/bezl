@@ -4,12 +4,41 @@ use qrtz_helper_bridge::ProcessSpawn;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
-/// QRTZ_USER_DATA (tests, side-by-side runs) wins over the platform app-data dir.
+/// The platform app-data dir; in a debug build `QRTZ_USER_DATA` (tests, side-by-side runs) wins over it.
 pub fn data_dir(app: &AppHandle) -> PathBuf {
-    std::env::var_os("QRTZ_USER_DATA")
+    data_dir_from(
+        USER_DATA_KNOB,
+        |k| std::env::var_os(k),
+        app.path().app_data_dir().ok(),
+    )
+}
+
+/// Whether this build takes its data dir from `QRTZ_USER_DATA`: a debug build only, decided at compile time
+/// (Bozniak's 902bcab review, design call (b)). The data dir holds `qrtz.lock` and `packages/`, which say what code
+/// runs with qrtz's TCC grants, so a release build never lets the environment pick it: a planted dir could
+/// otherwise run an old, revoked (but still Developer ID signed) module. The `qrtz` CLI keeps the variable.
+pub const USER_DATA_KNOB: bool = cfg!(debug_assertions);
+
+fn data_dir_from(
+    knob: bool,
+    get: impl Fn(&str) -> Option<std::ffi::OsString>,
+    platform: Option<PathBuf>,
+) -> PathBuf {
+    knob.then(|| get("QRTZ_USER_DATA"))
+        .flatten()
+        .filter(|d| !d.is_empty())
         .map(PathBuf::from)
-        .or_else(|| app.path().app_data_dir().ok())
+        .or(platform)
         .unwrap_or_else(|| std::env::temp_dir().join("qrtz"))
+}
+
+/// The environment the log folder is chosen from: a release build hides `QRTZ_USER_DATA` (see [`USER_DATA_KNOB`]),
+/// so its logs stay in the platform's log folder, next to the data dir it really uses.
+pub fn log_env(k: &str) -> Option<String> {
+    if k == "QRTZ_USER_DATA" && !USER_DATA_KNOB {
+        return None;
+    }
+    std::env::var(k).ok()
 }
 
 pub fn recordings_dir(app: &AppHandle) -> PathBuf {
@@ -217,6 +246,39 @@ mod layout_tests {
             panic!()
         };
         assert_eq!(programs.len(), 1);
+    }
+
+    /// Design call (b): a release build's data dir is the platform's, whatever `QRTZ_USER_DATA` says; a debug
+    /// build (tests, side-by-side runs) takes the variable.
+    #[test]
+    fn only_a_debug_build_takes_the_data_dir_from_the_environment() {
+        use std::path::PathBuf;
+        let get = |k: &str| (k == "QRTZ_USER_DATA").then(|| std::ffi::OsString::from("/tmp/planted"));
+        let app_data = PathBuf::from("/Users/j/Library/Application Support/ai.qrtz.desktop");
+        let platform = || Some(app_data.clone());
+        assert_eq!(super::data_dir_from(false, get, platform()), app_data);
+        assert_eq!(
+            super::data_dir_from(true, get, platform()),
+            PathBuf::from("/tmp/planted")
+        );
+        assert_eq!(
+            super::data_dir_from(true, |_| Some(std::ffi::OsString::new()), platform()),
+            app_data,
+            "an empty QRTZ_USER_DATA is unset"
+        );
+        let src = include_str!("paths.rs");
+        let src = &src[..src.find("#[cfg(test)]").expect("tests")];
+        assert!(src.contains("pub const USER_DATA_KNOB: bool = cfg!(debug_assertions);"));
+        let body = &src[src.find("pub fn data_dir(").unwrap()..];
+        let body = &body[..body.find("\n}\n").unwrap()];
+        assert!(
+            body.contains("USER_DATA_KNOB") && !body.contains("QRTZ_ALLOW_DEV_KNOBS"),
+            "{body}"
+        );
+        if !cfg!(debug_assertions) {
+            assert!(!super::USER_DATA_KNOB);
+            assert_eq!(super::log_env("QRTZ_USER_DATA"), None);
+        }
     }
 
     /// 902bcab review (Bozniak): where helper code comes from follows `cfg!(debug_assertions)` alone. A guard

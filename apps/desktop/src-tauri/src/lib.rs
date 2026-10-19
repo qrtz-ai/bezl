@@ -22,7 +22,7 @@ pub fn run() {
         dir: qrtz_app::logging::log_dir(
             std::env::consts::OS,
             qrtz_app::logging::home_dir().as_deref(),
-            |k| std::env::var(k).ok(),
+            paths::log_env,
         ),
         release,
         env_filter: std::env::var("QRTZ_LOG").ok(),

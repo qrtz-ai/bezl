@@ -40,7 +40,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 /// Where everything lives: the app's data dir (`~/Library/Application Support/ai.qrtz.desktop` on macOS), or
-/// `QRTZ_USER_DATA` (tests, side-by-side runs). The app and the CLI resolve it the same way.
+/// `QRTZ_USER_DATA` (tests, side-by-side runs). The `qrtz` CLI resolves it this way; the app takes
+/// `QRTZ_USER_DATA` only in a debug build (apps/desktop/src-tauri/src/paths.rs, `USER_DATA_KNOB`).
 pub fn default_root() -> Option<PathBuf> {
     if let Some(d) = std::env::var_os("QRTZ_USER_DATA") {
         return Some(PathBuf::from(d));
