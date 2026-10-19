@@ -2,7 +2,13 @@
 // path that isn't a bundle. The signature checks themselves need macOS and real bundles (run it on the Mac).
 import { describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, mkdtempSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -43,4 +49,88 @@ describe('verify-bundle.sh', () => {
       'bash scripts/release/verify-bundle.sh "$app"',
     );
   });
+
+  // A bundle of ad-hoc-signed stand-ins (macOS only): the entitlement allowlists and the Mach-O walk are exact.
+  const mac = process.platform === 'darwin';
+  const plist = (keys) =>
+    `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict>${keys.map((k) => `<key>${k}</key><true/>`).join('')}</dict></plist>`;
+  const APP = [
+    'com.apple.security.automation.apple-events',
+    'com.apple.security.cs.allow-jit',
+    'com.apple.security.device.audio-input',
+    'com.apple.security.personal-information.calendars',
+  ];
+  function fakeApp(ents, extra) {
+    const app = path.join(
+      mkdtempSync(path.join(os.tmpdir(), 'vb-')),
+      'qrtz.app',
+    );
+    const macos = path.join(app, 'Contents', 'MacOS');
+    mkdirSync(macos, { recursive: true });
+    for (const [name, keys] of Object.entries(ents)) {
+      const bin = path.join(macos, name);
+      copyFileSync('/usr/bin/true', bin);
+      const args = ['--force', '--sign', '-'];
+      if (keys.length) {
+        const f = path.join(path.dirname(app), `${name}.plist`);
+        writeFileSync(f, plist(keys));
+        args.push('--entitlements', f);
+      }
+      const r = spawnSync('codesign', [...args, bin], { encoding: 'utf8' });
+      expect(r.status, r.stderr).toBe(0);
+    }
+    if (extra) extra(app);
+    return app;
+  }
+  const verify = (app) =>
+    spawnSync('bash', [script, app], { encoding: 'utf8' });
+  const base = () => ({ 'qrtz-app': APP, 'qrtz-echo': [APP[2]], qrtz: [] });
+
+  it.runIf(mac)(
+    'fails when qrtz-app carries an entitlement beyond its allowlist',
+    () => {
+      const ents = base();
+      ents['qrtz-app'] = [
+        ...APP,
+        'com.apple.security.cs.disable-library-validation',
+      ];
+      const r = verify(fakeApp(ents));
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/qrtz-app entitlements must be exactly/);
+    },
+  );
+
+  it.runIf(mac)(
+    'the allowlists themselves pass (only the signature checks fail on ad-hoc stand-ins)',
+    () => {
+      const r = verify(fakeApp(base()));
+      expect(r.status).toBe(1);
+      expect(r.stderr).not.toMatch(/entitlements must be exactly/);
+      expect(r.stdout).toContain(
+        'qrtz-echo entitlements: com.apple.security.device.audio-input',
+      );
+    },
+  );
+
+  it.runIf(mac)(
+    'fails on get-task-allow and on an unknown Mach-O anywhere in the bundle',
+    () => {
+      const ents = base();
+      ents['qrtz-echo'] = [APP[2], 'com.apple.security.get-task-allow'];
+      const r = verify(
+        fakeApp(ents, (app) => {
+          const dir = path.join(app, 'Contents', 'Resources');
+          mkdirSync(dir, { recursive: true });
+          copyFileSync('/usr/bin/true', path.join(dir, 'sneaky'));
+        }),
+      );
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain(
+        'qrtz-echo carries com.apple.security.get-task-allow',
+      );
+      expect(r.stderr).toContain(
+        'unknown Mach-O in the bundle: Contents/Resources/sneaky',
+      );
+    },
+  );
 });

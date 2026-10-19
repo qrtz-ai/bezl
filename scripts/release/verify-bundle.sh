@@ -7,7 +7,10 @@
 #   - every executable in Contents/MacOS satisfies the requirement a release build launches it under
 #     (crates/qrtz-app/src/installed.rs launch_requirement): qrtz-app ai.qrtz.desktop, qrtz-echo ai.qrtz.echo,
 #     qrtz ai.qrtz.cli, Developer ID, team MR26CCZ496; an unknown executable fails;
-#   - qrtz-echo's entitlements are exactly audio-input; calendars appear only on qrtz-app;
+#   - each executable's entitlements are exactly its allowlist (ents_for below): qrtz-app apple-events, allow-jit,
+#     audio-input, calendars; qrtz-echo audio-input; qrtz none. get-task-allow anywhere fails;
+#   - every Mach-O anywhere in the bundle (Frameworks, Helpers, XPCServices, Library/LoginItems, Resources, ...) and
+#     every nested .app/.framework/.xpc/.appex/.bundle/.dylib is one of the three known executables, else it fails;
 #   - codesign --verify --deep --strict on the app (designated requirement ai.qrtz.desktop, notarized);
 #   - spctl -a -vv says Notarized Developer ID, and xcrun stapler validate passes.
 # The 0.2.4 candidate failed the first two: tauri build's signatures (file-name identifiers, the app's entitlements
@@ -26,6 +29,13 @@ ok() { echo "verify-bundle: ok: $*"; }
 [[ -d "$macos" ]] || { echo "verify-bundle: FAIL: $app is not an app bundle (no Contents/MacOS)" >&2; exit 1; }
 
 ident_for() { case "$1" in qrtz-app) echo ai.qrtz.desktop ;; qrtz-echo) echo ai.qrtz.echo ;; qrtz) echo ai.qrtz.cli ;; *) echo "" ;; esac; }
+ents_for() {
+  case "$1" in
+    qrtz-app) echo "com.apple.security.automation.apple-events com.apple.security.cs.allow-jit com.apple.security.device.audio-input com.apple.security.personal-information.calendars" ;;
+    qrtz-echo) echo "com.apple.security.device.audio-input" ;;
+    *) echo "" ;;
+  esac
+}
 ent_keys() { codesign -d --entitlements - --xml "$1" 2>/dev/null | plutil -convert xml1 -o - - 2>/dev/null | grep -o '<key>[^<]*</key>' | sed 's/<[^>]*>//g' | sort | tr '\n' ' ' | sed 's/ $//'; }
 
 for name in qrtz-app qrtz-echo qrtz; do [[ -x "$macos/$name" ]] || fail "$name is missing from Contents/MacOS"; done
@@ -42,12 +52,24 @@ for bin in "$macos"/*; do
   req="anchor apple generic and identifier \"$id\" and certificate 1[field.1.2.840.113635.100.6.2.6] and certificate leaf[field.1.2.840.113635.100.6.1.13] and certificate leaf[subject.OU] = \"$team\""
   if codesign --verify --strict -R="$req" "$bin" 2>/dev/null; then ok "$name satisfies $id, Developer ID, team $team"; else fail "$name does not satisfy the launch requirement ($id, team $team)"; fi
   keys="$(ent_keys "$bin")"
-  case "$name" in
-    qrtz-echo) [[ "$keys" == "com.apple.security.device.audio-input" ]] && ok "qrtz-echo entitlements: audio-input only" || fail "qrtz-echo entitlements must be audio-input only, got: ${keys:-none}" ;;
-    qrtz-app) : ;;
-    *) [[ "$keys" == *personal-information.calendars* ]] && fail "$name carries the calendars entitlement (only qrtz-app may)" ;;
-  esac
+  want="$(ents_for "$name")"
+  [[ "$keys" == *get-task-allow* ]] && fail "$name carries com.apple.security.get-task-allow (a debug signature)"
+  if [[ "$keys" == "$want" ]]; then ok "$name entitlements: ${want:-none}"; else fail "$name entitlements must be exactly [${want:-none}], got [${keys:-none}]"; fi
 done
+
+# Every Mach-O in the bundle must be one of the three known executables in Contents/MacOS.
+while IFS= read -r -d '' f; do
+  rel="${f#"$app"/}"
+  case "$rel" in Contents/MacOS/qrtz-app | Contents/MacOS/qrtz-echo | Contents/MacOS/qrtz) continue ;; esac
+  if file -b "$f" 2>/dev/null | grep -q 'Mach-O'; then
+    fail "unknown Mach-O in the bundle: $rel"
+    [[ "$(ent_keys "$f")" == *get-task-allow* ]] && fail "$rel carries com.apple.security.get-task-allow"
+  fi
+done < <(find "$app" -type f -print0)
+while IFS= read -r -d '' d; do
+  fail "unknown nested code bundle: ${d#"$app"/}"
+done < <(find "$app/Contents" -mindepth 1 \( -name '*.app' -o -name '*.framework' -o -name '*.xpc' -o -name '*.appex' -o -name '*.bundle' -o -name '*.dylib' \) -print0)
+[[ "$(ent_keys "$app")" == *get-task-allow* ]] && fail "qrtz.app carries com.apple.security.get-task-allow"
 
 if codesign --verify --deep --strict -R="anchor apple generic and identifier \"ai.qrtz.desktop\" and certificate leaf[subject.OU] = \"$team\" and notarized" "$app" 2>/dev/null; then
   ok "codesign --verify --deep --strict (ai.qrtz.desktop, notarized)"
