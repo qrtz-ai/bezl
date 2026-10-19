@@ -1,4 +1,4 @@
-//! The confirm gate (ADR 0215; decision-layer spec §9; Bound → Confirm → Act). Before an action that may not be
+//! The confirm gate (ADR 0214; decision-layer spec §9; Bound → Confirm → Act). Before an action that may not be
 //! undoable, the run stops with `confirm.requested` and Jared sees exactly what would happen: the action, the app
 //! and the element. Approve acts once; deny ends the run.
 //!
@@ -357,13 +357,15 @@ pub fn context_rules(root: &AxNode, handle: &str) -> Vec<String> {
 
 /// A submit that needs no confirm: into a search field, or into the focused field right after cmd-L (the address
 /// bar). `target` is the field typed into (set-value) or the focused element (a bare Return); `last` the action
-/// that ran just before.
-pub fn submit_exempt(target: Option<&AxNode>, last: Option<&Action>) -> bool {
+/// that ran just before; `browser` whether the app is a browser (cmd-L is the address bar only there).
+pub fn submit_exempt(target: Option<&AxNode>, last: Option<&Action>, browser: bool) -> bool {
     let Some(t) = target else { return false };
     if t.role == "AXSearchField" || t.subrole.as_deref() == Some("AXSearchField") {
         return true;
     }
-    t.focused && matches!(last, Some(Action::KeyCombo { combo, .. }) if normalize_combo(combo) == "cmd+l")
+    browser
+        && t.focused
+        && matches!(last, Some(Action::KeyCombo { combo, .. }) if normalize_combo(combo) == "cmd+l")
 }
 
 /// What an approval covers: exactly this action on this element. Review M1: `tree_hash` is the target's

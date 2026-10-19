@@ -1,4 +1,4 @@
-//! The ctrl helper protocol (ADR 0108, reshaped by ADR 0215 for ctrl do): how the host asks the Swift helper's
+//! The ctrl helper protocol (ADR 0108, reshaped by ADR 0214 for ctrl do): how the host asks the Swift helper's
 //! `QrtzCtrl` module to read the accessibility tree and act on it. Newline-delimited JSON, one request → one reply
 //! with the same `id`, all under the `ctrl.` prefix. Rust is the source of truth; the shared fixture
 //! `native/qrtz-helper/Fixtures/ctrl/protocol.jsonl` holds one line per message for both sides.
@@ -24,7 +24,7 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
-/// Version 2: ctrl do (ADR 0215). Version 1 (probe / snapshot / act routes) is gone.
+/// Version 2: ctrl do (ADR 0214). Version 1 (probe / snapshot / act routes) is gone.
 pub const CTRL_PROTOCOL_VERSION: u32 = 2;
 /// How deep `ctrl.tree` reads before it reports `more` instead of children.
 pub const TREE_DEPTH: u32 = 6;
@@ -387,6 +387,13 @@ pub struct FakeWorld {
     /// The trees read so far (every `ctrl.tree` reply), for the log-scan test.
     #[serde(default)]
     pub reads: u32,
+    /// Simulate Jared pressing Esc while the app catalog is read (the first thing a run does, right after the
+    /// ctrl+fn release); like the real tap, only an armed watcher sees it (review H-A).
+    #[serde(default)]
+    pub esc_on_catalog: bool,
+    /// Like the real watcher (CtrlStopWatch): a run's first arm clears the flags, a disarm ends the run.
+    #[serde(default)]
+    pub session: bool,
 }
 
 fn find_wire<'a>(n: &'a AxNodeWire, id: &str) -> Option<&'a AxNodeWire> {
@@ -546,20 +553,25 @@ impl FakeWorld {
             code: code.into(),
         };
         match msg {
-            HostMsg::Catalog { id } => HelperMsg::CatalogResult {
-                id,
-                apps: self
-                    .apps
-                    .iter()
-                    .map(|a| CatalogApp {
-                        bundle_id: a.bundle_id.clone(),
-                        name: a.name.clone(),
-                        browser: a.browser,
-                        running: a.running || self.state.contains_key(&a.bundle_id),
-                    })
-                    .collect(),
-                default_browser: self.default_browser.clone(),
-            },
+            HostMsg::Catalog { id } => {
+                if self.armed && self.esc_on_catalog {
+                    self.tripped = Some("stop_key".into());
+                }
+                HelperMsg::CatalogResult {
+                    id,
+                    apps: self
+                        .apps
+                        .iter()
+                        .map(|a| CatalogApp {
+                            bundle_id: a.bundle_id.clone(),
+                            name: a.name.clone(),
+                            browser: a.browser,
+                            running: a.running || self.state.contains_key(&a.bundle_id),
+                        })
+                        .collect(),
+                    default_browser: self.default_browser.clone(),
+                }
+            }
             HostMsg::Tree { id, app, scope, .. } => {
                 self.reads += 1;
                 let Some(win) = self.window(&app) else {
@@ -603,8 +615,19 @@ impl FakeWorld {
                 },
             },
             HostMsg::Observe { id, arm, .. } => {
-                if let Some(a) = arm {
-                    self.armed = a && !self.no_watcher;
+                match arm {
+                    Some(true) => {
+                        if !self.session {
+                            self.session = true;
+                            self.tripped = None;
+                        }
+                        self.armed = !self.no_watcher;
+                    }
+                    Some(false) => {
+                        self.armed = false;
+                        self.session = false;
+                    }
+                    None => {}
                 }
                 let focused = self.frontmost.clone().and_then(|f| self.focused.get(&f).cloned());
                 HelperMsg::ObserveResult {

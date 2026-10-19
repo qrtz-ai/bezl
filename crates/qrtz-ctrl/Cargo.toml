@@ -1,6 +1,6 @@
 [package]
 name = "qrtz-ctrl"
-description = "qrtz ctrl core: \"ctrl do\", a chain of small calibrated decisions over the macOS accessibility tree, the host-owned confirm gate and the append-only, text-free event log (ADR 0215). UI-free, no network."
+description = "qrtz ctrl core: \"ctrl do\", a chain of small calibrated decisions over the macOS accessibility tree, the host-owned confirm gate and the append-only, text-free event log (ADR 0214). UI-free, no network."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -17,6 +17,6 @@ hex = "0.4"
 tempfile.workspace = true
 
 [features]
-# The Laya (Core ML) scorer for the decision chain (ADR 0106, kept by ADR 0215). macOS only, and only used with a
+# The Laya (Core ML) scorer for the decision chain (ADR 0106, kept by ADR 0214). macOS only, and only used with a
 # consented, installed model and a runtime; without it (and everywhere else) the deterministic heuristic answers.
 laya = []

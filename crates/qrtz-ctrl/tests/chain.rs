@@ -546,6 +546,29 @@ fn the_stop_key_ends_the_run_and_nothing_more_is_acted() {
     assert_eq!(r.acts().len(), 1, "only the action that was already running");
 }
 
+/// Review H-A: Esc right after the ctrl+fn release (while ctrl reads the first window, before any action) stops
+/// the run: the watcher is armed from the start of the drive, not at the first act.
+#[test]
+fn esc_before_the_first_action_stops_the_run() {
+    let mut w = world();
+    w.esc_on_catalog = true;
+    let mut r = Run::new("open youtube", w);
+    assert_eq!(r.drive(), Step::Finished(TaskStatus::Stopped));
+    assert_eq!(r.log.state().stop, Some(StopReason::StopKey));
+    assert!(r.acts().is_empty(), "{:?}", r.acts());
+}
+
+/// A stop the watcher still holds from a run whose host went away doesn't block the next run.
+#[test]
+fn a_stop_left_from_a_crashed_host_does_not_block_the_next_run() {
+    let mut w = world();
+    w.session = true;
+    w.armed = true;
+    w.tripped = Some("stop_key".into());
+    let mut r = Run::new("open youtube", w);
+    assert_eq!(r.drive(), Step::Finished(TaskStatus::Done));
+}
+
 #[test]
 fn user_input_wins_and_no_watcher_means_no_action() {
     let mut w = world();

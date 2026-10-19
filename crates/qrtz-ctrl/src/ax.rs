@@ -1,4 +1,4 @@
-//! The accessibility tree (ADR 0215; decision-layer spec §4, §6). The helper reads the front window of an app as a
+//! The accessibility tree (ADR 0214; decision-layer spec §4, §6). The helper reads the front window of an app as a
 //! nested tree of elements, each with an opaque handle (`e:<pid>:<n>`) that only the helper's own element cache can
 //! resolve. That is the wire ([`AxNodeWire`]): it carries titles and, for plain text inputs, values, and it never
 //! reaches the log. [`prune`] turns it into the log form ([`AxNode`]):
@@ -154,7 +154,7 @@ pub fn tok_hash(w: &str) -> String {
     hex::encode(&h[..6])
 }
 
-/// Hashed tokens of a label: the folded words (homoglyphs and invisible characters folded, ADR 0215 gate), deduped
+/// Hashed tokens of a label: the folded words (homoglyphs and invisible characters folded, ADR 0214 gate), deduped
 /// in order.
 pub fn label_tokens(text: &str) -> Vec<String> {
     let mut seen = BTreeSet::new();
@@ -199,7 +199,20 @@ struct Pruner {
 /// Sheets, dialogs and alerts: any press inside one confirms (review H1).
 pub fn is_dialog(role: &str, subrole: Option<&str>) -> bool {
     matches!(role, "AXSheet" | "AXDialog" | "AXAlert")
-        || subrole.is_some_and(|s| matches!(s, "AXDialog" | "AXSystemDialog" | "AXAlert"))
+        || subrole.is_some_and(|s| {
+            matches!(
+                s,
+                "AXDialog"
+                    | "AXSystemDialog"
+                    | "AXAlert"
+                    // Review H-B: web modals (ARIA dialog / alertdialog / alert) and floating panels.
+                    | "AXApplicationDialog"
+                    | "AXApplicationAlertDialog"
+                    | "AXApplicationAlert"
+                    | "AXFloatingWindow"
+                    | "AXSystemFloatingWindow"
+            )
+        })
 }
 
 /// Pressable roles that confirm when they carry no label at all (review H1).
@@ -254,7 +267,15 @@ impl Pruner {
         risk.sort();
         risk.dedup();
         let unlabelled = label.trim().is_empty();
-        if WRAPPER_ROLES.contains(&n.role.as_str()) && unlabelled && actions.is_empty() && n.more == 0 {
+        // Review H-B: a web modal is often an unlabelled AXGroup with a dialog subrole; never collapse it, or a press
+        // inside it loses its dialog context.
+        let dialog = is_dialog(&n.role, n.subrole.as_deref());
+        if WRAPPER_ROLES.contains(&n.role.as_str())
+            && unlabelled
+            && !dialog
+            && actions.is_empty()
+            && n.more == 0
+        {
             self.dropped.collapsed += 1;
             out.extend(children);
             return;

@@ -343,7 +343,7 @@ impl AppService {
         let _ = self.ctrl_model.set(m);
     }
 
-    /// ctrl do (ADR 0215) has no scheduler: runs start from `ctrl:do` only. Kept as a no-op so the shell's
+    /// ctrl do (ADR 0214) has no scheduler: runs start from `ctrl:do` only. Kept as a no-op so the shell's
     /// startup (`start_helper`, then this) doesn't change.
     pub fn start_ctrl_scheduler(self: &Arc<Self>) {}
 

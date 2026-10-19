@@ -1,4 +1,4 @@
-//! The `ctrl:*` channels of ctrl do (ADR 0215). Payloads arrive already validated against the IPC contract
+//! The `ctrl:*` channels of ctrl do (ADR 0214). Payloads arrive already validated against the IPC contract
 //! (`packages/core/src/ipc/contract.ts`); answers are the contract's shapes (camelCase).
 //!
 //! - `ctrl:do {text}`: record the command, start its run and drive the chain until it asks, waits for a confirm,

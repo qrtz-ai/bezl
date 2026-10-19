@@ -1,4 +1,4 @@
-//! The loop (ADR 0215): ask [`chain::next`] what the run needs, do it through the helper, append the result, and
+//! The loop (ADR 0214): ask [`chain::next`] what the run needs, do it through the helper, append the result, and
 //! repeat until Jared must answer (an ask or a confirm) or the run ends. The log is the only state: the driver
 //! can be dropped and rebuilt from the log and the goal, which is how `ctrl:answer` and `ctrl:confirm` resume a run.
 //!
@@ -64,6 +64,18 @@ impl Driver<'_> {
 
     /// Run until Jared must answer or the run ends.
     pub fn drive(&mut self) -> Step {
+        if self.log.state().status.is_none() {
+            // Review H-A: watch from the start of every drive (a new run, or a resume after an answer), not only at
+            // act time, so Esc right after the ctrl+fn release, or while the first tree is read, stops the run.
+            // The disarm first ends any run the watcher still holds (a host that crashed mid-run), so its latched
+            // stop can't block this one; the arm then clears the flags once, for this run.
+            let run = self.log.run_id().to_string();
+            let _ = self.helper.observe(&run, Some(false));
+            let o = self.helper.observe(&run, Some(true)).unwrap_or_default();
+            if let Some(stop) = crate::guard::verdict(&o) {
+                return self.finish(TaskStatus::Stopped, Some(stop));
+            }
+        }
         for _ in 0..MAX_TURNS {
             let st = self.log.state();
             if let Some(s) = st.status {
@@ -249,7 +261,11 @@ impl Driver<'_> {
             .rev()
             .find(|x| x.status == crate::log::ActionStatus::Done)
             .map(|x| &x.action);
-        let exempt = crate::gate::submit_exempt(target, last);
+        let browser = st
+            .apps
+            .as_ref()
+            .is_some_and(|x| x.apps.iter().any(|x| x.id == app && x.browser));
+        let exempt = crate::gate::submit_exempt(target, last, browser);
         let mut extra = menu_risk;
         if let (Some(h), Some(t)) = (a.handle(), st.tree.as_ref()) {
             extra.extend(crate::gate::context_rules(&t.root, h));

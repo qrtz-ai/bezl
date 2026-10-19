@@ -1,4 +1,4 @@
-//! ctrl do's on-disk state (ADR 0103, reshaped by ADR 0215): two kinds of append-only, hash-chained JSON-lines
+//! ctrl do's on-disk state (ADR 0103, reshaped by ADR 0214): two kinds of append-only, hash-chained JSON-lines
 //! files under `<app data>/ctrl/do/` (the chores' files one folder up are left alone and never read):
 //!
 //! - `do.jsonl`: the commands Jared typed and their runs (`do.created`, `run.recorded`), a pure fold
@@ -18,7 +18,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
-/// Schema 2: ctrl do (ADR 0215). The chores' `tasks.jsonl` (schema 1) lives one folder up and is not read.
+/// Schema 2: ctrl do (ADR 0214). The chores' `tasks.jsonl` (schema 1) lives one folder up and is not read.
 pub const STORE_SCHEMA_V: u32 = 2;
 const GENESIS: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 /// Longest command ctrl accepts.

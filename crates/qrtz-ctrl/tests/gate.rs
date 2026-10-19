@@ -221,20 +221,24 @@ fn submits_confirm_by_default_and_non_empty_fields_confirm() {
     );
     let mut search = field.clone();
     search.subrole = Some("AXSearchField".into());
-    assert!(submit_exempt(Some(&search), None));
+    assert!(submit_exempt(Some(&search), None, false));
     let mut focused = field.clone();
     focused.focused = true;
     let cmd_l = Action::KeyCombo {
         app: "com.apple.Safari".into(),
         combo: "cmd+l".into(),
     };
-    assert!(submit_exempt(Some(&focused), Some(&cmd_l)));
+    assert!(submit_exempt(Some(&focused), Some(&cmd_l), true));
     assert!(
-        !submit_exempt(Some(&focused), Some(&ret)),
+        !submit_exempt(Some(&focused), Some(&cmd_l), false),
+        "cmd-L is the address bar only in a browser"
+    );
+    assert!(
+        !submit_exempt(Some(&focused), Some(&ret), true),
         "only right after cmd-L"
     );
     assert!(
-        !submit_exempt(Some(&field), Some(&cmd_l)),
+        !submit_exempt(Some(&field), Some(&cmd_l), true),
         "only the focused field"
     );
     let mut full = field.clone();
@@ -243,4 +247,39 @@ fn submits_confirm_by_default_and_non_empty_fields_confirm() {
         rules_for(&set(false), Some(&full), "com.apple.Notes", &[], false),
         vec!["field:not_empty"]
     );
+}
+
+/// Review H-B: a web page's "delete account?" modal (an ARIA dialog: AXGroup / AXApplicationDialog) is a dialog,
+/// so its harmless-looking "continue" confirms.
+#[test]
+fn a_web_delete_account_modal_confirms_every_press() {
+    use qrtz_ctrl::gate::context_rules;
+    let mut modal = w(
+        "e:1:2",
+        "AXGroup",
+        "",
+        vec![
+            w("e:1:3", "AXStaticText", "Delete your account?", vec![]),
+            w("e:1:4", "AXButton", "Continue", vec![]),
+        ],
+    );
+    modal.subrole = Some("AXApplicationDialog".into());
+    let web = w("e:1:1", "AXWebArea", "settings", vec![modal]);
+    let t = prune(
+        "com.apple.Safari",
+        None,
+        &w("e:1:0", "AXWindow", "", vec![web]),
+        None,
+    );
+    let r = context_rules(&t.root, "e:1:4");
+    assert!(r.iter().any(|x| x == "context:dialog"), "{r:?}");
+    assert!(r.iter().any(|x| x.contains("delete")), "{r:?}");
+    for sub in [
+        "AXApplicationAlertDialog",
+        "AXApplicationAlert",
+        "AXFloatingWindow",
+        "AXSystemFloatingWindow",
+    ] {
+        assert!(qrtz_ctrl::ax::is_dialog("AXGroup", Some(sub)), "{sub}");
+    }
 }
