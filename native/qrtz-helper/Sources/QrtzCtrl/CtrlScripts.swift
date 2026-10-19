@@ -111,3 +111,16 @@ public enum CtrlScreensaver {
         bundleIds.contains(engineBundle) || names.contains("ScreenSaverEngine")
     }
 }
+
+/// ADR 0180: "turn off my display". The act puts the displays to sleep the way `pmset displaysleepnow` does (IOKit:
+/// `IORequestIdle = true` on the display wrangler), in the helper's own process: no process spawned, no Apple Event,
+/// no key event, the Mac stays awake and nothing is locked. The measure reads the main display's sleep state
+/// (`CGDisplayIsAsleep`) in this process. The names live here (Foundation) so Linux tests see them; the calls are in
+/// mac/CtrlDisplayMac.swift.
+public enum CtrlDisplay {
+    public static let op = "sleep_display"
+    public static let check = "display_asleep"
+    /// The registry entry and property `pmset displaysleepnow` sets; nothing else in the registry is written.
+    public static let wranglerPath = "IOService:/IOResources/IODisplayWrangler"
+    public static let requestIdle = "IORequestIdle"
+}

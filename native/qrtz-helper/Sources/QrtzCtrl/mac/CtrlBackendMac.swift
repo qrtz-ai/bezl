@@ -340,6 +340,9 @@ public final class MacCtrlBackend: CtrlBackend {
             // event, and nothing read from it first. The count it returns is what the verify compares against.
             let count = NSPasteboard.general.clearContents()
             lock.lock(); lastClipboardClear = count; lock.unlock()
+        case .sleepDisplay:
+            // ADR 0180: the displays sleep (IOKit, this process); the Mac stays awake, nothing locked, no key event.
+            try CtrlDisplayMac.sleepNow()
         case let .ejectVolumes(single):
             // ADR 0176: the volumes from the mount table (never a path from the host), each unmounted and ejected in
             // this process without force: one in use stays mounted (a file open, a copy, a backup) and the act says
@@ -426,6 +429,8 @@ public final class MacCtrlBackend: CtrlBackend {
             return CtrlClipboard.cleared(changeCount: NSPasteboard.general.changeCount, lastClear: last)
         // ADR 0176: the count only, from the mount table's resource values.
         case CtrlVolumes.check: return ejectableVolumes()?.count
+        // ADR 0180: the main display's sleep state, read in this process (no app asked, no prompt).
+        case CtrlDisplay.check: return CtrlDisplayMac.asleep() ? 1 : 0
         case "dark_mode": return CtrlAppearance.isDark(UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)) ? 1 : 0
         // ADR 0173: the Dock's auto-hide, read from its own defaults in this process (no app asked, no prompt).
         case CtrlDock.check: return CtrlDock.autohides(UserDefaults.standard.persistentDomain(forName: CtrlDock.domain)) ? 1 : 0

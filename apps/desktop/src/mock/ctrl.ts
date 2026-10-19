@@ -127,6 +127,7 @@ const INTENTS = {
   dock_hide: opt('intent.dock_autohide', 'hide or show the dock', 0.07),
   dock_show: opt('intent.dock_autohide', 'hide or show the dock', 0.07),
   screensaver: opt('intent.screensaver', 'start the screensaver', 0.07),
+  display_sleep: opt('intent.display_sleep', 'turn off your display', 0.07),
   open_email: opt('intent.open_app', 'open an app', 0.07),
 };
 type Intent =
@@ -159,6 +160,7 @@ type Intent =
   | 'dock_hide'
   | 'dock_show'
   | 'screensaver'
+  | 'display_sleep'
   | 'open_email';
 /** What an unclear task is asked (the three most likely intents). */
 const ASKED = [INTENTS.close_tabs, INTENTS.clean_folder, INTENTS.close_windows];
@@ -321,6 +323,16 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
         'route.scripting.screensaver',
         'start the current screen saver',
         0.95,
+      ),
+    ]),
+  ],
+  // ADR 0180: the displays sleep in the helper's own process (the mac stays awake); no app question, no card.
+  display_sleep: [
+    act('choose_move', [
+      opt(
+        'route.system.display_sleep',
+        'put the displays to sleep, the mac stays awake',
+        0.97,
       ),
     ]),
   ],
@@ -631,8 +643,25 @@ const screensaverOf = (text: string): Intent | null => {
   return 'screensaver';
 };
 
+// ADR 0180: a display word plus sleep / off; never the screen saver, lock, screen time, sharing, recording,
+// screenshots, brightness, notifications or keeping it awake.
+const displaySleepOf = (text: string): Intent | null => {
+  if (!/\b(display|displays|screen|screens|monitor|monitors)\b/i.test(text))
+    return null;
+  if (!/\b(sleep|sleeps|asleep|off)\b/i.test(text)) return null;
+  if (
+    /\b(saver|savers|screensavers?|lock|locks|locked|locking|sharing|share|recording|record|recorder|screenshots?|shots?|mirror|mirroring|brightness|bright|brighter|dim|dimmer|reader|voiceover|notifications?|wake|wakes|awake|keep|never|prevent|stop|don't|dont|not|caffeinate)\b/i.test(
+      text,
+    ) ||
+    /\bscreen\s+time\b/i.test(text)
+  )
+    return null;
+  return 'display_sleep';
+};
+
 const intentOf = (text: string): Intent | null =>
   ejectOf(text) ??
+  displaySleepOf(text) ??
   (clearsClipboard(text)
     ? 'clear_clipboard'
     : screensaverOf(text) !== null

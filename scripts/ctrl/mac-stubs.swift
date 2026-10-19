@@ -117,6 +117,21 @@ public struct CGWindowListOption: OptionSet { public let rawValue: UInt32; publi
 public func CGWindowListCopyWindowInfo(_ option: CGWindowListOption, _ relativeToWindow: CGWindowID) -> CFArray? { nil }
 public let kCGWindowLayer: CFString = "", kCGWindowNumber: CFString = "", kCGWindowOwnerPID: CFString = ""
 public func IsSecureEventInputEnabled() -> Bool { false }
+public typealias CGDirectDisplayID = UInt32
+public typealias boolean_t = Int32
+public func CGMainDisplayID() -> CGDirectDisplayID { 0 }
+public func CGDisplayIsAsleep(_ display: CGDirectDisplayID) -> boolean_t { 0 }
+// IOKit (ADR 0180)
+public typealias mach_port_t = UInt32
+public typealias io_object_t = mach_port_t
+public typealias io_registry_entry_t = io_object_t
+public typealias kern_return_t = Int32
+public let KERN_SUCCESS: kern_return_t = 0
+public let kIOMainPortDefault: mach_port_t = 0
+public let kCFBooleanTrue: CFTypeRef! = NSNumber(value: true)
+public func IORegistryEntryFromPath(_ mainPort: mach_port_t, _ path: UnsafePointer<CChar>!) -> io_registry_entry_t { 0 }
+public func IORegistryEntrySetCFProperty(_ entry: io_registry_entry_t, _ propertyName: CFString!, _ property: CFTypeRef!) -> kern_return_t { 0 }
+@discardableResult public func IOObjectRelease(_ object: io_object_t) -> kern_return_t { 0 }
 // Core ML
 public enum MLComputeUnits { case cpuOnly, cpuAndGPU, all, cpuAndNeuralEngine }
 open class MLModelConfiguration: NSObject { open var computeUnits: MLComputeUnits = .all }

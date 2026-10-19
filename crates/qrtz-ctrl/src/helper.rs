@@ -77,6 +77,9 @@ pub enum Check {
     /// ADR 0178: 1 if the screen saver is running (ScreenSaverEngine is among the running applications), 0 if not
     /// (read in the helper's own process from NSWorkspace; no app asked, no prompt).
     ScreensaverRunning,
+    /// ADR 0180: 1 if the main display is asleep (`CGDisplayIsAsleep(CGMainDisplayID())`), 0 if it's on (read in the
+    /// helper's own process; no app asked, no prompt).
+    DisplayAsleep,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -582,6 +585,9 @@ pub struct FakeWorld {
     pub dock_autohide: bool,
     /// ADR 0178: the screen saver is running (ScreenSaverEngine).
     pub screensaver_running: bool,
+    /// ADR 0180: the display is asleep. `display_sleep_unavailable`: the helper finds no display wrangler.
+    pub display_asleep: bool,
+    pub display_sleep_unavailable: bool,
     /// ADR 0140: the output volume in percent (read back only while unmuted).
     pub volume: i64,
     /// ADR 0158: the user made the "qrtz Set Focus" shortcut (false: `focus.no_shortcut`).
@@ -655,6 +661,8 @@ impl FakeWorld {
             dark: false,
             dock_autohide: false,
             screensaver_running: false,
+            display_asleep: false,
+            display_sleep_unavailable: false,
             focus_shortcut: false,
             shortcuts_denied: false,
             focus: crate::ladder::FocusMode::Off,
@@ -874,6 +882,14 @@ impl FakeWorld {
                     }
                 }
             },
+            // ADR 0180: the displays sleep; nothing else changes (the Mac stays awake, no app is told anything).
+            Route::Workspace(WorkspaceOp::SleepDisplay) => {
+                if self.display_sleep_unavailable {
+                    return Err("display.no_wrangler".into());
+                }
+                self.display_asleep = true;
+                Ok(())
+            }
             // ADR 0168: nothing read, everything gone.
             Route::Workspace(WorkspaceOp::ClearClipboard) => match self.clipboard {
                 Some(_) => {
@@ -1009,6 +1025,7 @@ impl FakeWorld {
                     Check::DarkMode => Some(i64::from(self.dark)),
                     Check::DockAutohide => Some(i64::from(self.dock_autohide)),
                     Check::ScreensaverRunning => Some(i64::from(self.screensaver_running)),
+                    Check::DisplayAsleep => Some(i64::from(self.display_asleep)),
                     Check::FocusOn => Some(i64::from(self.focus != crate::ladder::FocusMode::Off)),
                     Check::FolderOpen { folder } => self
                         .apps

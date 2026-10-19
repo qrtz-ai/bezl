@@ -526,6 +526,13 @@ const INTENTS: &[IntentDef] = &[
         slot: Slot::None,
         irreversible: false,
     },
+    // ADR 0180: put the displays to sleep (the Mac stays awake); any key wakes them, so no gate; no app.
+    IntentDef {
+        id: "display_sleep",
+        app: AppMode::None,
+        slot: Slot::None,
+        irreversible: false,
+    },
     // ADR 0135: mute the Mac's sound output; reversible, no gate, no app.
     IntentDef {
         id: "mute",
@@ -680,6 +687,62 @@ const SCREENSAVER_NOT_WORDS: &[&str] = &[
 /// ADR 0178: "start the screensaver" / "start screensaver" / "turn on the screen saver".
 fn screensaver_task(toks: &[Tok]) -> bool {
     screensaver_named(toks) && has(toks, SCREENSAVER_START_WORDS) && !has(toks, SCREENSAVER_NOT_WORDS)
+}
+
+/// ADR 0180: words that name the display.
+const DISPLAY_WORDS: &[&str] = &["display", "displays", "screen", "screens", "monitor", "monitors"];
+/// ADR 0180: words that make a display task something else: the screen saver (ADR 0178), lock, Screen Time, sharing,
+/// recording, screenshots, mirroring, brightness, the screen reader, notifications, or keeping it awake ("screen time"
+/// is checked as a pair, so "at lunch time" still counts).
+const DISPLAY_NOT_WORDS: &[&str] = &[
+    "saver",
+    "savers",
+    "screensaver",
+    "screensavers",
+    "lock",
+    "locks",
+    "locked",
+    "locking",
+    "sharing",
+    "share",
+    "recording",
+    "record",
+    "recorder",
+    "screenshot",
+    "screenshots",
+    "shot",
+    "shots",
+    "mirror",
+    "mirroring",
+    "brightness",
+    "bright",
+    "brighter",
+    "dim",
+    "dimmer",
+    "reader",
+    "voiceover",
+    "notification",
+    "notifications",
+    "wake",
+    "wakes",
+    "awake",
+    "keep",
+    "never",
+    "prevent",
+    "stop",
+    "don't",
+    "dont",
+    "not",
+    "caffeinate",
+];
+/// ADR 0180: "turn off my display", "put the screen to sleep", "sleep the displays", "monitor off". A display word plus
+/// a sleep word or "off", and none of the words that mean another screen thing. "put my mac to sleep" (no display
+/// word) is the whole Mac, not this, and is not built.
+fn display_sleep_task(toks: &[Tok]) -> bool {
+    has(toks, DISPLAY_WORDS)
+        && has(toks, &["sleep", "sleeps", "asleep", "off"])
+        && !has(toks, DISPLAY_NOT_WORDS)
+        && !toks.windows(2).any(|w| w[0].w == "screen" && w[1].w == "time")
 }
 
 /// ADR 0176: the words that ask for an eject.
@@ -971,6 +1034,15 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             p -= 3000;
             let other_app = named.iter().any(|(a, _)| a.id != crate::ladder::FINDER);
             if has(toks, EJECT_WORDS) && !other_app && !site {
+                p += 9500;
+            }
+        }
+        "display_sleep" => {
+            // ADR 0180: "turn off my display", "put the screen to sleep", "every night at 11 sleep the displays". No
+            // app named in full ("turn off activity monitor" is that app), no site. Without it it sits well below.
+            p -= 3000;
+            let full = named.iter().any(|(a, h)| *h as usize == a.tokens.len());
+            if display_sleep_task(toks) && !full && !site {
                 p += 9500;
             }
         }
@@ -1516,6 +1588,8 @@ fn move_question(
             },
             4500,
         )],
+        // ADR 0180: one move — the displays sleep.
+        "display_sleep" => vec![route("system.display_sleep", 4500)],
         "mute" => vec![route("system.mute", 4500)],
         "unmute" => vec![route("system.unmute", 4500)],
         "set_volume" => vec![route("system.set_volume", 4500)],
@@ -1767,6 +1841,7 @@ fn intent_label(id: &str) -> &'static str {
         "focus_mode" => "turn focus or do not disturb on or off",
         "clear_clipboard" => "clear your clipboard",
         "eject_disks" => "eject your disks",
+        "display_sleep" => "turn off your display",
         "mute" => "mute your mac",
         "unmute" => "unmute your mac",
         "set_volume" => "set the volume",
@@ -1801,6 +1876,7 @@ fn route_label(id: &str) -> &'static str {
         m if m.starts_with("system.focus.") => "turn on that focus",
         "system.clear_clipboard" => "empty the clipboard, nothing read from it",
         "system.eject_all" => "eject every external disk, none forced",
+        "system.display_sleep" => "put the displays to sleep, the mac stays awake",
         "system.eject_one" => "eject the one external disk, never forced",
         "system.mute" => "mute the sound output",
         "system.unmute" => "turn the sound output back on",

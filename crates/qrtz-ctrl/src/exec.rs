@@ -106,6 +106,9 @@ pub const OPEN_FOLDER_MOVE: &str = "route.workspace.open_folder";
 /// ADR 0168: "clear my clipboard" empties the general pasteboard in the helper's own process.
 pub const CLEAR_CLIPBOARD_MOVE: &str = "route.system.clear_clipboard";
 
+/// ADR 0180: "turn off my display" / "put the screen to sleep": the displays sleep, the Mac stays awake.
+pub const DISPLAY_SLEEP_MOVE: &str = "route.system.display_sleep";
+
 /// ADR 0176: "eject my disks" / "eject all drives": every ejectable local volume the helper lists.
 pub const EJECT_ALL_MOVE: &str = "route.system.eject_all";
 /// ADR 0176: "eject the usb drive": the one ejectable volume, only while exactly one is mounted.
@@ -186,6 +189,17 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
             verify: Verify {
                 check: Check::EjectableVolumes,
                 expect: Expect::Zero,
+            },
+            content: BTreeMap::new(),
+        });
+    }
+    // ADR 0180: the displays sleep in the helper's own process; verified by the main display reading asleep.
+    if mv == DISPLAY_SLEEP_MOVE {
+        return Some(Step::Act {
+            routes: vec![Route::Workspace(WorkspaceOp::SleepDisplay)],
+            verify: Verify {
+                check: Check::DisplayAsleep,
+                expect: Expect::One,
             },
             content: BTreeMap::new(),
         });
@@ -860,6 +874,13 @@ impl Driver<'_> {
                     }
                     _ => {}
                 }
+            }
+            // ADR 0180: a display already asleep is done with nothing acted.
+            if fplan.is_none()
+                && mv == DISPLAY_SLEEP_MOVE
+                && self.helper.measure(&Check::DisplayAsleep) == Some(1)
+            {
+                return sink.push(log, finish(TaskStatus::Done));
             }
             // ADR 0178: the screen saver already up is done with nothing acted.
             if fplan.is_none()
