@@ -934,7 +934,7 @@
     {
       "raw": "Groceries, new line, eggs, new line, milk.",
       "dict": false,
-      "expect": "Groceries,\nEggs,\nMilk"
+      "expect": "Groceries\nEggs\nMilk"
     },
     {
       "raw": "Thanks new line Jared new line cue arts",
@@ -1770,6 +1770,71 @@
       "raw": "Can you believe it, what a game",
       "dict": false,
       "expect": "Can you believe it, what a game."
+    },
+    {
+      "raw": "To do, new line, call mom, new line, pay rent.",
+      "dict": false,
+      "expect": "To do\nCall mom\nPay rent"
+    },
+    {
+      "raw": "Options, new line, red, new line, blue, new line, green.",
+      "dict": false,
+      "expect": "Options\nRed\nBlue\nGreen"
+    },
+    {
+      "raw": "groceries, new line, eggs, new line, milk",
+      "dict": false,
+      "expect": "Groceries,\nEggs,\nMilk"
+    },
+    {
+      "raw": "Groceries, new line, eggs, milk, new line, bread.",
+      "dict": false,
+      "expect": "Groceries,\nEggs, milk,\nBread"
+    },
+    {
+      "raw": "Groceries, new line, eggs new line milk",
+      "dict": false,
+      "expect": "Groceries,\nEggs\nMilk"
+    },
+    {
+      "raw": "Parts, new line, two bolts, new line, 4 nuts.",
+      "dict": false,
+      "expect": "Parts,\nTwo bolts,\n4 nuts"
+    },
+    {
+      "raw": "Groceries, new line, eggs, new line, milk!",
+      "dict": false,
+      "expect": "Groceries,\nEggs,\nMilk!"
+    },
+    {
+      "raw": "Groceries, new paragraph, eggs, new line, milk, new line, bread.",
+      "dict": false,
+      "expect": "Groceries,\n\nEggs,\nMilk,\nBread."
+    },
+    {
+      "raw": "Agenda, new line, budget, new line, hiring, new line, what do we do next?",
+      "dict": false,
+      "expect": "Agenda,\nBudget,\nHiring,\nWhat do we do next?"
+    },
+    {
+      "raw": "Agenda, new line, Q3 numbers, new line, hiring.",
+      "dict": false,
+      "expect": "Agenda,\nQ3 numbers,\nHiring"
+    },
+    {
+      "raw": "Eggs, new line, milk.",
+      "dict": false,
+      "expect": "Eggs,\nMilk."
+    },
+    {
+      "raw": "Groceries, new line, eggs, new line, Sam",
+      "dict": false,
+      "expect": "Groceries,\nEggs,\nSam"
+    },
+    {
+      "raw": "Thanks, new line, Jared, new line, cue arts",
+      "dict": true,
+      "expect": "Thanks,\nJared,\nqrtz"
     }
   ],
   "dictionaryOnly": [

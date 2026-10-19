@@ -497,6 +497,30 @@
       "category": "question",
       "raw": "What time is the demo tomorrow",
       "ideal": "What time is the demo tomorrow?"
+    },
+    {
+      "id": "p80",
+      "category": "list",
+      "raw": "Packing list, new line, socks, new line, charger, new line, passport.",
+      "ideal": "Packing list\nSocks\nCharger\nPassport"
+    },
+    {
+      "id": "p81",
+      "category": "list",
+      "raw": "To do, new line, call mom, new line, pay rent.",
+      "ideal": "To do\nCall mom\nPay rent"
+    },
+    {
+      "id": "p82",
+      "category": "list",
+      "raw": "Shopping, new line, olive oil, new line, rice, new line, paper towels",
+      "ideal": "Shopping\nOlive oil\nRice\nPaper towels"
+    },
+    {
+      "id": "p83",
+      "category": "list",
+      "raw": "Options, new line, red, new line, blue, new line, green.",
+      "ideal": "Options\nRed\nBlue\nGreen"
     }
   ],
   "keep": [
@@ -1579,6 +1603,78 @@
       "rule": "question",
       "raw": "Can you believe it, what a game",
       "expect": "Can you believe it, what a game."
+    },
+    {
+      "id": "k181",
+      "rule": "list-comma",
+      "raw": "Hi team, new line, thanks, new line, Jared",
+      "expect": "Hi team,\nThanks,\nJared"
+    },
+    {
+      "id": "k182",
+      "rule": "list-comma",
+      "raw": "Dear team, new line, quick update, new line, lunch moved.",
+      "expect": "Dear team,\nQuick update,\nLunch moved"
+    },
+    {
+      "id": "k183",
+      "rule": "list-comma",
+      "raw": "Thanks, new line, love, new line, mom",
+      "expect": "Thanks,\nLove,\nMom"
+    },
+    {
+      "id": "k184",
+      "rule": "list-comma",
+      "raw": "Jared Grimes, new line, Naples Street, new line, San Francisco",
+      "expect": "Jared Grimes,\nNaples Street,\nSan Francisco"
+    },
+    {
+      "id": "k185",
+      "rule": "list-comma",
+      "raw": "Roses are red, new line, violets are blue, new line, sugar is sweet.",
+      "expect": "Roses are red,\nViolets are blue,\nSugar is sweet"
+    },
+    {
+      "id": "k186",
+      "rule": "list-comma",
+      "raw": "Twinkle twinkle, new line, little star, new line, how I wonder.",
+      "expect": "Twinkle twinkle,\nLittle star,\nHow I wonder"
+    },
+    {
+      "id": "k187",
+      "rule": "list-comma",
+      "raw": "Hello, new line, it's me, new line, Jared.",
+      "expect": "Hello,\nIt's me,\nJared"
+    },
+    {
+      "id": "k188",
+      "rule": "list-comma",
+      "raw": "Cheers, new line, see you, new line, soon.",
+      "expect": "Cheers,\nSee you,\nSoon"
+    },
+    {
+      "id": "k189",
+      "rule": "list-comma",
+      "raw": "Talk soon, new line, take care, new line, bye",
+      "expect": "Talk soon,\nTake care,\nBye"
+    },
+    {
+      "id": "k190",
+      "rule": "list-comma",
+      "raw": "Hey Sam, new line, quick one, new line, call me.",
+      "expect": "Hey Sam,\nQuick one,\nCall me"
+    },
+    {
+      "id": "k191",
+      "rule": "list-comma",
+      "raw": "Morning all, new line, standup moved, new line, sorry.",
+      "expect": "Morning all,\nStandup moved,\nSorry"
+    },
+    {
+      "id": "k192",
+      "rule": "list-comma",
+      "raw": "Kind regards, new line, the team, new line, San Francisco",
+      "expect": "Kind regards,\nThe team,\nSan Francisco"
     }
   ]
 }

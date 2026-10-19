@@ -48,7 +48,7 @@
     "p46": "Hi Sam,\n\nThe launch is Tuesday.",
     "p47": "73 Naples St\nSan Francisco\nCA 94112",
     "p48": "To do\nLaundry\nDishes\nCall mom",
-    "p49": "Groceries,\nEggs,\nMilk",
+    "p49": "Groceries\nEggs\nMilk",
     "p50": "Thanks\nJared\nqrtz",
     "p51": "Is it ready?",
     "p52": "We did it!",
@@ -78,7 +78,11 @@
     "p76": "Is it $25 for both?",
     "p77": "Did you get a chance to look at the doc?",
     "p78": "Are we still on for Friday?",
-    "p79": "What time is the demo tomorrow?"
+    "p79": "What time is the demo tomorrow?",
+    "p80": "Packing list\nSocks\nCharger\nPassport",
+    "p81": "To do\nCall mom\nPay rent",
+    "p82": "Shopping\nOlive oil\nRice\nPaper towels",
+    "p83": "Options\nRed\nBlue\nGreen"
   },
   "note": "rule_cleanup's output for each polish case at the last accepted change (ADR 0182, after N185/N186; the first baseline was origin/main d457ff0). A case may only get closer to its ideal; polish_set.rs fails on any case that moves further. Refresh with QRTZ_POLISH_BASELINE=1 cargo test -p qrtz-talk --test polish_set after an accepted change."
 }

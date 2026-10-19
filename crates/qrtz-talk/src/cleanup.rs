@@ -1230,6 +1230,87 @@ fn is_short_list(t: &str) -> bool {
     })
 }
 
+/// ADR 0201: a list line takes its comma off only when it has at most this many words; "Roses are red,⏎violets are
+/// blue,⏎sugar is sweet" (3-word verse lines) keeps its commas.
+pub const LIST_COMMA_MAX_WORDS: usize = 2;
+
+/// ADR 0201: a line with one of these words is a greeting or a sign-off ("Dear team,", "Thanks,", "Love,", "Talk
+/// soon,"), whose comma is meant, so the list keeps every comma. Same list in cleanup.ts.
+pub const LETTER_WORDS: &[&str] = &[
+    "dear",
+    "hi",
+    "hello",
+    "hey",
+    "hiya",
+    "greetings",
+    "morning",
+    "afternoon",
+    "evening",
+    "thanks",
+    "thank",
+    "thx",
+    "cheers",
+    "best",
+    "regards",
+    "sincerely",
+    "faithfully",
+    "cordially",
+    "respectfully",
+    "warmly",
+    "love",
+    "yours",
+    "xo",
+    "xoxo",
+    "hugs",
+    "care",
+    "soon",
+    "bye",
+    "goodbye",
+    "later",
+];
+
+/// ADR 0201: the comma the recogniser wrote before each spoken "new line" of a dictated list ("Groceries, new line,
+/// eggs, new line, milk." → "Groceries⏎Eggs⏎Milk"), dropped only when the whole text is such a list: at least
+/// [`SHORT_LIST_LINES`] lines and no blank line; every line but the last ends in "," and the last in a word or ".";
+/// every line is 1 to [`LIST_COMMA_MAX_WORDS`] words of ASCII letters only (no digits, apostrophes, inner commas or
+/// marks); every line after the first starts lowercase (the recogniser wrote a common word, not a name, so an address
+/// or a list of names keeps its commas); no line has a [`LETTER_WORDS`] word. Only for a recogniser that writes
+/// capitals (`caps`), since only then is the lowercase start a signal. Runs before capitalization.
+fn list_line_commas(t: String, caps: bool) -> String {
+    if !caps || !t.contains(",\n") || t.contains("\n\n") {
+        return t;
+    }
+    let lines: Vec<&str> = t.split('\n').collect();
+    if lines.len() < SHORT_LIST_LINES {
+        return t;
+    }
+    let last = lines.len() - 1;
+    let list = lines.iter().enumerate().all(|(i, l)| {
+        let body = if i == last {
+            l.strip_suffix('.').unwrap_or(l)
+        } else {
+            match l.strip_suffix(',') {
+                Some(b) => b,
+                None => return false,
+            }
+        };
+        let words: Vec<&str> = body.split(' ').collect();
+        (1..=LIST_COMMA_MAX_WORDS).contains(&words.len())
+            && words
+                .iter()
+                .all(|w| !w.is_empty() && w.bytes().all(|b| b.is_ascii_alphabetic()))
+            && (i == 0 || body.as_bytes()[0].is_ascii_lowercase())
+            && !words
+                .iter()
+                .any(|w| LETTER_WORDS.contains(&w.to_ascii_lowercase().as_str()))
+    });
+    if list {
+        t.replace(",\n", "\n")
+    } else {
+        t
+    }
+}
+
 /// ADR 0196: the most words the last sentence may have for [`unmarked_question`]; a longer unpunctuated run is as
 /// likely a question run into a statement as one question.
 pub const QUESTION_MAX_WORDS: usize = 12;
@@ -1554,7 +1635,7 @@ fn remove_fillers(src: &str) -> String {
 /// On-device cleanup: spoken commands, fillers (ADR 0192: with the comma before them where none belongs), stutters,
 /// spacing, "Scratch that" (ADR 0186), a final spoken "question mark" / "exclamation point" (ADR 0189),
 /// capitalization, terminal punctuation (ADR 0101: which repeats collapse, and no "." on a short dictation; ADR 0188:
-/// nor on a list of short lines), then spoken amounts as figures (ADR 0193: "$25", "15%", "3:30 p.m.").
+/// nor on a list of short lines; ADR 0201: whose line commas go), then spoken amounts as figures (ADR 0193: "$25", "15%", "3:30 p.m.").
 pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
     let mut t = format!(" {raw} ");
     t = layout_command(NEW_PARAGRAPH, &t, "\n\n");
@@ -1573,6 +1654,7 @@ pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
     }
     t = scratch_that(t);
     t = final_mark(t);
+    t = list_line_commas(t, raw.chars().any(|c| c.is_ascii_uppercase()));
     t = sentence_starts(&t);
     t = lone_i(&t);
     t = apply_dictionary(&t, dict);

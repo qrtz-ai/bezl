@@ -74,6 +74,72 @@ function isShortList(t: string): boolean {
   });
 }
 
+/** ADR 0201: a list line takes its comma off only when it has at most this many words (3-word verse lines keep
+ * theirs). Same rule in cleanup.rs. */
+export const LIST_COMMA_MAX_WORDS = 2;
+
+/** ADR 0201: a line with one of these words is a greeting or a sign-off, whose comma is meant. Same list in
+ * cleanup.rs. */
+const LETTER_WORDS = new Set([
+  'dear',
+  'hi',
+  'hello',
+  'hey',
+  'hiya',
+  'greetings',
+  'morning',
+  'afternoon',
+  'evening',
+  'thanks',
+  'thank',
+  'thx',
+  'cheers',
+  'best',
+  'regards',
+  'sincerely',
+  'faithfully',
+  'cordially',
+  'respectfully',
+  'warmly',
+  'love',
+  'yours',
+  'xo',
+  'xoxo',
+  'hugs',
+  'care',
+  'soon',
+  'bye',
+  'goodbye',
+  'later',
+]);
+
+/** ADR 0201: the comma before each spoken "new line" of a dictated list ("Groceries, new line, eggs, new line,
+ * milk." → "Groceries⏎Eggs⏎Milk"), dropped only when the whole text is such a list: 3+ lines, no blank line, every
+ * line but the last ending in "," (the last in a word or "."), each 1 to LIST_COMMA_MAX_WORDS words of ASCII
+ * letters, every line after the first starting lowercase, no LETTER_WORDS word; only for a recogniser that writes
+ * capitals. Runs before capitalization. Same rule in cleanup.rs. */
+function listLineCommas(t: string, caps: boolean): string {
+  if (!caps || !t.includes(',\n') || t.includes('\n\n')) return t;
+  const lines = t.split('\n');
+  if (lines.length < SHORT_LIST_LINES) return t;
+  const last = lines.length - 1;
+  const list = lines.every((l, i) => {
+    let body: string;
+    if (i === last) body = l.endsWith('.') ? l.slice(0, -1) : l;
+    else if (l.endsWith(',')) body = l.slice(0, -1);
+    else return false;
+    const words = body.split(' ');
+    return (
+      words.length >= 1 &&
+      words.length <= LIST_COMMA_MAX_WORDS &&
+      words.every((w) => /^[A-Za-z]+$/.test(w)) &&
+      (i === 0 || /^[a-z]/.test(body)) &&
+      !words.some((w) => LETTER_WORDS.has(w.toLowerCase()))
+    );
+  });
+  return list ? t.split(',\n').join('\n') : t;
+}
+
 /** ADR 0196: the most words the last sentence may have for unmarkedQuestion. Same rule in cleanup.rs. */
 export const QUESTION_MAX_WORDS = 12;
 
@@ -1188,6 +1254,7 @@ export function ruleCleanup(
     );
   t = scratchThat(t);
   t = finalMark(t);
+  t = listLineCommas(t, /[A-Z]/.test(raw));
   t = t.replace(
     // Not after a dotted abbreviation ("e.g. the", "3 p.m. today"), nor after "Mr." / "etc." (ADR 0120).
     /(^|(?<![A-Za-z]\.[A-Za-z])[.!?]\s+|\n)([a-z])/g,

@@ -46,11 +46,15 @@ fn dictionaries() -> Vec<Vec<DictionaryEntry>> {
 }
 
 fn same(raw: &str, dict: &[DictionaryEntry]) {
-    assert_eq!(
-        rule_cleanup(raw, dict),
-        c59::rule_cleanup(raw, dict),
-        "rule_cleanup({raw:?})"
-    );
+    let (new, old) = (rule_cleanup(raw, dict), c59::rule_cleanup(raw, dict));
+    // ADR 0201 (cycle 62) is the one text change since the oracle: a dictated list's line commas go. Any other
+    // difference fails.
+    if new != old {
+        assert!(
+            old.contains(",\n") && new == old.replace(",\n", "\n"),
+            "rule_cleanup({raw:?}): {new:?} vs cycle 59 {old:?}"
+        );
+    }
     assert_eq!(
         apply_dictionary(raw, dict),
         c59::apply_dictionary(raw, dict),
