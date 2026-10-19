@@ -213,11 +213,18 @@ fn the_live_index_2_nano_is_refused_at_install_and_would_be_at_publish() {
         matches!(e, ResolveError::NoReader { ref extension, .. } if extension == "nano"),
         "{e}"
     );
-    let e = check_index_reads(&ix.packages).unwrap_err();
+    let e = check_index_reads(&ix.packages, &ix.revoked).unwrap_err();
     assert!(
         matches!(e, ResolveError::NoReader { ref extension, .. } if extension == "nano"),
         "{e}"
     );
+    // ADR 0214: with both nano versions revoked (modules/revoked.json) every resolvable entry passes.
+    let revoked: Vec<qrtz_modules::sideload::Revoked> = serde_json::from_slice(
+        &std::fs::read(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../modules/revoked.json"))
+            .unwrap(),
+    )
+    .unwrap();
+    check_index_reads(&ix.packages, &revoked).unwrap();
     // ctrl's declared read resolves as before.
     let mut ws = Workspace::default();
     ws.dependencies.insert("ctrl".into(), "^0.2.0".into());

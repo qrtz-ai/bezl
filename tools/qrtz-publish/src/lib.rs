@@ -530,6 +530,8 @@ pub struct Built {
     pub index_sha256: String,
     pub timestamp_version: u64,
     pub added: Vec<String>,
+    /// The spec's revocations that the previous index didn't have (ADR 0214), as `name@v1,v2 (reason)`.
+    pub revoked: Vec<String>,
 }
 
 /// `build`: add the spec's packages (and revocations) to the published index, sign a new index and timestamp.
@@ -622,9 +624,22 @@ pub fn build_against(
             }
         }
     }
+    let mut newly_revoked = vec![];
     for r in &spec.revoked {
+        if r.package.is_empty() || r.reason.trim().is_empty() {
+            return Err(format!(
+                "revoked: {}: name the package and give a reason (ADR 0214)",
+                r.package
+            ));
+        }
         if !revoked.contains(r) {
             revoked.push(r.clone());
+            let vs = if r.versions.is_empty() {
+                "*".to_owned()
+            } else {
+                r.versions.join(",")
+            };
+            newly_revoked.push(format!("{}@{} ({})", r.package, vs, r.reason));
         }
     }
     // Every extension's ranges must be satisfiable by what is published.
@@ -646,7 +661,7 @@ pub fn build_against(
     }
     // ADR 0212: every model an extension depends on is read by a unit that declares it, and every declared read is
     // one of its model dependencies; an index that would grant anything else is never signed.
-    qrtz_modules::resolve::check_index_reads(&packages).map_err(|e| e.to_string())?;
+    qrtz_modules::resolve::check_index_reads(&packages, &revoked).map_err(|e| e.to_string())?;
     let index = Index {
         kind: "index".into(),
         version: prev.as_ref().map_or(1, |(_, i)| i.version + 1),
@@ -676,6 +691,7 @@ pub fn build_against(
         index_sha256: sha,
         timestamp_version: t.version,
         added,
+        revoked: newly_revoked,
     })
 }
 

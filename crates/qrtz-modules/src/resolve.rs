@@ -450,18 +450,30 @@ pub fn grants_in_lock(
 }
 
 /// Every extension version in a set of index entries (`packages[name][version]`, what `qrtz-publish build` is about
-/// to sign) passes [`extension_grants`]; a service range is read as its highest published version.
+/// to sign) that isn't revoked passes [`extension_grants`]; a service range is read as its highest unrevoked
+/// published version. ADR 0214: a revoked version stays in the index (published objects are immutable) but no
+/// client ever resolves or installs it, so it is the one thing the check skips; every entry a client can resolve
+/// must pass.
 pub fn check_index_reads(
     packages: &BTreeMap<String, BTreeMap<String, PackageEntry>>,
+    revoked: &[crate::sideload::Revoked],
 ) -> Result<(), ResolveError> {
+    let is_revoked = |id: &str, v: &str| {
+        revoked
+            .iter()
+            .any(|r| r.package == id && (r.versions.is_empty() || r.versions.iter().any(|x| x == v)))
+    };
     for (name, vs) in packages {
-        for (v, e) in vs.iter().filter(|(_, e)| e.kind == PackageKind::Extension) {
+        for (v, e) in vs
+            .iter()
+            .filter(|(v, e)| e.kind == PackageKind::Extension && !is_revoked(name, v))
+        {
             let service = |s: &str, range: &str| {
                 let req = VersionReq::parse(range).ok()?;
                 packages
                     .get(s)?
                     .iter()
-                    .filter(|(_, se)| se.kind == PackageKind::Service)
+                    .filter(|(sv, se)| se.kind == PackageKind::Service && !is_revoked(s, sv))
                     .filter_map(|(sv, se)| Version::parse(sv).ok().map(|x| (x, se)))
                     .filter(|(x, _)| req.matches(x))
                     .max_by(|a, b| a.0.cmp(&b.0))

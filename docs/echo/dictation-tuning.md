@@ -1698,12 +1698,12 @@ the Mac check in section 36 step 5; p19/p20 are ambiguous; p41 is ADR 0188's "do
 changed since `de03608`. So the cycle took the top backlog item from section 42: N189's speech side. Bobs's
 `b464db9` already fixed the store side (a refresh takes the install lock only to commit).
 
-| Run                                                         | Result                                                    |
-| ----------------------------------------------------------- | --------------------------------------------------------- |
-| old mapping + no wait, the 3 new tests                      | **all fail** (`Invalid("another install is running")`)    |
-| `7cf1272`, the 3 new tests                                    | pass (waits, then installs; `InstallBusy` after the wait; pause < 1 s) |
-| `7cf1272`, local_models (13 tests), 40 runs of the binary   | 40 pass                                                   |
-| `7cf1272`, qrtz-app `--features runtime`                      | 303 passed, 0 failed                                    |
+| Run                                                       | Result                                                                 |
+| --------------------------------------------------------- | ---------------------------------------------------------------------- |
+| old mapping + no wait, the 3 new tests                    | **all fail** (`Invalid("another install is running")`)                 |
+| `7cf1272`, the 3 new tests                                | pass (waits, then installs; `InstallBusy` after the wait; pause < 1 s) |
+| `7cf1272`, local_models (13 tests), 40 runs of the binary | 40 pass                                                                |
+| `7cf1272`, qrtz-app `--features runtime`                  | 303 passed, 0 failed                                                   |
 
 - **N189 (speech side, fixed):** a Parakeet (or nano model) download that needed bytes while another install held
   `.qrtz-install.lock` failed at once. `pm_error` turned `InstallError::Busy` into `SpeechError::Invalid`, so the row

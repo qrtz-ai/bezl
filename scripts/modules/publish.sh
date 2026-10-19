@@ -9,13 +9,15 @@
 #                                                       e.g. through the Cloudflare connector). --no-upload = same.
 #   scripts/modules/publish.sh --timestamp              re-sign the timestamp and upload only it (at least weekly)
 #   scripts/modules/publish.sh --timestamp --out-only   re-sign it and list only the timestamp pair
-#   scripts/modules/publish.sh --release [--force-bump]  the whole module release in one command: bump each module
+#   scripts/modules/publish.sh --release [--only nano[,ctrl]] [--force-bump]  the whole module release in one command: bump each module
 #                       (nano, ctrl, snap) whose code or manifest changed since its `<m>-v<x.y.z>` tag (all of
 #                       them with --force-bump) with scripts/modules/version.mjs (qrtz.json, module.json,
 #                       modules.lock.json, CHANGELOG.md), commit and push that to main, build the packages
 #                       (build-packages.sh), publish them and the models they depend on, upload, then tag
 #                       `<m>-v<version>` and push the tags. Needs a clean checkout of main. Combines with --out-only
-#                       (then nothing is tagged: tag with `version.mjs tag --push` after your upload).
+#                       (a dry run: the bump is made in the working tree only, never committed or pushed, and undone on
+#                       exit; nothing is tagged). A module already ahead of its tag (an earlier bump whose publish
+#                       didn't finish) is not bumped again.
 #
 # Every package build fetches the live index from $QRTZ_PRIMARY_URL and passes it to `qrtz-publish build
 # --live-index`, which refuses a (package, version) the live index already has with other content.
@@ -63,8 +65,17 @@ mode=all
 out_only=0
 release=0
 force_bump=""
+only=""
+want_only=0
 for a in "$@"; do
+  if [[ "$want_only" == 1 ]]; then
+    only="$a"
+    want_only=0
+    continue
+  fi
   case "$a" in
+    --only) want_only=1 ;;
+    --only=*) only="${a#--only=}" ;;
     --no-upload | --out-only) out_only=1 ;;
     --release) release=1 ;;
     --force-bump) force_bump=--force ;;
@@ -77,9 +88,21 @@ for a in "$@"; do
   esac
 done
 
+[[ "$want_only" == 0 ]] || die "--only needs a module list (e.g. --only nano)"
+mods="nano ctrl snap"
+if [[ -n "$only" ]]; then
+  # --only <m>[,<m>]: only these modules are bumped, built, notarized, uploaded and tagged. Every other package keeps
+  # its live index entries byte-for-byte (the index is always the previous one plus what is added), whatever its
+  # manifest in the repo says; the full read check still runs over every resolvable entry.
+  mods="$(tr ',' ' ' <<<"$only")"
+  for m in $mods; do
+    case "$m" in nano | ctrl | snap) ;; *) die "--only: $m is not a module (nano, ctrl, snap)" ;; esac
+  done
+fi
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
 [[ "$release" == 0 || "$mode" != timestamp ]] || die "--release and --timestamp don't combine"
 [[ -n "$force_bump" && "$release" == 0 ]] && die "--force-bump needs --release"
+[[ -n "$only" && "$release" == 0 ]] && die "--only needs --release"
 node_bin="$(command -v node || command -v bun || true)"
 keys="${QRTZ_KEYS:-$HOME/.qrtz-keys}"
 out="${QRTZ_PUBLISH_OUT:-$HOME/qrtz-publish-out}"
@@ -111,9 +134,23 @@ if [[ "$release" == 1 ]]; then
   [[ "$(git rev-parse --abbrev-ref HEAD)" == main ]] || die "--release: run it on main"
   git fetch -q --tags origin
   [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/main)" ]] || die "--release: main isn't origin/main (pull first)"
-  changed="$("$node_bin" scripts/modules/version.mjs bump $force_bump | sort -u)"
-  if [[ -n "$changed" ]]; then
-    msg="modules: release $(for m in nano ctrl snap; do printf '%s %s, ' "$m" "$(plutil -extract version raw -o - "modules/$m/qrtz.json" 2>/dev/null || sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "modules/$m/qrtz.json" | head -1)"; done | sed 's/, $//')"
+  changed="$("$node_bin" scripts/modules/version.mjs bump $force_bump $mods | sort -u)"
+  if [[ -n "$changed" && "$out_only" == 1 ]]; then
+    # A dry run never commits or pushes: the bumps live in the working tree only for this build (the packages come
+    # out at the would-be versions) and are undone on exit, so main is untouched and the real --release bumps once.
+    restore_bumps() {
+      for f in $changed; do
+        if git -C "$repo" ls-files --error-unmatch -- "$f" >/dev/null 2>&1; then
+          git -C "$repo" checkout -q -- "$f"
+        else
+          rm -f "$repo/$f"
+        fi
+      done
+    }
+    trap restore_bumps EXIT
+    echo "publish: --out-only: building at the would-be versions; the bump is not committed and is undone on exit"
+  elif [[ -n "$changed" ]]; then
+    msg="modules: release $(for m in $mods; do printf '%s %s, ' "$m" "$(plutil -extract version raw -o - "modules/$m/qrtz.json" 2>/dev/null || sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "modules/$m/qrtz.json" | head -1)"; done | sed 's/, $//')"
     # shellcheck disable=SC2086
     git add -- $changed
     # shellcheck disable=SC2086
@@ -122,11 +159,12 @@ if [[ "$release" == 1 ]]; then
     echo "publish: $msg (pushed $(git rev-parse --short HEAD))"
   fi
   pkgs="${QRTZ_PACKAGES_OUT:-$HOME/qrtz-packages}"
-  SWIFT_BUILD_FLAGS="${SWIFT_BUILD_FLAGS:---disable-keychain}" bash "$repo/scripts/modules/build-packages.sh" --out "$pkgs" nano ctrl snap
-  QRTZ_PUBLISH_PACKAGES="$pkgs/packages/nano $pkgs/packages/ctrl $pkgs/packages/snap"
+  SWIFT_BUILD_FLAGS="${SWIFT_BUILD_FLAGS:---disable-keychain}" bash "$repo/scripts/modules/build-packages.sh" --out "$pkgs" $mods
+  QRTZ_PUBLISH_PACKAGES=""
+  for m in $mods; do QRTZ_PUBLISH_PACKAGES="$QRTZ_PUBLISH_PACKAGES $pkgs/packages/$m"; done
   if [[ -z "${QRTZ_PUBLISH_MODELS:-}" ]]; then
     # The models the packages depend on (their qrtz.json `model.*` names).
-    QRTZ_PUBLISH_MODELS="$(cat "$pkgs"/packages/{nano,ctrl,snap}/qrtz.json | grep -o '"model\.[a-z0-9-]*"' | tr -d '"' | sort -u | tr '\n' ' ')"
+    QRTZ_PUBLISH_MODELS="$(for m in $mods; do cat "$pkgs/packages/$m/qrtz.json"; done | grep -o '"model\.[a-z0-9-]*"' | tr -d '"' | sort -u | tr '\n' ' ')"
   fi
   export QRTZ_PUBLISH_PACKAGES QRTZ_PUBLISH_MODELS
 fi
@@ -242,7 +280,12 @@ else
       printf '%s\n    { "name": "%s", "dir": "%s" }' "$sep" "$n" "$md"
       sep=","
     done
-    printf '\n  ],\n  "packages": ['
+    printf '\n  ],\n'
+    # ADR 0214: the repo's revocation list (modules/revoked.json) is the only way a published version is pulled. The
+    # index keeps the entry (immutable) and lists it in `revoked`; clients never resolve or install it, and the
+    # publisher's read check skips it. qrtz-publish prints each new revocation.
+    printf '  "revoked": %s,\n' "$(cat "$repo/modules/revoked.json")"
+    printf '  "packages": ['
     sep=""
     for p in ${QRTZ_PUBLISH_PACKAGES:-}; do
       [[ -f "$p/qrtz.json" ]] || die "$p: not a built package dir (no qrtz.json)"
@@ -299,7 +342,7 @@ if [[ "$out_only" == 1 ]]; then
   echo "publish: built and verified in $out (not uploaded)"
   echo "publish: upload list $list: $new new object(s), $bytes bytes; upload them in order from $out/<key>, the"
   echo "publish:   timestamp pair last (Cache-Control per line), then check $primary/v1/timestamp.json"
-  [[ "$release" == 1 ]] && echo "publish: after the upload, tag the release: $node_bin $repo/scripts/modules/version.mjs tag --push"
+  [[ "$release" == 1 ]] && echo "publish: after the upload, tag the release: $node_bin $repo/scripts/modules/version.mjs tag --push $mods"
   exit 0
 fi
 
@@ -337,8 +380,8 @@ else
   echo "publish: WARNING: $primary doesn't serve the new timestamp yet (cache or DNS); check $primary/v1/timestamp.json in a few minutes" >&2
 fi
 if [[ "$release" == 1 ]]; then
-  [[ "$got" == "$want" ]] || die "not tagging: the host doesn't serve the new timestamp yet; tag later with version.mjs tag --push"
-  tags="$(cd "$repo" && "$node_bin" scripts/modules/version.mjs tag --push | tr '\n' ' ')"
+  [[ "$got" == "$want" ]] || die "not tagging: the host doesn't serve the new timestamp yet; tag later with version.mjs tag --push $mods"
+  tags="$(cd "$repo" && "$node_bin" scripts/modules/version.mjs tag --push $mods | tr '\n' ' ')"
   echo "publish: tagged and pushed: ${tags:-nothing new}"
 fi
 echo "publish: done"

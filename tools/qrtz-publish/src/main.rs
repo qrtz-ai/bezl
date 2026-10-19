@@ -103,6 +103,9 @@ fn run() -> Result<(), String> {
                 &how,
                 live.as_ref(),
             )?;
+            for r in &b.revoked {
+                println!("revoked: {r}");
+            }
             println!(
                 "index {} ({}) and timestamp {}; added: {}",
                 b.index_version,

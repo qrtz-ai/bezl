@@ -1,0 +1,7 @@
+[
+  {
+    "package": "nano",
+    "versions": ["0.2.0", "0.2.1"],
+    "reason": "never installable: depends on model.localvqe, model.nemotron and model.nemotron-diarizer but declares no reads (ADR 0212); replaced by 0.2.2"
+  }
+]
