@@ -95,7 +95,10 @@ async fn ms(n: u64) {
     tokio::time::sleep(Duration::from_millis(n)).await;
 }
 
-const _: () = assert!(AUTO_STOP_GRACE_MS >= 120_000.0, "the grace is at least two minutes");
+const _: () = assert!(
+    AUTO_STOP_GRACE_MS >= 120_000.0,
+    "the grace is at least two minutes"
+);
 
 #[tokio::test]
 async fn tab_flips_never_stop_a_recording() {
