@@ -76,6 +76,15 @@ final class PillDriverTests: XCTestCase {
         XCTAssertEqual(d.state, .error("the microphone went away"))
     }
 
+    /// ADR 0225: a password-field refusal is a notice (info, like the host's flash), shown at once.
+    func testSecureRefusalIsAnInfoNoticeAtOnce() {
+        let v = FakePillView(), d = PillDriver(view: v)
+        d.helper(.dictationStarted(id: "a", preRollMs: 0))
+        d.helper(.dictationStopped(id: "a", text: "hunter2", durationMs: 100))
+        d.helper(.insertResult(id: "a", method: .none, ok: false, app: nil, error: SecureField.insertRefused))
+        XCTAssertEqual(d.state, .info(SecureField.notice))
+    }
+
     func testHelperErrorsWhileHiddenOrBusyDontPopThePill() {
         let v = FakePillView(), d = PillDriver(view: v)
         d.helper(.error(code: "dictation.hotkey", message: "push-to-talk key fn unavailable", fatal: false))

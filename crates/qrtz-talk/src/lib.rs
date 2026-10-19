@@ -23,8 +23,8 @@ pub use contract::{
 pub use qrtz_speech_types as qrtz_speech;
 pub use service::{
     nothing_heard, AsrInfo, Clipboard, Clock, HelperSink, HelperTail, IdSource, RandomIds, SystemClock,
-    TalkDeps, TalkEvents, TalkService, Timeouts, INSERT_REFUSED_SECURE, MSG_LATE_FINAL, MSG_NOTHING_HEARD,
-    MSG_SECURE_FIELD, MSG_SILENT_MIC, MSG_SPEECH_MISSING, SEGMENT_OVERLAP_MS,
+    TalkDeps, TalkEvents, TalkService, Timeouts, INSERT_REFUSED_SECURE, MAX_SECURE_REFUSED, MSG_LATE_FINAL,
+    MSG_NOTHING_HEARD, MSG_SECURE_FIELD, MSG_SILENT_MIC, MSG_SPEECH_MISSING, SEGMENT_OVERLAP_MS,
 };
 pub use speech::{HelperAsrSpeech, TalkValidator};
 pub use store::{FsIo, StoreIo};

@@ -163,7 +163,7 @@ public final class PillDriver: @unchecked Sendable {
             // ADR 0225: a password field: say so at once (nothing of the dictation stays on the pill).
             if error == SecureField.insertRefused {
                 lock.withLock { pendingInsertError = nil }
-                go(.error(SecureField.notice), timeoutMs: timing.errorFlashMs); return
+                go(.info(SecureField.notice), timeoutMs: timing.errorFlashMs); return
             }
             // The host answers a failed insert with `pill.flash` (error, or info "copied to clipboard"): stay on
             // processing for it; show this error only if it doesn't come.

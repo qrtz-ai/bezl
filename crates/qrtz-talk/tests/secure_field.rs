@@ -142,3 +142,34 @@ async fn a_secure_refusal_after_the_insert_bound_removes_the_history_entry() {
     let f = r.helper.sent_of("pill.flash");
     assert_eq!(f.last().unwrap()["message"], MSG_SECURE_FIELD, "{f:?}");
 }
+
+/// Bozniak follow-up (a): with history off, a refusal after the insert bound has no entry to remove and nothing
+/// takes its id back out of the remembered set: it stays capped, and the notice is still flashed each time.
+#[tokio::test(start_paused = true)]
+async fn refusals_after_the_bound_with_history_off_stay_capped_and_say_so() {
+    let mut o = slow_final(0, 2000, 500);
+    o.timeouts = Timeouts {
+        insert: 500,
+        ..Timeouts::default()
+    };
+    o.config = serde_json::json!({"talk": {"saveHistory": false}});
+    let r = rig(o);
+    let n = MAX_SECURE_REFUSED + 4;
+    for _ in 0..n {
+        let _ = r.dictate(300).await;
+        sleep(3000).await;
+    }
+    assert!(r.svc.history().is_empty());
+    assert!(
+        r.svc.secure_refused_len() <= MAX_SECURE_REFUSED,
+        "{}",
+        r.svc.secure_refused_len()
+    );
+    let notices = r
+        .helper
+        .sent_of("pill.flash")
+        .iter()
+        .filter(|f| f["message"] == MSG_SECURE_FIELD && f["kind"] == "info")
+        .count();
+    assert_eq!(notices, n, "the notice every time");
+}

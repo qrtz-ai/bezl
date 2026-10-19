@@ -18,7 +18,7 @@ use qrtz_speech_types::{
     Channel, FailReason, SessionKind, SessionSpec, SpeakerMode, SpeechEngine, SpeechEvent,
 };
 use serde_json::{json, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -450,7 +450,7 @@ struct Inner {
     late: HashMap<String, Late>,
     /// ADR 0225: dictations whose insert the helper refused because the focused field is secure (a password).
     /// Nothing of them is kept: no history, no clipboard, and a real final that comes later is dropped.
-    secure_refused: HashSet<String>,
+    secure_refused: VecDeque<String>,
 }
 
 struct Shared {
@@ -547,7 +547,7 @@ impl TalkService {
                 waiters: HashMap::new(),
                 attempt: None,
                 late: HashMap::new(),
-                secure_refused: HashSet::new(),
+                secure_refused: VecDeque::new(),
             }),
             pending_press: AtomicBool::new(false),
         }))
@@ -607,6 +607,11 @@ impl TalkService {
 
     pub fn state(&self) -> TalkView {
         self.lock().view.clone()
+    }
+    /// ADR 0225: how many secure-refused ids are remembered (tests: the set stays capped).
+    #[doc(hidden)]
+    pub fn secure_refused_len(&self) -> usize {
+        self.lock().secure_refused.len()
     }
     pub fn history(&self) -> Vec<TalkEntry> {
         self.lock().store.history.clone()
@@ -1081,17 +1086,16 @@ impl TalkService {
         let mut g = self.lock();
         g.late.remove(id);
         // Still finishing (the refusal beat the history write): `finish` sees this and keeps nothing.
+        // With history off (or after `finish`) nothing ever takes the id back out: the set is capped.
         if !removed {
-            g.secure_refused.insert(id.to_owned());
+            mark_secure(&mut g.secure_refused, id);
         }
         if g.view.last.as_ref().is_some_and(|l| l.id == id) {
             g.view.last = None;
         }
         self.emit_view(&g);
         drop(g);
-        if removed {
-            self.pill_flash("info", MSG_SECURE_FIELD);
-        }
+        self.pill_flash("info", MSG_SECURE_FIELD);
     }
 
     fn resolve(&self, key: &str, m: Value) {
@@ -1567,7 +1571,7 @@ impl TalkService {
         // applied when it arrives.
         let stashed = {
             let mut g = self.lock();
-            if g.secure_refused.remove(&id) {
+            if take_secure(&mut g.secure_refused, &id) {
                 // ADR 0225: a secure refusal keeps nothing, so a real final still to come has nowhere to go.
                 g.late.remove(&id);
                 return own;
@@ -1812,7 +1816,7 @@ impl TalkService {
                     "talk: insert refused, secure field"
                 );
                 let mut g = self.lock();
-                g.secure_refused.insert(id.clone());
+                mark_secure(&mut g.secure_refused, &id);
                 let own = g.view.id.as_deref() == Some(id.as_str());
                 if own {
                     g.view = g.view.idle_keeping();
@@ -1924,6 +1928,25 @@ impl TalkService {
         self.emit_view(&g);
         own
     }
+}
+
+/// ADR 0225: at most this many secure-refused ids are remembered (a refusal after `finish` is never taken back
+/// out, e.g. with history off); the oldest goes first.
+pub const MAX_SECURE_REFUSED: usize = 8;
+
+fn mark_secure(set: &mut VecDeque<String>, id: &str) {
+    if !set.iter().any(|x| x == id) {
+        set.push_back(id.to_owned());
+        while set.len() > MAX_SECURE_REFUSED {
+            set.pop_front();
+        }
+    }
+}
+
+fn take_secure(set: &mut VecDeque<String>, id: &str) -> bool {
+    let n = set.len();
+    set.retain(|x| x != id);
+    set.len() != n
 }
 
 /// The text echo inserts into the focused field: `text` plus one trailing space, unless it is empty or already
