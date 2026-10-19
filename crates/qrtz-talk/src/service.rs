@@ -482,6 +482,8 @@ pub const MSG_SPEECH_MISSING: &str = crate::speech::MSG_NOT_INSTALLED;
 pub const INSERT_REFUSED_SECURE: &str = "secure-field";
 /// ADR 0225: the pill's notice for that refusal.
 pub const MSG_SECURE_FIELD: &str = "echo won't type into password fields";
+/// N202 (ADR 0227): `error{dictation.mic, reason: "failed"}`: permission is granted but the mic wouldn't open.
+pub const MSG_MIC_FAILED: &str = "the microphone couldn't start";
 pub const MSG_CTRL_CUT_SHORT: &str = "didn't catch it all, so ctrl didn't run it. try again";
 pub const MSG_NOTHING_HEARD: &str = "didn't catch any words. hold the key while you speak, then let go";
 /// ...and the mic sent (next to) digital silence the whole time: macOS gave qrtz no sound.
@@ -1964,14 +1966,21 @@ pub fn with_trailing_space(text: &str) -> String {
     }
 }
 
-/// N195 (ADR 0224): `error{dictation.mic, reason?}` as talk's error: `no-device` is mic-lost (the input device is
-/// gone), anything else (`denied`, or no reason from an older helper) stays mic-denied with the helper's message.
+/// N195 (ADR 0224), N202 (ADR 0227): `error{dictation.mic, reason?}` as talk's error. `no-device` is mic-lost (the
+/// input device is gone). `failed` (permission granted, the mic still wouldn't open) and any other reason this
+/// build doesn't know are [`MSG_MIC_FAILED`] (mic-did-not-start), never a permission error: the helper sends
+/// `denied` only from the mic's authorization status. `denied`, or no reason (an older helper), stays mic-denied
+/// with the helper's message.
 pub fn mic_error(m: &Value) -> (TalkErrorKind, String) {
-    if m["reason"].as_str() == Some("no-device") {
-        return (
-            TalkErrorKind::MicLost,
-            "no microphone was found, so dictation didn't start".to_owned(),
-        );
+    match m["reason"].as_str() {
+        Some("no-device") => {
+            return (
+                TalkErrorKind::MicLost,
+                "no microphone was found, so dictation didn't start".to_owned(),
+            )
+        }
+        None | Some("") | Some("denied") => {}
+        Some(_) => return (TalkErrorKind::MicDidNotStart, MSG_MIC_FAILED.to_owned()),
     }
     let msg = m["message"]
         .as_str()
