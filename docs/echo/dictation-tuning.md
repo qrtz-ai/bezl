@@ -887,7 +887,7 @@ noun (the keep set already has "put a question mark"); (4) warming dictionary pa
 Worked one per cycle when no polish item is ready. P1 the `local_models::speech_calls_scoped_to_one_module_
 touch_only_its_models` timeout: **fixed `a8da381`** (cycle 69, ADR 0209; a lost resume, not a flake; section 41);
 P2 model download pause/resume/background/crash recovery with sha256; P3 no network or a failed index refresh never
-blocks dictation with an installed model: **fixed `de03608`** (cycle 70, ADR 0210, N188; section 42); P4 mic edge cases (unplug, AirPods profile, permission revoked,
+blocks dictation with an installed model: **fixed `de03608`** (cycle 70, ADR 0210, N188; section 42), and its follow-up N189 **fixed** (`b464db9` store side, Bobs; `7cf1272` speech side, cycle 71, ADR 0213; section 43); P4 mic edge cases (unplug, AirPods profile, permission revoked,
 sleep/wake); P5 key-up to text p50/p95 budget and a bench-compare script; P6 insertion fallbacks (secure fields,
 Electron, terminals); P7 idle memory/CPU and model unload without first-press cost; P8 crash safety (pill reset, echo
 restart with backoff).
@@ -1664,7 +1664,7 @@ failing run whose output wasn't kept; it did not recur in the 175.
   (495 words / 504 ending in a question / 504 ending in a vocative question), ceiling 2 ms. Note (Qrtz Nano):
   packages/features/note vitest 17 passed (5 files).
 - **Latency:** none. Nothing on the press path changed; the download of an installed model got cheaper.
-- **N189 (P3, new, open):** a download that does need bytes while a refresh is stuck still fails "busy" and is shown
+- **N189 (P3, new; fixed in cycle 71, `b464db9` + `7cf1272`, section 43):** a download that does need bytes while a refresh is stuck still fails "busy" and is shown
   as a signature failure (`pm_error`, local_models.rs ~l.617, maps `InstallError::Busy` to `Invalid`); and a stuck
   refresh blocks every install for up to ~60 s per request. Proposed to Beve Bobs: refresh without holding the
   install lock during its requests (ADR 0210, Rejected).
@@ -1689,4 +1689,52 @@ bench-compare script; (4) P4/P6-P8. Polish: p15 only after the Mac check in sect
    echo's page and switch echo off and on. Echo comes back on at once with no download question and no error row.
 6. Turn Wi-Fi back on. If anything misbehaves: revert `de03608` (local_models.rs and its tests only).
 7. Still open for p15: hold fn and say "Bring the charger comma the cable comma and the adapter period"; note
+   whether Parakeet writes the words or the marks (section 36 step 5).
+
+## 43. Cycle 71: backlog P3 / N189 speech side, a model download waits for the install lock (ADR 0213, `7cf1272`)
+
+Polish re-check first: nothing new clears the bar. The 4 failing cases are the same as in section 42 (p15 waits on
+the Mac check in section 36 step 5; p19/p20 are ambiguous; p41 is ADR 0188's "don't retry"), and no cleanup code
+changed since `de03608`. So the cycle took the top backlog item from section 42: N189's speech side. Bobs's
+`b464db9` already fixed the store side (a refresh takes the install lock only to commit).
+
+| Run                                                         | Result                                                    |
+| ----------------------------------------------------------- | --------------------------------------------------------- |
+| old mapping + no wait, the 3 new tests                      | **all fail** (`Invalid("another install is running")`)    |
+| `7cf1272`, the 3 new tests                                    | pass (waits, then installs; `InstallBusy` after the wait; pause < 1 s) |
+| `7cf1272`, local_models (13 tests), 40 runs of the binary   | 40 pass                                                   |
+| `7cf1272`, qrtz-app `--features runtime`                      | 303 passed, 0 failed                                    |
+
+- **N189 (speech side, fixed):** a Parakeet (or nano model) download that needed bytes while another install held
+  `.qrtz-install.lock` failed at once. `pm_error` turned `InstallError::Busy` into `SpeechError::Invalid`, so the row
+  said "the download failed its signature check".
+- **Fix:** `LocalModels::download` (local_models.rs ~l.440) plans and applies in a loop. On `Busy` it waits 200 ms
+  and plans again, for up to 60 s (`BUSY_WAIT`), and a pause ends the wait at once. Past that, the error is
+  `SpeechError::InstallBusy` (retryable), kind `unavailable`, with the row text "another download or update is
+  running; try again in a moment" (setup.rs `error_kind` / `error_text`). No renderer or contract change, since
+  `unavailable` is already a `SpeechErrorKind`.
+- **Dictation path review since `de03608`:** no capture, VAD, model config, drain / final pass, cleanup, insert or
+  timing-log change in qrtz-talk. origin moved by the pill animation (`e330e9f`) and theme (`d21947c`; helper, drawn
+  after capture starts, nothing awaited), the onboarding rows (`a0a09aa`), ADR 0212's declared model reads
+  (`2b423fc`..`8a84a06`, including local_models `reader_of` from `qrtz.lock` and Models.swift's `QRTZ_MODELS_DIR`
+  unwrap), Bobs's refresh lock (`b464db9`) and publish-local scripts. Cleanup is still `rule_cleanup` once on the final
+  text. Polish set at `7cf1272`: 105 / 109 exact, 42 chars (1.20 %), regressions 0; keep set 292, 0 hits; release
+  cleanup_budget medians 0.128 / 0.130 / 0.137 ms (495 words / 504 ending in a question / 504 ending in a vocative
+  question), ceiling 2 ms. Note (Qrtz Nano): packages/features/note vitest 17 passed (5 files).
+- **Latency:** none. Only the download path changed, and an installed model returns before the loop.
+
+Backlog after this cycle, ranked: (1) P2 crash recovery mid-download (resume from the `.part` + `.done` ranges,
+sha256 on the result) with a kill test; (2) P5 the key-up-to-text p50/p95 bench-compare script; (3) P4/P6-P8.
+Polish: p15 only after the Mac check in section 36 step 5.
+
+### Test on Jared's Mac (cycle 71)
+
+1. `cd ~/code/qrtz && git pull` (main at or after `7cf1272`).
+2. `cargo test -p qrtz-app --features runtime --test local_models`: 12 passed, 1 ignored. The three new tests
+   (`waits_for_another_install`, `lock_held_past_the_wait`, `pausing_while_waiting`) finish in about 1 s together.
+3. Optional, in the app (only if nano is on but its models aren't downloaded yet): start nano's model download in
+   settings → speech. While it runs, switch echo off and on (or delete and re-download Parakeet). Echo's row stays on
+   "downloading" and finishes after nano's, with no "signature check" error.
+4. If anything misbehaves, revert `7cf1272` (local_models.rs, setup.rs, qrtz-speech-types and the tests only).
+5. Still open for p15: hold fn and say "Bring the charger comma the cable comma and the adapter period", and note
    whether Parakeet writes the words or the marks (section 36 step 5).
