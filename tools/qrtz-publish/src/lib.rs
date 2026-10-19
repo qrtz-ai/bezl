@@ -14,6 +14,7 @@
 //! (`local_models.json`, `ctrl_laya_model.json`) are published from a dir of their downloaded files, checked
 //! against those pins, so the hosted package is the same tree the app already pins.
 pub mod keys;
+pub mod notary;
 
 use ed25519_dalek::SigningKey;
 use keys::{sign, Keys};
@@ -207,17 +208,10 @@ impl SpecPackage {
 /// See [`SpecPackage::fake_notarized`]. `None` for models (and anything unreadable).
 pub fn fake_notarization(dir: &Path) -> Option<qrtz_modules::index::Notarization> {
     let m = PackageManifest::parse(&std::fs::read(dir.join(MANIFEST_FILE)).ok()?).ok()?;
-    let code = match (&m.extension, &m.service) {
-        (Some(e), _) => dir.join(&e.entry),
-        (_, Some(s)) => {
-            let macos = dir.join(&s.bundle).join("Contents/MacOS");
-            std::fs::read_dir(&macos).ok()?.flatten().next()?.path()
-        }
-        _ => return None,
-    };
+    let code = notary::code_file(dir, &m)?;
     let sha = qrtz_modules::sha256_hex(&std::fs::read(code).ok()?);
     Some(qrtz_modules::index::Notarization {
-        submission_id: "00000000-0000-4000-8000-000000000000".into(),
+        submission_id: notary::FAKE_SUBMISSION_ID.into(),
         status: qrtz_modules::index::NOTARIZATION_ACCEPTED.into(),
         cdhash: sha[..40].to_owned(),
         code_sha256: sha,
@@ -378,12 +372,42 @@ fn entry_for(
     Ok(e)
 }
 
-/// One package from its built dir: blobs into `out`, (name, version, entry) back.
+/// One package from its built dir: blobs into `out`, (name, version, entry) back. Its notarization record is
+/// taken as written ([`notary::Notarized::Unchecked`]; tests and dry runs): see [`package_entry_with`].
 pub fn package_entry(out: &Path, team: &str, p: &SpecPackage) -> Result<(String, String, PackageEntry)> {
+    package_entry_with(out, team, p, &notary::Notarized::Unchecked)
+}
+
+/// [`package_entry`], with the notarization record checked as `how` says before anything is written.
+pub fn package_entry_with(
+    out: &Path,
+    team: &str,
+    p: &SpecPackage,
+    how: &notary::Notarized,
+) -> Result<(String, String, PackageEntry)> {
     let mp = p.dir.join(MANIFEST_FILE);
     let bytes =
         std::fs::read(&mp).map_err(|_| format!("{}: a package dir needs qrtz.json", p.dir.display()))?;
     let m = PackageManifest::parse(&bytes).map_err(|e| format!("{}: {e}", mp.display()))?;
+    if let (true, Some(n)) = (m.kind.has_code(), &p.notarization) {
+        let fail = |why: String| format!("{}@{}: notarization: {why}", m.name, m.version);
+        match how {
+            notary::Notarized::Unchecked => {}
+            notary::Notarized::DevIndex => {
+                if n.submission_id != notary::FAKE_SUBMISSION_ID {
+                    return Err(fail(
+                        "--dev-index takes only FAKE records; a real one is checked by a plain `build`"
+                            .into(),
+                    ));
+                }
+            }
+            notary::Notarized::Checked(ev) => {
+                let code = notary::code_file(&p.dir, &m)
+                    .ok_or_else(|| fail("no executable to check the record against".into()))?;
+                notary::check_record(&code, n, *ev).map_err(fail)?;
+            }
+        }
+    }
     let mut files = vec![];
     walk(&p.dir, &p.dir, &mut files)?;
     // ADR 0171: a model's files are hashed here but never published to modules.qrtz.ai: each one is listed with its
@@ -509,7 +533,14 @@ pub struct Built {
 }
 
 /// `build`: add the spec's packages (and revocations) to the published index, sign a new index and timestamp.
+/// Notarization records are taken as written (tests and dry runs); the `qrtz-publish build` command checks them
+/// against the code ([`build_with`], [`notary::Notarized::Checked`]).
 pub fn build(out: &Path, spec: &Spec, keys: &Keys, now: u64) -> Result<Built> {
+    build_with(out, spec, keys, now, &notary::Notarized::Unchecked)
+}
+
+/// [`build`], with every package's notarization record checked as `how` says before the index is signed.
+pub fn build_with(out: &Path, spec: &Spec, keys: &Keys, now: u64, how: &notary::Notarized) -> Result<Built> {
     if !is_team_id(&spec.team_id) {
         return Err("teamId: 10 uppercase letters or digits".into());
     }
@@ -526,7 +557,7 @@ pub fn build(out: &Path, spec: &Spec, keys: &Keys, now: u64) -> Result<Built> {
     let mut added = vec![];
     let mut built = vec![];
     for p in &spec.packages {
-        built.push(package_entry(out, &spec.team_id, p)?);
+        built.push(package_entry_with(out, &spec.team_id, p, how)?);
     }
     let mut pins = BTreeMap::new();
     for f in &spec.pinned_models {

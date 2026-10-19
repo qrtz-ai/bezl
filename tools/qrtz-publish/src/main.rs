@@ -7,8 +7,12 @@ const USAGE: &str = "qrtz-publish <command> [options]
   keygen    --dir <keys> --role <root-a|root-b|timestamp|index>   new key (0600) + .pub; never overwrites
   root      --out <dir> [--keys <dir>] [--prev-keys <dir>] [--threshold 1]
                                       write root N+1 (or 1) and print its sha256 (pin 1.root.json's in the app)
-  build     --out <dir> --spec <publish.json> [--keys <dir>]       add packages (each dir has its qrtz.json, or a
-                                      pinned model set and the dir of its downloaded files), sign index + timestamp
+  build     --out <dir> --spec <publish.json> [--keys <dir>] [--dev-index]
+                                      add packages (each dir has its qrtz.json, or a pinned model set and the dir
+                                      of its downloaded files), sign index + timestamp. On macOS each package's
+                                      notarization record is checked against its code (cdhash via codesign, and
+                                      `notarytool log` with QRTZ_NOTARY_PROFILE); elsewhere code can't be published.
+                                      --dev-index: a dev index's FAKE records only (scripts/modules/build-packages.sh)
   timestamp --out <dir> [--keys <dir>]                              re-sign the timestamp (at least weekly)
   pack      --out <dir> --name <package> --version <v> --to <file.qrtzpkg>
                                       the package and everything it resolves to, for an offline install
@@ -76,7 +80,13 @@ fn run() -> Result<(), String> {
         }
         "build" => {
             let spec = qrtz_publish::Spec::load(&PathBuf::from(need("--spec")?))?;
-            let b = qrtz_publish::build(&PathBuf::from(need("--out")?), &spec, &keys()?, now)?;
+            let evidence = qrtz_publish::notary::SystemEvidence::from_env();
+            let how = if flag("--dev-index") {
+                qrtz_publish::notary::Notarized::DevIndex
+            } else {
+                qrtz_publish::notary::Notarized::Checked(&evidence)
+            };
+            let b = qrtz_publish::build_with(&PathBuf::from(need("--out")?), &spec, &keys()?, now, &how)?;
             println!(
                 "index {} ({}) and timestamp {}; added: {}",
                 b.index_version,

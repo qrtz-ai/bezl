@@ -130,7 +130,8 @@ spec="$out/dev-spec.json"
   done
   printf '\n  ]\n}\n'
 } >"$spec"
-"$pub" build --out "$idx" --spec "$spec" --keys "$keys"
+# --dev-index: these records are FAKE (above); a plain `build` checks every record against its code's cdhash.
+"$pub" build --out "$idx" --spec "$spec" --keys "$keys" --dev-index
 "$pub" verify --out "$idx" --root-sha256 "$pin" >/dev/null
 echo
 echo "dev index ready. Run a debug qrtz with:"

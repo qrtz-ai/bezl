@@ -210,7 +210,9 @@ else
   } >"$spec"
   echo "publish: spec $spec"
   echo "publish: models:${wanted:- none}; packages: ${QRTZ_PUBLISH_PACKAGES:-none}"
-  "$bin" build --out "$out" --spec "$spec" --keys "$keys"
+  # qrtz-publish re-reads each package's cdhash (codesign) and asks notarytool for the submission's log before it
+  # signs the records into the index (902bcab review, design call (c)).
+  QRTZ_NOTARY_PROFILE="$notary_profile" "$bin" build --out "$out" --spec "$spec" --keys "$keys"
 fi
 "$bin" verify --out "$out" --root-sha256 "$pin"
 
