@@ -145,6 +145,56 @@ describe('global settings (ADR 0146 M1.4)', () => {
   });
 });
 
+describe('permissions note (ADR 0184 amendment)', () => {
+  it('names system audio only while nano is installed, live on config:changed', async () => {
+    const withNano = (installed: boolean) => {
+      const c = defaultConfig();
+      return {
+        ...c,
+        modules: { ...c.modules, nano: { ...c.modules.nano, installed } },
+      };
+    };
+    const listeners: ((p: unknown) => void)[] = [];
+    const client = {
+      subApp: 'settings',
+      invoke: async (channel: string) =>
+        channel === 'config:get'
+          ? withNano(false)
+          : (ipcSamples as Record<string, { response: unknown }>)[channel]
+              ?.response,
+      on: (event: string, cb: (p: unknown) => void) => {
+        if (event === 'config:changed') listeners.push(cb);
+        return () => {};
+      },
+    } as unknown as QrtzClient;
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const root = createRoot(el);
+    await act(async () =>
+      root.render(
+        <ThemeProvider mode="light">
+          <QrtzClientProvider client={client}>
+            <SettingsView />
+          </QrtzClientProvider>
+        </ThemeProvider>,
+      ),
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    const note = () =>
+      el.querySelector('[data-testid="permissions-note"]')?.textContent ?? '';
+    expect(note()).toContain('microphone and accessibility');
+    expect(note()).not.toContain('system audio');
+    await act(async () => {
+      for (const cb of listeners) cb(withNano(true));
+    });
+    expect(note()).toContain('system audio');
+    root.unmount();
+    el.remove();
+  });
+});
+
 describe('open-source licenses (audit P0-4)', () => {
   it('shows the notices the build carries, fetched only when asked', async () => {
     const calls: string[] = [];

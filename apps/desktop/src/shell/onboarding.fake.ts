@@ -3,9 +3,13 @@ import type { QrtzTransport } from '@qrtz/core';
 type Perms = Record<string, string>;
 
 /** A fake host for the onboarding tests: config, permissions and the calls it saw. */
-export function fakeHost(opts: { done?: boolean; perms?: Perms } = {}) {
+export function fakeHost(
+  opts: { done?: boolean; perms?: Perms; nanoInstalled?: boolean } = {},
+) {
   const state = {
     done: opts.done ?? false,
+    /** The host's `modules.nano.installed` (ADR 0169; default installed, like a config the host never synced). */
+    nanoInstalled: opts.nanoInstalled ?? true,
     perms: {
       microphone: 'not-determined',
       'screen-recording': 'not-determined',
@@ -20,7 +24,10 @@ export function fakeHost(opts: { done?: boolean; perms?: Perms } = {}) {
   const data = (channel: string, payload: unknown): unknown => {
     switch (channel) {
       case 'config:get':
-        return { onboarding: { done: state.done } };
+        return {
+          onboarding: { done: state.done },
+          modules: { nano: { installed: state.nanoInstalled } },
+        };
       case 'permissions:get':
         return { ...state.perms };
       case 'permissions:request': {

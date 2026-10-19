@@ -27,6 +27,11 @@ export default function SettingsView() {
   );
   const [cfg, setCfg] = useState<Record<string, unknown> | null>(null);
   const live = useQrtzEvent('helper:status');
+  // The host's config pushes (a module installed or removed elsewhere changes the permissions note, ADR 0184).
+  const liveCfg = useQrtzEvent('config:changed');
+  useEffect(() => {
+    if (liveCfg) setCfg(liveCfg);
+  }, [liveCfg]);
   const backupProgress = useQrtzEvent('data:backup-progress');
   const [error, setError] = useState<string | null>(null);
 
@@ -106,6 +111,10 @@ export default function SettingsView() {
       .then(setBackupMsg, (e: Error) => setBackupMsg(e.message))
       .finally(() => setBackupBusy(false));
   };
+  // ADR 0184 amendment: the host's `modules.nano.installed` (ADR 0169); unknown until config loads.
+  const nanoInstalled =
+    (cfg?.modules as { nano?: { installed?: boolean } } | undefined)?.nano
+      ?.installed === true;
   const appCfg = (cfg?.app ?? {}) as {
     menuBarIcon?: boolean;
     launchAtLogin?: boolean;
@@ -245,9 +254,12 @@ export default function SettingsView() {
         )}
       </SettingsSection>
       <SettingsSection title="permissions" data-testid="permissions-card">
-        <Text variant="caption" muted>
-          the microphone, system audio and accessibility, with their state. each
-          app also asks the first time it needs one.
+        <Text variant="caption" muted data-testid="permissions-note">
+          {/* ADR 0184 amendment: system audio is listed only with nano installed. */}
+          {nanoInstalled
+            ? 'the microphone, system audio and accessibility, with their state.'
+            : 'the microphone and accessibility, with their state.'}{' '}
+          each app also asks the first time it needs one.
         </Text>
         <Stack dir="row" gap={2}>
           <Button

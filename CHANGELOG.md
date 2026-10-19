@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **System audio is asked only with nano (ADR 0184 amendment):** the first-launch permissions screen and qrtz settings → permissions list system audio only when nano is installed; without nano qrtz never asks for it. Install nano later and it is asked the first time nano records, or on the permissions screen when you reopen it.
 - **A permissions screen on first launch (ADR 0184):** before the qrtz page, one short screen lists the microphone, system audio and accessibility with their live state (granted, not granted, needs restart), an "allow" button that asks macOS and a "settings" button that opens the right pane. Continue or skip; anything left off is still asked the first time an app needs it. It shows once, and qrtz settings → permissions opens it again. It downloads nothing: models stay in each app's detail on the qrtz page.
 - **Screen readers read each app row on the qrtz page in full:** the row's details button is now named by what the row shows, then "details".
 - **echo comes built in (ADR 0174):** qrtz.app includes echo again, so dictation works on a fresh install without the marketplace. echo is in the sidebar with an on/off switch in its view; turning it on asks once to download its speech model, Parakeet (about 460 MB, straight from Hugging Face and checked against the fingerprint built into qrtz). nano, ctrl and snap still install from the marketplace.

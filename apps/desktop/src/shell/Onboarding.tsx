@@ -10,17 +10,28 @@ import {
   type IconName,
   type PermissionSetupState,
 } from '@qrtz/ui';
-import type { OsPermission, PermissionsStatus, SettingsPane } from '@qrtz/core';
+import {
+  loadConfig,
+  type ModuleId,
+  type OsPermission,
+  type PermissionsStatus,
+  type SettingsPane,
+} from '@qrtz/core';
 import { QrtzClientProvider, useQrtz, useQrtzEvent } from '@qrtz/core/react';
 import { shellClient } from './shellClient';
 
-/** ADR 0184: the three permissions qrtz can read and ask for up front, in the order the onboarding lists them. */
+/**
+ * ADR 0184: the permissions qrtz can read and ask for up front, in the order the onboarding lists them. A row with
+ * `only` is listed only while that app is installed (ADR 0184 amendment: system audio only with nano installed;
+ * nano installed later asks for it the first time it records, or here when the onboarding is reopened).
+ */
 export const ONBOARDING_PERMISSIONS: readonly {
   id: OsPermission;
   pane: SettingsPane;
   icon: IconName;
   label: string;
   reason: string;
+  only?: ModuleId;
 }[] = [
   {
     id: 'microphone',
@@ -36,6 +47,7 @@ export const ONBOARDING_PERMISSIONS: readonly {
     icon: 'screen-recording',
     label: 'system audio',
     reason: 'nano records the other side of a call',
+    only: 'nano',
   },
   {
     id: 'accessibility',
@@ -51,6 +63,17 @@ export const ONBOARDING_PERMISSIONS: readonly {
 const RESTART_AFTER_GRANT: readonly OsPermission[] = ['screen-recording'];
 /** How long qrtz keeps re-reading after an ask (then the window-focus re-read takes over). */
 const WATCH_MS = 120_000;
+
+/**
+ * The rows to list for this config (the host's `modules.<id>.installed`, ADR 0169). Before config is read
+ * (`null`), only the rows every install needs: a nano-only row never flashes in and out.
+ */
+export function onboardingPermissions(cfg: unknown) {
+  const modules = cfg == null ? null : loadConfig(cfg).modules;
+  return ONBOARDING_PERMISSIONS.filter(
+    (d) => !d.only || (modules?.[d.only].installed ?? false),
+  );
+}
 
 /** One row's state from the live status and whether the user has asked for it yet. */
 export function setupState(
@@ -91,6 +114,9 @@ function Steps({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [finishing, setFinishing] = useState(false);
   const live = useQrtzEvent('permissions:changed');
+  // Which apps are installed decides the rows (system audio only with nano), live as the host syncs qrtz.lock.
+  const [cfg, setCfg] = useState<Record<string, unknown> | null>(null);
+  const liveCfg = useQrtzEvent('config:changed');
   const fail = (e: Error) => setError(e.message);
 
   const read = useCallback(
@@ -106,8 +132,17 @@ function Steps({ onDone }: { onDone: () => void }) {
   useEffect(() => {
     if (live) setPerms(live);
   }, [live]);
+  useEffect(() => {
+    void qrtz.invoke('config:get').then(setCfg, fail);
+  }, [qrtz]);
+  useEffect(() => {
+    if (liveCfg) setCfg(liveCfg);
+  }, [liveCfg]);
+  const shown = onboardingPermissions(cfg);
   // After an ask, re-read every second until the grant shows (System Settings may still be in front).
-  const watching = asked.p.some((p) => perms?.[p] !== 'granted');
+  const watching = asked.p.some(
+    (p) => shown.some((d) => d.id === p) && perms?.[p] !== 'granted',
+  );
   useEffect(() => {
     if (!watching) return;
     const id = setInterval(() => {
@@ -144,7 +179,7 @@ function Steps({ onDone }: { onDone: () => void }) {
     });
   };
 
-  const rows = ONBOARDING_PERMISSIONS.map((d) => ({
+  const rows = shown.map((d) => ({
     ...d,
     state: setupState(perms?.[d.id], d.id, asked.p.includes(d.id)),
   }));
@@ -169,9 +204,11 @@ function Steps({ onDone }: { onDone: () => void }) {
       }
     >
       <Text muted data-testid="onboarding-intro">
-        qrtz needs a few macos permissions to hear you, record calls and type
-        for you. allow them now, or skip: each one is asked again the first time
-        an app needs it.
+        {shown.some((d) => d.id === 'screen-recording')
+          ? 'qrtz needs a few macos permissions to hear you, record calls and type for you.'
+          : 'qrtz needs a few macos permissions to hear you and type for you.'}{' '}
+        allow them now, or skip: each one is asked again the first time an app
+        needs it.
       </Text>
       {error ? (
         <Callout tone="danger" title={error} data-testid="onboarding-error" />

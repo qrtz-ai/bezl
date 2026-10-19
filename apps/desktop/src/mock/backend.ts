@@ -6,6 +6,7 @@
 //   ?mockSpeed=<ms per tick>   ?mockSpeech=missing | installed (default installed; missing = a fresh install)
 //   ?mockPerms=denied (every OS permission starts not-determined)   ?theme=light | dark | system
 //   ?onboarding=1 (first run: the permissions onboarding shows, ADR 0184; otherwise it is already done)
+//   ?mockNano=missing (nano not installed: the host's modules.nano.installed is false; onboarding skips system audio)
 import {
   AppError,
   TAURI_EVENT,
@@ -86,6 +87,11 @@ export function createMockBridge(): TauriBridge {
   // ADR 0184: e2e runs start past the permissions onboarding unless they ask for a first run.
   if (params.get('onboarding') !== '1')
     config = applyConfigPatch(config, { onboarding: { done: true } });
+  // ADR 0184 amendment: what the host writes from qrtz.lock when nano isn't installed.
+  if (params.get('mockNano') === 'missing')
+    config = applyConfigPatch(config, {
+      modules: { nano: { installed: false } },
+    });
   const theme = params.get('theme');
   if (theme === 'light' || theme === 'dark' || theme === 'system')
     config = applyConfigPatch(config, { theme });

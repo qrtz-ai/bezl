@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Onboarding, setupState } from './Onboarding';
+import { Onboarding, onboardingPermissions, setupState } from './Onboarding';
 import { fakeHost } from './onboarding.fake';
 
 (
@@ -55,7 +55,64 @@ describe('setupState (ADR 0184)', () => {
   });
 });
 
+describe('onboardingPermissions (ADR 0184 amendment)', () => {
+  const ids = (cfg: unknown) => onboardingPermissions(cfg).map((d) => d.id);
+  it('lists system audio only while nano is installed', () => {
+    const nano = (installed: boolean) => ({ modules: { nano: { installed } } });
+    expect(ids(nano(true))).toEqual([
+      'microphone',
+      'screen-recording',
+      'accessibility',
+    ]);
+    expect(ids(nano(false))).toEqual(['microphone', 'accessibility']);
+    // Before config is read: only what every install needs (no flash of a nano-only row).
+    expect(ids(null)).toEqual(['microphone', 'accessibility']);
+  });
+});
+
 describe('permissions onboarding (ADR 0184)', () => {
+  it('without nano installed: only microphone and accessibility, never asks for system audio', async () => {
+    const host = fakeHost({ nanoInstalled: false });
+    const { el, state, q, click, root } = await mount(host);
+    expect(state('microphone')).toBe('not granted');
+    expect(state('accessibility')).toBe('not granted');
+    expect(q('onboarding-perm-screen-recording-state')).toBeNull();
+    expect(el.textContent).not.toContain('system audio');
+    expect(el.textContent).not.toContain('record calls');
+    expect(el.textContent).toBe(el.textContent!.toLowerCase());
+    // Everything listed granted is enough to say open qrtz (system audio isn't needed yet).
+    host.state.perms.microphone = 'granted';
+    host.state.perms.accessibility = 'granted';
+    await act(async () => window.dispatchEvent(new Event('focus')));
+    await tick();
+    expect(q('onboarding-continue')!.textContent).toBe('open qrtz');
+    await click('onboarding-continue');
+    expect(
+      host
+        .seen('permissions:request')
+        .concat(host.seen('permissions:open-settings'))
+        .map((c) => JSON.stringify(c.payload))
+        .join(),
+    ).not.toContain('screen-recording');
+    act(() => root.unmount());
+  });
+
+  it('nano installed while it is open (config:changed): the system audio row appears', async () => {
+    const host = fakeHost({ nanoInstalled: false });
+    const { q, state, root } = await mount(host);
+    expect(q('onboarding-perm-screen-recording-state')).toBeNull();
+    host.state.nanoInstalled = true;
+    await act(async () =>
+      host.emit('config:changed', {
+        onboarding: { done: false },
+        modules: { nano: { installed: true } },
+      }),
+    );
+    await tick();
+    expect(state('screen-recording')).toBe('not granted');
+    act(() => root.unmount());
+  });
+
   it('shows microphone, system audio and accessibility with their live state, all lowercase', async () => {
     const host = fakeHost({ perms: { microphone: 'granted' } });
     const { el, state, q, root } = await mount(host);

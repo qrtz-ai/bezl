@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { axe } from './axe';
 
-// ADR 0184: the first-run permissions onboarding (microphone, system audio, accessibility) before the qrtz page,
+// ADR 0184: the first-run permissions onboarding (microphone, accessibility, and system audio with nano installed) before the qrtz page,
 // against the mocked backend. Also the qrtz page's app rows under axe (each row's "details" button is named by
 // the row's visible text, WCAG 2.5.3).
 
@@ -100,6 +100,9 @@ test('first launch: permissions onboarding, then the qrtz page; reopened from qr
 
   // qrtz settings → permissions reopens it; skip goes back to settings.
   await page.getByTestId('qrtz-settings-open').click();
+  await expect(page.getByTestId('permissions-note')).toContainText(
+    'system audio',
+  );
   await page.getByTestId('onboarding-reopen').click();
   await expect(page.getByTestId('onboarding')).toBeVisible();
   await expect(page.getByTestId('onboarding-perm-microphone-state')).toHaveText(
@@ -109,6 +112,41 @@ test('first launch: permissions onboarding, then the qrtz page; reopened from qr
   await expect(page.getByTestId('onboarding')).toHaveCount(0);
   await expect(page.getByTestId('settings')).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test('without nano installed, onboarding and settings never list system audio (ADR 0184 amendment)', async ({
+  page,
+}) => {
+  await page.goto(
+    '/?dev=1&onboarding=1&mockPerms=denied&mockSpeech=missing&mockNano=missing',
+  );
+  const ob = page.getByTestId('onboarding');
+  await expect(ob).toBeVisible();
+  for (const id of ['microphone', 'accessibility'])
+    await expect(page.getByTestId(`onboarding-perm-${id}-state`)).toHaveText(
+      'not granted',
+    );
+  await expect(
+    page.getByTestId('onboarding-perm-screen-recording-state'),
+  ).toHaveCount(0);
+  await expect(ob).not.toContainText('system audio');
+  await clean(page, 'onboarding-no-nano');
+  await page.getByTestId('onboarding-skip').click();
+  await expect(ob).toHaveCount(0);
+  await page.getByTestId('qrtz-settings-open').click();
+  const note = page.getByTestId('permissions-note');
+  await expect(note).toContainText('microphone and accessibility');
+  await expect(note).not.toContainText('system audio');
+  // Reopened: still no system audio row.
+  await page.getByTestId('onboarding-reopen').click();
+  await expect(
+    page.getByTestId('onboarding-perm-microphone-state'),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId('onboarding-perm-screen-recording-state'),
+  ).toHaveCount(0);
+  const seen = await calls(page);
+  expect(seen).not.toContain('permissions:request');
 });
 
 test('after onboarding qrtz opens on the qrtz page, and its app rows pass axe', async ({
