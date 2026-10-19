@@ -1541,8 +1541,9 @@ fn unmarked_question(t: &str) -> bool {
 /// The terminal punctuation (ADR 0101): a short dictation ends as said, without a period; a longer one gets a "."
 /// when it ends on a word. ADR 0188: a list of short lines ends like a short dictation: no "." is added, and a "."
 /// the recogniser ended it with is dropped only when it is a clean sentence end (not "p.m.", "etc.", "..."). ADR 0196:
-/// the mark added is "?" when the last sentence can only be a question ([`unmarked_question`]).
-fn terminal_punctuation(mut t: String) -> String {
+/// the mark added is "?" when the last sentence can only be a question ([`unmarked_question`]). ADR 0206: also when it
+/// is "Hey <dictionary name> <question>" ([`vocative_question`]), with a comma after the name.
+fn terminal_punctuation(mut t: String, dict: &[DictionaryEntry]) -> String {
     if is_short_list(&t) {
         if t.ends_with('.') && clean_sentence_end(&t) {
             t.pop();
@@ -1558,6 +1559,9 @@ fn terminal_punctuation(mut t: String) -> String {
     } else if ENDS_WORD.is_match(&t).unwrap_or(false) {
         if unmarked_question(&t) {
             t = opener_comma(t);
+            t.push('?');
+        } else if let Some(at) = vocative_question(&t, dict) {
+            t.insert(at, ',');
             t.push('?');
         } else {
             t.push('.');
@@ -1590,6 +1594,110 @@ fn opener_comma(mut t: String) -> String {
         t.insert(start + lead + len, ',');
     }
     t
+}
+
+/// ADR 0206: the subjects a question may have after a vocative name: the nominative personal pronouns. Left out:
+/// "it", "this", "that", "there", which after a name read as a statement's object or predicate ("Hey, Sam is it",
+/// "Okay Sam is that kind of guy", "Sam has it covered", "Sam is there a lot").
+pub const VOCATIVE_SUBJECTS: &[&str] = &["i", "you", "we", "they", "he", "she"];
+
+/// ADR 0206: words the question test reads; a dictionary term spelled like one of them is never taken for a name.
+const VOCATIVE_NOT_NAMES: &[&str] = &[
+    "there",
+    "had",
+    "may",
+    "might",
+    "must",
+    "shall",
+    "should",
+    "ever",
+    "just",
+    "question",
+    "exclamation",
+];
+
+/// ADR 0206: can `word` be a vocative name: a term of the user's dictionary, written exactly as the term, one ASCII
+/// word of 2+ letters with a capital first ("Jared", "Priya", "McKenzie"), and not a word the question test reads
+/// (an opener, wh-word, auxiliary, pronoun, plain verb: a term "Will" or "Who" is refused).
+fn vocative_name(word: &str, dict: &[DictionaryEntry]) -> bool {
+    let b = word.as_bytes();
+    if b.len() < 2 || !b[0].is_ascii_uppercase() || !b.iter().all(u8::is_ascii_alphabetic) {
+        return false;
+    }
+    let lower = word.to_ascii_lowercase();
+    let reads: [&[&str]; 10] = [
+        QUESTION_OPENERS,
+        WH_WORDS,
+        WH_MODIFIERS,
+        WH_AUX,
+        WH_SUBJECTS,
+        LATER_CLAUSE,
+        VOCATIVE_SUBJECTS,
+        SO_QUESTION_VERBS,
+        SUBJECT_MODALS,
+        VOCATIVE_NOT_NAMES,
+    ];
+    !reads.iter().any(|l| l.contains(&lower.as_str())) && dict.iter().any(|d| d.term == word)
+}
+
+/// ADR 0206: the byte where the last sentence starts: after the last line break or the last ".", "!" or "?" that a
+/// whitespace character follows (the same place [`INNER_END`]'s last match ends), found from the end.
+fn last_sentence_start(t: &str) -> usize {
+    let mut next: Option<(usize, char)> = None;
+    for (i, c) in t.char_indices().rev() {
+        if c == '\n' {
+            return i + 1;
+        }
+        if let Some((j, n)) = next {
+            if matches!(c, '.' | '!' | '?') && n.is_whitespace() {
+                return j + n.len_utf8();
+            }
+        }
+        next = Some((i, c));
+    }
+    0
+}
+
+/// ADR 0206: a question to someone named from the user's dictionary, "Hey Jared are you free tomorrow" → "Hey Jared,
+/// are you free tomorrow?". Called only where [`unmarked_question`] found no question. The last sentence must be
+/// exactly "Hey" (no comma), one [`vocative_name`], then words that [`unmarked_question`] takes as a question after
+/// "Hey" ("Hey are you free tomorrow"), with no comma anywhere, at most [`QUESTION_MAX_WORDS`] words counting the
+/// name, a [`VOCATIVE_SUBJECTS`] subject for a yes/no question, after "did you" one of [`SO_QUESTION_VERBS`] ("Hey,
+/// Sam did you a favor" is a statement), and no "who" ("Hey Sam who is our lead" can be a relative clause). Returns
+/// the byte after the name, where the comma goes. Only "hey": after "okay"/"ok"/"alright" a term is as often a topic
+/// or a subject ("Okay Teams have you covered").
+fn vocative_question(t: &str, dict: &[DictionaryEntry]) -> Option<usize> {
+    if dict.is_empty() {
+        return None;
+    }
+    let start = last_sentence_start(t);
+    let s = &t[start..];
+    let lead = s.len() - s.trim_start().len();
+    let rest = &s[lead..];
+    if !rest[..run_len(rest, |c| !c.is_whitespace())].eq_ignore_ascii_case("hey") || s.contains(',') {
+        return None;
+    }
+    let words: Vec<&str> = s.split_whitespace().collect();
+    if words.len() < 5
+        || words.len() > QUESTION_MAX_WORDS
+        || !words[0].eq_ignore_ascii_case("hey")
+        || !vocative_name(words[1], dict)
+    {
+        return None;
+    }
+    let w: Vec<String> = words[2..].iter().map(|w| w.to_ascii_lowercase()).collect();
+    let subject_ok = if WH_WORDS.contains(&w[0].as_str()) {
+        w[0] != "who"
+    } else {
+        VOCATIVE_SUBJECTS.contains(&w[1].as_str())
+            && !(w[0] == "did" && w[1] == "you" && !SO_QUESTION_VERBS.contains(&w[2].as_str()))
+    };
+    if !subject_ok || !unmarked_question(&format!("{} {}", words[0], words[2..].join(" "))) {
+        return None;
+    }
+    let after_hey = lead + words[0].len();
+    let gap = run_len(&s[after_hey..], char::is_whitespace);
+    Some(start + after_hey + gap + words[1].len())
 }
 
 fn rep(r: &Regex, s: &str, with: &str) -> String {
@@ -1772,7 +1880,8 @@ fn remove_fillers(src: &str) -> String {
 /// On-device cleanup: spoken commands, fillers (ADR 0192: with the comma before them where none belongs), stutters,
 /// spacing, "Scratch that" (ADR 0186), a final spoken "question mark" / "exclamation point" (ADR 0189),
 /// capitalization, terminal punctuation (ADR 0101: which repeats collapse, and no "." on a short dictation; ADR 0188:
-/// nor on a list of short lines; ADR 0201: whose line commas go), then spoken amounts as figures (ADR 0193: "$25", "15%", "3:30 p.m.").
+/// nor on a list of short lines; ADR 0201: whose line commas go; ADR 0206: "Hey <dictionary name>, <question>?"), then
+/// spoken amounts as figures (ADR 0193: "$25", "15%", "3:30 p.m.").
 pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
     let mut t = format!(" {raw} ");
     t = layout_command(NEW_PARAGRAPH, &t, "\n\n");
@@ -1795,7 +1904,7 @@ pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
     t = sentence_starts(&t);
     t = lone_i(&t);
     t = apply_dictionary(&t, dict);
-    spoken_amounts(terminal_punctuation(t))
+    spoken_amounts(terminal_punctuation(t, dict))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

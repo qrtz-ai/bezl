@@ -433,7 +433,10 @@ function unmarkedQuestion(t: string): boolean {
   );
 }
 
-function terminalPunctuation(t: string): string {
+function terminalPunctuation(
+  t: string,
+  dict: readonly DictionaryEntry[],
+): string {
   // ADR 0188: a list of short lines ends like a short dictation; a recogniser's "." goes only at a clean end.
   if (isShortList(t))
     return t.endsWith('.') && cleanSentenceEnd(t) ? t.slice(0, -1) : t;
@@ -450,7 +453,87 @@ function terminalPunctuation(t: string): string {
   }
   // ADR 0196: "?" when the last sentence can only be a question.
   if (!/[\p{L}\p{N}]$/u.test(t)) return t;
-  return unmarkedQuestion(t) ? `${openerComma(t)}?` : `${t}.`;
+  if (unmarkedQuestion(t)) return `${openerComma(t)}?`;
+  // ADR 0206: "Hey <dictionary name> <question>" gets a comma after the name and "?".
+  const at = vocativeQuestion(t, dict);
+  return at === null ? `${t}.` : `${t.slice(0, at)},${t.slice(at)}?`;
+}
+
+/** ADR 0206: the subjects a question may have after a vocative name. Same as cleanup.rs VOCATIVE_SUBJECTS. */
+export const VOCATIVE_SUBJECTS = ['i', 'you', 'we', 'they', 'he', 'she'];
+/** ADR 0206: words the question test reads that are never taken for a name. Same as cleanup.rs. */
+const VOCATIVE_NOT_NAMES = [
+  'there',
+  'had',
+  'may',
+  'might',
+  'must',
+  'shall',
+  'should',
+  'ever',
+  'just',
+  'question',
+  'exclamation',
+];
+
+/** ADR 0206: a dictionary term written exactly as the term, one ASCII word of 2+ letters with a capital first, and
+ * not a word the question test reads. Same as cleanup.rs vocative_name. */
+function vocativeName(word: string, dict: readonly DictionaryEntry[]): boolean {
+  if (!/^[A-Z][A-Za-z]+$/.test(word)) return false;
+  const lower = word.replace(/[A-Z]+/g, (c) => c.toLowerCase());
+  const reads = [
+    QUESTION_OPENERS,
+    WH_WORDS,
+    WH_MODIFIERS,
+    WH_AUX,
+    WH_SUBJECTS,
+    LATER_CLAUSE,
+    VOCATIVE_SUBJECTS,
+    SO_QUESTION_VERBS,
+    [...SUBJECT_MODALS],
+    VOCATIVE_NOT_NAMES,
+  ];
+  return (
+    !reads.some((l) => l.includes(lower)) && dict.some((d) => d.term === word)
+  );
+}
+
+/** ADR 0206: "Hey Jared are you free tomorrow" -> the offset after "Jared" (where the comma goes), or null. Only
+ * where unmarkedQuestion found no question; same checks as cleanup.rs vocative_question. */
+function vocativeQuestion(
+  t: string,
+  dict: readonly DictionaryEntry[],
+): number | null {
+  if (dict.length === 0) return null;
+  const line = t.lastIndexOf('\n') + 1;
+  let start = line;
+  for (const m of t.slice(line).matchAll(/[.!?]\s/g))
+    start = line + (m.index ?? 0) + m[0].length;
+  const s = t.slice(start);
+  if (s.includes(',')) return null;
+  const words = s.split(/\s+/).filter(Boolean);
+  const low = (x: string) => x.replace(/[A-Z]+/g, (c) => c.toLowerCase());
+  if (
+    words.length < 5 ||
+    words.length > QUESTION_MAX_WORDS ||
+    low(words[0]) !== 'hey' ||
+    !vocativeName(words[1], dict)
+  )
+    return null;
+  const w = words.slice(2).map(low);
+  const subjectOk = WH_WORDS.includes(w[0])
+    ? w[0] !== 'who'
+    : VOCATIVE_SUBJECTS.includes(w[1]) &&
+      !(w[0] === 'did' && w[1] === 'you' && !SO_QUESTION_VERBS.includes(w[2]));
+  if (
+    !subjectOk ||
+    !unmarkedQuestion(`${words[0]} ${words.slice(2).join(' ')}`)
+  )
+    return null;
+  const lead = s.length - s.trimStart().length;
+  const afterHey = lead + words[0].length;
+  const gap = /^\s*/.exec(s.slice(afterHey))![0].length;
+  return start + afterHey + gap + words[1].length;
 }
 
 /** ADR 0204: the interjections among QUESTION_OPENERS that take a comma before the question they open. Same as
@@ -1401,5 +1484,5 @@ export function ruleCleanup(
   // "i" before a dot only at a sentence end, not the "i" of "i.e." (ADR 0101, N160).
   t = t.replace(/\bi\b(?=[\s,!?']|\.(?![A-Za-z])|$)/g, 'I');
   t = applyDictionary(t, dict);
-  return spokenAmounts(terminalPunctuation(t));
+  return spokenAmounts(terminalPunctuation(t, dict));
 }

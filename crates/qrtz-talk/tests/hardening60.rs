@@ -54,6 +54,7 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
     // where cycle 59 added "."; if that opener is "hey"/"okay"/"ok"/"alright" with no comma, the comma goes after it
     // ("Hey, are you free?"). Any other difference fails.
     // ADR 0205 (cycle 65) may also drop the second pronoun of "we, we <modal>" / "they, they <modal>".
+    // ADR 0206 (cycle 66): "Hey <term> ..." may end with "?" instead of "." and gain a comma after the term.
     let old = if new != old && new == without_subject_repeats(&old) {
         new.clone()
     } else {
@@ -62,7 +63,9 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
     if new != old {
         let list = old.contains(",\n") && new == old.replace(",\n", "\n");
         let opener = old.strip_suffix('.').is_some_and(|body| {
-            (new == format!("{body}?") || new == format!("{}?", with_opener_comma(body)))
+            (new == format!("{body}?")
+                || new == format!("{}?", with_opener_comma(body))
+                || with_vocative_comma(body, dict).is_some_and(|b| new == format!("{b}?")))
                 && body
                     .rsplit(['\n', '.', '!', '?'])
                     .next()
@@ -125,6 +128,29 @@ fn with_opener_comma(body: &str) -> String {
         }
         _ => body.to_owned(),
     }
+}
+
+/// ADR 0206's one allowed edit (written independently of cleanup.rs): when the last sentence's first word is "hey"
+/// (any ASCII case) and its second word is exactly a dictionary term, a comma goes right after that term.
+fn with_vocative_comma(body: &str, dict: &[DictionaryEntry]) -> Option<String> {
+    let start = body
+        .char_indices()
+        .filter(|&(i, c)| {
+            c == '\n'
+                || (body[i..].starts_with(['.', '!', '?']) && body[i + 1..].starts_with(char::is_whitespace))
+        })
+        .map(|(i, c)| i + c.len_utf8())
+        .next_back()
+        .unwrap_or(0);
+    let s = &body[start..];
+    let mut words = s.split_whitespace();
+    let (hey, name) = (words.next()?, words.next()?);
+    if !hey.eq_ignore_ascii_case("hey") || !dict.iter().any(|d| d.term == name) {
+        return None;
+    }
+    let at = start + s.find(hey)? + hey.len();
+    let at = at + body[at..].find(name)? + name.len();
+    Some(format!("{},{}", &body[..at], &body[at..]))
 }
 
 fn load(path: &str) -> Value {
@@ -349,6 +375,13 @@ const PIECES: &[&str] = &[
     "term number 33",
     "term  number\t3",
     "Q",
+    "Hey",
+    "hey",
+    "are",
+    "can",
+    "did",
+    "Kelvin are you",
+    "Hey Postgres",
 ];
 
 /// The same small xorshift every run, so a failure names a reproducible text.

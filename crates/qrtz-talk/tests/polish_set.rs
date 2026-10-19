@@ -1,6 +1,7 @@
 //! ADR 0182: the Echo polish test set (spec/vectors/talk/polish.json), scored on every run.
 //! - `keep`: false-positive vectors. Text where a rule's pattern appears but the words must stay; the cleanup must
-//!   produce `expect` exactly (zero hits on the false-positive set).
+//!   produce `expect` exactly (zero hits on the false-positive set). A vector with `"dict": true` runs with the file's
+//!   dictionary (ADR 0206's names), the others with none.
 //! - `polish`: recogniser-style raw text and the hand-written ideal. Scored as exact matches and character edit
 //!   distance; a case whose distance to its ideal grows against spec/vectors/talk/polish-baseline.json is a
 //!   regression, and the regression count must stay 0. `QRTZ_POLISH_BASELINE=1` rewrites the baseline after an
@@ -38,12 +39,15 @@ fn load(path: &str) -> Value {
 #[test]
 fn no_false_positive_rewrites() {
     let v = load(SET);
+    let dict: Vec<DictionaryEntry> = serde_json::from_value(v["dictionary"].clone()).unwrap();
     let keep = v["keep"].as_array().unwrap();
     let bad: Vec<String> = keep
         .iter()
         .filter_map(|k| {
             let (raw, want) = (k["raw"].as_str().unwrap(), k["expect"].as_str().unwrap());
-            let got = rule_cleanup(raw, &[]);
+            // ADR 0206: a vector with `"dict": true` runs with the file's dictionary (its names), others with none.
+            let d: &[DictionaryEntry] = if k["dict"] == true { &dict } else { &[] };
+            let got = rule_cleanup(raw, d);
             (got != want).then(|| format!("{} {raw:?}: got {got:?}, want {want:?}", k["id"]))
         })
         .collect();

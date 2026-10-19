@@ -103,4 +103,14 @@ fn the_cleanup_chain_fits_its_budget_on_a_long_dictation() {
         .text
         .ends_with("before Friday?"));
     assert_fits_budget(&text, " ending in a question");
+    // ADR 0206: ending in "Hey <dictionary name> <question>", so the vocative check runs in full (after the whole
+    // ADR 0196 check said no) and fires.
+    let text = format!(
+        "{}Thanks. Hey Postgres can you take the backup tonight",
+        long_dictation()
+    );
+    assert!(cleanup_dictation(&text, &dictionary(), true)
+        .text
+        .ends_with("Hey Postgres, can you take the backup tonight?"));
+    assert_fits_budget(&text, " ending in a vocative question");
 }

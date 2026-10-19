@@ -18,6 +18,12 @@
       "aliases": [
         "see plus plus"
       ]
+    },
+    {
+      "term": "Priya",
+      "aliases": [
+        "pria"
+      ]
     }
   ],
   "rules": [
@@ -2265,6 +2271,166 @@
       "raw": "Set they, they_can to true.",
       "dict": false,
       "expect": "Set they, they_can to true."
+    },
+    {
+      "raw": "Hey Priya are you free tomorrow",
+      "dict": true,
+      "expect": "Hey Priya, are you free tomorrow?"
+    },
+    {
+      "raw": "Hey Priya can you send me the slides",
+      "dict": true,
+      "expect": "Hey Priya, can you send me the slides?"
+    },
+    {
+      "raw": "hey pria did you get my email",
+      "dict": true,
+      "expect": "Hey Priya, did you get my email?"
+    },
+    {
+      "raw": "Hey Priya what time does the store close",
+      "dict": true,
+      "expect": "Hey Priya, what time does the store close?"
+    },
+    {
+      "raw": "I'm outside. Hey Priya are you home",
+      "dict": true,
+      "expect": "I'm outside. Hey Priya, are you home?"
+    },
+    {
+      "raw": "Um, hey Priya could you take a look at this",
+      "dict": true,
+      "expect": "Hey Priya, could you take a look at this?"
+    },
+    {
+      "raw": "Hey Priya how was the trip",
+      "dict": true,
+      "expect": "Hey Priya, how was the trip?"
+    },
+    {
+      "raw": "Hey Priya is she coming to the party",
+      "dict": true,
+      "expect": "Hey Priya, is she coming to the party?"
+    },
+    {
+      "raw": "Notes new line hey Priya will you call me back",
+      "dict": true,
+      "expect": "Notes\nHey Priya, will you call me back?"
+    },
+    {
+      "raw": "Hey  Priya  are we still on for tonight",
+      "dict": true,
+      "expect": "Hey Priya, are we still on for tonight?"
+    },
+    {
+      "raw": "Hey Sam are you free tomorrow",
+      "dict": true,
+      "expect": "Hey Sam are you free tomorrow."
+    },
+    {
+      "raw": "Hey Priya did you a favor last week",
+      "dict": true,
+      "expect": "Hey Priya did you a favor last week."
+    },
+    {
+      "raw": "Hey Priya has it covered",
+      "dict": true,
+      "expect": "Hey Priya has it covered."
+    },
+    {
+      "raw": "Hey Priya is that guy from the meetup",
+      "dict": true,
+      "expect": "Hey Priya is that guy from the meetup."
+    },
+    {
+      "raw": "Hey Priya is there a lot of traffic",
+      "dict": true,
+      "expect": "Hey Priya is there a lot of traffic."
+    },
+    {
+      "raw": "Hey Priya who is the new designer",
+      "dict": true,
+      "expect": "Hey Priya who is the new designer."
+    },
+    {
+      "raw": "Okay Priya can you send it over",
+      "dict": true,
+      "expect": "Okay Priya can you send it over."
+    },
+    {
+      "raw": "Hey Priya are you free or should we wait",
+      "dict": true,
+      "expect": "Hey Priya are you free or should we wait."
+    },
+    {
+      "raw": "Hey Priya you did great today",
+      "dict": true,
+      "expect": "Hey Priya you did great today."
+    },
+    {
+      "raw": "Hey qrtz can you open my notes",
+      "dict": true,
+      "expect": "Hey qrtz can you open my notes."
+    },
+    {
+      "raw": "Hey Priya can't you just wait",
+      "dict": true,
+      "expect": "Hey Priya can't you just wait."
+    },
+    {
+      "raw": "So I said hey Priya are you coming",
+      "dict": true,
+      "expect": "So I said hey Priya are you coming."
+    },
+    {
+      "raw": "Hey Priya Smith are you free tomorrow",
+      "dict": true,
+      "expect": "Hey Priya Smith are you free tomorrow."
+    },
+    {
+      "raw": "Hey Priya I think we can ship it",
+      "dict": true,
+      "expect": "Hey Priya I think we can ship it."
+    },
+    {
+      "raw": "Hey Priya does it every week",
+      "dict": true,
+      "expect": "Hey Priya does it every week."
+    },
+    {
+      "raw": "Hey Priya can be late sometimes",
+      "dict": true,
+      "expect": "Hey Priya can be late sometimes."
+    },
+    {
+      "raw": "Hey Priya did you finish the report",
+      "dict": true,
+      "expect": "Hey Priya did you finish the report."
+    },
+    {
+      "raw": "Hey Priya are you",
+      "dict": true,
+      "expect": "Hey Priya are you."
+    },
+    {
+      "raw": "Hey Priya are you free. Thanks",
+      "dict": true,
+      "expect": "Hey Priya are you free. Thanks."
+    },
+    {
+      "raw": "Hey Priya is it ready yet",
+      "dict": true,
+      "expect": "Hey Priya is it ready yet."
+    },
+    {
+      "raw": "Hey Priya are you free tomorrow",
+      "dict": false,
+      "expect": "Hey Priya are you free tomorrow."
+    },
+    {
+      "raw": "Hey Priya, are you free tomorrow",
+      "dict": true,
+      "expect": "Hey Priya, are you free tomorrow."
     }
   ],
   "dictionaryOnly": [

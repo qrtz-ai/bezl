@@ -21,6 +21,12 @@
     {
       "term": "Jared",
       "aliases": []
+    },
+    {
+      "term": "Priya",
+      "aliases": [
+        "pria"
+      ]
     }
   ],
   "polish": [
@@ -605,6 +611,30 @@
       "category": "repeat",
       "raw": "I checked the numbers. So we, we can afford the second server.",
       "ideal": "I checked the numbers. So we can afford the second server."
+    },
+    {
+      "id": "p98",
+      "category": "vocative",
+      "raw": "Hey Jared are you free tomorrow afternoon",
+      "ideal": "Hey Jared, are you free tomorrow afternoon?"
+    },
+    {
+      "id": "p99",
+      "category": "vocative",
+      "raw": "Hey Priya can you send me the slides",
+      "ideal": "Hey Priya, can you send me the slides?"
+    },
+    {
+      "id": "p100",
+      "category": "vocative",
+      "raw": "hey jared did you get my email",
+      "ideal": "Hey Jared, did you get my email?"
+    },
+    {
+      "id": "p101",
+      "category": "vocative",
+      "raw": "I just landed. Hey pria where are you parked",
+      "ideal": "I just landed. Hey Priya, where are you parked?"
     }
   ],
   "keep": [
@@ -2077,6 +2107,125 @@
       "rule": "subject-repeat",
       "raw": "So he, he can drive us to the airport.",
       "expect": "So he, he can drive us to the airport."
+    },
+    {
+      "id": "k246",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Sam can you call me back",
+      "expect": "Hey Sam can you call me back."
+    },
+    {
+      "id": "k247",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Jared did you a favor last week",
+      "expect": "Hey Jared did you a favor last week."
+    },
+    {
+      "id": "k248",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Jared has it covered",
+      "expect": "Hey Jared has it covered."
+    },
+    {
+      "id": "k249",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Jared is that guy from the meetup",
+      "expect": "Hey Jared is that guy from the meetup."
+    },
+    {
+      "id": "k250",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Priya is there a lot of traffic",
+      "expect": "Hey Priya is there a lot of traffic."
+    },
+    {
+      "id": "k251",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Jared who is the new designer",
+      "expect": "Hey Jared who is the new designer."
+    },
+    {
+      "id": "k252",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Okay Jared can you send it over",
+      "expect": "Okay Jared can you send it over."
+    },
+    {
+      "id": "k253",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Jared are you free or should we wait",
+      "expect": "Hey Jared are you free or should we wait."
+    },
+    {
+      "id": "k254",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Jared you did great today",
+      "expect": "Hey Jared you did great today."
+    },
+    {
+      "id": "k255",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey qrtz can you open my notes",
+      "expect": "Hey qrtz can you open my notes."
+    },
+    {
+      "id": "k256",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Jared can't you just wait",
+      "expect": "Hey Jared can't you just wait."
+    },
+    {
+      "id": "k257",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "So I said hey Jared are you coming",
+      "expect": "So I said hey Jared are you coming."
+    },
+    {
+      "id": "k258",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Kubernetes is it worth learning",
+      "expect": "Hey Kubernetes is it worth learning."
+    },
+    {
+      "id": "k259",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Jared Smith are you free tomorrow",
+      "expect": "Hey Jared Smith are you free tomorrow."
+    },
+    {
+      "id": "k260",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Jared I think we can ship it",
+      "expect": "Hey Jared I think we can ship it."
+    },
+    {
+      "id": "k261",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Jared does it every week",
+      "expect": "Hey Jared does it every week."
+    },
+    {
+      "id": "k262",
+      "rule": "vocative",
+      "dict": true,
+      "raw": "Hey Priya can be late sometimes",
+      "expect": "Hey Priya can be late sometimes."
     }
   ]
 }
