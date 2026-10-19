@@ -325,7 +325,7 @@ public actor DictationEngine {
     /// authorized mic with no input is `no-device`. N202 (ADR 0227 notes): an authorized mic that failed for any
     /// other reason (held in exclusive use, a Core Audio start error) is `failed`, so talk doesn't show a
     /// permission error while permission is granted. Status unknown or unsupported still sends no reason.
-    /// Talk maps `no-device` to mic-lost and anything else to mic-denied (until its `failed` mapping lands).
+    /// Talk maps `no-device` to mic-lost, `failed` to mic-did-not-start (d1e1ba1) and anything else to mic-denied.
     public static func micFailureReason(_ error: Error, micPermission: PermissionState?) -> String? {
         switch micPermission {
         case .denied?, .notDetermined?: return "denied"
