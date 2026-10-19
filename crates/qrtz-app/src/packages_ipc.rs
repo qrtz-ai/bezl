@@ -145,8 +145,7 @@ fn changes(c: &[Change]) -> Value {
 }
 
 /// What the marketplace says while modules.qrtz.ai isn't live (no root pinned in this build).
-pub const NOT_SET_UP: &str =
-    "apps coming soon. apps will appear here once qrtz.ai's app server is live.";
+pub const NOT_SET_UP: &str = "apps coming soon. apps will appear here once qrtz.ai's app server is live.";
 
 fn err(e: InstallError) -> AppError {
     if matches!(

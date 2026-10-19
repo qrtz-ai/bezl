@@ -64,11 +64,7 @@ pub fn modules_using(capability: &str) -> Vec<&'static str> {
 }
 
 fn off(id: &str) -> AppError {
-    AppError::new(
-        ErrorCode::Unavailable,
-        format!("{id} is switched off in qrtz"),
-    )
-    .retryable(false)
+    AppError::new(ErrorCode::Unavailable, format!("{id} is switched off in qrtz")).retryable(false)
 }
 
 /// The IPC gate: a switched-off module's view can't call anything but config and app info (so the switch can be
