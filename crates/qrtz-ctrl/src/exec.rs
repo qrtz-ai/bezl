@@ -122,6 +122,26 @@ pub const SYSTEM_SLEEP_MOVE: &str = "route.system.system_sleep";
 pub const WIFI_ON_MOVE: &str = "route.system.wifi_on";
 pub const WIFI_OFF_MOVE: &str = "route.system.wifi_off";
 
+/// ADR 0194: "keep my mac awake for 2 hours": the Mac doesn't idle-sleep (the screen may); the minutes are the plan's
+/// `choose_target` option `minutes.N`.
+pub const KEEP_AWAKE_MOVE: &str = "route.system.keep_awake";
+/// ADR 0194: "keep my screen on for an hour": the display doesn't idle-sleep either.
+pub const KEEP_AWAKE_DISPLAY_MOVE: &str = "route.system.keep_awake_display";
+/// ADR 0194: "let my mac sleep again": the helper drops its own keep-awake.
+pub const ALLOW_SLEEP_MOVE: &str = "route.system.allow_sleep";
+/// ADR 0194: the `choose_target` option prefix of a keep-awake duration in minutes (`minutes.1` … `minutes.720`).
+pub const MINUTES_PREFIX: &str = "minutes.";
+/// ADR 0194: the longest keep-awake (12 hours); a longer one is asked, never cut short or held without an end.
+pub const MAX_AWAKE_MINUTES: u32 = 720;
+/// ADR 0194: the duration when the task names none ("keep my mac awake").
+pub const DEFAULT_AWAKE_MINUTES: u32 = 60;
+
+/// ADR 0194: the minutes a `minutes.N` option names, only 1–720.
+pub fn minutes_of(opt: &str) -> Option<u32> {
+    let n: u32 = opt.strip_prefix(MINUTES_PREFIX)?.parse().ok()?;
+    (1..=MAX_AWAKE_MINUTES).contains(&n).then_some(n)
+}
+
 /// ADR 0176: "eject my disks" / "eject all drives": every ejectable local volume the helper lists.
 pub const EJECT_ALL_MOVE: &str = "route.system.eject_all";
 /// ADR 0176: "eject the usb drive": the one ejectable volume, only while exactly one is mounted.
@@ -241,6 +261,36 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
             verify: Verify {
                 check: Check::WifiOn,
                 expect: if on { Expect::One } else { Expect::Zero },
+            },
+            content: BTreeMap::new(),
+        });
+    }
+    // ADR 0194: one power assertion of the helper's own, with a timeout; verified by the helper still holding it. No
+    // minutes, nothing to hold: the layers asked, so this can't happen on a plan they made; an older or hand-made plan
+    // holds.
+    if mv == KEEP_AWAKE_MOVE || mv == KEEP_AWAKE_DISPLAY_MOVE {
+        let Some(minutes) = chosen.get(&Node::ChooseTarget).and_then(|o| minutes_of(o)) else {
+            return Some(Step::Hold(HoldReason::NoRoute));
+        };
+        return Some(Step::Act {
+            routes: vec![Route::Workspace(WorkspaceOp::KeepAwake {
+                minutes,
+                display: mv == KEEP_AWAKE_DISPLAY_MOVE,
+            })],
+            verify: Verify {
+                check: Check::KeptAwake,
+                expect: Expect::One,
+            },
+            content: BTreeMap::new(),
+        });
+    }
+    // ADR 0194: the helper releases its own assertion; verified by it holding none.
+    if mv == ALLOW_SLEEP_MOVE {
+        return Some(Step::Act {
+            routes: vec![Route::Workspace(WorkspaceOp::AllowSleep)],
+            verify: Verify {
+                check: Check::KeptAwake,
+                expect: Expect::Zero,
             },
             content: BTreeMap::new(),
         });
@@ -937,6 +987,11 @@ impl Driver<'_> {
                 if self.helper.measure(&Check::WifiOn) == Some(want) {
                     return sink.push(log, finish(TaskStatus::Done));
                 }
+            }
+            // ADR 0194: nothing held, nothing to let go: done with nothing acted.
+            if fplan.is_none() && mv == ALLOW_SLEEP_MOVE && self.helper.measure(&Check::KeptAwake) == Some(0)
+            {
+                return sink.push(log, finish(TaskStatus::Done));
             }
             // ADR 0178: the screen saver already up is done with nothing acted (amendment 1: already off, for a stop).
             if fplan.is_none() && (mv == SCREENSAVER_MOVE || mv == SCREENSAVER_STOP_MOVE) {

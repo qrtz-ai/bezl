@@ -422,6 +422,9 @@ enum Slot {
     /// ADR 0166: one of the user's own folders to show (`folder.downloads` / `folder.desktop` / `folder.documents`,
     /// [`crate::ladder::UserFolder`]); never a path.
     UserFolder,
+    /// ADR 0194: how long to keep the Mac awake, 1–720 minutes (`minutes.N`): the task's own duration, or an hour when
+    /// it names none; a longer, vague or open-ended one is asked.
+    Duration,
 }
 
 struct IntentDef {
@@ -560,6 +563,21 @@ const INTENTS: &[IntentDef] = &[
     // clicking).
     IntentDef {
         id: "wifi_power",
+        app: AppMode::None,
+        slot: Slot::None,
+        irreversible: false,
+    },
+    // ADR 0194: keep the Mac (or its screen) awake for a while: one power assertion of the helper's own with a timeout;
+    // reversible, no gate, no app, nothing on screen.
+    IntentDef {
+        id: "keep_awake",
+        app: AppMode::None,
+        slot: Slot::Duration,
+        irreversible: false,
+    },
+    // ADR 0194: let it sleep again: the helper drops its own keep-awake (never anyone else's); no gate, no app.
+    IntentDef {
+        id: "allow_sleep",
         app: AppMode::None,
         slot: Slot::None,
         irreversible: false,
@@ -765,6 +783,11 @@ const DISPLAY_WORDS: &[&str] = &["display", "displays", "screen", "screens", "mo
 /// recording, screenshots, mirroring, brightness, the screen reader, notifications, or keeping it awake ("screen time"
 /// is checked as a pair, so "at lunch time" still counts).
 const DISPLAY_NOT_WORDS: &[&str] = &[
+    // ADR 0194: "let the display sleep" lets it sleep on its own timer (allow_sleep), it doesn't sleep it now.
+    "let",
+    "lets",
+    "allow",
+    "allows",
     "saver",
     "savers",
     "screensaver",
@@ -854,6 +877,11 @@ const SYSTEM_SLEEP_NOT_WORDS: &[&str] = &[
     "shut",
     "log",
     "logout",
+    // ADR 0194: "let my mac sleep again" lets it sleep on its own timer (allow_sleep), it doesn't put it to sleep now.
+    "let",
+    "lets",
+    "allow",
+    "allows",
 ];
 /// ADR 0191: words that say the Wi-Fi radio should be on ("on" itself counts only where it isn't "on my mac", see
 /// [`wifi_on_said`]).
@@ -980,6 +1008,178 @@ fn wifi_dir(toks: &[Tok]) -> Option<bool> {
 /// named, exactly one direction, and none of the words that mean another thing.
 fn wifi_task(toks: &[Tok]) -> bool {
     wifi_named(toks) && wifi_dir(toks).is_some() && !has(toks, WIFI_NOT_WORDS)
+}
+
+/// ADR 0194: the words of sleeping, for keep-awake and let-it-sleep tasks.
+const SLEEP_WORDS: &[&str] = &["sleep", "sleeps", "sleeping", "asleep"];
+/// ADR 0194: words that make a keep-awake / let-it-sleep task something ctrl doesn't do: no end ("forever", "never",
+/// "until I say" or a clock time: an unbounded or clock-bound hold isn't built), a condition ("while it downloads",
+/// "when I'm away"), the sleep settings, waking or locking it, the screen saver, a restart or shut down, another radio.
+const KEEP_AWAKE_NOT_WORDS: &[&str] = &[
+    "until",
+    "till",
+    "til",
+    "forever",
+    "always",
+    "indefinitely",
+    "permanently",
+    "never",
+    "while",
+    "whilst",
+    "when",
+    "whenever",
+    "if",
+    "unless",
+    "settings",
+    "setting",
+    "preferences",
+    "schedule",
+    "wake",
+    "wakes",
+    "waking",
+    "lock",
+    "locks",
+    "locked",
+    "unlock",
+    "screensaver",
+    "saver",
+    "restart",
+    "reboot",
+    "shutdown",
+    "shut",
+    "logout",
+    "wifi",
+    "wi-fi",
+    "bluetooth",
+];
+/// ADR 0194: words that say a duration only vaguely ("for a couple of hours", "for a bit"): asked, never guessed.
+const VAGUE_DURATION_WORDS: &[&str] = &["couple", "few", "several", "bit", "little", "some", "while"];
+
+/// ADR 0194: the task asks to let the Mac sleep again: "let my mac sleep again", "allow the computer to sleep", "stop
+/// keeping my mac awake", "cancel caffeinate". Never with a negation ("don't let my mac sleep" keeps it awake) and
+/// never "stop my mac from sleeping" (that keeps it awake too).
+fn allow_sleep_said(toks: &[Tok]) -> bool {
+    let sleep = has(toks, SLEEP_WORDS);
+    let negated = has(toks, &["don't", "dont", "not", "never", "prevent", "no"]);
+    let let_sleep = sleep && has(toks, &["let", "lets", "allow", "allows"]) && !negated;
+    let stop_from = sleep && has(toks, &["from"]);
+    let stop_keeping = has(toks, &["stop", "quit", "end", "cancel", "release"])
+        && (has(toks, &["keeping", "caffeinate", "caffeinating", "caffeinated"]) || has(toks, &["awake"]))
+        && !stop_from;
+    let_sleep || stop_keeping
+}
+
+/// ADR 0194: the task asks to keep the Mac (or its screen) awake: "keep my mac awake", "stay awake for 2 hours",
+/// "caffeinate my mac", "don't let my mac sleep for an hour", "prevent the computer from sleeping", "stop my mac from
+/// sleeping", "keep my screen on".
+fn keep_awake_said(toks: &[Tok]) -> bool {
+    let sleep = has(toks, SLEEP_WORDS);
+    let keep = has(toks, &["keep", "keeps", "stay", "stays"]);
+    let awake = keep && has(toks, &["awake"]);
+    let caffeinate = has(toks, &["caffeinate"]);
+    let prevent = sleep && has(toks, &["prevent", "don't", "dont", "not"]);
+    let stop_from = sleep && has(toks, &["stop", "stops"]) && has(toks, &["from"]);
+    let screen_on = keep && has(toks, DISPLAY_WORDS) && has(toks, &["on"]);
+    awake || caffeinate || prevent || stop_from || screen_on
+}
+
+/// ADR 0194: "keep my mac awake for 2 hours", "every weekday at 9 keep the computer awake for 8 hours".
+fn keep_awake_task(toks: &[Tok]) -> bool {
+    keep_awake_said(toks) && !allow_sleep_said(toks) && !has(toks, KEEP_AWAKE_NOT_WORDS)
+}
+
+/// ADR 0194: "let my mac sleep again", "stop keeping my mac awake".
+fn allow_sleep_task(toks: &[Tok]) -> bool {
+    allow_sleep_said(toks) && !has(toks, KEEP_AWAKE_NOT_WORDS)
+}
+
+/// ADR 0194: the number a word before a time unit says ("2 hours", "an hour", "ninety minutes"), if any.
+fn duration_count(w: &str) -> Option<u32> {
+    Some(match w {
+        "a" | "an" | "one" => 1,
+        "two" => 2,
+        "three" => 3,
+        "four" => 4,
+        "five" => 5,
+        "six" => 6,
+        "seven" => 7,
+        "eight" => 8,
+        "nine" => 9,
+        "ten" => 10,
+        "eleven" => 11,
+        "twelve" => 12,
+        "fifteen" => 15,
+        "twenty" => 20,
+        "thirty" => 30,
+        "forty" => 40,
+        "forty-five" => 45,
+        "fifty" => 50,
+        "sixty" => 60,
+        "ninety" => 90,
+        d if !d.is_empty() && d.len() <= 4 && d.chars().all(|c| c.is_ascii_digit()) => d.parse().ok()?,
+        _ => return None,
+    })
+}
+
+/// ADR 0194: every duration the task says, in minutes: a count before hour(s)/hr(s)/minute(s)/min(s), "half an hour"
+/// (30), "an hour and a half" (+30). A count after "every" / "each" is the schedule's cadence ("every 2 hours"), not a
+/// duration. `None`: a duration ctrl won't guess (vague words with no number, 0, or more than 12 hours).
+fn durations(toks: &[Tok]) -> Option<Vec<u32>> {
+    let mut out: Vec<u32> = Vec::new();
+    for (i, t) in toks.iter().enumerate() {
+        let unit = match t.w.as_str() {
+            "hour" | "hours" | "hr" | "hrs" => 60,
+            "minute" | "minutes" | "min" | "mins" => 1,
+            _ => continue,
+        };
+        let w = |k: usize| i.checked_sub(k).map(|j| toks[j].w.as_str());
+        if matches!(w(1), Some("every" | "each" | "per")) || matches!(w(2), Some("every" | "each")) {
+            continue;
+        }
+        let Some(mut n) = w(1).and_then(duration_count).map(|c| c * unit) else {
+            continue;
+        };
+        if unit == 60 && matches!(w(1), Some("an" | "a")) && w(2) == Some("half") {
+            n = 30;
+        }
+        let next = |k: usize| toks.get(i + k).map(|x| x.w.as_str());
+        if unit == 60 && next(1) == Some("and") && next(2) == Some("a") && next(3) == Some("half") {
+            n += 30;
+        }
+        if n == 0 || n > crate::exec::MAX_AWAKE_MINUTES {
+            return None;
+        }
+        if !out.contains(&n) {
+            out.push(n);
+        }
+    }
+    if out.is_empty() && has(toks, VAGUE_DURATION_WORDS) {
+        return None;
+    }
+    Some(out)
+}
+
+/// ADR 0194: the keep-awake duration: the one the task says, else an hour; two different ones ask; one ctrl won't
+/// guess offers nothing (the run asks).
+fn duration_question(toks: &[Tok]) -> Question {
+    let pick: Vec<(u32, i64)> = match durations(toks) {
+        None => Vec::new(),
+        Some(v) => match v.as_slice() {
+            [] => vec![(crate::exec::DEFAULT_AWAKE_MINUTES, 6000)],
+            [n] => vec![(*n, 6000)],
+            many => many.iter().map(|n| (*n, 2500)).collect(),
+        },
+    };
+    let cs = pick
+        .into_iter()
+        .map(|(n, p)| {
+            choice(
+                opt(format!("{}{n}", crate::exec::MINUTES_PREFIX), OptionKind::Scope),
+                p,
+            )
+        })
+        .collect();
+    finish(Node::ChooseTarget, cs)
 }
 
 /// ADR 0183: "put my mac to sleep", "sleep my mac", "every night at 11 put the computer to sleep". A Mac word plus a
@@ -1396,6 +1596,20 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             p -= 3000;
             let full = named.iter().any(|(a, h)| *h as usize == a.tokens.len());
             if wifi_task(toks) && !full && !site {
+                p += 9500;
+            }
+        }
+        "keep_awake" | "allow_sleep" => {
+            // ADR 0194: "keep my mac awake for 2 hours", "let my mac sleep again". No app named in full, no site.
+            // Without it it sits well below.
+            p -= 3000;
+            let full = named.iter().any(|(a, h)| *h as usize == a.tokens.len());
+            let task = if id == "keep_awake" {
+                keep_awake_task(toks)
+            } else {
+                allow_sleep_task(toks)
+            };
+            if task && !full && !site {
                 p += 9500;
             }
         }
@@ -1958,6 +2172,16 @@ fn move_question(
             },
             4500,
         )],
+        // ADR 0194: one move; a display word keeps the screen on too.
+        "keep_awake" => vec![route(
+            if has(toks, DISPLAY_WORDS) {
+                "system.keep_awake_display"
+            } else {
+                "system.keep_awake"
+            },
+            4500,
+        )],
+        "allow_sleep" => vec![route("system.allow_sleep", 4500)],
         "mute" => vec![route("system.mute", 4500)],
         "unmute" => vec![route("system.unmute", 4500)],
         "set_volume" => vec![route("system.set_volume", 4500)],
@@ -2132,7 +2356,7 @@ pub fn next_question_obs(
     }
     let slot_node = match def.slot {
         Slot::None => None,
-        Slot::Folder | Slot::TabScope | Slot::Level | Slot::Step | Slot::UserFolder => {
+        Slot::Folder | Slot::TabScope | Slot::Level | Slot::Step | Slot::UserFolder | Slot::Duration => {
             Some(Node::ChooseTarget)
         }
         Slot::Url | Slot::SearchText => Some(Node::ChooseText),
@@ -2147,6 +2371,7 @@ pub fn next_question_obs(
                 Slot::SearchText => search_question(goal, &toks),
                 Slot::Level => level_question(&toks),
                 Slot::Step => step_question(&toks),
+                Slot::Duration => duration_question(&toks),
                 Slot::None => unreachable!(),
             });
         }
@@ -2221,6 +2446,8 @@ fn intent_label(id: &str) -> &'static str {
         "display_sleep" => "turn off your display",
         "system_sleep" => "put your mac to sleep",
         "wifi_power" => "turn wi-fi on or off",
+        "keep_awake" => "keep your mac awake for a while",
+        "allow_sleep" => "let your mac sleep again",
         "mute" => "mute your mac",
         "unmute" => "unmute your mac",
         "set_volume" => "set the volume",
@@ -2262,6 +2489,9 @@ fn route_label(id: &str) -> &'static str {
         "system.wifi_on" => "turn the wi-fi radio on, no network picked",
         "system.wifi_off" => "turn the wi-fi radio off, nothing else changed",
         "system.eject_one" => "eject the one external disk, never forced",
+        "system.keep_awake" => "keep the mac from sleeping, the screen may still sleep",
+        "system.keep_awake_display" => "keep the mac and its screen from sleeping",
+        "system.allow_sleep" => "stop keeping it awake, nothing put to sleep",
         "system.mute" => "mute the sound output",
         "system.unmute" => "turn the sound output back on",
         "system.set_volume" => "set the sound output to that level",
@@ -2340,6 +2570,13 @@ pub fn label(o: &Opt, goal: Option<&Goal>) -> String {
         "level" => format!("{rest}%"),
         // ADR 0143: a relative step, in points of the 0–100 volume.
         "step" => format!("by {rest}"),
+        // ADR 0194: a keep-awake duration in minutes, said in whole hours when it is some.
+        "minutes" => match rest.parse::<u32>() {
+            Ok(60) => "for an hour".into(),
+            Ok(n) if n % 60 == 0 => format!("for {} hours", n / 60),
+            Ok(1) => "for a minute".into(),
+            _ => format!("for {rest} minutes"),
+        },
         "route" => route_label(rest).into(),
         "shortcut" => shortcut_label(rest),
         // `ax.<handle>.<role slug>`: the element's role ("close button", "toolbar"); its title is never kept.
@@ -2410,8 +2647,29 @@ mod label_tests {
     #[test]
     fn every_offered_move_has_a_label_and_no_question_repeats_one() {
         let phrasings = [
-            "", "on", "off", "turn on", "turn off", "up", "down", "stop", "toggle", "all", "one", "delete",
-            "sort", "old", "light", "dark", "hide", "show", "wifi on", "wifi off", "clean", "trash",
+            "",
+            "on",
+            "off",
+            "turn on",
+            "turn off",
+            "up",
+            "down",
+            "stop",
+            "toggle",
+            "all",
+            "one",
+            "delete",
+            "sort",
+            "old",
+            "light",
+            "dark",
+            "hide",
+            "show",
+            "wifi on",
+            "wifi off",
+            "clean",
+            "trash",
+            "screen awake",
         ];
         for d in INTENTS {
             for p in phrasings {

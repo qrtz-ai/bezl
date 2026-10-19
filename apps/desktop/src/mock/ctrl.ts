@@ -142,6 +142,13 @@ const INTENTS = {
   system_sleep: opt('intent.system_sleep', 'put your mac to sleep', 0.07),
   wifi_on: opt('intent.wifi_power', 'turn wi-fi on or off', 0.07),
   wifi_off: opt('intent.wifi_power', 'turn wi-fi on or off', 0.07),
+  keep_awake: opt('intent.keep_awake', 'keep your mac awake for a while', 0.07),
+  keep_screen_on: opt(
+    'intent.keep_awake',
+    'keep your mac awake for a while',
+    0.07,
+  ),
+  allow_sleep: opt('intent.allow_sleep', 'let your mac sleep again', 0.07),
   open_email: opt('intent.open_app', 'open an app', 0.07),
 };
 type Intent =
@@ -181,6 +188,9 @@ type Intent =
   | 'system_sleep'
   | 'wifi_on'
   | 'wifi_off'
+  | 'keep_awake'
+  | 'keep_screen_on'
+  | 'allow_sleep'
   | 'open_email';
 /** What an unclear task is asked (the three most likely intents). */
 const ASKED = [INTENTS.close_tabs, INTENTS.clean_folder, INTENTS.close_windows];
@@ -413,6 +423,35 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
       opt(
         'route.system.wifi_off',
         'turn the wi-fi radio off, nothing else changed',
+        0.97,
+      ),
+    ]),
+  ],
+  // ADR 0194: one power assertion of the helper's own with a timeout (choose_target `minutes.N`, added in
+  // finishChain); nothing on screen, no card.
+  keep_awake: [
+    act('choose_move', [
+      opt(
+        'route.system.keep_awake',
+        'keep the mac from sleeping, the screen may still sleep',
+        0.97,
+      ),
+    ]),
+  ],
+  keep_screen_on: [
+    act('choose_move', [
+      opt(
+        'route.system.keep_awake_display',
+        'keep the mac and its screen from sleeping',
+        0.97,
+      ),
+    ]),
+  ],
+  allow_sleep: [
+    act('choose_move', [
+      opt(
+        'route.system.allow_sleep',
+        'stop keeping it awake, nothing put to sleep',
         0.97,
       ),
     ]),
@@ -826,8 +865,55 @@ const wifiOf = (text: string): Intent | null => {
   return on ? 'wifi_on' : 'wifi_off';
 };
 
+// ADR 0194: keep the mac (a screen word: and its screen) awake, or let it sleep again; never without an end, a
+// condition, the sleep settings, waking or locking.
+const awakeOf = (text: string): Intent | null => {
+  if (
+    /\b(until|till|forever|always|indefinitely|never|while|when|if|settings|wake|lock|screensaver|wifi|wi-fi)\b/i.test(
+      text,
+    )
+  )
+    return null;
+  const sleep = /\b(sleep|sleeps|sleeping|asleep)\b/i.test(text);
+  const allow =
+    (sleep &&
+      /\b(let|allow)\b/i.test(text) &&
+      !/\b(don't|dont|not|prevent)\b/i.test(text)) ||
+    (/\b(stop|cancel|end)\b/i.test(text) &&
+      /\b(keeping|caffeinate|awake)\b/i.test(text) &&
+      !/\bfrom\b/i.test(text));
+  if (allow) return 'allow_sleep';
+  const keep = /\b(keep|stay)\b/i.test(text);
+  const screen = /\b(screen|display|monitor)\b/i.test(text);
+  const awake =
+    (keep && /\bawake\b/i.test(text)) ||
+    /\bcaffeinate\b/i.test(text) ||
+    (sleep && /\b(prevent|don't|dont|not|from)\b/i.test(text)) ||
+    (keep && screen && /\bon\b/i.test(text));
+  if (!awake) return null;
+  return screen ? 'keep_screen_on' : 'keep_awake';
+};
+
+/** ADR 0194: the minutes the task says (1–720), an hour when it says none, null when it's out of range. */
+const minutesOf = (text: string): number | null => {
+  if (/\bhalf an hour\b/i.test(text)) return 30;
+  const m = /\b(\d{1,4}|an?|one)\s+(hours?|hrs?|minutes?|mins?)\b/i.exec(text);
+  if (!m) return 60;
+  const count = /^\d+$/.test(m[1] ?? '') ? Number(m[1]) : 1;
+  const n = /^h/i.test(m[2] ?? '') ? count * 60 : count;
+  return n >= 1 && n <= 720 ? n : null;
+};
+
+const minutesLabel = (n: number): string =>
+  n === 60
+    ? 'for an hour'
+    : n % 60 === 0
+      ? `for ${n / 60} hours`
+      : `for ${n} minutes`;
+
 const intentOf = (text: string): Intent | null =>
   windowsOf(text) ??
+  awakeOf(text) ??
   wifiOf(text) ??
   ejectOf(text) ??
   displaySleepOf(text) ??
@@ -1110,6 +1196,13 @@ export function ctrlHandlers(now = () => Date.now()): Partial<Handlers> {
         r,
         act('choose_target', [opt(`level.${level}`, `${level}%`, 0.96)]),
       );
+    if (intent === 'keep_awake' || intent === 'keep_screen_on') {
+      const n = minutesOf(text) ?? 60;
+      decide(
+        r,
+        act('choose_target', [opt(`minutes.${n}`, minutesLabel(n), 0.96)]),
+      );
+    }
     if (intent === 'open_folder') {
       const f = folderOf(text);
       decide(r, act('choose_target', [opt(`folder.${f}`, f, 0.97)]));

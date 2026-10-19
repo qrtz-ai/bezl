@@ -986,6 +986,54 @@ test('ctrl: turn off my wifi sets the wi-fi radio without a card', async ({
   expect(errors).toEqual([]);
 });
 
+// ADR 0194: "keep my mac awake for 2 hours" holds one timed power assertion in the helper; "let my mac sleep again"
+// releases it. No card, nothing put to sleep.
+test('ctrl: keep my mac awake holds it for the duration without a card', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  for (const [text, intent, move, target] of [
+    [
+      'keep my mac awake for 2 hours',
+      'keep your mac awake for a while',
+      'keep the mac from sleeping, the screen may still sleep',
+      'for 2 hours',
+    ],
+    [
+      'every weekday at 9 keep my screen on for 30 minutes',
+      'keep your mac awake for a while',
+      'keep the mac and its screen from sleeping',
+      'for 30 minutes',
+    ],
+    [
+      'let my mac sleep again',
+      'let your mac sleep again',
+      'stop keeping it awake, nothing put to sleep',
+      null,
+    ],
+  ] as const) {
+    await ctrl.getByTestId('ctrl-task-input').fill(text);
+    await ctrl.getByTestId('ctrl-task-add').click();
+    const task = ctrl.getByTestId('ctrl-task').filter({ hasText: text });
+    await task.getByTestId('ctrl-task-run').click();
+    const run = ctrl.getByTestId('ctrl-run').first();
+    await expect(run.getByTestId('ctrl-run-status')).toHaveText('done');
+    await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
+    const decisions = ctrl.getByTestId('ctrl-decisions').first();
+    await expect(decisions).toContainText(intent);
+    await expect(decisions).toContainText(move);
+    if (target) await expect(decisions).toContainText(target);
+    await expect(decisions).not.toContainText('put the whole mac to sleep');
+  }
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 // ADR 0183: "put my mac to sleep" puts the whole mac to sleep in the helper, no card, nothing asked.
 test('ctrl: put my mac to sleep sleeps the mac without a card', async ({
   page,

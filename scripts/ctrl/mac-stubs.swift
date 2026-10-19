@@ -143,6 +143,16 @@ public func IOPMSleepSystem(_ fb: io_connect_t) -> IOReturn { 0 }
 @discardableResult public func IOServiceClose(_ connect: io_connect_t) -> kern_return_t { 0 }
 public func sysctlbyname(_ name: UnsafePointer<CChar>!, _ oldp: UnsafeMutableRawPointer!, _ oldlenp: UnsafeMutablePointer<Int>!,
                          _ newp: UnsafeMutableRawPointer!, _ newlen: Int) -> Int32 { -1 }
+// IOKit power assertions (ADR 0194)
+public typealias CFDictionary = NSDictionary
+public typealias IOPMAssertionID = UInt32
+public typealias IOPMAssertionLevel = UInt32
+public var kIOPMAssertionLevelOn: Int { 255 }
+public func IOPMAssertionCreateWithName(_ AssertionType: CFString!, _ AssertionLevel: IOPMAssertionLevel, _ AssertionName: CFString!,
+                                        _ AssertionID: UnsafeMutablePointer<IOPMAssertionID>!) -> IOReturn { 0 }
+public func IOPMAssertionSetProperty(_ theAssertion: IOPMAssertionID, _ theProperty: CFString!, _ theValue: CFTypeRef!) -> IOReturn { 0 }
+public func IOPMAssertionRelease(_ AssertionID: IOPMAssertionID) -> IOReturn { 0 }
+public func IOPMAssertionCopyProperties(_ theAssertion: IOPMAssertionID) -> Unmanaged<CFDictionary>! { nil }
 // CoreWLAN (ADR 0191)
 open class CWInterface: NSObject {
     open func powerOn() -> Bool { false }

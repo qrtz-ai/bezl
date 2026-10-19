@@ -45,5 +45,8 @@
 {"type":"ctrl.act","id":"c35","actionId":"a14","route":{"route":"scripting","app":"com.apple.systemevents","verb":"stop_screen_saver"},"content":{}}
 {"type":"ctrl.act","id":"c36","actionId":"a15","route":{"route":"workspace","op":"set_wifi","on":false},"content":{}}
 {"type":"ctrl.measure","id":"c37","check":{"check":"wifi_on"}}
+{"type":"ctrl.act","id":"c38","actionId":"a16","route":{"route":"workspace","op":"keep_awake","minutes":120,"display":false},"content":{}}
+{"type":"ctrl.act","id":"c39","actionId":"a17","route":{"route":"workspace","op":"allow_sleep"},"content":{}}
+{"type":"ctrl.measure","id":"c40","check":{"check":"kept_awake"}}
 {"type":"ctrl.laya.warm","id":"c12","model":"/models/ctrl/laya/laya.mlmodelc"}
 {"type":"ctrl.laya.warm.result","id":"c12","state":"started"}

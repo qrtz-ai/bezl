@@ -30,6 +30,8 @@ public final class MacCtrlBackend: CtrlBackend {
     /// ADR 0183: the Mac's last sleep time read just before a `sleep_system` act; the next `last_sleep` read waits for
     /// it to move, then clears it.
     private var pendingSleepBaseline: Int?
+    /// ADR 0194: this process's one keep-awake assertion (nil: none held).
+    private var awakeAssertion: IOPMAssertionID?
 
     public init() {
         // The app in front when the watch begins counts as used now; every later switch is recorded as it happens.
@@ -352,6 +354,16 @@ public final class MacCtrlBackend: CtrlBackend {
             let before = CtrlSystemSleepMac.lastSleep()
             try CtrlSystemSleepMac.sleepNow()
             lock.lock(); pendingSleepBaseline = before; lock.unlock()
+        case let .keepAwake(minutes, display):
+            // ADR 0194: one power assertion of this process with a kernel timeout (IOKit); the new one is made before
+            // the last one is let go, so the Mac never dips into sleep between them. Nothing on screen changes.
+            let id = try CtrlKeepAwakeMac.hold(minutes: minutes, display: display)
+            lock.lock(); let old = awakeAssertion; awakeAssertion = id; lock.unlock()
+            if let old { CtrlKeepAwakeMac.release(old) }
+        case .allowSleep:
+            // ADR 0194: only this process's own assertion; nothing is put to sleep.
+            lock.lock(); let old = awakeAssertion; awakeAssertion = nil; lock.unlock()
+            if let old { CtrlKeepAwakeMac.release(old) }
         case let .setWifi(on):
             // ADR 0191: the Wi-Fi radio's power (CoreWLAN, this process); no network picked, nothing read about one.
             try CtrlWifiMac.setPower(on)
@@ -445,6 +457,10 @@ public final class MacCtrlBackend: CtrlBackend {
         case CtrlDisplay.check: return CtrlDisplayMac.asleep() ? 1 : 0
         // ADR 0191: the Wi-Fi radio's power only, read in this process (no Location, no network name).
         case CtrlWifi.check: return CtrlWifi.value(powerOn: CtrlWifiMac.powerOn())
+        // ADR 0194: this process's own keep-awake assertion, from IOKit's record of it (none: 0).
+        case CtrlKeepAwake.check:
+            lock.lock(); let id = awakeAssertion; lock.unlock()
+            return CtrlKeepAwake.value(properties: id.flatMap(CtrlKeepAwakeMac.properties))
         // ADR 0183: when the Mac last slept; right after the act, waits (bounded) for the sleep to happen and end.
         case CtrlSystemSleep.check:
             lock.lock(); let baseline = pendingSleepBaseline; pendingSleepBaseline = nil; lock.unlock()

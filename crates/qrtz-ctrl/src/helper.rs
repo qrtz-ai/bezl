@@ -89,6 +89,10 @@ pub enum Check {
     /// process from CoreWLAN's power state only: never the network's name, the networks around, or anything that
     /// needs Location.
     WifiOn,
+    /// ADR 0194: 1 if the helper's own keep-awake assertion is still held and on, 0 if it holds none (released, timed
+    /// out, or never made). Read in the helper's own process from IOKit's record of that one assertion
+    /// (`IOPMAssertionCopyProperties`); no other app's assertions are listed or read.
+    KeptAwake,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -610,6 +614,10 @@ pub struct FakeWorld {
     /// off" setting answers `wifi.needs_admin`).
     pub wifi: Option<bool>,
     pub wifi_refused: bool,
+    /// ADR 0194: the helper's keep-awake assertion, `(minutes, display)` while held. `awake_refused`: the power
+    /// manager refuses to make one (`awake.refused`).
+    pub awake: Option<(u32, bool)>,
+    pub awake_refused: bool,
     /// ADR 0140: the output volume in percent (read back only while unmuted).
     pub volume: i64,
     /// ADR 0158: the user made the "qrtz Set Focus" shortcut (false: `focus.no_shortcut`).
@@ -691,6 +699,8 @@ impl FakeWorld {
             system_sleeps: 0,
             wifi: Some(true),
             wifi_refused: false,
+            awake: None,
+            awake_refused: false,
             focus_shortcut: false,
             shortcuts_denied: false,
             focus: crate::ladder::FocusMode::Off,
@@ -942,6 +952,18 @@ impl FakeWorld {
                     Ok(())
                 }
             },
+            // ADR 0194: one assertion of the helper's own, replaced by a newer one; nothing on screen changes.
+            Route::Workspace(WorkspaceOp::KeepAwake { minutes, display }) => {
+                if self.awake_refused {
+                    return Err("awake.refused".into());
+                }
+                self.awake = Some((*minutes, *display));
+                Ok(())
+            }
+            Route::Workspace(WorkspaceOp::AllowSleep) => {
+                self.awake = None;
+                Ok(())
+            }
             // ADR 0168: nothing read, everything gone.
             Route::Workspace(WorkspaceOp::ClearClipboard) => match self.clipboard {
                 Some(_) => {
@@ -1080,6 +1102,7 @@ impl FakeWorld {
                     Check::DisplayAsleep => Some(i64::from(self.display_asleep)),
                     Check::LastSleep => self.last_sleep,
                     Check::WifiOn => self.wifi.map(i64::from),
+                    Check::KeptAwake => Some(i64::from(self.awake.is_some())),
                     Check::FocusOn => Some(i64::from(self.focus != crate::ladder::FocusMode::Off)),
                     Check::FolderOpen { folder } => self
                         .apps

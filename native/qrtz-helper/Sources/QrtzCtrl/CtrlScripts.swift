@@ -182,3 +182,55 @@ public enum CtrlWifi {
         powerOn.map { $0 ? 1 : 0 }
     }
 }
+
+/// ADR 0194: "keep my mac awake for 2 hours" / "let my mac sleep again". The act holds one IOKit power assertion of
+/// the helper's own (`PreventUserIdleSystemSleep`, or `PreventUserIdleDisplaySleep` to keep the screen on too: what
+/// `caffeinate` / `caffeinate -d` ask for, without spawning it) with a kernel timeout whose action releases it, so it
+/// never outlives the task's duration, and it ends with the helper's process. A newer keep-awake replaces the last one;
+/// `allow_sleep` releases it. The measure is that one assertion's level, read from IOKit; no other app's assertions are
+/// listed or read. Nothing on screen changes, no app, no key event, nothing put to sleep. The names, bounds and parse
+/// live here (Foundation) so Linux tests see them; the calls are in mac/CtrlKeepAwakeMac.swift.
+public enum CtrlKeepAwake {
+    public static let op = "keep_awake"
+    public static let releaseOp = "allow_sleep"
+    public static let check = "kept_awake"
+    /// The longest hold, 12 hours (the host never sends more; more is a bad request, never clamped).
+    public static let maxMinutes = 720
+    /// IOPMLib.h's assertion types (kIOPMAssertPreventUserIdleSystemSleep / kIOPMAssertPreventUserIdleDisplaySleep).
+    public static let systemType = "PreventUserIdleSystemSleep"
+    public static let displayType = "PreventUserIdleDisplaySleep"
+    /// IOPMLib.h's kIOPMAssertionTimeoutKey, kIOPMAssertionTimeoutActionKey, kIOPMAssertionTimeoutActionRelease and
+    /// kIOPMAssertionLevelKey / kIOPMAssertionLevelOn. The default timeout action only turns the level off; release is
+    /// set explicitly so nothing of ctrl's is left behind.
+    public static let timeoutKey = "TimeoutSeconds"
+    public static let timeoutActionKey = "TimeoutAction"
+    public static let timeoutActionRelease = "TimeoutActionRelease"
+    public static let levelKey = "AssertLevel"
+    public static let levelOn = 255
+    /// What Activity Monitor / `pmset -g assertions` show as the holder: who, never anything from the task.
+    public static let name = "qrtz ctrl: keep awake"
+
+    public static func type(display: Bool) -> String { display ? displayType : systemType }
+
+    /// The timeout for a hold of `minutes`; nil outside 1–720.
+    public static func seconds(minutes: Int) -> Double? {
+        (1...maxMinutes).contains(minutes) ? Double(minutes * 60) : nil
+    }
+
+    /// The measure: 1 while IOKit's record of the assertion says it is on, 0 with none (released, timed out, never
+    /// made) or off.
+    public static func value(properties: [String: Any]?) -> Int {
+        guard let level = (properties?[levelKey] as? NSNumber)?.intValue else { return 0 }
+        return level == levelOn ? 1 : 0
+    }
+
+    /// `minutes` a JSON whole number 1–720 (objCType not "c" bool, ADR 0141, nor "d"/"f" fraction), `display` a
+    /// strict JSON bool (objCType "c"); anything else is a bad request.
+    static func parse(_ o: [String: Any]) -> CtrlRoute? {
+        guard let m = o["minutes"] as? NSNumber, !["c", "d", "f"].contains(String(cString: m.objCType)),
+              let minutes = o["minutes"] as? Int, seconds(minutes: minutes) != nil,
+              let d = o["display"] as? NSNumber, String(cString: d.objCType) == "c", let display = o["display"] as? Bool
+        else { return nil }
+        return .keepAwake(minutes: minutes, display: display)
+    }
+}

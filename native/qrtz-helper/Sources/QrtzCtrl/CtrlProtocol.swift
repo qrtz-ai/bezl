@@ -49,6 +49,12 @@ public enum CtrlRoute: Equatable, Sendable {
     /// interface, the menu bar switch). No network is joined, left or scanned and nothing about one comes over the
     /// wire: only `on`. No app, no content, no gate (the host defers an off while the user is typing or clicking).
     case setWifi(on: Bool)
+    /// ADR 0194: keep the Mac (with `display`, its screen too) from idle-sleeping for `minutes` (1–720): one IOKit power
+    /// assertion of this process with a kernel timeout that releases it; a newer one replaces it. Nothing on screen
+    /// changes, no app, no key event. No content, no gate, never deferred.
+    case keepAwake(minutes: Int, display: Bool)
+    /// ADR 0194: release this process's own keep-awake assertion (never another's); nothing is put to sleep.
+    case allowSleep
     case scripting(app: String, verb: String)
     case axPerform(app: String, role: String, element: String, action: String)
     case axSet(app: String, role: String, element: String, attribute: String)
@@ -78,9 +84,10 @@ public enum CtrlRoute: Equatable, Sendable {
     /// ADR 0180: `display_asleep` too (the main display's sleep state, read in this process).
     /// ADR 0183: `last_sleep` too (when the Mac last slept, `kern.sleeptime`, read in this process).
     /// ADR 0191: `wifi_on` too (the Wi-Fi radio's power, read in this process; never a network's name).
+    /// ADR 0194: `kept_awake` too (this process's own keep-awake assertion, read from IOKit; no other app's).
     public static let applessChecks: Set<String> = ["output_muted", "dark_mode", "output_volume", "focus_on", CtrlClipboard.check,
                                                     CtrlDock.check, CtrlVolumes.check, CtrlScreensaver.check, CtrlDisplay.check,
-                                                    CtrlSystemSleep.check, CtrlWifi.check]
+                                                    CtrlSystemSleep.check, CtrlWifi.check, CtrlKeepAwake.check]
     /// Slice 7b's selective closes (ADR 0114 / 0119) have no fixed script: the backend reads the tabs first
     /// (`CtrlTabs`) and closes only the ones it can tell about; a backend that can't tell refuses, and the host asks.
     public static let tabVerbs: Set<String> = ["close_saved_tabs", "close_unpinned_tabs"]
@@ -109,6 +116,10 @@ public enum CtrlRoute: Equatable, Sendable {
                 guard let n = o["on"] as? NSNumber, String(cString: n.objCType) == "c", let b = o["on"] as? Bool
                 else { return nil }
                 return .setWifi(on: b)
+            // ADR 0194: whole minutes 1–720 (never a bool, a fraction or a string; never clamped) and a strict JSON
+            // bool `display`; nothing else is read.
+            case CtrlKeepAwake.op: return CtrlKeepAwake.parse(o)
+            case CtrlKeepAwake.releaseOp: return .allowSleep
             // ADR 0176: `single` must be a JSON true/false (objCType "c", ADR 0141); a number, a string or no field is
             // a bad request.
             case "eject_volumes":
@@ -301,7 +312,8 @@ public final class CtrlServer {
             guard let t = targetPid else { throw CtrlFailure("app.not_running") }
             do { try CtrlPolicy.checkKey(combo, targetPid: t, frontmostPid: frontmostPid) } catch { throw CtrlFailure("policy.refused") }
         case .files, .openURL, .launchHidden, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume,
-             .setFocus, .openFolder, .clearClipboard, .ejectVolumes, .sleepDisplay, .sleepSystem, .setWifi: break
+             .setFocus, .openFolder, .clearClipboard, .ejectVolumes, .sleepDisplay, .sleepSystem, .setWifi, .keepAwake,
+             .allowSleep: break
         }
     }
 
@@ -311,7 +323,7 @@ public final class CtrlServer {
              let .pidKey(a, _): return a
         case .openFolder: return CtrlFolders.finder
         case .files, .takesOver, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume, .setFocus,
-             .clearClipboard, .ejectVolumes, .sleepDisplay, .sleepSystem, .setWifi:
+             .clearClipboard, .ejectVolumes, .sleepDisplay, .sleepSystem, .setWifi, .keepAwake, .allowSleep:
             return nil
         }
     }

@@ -129,6 +129,15 @@ pub enum WorkspaceOp {
     /// strict JSON bool. Reversible (turn it back on), no gate, no permission. Off is deferred while the user is
     /// typing or clicking: cutting the network under their hands drops whatever they're doing online right now.
     SetWifi { on: bool },
+    /// ADR 0194: keep the Mac awake for `minutes` (1–720), in the helper's own process: one IOKit power assertion
+    /// (`PreventUserIdleSystemSleep`, or `PreventUserIdleDisplaySleep` when `display`: the screen stays on too, what
+    /// `caffeinate -d` asks for) with a kernel timeout that releases it, so it never outlives the duration, and it ends
+    /// early if the helper exits. Nothing on screen changes, no app, no key event, no window; a newer keep-awake
+    /// replaces the helper's last one. Reversible (let it sleep again), no gate, no permission, never deferred.
+    KeepAwake { minutes: u32, display: bool },
+    /// ADR 0194: let the Mac sleep again: the helper releases its own keep-awake assertion (never another app's or the
+    /// system's). Nothing is put to sleep; the Mac's own idle timer takes over.
+    AllowSleep,
 }
 
 /// ADR 0166: the Finder, the app that shows a folder.
@@ -339,7 +348,9 @@ impl Route {
                 | WorkspaceOp::EjectVolumes { .. }
                 | WorkspaceOp::SleepDisplay
                 | WorkspaceOp::SleepSystem
-                | WorkspaceOp::SetWifi { .. },
+                | WorkspaceOp::SetWifi { .. }
+                | WorkspaceOp::KeepAwake { .. }
+                | WorkspaceOp::AllowSleep,
             ) => None,
             Route::Workspace(WorkspaceOp::OpenUrl { app, .. } | WorkspaceOp::LaunchHidden { app }) => {
                 Some(app)
@@ -554,6 +565,9 @@ pub fn judge(route: &Route, env: &Env) -> Verdict {
                     }
                     return Verdict::Allowed;
                 }
+                // ADR 0194: no app or window, no input, nothing on screen changes: holding the Mac awake (or letting
+                // it sleep on its own timer again) takes nothing from the user, so never deferred.
+                WorkspaceOp::KeepAwake { .. } | WorkspaceOp::AllowSleep => return Verdict::Allowed,
                 // ADR 0168: no app or window either, but the clipboard is the user's own working buffer: never
                 // empty it while they're in the middle of something (a copy they're about to paste). Retry later.
                 WorkspaceOp::ClearClipboard => {
