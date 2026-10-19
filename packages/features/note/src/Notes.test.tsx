@@ -24,6 +24,7 @@ const doc = (
   title: noteTitle(body),
   path: `${id}.md`,
   hash: `h-${id}-0`,
+  readOnly: false,
 });
 
 function fake(initial: Doc[]) {

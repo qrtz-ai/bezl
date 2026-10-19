@@ -132,7 +132,12 @@ export const DocSummary = z.object({
   meetings: z.array(z.string()),
 });
 export type DocSummary = z.infer<typeof DocSummary>;
-export const Doc = DocSummary.extend({ body: z.string(), hash: z.string() });
+export const Doc = DocSummary.extend({
+  body: z.string(),
+  hash: z.string(),
+  /** Not UTF-8 text, or too large: qrtz shows it and never changes it. */
+  readOnly: z.boolean(),
+});
 export type Doc = z.infer<typeof Doc>;
 
 export const ipcContract = {

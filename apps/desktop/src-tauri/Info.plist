@@ -10,6 +10,8 @@
   <string>qrtz ctrl sends Apple Events to the apps you ask it to control, and runs your qrtz Set Focus shortcut through Shortcuts Events to turn focus and do not disturb on or off.</string>
   <key>NSCalendarsFullAccessUsageDescription</key>
   <string>qrtz nano reads your calendar on this mac to name your notes after the meeting and offer to record when it starts. it never changes your calendar and nothing leaves your mac.</string>
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>qrtz nano keeps your notes as files in the folder you choose. nothing leaves your mac.</string>
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.productivity</string>
 </dict>

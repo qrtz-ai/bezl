@@ -569,7 +569,7 @@ impl AppService {
         };
         let text = p["text"].as_str().unwrap_or_default().to_owned();
         if let Err(e) = v.hud_line(m.to_owned(), text).await {
-            tracing::warn!(error = %e.message, "vault: quick add not appended");
+            tracing::warn!(code = ?e.code, "vault: quick add not appended");
         }
     }
     #[cfg(not(feature = "runtime"))]

@@ -225,6 +225,7 @@ export function createMockBridge(): TauriBridge {
       meetings: string[];
       body: string;
       hash: string;
+      readOnly: boolean;
     }
   >();
   const emit = (event: EventName, payload: unknown) => {
@@ -692,7 +693,7 @@ export function createMockBridge(): TauriBridge {
             (!req?.meetingId || d.meetings.includes(req.meetingId)),
         )
         .sort((a, b) => b.updatedAt - a.updatedAt)
-        .map(({ body: _b, hash: _h, ...s }) => s) as never;
+        .map(({ body: _b, hash: _h, readOnly: _r, ...s }) => s) as never;
     },
     'doc:get': ({ id }) => {
       const d = docs.get(id);
@@ -710,6 +711,7 @@ export function createMockBridge(): TauriBridge {
         meetings: req?.meetingId ? [req.meetingId] : [],
         body,
         hash: String(Math.random()),
+        readOnly: false,
       };
       docs.set(id, d);
       emit('doc:changed', { ids: [id] });

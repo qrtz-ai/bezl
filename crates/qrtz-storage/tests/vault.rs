@@ -86,11 +86,21 @@ fn rescan_picks_up_outside_create_rename_delete_and_duplicates() {
     let r = v.rescan().unwrap();
     assert_eq!(r.changed.len(), 1);
     let id = r.changed.iter().next().unwrap().clone();
-    // An id was written into the file's front matter; the body bytes are unchanged.
-    let raw = fs::read_to_string(root.join("From Obsidian.md")).unwrap();
-    assert_eq!(raw, format!("---\nid: {id}\n---\n# Hello\nworld\n"));
+    // Indexing never writes: the file is byte-identical, its id is derived from its path.
+    assert_eq!(
+        fs::read_to_string(root.join("From Obsidian.md")).unwrap(),
+        "# Hello\nworld\n"
+    );
+    assert_eq!(id, derived_id("From Obsidian.md"));
     // Nothing changed: nothing reported.
     assert!(v.rescan().unwrap().is_empty());
+    // The first qrtz save writes the id into front matter; from then on a rename keeps it.
+    let d = v.get(&id).unwrap();
+    v.save(&id, "# Hello\nworld\n", &d.hash, false).unwrap();
+    assert_eq!(
+        fs::read_to_string(root.join("From Obsidian.md")).unwrap(),
+        format!("---\nid: {id}\n---\n# Hello\nworld\n")
+    );
     // Renamed outside qrtz: same id, new path.
     fs::rename(root.join("From Obsidian.md"), root.join("Renamed.md")).unwrap();
     v.rescan().unwrap();
@@ -310,4 +320,164 @@ fn unsafe_kill(pid: u32) {
     let _ = std::process::Command::new("kill")
         .args(["-9", &pid.to_string()])
         .status();
+}
+
+#[test]
+fn files_qrtz_did_not_save_are_never_rewritten() {
+    let t = tempfile::tempdir().unwrap();
+    let root = t.path().join("notes");
+    fs::create_dir_all(&root).unwrap();
+    let latin1: &[u8] = b"# caf\xe9\nna\xefve\n";
+    fs::write(root.join("old.md"), latin1).unwrap();
+    fs::write(root.join("README.md"), "no front matter here\n").unwrap();
+    let dup = "---\nid: same\n---\nx\n";
+    fs::write(root.join("a.md"), dup).unwrap();
+    fs::write(root.join("b.md"), dup).unwrap();
+    let mut v = open(t.path());
+    v.rescan().unwrap();
+    v.rebuild().unwrap();
+    assert_eq!(
+        fs::read(root.join("old.md")).unwrap(),
+        latin1,
+        "non-UTF-8 byte-identical"
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("README.md")).unwrap(),
+        "no front matter here\n"
+    );
+    assert_eq!(fs::read_to_string(root.join("a.md")).unwrap(), dup);
+    assert_eq!(fs::read_to_string(root.join("b.md")).unwrap(), dup);
+    assert_eq!(
+        v.count().unwrap(),
+        4,
+        "the copy is listed with its own (derived) id"
+    );
+    // Non-UTF-8: read-only, and every write is refused with a clear message.
+    let id = derived_id("old.md");
+    let d = v.get(&id).unwrap();
+    assert!(d.read_only);
+    match v.save(&id, "x", &d.hash, true) {
+        Err(VaultError::Invalid(m)) => assert_eq!(m, NOT_UTF8),
+        r => panic!("{r:?}"),
+    }
+    assert!(v.link_meeting(&id, "m1").is_err());
+    assert_eq!(fs::read(root.join("old.md")).unwrap(), latin1);
+}
+
+#[test]
+fn oversized_files_are_listed_by_name_only_and_never_read_or_written() {
+    let t = tempfile::tempdir().unwrap();
+    let root = t.path().join("notes");
+    fs::create_dir_all(&root).unwrap();
+    let big = vec![b'a'; MAX_NOTE_BYTES + 1];
+    fs::write(root.join("dump.md"), &big).unwrap();
+    let mut v = open(t.path());
+    let all = v.list(None, None, 10).unwrap();
+    assert_eq!(all[0].title, "dump");
+    let d = v.get(&all[0].id).unwrap();
+    assert!(d.read_only && d.body.is_empty());
+    assert!(matches!(
+        v.save(&d.id, "x", &d.hash, true),
+        Err(VaultError::Invalid(_))
+    ));
+    assert_eq!(fs::read(root.join("dump.md")).unwrap(), big);
+}
+
+#[test]
+fn the_notes_folder_must_be_just_for_notes() {
+    let t = tempfile::tempdir().unwrap();
+    let home = t.path().join("home");
+    let data = home.join("Library/Application Support/qrtz");
+    fs::create_dir_all(&data).unwrap();
+    let refused = |p: &Path| match refuse_root(p, Some(&home), &data) {
+        Err(VaultError::Invalid(m)) => assert_eq!(m, ROOT_REFUSED, "{p:?}"),
+        r => panic!("{p:?} allowed: {r:?}"),
+    };
+    for p in [
+        Path::new("/"),
+        Path::new("/System"),
+        Path::new("/Library/Fonts"),
+        Path::new("/Applications"),
+        Path::new("/Volumes"),
+        Path::new("/Volumes/Backup"),
+    ] {
+        refused(p);
+    }
+    refused(&home);
+    refused(&home.join("Library"));
+    refused(&home.join("Library/Application Support"));
+    refused(&data);
+    assert!(refuse_root(&home.join("Documents/qrtz Notes"), Some(&home), &data).is_ok());
+    assert!(refuse_root(Path::new("/Volumes/Backup/notes"), Some(&home), &data).is_ok());
+    // Through Vault::open with the real $HOME.
+    if let Some(h) = std::env::var_os("HOME") {
+        match Vault::open(Path::new(&h), &t.path().join("idx/i.db")) {
+            Err(VaultError::Invalid(m)) => assert_eq!(m, ROOT_REFUSED),
+            r => panic!("home allowed: {:?}", r.is_ok()),
+        }
+    }
+    // The data dir's parent (the index lives in <data>/vault-index).
+    match Vault::open(t.path(), &t.path().join("data/vault-index/index.db")) {
+        Err(VaultError::Invalid(m)) => assert_eq!(m, ROOT_REFUSED),
+        r => panic!("data parent allowed: {:?}", r.is_ok()),
+    }
+}
+
+#[test]
+fn long_names_stay_under_the_file_name_limit() {
+    let t = tempfile::tempdir().unwrap();
+    let mut v = open(t.path());
+    let emoji = "😀".repeat(80);
+    let cjk = "漢".repeat(81);
+    for title in [emoji.as_str(), cjk.as_str()] {
+        let stem = file_stem_for(title);
+        assert!(stem.len() <= MAX_STEM_BYTES, "{}", stem.len());
+        let d = v.create(Some(title), None, None).unwrap();
+        assert!(d.path.len() < 255);
+        // A forced conflict on the long name.
+        let f = t.path().join("notes").join(&d.path);
+        fs::write(&f, format!("---\nid: {}\n---\nouter\n", d.id)).unwrap();
+        v.save(&d.id, "mine", &d.hash, true).unwrap();
+    }
+    for e in fs::read_dir(t.path().join("notes")).unwrap() {
+        let n = e.unwrap().file_name();
+        assert!(n.len() < 255, "{n:?} is {} bytes", n.len());
+    }
+    assert_eq!(v.count().unwrap(), 4, "two notes and two conflict copies");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlinked_trash_is_refused() {
+    let t = tempfile::tempdir().unwrap();
+    let outside = t.path().join("elsewhere");
+    fs::create_dir_all(&outside).unwrap();
+    let mut v = open(t.path());
+    std::os::unix::fs::symlink(&outside, v.root().join(TRASH_DIR)).unwrap();
+    let d = v.create(Some("Keep"), None, None).unwrap();
+    assert!(matches!(v.trash(&d.id), Err(VaultError::Escape)));
+    assert!(t.path().join("notes/Keep.md").exists());
+    assert_eq!(fs::read_dir(&outside).unwrap().count(), 0);
+}
+
+#[test]
+fn trash_and_renames_never_replace_a_file() {
+    let t = tempfile::tempdir().unwrap();
+    let mut v = open(t.path());
+    let a = v.create(Some("Same"), None, None).unwrap();
+    fs::create_dir_all(v.root().join(TRASH_DIR)).unwrap();
+    fs::write(v.root().join(TRASH_DIR).join("Same.md"), "older trashed").unwrap();
+    v.trash(&a.id).unwrap();
+    assert_eq!(
+        fs::read_to_string(v.root().join(TRASH_DIR).join("Same.md")).unwrap(),
+        "older trashed"
+    );
+    assert_eq!(fs::read_dir(v.root().join(TRASH_DIR)).unwrap().count(), 2);
+    // An untitled note named after a title that's taken gets a numbered name.
+    v.create(Some("Taken"), None, None).unwrap();
+    let u = v.create(None, None, None).unwrap();
+    let u = v.save(&u.id, "Taken\nmore", &u.hash, false).unwrap();
+    assert_eq!(u.path, "Taken (2).md");
+    let r = rename_noreplace(&v.root().join("Taken (2).md"), &v.root().join("Taken.md"));
+    assert_eq!(r.unwrap_err().kind(), std::io::ErrorKind::AlreadyExists);
 }
