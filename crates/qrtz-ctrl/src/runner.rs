@@ -1,4 +1,4 @@
-//! One guarded action (ADR 0214, amending ADR 0100 §4–§5). The runner never acts without the stop-key watcher:
+//! One guarded action (ADR 0215, amending ADR 0100 §4–§5). The runner never acts without the stop-key watcher:
 //!
 //! 1. the host's policy ([`check`]): the handle is in the tree or the menu, the element offers the action, the
 //!    combo is the app's own or built-in, the address is http(s), the text is bounded;

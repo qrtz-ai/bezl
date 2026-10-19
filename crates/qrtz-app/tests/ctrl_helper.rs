@@ -1,4 +1,4 @@
-//! Slice 5b (ADR 0110, ctrl do since ADR 0214): ctrl over the supervised helper process. A fake child behind the
+//! Slice 5b (ADR 0110, ctrl do since ADR 0215): ctrl over the supervised helper process. A fake child behind the
 //! real `Supervisor` speaks the echo/nano lines (hello, heartbeats) and answers `ctrl.*` lines with the in-memory
 //! `FakeHelper` (the ctrl crate's fixture world), so a run goes
 //! router → `CtrlService` → `HelperClient` → `SupervisorWire` → supervisor stdio → child and back, with the app's

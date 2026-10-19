@@ -2,7 +2,7 @@
 //! [`apply`] is pure (no clock, no I/O, no goal text: times and ids arrive inside events). Each record carries the
 //! SHA-256 of the previous one, so a rewritten or dropped record breaks [`EventLog::verify`].
 //!
-//! Payloads hold ids, refs, enums, numbers and hashed tokens only (ADR 0083, ADR 0214): never a window title, an
+//! Payloads hold ids, refs, enums, numbers and hashed tokens only (ADR 0083, ADR 0215): never a window title, an
 //! element label, a value, the goal or the typed text. Text from the goal is a pointer into it (`goal#5..12`).
 //!
 //! The reducer also tracks where the chain is ([`Phase`]): which question comes next, which action is pending. A
@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Schema 2: ctrl do (ADR 0214). Schema-1 runs (the chores) are not read.
+/// Schema 2: ctrl do (ADR 0215). Schema-1 runs (the chores) are not read.
 pub const SCHEMA_V: u32 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

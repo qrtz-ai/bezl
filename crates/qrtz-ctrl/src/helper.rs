@@ -1,4 +1,4 @@
-//! The ctrl helper protocol (ADR 0108, reshaped by ADR 0214 for ctrl do): how the host asks the Swift helper's
+//! The ctrl helper protocol (ADR 0108, reshaped by ADR 0215 for ctrl do): how the host asks the Swift helper's
 //! `QrtzCtrl` module to read the accessibility tree and act on it. Newline-delimited JSON, one request → one reply
 //! with the same `id`, all under the `ctrl.` prefix. Rust is the source of truth; the shared fixture
 //! `native/qrtz-helper/Fixtures/ctrl/protocol.jsonl` holds one line per message for both sides.
@@ -24,7 +24,7 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
-/// Version 2: ctrl do (ADR 0214). Version 1 (probe / snapshot / act routes) is gone.
+/// Version 2: ctrl do (ADR 0215). Version 1 (probe / snapshot / act routes) is gone.
 pub const CTRL_PROTOCOL_VERSION: u32 = 2;
 /// How deep `ctrl.tree` reads before it reports `more` instead of children.
 pub const TREE_DEPTH: u32 = 6;

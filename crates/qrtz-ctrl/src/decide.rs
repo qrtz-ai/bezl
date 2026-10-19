@@ -1,4 +1,4 @@
-//! Scoring one question of the chain (decision-layer spec §1, §5, §13; ADR 0106, kept by ADR 0214). A question has
+//! Scoring one question of the chain (decision-layer spec §1, §5, §13; ADR 0106, kept by ADR 0215). A question has
 //! at most [`MAX_OPTIONS`] enumerated options, the last one always "none of these". A [`Scorer`] (the deterministic
 //! [`Heuristic`], or a consented Laya model) gives a milli-logit per option; a softmax at the node's temperature
 //! gives calibrated probabilities in basis points (integers, so a record hashes the same after a JSON round trip).
@@ -173,7 +173,7 @@ pub trait Scorer: Send + Sync {
 }
 
 pub const HEURISTIC_ID: &str = "qrtz-heuristic";
-/// Version 2: the ctrl-do chain (ADR 0214). Changing a prior changes replay, which the replay check reports.
+/// Version 2: the ctrl-do chain (ADR 0215). Changing a prior changes replay, which the replay check reports.
 pub const HEURISTIC_VERSION: &str = "2";
 
 /// The deterministic layer: the option sources' priors are the logits. No model, no download.

@@ -1,4 +1,4 @@
-//! The stop key and "user input wins" (ADR 0214, amending ADR 0100 §4–§5).
+//! The stop key and "user input wins" (ADR 0215, amending ADR 0100 §4–§5).
 //!
 //! ctrl do may take the foreground: activate apps, press ⌘L, type. While a run is acting, the helper watches
 //! physical input (`ctrl.observe {arm: true}`), telling Jared's events apart from the ones it posted itself:

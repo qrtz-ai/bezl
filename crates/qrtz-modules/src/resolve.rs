@@ -451,7 +451,7 @@ pub fn grants_in_lock(
 
 /// Every extension version in a set of index entries (`packages[name][version]`, what `qrtz-publish build` is about
 /// to sign) that isn't revoked passes [`extension_grants`]; a service range is read as its highest unrevoked
-/// published version. ADR 0214: a revoked version stays in the index (published objects are immutable) but no
+/// published version. ADR 0215: a revoked version stays in the index (published objects are immutable) but no
 /// client ever resolves or installs it, so it is the one thing the check skips; every entry a client can resolve
 /// must pass.
 pub fn check_index_reads(

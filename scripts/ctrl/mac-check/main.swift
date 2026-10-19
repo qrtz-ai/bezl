@@ -1,5 +1,5 @@
 #if os(macOS)
-// ctrl's read-only Mac check (run 15; ctrl do, ADR 0214). Built by scripts/ctrl/mac-check.sh together with a copy of
+// ctrl's read-only Mac check (run 15; ctrl do, ADR 0215). Built by scripts/ctrl/mac-check.sh together with a copy of
 // QrtzCtrl's own sources, so every read goes through the code the helper ships. Strictly read-only: no activation, no
 // keystroke, no press, no window change, no event tap, nothing that can show a permission dialog (Accessibility
 // trust is read with prompt = false). It reads ctrl do's tree and menu shortcuts of the frontmost app and prints only

@@ -1,4 +1,4 @@
-//! ADR 0214: a published version is pulled only by listing it in the repo's revocation list (modules/revoked.json,
+//! ADR 0215: a published version is pulled only by listing it in the repo's revocation list (modules/revoked.json,
 //! passed as the spec's `revoked`). The live index 3933c81e… (index 2, spec/fixtures/ctrl-live-index) carries nano
 //! 0.2.0 and 0.2.1, which declare no reads for their three models (ADR 0212) and so can never pass the read check;
 //! a build on top of it passes only with both revoked, the entries stay (immutable), and no client resolves them.
@@ -116,7 +116,7 @@ fn a_revocation_needs_a_reason() {
             reason: reason.into(),
         }])
         .unwrap_err();
-        assert!(e.contains("ADR 0214"), "{e}");
+        assert!(e.contains("ADR 0215"), "{e}");
     }
 }
 

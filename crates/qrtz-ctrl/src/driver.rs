@@ -1,4 +1,4 @@
-//! The loop (ADR 0214): ask [`chain::next`] what the run needs, do it through the helper, append the result, and
+//! The loop (ADR 0215): ask [`chain::next`] what the run needs, do it through the helper, append the result, and
 //! repeat until Jared must answer (an ask or a confirm) or the run ends. The log is the only state: the driver
 //! can be dropped and rebuilt from the log and the goal, which is how `ctrl:answer` and `ctrl:confirm` resume a run.
 //!

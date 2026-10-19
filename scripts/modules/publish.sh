@@ -281,7 +281,7 @@ else
       sep=","
     done
     printf '\n  ],\n'
-    # ADR 0214: the repo's revocation list (modules/revoked.json) is the only way a published version is pulled. The
+    # ADR 0215: the repo's revocation list (modules/revoked.json) is the only way a published version is pulled. The
     # index keeps the entry (immutable) and lists it in `revoked`; clients never resolve or install it, and the
     # publisher's read check skips it. qrtz-publish prints each new revocation.
     printf '  "revoked": %s,\n' "$(cat "$repo/modules/revoked.json")"

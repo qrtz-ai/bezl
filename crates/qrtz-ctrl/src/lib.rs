@@ -1,4 +1,4 @@
-//! qrtz ctrl core: **ctrl do** (ADR 0214, which amends ADR 0100 and supersedes the per-chore ctrl ADRs).
+//! qrtz ctrl core: **ctrl do** (ADR 0215, which amends ADR 0100 and supersedes the per-chore ctrl ADRs).
 //!
 //! Jared types one command ("open youtube", "create a new note titled groceries") and ctrl does it in the
 //! foreground, the way a person would, through a chain of small decisions over the macOS accessibility tree

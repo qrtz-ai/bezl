@@ -218,7 +218,7 @@ fn the_live_index_2_nano_is_refused_at_install_and_would_be_at_publish() {
         matches!(e, ResolveError::NoReader { ref extension, .. } if extension == "nano"),
         "{e}"
     );
-    // ADR 0214: with both nano versions revoked (modules/revoked.json) every resolvable entry passes.
+    // ADR 0215: with both nano versions revoked (modules/revoked.json) every resolvable entry passes.
     let revoked: Vec<qrtz_modules::sideload::Revoked> = serde_json::from_slice(
         &std::fs::read(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../modules/revoked.json"))
             .unwrap(),

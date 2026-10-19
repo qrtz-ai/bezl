@@ -1,4 +1,4 @@
-//! The confirm gate (ADR 0214; decision-layer spec §9; Bound → Confirm → Act). Before an action that may not be
+//! The confirm gate (ADR 0215; decision-layer spec §9; Bound → Confirm → Act). Before an action that may not be
 //! undoable, the run stops with `confirm.requested` and Jared sees exactly what would happen: the action, the app
 //! and the element. Approve acts once; deny ends the run.
 //!

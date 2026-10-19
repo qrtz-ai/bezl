@@ -1,4 +1,4 @@
-//! ctrl do through the real router (ADR 0214): the generated contract validates requests and responses, the ctrl
+//! ctrl do through the real router (ADR 0215): the generated contract validates requests and responses, the ctrl
 //! manifest's capabilities gate the channels, runs act through the fixture helper, and the history survives a
 //! restart.
 use qrtz_app::ports::*;

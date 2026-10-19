@@ -530,7 +530,7 @@ pub struct Built {
     pub index_sha256: String,
     pub timestamp_version: u64,
     pub added: Vec<String>,
-    /// The spec's revocations that the previous index didn't have (ADR 0214), as `name@v1,v2 (reason)`.
+    /// The spec's revocations that the previous index didn't have (ADR 0215), as `name@v1,v2 (reason)`.
     pub revoked: Vec<String>,
 }
 
@@ -628,7 +628,7 @@ pub fn build_against(
     for r in &spec.revoked {
         if r.package.is_empty() || r.reason.trim().is_empty() {
             return Err(format!(
-                "revoked: {}: name the package and give a reason (ADR 0214)",
+                "revoked: {}: name the package and give a reason (ADR 0215)",
                 r.package
             ));
         }

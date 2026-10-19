@@ -1,4 +1,4 @@
-//! The chain's option sources and heuristic priors (ADR 0214; decision-layer spec §2–§5). [`next`] is a pure
+//! The chain's option sources and heuristic priors (ADR 0215; decision-layer spec §2–§5). [`next`] is a pure
 //! function of the goal and the folded state: it says what the run needs next (an observation, a question, an
 //! action, a backtrack or the end). The driver performs it and appends the result; replay calls the same function
 //! on the same log and must get the same questions ([`crate::driver::replay_check`]).

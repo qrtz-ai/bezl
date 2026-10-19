@@ -1,4 +1,4 @@
-//! ctrl do's fixed action set (ADR 0214) and the host's policy over it. There is no free-form AppleScript, no
+//! ctrl do's fixed action set (ADR 0215) and the host's policy over it. There is no free-form AppleScript, no
 //! coordinate click, no global "type this string": every action is one of these, on an element handle the helper
 //! itself created (from `ctrl.tree` or `ctrl.menu.shortcuts`), or a key combo from the app's own menu bar or the
 //! built-in table, or opening an app or an http(s) address. The helper checks the same rules again before it acts.
@@ -42,7 +42,7 @@ pub enum Action {
         handle: String,
         dir: ScrollDir,
     },
-    /// To `app`, which ctrl brought to the front (foreground is allowed, ADR 0214).
+    /// To `app`, which ctrl brought to the front (foreground is allowed, ADR 0215).
     KeyCombo {
         app: String,
         combo: String,
