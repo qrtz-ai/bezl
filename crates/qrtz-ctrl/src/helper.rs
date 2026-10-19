@@ -549,6 +549,9 @@ pub struct FakeWorld {
     pub laya_models: Vec<Option<String>>,
     /// ADR 0133: the `model` of every `ctrl.laya.warm` request, in order.
     pub laya_warms: Vec<String>,
+    /// Run 36: the code the helper's runtime answers every `ctrl.laya` with instead of probabilities, like the Mac
+    /// runtime refusing a model it may not open read-only (`laya.not_read_only`, `laya.needs_compiled`, ADR 0157 §9).
+    pub laya_refuse: Option<String>,
     /// ADR 0130: last activation per bundle id, when the watch began (`None`: `ctrl.apps` errors), local midnight.
     pub last_active: BTreeMap<String, u64>,
     pub watch_since_ms: Option<u64>,
@@ -614,6 +617,7 @@ impl FakeWorld {
             laya: None,
             laya_models: Vec::new(),
             laya_warms: Vec::new(),
+            laya_refuse: None,
             last_active: BTreeMap::new(),
             watch_since_ms: None,
             day_start_ms: 0,
@@ -1012,6 +1016,12 @@ impl FakeWorld {
                 id, options, model, ..
             } => {
                 self.laya_models.push(model);
+                if let Some(code) = &self.laya_refuse {
+                    return HelperMsg::Error {
+                        id,
+                        code: code.clone(),
+                    };
+                }
                 match &self.laya {
                     Some(p) if p.len() == options.len() => HelperMsg::LayaResult { id, p: p.clone() },
                     _ => HelperMsg::Error {

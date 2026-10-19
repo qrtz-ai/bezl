@@ -488,10 +488,12 @@ public final class MacCtrlBackend: CtrlBackend {
 
 /// The Core ML Laya runtime (ADR 0106 / 0109 / 0116). It runs only a model the user consented to download: the host
 /// sends the installed model's path with each `ctrl.laya` after consent and never otherwise (`QRTZ_CTRL_LAYA_MODEL`
-/// at launch is the developer override), and nothing here downloads anything. A `.mlmodelc` loads as is; an
-/// `.mlpackage` / `.mlmodel` is compiled once into a sibling `.mlmodelc` (the persisted cache, reused while it is
-/// newer than its source). Without a usable model every question answers `laya.no_model` / `laya.load_failed` and
-/// the host keeps the heuristic scorer for that question.
+/// at launch is the developer override), and nothing here downloads anything. A host path is the read-only,
+/// store-linked `model.laya` package (ADR 0157 §9): only a `.mlmodelc` with no writable file loads, as is
+/// (`CtrlLayaLoad`). Only the developer override's `.mlpackage` / `.mlmodel` is compiled once into a sibling
+/// `.mlmodelc` (the persisted cache, reused while it is newer than its source). Without a usable model every
+/// question answers `laya.no_model` / `laya.load_failed` / `laya.not_read_only` / `laya.needs_compiled` and the host
+/// keeps the heuristic scorer for that question.
 final class CtrlLayaRuntime: @unchecked Sendable {
     private var models: [String: MLModel] = [:]
     private var failed: Set<String> = []
@@ -524,16 +526,26 @@ final class CtrlLayaRuntime: @unchecked Sendable {
 
     func load(_ model: String?) throws -> MLModel {
         let env = ProcessInfo.processInfo.environment["QRTZ_CTRL_LAYA_MODEL"]
-        guard let path = (model?.isEmpty == false ? model : env), !path.isEmpty else { throw CtrlFailure("laya.no_model") }
+        let fromHost = model?.isEmpty == false
+        guard let path = (fromHost ? model : env), !path.isEmpty else { throw CtrlFailure("laya.no_model") }
         lock.lock(); defer { lock.unlock() }
         if let m = models[path] { return m }
         if failed.contains(path) { throw CtrlFailure("laya.load_failed") }
-        let url = URL(fileURLWithPath: path)
-        guard Self.kinds.contains(url.pathExtension), FileManager.default.fileExists(atPath: path) else { throw CtrlFailure("laya.no_model") }
+        // ADR 0157 §9: a host path is the read-only store package, opened as is and never compiled into.
+        let open: URL
+        switch CtrlLayaLoad.plan(path: path, fromHost: fromHost) {
+        case let .refuse(code): throw CtrlFailure(code)
+        case let .asIs(p): open = URL(fileURLWithPath: p)
+        case let .compile(p):
+            do { open = try Self.compiled(URL(fileURLWithPath: p)) } catch {
+                failed.insert(path)
+                throw CtrlFailure("laya.load_failed")
+            }
+        }
         let c = MLModelConfiguration()
         c.computeUnits = .all // L512: GPU 9 ms vs CPU+ANE 27.5 ms warm (laya-coreml README, ADR 0129)
         do {
-            let m = try MLModel(contentsOf: try Self.compiled(url), configuration: c)
+            let m = try MLModel(contentsOf: open, configuration: c)
             models[path] = m
             return m
         } catch {
