@@ -108,6 +108,7 @@
   },
   "appTccEntitlements": {
     "com.apple.security.device.audio-input": "ADR 0154: the microphone, for echo dictation and nano recordings (held by qrtz.app since M4.7)",
+    "com.apple.security.personal-information.calendars": "ADR 0217: Apple Calendar, read-only, for nano (EventKit in qrtz-nano; asked only when the user turns the calendar on in nano)",
     "com.apple.security.automation.apple-events": "ADR 0154: Apple Events, held by qrtz.app only. ctrl's use is REVOKED (ADR 0214 security review, 2026-10-19): ctrl do never sends Apple Events and qrtz-ctrl's signature carries no entitlement; kept on the host until Bozniak rules on it"
   },
   "entitlements": {

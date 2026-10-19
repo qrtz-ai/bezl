@@ -33,6 +33,9 @@ public func makeNanoPlatform(micHub: MicHub, modelLoads: ModelLoads = ModelLoads
     var deps = NanoDeps(meetings: AXMeetingSource(context: context), audio: audio, transcribers: asr, context: context,
                         enhancer: LocalVqeEnhancer())
     deps.summarizer = FoundationModelsSummarizer()
+    // ADR 0217: Apple Calendar, read-only; access is asked for only on the host's calendar.request.
+    deps.calendar = EventKitCalendarStore()
+    features.append("calendar.eventkit")
     deps.systemTranscribers = [NemotronTranscriber()]
     deps.diarizers = [.mic: NemotronChannelDiarizer(), .system: NemotronChannelDiarizer()]
     deps.modelLoads = modelLoads

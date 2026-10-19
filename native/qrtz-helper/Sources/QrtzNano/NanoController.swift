@@ -18,6 +18,8 @@ public actor NanoController: ModulePart {
     private let afterWarm: @Sendable () async -> Void
     /// ADR 0075: summarize requests, off the message queue.
     public nonisolated let summaries: SummarizeService
+    /// ADR 0217: calendar requests, off the message queue (the access prompt waits on the user).
+    public nonisolated let calendar: CalendarService
     private var recording: Recording?
     private var tick: Task<Void, Never>?
     public private(set) var paused = false
@@ -29,6 +31,7 @@ public actor NanoController: ModulePart {
         self.deps = deps; self.send = send; self.now = now; self.link = link
         self.speech = speech; self.echoReference = echoReference; self.afterWarm = afterWarm
         self.summaries = SummarizeService(model: deps.summarizer, send: send)
+        self.calendar = CalendarService(store: deps.calendar, send: send)
     }
 
     public func start() {
@@ -38,7 +41,7 @@ public actor NanoController: ModulePart {
     public nonisolated func owns(_ m: HostMessage) -> Bool {
         switch m {
         case .recordingStart, .recordingStop, .recordingAbort, .recordingPause, .recordingResume, .modelsWarm,
-             .summarize, .summarizeCancel, .summarizeCheck: return true
+             .summarize, .summarizeCancel, .summarizeCheck, .calendarCheck, .calendarRequest, .calendarRead: return true
         default: return false
         }
     }
@@ -65,6 +68,9 @@ public actor NanoController: ModulePart {
         case .modelsWarm: await warmModels()
         case .summarize(let id, let stage, let prompt): await summaries.start(id: id, stage: stage, prompt: prompt)
         case .summarizeCancel(let id): await summaries.cancel(id: id)
+        case .calendarCheck, .calendarRequest, .calendarRead:
+            let svc = calendar
+            Task { await svc.handle(m) }
         case .summarizeCheck(let id):
             // Availability can take a moment (model assets); answer off the queue too.
             let svc = summaries
@@ -86,7 +92,7 @@ public actor NanoController: ModulePart {
 
     public nonisolated func clockMs() -> Double? { relativeMs() }
     public func beginShutdown() async { await stopRecording() }
-    public func shutdown() { deps.meetings?.stop() }
+    public func shutdown() { deps.meetings?.stop(); calendar.shutdown() }
 
     final class Recording: @unchecked Sendable {
         let wav: WavWriter

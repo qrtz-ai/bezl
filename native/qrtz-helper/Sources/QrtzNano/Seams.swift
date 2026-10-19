@@ -92,6 +92,8 @@ public struct NanoDeps: Sendable {
     public var silence: SilenceConfig
     /// ADR 0075: the on-device summary model (nil = `summarize` answers unavailable/unsupported).
     public var summarizer: OnDeviceSummarizer? = nil
+    /// ADR 0217: the Apple Calendar database (EventKit on macOS; nil = calendar.* answers unsupported).
+    public var calendar: CalendarStore? = nil
     public init(meetings: MeetingSource? = nil, audio: [AudioSource] = [], transcribers: [StreamingTranscriber] = [],
                 context: MeetingContext = MeetingContext(), enhancer: MicEnhancer? = nil, silence: SilenceConfig = .default) {
         self.meetings = meetings; self.audio = audio; self.transcribers = transcribers
