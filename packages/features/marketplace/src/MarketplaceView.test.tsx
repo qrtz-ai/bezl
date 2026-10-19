@@ -543,3 +543,46 @@ describe('every permission is granted from inside qrtz', () => {
     expect(el.textContent).toBe(el.textContent?.toLowerCase());
   });
 });
+
+describe('the store unreachable or empty (every host failed)', () => {
+  for (const raw of [
+    'every host failed: https://modules.qrtz.ai/v1/timestamp.json: not found',
+    'every host failed: modules.qrtz.ai: error sending request',
+  ])
+    it(`shows a friendly retry, not the raw E_UNAVAILABLE text, and logs it (${raw.slice(19, 40)}…)`, async () => {
+      let down = true;
+      const f = fake({
+        'packages:refresh': () => {
+          if (down)
+            throw new AppError('E_UNAVAILABLE', raw, { retryable: true });
+          return ipcSamples['packages:refresh'].response;
+        },
+        'log:write': () => ({ accepted: true }),
+      });
+      await render(f.client);
+      await click('marketplace-check');
+      expect(q('marketplace-error')).toBeNull();
+      const box = q('marketplace-unavailable');
+      expect(box?.textContent).toContain(
+        "the store isn't available right now, try again in a bit",
+      );
+      expect(el.textContent).not.toContain('every host failed');
+      expect(el.textContent).not.toContain('E_UNAVAILABLE');
+      expect(
+        f.calls.filter((c) => c.channel === 'log:write').map((c) => c.payload),
+      ).toEqual([
+        {
+          level: 'warn',
+          scope: 'marketplace',
+          message: `store unavailable: ${raw}`,
+        },
+      ]);
+      // retry asks again; once the store answers, the message goes away.
+      down = false;
+      await click('marketplace-retry');
+      expect(
+        f.calls.filter((c) => c.channel === 'packages:refresh'),
+      ).toHaveLength(2);
+      expect(q('marketplace-unavailable')).toBeNull();
+    });
+});

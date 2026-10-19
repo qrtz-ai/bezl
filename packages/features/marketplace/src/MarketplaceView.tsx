@@ -34,6 +34,7 @@ import {
   isModuleInstalled,
   isModuleOn,
   loadConfig,
+  LOG_MESSAGE_MAX,
   requestNavigate,
   type CatalogEntry,
   type Config,
@@ -67,6 +68,22 @@ type Verb = 'install' | 'update' | 'remove';
 export const isNotSetUp = (e: unknown) =>
   (e as { options?: { details?: { reason?: string } } } | null)?.options
     ?.details?.reason === 'not-set-up';
+/**
+ * The store couldn't reach modules.qrtz.ai, or the host answered 404 (an empty bucket): packages_ipc maps
+ * InstallError::Network ("every host failed: …") to a retryable E_UNAVAILABLE. Shown as a friendly
+ * "try again" with a retry, never the raw text (which goes to the local log instead).
+ */
+export const isStoreUnavailable = (e: unknown) => {
+  const x = e as { code?: string; message?: string } | null;
+  return (
+    x?.code === 'E_UNAVAILABLE' &&
+    !isNotSetUp(e) &&
+    /^every host failed\b/i.test(x.message ?? '')
+  );
+};
+/** The friendly line for isStoreUnavailable. */
+export const STORE_UNAVAILABLE =
+  "the store isn't available right now, try again in a bit";
 /**
  * The shared section's "used by" line, from the host's `usedBy` (qrtz.lock's extensions plus the modules a pinned
  * model is for): the same answer `packages:prune` keeps by, so a row never reads "used by nothing" while clean up
@@ -123,10 +140,27 @@ export default function MarketplaceView() {
 
   // modules.qrtz.ai isn't live yet (no root pinned in this build): a friendly "coming soon", not an error.
   const [soon, setSoon] = useState(false);
-  const fail = useCallback((e: Error) => {
-    if (isNotSetUp(e)) setSoon(true);
-    else setError(e.message);
-  }, []);
+  const [unavailable, setUnavailable] = useState(false);
+  const fail = useCallback(
+    (e: Error) => {
+      if (isNotSetUp(e)) setSoon(true);
+      else if (isStoreUnavailable(e)) {
+        setUnavailable(true);
+        // The raw reason (hosts and paths only, no user content) goes to qrtz.log for diagnosis.
+        void qrtz
+          .invoke('log:write', {
+            level: 'warn',
+            scope: 'marketplace',
+            message: `store unavailable: ${e.message}`.slice(
+              0,
+              LOG_MESSAGE_MAX,
+            ),
+          })
+          .catch(() => {});
+      } else setError(e.message);
+    },
+    [qrtz],
+  );
   const load = useCallback(
     () => qrtz.invoke('packages:list').then(setState, fail),
     [qrtz, fail],
@@ -152,6 +186,7 @@ export default function MarketplaceView() {
 
   const check = () => {
     setError(null);
+    setUnavailable(false);
     setChecking(true);
     qrtz
       .invoke('packages:refresh')
@@ -160,6 +195,7 @@ export default function MarketplaceView() {
   };
   const propose = (name: string, verb: Verb) => {
     setError(null);
+    setUnavailable(false);
     const op: PackageOp =
       verb === 'install'
         ? { op: 'install', names: [name] }
@@ -338,6 +374,27 @@ export default function MarketplaceView() {
     </Callout>
   ) : null;
 
+  const unavailableBox = unavailable ? (
+    <Callout
+      tone="warning"
+      title={STORE_UNAVAILABLE}
+      data-testid="marketplace-unavailable"
+      action={
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="refresh"
+          loading={checking}
+          disabled={checking}
+          onClick={check}
+          data-testid="marketplace-retry"
+        >
+          retry
+        </Button>
+      }
+    />
+  ) : null;
+
   const errorBox = error ? (
     <Callout
       tone="danger"
@@ -401,6 +458,7 @@ export default function MarketplaceView() {
           />
         }
       >
+        {unavailableBox}
         {errorBox}
         {restartBox}
         <Detail
@@ -429,6 +487,7 @@ export default function MarketplaceView() {
       <Page data-testid="module-manager" title="marketplace">
         {tabs}
         {soonBox}
+        {unavailableBox}
         {errorBox}
         {restartBox}
         {installBar}
@@ -608,6 +667,7 @@ export default function MarketplaceView() {
         </Text>
       </Toolbar>
       {soonBox}
+      {unavailableBox}
       {errorBox}
       {restartBox}
       {installBar}

@@ -17,5 +17,7 @@ export const manifest = SubAppManifest.parse({
     'os.permissions',
     'speech.read',
     'speech.manage',
+    // A store that can't be reached shows a friendly line; the raw reason goes to qrtz.log (ADR 0083).
+    'log.write',
   ],
 });

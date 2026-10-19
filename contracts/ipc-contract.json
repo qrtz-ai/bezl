@@ -13874,7 +13874,8 @@
         "config.read",
         "os.permissions",
         "speech.read",
-        "speech.manage"
+        "speech.manage",
+        "log.write"
       ]
     },
     {
