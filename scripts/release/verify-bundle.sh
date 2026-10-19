@@ -11,6 +11,7 @@
 #     audio-input, calendars; qrtz-echo audio-input; qrtz none. get-task-allow anywhere fails;
 #   - every Mach-O anywhere in the bundle (Frameworks, Helpers, XPCServices, Library/LoginItems, Resources, ...) and
 #     every nested .app/.framework/.xpc/.appex/.bundle/.dylib is one of the three known executables, else it fails;
+#   - no symlink in Contents resolves outside the bundle (or dangles);
 #   - codesign --verify --deep --strict on the app (designated requirement ai.qrtz.desktop, notarized);
 #   - spctl -a -vv says Notarized Developer ID, and xcrun stapler validate passes.
 # The 0.2.4 candidate failed the first two: tauri build's signatures (file-name identifiers, the app's entitlements
@@ -70,6 +71,14 @@ while IFS= read -r -d '' d; do
   fail "unknown nested code bundle: ${d#"$app"/}"
 done < <(find "$app/Contents" -mindepth 1 \( -name '*.app' -o -name '*.framework' -o -name '*.xpc' -o -name '*.appex' -o -name '*.bundle' -o -name '*.dylib' \) -print0)
 [[ "$(ent_keys "$app")" == *get-task-allow* ]] && fail "qrtz.app carries com.apple.security.get-task-allow"
+
+# No symlink in Contents may point outside the bundle (or nowhere).
+app_real="$(cd "$app" && pwd -P)"
+while IFS= read -r -d '' l; do
+  rel="${l#"$app"/}"
+  dest="$(realpath "$l" 2>/dev/null)" || { fail "symlink $rel -> $(readlink "$l") does not resolve"; continue; }
+  [[ "$dest" == "$app_real"/* ]] || fail "symlink $rel resolves outside the bundle: $dest"
+done < <(find "$app/Contents" -type l -print0)
 
 if codesign --verify --deep --strict -R="anchor apple generic and identifier \"ai.qrtz.desktop\" and certificate leaf[subject.OU] = \"$team\" and notarized" "$app" 2>/dev/null; then
   ok "codesign --verify --deep --strict (ai.qrtz.desktop, notarized)"

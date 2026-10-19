@@ -7,6 +7,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import os from 'node:os';
@@ -131,6 +132,30 @@ describe('verify-bundle.sh', () => {
       expect(r.stderr).toContain(
         'unknown Mach-O in the bundle: Contents/Resources/sneaky',
       );
+    },
+  );
+
+  it.runIf(mac)(
+    'fails on a symlink in Contents that resolves outside the bundle, not on one inside',
+    () => {
+      const r = verify(
+        fakeApp(base(), (app) => {
+          const res = path.join(app, 'Contents', 'Resources');
+          mkdirSync(res, { recursive: true });
+          writeFileSync(path.join(res, 'notes.txt'), 'x');
+          symlinkSync('notes.txt', path.join(res, 'inside'));
+          symlinkSync('/etc/hosts', path.join(res, 'outside'));
+          symlinkSync('../../../..', path.join(res, 'up'));
+        }),
+      );
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain(
+        'symlink Contents/Resources/outside resolves outside the bundle',
+      );
+      expect(r.stderr).toContain(
+        'symlink Contents/Resources/up resolves outside the bundle',
+      );
+      expect(r.stderr).not.toContain('Resources/inside');
     },
   );
 });
