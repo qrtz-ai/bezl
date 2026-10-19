@@ -239,6 +239,8 @@ export const HelperToHost = z.discriminatedUnion('type', [
     type: z.literal('hotkey'),
     action: z.enum(['down', 'up']),
     ctrl: z.boolean().optional(),
+    // R2 (ADR 0216): a release the helper made up at sleep/wake (N196); a ctrl+fn command it ends runs nothing.
+    sleep: z.boolean().optional(),
   }),
   z.object({
     type: z.literal('dictation.started'),

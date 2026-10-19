@@ -7,6 +7,7 @@ import QrtzShared
 /// Native key monitor for push-to-talk (Electron global shortcuts only report key-down).
 public extension HotkeyMonitor {
     var pressWithControl: Bool { false }
+    var releaseAtSleep: Bool { false }
 }
 
 public protocol HotkeyMonitor: AnyObject, Sendable {
@@ -15,6 +16,8 @@ public protocol HotkeyMonitor: AnyObject, Sendable {
     func start(key: String, consumeFn: Bool, onChange: @escaping @Sendable (HotkeyAction) -> Void) -> Bool
     /// ADR 0216: the current press began as ctrl+fn (read when an edge is reported).
     var pressWithControl: Bool { get }
+    /// R2 (ADR 0216): the edge being reported is a release made up at sleep/wake (N196), not the user letting go.
+    var releaseAtSleep: Bool { get }
     func stop()
 }
 
@@ -275,7 +278,7 @@ public actor DictationEngine {
             self.consumeFn = consumeFn
             if !pushKey.isEmpty, let hk = hotkeys {
                 let send = self.send
-                if !hk.start(key: pushKey, consumeFn: consumeFn, onChange: { [weak hk] a in send(.hotkey(a, ctrl: hk?.pressWithControl ?? false)) }) {
+                if !hk.start(key: pushKey, consumeFn: consumeFn, onChange: { [weak hk] a in send(.hotkey(a, ctrl: hk?.pressWithControl ?? false, sleep: hk?.releaseAtSleep ?? false)) }) {
                     send(.error(code: "dictation.hotkey", message: "push-to-talk key \(pushKey) unavailable (Input Monitoring / Accessibility?)", fatal: false))
                 }
             }

@@ -425,6 +425,9 @@ struct Inner {
     key_held: bool,
     /// ADR 0216: the last press was ctrl+fn (`hotkey{down, ctrl: true}`).
     press_ctrl: bool,
+    /// R2 (ADR 0216): the last release was synthesised at sleep/wake (`hotkey{up, sleep: true}`), not the user
+    /// letting go: a ctrl+fn command it ends is cut short. Reset by every press.
+    release_sleep: bool,
     key_down: f64,
     key_up: f64,
     /// N166: when the push key last went down (a press queued behind a finishing dictation, N110, starts later).
@@ -532,6 +535,7 @@ impl TalkService {
                 via_push_key: false,
                 key_held: false,
                 press_ctrl: false,
+                release_sleep: false,
                 key_down: 0.0,
                 key_up: 0.0,
                 press_at: 0.0,
@@ -801,6 +805,7 @@ impl TalkService {
                 if action == "down" {
                     g.key_held = true;
                     g.press_ctrl = m["ctrl"] == true;
+                    g.release_sleep = false;
                     g.press_helper = (g.hellos, g.helper_downs);
                     g.press_at = self.mono();
                     if g.view.takes_a_start() {
@@ -816,6 +821,16 @@ impl TalkService {
                     }
                 } else if action == "up" {
                     g.key_held = false;
+                    // R2 (ADR 0216): a release the helper made up at sleep/wake (lid closed mid-hold) is not the
+                    // end of a ctrl command: whatever was heard may be half of it, so it runs nothing. Dictation
+                    // still inserts what it heard (N196).
+                    if m["sleep"] == true {
+                        g.release_sleep = true;
+                        let id = g.view.id.clone();
+                        if let Some(a) = g.attempt.as_mut().filter(|a| a.to_ctrl && Some(&a.id) == id.as_ref()) {
+                            a.cut_short = true;
+                        }
+                    }
                     if self.0.pending_press.swap(false, Ordering::SeqCst) {
                         g.via_push_key = false;
                         tracing::info!(
@@ -923,6 +938,16 @@ impl TalkService {
                     let mut g = self.lock();
                     let ours = m["id"].as_str().is_none_or(|id| g.view.id.as_deref() == Some(id));
                     if g.view.phase != TalkPhase::Listening || !ours {
+                        // M1 (ADR 0216): a ctrl command finalizing when the mic fails runs nothing: its final may
+                        // be missing its tail.
+                        let vid = g.view.id.clone();
+                        if g.view.phase == TalkPhase::Finalizing && ours {
+                            if let Some(a) =
+                                g.attempt.as_mut().filter(|a| a.to_ctrl && Some(&a.id) == vid.as_ref())
+                            {
+                                a.cut_short = true;
+                            }
+                        }
                         if g.view.active() {
                             tracing::warn!(phase = ?g.view.phase, ours, "dictation.mic for another press; the dictation keeps going");
                         }
@@ -1312,7 +1337,8 @@ impl TalkService {
                 finals: Vec::new(),
                 partial: String::new(),
                 to_ctrl: from_key && g.press_ctrl,
-                cut_short: false,
+                // R2: the press's release already came from sleep/wake while the engine was starting.
+                cut_short: from_key && g.press_ctrl && g.release_sleep && !g.key_held,
             });
             (Self::waiter(&mut g, format!("started:{id}")), g.helper_downs)
         };
@@ -1418,7 +1444,10 @@ impl TalkService {
             // Review H-C/H-C2: a ctrl command runs only on the helper's real final. A timeout, or a lost helper
             // (which releases the waiter with nothing), cuts it short: no late final (it would land on the
             // clipboard or in history), no fallback to what was shown; `finish` runs nothing and says so.
-            let ctrl_cut = stopped.is_none() && ctrl.is_some();
+            // H-C4: an empty final is no command either (never the shown words or the on-device engine's), and a
+            // press already cut short (R2 sleep release, M1 mic error) stays cut short.
+            let empty_final = stopped.as_ref().is_none_or(|m| s(m, "text").trim().is_empty());
+            let ctrl_cut = ctrl.as_ref().is_some_and(|a| empty_final || a.cut_short);
             if let Some(a) = ctrl.filter(|_| ctrl_cut) {
                 a.cut_short = true;
                 g.late.remove(&id);
@@ -1481,6 +1510,12 @@ impl TalkService {
                 return;
             }
             g.key_up = self.mono();
+            // H-C3 (ADR 0216): the helper ended it (mic lost, permission revoked, engine gone, helper lost): the
+            // words so far may be half a ctrl command, so a ctrl press runs nothing. The reason still shows.
+            if let Some(a) = g.attempt.as_mut().filter(|a| a.id == id && a.to_ctrl) {
+                a.cut_short = true;
+                g.late.remove(&id);
+            }
             g.view.phase = TalkPhase::Finalizing;
             g.view.level = 0.0;
             self.emit_view(&g);
@@ -1602,7 +1637,12 @@ impl TalkService {
                 return g.view.id.as_deref() == Some(id.as_str());
             };
             // Review H-C2: a cut-short ctrl command never falls back to the on-device engine.
-            let wait_for_module = local_text.trim().is_empty() && !(a.to_ctrl && a.cut_short);
+            // H-C4 (ADR 0216): a ctrl command is only ever the helper's real final: never wait for the on-device
+            // engine, and an empty final is cut short.
+            if a.to_ctrl && local_text.trim().is_empty() {
+                a.cut_short = true;
+            }
+            let wait_for_module = local_text.trim().is_empty() && !a.to_ctrl;
             a.local.as_ref().and_then(|l| {
                 l.finish();
                 if wait_for_module {
@@ -1626,7 +1666,8 @@ impl TalkService {
             };
             // The helper's full text from `dictation.stopped` wins; else what the session heard.
             let text = match local_text.trim() {
-                "" if a.to_ctrl && a.cut_short => String::new(),
+                _ if a.to_ctrl && a.cut_short => String::new(),
+                "" if a.to_ctrl => String::new(),
                 "" => a.live(),
                 t => t.to_owned(),
             };

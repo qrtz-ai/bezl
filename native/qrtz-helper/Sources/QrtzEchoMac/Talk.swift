@@ -154,6 +154,9 @@ public final class MacHotkeys: HotkeyMonitor, @unchecked Sendable {
 
     /// ADR 0216: read on the tap's thread right after the filter reported the edge.
     public var pressWithControl: Bool { filter?.withControl ?? false }
+    /// R2 (ADR 0216): set only while a sleep/wake release is reported (main queue), so a ctrl+fn command runs nothing.
+    private var powerRelease = false
+    public var releaseAtSleep: Bool { powerRelease }
 
     public func start(key: String, consumeFn: Bool, onChange: @escaping @Sendable (HotkeyAction) -> Void) -> Bool {
         stop()
@@ -176,12 +179,15 @@ public final class MacHotkeys: HotkeyMonitor, @unchecked Sendable {
         let nc = NSWorkspace.shared.notificationCenter
         let sleep = nc.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
             guard let self, let up = self.filter?.willSleep() else { return }
+            self.powerRelease = true; defer { self.powerRelease = false }
             self.onChange?(up)
         }
         let wake = nc.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             guard let self else { return }
             let flags = CGEventSource.flagsState(.combinedSessionState).rawValue
-            if let up = self.filter?.didWake(flags: flags) { self.onChange?(up) }
+            guard let up = self.filter?.didWake(flags: flags) else { return }
+            self.powerRelease = true; defer { self.powerRelease = false }
+            self.onChange?(up)
         }
         powerObservers = [sleep, wake]
     }

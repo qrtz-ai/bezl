@@ -718,6 +718,9 @@
           },
           "ctrl": {
             "type": "boolean"
+          },
+          "sleep": {
+            "type": "boolean"
           }
         },
         "required": [

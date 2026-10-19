@@ -24,6 +24,7 @@
 {"action":"down","type":"hotkey"}
 {"action":"up","type":"hotkey"}
 {"action":"down","ctrl":true,"type":"hotkey"}
+{"action":"up","ctrl":true,"sleep":true,"type":"hotkey"}
 {"id":"d1","preRollMs":300,"type":"dictation.started"}
 {"rms":0.42,"type":"dictation.level"}
 {"event":{"kind":"partial","startMs":0,"text":"hello wor","utteranceId":"d1-0"},"id":"d1","type":"dictation.asr"}

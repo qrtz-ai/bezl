@@ -133,3 +133,103 @@ async fn a_ctrl_press_whose_helper_dies_before_the_final_runs_nothing() {
     assert_eq!(v.error.as_deref(), Some(qrtz_talk::service::MSG_CTRL_CUT_SHORT));
     assert!(v.error.unwrap().starts_with("didn't catch it all"));
 }
+
+fn nothing_ran(r: &Rig) {
+    assert!(r.commands.lock().unwrap().is_empty(), "nothing ran");
+    assert!(r.helper.sent_of("insert.text").is_empty(), "nothing typed");
+    assert!(r.clip.0.lock().unwrap().is_empty(), "nothing on the clipboard");
+    assert!(r.svc.history().is_empty(), "no history");
+}
+
+async fn hold_ctrl(r: &Rig) -> String {
+    r.helper
+        .deliver(json!({"type": "hotkey", "action": "down", "ctrl": true}));
+    until(|| r.view().phase == TalkPhase::Listening, 2000).await;
+    sleep(1500).await;
+    r.helper.active().expect("listening")
+}
+
+/// Review H-C3 (a): the helper ends a ctrl+fn hold itself (mic lost) with the words so far: half a command runs
+/// nothing, and the mic message still shows.
+#[tokio::test(start_paused = true)]
+async fn a_ctrl_hold_the_helper_ends_runs_nothing() {
+    let r = rig(RigOpts::default());
+    let id = hold_ctrl(&r).await;
+    r.helper.deliver(json!({"type": "dictation.stopped", "id": id, "text": "delete the",
+        "durationMs": 1500, "reason": "mic-lost"}));
+    until(|| r.view().phase == TalkPhase::Error, 10_000).await;
+    sleep(10_000).await;
+    nothing_ran(&r);
+    assert_eq!(r.view().error_kind, Some(TalkErrorKind::MicLost));
+}
+
+/// Review H-C4 (b): a real final with no text is no command, never the live partials or the on-device engine's.
+#[tokio::test(start_paused = true)]
+async fn a_ctrl_press_with_an_empty_final_runs_nothing() {
+    let r = rig(RigOpts::default());
+    r.helper.set_opts(|o| o.stopped_delay_ms = 60_000);
+    let id = hold_ctrl(&r).await;
+    assert!(!r.view().text.is_empty() || !r.view().partial.is_empty(), "live words were shown");
+    r.helper
+        .deliver(json!({"type": "hotkey", "action": "up", "ctrl": true}));
+    until(|| r.view().phase == TalkPhase::Finalizing, 2000).await;
+    sleep(50).await;
+    r.helper.deliver(
+        json!({"type": "dictation.stopped", "id": id, "text": "  ", "durationMs": 1500}),
+    );
+    until(|| r.view().phase == TalkPhase::Idle, 10_000).await;
+    sleep(10_000).await;
+    nothing_ran(&r);
+}
+
+/// Review R2 (c): the release the helper makes up at sleep (lid closed mid-hold) cuts a ctrl+fn command short.
+#[tokio::test(start_paused = true)]
+async fn a_sleep_release_during_a_ctrl_hold_runs_nothing() {
+    let r = rig(RigOpts::default());
+    hold_ctrl(&r).await;
+    r.helper.deliver(
+        json!({"type": "hotkey", "action": "up", "ctrl": true, "sleep": true}),
+    );
+    until(|| r.view().phase == TalkPhase::Idle, 10_000).await;
+    sleep(10_000).await;
+    nothing_ran(&r);
+    // The next ordinary ctrl+fn press runs again.
+    press(&r, true).await;
+    assert_eq!(r.commands.lock().unwrap().len(), 1);
+}
+
+/// R2: plain fn keeps N196: a sleep release inserts what was heard.
+#[tokio::test(start_paused = true)]
+async fn a_sleep_release_of_plain_fn_still_inserts() {
+    let r = rig(RigOpts::default());
+    r.helper
+        .deliver(json!({"type": "hotkey", "action": "down"}));
+    until(|| r.view().phase == TalkPhase::Listening, 2000).await;
+    sleep(1500).await;
+    r.helper
+        .deliver(json!({"type": "hotkey", "action": "up", "sleep": true}));
+    until(|| r.view().phase == TalkPhase::Idle, 10_000).await;
+    sleep(100).await;
+    assert_eq!(r.helper.sent_of("insert.text").len(), 1);
+}
+
+/// Review M1 (d): a mic or recogniser error while a ctrl command is finalizing runs nothing, even when the final
+/// still comes afterwards.
+#[tokio::test(start_paused = true)]
+async fn a_mic_or_asr_error_while_a_ctrl_command_finalizes_runs_nothing() {
+    for code in ["dictation.mic", "dictation.asr"] {
+        let r = rig(RigOpts::default());
+        r.helper.set_opts(|o| o.stopped_delay_ms = 300);
+        let id = hold_ctrl(&r).await;
+        r.helper
+            .deliver(json!({"type": "hotkey", "action": "up", "ctrl": true}));
+        until(|| r.view().phase == TalkPhase::Finalizing, 2000).await;
+        r.helper.deliver(json!({"type": "error", "code": code, "id": id,
+            "message": "x", "fatal": false}));
+        sleep(10_000).await;
+        assert!(r.commands.lock().unwrap().is_empty(), "{code}: nothing ran");
+        assert!(r.helper.sent_of("insert.text").is_empty(), "{code}");
+        assert!(r.clip.0.lock().unwrap().is_empty(), "{code}");
+        assert!(r.svc.history().is_empty(), "{code}");
+    }
+}

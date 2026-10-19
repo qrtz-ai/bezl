@@ -65,6 +65,12 @@ final class HotkeyFilterTests: XCTestCase {
         XCTAssertNil(HelperMessage.hotkey(.down).json.object?["ctrl"])
     }
 
+    /// R2 (ADR 0216): a sleep/wake release says so; an ordinary edge carries no `sleep`.
+    func testHotkeyLineCarriesSleepOnlyWhenSet() throws {
+        XCTAssertEqual(HelperMessage.hotkey(.up, ctrl: true, sleep: true).json.object?["sleep"]?.bool, true)
+        XCTAssertNil(HelperMessage.hotkey(.up, ctrl: true).json.object?["sleep"])
+    }
+
     func testOtherEventsPassThroughWhileConsuming() throws {
         var f = try XCTUnwrap(F(key: "fn", consumeFn: true))
         // Typing, Fn+arrow (the Fn flag rides on the key event), and other modifiers are never dropped.
