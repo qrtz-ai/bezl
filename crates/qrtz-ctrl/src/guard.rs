@@ -31,6 +31,10 @@ pub struct Observed {
     /// The watcher is running (`false`: it couldn't start, e.g. no event-tap permission; the host then won't act).
     #[serde(default)]
     pub armed: bool,
+    /// Review (d): why an unarmed watcher couldn't start: `accessibility`, `input_monitoring` or `secure_input`
+    /// (none: unknown).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub missing: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -44,6 +48,12 @@ pub enum StopReason {
     StopButton,
     /// The watcher couldn't be armed, so ctrl can't promise the stop key works: it doesn't act.
     NoWatcher,
+    /// Review (d): no watcher because qrtz has no Accessibility permission.
+    NoAccessibility,
+    /// Review (d): no watcher because qrtz has no Input Monitoring permission.
+    NoInputMonitoring,
+    /// Review (d): no watcher because secure input is on (a password field or prompt has the keyboard).
+    SecureInput,
 }
 
 /// The guard's verdict on one observation.
@@ -53,7 +63,12 @@ pub fn verdict(o: &Observed) -> Option<StopReason> {
     } else if o.user_input {
         Some(StopReason::UserInput)
     } else if !o.armed {
-        Some(StopReason::NoWatcher)
+        Some(match o.missing.as_deref() {
+            Some("accessibility") => StopReason::NoAccessibility,
+            Some("input_monitoring") => StopReason::NoInputMonitoring,
+            Some("secure_input") => StopReason::SecureInput,
+            _ => StopReason::NoWatcher,
+        })
     } else {
         None
     }

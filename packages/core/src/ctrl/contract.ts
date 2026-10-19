@@ -25,12 +25,16 @@ export const CtrlRunStatus = z.enum([
 ]);
 export type CtrlRunStatus = z.infer<typeof CtrlRunStatus>;
 
-/** Why a run stopped: Esc, Jared's own input, the stop button, or no stop-key watcher (ctrl then never acts). */
+/** Why a run stopped: Esc, Jared's own input, the stop button, or no stop-key watcher (ctrl then never acts),
+ * naming the missing permission or secure input when the helper knows it. */
 export const CtrlStop = z.enum([
   'stop-key',
   'user-input',
   'stop-button',
   'no-watcher',
+  'no-accessibility',
+  'no-input-monitoring',
+  'secure-input',
 ]);
 export type CtrlStop = z.infer<typeof CtrlStop>;
 

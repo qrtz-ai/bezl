@@ -584,6 +584,21 @@ fn user_input_wins_and_no_watcher_means_no_action() {
     assert_eq!(r.drive(), Step::Finished(TaskStatus::Stopped));
     assert_eq!(r.log.state().stop, Some(StopReason::NoWatcher));
     assert!(r.acts().is_empty());
+
+    // Review (d): the stop says which permission is missing.
+    for (m, want) in [
+        ("accessibility", StopReason::NoAccessibility),
+        ("input_monitoring", StopReason::NoInputMonitoring),
+        ("secure_input", StopReason::SecureInput),
+    ] {
+        let mut w = world();
+        w.no_watcher = true;
+        w.missing = Some(m.into());
+        let mut r = Run::new("open youtube", w);
+        assert_eq!(r.drive(), Step::Finished(TaskStatus::Stopped));
+        assert_eq!(r.log.state().stop, Some(want), "{m}");
+        assert!(r.acts().is_empty());
+    }
 }
 
 #[test]

@@ -26,6 +26,11 @@ const STOP: Record<CtrlStop, string> = {
   'user-input': 'you took over',
   'stop-button': 'you pressed stop',
   'no-watcher': "ctrl couldn't watch for esc, so it didn't act",
+  'no-accessibility':
+    "ctrl needs accessibility to watch for esc, so it didn't act. turn it on in system settings → privacy & security",
+  'no-input-monitoring':
+    "ctrl needs input monitoring to watch for esc, so it didn't act. turn it on in system settings → privacy & security",
+  'secure-input': "a password field has the keyboard (secure input is on), so ctrl couldn't watch for esc and didn't act",
 };
 export const stopReason = (s: CtrlStop) => STOP[s];
 

@@ -8697,7 +8697,10 @@
                   "stop-key",
                   "user-input",
                   "stop-button",
-                  "no-watcher"
+                  "no-watcher",
+                  "no-accessibility",
+                  "no-input-monitoring",
+                  "secure-input"
                 ]
               },
               {
@@ -9107,7 +9110,10 @@
                   "stop-key",
                   "user-input",
                   "stop-button",
-                  "no-watcher"
+                  "no-watcher",
+                  "no-accessibility",
+                  "no-input-monitoring",
+                  "secure-input"
                 ]
               },
               {
@@ -9474,7 +9480,10 @@
                   "stop-key",
                   "user-input",
                   "stop-button",
-                  "no-watcher"
+                  "no-watcher",
+                  "no-accessibility",
+                  "no-input-monitoring",
+                  "secure-input"
                 ]
               },
               {
@@ -9837,7 +9846,10 @@
                   "stop-key",
                   "user-input",
                   "stop-button",
-                  "no-watcher"
+                  "no-watcher",
+                  "no-accessibility",
+                  "no-input-monitoring",
+                  "secure-input"
                 ]
               },
               {

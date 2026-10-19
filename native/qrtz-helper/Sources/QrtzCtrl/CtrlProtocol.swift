@@ -196,8 +196,12 @@ public struct CtrlMenuShortcut: Equatable, Sendable {
 public struct CtrlObserved: Equatable, Sendable {
     public var frontmost: String?, focused: String?
     public var stopped = false, userInput = false, armed = false
-    public init(frontmost: String? = nil, focused: String? = nil, stopped: Bool = false, userInput: Bool = false, armed: Bool = false) {
+    /// Review (d): why the watcher isn't armed: `accessibility`, `input_monitoring` or `secure_input`.
+    public var missing: String?
+    public init(frontmost: String? = nil, focused: String? = nil, stopped: Bool = false, userInput: Bool = false, armed: Bool = false,
+                missing: String? = nil) {
         self.frontmost = frontmost; self.focused = focused; self.stopped = stopped; self.userInput = userInput; self.armed = armed
+        self.missing = missing
     }
 }
 
@@ -257,6 +261,7 @@ public final class CtrlServer {
                                         "userInput": o.userInput, "armed": o.armed]
                 if let f = o.frontmost { r["frontmost"] = f }
                 if let f = o.focused { r["focused"] = f }
+                if !o.armed, let m = o.missing { r["missing"] = m }
                 return r
             case let .laya(_, model, state, question, options):
                 return ["type": "ctrl.laya.result", "id": id, "p": try backend.laya(model: model, state: state, question: question, options: options)]

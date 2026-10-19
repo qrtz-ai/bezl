@@ -384,6 +384,9 @@ pub struct FakeWorld {
     /// The watcher can't start (no event-tap permission).
     #[serde(default)]
     pub no_watcher: bool,
+    /// What the unarmed watcher says is missing (review (d)).
+    #[serde(default)]
+    pub missing: Option<String>,
     /// The trees read so far (every `ctrl.tree` reply), for the log-scan test.
     #[serde(default)]
     pub reads: u32,
@@ -638,6 +641,7 @@ impl FakeWorld {
                         stopped: self.tripped.as_deref() == Some("stop_key"),
                         user_input: self.tripped.as_deref() == Some("user_input"),
                         armed: self.armed,
+                        missing: (!self.armed).then(|| self.missing.clone()).flatten(),
                     },
                 }
             }

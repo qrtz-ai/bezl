@@ -421,16 +421,30 @@ public final class MacCtrlBackend: CtrlBackend {
         if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
     }
 
+    /// Review (d): what keeps the watcher from running, named for the UI.
+    static func missing() -> String? {
+        if IsSecureEventInputEnabled() { return "secure_input" }
+        if !AXIsProcessTrusted() && !CGPreflightListenEventAccess() { return "accessibility" }
+        return nil
+    }
+
     public func observe(arm: Bool?) -> CtrlObserved {
+        var tapFailed = false
         switch arm {
-        case true?: ctrlStopWatch.arm(started: Self.mayListen() && startTap())
+        case true?:
+            let may = Self.mayListen()
+            let started = may && startTap()
+            tapFailed = may && !started
+            ctrlStopWatch.arm(started: started)
         case false?: ctrlStopWatch.disarm(); stopTap()
         case nil: break
         }
         if IsSecureEventInputEnabled() { ctrlStopWatch.lost() }
         let f = ctrlStopWatch.flags
+        // A tap that wouldn't start with the permission check passed is Input Monitoring (the listen-only tap's own).
+        let missing = f.armed ? nil : (Self.missing() ?? (tapFailed ? "input_monitoring" : nil))
         return CtrlObserved(frontmost: NSWorkspace.shared.frontmostApplication?.bundleIdentifier, focused: nil,
-                            stopped: f.stopped, userInput: f.userInput, armed: f.armed)
+                            stopped: f.stopped, userInput: f.userInput, armed: f.armed, missing: missing)
     }
 
     // MARK: laya
