@@ -13822,16 +13822,20 @@
       "modules": {
         "enabled": true,
         "echo": {
-          "enabled": true
+          "enabled": true,
+          "installed": true
         },
         "nano": {
-          "enabled": true
+          "enabled": true,
+          "installed": true
         },
         "ctrl": {
-          "enabled": true
+          "enabled": true,
+          "installed": true
         },
         "snap": {
-          "enabled": true
+          "enabled": true,
+          "installed": true
         }
       },
       "privacy": {
@@ -14064,10 +14068,15 @@
                 "enabled": {
                   "default": true,
                   "type": "boolean"
+                },
+                "installed": {
+                  "default": true,
+                  "type": "boolean"
                 }
               },
               "required": [
-                "enabled"
+                "enabled",
+                "installed"
               ],
               "additionalProperties": false
             },
@@ -14077,10 +14086,15 @@
                 "enabled": {
                   "default": true,
                   "type": "boolean"
+                },
+                "installed": {
+                  "default": true,
+                  "type": "boolean"
                 }
               },
               "required": [
-                "enabled"
+                "enabled",
+                "installed"
               ],
               "additionalProperties": false
             },
@@ -14090,10 +14104,15 @@
                 "enabled": {
                   "default": true,
                   "type": "boolean"
+                },
+                "installed": {
+                  "default": true,
+                  "type": "boolean"
                 }
               },
               "required": [
-                "enabled"
+                "enabled",
+                "installed"
               ],
               "additionalProperties": false
             },
@@ -14103,10 +14122,15 @@
                 "enabled": {
                   "default": true,
                   "type": "boolean"
+                },
+                "installed": {
+                  "default": true,
+                  "type": "boolean"
                 }
               },
               "required": [
-                "enabled"
+                "enabled",
+                "installed"
               ],
               "additionalProperties": false
             }

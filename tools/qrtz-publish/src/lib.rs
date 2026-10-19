@@ -176,6 +176,52 @@ pub struct SpecPackage {
     pub dir: PathBuf,
     #[serde(default)]
     pub min_os: Option<String>,
+    /// Extension and service (ADR 0170): Apple's Accepted notarization of the package's code, from `notarytool`
+    /// (scripts/modules/publish.sh writes it). Code without one is never published.
+    #[serde(default)]
+    pub notarization: Option<qrtz_modules::index::Notarization>,
+}
+
+impl SpecPackage {
+    pub fn new(dir: PathBuf) -> Self {
+        Self {
+            dir,
+            min_os: None,
+            notarization: None,
+        }
+    }
+
+    /// Dry runs and tests only (keys made at runtime, nothing uploaded): a well-formed Accepted record for the
+    /// package's code as it is on disk, with a made-up submission id and cdhash. A real publish never calls this:
+    /// publish.sh records what notarytool answered.
+    pub fn fake_notarized(dir: PathBuf) -> Self {
+        let notarization = fake_notarization(&dir);
+        Self {
+            dir,
+            min_os: None,
+            notarization,
+        }
+    }
+}
+
+/// See [`SpecPackage::fake_notarized`]. `None` for models (and anything unreadable).
+pub fn fake_notarization(dir: &Path) -> Option<qrtz_modules::index::Notarization> {
+    let m = PackageManifest::parse(&std::fs::read(dir.join(MANIFEST_FILE)).ok()?).ok()?;
+    let code = match (&m.extension, &m.service) {
+        (Some(e), _) => dir.join(&e.entry),
+        (_, Some(s)) => {
+            let macos = dir.join(&s.bundle).join("Contents/MacOS");
+            std::fs::read_dir(&macos).ok()?.flatten().next()?.path()
+        }
+        _ => return None,
+    };
+    let sha = qrtz_modules::sha256_hex(&std::fs::read(code).ok()?);
+    Some(qrtz_modules::index::Notarization {
+        submission_id: "00000000-0000-4000-8000-000000000000".into(),
+        status: qrtz_modules::index::NOTARIZATION_ACCEPTED.into(),
+        cdhash: sha[..40].to_owned(),
+        code_sha256: sha,
+    })
 }
 
 /// A model set pinned in the app, published from a dir holding its downloaded files.
@@ -260,6 +306,17 @@ fn walk(dir: &Path, base: &Path, out: &mut Vec<(String, PathBuf, bool)>) -> Resu
     Ok(())
 }
 
+/// ADR 0171: where the publisher keeps its copies of model files, beside `out` and never inside it (so nothing that
+/// uploads `out` can put model bytes on modules.qrtz.ai): `<out>.model-blobs/v1/blobs/sha256/<hex>`. Only `pack`
+/// reads it, because a `.qrtzpkg` is an offline install and carries everything.
+pub fn model_blob_dir(out: &Path) -> PathBuf {
+    let name = out
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "out".into());
+    out.with_file_name(format!("{name}.model-blobs"))
+}
+
 /// Hash a file and copy it into `out` as a blob (whole: a big file is served as one object and fetched in ranges).
 fn blob_file(out: &Path, src: &Path) -> Result<(u64, String)> {
     let (size, sha) = qrtz_modules::fsutil::sha256_file(src).map_err(io(src))?;
@@ -285,6 +342,7 @@ fn entry_for(
     m: &PackageManifest,
     tree: Tree,
     min_os: Option<String>,
+    notarization: Option<qrtz_modules::index::Notarization>,
 ) -> Result<PackageEntry> {
     let msha = tree
         .file(MANIFEST_FILE)
@@ -313,6 +371,7 @@ fn entry_for(
         models,
         platform: PLATFORM.into(),
         min_os,
+        notarization: if m.kind.has_code() { notarization } else { None },
     };
     e.validate(&m.name)
         .map_err(|why| format!("{}@{}: {why}", m.name, m.version))?;
@@ -327,27 +386,69 @@ pub fn package_entry(out: &Path, team: &str, p: &SpecPackage) -> Result<(String,
     let m = PackageManifest::parse(&bytes).map_err(|e| format!("{}: {e}", mp.display()))?;
     let mut files = vec![];
     walk(&p.dir, &p.dir, &mut files)?;
+    // ADR 0171: a model's files are hashed here but never published to modules.qrtz.ai: each one is listed with its
+    // Hugging Face URL at the commit its qrtz.json pins (`model.upstream` + `model.revision`), which the installer
+    // fetches and checks against this hash.
+    let hf = match &m.model {
+        Some(mm) if m.kind == PackageKind::Model => {
+            let url = format!(
+                "{}/{}/resolve/{}/",
+                qrtz_modules::models::HUGGING_FACE,
+                mm.upstream,
+                mm.revision
+            );
+            if !qrtz_modules::index::is_pinned_hugging_face_url(&format!("{url}x")) {
+                return Err(format!(
+                    "{}@{}: model.upstream must be <owner>/<repo> on Hugging Face and model.revision a 40-hex \
+                     commit (not a branch) (ADR 0171)",
+                    m.name, m.version
+                ));
+            }
+            Some(url)
+        }
+        _ => None,
+    };
     let mut entries = vec![];
     for (rel, src, exec) in &files {
-        let (size, sha256) = blob_file(out, src)?;
+        let weights = hf.as_ref().filter(|_| rel != MANIFEST_FILE);
+        let (size, sha256) = match weights {
+            Some(_) => blob_file(&model_blob_dir(out), src)?,
+            None => blob_file(out, src)?,
+        };
         entries.push(IndexFile {
             path: rel.clone(),
             size,
             sha256,
             executable: *exec,
-            mirrors: vec![],
+            mirrors: weights.map(|u| vec![format!("{u}{rel}")]).unwrap_or_default(),
         });
     }
-    let e = entry_for(out, team, &m, Tree::new(entries), p.min_os.clone())?;
+    if m.kind.has_code() && p.notarization.is_none() {
+        return Err(format!(
+            "{}@{}: code is published only notarized (ADR 0170): run scripts/modules/publish.sh, which records \
+             notarytool's Accepted result",
+            m.name, m.version
+        ));
+    }
+    let e = entry_for(
+        out,
+        team,
+        &m,
+        Tree::new(entries),
+        p.min_os.clone(),
+        p.notarization.clone(),
+    )?;
     Ok((m.name, m.version, e))
 }
 
 /// A pinned model set from the dir of its downloaded files: every file must match its pin, and the tree (with the
-/// pinned Hugging Face URLs as mirrors) is exactly the one the app pins.
+/// pinned Hugging Face URLs) is exactly the one the app pins. ADR 0171: the files are only hashed, never written to
+/// `out`: modules.qrtz.ai doesn't host model bytes, the client fetches them from Hugging Face. Only the small
+/// qrtz.json and the tree are published.
 pub fn model_entry(out: &Path, team: &str, src: &ModelSource, dir: &Path) -> Result<PackageEntry> {
     for f in &src.files {
         let p = dir.join(&f.path);
-        let (n, h) = blob_file(out, &p)?;
+        let (n, h) = blob_file(&model_blob_dir(out), &p)?;
         if n != f.size || h != f.sha256 {
             return Err(format!(
                 "{}: doesn't match the pin for {}",
@@ -358,7 +459,7 @@ pub fn model_entry(out: &Path, team: &str, src: &ModelSource, dir: &Path) -> Res
     }
     let m = src.manifest_bytes();
     put_immutable(out, &layout::blob(&qrtz_modules::sha256_hex(&m)), &m)?;
-    entry_for(out, team, &src.manifest(), src.tree(), None)
+    entry_for(out, team, &src.manifest(), src.tree(), None, None)
 }
 
 /// The current timestamp and index in `out`, if any.
@@ -559,7 +660,13 @@ pub fn pack(out: &Path, name: &str, version: &str, dest: &Path) -> Result<Vec<St
         });
         for b in p.entry.blobs() {
             let lp = layout::blob(&b.sha256);
-            files.push((lp.clone(), out.join(&lp)));
+            // ADR 0171: a model file isn't in the output dir; a pack (an offline install) takes the publisher's copy.
+            let from = if b.mirrors.is_empty() {
+                out.join(&lp)
+            } else {
+                model_blob_dir(out).join(&lp)
+            };
+            files.push((lp.clone(), from));
         }
     }
     for (_, f) in &files {
@@ -573,6 +680,74 @@ pub fn pack(out: &Path, name: &str, version: &str, dest: &Path) -> Result<Vec<St
     };
     qrtz_modules::pkg::write(dest, &target, &set, &files).map_err(io(dest))?;
     Ok(set.iter().map(|p| format!("{}@{}", p.name, p.version)).collect())
+}
+
+/// Cache-Control of an immutable published object (everything but the timestamp pair).
+pub const CACHE_IMMUTABLE: &str = "public, max-age=31536000, immutable";
+/// Cache-Control of `v1/timestamp.json` and its signature.
+pub const CACHE_TIMESTAMP: &str = "public, max-age=300";
+
+/// One object to upload to modules.qrtz.ai.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Upload {
+    /// The bucket key (`v1/index/…`), also its path under `out`.
+    pub key: String,
+    pub size: u64,
+    pub cache_control: &'static str,
+}
+
+/// `upload-list` (ADR 0171): every object of `out` in upload order, for an upload without rclone (the Cloudflare
+/// connector, the dashboard). Immutable objects first, the timestamp's signature then the timestamp last, so a
+/// client never sees a timestamp whose index or blobs aren't up. `ROOT1_SHA256` (a local note) is never listed, and
+/// neither is anything outside `v1/` (model files never are in `out`: Hugging Face serves them). `timestamp_only`
+/// lists the pair alone (the weekly re-sign).
+pub fn upload_list(out: &Path, timestamp_only: bool) -> Result<Vec<Upload>> {
+    let mut files = vec![];
+    walk(&out.join("v1"), out, &mut files)?;
+    let ts = layout::timestamp();
+    let ts_sig = layout::sig(&ts);
+    let mut list = vec![];
+    let mut pair = vec![];
+    for (key, p, _) in files {
+        let size = std::fs::metadata(&p).map_err(io(&p))?.len();
+        if key == ts || key == ts_sig {
+            pair.push(Upload {
+                key,
+                size,
+                cache_control: CACHE_TIMESTAMP,
+            });
+        } else if !timestamp_only {
+            list.push(Upload {
+                key,
+                size,
+                cache_control: CACHE_IMMUTABLE,
+            });
+        }
+    }
+    if !pair.iter().any(|u| u.key == ts) || !pair.iter().any(|u| u.key == ts_sig) {
+        return Err(format!("{}: no signed timestamp (build first)", out.display()));
+    }
+    pair.sort_by_key(|u| u.key != ts_sig);
+    list.extend(pair);
+    Ok(list)
+}
+
+/// `model-files` (ADR 0171): the pinned files of one model package, `(Hugging Face URL, path, size, sha256)`, so the
+/// publish script can download a set once to hash it (the index records the URL and the hash; no model byte is
+/// uploaded anywhere).
+pub fn model_files(pins: &[PathBuf], package: &str) -> Result<Vec<(String, String, u64, String)>> {
+    for f in pins {
+        for m in qrtz_modules::models::parse_pinned(&std::fs::read(f).map_err(io(f))?).map_err(io(f))? {
+            if m.package == package {
+                return Ok(m
+                    .files
+                    .iter()
+                    .map(|x| (m.mirror_url(x), x.path.clone(), x.size, x.sha256.clone()))
+                    .collect());
+            }
+        }
+    }
+    Err(format!("{package}: not in any pinned model file"))
 }
 
 /// `verify`: check `out` as a fresh client would (the pinned root, the root chain, a fresh timestamp, the index,
@@ -608,6 +783,13 @@ pub fn verify(out: &Path, pinned_root_sha256: &str, now: u64) -> Result<String> 
     for vs in v.index.packages.values() {
         for e in vs.values() {
             for c in e.blobs() {
+                // ADR 0171: a model file lives on Hugging Face, not here; its hash is in the signed tree.
+                if !c.mirrors.is_empty() {
+                    if out.join(layout::blob(&c.sha256)).exists() {
+                        return Err(format!("{}: a model file in the output dir (ADR 0171)", c.sha256));
+                    }
+                    continue;
+                }
                 if !blobs.insert(c.sha256.clone()) {
                     continue;
                 }

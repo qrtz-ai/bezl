@@ -1,6 +1,6 @@
 // Builds/tests native/qrtz-helper with SwiftPM.
-//   bun run build:helper  → macOS: release arm64 binary that the Tauri bundle ships in Contents/Resources. Elsewhere: skipped
-//                           (the app uses the TS mock helper).
+//   bun run build:helper  → macOS: the `qrtz` command, the bundle's one externalBin (ADR 0169: no module code is
+//                           bundled; scripts/modules/build-packages.sh builds the module packages). Elsewhere: skipped.
 //   bun run test:helper   → `swift build && swift test` anywhere a Swift toolchain is on PATH (Linux builds the
 //                           Foundation-only core + stub executable; macOS builds everything). Skipped if no toolchain.
 import { spawnSync } from 'node:child_process';
@@ -82,18 +82,10 @@ if (process.platform !== 'darwin') {
   );
   process.exit(0);
 }
-if (run(['build', '-c', 'release', '--arch', 'arm64'])) process.exit(1);
-// Tauri's externalBin (tauri.macos.conf.json) wants the sidecar at src-tauri/binaries/qrtz-helper-<target triple>;
-// `cargo build` / `tauri dev` fail in the build script without it.
-// The output dir depends on the SwiftPM build system (.build/arm64-apple-macosx/release with the native one,
-// .build/out/Products/Release with swiftbuild on newer Xcode), so ask SwiftPM.
-const binPath = spawnSync(
-  swift,
-  ['build', '-c', 'release', '--arch', 'arm64', '--show-bin-path'],
-  { cwd: dir, encoding: 'utf8' },
-);
-if (binPath.status !== 0) process.exit(1);
-const built = path.join(binPath.stdout.trim(), 'qrtz-helper');
+// ADR 0169: qrtz ships empty. No module code goes into the bundle any more: each module's executable (qrtz-echo,
+// qrtz-nano, qrtz-ctrl, qrtz-snap) ships signed in its own package (scripts/modules/build-packages.sh) and is
+// installed from the marketplace. A stale qrtz-helper or qrtz-snap sidecar left from an older build is removed so it
+// can't be mistaken for a bundled one.
 const binDir = path.resolve(
   import.meta.dirname,
   '../apps/desktop/src-tauri/binaries',
@@ -103,20 +95,12 @@ const repo = path.resolve(import.meta.dirname, '..');
 const targetDir = process.env.CARGO_TARGET_DIR
   ? path.resolve(repo, process.env.CARGO_TARGET_DIR)
   : path.join(repo, 'target');
-// scripts/sidecars.mjs: a fresh mtime when the bytes change, or cargo never reruns build.rs and `tauri dev` keeps
-// running the stale (or stub) copy in target/debug.
-const dest = path.join(binDir, 'qrtz-helper-aarch64-apple-darwin');
-install(built, dest);
-console.log(`[build:helper] ${path.relative(process.cwd(), dest)}`);
-// ADR 0159: qrtz-snap ships next to the helper (Contents/MacOS/qrtz-snap, the third externalBin); the same SwiftPM
-// build made it. Its signature carries no entitlement (ai.qrtz.snap.entitlements is empty) and the identifier its
-// lock entry pins. tauri build re-signs every externalBin with the app's entitlements, so
-// scripts/release/sign-mac.sh signs it again after the bundle (docs/modules/confinement-map.json bundledCode).
-const snapDest = path.join(binDir, 'qrtz-snap-aarch64-apple-darwin');
-install(path.join(binPath.stdout.trim(), 'qrtz-snap'), snapDest);
-console.log(`[build:helper] ${path.relative(process.cwd(), snapDest)}`);
+for (const old of ['qrtz-helper', 'qrtz-snap']) {
+  fs.rmSync(path.join(binDir, `${old}-aarch64-apple-darwin`), { force: true });
+  fs.rmSync(path.join(targetDir, 'debug', old), { force: true });
+}
 
-// ADR 0162: the `qrtz` command ships as the second externalBin (qrtz.app/Contents/MacOS/qrtz; the app itself is
+// ADR 0162: the `qrtz` command ships as the one externalBin (qrtz.app/Contents/MacOS/qrtz; the app itself is
 // Contents/MacOS/qrtz-app). Built here so `bun run make` and the release workflow (which runs build:helper) bundle the
 // real one; a debug `cargo build` without it gets a stub from src-tauri/build.rs.
 const cargo = spawnSync(
@@ -136,48 +120,31 @@ const cargo = spawnSync(
 if (cargo.status !== 0) process.exit(1);
 const cliDest = path.join(binDir, 'qrtz-aarch64-apple-darwin');
 install(path.join(targetDir, 'release', 'qrtz'), cliDest);
-// Hardened runtime and a secure timestamp on the nested command (no entitlements, it needs none) and on qrtz-snap.
-// The bundler signs both again inside the app, and scripts/release/sign-mac.sh fixes that up; signing here means a
-// local `bun run make` never has them without the runtime flag.
+// Hardened runtime and a secure timestamp on the nested command (no entitlements, it needs none). The bundler signs
+// it again inside the app, and scripts/release/sign-mac.sh fixes that up; signing here means a local `bun run make`
+// never has it without the runtime flag.
 const identity = process.env.APPLE_SIGNING_IDENTITY;
 if (identity) {
-  const signs = [
-    [cliDest, ['--identifier', 'ai.qrtz.cli']],
+  const sign = spawnSync(
+    'codesign',
     [
-      snapDest,
-      [
-        '--identifier',
-        'ai.qrtz.snap',
-        '--entitlements',
-        path.join(dir, 'entitlements/ai.qrtz.snap.entitlements'),
-      ],
+      '--force',
+      '--options',
+      'runtime',
+      '--timestamp',
+      '--identifier',
+      'ai.qrtz.cli',
+      '--sign',
+      identity,
+      cliDest,
     ],
-  ];
-  for (const [file, extra] of signs) {
-    const sign = spawnSync(
-      'codesign',
-      [
-        '--force',
-        '--options',
-        'runtime',
-        '--timestamp',
-        ...extra,
-        '--sign',
-        identity,
-        file,
-      ],
-      { stdio: 'inherit' },
-    );
-    if (sign.status !== 0) process.exit(1);
-  }
+    { stdio: 'inherit' },
+  );
+  if (sign.status !== 0) process.exit(1);
 }
 console.log(`[build:helper] ${path.relative(process.cwd(), cliDest)}`);
 // The copies `tauri dev` runs (target/debug/<name>), in case cargo doesn't rerun build.rs before it starts them.
-for (const [file, name] of [
-  [dest, 'qrtz-helper'],
-  [snapDest, 'qrtz-snap'],
-  [cliDest, 'qrtz'],
-]) {
+for (const [file, name] of [[cliDest, 'qrtz']]) {
   if (isStub(file)) {
     console.error(`[build:helper] ${file} is still the dev stub`);
     process.exit(1);

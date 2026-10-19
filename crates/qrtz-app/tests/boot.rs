@@ -67,6 +67,8 @@ fn app_with(
         helper: Some((spawn, HelperAvailability::Simulated)),
         supervisor: SupervisorOptions::default(),
         helper_layout: Default::default(),
+        modules_from_lock: false,
+        packages: None,
         shell,
         storage_shell,
         talk: None,

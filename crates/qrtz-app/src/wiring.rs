@@ -320,8 +320,14 @@ pub struct AppBuild {
         crate::runtime_port::HelperAvailability,
     )>,
     pub supervisor: qrtz_helper_bridge::SupervisorOptions,
-    /// ADR 0146 M2.4: the monolith helper (default) or one per module (`QRTZ_MODULE_HELPERS=split`).
+    /// ADR 0146 M2.4: the monolith helper (default) or one per module (`QRTZ_MODULE_HELPERS=split`); ADR 0169:
+    /// each installed module's own package (the shipping app).
     pub helper_layout: crate::module_helpers::HelperLayout,
+    /// ADR 0169: `modules.<id>.installed` follows `<data>/qrtz.lock` (the shipping app: qrtz starts empty). Off,
+    /// every module counts as installed (headless tests, the simulated helper).
+    pub modules_from_lock: bool,
+    /// The package manager (tests: a loopback or fixture index); `None` = the pinned hosts on the data dir.
+    pub packages: Option<crate::module_hosting::Packages>,
     pub shell: Arc<dyn ShellHooks>,
     pub storage_shell: Arc<dyn crate::storage_port::StorageShell>,
     /// The speech module (store, spawn options, update server); `None` = not configured in this build.
@@ -346,6 +352,22 @@ pub struct BuiltApp {
     pub setup: Arc<crate::setup::Setup>,
 }
 
+/// ADR 0169: what `AppService::track_installed_modules` runs at launch and after every `packages:apply`: link (or
+/// drop) the helper's model views for what `<root>/qrtz.lock` holds, then say which modules are installed.
+pub fn module_sync(
+    root: PathBuf,
+    views: Option<crate::local_models::LocalModels>,
+) -> crate::service::ModuleSync {
+    Arc::new(move || {
+        if let Some(v) = &views {
+            for p in v.sync_views() {
+                tracing::warn!(problem = %p, "model view not linked");
+            }
+        }
+        crate::installed::installed_patch(&crate::installed::read_lock(&root))
+    })
+}
+
 /// Assemble: dirs (0700) → config → DB (0600) → runtime → ports → service. Call `service.start_helper()` and
 /// then `runtime.recover()` inside the tokio runtime.
 pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
@@ -356,9 +378,9 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     let events = Events::new();
     // ADR 0079: without a speech module source (the Mac build today) the helper transcribes with its own models,
     // downloaded from settings into <data>/models and read by the helper from there only.
-    let local_models = (b.speech.is_none()
-        && (cfg!(target_os = "macos") || b.knobs.local_models_base.is_some()))
-    .then(|| {
+    let model_views =
+        b.speech.is_none() && (cfg!(target_os = "macos") || b.knobs.local_models_base.is_some());
+    let local_models = model_views.then(|| {
         crate::local_models::LocalModels::new(dirs.data.join("models"), b.knobs.local_models_base.clone())
     });
     let mut snap_spawn = None;
@@ -377,7 +399,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
                 }
                 // ADR 0159: qrtz-snap, its own process in either layout, next to the helper. The Rust mock
                 // helper plays no snap role, so Linux dev runs without it.
-                snap_spawn = crate::snap::spawn_for(&spawn);
+                snap_spawn = crate::snap::spawner_for(&b.helper_layout, &spawn);
                 crate::module_helpers::ModuleHelpers::spawn(&b.helper_layout, spawn, b.supervisor.clone())
             }),
             av,
@@ -519,12 +541,21 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     service.set_setup(setup.clone());
     // ADR 0157: the Extensions screen's package manager, on the app's data dir (nothing is reached until the user
     // asks: `packages:refresh`, or a plan that needs the network).
-    if let Some(p) = crate::module_hosting::Packages::pinned(Some(dirs.data.clone())) {
+    if let Some(p) = b
+        .packages
+        .or_else(|| crate::module_hosting::Packages::pinned(Some(dirs.data.clone())))
+    {
         service.set_packages(Arc::new(
             crate::packages_ipc::PackagesIpc::new(p)
                 .with_events(service.events.clone())
                 .with_app_version(app_version),
         ));
+    }
+    if b.modules_from_lock {
+        let views = model_views.then(|| {
+            crate::local_models::LocalModels::new(dirs.data.join("models"), b.knobs.local_models_base.clone())
+        });
+        service.track_installed_modules(module_sync(dirs.data.clone(), views));
     }
     if let Some(h) = &helpers {
         service.set_module_helpers(h.clone());
@@ -534,7 +565,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         o.name = "qrtz-snap".into();
         // qrtz-snap speaks only `snap.*` (no heartbeat line), like qrtz-ctrl.
         o.heartbeat_timeout = std::time::Duration::ZERO;
-        let sup = qrtz_helper_bridge::Supervisor::spawn(o, Arc::new(sp));
+        let sup = qrtz_helper_bridge::Supervisor::spawn(o, sp);
         service.set_snap(Arc::new(crate::snap::SnapHost::new(sup)));
     }
     if let Some(w) = echo_warm {

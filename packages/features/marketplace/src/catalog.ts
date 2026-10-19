@@ -96,26 +96,28 @@ export const installedRow = (name: string, rows: readonly PackageRow[]) =>
   rows.find((r) => r.kind === 'extension' && r.name === name);
 
 /**
- * installed (in qrtz.lock, newest) · update (the index has a newer one) · built-in (ships inside this qrtz build
- * and isn't installed as a package) · available.
+ * installed (in qrtz.lock, newest) · update (the index has a newer one) · available. ADR 0169: qrtz ships empty, so
+ * nothing is "built in". `installed` is the host's `modules.<id>.installed` for a module with no lock row (only the
+ * mock backend or a dev monolith, where every module counts as installed).
  */
 export function statusOf(
   name: string,
   entry: CatalogEntry | undefined,
   rows: readonly PackageRow[],
+  installed = false,
 ): ExtensionStatus {
   const row = installedRow(name, rows);
   if (row)
     return entry && compareVersions(entry.version, row.version) > 0
       ? 'update'
       : 'installed';
-  if (isModuleId(name)) return 'built-in';
+  if (installed && isModuleId(name)) return 'installed';
   return 'available';
 }
 
-/** `628 mb with dependencies` / `9 mb` / `included in qrtz`. */
+/** `628 mb with dependencies` / `9 mb` / `on this mac` (installed, not in the index). */
 export function sizeLine(entry: CatalogEntry | undefined): string {
-  if (!entry) return 'included in qrtz';
+  if (!entry) return 'on this mac';
   return entry.dependencies.length
     ? `${formatBytes(entry.installSizeBytes)} with dependencies`
     : formatBytes(entry.sizeBytes);
@@ -133,16 +135,17 @@ export function lockedDependencies(
 }
 
 /**
- * Every extension the marketplace shows: the index's, then the ones built into this build that the index doesn't
- * list yet (offline, or before the first check), so the marketplace is never empty for no reason.
+ * Every extension the marketplace shows: the index's, then the installed modules it doesn't list (offline, or
+ * before the first check). ADR 0169: nothing else; a module that isn't installed shows only from the index.
  */
 export function listings(
   available: readonly CatalogEntry[],
+  installed: readonly string[] = [],
 ): { name: string; entry: CatalogEntry | undefined }[] {
   const out: { name: string; entry: CatalogEntry | undefined }[] =
     available.map((e) => ({ name: e.name, entry: e }));
   for (const id of MODULE_IDS)
-    if (!available.some((e) => e.name === id))
+    if (installed.includes(id) && !available.some((e) => e.name === id))
       out.push({ name: id, entry: undefined });
   return out;
 }

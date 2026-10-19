@@ -39,6 +39,18 @@ pub fn spawn_for(base: &qrtz_helper_bridge::ProcessSpawn) -> Option<qrtz_helper_
     ))
 }
 
+/// qrtz-snap's spawner for `layout`: its installed package in the shipping app (ADR 0169), otherwise
+/// [`spawn_for`]'s sibling of the helper.
+pub fn spawner_for(
+    layout: &crate::module_helpers::HelperLayout,
+    base: &qrtz_helper_bridge::ProcessSpawn,
+) -> Option<std::sync::Arc<dyn qrtz_helper_bridge::Spawn>> {
+    match layout {
+        crate::module_helpers::HelperLayout::Installed { .. } => Some(layout.spawner(base, MODULE_ID)),
+        _ => spawn_for(base).map(|s| std::sync::Arc::new(s) as std::sync::Arc<dyn qrtz_helper_bridge::Spawn>),
+    }
+}
+
 /// What a line from qrtz-snap asks of the host.
 #[derive(Debug, PartialEq)]
 pub enum SnapLine {

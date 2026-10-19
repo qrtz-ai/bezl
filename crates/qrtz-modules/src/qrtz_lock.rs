@@ -85,6 +85,9 @@ pub struct Locked {
     /// Set when a fresh list revokes it (or, for an extension, one of its dependencies): it doesn't run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub disabled: Option<String>,
+    /// Code only (ADR 0170): the signed index's notarization record, kept so a lock-only reinstall checks it too.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notarization: Option<crate::index::Notarization>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

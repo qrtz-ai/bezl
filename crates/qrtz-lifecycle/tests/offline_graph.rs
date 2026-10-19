@@ -1378,10 +1378,10 @@ fn at_most_one_extension_reads_a_model_in_its_own_process() {
     }
 }
 
-/// ADR 0162, ADR 0159: every executable Tauri bundles into Contents/MacOS (tauri.macos.conf.json externalBin) is in
+/// ADR 0162, ADR 0169: every executable Tauri bundles into Contents/MacOS (tauri.macos.conf.json externalBin) is in
 /// the confinement map's bundledCode, scripts/release/sign-mac.sh signs exactly those with the identifier and
 /// entitlements listed there, each entitlements file passes the lint, and an extension's bundled helper signs as the
-/// identifier its lock entry pins.
+/// identifier its lock entry pins. (Since ADR 0169 that's only the `qrtz` command; module code is moduleCode.)
 #[test]
 fn every_bundled_executable_is_signed_as_the_confinement_map_says() {
     let map = confinement_map();
@@ -1456,19 +1456,143 @@ fn every_bundled_executable_is_signed_as_the_confinement_map_says() {
             );
         }
     }
-    // snap (ADR 0159): no entitlement at all, and the helper SnapHost spawns is the one that is bundled.
-    let snap = &mapped["qrtz-snap"];
-    assert_eq!(snap.0, "ai.qrtz.snap");
-    let ent = std::fs::read_to_string(root().join(&snap.1)).unwrap();
-    assert!(
-        granted(&ent).is_empty() && !ent.contains("<key>"),
-        "qrtz-snap carries no entitlement"
-    );
     assert_eq!(
         code["qrtz"]["entitlements"],
         Value::Null,
         "the qrtz command carries no entitlement"
     );
+}
+
+/// ADR 0169 (Bozniak's finding): no module code is bundled, and each module's executable is signed with the
+/// identifier its lock entry's designated requirement names. confinement-map.json moduleCode is the table;
+/// scripts/modules/build-packages.sh signs exactly that; the lock (modules.lock.json), module.json and the package's
+/// qrtz.json all agree with it; and the launch entry is the package's own executable, never the qrtz-helper monolith.
+#[test]
+fn every_lock_requirement_names_the_identifier_its_module_is_signed_with() {
+    let map = confinement_map();
+    let code = map["moduleCode"].as_object().expect("moduleCode");
+    assert_eq!(code["teamId"].as_str(), Some(RELEASE_TEAM));
+    let mapped: BTreeMap<String, (String, String)> = code
+        .iter()
+        .filter(|(k, v)| v.is_object() && k.as_str() != "devHelper")
+        .map(|(k, v)| {
+            (
+                k.clone(),
+                (
+                    v["identifier"].as_str().unwrap().to_owned(),
+                    v["entitlements"].as_str().unwrap().to_owned(),
+                ),
+            )
+        })
+        .collect();
+    // Nothing a module runs is bundled.
+    let bundled = map["bundledCode"].as_object().unwrap();
+    for name in mapped.keys().chain(std::iter::once(&"qrtz-helper".to_owned())) {
+        assert!(
+            !bundled.contains_key(name),
+            "{name} is bundled in qrtz.app (ADR 0169)"
+        );
+    }
+    // The signing script's table.
+    let script = std::fs::read_to_string(root().join("scripts/modules/build-packages.sh")).unwrap();
+    let table = script
+        .split("MODULES=\"")
+        .nth(1)
+        .and_then(|t| t.split('"').next())
+        .expect("MODULES table in build-packages.sh");
+    let signed: BTreeMap<String, (String, String)> = table
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            let f: Vec<&str> = l.split_whitespace().collect();
+            assert_eq!(f.len(), 3, "build-packages.sh MODULES line: {l}");
+            (format!("qrtz-{}", f[0]), (f[1].to_owned(), f[2].to_owned()))
+        })
+        .collect();
+    assert_eq!(
+        signed, mapped,
+        "build-packages.sh signs differently from moduleCode"
+    );
+    let lock: Value =
+        serde_json::from_str(&std::fs::read_to_string(root().join("modules/modules.lock.json")).unwrap())
+            .unwrap();
+    let locked: BTreeSet<String> = lock["modules"].as_object().unwrap().keys().cloned().collect();
+    let owners: BTreeSet<String> = mapped
+        .keys()
+        .map(|n| code[n]["owner"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(
+        locked, owners,
+        "every locked module has its executable in moduleCode"
+    );
+    let read = |p: &str| -> Value {
+        serde_json::from_str(&std::fs::read_to_string(root().join(p)).unwrap())
+            .unwrap_or_else(|e| panic!("{p}: {e}"))
+    };
+    for (name, (id, ent)) in &mapped {
+        let owner = code[name]["owner"].as_str().unwrap();
+        assert_eq!(name, &format!("qrtz-{owner}"));
+        let dr_id = |dr: &str| {
+            dr.strip_prefix("identifier \"")
+                .and_then(|r| r.split('"').next())
+                .map(str::to_owned)
+        };
+        let l = &lock["modules"][owner]["code"];
+        assert_eq!(
+            l["bundleId"].as_str(),
+            Some(id.as_str()),
+            "{owner}: lock bundleId"
+        );
+        let dr = l["designatedRequirement"].as_str().unwrap();
+        assert_eq!(
+            dr_id(dr).as_deref(),
+            Some(id.as_str()),
+            "{owner}: the lock's DR names another identifier"
+        );
+        let m = read(&format!("modules/{owner}/module.json"));
+        assert_eq!(
+            m["code"]["bundleId"].as_str(),
+            Some(id.as_str()),
+            "{owner}: module.json bundleId"
+        );
+        assert_eq!(
+            m["code"]["designatedRequirement"].as_str(),
+            Some(dr),
+            "{owner}: module.json DR"
+        );
+        assert_eq!(m["launch"]["kind"], "package", "{owner}: launch.kind");
+        let q = read(&format!("modules/{owner}/qrtz.json"));
+        let entry = q["extension"]["entry"].as_str().unwrap();
+        assert_eq!(entry, format!("bin/{name}"), "{owner}: qrtz.json extension.entry");
+        assert_eq!(
+            m["launch"]["entry"].as_str(),
+            Some(entry),
+            "{owner}: launch.entry"
+        );
+        // What the package installer pins for an extension (qrtz_modules::qrtz_json::identifier_for).
+        assert_eq!(
+            id,
+            &format!("ai.qrtz.{owner}"),
+            "{owner}: the installer pins another identifier"
+        );
+        let file = Path::new(ent).file_name().unwrap().to_str().unwrap();
+        assert_eq!(file, format!("{id}.entitlements"));
+        let plist = std::fs::read_to_string(root().join(ent)).unwrap_or_else(|e| panic!("{ent}: {e}"));
+        lint_entitlements(file, &plist, &map).unwrap_or_else(|e| panic!("{name}: {e}"));
+    }
+    // snap (ADR 0159): no entitlement at all.
+    let snap = std::fs::read_to_string(root().join(&mapped["qrtz-snap"].1)).unwrap();
+    assert!(
+        granted(&snap).is_empty() && !snap.contains("<key>"),
+        "qrtz-snap carries no entitlement"
+    );
+    // The dev monolith has its own identifier, which nothing pins.
+    let dev = &code["devHelper"];
+    assert_eq!(dev["identifier"], "ai.qrtz.helper");
+    let all = std::fs::read_to_string(root().join("modules/modules.lock.json")).unwrap();
+    assert!(!all.contains("ai.qrtz.helper") && !all.contains("\\\"qrtz-helper\\\""));
+    let dev_sign = std::fs::read_to_string(root().join("scripts/dev/sign.sh")).unwrap();
+    assert!(dev_sign.contains("ai.qrtz.helper") && !dev_sign.contains("sign qrtz-helper qrtz-helper"));
 }
 
 /// The Developer ID team every release path pins: `Developer ID Application: Jared Grimes (MR26CCZ496)`. Fails if a
@@ -1645,4 +1769,44 @@ fn the_release_team_check_catches_the_placeholder() {
     );
     assert_eq!(out.len(), 2);
     assert!(out.iter().all(|(_, t)| t != RELEASE_TEAM), "{out:?}");
+}
+
+/// ADR 0171: modules.qrtz.ai never hosts model bytes. The app reaches Hugging Face only (the pinned model mirror),
+/// the publish script uploads only `v1/` of its output (qrtz-publish keeps model files beside it, in
+/// `<out>.model-blobs`, for offline packs) and can write its output without any upload (no rclone, no R2 token).
+#[test]
+fn model_files_come_from_hugging_face_and_are_never_uploaded() {
+    let hosts: Value = serde_json::from_str(
+        &std::fs::read_to_string(root().join("crates/qrtz-app/src/module_hosts.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        hosts["modelMirrors"],
+        serde_json::json!(["https://huggingface.co"])
+    );
+    let s = std::fs::read_to_string(root().join("scripts/modules/publish.sh")).unwrap();
+    let copies: Vec<&str> = s.lines().filter(|l| l.contains("rclone copy")).collect();
+    assert!(!copies.is_empty());
+    for l in &copies {
+        assert!(
+            l.contains("rclone copy \"$out/v1\""),
+            "publish.sh uploads only $out/v1: {l}"
+        );
+        assert!(!l.contains("model-blobs"), "{l}");
+    }
+    assert!(
+        !s.contains("model-blobs\" \""),
+        "publish.sh never names the model blob dir as a source"
+    );
+    for n in [
+        "--out-only",
+        "upload-list",
+        "model-files",
+        "curl -fL --retry 5 --retry-delay 2 -C -",
+    ] {
+        assert!(s.contains(n), "publish.sh: {n}");
+    }
+    // The client fetcher: a blob with signed URLs never asks a module host.
+    let f = std::fs::read_to_string(root().join("crates/qrtz-modules/src/fetch.rs")).unwrap();
+    assert!(f.contains("ADR 0171"), "fetch.rs: the model-source rule");
 }

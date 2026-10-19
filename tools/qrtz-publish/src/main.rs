@@ -13,6 +13,10 @@ const USAGE: &str = "qrtz-publish <command> [options]
   pack      --out <dir> --name <package> --version <v> --to <file.qrtzpkg>
                                       the package and everything it resolves to, for an offline install
   verify    --out <dir> --root-sha256 <hex>                         check the dir as a fresh client would
+  upload-list --out <dir> [--timestamp-only]                         `key<TAB>size<TAB>cache-control` per object,
+                                      in upload order (timestamp pair last), for an upload without rclone
+  model-files --pins <a.json,b.json> --package <name>               `url<TAB>path<TAB>size<TAB>sha256` of a pinned
+                                      model set (download once to hash it; model bytes are never uploaded)
   dry-run   [--dir <dir>] [--big]     everything with test keys made at runtime (never written)
 
 keys: --keys <dir>, or the env QRTZ_PUBLISH_ROOT_KEYS / QRTZ_PUBLISH_TIMESTAMP_KEY / QRTZ_PUBLISH_INDEX_KEY.
@@ -101,6 +105,17 @@ fn run() -> Result<(), String> {
             "{}",
             qrtz_publish::verify(&PathBuf::from(need("--out")?), &need("--root-sha256")?, now)?
         ),
+        "upload-list" => {
+            for u in qrtz_publish::upload_list(&PathBuf::from(need("--out")?), flag("--timestamp-only"))? {
+                println!("{}\t{}\t{}", u.key, u.size, u.cache_control);
+            }
+        }
+        "model-files" => {
+            let pins: Vec<PathBuf> = need("--pins")?.split(',').map(PathBuf::from).collect();
+            for (url, path, size, sha) in qrtz_publish::model_files(&pins, &need("--package")?)? {
+                println!("{url}\t{path}\t{size}\t{sha}");
+            }
+        }
         "dry-run" => {
             let tmp;
             let dir = match opt("--dir") {

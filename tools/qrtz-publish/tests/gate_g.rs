@@ -24,6 +24,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 const TEAM: &str = "ABCDE12345";
+const REV: &str = "0123456789abcdef0123456789abcdef01234567";
 
 /// Hosts are publisher output dirs; mirror URL prefixes map to dirs.
 struct Dirs {
@@ -50,7 +51,8 @@ impl Transport for Dirs {
                 let (pre, dir) = self
                     .urls
                     .iter()
-                    .find(|(p, _)| u.starts_with(*p))
+                    .filter(|(p, _)| u.starts_with(*p))
+                    .max_by_key(|(p, _)| p.len())
                     .ok_or("unknown mirror")?;
                 dir.join(&u[pre.len()..])
             }
@@ -115,8 +117,18 @@ impl World {
         d
     }
     fn model(&mut self, name: &str, task: &str, bytes: &[u8]) -> PathBuf {
+        // ADR 0171: a model's files come from Hugging Face at a pinned commit; [`World::hosts`] serves them here.
+        let n = self.n + 1;
+        write(
+            &self
+                .base
+                .join(format!("hf/qrtz-test/m{n}/resolve/{REV}/weights.bin")),
+            bytes,
+            false,
+        );
         self.json(
-            json!({"name": name, "version": "1.0.0", "kind": "model", "model": {"task": task}}),
+            json!({"name": name, "version": "1.0.0", "kind": "model",
+                "model": {"task": task, "upstream": format!("qrtz-test/m{n}"), "revision": REV}}),
             &[("weights.bin", bytes, false)],
         )
     }
@@ -144,7 +156,7 @@ impl World {
             team_id: TEAM.into(),
             packages: dirs
                 .into_iter()
-                .map(|dir| qrtz_publish::SpecPackage { dir, min_os: None })
+                .map(qrtz_publish::SpecPackage::fake_notarized)
                 .collect(),
             pinned_models: vec![],
             models: vec![],
@@ -162,7 +174,10 @@ impl World {
     fn hosts(&self) -> Dirs {
         Dirs {
             hosts: vec![self.out.clone()],
-            urls: BTreeMap::new(),
+            urls: BTreeMap::from([(
+                "https://huggingface.co/qrtz-test/".to_owned(),
+                self.base.join("hf/qrtz-test"),
+            )]),
         }
     }
     /// echo → inference.voice + parakeet.
@@ -209,7 +224,7 @@ fn pinned(w: &World, package: &str, task: &str, version: &str, bytes: &[u8]) -> 
         version: version.into(),
         task: task.into(),
         repo: format!("org/{package}"),
-        revision: "ee09c569".into(),
+        revision: "ee09c569f73759e6d44c9bd16766f477b2b36d39".into(),
         license: String::new(),
         files: vec![ModelFile {
             remote: "w.bin".into(),
@@ -220,7 +235,9 @@ fn pinned(w: &World, package: &str, task: &str, version: &str, bytes: &[u8]) -> 
     };
     let hf = w.base.join(format!("hf-{package}-{version}"));
     write(
-        &hf.join(format!("org/{package}/resolve/ee09c569/w.bin")),
+        &hf.join(format!(
+            "org/{package}/resolve/ee09c569f73759e6d44c9bd16766f477b2b36d39/w.bin"
+        )),
         bytes,
         false,
     );

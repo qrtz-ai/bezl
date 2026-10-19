@@ -31,6 +31,8 @@ import {
   type ExtensionStatus,
 } from '@qrtz/ui';
 import {
+  MODULE_IDS,
+  isModuleInstalled,
   isModuleOn,
   loadConfig,
   requestNavigate,
@@ -66,10 +68,6 @@ type Verb = 'install' | 'update' | 'remove';
 export const isNotSetUp = (e: unknown) =>
   (e as { options?: { details?: { reason?: string } } } | null)?.options
     ?.details?.reason === 'not-set-up';
-/** The modules whose models are the speech download (ctrl's model has its own yes in ctrl's settings, ADR 0116). */
-const SPEECH_MODULES = ['echo', 'nano'] as const;
-const isSpeechModule = (n: string): n is (typeof SPEECH_MODULES)[number] =>
-  (SPEECH_MODULES as readonly string[]).includes(n);
 /**
  * The shared section's "used by" line, from the host's `usedBy` (qrtz.lock's extensions plus the modules a pinned
  * model is for): the same answer `packages:prune` keeps by, so a row never reads "used by nothing" while clean up
@@ -149,7 +147,9 @@ export default function MarketplaceView() {
   const available = useMemo(() => state?.available ?? [], [state]);
   const entryOf = (name: string) => available.find((e) => e.name === name);
   const statusFor = (name: string): ExtensionStatus =>
-    working?.name === name ? 'working' : statusOf(name, entryOf(name), rows);
+    working?.name === name
+      ? 'working'
+      : statusOf(name, entryOf(name), rows, hostInstalled(name));
 
   const check = () => {
     setError(null);
@@ -205,31 +205,21 @@ export default function MarketplaceView() {
   const allow = (p: OsPermission) => void ask(p).catch(fail);
   const openPane = (p: SettingsPane) => void open(p).catch(fail);
   const relaunch = () => void restart().catch(fail);
-  // ADR 0163: switching echo or nano on is the user's yes to that extension's speech models, and only those
-  // (speech:download {extensions: [name]}, resolved from its module.json model deps, audit P0-3): echo fetches
-  // Parakeet, nano Nemotron + the diarizer + LocalVQE. speech:status reports for the switched-on set, so the
-  // download starts only when this one's models are missing and nothing is already downloading. Nothing downloads
-  // at launch.
-  const downloadSpeechFor = (name: string) =>
-    isSpeechModule(name)
-      ? qrtz.invoke('speech:status').then((s) => {
-          const idle = ['idle', 'error'].includes(s.download.state);
-          if (s.configured && !s.installed && idle)
-            return qrtz
-              .invoke('speech:download', { extensions: [name] })
-              .then(() => undefined);
-        })
-      : Promise.resolve();
+  // ADR 0169: a module's models come with its install (the plan lists them, the one consent covers them, and
+  // they go when nothing installed needs them), so switching a module on downloads nothing.
   const setEnabled = (name: string, on: boolean) => {
     if (!isModuleId(name)) return;
     qrtz
       .invoke('packages:set-enabled', { name, enabled: on })
-      .then(() => (on ? downloadSpeechFor(name) : undefined))
       .then(() => qrtz.invoke('config:get'))
       .then((c) => setCfg(loadConfig(c)), fail);
   };
   const enabled = (name: string) =>
     isModuleId(name) && cfg ? isModuleOn(cfg, name) : true;
+  /** The host's `modules.<id>.installed` (from qrtz.lock; the mock and a dev monolith count every module). */
+  const hostInstalled = (name: string) =>
+    isModuleId(name) && !!cfg && isModuleInstalled(cfg, name);
+  const installedIds = MODULE_IDS.filter((id) => hostInstalled(id));
 
   const pct =
     progress && progress.totalBytes
@@ -344,8 +334,8 @@ export default function MarketplaceView() {
       title="marketplace coming soon"
       data-testid="marketplace-soon"
     >
-      modules will appear here once qrtz.ai's module server is live. the ones
-      built into qrtz work now.
+      modules will appear here once qrtz.ai's module server is live. qrtz starts
+      empty until then.
     </Callout>
   ) : null;
 
@@ -405,9 +395,7 @@ export default function MarketplaceView() {
     const names = [
       ...new Set([
         ...rows.filter((r) => r.kind === 'extension').map((r) => r.name),
-        ...listings(available)
-          .map((l) => l.name)
-          .filter((n) => statusOf(n, entryOf(n), rows) === 'built-in'),
+        ...installedIds.filter((n) => !installedRow(n, rows)),
       ]),
     ];
     const shared = rows.filter((r) => r.kind !== 'extension');
@@ -420,12 +408,24 @@ export default function MarketplaceView() {
         {installBar}
         <SettingsSection title="extensions" data-testid="module-list">
           {names.length ? null : (
-            <EmptyState icon="package" title="no extensions installed" />
+            <EmptyState
+              icon="package"
+              title="nothing installed yet. qrtz starts empty: install a module from browse."
+              action={
+                <Button
+                  size="sm"
+                  icon="download"
+                  onClick={() => go({ page: 'browse' })}
+                  data-testid="module-list-browse"
+                >
+                  browse modules
+                </Button>
+              }
+            />
           )}
           {names.map((name) => {
             const info = infoFor(name);
             const row = installedRow(name, rows);
-            const entry = entryOf(name);
             const deps = row ? lockedDependencies(row, rows) : [];
             const s = statusFor(name);
             const on = enabled(name);
@@ -438,7 +438,7 @@ export default function MarketplaceView() {
                 meta={
                   row
                     ? `v${row.version} · ${formatBytes(row.sizeBytes + deps.reduce((n, d) => n + d.sizeBytes, 0))}${row.disabled ? ` · switched off: ${row.disabled}` : ''}`
-                    : 'built into this qrtz'
+                    : 'installed'
                 }
                 enabled={on}
                 toggleDisabled={!isModuleId(name) || !!row?.disabled}
@@ -446,18 +446,6 @@ export default function MarketplaceView() {
                 actions={
                   <>
                     {s === 'update' ? primary(name) : null}
-                    {s === 'built-in' && entry ? (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        icon="download"
-                        disabled={busy}
-                        onClick={() => propose(name, 'install')}
-                        data-testid={`module-get-${name}`}
-                      >
-                        {`get v${entry.version}`}
-                      </Button>
-                    ) : null}
                     {info.view ? (
                       <Button
                         size="sm"
@@ -597,8 +585,32 @@ export default function MarketplaceView() {
       {soonBox}
       {errorBox}
       {installBar}
+      {listings(available, installedIds).length ? null : (
+        <EmptyState
+          icon="package"
+          title={
+            soon
+              ? 'nothing to install yet.'
+              : 'qrtz starts empty. check for extensions to install your first module.'
+          }
+          action={
+            soon ? null : (
+              <Button
+                size="sm"
+                icon="refresh"
+                loading={checking}
+                disabled={checking}
+                onClick={check}
+                data-testid="marketplace-empty-check"
+              >
+                check for extensions
+              </Button>
+            )
+          }
+        />
+      )}
       <ExtensionGrid data-testid="marketplace-grid">
-        {listings(available).map(({ name, entry }) => {
+        {listings(available, installedIds).map(({ name, entry }) => {
           const info = infoFor(name);
           return (
             <ExtensionCard
@@ -606,7 +618,7 @@ export default function MarketplaceView() {
               name={name}
               icon={info.icon}
               description={info.description}
-              version={entry?.version ?? 'built in'}
+              version={entry?.version ?? 'installed'}
               size={sizeLine(entry)}
               status={statusFor(name)}
               progress={working?.name === name ? pct : null}
@@ -654,7 +666,7 @@ function Detail({
           items={[
             {
               label: 'version',
-              value: entry ? `v${entry.version}` : 'built in',
+              value: entry ? `v${entry.version}` : 'installed',
               'data-testid': 'fact-version',
             },
             ...(row ? [{ label: 'installed', value: `v${row.version}` }] : []),
@@ -663,7 +675,7 @@ function Detail({
               : []),
             {
               label: 'size',
-              value: entry ? formatBytes(entry.sizeBytes) : 'included in qrtz',
+              value: entry ? formatBytes(entry.sizeBytes) : 'on this mac',
             },
             ...(entry
               ? [

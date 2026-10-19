@@ -13,21 +13,18 @@ fn main() {
     .expect("tauri build script");
 }
 
-/// ADR 0162, ADR 0159: on macOS `binaries/qrtz` (the `qrtz` command) and `binaries/qrtz-snap` (snap's helper) are
-/// externalBins, which tauri-build requires to exist. `bun run build:helper` builds the real ones. A debug build
-/// (`cargo check`, `tauri dev`, the CI check) without them gets a stub that says how to build them; a release build
-/// never does, so a bundle can't ship a stub. (`binaries/qrtz-helper` has always been required as is.)
+/// ADR 0162: on macOS `binaries/qrtz` (the `qrtz` command) is the one externalBin (ADR 0169: qrtz ships no module
+/// code), which tauri-build requires to exist. `bun run build:helper` builds the real one. A debug build
+/// (`cargo check`, `tauri dev`, the CI check) without it gets a stub that says how to build it; a release build
+/// never does, so a bundle can't ship a stub.
 /// tauri-build copies these into target/<profile>/ only when cargo reruns this script, which is mtime-based, so
 /// scripts/sidecars.mjs gives a changed binary a fresh mtime and syncs target/debug itself; qrtz-helper-bridge's
 /// `is_dev_stub` refuses to spawn a stub that still got through (its marker is STUB_MARK).
 const STUB_MARK: &str = "qrtz: dev stub";
-const STUBBED: &[(&str, &str)] = &[
-    (
-        "qrtz",
-        "cargo run -p qrtz-app --features runtime --bin qrtz -- \"$@\"",
-    ),
-    ("qrtz-snap", "bun run build:helper"),
-];
+const STUBBED: &[(&str, &str)] = &[(
+    "qrtz",
+    "cargo run -p qrtz-app --features runtime --bin qrtz -- \"$@\"",
+)];
 
 fn stub_qrtz_command_for_debug_builds() {
     let target = std::env::var("TARGET").unwrap_or_default();

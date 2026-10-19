@@ -1,5 +1,6 @@
 //! ADR 0153/0157 end to end on loopback: `qrtz-publish` builds a signed output dir with test keys made at runtime,
-//! two local servers play `modules.qrtz.ai` and its B2 mirror (a third plays Hugging Face), and the shell's
+//! two local servers play `modules.qrtz.ai` and its B2 mirror (a third plays Hugging Face, where the model files come
+//! from, ADR 0171), and the shell's
 //! package manager (`module_hosting::Packages`) refreshes, plans, installs a dependency tree under a consent in
 //! parallel byte ranges, resumes, falls back to the mirror, removes, prunes, and refuses freeze, rollback and revoked
 //! releases. Sideloads go through the same installer from a `.qrtzpkg` (Bozniak's rules).
@@ -9,7 +10,7 @@ use qrtz_modules::index::{layout, DAY_MS};
 use qrtz_modules::install::{InstallConsent, Installer};
 use qrtz_modules::qrtz_lock::Source;
 use qrtz_modules::sideload::{Confirmation, Refusal, Revoked, SideloadOrigin};
-use qrtz_publish::dry_run::{sample, NoAppleChecks};
+use qrtz_publish::dry_run::{sample, sample_hugging_face_files, NoAppleChecks};
 use qrtz_publish::keys::Keys;
 use qrtz_publish::{build, pack, write_root, Spec};
 use qrtz_speech::testkit::Server;
@@ -24,6 +25,16 @@ struct World {
     now: u64,
     primary: Server,
     mirror: Server,
+    /// Plays https://huggingface.co: the sample model's files at its pinned revision.
+    hf: Server,
+}
+
+/// The Hugging Face path of the sample model's 20 MiB weights.
+fn hf_big() -> String {
+    format!(
+        "qrtz/sample/resolve/{}/weights/a.bin",
+        qrtz_publish::dry_run::SAMPLE_REVISION
+    )
 }
 
 impl Drop for World {
@@ -67,6 +78,10 @@ async fn world() -> World {
     let (primary, mirror) = (Server::start().await, Server::start().await);
     serve(&out, &primary);
     serve(&out, &mirror);
+    let hf = Server::start().await;
+    for (p, b) in sample_hugging_face_files(&dir) {
+        hf.put(&p, b);
+    }
     World {
         _tmp: tmp,
         dir,
@@ -76,6 +91,7 @@ async fn world() -> World {
         now,
         primary,
         mirror,
+        hf,
     }
 }
 
@@ -88,8 +104,12 @@ impl World {
                 Some(self.pin.clone()),
                 Box::new(NoAppleChecks),
             ),
-            HttpTransport::new(&bases, &[]),
+            self.transport(&bases),
         )
+    }
+    /// The given package hosts, and the loopback Hugging Face for model files.
+    fn transport(&self, bases: &[String]) -> HttpTransport {
+        HttpTransport::new(bases, &[("https://huggingface.co".into(), self.hf.base.clone())])
     }
     fn republish(&self, revoked: Vec<Revoked>, now: u64) {
         let spec = Spec {
@@ -183,18 +203,20 @@ async fn publish_serve_refresh_plan_and_install_a_tree_over_localhost() {
         assert_eq!(mode("packages/echo/0.3.0/qrtz.json") & 0o222, 0);
         assert_eq!(mode("packages/model.sample/1.0.0"), 0o500);
     }
-    // The big blob came in closed 8 MiB ranges, from the primary only.
-    let big = layout::blob(&qrtz_modules::sha256_hex(&vec![7u8; 20 * 1024 * 1024]));
-    let ranges: Vec<String> = w
-        .primary
-        .faults
-        .lock()
-        .unwrap()
-        .ranges
-        .iter()
-        .filter(|(p, _)| *p == big)
-        .map(|(_, r)| r.clone())
-        .collect();
+    // The big model file came in closed 8 MiB ranges, from its Hugging Face URL only (ADR 0171): the package hosts
+    // never hold model bytes.
+    let big = hf_big();
+    let model_blob = layout::blob(&qrtz_modules::sha256_hex(&vec![7u8; 20 * 1024 * 1024]));
+    assert!(!w.primary.faults.lock().unwrap().hits.contains_key(&model_blob));
+    let ranges: Vec<String> =
+        w.hf.faults
+            .lock()
+            .unwrap()
+            .ranges
+            .iter()
+            .filter(|(p, _)| *p == big)
+            .map(|(_, r)| r.clone())
+            .collect();
     let mut sorted = ranges.clone();
     sorted.sort();
     assert_eq!(
@@ -233,10 +255,11 @@ async fn a_cut_range_is_fetched_again_and_only_it() {
     let c = w.client("client", &[&w.primary]);
     c.refresh(&RefreshConsent::user_asked(), w.now).await.unwrap();
     let plan = c.plan(echo()).unwrap();
+    // The biggest blob is the model's weights, fetched from Hugging Face (ADR 0171).
     let big = plan.fetch.iter().max_by_key(|b| b.size).unwrap().clone();
-    let path = layout::blob(&big.sha256);
-    w.primary
-        .faults
+    assert!(!big.mirrors.is_empty());
+    let path = hf_big();
+    w.hf.faults
         .lock()
         .unwrap()
         .truncate_once
@@ -253,7 +276,7 @@ async fn a_cut_range_is_fetched_again_and_only_it() {
     c.apply(&plan, &plan.consent(), w.now, &no_progress)
         .await
         .unwrap();
-    let hits = w.primary.faults.lock().unwrap().hits[&path];
+    let hits = w.hf.faults.lock().unwrap().hits[&path];
     assert_eq!(hits, 4, "three ranges, one of them twice");
 }
 
@@ -268,7 +291,13 @@ async fn the_mirror_serves_when_the_primary_is_down_or_corrupt() {
     let c2 = w.client("client2", &[&w.primary, &w.mirror]);
     c2.refresh(&RefreshConsent::user_asked(), w.now).await.unwrap();
     let plan = c2.plan(echo()).unwrap();
-    let small = plan.fetch.iter().min_by_key(|b| b.size).unwrap();
+    // A package blob (model files never come from the package hosts, ADR 0171).
+    let small = plan
+        .fetch
+        .iter()
+        .filter(|b| b.mirrors.is_empty())
+        .min_by_key(|b| b.size)
+        .unwrap();
     let blob = layout::blob(&small.sha256);
     w.primary.faults.lock().unwrap().corrupt.insert(blob.clone());
     c2.apply(&plan, &plan.consent(), w.now, &no_progress)
@@ -552,13 +581,13 @@ async fn an_unpinned_root_is_refused() {
     let w = world().await;
     let c = Packages::with(
         Installer::new(w.dir.join("c"), Some("00".repeat(32)), Box::new(NoAppleChecks)),
-        HttpTransport::new(std::slice::from_ref(&w.primary.base), &[]),
+        w.transport(std::slice::from_ref(&w.primary.base)),
     );
     let e = c.refresh(&RefreshConsent::user_asked(), w.now).await.unwrap_err();
     assert!(e.to_string().contains("pinned"), "{e}");
     let none = Packages::with(
         Installer::new(w.dir.join("d"), None, Box::new(NoAppleChecks)),
-        HttpTransport::new(std::slice::from_ref(&w.primary.base), &[]),
+        w.transport(std::slice::from_ref(&w.primary.base)),
     );
     let before = w.hits();
     let e = none
@@ -752,7 +781,7 @@ async fn check_for_updates_refreshes_the_signed_index_and_installs_nothing() {
     let before = w.hits();
     let off = Packages::with(
         Installer::new(w.dir.join("off"), Some(w.pin.clone()), Box::new(NoAppleChecks)),
-        HttpTransport::new(std::slice::from_ref(&w.primary.base), &[]).unconfigured(),
+        w.transport(std::slice::from_ref(&w.primary.base)).unconfigured(),
     );
     let r = PackagesIpc::new(off)
         .call("packages:check-update", json!(null))

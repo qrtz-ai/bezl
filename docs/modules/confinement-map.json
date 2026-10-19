@@ -69,22 +69,41 @@
     ["QrtzNanoMac", "FluidAudio"]
   ],
   "bundledCode": {
-    "about": "ADR 0162, ADR 0159: the executables Tauri bundles as externalBin into qrtz.app/Contents/MacOS (tauri.macos.conf.json). tauri build re-signs every one with the app's entitlements and its file name as identifier, so scripts/release/sign-mac.sh signs each again as listed here (identifier, entitlements file or none) and reseals the app before notarization. inherits: runs as qrtz's child under qrtz's one TCC identity (ADR 0154).",
+    "about": "ADR 0162, ADR 0169: the executables Tauri bundles as externalBin into qrtz.app/Contents/MacOS (tauri.macos.conf.json). qrtz ships empty (ADR 0169): only the `qrtz` command; no module code. tauri build re-signs every externalBin with the app's entitlements and its file name as identifier, so scripts/release/sign-mac.sh signs each again as listed here (identifier, entitlements file or none) and reseals the app before notarization.",
     "teamId": "MR26CCZ496",
-    "qrtz-helper": {
-      "owner": "monolith",
-      "identifier": "qrtz-helper",
-      "entitlements": "app"
-    },
     "qrtz": {
       "owner": "shell",
       "identifier": "ai.qrtz.cli",
       "entitlements": null
+    }
+  },
+  "moduleCode": {
+    "about": "ADR 0169, ADR 0170: each module's executable, shipped only in its own extension package (bin/qrtz-<id>, the package's extension.entry and module.json launch.entry), never in qrtz.app. scripts/modules/build-packages.sh signs each as listed (its identifier is the one the module's lock entry and module.json code pin, so the installer's and the launcher's designated-requirement checks pass) and scripts/modules/publish.sh notarizes it before it enters the index. inherits: runs as qrtz's child under qrtz's one TCC identity (ADR 0154).",
+    "teamId": "MR26CCZ496",
+    "qrtz-echo": {
+      "owner": "echo",
+      "identifier": "ai.qrtz.echo",
+      "entitlements": "native/qrtz-helper/entitlements/ai.qrtz.echo.entitlements"
+    },
+    "qrtz-nano": {
+      "owner": "nano",
+      "identifier": "ai.qrtz.nano",
+      "entitlements": "native/qrtz-helper/entitlements/ai.qrtz.nano.entitlements"
+    },
+    "qrtz-ctrl": {
+      "owner": "ctrl",
+      "identifier": "ai.qrtz.ctrl",
+      "entitlements": "native/qrtz-helper/entitlements/ai.qrtz.ctrl.entitlements"
     },
     "qrtz-snap": {
       "owner": "snap",
       "identifier": "ai.qrtz.snap",
       "entitlements": "native/qrtz-helper/entitlements/ai.qrtz.snap.entitlements"
+    },
+    "devHelper": {
+      "about": "The monolith qrtz-helper (every module in one process) is a dev tool only now: QRTZ_HELPER_BIN in a debug build. scripts/dev/sign.sh signs it as ai.qrtz.helper; it never ships and no lock entry names it.",
+      "name": "qrtz-helper",
+      "identifier": "ai.qrtz.helper"
     }
   },
   "appTccEntitlements": {

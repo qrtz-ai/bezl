@@ -104,7 +104,7 @@ export const ModuleManifest = z
       .strict(),
     launch: z
       .object({
-        kind: z.enum(['bundled-helper', 'launch-services']),
+        kind: z.enum(['bundled-helper', 'package', 'launch-services']),
         entry: z.string().min(1),
         channels: z.array(z.string()).optional(),
       })
@@ -143,7 +143,19 @@ export function isModuleOn(
   cfg: Pick<Config, 'modules'>,
   id: ModuleId,
 ): boolean {
-  return cfg.modules.enabled && cfg.modules[id].enabled;
+  return (
+    cfg.modules.enabled &&
+    cfg.modules[id].installed !== false &&
+    cfg.modules[id].enabled
+  );
+}
+
+/** ADR 0169: installed from the marketplace (the host writes it from qrtz.lock). */
+export function isModuleInstalled(
+  cfg: Pick<Config, 'modules'>,
+  id: ModuleId,
+): boolean {
+  return cfg.modules[id].installed !== false;
 }
 
 /** Whether a view is shown: shell views always; module views only while their module is on. */

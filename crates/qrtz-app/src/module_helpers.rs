@@ -11,7 +11,7 @@
 //! It passes `QRTZ_MODULE=<id>`, and every process gets its own speech socket at fd 3 (`QRTZ_SPEECH_FD`): nano's
 //! carries recording audio, echo's carries dictation audio. Lines are routed by the process they came from (see
 //! `AppService::on_helper_line_from`).
-use qrtz_helper_bridge::{HelperState, HelperStatus, ProcessSpawn, Supervisor, SupervisorOptions};
+use qrtz_helper_bridge::{HelperState, HelperStatus, ProcessSpawn, Spawn, Supervisor, SupervisorOptions};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -32,6 +32,13 @@ pub enum HelperLayout {
     Monolith,
     /// qrtz-nano, qrtz-echo and qrtz-ctrl. `programs` overrides where a module's app is (`QRTZ_<ID>_BIN`).
     Split { programs: BTreeMap<String, PathBuf> },
+    /// ADR 0169, the shipping app: qrtz.app bundles no helper. Each module's helper is its installed package's
+    /// entry under `root` (`<data>/packages/<name>/<version>/`, read from `qrtz.lock` at every start), and only an
+    /// installed, switched-on module's helper runs. `programs` are dev overrides (debug builds only).
+    Installed {
+        root: PathBuf,
+        programs: BTreeMap<String, PathBuf>,
+    },
 }
 
 impl HelperLayout {
@@ -55,9 +62,32 @@ impl HelperLayout {
     }
 
     pub fn is_split(&self) -> bool {
-        matches!(self, Self::Split { .. })
+        matches!(self, Self::Split { .. } | Self::Installed { .. })
+    }
+
+    /// Module `id`'s helper: next to the base helper (split), or its installed package (installed).
+    pub fn spawner(&self, base: &ProcessSpawn, id: &str) -> Arc<dyn Spawn> {
+        match self {
+            Self::Monolith => Arc::new(module_spawn(base, id, &BTreeMap::new())),
+            Self::Split { programs } => Arc::new(module_spawn(base, id, programs)),
+            Self::Installed { root, programs } => {
+                let mut b = base.clone();
+                b.env.push((MODULE_ENV.to_owned(), id.to_owned()));
+                Arc::new(crate::installed::InstalledSpawn {
+                    module: id.to_owned(),
+                    root: root.clone(),
+                    base: b,
+                    fixed: programs.get(id).cloned(),
+                    check: crate::installed::LaunchCheck::for_build(),
+                })
+            }
+        }
     }
 }
+
+/// The placeholder program of the base spawn when the helpers come from installed packages (ADR 0169): never run
+/// itself, it only carries the arguments and environment every module helper gets.
+pub const INSTALLED_PROGRAM: &str = "qrtz-installed-module";
 
 /// Module `id`'s app next to the helper binary. The Rust mock helper plays every role itself (Linux dev and tests),
 /// told which by `QRTZ_MODULE`.
@@ -118,7 +148,7 @@ impl ModuleHelpers {
     pub fn spawn(layout: &HelperLayout, base: ProcessSpawn, opts: SupervisorOptions) -> Self {
         match layout {
             HelperLayout::Monolith => Self::monolith(Supervisor::spawn(opts, Arc::new(base))),
-            HelperLayout::Split { programs } => {
+            HelperLayout::Split { .. } | HelperLayout::Installed { .. } => {
                 let mk = |id: &str| {
                     let mut o = opts.clone();
                     o.name = format!("qrtz-{id}");
@@ -126,7 +156,7 @@ impl ModuleHelpers {
                     if id == "ctrl" {
                         o.heartbeat_timeout = Duration::ZERO;
                     }
-                    Supervisor::spawn(o, Arc::new(module_spawn(&base, id, programs)))
+                    Supervisor::spawn(o, layout.spawner(&base, id))
                 };
                 Self {
                     nano: mk("nano"),

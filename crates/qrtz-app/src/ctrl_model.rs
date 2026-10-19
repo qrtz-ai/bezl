@@ -108,11 +108,16 @@ impl CtrlLayaModel {
         self
     }
 
+    /// The user's answer in ctrl's settings; with none, ADR 0169: `model.laya` installed with ctrl (its dependency,
+    /// listed in the install's plan and covered by that one consent) is the yes. A recorded "no" still wins.
     pub fn consented(&self) -> bool {
-        std::fs::read(&self.consent_file)
+        match std::fs::read(&self.consent_file)
             .ok()
             .and_then(|b| serde_json::from_slice::<Consent>(&b).ok())
-            .is_some_and(|c| c.consented)
+        {
+            Some(c) => c.consented,
+            None => self.installed(),
+        }
     }
 
     /// Record the user's answer. `false` also deletes the model and any partial download.

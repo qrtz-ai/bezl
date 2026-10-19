@@ -7,7 +7,7 @@ use qrtz_app::packages_ipc::PackagesIpc;
 use qrtz_app::ports::PackagesPort;
 use qrtz_app::service::Events;
 use qrtz_modules::install::Installer;
-use qrtz_publish::dry_run::{sample, NoAppleChecks};
+use qrtz_publish::dry_run::{sample, sample_hugging_face_files, NoAppleChecks};
 use qrtz_publish::keys::Keys;
 use qrtz_publish::{build, write_root};
 use qrtz_speech::testkit::Server;
@@ -37,9 +37,17 @@ async fn the_catalog_comes_from_the_signed_index_with_sizes_dependencies_and_pro
     build(&out, &sample(&dir, true).unwrap(), &keys, now).unwrap();
     let server = Server::start().await;
     serve(&out, &out, &server);
+    // ADR 0171: the model's files come from (a loopback) Hugging Face, not the package host.
+    let hf = Server::start().await;
+    for (p, b) in sample_hugging_face_files(&dir) {
+        hf.put(&p, b);
+    }
     let packages = Packages::with(
         Installer::new(dir.join("ui"), Some(pin), Box::new(NoAppleChecks)),
-        HttpTransport::new(std::slice::from_ref(&server.base), &[]),
+        HttpTransport::new(
+            std::slice::from_ref(&server.base),
+            &[("https://huggingface.co".into(), hf.base.clone())],
+        ),
     );
     let events = Events::new();
     let mut rx = events.subscribe();

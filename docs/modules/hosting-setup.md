@@ -38,9 +38,9 @@ the root sha256 are fine to share.
 ## 3. No package-host mirror (ADR 0167)
 
 Jared decided (2026-10-18) not to run a Backblaze B2 mirror. `modules.qrtz.ai` (Cloudflare R2, bucket
-`qrtz-modules`) is the sole package host. `module_hosts.json` pins only that primary (`mirrors: []`); the client
-retries on it and then falls through to a blob's own model mirror URLs (Hugging Face) when the signed tree lists
-them. Proposal §4's B2 cold-copy plan is withdrawn; see [ADR 0167](../adr/0167-no-backblaze-b2-package-host-mirror.md).
+`qrtz-modules`) is the sole package host. `module_hosts.json` pins only that primary (`mirrors: []`). Model files
+are never on it (ADR 0171): the signed tree gives each one a Hugging Face URL at a pinned commit, the client fetches
+it only from there and checks it against the signed sha256 and size. Proposal §4's B2 cold-copy plan is withdrawn; see [ADR 0167](../adr/0167-no-backblaze-b2-package-host-mirror.md).
 
 ## 4. Keys (offline)
 
@@ -120,8 +120,9 @@ rclone copy ~/qrtz-publish-out r2:qrtz-modules --include 'v1/timestamp.json*'
   refused) and its files: an extension's signed, notarized, **stapled** helper, a service's `.xpc`.
 - A model is published from the files you already downloaded from Hugging Face, e.g. the app's own
   `~/Library/Application Support/ai.qrtz.desktop/models/parakeet-tdt-v2` after the speech download (settings → speech, or switching echo on). Every file must match its
-  pin in the `pinnedModels` file, and the published package is exactly the tree the app pins (same sha256), with the
-  Hugging Face URL kept as a second source. Publish only the models whose license allows mirroring.
+  pin in the `pinnedModels` file, and the published package is exactly the tree the app pins (same sha256). The
+  files are only hashed (ADR 0171): the output dir gets the model's `qrtz.json` and tree, the app downloads the files
+  from their pinned Hugging Face URLs, and qrtz-publish keeps a copy in `<out>.model-blobs/` for offline packs.
 - Keep `~/qrtz-publish-out` (or back it up): it's the record of everything published.
 
 ## 7. Weekly

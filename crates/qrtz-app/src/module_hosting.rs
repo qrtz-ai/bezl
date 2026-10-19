@@ -11,9 +11,10 @@
 //! - **Transport** is `qrtz-speech`'s downloader (ADR 0078's one network path): HTTPS only, size caps, exact byte
 //!   ranges. Hosts are untrusted: every blob is checked against its signed sha256 before it enters the store.
 //! - **Code checks** (Bozniak's rule 7, both paths): on macOS, `codesign --verify --strict --deep` against the
-//!   package's exact designated requirement, the signing team, and Gatekeeper's notarization assessment of the
-//!   staged helper or `.xpc`; a placeholder team (`0000000000`) is refused. Elsewhere every code install is refused
-//!   (models, which are data, install anywhere).
+//!   package's exact designated requirement and the signing team (MR26CCZ496 only), quarantine stripped (or
+//!   refused), and the staged code's cdhash equal to the notarization the signed index records (ADR 0170: all
+//!   offline, no Gatekeeper lookup); a placeholder team (`0000000000`) is refused. Elsewhere every code install is
+//!   refused (models, which are data, install anywhere).
 use qrtz_modules::fetch::{Source, Transport};
 use qrtz_modules::index::{layout, PackageKind};
 use qrtz_modules::install::{CodeChecks, Installer};
@@ -63,6 +64,13 @@ pub struct HttpTransport {
     /// Whether the package hosts serve anything yet ([`Hosts::configured`]); unconfigured hosts get no request.
     configured: bool,
     ctl: DownloadControl,
+    /// Dev only (ADR 0169, [`dev_index`]): a published index dir on this disk (`qrtz-publish build --out`) instead
+    /// of the hosts. Model files still come from their pinned Hugging Face URLs (ADR 0171), unless `url_dirs`
+    /// serves that URL prefix from disk.
+    dir: Option<PathBuf>,
+    /// `(URL prefix, dir)`: a URL under the prefix is read from the dir (a local copy of a Hugging Face repo; tests
+    /// and the dev index). Never consulted for anything but a model file's signed URL.
+    url_dirs: Vec<(String, PathBuf)>,
 }
 
 impl HttpTransport {
@@ -78,7 +86,27 @@ impl HttpTransport {
                 .collect(),
             configured: true,
             ctl: DownloadControl::default(),
+            dir: None,
+            url_dirs: vec![],
         }
+    }
+
+    /// A published index dir as the one host (dev builds, [`dev_index`]; tests).
+    pub fn local_dir(dir: impl Into<PathBuf>) -> Self {
+        let mirrors: Vec<(String, String)> = Hosts::pinned()
+            .model_mirrors
+            .iter()
+            .map(|m| (m.clone(), m.clone()))
+            .collect();
+        let mut t = Self::new(&[], &mirrors);
+        t.dir = Some(dir.into());
+        t
+    }
+    /// Serve model URLs under `prefix` from `dir` (`<dir>/<rest of the URL>`), e.g. a local copy of a Hugging Face
+    /// repo. The bytes are checked against the signed hash like any source.
+    pub fn with_url_dir(mut self, prefix: impl Into<String>, dir: impl Into<PathBuf>) -> Self {
+        self.url_dirs.push((prefix.into(), dir.into()));
+        self
     }
     /// Marks the package hosts as not set up: no index request and no blob request reaches them.
     pub fn unconfigured(mut self) -> Self {
@@ -113,6 +141,9 @@ impl HttpTransport {
 #[async_trait::async_trait]
 impl Transport for HttpTransport {
     fn hosts(&self) -> usize {
+        if self.dir.is_some() {
+            return 1;
+        }
         self.hosts.len()
     }
 
@@ -121,6 +152,14 @@ impl Transport for HttpTransport {
     }
 
     async fn get(&self, host: usize, path: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
+        if let Some(d) = &self.dir {
+            return match std::fs::read(d.join(path)) {
+                Ok(b) if b.len() > max => Err(format!("{path}: too large")),
+                Ok(b) => Ok(Some(b)),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(e) => Err(format!("{path}: {e}")),
+            };
+        }
         if !self.configured {
             return Err(format!("{path}: the package hosts aren't set up yet"));
         }
@@ -137,6 +176,23 @@ impl Transport for HttpTransport {
     async fn get_range(&self, src: &Source, sha256: &str, start: u64, len: u64) -> Result<Vec<u8>, String> {
         if self.ctl.is_paused() {
             return Err("paused".into());
+        }
+        let local = match src {
+            Source::Host(_) => self.dir.as_ref().map(|d| d.join(layout::blob(sha256))),
+            Source::Url(u) => self
+                .url_dirs
+                .iter()
+                .filter(|(p, _)| u.starts_with(p.as_str()))
+                .max_by_key(|(p, _)| p.len())
+                .map(|(p, d)| d.join(&u[p.len()..])),
+        };
+        if let Some(path) = local {
+            use std::io::{Read, Seek, SeekFrom};
+            let mut f = std::fs::File::open(path).map_err(|e| e.to_string())?;
+            f.seek(SeekFrom::Start(start)).map_err(|e| e.to_string())?;
+            let mut buf = vec![0u8; usize::try_from(len).map_err(|_| "range too large")?];
+            f.read_exact(&mut buf).map_err(|e| e.to_string())?;
+            return Ok(buf);
         }
         let (dl, path) = match src {
             Source::Host(_) if !self.configured => return Err("the package hosts aren't set up yet".into()),
@@ -156,8 +212,11 @@ impl Transport for HttpTransport {
     }
 }
 
-/// Rule 7 on macOS: the signature, the exact designated requirement (which names the bundle id and the team), the
-/// team, and the notarization assessment. Runs `/usr/bin/codesign` and `/usr/sbin/spctl` on the staged bundle.
+/// Rule 7 on macOS, all offline (ADR 0170, Bozniak's model): the quarantine flag is stripped from the staged code
+/// and refused if it stays, then the signature, the exact designated requirement (which names the identifier and
+/// the team) and the team; [`CodeChecks::check_notarized`] then requires the staged code's cdhash to be the one the
+/// signed index records as notarized. Nothing asks Gatekeeper online (a bare helper can't be stapled, and a
+/// stapled-ticket `spctl` assessment of one fails anyway, ADR 0162).
 pub struct AppleCodeChecks;
 
 #[cfg(target_os = "macos")]
@@ -178,12 +237,34 @@ fn run(cmd: &str, args: &[&str]) -> Result<String, String> {
     }
 }
 
-/// The checks on one bundle (`.app` or `.xpc`).
+pub const QUARANTINE: &str = "com.apple.quarantine";
+
+/// Strip `com.apple.quarantine` from `path` (recursively), then refuse if any file still carries it.
+#[cfg(target_os = "macos")]
+pub fn strip_quarantine(path: &Path) -> Result<(), String> {
+    let p = path.to_str().ok_or("path is not utf-8")?;
+    // Fails when no file has it, which is the normal case (our fetcher never sets it).
+    let _ = run("/usr/bin/xattr", &["-r", "-d", QUARANTINE, p]);
+    let left = run("/usr/bin/xattr", &["-r", "-l", p]).unwrap_or_default();
+    if left.contains(QUARANTINE) {
+        return Err("quarantined code (com.apple.quarantine couldn't be removed)".into());
+    }
+    Ok(())
+}
+
+/// The checks on one staged helper or bundle (signature, requirement, team), after stripping quarantine.
 #[cfg(target_os = "macos")]
 pub fn check_bundle(bundle: &Path, team_id: &str, requirement: &str) -> Result<(), String> {
     if team_id == qrtz_modules::manifest::PLACEHOLDER_TEAM_ID {
         return Err("placeholder team id: not a Developer ID build".into());
     }
+    if team_id != qrtz_modules::manifest::RELEASE_TEAM_ID {
+        return Err(format!(
+            "signed for team {team_id}, not qrtz's ({})",
+            qrtz_modules::manifest::RELEASE_TEAM_ID
+        ));
+    }
+    strip_quarantine(bundle)?;
     let p = bundle.to_str().ok_or("bundle path is not utf-8")?;
     let req = format!("-R={requirement}");
     run("/usr/bin/codesign", &["--verify", "--strict", "--deep", &req, p])?;
@@ -194,14 +275,6 @@ pub fn check_bundle(bundle: &Path, team_id: &str, requirement: &str) -> Result<(
     {
         return Err(format!("signed by another team (want {team_id})"));
     }
-    // Gatekeeper: Developer ID + a notarization ticket (stapled by the publisher, so this works offline).
-    let g = run(
-        "/usr/sbin/spctl",
-        &["--assess", "--type", "execute", "--verbose=2", p],
-    )?;
-    if !g.contains("Notarized Developer ID") {
-        return Err("not notarized".into());
-    }
     Ok(())
 }
 
@@ -210,10 +283,104 @@ pub fn check_bundle(_bundle: &Path, _team_id: &str, _requirement: &str) -> Resul
     Err("module code checks need macOS".into())
 }
 
+/// The code directory hash `codesign` reports for `file` (`CDHash=<40 hex>`).
+#[cfg(target_os = "macos")]
+pub fn cdhash(file: &Path) -> Result<String, String> {
+    let p = file.to_str().ok_or("path is not utf-8")?;
+    let info = run("/usr/bin/codesign", &["-d", "-vvv", p])?;
+    info.lines()
+        .find_map(|l| l.trim().strip_prefix("CDHash="))
+        .map(|h| h.trim().to_ascii_lowercase())
+        .ok_or_else(|| "codesign reports no CDHash".into())
+}
+
+/// Dev only (ADR 0169, [`dev_index`]): a dev-signed module (Apple Development or ad hoc, `bun run modules:dev`)
+/// must carry a valid signature with exactly the identifier its requirement names (`ai.qrtz.<name>`). Team and
+/// notarization aren't checked; a release build never uses this.
+pub struct DevCodeChecks;
+
+/// The identifier a designated requirement names (`identifier "ai.qrtz.echo" and ...` → `ai.qrtz.echo`).
+pub fn requirement_identifier(requirement: &str) -> Option<&str> {
+    let rest = requirement.trim_start().strip_prefix("identifier")?.trim_start();
+    let rest = rest.strip_prefix('"')?;
+    rest.split('"').next()
+}
+
+impl CodeChecks for DevCodeChecks {
+    #[cfg(target_os = "macos")]
+    fn check(
+        &self,
+        _kind: PackageKind,
+        code: &Path,
+        _team_id: &str,
+        requirement: &str,
+    ) -> Result<(), String> {
+        let id = requirement_identifier(requirement).ok_or("requirement names no identifier")?;
+        strip_quarantine(code)?;
+        let p = code.to_str().ok_or("path is not utf-8")?;
+        run("/usr/bin/codesign", &["--verify", "--strict", p])?;
+        let info = run("/usr/bin/codesign", &["-d", "--verbose=2", p])?;
+        if !info.lines().any(|l| l.trim() == format!("Identifier={id}")) {
+            return Err(format!("not signed as {id}"));
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    fn check(
+        &self,
+        _kind: PackageKind,
+        code: &Path,
+        _team_id: &str,
+        requirement: &str,
+    ) -> Result<(), String> {
+        requirement_identifier(requirement).ok_or("requirement names no identifier")?;
+        code.exists()
+            .then_some(())
+            .ok_or_else(|| format!("{}: missing", code.display()))
+    }
+}
+
+/// `QRTZ_DEV_INDEX_DIR` (a `qrtz-publish build --out` dir, `bun run modules:dev`) and `QRTZ_DEV_ROOT1_SHA256` (its
+/// root 1's sha256): a debug build installs modules from that local signed index, so the marketplace's install,
+/// models and remove flow is testable before modules.qrtz.ai is live. A release build ignores both, always.
+pub fn dev_index() -> Option<(PathBuf, String)> {
+    dev_index_from(cfg!(debug_assertions), |k| std::env::var(k).ok())
+}
+
+pub fn dev_index_from(debug_build: bool, get: impl Fn(&str) -> Option<String>) -> Option<(PathBuf, String)> {
+    if !debug_build {
+        return None;
+    }
+    let dir = get("QRTZ_DEV_INDEX_DIR").filter(|d| !d.is_empty())?;
+    let pin = get("QRTZ_DEV_ROOT1_SHA256")?.trim().to_ascii_lowercase();
+    if pin.len() != 64 || !pin.bytes().all(|b| b.is_ascii_hexdigit()) {
+        tracing::warn!("QRTZ_DEV_ROOT1_SHA256 is not a sha256: dev index ignored");
+        return None;
+    }
+    Some((PathBuf::from(dir), pin))
+}
+
 impl CodeChecks for AppleCodeChecks {
     /// `code` is an extension's helper executable or a service's `.xpc` bundle, already staged.
     fn check(&self, _kind: PackageKind, code: &Path, team_id: &str, requirement: &str) -> Result<(), String> {
         check_bundle(code, team_id, requirement)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn check_notarized(&self, file: &Path, n: &qrtz_modules::index::Notarization) -> Result<(), String> {
+        let got = cdhash(file)?;
+        if got != n.cdhash {
+            return Err(format!(
+                "cdhash {got} isn't the notarized {} (submission {})",
+                n.cdhash, n.submission_id
+            ));
+        }
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn check_notarized(&self, _file: &Path, _n: &qrtz_modules::index::Notarization) -> Result<(), String> {
+        Err("module code checks need macOS".into())
     }
 }
 
@@ -228,6 +395,13 @@ impl Packages {
     /// The app's data dir (or `QRTZ_USER_DATA`), the pinned hosts and root, and the Apple checks.
     pub fn pinned(root: Option<PathBuf>) -> Option<Self> {
         let root = root.or_else(qrtz_modules::install::default_root)?;
+        if let Some((dir, pin)) = dev_index() {
+            tracing::warn!(dir = %dir.display(), "dev build: modules install from a local dev index");
+            return Some(Self {
+                installer: Installer::new(root, Some(pin), Box::new(DevCodeChecks)),
+                transport: HttpTransport::local_dir(dir),
+            });
+        }
         Some(Self {
             installer: Installer::new(root, Hosts::pinned().root1_sha256, Box::new(AppleCodeChecks)),
             transport: HttpTransport::pinned(),
@@ -303,15 +477,42 @@ mod tests {
         for i in 0..t.hosts() {
             assert_eq!(t.host_configured(i), h.configured());
         }
-        if !h.configured() {
-            let b = qrtz_modules::index::BlobRef {
-                sha256: "0".repeat(64),
-                size: 1,
-                mirrors: vec!["https://huggingface.co/r/resolve/abc/f".into()],
-            };
-            let src = qrtz_modules::fetch::sources(&t, &b);
-            assert_eq!(src, vec![Source::Url(b.mirrors[0].clone())]);
-        }
+        // ADR 0171: a model file comes only from its Hugging Face URL, configured hosts or not.
+        let b = qrtz_modules::index::BlobRef {
+            sha256: "0".repeat(64),
+            size: 1,
+            mirrors: vec![format!("https://huggingface.co/o/r/resolve/{}/f", "a".repeat(40))],
+        };
+        let src = qrtz_modules::fetch::sources(&t, &b);
+        assert_eq!(src, vec![Source::Url(b.mirrors[0].clone())]);
+    }
+
+    #[test]
+    fn a_release_build_never_uses_a_dev_index() {
+        let pin = "a".repeat(64);
+        let get = |k: &str| match k {
+            "QRTZ_DEV_INDEX_DIR" => Some("/tmp/dev-index".to_owned()),
+            "QRTZ_DEV_ROOT1_SHA256" => Some(pin.clone()),
+            "QRTZ_ALLOW_DEV_KNOBS" => Some("1".to_owned()),
+            _ => None,
+        };
+        assert_eq!(dev_index_from(false, get), None);
+        assert_eq!(
+            dev_index_from(true, get),
+            Some((PathBuf::from("/tmp/dev-index"), pin.clone()))
+        );
+        assert_eq!(
+            dev_index_from(true, |k| (k == "QRTZ_DEV_INDEX_DIR").then(|| "/x".to_owned())),
+            None,
+            "no pin, no dev index"
+        );
+    }
+
+    #[test]
+    fn the_dev_checks_read_the_identifier_from_the_requirement() {
+        let dr = "identifier \"ai.qrtz.echo\" and anchor apple generic";
+        assert_eq!(requirement_identifier(dr), Some("ai.qrtz.echo"));
+        assert_eq!(requirement_identifier("anchor apple"), None);
     }
 
     #[test]

@@ -70,7 +70,9 @@ fn entry() -> PackageEntry {
             size: 3,
             sha256: qrtz_modules::sha256_hex(b"abc"),
             executable: false,
-            mirrors: vec!["https://huggingface.co/o/r/resolve/0123abc/a.bin".into()],
+            mirrors: vec![
+                "https://huggingface.co/o/r/resolve/0123abc000000000000000000000000000000000/a.bin".into(),
+            ],
         },
         IndexFile {
             path: "qrtz.json".into(),
@@ -94,6 +96,7 @@ fn entry() -> PackageEntry {
         models: vec![],
         platform: PLATFORM.into(),
         min_os: None,
+        notarization: None,
     }
 }
 
@@ -180,9 +183,10 @@ fn a_package_is_its_tree_and_the_tree_hash_is_its_sha256() {
     let b = e.blobs();
     assert_eq!(b[0].sha256, e.sha256);
     assert_eq!(b.len(), 3);
-    assert!(b
-        .iter()
-        .any(|x| x.mirrors == vec!["https://huggingface.co/o/r/resolve/0123abc/a.bin".to_string()]));
+    assert!(b.iter().any(|x| x.mirrors
+        == vec![
+            "https://huggingface.co/o/r/resolve/0123abc000000000000000000000000000000000/a.bin".to_string()
+        ]));
     for bad in [
         "http://huggingface.co/x",
         "https://user@huggingface.co/x",

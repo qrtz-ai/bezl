@@ -41,6 +41,10 @@ pub struct GlobalSettings {
     pub all_enabled: bool,
     /// `modules.<id>.enabled`.
     pub enabled: BTreeMap<String, bool>,
+    /// `modules.<id>.installed` (ADR 0169): qrtz ships empty, and the host writes this from `qrtz.lock` (an
+    /// extension the lock resolves is installed). Missing means installed, so a config the host never synced (tests,
+    /// the simulated helper) keeps every module, as before.
+    pub installed: BTreeMap<String, bool>,
 }
 
 impl GlobalSettings {
@@ -53,10 +57,18 @@ impl GlobalSettings {
                 .iter()
                 .map(|id| ((*id).to_owned(), m[*id]["enabled"].as_bool().unwrap_or(true)))
                 .collect(),
+            installed: crate::MODULE_IDS
+                .iter()
+                .map(|id| ((*id).to_owned(), m[*id]["installed"].as_bool().unwrap_or(true)))
+                .collect(),
         }
     }
+    /// Installed (ADR 0169), switched on, and not under the "all off" switch.
     pub fn is_on(&self, id: &str) -> bool {
-        self.all_enabled && self.enabled.get(id).copied().unwrap_or(false)
+        self.all_enabled && self.is_installed(id) && self.enabled.get(id).copied().unwrap_or(false)
+    }
+    pub fn is_installed(&self, id: &str) -> bool {
+        self.installed.get(id).copied().unwrap_or(false)
     }
 }
 

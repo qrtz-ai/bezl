@@ -40,12 +40,27 @@ fn json(p: &Path, v: serde_json::Value) -> crate::Result<()> {
 
 /// A sample model (`model.sample`), service (`inference.sample`) and the echo extension that depends on both.
 /// `big` makes the model's weights 20 MiB, so the fetcher splits them into ranges.
+/// The sample model's revision on its (fake) Hugging Face repo `qrtz/sample`.
+pub const SAMPLE_REVISION: &str = "abc0000000000000000000000000000000000000";
+
+/// What Hugging Face serves for [`sample`]'s model (ADR 0171: the index points there, never at the package host):
+/// `(path under https://huggingface.co/, bytes)`, for a loopback server playing Hugging Face.
+pub fn sample_hugging_face_files(dir: &Path) -> Vec<(String, Vec<u8>)> {
+    let model = dir.join("sample/model");
+    let mut v = vec![];
+    for rel in ["config.json", "weights/a.bin"] {
+        let b = std::fs::read(model.join(rel)).expect("sample() wrote the model");
+        v.push((format!("qrtz/sample/resolve/{SAMPLE_REVISION}/{rel}"), b));
+    }
+    v
+}
+
 pub fn sample(dir: &Path, big: bool) -> crate::Result<Spec> {
     let model = dir.join("sample/model");
     json(
         &model.join("qrtz.json"),
         serde_json::json!({"name": "model.sample", "version": "1.0.0", "kind": "model",
-                           "model": {"task": "asr", "upstream": "qrtz/sample", "revision": "0"}}),
+                           "model": {"task": "asr", "upstream": "qrtz/sample", "revision": SAMPLE_REVISION}}),
     )?;
     write(&model.join("config.json"), b"{\"sample\":true}", false)?;
     let n = if big { 20 * 1024 * 1024 } else { 300_000 };
@@ -75,7 +90,7 @@ pub fn sample(dir: &Path, big: bool) -> crate::Result<Spec> {
         team_id: TEAM.into(),
         packages: [model, svc, echo]
             .into_iter()
-            .map(|d| SpecPackage { dir: d, min_os: None })
+            .map(SpecPackage::fake_notarized)
             .collect(),
         pinned_models: vec![],
         models: vec![],

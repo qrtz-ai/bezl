@@ -3,8 +3,7 @@
 # (bundledCode) says, reseal the app, check every signature, then notarize and staple the app and a fresh .dmg.
 #
 # Why: `tauri build` re-signs every externalBin with the app's entitlements (allow-jit, audio-input, apple-events)
-# and the file name as identifier. qrtz-snap must carry no entitlement and sign as ai.qrtz.snap (its lock entry), and
-# the `qrtz` command needs none. So the bundle is built signed but NOT notarized, fixed up here, then notarized.
+# and the file name as identifier. The `qrtz` command needs none. (No module code is bundled, ADR 0169.) So the bundle is built signed but NOT notarized, fixed up here, then notarized.
 #
 # Usage (on the Mac, after `bun run make` with APPLE_SIGNING_IDENTITY set and APPLE_ID/APPLE_PASSWORD unset; usually
 # through `bun run release:mac`, scripts/release/sign-notarize.sh):
@@ -31,10 +30,10 @@ macos="$app/Contents/MacOS"
 
 # name identifier entitlements(app | none | repo path). Must match confinement-map.json bundledCode (checked by
 # crates/qrtz-lifecycle/tests/offline_graph.rs).
+# ADR 0169: qrtz ships empty, so the `qrtz` command is the only nested executable. A module's executable is signed
+# with its own identifier in its package (scripts/modules/build-packages.sh, confinement-map.json moduleCode).
 NESTED="
-qrtz-helper qrtz-helper app
 qrtz ai.qrtz.cli none
-qrtz-snap ai.qrtz.snap native/qrtz-helper/entitlements/ai.qrtz.snap.entitlements
 "
 
 ent_file() { case "$1" in app) echo "$app_ent" ;; none) echo "" ;; *) echo "$repo/$1" ;; esac; }

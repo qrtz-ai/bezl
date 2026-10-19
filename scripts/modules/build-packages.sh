@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+# ADR 0169: build each module's own package (qrtz ships empty; a module's code lives only in its package), sign its
+# executable with the module's identifier (the one its lock entry and module.json pin; confinement-map.json
+# moduleCode, checked by crates/qrtz-lifecycle/tests/offline_graph.rs), and optionally make a local dev index.
+#
+#   scripts/modules/build-packages.sh [--out <dir>] [--dev-index] [<module>...]   (default: every module)
+#
+# Output: <out>/packages/<module>/{qrtz.json, bin/qrtz-<module>} (default out: ~/qrtz-packages), ready for
+# QRTZ_PUBLISH_PACKAGES in scripts/modules/publish.sh, which notarizes each before it enters the index (ADR 0170).
+#
+# --dev-index: also a signed index in <out>/index with throwaway keys made in <out>/dev-keys (never the release keys,
+# never in the repo), holding the packages, a stub inference.voice service, and the pinned models found under
+# $QRTZ_MODELS_DIR (only hashed against their pins: like the real index, the dev index lists each model file's pinned
+# Hugging Face URL and the app downloads it from there, ADR 0171). Its notarization records are FAKE (submission 00000000-…): only a debug build reads a dev index
+# (QRTZ_DEV_INDEX_DIR + QRTZ_DEV_ROOT1_SHA256, printed at the end), and it checks signatures with DevCodeChecks.
+# A release build refuses both the index and the records.
+#
+# Env: QRTZ_SIGN_ID (default: the first "Developer ID Application" identity, else "Apple Development", else ad-hoc);
+#      QRTZ_TEAM_ID (MR26CCZ496); QRTZ_MODELS_DIR (~/Library/Application Support/ai.qrtz.desktop/models);
+#      SWIFT_BUILD_FLAGS (extra flags for swift build, e.g. --disable-keychain).
+set -euo pipefail
+
+die() { echo "build-packages: $*" >&2; exit 1; }
+[[ "$(uname -s)" == Darwin ]] || die "macOS only (the module executables are Swift and AppKit)"
+repo="$(cd "$(dirname "$0")/../.." && pwd)"
+out="$HOME/qrtz-packages"
+dev_index=0
+want=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --out) out="${2:?--out <dir>}"; shift 2 ;;
+    --dev-index) dev_index=1; shift ;;
+    -h | --help) sed -n '2,20p' "$0"; exit 0 ;;
+    -*) die "unknown option $1" ;;
+    *) want+=("$1"); shift ;;
+  esac
+done
+
+# module identifier entitlements. Must match docs/modules/confinement-map.json moduleCode (offline_graph.rs).
+MODULES="
+echo ai.qrtz.echo native/qrtz-helper/entitlements/ai.qrtz.echo.entitlements
+nano ai.qrtz.nano native/qrtz-helper/entitlements/ai.qrtz.nano.entitlements
+ctrl ai.qrtz.ctrl native/qrtz-helper/entitlements/ai.qrtz.ctrl.entitlements
+snap ai.qrtz.snap native/qrtz-helper/entitlements/ai.qrtz.snap.entitlements
+"
+[[ ${#want[@]} -gt 0 ]] || want=(echo nano ctrl snap)
+
+identity="${QRTZ_SIGN_ID:-}"
+if [[ -z "$identity" ]]; then
+  ids="$(security find-identity -v -p codesigning 2>/dev/null || true)"
+  identity="$(sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' <<<"$ids" | head -1)"
+  [[ -n "$identity" ]] || identity="$(sed -n 's/.*"\(Apple Development: [^"]*\)".*/\1/p' <<<"$ids" | head -1)"
+  [[ -n "$identity" ]] || identity="-"
+fi
+ts=(--timestamp=none)
+[[ "$identity" == "Developer ID Application:"* ]] && ts=(--timestamp)
+
+echo "== swift build (release, arm64)"
+helper="$repo/native/qrtz-helper"
+# shellcheck disable=SC2086
+(cd "$helper" && for p in "${want[@]}"; do swift build -c release --arch arm64 ${SWIFT_BUILD_FLAGS:-} --product "qrtz-$p"; done)
+bin_dir="$(cd "$helper" && swift build -c release --arch arm64 ${SWIFT_BUILD_FLAGS:-} --show-bin-path)"
+
+echo "== stage and sign ($identity)"
+for m in "${want[@]}"; do
+  line="$(awk -v m="$m" '$1 == m' <<<"$MODULES")"
+  [[ -n "$line" ]] || die "$m: not a module (${MODULES//$'\n'/ })"
+  read -r _ id ent <<<"$line"
+  pkg="$out/packages/$m"
+  rm -rf "$pkg"
+  mkdir -p "$pkg/bin"
+  cp "$repo/modules/$m/qrtz.json" "$pkg/qrtz.json"
+  exe="$pkg/bin/qrtz-$m"
+  cp "$bin_dir/qrtz-$m" "$exe"
+  chmod 755 "$exe"
+  codesign --force --options runtime "${ts[@]}" --identifier "$id" --entitlements "$repo/$ent" --sign "$identity" "$exe"
+  info="$(codesign -dv "$exe" 2>&1)"
+  grep -qx "Identifier=$id" <<<"$info" || die "$exe: not signed as $id"
+  echo "  $m: $exe ($id)"
+done
+
+[[ "$dev_index" == 1 ]] || { echo "built in $out/packages (publish: QRTZ_PUBLISH_PACKAGES=\"$out/packages/*\")"; exit 0; }
+
+echo "== dev index (throwaway keys; fake notarization; debug builds only)"
+team="${QRTZ_TEAM_ID:-MR26CCZ496}"
+models_dir="${QRTZ_MODELS_DIR:-$HOME/Library/Application Support/ai.qrtz.desktop/models}"
+(cd "$repo" && cargo build --release -p qrtz-publish)
+pub="${CARGO_TARGET_DIR:-$repo/target}/release/qrtz-publish"
+keys="$out/dev-keys"
+idx="$out/index"
+if [[ ! -f "$keys/index.key" ]]; then
+  rm -rf "$keys" "$idx"
+  for r in root-a timestamp index; do "$pub" keygen --dir "$keys" --role "$r" >/dev/null; done
+fi
+if [[ ! -f "$idx/v1/root/1.root.json" ]]; then
+  "$pub" root --out "$idx" --keys "$keys" >/dev/null
+fi
+pin="$(shasum -a 256 "$idx/v1/root/1.root.json" | cut -d' ' -f1)"
+
+# A stub inference.voice: echo and nano depend on it (the speech engine runs in the module today; ADR 0157 §7).
+svc="$out/packages/inference.voice"
+rm -rf "$svc"
+xpc="$svc/ai.qrtz.inference.voice.xpc/Contents"
+mkdir -p "$xpc/MacOS"
+cp "$repo/tools/qrtz-publish/packages/inference.voice/qrtz.json" "$svc/qrtz.json"
+printf 'int main(void) { return 0; }\n' | cc -x c - -o "$xpc/MacOS/inference-voice"
+cat >"$xpc/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>ai.qrtz.inference.voice</string>
+<key>CFBundleExecutable</key><string>inference-voice</string>
+<key>CFBundlePackageType</key><string>XPC!</string>
+</dict></plist>
+PLIST
+codesign --force --options runtime --timestamp=none --identifier ai.qrtz.inference.voice --sign "$identity" "$svc/ai.qrtz.inference.voice.xpc"
+
+fake() { # file: a FAKE notarization record for a dev index (a release build refuses it: the cdhash isn't real)
+  local sha
+  sha="$(shasum -a 256 "$1" | cut -d' ' -f1)"
+  printf '{ "submissionId": "00000000-0000-4000-8000-000000000000", "status": "Accepted", "codeSha256": "%s", "cdhash": "%s" }' "$sha" "${sha:0:40}"
+}
+model_dir() {
+  case "$1" in
+    model.parakeet-tdt-v2-en) echo parakeet-tdt-v2 ;;
+    model.nemotron) echo nemotron-560ms ;;
+    model.nemotron-diarizer) echo nemotron3-diarizer ;;
+    model.localvqe) echo localvqe ;;
+    model.laya) echo laya ;;
+  esac
+}
+spec="$out/dev-spec.json"
+{
+  printf '{\n  "teamId": "%s",\n  "pinnedModels": ["%s", "%s"],\n  "models": [' "$team" \
+    "$repo/crates/qrtz-app/src/local_models.json" "$repo/crates/qrtz-app/src/ctrl_laya_model.json"
+  sep=""
+  for n in model.parakeet-tdt-v2-en model.nemotron model.nemotron-diarizer model.localvqe model.laya; do
+    d="$models_dir/$(model_dir "$n")"
+    [[ -d "$d" ]] || { echo "  (no $n under $models_dir: a module needing it won't install)" >&2; continue; }
+    printf '%s\n    { "name": "%s", "dir": "%s" }' "$sep" "$n" "$d"
+    sep=","
+  done
+  printf '\n  ],\n  "packages": [\n    { "dir": "%s", "notarization": %s }' "$svc" "$(fake "$xpc/MacOS/inference-voice")"
+  for m in "${want[@]}"; do
+    printf ',\n    { "dir": "%s", "notarization": %s }' "$out/packages/$m" "$(fake "$out/packages/$m/bin/qrtz-$m")"
+  done
+  printf '\n  ]\n}\n'
+} >"$spec"
+"$pub" build --out "$idx" --spec "$spec" --keys "$keys"
+"$pub" verify --out "$idx" --root-sha256 "$pin" >/dev/null
+echo
+echo "dev index ready. Run a debug qrtz with:"
+echo "  export QRTZ_DEV_INDEX_DIR=\"$idx\" QRTZ_DEV_ROOT1_SHA256=$pin"

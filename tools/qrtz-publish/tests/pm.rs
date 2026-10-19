@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 const TEAM: &str = "ABCDE12345";
+const REV: &str = "0123456789abcdef0123456789abcdef01234567";
 
 /// Hosts are output dirs; mirror URL prefixes map to dirs.
 struct Dirs {
@@ -53,7 +54,8 @@ impl Transport for Dirs {
                 let (pre, dir) = self
                     .urls
                     .iter()
-                    .find(|(p, _)| u.starts_with(*p))
+                    .filter(|(p, _)| u.starts_with(*p))
+                    .max_by_key(|(p, _)| p.len())
                     .ok_or("unknown mirror")?;
                 dir.join(&u[pre.len()..])
             }
@@ -121,12 +123,22 @@ impl World {
         write(
             &d.join("qrtz.json"),
             &serde_json::to_vec(
-                &json!({"name": name, "version": v, "kind": "model", "model": {"task": task}}),
+                // ADR 0171: a model's files come from Hugging Face at a pinned commit (here: this dir).
+                &json!({"name": name, "version": v, "kind": "model",
+                    "model": {"task": task, "upstream": format!("qrtz-test/m{}", self.n), "revision": REV}}),
             )
             .unwrap(),
             false,
         );
         write(&d.join("weights.bin"), bytes, false);
+        // What Hugging Face serves for it ([`World::hosts`] maps the URL prefix here).
+        write(
+            &self
+                .base
+                .join(format!("hf/qrtz-test/m{}/resolve/{REV}/weights.bin", self.n)),
+            bytes,
+            false,
+        );
         d
     }
 
@@ -167,7 +179,7 @@ impl World {
             team_id: TEAM.into(),
             packages: dirs
                 .into_iter()
-                .map(|dir| qrtz_publish::SpecPackage { dir, min_os: None })
+                .map(qrtz_publish::SpecPackage::fake_notarized)
                 .collect(),
             pinned_models: vec![],
             models: vec![],
@@ -185,7 +197,12 @@ impl World {
     }
 
     fn hosts(&self) -> Dirs {
-        Dirs::new(vec![self.out.clone()])
+        let mut d = Dirs::new(vec![self.out.clone()]);
+        d.urls.insert(
+            "https://huggingface.co/qrtz-test/".into(),
+            self.base.join("hf/qrtz-test"),
+        );
+        d
     }
 }
 
@@ -583,25 +600,30 @@ async fn blobs_come_in_parallel_ranges_resume_and_fall_back_to_signed_mirrors() 
         3,
         "only the missing range was fetched again: {after:?}"
     );
-    // A host that lost the blob: the tree's mirror URL serves it, checked by the same sha256.
+    // A model file: only its Hugging Face URL in the signed tree serves it, checked by the same sha256.
     let mut w2 = World::new();
-    let d = w2.dir();
-    write(&d.join("qrtz.json"), &serde_json::to_vec(&json!({"name":"model.parakeet-tdt-v2-en","version":"1.0.0","kind":"model","model":{"task":"asr"}})).unwrap(), false);
-    write(&d.join("weights.bin"), b"mirrored", false);
+    let d = w2.model("model.parakeet-tdt-v2-en", "1.0.0", "asr", b"mirrored");
     w2.publish(vec![d], vec![], w2.now);
     let wsha = qrtz_modules::sha256_hex(b"mirrored");
-    std::fs::remove_file(w2.out.join(layout::blob(&wsha))).unwrap();
+    // ADR 0171: model bytes are never in the published output (modules.qrtz.ai doesn't host them).
+    assert!(!w2.out.join(layout::blob(&wsha)).exists());
     // The fetcher itself, on a blob whose host copy is gone and whose signed tree lists a mirror URL.
     let store = qrtz_modules::store::Store::new(w2.base.join("store"));
     let mirror_dir = w2.base.join("hf");
-    write(&mirror_dir.join("org/r/resolve/abc/w.bin"), b"mirrored", false);
+    write(
+        &mirror_dir.join("org/r/resolve/abc0000000000000000000000000000000000000/w.bin"),
+        b"mirrored",
+        false,
+    );
     let mut t2 = Dirs::new(vec![w2.out.clone()]);
     t2.urls
         .insert("https://huggingface.co/".into(), mirror_dir.clone());
     let b = qrtz_modules::index::BlobRef {
         sha256: wsha.clone(),
         size: 8,
-        mirrors: vec!["https://huggingface.co/org/r/resolve/abc/w.bin".into()],
+        mirrors: vec![
+            "https://huggingface.co/org/r/resolve/abc0000000000000000000000000000000000000/w.bin".into(),
+        ],
     };
     qrtz_modules::fetch::fetch_blobs(&t2, &store, std::slice::from_ref(&b), &|_, _| {})
         .await
@@ -609,7 +631,11 @@ async fn blobs_come_in_parallel_ranges_resume_and_fall_back_to_signed_mirrors() 
     assert!(store.has(&wsha, 8));
     // A mirror with other bytes is refused (nothing enters the store).
     store.remove(&wsha).unwrap();
-    write(&mirror_dir.join("org/r/resolve/abc/w.bin"), b"tampered", false);
+    write(
+        &mirror_dir.join("org/r/resolve/abc0000000000000000000000000000000000000/w.bin"),
+        b"tampered",
+        false,
+    );
     assert!(qrtz_modules::fetch::fetch_blobs(&t2, &store, &[b], &|_, _| {})
         .await
         .is_err());
@@ -716,7 +742,7 @@ async fn app_pinned_models_install_offline_and_merge_with_the_indexed_package() 
         version: "1.0.0".into(),
         task: "asr".into(),
         repo: "org/parakeet".into(),
-        revision: "ee09c569".into(),
+        revision: "ee09c569f73759e6d44c9bd16766f477b2b36d39".into(),
         license: String::new(),
         files: vec![qrtz_modules::models::ModelFile {
             remote: "Encoder.mlmodelc/weights.bin".into(),
@@ -727,7 +753,9 @@ async fn app_pinned_models_install_offline_and_merge_with_the_indexed_package() 
     };
     let hf = w.base.join("hf");
     write(
-        &hf.join("org/parakeet/resolve/ee09c569/Encoder.mlmodelc/weights.bin"),
+        &hf.join(
+            "org/parakeet/resolve/ee09c569f73759e6d44c9bd16766f477b2b36d39/Encoder.mlmodelc/weights.bin",
+        ),
         b"weight",
         false,
     );
@@ -771,7 +799,7 @@ async fn app_pinned_models_install_offline_and_merge_with_the_indexed_package() 
         team_id: TEAM.into(),
         packages: vec![v, e]
             .into_iter()
-            .map(|dir| qrtz_publish::SpecPackage { dir, min_os: None })
+            .map(qrtz_publish::SpecPackage::fake_notarized)
             .collect(),
         pinned_models: vec![w.base.join("pins.json")],
         models: vec![qrtz_publish::SpecModel {
@@ -874,7 +902,7 @@ fn a_package_with_an_install_script_cant_even_be_published() {
     );
     let spec = qrtz_publish::Spec {
         team_id: TEAM.into(),
-        packages: vec![qrtz_publish::SpecPackage { dir: d, min_os: None }],
+        packages: vec![qrtz_publish::SpecPackage::fake_notarized(d)],
         pinned_models: vec![],
         models: vec![],
         revoked: vec![],
@@ -950,7 +978,7 @@ async fn a_model_an_extension_reads_needs_a_fresh_list_and_loads_read_only_from_
         version: "1.0.0".into(),
         task: "decision".into(),
         repo: "org/laya".into(),
-        revision: "abc123".into(),
+        revision: "abc1230000000000000000000000000000000000".into(),
         license: String::new(),
         files: vec![qrtz_modules::models::ModelFile {
             remote: "laya.gguf".into(),
@@ -960,7 +988,11 @@ async fn a_model_an_extension_reads_needs_a_fresh_list_and_loads_read_only_from_
         }],
     };
     let hf = w.base.join("hf");
-    write(&hf.join("org/laya/resolve/abc123/laya.gguf"), b"laya", false);
+    write(
+        &hf.join("org/laya/resolve/abc1230000000000000000000000000000000000/laya.gguf"),
+        b"laya",
+        false,
+    );
     let i = w.installer("c");
     let mut offline = Dirs::new(vec![]);
     offline.urls.insert("https://huggingface.co/".into(), hf.clone());

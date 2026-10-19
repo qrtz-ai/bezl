@@ -22,20 +22,21 @@ describe('marketplace catalog (ADR 0161)', () => {
     expect(compareVersions('0.10.0', '0.9.0')).toBe(1);
   });
 
-  it('says installed, update, built in or available', () => {
+  it('says installed, update or available (ADR 0169: nothing is built in)', () => {
     expect(statusOf('echo', echo, state.packages)).toBe('installed');
     expect(
       statusOf('echo', { ...echo!, version: '0.4.0' }, state.packages),
     ).toBe('update');
-    // nano ships inside this build and isn't installed as a package.
-    expect(statusOf('nano', undefined, state.packages)).toBe('built-in');
-    expect(statusOf('weather', undefined, [])).toBe('available');
+    // nano isn't in the lock: available, unless the host says it's installed (the mock, a dev monolith).
+    expect(statusOf('nano', undefined, state.packages)).toBe('available');
+    expect(statusOf('nano', undefined, state.packages, true)).toBe('installed');
+    expect(statusOf('weather', undefined, [], true)).toBe('available');
   });
 
   it('counts dependencies in the size line', () => {
     expect(sizeLine(echo)).toBe('629 mb with dependencies');
     expect(sizeLine({ ...echo!, dependencies: [] })).toBe('9 mb');
-    expect(sizeLine(undefined)).toBe('included in qrtz');
+    expect(sizeLine(undefined)).toBe('on this mac');
   });
 
   it('finds what an installed extension pulls in from the lock', () => {
@@ -46,17 +47,16 @@ describe('marketplace catalog (ADR 0161)', () => {
     ]);
   });
 
-  it('lists the index first and the built-in modules it lacks after', () => {
-    expect(listings([]).map((l) => l.name)).toEqual([
-      'echo',
-      'nano',
-      'ctrl',
-      'snap',
-    ]);
+  it('lists the index first and only the installed modules it lacks after', () => {
+    // ADR 0169: qrtz starts empty; with no index and nothing installed there is nothing to list.
+    expect(listings([])).toEqual([]);
     expect(listings([echo!]).map((l) => [l.name, !!l.entry])).toEqual([
       ['echo', true],
-      ['nano', false],
-      ['ctrl', false],
+    ]);
+    expect(
+      listings([echo!], ['echo', 'snap']).map((l) => [l.name, !!l.entry]),
+    ).toEqual([
+      ['echo', true],
       ['snap', false],
     ]);
   });

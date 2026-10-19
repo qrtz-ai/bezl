@@ -69,6 +69,7 @@ impl Manifest {
     }
 }
 
+#[derive(Clone)]
 pub struct LocalModels {
     root: PathBuf,
     packages_root: PathBuf,
@@ -403,26 +404,68 @@ impl LocalModels {
                     s.package
                 )));
             }
-            let src = self.source(s);
-            let dir = self.root.join(&s.dir);
-            let _ = std::fs::remove_file(dir.join(MARKER));
-            fsx::mkdir_private(&dir)?;
-            for f in &s.files {
-                let dest = dir.join(&f.path);
-                if let Some(p) = dest.parent() {
-                    fsx::mkdir_private(p)?;
-                }
-                let _ = std::fs::remove_file(&dest);
-                installer
-                    .store()
-                    .link(&f.sha256, f.size, &dest, false)
-                    .map_err(|e| SpeechError::Checksum(format!("{}: {e}", f.path)))?;
-            }
-            debug_assert_eq!(src.files.len(), s.files.len());
-            fsx::write_private_atomic(&dir.join(MARKER), self.manifest.version.as_bytes())?;
+            self.link_view(&installer, s)?;
         }
         on_progress(Progress { done: total, total });
         Ok(())
+    }
+
+    /// The helper's view of set `s`: store links of its files under `<models>/<dir>/`, then the marker.
+    fn link_view(&self, installer: &Installer, s: &ModelSet) -> Result<(), SpeechError> {
+        let dir = self.root.join(&s.dir);
+        let _ = std::fs::remove_file(dir.join(MARKER));
+        fsx::mkdir_private(&self.root)?;
+        fsx::mkdir_private(&dir)?;
+        for f in &s.files {
+            let dest = dir.join(&f.path);
+            if let Some(p) = dest.parent() {
+                fsx::mkdir_private(p)?;
+            }
+            let _ = std::fs::remove_file(&dest);
+            installer
+                .store()
+                .link(&f.sha256, f.size, &dest, false)
+                .map_err(|e| SpeechError::Checksum(format!("{}: {e}", f.path)))?;
+        }
+        fsx::write_private_atomic(&dir.join(MARKER), self.manifest.version.as_bytes())?;
+        Ok(())
+    }
+
+    /// ADR 0169: a module's models arrive with the module, in the same `packages:apply` (one consent, one
+    /// progress, all or nothing), so the helper's views follow `qrtz.lock`: every set whose package the lock holds
+    /// gets its view linked (no download: the files are already in the store), and a set the lock no longer holds
+    /// (its module was removed and nothing else uses it) loses its view. Sets an extension reads in its own process
+    /// (ctrl's Laya) have no view. A set that can't be linked is skipped and reported.
+    pub fn sync_views(&self) -> Vec<String> {
+        let installer = self.installer();
+        let lock = match installer.lock() {
+            Ok(l) => l,
+            Err(e) => return vec![format!("qrtz.lock: {e}")],
+        };
+        let mut problems = vec![];
+        for s in &self.manifest.sets {
+            if reader_of(&s.package).is_some() {
+                continue;
+            }
+            let version = self.source(s).version;
+            let dir = self.root.join(&s.dir);
+            if lock.get(&s.package, &version).is_none() {
+                match qrtz_modules::fsutil::remove_tree(&dir) {
+                    Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                        problems.push(format!("{}: {e}", s.dir))
+                    }
+                    _ => {}
+                }
+                continue;
+            }
+            if self.set_ok(s) {
+                continue;
+            }
+            if let Err(e) = self.link_view(&installer, s) {
+                problems.push(format!("{}: {e}", s.package));
+            }
+        }
+        problems
     }
 
     /// Removes every set's view dir, drops the pinned requests and prunes what nothing else needs (a model an

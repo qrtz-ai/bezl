@@ -365,6 +365,25 @@ pub struct BlobRef {
     pub mirrors: Vec<String>,
 }
 
+/// ADR 0171: `https://huggingface.co/<owner>/<repo>/resolve/<40-hex commit>/<path>`: a model file's only source,
+/// pinned to an exact commit (never a branch like `main`, whose bytes can change under the signed hash).
+pub fn is_pinned_hugging_face_url(u: &str) -> bool {
+    let Some(rest) = u.strip_prefix("https://huggingface.co/") else {
+        return false;
+    };
+    let parts: Vec<&str> = rest.splitn(5, '/').collect();
+    is_mirror_url(u)
+        && parts.len() == 5
+        && !parts[0].is_empty()
+        && !parts[1].is_empty()
+        && parts[2] == "resolve"
+        && parts[3].len() == 40
+        && parts[3]
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        && !parts[4].is_empty()
+}
+
 /// `https://host/path` with no user info, query, fragment, whitespace or `..`.
 pub fn is_mirror_url(u: &str) -> bool {
     let Some(rest) = u.strip_prefix("https://") else {
@@ -423,6 +442,61 @@ pub struct PackageEntry {
     /// The lowest macOS this runs on (`14.2`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_os: Option<String>,
+    /// Extension and service only, always (ADR 0170): Apple's notarization of exactly this code, recorded by the
+    /// publisher once `notarytool` answered Accepted and signed with the rest of the entry. The installer checks it
+    /// offline; it never asks Gatekeeper online.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notarization: Option<Notarization>,
+}
+
+/// ADR 0170 (Bozniak's model): the notarization result a signed index carries for one package's code.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Notarization {
+    /// The notary service's submission id (a UUID, `notarytool submit` → `id`).
+    pub submission_id: String,
+    /// `notarytool`'s verdict. Only `Accepted` is ever published or installed.
+    pub status: String,
+    /// sha256 of the exact file that was submitted, which must be one of the package's `files`: an extension's
+    /// `extension.entry` executable, or a service bundle's main executable (`<bundle>/Contents/MacOS/<name>`).
+    pub code_sha256: String,
+    /// The notarized code directory hash (`codesign -dvvv` → `CDHash=`, 40 lowercase hex). On macOS the installer
+    /// reads the staged code's own cdhash and requires this one.
+    pub cdhash: String,
+}
+
+pub const NOTARIZATION_ACCEPTED: &str = "Accepted";
+
+impl Notarization {
+    /// Well formed and Accepted.
+    pub fn check(&self) -> Result<(), String> {
+        let hex = |s: &str, n: usize| {
+            s.len() == n
+                && s.bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        };
+        let uuid = self.submission_id.len() == 36
+            && self.submission_id.bytes().enumerate().all(|(i, b)| {
+                if [8, 13, 18, 23].contains(&i) {
+                    b == b'-'
+                } else {
+                    b.is_ascii_hexdigit()
+                }
+            });
+        if !uuid {
+            return Err("notarization.submissionId must be a UUID".into());
+        }
+        if self.status != NOTARIZATION_ACCEPTED {
+            return Err(format!("notarization.status is {:?}, not Accepted", self.status));
+        }
+        if !hex(&self.code_sha256, 64) {
+            return Err("notarization.codeSha256 must be a sha256".into());
+        }
+        if !hex(&self.cdhash, 40) {
+            return Err("notarization.cdhash must be 40 lowercase hex".into());
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -664,9 +738,45 @@ impl PackageEntry {
         }
         crate::qrtz_json::check_dependencies(name, self.kind, &self.dependencies)
             .map_err(|e| e.to_string())?;
+        // ADR 0171: a model's files (all but its qrtz.json) come only from Hugging Face at a pinned commit; nothing
+        // else names a URL (code and manifests come from modules.qrtz.ai).
+        for f in &self.files {
+            let weights = self.kind == PackageKind::Model && f.path != MANIFEST_FILE;
+            if weights && f.mirrors.is_empty() {
+                return Err(format!(
+                    "{}: a model file needs its pinned Hugging Face URL",
+                    f.path
+                ));
+            }
+            if !weights && !f.mirrors.is_empty() {
+                return Err(format!("{}: only a model's files have URLs", f.path));
+            }
+            if let Some(u) = f.mirrors.iter().find(|u| !is_pinned_hugging_face_url(u)) {
+                return Err(format!(
+                    "{}: {u:?} isn't a Hugging Face URL at a pinned commit",
+                    f.path
+                ));
+            }
+        }
         let code = self.kind.has_code();
         if code != self.identifier.is_some() || code != self.designated_requirement.is_some() {
             return Err("identifier and designatedRequirement only (and always) on code".into());
+        }
+        // ADR 0170: code is published only once Apple notarized exactly one of its files.
+        match (&self.notarization, code) {
+            (None, true) => return Err("notarization: code must carry its notarization (ADR 0170)".into()),
+            (Some(_), false) => return Err("notarization only on code".into()),
+            (Some(n), true) => {
+                n.check()?;
+                if !self
+                    .files
+                    .iter()
+                    .any(|f| f.sha256 == n.code_sha256 && f.executable)
+                {
+                    return Err("notarization.codeSha256 must be one of the package's executables".into());
+                }
+            }
+            (None, false) => {}
         }
         if code {
             let id = self.identifier.as_deref().unwrap_or_default();

@@ -254,6 +254,8 @@ impl App {
             helper,
             supervisor: SupervisorOptions::default(),
             helper_layout: o.helper_layout.clone(),
+            modules_from_lock: false,
+            packages: None,
             shell: shell.clone(),
             storage_shell: storage.clone(),
             talk: o.talk,

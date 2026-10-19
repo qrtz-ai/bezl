@@ -94,8 +94,11 @@ pub struct AppService {
     speech_tap: std::sync::OnceLock<SpeechTap>,
     /// ADR 0146 M2.4: the per-module helpers (`QRTZ_MODULE_HELPERS=split`); unset = the one `helper`.
     module_helpers: std::sync::OnceLock<crate::module_helpers::ModuleHelpers>,
-    /// Split: whether qrtz-ctrl was last started (true) or stopped (false) for `modules.ctrl` (run 31).
-    ctrl_on: Mutex<Option<bool>>,
+    /// Split: whether each module's helper was last started (true) or stopped (false) (run 31; ADR 0169).
+    helpers_on: Mutex<std::collections::BTreeMap<&'static str, bool>>,
+    /// ADR 0169: reads `qrtz.lock` (and links the installed models' views) and returns the `modules.<id>.installed`
+    /// patch. Set once by the app (`track_installed_modules`); unset = every module counts as installed.
+    module_sync: std::sync::OnceLock<ModuleSync>,
     /// ADR 0159: qrtz-snap (its own process in either layout), set once before `start_helper`.
     snap: std::sync::OnceLock<Arc<crate::snap::SnapHost>>,
     /// Split: called on every hello from echo's process (ADR 0150 N174: echo's own pending `models.warm`).
@@ -110,6 +113,9 @@ pub struct AppService {
     /// `crate::diagnostics::default_report_dirs`).
     report_dirs: std::sync::OnceLock<Vec<std::path::PathBuf>>,
 }
+
+/// ADR 0169: the host's view of what is installed, as a config patch (see [`crate::installed`]).
+pub type ModuleSync = Arc<dyn Fn() -> Value + Send + Sync>;
 
 /// Sees every valid helper line first; `true` = consumed (not routed to talk or the runtime).
 pub type SpeechTap = Arc<dyn Fn(&Value) -> bool + Send + Sync>;
@@ -137,7 +143,8 @@ impl AppService {
             ctrl_model: std::sync::OnceLock::new(),
             speech_tap: std::sync::OnceLock::new(),
             module_helpers: std::sync::OnceLock::new(),
-            ctrl_on: Mutex::default(),
+            helpers_on: Mutex::default(),
+            module_sync: std::sync::OnceLock::new(),
             snap: std::sync::OnceLock::new(),
             echo_hello: std::sync::OnceLock::new(),
             delivered: Default::default(),
@@ -498,34 +505,75 @@ impl AppService {
         }
         if let Some(h) = self.module_helpers.get().cloned() {
             for (src, sup) in h.processes() {
-                let start = src != crate::module_helpers::HelperSource::Ctrl;
-                self.pump(src, sup, start);
+                self.pump(src, sup, false);
             }
-            self.apply_ctrl_switch(&self.config.get());
+            self.apply_module_switches(&self.config.get());
             return;
         }
         let Some(sup) = self.helper.clone() else { return };
         self.pump(crate::module_helpers::HelperSource::Monolith, sup, true);
     }
 
-    /// Split: qrtz-ctrl runs exactly while `modules.ctrl` (and the global switch) is on. Acts on a change only, so
-    /// an unrelated `config:set` never relaunches a ctrl whose circuit opened.
-    fn apply_ctrl_switch(&self, cfg: &Value) {
+    /// Split: qrtz-ctrl runs exactly while `modules.ctrl` (and the global switch) is on (run 31); qrtz-nano and
+    /// qrtz-echo run while their module is installed (ADR 0169; their switches still gate their channels, as
+    /// before). Acts on a change only, so an unrelated `config:set` never relaunches a helper whose circuit opened.
+    fn apply_module_switches(&self, cfg: &Value) {
         let Some(h) = self.module_helpers.get() else {
             return;
         };
-        let on = crate::modules::is_on(cfg, "ctrl");
-        let mut last = self.ctrl_on.lock().unwrap_or_else(|p| p.into_inner());
-        if *last == Some(on) {
+        let g = qrtz_modules::settings::GlobalSettings::from_config(cfg);
+        let mut last = self.helpers_on.lock().unwrap_or_else(|p| p.into_inner());
+        for (id, sup) in [("nano", &h.nano), ("echo", &h.echo), ("ctrl", &h.ctrl)] {
+            let on = if id == "ctrl" {
+                g.is_on(id)
+            } else {
+                g.is_installed(id)
+            };
+            if last.get(id) == Some(&on) {
+                continue;
+            }
+            last.insert(id, on);
+            if on {
+                sup.start();
+            } else {
+                tracing::info!(
+                    module = id,
+                    "module off or not installed: its helper is not running"
+                );
+                sup.stop();
+            }
+        }
+    }
+
+    /// ADR 0169: from now on, `modules.<id>.installed` follows `qrtz.lock`: synced now (call before
+    /// `start_helper`) and after every `packages:apply`, which also prunes what the lock no longer needs (an
+    /// uninstalled module's models, unless another installed module uses them).
+    pub fn track_installed_modules(&self, sync: ModuleSync) {
+        if self.module_sync.set(sync).is_ok() {
+            self.sync_installed();
+        }
+    }
+
+    /// Re-read what is installed and apply it (helpers start or stop, views appear or go). No-op when untracked.
+    pub fn sync_installed(&self) {
+        let Some(sync) = self.module_sync.get() else {
             return;
+        };
+        let patch = sync();
+        let cur = self.config.get();
+        let changed = patch["modules"].as_object().is_some_and(|m| {
+            m.iter()
+                .any(|(id, v)| cur["modules"][id]["installed"] != v["installed"])
+        });
+        if changed {
+            if let Err(e) = self.set_config(&patch) {
+                tracing::warn!(error = %e, "installed modules not saved");
+            }
         }
-        *last = Some(on);
-        if on {
-            h.ctrl.start();
-        } else {
-            tracing::info!("ctrl is off: qrtz-ctrl not running");
-            h.ctrl.stop();
-        }
+    }
+
+    pub fn tracks_installed_modules(&self) -> bool {
+        self.module_sync.get().is_some()
     }
 
     fn pump(self: &Arc<Self>, src: crate::module_helpers::HelperSource, sup: Supervisor, start: bool) {
@@ -687,7 +735,7 @@ impl AppService {
             .set(patch)?;
         self.events.emit("config:changed", next.clone());
         self.talk.config_changed();
-        self.apply_ctrl_switch(&next);
+        self.apply_module_switches(&next);
         self.apply_snap(&next);
         Ok(next)
     }
@@ -700,6 +748,11 @@ impl AppService {
             })),
             "app:licenses" => Ok(json!({ "text": crate::THIRD_PARTY_NOTICES })),
             "config:get" => Ok(self.config()),
+            // ADR 0169: what is installed is the host's to say (from qrtz.lock), never a renderer's.
+            "config:set" if crate::installed::patch_touches_installed(&p["patch"]) => Err(AppError::new(
+                ErrorCode::Validation,
+                "modules are installed from the marketplace, not through config",
+            )),
             "config:set" => self.set_config(&p["patch"]),
             // ADR 0146 M1.4: the caller's module comes from its view, so a page can only reach its own settings.
             "module:get-settings" => {
@@ -719,6 +772,16 @@ impl AppService {
                     return Err(AppError::new(ErrorCode::Validation, "not an extension"));
                 }
                 let on = p["enabled"].as_bool().unwrap_or(true);
+                // ADR 0169: a module that isn't installed has nothing to switch on.
+                if on
+                    && !qrtz_modules::settings::GlobalSettings::from_config(&self.config()).is_installed(name)
+                {
+                    return Err(AppError::new(
+                        ErrorCode::Validation,
+                        format!("{name} isn't installed: install it from the marketplace first"),
+                    )
+                    .retryable(false));
+                }
                 // Settings no longer has the "all modules" switch: turning one on while it is off leaves only that
                 // one on (the others keep their own state as off), so nothing else starts behind the user's back.
                 let all = self.config()["modules"]["enabled"].as_bool().unwrap_or(true);
@@ -871,7 +934,18 @@ impl Handler for AppService {
                 }),
             },
             Some("packages") => match self.packages.get() {
-                Some(p) => p.call(channel, payload).await,
+                Some(p) => {
+                    let r = p.call(channel, payload).await;
+                    // ADR 0169: an install or removal changes what runs. The old dirs and blobs nothing needs any
+                    // more go too (a removed module's models, unless another installed module shares them).
+                    if r.is_ok() && channel == "packages:apply" && self.tracks_installed_modules() {
+                        self.sync_installed();
+                        if let Err(e) = p.call("packages:prune", Value::Null).await {
+                            tracing::warn!(error = %e, "prune after apply failed");
+                        }
+                    }
+                    r
+                }
                 None => qrtz_ipc::idle_response(channel).ok_or_else(|| {
                     AppError::new(
                         ErrorCode::Unavailable,

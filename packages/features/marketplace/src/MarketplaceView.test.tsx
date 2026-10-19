@@ -35,7 +35,10 @@ function fake(overrides: Record<string, (p: unknown) => unknown> = {}) {
         const { name, enabled } = payload as { name: 'ctrl'; enabled: boolean };
         config = {
           ...config,
-          modules: { ...config.modules, [name]: { enabled } },
+          modules: {
+            ...config.modules,
+            [name]: { ...config.modules[name], enabled },
+          },
         };
         return { name, enabled };
       }
@@ -99,12 +102,14 @@ describe('marketplace view (ADR 0161)', () => {
     await render(f.client);
     for (const n of ['echo', 'nano', 'ctrl'])
       expect(q(`extension-card-${n}`), n).not.toBeNull();
-    // echo is installed (open), nano and ctrl ship in the build (open).
+    // echo is installed from the index (open); nano and ctrl count as installed here (the fake's config, like
+    // the mock backend, says every module is) and list without an index entry.
     expect(q('extension-launch-echo')).not.toBeNull();
     expect(q('extension-card-echo')?.textContent).toContain(
       '629 mb with dependencies',
     );
-    expect(q('extension-card-ctrl')?.textContent).toContain('built in');
+    expect(q('extension-card-ctrl')?.textContent).toContain('installed');
+    expect(el.textContent).not.toContain('built in');
     expect(f.calls.map((c) => c.channel)).not.toContain('packages:refresh');
     expect(el.textContent).toBe(el.textContent?.toLowerCase());
   });
@@ -137,7 +142,7 @@ describe('marketplace view (ADR 0161)', () => {
       "modules will appear here once qrtz.ai's module server is live",
     );
     expect(soon?.textContent).not.toContain('root');
-    // The built-in extensions still list.
+    // The installed extensions still list.
     expect(q('extension-card-echo')).not.toBeNull();
   });
 
@@ -219,7 +224,7 @@ describe('module manager (ADR 0161)', () => {
     return f;
   };
 
-  it('lists installed and built-in extensions with their dependencies', async () => {
+  it('lists the installed extensions with their dependencies', async () => {
     await open();
     expect(q('module-manager')).not.toBeNull();
     for (const n of ['echo', 'nano', 'ctrl'])
@@ -228,7 +233,7 @@ describe('module manager (ADR 0161)', () => {
       'model.parakeet-tdt-v2-en',
     );
     expect(q('module-shared')?.textContent).toContain('used by echo');
-    // Only a package can be removed; a built-in module is switched off instead.
+    // Only a package in the lock can be removed (ctrl here has no lock row: the fake's config says installed).
     expect(q('module-remove-echo')).not.toBeNull();
     expect(q('module-remove-ctrl')).toBeNull();
   });
@@ -388,27 +393,65 @@ describe('no onboarding: permissions and the speech yes live at the switch (ADR 
     expect(q('perm-ctrl-accessibility')).toBeNull();
   });
 
-  it('switching echo on starts the speech download when speech is missing; off, or ctrl on, never does', async () => {
+  it('switching a module on downloads nothing: its models came with its install (ADR 0169)', async () => {
     const f = await open({ 'speech:status': () => missing });
-    const downloads = () =>
-      f.calls.filter((c) => c.channel === 'speech:download').length;
+    await click('module-enabled-echo');
     await click('module-enabled-echo');
     await click('module-enabled-ctrl');
     await click('module-enabled-ctrl');
-    expect(downloads()).toBe(0);
-    await click('module-enabled-echo');
-    expect(downloads()).toBe(1);
-    // Only echo's models (audit P0-3): the request names the extension switched on.
-    expect(
-      f.calls.find((c) => c.channel === 'speech:download')?.payload,
-    ).toEqual({ extensions: ['echo'] });
+    expect(f.calls.map((c) => c.channel)).not.toContain('speech:download');
+  });
+});
+
+describe('qrtz ships empty (ADR 0169)', () => {
+  const none = (): Record<string, (p: unknown) => unknown> => {
+    const cfg = defaultConfig();
+    for (const id of ['echo', 'nano', 'ctrl', 'snap'] as const)
+      cfg.modules[id].installed = false;
+    return {
+      'config:get': () => cfg,
+      'packages:list': () => ({
+        packages: [],
+        index: null,
+        available: [],
+        reclaimable: { dirs: 0, blobs: 0, bytes: 0 },
+      }),
+    };
+  };
+
+  it('browse says qrtz starts empty and offers the check', async () => {
+    const f = fake(none());
+    await render(f.client);
+    for (const n of ['echo', 'nano', 'ctrl', 'snap'])
+      expect(q(`extension-card-${n}`), n).toBeNull();
+    expect(el.textContent).toContain('qrtz starts empty');
+    await click('marketplace-empty-check');
+    expect(f.calls.map((c) => c.channel)).toContain('packages:refresh');
+    expect(el.textContent).toBe(el.textContent?.toLowerCase());
   });
 
-  it('switching echo on with speech installed downloads nothing', async () => {
-    const f = await open({});
-    await click('module-enabled-echo');
-    await click('module-enabled-echo');
-    expect(f.calls.map((c) => c.channel)).not.toContain('speech:download');
+  it('the module manager has nothing installed and points to browse', async () => {
+    const f = fake(none());
+    await render(f.client);
+    await act(async () => q('tab-installed')!.click());
+    await settle();
+    for (const n of ['echo', 'nano', 'ctrl', 'snap'])
+      expect(q(`module-row-${n}`), n).toBeNull();
+    expect(q('module-list')?.textContent).toContain('nothing installed yet');
+    await click('module-list-browse');
+    expect(q('marketplace')).not.toBeNull();
+  });
+
+  it('an index module is available, not built in, until installed', async () => {
+    const list = ipcSamples['packages:list'].response;
+    const f = fake({
+      ...none(),
+      'packages:list': () => ({ ...list, packages: [] }),
+    });
+    await render(f.client);
+    expect(q('extension-card-echo')?.textContent).toContain('available');
+    expect(q('extension-install-echo')).not.toBeNull();
+    expect(q('extension-launch-echo')).toBeNull();
   });
 });
 

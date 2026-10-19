@@ -309,6 +309,12 @@ async fn a_consented_download_is_verified_resumable_and_reaches_the_scorer() {
     assert_eq!(m.consent().installed, None, "writable: refused");
     std::fs::set_permissions(&f, ro).unwrap();
     assert_eq!(m.consent().installed.as_deref(), Some(entry.as_path()));
+    // ADR 0169: with no answer recorded, the model installed (as ctrl's dependency) is the yes.
+    let answer = d.path().join("ctrl/laya.json");
+    let saved = std::fs::read(&answer).unwrap();
+    std::fs::remove_file(&answer).unwrap();
+    assert!(m.consented() && m.consent().installed.is_some());
+    std::fs::write(&answer, saved).unwrap();
     // Off this macOS `laya` build the heuristic still answers.
     let (_s, why) = qrtz_ctrl::laya::select_scorer(&c, None);
     assert_eq!(why, Some(qrtz_ctrl::laya::Fallback::NotThisBuild));

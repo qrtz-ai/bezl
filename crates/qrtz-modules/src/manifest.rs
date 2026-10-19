@@ -80,6 +80,9 @@ impl CodeIdentity {
 pub enum LaunchKind {
     /// Today (M0-M5): the helper is a Tauri `externalBin` in qrtz.app, spawned by the host.
     BundledHelper,
+    /// ADR 0169: the module's own executable in its installed extension package (`entry` is the package's
+    /// `extension.entry`), signed with the module's identifier and spawned by the host. qrtz.app bundles none.
+    Package,
     /// M6 on: a signed LSUIElement `.app` opened through LaunchServices so TCC attributes it to the module.
     LaunchServices,
 }
@@ -88,7 +91,7 @@ pub enum LaunchKind {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Launch {
     pub kind: LaunchKind,
-    /// The executable (bundled helper) or `.app` (LaunchServices), relative to the module's install dir.
+    /// The executable (bundled helper, package) or `.app` (LaunchServices), relative to the module's install dir.
     pub entry: String,
     /// Helper line prefixes this module owns (`ctrl.*` already has its own queue, ADR 0110).
     #[serde(default)]

@@ -1,8 +1,8 @@
 //! The one fetcher (ADR 0157 §6): every blob, of every package kind, from every source, through here.
 //!
-//! - **Sources**, in order: each module host (`modules.qrtz.ai`; ADR 0167: the sole package host, no B2 mirror)
-//!   at `v1/blobs/sha256/<hex>`, then the blob's own extra mirror URLs from the signed tree (a model's pinned
-//!   Hugging Face URL). A source that fails, or whose bytes don't hash right, is dropped for the next one (retries
+//! - **Sources** ([`sources`]): a model file only from its pinned Hugging Face URLs in the signed tree (ADR 0171:
+//!   model bytes are never on modules.qrtz.ai); every other blob from each module host (`modules.qrtz.ai`; ADR 0167:
+//!   the sole package host) at `v1/blobs/sha256/<hex>`. A source that fails, or whose bytes don't hash right, is dropped for the next one (retries
 //!   stay on the primary until it is marked dead for this fetch). A host the transport reports as not configured
 //!   ([`Transport::host_configured`]: no live index behind it yet) is skipped without a request (audit P0-3).
 //! - **Parallel ranges**: a blob is fetched as [`RANGE_BYTES`] ranges, [`PARALLEL_RANGES`] at a time, written in
@@ -159,12 +159,16 @@ pub async fn fetch_blobs(
     }
 }
 
-/// Where `b` is fetched from, in order: the configured module hosts, then the blob's own mirror URLs.
+/// Where `b` is fetched from. ADR 0171: a model file's bytes are never on modules.qrtz.ai; the signed tree gives it
+/// pinned Hugging Face URLs, and it comes only from those (in order). Every other blob (code, package trees,
+/// manifests) comes only from the configured module hosts. Either way the bytes are checked against the signed sha256.
 pub fn sources(t: &dyn Transport, b: &BlobRef) -> Vec<Source> {
+    if !b.mirrors.is_empty() {
+        return b.mirrors.iter().cloned().map(Source::Url).collect();
+    }
     (0..t.hosts())
         .filter(|h| t.host_configured(*h))
         .map(Source::Host)
-        .chain(b.mirrors.iter().cloned().map(Source::Url))
         .collect()
 }
 
@@ -341,9 +345,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_configured_host_is_still_tried_first() {
+    async fn a_model_file_never_asks_the_module_host() {
+        // ADR 0171: even with modules.qrtz.ai configured, model bytes come from their pinned Hugging Face URL.
         let asked = run(1).await;
-        assert!(asked.iter().all(|s| *s == Source::Host(0)), "{asked:?}");
+        assert!(!asked.is_empty());
+        assert!(asked.iter().all(|s| matches!(s, Source::Url(_))), "{asked:?}");
     }
 
     #[test]
@@ -354,9 +360,8 @@ mod tests {
             asked: Mutex::new(vec![]),
         };
         let b = blob(b"x");
-        assert_eq!(
-            sources(&t, &b),
-            vec![Source::Host(0), Source::Url(b.mirrors[0].clone())]
-        );
+        assert_eq!(sources(&t, &b), vec![Source::Url(b.mirrors[0].clone())]);
+        let code = BlobRef { mirrors: vec![], ..b };
+        assert_eq!(sources(&t, &code), vec![Source::Host(0)]);
     }
 }

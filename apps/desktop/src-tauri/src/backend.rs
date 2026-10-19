@@ -290,6 +290,9 @@ pub fn setup(app: &mut tauri::App, started: Instant) -> Result<(), Box<dyn std::
     if speech.is_none() {
         tracing::warn!("no speech module configured in this build; transcripts use the helper's recogniser");
     }
+    let installed_modules = helper
+        .as_ref()
+        .is_some_and(|(sp, _)| crate::paths::is_installed_modules(sp));
     let built = build_app(AppBuild {
         info: AppInfo {
             name: "qrtz".into(),
@@ -298,10 +301,17 @@ pub fn setup(app: &mut tauri::App, started: Instant) -> Result<(), Box<dyn std::
             arch: arch().into(),
             shell: format!("tauri {}", tauri::VERSION),
         },
+        helper_layout: if installed_modules {
+            crate::paths::installed_layout(&data)
+        } else {
+            crate::paths::helper_layout()
+        },
+        // ADR 0169: qrtz starts empty; what runs is what qrtz.lock installed (not with the mock or a dev monolith).
+        modules_from_lock: installed_modules,
+        packages: None,
         data_dir: data,
         helper,
         supervisor: SupervisorOptions::default(),
-        helper_layout: crate::paths::helper_layout(),
         shell,
         storage_shell,
         talk: None,

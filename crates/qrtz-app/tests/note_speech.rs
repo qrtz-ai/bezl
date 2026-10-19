@@ -43,6 +43,8 @@ fn app(dir: &Path, env: &SpeechEnv) -> BuiltApp {
         )),
         supervisor: SupervisorOptions::default(),
         helper_layout: Default::default(),
+        modules_from_lock: false,
+        packages: None,
         shell: Arc::new(Shell),
         storage_shell: Arc::new(NoStorageShell),
         speech: Some(SpeechSetup {

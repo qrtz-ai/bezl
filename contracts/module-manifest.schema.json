@@ -87,6 +87,7 @@
         "kind": {
           "enum": [
             "bundled-helper",
+            "package",
             "launch-services"
           ]
         },

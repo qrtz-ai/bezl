@@ -1,6 +1,9 @@
 //! N176 (ADR 0159): a module host that never answers costs the first install about one round per host, not one
 //! request per range of every blob. Echo's first-run Parakeet download (21 files, 75 ranges) goes through this
 //! fetcher with `modules.qrtz.ai` and its mirror ahead of the pinned Hugging Face URL.
+//!
+//! ADR 0171: a model file (a blob with Hugging Face URLs) no longer asks any module host at all, so with these blobs
+//! the dead hosts get no request; the rule still holds for the blobs hosts serve (code, trees, manifests).
 use qrtz_modules::fetch::{
     fetch_blobs, Source, Transport, DEAD_HOST_AFTER, PARALLEL_BLOBS, PARALLEL_RANGES, RANGE_BYTES,
 };
@@ -113,8 +116,8 @@ async fn a_host_that_failed_every_blob_so_far_is_skipped_for_the_rest_of_the_fet
 }
 
 #[tokio::test]
-async fn a_host_that_served_a_blob_is_never_skipped() {
-    // Host 0 lacks two blobs (a partly published host) but serves the rest: it keeps being asked.
+async fn a_model_blob_never_asks_a_module_host() {
+    // ADR 0171: even a host that has the bytes is never asked for a model file; its Hugging Face URL serves.
     struct Partial {
         inner: DeadHosts,
         missing: Vec<String>,
@@ -159,6 +162,6 @@ async fn a_host_that_served_a_blob_is_never_skipped() {
     let mut order = refs.clone();
     order.rotate_left(2);
     fetch_blobs(&t, &store, &order, &|_, _| {}).await.unwrap();
-    assert_eq!(t.served.load(Ordering::SeqCst), 6);
-    assert_eq!(t.inner.mirror_calls.load(Ordering::SeqCst), 2);
+    assert_eq!(t.served.load(Ordering::SeqCst), 0);
+    assert_eq!(t.inner.mirror_calls.load(Ordering::SeqCst), 8);
 }

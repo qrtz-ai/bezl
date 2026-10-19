@@ -55,8 +55,11 @@ sign() { # name id
   fi
 }
 
-# Inside out: helpers first, the app last. Must match scripts/release/sign-mac.sh NESTED.
-sign qrtz-helper qrtz-helper
-sign qrtz-snap ai.qrtz.snap
+# Inside out: nested code first, the app last. Must match scripts/release/sign-mac.sh NESTED. ADR 0169: no module
+# code is bundled; a dev monolith (QRTZ_HELPER_BIN) signs as ai.qrtz.helper (confinement-map.json moduleCode
+# devHelper), and the installed modules carry their own signatures (scripts/modules/build-packages.sh).
+if [[ -n "${QRTZ_HELPER_BIN:-}" && -f "$QRTZ_HELPER_BIN" ]]; then
+  dir="$(dirname "$QRTZ_HELPER_BIN")" sign "$(basename "$QRTZ_HELPER_BIN")" ai.qrtz.helper || true
+fi
 sign qrtz ai.qrtz.cli
 sign qrtz-app ai.qrtz.desktop.dev

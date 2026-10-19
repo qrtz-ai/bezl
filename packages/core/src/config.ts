@@ -6,6 +6,18 @@ import { z } from 'zod';
  * `talk.engine`, `talk.autoFailover`, `speech.cloud`, `privacy.localOnly`) are gone; an old file that has them
  * still loads, without them.
  */
+/**
+ * One module's switch. `installed` (ADR 0169) is written only by the host, from qrtz.lock: qrtz ships empty and a
+ * module is installed from the marketplace. A renderer's `config:set` of it is refused. It defaults to true so a
+ * config the host never synced (the mock backend, tests) keeps every module.
+ */
+const ModuleSwitch = z
+  .object({
+    enabled: z.boolean().default(true),
+    installed: z.boolean().default(true),
+  })
+  .prefault({});
+
 export const ConfigSchema = z.object({
   schemaVersion: z.literal(1).default(1),
   theme: z.enum(['dark', 'light', 'system']).default('dark'),
@@ -92,10 +104,10 @@ export const ConfigSchema = z.object({
     .object({
       /** Every module at once. */
       enabled: z.boolean().default(true),
-      echo: z.object({ enabled: z.boolean().default(true) }).prefault({}),
-      nano: z.object({ enabled: z.boolean().default(true) }).prefault({}),
-      ctrl: z.object({ enabled: z.boolean().default(true) }).prefault({}),
-      snap: z.object({ enabled: z.boolean().default(true) }).prefault({}),
+      echo: ModuleSwitch,
+      nano: ModuleSwitch,
+      ctrl: ModuleSwitch,
+      snap: ModuleSwitch,
     })
     .prefault({}),
   privacy: z

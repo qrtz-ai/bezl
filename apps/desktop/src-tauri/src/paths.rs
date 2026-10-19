@@ -30,9 +30,12 @@ const MOCK_ENV: &[&str] = &[
     "QRTZ_MOCK_HB_MS",
 ];
 
-/// Same resolution order as the Electron helper-process.ts:
-///   QRTZ_SIMULATE_MISSING_HELPER=1 → none; QRTZ_HELPER_BIN → bundled sidecar (Contents/MacOS/qrtz-helper) →
-///   repo SwiftPM build (debug) → the Rust mock helper next to this binary (QRTZ_MOCK_HELPER=1, or non-macOS).
+/// Where the helpers come from. ADR 0169: qrtz.app bundles none, so on macOS the answer is the installed modules
+/// ([`qrtz_app::module_helpers::INSTALLED_PROGRAM`]: each module's helper is its package's entry, see
+/// `installed_layout`). Dev and e2e knobs first:
+///   QRTZ_SIMULATE_MISSING_HELPER=1 → none; QRTZ_MOCK_HELPER=1 → the Rust mock helper next to this binary (every
+///   module counts as installed); QRTZ_HELPER_BIN → that monolith (a debug build or QRTZ_ALLOW_DEV_KNOBS=1 only);
+///   then macOS → the installed modules; elsewhere → the mock helper if present.
 pub fn helper_spawn() -> Option<(ProcessSpawn, HelperAvailability)> {
     let dev = cfg!(debug_assertions) || std::env::var("QRTZ_ALLOW_DEV_KNOBS").as_deref() == Ok("1");
     if dev && std::env::var("QRTZ_SIMULATE_MISSING_HELPER").as_deref() == Ok("1") {
@@ -51,22 +54,56 @@ pub fn helper_spawn() -> Option<(ProcessSpawn, HelperAvailability)> {
     if std::env::var("QRTZ_MOCK_HELPER").as_deref() == Ok("1") && mock.exists() {
         return Some(mock_spawn());
     }
-    if let Some(p) = std::env::var_os("QRTZ_HELPER_BIN") {
-        return Some((ProcessSpawn::helper(PathBuf::from(p)), HelperAvailability::Native));
+    if dev {
+        if let Some(p) = std::env::var_os("QRTZ_HELPER_BIN") {
+            return Some((ProcessSpawn::helper(PathBuf::from(p)), HelperAvailability::Native));
+        }
     }
-    let bundled = exe_dir.join("qrtz-helper");
-    if bundled.exists() {
-        return Some((ProcessSpawn::helper(bundled), HelperAvailability::Native));
+    if cfg!(target_os = "macos") {
+        return Some((
+            ProcessSpawn::helper(PathBuf::from(qrtz_app::module_helpers::INSTALLED_PROGRAM)),
+            HelperAvailability::Native,
+        ));
     }
-    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../native/qrtz-helper/.build/release/qrtz-helper");
-    if cfg!(debug_assertions) && repo.exists() {
-        return Some((ProcessSpawn::helper(repo), HelperAvailability::Native));
-    }
-    if !cfg!(target_os = "macos") && mock.exists() {
+    if mock.exists() {
         return Some(mock_spawn());
     }
     None
+}
+
+/// True when the helpers are the installed modules (ADR 0169): qrtz then tracks `qrtz.lock` and starts empty.
+pub fn is_installed_modules(spawn: &ProcessSpawn) -> bool {
+    spawn.program.as_os_str() == qrtz_app::module_helpers::INSTALLED_PROGRAM
+}
+
+/// ADR 0169: every module helper from its installed package under `data`. `QRTZ_<ID>_BIN` still overrides one in a
+/// dev build (or under `QRTZ_ALLOW_DEV_KNOBS=1`); a release build never takes a path from the environment.
+pub fn installed_layout(data: &std::path::Path) -> qrtz_app::module_helpers::HelperLayout {
+    let dev = cfg!(debug_assertions) || std::env::var("QRTZ_ALLOW_DEV_KNOBS").as_deref() == Ok("1");
+    installed_layout_from(data, dev, |k| std::env::var(k).ok())
+}
+
+fn installed_layout_from(
+    data: &std::path::Path,
+    dev: bool,
+    get: impl Fn(&str) -> Option<String>,
+) -> qrtz_app::module_helpers::HelperLayout {
+    let programs = if dev {
+        ["nano", "echo", "ctrl", "snap"]
+            .iter()
+            .filter_map(|id| {
+                get(&format!("QRTZ_{}_BIN", id.to_uppercase()))
+                    .filter(|p| !p.is_empty())
+                    .map(|p| ((*id).to_owned(), PathBuf::from(p)))
+            })
+            .collect()
+    } else {
+        Default::default()
+    };
+    qrtz_app::module_helpers::HelperLayout::Installed {
+        root: data.to_path_buf(),
+        programs,
+    }
 }
 
 /// Show `dir` in the file manager (Finder selects `qrtz.log` if it exists). The program is fixed and the argument
@@ -144,5 +181,22 @@ mod layout_tests {
         };
         assert_eq!(programs.len(), 1);
         assert_eq!(layout_from(true, |_| None), HelperLayout::Monolith);
+    }
+
+    #[test]
+    fn the_installed_layout_takes_no_path_from_a_release_environment() {
+        let get = |k: &str| (k == "QRTZ_SNAP_BIN").then(|| "/tmp/evil".to_owned());
+        let data = std::path::Path::new("/data");
+        assert_eq!(
+            super::installed_layout_from(data, false, get),
+            HelperLayout::Installed {
+                root: data.into(),
+                programs: Default::default()
+            }
+        );
+        let HelperLayout::Installed { programs, .. } = super::installed_layout_from(data, true, get) else {
+            panic!()
+        };
+        assert_eq!(programs.len(), 1);
     }
 }

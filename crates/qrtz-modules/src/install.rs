@@ -105,6 +105,12 @@ impl std::fmt::Display for Refusal {
 pub trait CodeChecks: Send + Sync {
     /// `code` is the helper executable (extension) or the `.xpc` bundle (service), inside `dir`.
     fn check(&self, kind: PackageKind, code: &Path, team_id: &str, requirement: &str) -> Result<(), String>;
+    /// ADR 0170, offline: `file` (the notarized executable, already matched to the record's sha256 by the
+    /// installer) is the code Apple notarized: its code directory hash is `n.cdhash`. macOS reads it with
+    /// `codesign`; a test double may accept.
+    fn check_notarized(&self, _file: &Path, _n: &crate::index::Notarization) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 /// The user said yes to checking for packages (onboarding, settings, or running `qrtz install|update`).
@@ -692,6 +698,7 @@ impl Installer {
             source: LockSource::Pinned,
             stale_revocation: false,
             disabled: None,
+            notarization: None,
         })
     }
 
@@ -974,13 +981,35 @@ impl Installer {
                 (_, Some(s)) => s.bundle.clone(),
                 _ => return Err(mismatch("no code entry")),
             };
+            // ADR 0170: the signed record of Apple's notarization, for exactly a file of this tree: the extension's
+            // entry, or an executable inside the service's bundle. All offline.
+            let n =
+                w.locked.notarization.as_ref().ok_or_else(|| {
+                    Refusal::ChecksFailed("no notarization record in the signed index".into())
+                })?;
+            n.check().map_err(Refusal::ChecksFailed)?;
+            let notarized = w
+                .tree
+                .files
+                .iter()
+                .find(|f| {
+                    f.sha256 == n.code_sha256
+                        && f.executable
+                        && (f.path == rel || f.path.starts_with(&format!("{rel}/Contents/MacOS/")))
+                })
+                .ok_or_else(|| {
+                    Refusal::ChecksFailed("the notarized file isn't this package's code".into())
+                })?;
             self.checks
                 .check(
                     w.locked.kind,
-                    &dir.join(rel),
+                    &dir.join(&rel),
                     &w.locked.team_id,
                     w.locked.designated_requirement.as_deref().unwrap_or_default(),
                 )
+                .map_err(Refusal::ChecksFailed)?;
+            self.checks
+                .check_notarized(&dir.join(&notarized.path), n)
                 .map_err(Refusal::ChecksFailed)?;
         }
         Ok(())
@@ -1385,6 +1414,7 @@ pub fn locked_from_entry(e: &PackageEntry, deps: &BTreeMap<String, String>, sour
         source,
         stale_revocation: false,
         disabled: None,
+        notarization: e.notarization.clone(),
     }
 }
 

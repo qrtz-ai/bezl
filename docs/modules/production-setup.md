@@ -20,7 +20,10 @@ v1 ships one signed, notarized qrtz.app and its package hosting: `modules.qrtz.a
 - **`scripts/modules/release-keys.sh`**: the whole key ceremony in one command (offline only). Root 1 has threshold 2,
   so it is signed by both root keys and a key rotation needs both.
 - **`scripts/modules/publish.sh`**: build, verify, upload to R2, and a live check, with credentials from env
-  vars only. `--no-upload` builds and verifies; `--timestamp` is the re-sign. Sole host: `modules.qrtz.ai` (ADR 0167).
+  vars only. `--out-only` (or `--no-upload`) builds and verifies and writes `~/qrtz-publish-out.upload.tsv`, the
+  list of files to upload by hand (no rclone, no R2 token); `--timestamp` is the re-sign. Sole host:
+  `modules.qrtz.ai` (ADR 0167), which never holds model files: the index pins each one's Hugging Face URL and hash and
+  the app downloads it from there (ADR 0171).
 - **`scripts/modules/timestamp-job.sh install`**: the automatic re-sign, a launchd job that runs every day at 09:00
   and after a missed run. It uses only the timestamp key and gets the R2 key from your keychain. A failure posts a
   notification.
@@ -38,9 +41,9 @@ v1 ships one signed, notarized qrtz.app and its package hosting: `modules.qrtz.a
   Parakeet TDT v2 is CC-BY-4.0, Nemotron streaming is the NVIDIA Open Model License, the Nemotron 3 diarizer is
   OpenMDW-1.1, and LocalVQE and Laya are Apache-2.0.
 
-Not ready yet (ours, not yours): no extension can pass the installer's notarization check until bare helpers get a stapleable check (ADR 0162).
-The `inference.voice` XPC service doesn't exist yet. So the first publish is models only. echo, nano, ctrl and
-snap are built into the app for v1, so nothing waits on that.
+Not ready yet (ours, not yours): the `inference.voice` XPC service doesn't exist yet. qrtz ships empty (ADR 0169),
+so echo, nano, ctrl and snap install only once they are published; each one's executable is notarized by publish.sh
+and checked offline by the installer (ADR 0170).
 
 ## Part A: the signed v1 build (needed for launch)
 
@@ -139,8 +142,16 @@ different places. Never send any `*.key` file.
 keys. They are also live at `https://modules.qrtz.ai/v1/root/1.root.json` (+ `.sig`). A build made before that
 commit can't install packages, so cut a new signed build afterwards (A4).
 
-**B6. The first publish (models only).** On the release Mac: `brew install rclone`, open qrtz once so it downloads its
-models (onboarding, and ctrl's model in its settings), then:
+**B6. The first publish.** On the release Mac. Model sets are only hashed (the app's copies if it has them, else a
+one-time download from Hugging Face into `~/qrtz-publish-models`); none is uploaded. Without rclone or an R2 token:
+
+```sh
+scripts/modules/publish.sh --out-only     # build + verify, then ~/qrtz-publish-out.upload.tsv: upload each `new`
+                                          # key in order (timestamp pair last) with its Cache-Control, e.g. via
+                                          # the Cloudflare connector
+```
+
+Or with rclone (`brew install rclone`):
 
 ```sh
 # QRTZ_TEAM_ID defaults to MR26CCZ496

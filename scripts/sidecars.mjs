@@ -1,4 +1,4 @@
-// How build-helper.mjs puts the Tauri externalBins (qrtz-helper, qrtz-snap, the `qrtz` command) in place.
+// How build-helper.mjs puts the Tauri externalBin (the `qrtz` command; ADR 0169: no module code) in place.
 //
 // Cargo reruns src-tauri/build.rs (and so tauri-build's copy of each externalBin into target/<profile>/) only when a
 // `rerun-if-changed` file's mtime is newer than its last run. macOS copies (fs.copyFileSync, cp -p, clonefile) keep

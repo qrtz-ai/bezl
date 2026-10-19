@@ -27,14 +27,17 @@ fn dry_run_publishes_packs_and_installs_with_runtime_keys() {
         "{out}"
     );
     assert!(out.contains("blobs checked"), "{out}");
-    // The big file is one whole blob (fetched in ranges, never split into objects).
-    let blobs = d.path().join("out/v1/blobs/sha256");
-    let sizes: Vec<u64> = std::fs::read_dir(&blobs)
-        .unwrap()
-        .flatten()
-        .map(|e| e.metadata().unwrap().len())
-        .collect();
-    assert!(sizes.contains(&(20 * 1024 * 1024)), "{sizes:?}");
+    // The big file is one whole blob (fetched in ranges, never split into objects). ADR 0171: a model file is kept
+    // beside the output dir, never in it (modules.qrtz.ai doesn't host model bytes; the pack still carries it).
+    let sizes = |p: &str| -> Vec<u64> {
+        std::fs::read_dir(d.path().join(p))
+            .unwrap()
+            .flatten()
+            .map(|e| e.metadata().unwrap().len())
+            .collect()
+    };
+    assert!(sizes("out.model-blobs/v1/blobs/sha256").contains(&(20 * 1024 * 1024)));
+    assert!(!sizes("out/v1/blobs/sha256").contains(&(20 * 1024 * 1024)));
     // The client's lock is text and names all three, exactly.
     let lock = std::fs::read_to_string(d.path().join("client/qrtz.lock")).unwrap();
     for k in [
@@ -170,7 +173,7 @@ fn a_pinned_model_publishes_as_exactly_the_tree_the_app_pins() {
     std::fs::write(files.join("vocab.json"), b"{}").unwrap();
     let f = |p: &str, b: &[u8]| serde_json::json!({"remote": format!("up/{p}"), "path": p, "size": b.len(), "sha256": qrtz_modules::sha256_hex(b)});
     let pins = serde_json::json!({"version": "1.0.0", "base": "https://huggingface.co", "sets": [{
-        "id": "x", "package": "model.x", "task": "asr", "dir": "x", "repo": "org/x", "revision": "abc123",
+        "id": "x", "package": "model.x", "task": "asr", "dir": "x", "repo": "org/x", "revision": "abc1230000000000000000000000000000000000",
         "files": [f("m.mlmodelc/weight.bin", b"weights"), f("vocab.json", b"{}")]}]});
     std::fs::write(d.path().join("pins.json"), serde_json::to_vec(&pins).unwrap()).unwrap();
     let spec = serde_json::json!({"teamId": "ABCDE12345", "pinnedModels": ["pins.json"],
@@ -186,13 +189,80 @@ fn a_pinned_model_publishes_as_exactly_the_tree_the_app_pins() {
         src.tree().sha256(),
         "the hosted tree is the pinned tree"
     );
-    assert!(e
-        .files
-        .iter()
-        .any(|f| f.mirrors == vec!["https://huggingface.co/org/x/resolve/abc123/up/vocab.json".to_string()]));
+    assert!(e.files.iter().any(|f| f.mirrors
+        == vec![
+            "https://huggingface.co/org/x/resolve/abc1230000000000000000000000000000000000/up/vocab.json"
+                .to_string()
+        ]));
     // A downloaded file that doesn't match its pin is refused.
     std::fs::write(files.join("vocab.json"), b"{ }").unwrap();
     let e = qrtz_publish::build(&out, &spec, &keys, now + 1).unwrap_err();
     assert!(e.contains("doesn't match the pin"), "{e}");
     rm(d.path());
+}
+
+#[test]
+fn upload_list_puts_the_timestamp_pair_last_and_no_model_bytes() {
+    // ADR 0171: what an upload without rclone (the Cloudflare connector) needs, in order.
+    let d = tempfile::tempdir().unwrap();
+    let o = bin().args(["dry-run", "--dir"]).arg(d.path()).output().unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let out = d.path().join("out");
+    let list = qrtz_publish::upload_list(&out, false).unwrap();
+    let keys: Vec<&str> = list.iter().map(|u| u.key.as_str()).collect();
+    let n = keys.len();
+    assert_eq!(
+        keys[n - 2..],
+        ["v1/timestamp.json.sig", "v1/timestamp.json"],
+        "{keys:?}"
+    );
+    assert!(list[n - 1].cache_control.contains("max-age=300"));
+    assert!(list[..n - 2]
+        .iter()
+        .all(|u| u.cache_control.contains("immutable")));
+    assert!(keys.iter().all(|k| k.starts_with("v1/")), "{keys:?}");
+    assert!(keys.iter().any(|k| k.starts_with("v1/index/")), "{keys:?}");
+    // Every listed object is a file of out, and every file of out's v1/ is listed.
+    for u in &list {
+        assert_eq!(
+            std::fs::metadata(out.join(&u.key)).unwrap().len(),
+            u.size,
+            "{}",
+            u.key
+        );
+    }
+    let model = std::fs::read_dir(d.path().join("out.model-blobs/v1/blobs/sha256")).unwrap();
+    for e in model.flatten() {
+        let k = format!("v1/blobs/sha256/{}", e.file_name().to_string_lossy());
+        assert!(!keys.contains(&k.as_str()), "model bytes listed: {k}");
+    }
+    let ts = qrtz_publish::upload_list(&out, true).unwrap();
+    let ts: Vec<&str> = ts.iter().map(|u| u.key.as_str()).collect();
+    assert_eq!(ts, ["v1/timestamp.json.sig", "v1/timestamp.json"]);
+    // The CLI prints the same, tab-separated.
+    let o = bin().args(["upload-list", "--out"]).arg(&out).output().unwrap();
+    let s = String::from_utf8_lossy(&o.stdout);
+    assert_eq!(s.lines().count(), n);
+    assert!(s.lines().last().unwrap().starts_with("v1/timestamp.json\t"));
+}
+
+#[test]
+fn model_files_lists_the_pinned_hugging_face_urls() {
+    let pins = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../crates/qrtz-app/src/local_models.json"
+    );
+    let o = bin()
+        .args(["model-files", "--pins", pins, "--package", "model.nemotron"])
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let s = String::from_utf8_lossy(&o.stdout);
+    assert!(s.lines().count() > 3, "{s}");
+    for l in s.lines() {
+        let f: Vec<&str> = l.split('\t').collect();
+        assert_eq!(f.len(), 4, "{l}");
+        assert!(qrtz_modules::index::is_pinned_hugging_face_url(f[0]), "{l}");
+        assert_eq!(f[3].len(), 64, "{l}");
+    }
 }

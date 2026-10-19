@@ -440,3 +440,17 @@ qrtz v0.1.0 is feature-complete for the Memo MVP and green on Linux on every pus
 6. **Dev dependencies:** swap or patch the `image-size` path in maker-dmg when upstream fixes it.
 7. **Live OpenRouter check:** put the key back at `/home/box/.secrets/openrouter_qrtz.key` and run `QRTZ_TEST_OPENROUTER=1 npx vitest run packages/core/src/note/openrouter.test.ts`.
 8. **Polish:** README screenshots from a Mac, onboarding copy, and a first-run model download progress indicator.
+
+## 2026-10-18 ~18:30–20:30 PT: qrtz ships empty (ADR 0169, ADR 0170, ADR 0171)
+
+- Jared (6:32 PM): no module code in qrtz.app; a module installs with its models (one consent, atomic, refcounted
+  uninstall); each module executable signed with its own `ai.qrtz.<id>` identifier (Bozniak's finding).
+- Bozniak's sign-off: module code notarized at publish (publish.sh + notarytool), the result in the signed index, the
+  installer checks DR, team MR26CCZ496, hashes, cdhash and quarantine offline (no spctl).
+- Order changed: P0-5 (modules.qrtz.ai live, root1 pinned) now comes before the signed-build test (PLAN.md).
+- Dev: `scripts/modules/build-packages.sh --dev-index` + `QRTZ_DEV_INDEX_DIR`/`QRTZ_DEV_ROOT1_SHA256` (debug only).
+- Jared (7:15 PM, ADR 0171): models are not hosted on modules.qrtz.ai. The signed index pins each model file's sha256,
+  size and Hugging Face URL at a commit; the fetcher takes a model file only from that URL and a package blob only from
+  the module hosts. qrtz-publish never writes model files to its output (`<out>.model-blobs` keeps them for offline
+  packs); publish.sh hashes models (downloading once if needed), uploads only `v1/`, and `--out-only` writes an upload
+  list (`qrtz-publish upload-list`) for an upload through the Cloudflare connector. Root 1 pinned (771769b).
