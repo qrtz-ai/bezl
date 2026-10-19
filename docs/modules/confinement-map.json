@@ -70,6 +70,7 @@
   ],
   "bundledCode": {
     "about": "ADR 0162, ADR 0159: the executables Tauri bundles as externalBin into qrtz.app/Contents/MacOS (tauri.macos.conf.json). tauri build re-signs every one with the app's entitlements and its file name as identifier, so scripts/release/sign-mac.sh signs each again as listed here (identifier, entitlements file or none) and reseals the app before notarization. inherits: runs as qrtz's child under qrtz's one TCC identity (ADR 0154).",
+    "teamId": "MR26CCZ496",
     "qrtz-helper": {
       "owner": "monolith",
       "identifier": "qrtz-helper",

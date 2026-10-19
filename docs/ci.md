@@ -48,7 +48,7 @@ these repository secrets, which the Tauri bundler reads from the environment of 
 | ---------------------------- | ------------------------------------------------------------------------------ |
 | `APPLE_CERTIFICATE`          | the Developer ID Application certificate + key, exported as .p12, base64       |
 | `APPLE_CERTIFICATE_PASSWORD` | the .p12 password                                                              |
-| `APPLE_SIGNING_IDENTITY`     | e.g. `Developer ID Application: Jared Grimes (TEAMID1234)`                     |
+| `APPLE_SIGNING_IDENTITY`     | e.g. `Developer ID Application: Jared Grimes (MR26CCZ496)`                     |
 | `KEYCHAIN_PASSWORD`          | any random string, for the temporary CI keychain                               |
 | `APPLE_API_ISSUER`           | App Store Connect API key issuer id (notarization)                             |
 | `APPLE_API_KEY`              | the API key id                                                                 |

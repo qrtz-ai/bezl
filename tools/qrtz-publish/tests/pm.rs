@@ -911,8 +911,9 @@ fn the_legacy_lockfile_migrates_to_requests() {
     assert_eq!(snap.code, snap_manifest.code);
     assert_eq!(snap.code.bundle_id, "ai.qrtz.snap");
     assert_eq!(
-        snap.code.team_id, "0000000000",
-        "the placeholder team until Jared's Developer ID lands"
+        snap.code.team_id,
+        qrtz_modules::manifest::RELEASE_TEAM_ID,
+        "snap pins Jared's Developer ID team"
     );
     assert_eq!(
         snap.code.designated_requirement,

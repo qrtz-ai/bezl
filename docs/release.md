@@ -11,34 +11,46 @@ Step by step, with the exact commands and checks: [docs/modules/production-setup
 
 ## One-time setup
 
-1. **Apple Developer Program** membership on Jared's Apple ID.
-2. Create a **Developer ID Application** certificate (Xcode → Settings → Accounts) and check it with
-   `security find-identity -v -p codesigning`.
-3. Notarization credentials: a notarytool keychain profile `qrtz-notary` (`xcrun notarytool store-credentials`,
-   production-setup.md A3). Keep `APPLE_ID`/`APPLE_PASSWORD`/`APPLE_API_KEY` unset for `bun run make`, so the bundler
-   doesn't notarize before the nested signatures are fixed.
+1. **Apple Developer Program** membership on Jared's Apple ID. Done: Team ID `MR26CCZ496`.
+2. **Developer ID Application** certificate. Done: `Developer ID Application: Jared Grimes (MR26CCZ496)` (SHA-1
+   `E689C10899E1DD9E9E582035C7AD3E563202D2FA`; `security find-identity -v -p codesigning` lists it). Both are public
+   and are the repo's release defaults (`qrtz_modules::manifest::RELEASE_TEAM_ID`, the bundled lock's designated
+   requirements, `confinement-map.json` `bundledCode.teamId`, the release scripts; `offline_graph` checks them).
+3. Notarization credentials: a notarytool keychain profile `qrtz-notary`, made once with an app-specific password
+   from account.apple.com (paste it only into notarytool's prompt, never into chat or a file):
+
+   ```sh
+   xcrun notarytool store-credentials qrtz-notary --apple-id <Jared's Apple ID> --team-id MR26CCZ496
+   ```
+
+   Keep `APPLE_ID`/`APPLE_PASSWORD`/`APPLE_API_KEY` unset for `bun run make`, so the bundler doesn't notarize before
+   the nested signatures are fixed (`release:mac` unsets them itself). The identity is deliberately not in
+   `tauri.conf.json`.
 
 ## Cut a release
 
+One command (audit P0-1), on Jared's Mac from a clean `main`:
+
 ```sh
-bun install --frozen-lockfile && bun run check && bun run check:rust
-bun run build:helper                               # src-tauri/binaries/{qrtz-helper,qrtz-snap,qrtz}-<target>
-export APPLE_SIGNING_IDENTITY="Developer ID Application: Jared Grimes (TEAMID1234)"
-export QRTZ_SPEECH_URL=… QRTZ_SPEECH_KEY_ID=… QRTZ_SPEECH_KEY=… QRTZ_SPEECH_ROOT_KEY_ID=… QRTZ_SPEECH_ROOT_KEY=…
-bun run make                                       # tauri build → signed .app under the cargo target dir
-scripts/release/sign-mac.sh target/release/bundle/macos/qrtz.app   # nested signatures, notarize, staple, .dmg
+bun install --frozen-lockfile
+bun run release:mac                                  # = scripts/release/sign-notarize.sh
+bun run release:mac -- --app <qrtz.app>              # an existing `bun run make` output
+bun run release:mac -- --no-notarize                 # sign and check only; nothing goes to Apple
 ```
 
-Or all of it in one command (audit P0-1), which also checks the team on every executable and writes the dmg's
-sha256:
+Defaults: `QRTZ_SIGN_ID` (else `APPLE_SIGNING_IDENTITY`) = `Developer ID Application: Jared Grimes (MR26CCZ496)`,
+`QRTZ_TEAM_ID=MR26CCZ496`, `QRTZ_NOTARY_PROFILE=qrtz-notary`; export any of them to override. It prints the dmg path,
+its sha256 and the Gatekeeper verdict last, and writes `<dmg>.sha256`.
+
+The same by hand:
 
 ```sh
-export QRTZ_SIGN_ID="Developer ID Application: Jared Grimes (<TEAM ID>)"
-export QRTZ_TEAM_ID=<TEAM ID>
-# export QRTZ_NOTARY_PROFILE=qrtz-notary            # the default
-scripts/release/sign-notarize.sh                     # make → sign-mac.sh → team/runtime checks → staple checks → sha256
-scripts/release/sign-notarize.sh --app <qrtz.app>    # an existing `bun run make` output
-scripts/release/sign-notarize.sh --no-notarize       # sign and check only; nothing goes to Apple
+bun install --frozen-lockfile && bun run check && bun run check:rust
+export APPLE_SIGNING_IDENTITY="Developer ID Application: Jared Grimes (MR26CCZ496)"
+export QRTZ_SPEECH_URL=… QRTZ_SPEECH_KEY_ID=… QRTZ_SPEECH_KEY=… QRTZ_SPEECH_ROOT_KEY_ID=… QRTZ_SPEECH_ROOT_KEY=…
+unset APPLE_ID APPLE_PASSWORD APPLE_API_KEY
+bun run make                                       # build:helper + tauri build → signed .app under the cargo target dir
+scripts/release/sign-mac.sh target/release/bundle/macos/qrtz.app   # nested signatures, notarize, staple, .dmg
 ```
 
 It runs `bun run make` with `APPLE_SIGNING_IDENTITY=$QRTZ_SIGN_ID` and every notarization variable unset, hands the
@@ -72,7 +84,7 @@ variables before running the script if this release carries one.
 
 | Item                                                                                                 | Where                                                        | Status                     |
 | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | -------------------------- |
-| Developer ID signing of the app and `qrtz-helper` (external bin)                                     | Tauri bundler (`APPLE_SIGNING_IDENTITY`)                     | ☐ needs certificate        |
+| Developer ID signing of the app and `qrtz-helper` (external bin)                                     | Tauri bundler (`APPLE_SIGNING_IDENTITY`)                     | ☑ certificate (MR26CCZ496) |
 | `qrtz` (`ai.qrtz.cli`) and `qrtz-snap` (`ai.qrtz.snap`) signed with no entitlements                  | `scripts/release/sign-mac.sh` (confinement-map bundledCode)  | ☑ script; ☐ first run      |
 | Hardened runtime + entitlements (`device.audio-input`)                                               | `apps/desktop/src-tauri/entitlements.mac.plist`              | ☑                          |
 | Usage strings: `NSMicrophoneUsageDescription`, `NSAudioCaptureUsageDescription`                      | `apps/desktop/src-tauri/Info.plist`                          | ☑                          |

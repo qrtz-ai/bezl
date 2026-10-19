@@ -20,6 +20,11 @@ pub const MAX_MANIFEST_BYTES: usize = 64 * 1024;
 /// The team id an unsigned dev build uses. Accepted by the parser so the repo's manifests are valid before the
 /// release signing setup exists (docs/release.md); a release launcher refuses it ([`CodeIdentity::is_placeholder`]).
 pub const PLACEHOLDER_TEAM_ID: &str = "0000000000";
+/// The Developer ID team every release path signs and pins: Jared Grimes's
+/// `Developer ID Application: Jared Grimes (MR26CCZ496)`. The bundled manifests, `modules/modules.lock.json`, the
+/// confinement map's bundledCode and the release scripts all name it (checked by
+/// crates/qrtz-lifecycle/tests/offline_graph.rs); only test fixtures use another team.
+pub const RELEASE_TEAM_ID: &str = "MR26CCZ496";
 /// Kinds that would put shared code inside a module's process. Named so the error says why.
 const IN_PROCESS_KINDS: &[&str] = &["dylib", "framework", "library", "bundle", "plugin", "static"];
 

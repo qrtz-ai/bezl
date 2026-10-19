@@ -4,8 +4,8 @@
     "ctrl": {
       "code": {
         "bundleId": "ai.qrtz.ctrl",
-        "designatedRequirement": "identifier \"ai.qrtz.ctrl\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"0000000000\"",
-        "teamId": "0000000000"
+        "designatedRequirement": "identifier \"ai.qrtz.ctrl\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"MR26CCZ496\"",
+        "teamId": "MR26CCZ496"
       },
       "dependencies": [
         {
@@ -13,7 +13,7 @@
           "version": "1.0.0"
         }
       ],
-      "manifestSha256": "81bb10fbce58690473932918c9f18246c3cadf570f86a7350315a220ba34f4da",
+      "manifestSha256": "2ae066ad35cf9424047e4a20b4a29479b7d1932254cd0d7d90328ed4e1499b40",
       "source": "bundled",
       "staleRevocation": false,
       "version": "0.2.0"
@@ -21,8 +21,8 @@
     "echo": {
       "code": {
         "bundleId": "ai.qrtz.echo",
-        "designatedRequirement": "identifier \"ai.qrtz.echo\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"0000000000\"",
-        "teamId": "0000000000"
+        "designatedRequirement": "identifier \"ai.qrtz.echo\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"MR26CCZ496\"",
+        "teamId": "MR26CCZ496"
       },
       "dependencies": [
         {
@@ -30,7 +30,7 @@
           "version": "1.0.0"
         }
       ],
-      "manifestSha256": "6b8e18026edc0c97ab0a584267ac62e4f6e28af09cd1d12f0a8baf5637a50bce",
+      "manifestSha256": "e9a8b992364068597b0279f149ed90e5f5acda5b7676161b628bced9430e56fe",
       "source": "bundled",
       "staleRevocation": false,
       "version": "0.2.0"
@@ -38,8 +38,8 @@
     "nano": {
       "code": {
         "bundleId": "ai.qrtz.nano",
-        "designatedRequirement": "identifier \"ai.qrtz.nano\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"0000000000\"",
-        "teamId": "0000000000"
+        "designatedRequirement": "identifier \"ai.qrtz.nano\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"MR26CCZ496\"",
+        "teamId": "MR26CCZ496"
       },
       "dependencies": [
         {
@@ -55,7 +55,7 @@
           "version": "1.0.0"
         }
       ],
-      "manifestSha256": "52f6d01b60d66421fb65b8709e261f291e2f436eea247ccac15f0e3615fb4fab",
+      "manifestSha256": "0cd935a24308450bf7a06265d32ac910f6d5c5e27b7dcd48c0a93bc54681c67e",
       "source": "bundled",
       "staleRevocation": false,
       "version": "0.2.0"
@@ -63,11 +63,11 @@
     "snap": {
       "code": {
         "bundleId": "ai.qrtz.snap",
-        "designatedRequirement": "identifier \"ai.qrtz.snap\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"0000000000\"",
-        "teamId": "0000000000"
+        "designatedRequirement": "identifier \"ai.qrtz.snap\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"MR26CCZ496\"",
+        "teamId": "MR26CCZ496"
       },
       "dependencies": [],
-      "manifestSha256": "8883e3302ab1f0026d455aa7b73d56bd8c828f7e82e35a334e4bb03e67fa3e85",
+      "manifestSha256": "49545fbce61e2ee5f9572c79d9869661bd7767166bfc07fb21c6bb71c5d13542",
       "source": "bundled",
       "staleRevocation": false,
       "version": "0.1.0"
@@ -79,7 +79,7 @@
         "kind": "data",
         "path": "models/laya",
         "sha256": "e93ef91d200f82a997e7b7aae28804af72594bd56e4963aee6f889bc83ffad22",
-        "teamId": "0000000000"
+        "teamId": "MR26CCZ496"
       }
     },
     "model:localvqe": {
@@ -87,7 +87,7 @@
         "kind": "data",
         "path": "models/localvqe",
         "sha256": "78f730775e0d2411a70d2728eea9b32c12f830582808dd7485816575c7a0ba0a",
-        "teamId": "0000000000"
+        "teamId": "MR26CCZ496"
       }
     },
     "model:nemotron-560ms": {
@@ -95,7 +95,7 @@
         "kind": "data",
         "path": "models/nemotron-560ms",
         "sha256": "190d68226457494a8328888429b970df8cfbbb434623a1bf964b6090ec81e8f5",
-        "teamId": "0000000000"
+        "teamId": "MR26CCZ496"
       }
     },
     "model:nemotron3-diarizer": {
@@ -103,7 +103,7 @@
         "kind": "data",
         "path": "models/nemotron3-diarizer",
         "sha256": "8ee15189a310bedc9cc7b9626b3a1ca19c03a82ccd91853bcd3bd75829f3d869",
-        "teamId": "0000000000"
+        "teamId": "MR26CCZ496"
       }
     },
     "model:parakeet-tdt-v2": {
@@ -111,7 +111,7 @@
         "kind": "data",
         "path": "models/parakeet-tdt-v2",
         "sha256": "08834dd5e130c78b57f68d9c52265036ba3cf9c3ebe2cd092f4d0322bcd77730",
-        "teamId": "0000000000"
+        "teamId": "MR26CCZ496"
       }
     }
   }

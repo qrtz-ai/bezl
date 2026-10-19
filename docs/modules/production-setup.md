@@ -44,36 +44,48 @@ snap are built into the app for v1, so nothing waits on that.
 
 ## Part A: the signed v1 build (needed for launch)
 
-**A1. Apple Developer Program.** Join at <https://developer.apple.com/programs/enroll/> on your Apple ID (individual
-or organization; organization needs a D-U-N-S number and takes longer). Then note your **Team ID**: developer.apple.com
-→ **Account** → **Membership details**. **Send us:** the Team ID (10 characters, public).
+**A1. Apple Developer Program.** Done (2026-10-18). Team ID **`MR26CCZ496`**.
 
-**A2. Developer ID Application certificate.** Xcode → **Settings → Accounts** → your team → **Manage Certificates** →
-**+** → **Developer ID Application**. Check it:
+**A2. Developer ID Application certificate.** Done (2026-10-18): `Developer ID Application: Jared Grimes
+(MR26CCZ496)` (SHA-1 `E689C10899E1DD9E9E582035C7AD3E563202D2FA`), in your login keychain. Both are public and are
+now the repo's release defaults: the bundled lock and manifests pin team `MR26CCZ496` in every designated
+requirement (`qrtz_modules::manifest::RELEASE_TEAM_ID`), and the release scripts default to that identity
+(`QRTZ_SIGN_ID` or `APPLE_SIGNING_IDENTITY`, and `QRTZ_TEAM_ID`, still override it). `offline_graph`'s
+`every_release_path_pins_jareds_developer_id_team` fails if a release path names another team. The certificate's
+private key never leaves your Mac.
+
+**A3. Notarization credentials (once).** Make an app-specific password at <https://account.apple.com> → **Sign-In
+and Security → App-Specific Passwords** (name it `qrtz-notary`), then save it as a notarytool profile in your
+keychain:
 
 ```sh
-security find-identity -v -p codesigning   # shows "Developer ID Application: <Name> (<TEAMID>)"
-```
-
-**A3. Notarization credentials.** Make an app-specific password at <https://account.apple.com> → **Sign-In and
-Security → App-Specific Passwords** (name it `qrtz-notary`), then save a notarytool profile in your keychain:
-
-```sh
-xcrun notarytool store-credentials qrtz-notary --apple-id "<your Apple ID email>" --team-id <TEAMID>
-# paste the app-specific password when asked; check it with:
+xcrun notarytool store-credentials qrtz-notary --apple-id "<your Apple ID email>" --team-id MR26CCZ496
+# it asks for the app-specific password: paste it into that prompt only, never into chat or a file. Check it with:
 xcrun notarytool history --keychain-profile qrtz-notary
 ```
 
-**A4. The first signed build, notarized and stapled.** From a clean checkout of `main` on your Mac:
+**A4. The signed build, notarized and stapled: one command.** From a clean checkout of `main` on your Mac:
 
 ```sh
-bun install --frozen-lockfile && bun run check && bun run check:rust
-export APPLE_SIGNING_IDENTITY="Developer ID Application: <Name> (<TEAMID>)"
-unset APPLE_ID APPLE_PASSWORD APPLE_API_KEY   # tauri build signs only; sign-mac.sh notarizes after fixing the signatures
-bun run make                                  # Swift helper + qrtz-snap + the qrtz command, then tauri build
-APP=target/release/bundle/macos/qrtz.app      # under $CARGO_TARGET_DIR if you set one
-scripts/release/sign-mac.sh "$APP"            # re-signs Contents/MacOS/*, reseals, checks, notarizes, staples, makes the .dmg
+git pull && bun install --frozen-lockfile
+bun run release:mac
 ```
+
+`bun run release:mac` is `scripts/release/sign-notarize.sh`. With nothing exported it uses `Developer ID
+Application: Jared Grimes (MR26CCZ496)`, team `MR26CCZ496` and the `qrtz-notary` profile. It runs `bun run make` with
+`APPLE_ID`/`APPLE_PASSWORD`/`APPLE_API_KEY` unset (so tauri build signs but doesn't notarize too early), then
+`scripts/release/sign-mac.sh` (re-signs `Contents/MacOS/*`, reseals, checks, notarizes, staples, makes the `.dmg`),
+then checks the team and hardened runtime on every executable, the staples and Gatekeeper. It ends with:
+
+```
+== release
+dmg:        …/release/bundle/macos/qrtz_<version>_aarch64.dmg
+sha256:     <64 hex>
+gatekeeper: …: accepted source=Notarized Developer ID …
+```
+
+`bun run release:mac -- --no-notarize` signs and checks only (nothing goes to Apple), and
+`bun run release:mac -- --app <qrtz.app>` skips the build. The manual steps it wraps are in docs/release.md.
 
 Every step it runs must succeed, and it stops at the first failure. The checks are: `codesign --verify --strict
 --deep`; for each of `qrtz-helper`, `qrtz` and `qrtz-snap`, its designated requirement with your team, the hardened
@@ -127,7 +139,7 @@ that commit can't install packages, so cut a new signed build afterwards (A4).
 models (onboarding, and ctrl's model in its settings), then:
 
 ```sh
-export QRTZ_TEAM_ID=<TEAMID>
+# QRTZ_TEAM_ID defaults to MR26CCZ496
 export R2_ACCOUNT_ID=<Cloudflare account id: R2 overview page, right column>
 export R2_ACCESS_KEY_ID=<from step B2> R2_SECRET_ACCESS_KEY="$(security find-generic-password -s qrtz-r2 -w)"
 export B2_KEY_ID=<from step B3> B2_APPLICATION_KEY="$(security find-generic-password -s qrtz-b2 -w)"

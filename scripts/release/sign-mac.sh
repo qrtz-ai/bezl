@@ -6,20 +6,25 @@
 # and the file name as identifier. qrtz-snap must carry no entitlement and sign as ai.qrtz.snap (its lock entry), and
 # the `qrtz` command needs none. So the bundle is built signed but NOT notarized, fixed up here, then notarized.
 #
-# Usage (on the Mac, after `bun run make` with APPLE_SIGNING_IDENTITY set and APPLE_ID/APPLE_PASSWORD unset):
+# Usage (on the Mac, after `bun run make` with APPLE_SIGNING_IDENTITY set and APPLE_ID/APPLE_PASSWORD unset; usually
+# through `bun run release:mac`, scripts/release/sign-notarize.sh):
 #   scripts/release/sign-mac.sh <path/to/qrtz.app> [--no-notarize]
-# Env: APPLE_SIGNING_IDENTITY="Developer ID Application: <Name> (<TEAMID>)"; notarytool keychain profile
-#      QRTZ_NOTARY_PROFILE (default qrtz-notary, docs/modules/production-setup.md A3).
+# Env (all optional): APPLE_SIGNING_IDENTITY or QRTZ_SIGN_ID, default
+#      "Developer ID Application: Jared Grimes (MR26CCZ496)"; QRTZ_TEAM_ID, default MR26CCZ496 (the identity must name
+#      it: the bundled lock's designated requirements pin it); notarytool keychain profile QRTZ_NOTARY_PROFILE
+#      (default qrtz-notary, docs/modules/production-setup.md A3).
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
 app="${1:?usage: sign-mac.sh <qrtz.app> [--no-notarize]}"
 notarize=1
 [[ "${2:-}" == "--no-notarize" ]] && notarize=0
-identity="${APPLE_SIGNING_IDENTITY:?set APPLE_SIGNING_IDENTITY (security find-identity -v -p codesigning)}"
+identity="${APPLE_SIGNING_IDENTITY:-${QRTZ_SIGN_ID:-Developer ID Application: Jared Grimes (MR26CCZ496)}}"
 profile="${QRTZ_NOTARY_PROFILE:-qrtz-notary}"
+want_team="${QRTZ_TEAM_ID:-MR26CCZ496}"
 team="$(sed -n 's/.*(\([A-Z0-9]\{10\}\)).*/\1/p' <<<"$identity")"
-[[ -n "$team" ]] || { echo "can't read the team id from APPLE_SIGNING_IDENTITY ($identity)" >&2; exit 1; }
+[[ -n "$team" ]] || { echo "can't read the team id from the signing identity ($identity)" >&2; exit 1; }
+[[ "$team" == "$want_team" ]] || { echo "signing identity names team $team, want $want_team (QRTZ_TEAM_ID)" >&2; exit 1; }
 app_ent="$repo/apps/desktop/src-tauri/entitlements.mac.plist"
 macos="$app/Contents/MacOS"
 [[ -x "$macos/qrtz-app" ]] || { echo "$macos/qrtz-app missing: is $app a qrtz.app built from main?" >&2; exit 1; }

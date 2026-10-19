@@ -14,7 +14,8 @@
 # Environment:
 #   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY   the R2 API token (Object Read & Write, bucket only)
 #   B2_KEY_ID, B2_APPLICATION_KEY                            the B2 application key (bucket only)
-#   QRTZ_TEAM_ID        the Developer ID team (10 characters; the publisher team of every package, models too)
+#   QRTZ_TEAM_ID        the Developer ID team (10 characters; the publisher team of every package, models too;
+#                       default MR26CCZ496)
 #   optional: R2_BUCKET (qrtz-modules), B2_BUCKET (qrtz-modules-mirror), QRTZ_KEYS (~/.qrtz-keys),
 #   QRTZ_PUBLISH_OUT (~/qrtz-publish-out), QRTZ_MODELS_DIR (~/Library/Application Support/ai.qrtz.desktop/models),
 #   QRTZ_PUBLISH_MODELS (space-separated package names; default: every pinned model whose dir exists),
@@ -97,7 +98,7 @@ else
       [[ -d "$models_dir/$(model_dir "$n")" ]] && wanted="$wanted $n"
     done
   fi
-  team="${QRTZ_TEAM_ID:-}"
+  team="${QRTZ_TEAM_ID:-MR26CCZ496}"
   [[ "$team" =~ ^[A-Z0-9]{10}$ && "$team" != 0000000000 ]] || die "QRTZ_TEAM_ID: your 10-character Developer ID team id"
 
   spec="$(mktemp -d)/publish.json"

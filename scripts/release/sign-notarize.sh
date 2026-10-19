@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 # Audit P0-1: one command for a Developer ID signed, notarized and stapled qrtz release on Jared's Mac.
 #
-#   QRTZ_SIGN_ID="Developer ID Application: Jared Grimes (ABCDE12345)" QRTZ_TEAM_ID=ABCDE12345 \
-#     scripts/release/sign-notarize.sh                         # build, sign, notarize, staple, verify, sha256
+#   bun run release:mac                                        # build, sign, notarize, staple, verify, sha256
 #   scripts/release/sign-notarize.sh --app path/to/qrtz.app    # skip the build (a `bun run make` output)
 #   scripts/release/sign-notarize.sh --no-notarize             # sign + verify only (nothing goes to Apple)
 #
-# Nothing secret lives in the repo or in this script:
+# Nothing secret lives in the repo or in this script. The defaults are Jared's public identifiers:
 #   QRTZ_SIGN_ID          the Developer ID Application identity in the login keychain
-#                         (`security find-identity -v -p codesigning`).
+#                         (`security find-identity -v -p codesigning`); APPLE_SIGNING_IDENTITY is read if it is unset.
+#                         Default: Developer ID Application: Jared Grimes (MR26CCZ496).
 #   QRTZ_TEAM_ID          its 10-character team id; every executable's signature is checked against it.
+#                         Default: MR26CCZ496 (qrtz_modules::manifest::RELEASE_TEAM_ID, the team the bundled lock pins).
 #   QRTZ_NOTARY_PROFILE   a notarytool keychain profile (default `qrtz-notary`), stored once with
-#                         `xcrun notarytool store-credentials qrtz-notary --key <AuthKey.p8> --key-id <id> --issuer <uuid>`.
+#                         `xcrun notarytool store-credentials qrtz-notary --apple-id <apple id> --team-id MR26CCZ496`
+#                         (it prompts for an app-specific password from account.apple.com; never paste it anywhere).
 #
 # Steps:
 #   1. `bun run make` with APPLE_SIGNING_IDENTITY=$QRTZ_SIGN_ID and every notarization variable unset: Tauri signs the
@@ -45,13 +47,14 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --app) APP="${2:?--app needs a path}"; shift 2 ;;
     --no-notarize) NOTARIZE=0; shift ;;
-    -h|--help) sed -n '2,28p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,31p' "$0"; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
 
-[ -n "${QRTZ_SIGN_ID:-}" ] || die "set QRTZ_SIGN_ID to your Developer ID Application identity"
-[ -n "${QRTZ_TEAM_ID:-}" ] || die "set QRTZ_TEAM_ID to your 10-character team id"
+RELEASE_SIGN_ID="Developer ID Application: Jared Grimes (MR26CCZ496)"
+QRTZ_SIGN_ID="${QRTZ_SIGN_ID:-${APPLE_SIGNING_IDENTITY:-$RELEASE_SIGN_ID}}"
+QRTZ_TEAM_ID="${QRTZ_TEAM_ID:-MR26CCZ496}"
 [[ "$QRTZ_TEAM_ID" =~ ^[0-9A-Z]{10}$ ]] || die "QRTZ_TEAM_ID must be 10 characters, A-Z and 0-9"
 [ "$QRTZ_TEAM_ID" != 0000000000 ] || die "QRTZ_TEAM_ID is the placeholder team"
 case "$QRTZ_SIGN_ID" in
@@ -116,7 +119,12 @@ if [ "$NOTARIZE" = 1 ]; then
     run shasum -a 256 "$DMG"
   else
     (cd "$(dirname "$DMG")" && shasum -a 256 "$(basename "$DMG")" >"$(basename "$DMG").sha256")
+    GK="$(spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG" 2>&1 || true)"
     echo "signed, notarized and stapled: $DMG ($(cut -d' ' -f1 <"$DMG.sha256"))"
+    echo "== release"
+    echo "dmg:        $DMG"
+    echo "sha256:     $(cut -d' ' -f1 <"$DMG.sha256")"
+    echo "gatekeeper: $(tr '\n' ' ' <<<"$GK")"
   fi
 else
   echo "signed (not notarized): $APP"

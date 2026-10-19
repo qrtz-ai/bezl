@@ -13,6 +13,7 @@
   "scripts": {
     "start": "bun run build:helper && bun --bun run --cwd apps/desktop start",
     "make": "bun run build:helper && bun --bun run --cwd apps/desktop make",
+    "release:mac": "bash scripts/release/sign-notarize.sh",
     "lint": "bun --bun oxlint && bun --bun oxfmt --check && bun scripts/check-boundaries.mjs && bun scripts/check-typography.mjs && bun scripts/check-ui-purity.mjs && bun scripts/check-titles.mjs && bun scripts/check-swift.mjs",
     "lint:fix": "bun --bun oxlint --fix && bun --bun oxfmt --write",
     "typecheck": "bun --bun tsc -b && bun --bun tsc -p tsconfig.test.json",

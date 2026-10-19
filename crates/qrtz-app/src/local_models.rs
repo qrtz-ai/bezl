@@ -220,9 +220,9 @@ impl LocalModels {
 
     /// The `model.*` packages this manifest pins, for `Op::Pinned`.
     pub fn packages(&self) -> Vec<PinnedPackage> {
-        // Data carries no signature: the placeholder team stands until the signed index lists the same tree (then
-        // the index's team is recorded).
-        let team = qrtz_modules::manifest::PLACEHOLDER_TEAM_ID;
+        // Data carries no signature; the publisher team is the release team, the one the signed index lists for
+        // every model (scripts/modules/publish.sh). An already-installed pin keeps its recorded entry.
+        let team = qrtz_modules::manifest::RELEASE_TEAM_ID;
         self.manifest
             .sets
             .iter()

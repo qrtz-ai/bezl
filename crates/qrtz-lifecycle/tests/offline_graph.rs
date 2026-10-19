@@ -1390,7 +1390,7 @@ fn every_bundled_executable_is_signed_as_the_confinement_map_says() {
     let code = map["bundledCode"].as_object().expect("bundledCode");
     let mapped: BTreeMap<String, (String, String)> = code
         .iter()
-        .filter(|(k, _)| *k != "about")
+        .filter(|(_, v)| v.is_object())
         .map(|(k, v)| {
             let ent = match &v["entitlements"] {
                 Value::Null => "none".to_owned(),
@@ -1471,4 +1471,180 @@ fn every_bundled_executable_is_signed_as_the_confinement_map_says() {
         Value::Null,
         "the qrtz command carries no entitlement"
     );
+}
+
+/// The Developer ID team every release path pins: `Developer ID Application: Jared Grimes (MR26CCZ496)`. Fails if a
+/// bundled manifest, the bundled lockfile, the confinement map, the store's service packages or a release script names
+/// another team (the placeholder `0000000000` included). Test fixtures keep their fake team; they aren't read here.
+const RELEASE_TEAM: &str = "MR26CCZ496";
+const RELEASE_IDENTITY: &str = "Developer ID Application: Jared Grimes (MR26CCZ496)";
+
+fn team_ids(v: &Value, at: &str, out: &mut Vec<(String, String)>) {
+    match v {
+        Value::Object(o) => {
+            for (k, x) in o {
+                let here = format!("{at}.{k}");
+                if k == "teamId" {
+                    out.push((here.clone(), x.as_str().unwrap_or("<not a string>").to_owned()));
+                }
+                if k == "designatedRequirement" {
+                    let dr = x.as_str().unwrap_or("");
+                    let tail = format!("certificate leaf[subject.OU] = \"{RELEASE_TEAM}\"");
+                    out.push((
+                        here.clone(),
+                        if dr.ends_with(&tail) {
+                            RELEASE_TEAM.to_owned()
+                        } else {
+                            dr.to_owned()
+                        },
+                    ));
+                }
+                team_ids(x, &here, out);
+            }
+        }
+        Value::Array(a) => {
+            for (i, x) in a.iter().enumerate() {
+                team_ids(x, &format!("{at}[{i}]"), out);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn release_team_findings() -> Vec<(String, String)> {
+    let mut files = vec!["modules/modules.lock.json".to_owned()];
+    for d in std::fs::read_dir(root().join("modules")).unwrap() {
+        let d = d.unwrap().path();
+        for f in ["module.json", "qrtz.json"] {
+            if d.join(f).is_file() {
+                files.push(
+                    d.join(f)
+                        .strip_prefix(root())
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .to_owned(),
+                );
+            }
+        }
+    }
+    for d in std::fs::read_dir(root().join("tools/qrtz-publish/packages")).unwrap() {
+        let f = d.unwrap().path().join("qrtz.json");
+        if f.is_file() {
+            files.push(f.strip_prefix(root()).unwrap().to_str().unwrap().to_owned());
+        }
+    }
+    let mut out = vec![];
+    for f in &files {
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(root().join(f)).unwrap())
+            .unwrap_or_else(|e| panic!("{f}: {e}"));
+        team_ids(&v, f, &mut out);
+    }
+    let map = confinement_map();
+    out.push((
+        "confinement-map.json bundledCode.teamId".into(),
+        map["bundledCode"]["teamId"]
+            .as_str()
+            .unwrap_or("<missing>")
+            .to_owned(),
+    ));
+    out
+}
+
+#[test]
+fn every_release_path_pins_jareds_developer_id_team() {
+    let found = release_team_findings();
+    // The four bundled extensions' code identities at least (manifest and lock).
+    let code = found
+        .iter()
+        .filter(|(at, _)| at.ends_with(".code.teamId"))
+        .count();
+    assert!(
+        code >= 8,
+        "expected echo, nano, ctrl and snap in manifests and lock, found {code}"
+    );
+    let wrong: Vec<_> = found.iter().filter(|(_, t)| t != RELEASE_TEAM).collect();
+    assert!(
+        wrong.is_empty(),
+        "release team must be {RELEASE_TEAM}: {wrong:#?}"
+    );
+
+    let manifest_rs = std::fs::read_to_string(root().join("crates/qrtz-modules/src/manifest.rs")).unwrap();
+    assert!(
+        manifest_rs.contains(&format!("pub const RELEASE_TEAM_ID: &str = \"{RELEASE_TEAM}\";")),
+        "qrtz_modules::manifest::RELEASE_TEAM_ID"
+    );
+    let local_models = std::fs::read_to_string(root().join("crates/qrtz-app/src/local_models.rs")).unwrap();
+    assert!(
+        !local_models.contains("PLACEHOLDER_TEAM_ID"),
+        "local_models.rs pins models with the placeholder team"
+    );
+
+    // The release scripts default to the release identity and team; QRTZ_SIGN_ID / APPLE_SIGNING_IDENTITY and
+    // QRTZ_TEAM_ID still override them.
+    for (script, needles) in [
+        (
+            "scripts/release/sign-notarize.sh",
+            vec![
+                format!("QRTZ_TEAM_ID:-{RELEASE_TEAM}"),
+                RELEASE_IDENTITY.to_owned(),
+                "QRTZ_NOTARY_PROFILE:-qrtz-notary".to_owned(),
+            ],
+        ),
+        (
+            "scripts/release/sign-mac.sh",
+            vec![
+                format!("QRTZ_TEAM_ID:-{RELEASE_TEAM}"),
+                RELEASE_IDENTITY.to_owned(),
+                "QRTZ_NOTARY_PROFILE:-qrtz-notary".to_owned(),
+            ],
+        ),
+        (
+            "scripts/modules/publish.sh",
+            vec![format!("QRTZ_TEAM_ID:-{RELEASE_TEAM}")],
+        ),
+    ] {
+        let s = std::fs::read_to_string(root().join(script)).unwrap();
+        for n in &needles {
+            assert!(s.contains(n.as_str()), "{script} must default to {n}");
+        }
+        for (i, l) in s.lines().enumerate() {
+            // The only placeholder mentions allowed are the refusals.
+            if l.contains("0000000000") {
+                assert!(
+                    l.contains("!= 0000000000") || l.contains("placeholder"),
+                    "{script}:{}: the placeholder team on a release path: {l}",
+                    i + 1
+                );
+            }
+        }
+    }
+    // `bun run make` must not notarize (sign-mac.sh re-signs the nested code first): no identity or Apple ID in the
+    // Tauri config.
+    for conf in [
+        "apps/desktop/src-tauri/tauri.conf.json",
+        "apps/desktop/src-tauri/tauri.macos.conf.json",
+    ] {
+        let p = root().join(conf);
+        if p.is_file() {
+            let s = std::fs::read_to_string(&p).unwrap();
+            assert!(
+                !s.contains("signingIdentity") && !s.contains(RELEASE_TEAM),
+                "{conf}: signing belongs to scripts/release"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_release_team_check_catches_the_placeholder() {
+    let mut out = vec![];
+    team_ids(
+        &serde_json::json!({"modules": {"echo": {"code": {"teamId": "0000000000",
+            "designatedRequirement": "identifier \"ai.qrtz.echo\" and certificate leaf[subject.OU] = \"0000000000\""}}}}),
+        "x",
+        &mut out,
+    );
+    assert_eq!(out.len(), 2);
+    assert!(out.iter().all(|(_, t)| t != RELEASE_TEAM), "{out:?}");
 }

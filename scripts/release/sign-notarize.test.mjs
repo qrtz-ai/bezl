@@ -65,10 +65,43 @@ describe('sign-notarize.sh', () => {
     expect(r.stdout).not.toContain('stapler');
   });
 
+  it("defaults to Jared's Developer ID identity, team MR26CCZ496 and the qrtz-notary profile", () => {
+    const r = run({});
+    expect(r.status, r.stderr).toBe(0);
+    const lines = plan(r);
+    const make = lines.find((l) => l.includes('run --cwd'));
+    expect(make).toContain(
+      'APPLE_SIGNING_IDENTITY=Developer\\ ID\\ Application:\\ Jared\\ Grimes\\ \\(MR26CCZ496\\)',
+    );
+    const sign = lines.find((l) => l.includes('sign-mac.sh'));
+    expect(sign).toContain('QRTZ_NOTARY_PROFILE=qrtz-notary');
+    expect(sign).toContain('(MR26CCZ496\\)');
+  });
+
+  it('APPLE_SIGNING_IDENTITY overrides the default identity when QRTZ_SIGN_ID is unset', () => {
+    const r = run({ APPLE_SIGNING_IDENTITY: ID, QRTZ_TEAM_ID: 'ABCDE12345' });
+    expect(r.status, r.stderr).toBe(0);
+    const make = plan(r).find((l) => l.includes('run --cwd'));
+    expect(make).toContain('\\(ABCDE12345\\)');
+    expect(make).not.toContain('MR26CCZ496');
+  });
+
+  it('package.json release:mac runs this script', async () => {
+    const { readFileSync } = await import('node:fs');
+    const pkg = JSON.parse(
+      readFileSync(
+        path.join(import.meta.dirname, '../../package.json'),
+        'utf8',
+      ),
+    );
+    expect(pkg.scripts['release:mac']).toBe(
+      'bash scripts/release/sign-notarize.sh',
+    );
+  });
+
   it('refuses missing or mismatched credentials before doing anything', () => {
     for (const [env, msg] of [
-      [{}, 'QRTZ_SIGN_ID'],
-      [{ QRTZ_SIGN_ID: ID }, 'QRTZ_TEAM_ID'],
+      [{ QRTZ_SIGN_ID: ID }, "doesn't name team MR26CCZ496"],
       [{ QRTZ_SIGN_ID: ID, QRTZ_TEAM_ID: 'ZZZZZ99999' }, "doesn't name team"],
       [{ QRTZ_SIGN_ID: ID, QRTZ_TEAM_ID: 'short' }, '10 characters'],
       [
