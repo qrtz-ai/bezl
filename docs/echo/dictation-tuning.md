@@ -887,7 +887,7 @@ noun (the keep set already has "put a question mark"); (4) warming dictionary pa
 Worked one per cycle when no polish item is ready. P1 the `local_models::speech_calls_scoped_to_one_module_
 touch_only_its_models` timeout: **fixed `a8da381`** (cycle 69, ADR 0209; a lost resume, not a flake; section 41);
 P2 model download pause/resume/background/crash recovery with sha256; P3 no network or a failed index refresh never
-blocks dictation with an installed model; P4 mic edge cases (unplug, AirPods profile, permission revoked,
+blocks dictation with an installed model: **fixed `de03608`** (cycle 70, ADR 0210, N188; section 42); P4 mic edge cases (unplug, AirPods profile, permission revoked,
 sleep/wake); P5 key-up to text p50/p95 budget and a bench-compare script; P6 insertion fallbacks (secure fields,
 Electron, terminals); P7 idle memory/CPU and model unload without first-press cost; P8 crash safety (pill reset, echo
 restart with backoff).
@@ -1619,3 +1619,74 @@ P4/P6-P8. Polish: p15 only after the Mac check in section 36 step 5.
    downloading right after each resume and the download finishes; nothing is left paused or "couldn't reach the
    download server".
 5. If anything misbehaves: revert `a8da381` (setup.rs and the tests only).
+
+## 42. Cycle 70: backlog P3, an installed and verified Parakeet never touches or waits on the network (ADR 0210, `de03608`)
+
+Polish re-check first: none of the 4 failing cases has an unambiguous rewrite. p15 (spoken "comma"/"period") still
+waits on the Mac check (section 36 step 5); p19 "jared at gmail dot com" → email fails on "look at gmail dot com"
+(the same words, "at" a preposition) and ADR 0190 keeps Parakeet's ITN off; p20 "qrtz dot ai slash docs" → URL
+fails on "the dot com bubble" and has no measured Parakeet output; p41 (a 4-word list line) is ADR 0188's "don't
+retry". So the cycle took backlog P3.
+
+| Run                                                      | Result                                                     |
+| -------------------------------------------------------- | ---------------------------------------------------------- |
+| `4fe0780`, the 2 new tests                               | **both fail** ("another install is running" / "signature") |
+| `de03608`, the 2 new tests                               | pass, 0 connections of their own, each under 2 s           |
+| `de03608`, local_models (10 tests), 175 runs (see below) | 175 pass                                                   |
+| `de03608`, qrtz-app `--features runtime`                 | 292 passed, 0 failed (was 290)                             |
+
+The 175 runs: 25 + 30 via cargo, 60 of the test binary, 4 parallel loops × 15. A first loop of 20 via cargo had 1
+failing run whose output wasn't kept; it did not recur in the 175.
+
+- **What was already offline (unchanged):** the press path asks only the disk (talk.rs `echo_speech_missing`
+  ~l.113: marker + sizes); `speech:status` for the local models is disk only (setup.rs `status_for` ~l.217);
+  Parakeet's download never refreshes the index (only an extension-read set like ctrl's Laya does,
+  local_models.rs ~l.387). With the network merely down, an installed Parakeet's download made no connection.
+- **N188 (P3, fixed):** with Parakeet installed and verified, `LocalModels::download` still ran an empty
+  `Installer::apply`, which takes `.qrtz-install.lock` (qrtz-modules install.rs ~l.861). `Installer::refresh` holds
+  that lock across its network requests (install.rs ~l.466; 15 s connect / 60 s read timeout per request). So during
+  any refresh stuck on a dead network (the qrtz page's refresh, "check for updates", `qrtz update`, ctrl's Laya
+  download), echo's `speech:download` failed "another install is running", shown as "the download failed its
+  signature check", for a model that was installed.
+- **Fix:** `download` asks `up_to_date` first (local_models.rs ~l.378 / ~l.446): every set marked with the right
+  sizes, no extension-read set, and the pinned plan a no-op that leaves `qrtz.lock` as it is (disk only, no lock).
+  Then it reports full progress and returns: no transport, no refresh, no lock. Anything else takes the old path.
+- **Tests:** `an_installed_parakeet_downloads_with_the_network_down_without_touching_it`, `speech_status_and_
+  download_with_parakeet_installed_never_wait_on_the_network` (a loopback black hole that accepts and never answers
+  is the model and package host; a real `Installer::refresh` is stuck on it holding the lock). clippy `-D warnings`
+  all targets with and without `runtime`; rustfmt clean on the touched files.
+- **Dictation path review since `7c008f4` / `a8da381`:** no capture, VAD, model config, drain / final pass, cleanup,
+  insert, pill or timing-log change. origin moved by `82d75ae` (echo bench plan: echo vs another dictation app only, scripts and
+  docs), `f560680` (cargo fmt of modules.rs / packages_ipc.rs) and `df5bb62` (app-update key pin, ADR 0181); none on
+  the press path. Cleanup is still `rule_cleanup` (cleanup.rs ~l.1927) once on the final text,
+  `terminal_punctuation` ~l.1568, `vocative_question` ~l.1707. Polish set at `de03608`: 105 / 109 exact, 42 chars
+  (1.20 %), regressions 0; keep set 292, 0 hits; release cleanup_budget medians over 5 runs 0.121 / 0.125 / 0.131 ms
+  (495 words / 504 ending in a question / 504 ending in a vocative question), ceiling 2 ms. Note (Qrtz Nano):
+  packages/features/note vitest 17 passed (5 files).
+- **Latency:** none. Nothing on the press path changed; the download of an installed model got cheaper.
+- **N189 (P3, new, open):** a download that does need bytes while a refresh is stuck still fails "busy" and is shown
+  as a signature failure (`pm_error`, local_models.rs ~l.617, maps `InstallError::Busy` to `Invalid`); and a stuck
+  refresh blocks every install for up to ~60 s per request. Proposed to Beve Bobs: refresh without holding the
+  install lock during its requests (ADR 0210, Rejected).
+
+Backlog after this cycle, ranked: (1) N189's speech side (mine): `InstallError::Busy` from a speech download shows as
+"another download or update is running; try again in a moment" (`errorKind` `unavailable`, already in packages/core
+`SpeechErrorKind`) and retries itself once the lock frees, with a test; (2) P2 crash recovery mid-download (resume
+from the `.part` + `.done` ranges, sha256 on the result) with a kill test; (3) P5 the key-up-to-text p50/p95
+bench-compare script; (4) P4/P6-P8. Polish: p15 only after the Mac check in section 36 step 5.
+
+### Test on Jared's Mac (cycle 70)
+
+1. `cd ~/code/qrtz && git pull` (main at or after `de03608`).
+2. `cargo test -p qrtz-app --features runtime --test local_models`: 9 passed, 1 ignored (the real-host download).
+   The two new tests each finish in about 1 s.
+3. `for i in $(seq 1 20); do cargo test -q -p qrtz-app --features runtime --test local_models parakeet || break;
+   done`: every run passes.
+4. In the app, with Parakeet installed: turn Wi-Fi off, quit qrtz and open it again. Echo's page and settings →
+   speech say installed, with no "couldn't check speech" or "signature" error; hold fn and dictate "Testing offline
+   dictation one two three": it types as usual, with no wait.
+5. Still with Wi-Fi off: on the qrtz page press refresh / "check for updates" and, while it is still trying, open
+   echo's page and switch echo off and on. Echo comes back on at once with no download question and no error row.
+6. Turn Wi-Fi back on. If anything misbehaves: revert `de03608` (local_models.rs and its tests only).
+7. Still open for p15: hold fn and say "Bring the charger comma the cable comma and the adapter period"; note
+   whether Parakeet writes the words or the marks (section 36 step 5).
