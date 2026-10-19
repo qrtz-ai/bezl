@@ -79,7 +79,14 @@ pub struct LocalModels {
     base: Option<String>,
     /// The root pin and package hosts for the signed index (tests: loopback); `None` = `Hosts::pinned()`.
     index: Option<(Option<String>, Vec<String>)>,
+    /// How long a download that needs bytes waits for the package manager's install lock (N189, ADR 0213).
+    busy_wait: std::time::Duration,
 }
+
+/// N189 (ADR 0213): how long a model download waits for another install, update or refresh to let go of
+/// `.qrtz-install.lock` before it reports "another download or update is running", and how often it looks.
+pub const BUSY_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
+const BUSY_POLL: std::time::Duration = std::time::Duration::from_millis(200);
 
 /// The model set dirs extension `ext` needs: its bundled manifest's `model:<dir>` data dependencies (echo:
 /// Parakeet; nano: Nemotron, the diarizer and LocalVQE). Unknown extensions need none (audit P0-3).
@@ -169,6 +176,7 @@ impl LocalModels {
             manifest,
             base,
             index: None,
+            busy_wait: BUSY_WAIT,
         };
         for s in &m.manifest.sets {
             assert!(safe_rel(&s.dir), "model set dir {}", s.dir);
@@ -203,6 +211,7 @@ impl LocalModels {
             manifest,
             base: self.base.clone(),
             index: self.index.clone(),
+            busy_wait: self.busy_wait,
         }
     }
 
@@ -220,6 +229,12 @@ impl LocalModels {
     /// The signed index's root pin and package hosts (tests serve a published index from loopback).
     pub fn with_index(mut self, root_pin: Option<String>, hosts: Vec<String>) -> Self {
         self.index = Some((root_pin, hosts));
+        self
+    }
+
+    /// Tests: how long a download waits for the install lock ([`BUSY_WAIT`] otherwise).
+    pub fn with_busy_wait(mut self, wait: std::time::Duration) -> Self {
+        self.busy_wait = wait;
         self
     }
 
@@ -425,20 +440,45 @@ impl LocalModels {
         if !self.extension_read() {
             fsx::mkdir_private(&self.root)?;
         }
-        let plan = installer
-            .plan(Op::Pinned(self.packages()))
-            .map_err(|e| pm_error(e, ctl))?;
+        // N189 (ADR 0213): another install, update or refresh holding `.qrtz-install.lock` is waited for (apply
+        // takes the lock before it does anything), re-planning each time since that install may have changed
+        // `qrtz.lock`; a pause ends the wait at once. Before, the first `Busy` failed the download as "the download
+        // failed its signature check".
         let total = self.total_size();
-        let have = total.saturating_sub(plan.download_bytes);
-        installer
-            .apply(&t, &plan, &plan.consent(), now_ms(), &|done, _| {
-                on_progress(Progress {
-                    done: (have + done).min(total),
-                    total,
+        let deadline = std::time::Instant::now() + self.busy_wait;
+        let mut waited = false;
+        loop {
+            let plan = installer
+                .plan(Op::Pinned(self.packages()))
+                .map_err(|e| pm_error(e, ctl))?;
+            let have = total.saturating_sub(plan.download_bytes);
+            let r = installer
+                .apply(&t, &plan, &plan.consent(), now_ms(), &|done, _| {
+                    on_progress(Progress {
+                        done: (have + done).min(total),
+                        total,
+                    })
                 })
-            })
-            .await
-            .map_err(|e| pm_error(e, ctl))?;
+                .await;
+            // A plan made just before the other install committed is stale once it lets go: plan again.
+            let busy = matches!(r, Err(InstallError::Busy));
+            let stale_after_wait = waited && matches!(r, Err(InstallError::StalePlan));
+            match r {
+                Ok(_) => break,
+                Err(_)
+                    if (busy || stale_after_wait)
+                        && std::time::Instant::now() < deadline
+                        && !ctl.is_paused() =>
+                {
+                    waited = true;
+                    let end = std::time::Instant::now() + BUSY_POLL;
+                    while std::time::Instant::now() < end && !ctl.is_paused() {
+                        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                    }
+                }
+                Err(e) => return Err(pm_error(e, ctl)),
+            }
+        }
         for s in &self.manifest.sets {
             if self.reader_of(&s.package).is_none() && self.set_ok(s) {
                 continue;
@@ -657,6 +697,7 @@ fn pm_error(e: InstallError, ctl: &DownloadControl) -> SpeechError {
     match e {
         InstallError::Network(m) if m.contains(qrtz_modules::fetch::MISMATCH) => SpeechError::Checksum(m),
         InstallError::Network(m) => SpeechError::Network(m),
+        InstallError::Busy => SpeechError::InstallBusy,
         InstallError::Refused(qrtz_modules::sideload::Refusal::RevocationListExpired) => {
             SpeechError::RevocationExpired
         }

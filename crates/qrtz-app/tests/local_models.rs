@@ -676,3 +676,93 @@ async fn speech_status_and_download_with_parakeet_installed_never_wait_on_the_ne
         "no resume marker left"
     );
 }
+
+/// N189 (ADR 0213): the package manager's install lock, taken the way another install, update or index refresh
+/// takes it (an exclusive lock on `<packages>/.qrtz-install.lock`).
+fn hold_install_lock(packages: &Path) -> std::fs::File {
+    let f = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(packages.join(".qrtz-install.lock"))
+        .unwrap();
+    f.try_lock().expect("the lock is free");
+    f
+}
+
+/// N189: a Parakeet download that needs bytes while another install holds the lock waits for it and then
+/// installs, instead of failing at once as "the download failed its signature check".
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_parakeet_download_waits_for_another_install_then_completes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let srv = Server::start().await;
+    let m = echo_and_nano(&srv);
+    let echo = Arc::new(
+        LocalModels::with_manifest(tmp.path().join("models"), m, Some(srv.base.clone()))
+            .for_extensions(&["echo"]),
+    );
+    let lock = hold_install_lock(tmp.path());
+    let ctl = qrtz_speech::download::DownloadControl::default();
+    let (e2, c2) = (echo.clone(), ctl.clone());
+    let task = tokio::spawn(async move { e2.download(false, &c2, &|_| {}).await });
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    assert!(!task.is_finished(), "waits while the lock is held");
+    assert!(!echo.installed());
+    drop(lock);
+    tokio::time::timeout(Duration::from_secs(10), task)
+        .await
+        .expect("finishes once the lock is free")
+        .unwrap()
+        .expect("installs");
+    assert!(echo.installed());
+}
+
+/// N189: a lock that stays taken past the wait is "another download or update is running" (retryable), never a
+/// signature failure, and nothing is installed.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_lock_held_past_the_wait_is_install_busy_not_a_signature_failure() {
+    let tmp = tempfile::tempdir().unwrap();
+    let srv = Server::start().await;
+    let m = echo_and_nano(&srv);
+    let echo = LocalModels::with_manifest(tmp.path().join("models"), m, Some(srv.base.clone()))
+        .with_busy_wait(Duration::from_millis(300))
+        .for_extensions(&["echo"]);
+    let _lock = hold_install_lock(tmp.path());
+    let ctl = qrtz_speech::download::DownloadControl::default();
+    let t0 = std::time::Instant::now();
+    let e = tokio::time::timeout(Duration::from_secs(5), echo.download(false, &ctl, &|_| {}))
+        .await
+        .expect("gives up after the wait")
+        .unwrap_err();
+    assert!(matches!(e, qrtz_speech::SpeechError::InstallBusy), "{e:?}");
+    assert!(e.retryable());
+    assert!(t0.elapsed() >= Duration::from_millis(300), "{:?}", t0.elapsed());
+    assert!(!echo.installed());
+}
+
+/// N189: pausing while the download waits for the lock ends the wait at once as a pause.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn pausing_while_waiting_for_the_install_lock_pauses_at_once() {
+    let tmp = tempfile::tempdir().unwrap();
+    let srv = Server::start().await;
+    let m = echo_and_nano(&srv);
+    let echo = Arc::new(
+        LocalModels::with_manifest(tmp.path().join("models"), m, Some(srv.base.clone()))
+            .for_extensions(&["echo"]),
+    );
+    let _lock = hold_install_lock(tmp.path());
+    let ctl = qrtz_speech::download::DownloadControl::default();
+    let (e2, c2) = (echo.clone(), ctl.clone());
+    let task = tokio::spawn(async move { e2.download(false, &c2, &|_| {}).await });
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let t0 = std::time::Instant::now();
+    ctl.pause();
+    let e = tokio::time::timeout(Duration::from_secs(2), task)
+        .await
+        .expect("a pause ends the wait")
+        .unwrap()
+        .unwrap_err();
+    assert!(matches!(e, qrtz_speech::SpeechError::Paused), "{e:?}");
+    assert!(t0.elapsed() < Duration::from_secs(1), "{:?}", t0.elapsed());
+    assert!(!echo.installed());
+}

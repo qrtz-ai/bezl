@@ -42,6 +42,10 @@ pub enum SpeechError {
     StateCorrupt,
     #[error("a speech session is running")]
     Busy,
+    /// The package manager's install lock stayed taken (another install, update or index refresh) for as long as a
+    /// model download waits for it (N189, ADR 0213). Nothing was installed or changed; ask again.
+    #[error("another download or update is running")]
+    InstallBusy,
     #[error("download paused")]
     Paused,
     #[error("network: {0}")]
@@ -66,6 +70,7 @@ impl SpeechError {
                 | SpeechError::Stale { .. }
                 | SpeechError::Io(_)
                 | SpeechError::Busy
+                | SpeechError::InstallBusy
         )
     }
 }

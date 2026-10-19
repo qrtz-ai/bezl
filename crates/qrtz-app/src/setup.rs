@@ -83,6 +83,7 @@ fn error_kind(e: &SpeechError) -> &'static str {
         SpeechError::Health(_) | SpeechError::Incompatible(_) | SpeechError::Unconfined(_) => "health",
         SpeechError::DiskCap | SpeechError::Io(_) => "disk",
         SpeechError::Busy => "busy",
+        SpeechError::InstallBusy => "unavailable",
         _ => "other",
     }
 }
@@ -97,6 +98,7 @@ fn error_text(kind: &str) -> &'static str {
         "health" => "speech didn't pass its self-test on this computer",
         "disk" => "not enough disk space for speech",
         "busy" => "speech is in use; try again when recording and dictation stop",
+        "unavailable" => "another download or update is running; try again in a moment",
         _ => "speech couldn't be installed",
     }
 }
@@ -831,6 +833,18 @@ impl SetupPort for Setup {
 
 #[cfg(test)]
 mod tests {
+    /// N189 (ADR 0213): the install lock held past the wait reads as a busy store, not a signature failure.
+    #[test]
+    fn install_busy_reads_as_another_download_running() {
+        let e = qrtz_speech::SpeechError::InstallBusy;
+        assert_eq!(super::error_kind(&e), "unavailable");
+        assert_eq!(
+            super::error_text(super::error_kind(&e)),
+            "another download or update is running; try again in a moment"
+        );
+        assert!(e.retryable());
+    }
+
     /// N100: the speech bundle download allows plain http only to a real loopback host (qrtz-llm's copy went with
     /// the cloud client, ADR 0076).
     #[test]
