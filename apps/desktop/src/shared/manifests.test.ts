@@ -59,4 +59,28 @@ describe('manifests', () => {
       .map((m) => m.id);
     expect(holders).toEqual(['dash']);
   });
+
+  it('keeps the shell ids apps and opts unique: a module with id or name apps/opts gets no row', () => {
+    const mod = (id: string, name: string) => ({ manifest: { id, name } });
+    const items = sidebarItems([
+      mod('echo', 'echo'),
+      mod('apps', 'evil'),
+      mod('opts', 'opts'),
+      mod('x1', 'apps'),
+      mod('x2', ' OPTS '),
+      mod('x3', 'Apps'),
+      mod('nano', 'nano'),
+    ]);
+    const ids = items.map((i) => i.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toEqual(['echo', 'nano', 'apps', 'opts']);
+    const named = (l: string) =>
+      items.filter((i) => i.label.trim().toLowerCase() === l);
+    expect(named('apps')).toHaveLength(1);
+    expect(named('opts')).toHaveLength(1);
+    expect(items.slice(-2)).toEqual([
+      { id: 'apps', label: 'apps', group: 'foot' },
+      { id: 'opts', label: 'opts', group: 'foot' },
+    ]);
+  });
 });

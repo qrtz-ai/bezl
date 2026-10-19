@@ -55,6 +55,12 @@ export const HIDDEN_FROM_NAV: ReadonlySet<string> = new Set(['gallery']);
 /** The sidebar ids of the qrtz page's two halves: apps (/qrtz, the app manager) and opts (/qrtz/settings). */
 export const APPS = 'apps';
 export const OPTS = 'opts';
+/**
+ * Shell-owned sidebar ids and labels. A module whose id or display name is one of these (any case, any padding)
+ * gets no row, so no module can pose as, or collide with, the apps or opts rows.
+ */
+export const RESERVED_NAV: ReadonlySet<string> = new Set([APPS, OPTS]);
+const reserved = (s: string) => RESERVED_NAV.has(s.trim().toLowerCase());
 /** The sub apps that make up the qrtz page (never a sidebar row of their own). */
 export const QRTZ_PAGE_PARTS: ReadonlySet<string> = new Set(
   Object.values(QRTZ_PARTS),
@@ -72,7 +78,10 @@ export function sidebarItems(
   const rows: SideNavItem[] = visible
     .filter(
       ({ manifest }) =>
-        !QRTZ_PAGE_PARTS.has(manifest.id) && !HIDDEN_FROM_NAV.has(manifest.id),
+        !QRTZ_PAGE_PARTS.has(manifest.id) &&
+        !HIDDEN_FROM_NAV.has(manifest.id) &&
+        !reserved(manifest.id) &&
+        !reserved(manifest.name),
     )
     .map(({ manifest }) => ({
       id: manifest.id,
