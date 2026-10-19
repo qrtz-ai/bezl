@@ -12,7 +12,8 @@
 //! prompt, so the meeting doesn't prompt again after the recording stops while it's still on.
 
 use std::collections::{HashMap, HashSet};
-use std::hash::{BuildHasher, BuildHasherDefault, DefaultHasher};
+use std::hash::{BuildHasher, RandomState};
+use std::sync::OnceLock;
 
 use qrtz_model::EpochMs;
 
@@ -27,8 +28,10 @@ pub fn calendar_event(key: &str) -> Option<&str> {
 }
 
 /// The stored hash of a key or identity.
+/// Bozniak M: keyed per process (a random `RandomState`), not a zero-key SipHash anyone can precompute.
 pub fn hash(s: &str) -> u64 {
-    BuildHasherDefault::<DefaultHasher>::default().hash_one(s)
+    static KEYS: OnceLock<RandomState> = OnceLock::new();
+    KEYS.get_or_init(RandomState::new).hash_one(s)
 }
 
 #[derive(Debug)]
