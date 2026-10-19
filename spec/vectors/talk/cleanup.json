@@ -794,12 +794,12 @@
     {
       "raw": "what time does the store close",
       "dict": false,
-      "expect": "What time does the store close."
+      "expect": "What time does the store close?"
     },
     {
       "raw": "Do you want to grab lunch",
       "dict": false,
-      "expect": "Do you want to grab lunch."
+      "expect": "Do you want to grab lunch?"
     },
     {
       "raw": "i think i can make it at noon",
@@ -1530,6 +1530,246 @@
       "raw": "Sales and fifteen percent bonus are due.",
       "dict": false,
       "expect": "Sales and 15% bonus are due."
+    },
+    {
+      "raw": "Can you send me the deck before the meeting",
+      "dict": false,
+      "expect": "Can you send me the deck before the meeting?"
+    },
+    {
+      "raw": "I'm heading out now. Do you want to grab lunch",
+      "dict": false,
+      "expect": "I'm heading out now. Do you want to grab lunch?"
+    },
+    {
+      "raw": "is there anything else you need from me",
+      "dict": false,
+      "expect": "Is there anything else you need from me?"
+    },
+    {
+      "raw": "How long will the build take",
+      "dict": false,
+      "expect": "How long will the build take?"
+    },
+    {
+      "raw": "Have you ever been to the new office",
+      "dict": false,
+      "expect": "Have you ever been to the new office?"
+    },
+    {
+      "raw": "Where do you want to meet tomorrow",
+      "dict": false,
+      "expect": "Where do you want to meet tomorrow?"
+    },
+    {
+      "raw": "Hi Sam new line could you review my pull request today",
+      "dict": false,
+      "expect": "Hi Sam\nCould you review my pull request today?"
+    },
+    {
+      "raw": "Is it twenty five dollars for both",
+      "dict": false,
+      "expect": "Is it $25 for both?"
+    },
+    {
+      "raw": "Did you get a chance to look at the doc",
+      "dict": false,
+      "expect": "Did you get a chance to look at the doc?"
+    },
+    {
+      "raw": "Are we still on for Friday",
+      "dict": false,
+      "expect": "Are we still on for Friday?"
+    },
+    {
+      "raw": "What time is the demo tomorrow",
+      "dict": false,
+      "expect": "What time is the demo tomorrow?"
+    },
+    {
+      "raw": "Do it now and send me the file",
+      "dict": false,
+      "expect": "Do it now and send me the file."
+    },
+    {
+      "raw": "Should you need anything just let me know",
+      "dict": false,
+      "expect": "Should you need anything just let me know."
+    },
+    {
+      "raw": "Had I known I would have called sooner",
+      "dict": false,
+      "expect": "Had I known I would have called sooner."
+    },
+    {
+      "raw": "Were we to lose we would regroup",
+      "dict": false,
+      "expect": "Were we to lose we would regroup."
+    },
+    {
+      "raw": "May you both be very happy together",
+      "dict": false,
+      "expect": "May you both be very happy together."
+    },
+    {
+      "raw": "Don't you dare touch my coffee",
+      "dict": false,
+      "expect": "Don't you dare touch my coffee."
+    },
+    {
+      "raw": "Was I ever glad to see you",
+      "dict": false,
+      "expect": "Was I ever glad to see you."
+    },
+    {
+      "raw": "Did I ever love that old car",
+      "dict": false,
+      "expect": "Did I ever love that old car."
+    },
+    {
+      "raw": "Is it ever hot in here today",
+      "dict": false,
+      "expect": "Is it ever hot in here today."
+    },
+    {
+      "raw": "Can I just say thank you so much",
+      "dict": false,
+      "expect": "Can I just say thank you so much."
+    },
+    {
+      "raw": "Do you want to grab lunch I'm starving",
+      "dict": false,
+      "expect": "Do you want to grab lunch I'm starving."
+    },
+    {
+      "raw": "Can you send it over thanks",
+      "dict": false,
+      "expect": "Can you send it over thanks."
+    },
+    {
+      "raw": "Do you want to grab lunch.",
+      "dict": false,
+      "expect": "Do you want to grab lunch."
+    },
+    {
+      "raw": "What I mean is we ship on Friday",
+      "dict": false,
+      "expect": "What I mean is we ship on Friday."
+    },
+    {
+      "raw": "What do you know",
+      "dict": false,
+      "expect": "What do you know."
+    },
+    {
+      "raw": "Do the dishes before you go",
+      "dict": false,
+      "expect": "Do the dishes before you go."
+    },
+    {
+      "raw": "Have a good one tonight Sam",
+      "dict": false,
+      "expect": "Have a good one tonight Sam."
+    },
+    {
+      "raw": "Does the trick every single time",
+      "dict": false,
+      "expect": "Does the trick every single time."
+    },
+    {
+      "raw": "Was the best day ever",
+      "dict": false,
+      "expect": "Was the best day ever."
+    },
+    {
+      "raw": "Did it again last night",
+      "dict": false,
+      "expect": "Did it again last night."
+    },
+    {
+      "raw": "Can it already please",
+      "dict": false,
+      "expect": "Can it already please."
+    },
+    {
+      "raw": "When you get there call me",
+      "dict": false,
+      "expect": "When you get there call me."
+    },
+    {
+      "raw": "Will Smith is in the new movie",
+      "dict": false,
+      "expect": "Will Smith is in the new movie."
+    },
+    {
+      "raw": "Is a great idea honestly",
+      "dict": false,
+      "expect": "Is a great idea honestly."
+    },
+    {
+      "raw": "Was there for three hours",
+      "dict": false,
+      "expect": "Was there for three hours."
+    },
+    {
+      "raw": "Which is why I left early",
+      "dict": false,
+      "expect": "Which is why I left early."
+    },
+    {
+      "raw": "What did it was the timing",
+      "dict": false,
+      "expect": "What did it was the timing."
+    },
+    {
+      "raw": "Have I got news for you",
+      "dict": false,
+      "expect": "Have I got news for you."
+    },
+    {
+      "raw": "Can you call Sam he is waiting",
+      "dict": false,
+      "expect": "Can you call Sam he is waiting."
+    },
+    {
+      "raw": "Do you have the key the door is locked",
+      "dict": false,
+      "expect": "Do you have the key the door is locked."
+    },
+    {
+      "raw": "Should you have any questions just reach out",
+      "dict": false,
+      "expect": "Should you have any questions just reach out."
+    },
+    {
+      "raw": "Am I glad you called today",
+      "dict": false,
+      "expect": "Am I glad you called today."
+    },
+    {
+      "raw": "Would that it were that simple",
+      "dict": false,
+      "expect": "Would that it were that simple."
+    },
+    {
+      "raw": "Does that all the time when he is tired",
+      "dict": false,
+      "expect": "Does that all the time when he is tired."
+    },
+    {
+      "raw": "Did the dishes and took out the trash",
+      "dict": false,
+      "expect": "Did the dishes and took out the trash."
+    },
+    {
+      "raw": "Has a nice ring to it honestly",
+      "dict": false,
+      "expect": "Has a nice ring to it honestly."
+    },
+    {
+      "raw": "Can you believe it, what a game",
+      "dict": false,
+      "expect": "Can you believe it, what a game."
     }
   ],
   "dictionaryOnly": [

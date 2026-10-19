@@ -431,6 +431,72 @@
       "category": "itn",
       "raw": "I'm one hundred percent sure.",
       "ideal": "I'm 100% sure."
+    },
+    {
+      "id": "p69",
+      "category": "question",
+      "raw": "Can you send me the deck before the meeting",
+      "ideal": "Can you send me the deck before the meeting?"
+    },
+    {
+      "id": "p70",
+      "category": "question",
+      "raw": "I'm heading out now. Do you want to grab lunch",
+      "ideal": "I'm heading out now. Do you want to grab lunch?"
+    },
+    {
+      "id": "p71",
+      "category": "question",
+      "raw": "is there anything else you need from me",
+      "ideal": "Is there anything else you need from me?"
+    },
+    {
+      "id": "p72",
+      "category": "question",
+      "raw": "How long will the build take",
+      "ideal": "How long will the build take?"
+    },
+    {
+      "id": "p73",
+      "category": "question",
+      "raw": "Have you ever been to the new office",
+      "ideal": "Have you ever been to the new office?"
+    },
+    {
+      "id": "p74",
+      "category": "question",
+      "raw": "Where do you want to meet tomorrow",
+      "ideal": "Where do you want to meet tomorrow?"
+    },
+    {
+      "id": "p75",
+      "category": "question",
+      "raw": "Hi Sam new line could you review my pull request today",
+      "ideal": "Hi Sam\nCould you review my pull request today?"
+    },
+    {
+      "id": "p76",
+      "category": "question",
+      "raw": "Is it twenty five dollars for both",
+      "ideal": "Is it $25 for both?"
+    },
+    {
+      "id": "p77",
+      "category": "question",
+      "raw": "Did you get a chance to look at the doc",
+      "ideal": "Did you get a chance to look at the doc?"
+    },
+    {
+      "id": "p78",
+      "category": "question",
+      "raw": "Are we still on for Friday",
+      "ideal": "Are we still on for Friday?"
+    },
+    {
+      "id": "p79",
+      "category": "question",
+      "raw": "What time is the demo tomorrow",
+      "ideal": "What time is the demo tomorrow?"
     }
   ],
   "keep": [
@@ -1291,6 +1357,228 @@
       "rule": "amount",
       "raw": "The 1990s dollars were worth more.",
       "expect": "The 1990s dollars were worth more."
+    },
+    {
+      "id": "k144",
+      "rule": "question",
+      "raw": "Do it now and send me the file",
+      "expect": "Do it now and send me the file."
+    },
+    {
+      "id": "k145",
+      "rule": "question",
+      "raw": "Should you need anything just let me know",
+      "expect": "Should you need anything just let me know."
+    },
+    {
+      "id": "k146",
+      "rule": "question",
+      "raw": "Had I known I would have called sooner",
+      "expect": "Had I known I would have called sooner."
+    },
+    {
+      "id": "k147",
+      "rule": "question",
+      "raw": "Were we to lose we would regroup",
+      "expect": "Were we to lose we would regroup."
+    },
+    {
+      "id": "k148",
+      "rule": "question",
+      "raw": "May you both be very happy together",
+      "expect": "May you both be very happy together."
+    },
+    {
+      "id": "k149",
+      "rule": "question",
+      "raw": "Don't you dare touch my coffee",
+      "expect": "Don't you dare touch my coffee."
+    },
+    {
+      "id": "k150",
+      "rule": "question",
+      "raw": "Was I ever glad to see you",
+      "expect": "Was I ever glad to see you."
+    },
+    {
+      "id": "k151",
+      "rule": "question",
+      "raw": "Did I ever love that old car",
+      "expect": "Did I ever love that old car."
+    },
+    {
+      "id": "k152",
+      "rule": "question",
+      "raw": "Is it ever hot in here today",
+      "expect": "Is it ever hot in here today."
+    },
+    {
+      "id": "k153",
+      "rule": "question",
+      "raw": "Can I just say thank you so much",
+      "expect": "Can I just say thank you so much."
+    },
+    {
+      "id": "k154",
+      "rule": "question",
+      "raw": "Do you want to grab lunch I'm starving",
+      "expect": "Do you want to grab lunch I'm starving."
+    },
+    {
+      "id": "k155",
+      "rule": "question",
+      "raw": "Can you send it over thanks",
+      "expect": "Can you send it over thanks."
+    },
+    {
+      "id": "k156",
+      "rule": "question",
+      "raw": "Do you want to grab lunch.",
+      "expect": "Do you want to grab lunch."
+    },
+    {
+      "id": "k157",
+      "rule": "question",
+      "raw": "What I mean is we ship on Friday",
+      "expect": "What I mean is we ship on Friday."
+    },
+    {
+      "id": "k158",
+      "rule": "question",
+      "raw": "What do you know",
+      "expect": "What do you know."
+    },
+    {
+      "id": "k159",
+      "rule": "question",
+      "raw": "Do the dishes before you go",
+      "expect": "Do the dishes before you go."
+    },
+    {
+      "id": "k160",
+      "rule": "question",
+      "raw": "Have a good one tonight Sam",
+      "expect": "Have a good one tonight Sam."
+    },
+    {
+      "id": "k161",
+      "rule": "question",
+      "raw": "Does the trick every single time",
+      "expect": "Does the trick every single time."
+    },
+    {
+      "id": "k162",
+      "rule": "question",
+      "raw": "Was the best day ever",
+      "expect": "Was the best day ever."
+    },
+    {
+      "id": "k163",
+      "rule": "question",
+      "raw": "Did it again last night",
+      "expect": "Did it again last night."
+    },
+    {
+      "id": "k164",
+      "rule": "question",
+      "raw": "Can it already please",
+      "expect": "Can it already please."
+    },
+    {
+      "id": "k165",
+      "rule": "question",
+      "raw": "When you get there call me",
+      "expect": "When you get there call me."
+    },
+    {
+      "id": "k166",
+      "rule": "question",
+      "raw": "Will Smith is in the new movie",
+      "expect": "Will Smith is in the new movie."
+    },
+    {
+      "id": "k167",
+      "rule": "question",
+      "raw": "Is a great idea honestly",
+      "expect": "Is a great idea honestly."
+    },
+    {
+      "id": "k168",
+      "rule": "question",
+      "raw": "Was there for three hours",
+      "expect": "Was there for three hours."
+    },
+    {
+      "id": "k169",
+      "rule": "question",
+      "raw": "Which is why I left early",
+      "expect": "Which is why I left early."
+    },
+    {
+      "id": "k170",
+      "rule": "question",
+      "raw": "What did it was the timing",
+      "expect": "What did it was the timing."
+    },
+    {
+      "id": "k171",
+      "rule": "question",
+      "raw": "Have I got news for you",
+      "expect": "Have I got news for you."
+    },
+    {
+      "id": "k172",
+      "rule": "question",
+      "raw": "Can you call Sam he is waiting",
+      "expect": "Can you call Sam he is waiting."
+    },
+    {
+      "id": "k173",
+      "rule": "question",
+      "raw": "Do you have the key the door is locked",
+      "expect": "Do you have the key the door is locked."
+    },
+    {
+      "id": "k174",
+      "rule": "question",
+      "raw": "Should you have any questions just reach out",
+      "expect": "Should you have any questions just reach out."
+    },
+    {
+      "id": "k175",
+      "rule": "question",
+      "raw": "Am I glad you called today",
+      "expect": "Am I glad you called today."
+    },
+    {
+      "id": "k176",
+      "rule": "question",
+      "raw": "Would that it were that simple",
+      "expect": "Would that it were that simple."
+    },
+    {
+      "id": "k177",
+      "rule": "question",
+      "raw": "Does that all the time when he is tired",
+      "expect": "Does that all the time when he is tired."
+    },
+    {
+      "id": "k178",
+      "rule": "question",
+      "raw": "Did the dishes and took out the trash",
+      "expect": "Did the dishes and took out the trash."
+    },
+    {
+      "id": "k179",
+      "rule": "question",
+      "raw": "Has a nice ring to it honestly",
+      "expect": "Has a nice ring to it honestly."
+    },
+    {
+      "id": "k180",
+      "rule": "question",
+      "raw": "Can you believe it, what a game",
+      "expect": "Can you believe it, what a game."
     }
   ]
 }

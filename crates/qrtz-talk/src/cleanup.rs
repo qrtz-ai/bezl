@@ -1005,9 +1005,130 @@ fn is_short_list(t: &str) -> bool {
     })
 }
 
+/// ADR 0196: the most words the last sentence may have for [`unmarked_question`]; a longer unpunctuated run is as
+/// likely a question run into a statement as one question.
+pub const QUESTION_MAX_WORDS: usize = 12;
+
+/// ADR 0196: may a sentence that opens with this auxiliary and this subject only be a yes/no question? Personal
+/// pronouns, with the verb agreeing, plus "this" / "that" / "there" after a few verbs. Left out on purpose: "should",
+/// "had", "may", "might", "must" (conditional or wishing inversion: "Should you need anything", "Had I known", "May you
+/// both be happy"), "am I" and "was I" (exclamations: "Am I glad you called", "Was I surprised"), "did it" and "can it"
+/// ("Did it again" drops its subject; "Can it" is slang), any noun or "the"/"a"/"my" after the verb ("Do the dishes",
+/// "Have a good one", "Does the trick", "Was the best day ever" are commands or dropped subjects), and negative
+/// contractions ("Don't you dare").
+fn yes_no_opening(aux: &str, subject: &str, next: &str) -> bool {
+    const PLURAL: &[&str] = &["i", "you", "we", "they"];
+    const SINGULAR: &[&str] = &["he", "she", "it"];
+    const THERE_NEXT: &[&str] = &[
+        "any",
+        "anything",
+        "anyone",
+        "anybody",
+        "a",
+        "an",
+        "another",
+        "something",
+        "someone",
+        "somebody",
+        "more",
+        "enough",
+        "still",
+        "no",
+    ];
+    let personal = |extra: &[&str]| PLURAL.contains(&subject) || extra.contains(&subject);
+    match aux {
+        "do" | "have" => PLURAL.contains(&subject),
+        "does" | "has" => SINGULAR.contains(&subject),
+        "did" | "can" => personal(&["he", "she"]),
+        "is" => {
+            SINGULAR.contains(&subject)
+                || matches!(subject, "this" | "that")
+                || (subject == "there" && THERE_NEXT.contains(&next))
+        }
+        "are" => {
+            matches!(subject, "you" | "we" | "they") || (subject == "there" && THERE_NEXT.contains(&next))
+        }
+        "was" => SINGULAR.contains(&subject),
+        "were" => matches!(subject, "you" | "we" | "they"),
+        "will" | "could" => personal(&["he", "she", "it", "this", "that"]),
+        "would" => personal(&["he", "she", "it"]),
+        "shall" => matches!(subject, "i" | "we"),
+        _ => false,
+    }
+}
+
+/// ADR 0196: a wh-question's opening, "What time does the store close", "Where do you", "How long will it": the
+/// wh-word, at most one of these words, an auxiliary, then a pronoun or a determiner.
+const WH_WORDS: &[&str] = &["what", "where", "when", "why", "how", "who"];
+const WH_MODIFIERS: &[&str] = &[
+    "time", "day", "size", "long", "much", "often", "far", "old", "soon",
+];
+const WH_AUX: &[&str] = &[
+    "do", "does", "did", "is", "are", "am", "was", "were", "can", "could", "will", "would", "should", "have",
+    "has",
+];
+const WH_SUBJECTS: &[&str] = &[
+    "i", "you", "we", "they", "he", "she", "it", "the", "this", "that", "my", "your", "our", "their",
+];
+/// ADR 0196: after the opening, any of these means a second clause ("Do you know where the keys are", "Can you send it
+/// we need it"): the sentence is left as before.
+const LATER_CLAUSE: &[&str] = &[
+    "is", "are", "was", "were", "am", "can", "could", "will", "would", "should", "shall", "may", "might",
+    "must", "does", "did", "had", "i", "we", "they", "he", "she", "thank", "thanks",
+];
+
+/// ADR 0196: does the dictation end in an unpunctuated sentence that can only be a question? Its opening is a yes/no
+/// question's ([`yes_no_opening`], the auxiliary capitalised as a sentence start) or a wh-question's, it has 3 to
+/// [`QUESTION_MAX_WORDS`] words, no comma, colon, semicolon, quote, bracket or apostrophe, and nothing after the
+/// opening that starts another clause ([`LATER_CLAUSE`]). Also refused: "ever" unless the verb is "have"/"has"
+/// ("Is it ever hot", "Did I ever love that car" are exclamations), "were" with a "to" ("Were we to lose"), "just
+/// say" ("Can I just say"), "What do you know", "Have I got" ("Have I got news for you"), and the spoken name of a
+/// mark ("question mark", "exclamation"): ADR 0189's sentences stay exactly as that rule leaves them.
+fn unmarked_question(t: &str) -> bool {
+    let line = &t[t.rfind('\n').map_or(0, |i| i + 1)..];
+    let s = match INNER_END.find_iter(line).flatten().last() {
+        Some(m) => &line[m.end()..],
+        None => line,
+    };
+    if s.contains([',', ';', ':', '"', '(', ')', '\'', '\u{2019}']) {
+        return false;
+    }
+    let words: Vec<&str> = s.split_whitespace().collect();
+    if !(3..=QUESTION_MAX_WORDS).contains(&words.len())
+        || !words[0].starts_with(|c: char| c.is_ascii_uppercase())
+    {
+        return false;
+    }
+    let w: Vec<String> = words.iter().map(|w| w.to_ascii_lowercase()).collect();
+    let w: Vec<&str> = w.iter().map(String::as_str).collect();
+    let (aux_at, opening) = if WH_WORDS.contains(&w[0]) {
+        let aux_at = if WH_MODIFIERS.contains(&w[1]) { 2 } else { 1 };
+        let ok = aux_at + 1 < w.len()
+            && WH_AUX.contains(&w[aux_at])
+            && WH_SUBJECTS.contains(&w[aux_at + 1])
+            && !(w[aux_at] == "did" && w[aux_at + 1] == "it")
+            && w[..] != ["what", "do", "you", "know"];
+        (aux_at, ok)
+    } else {
+        (0, yes_no_opening(w[0], w[1], w.get(2).copied().unwrap_or("")))
+    };
+    let aux = w[aux_at];
+    let rest = &w[(aux_at + 2).min(w.len())..];
+    if !opening || rest.iter().any(|x| LATER_CLAUSE.contains(x)) {
+        return false;
+    }
+    let ever = w.contains(&"ever") && !matches!(aux, "have" | "has");
+    let were_to = aux == "were" && w.contains(&"to");
+    let refused_pair = w
+        .windows(2)
+        .any(|p| p == ["just", "say"] || p == ["question", "mark"]);
+    !ever && !were_to && !refused_pair && !w.contains(&"exclamation") && w[..3] != ["have", "i", "got"]
+}
+
 /// The terminal punctuation (ADR 0101): a short dictation ends as said, without a period; a longer one gets a "."
 /// when it ends on a word. ADR 0188: a list of short lines ends like a short dictation: no "." is added, and a "."
-/// the recogniser ended it with is dropped only when it is a clean sentence end (not "p.m.", "etc.", "...").
+/// the recogniser ended it with is dropped only when it is a clean sentence end (not "p.m.", "etc.", "..."). ADR 0196:
+/// the mark added is "?" when the last sentence can only be a question ([`unmarked_question`]).
 fn terminal_punctuation(mut t: String) -> String {
     if is_short_list(&t) {
         if t.ends_with('.') && clean_sentence_end(&t) {
@@ -1022,7 +1143,8 @@ fn terminal_punctuation(mut t: String) -> String {
             }
         }
     } else if ENDS_WORD.is_match(&t).unwrap_or(false) {
-        t.push('.');
+        let mark = if unmarked_question(&t) { '?' } else { '.' };
+        t.push(mark);
     }
     t
 }

@@ -74,6 +74,187 @@ function isShortList(t: string): boolean {
   });
 }
 
+/** ADR 0196: the most words the last sentence may have for unmarkedQuestion. Same rule in cleanup.rs. */
+export const QUESTION_MAX_WORDS = 12;
+
+const PLURAL = ['i', 'you', 'we', 'they'];
+const SINGULAR = ['he', 'she', 'it'];
+const THERE_NEXT = [
+  'any',
+  'anything',
+  'anyone',
+  'anybody',
+  'a',
+  'an',
+  'another',
+  'something',
+  'someone',
+  'somebody',
+  'more',
+  'enough',
+  'still',
+  'no',
+];
+
+/** ADR 0196: may a sentence opening with this auxiliary and subject only be a yes/no question? Same as cleanup.rs
+ * yes_no_opening (no should/had/may/might/must, no "am I"/"was I", no "did it"/"can it", no noun or determiner
+ * subjects, no negative contractions). */
+function yesNoOpening(aux: string, subject: string, next: string): boolean {
+  const personal = (extra: string[]) =>
+    PLURAL.includes(subject) || extra.includes(subject);
+  const there = subject === 'there' && THERE_NEXT.includes(next);
+  switch (aux) {
+    case 'do':
+    case 'have':
+      return PLURAL.includes(subject);
+    case 'does':
+    case 'has':
+      return SINGULAR.includes(subject);
+    case 'did':
+    case 'can':
+      return personal(['he', 'she']);
+    case 'is':
+      return (
+        SINGULAR.includes(subject) ||
+        subject === 'this' ||
+        subject === 'that' ||
+        there
+      );
+    case 'are':
+      return ['you', 'we', 'they'].includes(subject) || there;
+    case 'was':
+      return SINGULAR.includes(subject);
+    case 'were':
+      return ['you', 'we', 'they'].includes(subject);
+    case 'will':
+    case 'could':
+      return personal(['he', 'she', 'it', 'this', 'that']);
+    case 'would':
+      return personal(['he', 'she', 'it']);
+    case 'shall':
+      return subject === 'i' || subject === 'we';
+    default:
+      return false;
+  }
+}
+
+const WH_WORDS = ['what', 'where', 'when', 'why', 'how', 'who'];
+const WH_MODIFIERS = [
+  'time',
+  'day',
+  'size',
+  'long',
+  'much',
+  'often',
+  'far',
+  'old',
+  'soon',
+];
+const WH_AUX = [
+  'do',
+  'does',
+  'did',
+  'is',
+  'are',
+  'am',
+  'was',
+  'were',
+  'can',
+  'could',
+  'will',
+  'would',
+  'should',
+  'have',
+  'has',
+];
+const WH_SUBJECTS = [
+  'i',
+  'you',
+  'we',
+  'they',
+  'he',
+  'she',
+  'it',
+  'the',
+  'this',
+  'that',
+  'my',
+  'your',
+  'our',
+  'their',
+];
+/** ADR 0196: after the opening, a second clause starts here; the sentence is left as before. */
+const LATER_CLAUSE = [
+  'is',
+  'are',
+  'was',
+  'were',
+  'am',
+  'can',
+  'could',
+  'will',
+  'would',
+  'should',
+  'shall',
+  'may',
+  'might',
+  'must',
+  'does',
+  'did',
+  'had',
+  'i',
+  'we',
+  'they',
+  'he',
+  'she',
+  'thank',
+  'thanks',
+];
+
+/** ADR 0196: does the dictation end in an unpunctuated sentence that can only be a question? Same as cleanup.rs
+ * unmarked_question. */
+function unmarkedQuestion(t: string): boolean {
+  const line = t.slice(t.lastIndexOf('\n') + 1);
+  let s = line;
+  for (const m of line.matchAll(/[.!?]\s/g))
+    s = line.slice((m.index ?? 0) + m[0].length);
+  if (/[,;:"()'\u2019]/.test(s)) return false;
+  const words = s.split(/\s+/).filter(Boolean);
+  if (
+    words.length < 3 ||
+    words.length > QUESTION_MAX_WORDS ||
+    !/^[A-Z]/.test(words[0])
+  )
+    return false;
+  const w = words.map((x) => x.replace(/[A-Z]+/g, (c) => c.toLowerCase()));
+  let auxAt = 0;
+  let opening: boolean;
+  if (WH_WORDS.includes(w[0])) {
+    auxAt = WH_MODIFIERS.includes(w[1]) ? 2 : 1;
+    opening =
+      auxAt + 1 < w.length &&
+      WH_AUX.includes(w[auxAt]) &&
+      WH_SUBJECTS.includes(w[auxAt + 1]) &&
+      !(w[auxAt] === 'did' && w[auxAt + 1] === 'it') &&
+      w.join(' ') !== 'what do you know';
+  } else opening = yesNoOpening(w[0], w[1], w[2] ?? '');
+  const aux = w[auxAt];
+  const rest = w.slice(auxAt + 2);
+  return (
+    opening &&
+    !rest.some((x) => LATER_CLAUSE.includes(x)) &&
+    (aux === 'have' || aux === 'has' || !w.includes('ever')) &&
+    !(aux === 'were' && w.includes('to')) &&
+    !w.some(
+      (x, i) =>
+        (x === 'just' && w[i + 1] === 'say') ||
+        (x === 'question' && w[i + 1] === 'mark'),
+    ) &&
+    !w.includes('exclamation') &&
+    w.slice(0, 3).join(' ') !== 'have i got'
+  );
+}
+
 function terminalPunctuation(t: string): string {
   // ADR 0188: a list of short lines ends like a short dictation; a recogniser's "." goes only at a clean end.
   if (isShortList(t))
@@ -89,7 +270,9 @@ function terminalPunctuation(t: string): string {
     const body = last.endsWith('.') ? last.slice(0, -1) : null;
     return body && !body.includes('.') ? t.slice(0, -1) : t;
   }
-  return /[\p{L}\p{N}]$/u.test(t) ? `${t}.` : t;
+  // ADR 0196: "?" when the last sentence can only be a question.
+  if (!/[\p{L}\p{N}]$/u.test(t)) return t;
+  return unmarkedQuestion(t) ? `${t}?` : `${t}.`;
 }
 
 // ADR 0120 (N167): a lone "." on a word with a lowercase word after it is not a sentence end (the recogniser

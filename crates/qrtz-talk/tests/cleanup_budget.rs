@@ -58,17 +58,16 @@ fn dictionary() -> Vec<DictionaryEntry> {
     d
 }
 
-#[test]
-fn the_cleanup_chain_fits_its_budget_on_a_long_dictation() {
-    let text = long_dictation();
+/// The median of 41 timed runs after 5 warm-ups, checked against the budget (debug builds get [`DEBUG_FACTOR`]).
+fn assert_fits_budget(text: &str, what: &str) {
     let dict = dictionary();
     for _ in 0..5 {
-        cleanup_dictation(&text, &dict, true);
+        cleanup_dictation(text, &dict, true);
     }
     let mut ms: Vec<f64> = (0..41)
         .map(|_| {
             let t = Instant::now();
-            std::hint::black_box(cleanup_dictation(std::hint::black_box(&text), &dict, true));
+            std::hint::black_box(cleanup_dictation(std::hint::black_box(text), &dict, true));
             t.elapsed().as_secs_f64() * 1000.0
         })
         .collect();
@@ -80,12 +79,28 @@ fn the_cleanup_chain_fits_its_budget_on_a_long_dictation() {
         BUDGET_MS
     };
     println!(
-        "cleanup on {} words: median {median:.3} ms, max {:.3} ms (ceiling {ceiling} ms)",
+        "cleanup on {} words{what}: median {median:.3} ms, max {:.3} ms (ceiling {ceiling} ms)",
         text.split_whitespace().count(),
         ms[ms.len() - 1]
     );
     assert!(
         median <= ceiling,
-        "cleanup took {median:.3} ms (median) on a long dictation; budget {ceiling} ms"
+        "cleanup took {median:.3} ms (median) on a long dictation{what}; budget {ceiling} ms"
     );
+}
+
+/// One test, so the timed runs never share the CPU with each other.
+#[test]
+fn the_cleanup_chain_fits_its_budget_on_a_long_dictation() {
+    assert_fits_budget(&long_dictation(), "");
+    // ADR 0196: the same dictation ending in an unmarked question, so the terminal step runs the whole question
+    // check on its last sentence and fires.
+    let text = format!(
+        "{}Thanks. Can you review the release notes before Friday",
+        long_dictation()
+    );
+    assert!(cleanup_dictation(&text, &dictionary(), true)
+        .text
+        .ends_with("before Friday?"));
+    assert_fits_budget(&text, " ending in a question");
 }
