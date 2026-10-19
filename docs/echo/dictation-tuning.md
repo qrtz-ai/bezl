@@ -1172,11 +1172,11 @@ What changed is cost: section 32 left ~0.3 ms of headroom in the 2 ms budget; th
 look-around or a backreference (spoken layout commands, fillers, repeats, the continued dot, sentence starts, the lone
 "i", the dictionary replace) now run as hand-written scans of the same patterns.
 
-| Release, box CPU, median            | d409ede (old) | 2bfa59c (new) |
-| ----------------------------------- | ------------- | ------------- |
-| 495-word dictation, whole chain     | 1.48-1.50 ms  | 0.11-0.20 ms  |
-| 504 words ending in a question      | 1.53-1.85 ms  | 0.115 ms      |
-| One sentence with a one-term dict   | 0.030 ms      | 0.0036 ms     |
+| Release, box CPU, median          | d409ede (old) | 2bfa59c (new) |
+| --------------------------------- | ------------- | ------------- |
+| 495-word dictation, whole chain   | 1.48-1.50 ms  | 0.11-0.20 ms  |
+| 504 words ending in a question    | 1.53-1.85 ms  | 0.115 ms      |
+| One sentence with a one-term dict | 0.030 ms      | 0.0036 ms     |
 
 - Proof of same text: `tests/hardening60.rs` runs the frozen cycle-59 chain (`tests/oracle/cleanup_c59.rs`) beside the
   new one on every cleanup.json / polish.json text with four dictionaries, plus 60,000 generated texts (3,000,000 in
