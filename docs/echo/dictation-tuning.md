@@ -798,3 +798,10 @@ No dictation speed or accuracy change. Echo's Parakeet set now installs through 
 trying `modules.qrtz.ai` and its mirror before the pinned Hugging Face URL. When those hosts can't be reached and are
 slow to fail, the first download used to wait about 14 minutes of timeouts before any byte came; now about 30 s
 (`8a3b994`). Already-downloaded models are kept as they are. The ranked plan above is unchanged.
+
+## 23. Cycle 50: the download bar counts each byte once (ADR 0165, N177)
+
+No dictation speed or accuracy change, and no numbers from the Mac yet. When a download source fails partway
+through one of Parakeet's files and the next source resumes it, the bar no longer counts the finished part again
+(`4f21e28`); it can't pass 100 % early. It only matters once `modules.qrtz.ai` is live; today Parakeet comes from
+Hugging Face alone. The ranked plan above is unchanged.
