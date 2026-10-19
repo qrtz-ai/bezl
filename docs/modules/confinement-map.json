@@ -1,5 +1,5 @@
 {
-  "about": "ADR 0144 M0 stand-in owned by the confinement track (Bozniak), amended by ADR 0154 (one qrtz identity). Read by crates/qrtz-lifecycle/tests/offline_graph.rs. It maps today's code to the module that will own it. Bobs's module manifests replace the owner fields; the ratchet lists only shrink. appTccEntitlements is the single app's TCC entitlement allowlist: every entry carries an ADR note and changes only with one.",
+  "about": "ADR 0144 M0 stand-in owned by the confinement track (Bozniak), amended by ADR 0154 (one qrtz identity). Read by crates/qrtz-lifecycle/tests/offline_graph.rs. It maps today's code to the module that will own it. Bobs's module manifests replace the owner fields; the ratchet lists only shrink. ADR 0228 adds owner dash (qrtz-dash: dash.read/dash.manage, UI- and transport-free, no network crate; the qrtz-app edge is its IPC host, dash_port.rs). services/dash-worker is a TypeScript Cloudflare Worker outside the cargo workspace, so it has no crates entry. appTccEntitlements is the single app's TCC entitlement allowlist: every entry carries an ADR note and changes only with one.",
   "owners": [
     "shell",
     "shared",
@@ -8,6 +8,7 @@
     "ctrl",
     "snap",
     "voice",
+    "dash",
     "monolith"
   ],
   "crates": {
@@ -26,7 +27,8 @@
     "qrtz-storage": "nano",
     "qrtz-llm": "nano",
     "qrtz-backup": "nano",
-    "qrtz-ctrl": "ctrl"
+    "qrtz-ctrl": "ctrl",
+    "qrtz-dash": "dash"
   },
   "swiftTargets": {
     "qrtz-helper": "monolith",
@@ -51,6 +53,7 @@
   "monolithCrateEdges": [
     ["qrtz-app", "qrtz-backup"],
     ["qrtz-app", "qrtz-ctrl"],
+    ["qrtz-app", "qrtz-dash"],
     ["qrtz-app", "qrtz-lifecycle"],
     ["qrtz-app", "qrtz-llm"],
     ["qrtz-app", "qrtz-storage"],

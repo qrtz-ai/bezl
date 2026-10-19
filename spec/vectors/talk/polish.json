@@ -741,8 +741,8 @@
     {
       "id": "p119",
       "category": "imperative-tag",
-      "raw": "Let's move the design review to Thursday, shall we",
-      "ideal": "Let's move the design review to Thursday, shall we?"
+      "raw": "Let's push the budget sync to Friday, shall we",
+      "ideal": "Let's push the budget sync to Friday, shall we?"
     },
     {
       "id": "p120",

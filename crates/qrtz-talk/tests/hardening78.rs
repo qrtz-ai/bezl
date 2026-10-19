@@ -17,8 +17,8 @@ fn an_imperative_with_its_tag_ends_with_a_question_mark() {
             "Let's grab lunch after the standup, shall we?",
         ),
         (
-            "Let's move the design review to Thursday, shall we",
-            "Let's move the design review to Thursday, shall we?",
+            "Let's push the budget sync to Friday, shall we",
+            "Let's push the budget sync to Friday, shall we?",
         ),
         (
             "Please close the door on your way out, will you",
