@@ -1503,7 +1503,14 @@ impl Installer {
         delete: bool,
         out: &mut Pruned,
     ) -> Result<(), InstallError> {
-        let Ok(entries) = std::fs::read_dir(self.store.tmp()) else {
+        // N193 L1: only a real directory is swept. A symlinked (or non-directory) `.tmp` could point the deletes
+        // anywhere, so it is left alone and nothing in it is counted.
+        let tmp = self.store.tmp();
+        match std::fs::symlink_metadata(&tmp) {
+            Ok(m) if m.file_type().is_dir() => {}
+            _ => return Ok(()),
+        }
+        let Ok(entries) = std::fs::read_dir(&tmp) else {
             return Ok(());
         };
         let keep = self.tmp_keep.as_ref().map(|f| f()).unwrap_or_default();

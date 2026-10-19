@@ -641,10 +641,6 @@ fn remove_requests(installer: &Installer, names: Vec<String>) -> Result<(), Inst
     Ok(())
 }
 
-/// The workspace requests the app made for modules that aren't installed (see [`LocalModels::sync_views`]): a
-/// `model.*` request whose resolved package came from the binary's pins (`source: pinned`, never a user's index
-/// install), that [`pinned_users`] says is for some module, when none of those modules is an installed extension
-/// and no installed extension depends on it through the lock either (an engine swap, ADR 0157 §5).
 /// N193 (ADR 0218): what a sweep of `<data>/store/.tmp/` keeps for the local models: every file the pinned
 /// manifests (and `extra`'s, with its own marker) name, and every part while a `download.json` is pending.
 pub fn tmp_keep_fn(data: &Path, extra: Option<(Manifest, PathBuf)>) -> qrtz_modules::install::TmpKeepFn {
@@ -677,6 +673,10 @@ pub fn tmp_keep_fn(data: &Path, extra: Option<(Manifest, PathBuf)>) -> qrtz_modu
     })
 }
 
+/// The workspace requests the app made for modules that aren't installed (see [`LocalModels::sync_views`]): a
+/// `model.*` request whose resolved package came from the binary's pins (`source: pinned`, never a user's index
+/// install), that [`pinned_users`] says is for some module, when none of those modules is an installed extension
+/// and no installed extension depends on it through the lock either (an engine swap, ADR 0157 §5).
 pub fn orphaned_app_requests(lock: &qrtz_modules::qrtz_lock::QrtzLock) -> Vec<String> {
     use qrtz_modules::index::PackageKind;
     let installed = crate::installed::installed_extensions(lock);

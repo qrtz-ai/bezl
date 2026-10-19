@@ -188,3 +188,31 @@ fn a_part_a_locked_tree_names_is_kept() {
     assert!(tmp.join(format!("{}.done", sha('4'))).exists());
     assert!(!tmp.join(format!("{}.part", sha('5'))).exists());
 }
+
+/// N193 L1: a `.tmp` that is a symlink (or not a directory) is never swept: the deletes could land anywhere.
+#[cfg(unix)]
+#[test]
+fn a_symlinked_or_non_directory_tmp_is_not_swept() {
+    let d = tempfile::tempdir().unwrap();
+    let elsewhere = d.path().join("elsewhere");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    part(&elsewhere, &sha('e'));
+    std::fs::create_dir_all(d.path().join("store")).unwrap();
+    std::os::unix::fs::symlink(&elsewhere, d.path().join("store/.tmp")).unwrap();
+    let i = installer(d.path(), TmpKeep::default());
+    assert_eq!(
+        i.reclaimable().unwrap().blobs,
+        0,
+        "nothing counted through the link"
+    );
+    assert_eq!(i.prune().unwrap().blobs, 0);
+    assert!(elsewhere.join(format!("{}.part", sha('e'))).exists());
+    assert!(elsewhere.join(format!("{}.done", sha('e'))).exists());
+
+    let d2 = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(d2.path().join("store")).unwrap();
+    std::fs::write(d2.path().join("store/.tmp"), b"not a dir").unwrap();
+    let i2 = installer(d2.path(), TmpKeep::default());
+    assert_eq!(i2.prune().unwrap().blobs, 0);
+    assert!(d2.path().join("store/.tmp").is_file());
+}
