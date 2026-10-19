@@ -15,7 +15,7 @@ export interface NotesAppItem {
 }
 
 /**
- * A notes app (ADR 0218): a searchable list of notes on the left, one full-height plain-text editor on the
+ * A notes app (ADR 0219): a searchable list of notes on the left, one full-height plain-text editor on the
  * right. Pure view: the caller owns the notes, the draft, saving and search. Square, bordered, monospace,
  * like the rest of qrtz; no shadows, no animation.
  */

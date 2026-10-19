@@ -4,7 +4,7 @@ import { clockLabel, type MeetingNote } from '@qrtz/core';
 import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
 import { fmtDate } from './format';
 
-/** Autosave waits this long after the last keystroke (ADR 0218). Local SQLite, so no spinner is needed. */
+/** Autosave waits this long after the last keystroke (ADR 0219). Local SQLite, so no spinner is needed. */
 export const SAVE_DEBOUNCE_MS = 400;
 
 /** The list title: the first non-empty line, cut to a list-friendly length. */
@@ -26,7 +26,7 @@ export function visibleNotes(notes: MeetingNote[], query: string) {
 }
 
 /**
- * A meeting's notes as a small notes app (ADR 0218): list + search on the left, one full-height editor on the
+ * A meeting's notes as a small notes app (ADR 0219): list + search on the left, one full-height editor on the
  * right that autosaves. `meetingId` omitted = the meeting being recorded (a new note is stamped with the
  * current recording offset by main). Same channels as before: note:list-notes / add-note / update-note /
  * delete-note, so storage, capabilities and the declared reads are unchanged.

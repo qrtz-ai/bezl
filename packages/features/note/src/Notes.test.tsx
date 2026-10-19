@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** ADR 0218: nano's notes are a notes app: list newest first, search, new, debounced autosave, confirm delete. */
+/** ADR 0219: nano's notes are a notes app: list newest first, search, new, debounced autosave, confirm delete. */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
