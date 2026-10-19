@@ -126,6 +126,7 @@ fn stop_str(r: StopReason) -> &'static str {
         StopReason::NoWatcher => "no-watcher",
         StopReason::NoAccessibility => "no-accessibility",
         StopReason::NoInputMonitoring => "no-input-monitoring",
+        StopReason::NoAccessibilityAndInputMonitoring => "no-accessibility-and-input-monitoring",
         StopReason::SecureInput => "secure-input",
     }
 }

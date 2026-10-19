@@ -589,6 +589,10 @@ fn user_input_wins_and_no_watcher_means_no_action() {
     for (m, want) in [
         ("accessibility", StopReason::NoAccessibility),
         ("input_monitoring", StopReason::NoInputMonitoring),
+        (
+            "accessibility_and_input_monitoring",
+            StopReason::NoAccessibilityAndInputMonitoring,
+        ),
         ("secure_input", StopReason::SecureInput),
     ] {
         let mut w = world();

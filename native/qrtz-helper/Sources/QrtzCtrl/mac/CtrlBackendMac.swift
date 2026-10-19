@@ -424,7 +424,8 @@ public final class MacCtrlBackend: CtrlBackend {
     /// Review (d): what keeps the watcher from running, named for the UI.
     static func missing() -> String? {
         if IsSecureEventInputEnabled() { return "secure_input" }
-        if !AXIsProcessTrusted() && !CGPreflightListenEventAccess() { return "accessibility" }
+        // Neither grants the listen-only tap: name both, so the UI doesn't send Jared to fix one and fail again.
+        if !AXIsProcessTrusted() && !CGPreflightListenEventAccess() { return "accessibility_and_input_monitoring" }
         return nil
     }
 

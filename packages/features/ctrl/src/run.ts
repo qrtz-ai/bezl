@@ -30,6 +30,8 @@ const STOP: Record<CtrlStop, string> = {
     "ctrl needs accessibility to watch for esc, so it didn't act. turn it on in system settings → privacy & security",
   'no-input-monitoring':
     "ctrl needs input monitoring to watch for esc, so it didn't act. turn it on in system settings → privacy & security",
+  'no-accessibility-and-input-monitoring':
+    "ctrl needs accessibility and input monitoring to watch for esc, so it didn't act. turn both on in system settings → privacy & security",
   'secure-input':
     "a password field has the keyboard (secure input is on), so ctrl couldn't watch for esc and didn't act",
 };

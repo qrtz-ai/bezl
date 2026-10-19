@@ -3,6 +3,7 @@
 import Foundation
 import XCTest
 @testable import QrtzCtrl
+import QrtzShared
 
 final class CtrlStopWatchTests: XCTestCase {
     func testEscStopsAndOtherInputTakesOver() {
@@ -58,5 +59,10 @@ final class CtrlStopWatchTests: XCTestCase {
         XCTAssertTrue(w.flags.stopped)
         w.disarm()
         XCTAssertFalse(w.flags.armed)
+    }
+
+    /// Review M-E follow-up: the watcher and echo's hotkey filter read the one shared marker.
+    func testTheMarkerIsTheSharedOne() {
+        XCTAssertEqual(CtrlStopWatch.ctrlMarker, CtrlEventMarker.value)
     }
 }

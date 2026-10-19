@@ -31,7 +31,8 @@ pub struct Observed {
     /// The watcher is running (`false`: it couldn't start, e.g. no event-tap permission; the host then won't act).
     #[serde(default)]
     pub armed: bool,
-    /// Review (d): why an unarmed watcher couldn't start: `accessibility`, `input_monitoring` or `secure_input`
+    /// Review (d): why an unarmed watcher couldn't start: `accessibility`, `input_monitoring`,
+    /// `accessibility_and_input_monitoring` or `secure_input`
     /// (none: unknown).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub missing: Option<String>,
@@ -52,6 +53,8 @@ pub enum StopReason {
     NoAccessibility,
     /// Review (d): no watcher because qrtz has no Input Monitoring permission.
     NoInputMonitoring,
+    /// Review (d): neither Accessibility nor Input Monitoring is granted, so both are named.
+    NoAccessibilityAndInputMonitoring,
     /// Review (d): no watcher because secure input is on (a password field or prompt has the keyboard).
     SecureInput,
 }
@@ -66,6 +69,7 @@ pub fn verdict(o: &Observed) -> Option<StopReason> {
         Some(match o.missing.as_deref() {
             Some("accessibility") => StopReason::NoAccessibility,
             Some("input_monitoring") => StopReason::NoInputMonitoring,
+            Some("accessibility_and_input_monitoring") => StopReason::NoAccessibilityAndInputMonitoring,
             Some("secure_input") => StopReason::SecureInput,
             _ => StopReason::NoWatcher,
         })

@@ -21,9 +21,9 @@ public struct HotkeyFilter: Equatable, Sendable {
         controlFlag: UInt64 = 0x4_0000
     /// `CGEventSourceStateID.hidSystemState`: an event from real hardware.
     public static let hidSystemState: Int64 = 1
-    /// The source user data ctrl's own posted events carry (`CtrlStopWatch.ctrlMarker`, "qrtzctrl"; QrtzEcho can't
-    /// import QrtzCtrl, so it is repeated here).
-    public static let ctrlMarker: Int64 = 0x7172_747A_6374_726C
+    /// The source user data ctrl's own posted events carry: the one `CtrlEventMarker` in QrtzShared, which
+    /// `CtrlStopWatch.ctrlMarker` also is.
+    public static let ctrlMarker: Int64 = CtrlEventMarker.value
 
     public let key: String
     public let keyCode: Int64

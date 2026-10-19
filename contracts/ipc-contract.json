@@ -8700,6 +8700,7 @@
                   "no-watcher",
                   "no-accessibility",
                   "no-input-monitoring",
+                  "no-accessibility-and-input-monitoring",
                   "secure-input"
                 ]
               },
@@ -9113,6 +9114,7 @@
                   "no-watcher",
                   "no-accessibility",
                   "no-input-monitoring",
+                  "no-accessibility-and-input-monitoring",
                   "secure-input"
                 ]
               },
@@ -9483,6 +9485,7 @@
                   "no-watcher",
                   "no-accessibility",
                   "no-input-monitoring",
+                  "no-accessibility-and-input-monitoring",
                   "secure-input"
                 ]
               },
@@ -9849,6 +9852,7 @@
                   "no-watcher",
                   "no-accessibility",
                   "no-input-monitoring",
+                  "no-accessibility-and-input-monitoring",
                   "secure-input"
                 ]
               },

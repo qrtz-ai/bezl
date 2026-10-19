@@ -61,8 +61,8 @@ let package = Package(
         // ctrl (ADR 0100): the never-takes-over-the-ui guard, policy and background actions. Its own module, kept
         // apart from the echo/nano code; Foundation-only parts build on Linux, Sources/QrtzCtrl/mac on macOS only.
         // The executable links it only to route `ctrl.*` lines to it (ADR 0110).
-        .target(name: "QrtzCtrl", swiftSettings: [.swiftLanguageMode(.v5)]),
-        .testTarget(name: "QrtzCtrlTests", dependencies: ["QrtzCtrl"], swiftSettings: [.swiftLanguageMode(.v5)]),
+        .target(name: "QrtzCtrl", dependencies: ["QrtzShared"], swiftSettings: [.swiftLanguageMode(.v5)]),
+        .testTarget(name: "QrtzCtrlTests", dependencies: ["QrtzCtrl", "QrtzShared"], swiftSettings: [.swiftLanguageMode(.v5)]),
         // ADR 0146 M1.3 / ADR 0144: `--qrtz-gate-probe <ax|mic|socket|ae>`, shared by every module app (owner: shared).
         .target(name: "QrtzGateProbe", swiftSettings: [.swiftLanguageMode(.v5)]),
         .testTarget(name: "QrtzGateProbeTests", dependencies: ["QrtzGateProbe"]),

@@ -57,7 +57,7 @@ final class HotkeyFilterTests: XCTestCase {
         }
         _ = f.handle(type: F.flagsChanged, keyCode: F.fnKeyCode, flags: both, sourceState: F.hidSystemState, userData: 0)
         XCTAssertTrue(f.withControl)
-        XCTAssertEqual(F.ctrlMarker, 0x7172_747A_6374_726C, "the same marker as CtrlStopWatch.ctrlMarker")
+        XCTAssertEqual(F.ctrlMarker, CtrlEventMarker.value, "the shared marker CtrlStopWatch.ctrlMarker also uses")
     }
 
     func testHotkeyLineCarriesCtrlOnlyWhenSet() throws {

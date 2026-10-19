@@ -3,6 +3,7 @@
 // event tap; events ctrl posts itself carry `ctrlMarker` in their source user data and are ignored. If the tap can't
 // start (no permission), the watcher reports `armed: false` and the host doesn't act.
 import Foundation
+import QrtzShared
 
 public final class CtrlStopWatch: @unchecked Sendable {
     public enum Input: Equatable, Sendable {
@@ -14,7 +15,7 @@ public final class CtrlStopWatch: @unchecked Sendable {
     }
 
     /// Stamped on every event ctrl posts (`kCGEventSourceUserData`), so the watcher can tell them apart.
-    public static let ctrlMarker: Int64 = 0x7172_747A_6374_726C // "qrtzctrl"
+    public static let ctrlMarker: Int64 = CtrlEventMarker.value // "qrtzctrl"
 
     private let lock = NSLock()
     private var armed = false

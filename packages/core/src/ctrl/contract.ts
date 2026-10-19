@@ -34,6 +34,7 @@ export const CtrlStop = z.enum([
   'no-watcher',
   'no-accessibility',
   'no-input-monitoring',
+  'no-accessibility-and-input-monitoring',
   'secure-input',
 ]);
 export type CtrlStop = z.infer<typeof CtrlStop>;
