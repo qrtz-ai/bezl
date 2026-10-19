@@ -1,6 +1,6 @@
 {
   "name": "auto-record-and-meeting-ended",
-  "about": "Auto-record: a detected meeting starts recording with its title; meeting.ended for that key stops it.",
+  "about": "Auto-record: a detected meeting starts recording with its title; meeting.ended for that key arms the long auto-stop grace (AUTO_STOP_GRACE_MS x retryScale), which then stops it.",
   "config": {
     "autoRecord": true
   },
@@ -60,6 +60,10 @@
         "type": "meeting.ended",
         "key": "zoom:1"
       }
+    },
+    {
+      "op": "advance",
+      "ms": 200
     },
     {
       "op": "helper",
@@ -177,7 +181,7 @@
           "phase": "done",
           "meetingId": "id1",
           "startedAt": 1760000000000,
-          "elapsedMs": 0,
+          "elapsedMs": 18,
           "stopReason": "meeting-ended",
           "degraded": [],
           "error": null,
@@ -205,7 +209,7 @@
               "zoom",
               "done",
               1760000000000,
-              1760000000000,
+              1760000000200,
               3000,
               "$REC/id1.wav",
               "general"
@@ -243,5 +247,6 @@
         "files": []
       }
     }
-  }
+  },
+  "retryScale": 0.0001
 }

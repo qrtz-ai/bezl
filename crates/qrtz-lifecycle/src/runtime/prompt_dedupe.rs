@@ -53,6 +53,11 @@ impl PromptDedupe {
         first
     }
 
+    /// The identity a live helper key was detected under.
+    pub fn identity_of(&self, key: &str) -> Option<String> {
+        self.by_key.get(key).cloned()
+    }
+
     /// A helper key ended: its identity starts counting as gone once no key of it is live.
     pub fn ended(&mut self, key: &str, now: EpochMs) {
         if let Some(id) = self.by_key.remove(key) {

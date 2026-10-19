@@ -435,7 +435,15 @@ struct State {
     faults_fired: HashSet<String>,
     manual_steps: HashSet<String>,
     seq: u64,
+    /// Jared: flipping away from the meeting tab ended the meeting after the helper's ~4 s grace and stopped the
+    /// recording. A `meeting.ended` for the recorded meeting only arms this timer: (key, identity, gen, timer).
+    /// The meeting coming back (same key or identity) disarms it; the stop runs after [`AUTO_STOP_GRACE_MS`].
+    auto_stop: Option<(String, String, u64, Option<AbortHandle>)>,
+    auto_stop_gen: u64,
 }
+
+/// How long a recorded meeting must stay gone before it auto-stops (×`retry_scale`, for tests).
+pub const AUTO_STOP_GRACE_MS: f64 = 3.0 * 60.0 * 1000.0;
 
 /// Outcome of saving a pipeline record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -489,6 +497,8 @@ impl State {
             faults_fired: HashSet::new(),
             manual_steps: HashSet::new(),
             seq: 0,
+            auto_stop: None,
+            auto_stop_gen: 0,
         }
     }
 
@@ -1057,7 +1067,20 @@ impl Shared {
                         )
                     }
                 };
-                let first = self.lock().prompted.observe(&key, &identity, now);
+                let first = {
+                    let mut st = self.lock();
+                    if st
+                        .auto_stop
+                        .as_ref()
+                        .is_some_and(|(k, id, _, _)| *k == key || *id == identity)
+                    {
+                        if let Some((_, _, _, Some(t))) = st.auto_stop.take() {
+                            t.abort();
+                        }
+                        tracing::info!("meeting back: auto-stop disarmed");
+                    }
+                    st.prompted.observe(&key, &identity, now)
+                };
                 let meeting = qrtz_model::DetectedMeeting {
                     key,
                     title: title.clone(),
@@ -1084,12 +1107,44 @@ impl Shared {
             }
             HelperInput::MeetingEnded { key } => {
                 let now = self.now();
-                self.lock().prompted.ended(&key, now);
+                let identity = {
+                    let mut st = self.lock();
+                    let id = st.prompted.identity_of(&key).unwrap_or_else(|| key.clone());
+                    st.prompted.ended(&key, now);
+                    id
+                };
                 if is_capturing(s.phase) && s.detected.as_ref().is_some_and(|d| d.key == key) {
-                    let sh = self.clone();
-                    self.spawn(async move {
-                        let _ = sh.stop(StopReason::MeetingEnded).await;
+                    // Never stop on the helper's short grace (a tab flip): arm a long one instead.
+                    let gen = {
+                        let mut st = self.lock();
+                        if st.auto_stop.as_ref().is_some_and(|(k, _, _, _)| *k == key) {
+                            return; // already armed: keep the first deadline
+                        }
+                        st.auto_stop_gen += 1;
+                        st.auto_stop_gen
+                    };
+                    let t = self.set_timeout(AUTO_STOP_GRACE_MS * self.scale(), move |sh| {
+                        let fire = {
+                            let mut st = sh.lock();
+                            let mine = st.auto_stop.as_ref().is_some_and(|(_, _, g, _)| *g == gen);
+                            if mine {
+                                st.auto_stop = None;
+                            }
+                            let m = st.machine.state();
+                            mine && is_capturing(m.phase) && m.detected.as_ref().is_some_and(|d| d.key == key)
+                        };
+                        if fire {
+                            let sh2 = sh.clone();
+                            sh.spawn(async move {
+                                let _ = sh2.stop(StopReason::MeetingEnded).await;
+                            });
+                        }
                     });
+                    let mut st = self.lock();
+                    if st.auto_stop_gen == gen {
+                        st.auto_stop = Some((s.detected.as_ref().unwrap().key.clone(), identity, gen, t));
+                    }
+                    tracing::info!("meeting gone: auto-stop armed");
                 } else {
                     self.send(LifecycleEvent::MeetingEnded { key });
                 }
@@ -2138,6 +2193,9 @@ impl Shared {
     // ------------------------------------------------------------------ stop
 
     async fn stop(self: Arc<Self>, reason: StopReason) -> Result<SessionView, CoreError> {
+        if let Some((_, _, _, Some(t))) = self.lock().auto_stop.take() {
+            t.abort(); // any stop (manual, tray, the grace itself) ends the armed auto-stop
+        }
         let s = self.lock().machine.state().clone();
         // Idempotent: a second stop (double-click, tray + hotkey, meeting.ended racing a click) is a no-op.
         if s.meeting_id.is_some() && matches!(s.phase, RecordingPhase::Stopping | RecordingPhase::Processing)
