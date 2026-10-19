@@ -130,7 +130,8 @@ in (`crates/qrtz-app/src/app_update_key.pub`, its trusted comment naming the sam
 notarized`, `spctl`), and that the version is above both this build and the highest one it ever accepted (the
 high-water mark in its data dir). Never a downgrade, never a reinstall. `latest.json` is signed by the app-update
 key and expires 30 days after it was signed; `app-feed-refresh.yml` re-signs it every Monday. If that workflow stops,
-update checks fail quietly ("expired") until it runs again: run it by hand with `gh workflow run app-feed-refresh.yml`.
+update checks fail quietly ("expired") until it runs again: run it by hand with `gh workflow run app-feed-refresh.yml`,
+or, while Actions is off, `scripts/app/publish-local.sh --refresh` on the Mac (below).
 
 On R2 (bucket `qrtz-modules`, never touched by the module publish: hydrate-out.sh and publish.sh exclude `app/**`):
 
@@ -149,6 +150,38 @@ One-time, on the release Mac: `scripts/ci/setup-secrets.sh app-update` makes `~/
 no password) with `tauri signer generate`, sets the `APP_UPDATE_KEY` secret from it (stdin, never printed), writes
 the public key into `crates/qrtz-app/src/app_update_key.pub` and prints only the public key. Commit that file. Until
 then builds say "updates aren't set up in this build yet" and app-release.yml publishes nothing.
+
+### Publishing from the Mac (`scripts/app/publish-local.sh`)
+
+While GitHub Actions is off, the Mac publishes with the same steps app-release.yml runs after its build. Jared approved
+app-feed signing on his Mac (Oct 19, 2026) with `~/.qrtz-keys/app-update.key`; it never runs on a server-side box.
+
+```sh
+node scripts/app/version.mjs bump && git commit … && git push   # the release commit, on main
+bun install --frozen-lockfile && bun run release:mac            # build, sign, notarize, staple qrtz.app and the dmg
+scripts/app/publish-local.sh --dry-run                          # the checks, then the plan; nothing is done
+scripts/app/publish-local.sh                                    # archive, sign, feed, upload, verify, tag app-v<v>
+scripts/app/publish-local.sh --refresh                          # re-sign the live latest.json, 30 days out
+```
+
+- It refuses a dirty tree, a HEAD that isn't on origin's main, an existing `app-v<v>` (here or on origin), a live
+  `latest.json` already at or above `<v>`, and anything already under `v1/app/<v>/`. Objects are immutable: a version
+  that went up, even partly, is never published again; bump instead.
+- The bundle is found in `$CARGO_TARGET_DIR`, `target/` or `apps/desktop/src-tauri/target/`
+  (`release/bundle/macos/qrtz.app`, the dmg `qrtz_<v>_aarch64.dmg` next to it), or pass `--app <qrtz.app>` and
+  `--dmg <dmg>`. It must be qrtz `<v>` with echo, signed by MR26CCZ496 and notarized (the app-release.yml checks). The
+  update archive is made from that notarized bundle, not from `tauri build`.
+- Steps: `tar` (COPYFILE_DISABLE=1), `tauri signer sign --app-version <v>`, minisign check against
+  `crates/qrtz-app/src/app_update_key.pub`, `feed.mjs --expires-days 30`, `sign-feed.sh`, `upload.sh` (latest.json last),
+  `verify-live.sh`, then `version.mjs tag --push` (skip it with `--no-tag`).
+- Secrets: `TAURI_SIGNING_PRIVATE_KEY` is read from `$QRTZ_APP_UPDATE_KEY` (default `~/.qrtz-keys/app-update.key`, 0600,
+  empty password as in CI) into the environment of the two signing commands only. The R2 variables are used when set,
+  otherwise read from the keychain item `qrtz-r2` (account = access key id) and `~/.qrtz-keys/r2-account-id` (or the
+  default account id above) for the upload only. Nothing is printed or traced.
+- `--refresh` is app-feed-refresh.yml: it checks that the live feed verifies against the committed key, re-signs it
+  unchanged but for a new `expires`, uploads `latest.json` and waits until it's live. Run it before the feed is 30 days old.
+- A failed run keeps its work dir (only files that go public) and says where. Never re-sign what's already up.
+- Tests: `scripts/app/publish-local.test.mjs` (dry run against a throwaway clone; upload order with rclone stubbed).
 
 ## Updates and diagnostics
 
