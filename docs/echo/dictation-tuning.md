@@ -1115,3 +1115,52 @@ Talk-only change (`5625562`); the helper does not run talk's cleanup, so `echo-b
    keep a copy of `<report>.scored.json`, then score again from `~/code/qrtz`. Raw WER identical; formatted WER equal
    or lower on every clip. `git -C ~/code/qrtz worktree remove /tmp/qrtz-c57`.
 5. If any clip gets worse: revert `5625562` (talk-only commit).
+
+## 32. Cycle 59: an unmarked question ends with "?" (ADR 0196, `f40d440`)
+
+| Run               | Exact   | Edit distance     | Regressions | False-positive hits |
+| ----------------- | ------- | ----------------- | ----------- | ------------------- |
+| 66b4475, 68 cases | 60 / 68 | 50 chars (2.53 %) | -           | 0 / 143             |
+| f40d440, same 68  | 62 / 68 | 48 chars (2.43 %) | 0           | -                   |
+| 66b4475, 79 cases | 60 / 79 | 61 chars (2.58 %) | -           | -                   |
+| f40d440, 79 cases | 73 / 79 | 48 chars (2.03 %) | 0           | 0 / 180             |
+
+Regressions are counted against 66b4475's own output for every case (`polish-baseline.json` then refreshed to
+`f40d440`); 13 cases better, none worse.
+
+- ADR 0196: where the cleanup would add "." to a dictation Parakeet left unmarked, it adds "?" when the last
+  sentence can only be a question: "Do you want to grab lunch" → "Do you want to grab lunch?", "what time does the
+  store close" → "What time does the store close?", "is there anything else you need from me" → "Is there anything
+  else you need from me?". Only a yes/no opening (auxiliary + an agreeing pronoun) or a wh-opening (wh-word,
+  auxiliary, pronoun or determiner), 3-12 words, no comma or apostrophe, no second clause after the opening. A mark
+  the recogniser wrote, a spoken "question mark" (ADR 0189) and short dictations are untouched. Commands ("Do the
+  dishes"), dropped subjects ("Was the best day ever"), conditional and exclamatory inversions ("Should you need
+  anything", "Was I ever glad") keep their ".". 13 positives, 37 new keep vectors.
+- Cost (release, box CPU): the check reads only the last sentence once; one sentence 0.016 ms whole chain before and
+  after. `cleanup_budget.rs` interleaved 3×: old 1.845 / 1.618 / 1.604 ms median, new 1.613 / 1.600 / 1.617 ms; its
+  new part (504 words ending in an unmarked question, so the check runs and fires) 1.70 ms. Budget 2 ms holds, but
+  the chain now sits at ~1.6-1.7 ms on the box: the next rule must pay for itself or come with a speed-up.
+- Path review: no capture, VAD, model config, drain, insert, pill or timing change since 66b4475 (origin moved only by
+  ctrl run 50, `f00239b`, ADR 0194). Findings list unchanged; backlog P1-P8 still open (polish took the cycle).
+
+Still not exact (6 of 79): p10 "So we, we can" (repeat across a comma), p15 spoken "comma"/"period", p19/p20 email and
+URL, p41 a numbered list with a 4-word line, p49 commas before "new line" in a list.
+
+Next polish candidates, ranked: (1) the comma before a spoken "new line" when every line of a short list has one
+(p49), against salutations ("Dear Sam, new line") and verse; (2) a discourse opener before a question ("So do you
+want", "Okay can you") with its own false-positive set ("So do it now"); (3) a cheaper chain (warm dictionary
+patterns off the press path, one pass for the word lists) to win back budget headroom before more rules.
+
+### Measurement plan for Jared's Mac (cycle 59; proves no added latency and no worse transcript)
+
+Talk-only change (`f40d440`); the helper does not run talk's cleanup, so `echo-bench.sh` timings can't move from it.
+
+1. `cd ~/code/qrtz && git pull` (main at or after `f40d440`).
+2. `cargo test --release -p qrtz-talk --test cleanup_budget -- --nocapture`: both medians under 2 ms (box 1.6-1.7 ms).
+3. `bash native/qrtz-helper/scripts/echo-bench.sh --quick` twice: `releaseToStopped` p50/p90 and `firstPartial` within
+   the spread of the last recorded run.
+4. Score the same raw reports with the old cleanup: `git -C ~/code/qrtz worktree add --detach /tmp/qrtz-c58 66b4475 &&
+   cd /tmp/qrtz-c58 && cargo run -q -p qrtz-talk --example echo_score -- ~/qrtz-echo-bench/results/<run>-<stamp>.json`,
+   keep a copy of `<report>.scored.json`, then score again from `~/code/qrtz`. Raw WER identical; formatted WER equal
+   or lower on every clip. `git -C ~/code/qrtz worktree remove /tmp/qrtz-c58`.
+5. If any clip gets worse: revert `f40d440` (talk-only commit).
