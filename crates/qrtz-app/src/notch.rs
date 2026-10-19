@@ -415,16 +415,21 @@ type SecureInput = Arc<dyn Fn() -> bool + Send + Sync>;
 
 /// N198 (ADR 0224): the app's one [`NotchBroker`] with its clock, its way to echo's helper (`sink`, talk's
 /// `notch_send`) and a real timer for [`NotchBroker::tick`], so module content really goes after 10 s without an
-/// update (or at once under secure input). Requests go through [`NotchHost::with`] with [`NotchHost::now_ms`].
+/// update (or at once under secure input). Requests go through [`NotchHost::show`] / [`NotchHost::update`] /
+/// [`NotchHost::dismiss`], which read secure input themselves.
+///
+/// Review N198: without a real secure-input reader (`None`, the app today) secure input counts as on, so module
+/// show and update are refused with [`Refusal::SecureInput`] and the tick clears module content (fail closed);
+/// ctrl is unaffected.
 pub struct NotchHost {
     broker: Mutex<NotchBroker>,
     sink: Sink,
-    secure_input: SecureInput,
+    secure_input: Option<SecureInput>,
     start: tokio::time::Instant,
 }
 
 impl NotchHost {
-    pub fn new(sink: Sink, secure_input: SecureInput) -> Arc<Self> {
+    pub fn new(sink: Sink, secure_input: Option<SecureInput>) -> Arc<Self> {
         Arc::new(Self {
             broker: Mutex::new(NotchBroker::new()),
             sink,
@@ -438,13 +443,38 @@ impl NotchHost {
         u64::try_from(self.start.elapsed().as_millis()).unwrap_or(u64::MAX)
     }
 
-    /// Whether secure input is on now (a password prompt is up).
+    /// Whether secure input is on now (a password prompt is up). True when it can't be read (fail closed).
     pub fn secure_input(&self) -> bool {
-        (self.secure_input)()
+        self.secure_input.as_ref().is_none_or(|f| f())
+    }
+
+    /// Show (or replace) this requester's content, now, with the live secure-input state.
+    pub fn show(&self, r: &Requester, req: &NotchRequest) -> Result<(), Refusal> {
+        let (now, secure) = (self.now_ms(), self.secure_input());
+        self.with(|b| match b.show(r, req, now, secure) {
+            Ok(l) => (l, Ok(())),
+            Err(e) => (Vec::new(), Err(e)),
+        })
+    }
+
+    /// Change the holder's content, now, with the live secure-input state.
+    pub fn update(&self, r: &Requester, req: &NotchRequest) -> Result<(), Refusal> {
+        let (now, secure) = (self.now_ms(), self.secure_input());
+        self.with(|b| match b.update(r, req, now, secure) {
+            Ok(l) => (l, Ok(())),
+            Err(e) => (Vec::new(), Err(e)),
+        })
+    }
+
+    pub fn dismiss(&self, r: &Requester) -> Result<(), Refusal> {
+        self.with(|b| match b.dismiss(r) {
+            Ok(l) => (l, Ok(())),
+            Err(e) => (Vec::new(), Err(e)),
+        })
     }
 
     /// Runs `f` on the broker, then sends the lines it returned (in order).
-    pub fn with<R>(&self, f: impl FnOnce(&mut NotchBroker) -> (Vec<Value>, R)) -> R {
+    fn with<R>(&self, f: impl FnOnce(&mut NotchBroker) -> (Vec<Value>, R)) -> R {
         let (lines, r) = f(&mut self
             .broker
             .lock()
@@ -722,10 +752,9 @@ mod tests {
         let s2 = sent.clone();
         let host = NotchHost::new(
             Arc::new(move |l: &Value| s2.lock().unwrap().push(l.clone())),
-            Arc::new(|| false),
+            Some(Arc::new(|| false)),
         );
-        let now = host.now_ms();
-        host.with(|b| (b.show(&NANO, &status("syncing"), now, false).unwrap(), ()));
+        host.show(&NANO, &status("syncing")).unwrap();
         let t = host.spawn_ticker(TICK_EVERY);
         tokio::time::sleep(std::time::Duration::from_millis(9_000)).await;
         assert_eq!(sent.lock().unwrap().len(), 1, "still shown at 9 s");
@@ -746,15 +775,41 @@ mod tests {
         let (s2, sec) = (sent.clone(), secure.clone());
         let host = NotchHost::new(
             Arc::new(move |l: &Value| s2.lock().unwrap().push(l.clone())),
-            Arc::new(move || sec.load(std::sync::atomic::Ordering::SeqCst)),
+            Some(Arc::new(move || sec.load(std::sync::atomic::Ordering::SeqCst))),
         );
-        let now = host.now_ms();
-        host.with(|b| (b.show(&SNAP, &status("saved"), now, false).unwrap(), ()));
+        host.show(&SNAP, &status("saved")).unwrap();
         let _t = host.spawn_ticker(TICK_EVERY);
         tokio::time::sleep(std::time::Duration::from_millis(1_500)).await;
         assert_eq!(sent.lock().unwrap().len(), 1);
         secure.store(true, std::sync::atomic::Ordering::SeqCst);
         tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
         assert_eq!(sent.lock().unwrap().len(), 2);
+    }
+
+    /// Review N198: with no secure-input reader (the app today), module show and update are refused with
+    /// SecureInput and nothing goes out; ctrl still shows and updates.
+    #[tokio::test(start_paused = true)]
+    async fn without_a_secure_input_reader_module_requests_are_refused() {
+        let sent: Arc<Mutex<Vec<Value>>> = Arc::default();
+        let s2 = sent.clone();
+        let host = NotchHost::new(
+            Arc::new(move |l: &Value| s2.lock().unwrap().push(l.clone())),
+            None,
+        );
+        assert!(host.secure_input(), "unknown counts as on");
+        assert_eq!(host.show(&NANO, &status("syncing")), Err(Refusal::SecureInput));
+        assert!(sent.lock().unwrap().is_empty());
+        host.show(&Requester::Ctrl, &status("ctrl: opening safari"))
+            .unwrap();
+        host.update(&Requester::Ctrl, &status("ctrl: typing")).unwrap();
+        assert_eq!(host.update(&NANO, &status("x")), Err(Refusal::NotOwner));
+        host.dismiss(&Requester::Ctrl).unwrap();
+        assert_eq!(host.update(&NANO, &status("x")), Err(Refusal::NotOwner));
+        assert_eq!(host.show(&SNAP, &status("saved")), Err(Refusal::SecureInput));
+        assert_eq!(
+            sent.lock().unwrap().len(),
+            3,
+            "only ctrl's show, update and dismiss"
+        );
     }
 }

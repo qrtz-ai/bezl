@@ -244,10 +244,15 @@ public actor DictationEngine {
     let speech: SpeechSinks?
     /// N143: the mic is gated against what the speakers play (a meeting's system channel or a dictation tap).
     nonisolated public let echo: DictationEcho?
+    /// B1: the microphone's authorization (macOS: AVCaptureDevice `.audio`, through the permissions provider), read
+    /// only when a mic open fails. nil: unknown.
+    let micPermission: @Sendable () -> PermissionState?
 
     public init(mic: MicSource?, transcribers: [StreamingTranscriber], inserter: TextInserter?, hotkeys: HotkeyMonitor?,
                 send: @escaping @Sendable (HelperMessage) -> Void, now: @escaping @Sendable () -> Double, managedMic: Bool = false,
-                speech: SpeechSinks? = nil, tail: DictationTail = DictationTail(), echo: DictationEcho? = nil) {
+                speech: SpeechSinks? = nil, tail: DictationTail = DictationTail(), echo: DictationEcho? = nil,
+                micPermission: @escaping @Sendable () -> PermissionState? = { nil }) {
+        self.micPermission = micPermission
         self.managedMic = managedMic; self.speech = speech; self.tail = tail; self.echo = echo
         self.mic = mic; self.transcribers = transcribers; self.inserter = inserter; self.hotkeys = hotkeys; self.send = send; self.now = now
     }
@@ -311,13 +316,20 @@ public actor DictationEngine {
         }
     }
 
-    /// N195 (ADR 0224): why a mic open failed, for `error{dictation.mic}.reason` (nil when the error doesn't say).
+    /// N195 (ADR 0224), review B1: why a mic open failed, for `error{dictation.mic}.reason`. Permission decides first:
+    /// a mic that isn't authorized (AVCaptureDevice `.audio` status, via `micPermission`) is `denied`, whatever the
+    /// error says (a denied mic often fails as a 0 Hz / 0 channel format, "no microphone input device"). Only an
+    /// authorized mic with no input is `no-device`. Anything else (status unknown or unsupported) sends no reason.
     /// Talk maps `no-device` to mic-lost and anything else to mic-denied.
-    public static func micFailureReason(_ error: Error) -> String? {
-        let d = "\(error)".lowercased()
-        if d.contains("no microphone") || d.contains("no input device") || d.contains("device not found") { return "no-device" }
-        if d.contains("denied") || d.contains("not authorized") || d.contains("not permitted") { return "denied" }
-        return nil
+    public static func micFailureReason(_ error: Error, micPermission: PermissionState?) -> String? {
+        switch micPermission {
+        case .denied?, .notDetermined?: return "denied"
+        case .granted?:
+            let d = "\(error)".lowercased()
+            if d.contains("no microphone") || d.contains("no input device") || d.contains("device not found") { return "no-device" }
+            return nil
+        default: return nil
+        }
     }
 
     /// Opens the mic (no-op while it runs). False when it could not open; the error is sent, naming `id` when a
@@ -342,7 +354,7 @@ public actor DictationEngine {
             return true
         } catch {
             input.finish(); consumer?.cancel(); consumer = nil; micIn = nil; backlog = nil
-            send(.error(code: "dictation.mic", message: "\(error)", fatal: false, id: id, reason: Self.micFailureReason(error)))
+            send(.error(code: "dictation.mic", message: "\(error)", fatal: false, id: id, reason: Self.micFailureReason(error, micPermission: micPermission())))
             return false
         }
     }

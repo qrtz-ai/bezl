@@ -731,7 +731,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
 
 /// N198 (ADR 0224): the app's notch broker gets a real 1 s timer for its 10 s module-content expiry, sending through
 /// talk's `notch_send` (echo's helper draws the surface). Only with a tokio runtime (the app's; unit wirings have
-/// none). Secure input is not read on the host yet: `show`/`update` take it per request.
+/// none). Secure input is not read on the host yet, so it counts as on: module content is refused until it is.
 fn with_notch_ticker(talk: qrtz_talk::TalkService) -> qrtz_talk::TalkService {
     if tokio::runtime::Handle::try_current().is_ok() {
         let t = talk.clone();
@@ -739,7 +739,8 @@ fn with_notch_ticker(talk: qrtz_talk::TalkService) -> qrtz_talk::TalkService {
             Arc::new(move |l: &serde_json::Value| {
                 t.notch_send(l);
             }),
-            Arc::new(|| false),
+            // Review N198: secure input isn't read on the host yet, so module show/update are refused (fail closed).
+            None,
         );
         // The task holds the host weakly; keep one strong reference for the app's life.
         let _ = NOTCH.set(host.clone());

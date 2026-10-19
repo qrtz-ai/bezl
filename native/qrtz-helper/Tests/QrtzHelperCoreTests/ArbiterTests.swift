@@ -210,9 +210,26 @@ final class ArbiterTests: XCTestCase {
     /// under a warm mic), and the reason mapping.
     func testMicFailureReasons() {
         struct E: Error, CustomStringConvertible { let description: String }
-        XCTAssertEqual(DictationEngine.micFailureReason(E(description: "no microphone input device")), "no-device")
-        XCTAssertEqual(DictationEngine.micFailureReason(E(description: "microphone access denied")), "denied")
-        XCTAssertNil(DictationEngine.micFailureReason(E(description: "AVAudioEngine -10868")))
+        let noDev = E(description: "no microphone input device")
+        // B1: a denied mic often fails as "no microphone input device" (0 Hz / 0 channels): permission decides first.
+        XCTAssertEqual(DictationEngine.micFailureReason(noDev, micPermission: .denied), "denied")
+        XCTAssertEqual(DictationEngine.micFailureReason(noDev, micPermission: .notDetermined), "denied")
+        XCTAssertEqual(DictationEngine.micFailureReason(noDev, micPermission: .granted), "no-device")
+        XCTAssertNil(DictationEngine.micFailureReason(noDev, micPermission: nil), "unknown permission: no reason")
+        XCTAssertNil(DictationEngine.micFailureReason(noDev, micPermission: .unsupported))
+        XCTAssertNil(DictationEngine.micFailureReason(E(description: "AVAudioEngine -10868"), micPermission: .granted))
+    }
+
+    /// B1 end to end: the open fails with the no-device text while the injected status says denied: reason denied.
+    func testADeniedMicThatFailsAsNoDeviceIsReportedDenied() async {
+        let out = Box<[HelperMessage]>([]), mic = FlakyMic()
+        mic.fails.mutate { $0 = 1 }
+        let e = DictationEngine(mic: mic, transcribers: [RecordingASR()], inserter: nil, hotkeys: nil,
+                                send: { m in out.mutate { $0.append(m) } }, now: { 0 }, micPermission: { .denied })
+        await e.start(id: "d1")
+        XCTAssertTrue(out.value.contains { if case .error("dictation.mic", _, false, _, _, _, _, "denied") = $0 { true } else { false } })
+        XCTAssertFalse(out.value.contains { if case .error(_, _, _, _, _, _, _, "no-device") = $0 { true } else { false } })
+        await e.cancel(id: "d1")
     }
 
     func testWarmMicHearsAgainAfterRevokeAndRegrant() async throws {

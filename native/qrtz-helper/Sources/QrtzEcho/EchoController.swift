@@ -71,7 +71,8 @@ public actor EchoController: ModulePart {
         gate.onLog = { level, msg in send(.log(level: level, msg: msg)) }
         self.dictation = DictationEngine(mic: deps.dictationMic, transcribers: deps.dictationTranscribers,
                                          inserter: deps.insertion.map { TextInserter(backend: $0) }, hotkeys: deps.hotkeys, send: send, now: now,
-                                         managedMic: true, speech: speech, tail: deps.dictationTail, echo: gate)
+                                         managedMic: true, speech: speech, tail: deps.dictationTail, echo: gate,
+                                         micPermission: { permissions.status()[.microphone] })
         self.link = link; self.preloadAsr = deps.preloadDictationAsr; self.loads = deps.modelLoads; self.ownsWarm = ownsWarm
     }
 
