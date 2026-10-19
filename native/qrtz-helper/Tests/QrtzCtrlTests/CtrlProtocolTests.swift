@@ -1,5 +1,6 @@
-// The ctrl helper protocol against the shared fixture (ADR 0108): every host line parses, the server's replies have
-// the fixture's shapes, and the policy re-check refuses what the ladder refuses before the backend is called.
+// The ctrl helper protocol against the shared fixture (ADR 0214): every host line parses, the server's replies have
+// the fixture's shapes, and the helper's own policy re-check refuses what the host would refuse before the backend
+// is called (no stop key, no non-http address, no free-form combo, no handle it didn't make, no oversized text).
 import Foundation
 import XCTest
 @testable import QrtzCtrl
@@ -13,513 +14,123 @@ private func lines() throws -> [[String: Any]] {
     }
 }
 
-private func json(_ s: String) -> NSDictionary { try! JSONSerialization.jsonObject(with: Data(s.utf8)) as! NSDictionary }
+private func obj(_ s: String) -> [String: Any] { try! JSONSerialization.jsonObject(with: Data(s.utf8)) as! [String: Any] }
+private func line(_ o: [String: Any]) -> String {
+    String(decoding: try! JSONSerialization.data(withJSONObject: o, options: [.sortedKeys]), as: UTF8.self)
+}
 
 private final class Fake: CtrlBackend {
-    var acted: [CtrlRoute] = []
-    var front: Int32? = 100
+    var acted: [CtrlAction] = []
+    var sigs: [String?] = []
+    var layaModels: [String?] = []
     func catalog() throws -> (apps: [CtrlCatalogApp], defaultBrowser: String?) {
         ([CtrlCatalogApp(bundleId: "com.apple.Safari", name: "Safari", browser: true, running: true),
-          CtrlCatalogApp(bundleId: "com.apple.TextEdit", name: "TextEdit", browser: false, running: false)], "com.apple.Safari")
+          CtrlCatalogApp(bundleId: "com.apple.Notes", name: "Notes", browser: false, running: false)], "com.apple.Safari")
     }
-    func probe() throws -> (env: [String: Any], ui: [String: Any]) { throw CtrlFailure("app.not_running") }
-    func snapshot(app: String, scope: String?) throws -> [CtrlAXNode] {
-        [CtrlAXNode(id: "e:close", role: "AXButton", subrole: "AXCloseButton", title: "", actions: ["AXPress"], children: 0),
-         CtrlAXNode(id: "e:tools", role: "AXToolbar", subrole: nil, title: "formatting", actions: [], children: 2)]
+    func tree(app: String, scope: String?, depth: Int) throws -> (root: CtrlTreeNode, focused: String?) {
+        guard app == "com.apple.Safari" else { throw CtrlFailure("app.not_running") }
+        let field = CtrlTreeNode(id: "e:2", role: "AXTextField", placeholder: "search or enter website name", value: "",
+                                 actions: ["AXPress"], focused: true, sig: "8c2b1f0a6d3e4b71")
+        let favs = CtrlTreeNode(id: "e:3", role: "AXGroup", title: "favorites", more: 4, sig: "11aa22bb33cc44dd")
+        return (CtrlTreeNode(id: "e:1", role: "AXWindow", title: "start page", children: [field, favs], sig: "0f1e2d3c4b5a6978"), "e:2")
     }
-    func act(_ route: CtrlRoute, content: [String: String]) throws { acted.append(route) }
-    func measure(check: String, app: String) -> Int? { check == "tab_count" ? 0 : nil }
-    func restore(frontmostPid: Int32?) -> Bool { frontmostPid != nil }
-    var layaModels: [String?] = []
-    func laya(state: String, question: String, options: [String]) throws -> [Double] { [0.75, 0.25] }
+    func menuShortcuts(app: String) throws -> [CtrlMenuShortcut] {
+        [CtrlMenuShortcut(id: "m:1", path: ["file", "new tab"], combo: "cmd+t"),
+         CtrlMenuShortcut(id: "m:2", path: ["file", "open location…"], combo: "cmd+l")]
+    }
+    func act(_ action: CtrlAction, sig: String?) throws {
+        if sig == "stale" { throw CtrlFailure("act.stale") }
+        acted.append(action); sigs.append(sig)
+    }
+    func observe(arm: Bool?) -> CtrlObserved { CtrlObserved(frontmost: "com.apple.Safari", armed: true) }
     func laya(model: String?, state: String, question: String, options: [String]) throws -> [Double] {
         layaModels.append(model)
-        return try laya(state: state, question: question, options: options)
+        return [0.75, 0.25]
     }
-    func frontmostPid() -> Int32? { front }
-    func pid(of app: String) -> Int32? { app == "com.apple.Notes" ? 100 : 200 }
-    func preview(app: String, what: String) throws -> [CtrlPreviewItem] {
-        [CtrlPreviewItem(title: "notes.txt", unsaved: false), CtrlPreviewItem(title: "draft.txt", unsaved: true)]
-    }
-    func runningApps() throws -> (apps: [CtrlRunningApp], sinceMs: UInt64?, dayStartMs: UInt64) {
-        ([CtrlRunningApp(bundleId: "com.tinyspeck.slackmacgap", name: "Slack", lastActiveMs: 1_789_990_000_000, frontmost: false, unsaved: nil, hidden: false),
-          CtrlRunningApp(bundleId: "com.apple.Notes", name: "Notes", lastActiveMs: nil, frontmost: true, unsaved: false)],
-         1_789_950_000_000, 1_789_989_200_000)
-    }
-    var warms: [String] = []
-    func warmLaya(model: String) throws -> CtrlLayaWarmer.State { warms.append(model); return .started }
+    func warmLaya(model: String) throws -> CtrlLayaWarmer.State { .started }
 }
 
 final class CtrlProtocolTests: XCTestCase {
     func testEveryHostLineOfTheFixtureParses() throws {
-        let all = try lines()
-        let host = all.filter { !(($0["type"] as! String).hasSuffix(".result")) && $0["type"] as! String != "ctrl.error" }
-        XCTAssertEqual(host.count, 51)
-        for o in host {
-            let line = String(decoding: try JSONSerialization.data(withJSONObject: o), as: UTF8.self)
-            XCTAssertNotNil(CtrlRequest.parse(line), "\(o["type"]!)")
+        let host = try lines().filter { o in
+            let t = o["type"] as! String
+            return !t.hasSuffix(".result") && t != "ctrl.error"
         }
+        XCTAssertGreaterThanOrEqual(host.count, 10)
+        for o in host { XCTAssertNotNil(CtrlRequest.parse(line(o)), "\(o)") }
     }
 
-    func testRepliesHaveTheFixtureShapes() throws {
+    func testRepliesHaveTheFixturesShapes() throws {
         let all = try lines()
         let server = CtrlServer(backend: Fake())
-        let want = { (t: String) in NSDictionary(dictionary: all.first { $0["type"] as? String == t }!) }
-        XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.catalog","id":"c0"}"#)), want("ctrl.catalog.result"))
-        XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.snapshot","id":"c2","app":"com.apple.TextEdit","scope":null}"#)),
-                       want("ctrl.snapshot.result"))
-        XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.measure","id":"c5","check":{"check":"tab_count","app":"com.apple.Safari"}}"#)),
-                       want("ctrl.measure.result"))
-        XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.restore","id":"c6","frontmostPid":100}"#)), want("ctrl.restore.result"))
-        let act = all.first { $0["type"] as? String == "ctrl.act" }!
-        let actLine = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
-        XCTAssertEqual(json(server.handle(line: actLine)), want("ctrl.act.result"))
-        XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.probe","id":"c8"}"#)), want("ctrl.error"))
-        XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.preview","id":"c9","app":"com.apple.TextEdit","what":"windows"}"#)),
-                       want("ctrl.preview.result"))
-        XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.laya.warm","id":"c12","model":"/models/ctrl/laya/laya.mlmodelc"}"#)),
-                       want("ctrl.laya.warm.result"))
-    }
-
-    func testTheConsentedModelPathReachesTheBackend() throws {
-        // ADR 0116: the host hands the consented model over with the question; a line without one still parses.
-        let m = try lines().first { $0["type"] as? String == "ctrl.laya" && $0["model"] != nil }!
-        let line = String(decoding: try JSONSerialization.data(withJSONObject: m), as: UTF8.self)
-        guard case let .laya(_, model, _, _, opts)? = CtrlRequest.parse(line) else { return XCTFail("laya") }
-        XCTAssertEqual(model, "/models/ctrl/laya/laya.mlmodelc")
-        XCTAssertEqual(opts.count, 2)
-        guard case let .laya(_, none, _, _, _)? = CtrlRequest.parse(#"{"type":"ctrl.laya","id":"n","state":"s","question":"q","options":["a"]}"#)
-        else { return XCTFail("laya without a model") }
-        XCTAssertNil(none)
-        let fake = Fake()
-        _ = CtrlServer(backend: fake).handle(line: line)
-        XCTAssertEqual(fake.layaModels, ["/models/ctrl/laya/laya.mlmodelc"])
-    }
-
-    func testABackendWithoutAPreviewSaysSoAndNeverActs() {
-        // The host falls back to a count on any error; a preview is read-only either way.
-        let server = CtrlServer(backend: UnsupportedCtrlBackend())
-        XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.preview","id":"p","app":"com.apple.TextEdit","what":"windows"}"#)),
-                       ["type": "ctrl.error", "id": "p", "code": "platform.unsupported"] as NSDictionary)
-        XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.preview","id":"q","app":"x","what":"files"}"#))["code"] as? String,
-                       "helper.bad_request", "only windows or tabs")
-    }
-
-    func testThePolicyIsRecheckedBeforeTheBackendActs() {
-        let fake = Fake()
-        let server = CtrlServer(backend: fake)
-        func act(_ route: String) -> NSDictionary {
-            json(server.handle(line: #"{"type":"ctrl.act","id":"x","actionId":"a0","route":\#(route),"content":{}}"#))
+        for want in all where (want["type"] as! String).hasSuffix(".result") {
+            let id = want["id"] as! String
+            guard let req = all.first(where: { $0["id"] as? String == id && !($0["type"] as! String).hasSuffix(".result") }) else { continue }
+            let got = obj(server.handle(line: line(req)))
+            XCTAssertEqual(got["type"] as? String, want["type"] as? String, id)
+            XCTAssertEqual(Set(got.keys).subtracting(["focused"]), Set(want.keys).subtracting(["focused"]), id)
+            if id == "c1" {
+                XCTAssertEqual(NSDictionary(dictionary: got["root"] as! [String: Any]), NSDictionary(dictionary: want["root"] as! [String: Any]))
+                XCTAssertEqual(got["focused"] as? String, "e:2")
+            }
         }
-        let refused: NSDictionary = ["type": "ctrl.error", "id": "x", "code": "policy.refused"]
-        XCTAssertEqual(act(#"{"route":"pid_key","app":"com.apple.Safari","combo":"cmd+l"}"#), refused, "focus-intent shortcut")
-        XCTAssertEqual(act(#"{"route":"pid_key","app":"com.apple.Notes","combo":"cmd+w"}"#), refused, "keys to the frontmost app")
-        XCTAssertEqual(act(#"{"route":"ax","app":"com.apple.TextEdit","role":"AXPopUpButton","element":"e:m","op":{"op":"perform","action":"AXPress"}}"#),
-                       refused, "opens a menu")
-        XCTAssertEqual(act(#"{"route":"ax","app":"com.apple.TextEdit","role":"AXWindow","element":"e:w","op":{"op":"perform","action":"AXRaise"}}"#),
-                       refused, "raise")
-        XCTAssertEqual(act(#"{"route":"ax","app":"com.apple.TextEdit","role":"AXWindow","element":"e:w","op":{"op":"set_attribute","attribute":"AXMain"}}"#),
-                       refused, "focus write")
-        XCTAssertEqual(act(#"{"route":"activate","app":"com.apple.Safari"}"#), refused)
-        XCTAssertEqual(act(#"{"route":"scripting","app":"com.apple.Safari","verb":"activate"}"#), refused, "not a template verb")
-        XCTAssertTrue(fake.acted.isEmpty, "nothing refused reached the backend")
-        XCTAssertEqual(act(#"{"route":"pid_key","app":"com.apple.Safari","combo":"cmd+w"}"#)["ok"] as? Bool, true)
-        XCTAssertEqual(fake.acted, [.pidKey(app: "com.apple.Safari", combo: "cmd+w")])
     }
 
-    func testQuitUnusedAppsWireAndTheFrontmostAppIsNeverQuit() throws {
-        // ADR 0130: the apps report has the fixture's shape; quit_apps parses; a list naming the frontmost app is
-        // refused before the backend sees it; a backend without the watch says so.
-        let all = try lines()
-        let want = NSDictionary(dictionary: all.first { $0["type"] as? String == "ctrl.apps.result" }!)
+    func testTheFixedActionSetParsesStrictly() {
+        let ok: [(String, CtrlAction)] = [
+            (#"{"action":"press","handle":"e:3"}"#, .press(handle: "e:3")),
+            (#"{"action":"set_value","handle":"e:2","text":"hi","submit":false}"#, .setValue(handle: "e:2", text: "hi", submit: false)),
+            (#"{"action":"scroll","handle":"e:3","dir":"up"}"#, .scroll(handle: "e:3", down: false)),
+            (#"{"action":"key_combo","app":"a","combo":"cmd+t"}"#, .keyCombo(app: "a", combo: "cmd+t")),
+            (#"{"action":"open_app","app":"a"}"#, .openApp(app: "a")),
+        ]
+        for (s, a) in ok { XCTAssertEqual(CtrlAction.parse(obj(s)), a, s) }
+        for s in [#"{"action":"click","x":1,"y":2}"#, #"{"action":"applescript","source":"tell"}"#,
+                  #"{"action":"set_value","handle":"e:2","text":"hi","submit":1}"#, #"{"action":"scroll","handle":"e:3","dir":"left"}"#,
+                  #"{"action":"type","text":"hi"}"#] {
+            XCTAssertNil(CtrlAction.parse(obj(s)), s)
+        }
+    }
+
+    func testThePolicyRefusesBeforeTheBackend() {
         let fake = Fake()
         let server = CtrlServer(backend: fake)
-        XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.apps","id":"c10"}"#)), want)
-        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["op"] as? String == "quit_apps" }!
-        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
-        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("quit_apps") }
-        XCTAssertEqual(route, .quitApps(apps: ["com.tinyspeck.slackmacgap"]))
-        XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.act","id":"x","actionId":"a0","route":{"route":"workspace","op":"quit_apps","apps":["com.apple.Safari","com.apple.Notes"]},"content":{}}"#)),
-                       ["type": "ctrl.error", "id": "x", "code": "policy.refused"] as NSDictionary)
+        func act(_ a: String, sig: String? = nil) -> [String: Any] {
+            var o: [String: Any] = ["type": "ctrl.ax.act", "id": "x", "runId": "r", "action": obj(a)]
+            if let sig { o["sig"] = sig }
+            return obj(server.handle(line: line(o)))
+        }
+        for bad in [#"{"action":"key_combo","app":"a","combo":"escape"}"#,
+                    #"{"action":"key_combo","app":"a","combo":"cmd+tab"}"#,
+                    #"{"action":"key_combo","app":"a","combo":"shift+cmd+t"}"#,
+                    #"{"action":"key_combo","app":"a","combo":"t"}"#,
+                    #"{"action":"open_url","app":"a","url":"file:///etc/passwd"}"#,
+                    #"{"action":"open_url","app":"a","url":"javascript:alert(1)"}"#,
+                    #"{"action":"press","handle":"AXButton"}"#,
+                    #"{"action":"set_value","handle":"e:2","text":"","submit":false}"#,
+                    #"{"action":"set_value","handle":"e:2","text":"\#(String(repeating: "x", count: 501))","submit":false}"#] {
+            let r = act(bad)
+            XCTAssertEqual(r["ok"] as? Bool, false, bad)
+            XCTAssertEqual(r["err"] as? String, "act.refused", bad)
+        }
         XCTAssertTrue(fake.acted.isEmpty)
-        XCTAssertEqual(json(server.handle(line: line))["ok"] as? Bool, true)
-        XCTAssertEqual(fake.acted, [.quitApps(apps: ["com.tinyspeck.slackmacgap"])])
-        XCTAssertEqual(json(CtrlServer(backend: UnsupportedCtrlBackend()).handle(line: #"{"type":"ctrl.apps","id":"u"}"#))["code"] as? String,
-                       "apps.not_watching")
+        XCTAssertEqual(act(#"{"action":"key_combo","app":"a","combo":"cmd+shift+t"}"#)["ok"] as? Bool, true)
+        XCTAssertEqual(act(#"{"action":"key_combo","app":"a","combo":"return"}"#)["ok"] as? Bool, true)
+        XCTAssertEqual(act(#"{"action":"open_url","app":"a","url":"https://youtube.com"}"#)["ok"] as? Bool, true)
+        XCTAssertEqual(act(#"{"action":"press","handle":"m:2"}"#, sig: "abc")["ok"] as? Bool, true)
+        XCTAssertEqual(fake.sigs.last ?? nil, "abc")
+        XCTAssertEqual(act(#"{"action":"press","handle":"e:2"}"#, sig: "stale")["err"] as? String, "act.stale")
     }
 
-    func testHideAppsWireAndTheFrontmostAppIsNeverHidden() throws {
-        // ADR 0134: hide_apps parses from the fixture; the frontmost app (Notes, pid 100) drops out of the list before
-        // the backend sees it and the rest are hidden; `hidden` rides the apps report only when the backend knows it.
-        let all = try lines()
-        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["op"] as? String == "hide_apps" }!
-        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
-        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("hide_apps") }
-        XCTAssertEqual(route, .hideApps(apps: ["com.tinyspeck.slackmacgap", "com.apple.finder"]))
+    func testBadRequestsAndTheLayaModelPath() {
         let fake = Fake()
         let server = CtrlServer(backend: fake)
-        XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.act","id":"x","actionId":"a0","route":{"route":"workspace","op":"hide_apps","apps":["com.apple.Safari","com.apple.Notes"]},"content":{}}"#))["ok"] as? Bool, true)
-        XCTAssertEqual(fake.acted, [.hideApps(apps: ["com.apple.Safari"])])
-        let apps = json(server.handle(line: #"{"type":"ctrl.apps","id":"h"}"#))["apps"] as! [[String: Any]]
-        XCTAssertEqual(apps[0]["hidden"] as? Bool, false)
-        XCTAssertNil(apps[1]["hidden"], "unknown stays off the wire")
-    }
-
-    func testUnhideAppsWireReachesTheBackendWithNoFrontmostFilter() throws {
-        // ADR 0152: unhide_apps parses and reaches the backend as sent (unhiding activates nothing, so the app the
-        // user is in needs no filtering); a malformed list is a bad request.
-        let line = #"{"type":"ctrl.act","id":"u","actionId":"a0","route":{"route":"workspace","op":"unhide_apps","apps":["com.apple.TextEdit"]},"content":{}}"#
-        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("unhide_apps") }
-        XCTAssertEqual(route, .unhideApps(apps: ["com.apple.TextEdit"]))
-        let fake = Fake()
-        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: line))["ok"] as? Bool, true)
-        XCTAssertEqual(fake.acted, [.unhideApps(apps: ["com.apple.TextEdit"])])
-        XCTAssertNil(CtrlRequest.parse(#"{"type":"ctrl.act","id":"u","actionId":"a0","route":{"route":"workspace","op":"unhide_apps","apps":"x"},"content":{}}"#))
-    }
-
-    func testMuteOutputWireAndItsMeasureHasNoApp() throws {
-        // ADR 0135: mute_output and the app-less output_muted measure parse from the fixture and reach the backend.
-        let all = try lines()
-        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["op"] as? String == "mute_output" }!
-        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
-        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("mute_output") }
-        XCTAssertEqual(route, .muteOutput)
-        let fake = Fake()
-        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: line))["ok"] as? Bool, true)
-        XCTAssertEqual(fake.acted, [.muteOutput])
-        // ADR 0139: unmute_output, the reverse.
-        let un = all.first { ($0["route"] as? [String: Any])?["op"] as? String == "unmute_output" }!
-        let unLine = String(decoding: try JSONSerialization.data(withJSONObject: un), as: UTF8.self)
-        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: unLine))["ok"] as? Bool, true)
-        XCTAssertEqual(fake.acted, [.muteOutput, .unmuteOutput])
-        // ADR 0140: set_volume with a whole level 0–100 from the fixture; anything else is a bad request.
-        let sv = all.first { ($0["route"] as? [String: Any])?["op"] as? String == "set_volume" }!
-        let svLine = String(decoding: try JSONSerialization.data(withJSONObject: sv), as: UTF8.self)
-        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: svLine))["ok"] as? Bool, true)
-        XCTAssertEqual(fake.acted, [.muteOutput, .unmuteOutput, .setVolume(level: 30)])
-        // ADR 0141: 0 and 1 are levels (a JSON 0 or 1 also bridges `is Bool`), true and false are not.
-        for (level, want) in [("0", 0), ("1", 1), ("100", 100)] {
-            guard case let .act(_, _, route, _)? = CtrlRequest.parse(#"{"type":"ctrl.act","id":"x","actionId":"a","route":{"route":"workspace","op":"set_volume","level":"# + level + #"},"content":{}}"#)
-            else { return XCTFail("level \(level)") }
-            XCTAssertEqual(route, .setVolume(level: want))
-        }
-        for bad in [#"101"#, #"-1"#, #""30""#, #"30.5"#, #"null"#, #"true"#, #"false"#] {
-            XCTAssertNil(CtrlRequest.parse(#"{"type":"ctrl.act","id":"x","actionId":"a","route":{"route":"workspace","op":"set_volume","level":"# + bad + #"},"content":{}}"#), bad)
-        }
-        guard case let .measure(_, vcheck, vapp)? = CtrlRequest.parse(#"{"type":"ctrl.measure","id":"c20","check":{"check":"output_volume"}}"#)
-        else { return XCTFail("output_volume") }
-        XCTAssertEqual(vcheck, "output_volume")
-        XCTAssertEqual(vapp, "")
-        guard case let .measure(_, check, app)? = CtrlRequest.parse(#"{"type":"ctrl.measure","id":"c15","check":{"check":"output_muted"}}"#)
-        else { return XCTFail("output_muted") }
-        XCTAssertEqual(check, "output_muted")
-        XCTAssertEqual(app, "")
-        XCTAssertNil(CtrlRequest.parse(#"{"type":"ctrl.measure","id":"x","check":{"check":"tab_count"}}"#), "other checks still need an app")
-    }
-
-    func testDarkModeGoesOnlyToSystemEventsAndItsMeasureHasNoApp() throws {
-        // ADR 0137: set_dark_mode parses from the fixture and reaches the backend; its script goes to System Events
-        // only, never another app, and no other verb goes to System Events; dark_mode is measured without an app.
-        let all = try lines()
-        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["verb"] as? String == "set_dark_mode" }!
-        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
-        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("set_dark_mode") }
-        XCTAssertEqual(route, .scripting(app: "com.apple.systemevents", verb: "set_dark_mode"))
-        let fake = Fake()
-        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: line))["ok"] as? Bool, true)
-        XCTAssertEqual(fake.acted, [route])
-        let dark = CtrlScripts.source(verb: "set_dark_mode", bundleId: "com.apple.systemevents")!
-        XCTAssertTrue(dark.contains("tell application id \"com.apple.systemevents\""))
-        XCTAssertTrue(dark.contains("set dark mode to true"))
-        XCTAssertFalse(dark.contains("activate") || dark.contains("launch") || dark.contains("reopen"))
-        XCTAssertTrue(CtrlScripts.source(verb: "set_light_mode", bundleId: "com.apple.systemevents")!.contains("set dark mode to false"))
-        XCTAssertNil(CtrlScripts.source(verb: "set_dark_mode", bundleId: "com.apple.Safari"))
-        XCTAssertNil(CtrlScripts.source(verb: "close_all_tabs", bundleId: "com.apple.systemevents"))
-        guard case let .measure(_, check, app)? = CtrlRequest.parse(#"{"type":"ctrl.measure","id":"c17","check":{"check":"dark_mode"}}"#)
-        else { return XCTFail("dark_mode") }
-        XCTAssertEqual(check, "dark_mode")
-        XCTAssertEqual(app, "")
-        XCTAssertTrue(CtrlAppearance.isDark(["AppleInterfaceStyle": "Dark"]))
-        XCTAssertFalse(CtrlAppearance.isDark([:]))
-        XCTAssertFalse(CtrlAppearance.isDark(nil))
-    }
-
-    func testTheDockGoesOnlyToSystemEventsAndItsMeasureHasNoApp() throws {
-        // ADR 0173: set_dock_autohide parses from the fixture and reaches the backend; its script goes to System
-        // Events only, sets nothing but the Dock's autohide, and dock_autohide is measured without an app.
-        let all = try lines()
-        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["verb"] as? String == "set_dock_autohide" }!
-        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
-        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("set_dock_autohide") }
-        XCTAssertEqual(route, .scripting(app: "com.apple.systemevents", verb: "set_dock_autohide"))
-        let fake = Fake()
-        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: line))["ok"] as? Bool, true)
-        XCTAssertEqual(fake.acted, [route])
-        let hide = CtrlScripts.source(verb: "set_dock_autohide", bundleId: "com.apple.systemevents")!
-        XCTAssertEqual(hide, "tell application id \"com.apple.systemevents\"\ntell dock preferences to set autohide to true\nend tell")
-        XCTAssertEqual(CtrlScripts.source(verb: "set_dock_shown", bundleId: "com.apple.systemevents"),
-                       "tell application id \"com.apple.systemevents\"\ntell dock preferences to set autohide to false\nend tell")
-        for id in ["com.apple.dock", "com.apple.Safari", "com.apple.finder"] {
-            XCTAssertNil(CtrlScripts.source(verb: "set_dock_autohide", bundleId: id), id)
-            XCTAssertNil(CtrlScripts.source(verb: "set_dock_shown", bundleId: id), id)
-        }
-        guard case let .measure(_, check, app)? = CtrlRequest.parse(#"{"type":"ctrl.measure","id":"c26","check":{"check":"dock_autohide"}}"#)
-        else { return XCTFail("dock_autohide") }
-        XCTAssertEqual(check, "dock_autohide")
-        XCTAssertEqual(app, "")
-        XCTAssertTrue(CtrlDock.autohides(["autohide": true]))
-        XCTAssertTrue(CtrlDock.autohides(["autohide": NSNumber(value: 1)]))
-        XCTAssertFalse(CtrlDock.autohides(["autohide": false]))
-        XCTAssertFalse(CtrlDock.autohides(["orientation": "left"]), "absent: always shown (the default)")
-        XCTAssertFalse(CtrlDock.autohides(nil))
-    }
-
-    func testTheDockEdgeGoesOnlyToSystemEventsAndItsMeasureHasNoApp() throws {
-        // ADR 0195: set_dock_edge_left parses from the fixture and reaches the backend; its script goes to System
-        // Events only, sets nothing but the Dock's screen edge, and dock_edge is measured without an app.
-        let all = try lines()
-        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["verb"] as? String == "set_dock_edge_left" }!
-        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
-        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("set_dock_edge_left") }
-        XCTAssertEqual(route, .scripting(app: "com.apple.systemevents", verb: "set_dock_edge_left"))
-        let fake = Fake()
-        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: line))["ok"] as? Bool, true)
-        XCTAssertEqual(fake.acted, [route])
-        let left = CtrlScripts.source(verb: "set_dock_edge_left", bundleId: "com.apple.systemevents")!
-        XCTAssertEqual(left, "tell application id \"com.apple.systemevents\"\ntell dock preferences to set screen edge to left\nend tell")
-        XCTAssertEqual(CtrlScripts.source(verb: "set_dock_edge_right", bundleId: "com.apple.systemevents"),
-                       "tell application id \"com.apple.systemevents\"\ntell dock preferences to set screen edge to right\nend tell")
-        XCTAssertEqual(CtrlScripts.source(verb: "set_dock_edge_bottom", bundleId: "com.apple.systemevents"),
-                       "tell application id \"com.apple.systemevents\"\ntell dock preferences to set screen edge to bottom\nend tell")
-        for id in ["com.apple.dock", "com.apple.Safari", "com.apple.finder"] {
-            XCTAssertNil(CtrlScripts.source(verb: "set_dock_edge_left", bundleId: id), id)
-            XCTAssertNil(CtrlScripts.source(verb: "set_dock_edge_right", bundleId: id), id)
-            XCTAssertNil(CtrlScripts.source(verb: "set_dock_edge_bottom", bundleId: id), id)
-        }
-        guard case let .measure(_, check, app)? = CtrlRequest.parse(#"{"type":"ctrl.measure","id":"c42","check":{"check":"dock_edge"}}"#)
-        else { return XCTFail("dock_edge") }
-        XCTAssertEqual(check, "dock_edge")
-        XCTAssertEqual(app, "")
-        XCTAssertEqual(CtrlDock.edge(["orientation": "left"]), "left")
-        XCTAssertEqual(CtrlDock.edge(["orientation": "right"]), "right")
-        XCTAssertEqual(CtrlDock.edge(["orientation": "bottom"]), "bottom")
-        XCTAssertEqual(CtrlDock.edge(["autohide": true]), "bottom", "absent orientation: bottom (the default)")
-        XCTAssertEqual(CtrlDock.edge(nil), "bottom")
-        XCTAssertEqual(CtrlDock.edgeCode(["orientation": "left"]), CtrlDock.edgeLeft)
-        XCTAssertEqual(CtrlDock.edgeCode(["orientation": "right"]), CtrlDock.edgeRight)
-        XCTAssertEqual(CtrlDock.edgeCode(nil), CtrlDock.edgeBottom)
-        XCTAssertTrue(CtrlRoute.applessChecks.contains(CtrlDock.edgeCheck))
-        XCTAssertTrue(CtrlRoute.dockVerbs.contains("set_dock_edge_left"))
-        XCTAssertTrue(CtrlRoute.systemEventsVerbs.contains("set_dock_edge_bottom"))
-    }
-
-    func testTheDockSizeStepGoesOnlyToSystemEventsAndItsMeasureHasNoApp() throws {
-        // ADR 0200: shrink_dock parses from the fixture and reaches the backend; both size scripts go to System Events
-        // only, move nothing but `dock size` by the one fixed step clamped to 0–1, and dock_size is measured without an
-        // app from the Dock's `tilesize` (absent: nil).
-        let all = try lines()
-        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["verb"] as? String == "shrink_dock" }!
-        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
-        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("shrink_dock") }
-        XCTAssertEqual(route, .scripting(app: "com.apple.systemevents", verb: "shrink_dock"))
-        let fake = Fake()
-        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: line))["ok"] as? Bool, true)
-        XCTAssertEqual(fake.acted, [route])
-        XCTAssertEqual(CtrlScripts.source(verb: "shrink_dock", bundleId: "com.apple.systemevents"),
-                       "tell application id \"com.apple.systemevents\"\ntell dock preferences\nset s to (dock size) - 0.15\nif s < 0 then set s to 0\nset dock size to s\nend tell\nend tell")
-        XCTAssertEqual(CtrlScripts.source(verb: "grow_dock", bundleId: "com.apple.systemevents"),
-                       "tell application id \"com.apple.systemevents\"\ntell dock preferences\nset s to (dock size) + 0.15\nif s > 1 then set s to 1\nset dock size to s\nend tell\nend tell")
-        for verb in ["shrink_dock", "grow_dock"] {
-            let src = CtrlScripts.source(verb: verb, bundleId: "com.apple.systemevents")!
-            for word in ["activate", "launch", "open", "reopen", "magnification", "autohide", "screen edge", "do shell script"] {
-                XCTAssertFalse(src.contains(word), "\(verb): \(word)")
-            }
-            for id in ["com.apple.dock", "com.apple.Safari", "com.apple.finder"] {
-                XCTAssertNil(CtrlScripts.source(verb: verb, bundleId: id), "\(verb) \(id)")
-            }
-        }
-        // Only these two spellings: no size or step can be named on the wire.
-        XCTAssertNil(CtrlScripts.source(verb: "set_dock_size", bundleId: "com.apple.systemevents"))
-        guard case let .measure(_, check, app)? = CtrlRequest.parse(#"{"type":"ctrl.measure","id":"c48","check":{"check":"dock_size"}}"#)
-        else { return XCTFail("dock_size") }
-        XCTAssertEqual(check, "dock_size")
-        XCTAssertEqual(app, "")
-        XCTAssertEqual(CtrlDock.tileSize(["tilesize": 48]), 48)
-        XCTAssertEqual(CtrlDock.tileSize(["tilesize": NSNumber(value: 64.4)]), 64)
-        XCTAssertEqual(CtrlDock.tileSize(["tilesize": "36"]), 36)
-        XCTAssertNil(CtrlDock.tileSize(["orientation": "left"]), "absent: can't tell")
-        XCTAssertNil(CtrlDock.tileSize(nil))
-        XCTAssertNil(CtrlDock.tileSize(["tilesize": "big"]))
-        XCTAssertTrue(CtrlRoute.applessChecks.contains(CtrlDock.sizeCheck))
-        XCTAssertTrue(CtrlRoute.dockVerbs.isSuperset(of: ["shrink_dock", "grow_dock"]))
-        XCTAssertTrue(CtrlRoute.systemEventsVerbs.isSuperset(of: ["shrink_dock", "grow_dock"]))
-    }
-
-    func testTheDockMagnificationGoesOnlyToSystemEventsAndItsMeasureHasNoApp() throws {
-        // ADR 0202: set_dock_magnification_on parses from the fixture and reaches the backend; both magnification
-        // scripts go to System Events only and set nothing but `magnification` (never its size, auto-hide, edge or the
-        // Dock's size), and dock_magnification is measured without an app from the Dock's `magnification` (absent =
-        // off).
-        let all = try lines()
-        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["verb"] as? String == "set_dock_magnification_on" }!
-        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
-        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("set_dock_magnification_on") }
-        XCTAssertEqual(route, .scripting(app: "com.apple.systemevents", verb: "set_dock_magnification_on"))
-        let fake = Fake()
-        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: line))["ok"] as? Bool, true)
-        XCTAssertEqual(fake.acted, [route])
-        XCTAssertEqual(CtrlScripts.source(verb: "set_dock_magnification_on", bundleId: "com.apple.systemevents"),
-                       "tell application id \"com.apple.systemevents\"\ntell dock preferences to set magnification to true\nend tell")
-        XCTAssertEqual(CtrlScripts.source(verb: "set_dock_magnification_off", bundleId: "com.apple.systemevents"),
-                       "tell application id \"com.apple.systemevents\"\ntell dock preferences to set magnification to false\nend tell")
-        for verb in ["set_dock_magnification_on", "set_dock_magnification_off"] {
-            let src = CtrlScripts.source(verb: verb, bundleId: "com.apple.systemevents")!
-            for word in ["activate", "launch", "open", "reopen", "magnification size", "dock size", "autohide", "screen edge",
-                         "do shell script"] {
-                XCTAssertFalse(src.contains(word), "\(verb): \(word)")
-            }
-            for id in ["com.apple.dock", "com.apple.Safari", "com.apple.finder"] {
-                XCTAssertNil(CtrlScripts.source(verb: verb, bundleId: id), "\(verb) \(id)")
-            }
-        }
-        // Strict wire spellings: no toggle, no size, nothing near them is a verb.
-        for verb in ["set_dock_magnification", "set_dock_magnification_toggle", "set_dock_magnification_size",
-                     "Set_Dock_Magnification_On", "set_dock_magnification_on "] {
-            XCTAssertNil(CtrlScripts.source(verb: verb, bundleId: "com.apple.systemevents"), verb)
-            XCTAssertFalse(CtrlRoute.scriptVerbs.contains(verb), verb)
-        }
-        guard case let .measure(_, check, app)? = CtrlRequest.parse(#"{"type":"ctrl.measure","id":"c50","check":{"check":"dock_magnification"}}"#)
-        else { return XCTFail("dock_magnification") }
-        XCTAssertEqual(check, "dock_magnification")
-        XCTAssertEqual(app, "")
-        XCTAssertTrue(CtrlDock.magnifies(["magnification": true]))
-        XCTAssertTrue(CtrlDock.magnifies(["magnification": NSNumber(value: 1)]))
-        XCTAssertTrue(CtrlDock.magnifies(["magnification": "YES"]))
-        XCTAssertFalse(CtrlDock.magnifies(["magnification": false]))
-        XCTAssertFalse(CtrlDock.magnifies(["tilesize": 48]), "absent: off (the default)")
-        XCTAssertFalse(CtrlDock.magnifies(nil))
-        XCTAssertFalse(CtrlDock.magnifies(["magnification": "big"]))
-        XCTAssertTrue(CtrlRoute.applessChecks.contains(CtrlDock.magnificationCheck))
-        XCTAssertTrue(CtrlRoute.dockVerbs.isSuperset(of: ["set_dock_magnification_on", "set_dock_magnification_off"]))
-        XCTAssertTrue(CtrlRoute.systemEventsVerbs.isSuperset(of: ["set_dock_magnification_on", "set_dock_magnification_off"]))
-    }
-
-    func testTheMenuBarAutohideGoesOnlyToSystemEventsAndItsMeasureHasNoApp() throws {
-        // ADR 0197: set_menu_bar_autohide parses from the fixture and reaches the backend; both menu-bar scripts go to
-        // System Events only and set nothing but the menu bar's auto-hide, and menu_bar_autohide is measured without
-        // an app from the global defaults' _HIHideMenuBar (absent = shown).
-        let all = try lines()
-        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["verb"] as? String == "set_menu_bar_autohide" }!
-        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
-        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("set_menu_bar_autohide") }
-        XCTAssertEqual(route, .scripting(app: "com.apple.systemevents", verb: "set_menu_bar_autohide"))
-        let fake = Fake()
-        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: line))["ok"] as? Bool, true)
-        XCTAssertEqual(fake.acted, [route])
-        XCTAssertEqual(CtrlScripts.source(verb: "set_menu_bar_autohide", bundleId: "com.apple.systemevents"),
-                       "tell application id \"com.apple.systemevents\"\ntell dock preferences to set autohide menu bar to true\nend tell")
-        XCTAssertEqual(CtrlScripts.source(verb: "set_menu_bar_shown", bundleId: "com.apple.systemevents"),
-                       "tell application id \"com.apple.systemevents\"\ntell dock preferences to set autohide menu bar to false\nend tell")
-        for id in ["com.apple.dock", "com.apple.Safari", "com.apple.finder", "com.apple.systemuiserver"] {
-            XCTAssertNil(CtrlScripts.source(verb: "set_menu_bar_autohide", bundleId: id), id)
-            XCTAssertNil(CtrlScripts.source(verb: "set_menu_bar_shown", bundleId: id), id)
-        }
-        // Strict wire spellings: nothing near them is a verb.
-        for verb in ["set_menu_bar_hidden", "set_menubar_autohide", "Set_Menu_Bar_Autohide", "set_menu_bar_autohide ",
-                     "set_menu_bar_toggle"] {
-            XCTAssertNil(CtrlScripts.source(verb: verb, bundleId: "com.apple.systemevents"), verb)
-            let bad = #"{"type":"ctrl.act","id":"x","actionId":"a","route":{"route":"scripting","app":"com.apple.systemevents","verb":"\#(verb)"},"content":{}}"#
-            if case .act? = CtrlRequest.parse(bad) {
-                XCTAssertFalse(CtrlRoute.scriptVerbs.contains(verb), verb)
-            }
-        }
-        guard case let .measure(_, check, app)? = CtrlRequest.parse(#"{"type":"ctrl.measure","id":"c44","check":{"check":"menu_bar_autohide"}}"#)
-        else { return XCTFail("menu_bar_autohide") }
-        XCTAssertEqual(check, "menu_bar_autohide")
-        XCTAssertEqual(app, "")
-        XCTAssertTrue(CtrlMenuBar.autohides(["_HIHideMenuBar": true]))
-        XCTAssertTrue(CtrlMenuBar.autohides(["_HIHideMenuBar": NSNumber(value: 1)]))
-        XCTAssertTrue(CtrlMenuBar.autohides(["_HIHideMenuBar": "1"]))
-        XCTAssertFalse(CtrlMenuBar.autohides(["_HIHideMenuBar": false]))
-        XCTAssertFalse(CtrlMenuBar.autohides(["_HIHideMenuBar": NSNumber(value: 0)]))
-        XCTAssertFalse(CtrlMenuBar.autohides(["AppleInterfaceStyle": "Dark"]), "absent: shown (the default)")
-        XCTAssertFalse(CtrlMenuBar.autohides(["autohide": true]), "the dock's key isn't the menu bar's")
-        XCTAssertFalse(CtrlMenuBar.autohides(nil))
-        XCTAssertTrue(CtrlRoute.applessChecks.contains(CtrlMenuBar.check))
-        XCTAssertTrue(CtrlRoute.menuBarVerbs.isSubset(of: CtrlRoute.systemEventsVerbs))
-        XCTAssertTrue(CtrlRoute.menuBarVerbs.isSubset(of: CtrlRoute.scriptVerbs))
-    }
-
-    func testTheScreensaverGoesOnlyToSystemEventsAndItsMeasureHasNoApp() throws {
-        // ADR 0178: start_screen_saver parses from the fixture and reaches the backend; its script goes to System
-        // Events only, starts the current screen saver, and screensaver_running is measured without an app.
-        let all = try lines()
-        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["verb"] as? String == "start_screen_saver" }!
-        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
-        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("start_screen_saver") }
-        XCTAssertEqual(route, .scripting(app: "com.apple.systemevents", verb: "start_screen_saver"))
-        let fake = Fake()
-        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: line))["ok"] as? Bool, true)
-        XCTAssertEqual(fake.acted, [route])
-        let src = CtrlScripts.source(verb: "start_screen_saver", bundleId: "com.apple.systemevents")!
-        XCTAssertEqual(src, "tell application id \"com.apple.systemevents\"\nstart current screen saver\nend tell")
-        for id in ["com.apple.ScreenSaver.Engine", "com.apple.Safari", "com.apple.finder"] {
-            XCTAssertNil(CtrlScripts.source(verb: "start_screen_saver", bundleId: id), id)
-        }
-        guard case let .measure(_, check, app)? = CtrlRequest.parse(#"{"type":"ctrl.measure","id":"c30","check":{"check":"screensaver_running"}}"#)
-        else { return XCTFail("screensaver_running") }
-        XCTAssertEqual(check, "screensaver_running")
-        XCTAssertEqual(app, "")
-        XCTAssertTrue(CtrlScreensaver.running(bundleIds: [CtrlScreensaver.engineBundle], names: []))
-        XCTAssertTrue(CtrlScreensaver.running(bundleIds: [], names: ["ScreenSaverEngine"]))
-        XCTAssertFalse(CtrlScreensaver.running(bundleIds: ["com.apple.finder"], names: ["Finder"]))
-    }
-
-    func testStoppingTheScreensaverGoesOnlyToSystemEventsAndNeverUnlocks() throws {
-        // ADR 0178 amendment 1: stop_screen_saver parses from the fixture and reaches the backend; its script is the
-        // one fixed `stop current screen saver` to System Events, and nothing in it types or touches a password.
-        let all = try lines()
-        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["verb"] as? String == "stop_screen_saver" }!
-        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
-        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("stop_screen_saver") }
-        XCTAssertEqual(route, .scripting(app: "com.apple.systemevents", verb: "stop_screen_saver"))
-        let fake = Fake()
-        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: line))["ok"] as? Bool, true)
-        XCTAssertEqual(fake.acted, [route])
-        let src = CtrlScripts.source(verb: "stop_screen_saver", bundleId: "com.apple.systemevents")!
-        XCTAssertEqual(src, "tell application id \"com.apple.systemevents\"\nstop current screen saver\nend tell")
-        for word in ["keystroke", "password", "security", "do shell script", "key code"] {
-            XCTAssertFalse(src.contains(word), word)
-        }
-        for id in ["com.apple.ScreenSaver.Engine", "com.apple.loginwindow", "com.apple.Safari", "com.apple.finder"] {
-            XCTAssertNil(CtrlScripts.source(verb: "stop_screen_saver", bundleId: id), id)
-        }
-        XCTAssertTrue(CtrlRoute.systemEventsVerbs.contains("stop_screen_saver"))
-    }
-
-    func testTheLastUsedRecordKeepsTheLatestActivationAndMidnightIsLocal() {
-        let u = CtrlLastUsed(sinceMs: 1_000)
-        XCTAssertNil(u.lastActive("com.a"))
-        u.record("com.a", atMs: 5_000)
-        u.record("com.a", atMs: 3_000)
-        XCTAssertEqual(u.lastActive("com.a"), 5_000, "an older notification never moves it back")
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "America/Los_Angeles")!
-        // 2026-10-18 09:13 PDT → 2026-10-18 00:00 PDT = 07:00 UTC.
-        XCTAssertEqual(CtrlLastUsed.dayStartMs(nowMs: 1_792_339_980_000, calendar: cal), 1_792_306_800_000)
-    }
-
-    func testAPinnedFlagRidesThePreviewOnlyWhenKnown() {
-        let a = CtrlPreviewItem(title: "mail", unsaved: false, pinned: true)
-        let b = CtrlPreviewItem(title: "doc", unsaved: nil)
-        XCTAssertEqual(a.pinned, true)
-        XCTAssertNil(b.pinned)
-    }
-
-    func testABadLineIsAnErrorNotACrash() {
-        let server = CtrlServer(backend: Fake())
-        XCTAssertEqual(json(server.handle(line: #"{"type":"ctrl.nope","id":"z"}"#)),
-                       ["type": "ctrl.error", "id": "z", "code": "helper.bad_request"] as NSDictionary)
-        XCTAssertEqual(json(server.handle(line: "not json"))["code"] as? String, "helper.bad_request")
+        XCTAssertEqual(obj(server.handle(line: #"{"type":"ctrl.snapshot","id":"old","app":"a"}"#))["code"] as? String, "helper.bad_request")
+        XCTAssertEqual(obj(server.handle(line: #"{"type":"ctrl.act","id":"old","route":{"route":"scripting"}}"#))["code"] as? String, "helper.bad_request")
+        XCTAssertEqual(obj(server.handle(line: "not json"))["code"] as? String, "helper.bad_request")
+        XCTAssertEqual(obj(server.handle(line: #"{"type":"ctrl.tree","id":"t","app":"com.apple.Notes"}"#))["code"] as? String, "app.not_running")
+        _ = server.handle(line: #"{"type":"ctrl.laya","id":"l","model":"/m.mlmodelc","state":"s","question":"q","options":["a","b"]}"#)
+        _ = server.handle(line: #"{"type":"ctrl.laya","id":"l","state":"s","question":"q","options":["a","b"]}"#)
+        XCTAssertEqual(fake.layaModels, ["/m.mlmodelc", nil])
     }
 }

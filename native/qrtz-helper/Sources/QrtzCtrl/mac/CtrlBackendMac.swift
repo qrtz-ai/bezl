@@ -1,79 +1,123 @@
 #if os(macOS)
-// The macOS ctrl backend (slice 5b, ADR 0110): what `CtrlServer` calls after its policy re-check. It observes
-// without prompting (no TCC dialog from a background run) and acts only through the background rungs of the ladder:
-// workspace opens with `activates = false`, Apple Events that can't activate, AX actions on a background app, key
-// events posted to one pid with a private event source. Nothing here activates an app, moves the cursor or posts
-// to the global event stream (ADR 0100); `restore` is the only activation and only puts the user's app back.
+// The macOS ctrl do backend (ADR 0214): what `CtrlServer` calls after its policy re-check. ctrl do works in the
+// foreground with a stop key (amending ADR 0100): it may open and activate an app, press, focus and type into the
+// elements of the accessibility tree it read, and send key combos to the app it brought forward. It never runs
+// AppleScript, never clicks at coordinates and never moves the cursor.
 //
-// Titles leave here only inside a snapshot reply (the host hashes them before anything is logged); AXValue and
-// secure fields are never read.
+// Reads go through `CtrlTreeReader` (CtrlTree.swift): a secure text field is skipped on its role alone, password and
+// payment fields on their labels, and a value is read only for plain text inputs and a web area. Titles leave here
+// only inside a `ctrl.tree.result` reply (the host hashes them before anything is logged); nothing is written to a
+// log or to disk. Before acting, the element is looked up by the handle this helper created and its fingerprint is
+// re-checked against the one the host saw (`act.stale`), and a secure field is refused again.
 import AppKit
 import ApplicationServices
+import CoreGraphics
 import CoreML
 import CoreServices
 import Foundation
 
-public final class MacCtrlBackend: CtrlBackend {
-    /// Opaque element ids ("e:<pid>:<n>") from the snapshots → their AX handles. A new top-level snapshot of an app
-    /// drops that app's old handles; the whole cache is bounded.
-    private var handles: [String: (pid: Int32, el: AXUIElement)] = [:]
-    private var nextHandle = 0
-    private let lock = NSLock()
-    static let maxHandles = 512
-    static let maxNodes = 40
-    let layaRuntime = CtrlLayaRuntime()
-    /// ADR 0130: activations seen since the helper started (in memory only).
-    let lastUsed = CtrlLastUsed(sinceMs: CtrlLastUsed.nowMs())
-    private var activationObserver: NSObjectProtocol?
-    /// ADR 0168: the general pasteboard's change count right after ctrl's last clear (nil: never cleared).
-    private var lastClipboardClear: Int?
-    /// ADR 0183: the Mac's last sleep time read just before a `sleep_system` act; the next `last_sleep` read waits for
-    /// it to move, then clears it.
-    private var pendingSleepBaseline: Int?
-    /// ADR 0194: this process's one keep-awake assertion (nil: none held).
-    private var awakeAssertion: IOPMAssertionID?
+/// The accessibility API as a `CtrlAXSource`.
+struct MacAXSource: CtrlAXSource {
+    typealias Element = AXUIElement
 
-    public init() {
-        // The app in front when the watch begins counts as used now; every later switch is recorded as it happens.
-        if let id = NSWorkspace.shared.frontmostApplication?.bundleIdentifier { lastUsed.record(id, atMs: lastUsed.sinceMs) }
-        let used = lastUsed
-        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: nil
-        ) { note in
-            if let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication, let id = app.bundleIdentifier {
-                used.record(id, atMs: CtrlLastUsed.nowMs())
-            }
+    static func raw(_ el: AXUIElement, _ name: String) -> CFTypeRef? {
+        var v: CFTypeRef?
+        return AXUIElementCopyAttributeValue(el, name as CFString, &v) == .success ? v : nil
+    }
+
+    static func string(_ el: AXUIElement, _ name: String) -> String? {
+        guard let v = raw(el, name), CFGetTypeID(v) == CFStringGetTypeID() else { return nil }
+        return (v as! CFString) as String
+    }
+
+    static func element(_ v: CFTypeRef?) -> AXUIElement? {
+        guard let v, CFGetTypeID(v) == AXUIElementGetTypeID() else { return nil }
+        return (v as! AXUIElement)
+    }
+
+    static func bool(_ el: AXUIElement, _ name: String) -> Bool? {
+        guard let v = raw(el, name), CFGetTypeID(v) == CFBooleanGetTypeID() else { return nil }
+        return CFBooleanGetValue((v as! CFBoolean))
+    }
+
+    static func int(_ el: AXUIElement, _ name: String) -> Int? {
+        guard let v = raw(el, name), CFGetTypeID(v) == CFNumberGetTypeID() else { return nil }
+        return ((v as! CFNumber) as NSNumber).intValue
+    }
+
+    func role(_ e: AXUIElement) -> String? { Self.string(e, kAXRoleAttribute) }
+    func subrole(_ e: AXUIElement) -> String? { Self.string(e, kAXSubroleAttribute) }
+    func title(_ e: AXUIElement) -> String {
+        for a in [kAXTitleAttribute, kAXDescriptionAttribute, "AXLabelValue"] {
+            if let s = Self.string(e, a), !s.isEmpty { return s }
         }
+        return ""
     }
+    func placeholder(_ e: AXUIElement) -> String { Self.string(e, "AXPlaceholderValue") ?? "" }
+    func help(_ e: AXUIElement) -> String { Self.string(e, "AXHelp") ?? "" }
+    func value(_ e: AXUIElement) -> String? {
+        if role(e) == "AXWebArea" {
+            guard let v = Self.raw(e, "AXURL"), CFGetTypeID(v) == CFURLGetTypeID() else { return nil }
+            return ((v as! CFURL) as URL).absoluteString
+        }
+        return Self.string(e, kAXValueAttribute)
+    }
+    func actions(_ e: AXUIElement) -> [String] {
+        var names: CFArray?
+        guard AXUIElementCopyActionNames(e, &names) == .success, let names else { return [] }
+        return ((names as NSArray) as? [String]) ?? []
+    }
+    func enabled(_ e: AXUIElement) -> Bool { Self.bool(e, kAXEnabledAttribute) ?? true }
+    func size(_ e: AXUIElement) -> [Double]? {
+        guard let v = Self.raw(e, kAXSizeAttribute), CFGetTypeID(v) == AXValueGetTypeID() else { return nil }
+        var s = CGSize.zero
+        guard AXValueGetValue((v as! AXValue), .cgSize, &s) else { return nil }
+        return [Double(s.width), Double(s.height)]
+    }
+    func children(_ e: AXUIElement) -> [AXUIElement] {
+        guard let v = Self.raw(e, kAXChildrenAttribute), CFGetTypeID(v) == CFArrayGetTypeID() else { return [] }
+        return (((v as! CFArray) as NSArray) as [AnyObject]).compactMap { Self.element($0 as CFTypeRef) }
+    }
+    func childCount(_ e: AXUIElement) -> Int {
+        var n: CFIndex = 0
+        return AXUIElementGetAttributeValueCount(e, kAXChildrenAttribute as CFString, &n) == .success ? n : 0
+    }
+    func same(_ a: AXUIElement, _ b: AXUIElement) -> Bool { CFEqual(a, b) }
+}
 
-    deinit {
-        if let o = activationObserver { NSWorkspace.shared.notificationCenter.removeObserver(o) }
-    }
+/// The one stop watcher (the event tap's C callback can't capture).
+let ctrlStopWatch = CtrlStopWatch()
 
-    /// ADR 0130: running regular apps with their last activation; read-only, no AX prompt (window count only when
-    /// already trusted), nothing activated.
-    public func runningApps() throws -> (apps: [CtrlRunningApp], sinceMs: UInt64?, dayStartMs: UInt64) {
-        let front = frontmostPid()
-        let trusted = CtrlProbe.axTrusted
-        let apps = NSWorkspace.shared.runningApplications
-            .filter { $0.activationPolicy == .regular && !$0.isTerminated }
-            .compactMap { a -> CtrlRunningApp? in
-                guard let id = a.bundleIdentifier else { return nil }
-                let unsaved: Bool? = trusted && CtrlActions.windows(a.processIdentifier).isEmpty ? false : nil
-                return CtrlRunningApp(bundleId: id, name: a.localizedName ?? id, lastActiveMs: lastUsed.lastActive(id),
-                                      frontmost: a.processIdentifier == front, unsaved: unsaved, hidden: a.isHidden)
-            }
-        return (apps, lastUsed.sinceMs, CtrlLastUsed.dayStartMs(nowMs: CtrlLastUsed.nowMs()))
+private func ctrlTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
+    let marker = event.getIntegerValueField(.eventSourceUserData)
+    switch type {
+    case .keyDown:
+        ctrlStopWatch.record(.keyDown(code: UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode)), marker: marker))
+    case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+        ctrlStopWatch.record(.mouse(marker: marker))
+    case .scrollWheel:
+        ctrlStopWatch.record(.scroll(marker: marker))
+    case .tapDisabledByTimeout, .tapDisabledByUserInput:
+        ctrlStopWatch.record(.tapDisabled)
+    default: break
     }
+    return Unmanaged.passUnretained(event)
+}
+
+public final class MacCtrlBackend: CtrlBackend {
+    let ax = MacAXSource()
+    let handles = CtrlHandles<AXUIElement>()
+    let layaRuntime = CtrlLayaRuntime()
+    private var tap: CFMachPort?
+    private var tapSource: CFRunLoopSource?
+
+    public init() {}
 
     // MARK: apps
 
     func runningApp(_ bundleId: String) -> NSRunningApplication? {
         NSWorkspace.shared.runningApplications.first { $0.bundleIdentifier == bundleId && !$0.isTerminated }
     }
-
-    public func frontmostPid() -> Int32? { NSWorkspace.shared.frontmostApplication?.processIdentifier }
-    public func pid(of app: String) -> Int32? { runningApp(app)?.processIdentifier }
 
     static let probeURL = URL(string: "https://example.com")!
 
@@ -120,480 +164,222 @@ public final class MacCtrlBackend: CtrlBackend {
 
     // MARK: probe
 
-    /// Apple Events consent for one running app, checked without asking (`askUserIfNeeded: false`).
-    static func automation(_ bundleId: String) -> String? {
-        var addr = AEAddressDesc()
-        let bytes = Array(bundleId.utf8)
-        let made = bytes.withUnsafeBytes { AECreateDesc(DescType(typeApplicationBundleID), $0.baseAddress, $0.count, &addr) }
-        guard made == 0 else { return nil }
-        defer { AEDisposeDesc(&addr) }
-        switch AEDeterminePermissionToAutomateTarget(&addr, AEEventClass(typeWildCard), AEEventID(typeWildCard), false) {
-        case 0: return "granted"
-        case -1743: return "denied" // errAEEventNotPermitted
-        case -1744: return "not_asked" // errAEEventWouldRequireUserConsent
-        default: return nil // procNotFound and friends: not running, nothing to say
-        }
+
+    // MARK: tree
+
+    func appElement(_ bundleId: String) throws -> (pid: Int32, el: AXUIElement) {
+        guard AXIsProcessTrusted() else { throw CtrlFailure("ax.not_trusted") }
+        guard let app = runningApp(bundleId) else { throw CtrlFailure("app.not_running") }
+        let el = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(el, 1.0)
+        return (app.processIdentifier, el)
     }
 
-    /// Apps whose scripting verbs ctrl uses: browsers and TextEdit, only while running (no launch to ask).
-    static let scriptable: Set<String> = ["com.apple.TextEdit"]
-
-    public func probe() throws -> (env: [String: Any], ui: [String: Any]) {
-        let running = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular && !$0.isTerminated }
-        let ids = running.compactMap(\.bundleIdentifier)
-        let browsers = Self.browserIds()
-        var automation: [String: String] = [:]
-        for id in ids where browsers.contains(id) || Self.scriptable.contains(id) {
-            if let c = Self.automation(id) { automation[id] = c }
-        }
-        // ADR 0137: System Events is background-only (not in `ids`); checked without asking, only while it runs.
-        if let c = Self.automation(CtrlRoute.systemEvents) { automation[CtrlRoute.systemEvents] = c }
-        // ADR 0158: read-only (never asks); the prompt comes on the first focus run.
-        if let c = Self.automation(CtrlFocus.target) { automation[CtrlFocus.target] = c }
-        var env: [String: Any] = [
-            "secure_input": CtrlProbe.secureInput,
-            // Files: never probed by touching a protected folder (that would prompt); slice 7 decides how.
-            "files": "not_asked",
-            "accessibility": CtrlProbe.axTrusted ? "granted" : "not_asked",
-            "post_event": CtrlProbe.postEventAllowed ? "granted" : "not_asked",
-            "automation": automation,
-            "quarantined": [Any](),
-            "running_apps": ids.sorted(),
-        ]
-        env["frontmost_app"] = NSWorkspace.shared.frontmostApplication?.bundleIdentifier as Any? ?? NSNull()
-        env["user_idle_ms"] = CtrlProbe.hidIdleMs().map { NSNumber(value: $0) } as Any? ?? NSNull()
-        let data = try JSONEncoder().encode(CtrlProbe.snapshot())
-        let ui = (try JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
-        return (env, ui)
-    }
-
-    // MARK: AX snapshot
-
-    static func string(_ el: AXUIElement, _ name: String) -> String? {
-        guard let v = CtrlActions.raw(el, name), CFGetTypeID(v) == CFStringGetTypeID() else { return nil }
-        return (v as! CFString) as String
-    }
-
-    static func children(_ el: AXUIElement) -> [AXUIElement] {
-        guard let v = CtrlActions.raw(el, kAXChildrenAttribute), CFGetTypeID(v) == CFArrayGetTypeID() else { return [] }
-        return (((v as! CFArray) as NSArray) as [AnyObject]).compactMap { CtrlActions.element($0 as CFTypeRef) }
-    }
-
-    static func actions(_ el: AXUIElement) -> [String] {
-        var names: CFArray?
-        guard AXUIElementCopyActionNames(el, &names) == .success, let names else { return [] }
-        return ((names as NSArray) as? [String]) ?? []
-    }
-
-    static func childCount(_ el: AXUIElement) -> Int {
-        var n: CFIndex = 0
-        return AXUIElementGetAttributeValueCount(el, kAXChildrenAttribute as CFString, &n) == .success ? n : 0
-    }
-
-    func remember(_ el: AXUIElement, pid: Int32) -> String {
-        lock.lock(); defer { lock.unlock() }
-        if handles.count >= Self.maxHandles { handles.removeAll() }
-        nextHandle += 1
-        let id = "e:\(pid):\(nextHandle)"
-        handles[id] = (pid, el)
-        return id
-    }
-
-    func handle(_ id: String) -> (pid: Int32, el: AXUIElement)? {
-        lock.lock(); defer { lock.unlock() }
-        return handles[id]
-    }
-
-    func forget(pid: Int32) {
-        lock.lock(); defer { lock.unlock() }
-        handles = handles.filter { $0.value.pid != pid }
-    }
-
-    public func snapshot(app: String, scope: String?) throws -> [CtrlAXNode] {
-        guard let pid = pid(of: app) else { throw CtrlFailure("app.not_running") }
-        guard CtrlProbe.axTrusted else { throw CtrlFailure("ax.not_trusted") }
+    public func tree(app: String, scope: String?, depth: Int) throws -> (root: CtrlTreeNode, focused: String?) {
+        let (_, appEl) = try appElement(app)
+        let reader = CtrlTreeReader(source: ax, handles: handles)
+        let focused = MacAXSource.element(MacAXSource.raw(appEl, kAXFocusedUIElementAttribute))
         let root: AXUIElement
         if let scope {
-            guard let h = handle(scope), h.pid == pid else { throw CtrlFailure("ax.stale") }
+            guard let h = handles.get(scope), h.app == app else { throw CtrlFailure("act.stale") }
             root = h.el
         } else {
-            forget(pid: pid)
-            let appEl = CtrlActions.appElement(pid)
-            guard let w = CtrlActions.element(CtrlActions.raw(appEl, kAXFocusedWindowAttribute))
-                ?? CtrlActions.element(CtrlActions.raw(appEl, kAXMainWindowAttribute))
-                ?? CtrlActions.windows(pid).first
-            else { return [] }
+            handles.forget(app: app)
+            guard let w = MacAXSource.element(MacAXSource.raw(appEl, kAXFocusedWindowAttribute))
+                ?? MacAXSource.element(MacAXSource.raw(appEl, kAXMainWindowAttribute)) else { throw CtrlFailure("app.no_window") }
             root = w
         }
-        return Self.children(root).prefix(Self.maxNodes).map { el in
-            let role = CtrlActions.role(el)
-            let subrole = Self.string(el, kAXSubroleAttribute)
-            let secure = subrole == "AXSecureTextField" || role == "AXSecureTextField"
-            let title = secure ? "" : (Self.string(el, kAXTitleAttribute) ?? Self.string(el, kAXDescriptionAttribute) ?? "")
-            return CtrlAXNode(id: remember(el, pid: pid), role: role, subrole: subrole, title: title,
-                              actions: Self.actions(el), children: Self.childCount(el))
+        guard let r = reader.read(root, app: app, depth: depth, focused: focused) else { throw CtrlFailure("act.refused") }
+        return r
+    }
+
+    /// Menu glyph modifiers (`AXMenuItemCmdModifiers`): 1 shift, 2 option, 4 control, 8 = no command key.
+    static func combo(char: String?, virtualKey: Int?, modifiers: Int) -> String? {
+        let named: [Int: String] = [36: "return", 48: "tab", 49: "space", 51: "delete", 53: "escape",
+                                    123: "left", 124: "right", 125: "down", 126: "up"]
+        var key: String
+        if let c = char?.lowercased(), !c.isEmpty, c.unicodeScalars.allSatisfy({ $0.value >= 0x20 && $0.value < 0x7f }) {
+            key = c == "," ? "comma" : c == "." ? "period" : c == "=" ? "equal" : c == "-" ? "minus" : c == "`" ? "grave" : c == " " ? "space" : c
+        } else if let k = virtualKey, let n = named[k] {
+            key = n
+        } else {
+            return nil
         }
+        var parts: [String] = []
+        if modifiers & 8 == 0 { parts.append("cmd") }
+        if modifiers & 4 != 0 { parts.append("ctrl") }
+        if modifiers & 2 != 0 { parts.append("option") }
+        if modifiers & 1 != 0 { parts.append("shift") }
+        if key.isEmpty { return nil }
+        parts.append(key)
+        return parts.joined(separator: "+")
+    }
+
+    public func menuShortcuts(app: String) throws -> [CtrlMenuShortcut] {
+        let (_, appEl) = try appElement(app)
+        handles.forget(app: app, prefix: "m")
+        guard let bar = MacAXSource.element(MacAXSource.raw(appEl, kAXMenuBarAttribute)) else { return [] }
+        var out: [CtrlMenuShortcut] = []
+        func walk(_ el: AXUIElement, _ path: [String], _ level: Int) {
+            guard level < 4, out.count < 400 else { return }
+            for c in ax.children(el) {
+                let title = ax.title(c)
+                let role = ax.role(c) ?? ""
+                if role == "AXMenuItem", !title.isEmpty,
+                   let combo = Self.combo(char: MacAXSource.string(c, kAXMenuItemCmdCharAttribute),
+                                          virtualKey: MacAXSource.int(c, kAXMenuItemCmdVirtualKeyAttribute),
+                                          modifiers: MacAXSource.int(c, kAXMenuItemCmdModifiersAttribute) ?? 0) {
+                    let sig = ctrlSig([role, "", title, ax.actions(c).sorted().joined(separator: ",")])
+                    let id = handles.remember(c, app: app, sig: sig, prefix: "m")
+                    out.append(CtrlMenuShortcut(id: id, path: path + [title], combo: combo, enabled: ax.enabled(c)))
+                }
+                walk(c, title.isEmpty ? path : path + [title], level + 1)
+            }
+        }
+        walk(bar, [], 0)
+        return out
     }
 
     // MARK: act
 
-    static func code(_ f: CtrlActions.Failure) -> CtrlFailure {
-        switch f {
-        case .notTrusted: return CtrlFailure("ax.not_trusted")
-        case .ax: return CtrlFailure("ax.failed")
-        case .noElement: return CtrlFailure("ax.stale")
-        case .eventSource: return CtrlFailure("keys.no_event_source")
-        case .refused: return CtrlFailure("policy.refused")
+    /// Look the handle up and re-check it: still there, same fingerprint as the host saw, not a secure field.
+    func live(_ handle: String, sig: String?) throws -> AXUIElement {
+        guard let h = handles.get(handle) else { throw CtrlFailure("act.stale") }
+        let reader = CtrlTreeReader(source: ax, handles: handles)
+        guard let now = reader.sig(h.el), now == h.sig, sig == nil || sig == now else { throw CtrlFailure("act.stale") }
+        let role = ax.role(h.el) ?? ""
+        if CtrlTreeRules.secure(role: role, subrole: ax.subrole(h.el))
+            || CtrlTreeRules.sensitive(role: role, labels: [ax.title(h.el), ax.placeholder(h.el), ax.help(h.el)]) {
+            throw CtrlFailure("act.refused")
+        }
+        return h.el
+    }
+
+    static func perform(_ el: AXUIElement, _ action: String) throws {
+        guard AXUIElementPerformAction(el, action as CFString) == .success else { throw CtrlFailure("act.failed") }
+    }
+
+    /// One key event pair to `pid`, stamped so the stop watcher ignores it.
+    static func post(combo: String, to pid: Int32) throws {
+        let parts = combo.split(separator: "+").map(String.init)
+        guard let key = parts.last, let code = CtrlKeys.code(key) else { throw CtrlFailure("act.refused") }
+        var flags: CGEventFlags = []
+        for m in parts.dropLast() {
+            switch m {
+            case "cmd": flags.insert(.maskCommand)
+            case "ctrl": flags.insert(.maskControl)
+            case "option": flags.insert(.maskAlternate)
+            case "shift": flags.insert(.maskShift)
+            default: throw CtrlFailure("act.refused")
+            }
+        }
+        guard let src = CGEventSource(stateID: .privateState) else { throw CtrlFailure("act.failed") }
+        src.userData = CtrlStopWatch.ctrlMarker
+        for down in [true, false] {
+            guard let e = CGEvent(keyboardEventSource: src, virtualKey: CGKeyCode(code), keyDown: down) else { throw CtrlFailure("act.failed") }
+            e.flags = flags
+            e.setIntegerValueField(.eventSourceUserData, value: CtrlStopWatch.ctrlMarker)
+            e.postToPid(pid)
         }
     }
 
-    /// Wait for a workspace completion handler (they run on an arbitrary queue; this is ctrl's own queue).
-    static func wait(_ seconds: Double, _ start: (@escaping (Error?) -> Void) -> Void) throws {
+    static func wait(_ seconds: Double, _ start: (@escaping @Sendable (Error?) -> Void) -> Void) throws {
         let done = DispatchSemaphore(value: 0)
-        var err: Error?
-        start { e in err = e; done.signal() }
-        guard done.wait(timeout: .now() + seconds) == .success else { throw CtrlFailure("workspace.timeout") }
-        if err != nil { throw CtrlFailure("workspace.failed") }
+        let box = ErrorBox()
+        start { e in box.error = e; done.signal() }
+        guard done.wait(timeout: .now() + seconds) == .success else { throw CtrlFailure("act.timeout") }
+        if box.error != nil { throw CtrlFailure("act.failed") }
     }
 
-    /// NSAppleScript belongs on the main thread (the helper's main run loop is running).
-    static func runScript(_ source: String) throws -> NSAppleEventDescriptor {
-        var result: NSAppleEventDescriptor?
-        var failed = false
-        let run = {
-            var info: NSDictionary?
-            let r: NSAppleEventDescriptor? = NSAppleScript(source: source)?.executeAndReturnError(&info)
-            // Any error info (including -1743, Apple Events not permitted) is a failure, whatever came back.
-            failed = info != nil || r == nil
-            result = failed ? nil : r
-        }
-        if Thread.isMainThread { run() } else { DispatchQueue.main.sync(execute: run) }
-        guard let r = result, !failed else { throw CtrlFailure("script.failed") }
-        return r
+    final class ErrorBox: @unchecked Sendable { var error: Error? }
+
+    func appURL(_ bundleId: String) throws -> URL {
+        guard let u = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) else { throw CtrlFailure("app.unknown") }
+        return u
     }
 
-    /// ADR 0158: like `runScript`, but the error number decides the code ("set up the shortcut" / "allow automation").
-    static func runFocus(_ source: String) throws {
-        var code: Int?
-        var failed = false
-        let run = {
-            var info: NSDictionary?
-            let r: NSAppleEventDescriptor? = NSAppleScript(source: source)?.executeAndReturnError(&info)
-            failed = info != nil || r == nil
-            code = (info?["NSAppleScriptErrorNumber"] as? NSNumber)?.intValue
-        }
-        if Thread.isMainThread { run() } else { DispatchQueue.main.sync(execute: run) }
-        if failed { throw CtrlFocus.failure(errorNumber: code) }
-    }
-
-    func script(_ verb: String, app: String) throws -> NSAppleEventDescriptor {
-        // `tell application id` launches an app that isn't running: never.
-        guard runningApp(app) != nil else { throw CtrlFailure("app.not_running") }
-        guard let src = CtrlScripts.source(verb: verb, bundleId: app) else { throw CtrlFailure("policy.refused") }
-        return try Self.runScript(src)
-    }
-
-    /// ADR 0135: the only two sound scripts (templates, never task text).
-    static let muteSource = "set volume with output muted"
-    /// ADR 0139: the reverse.
-    static let unmuteSource = "set volume without output muted"
-    /// ADR 0140: the level is checked 0–100 by the parse and is the only thing put in; never task text.
-    static func setVolumeSource(_ level: Int) -> String {
-        "set volume output volume \(min(max(level, 0), 100))\nset volume without output muted"
-    }
-    /// ADR 0140: -1 (read as nil) when muted or when the output has no volume, so an inaudible level never verifies.
-    static let outputVolumeSource = "set s to (get volume settings)\nif output muted of s is true then\nreturn -1\nend if\nset v to output volume of s\nif v is missing value then\nreturn -1\nend if\nreturn v"
-    static let outputMutedSource = "if output muted of (get volume settings) then\nreturn 1\nelse\nreturn 0\nend if"
-
-    public func act(_ route: CtrlRoute, content: [String: String]) throws {
-        switch route {
-        case .files: throw CtrlFailure("files.not_yet")
-        case .takesOver: throw CtrlFailure("policy.refused")
-        case let .openURL(app, ref):
-            // Only into an app that is already running: a cold launch would come to the front (run 1's finding).
-            guard let running = runningApp(app), let appURL = running.bundleURL else { throw CtrlFailure("app.not_running") }
-            guard let s = content[ref], let url = URL(string: s), ["http", "https"].contains(url.scheme?.lowercased() ?? "")
-            else { throw CtrlFailure("content.missing") }
-            try Self.wait(5) { done in CtrlActions.open([url], withApp: appURL) { _, e in done(e) } }
-        case let .launchHidden(app):
-            // Already running: it is open, and opening it again with `hides` would hide the user's window (ADR 0128).
-            if runningApp(app) != nil { return }
-            guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app) else { throw CtrlFailure("app.not_installed") }
-            let c = CtrlActions.backgroundConfiguration()
-            c.hides = true
-            try Self.wait(10) { done in NSWorkspace.shared.openApplication(at: appURL, configuration: c) { _, e in done(e) } }
-        case let .quitApps(apps):
-            // `terminate()` asks each app to quit the way the Dock's Quit does: no activation, no key event. An app
-            // that already quit is fine. The frontmost app was refused before this point (CtrlServer).
-            let front = frontmostPid()
-            for id in apps {
-                guard let a = runningApp(id), a.processIdentifier != front else { continue }
-                _ = a.terminate()
+    public func act(_ action: CtrlAction, sig: String?) throws {
+        switch action {
+        case let .press(h):
+            try Self.perform(try live(h, sig: sig), "AXPress")
+        case let .increment(h):
+            try Self.perform(try live(h, sig: sig), "AXIncrement")
+        case let .decrement(h):
+            try Self.perform(try live(h, sig: sig), "AXDecrement")
+        case let .showMenu(h):
+            try Self.perform(try live(h, sig: sig), "AXShowMenu")
+        case let .focus(h):
+            let el = try live(h, sig: sig)
+            guard AXUIElementSetAttributeValue(el, kAXFocusedAttribute as CFString, kCFBooleanTrue) == .success else { throw CtrlFailure("act.failed") }
+        case let .setValue(h, text, submit):
+            let el = try live(h, sig: sig)
+            guard CtrlTreeRules.textRoles.contains(ax.role(el) ?? "") else { throw CtrlFailure("act.refused") }
+            _ = AXUIElementSetAttributeValue(el, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+            guard AXUIElementSetAttributeValue(el, kAXValueAttribute as CFString, text as CFString) == .success else { throw CtrlFailure("act.failed") }
+            if submit {
+                var pid: pid_t = 0
+                AXUIElementGetPid(el, &pid)
+                try Self.post(combo: "return", to: pid)
             }
-        case .muteOutput:
-            // ADR 0135: Standard Additions, run in the helper's own process: no Apple Event to another app, no
-            // volume HUD, no key event. The host verifies by reading the mute back.
-            _ = try Self.runScript(Self.muteSource)
-        case .unmuteOutput:
-            // ADR 0139: the same, reversed.
-            _ = try Self.runScript(Self.unmuteSource)
-        case let .setVolume(level):
-            // ADR 0140: the same process and rules; the host verifies by reading the level back.
-            _ = try Self.runScript(Self.setVolumeSource(level))
-        case .clearClipboard:
-            // ADR 0168: the general pasteboard, emptied in this process: no app told anything, nothing shown, no key
-            // event, and nothing read from it first. The count it returns is what the verify compares against.
-            let count = NSPasteboard.general.clearContents()
-            lock.lock(); lastClipboardClear = count; lock.unlock()
-        case .sleepDisplay:
-            // ADR 0180: the displays sleep (IOKit, this process); the Mac stays awake, nothing locked, no key event.
-            try CtrlDisplayMac.sleepNow()
-        case .sleepSystem:
-            // ADR 0183: the whole Mac sleeps (IOKit, this process); nothing quit or closed, no key event. The time it
-            // last slept, read first, is what the next read waits to see move.
-            let before = CtrlSystemSleepMac.lastSleep()
-            try CtrlSystemSleepMac.sleepNow()
-            lock.lock(); pendingSleepBaseline = before; lock.unlock()
-        case let .keepAwake(minutes, display):
-            // ADR 0194: one power assertion of this process with a kernel timeout (IOKit); the new one is made before
-            // the last one is let go, so the Mac never dips into sleep between them. Nothing on screen changes.
-            let id = try CtrlKeepAwakeMac.hold(minutes: minutes, display: display)
-            lock.lock(); let old = awakeAssertion; awakeAssertion = id; lock.unlock()
-            if let old { CtrlKeepAwakeMac.release(old) }
-        case .allowSleep:
-            // ADR 0194: only this process's own assertion; nothing is put to sleep.
-            lock.lock(); let old = awakeAssertion; awakeAssertion = nil; lock.unlock()
-            if let old { CtrlKeepAwakeMac.release(old) }
-        case let .setAudioOutput(kind):
-            // ADR 0198: the one device of that kind becomes the sound output (Core Audio, this process); picked here
-            // from the device list, nothing played, the input device and the volume untouched.
-            try CtrlAudioOutputMac.switchTo(kind)
-        case let .setWifi(on):
-            // ADR 0191: the Wi-Fi radio's power (CoreWLAN, this process); no network picked, nothing read about one.
-            try CtrlWifiMac.setPower(on)
-        case let .ejectVolumes(single):
-            // ADR 0176: the volumes from the mount table (never a path from the host), each unmounted and ejected in
-            // this process without force: one in use stays mounted (a file open, a copy, a backup) and the act says
-            // so; nothing is brought forward, no key event.
-            guard let volumes = ejectableVolumes() else { throw CtrlFailure("volumes.unreadable") }
-            var busy = false
-            for url in try CtrlVolumes.plan(volumes, single: single) {
-                do { try NSWorkspace.shared.unmountAndEjectDevice(at: url) } catch { busy = true }
-            }
-            if busy { throw CtrlFailure("volume.busy") }
-        case let .hideApps(apps):
-            // ADR 0134: `hide()` is the Dock's Hide: the app's windows go, nothing is activated or raised, no key event.
-            // The frontmost app was dropped before this point (CtrlServer); re-checked here for the race.
-            let front = frontmostPid()
-            for id in apps {
-                guard let a = runningApp(id), a.processIdentifier != front, !a.isHidden else { continue }
-                _ = a.hide()
-            }
-        case let .unhideApps(apps):
-            // ADR 0152: `unhide()` brings the app's windows back where they were without activating it (unlike
-            // `NSApplication.unhide(_:)` in-process): the frontmost app keeps the menu bar and the keyboard, no key
-            // event. Minimized windows stay in the Dock. An app that isn't running or isn't hidden is skipped.
-            for id in apps {
-                guard let a = runningApp(id), a.isHidden else { continue }
-                _ = a.unhide()
-            }
-        case let .setFocus(mode):
-            // ADR 0158: one `run` event to Shortcuts Events (faceless: no activation, no window, no key event), the
-            // name from the allowlist, the input the enum's raw value. The first run asks for Automation (the
-            // system's own prompt, the first time a task needs it). A missing shortcut or a denial stops here.
-            guard let src = CtrlFocus.source(shortcut: CtrlFocus.shortcutName, mode: mode) else { throw CtrlFailure("policy.refused") }
-            try Self.runFocus(src)
-        case let .openFolder(folder):
-            // ADR 0166: the folder from the system's own location (never a path from the host), opened in the Finder
-            // only while it runs (a cold start comes forward) through LaunchServices with `activates = false`: a new
-            // Finder window behind the app the user is in, no key event, nothing read from the folder. A folder a
-            // window shows already just gets that window (the Finder doesn't open it twice).
-            guard let finder = runningApp(CtrlFolders.finder), let appURL = finder.bundleURL else { throw CtrlFailure("app.not_running") }
-            guard let url = CtrlFolders.url(folder) else { throw CtrlFailure("folder.unknown") }
-            try Self.wait(5) { done in CtrlActions.open([url], withApp: appURL) { _, e in done(e) } }
-        case let .scripting(app, verb) where CtrlRoute.tabVerbs.contains(verb):
-            try closeTabs(app: app, verb: verb)
-        case let .scripting(app, verb):
-            _ = try script(verb, app: app)
-        case let .axPerform(app, role, element, action):
-            guard let pid = pid(of: app) else { throw CtrlFailure("app.not_running") }
-            guard let h = handle(element), h.pid == pid, CtrlActions.role(h.el) == role else { throw CtrlFailure("ax.stale") }
-            do { try CtrlActions.perform(action, on: h.el) } catch let f as CtrlActions.Failure { throw Self.code(f) }
-        case let .axSet(app, role, element, attribute):
-            guard let pid = pid(of: app) else { throw CtrlFailure("app.not_running") }
-            guard let h = handle(element), h.pid == pid, CtrlActions.role(h.el) == role else { throw CtrlFailure("ax.stale") }
-            guard let value = content["value"] else { throw CtrlFailure("content.missing") }
-            do { try CtrlActions.set(attribute, value as CFString, on: h.el) } catch let f as CtrlActions.Failure { throw Self.code(f) }
-        case let .pidKey(app, combo):
-            guard let pid = pid(of: app) else { throw CtrlFailure("app.not_running") }
-            // Without the grant postToPid drops the event silently; say so instead of "succeeding".
-            guard CtrlProbe.postEventAllowed else { throw CtrlFailure("keys.not_granted") }
-            guard let k = CtrlKeyCombo.parse(combo) else { throw CtrlFailure("keys.unknown") }
-            var flags: CGEventFlags = []
-            if k.command { flags.insert(.maskCommand) }
-            if k.shift { flags.insert(.maskShift) }
-            if k.option { flags.insert(.maskAlternate) }
-            if k.control { flags.insert(.maskControl) }
-            do { try CtrlActions.postKey(CGKeyCode(k.keyCode), flags: flags, combo: combo, to: pid) } catch let f as CtrlActions.Failure { throw Self.code(f) }
+        case let .scroll(h, down):
+            let el = try live(h, sig: sig)
+            if (try? Self.perform(el, down ? "AXScrollDownByPage" : "AXScrollUpByPage")) != nil { return }
+            guard let bar = MacAXSource.element(MacAXSource.raw(el, kAXVerticalScrollBarAttribute)) else { throw CtrlFailure("act.refused") }
+            try Self.perform(bar, down ? "AXIncrement" : "AXDecrement")
+        case let .keyCombo(app, combo):
+            guard let a = runningApp(app) else { throw CtrlFailure("app.not_running") }
+            // Only to the app ctrl brought forward: a combo never lands in another app.
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == a.processIdentifier else { throw CtrlFailure("act.refused") }
+            try Self.post(combo: combo, to: a.processIdentifier)
+        case let .openURL(app, url):
+            guard let u = URL(string: url) else { throw CtrlFailure("act.refused") }
+            let at = try appURL(app)
+            let cfg = NSWorkspace.OpenConfiguration()
+            cfg.activates = true
+            cfg.promptsUserIfNeeded = false
+            try Self.wait(10) { done in NSWorkspace.shared.open([u], withApplicationAt: at, configuration: cfg) { _, e in done(e) } }
+        case let .openApp(app):
+            let at = try appURL(app)
+            let cfg = NSWorkspace.OpenConfiguration()
+            cfg.activates = true
+            cfg.promptsUserIfNeeded = false
+            try Self.wait(10) { done in NSWorkspace.shared.openApplication(at: at, configuration: cfg) { _, e in done(e) } }
         }
     }
 
-    // MARK: verify
+    // MARK: stop key
 
-    public func measure(check: String, app: String) -> Int? {
-        switch check {
-        case "app_running": return runningApp(app) == nil ? 0 : 1
-        // ADR 0135: read back by Standard Additions in this process (no app asked, no prompt); nil without an
-        // output that can mute.
-        case "output_muted": return (try? Self.runScript(Self.outputMutedSource)).map { Int($0.int32Value) }
-        // ADR 0140: the level in this process; nil when muted or without a volume.
-        case "output_volume": return (try? Self.runScript(Self.outputVolumeSource)).map { Int($0.int32Value) }.flatMap { $0 < 0 ? nil : $0 }
-        // ADR 0137: the global appearance, read in this process (no app asked, no prompt): "Dark" or absent.
-        // ADR 0158: not read (INFocusStatusCenter would be another prompt); the run's verify is the shortcut's reply.
-        case "focus_on": return nil
-        // ADR 0168: the change count only (never an item or a type), against the one the last clear returned.
-        case CtrlClipboard.check:
-            lock.lock(); let last = lastClipboardClear; lock.unlock()
-            return CtrlClipboard.cleared(changeCount: NSPasteboard.general.changeCount, lastClear: last)
-        // ADR 0176: the count only, from the mount table's resource values.
-        case CtrlVolumes.check: return ejectableVolumes()?.count
-        // ADR 0180: the main display's sleep state, read in this process (no app asked, no prompt).
-        case CtrlDisplay.check: return CtrlDisplayMac.asleep() ? 1 : 0
-        // ADR 0191: the Wi-Fi radio's power only, read in this process (no Location, no network name).
-        case CtrlWifi.check: return CtrlWifi.value(powerOn: CtrlWifiMac.powerOn())
-        // ADR 0198: the current sound output's kind, from Core Audio's transport type (never its name).
-        case CtrlAudioOutput.check: return CtrlAudioOutput.value(transport: CtrlAudioOutputMac.currentTransport())
-        // ADR 0194: this process's own keep-awake assertion, from IOKit's record of it (none: 0).
-        case CtrlKeepAwake.check:
-            lock.lock(); let id = awakeAssertion; lock.unlock()
-            return CtrlKeepAwake.value(properties: id.flatMap(CtrlKeepAwakeMac.properties))
-        // ADR 0183: when the Mac last slept; right after the act, waits (bounded) for the sleep to happen and end.
-        case CtrlSystemSleep.check:
-            lock.lock(); let baseline = pendingSleepBaseline; pendingSleepBaseline = nil; lock.unlock()
-            return CtrlSystemSleep.awaitSleep(baseline: baseline, read: CtrlSystemSleepMac.lastSleep,
-                                              wait: { Thread.sleep(forTimeInterval: $0) })
-        case "dark_mode": return CtrlAppearance.isDark(UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)) ? 1 : 0
-        // ADR 0173: the Dock's auto-hide, read from its own defaults in this process (no app asked, no prompt).
-        case CtrlDock.check: return CtrlDock.autohides(UserDefaults.standard.persistentDomain(forName: CtrlDock.domain)) ? 1 : 0
-        // ADR 0195: the Dock's screen edge (`orientation`), same defaults domain (no app asked, no prompt).
-        case CtrlDock.edgeCheck: return CtrlDock.edgeCode(UserDefaults.standard.persistentDomain(forName: CtrlDock.domain))
-        // ADR 0200: the Dock's icon size (`tilesize`), same defaults domain (no app asked, no prompt; absent: nil).
-        case CtrlDock.sizeCheck: return CtrlDock.tileSize(UserDefaults.standard.persistentDomain(forName: CtrlDock.domain))
-        // ADR 0202: the Dock's magnification on / off, same defaults domain (no app asked, no prompt; absent: off).
-        case CtrlDock.magnificationCheck: return CtrlDock.magnifies(UserDefaults.standard.persistentDomain(forName: CtrlDock.domain)) ? 1 : 0
-        // ADR 0197: the menu bar's auto-hide, read from the global defaults in this process (no app asked, no prompt).
-        case CtrlMenuBar.check: return CtrlMenuBar.autohides(UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)) ? 1 : 0
-        // ADR 0178: ScreenSaverEngine in this process's NSWorkspace list (no app asked, no prompt, nothing activated).
-        case CtrlScreensaver.check:
-            let apps = NSWorkspace.shared.runningApplications
-            return CtrlScreensaver.running(bundleIds: apps.compactMap(\.bundleIdentifier),
-                                           names: apps.compactMap(\.localizedName)) ? 1 : 0
-        case "tab_count":
-            return (try? script("count_tabs", app: app)).map { Int($0.int32Value) }
-        case "saved_tabs", "unpinned_tabs":
-            return (try? tabs(app: app)).flatMap { CtrlTabs.count($0, check: check) }
-        case "window_count":
-            guard let pid = pid(of: app) else { return nil }
-            if let n = try? script("count_windows", app: app) { return Int(n.int32Value) }
-            return CtrlProbe.axTrusted ? CtrlActions.windows(pid).count : nil
-        default:
-            // ADR 0166: `folder_open.<folder>`, from the Finder's AX windows, only when AX is trusted already (never
-            // prompts); nil otherwise. ax_scope is verified by a re-snapshot and obs.diff on the host.
-            if let f = CtrlFolders.measured(check) { return folderShown(f) }
-            return nil
+    /// Listen-only, on the main run loop (the helper's `main` runs it). nil when the system refuses the tap.
+    func startTap() -> Bool {
+        if let tap { CGEvent.tapEnable(tap: tap, enable: true); return true }
+        let types: [CGEventType] = [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel]
+        let mask = types.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << CGEventMask($1.rawValue)) }
+        guard let t = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .listenOnly,
+                                        eventsOfInterest: mask, callback: ctrlTapCallback, userInfo: nil) else { return false }
+        let src = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, t, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), src, .commonModes)
+        CGEvent.tapEnable(tap: t, enable: true)
+        tap = t
+        tapSource = src
+        return true
+    }
+
+    func stopTap() {
+        if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
+    }
+
+    public func observe(arm: Bool?) -> CtrlObserved {
+        switch arm {
+        case true?: ctrlStopWatch.arm(started: startTap())
+        case false?: ctrlStopWatch.disarm(); stopTap()
+        case nil: break
         }
+        let f = ctrlStopWatch.flags
+        return CtrlObserved(frontmost: NSWorkspace.shared.frontmostApplication?.bundleIdentifier, focused: nil,
+                            stopped: f.stopped, userInput: f.userInput, armed: f.armed)
     }
 
-    /// ADR 0176: the mounted volumes an eject takes (`CtrlVolumes.ejectable`), from their resource values only;
-    /// hidden system volumes are skipped. nil when the system gives no list.
-    func ejectableVolumes() -> [URL]? {
-        let keys: [URLResourceKey] = [.volumeIsEjectableKey, .volumeIsRemovableKey, .volumeIsLocalKey, .volumeIsRootFileSystemKey]
-        guard let urls = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes])
-        else { return nil }
-        return urls.filter { url in
-            guard let r = try? url.resourceValues(forKeys: Set(keys)) else { return false }
-            return CtrlVolumes.ejectable(.init(ejectable: r.volumeIsEjectable ?? false, removable: r.volumeIsRemovable ?? false,
-                                               local: r.volumeIsLocal ?? false, root: r.volumeIsRootFileSystem ?? true))
-        }
-    }
-
-    /// ADR 0166: whether a Finder window shows `folder`, read from window documents and titles (compared here, never
-    /// sent anywhere). No AX trust, no Finder, or no location: nil.
-    func folderShown(_ folder: CtrlFolder) -> Int? {
-        guard CtrlProbe.axTrusted, let pid = pid(of: CtrlFolders.finder), let url = CtrlFolders.url(folder) else { return nil }
-        let windows = CtrlActions.windows(pid)
-        return CtrlFolders.shown(windows: windows.count, documents: windows.compactMap { Self.string($0, kAXDocumentAttribute) },
-                                 titles: windows.compactMap { Self.string($0, kAXTitleAttribute) }, path: url.path)
-    }
-
-    public func restore(frontmostPid: Int32?) -> Bool {
-        guard let pid = frontmostPid else { return false }
-        return CtrlActions.restoreFrontmost(pid)
-    }
-
-    // MARK: tabs (run 12, ADR 0119)
-
-    /// The confirm gate's preview. Tabs only: windows stay on the host's count fallback.
-    public func preview(app: String, what: String) throws -> [CtrlPreviewItem] {
-        guard what == "tabs" else { throw CtrlFailure("preview.unsupported") }
-        return CtrlTabs.preview(try tabs(app: app))
-    }
-
-    /// Every tab of a running Safari / Chromium browser with what ctrl can tell about it. One Apple Event script
-    /// (titles, URLs, the read-only page script) plus an AX read of the tab bars: no activation, no tab selected,
-    /// nothing focused. Without the AX grant every `pinned` is nil (so nothing closes unasked).
-    func tabs(app: String) throws -> [CtrlTab] {
-        guard let flavor = CtrlTabFlavor.of(app) else { throw CtrlFailure("tabs.unsupported") }
-        guard let pid = pid(of: app) else { throw CtrlFailure("app.not_running") }
-        guard let src = CtrlTabs.enumerateSource(bundleId: app, flavor: flavor) else { throw CtrlFailure("policy.refused") }
-        guard let out = try Self.runScript(src).stringValue, let rows = CtrlTabs.parse(out) else { throw CtrlFailure("tabs.unreadable") }
-        let strips = CtrlProbe.axTrusted ? CtrlActions.windows(pid).flatMap(Self.tabStrips) : []
-        let english = Locale.preferredLanguages.first?.lowercased().hasPrefix("en") ?? false
-        return CtrlTabs.join(rows, strips: strips, flavor: flavor, english: english)
-    }
-
-    /// The tab bars under one window (AXTabGroup → its AXRadioButton tabs, one AXGroup level flattened for
-    /// Chromium's tab groups), breadth-first and bounded. Reads only roles, titles and role descriptions.
-    static func tabStrips(_ window: AXUIElement) -> [[CtrlAXTab]] {
-        var strips: [[CtrlAXTab]] = []
-        var queue: [(AXUIElement, Int)] = [(window, 0)]
-        var seen = 0
-        while !queue.isEmpty, seen < 600 {
-            let (el, depth) = queue.removeFirst()
-            seen += 1
-            if CtrlActions.role(el) == "AXTabGroup" {
-                var tabs: [CtrlAXTab] = []
-                for c in children(el) {
-                    let r = CtrlActions.role(c)
-                    let members = r == "AXRadioButton" ? [c] : r == "AXGroup" ? children(c).filter { CtrlActions.role($0) == "AXRadioButton" } : []
-                    for t in members {
-                        let name = [string(t, kAXTitleAttribute), string(t, kAXDescriptionAttribute)].compactMap { $0 }.first { !$0.isEmpty } ?? ""
-                        tabs.append(CtrlAXTab(name: name, roleDescription: string(t, kAXRoleDescriptionAttribute)))
-                    }
-                }
-                if !tabs.isEmpty { strips.append(tabs); continue }
-            }
-            // Never into page content: the tab bar is browser chrome.
-            if depth < 8 { queue += children(el).filter { CtrlActions.role($0) != "AXWebArea" }.map { ($0, depth + 1) } }
-        }
-        return strips
-    }
-
-    /// `close_saved_tabs` / `close_unpinned_tabs`: read the tabs again right now, close only the ones the verb
-    /// covers (each re-checked by URL inside the script), never a tab ctrl can't tell about. Nothing to close is a
-    /// success; the host's check then verifies.
-    func closeTabs(app: String, verb: String) throws {
-        let targets = CtrlTabs.targets(try tabs(app: app), verb: verb)
-        guard !targets.isEmpty else { return }
-        guard let src = CtrlTabs.closeSource(bundleId: app, targets: targets) else { throw CtrlFailure("tabs.unreadable") }
-        _ = try Self.runScript(src)
-    }
-
-    // MARK: Laya
-
-    public func laya(state: String, question: String, options: [String]) throws -> [Double] {
-        try layaRuntime.choice(model: nil, state: state, question: question, options: options)
-    }
+    // MARK: laya
 
     public func laya(model: String?, state: String, question: String, options: [String]) throws -> [Double] {
         try layaRuntime.choice(model: model, state: state, question: question, options: options)
@@ -603,6 +389,7 @@ public final class MacCtrlBackend: CtrlBackend {
         try layaRuntime.warmer.start(model)
     }
 }
+
 
 /// The Core ML Laya runtime (ADR 0106 / 0109 / 0116). It runs only a model the user consented to download: the host
 /// sends the installed model's path with each `ctrl.laya` after consent and never otherwise (`QRTZ_CTRL_LAYA_MODEL`

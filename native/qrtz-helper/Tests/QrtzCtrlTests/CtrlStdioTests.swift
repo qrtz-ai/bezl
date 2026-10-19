@@ -1,6 +1,6 @@
-// Slice 5b (ADR 0110): ctrl on the helper's stdio. Which lines are ctrl's, the replies through `CtrlStdio`'s own
-// queue (fixture shapes, in order), the Linux backend answering at once, and the plain-data parts of the macOS
-// backend (scripts that can't launch or activate, key combos for per-process events).
+// ctrl on the helper's stdio (ADR 0110, protocol 2 per ADR 0214). Which lines are ctrl's, the replies through
+// `CtrlStdio`'s own queue in order, and the Linux backend answering at once (with no stop watcher, so the host
+// never acts).
 import Foundation
 import XCTest
 @testable import QrtzCtrl
@@ -16,89 +16,63 @@ private func obj(_ s: String) -> [String: Any] { try! JSONSerialization.jsonObje
 
 private final class Echoing: CtrlBackend {
     func catalog() throws -> (apps: [CtrlCatalogApp], defaultBrowser: String?) { ([], "com.apple.Safari") }
-    func probe() throws -> (env: [String: Any], ui: [String: Any]) { throw CtrlFailure("app.not_running") }
-    func snapshot(app: String, scope: String?) throws -> [CtrlAXNode] { [] }
-    func act(_ route: CtrlRoute, content: [String: String]) throws {}
-    func measure(check: String, app: String) -> Int? { 3 }
-    func restore(frontmostPid: Int32?) -> Bool { true }
-    func laya(state: String, question: String, options: [String]) throws -> [Double] { throw CtrlFailure("laya.no_model") }
-    func frontmostPid() -> Int32? { 100 }
-    func pid(of app: String) -> Int32? { 200 }
+    func tree(app: String, scope: String?, depth: Int) throws -> (root: CtrlTreeNode, focused: String?) {
+        (CtrlTreeNode(id: "e:1", role: "AXWindow"), nil)
+    }
+    func menuShortcuts(app: String) throws -> [CtrlMenuShortcut] { [] }
+    func act(_ action: CtrlAction, sig: String?) throws {}
+    func observe(arm: Bool?) -> CtrlObserved { CtrlObserved(armed: arm ?? false) }
+    func laya(model: String?, state: String, question: String, options: [String]) throws -> [Double] { throw CtrlFailure("laya.no_model") }
 }
 
 final class CtrlStdioTests: XCTestCase {
     func testOnlyCtrlTypedLinesAreRoutedToCtrl() {
         XCTAssertTrue(CtrlStdio.isCtrlLine(#"{"type":"ctrl.catalog","id":"c0"}"#))
         XCTAssertFalse(CtrlStdio.isCtrlLine(#"{"type":"hello"}"#))
-        XCTAssertFalse(CtrlStdio.isCtrlLine(#"{"type":"dictation.configure","dictionary":["\"ctrl.act"]}"#))
+        XCTAssertFalse(CtrlStdio.isCtrlLine(#"{"type":"dictation.configure","dictionary":["\"ctrl.ax.act"]}"#))
         XCTAssertFalse(CtrlStdio.isCtrlLine("{nope \"ctrl."))
     }
 
     func testQrtzCtrlSaysHelloAndKnowsTheHostsGoodbye() {
         let hello = obj(CtrlStdio.helloLine(version: "0.1.0"))
         XCTAssertEqual(hello["type"] as? String, "hello")
-        XCTAssertEqual(hello["helperVersion"] as? String, "0.1.0")
         XCTAssertEqual(hello["features"] as? [String], ["module:ctrl"])
         XCTAssertFalse(CtrlStdio.isCtrlLine(CtrlStdio.helloLine(version: "0.1.0")))
         XCTAssertTrue(CtrlStdio.isShutdownLine(#"{"type":"shutdown"}"#))
-        XCTAssertFalse(CtrlStdio.isShutdownLine(#"{"type":"ctrl.act","id":"c1","content":{"text":"shutdown"}}"#))
-        XCTAssertFalse(CtrlStdio.isShutdownLine(#"{"type":"dictation.configure","dictionary":["\"shutdown\""]}"#))
-        XCTAssertFalse(CtrlStdio.isShutdownLine("{nope \"shutdown\""))
+        XCTAssertFalse(CtrlStdio.isShutdownLine(#"{"type":"ctrl.ax.act","id":"c1","action":{"text":"shutdown"}}"#))
     }
 
     func testRepliesComeBackInOrderOnCtrlsQueue() {
         let rec = Recorder()
         let io = CtrlStdio(backend: Echoing(), write: { rec.add($0) })
         io.submit(#"{"type":"ctrl.catalog","id":"c0"}"#)
-        io.submit(#"{"type":"ctrl.measure","id":"c1","check":{"check":"tab_count","app":"com.apple.Safari"}}"#)
+        io.submit(#"{"type":"ctrl.tree","id":"c1","app":"com.apple.Safari","scope":null,"depth":6}"#)
         io.submit(#"{"type":"ctrl.laya","id":"c2","state":"s","question":"q","options":["a"]}"#)
-        io.submit(#"{"type":"ctrl.act","id":"c3","actionId":"a0","route":{"route":"click"},"content":{}}"#)
+        io.submit(#"{"type":"ctrl.ax.act","id":"c3","runId":"r","action":{"action":"key_combo","app":"x","combo":"escape"}}"#)
+        io.submit(#"{"type":"ctrl.observe","id":"c4","runId":"r","arm":true}"#)
         io.drain()
         let r = rec.lines.map(obj)
-        XCTAssertEqual(r.map { $0["id"] as? String }, ["c0", "c1", "c2", "c3"])
+        XCTAssertEqual(r.map { $0["id"] as? String }, ["c0", "c1", "c2", "c3", "c4"])
         XCTAssertEqual(r[0]["defaultBrowser"] as? String, "com.apple.Safari")
-        XCTAssertEqual(r[1]["value"] as? Int, 3)
+        XCTAssertEqual((r[1]["root"] as? [String: Any])?["role"] as? String, "AXWindow")
         XCTAssertEqual(r[2]["code"] as? String, "laya.no_model")
-        XCTAssertEqual(r[3]["code"] as? String, "policy.refused", "a takeover route is refused before the backend")
+        XCTAssertEqual(r[3]["err"] as? String, "act.refused", "the stop key is never sent")
+        XCTAssertEqual(r[4]["armed"] as? Bool, true)
     }
 
-    func testOffMacEveryRequestAnswersAtOnce() {
+    func testOffMacEveryRequestAnswersAtOnceAndNothingIsArmed() {
         let rec = Recorder()
         let io = CtrlStdio(backend: UnsupportedCtrlBackend(), write: { rec.add($0) })
-        for (i, t) in ["ctrl.catalog", "ctrl.probe"].enumerated() { io.submit(#"{"type":"\#(t)","id":"c\#(i)"}"#) }
-        io.submit(#"{"type":"ctrl.snapshot","id":"c2","app":"com.apple.TextEdit","scope":null}"#)
+        io.submit(#"{"type":"ctrl.catalog","id":"c0"}"#)
+        io.submit(#"{"type":"ctrl.tree","id":"c1","app":"com.apple.Notes","depth":6}"#)
+        io.submit(#"{"type":"ctrl.menu.shortcuts","id":"c2","app":"com.apple.Notes"}"#)
+        io.submit(#"{"type":"ctrl.observe","id":"c3","runId":"r","arm":true}"#)
         io.drain()
-        XCTAssertEqual(rec.lines.map { obj($0)["code"] as? String }, Array(repeating: "platform.unsupported", count: 3))
+        let r = rec.lines.map(obj)
+        XCTAssertEqual(r.prefix(3).map { $0["code"] as? String }, Array(repeating: "platform.unsupported", count: 3))
+        XCTAssertEqual(r[3]["armed"] as? Bool, false)
         #if !os(macOS)
         XCTAssertTrue(makeCtrlBackend() is UnsupportedCtrlBackend)
         #endif
-    }
-
-    func testScriptsNeverLaunchActivateOrTakeArbitraryIds() {
-        for v in CtrlRoute.scriptVerbs {
-            // ADR 0137 / 0173: the appearance and Dock verbs exist only for System Events.
-            let id = CtrlRoute.systemEventsVerbs.contains(v) ? CtrlRoute.systemEvents : "com.apple.Safari"
-            let s = CtrlScripts.source(verb: v, bundleId: id)!
-            XCTAssertTrue(s.hasPrefix("tell application id \"\(id)\"\n"))
-            for word in ["activate", "launch", "open", "reopen", "saving no", "do shell script", "keystroke"] {
-                XCTAssertFalse(s.contains(word), "\(v): \(word)")
-            }
-        }
-        XCTAssertNil(CtrlScripts.source(verb: "quit", bundleId: "com.apple.Safari"))
-        // Slice 7b (ADR 0114 / 0119): the selective closes have no fixed script; CtrlTabs builds them from a read.
-        XCTAssertNil(CtrlScripts.source(verb: "close_saved_tabs", bundleId: "com.apple.Safari"))
-        XCTAssertNil(CtrlScripts.source(verb: "close_unpinned_tabs", bundleId: "com.google.Chrome"))
-        XCTAssertNil(CtrlScripts.source(verb: "close_tab", bundleId: "com.apple.Safari\" to activate --"))
-        XCTAssertNil(CtrlScripts.source(verb: "close_tab", bundleId: ""))
-        XCTAssertTrue(CtrlScripts.safeBundleId("org.mozilla.firefox"))
-    }
-
-    func testKeyCombosMapToVirtualKeysAndModifiers() {
-        XCTAssertEqual(CtrlKeyCombo.parse("cmd+w"), CtrlKeyCombo(keyCode: 0x0D, command: true, shift: false, option: false, control: false))
-        XCTAssertEqual(CtrlKeyCombo.parse("cmd+option+w")?.option, true)
-        XCTAssertEqual(CtrlKeyCombo.parse("⌘⇧T"), CtrlKeyCombo(keyCode: 0x11, command: true, shift: true, option: false, control: false))
-        XCTAssertEqual(CtrlKeyCombo.parse("escape")?.keyCode, 0x35)
-        XCTAssertNil(CtrlKeyCombo.parse("cmd+f13"))
-        XCTAssertNil(CtrlKeyCombo.parse(""))
     }
 }

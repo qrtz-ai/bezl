@@ -1,7 +1,7 @@
-// ctrl on the helper's stdio (slice 5b, ADR 0110). The helper's reader thread hands every line whose `type` starts
+// ctrl on the helper's stdio (slice 5b, ADR 0110; protocol 2, ADR 0214). The helper's reader thread hands every line whose `type` starts
 // with `ctrl.` to `CtrlStdio` instead of the echo/nano consumer, so ctrl requests never queue behind a dictation or
 // a recording stop and echo/nano never see ctrl lines. Requests run one at a time on ctrl's own serial queue (an AX
-// call or an Apple Event can take a second); each reply is one line through the helper's stdout writer.
+// call can take a second); each reply is one line through the helper's stdout writer.
 //
 // Foundation-only. Off macOS the backend is `UnsupportedCtrlBackend`: every request answers `platform.unsupported`
 // at once, so a Linux build of the helper never leaves the host waiting.
@@ -37,7 +37,7 @@ public final class CtrlStdio: @unchecked Sendable {
 
     /// qrtz-ctrl's first line (run 31). The host's supervisor counts a helper as running from its first line, and
     /// ctrl's wire and warmer only talk to a running one, so a qrtz-ctrl that waited for a request to say anything
-    /// would leave every run at `planned` and the app's helper status short of running. The host skips the line
+    /// would leave ctrl do unavailable and the app's helper status short of running. The host skips the line
     /// (it isn't a ctrl reply); `module:ctrl` says which app this is, like the mock helper's role hello.
     public static func helloLine(version: String) -> String {
         let o: [String: Any] = [
@@ -62,16 +62,13 @@ public final class UnsupportedCtrlBackend: CtrlBackend {
     public init() {}
     static let no = CtrlFailure("platform.unsupported")
     public func catalog() throws -> (apps: [CtrlCatalogApp], defaultBrowser: String?) { throw Self.no }
-    public func preview(app: String, what: String) throws -> [CtrlPreviewItem] { throw Self.no }
-    public func probe() throws -> (env: [String: Any], ui: [String: Any]) { throw Self.no }
-    public func snapshot(app: String, scope: String?) throws -> [CtrlAXNode] { throw Self.no }
-    public func act(_ route: CtrlRoute, content: [String: String]) throws { throw Self.no }
-    public func measure(check: String, app: String) -> Int? { nil }
-    public func restore(frontmostPid: Int32?) -> Bool { false }
-    public func laya(state: String, question: String, options: [String]) throws -> [Double] { throw Self.no }
+    public func tree(app: String, scope: String?, depth: Int) throws -> (root: CtrlTreeNode, focused: String?) { throw Self.no }
+    public func menuShortcuts(app: String) throws -> [CtrlMenuShortcut] { throw Self.no }
+    public func act(_ action: CtrlAction, sig: String?) throws { throw Self.no }
+    /// No watcher here, so the host never acts.
+    public func observe(arm: Bool?) -> CtrlObserved { CtrlObserved(armed: false) }
+    public func laya(model: String?, state: String, question: String, options: [String]) throws -> [Double] { throw Self.no }
     public func warmLaya(model: String) throws -> CtrlLayaWarmer.State { throw Self.no }
-    public func frontmostPid() -> Int32? { nil }
-    public func pid(of app: String) -> Int32? { nil }
 }
 
 /// The backend this platform has.

@@ -1,205 +1,151 @@
-// The ctrl helper protocol, helper side (slice 5, ADR 0108). Mirrors crates/qrtz-ctrl/src/helper.rs (the source of
-// truth); both sides test against Fixtures/ctrl/protocol.jsonl. One request line in, one reply line out, all under
-// the `ctrl.` prefix, so it rides next to the echo/nano messages without touching them.
+// The ctrl helper protocol, helper side, version 2 (ctrl do, ADR 0214). Mirrors crates/qrtz-ctrl/src/helper.rs (the
+// source of truth); both sides test against Fixtures/ctrl/protocol.jsonl. One request line in, one reply line out,
+// all under the `ctrl.` prefix:
 //
-// Foundation-only: parsing, the policy re-check and the dispatch build and test on Linux. The macOS backend (the
-// LaunchServices catalog, CtrlProbe, AX snapshots, CtrlActions) implements `CtrlBackend` and is wired into the
-// helper's stdio in a later slice. The server re-checks every route against CtrlPolicy before the backend sees it
-// (ADR 0100 §6): a route the host should never have sent is refused here too.
+// - `ctrl.catalog`: installed and running apps, the default browser.
+// - `ctrl.tree {app, scope?, depth}`: the front window of `app` (or one element's children). Secure text fields and
+//   password / payment fields are left out here: their values are never read and they never reach the host.
+// - `ctrl.menu.shortcuts {app}`: the menu-bar items that have a key equivalent.
+// - `ctrl.ax.act {runId, action, sig?}`: one action of the fixed set (`CtrlAction`) on a handle this helper created.
+// - `ctrl.observe {runId, arm?}`: the stop-key watcher (Esc stops, any other physical input stops too).
+// - `ctrl.laya`, `ctrl.laya.warm`: the consented Laya model (ADR 0106, 0133).
+//
+// Foundation-only: parsing, the policy re-check and the dispatch build and test on Linux. The server re-checks every
+// action before the backend sees it (defense in depth next to the host's own check): no AppleScript, no coordinate
+// click, no free typing, no combo outside the allowed shape, no non-http(s) address.
 import Foundation
 
-/// A ladder route as the host sends it (`{"route": "scripting", "app": …, "verb": …}`).
-public enum CtrlRoute: Equatable, Sendable {
-    case files(op: String)
-    case openURL(app: String, urlRef: String)
-    case launchHidden(app: String)
-    /// ADR 0130: terminate each running app (no activation). Only behind the host's approved confirm gate.
-    case quitApps(apps: [String])
-    /// ADR 0134: hide each running app (no activation, nothing raised). Reversible, so no gate; never the frontmost.
-    case hideApps(apps: [String])
-    /// ADR 0152: unhide each running app (no activation: the app the user is in stays frontmost). Reversible, no gate.
-    case unhideApps(apps: [String])
-    /// ADR 0135: mute the sound output (in the helper's own process; no app, nothing shown). Reversible, no gate.
-    case muteOutput
-    /// ADR 0139: the reverse (same process, same rules).
-    case unmuteOutput
-    /// ADR 0140: set the output volume to `level` percent (0–100) and unmute (same process, same rules).
-    case setVolume(level: Int)
-    /// ADR 0158: run the one "qrtz Set Focus" shortcut through Shortcuts Events with `mode` as its input. A mode off
-    /// the enum is a bad request (never reaches the backend). Reversible, no gate.
-    case setFocus(mode: CtrlFocusMode)
-    /// ADR 0166: show one of the user's folders (a closed set, resolved here from the system's own location) in the
-    /// running Finder with `activates = false`. No path ever comes over the wire. Reversible, no gate.
-    case openFolder(folder: CtrlFolder)
-    /// ADR 0168: empty the general pasteboard in the helper's own process (no app, nothing shown, nothing read from
-    /// the clipboard). Not undoable; no gate (the task asked for exactly this); the host defers it while the user is
-    /// typing or clicking.
-    case clearClipboard
-    /// ADR 0176: unmount and eject the volumes the helper lists as ejectable (never forced; nothing about them comes
-    /// over the wire). `single`: refuse unless exactly one would go. No app, no gate.
-    case ejectVolumes(single: Bool)
-    /// ADR 0180: put the displays to sleep now, in the helper's own process (IOKit's display wrangler, what `pmset
-    /// displaysleepnow` does, without spawning it). The Mac stays awake, nothing is locked. No app, no content, no gate.
-    case sleepDisplay
-    /// ADR 0183: put the whole Mac to sleep now, in the helper's own process (IOKit's `IOPMSleepSystem`, the request
-    /// `pmset sleepnow` makes, without spawning it). Nothing quit or closed, no key event. No app, no content, no gate
-    /// (the host defers it while the user is typing or clicking).
-    case sleepSystem
-    /// ADR 0191: turn the Wi-Fi radio on or off, in the helper's own process (CoreWLAN `setPower` on the default
-    /// interface, the menu bar switch). No network is joined, left or scanned and nothing about one comes over the
-    /// wire: only `on`. No app, no content, no gate (the host defers an off while the user is typing or clicking).
-    case setWifi(on: Bool)
-    /// ADR 0194: keep the Mac (with `display`, its screen too) from idle-sleeping for `minutes` (1–720): one IOKit power
-    /// assertion of this process with a kernel timeout that releases it; a newer one replaces it. Nothing on screen
-    /// changes, no app, no key event. No content, no gate, never deferred.
-    case keepAwake(minutes: Int, display: Bool)
-    /// ADR 0194: release this process's own keep-awake assertion (never another's); nothing is put to sleep.
-    case allowSleep
-    /// ADR 0198: make the one connected output device of `kind` the sound output, in the helper's own process (Core
-    /// Audio's default output device). The helper lists and picks; no device name or id comes over the wire. Nothing
-    /// played, no app, no content, no gate, never deferred.
-    case setAudioOutput(kind: CtrlAudioKind)
-    case scripting(app: String, verb: String)
-    case axPerform(app: String, role: String, element: String, action: String)
-    case axSet(app: String, role: String, element: String, attribute: String)
-    case pidKey(app: String, combo: String)
-    /// Click, global key or activate: named so a planner can say it, always refused.
-    case takesOver(String)
+public let ctrlProtocolVersion = 2
 
-    /// The only Apple Event verbs (Rust `ScriptVerb`): none of them can activate, launch, open or reopen.
-    /// These have a fixed script (`CtrlScripts.source`).
-    public static let scriptVerbs: Set<String> = ["count_tabs", "close_all_tabs", "close_tab", "count_windows", "close_window",
-                                                  "set_dark_mode", "set_light_mode", "set_dock_autohide", "set_dock_shown",
-                                                  "set_dock_edge_left", "set_dock_edge_right", "set_dock_edge_bottom",
-                                                  "shrink_dock", "grow_dock",
-                                                  "set_dock_magnification_on", "set_dock_magnification_off",
-                                                  "set_menu_bar_autohide", "set_menu_bar_shown",
-                                                  "start_screen_saver", "stop_screen_saver"]
-    /// ADR 0137: the appearance verbs, only ever to System Events (a faceless agent, never brought forward).
-    public static let appearanceVerbs: Set<String> = ["set_dark_mode", "set_light_mode"]
-    /// ADR 0173 / 0195 / 0200 / 0202: the Dock's auto-hide, screen-edge, size-step and magnification verbs, likewise
-    /// only ever to System Events.
-    public static let dockVerbs: Set<String> = ["set_dock_autohide", "set_dock_shown",
-                                                "set_dock_edge_left", "set_dock_edge_right", "set_dock_edge_bottom",
-                                                "shrink_dock", "grow_dock",
-                                                "set_dock_magnification_on", "set_dock_magnification_off"]
-    /// ADR 0197: the menu bar's auto-hide verbs (System Events' dock preferences), likewise only ever to System Events.
-    public static let menuBarVerbs: Set<String> = ["set_menu_bar_autohide", "set_menu_bar_shown"]
-    /// ADR 0178: start the current screen saver (amendment 1: or stop it), likewise only ever to System Events.
-    public static let screensaverVerbs: Set<String> = ["start_screen_saver", "stop_screen_saver"]
-    /// The verbs that go to System Events, and the only ones that may (ADR 0137, ADR 0173, ADR 0178, ADR 0197).
-    public static let systemEventsVerbs: Set<String> = appearanceVerbs.union(dockVerbs).union(menuBarVerbs).union(screensaverVerbs)
-    public static let systemEvents = "com.apple.systemevents"
-    /// ADR 0135 / 0137 / 0140: the measures that read the Mac itself, not an app.
-    /// ADR 0158: `focus_on` too (the Mac backend answers nil: reading a Focus needs its own prompt).
-    /// ADR 0168: `clipboard_cleared` too (the pasteboard's change count, never its contents).
-    /// ADR 0173: `dock_autohide` too (the Dock's own defaults, read in this process).
-    /// ADR 0195: `dock_edge` too (the Dock's `orientation`, read from the same defaults domain).
-    /// ADR 0200: `dock_size` too (the Dock's `tilesize`, read from the same defaults domain).
-    /// ADR 0202: `dock_magnification` too (the Dock's `magnification`, read from the same defaults domain).
-    /// ADR 0197: `menu_bar_autohide` too (the global defaults' `_HIHideMenuBar`, read in this process).
-    /// ADR 0178: `screensaver_running` too (ScreenSaverEngine in the process list, read in this process).
-    /// ADR 0180: `display_asleep` too (the main display's sleep state, read in this process).
-    /// ADR 0183: `last_sleep` too (when the Mac last slept, `kern.sleeptime`, read in this process).
-    /// ADR 0191: `wifi_on` too (the Wi-Fi radio's power, read in this process; never a network's name).
-    /// ADR 0194: `kept_awake` too (this process's own keep-awake assertion, read from IOKit; no other app's).
-    /// ADR 0198: `audio_output` too (the current sound output's kind, read from Core Audio; never a device's name).
-    public static let applessChecks: Set<String> = ["output_muted", "dark_mode", "output_volume", "focus_on", CtrlClipboard.check,
-                                                    CtrlDock.check, CtrlDock.edgeCheck, CtrlDock.sizeCheck, CtrlDock.magnificationCheck, CtrlMenuBar.check, CtrlVolumes.check, CtrlScreensaver.check, CtrlDisplay.check,
-                                                    CtrlSystemSleep.check, CtrlWifi.check, CtrlKeepAwake.check,
-                                                    CtrlAudioOutput.check]
-    /// Slice 7b's selective closes (ADR 0114 / 0119) have no fixed script: the backend reads the tabs first
-    /// (`CtrlTabs`) and closes only the ones it can tell about; a backend that can't tell refuses, and the host asks.
-    public static let tabVerbs: Set<String> = ["close_saved_tabs", "close_unpinned_tabs"]
+/// One action of ctrl do's fixed set (Rust `act::Action`), with its text resolved for this call only.
+public enum CtrlAction: Equatable, Sendable {
+    case press(handle: String)
+    case setValue(handle: String, text: String, submit: Bool)
+    case increment(handle: String)
+    case decrement(handle: String)
+    case showMenu(handle: String)
+    case focus(handle: String)
+    case scroll(handle: String, down: Bool)
+    case keyCombo(app: String, combo: String)
+    case openURL(app: String, url: String)
+    case openApp(app: String)
 
-    static func parse(_ o: [String: Any]) -> CtrlRoute? {
+    public var kind: String {
+        switch self {
+        case .press: return "press"
+        case .setValue: return "set_value"
+        case .increment: return "increment"
+        case .decrement: return "decrement"
+        case .showMenu: return "show_menu"
+        case .focus: return "focus"
+        case .scroll: return "scroll"
+        case .keyCombo: return "key_combo"
+        case .openURL: return "open_url"
+        case .openApp: return "open_app"
+        }
+    }
+
+    public var handle: String? {
+        switch self {
+        case let .press(h), let .setValue(h, _, _), let .increment(h), let .decrement(h), let .showMenu(h), let .focus(h),
+             let .scroll(h, _): return h
+        case .keyCombo, .openURL, .openApp: return nil
+        }
+    }
+
+    static func parse(_ o: [String: Any]) -> CtrlAction? {
         let s = { (k: String) in o[k] as? String }
-        switch s("route") {
-        case "files": return s("op").map { .files(op: $0) }
-        case "workspace":
-            switch s("op") {
-            case "open_url": if let a = s("app"), let u = s("url") { return .openURL(app: a, urlRef: u) }
-            case "launch_hidden": if let a = s("app") { return .launchHidden(app: a) }
-            case "quit_apps": if let a = o["apps"] as? [String] { return .quitApps(apps: a) }
-            case "hide_apps": if let a = o["apps"] as? [String] { return .hideApps(apps: a) }
-            case "unhide_apps": if let a = o["apps"] as? [String] { return .unhideApps(apps: a) }
-            case "mute_output": return .muteOutput
-            case "unmute_output": return .unmuteOutput
-            case "clear_clipboard": return .clearClipboard
-            // ADR 0180: the bare op; nothing else is read from the request.
-            case CtrlDisplay.op: return .sleepDisplay
-            // ADR 0183: the bare op likewise.
-            case CtrlSystemSleep.op: return .sleepSystem
-            // ADR 0191: `on` must be a JSON true/false (objCType "c", ADR 0141), and nothing else is read from the
-            // request (a network name riding along is ignored, never used).
-            case CtrlWifi.op:
-                guard let n = o["on"] as? NSNumber, String(cString: n.objCType) == "c", let b = o["on"] as? Bool
-                else { return nil }
-                return .setWifi(on: b)
-            // ADR 0194: whole minutes 1–720 (never a bool, a fraction or a string; never clamped) and a strict JSON
-            // bool `display`; nothing else is read.
-            case CtrlKeepAwake.op: return CtrlKeepAwake.parse(o)
-            case CtrlKeepAwake.releaseOp: return .allowSleep
-            // ADR 0198: the kind's exact spelling only; a device name riding along is ignored, never used.
-            case CtrlAudioOutput.op: return CtrlAudioOutput.parse(o)
-            // ADR 0176: `single` must be a JSON true/false (objCType "c", ADR 0141); a number, a string or no field is
-            // a bad request.
-            case "eject_volumes":
-                guard let n = o["single"] as? NSNumber, String(cString: n.objCType) == "c", let b = o["single"] as? Bool
-                else { return nil }
-                return .ejectVolumes(single: b)
-            // ADR 0140: a whole number 0–100 only; anything else is a bad request, never clamped.
-            case "set_volume":
-                // ADR 0141: `is Bool` is true for a JSON 0 or 1 too (NSNumber bridging, Linux and macOS), so a JSON
-                // true/false is told apart by its objCType "c" instead; 0 and 1 are levels, true and false are not.
-                guard let n = o["level"] as? NSNumber, String(cString: n.objCType) != "c", let l = o["level"] as? Int,
-                      (0...100).contains(l) else { return nil }
-                return .setVolume(level: l)
-            // ADR 0158 amendment 3: the strict enum, checked before any event is built.
-            case "set_focus": return s("mode").flatMap(CtrlFocus.mode).map { .setFocus(mode: $0) }
-            // ADR 0166: the strict enum; a path, another spelling or a missing folder is a bad request.
-            case "open_folder": return s("folder").flatMap(CtrlFolders.folder).map { .openFolder(folder: $0) }
-            default: return nil
-            }
-            return nil
-        case "scripting": if let a = s("app"), let v = s("verb") { return .scripting(app: a, verb: v) }
-        case "ax":
-            guard let a = s("app"), let r = s("role"), let e = s("element"), let op = o["op"] as? [String: Any] else { return nil }
-            switch op["op"] as? String {
-            case "perform": if let x = op["action"] as? String { return .axPerform(app: a, role: r, element: e, action: x) }
-            case "set_attribute": if let x = op["attribute"] as? String { return .axSet(app: a, role: r, element: e, attribute: x) }
-            default: return nil
-            }
-        case "pid_key": if let a = s("app"), let c = s("combo") { return .pidKey(app: a, combo: c) }
-        case "click", "global_key", "activate": return .takesOver(s("route")!)
+        let h = s("handle")
+        switch s("action") {
+        case "press": return h.map { .press(handle: $0) }
+        case "set_value":
+            guard let h, let t = s("text"), let n = o["submit"] as? NSNumber, String(cString: n.objCType) == "c" else { return nil }
+            return .setValue(handle: h, text: t, submit: n.boolValue)
+        case "increment": return h.map { .increment(handle: $0) }
+        case "decrement": return h.map { .decrement(handle: $0) }
+        case "show_menu": return h.map { .showMenu(handle: $0) }
+        case "focus": return h.map { .focus(handle: $0) }
+        case "scroll":
+            guard let h, let d = s("dir"), d == "up" || d == "down" else { return nil }
+            return .scroll(handle: h, down: d == "down")
+        case "key_combo":
+            guard let a = s("app"), let c = s("combo") else { return nil }
+            return .keyCombo(app: a, combo: c)
+        case "open_url":
+            guard let a = s("app"), let u = s("url") else { return nil }
+            return .openURL(app: a, url: u)
+        case "open_app": return s("app").map { .openApp(app: $0) }
         default: return nil
         }
-        return nil
     }
+}
+
+/// The helper's own re-check of an action (Rust `act::check` is the host's). Refusals are short codes.
+public enum CtrlDoPolicy {
+    /// The stop key is never sent; Esc alone and the app switchers are never ctrl's to press.
+    /// Rust `RESERVED_COMBOS` plus the system's app and input switchers.
+    public static let reservedCombos: Set<String> = ["escape", "cmd+option+escape", "cmd+tab", "cmd+shift+tab", "cmd+space"]
+    /// Rust `normalize_combo`'s order.
+    public static let modifiers = ["cmd", "ctrl", "option", "shift"]
+    /// Rust `act::TEXT_MAX`.
+    public static let maxText = 500
+
+    /// `cmd+shift+t`: modifiers in canonical order, then one known key; at least one modifier unless the key is Return.
+    public static func comboAllowed(_ combo: String) -> Bool {
+        if reservedCombos.contains(combo) { return false }
+        let parts = combo.split(separator: "+", omittingEmptySubsequences: false).map(String.init)
+        guard let key = parts.last, !key.isEmpty, !modifiers.contains(key) else { return false }
+        let mods = parts.dropLast()
+        var last = -1
+        for m in mods {
+            guard let i = modifiers.firstIndex(of: m), i > last else { return false }
+            last = i
+        }
+        if mods.isEmpty { return key == "return" }
+        return CtrlKeys.code(key) != nil
+    }
+
+    public static func check(_ a: CtrlAction) throws {
+        if let h = a.handle, !(h.hasPrefix("e:") || h.hasPrefix("m:")) { throw CtrlFailure("act.refused") }
+        switch a {
+        case let .setValue(_, text, _):
+            if text.isEmpty || text.count > maxText { throw CtrlFailure("act.refused") }
+        case let .keyCombo(_, combo):
+            if !comboAllowed(combo) { throw CtrlFailure("act.refused") }
+        case let .openURL(_, url):
+            guard let u = URL(string: url), let s = u.scheme?.lowercased(), s == "http" || s == "https", u.host != nil
+            else { throw CtrlFailure("act.refused") }
+        case .press, .increment, .decrement, .showMenu, .focus, .scroll, .openApp: break
+        }
+    }
+}
+
+/// Virtual key codes for the keys a combo may name (US layout, Carbon's kVK_*).
+public enum CtrlKeys {
+    static let letters: [String: UInt16] = [
+        "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8, "v": 9, "b": 11, "q": 12, "w": 13,
+        "e": 14, "r": 15, "y": 16, "t": 17, "1": 18, "2": 19, "3": 20, "4": 21, "6": 22, "5": 23, "equal": 24, "9": 25,
+        "7": 26, "minus": 27, "8": 28, "0": 29, "]": 30, "o": 31, "u": 32, "[": 33, "i": 34, "p": 35, "return": 36,
+        "l": 37, "j": 38, "k": 40, ";": 41, "comma": 43, "/": 44, "n": 45, "m": 46, "period": 47, "tab": 48,
+        "space": 49, "grave": 50, "delete": 51, "escape": 53, "left": 123, "right": 124, "down": 125, "up": 126,
+    ]
+    public static func code(_ key: String) -> UInt16? { letters[key] }
+    public static let escape: UInt16 = 53
 }
 
 public enum CtrlRequest: Equatable, Sendable {
     case catalog(id: String)
-    case probe(id: String)
-    case snapshot(id: String, app: String, scope: String?)
-    case act(id: String, actionId: String, route: CtrlRoute, content: [String: String])
-    /// `check`: tab_count / window_count / app_running / ax_scope, for `app`.
-    case measure(id: String, check: String, app: String)
-    case restore(id: String, frontmostPid: Int32?)
-    /// `model`: the consented, installed model the host hands over (ADR 0116), nil when it sent none.
+    case tree(id: String, app: String, scope: String?, depth: Int)
+    case menuShortcuts(id: String, app: String)
+    case act(id: String, runId: String, action: CtrlAction, sig: String?)
+    case observe(id: String, runId: String, arm: Bool?)
     case laya(id: String, model: String?, state: String, question: String, options: [String])
-    /// ADR 0133: warm the consented, installed model at `model` in the background; the reply comes at once.
     case layaWarm(id: String, model: String)
-    /// The confirm gate's preview (ADR 0111): `what` is `windows` or `tabs` of `app`.
-    case preview(id: String, app: String, what: String)
-    /// ADR 0130: the running apps with the last-used record (`CtrlLastUsed`).
-    case apps(id: String)
 
     public var id: String {
         switch self {
-        case let .catalog(id), let .probe(id), let .snapshot(id, _, _), let .act(id, _, _, _), let .measure(id, _, _),
-             let .restore(id, _), let .laya(id, _, _, _, _), let .preview(id, _, _), let .apps(id),
-             let .layaWarm(id, _): return id
+        case let .catalog(id), let .tree(id, _, _, _), let .menuShortcuts(id, _), let .act(id, _, _, _),
+             let .observe(id, _, _), let .laya(id, _, _, _, _), let .layaWarm(id, _): return id
         }
     }
 
@@ -210,31 +156,21 @@ public enum CtrlRequest: Equatable, Sendable {
         let s = { (k: String) in o[k] as? String }
         switch type {
         case "ctrl.catalog": return .catalog(id: id)
-        case "ctrl.probe": return .probe(id: id)
-        case "ctrl.apps": return .apps(id: id)
-        case "ctrl.snapshot": return s("app").map { .snapshot(id: id, app: $0, scope: s("scope")) }
-        case "ctrl.act":
-            guard let a = s("actionId"), let r = (o["route"] as? [String: Any]).flatMap(CtrlRoute.parse),
-                  let c = o["content"] as? [String: String] else { return nil }
-            return .act(id: id, actionId: a, route: r, content: c)
-        case "ctrl.measure":
-            // ADR 0135 / 0137 / 0140: `output_muted`, `dark_mode` and `output_volume` have no app.
-            // ADR 0166: `folder_open` names a folder of the closed set instead; its app is always the Finder.
-            if let c = o["check"] as? [String: Any], c["check"] as? String == "folder_open" {
-                guard let f = (c["folder"] as? String).flatMap(CtrlFolders.folder) else { return nil }
-                return .measure(id: id, check: CtrlFolders.measurePrefix + f.rawValue, app: CtrlFolders.finder)
-            }
-            guard let c = o["check"] as? [String: Any], let k = c["check"] as? String,
-                  let a = (c["app"] as? String) ?? (CtrlRoute.applessChecks.contains(k) ? "" : nil) else { return nil }
-            return .measure(id: id, check: k, app: a)
-        case "ctrl.restore": return .restore(id: id, frontmostPid: (o["frontmostPid"] as? NSNumber).map { $0.int32Value })
+        case "ctrl.tree":
+            guard let a = s("app") else { return nil }
+            let depth = (o["depth"] as? Int).map { min(max($0, 1), 8) } ?? 6
+            return .tree(id: id, app: a, scope: s("scope"), depth: depth)
+        case "ctrl.menu.shortcuts": return s("app").map { .menuShortcuts(id: id, app: $0) }
+        case "ctrl.ax.act":
+            guard let r = s("runId"), let a = (o["action"] as? [String: Any]).flatMap(CtrlAction.parse) else { return nil }
+            return .act(id: id, runId: r, action: a, sig: s("sig"))
+        case "ctrl.observe":
+            guard let r = s("runId") else { return nil }
+            return .observe(id: id, runId: r, arm: o["arm"] as? Bool)
         case "ctrl.laya":
             guard let st = s("state"), let q = s("question"), let opts = o["options"] as? [String] else { return nil }
             return .laya(id: id, model: s("model"), state: st, question: q, options: opts)
         case "ctrl.laya.warm": return s("model").map { .layaWarm(id: id, model: $0) }
-        case "ctrl.preview":
-            guard let a = s("app"), let w = s("what"), w == "windows" || w == "tabs" else { return nil }
-            return .preview(id: id, app: a, what: w)
         default: return nil
         }
     }
@@ -247,109 +183,42 @@ public struct CtrlCatalogApp: Equatable, Sendable {
     }
 }
 
-/// One AX element of a snapshot. `title` goes to the host, which hashes it before anything is logged.
-public struct CtrlAXNode: Equatable, Sendable {
-    public let id: String, role: String, subrole: String?, title: String, actions: [String], children: Int
-    public init(id: String, role: String, subrole: String?, title: String, actions: [String], children: Int) {
-        self.id = id; self.role = role; self.subrole = subrole; self.title = title; self.actions = actions; self.children = children
+public struct CtrlMenuShortcut: Equatable, Sendable {
+    public let id: String, path: [String], combo: String, enabled: Bool
+    public init(id: String, path: [String], combo: String, enabled: Bool = true) {
+        self.id = id; self.path = path; self.combo = combo; self.enabled = enabled
     }
 }
 
-/// A short code, never content (`ax.not_trusted`, `app.not_running`, `laya.no_model`).
+/// What `ctrl.observe` reports: ids and flags only.
+public struct CtrlObserved: Equatable, Sendable {
+    public var frontmost: String?, focused: String?
+    public var stopped = false, userInput = false, armed = false
+    public init(frontmost: String? = nil, focused: String? = nil, stopped: Bool = false, userInput: Bool = false, armed: Bool = false) {
+        self.frontmost = frontmost; self.focused = focused; self.stopped = stopped; self.userInput = userInput; self.armed = armed
+    }
+}
+
 public struct CtrlFailure: Error, Equatable { public let code: String; public init(_ c: String) { code = c } }
 
-/// One item of a confirm-gate preview. `title` goes to the host, which hashes it before anything is logged;
-/// `unsaved: nil` = can't tell (the host counts it as unsaved).
-/// `pinned` (tabs only, slice 7b, ADR 0114): a pinned tab is never closed by "close all my tabs"; nil = can't tell
-/// (the host then holds the tab for the confirm gate) and is left off the wire.
-public struct CtrlPreviewItem: Equatable, Sendable {
-    public let title: String, unsaved: Bool?, pinned: Bool?
-    public init(title: String, unsaved: Bool?, pinned: Bool? = nil) {
-        self.title = title; self.unsaved = unsaved; self.pinned = pinned
-    }
-}
-
-/// One running app for "quit unused apps" (ADR 0130). `name` labels the gate's card (the host hashes it before the
-/// log); `lastActiveMs` is the last activation the helper saw, nil if none since it began watching; `unsaved` is
-/// false only when the app has no windows, nil when the helper can't tell.
-public struct CtrlRunningApp: Equatable, Sendable {
-    public let bundleId: String, name: String, lastActiveMs: UInt64?, frontmost: Bool, unsaved: Bool?
-    /// ADR 0134: `isHidden`; nil leaves the field off the wire (the host then can't verify a hide).
-    public let hidden: Bool?
-    public init(bundleId: String, name: String, lastActiveMs: UInt64?, frontmost: Bool, unsaved: Bool?, hidden: Bool? = nil) {
-        self.bundleId = bundleId; self.name = name; self.lastActiveMs = lastActiveMs; self.frontmost = frontmost; self.unsaved = unsaved
-        self.hidden = hidden
-    }
-}
-
-/// What the macOS side implements (and the tests fake).
 public protocol CtrlBackend: AnyObject {
     func catalog() throws -> (apps: [CtrlCatalogApp], defaultBrowser: String?)
-    /// The ladder's `Env` and the guard's `UiSnapshot`, as the Rust shapes' JSON objects.
-    func probe() throws -> (env: [String: Any], ui: [String: Any])
-    func snapshot(app: String, scope: String?) throws -> [CtrlAXNode]
-    func act(_ route: CtrlRoute, content: [String: String]) throws
-    func measure(check: String, app: String) -> Int?
-    func restore(frontmostPid: Int32?) -> Bool
-    func laya(state: String, question: String, options: [String]) throws -> [Double]
-    /// The same pass on the model at `model` (ADR 0116); defaults to the model-less call.
+    func tree(app: String, scope: String?, depth: Int) throws -> (root: CtrlTreeNode, focused: String?)
+    func menuShortcuts(app: String) throws -> [CtrlMenuShortcut]
+    /// After `CtrlDoPolicy.check`; `sig` is the fingerprint the host saw (`act.stale` when the element changed).
+    func act(_ action: CtrlAction, sig: String?) throws
+    func observe(arm: Bool?) -> CtrlObserved
     func laya(model: String?, state: String, question: String, options: [String]) throws -> [Double]
-    func frontmostPid() -> Int32?
-    func pid(of app: String) -> Int32?
-    /// The windows or tabs an irreversible action would touch (read-only, never prompts).
-    func preview(app: String, what: String) throws -> [CtrlPreviewItem]
-    /// ADR 0130: running regular apps, when the last-used watch began (nil: not watching) and local midnight.
-    func runningApps() throws -> (apps: [CtrlRunningApp], sinceMs: UInt64?, dayStartMs: UInt64)
-    /// ADR 0133: start warming the model at `model` off the request queue and return at once.
     func warmLaya(model: String) throws -> CtrlLayaWarmer.State
 }
 
 public extension CtrlBackend {
-    func laya(model: String?, state: String, question: String, options: [String]) throws -> [Double] {
-        try laya(state: state, question: question, options: options)
-    }
-    /// Until a backend enumerates them, the host falls back to a count (`ctrl.measure`) for the preview.
-    func preview(app: String, what: String) throws -> [CtrlPreviewItem] { throw CtrlFailure("preview.unsupported") }
-    /// A backend without the activation watch: the host then quits nothing.
-    func runningApps() throws -> (apps: [CtrlRunningApp], sinceMs: UInt64?, dayStartMs: UInt64) { throw CtrlFailure("apps.not_watching") }
-    /// A backend without a Laya runtime has nothing to warm.
     func warmLaya(model: String) throws -> CtrlLayaWarmer.State { throw CtrlFailure("laya.no_runtime") }
 }
 
 public final class CtrlServer {
     let backend: CtrlBackend
     public init(backend: CtrlBackend) { self.backend = backend }
-
-    /// ADR 0100 §6: the same refusals as the Rust ladder, checked again before the backend acts.
-    public static func recheck(_ route: CtrlRoute, frontmostPid: Int32?, targetPid: Int32?) throws {
-        switch route {
-        case .takesOver: throw CtrlFailure("policy.refused")
-        case let .scripting(_, verb):
-            if !CtrlRoute.scriptVerbs.contains(verb) && !CtrlRoute.tabVerbs.contains(verb) { throw CtrlFailure("policy.refused") }
-        case let .axPerform(_, role, _, action):
-            do { try CtrlPolicy.checkAXAction(action, role: role) } catch { throw CtrlFailure("policy.refused") }
-        case let .axSet(_, role, _, attribute):
-            do { try CtrlPolicy.checkAXSet(attribute, role: role) } catch { throw CtrlFailure("policy.refused") }
-        case let .pidKey(_, combo):
-            guard let t = targetPid else { throw CtrlFailure("app.not_running") }
-            do { try CtrlPolicy.checkKey(combo, targetPid: t, frontmostPid: frontmostPid) } catch { throw CtrlFailure("policy.refused") }
-        case .files, .openURL, .launchHidden, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume,
-             .setFocus, .openFolder, .clearClipboard, .ejectVolumes, .sleepDisplay, .sleepSystem, .setWifi, .keepAwake,
-             .allowSleep, .setAudioOutput: break
-        }
-    }
-
-    static func appOf(_ r: CtrlRoute) -> String? {
-        switch r {
-        case let .openURL(a, _), let .launchHidden(a), let .scripting(a, _), let .axPerform(a, _, _, _), let .axSet(a, _, _, _),
-             let .pidKey(a, _): return a
-        case .openFolder: return CtrlFolders.finder
-        case .files, .takesOver, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume, .setFocus,
-             .clearClipboard, .ejectVolumes, .sleepDisplay, .sleepSystem, .setWifi, .keepAwake, .allowSleep,
-             .setAudioOutput:
-            return nil
-        }
-    }
 
     func reply(_ req: CtrlRequest) -> [String: Any] {
         let id = req.id
@@ -359,61 +228,32 @@ public final class CtrlServer {
                 let c = try backend.catalog()
                 return ["type": "ctrl.catalog.result", "id": id, "defaultBrowser": c.defaultBrowser as Any? ?? NSNull(),
                         "apps": c.apps.map { ["bundleId": $0.bundleId, "name": $0.name, "browser": $0.browser, "running": $0.running] }]
-            case .probe:
-                let p = try backend.probe()
-                return ["type": "ctrl.probe.result", "id": id, "env": p.env, "ui": p.ui]
-            case let .snapshot(_, app, scope):
-                let nodes = try backend.snapshot(app: app, scope: scope)
-                return ["type": "ctrl.snapshot.result", "id": id, "nodes": nodes.map { n -> [String: Any] in
-                    var o: [String: Any] = ["id": n.id, "role": n.role, "title": n.title, "actions": n.actions, "children": n.children]
-                    if let s = n.subrole { o["subrole"] = s }
-                    return o
-                }]
-            case let .act(_, _, route, content):
-                try Self.recheck(route, frontmostPid: backend.frontmostPid(), targetPid: Self.appOf(route).flatMap(backend.pid(of:)))
-                // ADR 0130: the app the user is in is never quit under them.
-                if case let .quitApps(apps) = route, let front = backend.frontmostPid(),
-                   apps.contains(where: { backend.pid(of: $0) == front }) {
-                    throw CtrlFailure("policy.refused")
-                }
-                // ADR 0134: the app the user is in is never hidden under them; it drops out of the list (the user may
-                // have switched to it since the host planned), the rest are hidden.
-                var route = route
-                if case let .hideApps(apps) = route, let front = backend.frontmostPid() {
-                    route = .hideApps(apps: apps.filter { backend.pid(of: $0) != front })
-                }
+            case let .tree(_, app, scope, depth):
+                let t = try backend.tree(app: app, scope: scope, depth: depth)
+                return ["type": "ctrl.tree.result", "id": id, "root": t.root.json, "focused": t.focused as Any? ?? NSNull()]
+            case let .menuShortcuts(_, app):
+                let items = try backend.menuShortcuts(app: app)
+                return ["type": "ctrl.menu.shortcuts.result", "id": id,
+                        "items": items.map { ["id": $0.id, "path": $0.path, "combo": $0.combo, "enabled": $0.enabled] }]
+            case let .act(_, _, action, sig):
                 do {
-                    try backend.act(route, content: content)
-                    return ["type": "ctrl.act.result", "id": id, "ok": true, "err": NSNull()]
+                    try CtrlDoPolicy.check(action)
+                    try backend.act(action, sig: sig)
+                    return ["type": "ctrl.ax.act.result", "id": id, "ok": true, "err": NSNull()]
                 } catch let f as CtrlFailure {
-                    return ["type": "ctrl.act.result", "id": id, "ok": false, "err": f.code]
+                    return ["type": "ctrl.ax.act.result", "id": id, "ok": false, "err": f.code]
                 }
-            case let .measure(_, check, app):
-                return ["type": "ctrl.measure.result", "id": id, "value": backend.measure(check: check, app: app) as Any? ?? NSNull()]
-            case let .restore(_, pid):
-                return ["type": "ctrl.restore.result", "id": id, "ok": backend.restore(frontmostPid: pid)]
+            case let .observe(_, _, arm):
+                let o = backend.observe(arm: arm)
+                var r: [String: Any] = ["type": "ctrl.observe.result", "id": id, "stopped": o.stopped,
+                                        "userInput": o.userInput, "armed": o.armed]
+                if let f = o.frontmost { r["frontmost"] = f }
+                if let f = o.focused { r["focused"] = f }
+                return r
             case let .laya(_, model, state, question, options):
                 return ["type": "ctrl.laya.result", "id": id, "p": try backend.laya(model: model, state: state, question: question, options: options)]
             case let .layaWarm(_, model):
                 return ["type": "ctrl.laya.warm.result", "id": id, "state": try backend.warmLaya(model: model).rawValue]
-            case .apps:
-                let r = try backend.runningApps()
-                return ["type": "ctrl.apps.result", "id": id, "sinceMs": r.sinceMs.map { NSNumber(value: $0) } as Any? ?? NSNull(),
-                        "dayStartMs": NSNumber(value: r.dayStartMs),
-                        "apps": r.apps.map { a -> [String: Any] in
-                            var o: [String: Any] = ["bundleId": a.bundleId, "name": a.name, "frontmost": a.frontmost,
-                                                    "lastActiveMs": a.lastActiveMs.map { NSNumber(value: $0) } as Any? ?? NSNull(),
-                                                    "unsaved": a.unsaved as Any? ?? NSNull()]
-                            if let h = a.hidden { o["hidden"] = h }
-                            return o
-                        }]
-            case let .preview(_, app, what):
-                let items = try backend.preview(app: app, what: what)
-                return ["type": "ctrl.preview.result", "id": id, "items": items.map { i -> [String: Any] in
-                    var o: [String: Any] = ["title": i.title, "unsaved": i.unsaved as Any? ?? NSNull()]
-                    if let p = i.pinned { o["pinned"] = p }
-                    return o
-                }]
             }
         } catch let f as CtrlFailure {
             return ["type": "ctrl.error", "id": id, "code": f.code]
@@ -422,7 +262,6 @@ public final class CtrlServer {
         }
     }
 
-    /// One request line → one reply line (sorted keys). A line that isn't a ctrl request gets `ctrl.error`.
     public func handle(line: String) -> String {
         let o: [String: Any]
         if let req = CtrlRequest.parse(line) {

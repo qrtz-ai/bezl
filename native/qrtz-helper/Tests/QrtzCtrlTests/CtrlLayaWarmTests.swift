@@ -99,14 +99,11 @@ final class CtrlLayaWarmTests: XCTestCase {
             let warmer: CtrlLayaWarmer
             init(_ w: CtrlLayaWarmer) { warmer = w }
             func catalog() throws -> (apps: [CtrlCatalogApp], defaultBrowser: String?) { ([], nil) }
-            func probe() throws -> (env: [String: Any], ui: [String: Any]) { throw CtrlFailure("x") }
-            func snapshot(app: String, scope: String?) throws -> [CtrlAXNode] { [] }
-            func act(_ route: CtrlRoute, content: [String: String]) throws {}
-            func measure(check: String, app: String) -> Int? { nil }
-            func restore(frontmostPid: Int32?) -> Bool { false }
-            func laya(state: String, question: String, options: [String]) throws -> [Double] { throw CtrlFailure("laya.no_model") }
-            func frontmostPid() -> Int32? { nil }
-            func pid(of app: String) -> Int32? { nil }
+            func tree(app: String, scope: String?, depth: Int) throws -> (root: CtrlTreeNode, focused: String?) { throw CtrlFailure("x") }
+            func menuShortcuts(app: String) throws -> [CtrlMenuShortcut] { [] }
+            func act(_ action: CtrlAction, sig: String?) throws {}
+            func observe(arm: Bool?) -> CtrlObserved { CtrlObserved() }
+            func laya(model: String?, state: String, question: String, options: [String]) throws -> [Double] { throw CtrlFailure("laya.no_model") }
             func warmLaya(model: String) throws -> CtrlLayaWarmer.State { try warmer.start(model, env: [:]) }
         }
         let warmer = CtrlLayaWarmer { _ in gate.wait() }

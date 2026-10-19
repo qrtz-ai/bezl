@@ -7,11 +7,21 @@ public typealias CFTypeRef = AnyObject
 public typealias CFString = NSString
 public typealias CFArray = NSArray
 public typealias CFURL = NSURL
+public typealias CFDictionary = NSDictionary
 public final class AXUIElement {}
 public typealias CFTypeID = UInt
 public typealias CFIndex = Int
 public typealias CFHashCode = UInt
 public typealias pid_t = Int32
+public typealias CFBoolean = NSNumber
+public typealias CFNumber = NSNumber
+public final class AXValue {}
+public func CFBooleanGetTypeID() -> CFTypeID { 0 }
+public func CFNumberGetTypeID() -> CFTypeID { 0 }
+public func CFURLGetTypeID() -> CFTypeID { 0 }
+public func AXValueGetTypeID() -> CFTypeID { 0 }
+public func CFBooleanGetValue(_ b: CFBoolean!) -> Bool { false }
+public func CFEqual(_ a: CFTypeRef!, _ b: CFTypeRef!) -> Bool { false }
 public func CFGetTypeID(_ cf: CFTypeRef!) -> CFTypeID { 0 }
 public func CFStringGetTypeID() -> CFTypeID { 0 }
 public func CFArrayGetTypeID() -> CFTypeID { 0 }
@@ -36,25 +46,16 @@ public let kAXRoleAttribute = "AXRole", kAXSubroleAttribute = "AXSubrole", kAXTi
     kAXFocusedWindowAttribute = "AXFocusedWindow", kAXMainWindowAttribute = "AXMainWindow",
     kAXCloseButtonAttribute = "AXCloseButton", kAXFocusedUIElementAttribute = "AXFocusedUIElement",
     kAXRoleDescriptionAttribute = "AXRoleDescription", kAXDocumentAttribute = "AXDocument",
-    kAXMinimizedAttribute = "AXMinimized"
+    kAXMinimizedAttribute = "AXMinimized", kAXValueAttribute = "AXValue", kAXEnabledAttribute = "AXEnabled",
+    kAXSizeAttribute = "AXSize", kAXFocusedAttribute = "AXFocused", kAXMenuBarAttribute = "AXMenuBar",
+    kAXMenuItemCmdCharAttribute = "AXMenuItemCmdChar", kAXMenuItemCmdVirtualKeyAttribute = "AXMenuItemCmdVirtualKey",
+    kAXMenuItemCmdModifiersAttribute = "AXMenuItemCmdModifiers", kAXVerticalScrollBarAttribute = "AXVerticalScrollBar"
+public enum AXValueType: UInt32 { case cgPoint = 1, cgSize = 2 }
+public func AXValueGetValue(_ value: AXValue, _ theType: AXValueType, _ valuePtr: UnsafeMutableRawPointer) -> Bool { false }
 // LaunchServices / AE
 public struct LSRolesMask: OptionSet { public let rawValue: UInt32; public init(rawValue: UInt32) { self.rawValue = rawValue }; public static let all = LSRolesMask(rawValue: 0xFFFFFFFF) }
 public final class CFError {}
 public func LSCopyDefaultApplicationURLForURL(_ inURL: CFURL, _ inRoleMask: LSRolesMask, _ outError: UnsafeMutablePointer<Unmanaged<CFError>?>?) -> Unmanaged<CFURL>? { nil }
-public typealias FourCharCode = UInt32
-public typealias DescType = FourCharCode
-public typealias AEEventClass = FourCharCode
-public typealias AEEventID = FourCharCode
-public typealias OSErr = Int16
-public typealias OSStatus = Int32
-public typealias Size = Int
-public struct AEDesc { public var descriptorType: DescType; public init() { descriptorType = 0 } }
-public typealias AEAddressDesc = AEDesc
-public var typeApplicationBundleID: Int { 0 }
-public var typeWildCard: Int { 0 }
-public func AECreateDesc(_ typeCode: DescType, _ dataPtr: UnsafeRawPointer!, _ dataSize: Size, _ result: UnsafeMutablePointer<AEDesc>!) -> OSErr { 0 }
-@discardableResult public func AEDisposeDesc(_ theAEDesc: UnsafeMutablePointer<AEDesc>!) -> OSErr { 0 }
-public func AEDeterminePermissionToAutomateTarget(_ target: UnsafePointer<AEAddressDesc>!, _ theAEEventClass: AEEventClass, _ theAEEventID: AEEventID, _ askUserIfNeeded: Bool) -> OSStatus { 0 }
 // AppKit
 public enum NSApplicationActivationPolicy { case regular, accessory, prohibited }
 public struct NSApplicationActivationOptions: OptionSet { public let rawValue: UInt; public init(rawValue: UInt) { self.rawValue = rawValue } }
@@ -88,120 +89,44 @@ open class NSWorkspace: NSObject {
     open func openApplication(at applicationURL: URL, configuration: NSWorkspace.OpenConfiguration, completionHandler: (@Sendable (NSRunningApplication?, (any Error)?) -> Void)? = nil) {}
     open func unmountAndEjectDevice(at url: URL) throws {}
 }
-open class NSPasteboard: NSObject { open class var general: NSPasteboard { NSPasteboard() }; open var changeCount: Int { 0 }
-    @discardableResult open func clearContents() -> Int { 0 } }
-open class NSAppleEventDescriptor: NSObject { open var int32Value: Int32 { 0 }; open var stringValue: String? { nil } }
-open class NSAppleScript: NSObject {
-    public init?(source: String) {}
-    open func executeAndReturnError(_ errorInfo: UnsafeMutablePointer<NSDictionary?>?) -> NSAppleEventDescriptor { NSAppleEventDescriptor() }
-}
 // CoreGraphics
 public typealias CGKeyCode = UInt16
 public typealias CGFloat = Double
-public struct CGPoint { public var x: CGFloat; public var y: CGFloat }
+public struct CGSize { public var width: CGFloat; public var height: CGFloat; public static let zero = CGSize(width: 0, height: 0) }
 public struct CGEventFlags: OptionSet { public let rawValue: UInt64; public init(rawValue: UInt64) { self.rawValue = rawValue }
     public static let maskCommand = CGEventFlags(rawValue: 1), maskShift = CGEventFlags(rawValue: 2), maskAlternate = CGEventFlags(rawValue: 4), maskControl = CGEventFlags(rawValue: 8) }
 public enum CGEventSourceStateID: Int32 { case privateState = -1, combinedSessionState = 0, hidSystemState = 1 }
-public enum CGEventType: UInt32 { case null = 0, keyDown = 10 }
-public final class CGEventSource { public init?(stateID: CGEventSourceStateID) {}
-    public class func secondsSinceLastEventType(_ stateID: CGEventSourceStateID, eventType: CGEventType) -> Double { 0 } }
-public final class CGEvent { public init?(keyboardEventSource source: CGEventSource?, virtualKey: CGKeyCode, keyDown: Bool) {}
-    public init?(source: CGEventSource?) {}
+public enum CGEventType: UInt32 { case null = 0, leftMouseDown = 1, rightMouseDown = 3, keyDown = 10, scrollWheel = 22, otherMouseDown = 25,
+    tapDisabledByTimeout = 0xFFFFFFFE, tapDisabledByUserInput = 0xFFFFFFFF }
+public enum CGEventField: UInt32 { case keyboardEventKeycode = 9, eventSourceUserData = 42 }
+public enum CGEventTapLocation: UInt32 { case cghidEventTap = 0, cgSessionEventTap, cgAnnotatedSessionEventTap }
+public enum CGEventTapPlacement: UInt32 { case headInsertEventTap = 0, tailAppendEventTap }
+public enum CGEventTapOptions: UInt32 { case defaultTap = 0, listenOnly = 1 }
+public typealias CGEventMask = UInt64
+public typealias CGEventTapProxy = OpaquePointer
+// The SDK type is @convention(c); a stub class type can't be, so the check treats it as a plain function.
+public typealias CGEventTapCallBack = (CGEventTapProxy, CGEventType, CGEvent, UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>?
+public final class CFMachPort {}
+public final class CFRunLoopSource {}
+public final class CFRunLoop {}
+public final class CFAllocator {}
+public let kCFAllocatorDefault: CFAllocator! = nil
+public struct CFRunLoopMode { public static let commonModes = CFRunLoopMode() }
+public func CFMachPortCreateRunLoopSource(_ allocator: CFAllocator!, _ port: CFMachPort!, _ order: CFIndex) -> CFRunLoopSource! { CFRunLoopSource() }
+public func CFRunLoopGetMain() -> CFRunLoop! { CFRunLoop() }
+public func CFRunLoopAddSource(_ rl: CFRunLoop!, _ source: CFRunLoopSource!, _ mode: CFRunLoopMode!) {}
+public let kCFBooleanTrue: CFBoolean! = NSNumber(value: true)
+public final class CGEventSource { public init?(stateID: CGEventSourceStateID) {}; public var userData: Int64 = 0 }
+public final class CGEvent {
+    public init?(keyboardEventSource source: CGEventSource?, virtualKey: CGKeyCode, keyDown: Bool) {}
     public var flags: CGEventFlags = []
-    public var location: CGPoint { CGPoint(x: 0, y: 0) }
-    public func postToPid(_ pid: pid_t) {} }
-public func CGPreflightPostEventAccess() -> Bool { false }
-public typealias CGWindowID = UInt32
-public let kCGNullWindowID: CGWindowID = 0
-public struct CGWindowListOption: OptionSet { public let rawValue: UInt32; public init(rawValue: UInt32) { self.rawValue = rawValue }
-    public static let optionOnScreenOnly = CGWindowListOption(rawValue: 1), excludeDesktopElements = CGWindowListOption(rawValue: 16) }
-public func CGWindowListCopyWindowInfo(_ option: CGWindowListOption, _ relativeToWindow: CGWindowID) -> CFArray? { nil }
-public let kCGWindowLayer: CFString = "", kCGWindowNumber: CFString = "", kCGWindowOwnerPID: CFString = ""
-public func IsSecureEventInputEnabled() -> Bool { false }
-public typealias CGDirectDisplayID = UInt32
-public typealias boolean_t = Int32
-public func CGMainDisplayID() -> CGDirectDisplayID { 0 }
-public func CGDisplayIsAsleep(_ display: CGDirectDisplayID) -> boolean_t { 0 }
-// IOKit (ADR 0180)
-public typealias mach_port_t = UInt32
-public typealias io_object_t = mach_port_t
-public typealias io_registry_entry_t = io_object_t
-public typealias kern_return_t = Int32
-public let KERN_SUCCESS: kern_return_t = 0
-public let kIOMainPortDefault: mach_port_t = 0
-public let kCFBooleanTrue: CFTypeRef! = NSNumber(value: true)
-public let kCFBooleanFalse: CFTypeRef! = NSNumber(value: false)
-public func IORegistryEntryFromPath(_ mainPort: mach_port_t, _ path: UnsafePointer<CChar>!) -> io_registry_entry_t { 0 }
-public func IORegistryEntrySetCFProperty(_ entry: io_registry_entry_t, _ propertyName: CFString!, _ property: CFTypeRef!) -> kern_return_t { 0 }
-@discardableResult public func IOObjectRelease(_ object: io_object_t) -> kern_return_t { 0 }
-// IOKit power management + sysctl (ADR 0183)
-public typealias io_connect_t = io_object_t
-public typealias IOReturn = kern_return_t
-public let kIOReturnSuccess: IOReturn = 0
-public func IOPMFindPowerManagement(_ main_device_port: mach_port_t) -> io_connect_t { 0 }
-public func IOPMSleepSystem(_ fb: io_connect_t) -> IOReturn { 0 }
-@discardableResult public func IOServiceClose(_ connect: io_connect_t) -> kern_return_t { 0 }
-public func sysctlbyname(_ name: UnsafePointer<CChar>!, _ oldp: UnsafeMutableRawPointer!, _ oldlenp: UnsafeMutablePointer<Int>!,
-                         _ newp: UnsafeMutableRawPointer!, _ newlen: Int) -> Int32 { -1 }
-// IOKit power assertions (ADR 0194)
-public typealias CFDictionary = NSDictionary
-public typealias IOPMAssertionID = UInt32
-public typealias IOPMAssertionLevel = UInt32
-public var kIOPMAssertionLevelOn: Int { 255 }
-public func IOPMAssertionCreateWithName(_ AssertionType: CFString!, _ AssertionLevel: IOPMAssertionLevel, _ AssertionName: CFString!,
-                                        _ AssertionID: UnsafeMutablePointer<IOPMAssertionID>!) -> IOReturn { 0 }
-public func IOPMAssertionSetProperty(_ theAssertion: IOPMAssertionID, _ theProperty: CFString!, _ theValue: CFTypeRef!) -> IOReturn { 0 }
-public func IOPMAssertionRelease(_ AssertionID: IOPMAssertionID) -> IOReturn { 0 }
-public func IOPMAssertionCopyProperties(_ theAssertion: IOPMAssertionID) -> Unmanaged<CFDictionary>! { nil }
-// CoreWLAN (ADR 0191)
-open class CWInterface: NSObject {
-    open func powerOn() -> Bool { false }
-    open func setPower(_ power: Bool) throws {}
+    public func postToPid(_ pid: pid_t) {}
+    public func getIntegerValueField(_ field: CGEventField) -> Int64 { 0 }
+    public func setIntegerValueField(_ field: CGEventField, value: Int64) {}
+    public class func tapCreate(tap: CGEventTapLocation, place: CGEventTapPlacement, options: CGEventTapOptions, eventsOfInterest: CGEventMask,
+                                callback: CGEventTapCallBack, userInfo: UnsafeMutableRawPointer?) -> CFMachPort? { nil }
+    public class func tapEnable(tap: CFMachPort, enable: Bool) {}
 }
-open class CWWiFiClient: NSObject {
-    open class func shared() -> CWWiFiClient { CWWiFiClient() }
-    open func interface() -> CWInterface? { nil }
-}
-// Core Audio (ADR 0198)
-public typealias AudioObjectID = UInt32
-public typealias AudioObjectPropertySelector = UInt32
-public typealias AudioObjectPropertyScope = UInt32
-public typealias AudioObjectPropertyElement = UInt32
-public struct AudioObjectPropertyAddress {
-    public var mSelector: AudioObjectPropertySelector
-    public var mScope: AudioObjectPropertyScope
-    public var mElement: AudioObjectPropertyElement
-    public init(mSelector: AudioObjectPropertySelector, mScope: AudioObjectPropertyScope, mElement: AudioObjectPropertyElement) {
-        self.mSelector = mSelector; self.mScope = mScope; self.mElement = mElement
-    }
-}
-// Imported as Int in the SDK (an anonymous enum), hence `AudioObjectID(kAudioObjectSystemObject)` at every use.
-public var kAudioObjectSystemObject: Int { 1 }
-public var kAudioObjectUnknown: AudioObjectID { 0 }
-public var kAudioObjectPropertyScopeGlobal: AudioObjectPropertyScope { 0x676C_6F62 }
-public var kAudioObjectPropertyScopeOutput: AudioObjectPropertyScope { 0x6F75_7470 }
-public var kAudioObjectPropertyElementMain: AudioObjectPropertyElement { 0 }
-public var kAudioHardwarePropertyDevices: AudioObjectPropertySelector { 0x6465_7623 }
-public var kAudioHardwarePropertyDefaultOutputDevice: AudioObjectPropertySelector { 0x644F_7574 }
-public var kAudioDevicePropertyTransportType: AudioObjectPropertySelector { 0x7472_616E }
-public var kAudioDevicePropertyStreams: AudioObjectPropertySelector { 0x7374_6D23 }
-public var kAudioDevicePropertyIsHidden: AudioObjectPropertySelector { 0x6869_646E }
-public var kAudioDeviceTransportTypeBuiltIn: UInt32 { 0x626C_746E }
-public var kAudioDeviceTransportTypeBluetooth: UInt32 { 0x626C_7565 }
-public var kAudioDeviceTransportTypeBluetoothLE: UInt32 { 0x626C_6561 }
-public var kAudioDeviceTransportTypeUSB: UInt32 { 0x7573_6220 }
-public var kAudioDeviceTransportTypeHDMI: UInt32 { 0x6864_6D69 }
-public var kAudioDeviceTransportTypeDisplayPort: UInt32 { 0x6470_7274 }
-public var noErr: OSStatus { 0 }
-public func AudioObjectGetPropertyDataSize(_ inObjectID: AudioObjectID, _ inAddress: UnsafePointer<AudioObjectPropertyAddress>,
-                                           _ inQualifierDataSize: UInt32, _ inQualifierData: UnsafeRawPointer?,
-                                           _ outDataSize: UnsafeMutablePointer<UInt32>) -> OSStatus { -1 }
-public func AudioObjectGetPropertyData(_ inObjectID: AudioObjectID, _ inAddress: UnsafePointer<AudioObjectPropertyAddress>,
-                                       _ inQualifierDataSize: UInt32, _ inQualifierData: UnsafeRawPointer?,
-                                       _ ioDataSize: UnsafeMutablePointer<UInt32>, _ outData: UnsafeMutableRawPointer) -> OSStatus { -1 }
-public func AudioObjectSetPropertyData(_ inObjectID: AudioObjectID, _ inAddress: UnsafePointer<AudioObjectPropertyAddress>,
-                                       _ inQualifierDataSize: UInt32, _ inQualifierData: UnsafeRawPointer?,
-                                       _ inDataSize: UInt32, _ inData: UnsafeRawPointer) -> OSStatus { -1 }
 // Core ML
 public enum MLComputeUnits { case cpuOnly, cpuAndGPU, all, cpuAndNeuralEngine }
 open class MLModelConfiguration: NSObject { open var computeUnits: MLComputeUnits = .all }
