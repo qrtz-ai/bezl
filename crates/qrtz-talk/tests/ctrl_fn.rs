@@ -20,7 +20,13 @@ fn flashes(r: &Rig) -> Vec<String> {
     r.helper
         .sent_of("pill.flash")
         .iter()
-        .map(|m| format!("{}:{}", m["kind"].as_str().unwrap(), m["message"].as_str().unwrap()))
+        .map(|m| {
+            format!(
+                "{}:{}",
+                m["kind"].as_str().unwrap(),
+                m["message"].as_str().unwrap()
+            )
+        })
         .collect()
 }
 
@@ -34,7 +40,11 @@ async fn ctrl_fn_goes_to_ctrl_do_and_is_never_inserted() {
     assert!(r.helper.sent_of("insert.text").is_empty(), "never inserted");
     assert!(r.clip.0.lock().unwrap().is_empty(), "never on the clipboard");
     assert!(r.svc.history().is_empty(), "not a dictation");
-    assert!(flashes(&r).iter().any(|f| f.starts_with("info:ctrl: ")), "{:?}", flashes(&r));
+    assert!(
+        flashes(&r).iter().any(|f| f.starts_with("info:ctrl: ")),
+        "{:?}",
+        flashes(&r)
+    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -43,7 +53,11 @@ async fn plain_fn_still_dictates_and_a_ctrl_press_does_not_stick() {
     press(&r, true).await;
     press(&r, false).await;
     assert_eq!(r.commands.lock().unwrap().len(), 1, "only the ctrl press");
-    assert_eq!(r.helper.sent_of("insert.text").len(), 1, "the plain press inserted");
+    assert_eq!(
+        r.helper.sent_of("insert.text").len(),
+        1,
+        "the plain press inserted"
+    );
     assert_eq!(r.svc.history().len(), 1);
 }
 
@@ -55,5 +69,7 @@ async fn without_ctrl_the_words_are_still_not_typed() {
     });
     press(&r, true).await;
     assert!(r.helper.sent_of("insert.text").is_empty());
-    assert!(flashes(&r).iter().any(|f| f.starts_with("error:ctrl isn't available")));
+    assert!(flashes(&r)
+        .iter()
+        .any(|f| f.starts_with("error:ctrl isn't available")));
 }
