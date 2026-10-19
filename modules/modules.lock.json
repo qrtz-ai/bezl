@@ -13,10 +13,10 @@
           "version": "1.0.0"
         }
       ],
-      "manifestSha256": "f6d97eb482bcc97c8962b1cded62d2d756fd54c8d8041d28dcd8b54c8c747314",
+      "manifestSha256": "955d2bb82a9221e5f5654ec2003ec0fc6785df27dd4ed6a6129f1e13b370b027",
       "source": "bundled",
       "staleRevocation": false,
-      "version": "0.2.0"
+      "version": "0.2.1"
     },
     "echo": {
       "code": {
@@ -55,10 +55,10 @@
           "version": "1.0.0"
         }
       ],
-      "manifestSha256": "fca3c1597619d9f75f2b7f254f4bd8252a610864015564bf94f5d8f02d136c90",
+      "manifestSha256": "60468009dbbf03183f5102201c1ad5e8318bebf7d5b133086312462d4529c086",
       "source": "bundled",
       "staleRevocation": false,
-      "version": "0.2.0"
+      "version": "0.2.1"
     },
     "snap": {
       "code": {
@@ -67,10 +67,10 @@
         "teamId": "MR26CCZ496"
       },
       "dependencies": [],
-      "manifestSha256": "54e668ca529e4203bfd27bce1f0b4ca7f9e0fdc102fd0ca86575659106becd35",
+      "manifestSha256": "2e5aa61596e9f2743e8782f3ef8db3af4fe4116fdf3319bdc212b05f6392eb68",
       "source": "bundled",
       "staleRevocation": false,
-      "version": "0.1.0"
+      "version": "0.1.1"
     }
   },
   "packages": {

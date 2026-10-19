@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "nano",
   "name": "nano",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "protocol": 1,
   "minApp": "0.2.0",
   "code": {
