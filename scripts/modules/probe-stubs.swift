@@ -57,3 +57,18 @@ public func xpc_dictionary_set_string(_ xdict: xpc_object_t, _ key: UnsafePointe
 public func xpc_connection_send_message_with_reply_sync(_ connection: xpc_connection_t, _ message: xpc_object_t) -> xpc_object_t { _XPCObject() }
 public func xpc_get_type(_ object: xpc_object_t) -> xpc_type_t { XPC_TYPE_ERROR }
 public func xpc_equal(_ object1: xpc_object_t, _ object2: xpc_object_t) -> Bool { false }
+// CoreGraphics (screen & system audio recording grant) and CoreAudio (the process tap), for QrtzGateProbe's
+// `--qrtz-gate-probe sysaudio` (ADR 0150 N173), typechecked by native/qrtz-helper/scripts/gate-probe-typecheck.sh.
+public func CGPreflightScreenCaptureAccess() -> Bool { false }
+public func CGRequestScreenCaptureAccess() -> Bool { false }
+public typealias AudioObjectID = UInt32
+public let kAudioObjectUnknown: AudioObjectID = 0
+public enum CATapMuteBehavior: Int { case unmuted, muted, mutedWhenTapped }
+open class CATapDescription: NSObject {
+    public init(stereoGlobalTapButExcludeProcesses processes: [AudioObjectID]) {}
+    open var isPrivate = false
+    open var muteBehavior = CATapMuteBehavior.unmuted
+    open var name = ""
+}
+public func AudioHardwareCreateProcessTap(_ inDescription: CATapDescription?, _ outTapID: UnsafeMutablePointer<AudioObjectID>?) -> OSStatus { 0 }
+@discardableResult public func AudioHardwareDestroyProcessTap(_ inTapID: AudioObjectID) -> OSStatus { 0 }

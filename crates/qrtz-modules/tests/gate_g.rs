@@ -1,6 +1,7 @@
-//! ADR 0144 §6 gate (g): the four installer test cases for sideload freshness, on the shell's installer decision
-//! (`qrtz_modules::sideload`). `scripts/modules/mac-gate.sh` SKIPs (g) until the installer UI exists; these are its
-//! Linux half.
+//! ADR 0144 §6 gate (g): the four sideload freshness cases as unit cases of the legacy ADR 0146 decision
+//! (`qrtz_modules::sideload::decide`). Gate (g) itself now runs on ADR 0157's installer
+//! (`Installer::sideload` / `refresh` / `apply` on the publisher's signed output): `tools/qrtz-publish/tests/gate_g.rs`
+//! (`cargo test -p qrtz-publish --test gate_g`), which also holds the freshness-exemption cases.
 mod common;
 use common::*;
 use qrtz_modules::lock::Lockfile;

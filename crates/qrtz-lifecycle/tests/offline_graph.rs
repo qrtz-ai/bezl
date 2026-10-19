@@ -10,15 +10,15 @@
 //! 3. Tauri: the CSP keeps fetch/WebSocket to the app itself and IPC, and the window capability grants no
 //!    http/opener/shell/updater/websocket permission.
 //! 4. Helper: no Private Cloud Compute model and no network entitlement.
-//! 5. ADR 0079: the downloader's only callers are qrtz-app's `setup.rs` (the signed module) and `local_models.rs`
-//!    (the helper's pinned models), and the pinned models come only from `https://huggingface.co` at fixed revisions.
-//!    ctrl's Laya model (ADR 0116) goes through `local_models.rs` too: `ctrl_model.rs` names no downloader, and its
-//!    manifest is pinned the same way (or a placeholder, which is refused before any request).
-//!    ADR 0153: the module installer's transport (`module_hosting.rs`) is the third caller, to the hosts pinned in
-//!    `module_hosts.json` only (`https://modules.qrtz.ai` and Backblaze B2 mirrors).
-//!    ADR 0157: the package manager's one fetcher (`module_hosting.rs`) also serves the pinned models: a model
-//!    file's signed tree may name a mirror URL, reachable only under `modelMirrors` (exactly
-//!    `https://huggingface.co`). `local_models.rs` installs through it and names no downloader of its own.
+//! 5. ADR 0157 (tightening ADR 0079 and 0153): the downloader's only callers are qrtz-app's `setup.rs` (the signed
+//!    speech bundle, `Downloader` only) and `module_hosting.rs` (the package manager's one fetcher, `fetch_meta` and
+//!    `fetch_range`, to the hosts pinned in `module_hosts.json`: `https://modules.qrtz.ai`, Backblaze B2 mirrors,
+//!    and `modelMirrors`, exactly `https://huggingface.co`). `local_models.rs` keeps only the pause/progress types
+//!    (`DownloadControl`, `Progress`); naming `Downloader` or any fetch there (the retired direct-HF
+//!    `download_files` path) fails, and `download_files` has no caller outside qrtz-speech's `download_bundle`.
+//!    The pinned models are fixed Hugging Face revisions with sha256s; ctrl's Laya model (ADR 0116) goes through
+//!    `local_models.rs` too (`ctrl_model.rs` names no downloader).
+//!    ADR 0157 §9: at most one `extension.reads` exception in any package manifest (ctrl reading `model.laya`).
 //!
 //! 6. ADR 0144 (module confinement, M0): every crate and Swift target has an owner in `docs/modules/confinement-map.json`
 //!    (shell / shared / echo / nano / ctrl / voice / monolith); module-owned and shared crates reach no network crate in
@@ -306,36 +306,155 @@ fn no_rust_source_opens_a_socket_or_names_an_http_client_outside_the_exception()
     );
 }
 
+/// ADR 0157 §5/§6: what reaches the network through qrtz-speech's downloader. Naming any of these is a fetch (or
+/// a way to make one): the transport type, its constructor's type, and its fetching methods.
+const FETCH_NAMES: &[&str] = &[
+    "Downloader",
+    "fetch_meta",
+    "fetch_range",
+    "download_bundle",
+    "download_files",
+];
+/// The downloader's pause and progress types: plain data, no transport.
+const DOWNLOAD_TYPES: &[&str] = &["DownloadControl", "Progress"];
+/// The only sources that may name a fetch, and which names each may use:
+/// - `setup.rs`: the signed speech bundle (ADR 0046), a `Downloader` handed to qrtz-speech's `Updater`
+///   (whose `download_bundle` is the only caller of `download_files`).
+/// - `module_hosting.rs`: the package manager's one fetcher (ADR 0157 §5), `HttpTransport` over `fetch_meta` and
+///   `fetch_range`, to the pinned hosts and `modelMirrors` only (checked below).
+const FETCH_CALLERS: &[(&str, &[&str])] = &[
+    ("crates/qrtz-app/src/setup.rs", &["Downloader"]),
+    (
+        "crates/qrtz-app/src/module_hosting.rs",
+        &["Downloader", "fetch_meta", "fetch_range"],
+    ),
+];
+/// Sources that may import the pause/progress types from `qrtz_speech::download`, and nothing else from it.
+/// `local_models.rs` (ADR 0079) no longer fetches: it plans and applies through the package manager and keeps only
+/// `DownloadControl` and `Progress` (ADR 0157 §6). Its direct Hugging Face path (`download_files` with the model
+/// host as base) is retired; bringing it back fails here.
+const TYPE_IMPORTERS: &[&str] = &["crates/qrtz-app/src/local_models.rs"];
+
+fn idents(l: &str) -> impl Iterator<Item = &str> {
+    l.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .filter(|w| !w.is_empty())
+}
+
+/// Every use of qrtz-speech's downloader in one source (`rel`, code lines as [`code`] returns them) that ADR 0157
+/// doesn't allow there.
+fn downloader_uses(rel: &str, lines: &[(usize, String)]) -> Vec<String> {
+    let callers = FETCH_CALLERS
+        .iter()
+        .find(|(f, _)| *f == rel)
+        .map(|(_, names)| *names);
+    let mut bad = vec![];
+    for (n, l) in lines {
+        let flat: String = l.chars().filter(|c| !c.is_whitespace()).collect();
+        let mut why = None;
+        if let Some(w) =
+            idents(l).find(|w| FETCH_NAMES.contains(w) && !callers.is_some_and(|c| c.contains(w)))
+        {
+            why = Some(format!("names `{w}`"));
+        }
+        if why.is_none() && callers.is_none() {
+            // `speech::download` (any import or path into the module): only the pause/progress types, only in a
+            // TYPE_IMPORTERS source, as `…::download::{DownloadControl, Progress}` or `…::download::Progress`.
+            let mut rest = flat.as_str();
+            while let Some(i) = rest.find("speech::download") {
+                rest = &rest[i + "speech::download".len()..];
+                let ok = TYPE_IMPORTERS.contains(&rel)
+                    && rest.strip_prefix("::").is_some_and(|t| {
+                        let names: Vec<&str> = match t.strip_prefix('{') {
+                            Some(list) => match list.split_once('}') {
+                                Some((inner, _)) => inner.split(',').filter(|x| !x.is_empty()).collect(),
+                                // A `{` list over several lines: refuse rather than guess what follows.
+                                None => vec!["…"],
+                            },
+                            None => vec![idents(t).next().unwrap_or("")],
+                        };
+                        !names.is_empty() && names.iter().all(|x| DOWNLOAD_TYPES.contains(x))
+                    });
+                if !ok {
+                    why = Some("imports from qrtz_speech::download beyond its pause/progress types".into());
+                    break;
+                }
+            }
+        }
+        if let Some(w) = why {
+            bad.push(format!("{rel}:{n}: {w}: {}", l.trim()));
+        }
+    }
+    bad
+}
+
 #[test]
-fn only_setup_and_the_pinned_local_models_call_the_downloader() {
+fn only_setup_and_the_package_fetcher_call_the_downloader() {
     let r = root();
     let mut files = vec![];
     rust_sources(&r.join("crates"), &mut files);
     rust_sources(&r.join("apps/desktop/src-tauri/src"), &mut files);
-    let allowed = [
-        "crates/qrtz-app/src/setup.rs",
-        "crates/qrtz-app/src/local_models.rs",
-        // ADR 0153: the module installer's HTTPS transport, to the pinned module hosts only (checked below).
-        "crates/qrtz-app/src/module_hosting.rs",
-    ];
+    rust_sources(&r.join("tools"), &mut files);
     let mut bad = vec![];
+    let mut seen: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for f in &files {
         let rel = f.strip_prefix(&r).unwrap().to_string_lossy().replace('\\', "/");
-        if rel.starts_with("crates/qrtz-speech/") || rel.contains("/tests/") || rel.contains("/examples/") {
+        if rel.contains("/tests/") || rel.contains("/examples/") {
             continue;
         }
-        for (n, l) in code(f) {
-            if (l.contains("Downloader") || l.contains("speech::download"))
-                && !allowed.contains(&rel.as_str())
-            {
-                bad.push(format!("{rel}:{n}: {}", l.trim()));
+        let lines = code(f);
+        if let Some(inner) = rel.strip_prefix("crates/qrtz-speech/src/") {
+            // Inside qrtz-speech: `download_files` (the generic pinned-list transfer that served the retired direct-HF
+            // model path) is called only by `download_bundle`, in download.rs itself.
+            if inner != "download.rs" && inner != "testkit.rs" {
+                for (n, l) in &lines {
+                    if idents(l).any(|w| w == "download_files") {
+                        bad.push(format!(
+                            "{rel}:{n}: names `download_files` outside download.rs: {}",
+                            l.trim()
+                        ));
+                    }
+                }
+            }
+            continue;
+        }
+        for (_, l) in &lines {
+            for w in idents(l).filter(|w| FETCH_NAMES.contains(w) || DOWNLOAD_TYPES.contains(w)) {
+                seen.entry(rel.clone()).or_default().insert(w.to_owned());
             }
         }
+        bad.extend(downloader_uses(&rel, &lines));
     }
     assert!(
         bad.is_empty(),
-        "downloader used outside ADR 0079's callers:\n{}",
+        "downloader used outside ADR 0157's callers (setup.rs: the speech bundle; module_hosting.rs: the one \
+         package fetcher; local_models.rs: the pause/progress types only):\n{}",
         bad.join("\n")
+    );
+    // The allowlist is real, so this test notices when an entry goes away and can be tightened.
+    for (f, names) in FETCH_CALLERS {
+        for w in *names {
+            assert!(
+                seen.get(*f).is_some_and(|s| s.contains(*w)),
+                "{f} no longer names `{w}`: drop it from FETCH_CALLERS"
+            );
+        }
+    }
+    for f in TYPE_IMPORTERS {
+        assert!(
+            seen.get(*f)
+                .is_some_and(|s| DOWNLOAD_TYPES.iter().any(|t| s.contains(*t))),
+            "{f} no longer uses the downloader's pause/progress types: drop it from TYPE_IMPORTERS"
+        );
+    }
+    let fetchers: Vec<&String> = seen
+        .iter()
+        .filter(|(_, s)| s.contains("fetch_range"))
+        .map(|(f, _)| f)
+        .collect();
+    assert_eq!(
+        fetchers,
+        ["crates/qrtz-app/src/module_hosting.rs"],
+        "ADR 0157 §5: one fetcher for every package kind"
     );
 
     for manifest in ["local_models.json", "ctrl_laya_model.json"] {
@@ -397,6 +516,64 @@ fn only_setup_and_the_pinned_local_models_call_the_downloader() {
     assert!(
         ctrl.contains("LocalModels"),
         "ctrl_model.rs downloads through local_models"
+    );
+}
+
+#[test]
+fn the_downloader_ratchet_refuses_a_fetch_from_local_models() {
+    let lm = "crates/qrtz-app/src/local_models.rs";
+    let lines = |src: &[&str]| -> Vec<(usize, String)> {
+        src.iter()
+            .enumerate()
+            .map(|(i, l)| (i + 1, (*l).to_owned()))
+            .collect()
+    };
+    // Today's shape: the pause/progress types, re-exported for ctrl_model.rs, and the package fetcher.
+    assert_eq!(
+        downloader_uses(
+            lm,
+            &lines(&[
+                "pub use qrtz_speech::download::{DownloadControl, Progress};",
+                "use qrtz_speech::download::Progress;",
+                "use crate::module_hosting::{AppleCodeChecks, Hosts, HttpTransport, InstallError, Op};",
+                "let t = HttpTransport::pinned();",
+            ])
+        ),
+        Vec::<String>::new()
+    );
+    // The retired direct path, in each shape it could come back.
+    for bad in [
+        "use qrtz_speech::download::{DownloadControl, Downloader, Progress};",
+        "use qrtz_speech::download::*;",
+        "use qrtz_speech::download;",
+        "use qrtz_speech::download as dl;",
+        "use qrtz_speech::download::{",
+        "let dl = Downloader::new(&base);",
+        "let dl = qrtz_speech::download::Downloader::new(&base);",
+        "dl.download_files(&files, &staging, &ctl, &on_progress).await?;",
+        "dl.fetch_range(&path, 0, 8, &ctl).await?;",
+        "dl.fetch_meta(\"x\").await?;",
+        "struct Fetch { dl: Downloader }",
+    ] {
+        assert_eq!(downloader_uses(lm, &lines(&[bad])).len(), 1, "{bad}");
+    }
+    // Any other source may not even import the types from qrtz-speech (it takes them from local_models).
+    assert_eq!(
+        downloader_uses(
+            "crates/qrtz-app/src/ctrl_model.rs",
+            &lines(&["use qrtz_speech::download::Progress;"])
+        )
+        .len(),
+        1
+    );
+    // The two callers keep only their own names: setup.rs can't take the range fetcher.
+    assert_eq!(
+        downloader_uses(
+            "crates/qrtz-app/src/setup.rs",
+            &lines(&["dl.fetch_range(&p, 0, 8, &ctl).await?;"])
+        )
+        .len(),
+        1
     );
 }
 
@@ -777,6 +954,9 @@ fn module_and_shared_crate_sources_name_no_downloader() {
                     "speech::download",
                     "speech::update",
                     "local_models",
+                    // ADR 0157: the package fetcher is the shell's too.
+                    "module_hosting",
+                    "HttpTransport",
                     "reqwest",
                     "tungstenite",
                     "ureq::",
@@ -792,7 +972,7 @@ fn module_and_shared_crate_sources_name_no_downloader() {
     assert!(seen > 30, "found only {seen} module/shared sources");
     assert!(
         bad.is_empty(),
-        "ADR 0144: only the shell downloads (download.rs via LocalModels):\n{}",
+        "ADR 0144/0157: only the shell downloads (setup.rs, and module_hosting.rs's package fetcher):\n{}",
         bad.join("\n")
     );
 }
@@ -1090,4 +1270,111 @@ fn the_app_tcc_entitlements_are_the_adr_allowlist() {
         map.get("shellTccEntitlements").is_none(),
         "shellTccEntitlements is retired by ADR 0154; use appTccEntitlements"
     );
+}
+
+/// ADR 0157 §9: a model is read only by the sandboxed services that declare it (`service.models`), handed over at
+/// connect. `extension.reads` is the exception, a model mapped into an extension's own process, which carries
+/// qrtz's TCC grants (ADR 0154). At most one exists: ctrl reading `model.laya` (its Laya scorer runs in ctrl's
+/// helper today), on the conditions in ADR 0157 (read-only from the store path, the sha256 re-checked at load or
+/// the store entry immutable, this one model only). Its planned exit is a sandboxed `inference.laya` XPC service
+/// that declares `model.laya` in `service.models`; then this list becomes empty. A second exception changes this
+/// test and its ADR, on purpose.
+const EXTENSION_READS: &[(&str, &str)] = &[("ctrl", "model.laya")];
+
+/// `(package, model)` for every `extension.reads` entry in one manifest document (a `qrtz.json`, or anything that
+/// embeds one: publish specs, fixtures).
+fn extension_reads(v: &Value, out: &mut BTreeSet<(String, String)>) {
+    match v {
+        Value::Object(o) => {
+            if let Some(reads) = o.get("extension").and_then(|e| e.get("reads")) {
+                let name = o.get("name").and_then(Value::as_str).unwrap_or("?").to_owned();
+                for r in reads.as_array().into_iter().flatten() {
+                    out.insert((name.clone(), r.as_str().unwrap_or("?").to_owned()));
+                }
+            }
+            for x in o.values() {
+                extension_reads(x, out);
+            }
+        }
+        Value::Array(a) => a.iter().for_each(|x| extension_reads(x, out)),
+        _ => {}
+    }
+}
+
+fn check_extension_reads(found: &BTreeSet<(String, String)>) -> Result<(), String> {
+    let allowed: BTreeSet<(String, String)> = EXTENSION_READS
+        .iter()
+        .map(|(a, b)| ((*a).to_owned(), (*b).to_owned()))
+        .collect();
+    if allowed.len() > 1 {
+        return Err(format!(
+            "ADR 0157 §9: at most one extension.reads exception, not {allowed:?}"
+        ));
+    }
+    let extra: Vec<_> = found.difference(&allowed).collect();
+    if !extra.is_empty() {
+        return Err(format!(
+            "extension.reads beyond ADR 0157 §9's one exception (ctrl → model.laya): {extra:?}; a model belongs \
+             in a sandboxed service's service.models"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn at_most_one_extension_reads_a_model_in_its_own_process() {
+    fn walk(d: &Path, out: &mut Vec<PathBuf>) {
+        for e in std::fs::read_dir(d).unwrap().flatten() {
+            let p = e.path();
+            let n = e.file_name().to_string_lossy().into_owned();
+            if p.is_dir() {
+                if !["node_modules", "target", ".build", ".git", "dist"].contains(&n.as_str()) {
+                    walk(&p, out)
+                }
+            } else if p.extension().is_some_and(|x| x == "json") {
+                out.push(p);
+            }
+        }
+    }
+    let r = root();
+    let mut files = vec![];
+    walk(&r, &mut files);
+    let mut found = BTreeSet::new();
+    let mut manifests = 0;
+    for f in &files {
+        let Ok(v) = serde_json::from_str::<Value>(&std::fs::read_to_string(f).unwrap_or_default()) else {
+            continue;
+        };
+        if f.file_name()
+            .is_some_and(|n| n == "qrtz.json" || n == "module.json")
+        {
+            manifests += 1;
+        }
+        extension_reads(&v, &mut found);
+    }
+    assert!(manifests >= 3, "found only {manifests} package manifests");
+    if let Err(e) = check_extension_reads(&found) {
+        panic!("{e}");
+    }
+    // The checker itself: today's one exception passes, a second one (or another reader of laya) fails.
+    let pair = |a: &str, b: &str| (a.to_owned(), b.to_owned());
+    let mut v = BTreeSet::new();
+    extension_reads(
+        &serde_json::json!({"name": "ctrl", "kind": "extension", "extension": {"reads": ["model.laya"]}}),
+        &mut v,
+    );
+    assert_eq!(v, BTreeSet::from([pair("ctrl", "model.laya")]));
+    assert!(check_extension_reads(&v).is_ok());
+    for (a, b) in [
+        ("echo", "model.parakeet-tdt-v2-en"),
+        ("ctrl", "model.nemotron"),
+        ("nano", "model.laya"),
+    ] {
+        let mut two = v.clone();
+        extension_reads(
+            &serde_json::json!({"packages": [{"name": a, "extension": {"reads": [b]}}]}),
+            &mut two,
+        );
+        assert!(check_extension_reads(&two).is_err(), "{a} → {b}");
+    }
 }

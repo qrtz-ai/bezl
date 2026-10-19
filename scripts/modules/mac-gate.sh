@@ -299,7 +299,7 @@ gate_f() {
 
 # ---- (g) sideload freshness ---------------------------------------------------------------------------------------
 gate_g() {
-  skip "(g)" "sideload freshness is installer logic, not a Mac property: cargo test -p qrtz-app --test module_hosting runs ADR 0144's four cases (expired-list sideload installs, revoked id refused, older snapshot refused, later fresh index disables a revoked module)"
+  skip "(g)" "sideload freshness is installer logic, not a Mac property: cargo test -p qrtz-publish --test gate_g runs ADR 0144's four cases on ADR 0157's installer (expired-list sideload installs marked stale, revoked id refused before the prompt, older snapshot refused, later fresh index disables a revoked module) plus the freshness exemption"
 }
 
 g_retired
