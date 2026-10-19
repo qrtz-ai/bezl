@@ -40,7 +40,11 @@
         "netCrates": ["reqwest"],
         "entitlements": {
           "file": "crates/qrtz-dash-net/entitlements/ai.qrtz.dash-net.entitlements",
-          "keys": ["com.apple.application-identifier", "com.apple.developer.team-identifier", "keychain-access-groups"]
+          "keys": [
+            "com.apple.application-identifier",
+            "com.apple.developer.team-identifier",
+            "keychain-access-groups"
+          ]
         }
       }
     }

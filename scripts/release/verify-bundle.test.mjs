@@ -64,7 +64,10 @@ describe('verify-bundle.sh', () => {
       /BUNDLE_MARKER: &str = "([^"]+)"/,
     )[1];
     expect(read('scripts/release/verify-bundle.sh')).toContain(marker);
-    const app = path.join(mkdtempSync(path.join(os.tmpdir(), 'vb-')), 'qrtz.app');
+    const app = path.join(
+      mkdtempSync(path.join(os.tmpdir(), 'vb-')),
+      'qrtz.app',
+    );
     mkdirSync(path.join(app, 'Contents/MacOS'), { recursive: true });
     mkdirSync(path.join(app, 'Contents/Resources'), { recursive: true });
     const blob = Buffer.concat([
