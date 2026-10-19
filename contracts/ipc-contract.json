@@ -14190,6 +14190,9 @@
                 "installed": {
                   "default": true,
                   "type": "boolean"
+                },
+                "bundledFallback": {
+                  "type": "boolean"
                 }
               },
               "required": [
@@ -14207,6 +14210,9 @@
                 },
                 "installed": {
                   "default": true,
+                  "type": "boolean"
+                },
+                "bundledFallback": {
                   "type": "boolean"
                 }
               },
@@ -14226,6 +14232,9 @@
                 "installed": {
                   "default": true,
                   "type": "boolean"
+                },
+                "bundledFallback": {
+                  "type": "boolean"
                 }
               },
               "required": [
@@ -14243,6 +14252,9 @@
                 },
                 "installed": {
                   "default": true,
+                  "type": "boolean"
+                },
+                "bundledFallback": {
                   "type": "boolean"
                 }
               },

@@ -150,6 +150,14 @@ export function isModuleOn(
   );
 }
 
+/** A bundled module fell back to the copy inside qrtz.app (host-written `modules.<id>.bundledFallback`). */
+export function isOnBundledFallback(
+  cfg: Pick<Config, 'modules'>,
+  id: ModuleId,
+): boolean {
+  return cfg.modules[id].bundledFallback === true;
+}
+
 /** ADR 0169: installed from the marketplace (the host writes it from qrtz.lock). */
 export function isModuleInstalled(
   cfg: Pick<Config, 'modules'>,

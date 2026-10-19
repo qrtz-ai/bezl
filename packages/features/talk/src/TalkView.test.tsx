@@ -104,7 +104,7 @@ describe("echo's view offers parakeet in place (ADR 0175)", () => {
     expect(offer).not.toBeNull();
     // The same consent text as the switch's dialog, all lowercase.
     expect(offer!.textContent).toContain(
-      'echo needs its speech model, parakeet (628 MB). it downloads once from hugging face',
+      'echo needs its speech model, parakeet (628 mb). it downloads once from hugging face',
     );
     expect(v.q('echo-download')?.textContent).toBe('download parakeet');
     await act(async () => v.q('echo-download')!.click());
@@ -329,6 +329,29 @@ describe('turning echo on after a failed speech:status (N184)', () => {
     expect(document.body.textContent).toContain('download and turn on');
     expect(v.calls.some((c) => c.channel === 'config:set')).toBe(false);
     expect(v.calls.map((c) => c.channel)).not.toContain('speech:download');
+    v.unmount();
+  });
+});
+
+describe('echo on its bundled copy', () => {
+  it('shows a small lowercase notice when the host reports the fallback, on and off', async () => {
+    for (const enabled of [true, false]) {
+      const v = await mount(async () => installed, {
+        modules: { echo: { enabled, bundledFallback: true } },
+      });
+      const n = v.q('echo-bundled-notice');
+      expect(n?.textContent).toBe(
+        "echo is using the copy built into qrtz: its update couldn't start",
+      );
+      expect(n?.textContent).toBe(n?.textContent?.toLowerCase());
+      v.unmount();
+    }
+  });
+
+  it('shows nothing without it, and the consent says mb', async () => {
+    const v = await mount(async () => installed);
+    expect(v.q('echo-bundled-notice')).toBeNull();
+    expect(document.body.textContent).not.toMatch(/\bMB\b/);
     v.unmount();
   });
 });

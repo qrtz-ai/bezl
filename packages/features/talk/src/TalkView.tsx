@@ -35,6 +35,7 @@ import {
 import {
   SETTINGS_PATH,
   isModuleOn,
+  isOnBundledFallback,
   loadConfig,
   requestNavigate,
   type Config,
@@ -43,7 +44,7 @@ import {
 import { entryMeta, parseTerm } from './format';
 import TalkSettings from './TalkSettings';
 
-const mb = (b: number) => `${Math.max(1, Math.round(b / 1e6))} MB`;
+const mb = (b: number) => `${Math.max(1, Math.round(b / 1e6))} mb`;
 
 /** A download is under way (or waiting to resume): nothing to offer, the speech notice shows its bar. */
 const BUSY = new Set(['checking', 'downloading', 'paused', 'installing']);
@@ -201,8 +202,17 @@ function useEchoSwitch() {
         data-testid="echo-status-error"
       />
     ) : null;
+  // The host reports echo is running the copy inside qrtz.app (its store version couldn't start). Stub: the
+  // host doesn't write `modules.echo.bundledFallback` yet, so this stays hidden until the self-update work does.
+  const notice =
+    cfg && isOnBundledFallback(cfg, 'echo') ? (
+      <Text variant="caption" muted data-testid="echo-bundled-notice">
+        echo is using the copy built into qrtz: its update couldn't start
+      </Text>
+    ) : null;
   // On the "on" page the error takes the offer's place (the offer needs the status it couldn't read).
   return {
+    notice,
     on,
     loaded: !!cfg,
     control,
@@ -217,6 +227,7 @@ export default function TalkView() {
   if (echo.loaded && !echo.on)
     return (
       <Page data-testid="talk-off" title="echo" actions={echo.control}>
+        {echo.notice}
         {echo.statusError}
         <EmptyState title="echo is off: turn it on to dictate with fn" />
         {echo.dialog}
@@ -227,6 +238,7 @@ export default function TalkView() {
       switchControl={echo.control}
       dialog={echo.dialog}
       offer={echo.offer}
+      notice={echo.notice}
     />
   );
 }
@@ -235,10 +247,12 @@ function TalkOn({
   switchControl,
   dialog,
   offer,
+  notice,
 }: {
   switchControl: ReactNode;
   dialog: ReactNode;
   offer: ReactNode;
+  notice: ReactNode;
 }) {
   // ADR 0146 M1.4: this module's own settings open here, not in the global settings.
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -326,6 +340,7 @@ function TalkOn({
       }
     >
       {dialog}
+      {notice}
       {offer}
       {/* ADR 0175: one notice at a time. While echo's own download offer is up, the generic speech notice (and
           its settings link) stays hidden; it comes back for the progress bar once a download starts. */}

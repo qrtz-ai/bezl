@@ -15,6 +15,12 @@ const ModuleSwitch = z
   .object({
     enabled: z.boolean().default(true),
     installed: z.boolean().default(true),
+    /**
+     * A bundled module (echo, ADR 0174) runs the copy inside qrtz.app because its store version couldn't start
+     * (written only by the host, like `installed`). Echo's view says so. Stub: no host writes it yet (the
+     * self-update work will); absent means no fallback.
+     */
+    bundledFallback: z.boolean().optional(),
   })
   .prefault({});
 
