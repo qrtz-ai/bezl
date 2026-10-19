@@ -73,10 +73,11 @@ done <<<"$NESTED"
 [[ "$notarize" == 1 ]] || { echo "signed; not notarized (--no-notarize)"; exit 0; }
 
 echo "== notarize and staple the app"
+# notarize.sh fails unless Apple answers Accepted: `notarytool submit --wait` can exit 0 on a rejected upload.
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 ditto -c -k --keepParent --sequesterRsrc "$app" "$work/qrtz.zip"
-xcrun notarytool submit "$work/qrtz.zip" --keychain-profile "$profile" --wait
+bash "$repo/scripts/release/notarize.sh" "$work/qrtz.zip" "$profile"
 xcrun stapler staple "$app"
 spctl --assess --type execute --verbose=2 "$app"
 
@@ -87,7 +88,7 @@ rm -f "$dmg"
 mkdir "$work/dmg" && ditto "$app" "$work/dmg/qrtz.app" && ln -s /Applications "$work/dmg/Applications"
 hdiutil create -volname qrtz -srcfolder "$work/dmg" -ov -format UDZO "$dmg" >/dev/null
 codesign --force --timestamp --sign "$identity" "$dmg"
-xcrun notarytool submit "$dmg" --keychain-profile "$profile" --wait
+bash "$repo/scripts/release/notarize.sh" "$dmg" "$profile"
 xcrun stapler staple "$dmg"
 xcrun stapler validate "$app" && xcrun stapler validate "$dmg"
 spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"

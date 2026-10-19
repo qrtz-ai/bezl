@@ -49,6 +49,11 @@ re-validates the staples and Gatekeeper, and writes `<dmg>.sha256`. It refuses a
 identity, a team id that doesn't match it, and the placeholder team before running anything. `QRTZ_SIGN_DRY_RUN=1`
 prints the plan instead (`scripts/release/sign-notarize.test.mjs` checks it on any OS).
 
+Each notarization goes through `scripts/release/notarize.sh`: `notarytool submit --wait` can exit 0 when Apple
+rejects the upload, so it asks for `--output-format json` and fails unless the status is `Accepted`. On a failure it
+prints the submission id and `xcrun notarytool log <id> --keychain-profile <profile>`, which shows Apple's reasons
+(`scripts/release/notarize.test.mjs`).
+
 The speech module source (download URL and the two pinned Ed25519 keys, hex) is baked in at compile time
 (`SpeechSetup::from_vars`, ADR 0046 §9.4). Without them the build has no speech module; export the `QRTZ_SPEECH_*`
 variables before running the script if this release carries one.
