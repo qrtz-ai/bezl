@@ -58,7 +58,9 @@ const BUSY = new Set(['checking', 'downloading', 'paused', 'installing']);
  * so a click can't turn echo on before we know whether it needs the download.
  *
  * N183: if `speech:status` fails, the view says so ("couldn't check speech, retry") and the switch is enabled
- * anyway: with the model's state unknown, turning echo on goes through the consent dialog and downloads.
+ * anyway. N184: turning echo on with the state still unknown reads `speech:status` again first, and uses that
+ * answer (an installed Parakeet turns echo on with no question and no download, so echo never goes online when
+ * Parakeet is here); only if it fails again, or says configured and not installed, does it ask and download.
  */
 function useEchoSwitch() {
   const qrtz = useQrtz();
@@ -105,18 +107,32 @@ function useEchoSwitch() {
     qrtz
       .invoke('config:set', { patch: { modules: { echo: { enabled: v } } } })
       .then((c) => setCfg(loadConfig(c)));
-  const turnOn = () => {
+  const turnOn = (needs: boolean) => {
     setAsking(false);
     setOn(true)
-      .then(() => (needsParakeet ? download() : undefined))
+      .then(() => (needs ? download() : undefined))
       .then(refresh, fail);
   };
   const size = parakeet?.latestBytes ? ` (${mb(parakeet.latestBytes)})` : '';
   const consent = `echo needs its speech model, parakeet${size}. it downloads once from hugging face, is checked against the fingerprint built into qrtz, and stays on this mac.`;
   const toggle = (v: boolean) => {
     if (!v) return void setOn(false).catch(fail);
+    // N184: the status is unknown (it failed): ask again before assuming a download is needed.
+    if (parakeet === null)
+      return void qrtz.invoke('speech:status', { extensions: ['echo'] }).then(
+        (s) => {
+          setParakeet(s);
+          setStatusFailed(false);
+          if (s.configured && !s.installed) setAsking(true);
+          else turnOn(false);
+        },
+        () => {
+          setStatusFailed(true);
+          setAsking(true);
+        },
+      );
     // Already downloaded (or nothing to download in this build): no question.
-    if (!needsParakeet) return turnOn();
+    if (!needsParakeet) return turnOn(false);
     setAsking(true);
   };
   const dialog = (
@@ -126,7 +142,7 @@ function useEchoSwitch() {
       body={consent}
       confirmLabel="download and turn on"
       onCancel={() => setAsking(false)}
-      onConfirm={turnOn}
+      onConfirm={() => turnOn(true)}
       data-testid="echo-consent"
     />
   );

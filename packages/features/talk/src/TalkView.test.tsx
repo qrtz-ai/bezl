@@ -281,3 +281,54 @@ describe('a failed speech:status (N183)', () => {
     v.unmount();
   });
 });
+
+describe('turning echo on after a failed speech:status (N184)', () => {
+  const echoStatus = (v: { calls: Call[] }) =>
+    v.calls.filter(
+      (c) =>
+        c.channel === 'speech:status' &&
+        (c.req as { extensions?: string[] })?.extensions,
+    ).length;
+
+  it('asks speech:status again first; installed Parakeet turns echo on with no consent and no download', async () => {
+    let fail = true;
+    const v = await mount(
+      () =>
+        fail
+          ? Promise.reject(new Error('E_UNAVAILABLE'))
+          : Promise.resolve(installed),
+      { modules: { echo: { enabled: false } } },
+    );
+    expect(v.q('echo-status-error')).not.toBeNull();
+    const before = echoStatus(v);
+    fail = false;
+    await act(async () => (v.q('echo-switch') as HTMLButtonElement).click());
+    await v.settle();
+    expect(echoStatus(v)).toBeGreaterThan(before);
+    expect(v.calls.find((c) => c.channel === 'config:set')?.req).toEqual({
+      patch: { modules: { echo: { enabled: true } } },
+    });
+    expect(document.body.textContent).not.toContain('download and turn on');
+    expect(v.q('echo-consent')).toBeNull();
+    expect(v.calls.map((c) => c.channel)).not.toContain('speech:download');
+    v.unmount();
+  });
+
+  it('asks for consent when the second answer says parakeet is missing', async () => {
+    let fail = true;
+    const v = await mount(
+      () =>
+        fail
+          ? Promise.reject(new Error('E_UNAVAILABLE'))
+          : Promise.resolve(none),
+      { modules: { echo: { enabled: false } } },
+    );
+    fail = false;
+    await act(async () => (v.q('echo-switch') as HTMLButtonElement).click());
+    await v.settle();
+    expect(document.body.textContent).toContain('download and turn on');
+    expect(v.calls.some((c) => c.channel === 'config:set')).toBe(false);
+    expect(v.calls.map((c) => c.channel)).not.toContain('speech:download');
+    v.unmount();
+  });
+});
