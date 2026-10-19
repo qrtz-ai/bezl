@@ -115,6 +115,8 @@ if [[ "$release" == 1 ]]; then
   if [[ -n "$changed" ]]; then
     msg="modules: release $(for m in nano ctrl snap; do printf '%s %s, ' "$m" "$(plutil -extract version raw -o - "modules/$m/qrtz.json" 2>/dev/null || sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "modules/$m/qrtz.json" | head -1)"; done | sed 's/, $//')"
     # shellcheck disable=SC2086
+    git add -- $changed
+    # shellcheck disable=SC2086
     git commit -q -m "$msg" -- $changed
     git push -q origin HEAD:main
     echo "publish: $msg (pushed $(git rev-parse --short HEAD))"
