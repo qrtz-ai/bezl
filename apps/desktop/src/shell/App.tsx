@@ -48,39 +48,55 @@ const Onboarding = lazy(() =>
   import('./Onboarding').then((m) => ({ default: m.Onboarding })),
 );
 
-/** Pinned to the bottom of the sidebar: only the dev-only gallery. There are no apps or settings tabs. */
+/** Pinned to the bottom of the sidebar: apps and opts (the qrtz page's two halves, no icons), then the dev-only gallery. */
 export const SIDEBAR_FOOT = new Set(['gallery']);
+/** The sidebar ids of the qrtz page's two halves: apps (/qrtz, the app manager) and opts (/qrtz/settings). */
+export const APPS = 'apps';
+export const OPTS = 'opts';
 /** The sub apps that make up the qrtz page (never a sidebar row of their own). */
 export const QRTZ_PAGE_PARTS: ReadonlySet<string> = new Set(
   Object.values(QRTZ_PARTS),
 );
 
 /**
- * The sidebar: "qrtz" first (plain text, no icon: the app manager, with qrtz's settings behind its gear), then
- * the apps in registry order (echo, nano, ctrl, snap), then the dev-only gallery at the bottom.
+ * The sidebar: the apps in registry order (echo, nano, ctrl, snap) at the top; pinned to the bottom "apps" (the
+ * app manager at /qrtz) and "opts" (qrtz's own opts at /qrtz/settings), both plain text with no icon, then the
+ * dev-only gallery.
  */
 export function sidebarItems(
   visible: readonly { manifest: { id: string; name: string; icon?: string } }[],
   updateReady = false,
 ): SideNavItem[] {
+  const rows: SideNavItem[] = visible
+    .filter(({ manifest }) => !QRTZ_PAGE_PARTS.has(manifest.id))
+    .map(({ manifest }) => ({
+      id: manifest.id,
+      label: manifest.name,
+      ...(manifest.icon ? { icon: manifest.icon } : {}),
+      group: SIDEBAR_FOOT.has(manifest.id)
+        ? ('foot' as const)
+        : ('main' as const),
+    }));
+  const main = rows.filter((r) => r.group !== 'foot');
+  const foot = rows.filter((r) => r.group === 'foot');
   return [
-    // ADR 0181: the dot says a newer qrtz is ready (settings → qrtz updates it).
+    ...main,
+    { id: APPS, label: 'apps', group: 'foot' },
+    // ADR 0181: the dot says a newer qrtz is ready (opts → qrtz updates it).
     {
-      id: QRTZ,
-      label: 'qrtz',
+      id: OPTS,
+      label: 'opts',
+      group: 'foot',
       ...(updateReady ? { dot: true, dotLabel: 'qrtz update ready' } : {}),
     },
-    ...visible
-      .filter(({ manifest }) => !QRTZ_PAGE_PARTS.has(manifest.id))
-      .map(({ manifest }) => ({
-        id: manifest.id,
-        label: manifest.name,
-        ...(manifest.icon ? { icon: manifest.icon } : {}),
-        group: SIDEBAR_FOOT.has(manifest.id)
-          ? ('foot' as const)
-          : ('main' as const),
-      })),
+    ...foot,
   ];
+}
+
+/** The sidebar row a resolved page is under: the qrtz page's settings view is opts, the rest of it apps. */
+export function sidebarActive(page: string, sub: string): string {
+  if (page !== QRTZ) return page;
+  return hostOf(page, sub).host === QRTZ_PARTS.settings ? OPTS : APPS;
 }
 
 /** One splat route: the shell owns the whole path and stays mounted across every navigation (ADR 0091). */
@@ -143,9 +159,14 @@ export function Shell() {
   const selectApp = useCallback(
     (id: string) =>
       void navigate(
-        id === QRTZ
-          ? joinRoute(QRTZ, qrtzSubRef.current)
-          : joinRoute(id, pathsRef.current[id]),
+        id === OPTS
+          ? '/qrtz/settings'
+          : id === APPS || id === QRTZ
+            ? joinRoute(
+                QRTZ,
+                qrtzSubRef.current === 'settings' ? '' : qrtzSubRef.current,
+              )
+            : joinRoute(id, pathsRef.current[id]),
       ),
     [navigate],
   );
@@ -224,7 +245,7 @@ export function Shell() {
           sidebar={
             <SideNav
               items={sidebarItems(visible, updateDot)}
-              active={page}
+              active={sidebarActive(page, pageSub)}
               onSelect={selectApp}
             />
           }

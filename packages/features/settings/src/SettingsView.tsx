@@ -4,7 +4,7 @@ import {
   Callout,
   Dialog,
   LongText,
-  ModuleSettingsPage,
+  Page,
   Progress,
   Select,
   SettingRow,
@@ -145,12 +145,8 @@ export default function SettingsView() {
     </SettingRow>
   );
   return (
-    // The qrtz page's settings, behind its gear (like every app's own settings page); close goes back to it.
-    <ModuleSettingsPage
-      module="qrtz"
-      onClose={() => requestNavigate({ app: 'qrtz' })}
-      data-testid="settings"
-    >
+    // The opts page: qrtz's own opts, pinned to the bottom of the sidebar under apps.
+    <Page title="opts" data-testid="settings">
       {error ? (
         <Callout
           tone="danger"
@@ -394,6 +390,6 @@ export default function SettingsView() {
       >
         <LongText data-testid="licenses-text">{licenses}</LongText>
       </Dialog>
-    </ModuleSettingsPage>
+    </Page>
   );
 }

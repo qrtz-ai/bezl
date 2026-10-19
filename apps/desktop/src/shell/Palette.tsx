@@ -81,17 +81,16 @@ export function Palette({
         };
     return [
       ...(nanoOn ? [rec] : []),
-      // The qrtz page (the app manager) and its settings; the rest are the apps the sidebar lists.
+      // The qrtz page's two halves, apps (the app manager) and opts; the rest are the apps the sidebar lists.
       {
         id: 'nav.qrtz',
-        title: 'go to qrtz',
+        title: 'go to apps',
         keywords: 'open apps install update remove manager store marketplace',
         run: () => onNavigate(QRTZ),
       },
       {
         id: 'nav.qrtz-settings',
-        title: 'qrtz opts',
-        icon: 'settings',
+        title: 'go to opts',
         keywords: 'open opts preferences settings theme backup logs updates',
         run: () => requestNavigate({ app: QRTZ, settings: true }),
       },

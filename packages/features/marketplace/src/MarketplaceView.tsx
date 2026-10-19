@@ -20,7 +20,6 @@ import {
   InstallProgress,
   Menu,
   Modal,
-  ModuleSettingsButton,
   Page,
   RowProgress,
   SettingRow,
@@ -727,17 +726,7 @@ export default function MarketplaceView() {
   ) : null;
 
   return (
-    <Page
-      data-testid="qrtz-page"
-      title="qrtz"
-      actions={
-        <ModuleSettingsButton
-          module="qrtz"
-          onClick={() => requestNavigate({ app: 'qrtz', settings: true })}
-          data-testid="qrtz-settings-open"
-        />
-      }
-    >
+    <Page data-testid="qrtz-page" title="apps">
       <Toolbar
         end={
           <Button

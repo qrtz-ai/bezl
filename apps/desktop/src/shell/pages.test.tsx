@@ -60,10 +60,10 @@ describe('page layout', () => {
       const header = page.firstElementChild as HTMLElement;
       expect(header.style.height).toBe('40px');
       expect(header.querySelector('h1')).not.toBeNull();
-      // The qrtz page: title "qrtz" and its gear; its settings: "qrtz settings" with a close button.
-      if (path === '/qrtz') expect(header.textContent).toBe('qrtz');
+      // The qrtz page's two halves: "apps" and "opts", plain titles with no header actions.
+      if (path === '/qrtz') expect(header.textContent).toBe('apps');
       if (path === '/qrtz/settings')
-        expect(header.querySelector('h1')?.textContent).toBe('qrtz opts');
+        expect(header.querySelector('h1')?.textContent).toBe('opts');
       // The main area scrolls vertically only and never bounces.
       const main = el.querySelector<HTMLElement>('[data-scroll-root]')!;
       expect(main.style.overflowX).toBe('hidden');

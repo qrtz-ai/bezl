@@ -45,7 +45,7 @@ window.qrtzTransport = transport;
 const { routes } = await import('./App');
 
 describe('the sidebar dot (ADR 0181)', () => {
-  it('shows on the qrtz row only while an update is available or ready', async () => {
+  it('shows on the opts row only while an update is available or ready', async () => {
     const router = createMemoryRouter(routes, { initialEntries: ['/note'] });
     const el = document.createElement('div');
     document.body.appendChild(el);
@@ -54,7 +54,7 @@ describe('the sidebar dot (ADR 0181)', () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 10));
     });
-    const dot = () => el.querySelector('[data-testid="nav-qrtz-dot"]');
+    const dot = () => el.querySelector('[data-testid="nav-opts-dot"]');
     expect(dot()).toBeNull();
     const push = async (state: string) =>
       act(async () => {

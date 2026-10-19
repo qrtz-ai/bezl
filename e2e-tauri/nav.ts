@@ -1,30 +1,26 @@
 import { expect, type Page } from '@playwright/test';
 
-// The sidebar has no marketplace or settings rows any more: "qrtz" (nav-qrtz) opens the qrtz page (the app
-// manager, /qrtz), and qrtz's own settings sit behind that page's gear at /qrtz/settings.
+// The sidebar's bottom rows are the qrtz page's two halves: "apps" (nav-apps) opens the app manager at /qrtz,
+// and "opts" (nav-opts) opens qrtz's own opts at /qrtz/settings.
 
 /** The qrtz page's app manager (the old marketplace / module manager). */
 export async function openQrtz(page: Page) {
-  await page.getByTestId('nav-qrtz').click();
-  // The qrtz row returns to the qrtz page's last sub-path; settings closes back to the manager.
-  if (/#\/qrtz\/settings$/.test(page.url()))
-    await page.getByTestId('settings-close').click();
+  await page.getByTestId('nav-apps').click();
   await expect(page).toHaveURL(/#\/qrtz$/);
   await expect(page.getByTestId('qrtz-page')).toBeVisible();
 }
 
-/** qrtz's own (global) settings: the qrtz page's gear. */
+/** qrtz's own (global) opts. */
 export async function openSettings(page: Page) {
-  await page.getByTestId('nav-qrtz').click();
-  if (!/#\/qrtz\/settings$/.test(page.url()))
-    await page.getByTestId('qrtz-settings-open').click();
+  await page.getByTestId('nav-opts').click();
   await expect(page).toHaveURL(/#\/qrtz\/settings$/);
   await expect(page.getByTestId('settings')).toBeVisible();
 }
 
 /** A sidebar app, or the qrtz page's parts by their old names (`marketplace`, `settings`). */
 export async function go(page: Page, name: string) {
-  if (name === 'marketplace' || name === 'qrtz') return openQrtz(page);
-  if (name === 'settings') return openSettings(page);
+  if (name === 'marketplace' || name === 'qrtz' || name === 'apps')
+    return openQrtz(page);
+  if (name === 'settings' || name === 'opts') return openSettings(page);
   await page.getByTestId(`nav-${name}`).click();
 }

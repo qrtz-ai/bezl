@@ -51,7 +51,7 @@ test('first launch: permissions onboarding, then the qrtz page; reopened from qr
   const ob = page.getByTestId('onboarding');
   await expect(ob).toBeVisible();
   // Before the qrtz page: no sidebar, no app view.
-  await expect(page.getByTestId('nav-qrtz')).toHaveCount(0);
+  await expect(page.getByTestId('nav-apps')).toHaveCount(0);
   for (const id of ['microphone', 'screen-recording', 'accessibility'])
     await expect(page.getByTestId(`onboarding-perm-${id}-state`)).toHaveText(
       'not granted',
@@ -93,13 +93,13 @@ test('first launch: permissions onboarding, then the qrtz page; reopened from qr
 
   await page.getByTestId('onboarding-continue').click();
   await expect(ob).toHaveCount(0);
-  await expect(page.getByTestId('nav-qrtz')).toBeVisible();
+  await expect(page.getByTestId('nav-apps')).toBeVisible();
   await expect(page.locator('[data-subapp="marketplace"]')).toBeVisible();
   const cfg = await invoke(page, 'settings', 'config:get');
   expect(cfg.data?.onboarding).toEqual({ done: true });
 
   // qrtz settings → permissions reopens it; skip goes back to settings.
-  await page.getByTestId('qrtz-settings-open').click();
+  await page.getByTestId('nav-opts').click();
   await expect(page.getByTestId('permissions-note')).toContainText(
     'system audio',
   );
@@ -133,7 +133,7 @@ test('without nano installed, onboarding and settings never list system audio (A
   await clean(page, 'onboarding-no-nano');
   await page.getByTestId('onboarding-skip').click();
   await expect(ob).toHaveCount(0);
-  await page.getByTestId('qrtz-settings-open').click();
+  await page.getByTestId('nav-opts').click();
   const note = page.getByTestId('permissions-note');
   await expect(note).toContainText('microphone and accessibility');
   await expect(note).not.toContainText('system audio');

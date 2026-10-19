@@ -39,7 +39,8 @@ function ShellDemo() {
               { id: 'nano', label: 'nano', icon: 'edit-3' },
               { id: 'ctrl', label: 'ctrl', icon: 'command' },
               { id: 'snap', label: 'snap', icon: 'grid' },
-              { id: 'opts', label: 'opts', icon: 'settings', group: 'foot' },
+              { id: 'apps', label: 'apps', group: 'foot' },
+              { id: 'opts', label: 'opts', group: 'foot' },
             ]}
             active={bar}
             onSelect={setBar}

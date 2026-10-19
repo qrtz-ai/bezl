@@ -110,7 +110,7 @@ describe('shell routing (ADR 0091)', () => {
     expect(q('path-note')!.textContent).toBe('meetings/m1/summary');
 
     for (let i = 0; i < 3; i++) {
-      await click('nav-qrtz');
+      await click('nav-apps');
       await click('nav-note');
       await click('nav-talk');
     }
@@ -152,22 +152,26 @@ describe('shell routing (ADR 0091)', () => {
     act(() => root.unmount());
   });
 
-  it('the sidebar is qrtz (plain text, no icon) and then the apps; no apps or settings tabs', async () => {
+  it('the sidebar is the apps, then apps and opts (plain text, no icon) pinned to the bottom', async () => {
     const { el, root, q } = await boot('/');
     const rows = [...el.querySelectorAll('nav [data-testid^="nav-"]')].map(
       (b) => b.getAttribute('data-testid'),
     );
-    expect(rows).toEqual(['nav-qrtz', 'nav-note', 'nav-talk']);
-    expect(q('nav-qrtz')!.textContent).toBe('qrtz');
-    expect(q('nav-qrtz')!.querySelector('svg')).toBeNull();
+    expect(rows).toEqual(['nav-note', 'nav-talk', 'nav-apps', 'nav-opts']);
+    for (const id of ['apps', 'opts']) {
+      expect(q(`nav-${id}`)!.textContent).toBe(id);
+      expect(q(`nav-${id}`)!.querySelector('svg')).toBeNull();
+    }
+    expect(q('nav-qrtz')).toBeNull();
     expect(q('nav-marketplace')).toBeNull();
     expect(q('nav-settings')).toBeNull();
-    // The qrtz page is the landing route.
-    expect(q('nav-qrtz')!.getAttribute('aria-current')).toBe('page');
+    // apps (the qrtz page) is the landing route.
+    expect(q('nav-apps')!.getAttribute('aria-current')).toBe('page');
+    expect(q('nav-opts')!.getAttribute('aria-current')).toBeNull();
     act(() => root.unmount());
   });
 
-  it("the qrtz page's settings open at /qrtz/settings (its gear), and the qrtz row returns there", async () => {
+  it('opts opens /qrtz/settings and apps opens /qrtz, each lit only on its own page', async () => {
     const { router, root, q, host, click } = await boot('/qrtz');
     expect(host('marketplace')!.hidden).toBe(false);
     await act(async () => requestNavigate({ app: 'qrtz', settings: true }));
@@ -177,15 +181,16 @@ describe('shell routing (ADR 0091)', () => {
     expect(router.state.location.pathname).toBe('/qrtz/settings');
     expect(host('settings')!.hidden).toBe(false);
     expect(host('marketplace')!.hidden).toBe(true);
-    // Still the qrtz row in the sidebar.
-    expect(q('nav-qrtz')!.getAttribute('aria-current')).toBe('page');
-    await click('nav-note');
-    await click('nav-qrtz');
-    expect(router.state.location.pathname).toBe('/qrtz/settings');
-    // Closing settings goes back to the list.
-    await act(async () => requestNavigate({ app: 'qrtz' }));
+    expect(q('nav-opts')!.getAttribute('aria-current')).toBe('page');
+    expect(q('nav-apps')!.getAttribute('aria-current')).toBeNull();
+    await click('nav-apps');
     expect(router.state.location.pathname).toBe('/qrtz');
     expect(host('marketplace')!.hidden).toBe(false);
+    expect(q('nav-apps')!.getAttribute('aria-current')).toBe('page');
+    await click('nav-note');
+    await click('nav-opts');
+    expect(router.state.location.pathname).toBe('/qrtz/settings');
+    expect(host('settings')!.hidden).toBe(false);
     act(() => root.unmount());
   });
 
@@ -228,7 +233,7 @@ describe('the permissions onboarding gate (ADR 0184)', () => {
       expect(q('nav-qrtz')).toBeNull();
       await click('onboarding-skip');
       expect(q('onboarding')).toBeNull();
-      expect(q('nav-qrtz')).not.toBeNull();
+      expect(q('nav-apps')).not.toBeNull();
       await act(async () => requestNavigate({ app: 'qrtz', onboarding: true }));
       await act(async () => {
         await new Promise((r) => setTimeout(r, 30));
@@ -250,7 +255,7 @@ describe('the permissions onboarding gate (ADR 0184)', () => {
     try {
       const { q, root } = await boot('/');
       expect(q('onboarding')).toBeNull();
-      expect(q('nav-qrtz')).not.toBeNull();
+      expect(q('nav-apps')).not.toBeNull();
       act(() => root.unmount());
     } finally {
       delete (window as { qrtzTransport?: unknown }).qrtzTransport;

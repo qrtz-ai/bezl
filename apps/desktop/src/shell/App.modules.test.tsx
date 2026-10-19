@@ -51,7 +51,7 @@ describe('module switches (ADR 0146)', () => {
     const q = (id: string) => el.querySelector(`[data-testid="${id}"]`);
     expect(q('nav-note')).toBeNull();
     expect(q('nav-talk')).not.toBeNull();
-    expect(q('nav-qrtz')).not.toBeNull();
+    expect(q('nav-apps')).not.toBeNull();
     expect(q('view-note')).toBeNull();
     expect(router.state.location.pathname).toBe('/qrtz');
     expect(q('view-marketplace')).not.toBeNull();

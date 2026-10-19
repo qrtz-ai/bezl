@@ -18,21 +18,25 @@ describe('manifests', () => {
     expect(order.slice(0, 4)).toEqual(['echo', 'nano', 'ctrl', 'snap']);
   });
 
-  it('the sidebar is qrtz (no icon), then echo, nano, ctrl, snap: no apps or settings tabs at the bottom', () => {
+  it('the sidebar is echo, nano, ctrl, snap, then apps and opts (no icons) pinned to the bottom', () => {
     const sorted = manifests
       .filter((m) => m.id !== 'shell' && m.id !== 'gallery')
       .toSorted((a, b) => (a.order ?? 100) - (b.order ?? 100))
       .map((manifest) => ({ manifest }));
     const items = sidebarItems(sorted);
     expect(items.map((i) => i.label)).toEqual([
-      'qrtz',
       'echo',
       'nano',
       'ctrl',
       'snap',
+      'apps',
+      'opts',
     ]);
-    expect(items[0]).toEqual({ id: 'qrtz', label: 'qrtz' });
-    expect(items.some((i) => i.group === 'foot')).toBe(false);
+    expect(items.slice(-2)).toEqual([
+      { id: 'apps', label: 'apps', group: 'foot' },
+      { id: 'opts', label: 'opts', group: 'foot' },
+    ]);
+    expect(items.filter((i) => i.group === 'foot')).toHaveLength(2);
     expect(QRTZ_PAGE_PARTS).toEqual(new Set(['marketplace', 'settings']));
     expect([...SIDEBAR_FOOT]).toEqual(['gallery']);
   });

@@ -139,14 +139,13 @@ const weatherEntry = {
 };
 
 describe('the qrtz page (ADR 0161, Jared 2026-10-18)', () => {
-  it('lists installed apps in short rows under the shared page header, with the gear, without going online', async () => {
+  it('lists installed apps in short rows under the shared "apps" header, without going online', async () => {
     const f = fake();
     await render(f.client);
     const page = q('qrtz-page')!;
-    expect(page.querySelector('h1')?.textContent).toBe('qrtz');
-    expect(q('qrtz-settings-open')?.getAttribute('aria-label')).toBe(
-      'qrtz opts',
-    );
+    expect(page.querySelector('h1')?.textContent).toBe('apps');
+    // opts is its own sidebar row now: no gear on the apps page.
+    expect(q('qrtz-settings-open')).toBeNull();
     for (const n of ['echo', 'nano', 'ctrl'])
       expect(
         q('installed-list')?.querySelector(`[data-testid="app-row-${n}"]`),
@@ -163,15 +162,6 @@ describe('the qrtz page (ADR 0161, Jared 2026-10-18)', () => {
     expect(document.querySelector('[data-grid-card]')).toBeNull();
     expect(f.calls.map((c) => c.channel)).not.toContain('packages:refresh');
     expect(el.textContent).toBe(el.textContent?.toLowerCase());
-  });
-
-  it('the gear opens qrtz settings, like every app page', async () => {
-    await render(fake().client);
-    const seen: NavRequest[] = [];
-    const off = onNavigateRequest((r) => seen.push(r));
-    await click('qrtz-settings-open');
-    off();
-    expect(seen).toEqual([{ app: 'qrtz', settings: true }]);
   });
 
   it('checks for apps only when asked', async () => {

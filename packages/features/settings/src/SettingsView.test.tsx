@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { QrtzClient } from '@qrtz/core';
-import { defaultConfig, onNavigateRequest, type NavRequest } from '@qrtz/core';
+import { defaultConfig } from '@qrtz/core';
 import { QrtzClientProvider } from '@qrtz/core/react';
 import { ipcSamples } from '@qrtz/core/ipc/samples';
 import { ThemeProvider } from '@qrtz/ui';
@@ -82,13 +82,9 @@ describe('global settings (ADR 0146 M1.4)', () => {
     ])
       expect(q(id), id).toBeNull();
     expect(el.textContent).not.toContain('apps page');
-    // The qrtz page's settings page: titled like every app's, and its close goes back to the qrtz page.
-    expect(q('settings')?.querySelector('h1')?.textContent).toBe('qrtz opts');
-    const seen: NavRequest[] = [];
-    const off = onNavigateRequest((r) => seen.push(r));
-    await act(async () => (q('settings-close') as HTMLElement).click());
-    off();
-    expect(seen).toEqual([{ app: 'qrtz' }]);
+    // The opts page: its own sidebar row, so a plain "opts" title and no close button.
+    expect(q('settings')?.querySelector('h1')?.textContent).toBe('opts');
+    expect(q('settings-close')).toBeNull();
     root.unmount();
     el.remove();
   });
