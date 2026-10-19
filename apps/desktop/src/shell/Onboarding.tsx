@@ -12,7 +12,7 @@ import {
 } from '@qrtz/ui';
 import {
   loadConfig,
-  type CalendarStatus,
+  type CalendarAccess,
   type ModuleId,
   type OsPermission,
   type PermissionsStatus,
@@ -84,9 +84,9 @@ export function showCalendarRow(cfg: unknown) {
   return cfg != null && (loadConfig(cfg).modules?.nano?.installed ?? false);
 }
 
-/** The calendar row's state from nano's calendar status. */
+/** The calendar row's state from the calendar access state (ADR 0217 H1: the shell sees nothing more). */
 export function calendarSetupState(
-  st: CalendarStatus | null,
+  st: CalendarAccess | null,
 ): PermissionSetupState {
   if (!st) return 'checking';
   if (st.access === 'granted') return 'granted';
@@ -137,8 +137,7 @@ function Steps({ onDone }: { onDone: () => void }) {
   const [cfg, setCfg] = useState<Record<string, unknown> | null>(null);
   const liveCfg = useQrtzEvent('config:changed');
   const fail = (e: Error) => setError(e.message);
-  const [cal, setCal] = useState<CalendarStatus | null>(null);
-  const liveCal = useQrtzEvent('calendar:changed');
+  const [cal, setCal] = useState<CalendarAccess | null>(null);
   const calShown = showCalendarRow(cfg);
 
   const read = useCallback(
@@ -160,14 +159,17 @@ function Steps({ onDone }: { onDone: () => void }) {
   useEffect(() => {
     if (liveCfg) setCfg(liveCfg);
   }, [liveCfg]);
-  // Reads only (calendar:status never prompts); the ask is the row's allow.
-  useEffect(() => {
+  // Reads only (calendar:access never prompts); the ask is the row's allow. ADR 0217 H1: the shell holds no
+  // calendar.read, so it reads the access state alone, again when the window regains focus (System Settings).
+  const readCal = useCallback(() => {
     if (calShown)
-      void qrtz.invoke('calendar:status').then(setCal, () => setCal(null));
+      void qrtz.invoke('calendar:access').then(setCal, () => setCal(null));
   }, [qrtz, calShown]);
   useEffect(() => {
-    if (liveCal) setCal(liveCal);
-  }, [liveCal]);
+    readCal();
+    window.addEventListener('focus', readCal);
+    return () => window.removeEventListener('focus', readCal);
+  }, [readCal]);
   const connectCalendar = () => {
     setError(null);
     void qrtz.invoke('calendar:connect').then(setCal, fail);

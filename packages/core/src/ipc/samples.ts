@@ -292,7 +292,14 @@ const calendarStatus = {
 };
 const calendarSamples = {
   'calendar:status': { request: undefined, response: calendarStatus },
-  'calendar:connect': { request: undefined, response: calendarStatus },
+  'calendar:connect': {
+    request: undefined,
+    response: { access: 'granted' as const },
+  },
+  'calendar:access': {
+    request: undefined,
+    response: { access: 'granted' as const },
+  },
   'calendar:refresh': { request: undefined, response: calendarStatus },
   'calendar:upcoming': {
     request: undefined,

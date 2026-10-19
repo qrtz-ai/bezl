@@ -117,6 +117,9 @@ export const CalendarStatus = z.object({
   lastSyncAt: z.number().nullable(),
 });
 export type CalendarStatus = z.infer<typeof CalendarStatus>;
+/** ADR 0217 (H1): what an os.permissions holder (the shell's onboarding) may see: the access state only. */
+export const CalendarAccess = CalendarStatus.pick({ access: true }).strict();
+export type CalendarAccess = z.infer<typeof CalendarAccess>;
 
 /** ADR 0220: the notes vault. */
 export const VaultInfo = z.object({
@@ -787,7 +790,17 @@ export const ipcContract = {
     version: 1,
     capability: 'os.permissions',
     request: z.void(),
-    response: CalendarStatus,
+    response: CalendarAccess,
+  }),
+  /**
+   * ADR 0217 (H1): the calendar access state alone (never prompts), for the onboarding's calendar row. No calendars,
+   * no events: those are calendar.read, which only nano holds.
+   */
+  'calendar:access': defineChannel({
+    version: 1,
+    capability: 'os.permissions',
+    request: z.void(),
+    response: CalendarAccess,
   }),
   /** ADR 0217: read the calendar again now. */
   'calendar:refresh': defineChannel({

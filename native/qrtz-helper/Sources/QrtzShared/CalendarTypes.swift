@@ -46,8 +46,17 @@ public struct CalendarEventInfo: Equatable, Sendable {
 }
 
 public enum CalendarText {
-    /// Drops control, format (tag, bidi, zero-width) and private-use characters, collapses whitespace, caps at
-    /// `max` characters (whole scalars). Titles are third-party text.
+    /// Drops control, format (tag, bidi, zero-width) and private-use characters, collapses whitespace, cuts every
+    /// URL in the text to scheme + host + path (M2: a 'sync https://zoom.us/j/1?pwd=…' title keeps no passcode),
+    /// caps at `max` characters (whole scalars). Titles are third-party text.
+    /// ADR 0217 M2: every space-separated word holding "://" loses its query and fragment.
+    public static func stripURLQueries(_ s: String) -> String {
+        s.split(separator: " ", omittingEmptySubsequences: false).map { w -> String in
+            guard w.range(of: "://") != nil, let cut = w.firstIndex(where: { $0 == "?" || $0 == "#" }) else { return String(w) }
+            return String(w[..<cut])
+        }.joined(separator: " ")
+    }
+
     public static func clean(_ s: String, max: Int = CalendarLimits.titleMax) -> String {
         var out = String.UnicodeScalarView()
         var space = false
@@ -60,7 +69,7 @@ public enum CalendarText {
             if space { out.append(" "); space = false }
             out.append(u)
         }
-        var r = String(out)
+        var r = stripURLQueries(String(out))
         if r.count > max { r = String(r.prefix(max)) }
         // Keep the wire bound in UTF-16 units too (zod counts those).
         while r.utf16.count > max { r.removeLast() }

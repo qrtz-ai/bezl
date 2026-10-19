@@ -452,8 +452,9 @@ export function createMockBridge(): TauriBridge {
       }
       const s = calendarStatus();
       emit('calendar:changed', s);
-      return s;
+      return { access: s.access };
     },
+    'calendar:access': () => ({ access: calendarStatus().access }),
     'calendar:upcoming': () => {
       const s = calendarStatus();
       if (!s.enabled || s.access !== 'granted') return { events: [] };

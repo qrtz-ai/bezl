@@ -48,6 +48,14 @@ pub struct CalendarEvent {
     pub meeting_url: Option<String>,
 }
 
+/// ADR 0217 M2: a word holding `://` is cut before its first `?` or `#` (scheme + host + path stay).
+pub fn strip_url_query(word: &str) -> &str {
+    if !word.contains("://") {
+        return word;
+    }
+    word.split(['?', '#']).next().unwrap_or(word)
+}
+
 /// Drops control, format (tag, bidi) and private-use characters, collapses whitespace, and caps the length.
 pub fn clean_title(s: &str) -> String {
     let kept: String = s
@@ -64,7 +72,12 @@ pub fn clean_title(s: &str) -> String {
                 || (0xE000..=0xF8FF).contains(&u))
         })
         .collect();
-    let joined = kept.split_whitespace().collect::<Vec<_>>().join(" ");
+    // M2: a URL inside a title ('sync https://zoom.us/j/1?pwd=…') loses its query and fragment.
+    let joined = kept
+        .split_whitespace()
+        .map(strip_url_query)
+        .collect::<Vec<_>>()
+        .join(" ");
     joined.chars().take(TITLE_MAX).collect()
 }
 
@@ -212,23 +225,25 @@ impl<'a> CalendarRepo<'a> {
         }
     }
 
-    /// Re-cleans every cached meeting link (a cache written before links lost their query keeps no passcode at
-    /// rest): drops the query and fragment, or the link when it no longer passes. Returns the rows changed.
+    /// Re-cleans every cached title and meeting link (a cache written before links lost their query keeps no
+    /// passcode at rest): URLs in titles and the link drop their query and fragment (the link goes when it no
+    /// longer passes). Returns the rows changed.
     pub fn scrub_links(&self) -> Result<usize> {
         let mut st = self
             .conn
-            .prepare_cached("SELECT id, meeting_url FROM calendar_events WHERE meeting_url IS NOT NULL")?;
-        let rows: Vec<(String, String)> = st
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .prepare_cached("SELECT id, title, meeting_url FROM calendar_events")?;
+        let rows: Vec<(String, String, Option<String>)> = st
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
             .collect::<std::result::Result<_, _>>()?;
         let mut up = self
             .conn
-            .prepare_cached("UPDATE calendar_events SET meeting_url=? WHERE id=?")?;
+            .prepare_cached("UPDATE calendar_events SET title=?, meeting_url=? WHERE id=?")?;
         let mut n = 0;
-        for (id, url) in rows {
-            let clean = clean_meeting_url(Some(&url));
-            if clean.as_deref() != Some(url.as_str()) {
-                up.execute(params![clean, id])?;
+        for (id, title, url) in rows {
+            let t = clean_title(&title);
+            let u = url.as_deref().and_then(|u| clean_meeting_url(Some(u)));
+            if t != title || u != url {
+                up.execute(params![t, u, id])?;
                 n += 1;
             }
         }

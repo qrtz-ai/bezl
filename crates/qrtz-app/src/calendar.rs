@@ -421,7 +421,8 @@ fn event_from_wire(v: &Value) -> Option<CalendarEvent> {
     Some(CalendarEvent {
         id: v["id"].as_str()?.to_owned(),
         calendar_id: v["calendarId"].as_str()?.to_owned(),
-        title: v["title"].as_str()?.to_owned(),
+        // M2: a URL in the title loses its query/fragment here too (the storage layer cleans it again).
+        title: qrtz_storage::calendar::clean_title(v["title"].as_str()?),
         start_at: v["startMs"].as_i64()?,
         end_at: v["endMs"].as_i64()?,
         all_day: v["allDay"].as_bool().unwrap_or(false),
@@ -483,6 +484,18 @@ mod tests {
             attendee_count: 1,
             meeting_url: None,
         }
+    }
+
+    #[test]
+    fn m2_the_wire_event_keeps_no_query_in_its_link_or_title() {
+        let e = event_from_wire(
+            &json!({"id": "a", "calendarId": "w", "title": "sync https://zoom.us/j/1?pwd=s3cr3t now",
+            "startMs": 1, "endMs": 2, "meetingUrl": "https://zoom.us/j/1?pwd=s3cr3t#x"}),
+        )
+        .unwrap();
+        assert_eq!(e.title, "sync https://zoom.us/j/1 now");
+        assert_eq!(e.meeting_url.as_deref(), Some("https://zoom.us/j/1"));
+        assert!(!format!("{e:?}").contains("s3cr3t"));
     }
 
     #[test]

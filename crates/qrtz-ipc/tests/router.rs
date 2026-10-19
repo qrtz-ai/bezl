@@ -230,3 +230,47 @@ fn event_payloads_are_validated() {
     assert!(validate_event("helper:status", &json!({"state": "running", "restarts": 0})).is_ok());
     assert!(validate_event("helper:status", &json!({"state": "weird", "restarts": 0})).is_err());
 }
+
+/// ADR 0217 (H1, Bozniak re-review): calendar.read is nano's alone. talk, ctrl and the shell are refused the
+/// calendar's status, upcoming events and refresh, and its calendar:changed event; the shell's onboarding gets only
+/// calendar:access (os.permissions), and nano's view gets everything.
+#[tokio::test]
+async fn only_nano_reads_the_calendar() {
+    struct Any;
+    #[async_trait]
+    impl Handler for Any {
+        async fn handle(&self, _c: &str, _p: Value, _x: &CallContext) -> Result<Value, AppError> {
+            Ok(Value::Null)
+        }
+    }
+    let r = Router::new(Any).validate_responses(false);
+    let call = |sub: &str, ch: &str| json!({"v":1,"id":"c","channel":ch,"version":1,"subApp":sub});
+    let reads = ["calendar:status", "calendar:upcoming", "calendar:refresh"];
+    for sub in ["talk", "ctrl", "shell"] {
+        for ch in reads {
+            let res = r.dispatch(call(sub, ch)).await;
+            assert_eq!(res["error"]["code"], "E_FORBIDDEN", "{sub} {ch}: {res}");
+        }
+        let mut s = Subscriptions::default();
+        assert_eq!(
+            s.subscribe("main", sub, "calendar:changed").unwrap_err().code,
+            ErrorCode::Forbidden,
+            "{sub} calendar:changed"
+        );
+    }
+    for ch in reads {
+        assert_eq!(r.dispatch(call("note", ch)).await["ok"], true, "note {ch}");
+    }
+    Subscriptions::default()
+        .subscribe("main", "note", "calendar:changed")
+        .unwrap();
+    assert_eq!(r.dispatch(call("shell", "calendar:access")).await["ok"], true);
+    assert!(!contract().manifests["shell"].contains("calendar.read"));
+    let holders: Vec<&String> = contract()
+        .manifests
+        .iter()
+        .filter(|(_, caps)| caps.contains("calendar.read"))
+        .map(|(k, _)| k)
+        .collect();
+    assert_eq!(holders, ["note"], "calendar.read is nano's view's alone");
+}

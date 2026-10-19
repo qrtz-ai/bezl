@@ -234,3 +234,33 @@ fn m2_links_lose_query_and_fragment_and_old_cache_is_scrubbed() {
     assert_eq!(got[1].meeting_url, None);
     assert_eq!(c.scrub_links().unwrap(), 0, "idempotent");
 }
+
+#[test]
+fn m2_urls_in_titles_lose_query_and_fragment_and_cached_titles_are_scrubbed() {
+    assert_eq!(
+        clean_title("sync https://zoom.us/j/1?pwd=abc and http://x.example/a#t ok?"),
+        "sync https://zoom.us/j/1 and http://x.example/a ok?"
+    );
+    let db = db();
+    let c = db.calendar();
+    let mut a = ev("a", "w", NOW, NOW + H);
+    a.title = "standup https://meet.google.com/abc?authuser=2".into();
+    c.replace(&cals(), &[a, ev("b", "w", NOW, NOW + H)]).unwrap();
+    assert_eq!(
+        c.events_from(NOW - H).unwrap()[0].title,
+        "standup https://meet.google.com/abc"
+    );
+    // A cache written by the old code keeps the passcode in the title: scrubbed in place.
+    db.connection()
+        .execute(
+            "UPDATE calendar_events SET title='sync https://zoom.us/j/1?pwd=old' WHERE id='b'",
+            [],
+        )
+        .unwrap();
+    assert_eq!(c.scrub_links().unwrap(), 1);
+    assert_eq!(
+        c.events_from(NOW - H).unwrap()[1].title,
+        "sync https://zoom.us/j/1"
+    );
+    assert_eq!(c.scrub_links().unwrap(), 0);
+}

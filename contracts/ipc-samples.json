@@ -1611,20 +1611,13 @@
     "calendar:connect": {
       "request": null,
       "response": {
-        "enabled": true,
-        "access": "granted",
-        "calendars": [
-          {
-            "id": "cal-work",
-            "title": "Work"
-          },
-          {
-            "id": "cal-home",
-            "title": "Home"
-          }
-        ],
-        "chosen": null,
-        "lastSyncAt": 1790000000000
+        "access": "granted"
+      }
+    },
+    "calendar:access": {
+      "request": null,
+      "response": {
+        "access": "granted"
       }
     },
     "calendar:refresh": {

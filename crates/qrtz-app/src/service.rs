@@ -522,6 +522,7 @@ impl AppService {
         let Some(c) = self.calendar.get() else {
             return Ok(match channel {
                 "calendar:upcoming" => json!({"events": []}),
+                "calendar:access" | "calendar:connect" => json!({"access": "unsupported"}),
                 _ => {
                     json!({"enabled": false, "access": "unsupported", "calendars": [], "chosen": null, "lastSyncAt": null})
                 }
@@ -529,7 +530,9 @@ impl AppService {
         };
         match channel {
             "calendar:status" => Ok(c.check().await),
-            "calendar:connect" => Ok(c.connect().await),
+            // H1: the two os.permissions channels answer the access state only (no calendars, no events).
+            "calendar:access" => Ok(access_only(&c.check().await)),
+            "calendar:connect" => Ok(access_only(&c.connect().await)),
             "calendar:upcoming" => Ok(c.upcoming(crate::calendar::UPCOMING_MAX)),
             "calendar:refresh" => {
                 c.refresh().await;
@@ -1302,4 +1305,11 @@ impl Handler for Shared {
     async fn handle(&self, channel: &str, payload: Value, ctx: &CallContext) -> Result<Value, AppError> {
         self.0.handle(channel, payload, ctx).await
     }
+}
+
+/// ADR 0217 (H1): `calendar:access` / `calendar:connect` answer under `os.permissions`, which the shell holds: only
+/// the access state leaves, never the calendars, the chosen ones or anything about events.
+#[cfg(feature = "runtime")]
+fn access_only(status: &Value) -> Value {
+    json!({"access": status["access"].as_str().unwrap_or("denied")})
 }

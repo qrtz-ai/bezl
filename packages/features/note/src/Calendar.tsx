@@ -57,10 +57,8 @@ export function useCalendar() {
   const connect = useCallback(() => {
     setError(null);
     return qrtz.invoke('calendar:connect').then(
-      (s) => {
-        setStatus(s);
-        load();
-      },
+      // H1: connect answers the access state only; the full status is calendar:status.
+      () => load(),
       (e: AppError) => setError(e.message),
     );
   }, [qrtz, load]);

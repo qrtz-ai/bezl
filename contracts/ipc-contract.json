@@ -10489,9 +10489,6 @@
       "response": {
         "type": "object",
         "properties": {
-          "enabled": {
-            "type": "boolean"
-          },
           "access": {
             "type": "string",
             "enum": [
@@ -10502,52 +10499,37 @@
               "write-only",
               "unsupported"
             ]
-          },
-          "calendars": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "title": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "title"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "chosen": {
-            "anyOf": [
-              {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "lastSyncAt": {
-            "type": [
-              "number",
-              "null"
+          }
+        },
+        "required": [
+          "access"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "calendar:access": {
+      "version": 1,
+      "capability": "os.permissions",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "access": {
+            "type": "string",
+            "enum": [
+              "not-determined",
+              "granted",
+              "denied",
+              "restricted",
+              "write-only",
+              "unsupported"
             ]
           }
         },
         "required": [
-          "enabled",
-          "access",
-          "calendars",
-          "chosen",
-          "lastSyncAt"
+          "access"
         ],
         "additionalProperties": false
       }
@@ -12973,7 +12955,6 @@
         "talk.read",
         "talk.dictate",
         "os.permissions",
-        "calendar.read",
         "log.write",
         "app.update.read"
       ]
