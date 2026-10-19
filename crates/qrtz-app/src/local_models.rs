@@ -100,6 +100,40 @@ pub fn sets_needed_by(ext: &str) -> Vec<String> {
         .collect()
 }
 
+/// Which of this build's modules a `model.*` package the app pinned is for (ADR 0163: switching echo or nano on
+/// pins their models as workspace requests, and a Mac upgrading from before the package manager adopts its
+/// downloads the same way): every bundled module whose manifest declares a `model:<dir>` dependency on one of the
+/// pinned sets that is that package (`model.parakeet-tdt-v2-en` → echo; `model.nemotron`, `model.nemotron-diarizer`,
+/// `model.localvqe` → nano; `model.laya` → ctrl), plus an extension that reads it in its own process. This is
+/// what [`crate::module_hosting::Packages::list`] passes to [`qrtz_modules::qrtz_lock::QrtzLock::users`].
+pub fn pinned_users(package: &str) -> Vec<String> {
+    static SETS: std::sync::OnceLock<Vec<(String, String)>> = std::sync::OnceLock::new();
+    let sets = SETS.get_or_init(|| {
+        let ctrl = crate::ctrl_model::CtrlManifest::pinned().manifest;
+        Manifest::pinned()
+            .sets
+            .into_iter()
+            .chain(ctrl.sets)
+            .map(|s| (s.package, s.dir))
+            .collect()
+    });
+    let mut out: Vec<String> = crate::modules::bundled()
+        .manifests
+        .iter()
+        .filter(|m| {
+            m.dependencies.iter().any(|d| {
+                d.id.strip_prefix("model:")
+                    .is_some_and(|dir| sets.iter().any(|(p, sd)| p == package && sd == dir))
+            })
+        })
+        .map(|m| m.id.clone())
+        .collect();
+    out.extend(reader_of(package).map(str::to_owned));
+    out.sort();
+    out.dedup();
+    out
+}
+
 fn safe_rel(p: &str) -> bool {
     !p.is_empty()
         && !p.starts_with('/')
@@ -541,6 +575,21 @@ mod tests {
         let none = all.for_extensions::<&str>(&[]);
         assert_eq!(none.total_size(), 0);
         assert!(none.installed(), "nothing selected: nothing to download");
+    }
+
+    /// Jared's "used by nothing": each pinned model names the module it is for.
+    #[test]
+    fn each_pinned_model_names_its_module() {
+        assert_eq!(pinned_users("model.parakeet-tdt-v2-en"), ["echo"]);
+        for m in ["model.nemotron", "model.nemotron-diarizer", "model.localvqe"] {
+            assert_eq!(pinned_users(m), ["nano"], "{m}");
+        }
+        assert_eq!(pinned_users("model.laya"), ["ctrl"]);
+        assert!(pinned_users("model.nobody").is_empty());
+        // Every pinned set is some module's.
+        for s in Manifest::pinned().sets {
+            assert!(!pinned_users(&s.package).is_empty(), "{}", s.package);
+        }
     }
 
     #[test]

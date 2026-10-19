@@ -53,6 +53,7 @@ export function packagesHandlers(
         kind: 'extension',
         requested: `^${version}`,
         requiredBy: [],
+        usedBy: [],
         disabled: null,
         sizeBytes: c.sizeBytes,
       });
@@ -64,10 +65,12 @@ export function packagesHandlers(
           kind: d.kind,
           requested: null,
           requiredBy: [],
+          usedBy: [],
           disabled: null,
           sizeBytes: d.sizeBytes,
         };
         r.requiredBy = [...r.requiredBy, me];
+        r.usedBy = [...new Set([...r.usedBy, name])].sort();
         rows.set(d.name, r);
       }
     }
@@ -77,6 +80,8 @@ export function packagesHandlers(
     packages: rowsFor(requested),
     index,
     available: catalog,
+    // The mock store keeps nothing a removed extension left behind.
+    reclaimable: { dirs: 0, blobs: 0, bytes: 0 },
   });
   const diff = (next: Map<string, string>) => {
     const before = new Map(rowsFor(requested).map((r) => [r.name, r]));

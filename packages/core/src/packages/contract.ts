@@ -24,8 +24,14 @@ export const PackageRow = z.object({
   kind: PackageKind,
   /** The range the user asked for, or null when it is only here because something needs it. */
   requested: z.string().nullable(),
-  /** `name@version` of what depends on it. */
+  /** `name@version` of what depends on it directly in qrtz.lock. */
   requiredBy: z.array(z.string()),
+  /**
+   * Who uses it, by name (`echo`, `nano`): the extensions above it in qrtz.lock and the modules a model the app
+   * pinned is for (including downloads adopted from before the package manager). The host's one answer, the same
+   * one `packages:prune` keeps by; empty only for a bare request (`requested` says so).
+   */
+  usedBy: z.array(z.string()),
   /** Why a revocation switched it off, or null. */
   disabled: z.string().nullable(),
   sizeBytes: z.number().int().nonnegative(),
@@ -75,6 +81,13 @@ export const CatalogEntry = z.object({
 });
 export type CatalogEntry = z.infer<typeof CatalogEntry>;
 
+export const PackagesPruned = z.object({
+  dirs: z.number().int().nonnegative(),
+  blobs: z.number().int().nonnegative(),
+  bytes: z.number().int().nonnegative(),
+});
+export type PackagesPruned = z.infer<typeof PackagesPruned>;
+
 export const PackagesState = z.object({
   packages: z.array(PackageRow),
   /** The stored signed index, or null before the first check. */
@@ -83,6 +96,8 @@ export const PackagesState = z.object({
     .nullable(),
   /** ADR 0161: the marketplace catalog (extensions in the stored index); empty before the first check. */
   available: z.array(CatalogEntry),
+  /** What `packages:prune` would delete right now (nothing in use): "clean up" is offered only when not zero. */
+  reclaimable: PackagesPruned,
 });
 export type PackagesState = z.infer<typeof PackagesState>;
 
@@ -129,13 +144,6 @@ export const PackagesApplied = z.object({
   staleRevocation: z.boolean(),
 });
 export type PackagesApplied = z.infer<typeof PackagesApplied>;
-
-export const PackagesPruned = z.object({
-  dirs: z.number().int().nonnegative(),
-  blobs: z.number().int().nonnegative(),
-  bytes: z.number().int().nonnegative(),
-});
-export type PackagesPruned = z.infer<typeof PackagesPruned>;
 
 /** ADR 0161: `packages:apply`'s download, at most once per percent. */
 export const PackagesProgress = z.object({

@@ -378,6 +378,7 @@ const packagesState = {
       kind: 'extension' as const,
       requested: '^0.3.0',
       requiredBy: [],
+      usedBy: [],
       disabled: null,
       sizeBytes: 9_400_000,
     },
@@ -387,6 +388,7 @@ const packagesState = {
       kind: 'service' as const,
       requested: null,
       requiredBy: ['echo@0.3.0'],
+      usedBy: ['echo'],
       disabled: null,
       sizeBytes: 4_100_000,
     },
@@ -396,6 +398,7 @@ const packagesState = {
       kind: 'model' as const,
       requested: null,
       requiredBy: ['echo@0.3.0'],
+      usedBy: ['echo'],
       disabled: null,
       sizeBytes: 615_000_000,
     },
@@ -490,6 +493,7 @@ const packagesState = {
       teamId: 'ABCDE12345',
     },
   ],
+  reclaimable: { dirs: 0, blobs: 0, bytes: 0 },
 };
 const packagePlan = {
   planSha256: 'ab'.repeat(32),
@@ -786,5 +790,10 @@ export const idleResponses: Partial<Record<IpcChannel, unknown>> = {
   'talk:dictionary': [],
   'speech:status': { ...speechNone, configured: false },
   'ctrl:tasks': [],
-  'packages:list': { packages: [], index: null, available: [] },
+  'packages:list': {
+    packages: [],
+    index: null,
+    available: [],
+    reclaimable: { dirs: 0, blobs: 0, bytes: 0 },
+  },
 };

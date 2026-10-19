@@ -238,9 +238,11 @@ pub async fn run(p: &Packages, cmd: Command, f: &Flags, io: &mut Io<'_>) -> Resu
         }
         Command::Ls => {
             for l in p.list().map_err(e)? {
-                let why = match (&l.requested, l.required_by.is_empty()) {
-                    (Some(r), _) => format!("requested {r}"),
-                    (None, false) => format!("for {}", l.required_by.join(", ")),
+                // The same users the module manager shows ([`qrtz_modules::qrtz_lock::QrtzLock::users`]).
+                let why = match (&l.requested, l.used_by.is_empty()) {
+                    (Some(r), true) => format!("requested {r}"),
+                    (Some(r), false) => format!("requested {r}, for {}", l.used_by.join(", ")),
+                    (None, false) => format!("for {}", l.used_by.join(", ")),
                     (None, true) => "unreferenced".into(),
                 };
                 let off = l.disabled.map(|d| format!("  DISABLED: {d}")).unwrap_or_default();

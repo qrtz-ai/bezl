@@ -206,9 +206,15 @@ impl PackagesIpc {
             .filter(|l| l.kind != PackageKind::Shell)
             .map(|l| {
                 json!({"name": l.name, "version": l.version, "kind": kind(l.kind), "requested": l.requested,
-                       "requiredBy": l.required_by, "disabled": l.disabled, "sizeBytes": l.size})
+                       "requiredBy": l.required_by, "usedBy": l.used_by, "disabled": l.disabled,
+                       "sizeBytes": l.size})
             })
             .collect();
+        // What "clean up" would free, by the same sweep `packages:prune` runs (nothing deleted). A store it can't
+        // read fully (a tree missing) reclaims nothing: prune would refuse rather than guess.
+        let reclaimable = self.packages.reclaimable().unwrap_or_default();
+        let reclaimable =
+            json!({"dirs": reclaimable.dirs.len(), "blobs": reclaimable.blobs, "bytes": reclaimable.bytes});
         let index = self
             .packages
             .installer
@@ -221,7 +227,7 @@ impl PackagesIpc {
             Ok((_, v)) => catalog(&v.index),
             Err(_) => vec![],
         };
-        Ok(json!({"packages": rows, "index": index, "available": available}))
+        Ok(json!({"packages": rows, "index": index, "available": available, "reclaimable": reclaimable}))
     }
 
     fn op(p: &Value) -> Result<Op, AppError> {

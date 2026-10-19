@@ -267,8 +267,15 @@ impl Packages {
         self.installer.prune()
     }
 
+    /// Every locked package with who uses it ([`crate::local_models::pinned_users`] names the modules a pinned
+    /// model is for), the one answer the module manager and `qrtz ls` show.
     pub fn list(&self) -> Result<Vec<Listed>, InstallError> {
-        self.installer.list()
+        self.installer.list_with(&crate::local_models::pinned_users)
+    }
+
+    /// What `prune` would delete now (nothing is deleted): "clean up" is offered only when this isn't empty.
+    pub fn reclaimable(&self) -> Result<Pruned, InstallError> {
+        self.installer.reclaimable()
     }
 }
 

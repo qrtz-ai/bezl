@@ -260,6 +260,50 @@ impl QrtzLock {
         v
     }
 
+    /// Who uses `name@version`, by name: the one answer the module manager's "used by" label, `qrtz ls` and
+    /// `prune` share. It walks up through every locked package that depends on it to the extensions at the top
+    /// (`echo`, not `echo@0.3.0`; a service in between isn't a user, the extension above it is). Where the walk
+    /// reaches a request of the workspace itself (`qrtz install model.x`, or a model the app pinned for one of its
+    /// modules, ADR 0163, including ones adopted from before the package manager), `pinned_for(name)` names the
+    /// modules that request is for. With no extension above it, what depends on it directly. Sorted, each once.
+    /// Empty only for a bare request nothing is known to use (`requested` says so) or a package nothing reaches.
+    pub fn users(&self, name: &str, version: &str, pinned_for: &dyn Fn(&str) -> Vec<String>) -> Vec<String> {
+        let mut out = BTreeSet::new();
+        let mut seen = BTreeSet::new();
+        let mut todo = vec![(name.to_owned(), version.to_owned())];
+        while let Some((n, v)) = todo.pop() {
+            if !seen.insert(key(&n, &v)) {
+                continue;
+            }
+            for d in self.required_by(&n, &v) {
+                if d.is_empty() {
+                    out.extend(pinned_for(&n));
+                    continue;
+                }
+                let Some((dn, dv)) = split_key(&d) else {
+                    continue;
+                };
+                if self
+                    .packages
+                    .get(&d)
+                    .is_some_and(|p| p.kind == PackageKind::Extension)
+                {
+                    out.insert(dn.to_owned());
+                }
+                todo.push((dn.to_owned(), dv.to_owned()));
+            }
+        }
+        if out.is_empty() {
+            // Nothing above it is an extension (a service the user asked for by name): name what depends on it.
+            out.extend(
+                self.required_by(name, version)
+                    .iter()
+                    .filter_map(|d| split_key(d).map(|(n, _)| n.to_owned())),
+            );
+        }
+        out.into_iter().collect()
+    }
+
     /// The lock without packages nothing reaches any more.
     pub fn without_unreachable(mut self) -> Self {
         let reach = self.reachable();

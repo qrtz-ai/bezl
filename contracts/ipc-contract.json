@@ -6665,6 +6665,12 @@
                     "type": "string"
                   }
                 },
+                "usedBy": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
                 "disabled": {
                   "type": [
                     "string",
@@ -6683,6 +6689,7 @@
                 "kind",
                 "requested",
                 "requiredBy",
+                "usedBy",
                 "disabled",
                 "sizeBytes"
               ],
@@ -6835,12 +6842,39 @@
               ],
               "additionalProperties": false
             }
+          },
+          "reclaimable": {
+            "type": "object",
+            "properties": {
+              "dirs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "blobs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "dirs",
+              "blobs",
+              "bytes"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
           "packages",
           "index",
-          "available"
+          "available",
+          "reclaimable"
         ],
         "additionalProperties": false
       }
@@ -6888,6 +6922,12 @@
                     "type": "string"
                   }
                 },
+                "usedBy": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
                 "disabled": {
                   "type": [
                     "string",
@@ -6906,6 +6946,7 @@
                 "kind",
                 "requested",
                 "requiredBy",
+                "usedBy",
                 "disabled",
                 "sizeBytes"
               ],
@@ -7058,12 +7099,39 @@
               ],
               "additionalProperties": false
             }
+          },
+          "reclaimable": {
+            "type": "object",
+            "properties": {
+              "dirs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "blobs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "dirs",
+              "blobs",
+              "bytes"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
           "packages",
           "index",
-          "available"
+          "available",
+          "reclaimable"
         ],
         "additionalProperties": false
       }

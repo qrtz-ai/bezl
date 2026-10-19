@@ -623,7 +623,7 @@ async fn the_qrtz_cli_drives_the_same_installer() {
         "{ls}"
     );
     assert!(
-        ls.contains("model.sample@1.0.0  Model") && ls.contains("for echo@0.3.0"),
+        ls.contains("model.sample@1.0.0  Model") && ls.contains("for echo"),
         "{ls}"
     );
     // Frozen and offline: nothing to do, no request.
@@ -654,7 +654,11 @@ async fn the_extensions_screen_applies_only_the_plan_it_was_shown() {
     };
     let s = ipc.call("packages:list", json!(null)).await.unwrap();
     check("packages:list", &s);
-    assert_eq!(s, json!({"packages": [], "index": null, "available": []}));
+    assert_eq!(
+        s,
+        json!({"packages": [], "index": null, "available": [],
+               "reclaimable": {"dirs": 0, "blobs": 0, "bytes": 0}})
+    );
     assert_eq!(w.hits(), 0, "listing is local");
     let s = ipc.call("packages:refresh", json!(null)).await.unwrap();
     assert_eq!(s["index"]["version"], 1);

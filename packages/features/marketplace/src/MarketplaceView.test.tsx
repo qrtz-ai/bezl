@@ -262,7 +262,27 @@ describe('module manager (ADR 0161)', () => {
   });
 
   it('removes through a plan and prunes', async () => {
-    const f = await open();
+    // After the remove, the host's dry run of prune finds echo's old files: only then is clean up offered.
+    const sample = ipcSamples['packages:list'].response;
+    let removed = false;
+    const f = fake({
+      'packages:list': () =>
+        removed
+          ? {
+              ...sample,
+              packages: [],
+              reclaimable: { dirs: 3, blobs: 4, bytes: 628_500_000 },
+            }
+          : sample,
+      'packages:apply': () => {
+        removed = true;
+        return ipcSamples['packages:apply'].response;
+      },
+    });
+    await render(f.client);
+    await act(async () => q('tab-installed')!.click());
+    await settle();
+    expect(q('module-prune')).toBeNull();
     await click('module-remove-echo');
     expect(f.calls.find((c) => c.channel === 'packages:plan')?.payload).toEqual(
       { op: 'remove', names: ['echo'] },
@@ -270,8 +290,48 @@ describe('module manager (ADR 0161)', () => {
     expect(q('install-consent')).not.toBeNull();
     await click('consent-confirm');
     expect(f.calls.map((c) => c.channel)).toContain('packages:apply');
+    expect(q('module-prune')?.textContent).toContain('629 mb');
     await click('module-prune');
     expect(f.calls.map((c) => c.channel)).toContain('packages:prune');
+  });
+
+  // Jared, 2026-10-18: the shared section said "used by nothing" for the four speech models while clean up said
+  // there was nothing to clean up. They are the models the app pinned for echo and nano (workspace requests, no
+  // extension row in qrtz.lock), and the label now reads the host's usedBy, the answer prune keeps by.
+  it('names echo and nano as the users of their pinned models and offers no clean up', async () => {
+    const pinned = (name: string, sizeBytes: number, usedBy: string[]) => ({
+      name,
+      version: '1.0.0',
+      kind: 'model' as const,
+      requested: '=1.0.0',
+      requiredBy: [],
+      usedBy,
+      disabled: null,
+      sizeBytes,
+    });
+    const f = fake({
+      'packages:list': () => ({
+        ...ipcSamples['packages:list'].response,
+        packages: [
+          pinned('model.localvqe', 20_000_000, ['nano']),
+          pinned('model.nemotron-diarizer', 199_000_000, ['nano']),
+          pinned('model.nemotron', 626_000_000, ['nano']),
+          pinned('model.parakeet-tdt-v2-en', 464_000_000, ['echo']),
+        ],
+        reclaimable: { dirs: 0, blobs: 0, bytes: 0 },
+      }),
+    });
+    await render(f.client);
+    await act(async () => q('tab-installed')!.click());
+    await settle();
+    const shared = q('module-shared')?.textContent ?? '';
+    expect(shared).not.toContain('used by nothing');
+    expect(shared).toContain('464 mb · used by echo');
+    expect(shared).toContain('626 mb · used by nano');
+    expect(shared).toContain('199 mb · used by nano');
+    expect(shared).toContain('20 mb · used by nano');
+    expect(q('module-prune')).toBeNull();
+    expect(q('module-prune-none')?.textContent).toContain('in use');
   });
 });
 

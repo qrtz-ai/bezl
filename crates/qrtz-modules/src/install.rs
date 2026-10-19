@@ -229,6 +229,8 @@ pub struct Listed {
     pub kind: PackageKind,
     pub requested: Option<String>,
     pub required_by: Vec<String>,
+    /// Who uses it, by name ([`QrtzLock::users`]): what the module manager's "used by" label shows.
+    pub used_by: Vec<String>,
     pub disabled: Option<String>,
     pub size: u64,
 }
@@ -1160,9 +1162,20 @@ impl Installer {
     // ---- prune, sweep, list, migrate ----
 
     /// Remove package dirs `qrtz.lock` doesn't name, store blobs no locked package's tree references (refcounted
-    /// from the lock: a blob shared by two packages stays while either is locked), and stale staging dirs.
+    /// from the lock: a blob shared by two packages stays while either is locked), and stale staging dirs. Every
+    /// locked package is kept, so nothing [`Installer::list`] shows (each with its users) is ever deleted here.
     pub fn prune(&self) -> Result<Pruned, InstallError> {
         let _g = self.guard()?;
+        self.sweep(true)
+    }
+
+    /// What [`Installer::prune`] would delete right now, deleting nothing: the module manager offers "clean up"
+    /// only when this isn't empty, so the button and the prune can't disagree.
+    pub fn reclaimable(&self) -> Result<Pruned, InstallError> {
+        self.sweep(false)
+    }
+
+    fn sweep(&self, delete: bool) -> Result<Pruned, InstallError> {
         let lock = self.lock()?;
         let mut out = Pruned::default();
         let keep_dirs: BTreeSet<String> = lock
@@ -1175,7 +1188,9 @@ impl Installer {
             for n in names.flatten() {
                 let name = n.file_name().to_string_lossy().into_owned();
                 if name.starts_with(".staging-") {
-                    fsutil::remove_tree(&n.path())?;
+                    if delete {
+                        fsutil::remove_tree(&n.path())?;
+                    }
                     continue;
                 }
                 let Ok(vs) = std::fs::read_dir(n.path()) else {
@@ -1184,11 +1199,15 @@ impl Installer {
                 for v in vs.flatten() {
                     let rel = format!("{PACKAGES}/{name}/{}", v.file_name().to_string_lossy());
                     if !keep_dirs.contains(&rel) {
-                        fsutil::remove_tree(&v.path())?;
+                        if delete {
+                            fsutil::remove_tree(&v.path())?;
+                        }
                         out.dirs.push(rel);
                     }
                 }
-                let _ = std::fs::remove_dir(n.path());
+                if delete {
+                    let _ = std::fs::remove_dir(n.path());
+                }
             }
         }
         let mut refs: BTreeMap<String, usize> = BTreeMap::new();
@@ -1210,7 +1229,9 @@ impl Installer {
         }
         for (sha, size) in self.store.list() {
             if !refs.contains_key(&sha) {
-                self.store.remove(&sha)?;
+                if delete {
+                    self.store.remove(&sha)?;
+                }
                 out.blobs += 1;
                 out.bytes += size;
             }
@@ -1218,8 +1239,15 @@ impl Installer {
         Ok(out)
     }
 
-    /// Every locked package, for `qrtz ls` and the extensions screen.
+    /// Every locked package, for `qrtz ls` and the extensions screen; a workspace request's users are unknown here
+    /// (see [`Installer::list_with`]).
     pub fn list(&self) -> Result<Vec<Listed>, InstallError> {
+        self.list_with(&|_| vec![])
+    }
+
+    /// [`Installer::list`], naming who each workspace request is for with `pinned_for` (the app: the modules whose
+    /// models it pinned).
+    pub fn list_with(&self, pinned_for: &dyn Fn(&str) -> Vec<String>) -> Result<Vec<Listed>, InstallError> {
         let lock = self.lock()?;
         Ok(lock
             .packages
@@ -1241,6 +1269,7 @@ impl Installer {
                         .into_iter()
                         .filter(|x| !x.is_empty())
                         .collect(),
+                    used_by: lock.users(n, v, pinned_for),
                     disabled: l.disabled.clone(),
                     size: l.size,
                 })

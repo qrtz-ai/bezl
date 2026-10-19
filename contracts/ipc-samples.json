@@ -658,6 +658,7 @@
             "kind": "extension",
             "requested": "^0.3.0",
             "requiredBy": [],
+            "usedBy": [],
             "disabled": null,
             "sizeBytes": 9400000
           },
@@ -669,6 +670,9 @@
             "requiredBy": [
               "echo@0.3.0"
             ],
+            "usedBy": [
+              "echo"
+            ],
             "disabled": null,
             "sizeBytes": 4100000
           },
@@ -679,6 +683,9 @@
             "requested": null,
             "requiredBy": [
               "echo@0.3.0"
+            ],
+            "usedBy": [
+              "echo"
             ],
             "disabled": null,
             "sizeBytes": 615000000
@@ -786,12 +793,22 @@
             "minOs": "14.2",
             "teamId": "ABCDE12345"
           }
-        ]
+        ],
+        "reclaimable": {
+          "dirs": 0,
+          "blobs": 0,
+          "bytes": 0
+        }
       },
       "idle": {
         "packages": [],
         "index": null,
-        "available": []
+        "available": [],
+        "reclaimable": {
+          "dirs": 0,
+          "blobs": 0,
+          "bytes": 0
+        }
       }
     },
     "packages:refresh": {
@@ -804,6 +821,7 @@
             "kind": "extension",
             "requested": "^0.3.0",
             "requiredBy": [],
+            "usedBy": [],
             "disabled": null,
             "sizeBytes": 9400000
           },
@@ -815,6 +833,9 @@
             "requiredBy": [
               "echo@0.3.0"
             ],
+            "usedBy": [
+              "echo"
+            ],
             "disabled": null,
             "sizeBytes": 4100000
           },
@@ -825,6 +846,9 @@
             "requested": null,
             "requiredBy": [
               "echo@0.3.0"
+            ],
+            "usedBy": [
+              "echo"
             ],
             "disabled": null,
             "sizeBytes": 615000000
@@ -932,7 +956,12 @@
             "minOs": "14.2",
             "teamId": "ABCDE12345"
           }
-        ]
+        ],
+        "reclaimable": {
+          "dirs": 0,
+          "blobs": 0,
+          "bytes": 0
+        }
       }
     },
     "packages:check-update": {

@@ -39,6 +39,7 @@ import {
   type OsPermission,
   type PackageOp,
   type PackagePlan,
+  type PackageRow,
   type PackagesProgress,
   type PackagesState,
   type SettingsPane,
@@ -69,6 +70,20 @@ export const isNotSetUp = (e: unknown) =>
 const SPEECH_MODULES = ['echo', 'nano'] as const;
 const isSpeechModule = (n: string): n is (typeof SPEECH_MODULES)[number] =>
   (SPEECH_MODULES as readonly string[]).includes(n);
+/**
+ * The shared section's "used by" line, from the host's `usedBy` (qrtz.lock's extensions plus the modules a pinned
+ * model is for): the same answer `packages:prune` keeps by, so a row never reads "used by nothing" while clean up
+ * keeps it.
+ */
+export const usedByLine = (r: PackageRow) =>
+  r.usedBy.length
+    ? `used by ${r.usedBy.join(', ')}`
+    : r.requested
+      ? 'you installed it'
+      : 'used by nothing';
+/** Clean up is offered only when the host's own dry run of prune would delete something. */
+export const canPrune = (s: PackagesState | null) =>
+  !!s && s.reclaimable.dirs + s.reclaimable.blobs > 0;
 const PAST: Record<Verb, string> = {
   install: 'installed',
   update: 'updated',
@@ -177,18 +192,15 @@ export default function MarketplaceView() {
       });
   };
   const prune = () =>
-    qrtz
-      .invoke('packages:prune')
-      .then(
-        (r) =>
-          toast(
-            r.dirs || r.blobs
-              ? `freed ${formatBytes(r.bytes)}`
-              : 'nothing to clean up',
-            'success',
-          ),
-        fail,
+    qrtz.invoke('packages:prune').then((r) => {
+      toast(
+        r.dirs || r.blobs
+          ? `freed ${formatBytes(r.bytes)}`
+          : 'nothing to clean up',
+        'success',
       );
+      return load();
+    }, fail);
   const { perms, ask, open, restart, pending: asking } = usePermissions();
   const allow = (p: OsPermission) => void ask(p).catch(fail);
   const openPane = (p: SettingsPane) => void open(p).catch(fail);
@@ -521,7 +533,7 @@ export default function MarketplaceView() {
                   key={`${d.name}@${d.version}`}
                   icon={KIND_ICON[d.kind]}
                   title={d.name}
-                  meta={`${formatBytes(d.sizeBytes)} · used by ${d.requiredBy.map((x) => x.split('@')[0]).join(', ') || 'nothing'}`}
+                  meta={`${formatBytes(d.sizeBytes)} · ${usedByLine(d)}`}
                 />
               ))}
             </IconLines>
@@ -530,21 +542,27 @@ export default function MarketplaceView() {
               no shared services or models installed.
             </Text>
           )}
-          <Stack dir="row" gap={2} align="center">
-            <Button
-              size="sm"
-              variant="secondary"
-              icon="trash"
-              disabled={busy}
-              onClick={() => void prune()}
-              data-testid="module-prune"
-            >
-              clean up
-            </Button>
-            <Text variant="caption" muted>
-              deletes files that nothing installed uses any more.
+          {canPrune(state) ? (
+            <Stack dir="row" gap={2} align="center">
+              <Button
+                size="sm"
+                variant="secondary"
+                icon="trash"
+                disabled={busy}
+                onClick={() => void prune()}
+                data-testid="module-prune"
+              >
+                {`clean up · ${formatBytes(state?.reclaimable.bytes ?? 0)}`}
+              </Button>
+              <Text variant="caption" muted>
+                deletes files that nothing installed uses any more.
+              </Text>
+            </Stack>
+          ) : shared.length ? (
+            <Text variant="caption" muted data-testid="module-prune-none">
+              nothing to clean up: everything here is in use.
             </Text>
-          </Stack>
+          ) : null}
         </SettingsSection>
         {consent}
       </Page>
