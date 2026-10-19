@@ -434,7 +434,7 @@ function Showcase({
                     label="example nav"
                     testIdPrefix="gallery-nav"
                     items={[
-                      { id: 'note', label: 'nano', icon: 'notebook' },
+                      { id: 'note', label: 'nano', icon: 'edit-3' },
                       {
                         id: 'settings',
                         label: 'settings',

@@ -99,7 +99,7 @@ export function Palette({
       hint: hit?.snippet
         ? hit.snippet.replace(/[[\]]/g, '').slice(0, 48)
         : 'meeting',
-      icon: 'notebook',
+      icon: 'edit-3',
       run: () => requestNavigate({ app: 'note', meetingId: meeting.id }),
     })),
   ];
