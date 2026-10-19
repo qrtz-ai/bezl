@@ -400,9 +400,26 @@ fn the_notes_folder_must_be_just_for_notes() {
         Path::new("/Applications"),
         Path::new("/Volumes"),
         Path::new("/Volumes/Backup"),
+        // M2: the rest of the system, other users' homes and the home's hidden folders.
+        Path::new("/usr"),
+        Path::new("/usr/local/notes"),
+        Path::new("/bin"),
+        Path::new("/sbin"),
+        Path::new("/etc"),
+        Path::new("/var/db"),
+        Path::new("/private"),
+        Path::new("/private/etc"),
+        Path::new("/opt"),
+        Path::new("/opt/homebrew/notes"),
+        Path::new("/Users"),
+        Path::new("/Users/someone-else/Documents"),
     ] {
         refused(p);
     }
+    for hidden in [".ssh", ".config", ".ssh/notes", ".gnupg"] {
+        refused(&home.join(hidden));
+    }
+    assert!(refuse_root(&home.join("Documents/.hidden-ok-inside"), Some(&home), &data).is_ok());
     refused(&home);
     refused(&home.join("Library"));
     refused(&home.join("Library/Application Support"));

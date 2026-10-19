@@ -353,6 +353,11 @@ fn canon_or(p: &Path) -> PathBuf {
 /// ADR 0220 (security review H1): a notes folder must be a folder just for notes. Refused: `/`, the home folder
 /// itself, `~/Library` (and inside it), any folder that contains the qrtz data dir (or is it), `/System`,
 /// `/Library`, `/Applications` (and inside them), `/Volumes` and a volume's root. Compared after canonicalizing.
+/// Amendment M2 (Bozniak review): also `/usr`, `/bin`, `/sbin`, `/etc`, `/var`, `/opt`, `/private` (and inside
+/// them), `/Users` and anything under it that isn't inside the home folder (another user's home), and any hidden
+/// folder in the home folder (`~/.ssh`, `~/.config`, ...) or inside one. The one exception to the system list is
+/// the OS temp folder (`/private/var/folders/...` on macOS), which holds nothing of the user's and is where the
+/// tests and scratch vaults live.
 pub fn refuse_root(root: &Path, home: Option<&Path>, data: &Path) -> VResult<()> {
     let r = canon_or(root);
     let no = || Err(VaultError::Invalid(ROOT_REFUSED.into()));
@@ -364,13 +369,32 @@ pub fn refuse_root(root: &Path, home: Option<&Path>, data: &Path) -> VResult<()>
             return no();
         }
     }
+    let tmp = canon_or(&std::env::temp_dir());
+    let in_tmp = tmp.parent().is_some() && r.starts_with(&tmp) && r != tmp;
+    for sys in ["/usr", "/bin", "/sbin", "/etc", "/var", "/opt", "/private"] {
+        if r.starts_with(sys) && !in_tmp {
+            return no();
+        }
+    }
+    let h = home.map(canon_or);
+    if r.starts_with("/Users") && !h.as_ref().is_some_and(|h| r.starts_with(h)) {
+        return no();
+    }
     if r == Path::new("/Volumes") || r.parent() == Some(Path::new("/Volumes")) {
         return no();
     }
-    if let Some(h) = home {
-        let h = canon_or(h);
-        if r == h || r.starts_with(h.join("Library")) {
+    if let Some(h) = &h {
+        if r == *h || r.starts_with(h.join("Library")) {
             return no();
+        }
+        if let Ok(rest) = r.strip_prefix(h) {
+            if rest
+                .components()
+                .next()
+                .is_some_and(|c| c.as_os_str().to_string_lossy().starts_with('.'))
+            {
+                return no();
+            }
         }
     }
     let d = canon_or(data);
