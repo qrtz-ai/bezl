@@ -82,7 +82,7 @@ fn rust_export_of_the_electron_backup_round_trips() {
     }
     // The manifest is the TS shape, in TS key order.
     let mut z = zip::ZipArchive::new(std::fs::File::open(&rust).unwrap()).unwrap();
-    let names: Vec<_> = z.file_names().map(str::to_string).collect();
+    let names: Vec<String> = z.file_names().map(|n| n.unwrap().into_owned()).collect();
     assert_eq!(names, ["db/qrtz.db", "audio/m-a.wav", "manifest.json"]);
     let mut raw = String::new();
     std::io::Read::read_to_string(&mut z.by_name("manifest.json").unwrap(), &mut raw).unwrap();

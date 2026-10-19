@@ -23,7 +23,7 @@ fn export(lib: &Lib) -> (qrtz_backup::ExportReport, Vec<String>, Vec<u8>) {
     )
     .unwrap();
     let z = zip::ZipArchive::new(std::fs::File::open(&out).unwrap()).unwrap();
-    let mut names: Vec<String> = z.file_names().map(str::to_owned).collect();
+    let mut names: Vec<String> = z.file_names().map(|n| n.unwrap().into_owned()).collect();
     names.sort();
     (r, names, std::fs::read(&out).unwrap())
 }
