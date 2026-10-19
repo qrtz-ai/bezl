@@ -429,6 +429,11 @@ public final class MacCtrlBackend: CtrlBackend {
         case "dark_mode": return CtrlAppearance.isDark(UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)) ? 1 : 0
         // ADR 0173: the Dock's auto-hide, read from its own defaults in this process (no app asked, no prompt).
         case CtrlDock.check: return CtrlDock.autohides(UserDefaults.standard.persistentDomain(forName: CtrlDock.domain)) ? 1 : 0
+        // ADR 0178: ScreenSaverEngine in this process's NSWorkspace list (no app asked, no prompt, nothing activated).
+        case CtrlScreensaver.check:
+            let apps = NSWorkspace.shared.runningApplications
+            return CtrlScreensaver.running(bundleIds: apps.compactMap(\.bundleIdentifier),
+                                           names: apps.compactMap(\.localizedName)) ? 1 : 0
         case "tab_count":
             return (try? script("count_tabs", app: app)).map { Int($0.int32Value) }
         case "saved_tabs", "unpinned_tabs":

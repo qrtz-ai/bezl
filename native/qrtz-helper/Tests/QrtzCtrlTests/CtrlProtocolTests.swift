@@ -54,7 +54,7 @@ final class CtrlProtocolTests: XCTestCase {
     func testEveryHostLineOfTheFixtureParses() throws {
         let all = try lines()
         let host = all.filter { !(($0["type"] as! String).hasSuffix(".result")) && $0["type"] as! String != "ctrl.error" }
-        XCTAssertEqual(host.count, 29)
+        XCTAssertEqual(host.count, 31)
         for o in host {
             let line = String(decoding: try JSONSerialization.data(withJSONObject: o), as: UTF8.self)
             XCTAssertNotNil(CtrlRequest.parse(line), "\(o["type"]!)")
@@ -272,6 +272,31 @@ final class CtrlProtocolTests: XCTestCase {
         XCTAssertFalse(CtrlDock.autohides(["autohide": false]))
         XCTAssertFalse(CtrlDock.autohides(["orientation": "left"]), "absent: always shown (the default)")
         XCTAssertFalse(CtrlDock.autohides(nil))
+    }
+
+    func testTheScreensaverGoesOnlyToSystemEventsAndItsMeasureHasNoApp() throws {
+        // ADR 0178: start_screen_saver parses from the fixture and reaches the backend; its script goes to System
+        // Events only, starts the current screen saver, and screensaver_running is measured without an app.
+        let all = try lines()
+        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["verb"] as? String == "start_screen_saver" }!
+        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
+        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("start_screen_saver") }
+        XCTAssertEqual(route, .scripting(app: "com.apple.systemevents", verb: "start_screen_saver"))
+        let fake = Fake()
+        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: line))["ok"] as? Bool, true)
+        XCTAssertEqual(fake.acted, [route])
+        let src = CtrlScripts.source(verb: "start_screen_saver", bundleId: "com.apple.systemevents")!
+        XCTAssertEqual(src, "tell application id \"com.apple.systemevents\"\nstart current screen saver\nend tell")
+        for id in ["com.apple.ScreenSaver.Engine", "com.apple.Safari", "com.apple.finder"] {
+            XCTAssertNil(CtrlScripts.source(verb: "start_screen_saver", bundleId: id), id)
+        }
+        guard case let .measure(_, check, app)? = CtrlRequest.parse(#"{"type":"ctrl.measure","id":"c30","check":{"check":"screensaver_running"}}"#)
+        else { return XCTFail("screensaver_running") }
+        XCTAssertEqual(check, "screensaver_running")
+        XCTAssertEqual(app, "")
+        XCTAssertTrue(CtrlScreensaver.running(bundleIds: [CtrlScreensaver.engineBundle], names: []))
+        XCTAssertTrue(CtrlScreensaver.running(bundleIds: [], names: ["ScreenSaverEngine"]))
+        XCTAssertFalse(CtrlScreensaver.running(bundleIds: ["com.apple.finder"], names: ["Finder"]))
     }
 
     func testTheLastUsedRecordKeepsTheLatestActivationAndMidnightIsLocal() {

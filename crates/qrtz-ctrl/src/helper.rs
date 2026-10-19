@@ -74,6 +74,9 @@ pub enum Check {
     /// file system; `null`: the helper can't list volumes). Only the mount table's resource values are read, never
     /// anything on a volume, and only the count crosses the wire.
     EjectableVolumes,
+    /// ADR 0178: 1 if the screen saver is running (ScreenSaverEngine is among the running applications), 0 if not
+    /// (read in the helper's own process from NSWorkspace; no app asked, no prompt).
+    ScreensaverRunning,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -577,6 +580,8 @@ pub struct FakeWorld {
     pub dark: bool,
     /// ADR 0173: the Dock hides itself automatically.
     pub dock_autohide: bool,
+    /// ADR 0178: the screen saver is running (ScreenSaverEngine).
+    pub screensaver_running: bool,
     /// ADR 0140: the output volume in percent (read back only while unmuted).
     pub volume: i64,
     /// ADR 0158: the user made the "qrtz Set Focus" shortcut (false: `focus.no_shortcut`).
@@ -649,6 +654,7 @@ impl FakeWorld {
             muted: Some(false),
             dark: false,
             dock_autohide: false,
+            screensaver_running: false,
             focus_shortcut: false,
             shortcuts_denied: false,
             focus: crate::ladder::FocusMode::Off,
@@ -730,6 +736,17 @@ impl FakeWorld {
                 self.dock_autohide = *v == ScriptVerb::SetDockAutohide;
                 Ok(())
             }
+            // ADR 0178: start the screen saver, through System Events only.
+            Route::Scripting {
+                app,
+                verb: ScriptVerb::StartScreenSaver,
+            } => {
+                if app != crate::exec::SYSTEM_EVENTS {
+                    return Err("policy.refused".into());
+                }
+                self.screensaver_running = true;
+                Ok(())
+            }
             Route::Scripting { app, verb } => {
                 let a = self.app_mut(app).ok_or("app.not_running")?;
                 if !a.scriptable || !a.running {
@@ -752,7 +769,8 @@ impl FakeWorld {
                     ScriptVerb::SetDarkMode
                     | ScriptVerb::SetLightMode
                     | ScriptVerb::SetDockAutohide
-                    | ScriptVerb::SetDockShown => return Err("script.unsupported".into()),
+                    | ScriptVerb::SetDockShown
+                    | ScriptVerb::StartScreenSaver => return Err("script.unsupported".into()),
                 }
                 Ok(())
             }
@@ -990,6 +1008,7 @@ impl FakeWorld {
                     Check::OutputMuted => self.muted.map(i64::from),
                     Check::DarkMode => Some(i64::from(self.dark)),
                     Check::DockAutohide => Some(i64::from(self.dock_autohide)),
+                    Check::ScreensaverRunning => Some(i64::from(self.screensaver_running)),
                     Check::FocusOn => Some(i64::from(self.focus != crate::ladder::FocusMode::Off)),
                     Check::FolderOpen { folder } => self
                         .apps

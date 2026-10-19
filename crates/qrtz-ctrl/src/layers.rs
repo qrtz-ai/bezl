@@ -575,6 +575,13 @@ const INTENTS: &[IntentDef] = &[
         slot: Slot::None,
         irreversible: false,
     },
+    // ADR 0178: start the screen saver, through System Events (faceless); reversible by the user, no gate.
+    IntentDef {
+        id: "screensaver",
+        app: AppMode::Fixed("com.apple.systemevents"),
+        slot: Slot::None,
+        irreversible: false,
+    },
     IntentDef {
         id: "search",
         app: AppMode::Named {
@@ -654,6 +661,25 @@ fn dock_hides(toks: &[Tok]) -> bool {
         return has(toks, &["on", "enable"]) && !has(toks, &["off", "disable", "stop", "never", "unhide"]);
     }
     hide && (!shows || has(toks, &["automatically", "autohide", "auto-hide"]))
+}
+
+/// ADR 0178: words that name the screen saver (one token or "screen" + "saver").
+fn screensaver_named(toks: &[Tok]) -> bool {
+    has(toks, &["screensaver", "screensavers"]) || (has(toks, &["screen"]) && has(toks, &["saver", "savers"]))
+}
+/// ADR 0178: words that start it (not stop/quit/lock).
+const SCREENSAVER_START_WORDS: &[&str] = &[
+    "start", "starts", "starting", "run", "runs", "running", "launch", "launches", "begin", "begins",
+    "activate", "enable", "on", "turn",
+];
+/// ADR 0178: words that mean something else (stop, lock the screen, …).
+const SCREENSAVER_NOT_WORDS: &[&str] = &[
+    "stop", "stops", "stopping", "quit", "exit", "end", "disable", "off", "lock", "locks", "locking",
+    "locked",
+];
+/// ADR 0178: "start the screensaver" / "start screensaver" / "turn on the screen saver".
+fn screensaver_task(toks: &[Tok]) -> bool {
+    screensaver_named(toks) && has(toks, SCREENSAVER_START_WORDS) && !has(toks, SCREENSAVER_NOT_WORDS)
 }
 
 /// ADR 0176: the words that ask for an eject.
@@ -1001,6 +1027,14 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             p -= 3000;
             let other_app = named.iter().any(|(a, _)| a.id != DOCK_APP);
             if dock_task(toks) && !other_app && !site {
+                p += 9500;
+            }
+        }
+        "screensaver" => {
+            // ADR 0178: "start the screensaver" / "start screensaver" / "turn on the screen saver". No named app, no
+            // site, and not a lock/stop. Without it it sits well below.
+            p -= 3000;
+            if screensaver_task(toks) && !named_app && !site {
                 p += 9500;
             }
         }
@@ -1543,6 +1577,8 @@ fn move_question(
                 route("scripting.dock_autohide_off", if hide { 2000 } else { 4500 }),
             ]
         }
+        // ADR 0178: one move — start the current screen saver.
+        "screensaver" => vec![route("scripting.screensaver", 4500)],
         "search" => vec![shortcut("cmd+f", 3000)],
         "send_message" => vec![shortcut("cmd+n", 3000), irreversible(shortcut("cmd+return", 0))],
         _ => vec![],
@@ -1738,6 +1774,7 @@ fn intent_label(id: &str) -> &'static str {
         "empty_trash" => "empty the trash",
         "dark_mode" => "switch dark mode",
         "dock_autohide" => "hide or show the dock",
+        "screensaver" => "start the screensaver",
         "search" => "search in an app",
         "send_message" => "send a message",
         _ => "something else",
@@ -1775,6 +1812,7 @@ fn route_label(id: &str) -> &'static str {
         "scripting.dark_mode_toggle" => "flip the appearance",
         "scripting.dock_autohide_on" => "hide the dock until the pointer reaches it",
         "scripting.dock_autohide_off" => "always show the dock",
+        "scripting.screensaver" => "start the current screen saver",
         "files.tidy" => "sort by kind, nothing deleted",
         "files.sort_by_kind" => "sort files into folders by kind",
         "files.trash_old" => "move old installers to the trash",

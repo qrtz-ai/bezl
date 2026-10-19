@@ -245,6 +245,10 @@ pub enum ScriptVerb {
     SetDockAutohide,
     /// ADR 0173: the same with `false` (the Dock always shown).
     SetDockShown,
+    /// ADR 0178: System Events `start current screen saver` (only to `com.apple.systemevents`, a faceless agent:
+    /// nothing comes forward as a key event; the screensaver itself covers the display by design). Reversible by the
+    /// user (move the mouse / press a key) or by a later "stop the screensaver" task.
+    StartScreenSaver,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

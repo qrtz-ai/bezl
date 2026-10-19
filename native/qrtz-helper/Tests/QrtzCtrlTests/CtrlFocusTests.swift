@@ -47,7 +47,9 @@ final class CtrlFocusTests: XCTestCase {
     /// side, as an app id; QrtzCtrl sends it nothing. ADR 0166 names the Finder, for the LaunchServices open
     /// (`activates = false`) of a folder and the AX read of its windows; no new Apple Event or script comes with it.
     /// ADR 0173 names `com.apple.dock` only as the defaults domain the Dock's auto-hide is read from (no Apple Event,
-    /// no LaunchServices: the setting goes through System Events, already here). Nothing in QrtzCtrl spawns a process.
+    /// no LaunchServices: the setting goes through System Events, already here). ADR 0178 names
+    /// `com.apple.ScreenSaver.Engine` only as the process observed for verify (no Apple Event either). Nothing in
+    /// QrtzCtrl spawns a process.
     func testTargetsAreExactAndNothingSpawns() throws {
         let dir = Self.root.appendingPathComponent("Sources/QrtzCtrl")
         let files = FileManager.default.enumerator(at: dir, includingPropertiesForKeys: nil)!
@@ -66,7 +68,7 @@ final class CtrlFocusTests: XCTestCase {
         }
         XCTAssertEqual(ids, ["com.apple.systemevents", "com.apple.shortcuts.events", "com.apple.Safari",
                              "com.apple.SafariTechnologyPreview", "com.apple.TextEdit", "com.apple.finder",
-                             "com.apple.dock"])
+                             "com.apple.dock", "com.apple.ScreenSaver.Engine"])
     }
 
     /// Amendment 5 + ADR 0154: qrtz.app (the one identity) holds the grant and names the focus shortcut in its text.

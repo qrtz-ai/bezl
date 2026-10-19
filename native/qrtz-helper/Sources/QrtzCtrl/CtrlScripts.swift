@@ -42,6 +42,8 @@ public enum CtrlScripts {
         // forward).
         case "set_dock_autohide": body = "tell dock preferences to set autohide to true"
         case "set_dock_shown": body = "tell dock preferences to set autohide to false"
+        // ADR 0178: the current screen saver (System Events starts it; the screensaver covers the display by design).
+        case "start_screen_saver": body = "start current screen saver"
         default: return nil
         }
         return "tell application id \"\(bundleId)\"\n\(body)\nend tell"
@@ -95,5 +97,17 @@ public enum CtrlDock {
         case let s as String: return ["1", "true", "yes"].contains(s.lowercased())
         default: return false
         }
+    }
+}
+
+/// ADR 0178: whether the screen saver is running, from the helper's own process list (NSWorkspace), never an Apple
+/// Event. `com.apple.ScreenSaver.Engine` is observed only; nothing is sent to it.
+public enum CtrlScreensaver {
+    public static let check = "screensaver_running"
+    /// The ScreenSaverEngine process's bundle id on macOS (observe-only; no Apple Event target).
+    public static let engineBundle = "com.apple.ScreenSaver.Engine"
+
+    public static func running(bundleIds: [String], names: [String]) -> Bool {
+        bundleIds.contains(engineBundle) || names.contains("ScreenSaverEngine")
     }
 }
