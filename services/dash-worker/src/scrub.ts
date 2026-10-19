@@ -173,8 +173,10 @@ const isSecretWord = (w: string, shaCtx: boolean) => {
   // One non-ASCII character can't hide a secret (Bozniak M): also check the NFKC form without zero-width characters,
   // that form with non-ASCII removed, and every ASCII run of 24+ characters. Rust `is_secret_word`.
   const norm = w.replace(ZERO_WIDTH, '').normalize('NFKC');
-  const ascii = norm.replace(/[^\x00-\x7f]/g, '');
-  const runs = [w, norm].flatMap((x) => x.match(/[\x00-\x7f]{24,}/g) ?? []);
+  const ascii = norm.replace(/[\u0080-\uFFFF]/g, '');
+  const runs = [w, norm].flatMap((x) =>
+    x.split(/[\u0080-\uFFFF]+/).filter((r) => r.length >= 24),
+  );
   return keyish || ssn || longHex || [core, norm, ascii, ...runs].some(isDense);
 };
 
