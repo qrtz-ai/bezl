@@ -1,6 +1,6 @@
 {
   "name": "nano",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "kind": "extension",
   "description": "Meeting and voice notes: records, transcribes, diarizes and summarizes on this Mac.",
   "dependencies": {
