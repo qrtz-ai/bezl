@@ -16,6 +16,7 @@ import {
 import type { IpcResponse } from '@qrtz/core';
 import { requestNavigate } from '@qrtz/core';
 import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
+import AppUpdateRow from './AppUpdateRow';
 
 export default function SettingsView() {
   const qrtz = useQrtz();
@@ -79,24 +80,6 @@ export default function SettingsView() {
             : 'canceled',
         ),
       (e: Error) => setLogsMsg(e.message),
-    );
-  };
-  const [updateMsg, setUpdateMsg] = useState<string | null>(null);
-  // Only when pressed: the signed index's newest qrtz, compared with this build. Installs nothing.
-  const checkUpdate = () => {
-    setUpdateMsg('checking…');
-    void qrtz.invoke('packages:check-update').then(
-      (r) =>
-        setUpdateMsg(
-          r.state === 'available'
-            ? `qrtz ${r.latest} is available (you have ${r.current})`
-            : r.state === 'up-to-date'
-              ? `qrtz ${r.current} is up to date`
-              : r.state === 'none-listed'
-                ? 'no qrtz release is listed yet'
-                : "updates aren't set up yet",
-        ),
-      (e: Error) => setUpdateMsg(e.message),
     );
   };
   const [backupBusy, setBackupBusy] = useState(false);
@@ -171,10 +154,15 @@ export default function SettingsView() {
           }
         />
       ) : null}
+      {/* ADR 0180: qrtz itself: its version and its own update. */}
+      <SettingsSection title="qrtz" data-testid="about-qrtz">
+        <AppUpdateRow />
+      </SettingsSection>
       <SettingsSection title="privacy" data-testid="privacy-card">
         <Text variant="caption" muted data-testid="offline-note">
           qrtz runs entirely on this computer: audio, transcripts and notes
-          never leave it. it only goes online when you ask: to check for and
+          never leave it. it goes online to check for a new qrtz (at launch and
+          every 6 hours; nothing about you is sent) and when you ask: to
           download signed apps, models and speech updates.
         </Text>
       </SettingsSection>
@@ -358,14 +346,6 @@ export default function SettingsView() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={checkUpdate}
-            data-testid="update-check"
-          >
-            check for updates
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
             onClick={openLicenses}
             data-testid="licenses-open"
           >
@@ -375,16 +355,6 @@ export default function SettingsView() {
         {logsMsg ? (
           <Text variant="caption" muted data-testid="logs-result" role="status">
             {logsMsg}
-          </Text>
-        ) : null}
-        {updateMsg ? (
-          <Text
-            variant="caption"
-            muted
-            data-testid="update-result"
-            role="status"
-          >
-            {updateMsg}
           </Text>
         ) : null}
       </SettingsSection>

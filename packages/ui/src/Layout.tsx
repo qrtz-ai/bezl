@@ -161,6 +161,9 @@ export type SideNavItem = {
   icon?: string;
   /** `foot` items sit pinned at the bottom of the sidebar (settings, gallery). */
   group?: 'main' | 'foot';
+  /** A small dot after the label (ADR 0180: a qrtz update is ready); `dotLabel` names it for screen readers. */
+  dot?: boolean;
+  dotLabel?: string;
 };
 
 /** The app's main navigation: a vertical sidebar of icon + lowercase label rows. Each row gets data-testid `nav-<id>`. */
@@ -209,6 +212,21 @@ export function SideNav({
         <Text tone={on ? 'default' : 'muted'} truncate>
           {it.label.toLowerCase()}
         </Text>
+        {it.dot ? (
+          <span
+            role="status"
+            aria-label={(it.dotLabel ?? 'new').toLowerCase()}
+            data-testid={`${testIdPrefix}-${it.id}-dot`}
+            style={{
+              marginLeft: 'auto',
+              flex: '0 0 auto',
+              width: 6,
+              height: 6,
+              borderRadius: t.radius.full,
+              background: t.color.primary,
+            }}
+          />
+        ) : null}
       </button>
     );
   };

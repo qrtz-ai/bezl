@@ -132,14 +132,15 @@ describe('global settings (ADR 0146 M1.4)', () => {
     expect(q('logs-result')?.textContent).toBe(
       'saved 2 log files and 3 crash reports',
     );
+    // ADR 0180: "check for updates" is qrtz's own updater now (settings → qrtz).
+    expect(q('about-qrtz')).not.toBeNull();
+    expect(calls.some(([c]) => c === 'app-update:check')).toBe(false);
     await act(async () => {
       q('update-check')?.click();
       await new Promise((r) => setTimeout(r, 10));
     });
-    expect(calls.filter(([c]) => c === 'packages:check-update')).toHaveLength(
-      1,
-    );
-    expect(q('update-result')?.textContent).toBe("updates aren't set up yet");
+    expect(calls.filter(([c]) => c === 'app-update:check')).toHaveLength(1);
+    expect(calls.some(([c]) => c === 'packages:check-update')).toBe(false);
     root.unmount();
   });
 });

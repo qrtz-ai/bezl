@@ -27,6 +27,7 @@ import { registry } from './subapps';
 import { SubAppHost } from './SubAppHost';
 import { useConfigTheme } from './useConfigTheme';
 import { useModuleSwitches } from './useModuleSwitches';
+import { useAppUpdateDot } from './useAppUpdateDot';
 import {
   QRTZ,
   QRTZ_PARTS,
@@ -56,9 +57,11 @@ export const QRTZ_PAGE_PARTS: ReadonlySet<string> = new Set(
  */
 export function sidebarItems(
   visible: readonly { manifest: { id: string; name: string; icon?: string } }[],
+  updateReady = false,
 ): SideNavItem[] {
   return [
-    { id: QRTZ, label: 'qrtz' },
+    // ADR 0180: the dot says a newer qrtz is ready (settings → qrtz updates it).
+    { id: QRTZ, label: 'qrtz', dot: updateReady, dotLabel: 'qrtz update ready' },
     ...visible
       .filter(({ manifest }) => !QRTZ_PAGE_PARTS.has(manifest.id))
       .map(({ manifest }) => ({
@@ -97,6 +100,7 @@ export function Shell() {
         .filter((id) => !QRTZ_PAGE_PARTS.has(id)),
     [visible],
   );
+  const updateDot = useAppUpdateDot();
   const location = useLocation();
   const navigate = useNavigate();
   const path = resolveRoute(location.pathname, apps);
@@ -190,7 +194,7 @@ export function Shell() {
         <AppFrame
           sidebar={
             <SideNav
-              items={sidebarItems(visible)}
+              items={sidebarItems(visible, updateDot)}
               active={page}
               onSelect={selectApp}
             />
