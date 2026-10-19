@@ -54,7 +54,7 @@ final class CtrlProtocolTests: XCTestCase {
     func testEveryHostLineOfTheFixtureParses() throws {
         let all = try lines()
         let host = all.filter { !(($0["type"] as! String).hasSuffix(".result")) && $0["type"] as! String != "ctrl.error" }
-        XCTAssertEqual(host.count, 47)
+        XCTAssertEqual(host.count, 49)
         for o in host {
             let line = String(decoding: try JSONSerialization.data(withJSONObject: o), as: UTF8.self)
             XCTAssertNotNil(CtrlRequest.parse(line), "\(o["type"]!)")
@@ -311,6 +311,48 @@ final class CtrlProtocolTests: XCTestCase {
         XCTAssertTrue(CtrlRoute.applessChecks.contains(CtrlDock.edgeCheck))
         XCTAssertTrue(CtrlRoute.dockVerbs.contains("set_dock_edge_left"))
         XCTAssertTrue(CtrlRoute.systemEventsVerbs.contains("set_dock_edge_bottom"))
+    }
+
+    func testTheDockSizeStepGoesOnlyToSystemEventsAndItsMeasureHasNoApp() throws {
+        // ADR 0200: shrink_dock parses from the fixture and reaches the backend; both size scripts go to System Events
+        // only, move nothing but `dock size` by the one fixed step clamped to 0–1, and dock_size is measured without an
+        // app from the Dock's `tilesize` (absent: nil).
+        let all = try lines()
+        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["verb"] as? String == "shrink_dock" }!
+        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
+        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("shrink_dock") }
+        XCTAssertEqual(route, .scripting(app: "com.apple.systemevents", verb: "shrink_dock"))
+        let fake = Fake()
+        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: line))["ok"] as? Bool, true)
+        XCTAssertEqual(fake.acted, [route])
+        XCTAssertEqual(CtrlScripts.source(verb: "shrink_dock", bundleId: "com.apple.systemevents"),
+                       "tell application id \"com.apple.systemevents\"\ntell dock preferences\nset s to (dock size) - 0.15\nif s < 0 then set s to 0\nset dock size to s\nend tell\nend tell")
+        XCTAssertEqual(CtrlScripts.source(verb: "grow_dock", bundleId: "com.apple.systemevents"),
+                       "tell application id \"com.apple.systemevents\"\ntell dock preferences\nset s to (dock size) + 0.15\nif s > 1 then set s to 1\nset dock size to s\nend tell\nend tell")
+        for verb in ["shrink_dock", "grow_dock"] {
+            let src = CtrlScripts.source(verb: verb, bundleId: "com.apple.systemevents")!
+            for word in ["activate", "launch", "open", "reopen", "magnification", "autohide", "screen edge", "do shell script"] {
+                XCTAssertFalse(src.contains(word), "\(verb): \(word)")
+            }
+            for id in ["com.apple.dock", "com.apple.Safari", "com.apple.finder"] {
+                XCTAssertNil(CtrlScripts.source(verb: verb, bundleId: id), "\(verb) \(id)")
+            }
+        }
+        // Only these two spellings: no size or step can be named on the wire.
+        XCTAssertNil(CtrlScripts.source(verb: "set_dock_size", bundleId: "com.apple.systemevents"))
+        guard case let .measure(_, check, app)? = CtrlRequest.parse(#"{"type":"ctrl.measure","id":"c48","check":{"check":"dock_size"}}"#)
+        else { return XCTFail("dock_size") }
+        XCTAssertEqual(check, "dock_size")
+        XCTAssertEqual(app, "")
+        XCTAssertEqual(CtrlDock.tileSize(["tilesize": 48]), 48)
+        XCTAssertEqual(CtrlDock.tileSize(["tilesize": NSNumber(value: 64.4)]), 64)
+        XCTAssertEqual(CtrlDock.tileSize(["tilesize": "36"]), 36)
+        XCTAssertNil(CtrlDock.tileSize(["orientation": "left"]), "absent: can't tell")
+        XCTAssertNil(CtrlDock.tileSize(nil))
+        XCTAssertNil(CtrlDock.tileSize(["tilesize": "big"]))
+        XCTAssertTrue(CtrlRoute.applessChecks.contains(CtrlDock.sizeCheck))
+        XCTAssertTrue(CtrlRoute.dockVerbs.isSuperset(of: ["shrink_dock", "grow_dock"]))
+        XCTAssertTrue(CtrlRoute.systemEventsVerbs.isSuperset(of: ["shrink_dock", "grow_dock"]))
     }
 
     func testTheMenuBarAutohideGoesOnlyToSystemEventsAndItsMeasureHasNoApp() throws {

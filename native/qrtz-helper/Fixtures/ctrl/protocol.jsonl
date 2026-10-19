@@ -54,5 +54,7 @@
 {"type":"ctrl.measure","id":"c44","check":{"check":"menu_bar_autohide"}}
 {"type":"ctrl.act","id":"c45","actionId":"a20","route":{"route":"workspace","op":"set_audio_output","kind":"bluetooth"},"content":{}}
 {"type":"ctrl.measure","id":"c46","check":{"check":"audio_output"}}
+{"type":"ctrl.act","id":"c47","actionId":"a21","route":{"route":"scripting","app":"com.apple.systemevents","verb":"shrink_dock"},"content":{}}
+{"type":"ctrl.measure","id":"c48","check":{"check":"dock_size"}}
 {"type":"ctrl.laya.warm","id":"c12","model":"/models/ctrl/laya/laya.mlmodelc"}
 {"type":"ctrl.laya.warm.result","id":"c12","state":"started"}

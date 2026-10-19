@@ -135,6 +135,12 @@ const INTENTS = {
   dock_edge_left: opt('intent.dock_edge', 'move the dock to an edge', 0.07),
   dock_edge_right: opt('intent.dock_edge', 'move the dock to an edge', 0.07),
   dock_edge_bottom: opt('intent.dock_edge', 'move the dock to an edge', 0.07),
+  dock_smaller: opt(
+    'intent.dock_size',
+    'make the dock smaller or bigger',
+    0.07,
+  ),
+  dock_bigger: opt('intent.dock_size', 'make the dock smaller or bigger', 0.07),
   menu_bar_hide: opt(
     'intent.menu_bar_autohide',
     'hide or show the menu bar',
@@ -202,6 +208,8 @@ type Intent =
   | 'dock_edge_left'
   | 'dock_edge_right'
   | 'dock_edge_bottom'
+  | 'dock_smaller'
+  | 'dock_bigger'
   | 'menu_bar_hide'
   | 'menu_bar_show'
   | 'screensaver'
@@ -395,6 +403,31 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
         'route.scripting.dock_edge_bottom',
         'put the dock on the bottom',
         0.05,
+      ),
+    ]),
+  ],
+  // ADR 0200: the dock's size one step, through system events like its edge; one move from the words, no card.
+  dock_smaller: [
+    act('choose_app', [
+      opt('app.com.apple.systemevents', 'systemevents', 0.95),
+    ]),
+    act('choose_move', [
+      opt(
+        'route.scripting.dock_size_smaller',
+        'make the dock a step smaller',
+        0.9,
+      ),
+    ]),
+  ],
+  dock_bigger: [
+    act('choose_app', [
+      opt('app.com.apple.systemevents', 'systemevents', 0.95),
+    ]),
+    act('choose_move', [
+      opt(
+        'route.scripting.dock_size_bigger',
+        'make the dock a step bigger',
+        0.9,
       ),
     ]),
   ],
@@ -865,8 +898,37 @@ const ejectOf = (text: string): Intent | null =>
     : null;
 
 // ADR 0195: "dock" plus left / right / bottom, no hide / show / autohide (those stay dock_autohide).
+// ADR 0200: the dock plus a size or magnification word, whatever else is said (never its auto-hide or edge then).
+const dockSizeWording = (text: string): boolean =>
+  /\bdock\b/i.test(text) &&
+  /\b(smaller|tinier|littler|shrinks?|shrinking|reduce|decrease|bigger|larger|enlarge|grows?|increase|expand|small|big|large|tiny|huge|smallest|biggest|largest|tiniest|sizes?|sized|magnif\w*)\b/i.test(
+    text,
+  );
+// ADR 0200: "make the dock smaller" / "make the dock bigger": one step, one way; not magnification, an absolute size,
+// text, windows, a toggle, a negation, a mixed dock task or a number.
+const dockSizeOf = (text: string): Intent | null => {
+  if (!dockSizeWording(text)) return null;
+  if (
+    /\b(magnif\w*|zoom|smallest|biggest|largest|minimum|maximum|min|max|default|normal|original|reset|text|font|labels?|windows?|toggle|flip|don't|dont|never|not|stop|keep|hide|hides|hiding|hidden|auto-?hide|auto-?hiding|automatically|show|shows|shown|showing|visible|unhide|always|left|right|bottom)\b|\d|menu\s*-?bar/i.test(
+      text,
+    )
+  )
+    return null;
+  const smaller =
+    /\b(smaller|tinier|littler|shrinks?|shrinking|reduce|decrease)\b/i.test(
+      text,
+    );
+  const bigger = /\b(bigger|larger|enlarge|grows?|increase|expand)\b/i.test(
+    text,
+  );
+  if (smaller && !bigger) return 'dock_smaller';
+  if (bigger && !smaller) return 'dock_bigger';
+  return null;
+};
+
 const dockEdgeOf = (text: string): Intent | null => {
   if (!/\bdock\b/i.test(text) || /\b(toggle|flip)\b/i.test(text)) return null;
+  if (dockSizeWording(text)) return null;
   if (
     /\b(hide|hides|hiding|hidden|auto-?hide|auto-?hiding|automatically|show|shows|shown|showing|visible|unhide|always)\b/i.test(
       text,
@@ -917,6 +979,8 @@ const dockOf = (text: string): Intent | null => {
   if (dockEdgeOf(text) !== null) return null;
   // ADR 0197: "hide the dock and the menu bar" is two tasks, neither here.
   if (menuBarNamed(text)) return null;
+  // ADR 0200: nor is a dock task with a size or magnification word.
+  if (dockSizeWording(text)) return null;
   const hide =
     /\b(hide|hides|hiding|hidden|auto-?hide|auto-?hiding|automatically)\b/i.test(
       text,
@@ -1139,6 +1203,7 @@ const minutesLabel = (n: number): string =>
       : `for ${n} minutes`;
 
 const intentOf = (text: string): Intent | null =>
+  dockSizeOf(text) ??
   windowsOf(text) ??
   awakeOf(text) ??
   wifiOf(text) ??

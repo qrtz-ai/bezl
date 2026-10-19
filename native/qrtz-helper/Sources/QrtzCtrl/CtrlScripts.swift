@@ -46,6 +46,11 @@ public enum CtrlScripts {
         case "set_dock_edge_left": body = "tell dock preferences to set screen edge to left"
         case "set_dock_edge_right": body = "tell dock preferences to set screen edge to right"
         case "set_dock_edge_bottom": body = "tell dock preferences to set screen edge to bottom"
+        // ADR 0200: the Dock's size one fixed step (`CtrlDock.sizeStep` of System Events' 0–1 `dock size`), clamped to
+        // the range; System Events tells the Dock, no app comes forward. The step is part of the template, never a
+        // number from the wire.
+        case "shrink_dock": body = CtrlDock.sizeScript(bigger: false)
+        case "grow_dock": body = CtrlDock.sizeScript(bigger: true)
         // ADR 0197: the menu bar's "automatically hide and show" (System Events' dock preferences; no app comes
         // forward). Only on / off: macOS 13+'s desktop-only and full-screen-only choices stay as the user set them.
         case "set_menu_bar_autohide": body = "tell dock preferences to set autohide menu bar to true"
@@ -94,9 +99,10 @@ public enum CtrlAppearance {
     }
 }
 
-/// ADR 0173 / 0195: reads the Dock's own defaults domain (`com.apple.dock`): `autohide` for hide/show, `orientation`
-/// for the screen edge (`left` / `bottom` / `right`; absent = bottom, the macOS default). Nothing else in the domain
-/// is looked at.
+/// ADR 0173 / 0195 / 0200: reads the Dock's own defaults domain (`com.apple.dock`): `autohide` for hide/show,
+/// `orientation` for the screen edge (`left` / `bottom` / `right`; absent = bottom, the macOS default), `tilesize` for
+/// the icon size. Nothing else in the domain is looked at, and nothing in it is written (the size goes through System
+/// Events).
 public enum CtrlDock {
     public static let check = "dock_autohide"
     /// ADR 0195: the Dock's screen edge (0 left, 10 bottom, 20 right — spaced so a Level ±1 never confuses edges).
@@ -122,6 +128,27 @@ public enum CtrlDock {
         case "right": return "right"
         default: return "bottom"
         }
+    }
+
+    /// ADR 0200: the Dock's icon size in points (`tilesize`, 16–128), or nil when the key is absent (never set on this
+    /// Mac: macOS writes it the first time the size changes) or not a number.
+    public static let sizeCheck = "dock_size"
+    /// ADR 0200: one step of System Events' `dock size` (0 = 16 pt icons, 1 = 128 pt). Rust's `DOCK_SIZE_STEP`.
+    public static let sizeStep = "0.15"
+
+    public static func tileSize(_ dock: [String: Any]?) -> Int? {
+        switch dock?["tilesize"] {
+        case let n as NSNumber: return Int(n.doubleValue.rounded())
+        case let s as String: return Double(s).map { Int($0.rounded()) }
+        default: return nil
+        }
+    }
+
+    /// ADR 0200: the body of `shrink_dock` / `grow_dock`: read `dock size`, move it one step, clamp to 0–1, set it.
+    static func sizeScript(bigger: Bool) -> String {
+        bigger
+            ? "tell dock preferences\nset s to (dock size) + \(sizeStep)\nif s > 1 then set s to 1\nset dock size to s\nend tell"
+            : "tell dock preferences\nset s to (dock size) - \(sizeStep)\nif s < 0 then set s to 0\nset dock size to s\nend tell"
     }
 
     public static func edgeCode(_ dock: [String: Any]?) -> Int {

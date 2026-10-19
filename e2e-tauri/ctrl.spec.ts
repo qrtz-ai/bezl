@@ -981,6 +981,49 @@ test('ctrl: move the dock to an edge sets its screen edge without a card', async
   expect(errors).toEqual([]);
 });
 
+// ADR 0200: "make the dock smaller" / "make the dock bigger" moves the dock's size one step through system events, one
+// move from the words, no card. Never its auto-hide or edge, never a hide or open of the dock app.
+test('ctrl: make the dock smaller or bigger steps its size without a card', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  for (const [text, move, other] of [
+    [
+      'make the dock smaller',
+      'make the dock a step smaller',
+      'make the dock a step bigger',
+    ],
+    [
+      'make the dock icons bigger',
+      'make the dock a step bigger',
+      'make the dock a step smaller',
+    ],
+  ] as const) {
+    await ctrl.getByTestId('ctrl-task-input').fill(text);
+    await ctrl.getByTestId('ctrl-task-add').click();
+    const task = ctrl.getByTestId('ctrl-task').filter({ hasText: text });
+    await task.getByTestId('ctrl-task-run').click();
+    const run = ctrl.getByTestId('ctrl-run').first();
+    await expect(run.getByTestId('ctrl-run-status')).toHaveText('done');
+    await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
+    const decisions = ctrl.getByTestId('ctrl-decisions').first();
+    await expect(decisions).toContainText('make the dock smaller or bigger');
+    await expect(decisions).toContainText(move);
+    await expect(decisions).not.toContainText(other);
+    await expect(decisions).not.toContainText('hide or show the dock');
+    await expect(decisions).not.toContainText('move the dock to an edge');
+    await expect(decisions).not.toContainText('hide an app');
+    await expect(decisions).not.toContainText('open an app');
+  }
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 // ADR 0197: "hide the menu bar" / "always show the menu bar" sets the menu bar's auto-hide through system events, one
 // move from the words, no card. Never the dock's auto-hide, never a hide of an app.
 test('ctrl: hide or show the menu bar sets its auto-hide without a card', async ({

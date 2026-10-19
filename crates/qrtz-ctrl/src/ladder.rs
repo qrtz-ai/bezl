@@ -191,6 +191,14 @@ impl AudioOutput {
     }
 }
 
+/// ADR 0200: how far one "make the dock smaller / bigger" moves System Events' `dock size` (0–1, where macOS maps 0
+/// to 16 px icons and 1 to 128 px): 0.15, about 17 px. A constant in the script template on both sides (Rust and
+/// `CtrlScripts`), never from the task, a model or the wire.
+pub const DOCK_SIZE_STEP: f64 = 0.15;
+/// ADR 0200: the Dock's icon size limits in points (`tilesize` in `com.apple.dock`), what `dock size` 0 and 1 give.
+pub const DOCK_TILE_MIN: i64 = 16;
+pub const DOCK_TILE_MAX: i64 = 128;
+
 /// ADR 0166: the Finder, the app that shows a folder.
 pub const FINDER: &str = "com.apple.finder";
 
@@ -329,6 +337,12 @@ pub enum ScriptVerb {
     SetDockEdgeRight,
     /// ADR 0195: the same with `bottom` (macOS's default Dock edge; no top).
     SetDockEdgeBottom,
+    /// ADR 0200: System Events `tell dock preferences` to set `dock size` one fixed step ([`DOCK_SIZE_STEP`] of its
+    /// 0–1 range) smaller, never below 0 (only to `com.apple.systemevents`, nothing comes forward, no key event). The
+    /// step is in the template, never a number from the task. Reversible (a bigger step).
+    ShrinkDock,
+    /// ADR 0200: the same one step bigger, never above 1.
+    GrowDock,
     /// ADR 0197: System Events `tell dock preferences to set autohide menu bar to true` (only to
     /// `com.apple.systemevents`, nothing comes forward, no key event): the menu bar slides away until the pointer
     /// reaches the top of the screen. Reversible.

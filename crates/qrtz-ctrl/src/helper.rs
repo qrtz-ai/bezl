@@ -74,6 +74,11 @@ pub enum Check {
     /// from the `com.apple.dock` defaults' `orientation`; absent = bottom, the macOS default; no app asked, no
     /// prompt). Verified with [`Expect::Level`] (values spaced so the ±1 volume tolerance never confuses edges).
     DockEdge,
+    /// ADR 0200: the Dock's icon size in points, 16–128 (read in the helper's own process from the `com.apple.dock`
+    /// defaults' `tilesize`; `null` when the key is absent, since macOS writes it the first time the size is set and
+    /// its unset default isn't documented). Verified with [`Expect::Decreased`] / [`Expect::Increased`] against the
+    /// read just before the act.
+    DockSize,
     /// ADR 0197: 1 if the menu bar hides itself automatically, 0 if it's shown (read in the helper's own process from
     /// the global defaults' `_HIHideMenuBar`; absent = shown, the macOS default; no app asked, no prompt).
     MenuBarAutohide,
@@ -610,6 +615,8 @@ pub struct FakeWorld {
     pub dock_autohide: bool,
     /// ADR 0195: the Dock's screen edge (`"left"` / `"bottom"` / `"right"`; default bottom).
     pub dock_edge: String,
+    /// ADR 0200: the Dock's icon size in points (`tilesize`; `None`: never set on this Mac).
+    pub dock_tile: Option<i64>,
     /// ADR 0197: the menu bar hides itself automatically.
     pub menu_bar_autohide: bool,
     /// ADR 0178: the screen saver is running (ScreenSaverEngine).
@@ -713,6 +720,7 @@ impl FakeWorld {
             dark: false,
             dock_autohide: false,
             dock_edge: "bottom".into(),
+            dock_tile: Some(48),
             menu_bar_autohide: false,
             screensaver_running: false,
             screensaver_locks: false,
@@ -829,6 +837,27 @@ impl FakeWorld {
                 .into();
                 Ok(())
             }
+            // ADR 0200: one fixed step of System Events' 0–1 `dock size`, clamped, through System Events only (macOS
+            // maps it to 16–128 px icons and writes `tilesize`).
+            Route::Scripting {
+                app,
+                verb: v @ (ScriptVerb::ShrinkDock | ScriptVerb::GrowDock),
+            } => {
+                if app != crate::exec::SYSTEM_EVENTS {
+                    return Err("policy.refused".into());
+                }
+                let span = (crate::ladder::DOCK_TILE_MAX - crate::ladder::DOCK_TILE_MIN) as f64;
+                let t = self.dock_tile.unwrap_or(48);
+                let f = (t - crate::ladder::DOCK_TILE_MIN) as f64 / span;
+                let step = if *v == ScriptVerb::GrowDock {
+                    crate::ladder::DOCK_SIZE_STEP
+                } else {
+                    -crate::ladder::DOCK_SIZE_STEP
+                };
+                let f = (f + step).clamp(0.0, 1.0);
+                self.dock_tile = Some(crate::ladder::DOCK_TILE_MIN + (f * span).round() as i64);
+                Ok(())
+            }
             // ADR 0197: the menu bar's auto-hide, through System Events only.
             Route::Scripting {
                 app,
@@ -882,6 +911,8 @@ impl FakeWorld {
                     | ScriptVerb::SetDockEdgeLeft
                     | ScriptVerb::SetDockEdgeRight
                     | ScriptVerb::SetDockEdgeBottom
+                    | ScriptVerb::ShrinkDock
+                    | ScriptVerb::GrowDock
                     | ScriptVerb::SetMenuBarAutohide
                     | ScriptVerb::SetMenuBarShown
                     | ScriptVerb::StartScreenSaver
@@ -1174,6 +1205,7 @@ impl FakeWorld {
                     Check::DarkMode => Some(i64::from(self.dark)),
                     Check::DockAutohide => Some(i64::from(self.dock_autohide)),
                     Check::DockEdge => Some(crate::exec::dock_edge_code(&self.dock_edge)),
+                    Check::DockSize => self.dock_tile,
                     Check::MenuBarAutohide => Some(i64::from(self.menu_bar_autohide)),
                     Check::ScreensaverRunning => Some(i64::from(self.screensaver_running)),
                     Check::DisplayAsleep => Some(i64::from(self.display_asleep)),

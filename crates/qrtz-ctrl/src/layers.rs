@@ -646,6 +646,13 @@ const INTENTS: &[IntentDef] = &[
         slot: Slot::None,
         irreversible: false,
     },
+    // ADR 0200: the Dock's size, one step smaller or bigger, through System Events; reversible, no gate.
+    IntentDef {
+        id: "dock_size",
+        app: AppMode::Fixed("com.apple.systemevents"),
+        slot: Slot::None,
+        irreversible: false,
+    },
     // ADR 0197: the menu bar's auto-hide, through System Events (faceless), like the Dock's; reversible, no gate.
     IntentDef {
         id: "menu_bar_autohide",
@@ -726,6 +733,7 @@ fn dock_task(toks: &[Tok]) -> bool {
             || has(toks, &["turn", "enable", "disable", "on", "off", "keep"]))
         && !dock_edge_task(toks)
         && !menu_bar_named(toks)
+        && !dock_size_wording(toks)
 }
 
 /// ADR 0197: words that name the menu bar ("menu bar", "menubar", "menu-bar").
@@ -965,6 +973,114 @@ fn audio_output_task(toks: &[Tok]) -> bool {
         && !apple_tv
 }
 
+/// ADR 0200: words that make the Dock smaller / bigger ("make the dock smaller", "shrink the dock", "increase the dock
+/// size").
+const DOCK_SMALLER_WORDS: &[&str] = &[
+    "smaller",
+    "tinier",
+    "littler",
+    "shrink",
+    "shrinks",
+    "shrinking",
+    "reduce",
+    "decrease",
+];
+const DOCK_BIGGER_WORDS: &[&str] = &[
+    "bigger", "larger", "enlarge", "grow", "grows", "increase", "expand",
+];
+/// ADR 0200: words that make a Dock-size task something else: its magnification (its own setting), an absolute size
+/// (smallest / biggest / a number / back to normal: one step is all this does), the labels' text, windows, a toggle, a
+/// negation or a "keep".
+const DOCK_SIZE_NOT_WORDS: &[&str] = &[
+    "magnify",
+    "magnifies",
+    "magnified",
+    "magnifying",
+    "magnification",
+    "zoom",
+    "smallest",
+    "biggest",
+    "largest",
+    "minimum",
+    "maximum",
+    "min",
+    "max",
+    "default",
+    "normal",
+    "original",
+    "reset",
+    "text",
+    "font",
+    "label",
+    "labels",
+    "window",
+    "windows",
+    "toggle",
+    "flip",
+    "don't",
+    "dont",
+    "never",
+    "not",
+    "stop",
+    "keep",
+];
+
+/// ADR 0200: words about the Dock's size or magnification beyond the step words ("as small as possible", "dock size",
+/// "turn on dock magnification").
+const DOCK_SIZE_ANY_WORDS: &[&str] = &[
+    "small",
+    "big",
+    "large",
+    "tiny",
+    "huge",
+    "smallest",
+    "biggest",
+    "largest",
+    "tiniest",
+    "size",
+    "sizes",
+    "sized",
+    "magnify",
+    "magnifies",
+    "magnified",
+    "magnifying",
+    "magnification",
+];
+
+/// ADR 0200: the Dock plus a size or magnification word, whatever else is said. Such a task is never the Dock's
+/// auto-hide, an edge move, a hide / show of an app or an open (a hidden launch) of the Dock app: "hide the dock and
+/// make it smaller" asks instead of doing half, "turn on dock magnification" no longer reads as "turn on the dock"
+/// (always shown), and "make the dock as small as possible" with the Dock running is no longer an open of the Dock
+/// that finishes with nothing done.
+fn dock_size_wording(toks: &[Tok]) -> bool {
+    has(toks, &["dock"])
+        && (has(toks, DOCK_SMALLER_WORDS) || has(toks, DOCK_BIGGER_WORDS) || has(toks, DOCK_SIZE_ANY_WORDS))
+}
+
+/// ADR 0200: "make the dock smaller", "make the dock icons bigger", "shrink the dock", "increase the dock size". The
+/// Dock plus a smaller / bigger word, no hide / show / edge word (one move per task), nothing from
+/// [`DOCK_SIZE_NOT_WORDS`], no number, not the menu bar.
+fn dock_size_task(toks: &[Tok]) -> bool {
+    has(toks, &["dock"])
+        && (has(toks, DOCK_SMALLER_WORDS) || has(toks, DOCK_BIGGER_WORDS))
+        && !has(toks, DOCK_SIZE_NOT_WORDS)
+        && !has(toks, DOCK_HIDE_WORDS)
+        && !has(toks, DOCK_SHOW_WORDS)
+        && !has(toks, DOCK_EDGE_WORDS)
+        && !has(toks, &["autohide", "auto-hide", "autohiding", "auto-hiding"])
+        && !menu_bar_named(toks)
+        && !toks.iter().any(|t| t.w.chars().any(|c| c.is_ascii_digit()))
+}
+
+/// ADR 0200: which way the words go: `Some(true)` bigger, `Some(false)` smaller, `None` both (the move question asks).
+fn dock_size_bigger(toks: &[Tok]) -> Option<bool> {
+    match (has(toks, DOCK_SMALLER_WORDS), has(toks, DOCK_BIGGER_WORDS)) {
+        (true, false) => Some(false),
+        (false, true) => Some(true),
+        _ => None,
+    }
+}
+
 /// ADR 0195: words that name a Dock screen edge (macOS has no top).
 const DOCK_EDGE_WORDS: &[&str] = &["left", "right", "bottom"];
 
@@ -987,6 +1103,7 @@ fn dock_edge_task(toks: &[Tok]) -> bool {
                 "auto-hiding",
             ],
         )
+        && !dock_size_wording(toks)
 }
 
 /// ADR 0195: which edge the words name. One clear edge, or `None` when two differ (the move question asks).
@@ -1673,7 +1790,7 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             {
                 p += if open { 3000 } else { 4500 };
             }
-            if named_app && (!site || full_named) && !menu_bar_wording(toks) {
+            if named_app && (!site || full_named) && !menu_bar_wording(toks) && !dock_size_wording(toks) {
                 p += 3000;
             }
             if full_named && site {
@@ -1750,6 +1867,7 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
                 && !dock_task(toks)
                 && !dock_edge_task(toks)
                 && !menu_bar_named(toks)
+                && !dock_size_wording(toks)
             {
                 p += 9000;
             }
@@ -1781,6 +1899,7 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
                 && !dock_task(toks)
                 && !dock_edge_task(toks)
                 && !menu_bar_named(toks)
+                && !dock_size_wording(toks)
             {
                 p += 9000;
             }
@@ -1996,6 +2115,15 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             p -= 3000;
             let other_app = named.iter().any(|(a, _)| a.id != DOCK_APP);
             if dock_edge_task(toks) && !other_app && !site {
+                p += 9500;
+            }
+        }
+        "dock_size" => {
+            // ADR 0200: "make the dock smaller", "shrink the dock", "make the dock icons bigger". The Dock plus a
+            // smaller / bigger word, no other app named, no site. Without it it sits well below.
+            p -= 3000;
+            let other_app = named.iter().any(|(a, _)| a.id != DOCK_APP);
+            if dock_size_task(toks) && !other_app && !site {
                 p += 9500;
             }
         }
@@ -2609,6 +2737,15 @@ fn move_question(
                 route("scripting.dock_edge_bottom", 2000),
             ],
         },
+        // ADR 0200: one move from the words (one step smaller or bigger). Both said → both low so the run asks.
+        "dock_size" => match dock_size_bigger(toks) {
+            Some(false) => vec![route("scripting.dock_size_smaller", 4500)],
+            Some(true) => vec![route("scripting.dock_size_bigger", 4500)],
+            None => vec![
+                route("scripting.dock_size_smaller", 2000),
+                route("scripting.dock_size_bigger", 2000),
+            ],
+        },
         // ADR 0178: one move — start the current screen saver, or (amendment 1) stop it. Never both: a stop task
         // never backtracks into starting it.
         "screensaver" => {
@@ -2823,6 +2960,7 @@ fn intent_label(id: &str) -> &'static str {
         "dark_mode" => "switch dark mode",
         "dock_autohide" => "hide or show the dock",
         "dock_edge" => "move the dock to an edge",
+        "dock_size" => "make the dock smaller or bigger",
         "menu_bar_autohide" => "hide or show the menu bar",
         "screensaver" => "start or stop the screensaver",
         "search" => "search in an app",
@@ -2878,6 +3016,8 @@ fn route_label(id: &str) -> &'static str {
         "scripting.dock_edge_left" => "put the dock on the left",
         "scripting.dock_edge_right" => "put the dock on the right",
         "scripting.dock_edge_bottom" => "put the dock on the bottom",
+        "scripting.dock_size_smaller" => "make the dock a step smaller",
+        "scripting.dock_size_bigger" => "make the dock a step bigger",
         "scripting.menu_bar_autohide_on" => "hide the menu bar until the pointer reaches it",
         "scripting.menu_bar_autohide_off" => "always show the menu bar, full screen as set",
         "scripting.screensaver" => "start the current screen saver",
@@ -3055,6 +3195,9 @@ mod label_tests {
             "bottom",
             "menu bar",
             "always show the menu bar",
+            "dock smaller",
+            "dock bigger",
+            "smaller or bigger",
         ];
         for d in INTENTS {
             for p in phrasings {

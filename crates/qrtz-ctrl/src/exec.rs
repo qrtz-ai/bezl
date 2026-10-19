@@ -373,6 +373,10 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
         };
         return Some(dock_edge_step(edge));
     }
+    // ADR 0200: the Dock's size, one fixed step the same way (System Events only, read back in the helper).
+    if mv == DOCK_SMALLER_MOVE || mv == DOCK_BIGGER_MOVE {
+        return Some(dock_size_step(mv == DOCK_BIGGER_MOVE));
+    }
     // ADR 0197: the menu bar's auto-hide, the same way (System Events only, read back in the helper).
     if mv == MENU_BAR_AUTOHIDE_ON_MOVE || mv == MENU_BAR_AUTOHIDE_OFF_MOVE {
         return Some(menu_bar_step(mv == MENU_BAR_AUTOHIDE_ON_MOVE));
@@ -823,6 +827,34 @@ pub const DOCK_EDGE_LEFT_MOVE: &str = "route.scripting.dock_edge_left";
 pub const DOCK_EDGE_RIGHT_MOVE: &str = "route.scripting.dock_edge_right";
 pub const DOCK_EDGE_BOTTOM_MOVE: &str = "route.scripting.dock_edge_bottom";
 
+/// ADR 0200: one System Events script moves the Dock's size one fixed step; the helper's read of the Dock's
+/// `tilesize` verifies it moved that way (against the read just before the act).
+fn dock_size_step(bigger: bool) -> Step {
+    Step::Act {
+        routes: vec![Route::Scripting {
+            app: SYSTEM_EVENTS.into(),
+            verb: if bigger {
+                ScriptVerb::GrowDock
+            } else {
+                ScriptVerb::ShrinkDock
+            },
+        }],
+        verify: Verify {
+            check: Check::DockSize,
+            expect: if bigger {
+                Expect::Increased
+            } else {
+                Expect::Decreased
+            },
+        },
+        content: BTreeMap::new(),
+    }
+}
+
+/// ADR 0200: "make the dock smaller" / "make the dock bigger" (one step each; reversible, no gate).
+pub const DOCK_SMALLER_MOVE: &str = "route.scripting.dock_size_smaller";
+pub const DOCK_BIGGER_MOVE: &str = "route.scripting.dock_size_bigger";
+
 /// ADR 0197: one System Events script sets the menu bar's auto-hide; the helper's read of the global defaults'
 /// `_HIHideMenuBar` verifies it.
 fn menu_bar_step(hide: bool) -> Step {
@@ -1110,6 +1142,19 @@ impl Driver<'_> {
             if fplan.is_none() && (mv == MENU_BAR_AUTOHIDE_ON_MOVE || mv == MENU_BAR_AUTOHIDE_OFF_MOVE) {
                 let want = i64::from(mv == MENU_BAR_AUTOHIDE_ON_MOVE);
                 if self.helper.measure(&Check::MenuBarAutohide) == Some(want) {
+                    return sink.push(log, finish(TaskStatus::Done));
+                }
+            }
+            // ADR 0200: the Dock already as small (or as big) as macOS makes it is done with nothing acted, so a task
+            // that can change nothing never asks for the System Events grant. A helper that can't read the size acts;
+            // the verify then can't compare and the act stands unverified.
+            if fplan.is_none() && (mv == DOCK_SMALLER_MOVE || mv == DOCK_BIGGER_MOVE) {
+                let at_end = match self.helper.measure(&Check::DockSize) {
+                    Some(t) if mv == DOCK_SMALLER_MOVE => t <= crate::ladder::DOCK_TILE_MIN,
+                    Some(t) => t >= crate::ladder::DOCK_TILE_MAX,
+                    None => false,
+                };
+                if at_end {
                     return sink.push(log, finish(TaskStatus::Done));
                 }
             }
