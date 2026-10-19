@@ -645,6 +645,35 @@ const TAG_THIRD_WORDS: ReadonlyArray<readonly [string, readonly string[]]> = [
   ["wouldn't", ['think', 'agree', 'say']],
 ];
 
+/** ADR 0229: the positive tags an imperative takes, by the word its sentence opens with ("Let's grab lunch, shall
+ * we", "Please close the door, will you"). Same table as cleanup.rs IMPERATIVE_TAGS. */
+export const IMPERATIVE_TAGS: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ["let's", ['shall we']],
+  ['please', ['will you', 'would you', 'can you', 'could you']],
+];
+
+/** ADR 0229: does `head` (the last sentence up to its last comma) open with "Let's" / "Please" and hold one more word,
+ * with `aux pronoun` a tag that opener takes? Same checks as cleanup.rs imperative_tag. */
+function imperativeTag(head: string, aux: string, pronoun: string): boolean {
+  const words = head.split(/\s+/).filter(Boolean);
+  if (words.length < 2) return false;
+  let first = words[0].replaceAll('\u2019', "'");
+  if (first.endsWith(',')) first = first.slice(0, -1);
+  const opener =
+    first === "Let's" || first === "let's"
+      ? "let's"
+      : first === 'Please' || first === 'please'
+        ? 'please'
+        : null;
+  if (opener === null) return false;
+  const tag = `${aux} ${pronoun}`;
+  return IMPERATIVE_TAGS.some(
+    ([o, tags]) => o === opener && tags.includes(tag),
+  );
+}
+
 /** ADR 0227: does the dictation end in an unmarked tag question ("..., isn't it")? Same checks as cleanup.rs
  * tag_question. */
 function tagQuestion(t: string): boolean {
@@ -664,6 +693,9 @@ function tagQuestion(t: string): boolean {
     .map((w) => w.replaceAll('\u2019', "'"));
   if (tag.length !== 2 && tag.length !== 3) return false;
   const [aux, pronoun, third] = tag;
+  // ADR 0229: "Let's grab lunch, shall we" / "Please close the door, will you".
+  if (third === undefined && imperativeTag(s.slice(0, comma), aux, pronoun))
+    return true;
   const agrees = TAG_QUESTIONS.some(
     ([a, ps]) => a === aux && ps.includes(pronoun),
   );

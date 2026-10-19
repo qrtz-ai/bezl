@@ -2974,6 +2974,118 @@
     {
       "raw": "Turn left at the light, then right",
       "expect": "Turn left at the light, then right."
+    },
+    {
+      "raw": "Let's grab lunch after the standup, shall we",
+      "expect": "Let's grab lunch after the standup, shall we?"
+    },
+    {
+      "raw": "Let's move the design review to Thursday, shall we",
+      "expect": "Let's move the design review to Thursday, shall we?"
+    },
+    {
+      "raw": "Please close the door on your way out, will you",
+      "expect": "Please close the door on your way out, will you?"
+    },
+    {
+      "raw": "Please send me the slides before the call, would you",
+      "expect": "Please send me the slides before the call, would you?"
+    },
+    {
+      "raw": "Please keep an eye on the build tonight, can you",
+      "expect": "Please keep an eye on the build tonight, can you?"
+    },
+    {
+      "raw": "Please forward this to Priya, could you",
+      "expect": "Please forward this to Priya, could you?"
+    },
+    {
+      "raw": "Thanks for the notes. Let's pick this up tomorrow, shall we",
+      "expect": "Thanks for the notes. Let's pick this up tomorrow, shall we?"
+    },
+    {
+      "raw": "Let’s call it a day, shall we",
+      "expect": "Let’s call it a day, shall we?"
+    },
+    {
+      "raw": "Please, double check the numbers before Friday, will you",
+      "expect": "Please, double check the numbers before Friday, will you?"
+    },
+    {
+      "raw": "Please pay the twenty dollars at the front desk, would you",
+      "expect": "Please pay the $20 at the front desk, would you?"
+    },
+    {
+      "raw": "Let's go, shall we",
+      "expect": "Let's go, shall we?"
+    },
+    {
+      "raw": "Close the door for me, will you",
+      "expect": "Close the door for me, will you."
+    },
+    {
+      "raw": "Let's see how it goes, we shall",
+      "expect": "Let's see how it goes, we shall."
+    },
+    {
+      "raw": "Let's meet at noon if we can, we will",
+      "expect": "Let's meet at noon if we can, we will."
+    },
+    {
+      "raw": "Please stop, you will hurt yourself",
+      "expect": "Please stop, you will hurt yourself."
+    },
+    {
+      "raw": "Please be patient, you will get it",
+      "expect": "Please be patient, you will get it."
+    },
+    {
+      "raw": "Please send the report by Friday, you will",
+      "expect": "Please send the report by Friday, you will."
+    },
+    {
+      "raw": "Please, Will, you have to see this",
+      "expect": "Please, Will, you have to see this."
+    },
+    {
+      "raw": "Please call me when you can, you know",
+      "expect": "Please call me when you can, you know."
+    },
+    {
+      "raw": "Please do what you will",
+      "expect": "Please do what you will."
+    },
+    {
+      "raw": "Please share the doc, will you. Thanks",
+      "expect": "Please share the doc, will you. Thanks."
+    },
+    {
+      "raw": "Please send it over, will you!",
+      "expect": "Please send it over, will you!"
+    },
+    {
+      "raw": "Let's ship it, shall we.",
+      "expect": "Let's ship it, shall we."
+    },
+    {
+      "raw": "Please don't, you will regret it",
+      "expect": "Please don't, you will regret it."
+    },
+    {
+      "raw": "Let's be honest, we can't",
+      "expect": "Let's be honest, we can't."
+    },
+    {
+      "raw": "Please, if you can, you should come",
+      "expect": "Please, if you can, you should come."
+    },
+    {
+      "raw": "Please let me know whether you will",
+      "expect": "Please let me know whether you will."
+    },
+    {
+      "raw": "Let's wait and see if they will",
+      "expect": "Let's wait and see if they will."
     }
   ],
   "dictionaryOnly": [

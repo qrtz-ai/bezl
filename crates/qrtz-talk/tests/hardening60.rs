@@ -56,6 +56,7 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
     // ADR 0205/0207 (cycles 65/67) may also drop the second pronoun of "we, we <modal>" / "they, they <modal>".
     // ADR 0206 (cycle 66): "Hey <term> ..." may end with "?" instead of "." and gain a comma after the term.
     // ADR 0227 (cycle 76): a sentence ending in ", <negative contraction> <pronoun>" (a tag) may end with "?".
+    // ADR 0229 (cycle 78): so may one opening with "Let's" / "Please" and ending in ", shall we" / ", <modal> you".
     let old = if new != old && new == without_subject_repeats(&old) {
         new.clone()
     } else {
@@ -82,8 +83,21 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
                     (2..=3).contains(&w.len()) && (w[0].ends_with("n't") || w[0].ends_with("n\u{2019}t"))
                 })
         });
+        let imperative = old.strip_suffix('.').is_some_and(|body| {
+            let sentence = body.rsplit(['\n', '.', '!', '?']).next().unwrap_or_default();
+            let first = sentence
+                .split_whitespace()
+                .next()
+                .unwrap_or_default()
+                .replace('\u{2019}', "'");
+            new == format!("{body}?")
+                && (first.starts_with("Let's") || first.to_ascii_lowercase().starts_with("please"))
+                && ["shall we", "will you", "would you", "can you", "could you"]
+                    .iter()
+                    .any(|t| body.ends_with(&format!(", {t}")))
+        });
         assert!(
-            list || opener || tag,
+            list || opener || tag || imperative,
             "rule_cleanup({raw:?}): {new:?} vs cycle 59 {old:?}"
         );
     }

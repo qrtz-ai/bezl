@@ -120,4 +120,13 @@ fn the_cleanup_chain_fits_its_budget_on_a_long_dictation() {
         .text
         .ends_with("The backup ran last night, didn't it?"));
     assert_fits_budget(&text, " ending in a tag question");
+    // ADR 0229: ending in "Please … , will you", so the tag check runs its opener test and fires.
+    let text = format!(
+        "{}Thanks. Please take the backup tonight, will you",
+        long_dictation()
+    );
+    assert!(cleanup_dictation(&text, &dictionary(), true)
+        .text
+        .ends_with("Please take the backup tonight, will you?"));
+    assert_fits_budget(&text, " ending in an imperative tag");
 }

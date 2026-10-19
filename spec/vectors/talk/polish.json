@@ -731,6 +731,72 @@
       "category": "tag-question",
       "raw": "I was right about the date, wasn't I",
       "ideal": "I was right about the date, wasn't I?"
+    },
+    {
+      "id": "p118",
+      "category": "imperative-tag",
+      "raw": "Let's grab lunch after the standup, shall we",
+      "ideal": "Let's grab lunch after the standup, shall we?"
+    },
+    {
+      "id": "p119",
+      "category": "imperative-tag",
+      "raw": "Let's move the design review to Thursday, shall we",
+      "ideal": "Let's move the design review to Thursday, shall we?"
+    },
+    {
+      "id": "p120",
+      "category": "imperative-tag",
+      "raw": "Please close the door on your way out, will you",
+      "ideal": "Please close the door on your way out, will you?"
+    },
+    {
+      "id": "p121",
+      "category": "imperative-tag",
+      "raw": "Please send me the slides before the call, would you",
+      "ideal": "Please send me the slides before the call, would you?"
+    },
+    {
+      "id": "p122",
+      "category": "imperative-tag",
+      "raw": "Please keep an eye on the build tonight, can you",
+      "ideal": "Please keep an eye on the build tonight, can you?"
+    },
+    {
+      "id": "p123",
+      "category": "imperative-tag",
+      "raw": "Please forward this to Priya, could you",
+      "ideal": "Please forward this to Priya, could you?"
+    },
+    {
+      "id": "p124",
+      "category": "imperative-tag",
+      "raw": "Thanks for the notes. Let's pick this up tomorrow, shall we",
+      "ideal": "Thanks for the notes. Let's pick this up tomorrow, shall we?"
+    },
+    {
+      "id": "p125",
+      "category": "imperative-tag",
+      "raw": "Let’s call it a day, shall we",
+      "ideal": "Let’s call it a day, shall we?"
+    },
+    {
+      "id": "p126",
+      "category": "imperative-tag",
+      "raw": "Please, double check the numbers before Friday, will you",
+      "ideal": "Please, double check the numbers before Friday, will you?"
+    },
+    {
+      "id": "p127",
+      "category": "imperative-tag",
+      "raw": "Please pay the twenty dollars at the front desk, would you",
+      "ideal": "Please pay the $20 at the front desk, would you?"
+    },
+    {
+      "id": "p128",
+      "category": "imperative-tag",
+      "raw": "Let's go, shall we",
+      "ideal": "Let's go, shall we?"
     }
   ],
   "keep": [
@@ -2657,6 +2723,108 @@
       "rule": "tag-question",
       "raw": "Turn left at the light, then right",
       "expect": "Turn left at the light, then right."
+    },
+    {
+      "id": "k317",
+      "rule": "imperative-tag",
+      "raw": "Close the door for me, will you",
+      "expect": "Close the door for me, will you."
+    },
+    {
+      "id": "k318",
+      "rule": "imperative-tag",
+      "raw": "Let's see how it goes, we shall",
+      "expect": "Let's see how it goes, we shall."
+    },
+    {
+      "id": "k319",
+      "rule": "imperative-tag",
+      "raw": "Let's meet at noon if we can, we will",
+      "expect": "Let's meet at noon if we can, we will."
+    },
+    {
+      "id": "k320",
+      "rule": "imperative-tag",
+      "raw": "Please stop, you will hurt yourself",
+      "expect": "Please stop, you will hurt yourself."
+    },
+    {
+      "id": "k321",
+      "rule": "imperative-tag",
+      "raw": "Please be patient, you will get it",
+      "expect": "Please be patient, you will get it."
+    },
+    {
+      "id": "k322",
+      "rule": "imperative-tag",
+      "raw": "Please send the report by Friday, you will",
+      "expect": "Please send the report by Friday, you will."
+    },
+    {
+      "id": "k323",
+      "rule": "imperative-tag",
+      "raw": "Please, Will, you have to see this",
+      "expect": "Please, Will, you have to see this."
+    },
+    {
+      "id": "k324",
+      "rule": "imperative-tag",
+      "raw": "Please call me when you can, you know",
+      "expect": "Please call me when you can, you know."
+    },
+    {
+      "id": "k325",
+      "rule": "imperative-tag",
+      "raw": "Please do what you will",
+      "expect": "Please do what you will."
+    },
+    {
+      "id": "k326",
+      "rule": "imperative-tag",
+      "raw": "Please share the doc, will you. Thanks",
+      "expect": "Please share the doc, will you. Thanks."
+    },
+    {
+      "id": "k327",
+      "rule": "imperative-tag",
+      "raw": "Please send it over, will you!",
+      "expect": "Please send it over, will you!"
+    },
+    {
+      "id": "k328",
+      "rule": "imperative-tag",
+      "raw": "Let's ship it, shall we.",
+      "expect": "Let's ship it, shall we."
+    },
+    {
+      "id": "k329",
+      "rule": "imperative-tag",
+      "raw": "Please don't, you will regret it",
+      "expect": "Please don't, you will regret it."
+    },
+    {
+      "id": "k330",
+      "rule": "imperative-tag",
+      "raw": "Let's be honest, we can't",
+      "expect": "Let's be honest, we can't."
+    },
+    {
+      "id": "k331",
+      "rule": "imperative-tag",
+      "raw": "Please, if you can, you should come",
+      "expect": "Please, if you can, you should come."
+    },
+    {
+      "id": "k332",
+      "rule": "imperative-tag",
+      "raw": "Please let me know whether you will",
+      "expect": "Please let me know whether you will."
+    },
+    {
+      "id": "k333",
+      "rule": "imperative-tag",
+      "raw": "Let's wait and see if they will",
+      "expect": "Let's wait and see if they will."
     }
   ]
 }

@@ -1806,6 +1806,10 @@ fn tag_question(t: &str) -> bool {
         [a, p, x] => (a, p, Some(x)),
         _ => return false,
     };
+    if third.is_none() && imperative_tag(&s[..comma], aux, pronoun) {
+        // ADR 0229: "Let's grab lunch, shall we" / "Please close the door, will you".
+        return true;
+    }
     let agrees = TAG_QUESTIONS
         .iter()
         .any(|(a, ps)| a == aux && ps.contains(&pronoun.as_str()));
@@ -1816,6 +1820,41 @@ fn tag_question(t: &str) -> bool {
                 .any(|(a, xs)| a == aux && xs.contains(&x.as_str()))
     });
     agrees && third_ok
+}
+
+/// ADR 0229: the positive tags an imperative takes, by the word its sentence opens with: "Let's grab lunch, shall
+/// we", "Please close the door, will you / would you / can you / could you". The opener is what makes the sentence an
+/// imperative, so the inverted pair after its last comma can only ask. Left out: any other opener ("Close the door,
+/// will you" stays as said: an imperative can't be told from a statement or a cut-off question start by its first
+/// word alone), "let me" / "let us", "shall I", "won't you" (already a [`TAG_QUESTIONS`] pair), "do it" / "have it"
+/// (imperatives, not tags: "Okay, do it"). Same table in cleanup.ts.
+pub const IMPERATIVE_TAGS: &[(&str, &[&str])] = &[
+    ("let's", &["shall we"]),
+    ("please", &["will you", "would you", "can you", "could you"]),
+];
+
+/// ADR 0229: does `head`, the last sentence up to its last comma, open with an [`IMPERATIVE_TAGS`] word ("Let's" or
+/// "let's", ASCII or curly apostrophe; "Please" or "please", with or without its own comma) and hold at least one more
+/// word, with `aux pronoun` (as written, lowercase) one of the tags that opener takes?
+fn imperative_tag(head: &str, aux: &str, pronoun: &str) -> bool {
+    let mut words = head.split_whitespace();
+    let Some(first) = words.next() else {
+        return false;
+    };
+    if words.next().is_none() {
+        return false;
+    }
+    let first = first.replace('\u{2019}', "'");
+    let first = first.strip_suffix(',').unwrap_or(&first);
+    let opener = match first {
+        "Let's" | "let's" => "let's",
+        "Please" | "please" => "please",
+        _ => return false,
+    };
+    let tag = format!("{aux} {pronoun}");
+    IMPERATIVE_TAGS
+        .iter()
+        .any(|(o, tags)| *o == opener && tags.contains(&tag.as_str()))
 }
 
 fn rep(r: &Regex, s: &str, with: &str) -> String {
