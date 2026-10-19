@@ -52,13 +52,15 @@ test('echo, nano and ctrl each open their own settings; the global settings keep
   await expect(echo.getByTestId('talk-settings')).toHaveCount(0);
   await expect(echo.getByTestId('talk-toggle')).toBeVisible();
 
-  // nano: settings open in the detail pane; the meeting list stays.
+  // nano: settings take over the whole page, like echo's; the meeting list and the hud are back on close.
   await page.getByTestId('nav-note').click();
   const nano = page.locator('[data-subapp="note"]');
   await nano.getByTestId('note-settings-open').click();
   const nanoPage = nano.getByTestId('note-settings');
   await expect(nanoPage.getByText('nano opts')).toBeVisible();
-  await expect(nano.getByTestId('note-record-manual')).toBeVisible();
+  await expect(nano.getByTestId('note-app')).toHaveCount(0);
+  await expect(nano.getByRole('list', { name: 'meetings' })).toHaveCount(0);
+  await expect(nano.getByTestId('note-record-manual')).toHaveCount(0);
   await expect(nanoPage.getByTestId('talk-show-pill')).toHaveCount(0);
   const auto = (await config(page)).note.autoRecord;
   await nanoPage.getByTestId('auto-record').click();
@@ -67,6 +69,10 @@ test('echo, nano and ctrl each open their own settings; the global settings keep
     .toBe(!auto);
   if (info.project.name === 'chromium')
     expect(await axe(page, 'tauri-nano-settings')).toEqual([]);
+  await nanoPage.getByTestId('note-settings-close').click();
+  await expect(nano.getByTestId('note-settings')).toHaveCount(0);
+  await expect(nano.getByTestId('note-app')).toBeVisible();
+  await expect(nano.getByTestId('note-record-manual')).toBeVisible();
 
   // ctrl
   await page.getByTestId('nav-ctrl').click();

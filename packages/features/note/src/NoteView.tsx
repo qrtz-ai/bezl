@@ -154,6 +154,22 @@ export default function NoteView() {
         setError(e.message);
     });
 
+  if (settingsOpen)
+    // ADR 0146 M1.4: nano's settings take over the whole page, like echo's and ctrl's (Jared, 0.2.4); a recording
+    // keeps running in main and its hud is back on close.
+    return (
+      <ModuleSettingsPage
+        module="nano"
+        onClose={() => {
+          setSettingsOpen(false);
+          if (route.path === SETTINGS_PATH)
+            route.navigate('', { replace: true });
+        }}
+        data-testid="note-settings"
+      >
+        <NoteSettings />
+      </ModuleSettingsPage>
+    );
   const busy =
     isCapturingPhase(session.phase) ||
     session.phase === 'stopping' ||
@@ -297,22 +313,7 @@ export default function NoteView() {
             }
             onOpen={(id) => setSelected(id)}
           />
-          {settingsOpen ? (
-            // ADR 0146 M1.4: nano's settings open in the detail pane, so the meeting list, the hud and the record
-            // prompt stay where they are.
-            <ModuleSettingsPage
-              module="nano"
-              inset
-              onClose={() => {
-                setSettingsOpen(false);
-                if (route.path === SETTINGS_PATH)
-                  route.navigate('', { replace: true });
-              }}
-              data-testid="note-settings"
-            >
-              <NoteSettings />
-            </ModuleSettingsPage>
-          ) : selected ? (
+          {selected ? (
             <Suspense fallback={<Spinner />}>
               <MeetingDetail
                 key={selected}
