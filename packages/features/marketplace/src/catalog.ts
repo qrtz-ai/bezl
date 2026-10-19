@@ -1,4 +1,5 @@
 import {
+  isBundledModule,
   MODULE_IDS,
   MODULE_VIEWS,
   type CatalogEntry,
@@ -121,6 +122,22 @@ export function sizeLine(entry: CatalogEntry | undefined): string {
   return entry.dependencies.length
     ? `${formatBytes(entry.installSizeBytes)} with dependencies`
     : formatBytes(entry.sizeBytes);
+}
+
+/**
+ * A card's version line. From the index: `v0.3.0 · 628 mb with dependencies`. A bundled module (echo, ADR 0174)
+ * with no index entry ships in qrtz.app, so it carries the app's version: `v0.2.0 · built in` (never
+ * `vinstalled`). Anything else installed without an entry: `installed · on this mac`.
+ */
+export function metaLine(
+  name: string,
+  entry: CatalogEntry | undefined,
+  appVersion?: string | null,
+): string {
+  if (entry) return `v${entry.version} · ${sizeLine(entry)}`;
+  if (isBundledModule(name))
+    return appVersion ? `v${appVersion} · built in` : 'built in';
+  return 'installed · on this mac';
 }
 
 /** What `name@version` pulls in, from the lock (services and models whose requiredBy names it). */

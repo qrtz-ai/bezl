@@ -10,8 +10,8 @@ import {
   Callout,
   Dialog,
   EmptyState,
+  CardGrid,
   ExtensionCard,
-  ExtensionGrid,
   ExtensionHeader,
   FactList,
   IconButton,
@@ -33,6 +33,7 @@ import {
   MODULE_IDS,
   isModuleInstalled,
   isModuleOn,
+  isBundledModule,
   loadConfig,
   LOG_MESSAGE_MAX,
   requestNavigate,
@@ -57,7 +58,7 @@ import {
   lockedDependencies,
   marketPath,
   parseMarketRoute,
-  sizeLine,
+  metaLine,
   statusOf,
   type MarketRoute,
 } from './catalog';
@@ -140,6 +141,8 @@ export default function MarketplaceView() {
 
   // modules.qrtz.ai isn't live yet (no root pinned in this build): a friendly "coming soon", not an error.
   const [soon, setSoon] = useState(false);
+  // Bundled echo has no index entry: its card shows the app's version ("v0.2.0 · built in").
+  const [appVersion, setAppVersion] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const fail = useCallback(
     (e: Error) => {
@@ -169,6 +172,10 @@ export default function MarketplaceView() {
     void load();
     const apply = (c: Record<string, unknown>) => setCfg(loadConfig(c));
     qrtz.invoke('config:get').then(apply, () => {});
+    qrtz.invoke('app:get-info').then(
+      (i) => setAppVersion(i.version),
+      () => {},
+    );
     const offs = [
       qrtz.on('config:changed', apply),
       qrtz.on('packages:progress', setProgress),
@@ -262,12 +269,13 @@ export default function MarketplaceView() {
       : 0;
   const busy = working !== null || pending !== null;
 
-  const primary = (name: string, size: 'sm' | 'md' = 'sm') => {
+  /** `block`: a card's button, full width so install, update and open are one size and shape. */
+  const primary = (name: string, size: 'sm' | 'md' = 'sm', block = false) => {
     const s = statusFor(name);
     const view = infoFor(name).view;
     if (s === 'working')
       return (
-        <Button size={size} loading disabled>
+        <Button size={size} block={block} loading disabled>
           {ING[working?.verb ?? 'install']}
         </Button>
       );
@@ -275,6 +283,7 @@ export default function MarketplaceView() {
       return (
         <Button
           size={size}
+          block={block}
           icon="download"
           disabled={busy}
           onClick={() => propose(name, 'install')}
@@ -287,6 +296,7 @@ export default function MarketplaceView() {
       return (
         <Button
           size={size}
+          block={block}
           icon="update"
           disabled={busy}
           onClick={() => propose(name, 'update')}
@@ -298,6 +308,7 @@ export default function MarketplaceView() {
     return view ? (
       <Button
         size={size}
+        block={block}
         variant="secondary"
         disabled={!enabled(name)}
         onClick={() => requestNavigate({ app: view })}
@@ -468,6 +479,7 @@ export default function MarketplaceView() {
           action={primary(at.name, 'md')}
           rows={rows}
           busy={busy}
+          appVersion={appVersion}
           onRemove={() => propose(at.name, 'remove')}
         />
         {working?.name === at.name ? installBar : null}
@@ -508,95 +520,102 @@ export default function MarketplaceView() {
               }
             />
           )}
-          {names.map((name) => {
-            const info = infoFor(name);
-            const row = installedRow(name, rows);
-            const deps = row ? lockedDependencies(row, rows) : [];
-            const s = statusFor(name);
-            const on = enabled(name);
-            return (
-              <ModuleRow
-                key={name}
-                name={name}
-                icon={info.icon}
-                status={s}
-                meta={
-                  row
-                    ? `v${row.version} · ${formatBytes(row.sizeBytes + deps.reduce((n, d) => n + d.sizeBytes, 0))}${row.disabled ? ` · switched off: ${row.disabled}` : ''}`
-                    : 'installed'
-                }
-                enabled={on}
-                toggleDisabled={!isModuleId(name) || !!row?.disabled}
-                onToggle={(v) => setEnabled(name, v)}
-                actions={
-                  <>
-                    {s === 'update' ? primary(name) : null}
-                    {info.view ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        icon="settings"
-                        disabled={!on}
-                        onClick={() =>
-                          info.view &&
-                          requestNavigate({ app: info.view, settings: true })
-                        }
-                        data-testid={`module-settings-${name}`}
-                      >
-                        settings
-                      </Button>
-                    ) : null}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => go({ page: 'item', name })}
-                      data-testid={`module-details-${name}`}
-                    >
-                      details
-                    </Button>
-                    {row ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        icon="trash"
-                        disabled={busy}
-                        onClick={() => propose(name, 'remove')}
-                        data-testid={`module-remove-${name}`}
-                      >
-                        remove
-                      </Button>
-                    ) : null}
-                  </>
-                }
-              >
-                {on && isModuleId(name) ? (
-                  <ModulePermissions
-                    module={name}
-                    perms={perms}
-                    onAsk={allow}
-                    onOpen={openPane}
-                    onRestart={relaunch}
-                    pending={asking}
-                  />
-                ) : null}
-                {deps.length ? (
-                  <IconLines
-                    aria-label={`${name} dependencies`}
-                    data-testid={`module-deps-${name}`}
+          {names.length ? (
+            <CardGrid data-testid="module-grid">
+              {names.map((name) => {
+                const info = infoFor(name);
+                const row = installedRow(name, rows);
+                const deps = row ? lockedDependencies(row, rows) : [];
+                const s = statusFor(name);
+                const on = enabled(name);
+                return (
+                  <ModuleRow
+                    key={name}
+                    name={name}
+                    icon={info.icon}
+                    status={s}
+                    meta={
+                      row
+                        ? `v${row.version} · ${formatBytes(row.sizeBytes + deps.reduce((n, d) => n + d.sizeBytes, 0))}${row.disabled ? ` · switched off: ${row.disabled}` : ''}`
+                        : metaLine(name, undefined, appVersion)
+                    }
+                    enabled={on}
+                    toggleDisabled={!isModuleId(name) || !!row?.disabled}
+                    onToggle={(v) => setEnabled(name, v)}
+                    actions={
+                      <>
+                        {s === 'update' ? primary(name) : null}
+                        {info.view ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon="settings"
+                            disabled={!on}
+                            onClick={() =>
+                              info.view &&
+                              requestNavigate({
+                                app: info.view,
+                                settings: true,
+                              })
+                            }
+                            data-testid={`module-settings-${name}`}
+                          >
+                            settings
+                          </Button>
+                        ) : null}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => go({ page: 'item', name })}
+                          data-testid={`module-details-${name}`}
+                        >
+                          details
+                        </Button>
+                        {row ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon="trash"
+                            disabled={busy}
+                            onClick={() => propose(name, 'remove')}
+                            data-testid={`module-remove-${name}`}
+                          >
+                            remove
+                          </Button>
+                        ) : null}
+                      </>
+                    }
                   >
-                    {deps.map((d) => (
-                      <IconLine
-                        key={d.name}
-                        icon={KIND_ICON[d.kind]}
-                        title={d.name}
-                        meta={`${d.kind} · v${d.version} · ${formatBytes(d.sizeBytes)}`}
+                    {on && isModuleId(name) ? (
+                      <ModulePermissions
+                        module={name}
+                        perms={perms}
+                        onAsk={allow}
+                        onOpen={openPane}
+                        onRestart={relaunch}
+                        pending={asking}
                       />
-                    ))}
-                  </IconLines>
-                ) : null}
-              </ModuleRow>
-            );
-          })}
+                    ) : null}
+                    {deps.length ? (
+                      <IconLines
+                        aria-label={`${name} dependencies`}
+                        data-testid={`module-deps-${name}`}
+                      >
+                        {deps.map((d) => (
+                          <IconLine
+                            key={d.name}
+                            icon={KIND_ICON[d.kind]}
+                            title={d.name}
+                            meta={`${d.kind} · v${d.version} · ${formatBytes(d.sizeBytes)}`}
+                          />
+                        ))}
+                      </IconLines>
+                    ) : null}
+                  </ModuleRow>
+                );
+              })}
+            </CardGrid>
+          ) : null}
         </SettingsSection>
         <SettingsSection title="shared" data-testid="module-shared">
           {shared.length ? (
@@ -695,7 +714,7 @@ export default function MarketplaceView() {
           }
         />
       )}
-      <ExtensionGrid data-testid="marketplace-grid">
+      <CardGrid data-testid="marketplace-grid">
         {listings(available, installedIds).map(({ name, entry }) => {
           const info = infoFor(name);
           return (
@@ -704,16 +723,15 @@ export default function MarketplaceView() {
               name={name}
               icon={info.icon}
               description={info.description}
-              version={entry?.version ?? 'installed'}
-              size={sizeLine(entry)}
+              meta={metaLine(name, entry, appVersion)}
               status={statusFor(name)}
               progress={working?.name === name ? pct : null}
-              action={primary(name)}
+              action={primary(name, 'sm', true)}
               onOpen={() => go({ page: 'item', name })}
             />
           );
         })}
-      </ExtensionGrid>
+      </CardGrid>
       {consent}
     </Page>
   );
@@ -726,9 +744,11 @@ function Detail({
   action,
   rows,
   busy,
+  appVersion,
   onRemove,
 }: {
   name: string;
+  appVersion: string | null;
   entry: CatalogEntry | undefined;
   status: ExtensionStatus;
   action: ReactNode;
@@ -752,7 +772,11 @@ function Detail({
           items={[
             {
               label: 'version',
-              value: entry ? `v${entry.version}` : 'installed',
+              value: entry
+                ? `v${entry.version}`
+                : isBundledModule(name) && appVersion
+                  ? `v${appVersion}`
+                  : 'installed',
               'data-testid': 'fact-version',
             },
             ...(row ? [{ label: 'installed', value: `v${row.version}` }] : []),
@@ -761,7 +785,11 @@ function Detail({
               : []),
             {
               label: 'size',
-              value: entry ? formatBytes(entry.sizeBytes) : 'on this mac',
+              value: entry
+                ? formatBytes(entry.sizeBytes)
+                : isBundledModule(name)
+                  ? 'built in'
+                  : 'on this mac',
             },
             ...(entry
               ? [

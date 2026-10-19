@@ -6,6 +6,7 @@ import {
   listings,
   lockedDependencies,
   marketPath,
+  metaLine,
   parseMarketRoute,
   sizeLine,
   statusOf,
@@ -37,6 +38,19 @@ describe('marketplace catalog (ADR 0161)', () => {
     expect(sizeLine(echo)).toBe('629 mb with dependencies');
     expect(sizeLine({ ...echo!, dependencies: [] })).toBe('9 mb');
     expect(sizeLine(undefined)).toBe('on this mac');
+  });
+
+  it("labels bundled echo with the app's version, never 'vinstalled'", () => {
+    expect(metaLine('echo', undefined, '0.2.0')).toBe('v0.2.0 · built in');
+    expect(metaLine('echo', undefined, null)).toBe('built in');
+    expect(metaLine('echo', echo, '0.2.0')).toBe(
+      `v${echo!.version} · 629 mb with dependencies`,
+    );
+    expect(metaLine('nano', undefined, '0.2.0')).toBe(
+      'installed · on this mac',
+    );
+    for (const n of ['echo', 'nano', 'ctrl', 'snap'])
+      expect(metaLine(n, undefined, '0.2.0')).not.toMatch(/vinstalled|vbuilt/);
   });
 
   it('finds what an installed extension pulls in from the lock', () => {

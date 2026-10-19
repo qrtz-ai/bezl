@@ -14,6 +14,8 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean;
   /** Leading Feather icon. */
   icon?: IconName;
+  /** Fill the container's width (a card's action, so every card's button is the same size and shape). */
+  block?: boolean;
 }
 
 export function Button({
@@ -21,6 +23,7 @@ export function Button({
   size = 'md',
   loading,
   icon,
+  block,
   disabled,
   style,
   children,
@@ -76,6 +79,7 @@ export function Button({
           WebkitAppRegion: 'no-drag',
           ...v[variant],
           ...s[size],
+          ...(block ? { width: '100%', boxSizing: 'border-box' } : null),
           ...style,
         } as CSSProperties
       }

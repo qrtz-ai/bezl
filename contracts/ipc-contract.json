@@ -13875,7 +13875,8 @@
         "os.permissions",
         "speech.read",
         "speech.manage",
-        "log.write"
+        "log.write",
+        "app.info"
       ]
     },
     {

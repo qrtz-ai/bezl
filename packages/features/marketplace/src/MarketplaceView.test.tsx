@@ -586,3 +586,60 @@ describe('the store unreachable or empty (every host failed)', () => {
       expect(q('marketplace-unavailable')).toBeNull();
     });
 });
+
+describe('cards (CardGrid)', () => {
+  const noEcho = () => {
+    const st = ipcSamples['packages:list'].response;
+    return {
+      ...st,
+      available: st.available.filter((e) => e.name !== 'echo'),
+      packages: st.packages.filter((r) => r.name !== 'echo'),
+    };
+  };
+
+  it("bundled echo's card shows the app version and 'built in', not 'vinstalled · on this mac'", async () => {
+    const f = fake({
+      'packages:list': noEcho,
+      'app:get-info': () => ({
+        ...ipcSamples['app:get-info'].response,
+        version: '0.2.0',
+      }),
+    });
+    await render(f.client);
+    const card = q('extension-card-echo')!;
+    expect(
+      card.querySelector('[data-testid="extension-size"]')?.textContent,
+    ).toBe('v0.2.0 · built in');
+    expect(el.textContent).not.toContain('vinstalled');
+  });
+
+  it('lays cards out in one grid with every action at the bottom, all one size', async () => {
+    const f = fake();
+    await render(f.client);
+    const grid = q('marketplace-grid')!;
+    expect(grid.style.display).toBe('grid');
+    expect(grid.style.gridAutoRows).toBe('1fr');
+    expect(grid.style.gridTemplateColumns).toContain('auto-fill');
+    const cards = grid.querySelectorAll<HTMLElement>('[data-grid-card]');
+    expect(cards.length).toBeGreaterThanOrEqual(3);
+    for (const c of cards) {
+      const footer = c.querySelector<HTMLElement>('[data-card-footer]');
+      expect(footer?.style.marginTop).toBe('auto');
+      const b = footer?.querySelector('button');
+      // install, update and open share the size and the full width; only the variant differs.
+      expect(b?.style.width).toBe('100%');
+      expect(b?.style.height).toBe('28px');
+    }
+  });
+
+  it('the module manager uses the same grid', async () => {
+    const f = fake();
+    await render(f.client);
+    await click('tab-installed');
+    const grid = q('module-grid')!;
+    expect(grid.hasAttribute('data-card-grid')).toBe(true);
+    expect(
+      grid.querySelector('[data-testid="module-row-echo"]'),
+    ).not.toBeNull();
+  });
+});

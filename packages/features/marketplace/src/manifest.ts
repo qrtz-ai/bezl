@@ -19,5 +19,7 @@ export const manifest = SubAppManifest.parse({
     'speech.manage',
     // A store that can't be reached shows a friendly line; the raw reason goes to qrtz.log (ADR 0083).
     'log.write',
+    // The app's version, shown on bundled echo's card ("v0.2.0 · built in").
+    'app.info',
   ],
 });

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useTheme } from './theme';
 import { Text } from './Text';
 import { Badge, type BadgeTone } from './Badge';
-import { Card } from './Card';
+import { GridCard } from './Card';
 import { Icon, type IconName } from './Icon';
 import { Progress } from './Progress';
 import { Switch } from './Overlay';
@@ -38,30 +38,6 @@ export function ExtensionStatusBadge({ status }: { status: ExtensionStatus }) {
   );
 }
 
-/** The cards, in as many columns as fit. */
-export function ExtensionGrid({
-  children,
-  'data-testid': testId,
-}: {
-  children: ReactNode;
-  'data-testid'?: string;
-}) {
-  const t = useTheme();
-  return (
-    <div
-      role="list"
-      data-testid={testId}
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(min(220px, 100%), 1fr))',
-        gap: t.space[4],
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
 /** The square glyph at the top of a card and a detail page. */
 export function ExtensionGlyph({
   icon,
@@ -92,13 +68,13 @@ export function ExtensionGlyph({
   );
 }
 
-/** One extension in the marketplace: glyph, name, one line, size (with what it pulls in), and the button. */
+/** One extension in the marketplace (a CardGrid cell): glyph, name, one line, the version line, and the button,
+ * pinned to the card's bottom so every card's button lines up. */
 export function ExtensionCard({
   name,
   icon,
   description,
-  version,
-  size,
+  meta,
   status,
   action,
   progress,
@@ -107,11 +83,10 @@ export function ExtensionCard({
   name: string;
   icon: IconName;
   description: string;
-  version: string;
-  /** Already formatted (`628 mb with dependencies`). */
-  size: string;
+  /** Already formatted (`v0.3.0 · 628 mb with dependencies`, `v0.2.0 · built in`). */
+  meta: string;
   status: ExtensionStatus;
-  /** The card's button (install / open / update), from the feature. */
+  /** The card's button (install / open / update), from the feature; give it `block`. */
   action?: ReactNode;
   /** 0..1 while installing. */
   progress?: number | null;
@@ -119,54 +94,57 @@ export function ExtensionCard({
 }) {
   const t = useTheme();
   return (
-    <div role="listitem" data-testid={`extension-card-${name}`}>
-      <Card padding={4}>
+    <GridCard
+      data-testid={`extension-card-${name}`}
+      footer={
+        typeof progress === 'number' || action ? (
+          <>
+            {typeof progress === 'number' ? (
+              <Progress
+                value={progress}
+                label={`installing ${name}`}
+                data-testid={`extension-progress-${name}`}
+              />
+            ) : null}
+            {action}
+          </>
+        ) : null
+      }
+    >
+      <button
+        type="button"
+        onClick={onOpen}
+        data-testid={`extension-open-${name}`}
+        style={{
+          all: 'unset',
+          cursor: 'pointer',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: t.space[3],
+          minWidth: 0,
+        }}
+      >
         <div
-          style={{ display: 'flex', flexDirection: 'column', gap: t.space[3] }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
         >
-          <button
-            type="button"
-            onClick={onOpen}
-            data-testid={`extension-open-${name}`}
-            style={{
-              all: 'unset',
-              cursor: 'pointer',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: t.space[3],
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
-              <ExtensionGlyph icon={icon} />
-              <ExtensionStatusBadge status={status} />
-            </div>
-            <div style={{ display: 'grid', gap: 2 }}>
-              <Text variant="h3">{lowerTitle(name)}</Text>
-              <Text variant="caption" muted>
-                {description.toLowerCase()}
-              </Text>
-            </div>
-            <Text variant="caption" muted data-testid="extension-size">
-              {`v${version} · ${size}`.toLowerCase()}
-            </Text>
-          </button>
-          {typeof progress === 'number' ? (
-            <Progress
-              value={progress}
-              label={`installing ${name}`}
-              data-testid={`extension-progress-${name}`}
-            />
-          ) : null}
-          {action ? <div style={{ display: 'flex' }}>{action}</div> : null}
+          <ExtensionGlyph icon={icon} />
+          <ExtensionStatusBadge status={status} />
         </div>
-      </Card>
-    </div>
+        <div style={{ display: 'grid', gap: 2 }}>
+          <Text variant="h3">{lowerTitle(name)}</Text>
+          <Text variant="caption" muted>
+            {description.toLowerCase()}
+          </Text>
+        </div>
+        <Text variant="caption" muted data-testid="extension-size">
+          {meta.toLowerCase()}
+        </Text>
+      </button>
+    </GridCard>
   );
 }
 
@@ -323,7 +301,7 @@ export function InstallProgress({
   );
 }
 
-/** One installed extension in the module manager: switch, name, meta, and its actions. */
+/** One installed extension in the module manager (a CardGrid cell): switch, name, meta, and its actions at the bottom. */
 export function ModuleRow({
   name,
   icon,
@@ -348,46 +326,45 @@ export function ModuleRow({
 }) {
   const t = useTheme();
   return (
-    <div data-testid={`module-row-${name}`}>
-      <Card padding={4}>
-        <div
-          style={{ display: 'flex', flexDirection: 'column', gap: t.space[3] }}
-        >
-          <div
-            style={{ display: 'flex', alignItems: 'center', gap: t.space[3] }}
-          >
-            <ExtensionGlyph icon={icon} />
-            <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 2 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: t.space[2],
-                }}
-              >
-                <Text variant="h3">{lowerTitle(name)}</Text>
-                <ExtensionStatusBadge status={status} />
-              </div>
-              <Text variant="caption" muted truncate>
-                {meta.toLowerCase()}
-              </Text>
-            </div>
-            <Switch
-              label={`${name} on`}
-              checked={enabled}
-              onChange={onToggle}
-              disabled={toggleDisabled}
-              data-testid={`module-enabled-${name}`}
-            />
+    <GridCard
+      data-testid={`module-row-${name}`}
+      footer={
+        actions ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: t.space[2] }}>
+            {actions}
           </div>
-          {actions ? (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: t.space[2] }}>
-              {actions}
-            </div>
-          ) : null}
-          {children}
+        ) : null
+      }
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: t.space[3] }}>
+        <ExtensionGlyph icon={icon} />
+        <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 2 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: t.space[2],
+              minWidth: 0,
+            }}
+          >
+            <Text variant="h3" truncate>
+              {lowerTitle(name)}
+            </Text>
+            <ExtensionStatusBadge status={status} />
+          </div>
+          <Text variant="caption" muted truncate>
+            {meta.toLowerCase()}
+          </Text>
         </div>
-      </Card>
-    </div>
+        <Switch
+          label={`${name} on`}
+          checked={enabled}
+          onChange={onToggle}
+          disabled={toggleDisabled}
+          data-testid={`module-enabled-${name}`}
+        />
+      </div>
+      {children}
+    </GridCard>
   );
 }
