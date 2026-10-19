@@ -36,9 +36,18 @@ impl std::fmt::Debug for Keys {
 }
 
 fn parse_seed(what: &str, s: &str) -> Result<SigningKey, String> {
-    let b = hex::decode(s.trim()).map_err(|_| format!("{what}: not hex"))?;
-    let b: [u8; 32] = b.try_into().map_err(|_| format!("{what}: not 32 bytes"))?;
-    Ok(SigningKey::from_bytes(&b))
+    use zeroize::Zeroize;
+    // Bozniak (dependency review, a): the decoded seed is wiped on every path, success or not.
+    let mut v = zeroize::Zeroizing::new(hex::decode(s.trim()).map_err(|_| format!("{what}: not hex"))?);
+    if v.len() != 32 {
+        return Err(format!("{what}: not 32 bytes"));
+    }
+    let mut b = [0u8; 32];
+    b.copy_from_slice(&v);
+    v.zeroize();
+    let k = SigningKey::from_bytes(&b);
+    b.zeroize();
+    Ok(k)
 }
 
 fn parse_pub(what: &str, s: &str) -> Result<VerifyingKey, String> {
@@ -67,7 +76,9 @@ impl Keys {
         rand::rngs::OsRng
             .try_fill_bytes(&mut b)
             .expect("OS randomness for a signing key");
-        SigningKey::from_bytes(&b)
+        let k = SigningKey::from_bytes(&b);
+        zeroize::Zeroize::zeroize(&mut b);
+        k
     }
 
     /// Test keys made at runtime (dry-run): two root keys, a timestamp and an index key. Held in memory only.
@@ -190,8 +201,10 @@ pub fn write_keypair(dir: &Path, role: &str) -> Result<VerifyingKey, String> {
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut o, 0o600);
     let mut f = o.open(&key).map_err(|e| format!("{}: {e}", key.display()))?;
-    f.write_all(hex::encode(k.to_bytes()).as_bytes())
-        .map_err(|e| e.to_string())?;
+    // The seed's hex and bytes are wiped after the write, whatever it returns.
+    let seed = zeroize::Zeroizing::new(k.to_bytes());
+    let hexed = zeroize::Zeroizing::new(hex::encode(*seed));
+    f.write_all(hexed.as_bytes()).map_err(|e| e.to_string())?;
     f.sync_all().map_err(|e| e.to_string())?;
     std::fs::write(&public, hex::encode(k.verifying_key().to_bytes())).map_err(|e| e.to_string())?;
     Ok(k.verifying_key())

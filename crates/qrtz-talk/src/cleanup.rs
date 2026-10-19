@@ -1080,16 +1080,14 @@ fn spoken_clock(w: &[&str]) -> Option<String> {
 /// characters to `(?i)`, with fancy-regex's non-ASCII backreference rules) takes the regex itself.
 fn collapse_repeats(s: &str) -> String {
     if s.contains(['\u{17F}', '\u{212A}']) {
-        return REPEATS
-            .replace_all(s, |c: &fancy_regex::Captures<str>| {
-                let (all, word) = (c.get(0).unwrap(), c.get(1).unwrap());
-                if collapses(&c[1], &c[0]) || subject_stutter(s, all.start(), word.end(), all.end()) {
-                    c[1].to_owned()
-                } else {
-                    c[0].to_owned()
-                }
-            })
-            .into_owned();
+        return replace_all_or_keep(&REPEATS, s, |c: &fancy_regex::Captures<str>| {
+            let (all, word) = (c.get(0).unwrap(), c.get(1).unwrap());
+            if collapses(&c[1], &c[0]) || subject_stutter(s, all.start(), word.end(), all.end()) {
+                c[1].to_owned()
+            } else {
+                c[0].to_owned()
+            }
+        });
     }
     let b = s.as_bytes();
     let mut out = String::with_capacity(s.len());
@@ -1858,7 +1856,19 @@ fn imperative_tag(head: &str, aux: &str, pronoun: &str) -> bool {
 }
 
 fn rep(r: &Regex, s: &str, with: &str) -> String {
-    r.replace_all(s, with).into_owned()
+    replace_all_or_keep(r, s, with)
+}
+
+/// Bozniak (dependency review, b): fancy-regex's `replace_all` panics on a runtime error (the backtrack limit);
+/// on transcript text that must never take Talk down, so a pattern that errors leaves the text as it was.
+fn replace_all_or_keep<R: fancy_regex::Replacer>(r: &Regex, s: &str, with: R) -> String {
+    match r.try_replacen(s, 0, with) {
+        Ok(out) => out.into_owned(),
+        Err(e) => {
+            tracing::warn!(error = %e, "cleanup: a pattern failed at run time; text kept");
+            s.to_owned()
+        }
+    }
 }
 
 /// ADR 0182 (N187): compiled dictionary patterns, by pattern. Compiling one case-insensitive pattern costs about 1 ms
@@ -1961,10 +1971,7 @@ pub fn apply_dictionary(text: &str, dict: &[DictionaryEntry]) -> String {
                     Some(words) if !out.contains(['\u{17F}', '\u{212A}']) => {
                         replace_plain_term(&out, words, &d.term)
                     }
-                    _ => r
-                        .full
-                        .replace_all(&out, fancy_regex::NoExpand(&d.term))
-                        .into_owned(),
+                    _ => replace_all_or_keep(&r.full, &out, fancy_regex::NoExpand(&d.term)),
                 };
             }
         }
@@ -2091,6 +2098,22 @@ pub fn cleanup_dictation(raw: &str, dict: &[DictionaryEntry], enabled: bool) -> 
 /// whole is checked against cycle 59's in tests/hardening60.rs).
 #[cfg(test)]
 mod scans_match_their_patterns {
+    #[test]
+    fn a_pattern_that_errors_at_run_time_keeps_the_text() {
+        // Bozniak (dependency review, b): a backtrack-limit error is not a panic; the transcript comes back as is.
+        let r = fancy_regex::RegexBuilder::new(r"(a*)*\1b")
+            .backtrack_limit(10)
+            .build()
+            .unwrap();
+        let t = "aaaaaaaaaaaaaaaaaaaaaaaaaaaac";
+        assert!(
+            r.try_replacen(t, 0, "x").is_err(),
+            "the pattern must hit the limit"
+        );
+        assert_eq!(super::replace_all_or_keep(&r, t, "x"), t);
+        assert_eq!(super::rep(&r, t, "x"), t);
+    }
+
     use super::*;
     use fancy_regex::Captures;
 

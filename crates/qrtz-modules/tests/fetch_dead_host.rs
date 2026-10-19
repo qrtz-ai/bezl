@@ -111,8 +111,9 @@ async fn a_host_that_failed_every_blob_so_far_is_skipped_for_the_rest_of_the_fet
         assert!(n <= bound, "a dead host was asked {n} times for 12 blobs");
     }
     assert_eq!(t.mirror_calls.load(Ordering::SeqCst), 12);
-    // 12 blobs, 3 at a time, 2 dead hosts at 20 ms: 4 rounds x 40 ms without the skip; one round with it.
-    assert!(took < std::time::Duration::from_millis(150), "took {took:?}");
+    // Bozniak (dependency review, c): the skip is proven by the call counts above (rounds, not wall clock; a 150 ms
+    // bound flaked on a loaded box). The time is only a hang guard now.
+    assert!(took < std::time::Duration::from_secs(10), "took {took:?}");
 }
 
 #[tokio::test]

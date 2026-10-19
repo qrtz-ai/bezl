@@ -38,6 +38,8 @@ qrtz-backup = { path = "crates/qrtz-backup" }
 # shared versions: one pin per crate, every member uses { workspace = true }
 sha2 = "0.10"
 hex = "0.4"
+# Bozniak dependency review (a): wipe key material in qrtz-publish (already in the tree via ed25519-dalek).
+zeroize = "1"
 semver = "1"
 regex = "1"
 libc = "0.2"
