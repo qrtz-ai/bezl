@@ -331,9 +331,13 @@ pub struct Grant {
     pub model_version: String,
 }
 
+/// Resolved version and declared models of a service dependency: what the `service` callback of
+/// [`extension_grants`] returns inside `Some` (`version`, then `service.models`).
+pub type ServiceModels = (String, Vec<String>);
+
 /// The single source of truth for reads (ADR 0212): the grants of extension `extension@version`, derived only from
 /// what its units declare. `deps` is its dependency map, `own_reads` its `extension.reads`, and `service(name,
-/// version)` the `(version, service.models)` of a service dependency (`None` when it isn't known: it reads nothing).
+/// version)` the [`ServiceModels`] of a service dependency (`None` when it isn't known: it reads nothing).
 /// Refused: a read by the extension's own process of a model that isn't one of its model dependencies, and a model
 /// dependency no unit reads. A service (shared between extensions) is granted only the models it declares that this
 /// extension depends on; nothing it declares beyond those is ever granted for this extension.
@@ -342,7 +346,7 @@ pub fn extension_grants(
     version: &str,
     deps: &BTreeMap<String, String>,
     own_reads: &[String],
-    service: &dyn Fn(&str, &str) -> Option<(String, Vec<String>)>,
+    service: &dyn Fn(&str, &str) -> Option<ServiceModels>,
 ) -> Result<Vec<Grant>, ResolveError> {
     let kind = |n: &str| crate::qrtz_json::kind_of(n).ok();
     let mut units: Vec<(String, String, bool, Vec<String>)> =
