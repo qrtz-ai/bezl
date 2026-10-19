@@ -1,6 +1,7 @@
 #if os(macOS)
 import AppKit
 import ApplicationServices
+import Carbon.HIToolbox
 import CoreGraphics
 import Foundation
 import QrtzEcho
@@ -18,10 +19,27 @@ public final class MacInsertion: InsertionBackend, @unchecked Sendable {
         return (v as! AXUIElement)
     }
 
+    /// ADR 0224: a password field (role or subrole `AXSecureTextField`, `SecureField`) or secure event input on.
+    /// An element whose role can't be read is not taken as secure; secure event input still covers most prompts.
+    public func focusedFieldIsSecure() -> Bool {
+        if IsSecureEventInputEnabled() { return true }
+        guard let el = focused() else { return false }
+        return isSecure(el)
+    }
+
+    private func isSecure(_ el: AXUIElement) -> Bool {
+        func str(_ a: String) -> String? {
+            var v: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(el, a as CFString, &v) == .success else { return nil }
+            return v as? String
+        }
+        return SecureField.isSecure(role: str(kAXRoleAttribute as String), subrole: str(kAXSubroleAttribute as String))
+    }
+
     public func focusedAppName() -> String? { NSWorkspace.shared.frontmostApplication?.localizedName }
 
     public func axSetSelectedText(_ text: String) -> Bool {
-        guard let el = focused() else { return false }
+        guard let el = focused(), !isSecure(el), !IsSecureEventInputEnabled() else { return false }
         var settable: DarwinBoolean = false
         guard AXUIElementIsAttributeSettable(el, kAXSelectedTextAttribute as CFString, &settable) == .success, settable.boolValue else { return false }
         // Some apps (Electron/Chromium, many web fields) report success but ignore the write: verify the value changed.
@@ -32,7 +50,7 @@ public final class MacInsertion: InsertionBackend, @unchecked Sendable {
     }
 
     public func axInsertIntoValue(_ text: String) -> Bool {
-        guard let el = focused(), let cur = value(el) else { return false }
+        guard let el = focused(), !isSecure(el), !IsSecureEventInputEnabled(), let cur = value(el) else { return false }
         var settable: DarwinBoolean = false
         guard AXUIElementIsAttributeSettable(el, kAXValueAttribute as CFString, &settable) == .success, settable.boolValue else { return false }
         var rangeRef: CFTypeRef?
@@ -65,6 +83,7 @@ public final class MacInsertion: InsertionBackend, @unchecked Sendable {
         }
     }
     public func pasteboardSetString(_ text: String) {
+        if focusedFieldIsSecure() { return }  // ADR 0224: never stage words for a password field
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(text, forType: .string)
@@ -83,7 +102,7 @@ public final class MacInsertion: InsertionBackend, @unchecked Sendable {
     }
     public func pasteboardChangeCount() -> Int { NSPasteboard.general.changeCount }
     public func postPaste() -> Bool {
-        guard AXIsProcessTrusted() else { return false }
+        guard AXIsProcessTrusted(), !focusedFieldIsSecure() else { return false }
         let src = CGEventSource(stateID: .combinedSessionState)
         let v: CGKeyCode = 9  // kVK_ANSI_V
         guard let down = CGEvent(keyboardEventSource: src, virtualKey: v, keyDown: true),

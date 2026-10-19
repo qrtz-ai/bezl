@@ -162,7 +162,8 @@ public final class PillDriver: @unchecked Sendable {
             if ok { go(.hidden); return }
             // The host answers a failed insert with `pill.flash` (error, or info "copied to clipboard"): stay on
             // processing for it; show this error only if it doesn't come.
-            let msg = Self.lower(error ?? "couldn't insert the text")
+            let msg = error == SecureField.insertRefused ? "echo won't type into password fields"
+                : Self.lower(error ?? "couldn't insert the text")
             let g: Int = lock.withLock { pendingInsertError = msg; return gen }
             after(timing.hostFlashWaitMs) { [weak self] in
                 guard let self else { return }

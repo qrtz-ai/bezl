@@ -10,6 +10,7 @@
 // - a value is read only for plain text inputs and a web area's address, capped, and only to send to the host on the
 //   wire (the host hashes it before anything is logged).
 import Foundation
+import QrtzShared
 
 /// One element on the wire (Rust `ax::AxNodeWire`).
 public struct CtrlTreeNode: Equatable, Sendable {
@@ -51,8 +52,9 @@ public struct CtrlTreeNode: Equatable, Sendable {
 }
 
 public enum CtrlTreeRules {
-    public static let secureRoles: Set<String> = ["AXSecureTextField"]
-    public static let secureSubroles: Set<String> = ["AXSecureTextField"]
+    /// ADR 0224: the secure-field rule lives in QrtzShared (`SecureField`), shared with echo's insertion.
+    public static var secureRoles: Set<String> { SecureField.roles }
+    public static var secureSubroles: Set<String> { SecureField.subroles }
     public static let textRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]
     /// Review H4: the words that mark a password, identity or payment field come from spec/ctrl/secure-words.json
     /// (`CtrlSecureWords`, generated; the Rust host uses the same list).
@@ -64,7 +66,7 @@ public enum CtrlTreeRules {
 
     /// True when the element must not be read at all past its role and subrole.
     public static func secure(role: String, subrole: String?) -> Bool {
-        secureRoles.contains(role) || subrole.map(secureSubroles.contains) == true
+        SecureField.isSecure(role: role, subrole: subrole)
     }
 
     /// True for a text input labelled as a password or payment field.

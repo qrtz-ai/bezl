@@ -94,6 +94,8 @@ pub struct HelperOpts {
     /// N134: refuse every dictation.start with error{dictation.asr} (no recogniser could take it).
     pub no_recogniser: bool,
     pub insert_fails: bool,
+    /// ADR 0224: the focused field is a password field: `insert.text` is refused with `secure-field`.
+    pub insert_secure: bool,
     /// Audio chunk period (ms) while dictating.
     pub audio_every_ms: u64,
     /// Never answer dictation.start.
@@ -473,9 +475,15 @@ impl HelperSink for SinkHandle {
                 }
             }
             "insert.text" => {
-                let (fails, delay) = (st.opts.insert_fails, st.opts.insert_delay_ms);
+                let (fails, secure, delay) = (
+                    st.opts.insert_fails,
+                    st.opts.insert_secure,
+                    st.opts.insert_delay_ms,
+                );
                 drop(st);
-                let line = if fails {
+                let line = if secure {
+                    json!({"type": "insert.result", "id": id, "method": "none", "ok": false, "error": "secure-field"})
+                } else if fails {
                     json!({"type": "insert.result", "id": id, "method": "none", "ok": false, "error": "no focused field"})
                 } else {
                     json!({"type": "insert.result", "id": id, "method": "ax-selected-text", "ok": true, "app": "Mock Editor"})

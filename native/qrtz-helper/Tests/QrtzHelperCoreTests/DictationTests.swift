@@ -32,6 +32,14 @@ final class FakeInsertion: InsertionBackend, @unchecked Sendable {
     var changes = 0
     var log: [String] = []
     var otherWriterDuringPaste = false
+    /// ADR 0224: answers for each `focusedFieldIsSecure()` call in turn (the last one repeats); empty = never secure.
+    var secure: [Bool] = []
+    var secureChecks = 0
+    func focusedFieldIsSecure() -> Bool {
+        defer { secureChecks += 1 }
+        guard let last = secure.last else { return false }
+        return secureChecks < secure.count ? secure[secureChecks] : last
+    }
     func focusedAppName() -> String? { "Notes" }
     func axSetSelectedText(_ t: String) -> Bool { log.append("sel"); return axSelected }
     func axInsertIntoValue(_ t: String) -> Bool { log.append("val"); return axValue }
@@ -97,6 +105,22 @@ final class DictationTests: XCTestCase {
         let r = await TextInserter(backend: be, restoreDelayMs: 0).insert("Hi.", restoreClipboard: true)
         XCTAssertEqual(r.method, .axSelectedText); XCTAssertTrue(r.ok); XCTAssertEqual(r.app, "Notes")
         XCTAssertEqual(be.clipboard, "user clipboard")
+    }
+
+    /// ADR 0224: a password field gets nothing: no AX write, no pasteboard, no Cmd-V, and the refusal says why.
+    func testInsertionRefusesASecureField() async {
+        let be = FakeInsertion(); be.secure = [true]
+        let r = await TextInserter(backend: be, restoreDelayMs: 0).insert("hunter2 ", restoreClipboard: true)
+        XCTAssertEqual(r.method, .none); XCTAssertFalse(r.ok); XCTAssertEqual(r.error, SecureField.insertRefused)
+        XCTAssertEqual(be.log, []); XCTAssertEqual(be.clipboard, "user clipboard"); XCTAssertEqual(be.changes, 0)
+    }
+
+    /// ADR 0224: checked again at the paste step (focus moved into a password field after the AX tries).
+    func testInsertionRechecksBeforeThePasteboard() async {
+        let be = FakeInsertion(); be.axSelected = false; be.axValue = false; be.secure = [false, true]
+        let r = await TextInserter(backend: be, restoreDelayMs: 0).insert("Hi.", restoreClipboard: true)
+        XCTAssertEqual(r.error, SecureField.insertRefused); XCTAssertFalse(r.ok)
+        XCTAssertEqual(be.log, ["sel", "val"]); XCTAssertEqual(be.clipboard, "user clipboard"); XCTAssertEqual(be.changes, 0)
     }
 
     func testInsertionFallsBackToValueThenPasteAndRestoresClipboard() async {

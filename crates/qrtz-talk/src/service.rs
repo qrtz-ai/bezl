@@ -18,7 +18,7 @@ use qrtz_speech_types::{
     Channel, FailReason, SessionKind, SessionSpec, SpeakerMode, SpeechEngine, SpeechEvent,
 };
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -440,6 +440,9 @@ struct Inner {
     attempt: Option<Attempt>,
     /// N124: dictations whose real final may still arrive after the stop wait ran out.
     late: HashMap<String, Late>,
+    /// ADR 0224: dictations whose insert the helper refused because the focused field is secure (a password).
+    /// Nothing of them is kept: no history, no clipboard, and a real final that comes later is dropped.
+    secure_refused: HashSet<String>,
 }
 
 struct Shared {
@@ -467,6 +470,10 @@ const MSG_ASR: &str = "speech recognition isn't ready yet; try again in a moment
 /// text as the speech module's not-installed refusal (ADR 0175 decision 5), so every route says one thing.
 pub const MSG_SPEECH_MISSING: &str = crate::speech::MSG_NOT_INSTALLED;
 /// A dictation ended with no words although the mic was open (see `nothing_heard`).
+/// ADR 0224: the helper's `insert.result` error when the focused field is a password field (or secure input is on).
+pub const INSERT_REFUSED_SECURE: &str = "secure-field";
+/// ADR 0224: the pill's notice for that refusal.
+pub const MSG_SECURE_FIELD: &str = "echo won't type into password fields";
 pub const MSG_CTRL_CUT_SHORT: &str = "didn't catch it all, so ctrl didn't run it. try again";
 pub const MSG_NOTHING_HEARD: &str = "didn't catch any words. hold the key while you speak, then let go";
 /// ...and the mic sent (next to) digital silence the whole time: macOS gave qrtz no sound.
@@ -529,6 +536,7 @@ impl TalkService {
                 waiters: HashMap::new(),
                 attempt: None,
                 late: HashMap::new(),
+                secure_refused: HashSet::new(),
             }),
             pending_press: AtomicBool::new(false),
         }))
@@ -1441,6 +1449,11 @@ impl TalkService {
         // applied when it arrives.
         let stashed = {
             let mut g = self.lock();
+            if g.secure_refused.remove(&id) {
+                // ADR 0224: a secure refusal keeps nothing, so a real final still to come has nowhere to go.
+                g.late.remove(&id);
+                return own;
+            }
             match g.late.remove(&id) {
                 Some(Late::Text(t)) => Some(t),
                 Some(Late::Pending) => {
@@ -1666,6 +1679,24 @@ impl TalkService {
                 insert = self.wait(format!("insert:{id}"), rx, t.insert).await;
             } else {
                 self.lock().waiters.remove(&format!("insert:{id}"));
+            }
+            if insert.as_ref().and_then(|m| m["error"].as_str()) == Some(INSERT_REFUSED_SECURE) {
+                // ADR 0224: the focused field is a password field. Nothing was typed and nothing may be kept:
+                // no clipboard, no history entry, no transcript in the view; only the pill's notice.
+                tracing::info!(
+                    audio_ms = duration_ms.max(0.0).round(),
+                    "talk: insert refused, secure field"
+                );
+                let mut g = self.lock();
+                g.secure_refused.insert(id.clone());
+                let own = g.view.id.as_deref() == Some(id.as_str());
+                if own {
+                    g.view = g.view.idle_keeping();
+                }
+                self.emit_view(&g);
+                drop(g);
+                self.pill_flash("info", MSG_SECURE_FIELD);
+                return own;
             }
             if insert.as_ref().map(|m| m["ok"] == true) != Some(true) {
                 // Never lose the words: leave them on the clipboard to paste by hand.
