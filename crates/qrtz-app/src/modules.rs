@@ -66,7 +66,7 @@ pub fn modules_using(capability: &str) -> Vec<&'static str> {
 fn off(id: &str) -> AppError {
     AppError::new(
         ErrorCode::Unavailable,
-        format!("{id} is switched off in settings → modules"),
+        format!("{id} is switched off in apps"),
     )
     .retryable(false)
 }
@@ -206,7 +206,7 @@ fn settings_paths(module: &str) -> impl Iterator<Item = (&'static str, Option<&'
 /// The module whose settings a view may use: the view's own module, or a refusal for shell views.
 pub fn settings_module_of(sub_app: &str) -> Result<&'static str, AppError> {
     module_of_view(sub_app)
-        .ok_or_else(|| AppError::new(ErrorCode::Forbidden, format!("{sub_app} is not a module view")))
+        .ok_or_else(|| AppError::new(ErrorCode::Forbidden, format!("{sub_app} is not an app view")))
 }
 
 /// The part of the merged config a module's settings page shows.

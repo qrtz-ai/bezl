@@ -3,7 +3,7 @@ import { SubAppManifest } from '@qrtz/core';
 /** ADR 0161: the marketplace and the module manager. Pure data: main (capability checks) and the renderer. */
 export const manifest = SubAppManifest.parse({
   id: 'marketplace',
-  name: 'marketplace',
+  name: 'apps',
   icon: 'package',
   // At the bottom with settings, directly above it (gallery, dev only, is 900).
   order: 950,

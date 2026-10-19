@@ -112,7 +112,7 @@ const ING: Record<Verb, string> = {
 
 /**
  * ADR 0161: the marketplace. Browse (an app-store grid of extensions from the stored signed index), a detail page
- * per extension, and the module manager (`installed`). Opening it never goes online: "check for extensions" and an
+ * per extension, and the module manager (`installed`). Opening it never goes online: "check for apps" and an
  * install the user confirms are the only network, and an install shows its plan (what is added, removed and
  * downloaded) before anything moves.
  */
@@ -322,8 +322,8 @@ export default function MarketplaceView() {
   const tabs = (
     <Tabs
       tabs={[
-        { id: 'browse', label: 'browse' },
-        { id: 'installed', label: 'installed' },
+        { id: 'browse', label: 'get apps' },
+        { id: 'installed', label: 'installed apps' },
       ]}
       value={at.page === 'installed' ? 'installed' : 'browse'}
       onChange={(id) => go({ page: id })}
@@ -377,11 +377,11 @@ export default function MarketplaceView() {
   const soonBox = soon ? (
     <Callout
       tone="info"
-      title="marketplace coming soon"
+      title="apps coming soon"
       data-testid="marketplace-soon"
     >
-      modules will appear here once qrtz.ai's module server is live. qrtz starts
-      empty until then.
+      apps will appear here once qrtz.ai's app server is live. qrtz starts empty
+      until then.
     </Callout>
   ) : null;
 
@@ -459,11 +459,11 @@ export default function MarketplaceView() {
     return (
       <Page
         data-testid="marketplace-item"
-        title="marketplace"
+        title="apps"
         leading={
           <IconButton
             icon="back"
-            label="back to marketplace"
+            label="back to apps"
             onClick={() => go({ page: 'browse' })}
             data-testid="marketplace-back"
           />
@@ -496,18 +496,18 @@ export default function MarketplaceView() {
     ];
     const shared = rows.filter((r) => r.kind !== 'extension');
     return (
-      <Page data-testid="module-manager" title="marketplace">
+      <Page data-testid="module-manager" title="apps">
         {tabs}
         {soonBox}
         {unavailableBox}
         {errorBox}
         {restartBox}
         {installBar}
-        <SettingsSection title="extensions" data-testid="module-list">
+        <SettingsSection title="installed apps" data-testid="module-list">
           {names.length ? null : (
             <EmptyState
               icon="package"
-              title="nothing installed yet. qrtz starts empty: install a module from browse."
+              title="nothing installed yet. qrtz starts empty: get apps from browse."
               action={
                 <Button
                   size="sm"
@@ -515,7 +515,7 @@ export default function MarketplaceView() {
                   onClick={() => go({ page: 'browse' })}
                   data-testid="module-list-browse"
                 >
-                  browse modules
+                  get apps
                 </Button>
               }
             />
@@ -662,7 +662,7 @@ export default function MarketplaceView() {
   }
 
   return (
-    <Page data-testid="marketplace" title="marketplace">
+    <Page data-testid="marketplace" title="apps">
       {tabs}
       <Toolbar
         end={
@@ -675,7 +675,7 @@ export default function MarketplaceView() {
             onClick={check}
             data-testid="marketplace-check"
           >
-            check for extensions
+            check for apps
           </Button>
         }
       >
@@ -696,7 +696,7 @@ export default function MarketplaceView() {
           title={
             soon
               ? 'nothing to install yet.'
-              : 'qrtz starts empty. check for extensions to install your first module.'
+              : 'qrtz starts empty. check for apps to install your first one.'
           }
           action={
             soon ? null : (
@@ -708,7 +708,7 @@ export default function MarketplaceView() {
                 onClick={check}
                 data-testid="marketplace-empty-check"
               >
-                check for extensions
+                check for apps
               </Button>
             )
           }
@@ -830,8 +830,8 @@ function Detail({
           </Text>
         )}
         <Text variant="caption" muted>
-          extensions run inside qrtz and use qrtz's own permissions; there is
-          one qrtz entry in privacy & security.
+          apps run inside qrtz and use qrtz's own permissions; there is one qrtz
+          entry in privacy & security.
         </Text>
       </SettingsSection>
       <SettingsSection title="dependencies" data-testid="extension-deps">
@@ -853,8 +853,8 @@ function Detail({
           </Text>
         )}
         <Text variant="caption" muted>
-          a model or service another extension already uses is shared, not
-          downloaded twice.
+          a model or service another app already uses is shared, not downloaded
+          twice.
         </Text>
       </SettingsSection>
       {row ? (

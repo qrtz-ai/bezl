@@ -328,7 +328,7 @@ export function createMockBridge(): TauriBridge {
       if (!m)
         throw new AppError(
           'E_FORBIDDEN',
-          `${ctx.subApp.id} is not a module view`,
+          `${ctx.subApp.id} is not an app view`,
         );
       return pickModuleSettings(config, m);
     },
@@ -337,7 +337,7 @@ export function createMockBridge(): TauriBridge {
       if (!m)
         throw new AppError(
           'E_FORBIDDEN',
-          `${ctx.subApp.id} is not a module view`,
+          `${ctx.subApp.id} is not an app view`,
         );
       const err = modulePatchError(m, patch);
       if (err) throw new AppError('E_FORBIDDEN', err);
@@ -670,10 +670,7 @@ function gateCtrl(h: Partial<Handlers>, on: () => boolean): Partial<Handlers> {
       ch,
       (...a: unknown[]) => {
         if (!on())
-          throw new AppError(
-            'E_UNAVAILABLE',
-            'ctrl is switched off in settings → modules',
-          );
+          throw new AppError('E_UNAVAILABLE', 'ctrl is switched off in apps');
         return (fn as (...b: unknown[]) => unknown)(...a);
       },
     ]),

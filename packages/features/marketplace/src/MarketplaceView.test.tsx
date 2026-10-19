@@ -128,7 +128,7 @@ describe('marketplace view (ADR 0161)', () => {
       'packages:refresh': () => {
         throw new AppError(
           'E_UNAVAILABLE',
-          "marketplace coming soon. modules will appear here once qrtz.ai's module server is live.",
+          "apps coming soon. apps will appear here once qrtz.ai's app server is live.",
           { retryable: false, details: { reason: 'not-set-up' } },
         );
       },
@@ -137,9 +137,9 @@ describe('marketplace view (ADR 0161)', () => {
     await click('marketplace-check');
     expect(q('marketplace-error')).toBeNull();
     const soon = q('marketplace-soon');
-    expect(soon?.textContent).toContain('marketplace coming soon');
+    expect(soon?.textContent).toContain('apps coming soon');
     expect(soon?.textContent).toContain(
-      "modules will appear here once qrtz.ai's module server is live",
+      "apps will appear here once qrtz.ai's app server is live",
     );
     expect(soon?.textContent).not.toContain('root');
     // The installed extensions still list.
@@ -641,5 +641,22 @@ describe('cards (CardGrid)', () => {
     expect(
       grid.querySelector('[data-testid="module-row-echo"]'),
     ).not.toBeNull();
+  });
+});
+
+describe('user-facing words', () => {
+  const words = (t: string | null | undefined) =>
+    (t ?? '')
+      .replaceAll('modules.qrtz.ai', '')
+      .match(/\b(modules?|extensions?)\b/gi);
+
+  it("say 'apps', never 'module' or 'extension', on get apps and installed apps", async () => {
+    const f = fake();
+    await render(f.client);
+    expect(words(el.textContent)).toBeNull();
+    expect(el.textContent).toContain('get apps');
+    await click('tab-installed');
+    expect(words(el.textContent)).toBeNull();
+    expect(el.textContent).toContain('installed apps');
   });
 });

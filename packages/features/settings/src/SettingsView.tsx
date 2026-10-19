@@ -170,11 +170,11 @@ export default function SettingsView() {
       ) : null}
       {/* ADR 0161: extensions are installed, switched on and off and removed in the marketplace; each one's own
           settings are in its view. Settings keeps only what spans all of qrtz. */}
-      <SettingsSection title="extensions" data-testid="extensions-link">
+      <SettingsSection title="apps" data-testid="extensions-link">
         <Stack dir="row" gap={2} align="center" justify="between">
           <Text variant="caption" muted data-testid="modules-note">
-            install, switch off and remove extensions in the marketplace. each
-            one's own settings are in its view, behind the gear.
+            install, switch off and remove apps on the apps page. each one's own
+            settings are in its view, behind the gear.
           </Text>
           <Button
             variant="secondary"
@@ -183,7 +183,7 @@ export default function SettingsView() {
             onClick={() => requestNavigate({ app: 'marketplace' })}
             data-testid="open-marketplace"
           >
-            marketplace
+            apps
           </Button>
         </Stack>
       </SettingsSection>
@@ -255,7 +255,7 @@ export default function SettingsView() {
         <Text variant="caption" muted data-testid="offline-note">
           qrtz runs entirely on this computer: audio, transcripts and notes
           never leave it. it only goes online when you ask: to check for and
-          download signed extensions, models and speech updates.
+          download signed apps, models and speech updates.
         </Text>
       </SettingsSection>
       <SettingsSection title="app">

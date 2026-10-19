@@ -7,7 +7,7 @@ import { ModuleSettingsEmpty } from '@qrtz/ui';
 export default function CtrlSettings() {
   return (
     <ModuleSettingsEmpty>
-      ctrl has no settings of its own yet. you can turn it off in marketplace →
+      ctrl has no settings of its own yet. you can turn it off in apps →
       installed, where its accessibility and automation access are one click:
       allow, then switch on qrtz.
     </ModuleSettingsEmpty>
