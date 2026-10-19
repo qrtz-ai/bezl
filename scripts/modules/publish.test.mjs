@@ -77,11 +77,12 @@ esac
 };
 
 describe('scripts/modules/publish.sh --out-only', () => {
-  it('leaves the out dir byte-identical and works in a scratch copy', () => {
+  it('leaves the out dir byte-identical, works in a scratch copy and deletes it on exit', () => {
     const { root, out, env } = setup();
     const before = snapshot(out);
+    const kept = path.join(root, 'kept.tsv');
     const log = execFileSync('bash', [script, '--timestamp', '--out-only'], {
-      env,
+      env: { ...env, QRTZ_KEEP_UPLOAD_LIST: kept },
       encoding: 'utf8',
     });
     expect(snapshot(out)).toEqual(before);
@@ -97,13 +98,35 @@ describe('scripts/modules/publish.sh --out-only', () => {
       `verify ${scratch}`,
       `upload-list ${scratch}`,
     ]);
-    expect(
-      fs.readFileSync(path.join(scratch, 'v1/timestamp.json'), 'utf8'),
-    ).toContain('resigned');
-    expect(fs.readFileSync(`${scratch}.upload.tsv`, 'utf8')).toContain(
-      'v1/timestamp.json\t18',
-    );
     expect(log).toContain(`scratch copy ${scratch}`);
+    // The log said what would upload; then the scratch copy and its upload list are gone.
+    expect(log).toContain('publish:   v1/timestamp.json\t18');
+    expect(fs.existsSync(scratch)).toBe(false);
+    expect(fs.existsSync(`${scratch}.upload.tsv`)).toBe(false);
+    expect(
+      fs.readdirSync(root).filter((f) => f.startsWith('qrtz-publish-dry')),
+    ).toEqual([]);
+    expect(fs.readFileSync(kept, 'utf8')).toContain('v1/timestamp.json\t18');
+    expect(log).toContain(`upload list kept at ${kept}`);
+  });
+  it('keeps no upload list unless asked, and cleans up a failed dry run too', () => {
+    const { root, env } = setup();
+    execFileSync('bash', [script, '--timestamp', '--out-only'], {
+      env,
+      stdio: 'pipe',
+    });
+    expect(
+      fs.readdirSync(root).filter((f) => f.startsWith('qrtz-publish-dry')),
+    ).toEqual([]);
+    expect(() =>
+      execFileSync('bash', [script, '--timestamp', '--out-only'], {
+        env: { ...env, QRTZ_ROOT1_SHA256: '0'.repeat(64) },
+        stdio: 'pipe',
+      }),
+    ).toThrow();
+    expect(
+      fs.readdirSync(root).filter((f) => f.startsWith('qrtz-publish-dry')),
+    ).toEqual([]);
   });
   it('refuses a dry run with no out dir to copy', () => {
     const { out, env } = setup();

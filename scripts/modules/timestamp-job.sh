@@ -5,10 +5,11 @@
 # offline or travelling; a failure posts a macOS notification and is logged to ~/Library/Logs/qrtz-timestamp.log.
 #
 #   scripts/modules/timestamp-job.sh install     write and load ~/Library/LaunchAgents/ai.qrtz.timestamp.plist
-#   scripts/modules/timestamp-job.sh install --out-only   the same job, but it only re-signs the timestamp into
-#                                                 ~/qrtz-publish-out (publish.sh --timestamp --out-only): no R2 key,
-#                                                 no upload; something else uploads the pair listed `new` in
-#                                                 ~/qrtz-publish-out.upload.tsv (.sig first, then timestamp.json)
+#   scripts/modules/timestamp-job.sh install --out-only   the same job as a daily dry run (publish.sh --timestamp
+#                                                 --out-only): it re-signs in a mktemp scratch copy, logs the pair it
+#                                                 would upload and deletes the copy; no R2 key, no upload, and
+#                                                 ~/qrtz-publish-out is never written. It checks the re-sign works; it
+#                                                 doesn't keep the store's timestamp fresh.
 #   scripts/modules/timestamp-job.sh run         what the job runs (credentials from the login keychain)
 #   scripts/modules/timestamp-job.sh status | uninstall
 #
@@ -21,6 +22,7 @@
 # upload the job compares the live v1/timestamp.json with the one in ~/qrtz-publish-out: if they differ, something
 # else published since this Mac did, so this Mac's output dir is behind (an older index, an older timestamp
 # version) and re-signing from it would roll the store back. Then it skips (logged, exit 0) and leaves it to CI.
+# (When it doesn't skip, publish.sh --timestamp re-hydrates ~/qrtz-publish-out from the bucket before signing.)
 set -euo pipefail
 label=ai.qrtz.timestamp
 plist="$HOME/Library/LaunchAgents/$label.plist"

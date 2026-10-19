@@ -4,10 +4,11 @@
 # holds ~/.qrtz-keys (index + timestamp keys).
 #
 #   scripts/modules/publish.sh                          build, verify, upload (R2 via rclone), check the live host
-#   scripts/modules/publish.sh --out-only               build and verify in a scratch copy of $QRTZ_PUBLISH_OUT
-#                                                       (mktemp; the out dir itself is never written), write the
-#                                                       upload list; no upload, no R2 token, no rclone (upload the
-#                                                       listed files from the scratch dir). --no-upload = same.
+#   scripts/modules/publish.sh --out-only               a dry run: build and verify in a scratch copy of
+#                                                       $QRTZ_PUBLISH_OUT (mktemp; the out dir is never written), log
+#                                                       what would upload, delete the copy on exit; no upload, no R2
+#                                                       token, no rclone (QRTZ_KEEP_UPLOAD_LIST=<file> keeps the list).
+#                                                       --no-upload = same.
 #   scripts/modules/publish.sh --timestamp              re-sign the timestamp and upload only it (at least weekly)
 #   scripts/modules/publish.sh --timestamp --out-only   re-sign it and list only the timestamp pair
 #   scripts/modules/publish.sh --release [--only nano[,ctrl]] [--force-bump]  the whole module release in one command: bump each module
@@ -115,12 +116,20 @@ r2_bucket="${R2_BUCKET:-qrtz-modules}"
 # --out-only is a dry run: it works on a scratch copy (mktemp) and never writes to $out; its upload list sits beside
 # the scratch dir. A real run re-hydrates $out from the bucket first (scripts/ci/hydrate-out.sh into a fresh dir; the
 # previous dir is kept as $out.prev until the next real run), so a stale or dry-run-touched out can't leak into a publish.
+# The scratch copy, its upload list and its model-blobs are deleted on exit (EXIT trap; the --release dry run's trap
+# calls this too). QRTZ_KEEP_UPLOAD_LIST=<file> copies the upload list there first (the log says so).
+scratch=""
+cleanup_scratch() {
+  [[ -n "$scratch" ]] || return 0
+  rm -rf "$scratch" "$scratch.upload.tsv" "$scratch.model-blobs"
+}
+trap cleanup_scratch EXIT
 if [[ "$out_only" == 1 ]]; then
   [[ -d "$out/v1" ]] || die "$out: no v1/ to dry-run from"
   scratch="$(mktemp -d "${TMPDIR:-/tmp}/qrtz-publish-dry.XXXXXX")"
   cp -Rp "$out/v1" "$scratch/v1"
   [[ -f "$out/ROOT1_SHA256" ]] && cp -p "$out/ROOT1_SHA256" "$scratch/ROOT1_SHA256"
-  echo "publish: --out-only: working in the scratch copy $scratch ($out is left untouched)"
+  echo "publish: --out-only: working in the scratch copy $scratch ($out is left untouched; the copy is deleted on exit)"
   out="$scratch"
 else
   fresh="$(mktemp -d "$out.hydrate.XXXXXX")"
@@ -171,7 +180,7 @@ if [[ "$release" == 1 ]]; then
         fi
       done
     }
-    trap restore_bumps EXIT
+    trap 'restore_bumps; cleanup_scratch' EXIT
     echo "publish: --out-only: building at the would-be versions; the bump is not committed and is undone on exit"
   elif [[ -n "$changed" ]]; then
     msg="modules: release $(for m in $mods; do printf '%s %s, ' "$m" "$(plutil -extract version raw -o - "modules/$m/qrtz.json" 2>/dev/null || sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "modules/$m/qrtz.json" | head -1)"; done | sed 's/, $//')"
@@ -363,9 +372,13 @@ if [[ "$out_only" == 1 ]]; then
     fi
     printf '%s\t%s\t%s\t%s\n' "$key" "$size" "$cc" "$state" >>"$list"
   done < <("$bin" upload-list --out "$out" "${ts_only[@]+"${ts_only[@]}"}")
-  echo "publish: built and verified in $out (not uploaded)"
-  echo "publish: upload list $list: $new new object(s), $bytes bytes; upload them in order from $out/<key>, the"
-  echo "publish:   timestamp pair last (Cache-Control per line), then check $primary/v1/timestamp.json"
+  echo "publish: built and verified in $out (not uploaded; a dry run: $out is deleted on exit)"
+  echo "publish: would upload $new new object(s), $bytes bytes, in this order (timestamp pair last):"
+  sed 's/^/publish:   /' "$list"
+  if [[ -n "${QRTZ_KEEP_UPLOAD_LIST:-}" ]]; then
+    cp "$list" "$QRTZ_KEEP_UPLOAD_LIST"
+    echo "publish: upload list kept at $QRTZ_KEEP_UPLOAD_LIST (the objects it names are deleted with the scratch copy)"
+  fi
   [[ "$release" == 1 ]] && echo "publish: after the upload, tag the release: $node_bin $repo/scripts/modules/version.mjs tag --push $mods"
   exit 0
 fi
