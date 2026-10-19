@@ -132,6 +132,15 @@ public let kCFBooleanTrue: CFTypeRef! = NSNumber(value: true)
 public func IORegistryEntryFromPath(_ mainPort: mach_port_t, _ path: UnsafePointer<CChar>!) -> io_registry_entry_t { 0 }
 public func IORegistryEntrySetCFProperty(_ entry: io_registry_entry_t, _ propertyName: CFString!, _ property: CFTypeRef!) -> kern_return_t { 0 }
 @discardableResult public func IOObjectRelease(_ object: io_object_t) -> kern_return_t { 0 }
+// IOKit power management + sysctl (ADR 0183)
+public typealias io_connect_t = io_object_t
+public typealias IOReturn = kern_return_t
+public let kIOReturnSuccess: IOReturn = 0
+public func IOPMFindPowerManagement(_ main_device_port: mach_port_t) -> io_connect_t { 0 }
+public func IOPMSleepSystem(_ fb: io_connect_t) -> IOReturn { 0 }
+@discardableResult public func IOServiceClose(_ connect: io_connect_t) -> kern_return_t { 0 }
+public func sysctlbyname(_ name: UnsafePointer<CChar>!, _ oldp: UnsafeMutableRawPointer!, _ oldlenp: UnsafeMutablePointer<Int>!,
+                         _ newp: UnsafeMutableRawPointer!, _ newlen: Int) -> Int32 { -1 }
 // Core ML
 public enum MLComputeUnits { case cpuOnly, cpuAndGPU, all, cpuAndNeuralEngine }
 open class MLModelConfiguration: NSObject { open var computeUnits: MLComputeUnits = .all }
@@ -140,7 +149,11 @@ open class MLMultiArray: NSObject { public init(shape: [NSNumber], dataType: MLM
 open class MLFeatureValue: NSObject { public convenience init(string: String) { self.init() }; public convenience init(multiArray: MLMultiArray) { self.init() }; open var multiArrayValue: MLMultiArray? { nil } }
 public protocol MLFeatureProvider { func featureValue(for featureName: String) -> MLFeatureValue? }
 open class MLDictionaryFeatureProvider: NSObject, MLFeatureProvider { public init(dictionary: [String: Any]) throws {}; public func featureValue(for featureName: String) -> MLFeatureValue? { nil } }
+open class MLFeatureDescription: NSObject {}
+open class MLModelDescription: NSObject { open var inputDescriptionsByName: [String: MLFeatureDescription] { [:] }
+    open var outputDescriptionsByName: [String: MLFeatureDescription] { [:] } }
 open class MLModel: NSObject { public init(contentsOf url: URL, configuration: MLModelConfiguration) throws {}
+    open var modelDescription: MLModelDescription { MLModelDescription() }
     open class func compileModel(at modelURL: URL) throws -> URL { modelURL }
     open class func compileModel(at modelURL: URL) async throws -> URL { modelURL }
     open func prediction(from input: MLFeatureProvider) throws -> MLFeatureProvider { input } }

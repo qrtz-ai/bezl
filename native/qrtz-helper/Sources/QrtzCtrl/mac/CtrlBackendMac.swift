@@ -27,6 +27,9 @@ public final class MacCtrlBackend: CtrlBackend {
     private var activationObserver: NSObjectProtocol?
     /// ADR 0168: the general pasteboard's change count right after ctrl's last clear (nil: never cleared).
     private var lastClipboardClear: Int?
+    /// ADR 0183: the Mac's last sleep time read just before a `sleep_system` act; the next `last_sleep` read waits for
+    /// it to move, then clears it.
+    private var pendingSleepBaseline: Int?
 
     public init() {
         // The app in front when the watch begins counts as used now; every later switch is recorded as it happens.
@@ -343,6 +346,12 @@ public final class MacCtrlBackend: CtrlBackend {
         case .sleepDisplay:
             // ADR 0180: the displays sleep (IOKit, this process); the Mac stays awake, nothing locked, no key event.
             try CtrlDisplayMac.sleepNow()
+        case .sleepSystem:
+            // ADR 0183: the whole Mac sleeps (IOKit, this process); nothing quit or closed, no key event. The time it
+            // last slept, read first, is what the next read waits to see move.
+            let before = CtrlSystemSleepMac.lastSleep()
+            try CtrlSystemSleepMac.sleepNow()
+            lock.lock(); pendingSleepBaseline = before; lock.unlock()
         case let .ejectVolumes(single):
             // ADR 0176: the volumes from the mount table (never a path from the host), each unmounted and ejected in
             // this process without force: one in use stays mounted (a file open, a copy, a backup) and the act says
@@ -431,6 +440,11 @@ public final class MacCtrlBackend: CtrlBackend {
         case CtrlVolumes.check: return ejectableVolumes()?.count
         // ADR 0180: the main display's sleep state, read in this process (no app asked, no prompt).
         case CtrlDisplay.check: return CtrlDisplayMac.asleep() ? 1 : 0
+        // ADR 0183: when the Mac last slept; right after the act, waits (bounded) for the sleep to happen and end.
+        case CtrlSystemSleep.check:
+            lock.lock(); let baseline = pendingSleepBaseline; pendingSleepBaseline = nil; lock.unlock()
+            return CtrlSystemSleep.awaitSleep(baseline: baseline, read: CtrlSystemSleepMac.lastSleep,
+                                              wait: { Thread.sleep(forTimeInterval: $0) })
         case "dark_mode": return CtrlAppearance.isDark(UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)) ? 1 : 0
         // ADR 0173: the Dock's auto-hide, read from its own defaults in this process (no app asked, no prompt).
         case CtrlDock.check: return CtrlDock.autohides(UserDefaults.standard.persistentDomain(forName: CtrlDock.domain)) ? 1 : 0
@@ -615,8 +629,17 @@ final class CtrlLayaRuntime: @unchecked Sendable {
         c.computeUnits = .all // L512: GPU 9 ms vs CPU+ANE 27.5 ms warm (laya-coreml README, ADR 0129)
         do {
             let m = try MLModel(contentsOf: open, configuration: c)
+            // Run 46: a model without ctrl's inputs or `probabilities` is refused once, at load, not per question.
+            let d = m.modelDescription
+            if CtrlLayaInterface.missing(inputs: Set(d.inputDescriptionsByName.keys),
+                                         outputs: Set(d.outputDescriptionsByName.keys)) != nil {
+                failed.insert(path)
+                throw CtrlFailure("laya.bad_model")
+            }
             models[path] = m
             return m
+        } catch let f as CtrlFailure {
+            throw f
         } catch {
             failed.insert(path)
             throw CtrlFailure("laya.load_failed")

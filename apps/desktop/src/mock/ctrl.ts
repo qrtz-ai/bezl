@@ -128,6 +128,7 @@ const INTENTS = {
   dock_show: opt('intent.dock_autohide', 'hide or show the dock', 0.07),
   screensaver: opt('intent.screensaver', 'start the screensaver', 0.07),
   display_sleep: opt('intent.display_sleep', 'turn off your display', 0.07),
+  system_sleep: opt('intent.system_sleep', 'put your mac to sleep', 0.07),
   open_email: opt('intent.open_app', 'open an app', 0.07),
 };
 type Intent =
@@ -161,6 +162,7 @@ type Intent =
   | 'dock_show'
   | 'screensaver'
   | 'display_sleep'
+  | 'system_sleep'
   | 'open_email';
 /** What an unclear task is asked (the three most likely intents). */
 const ASKED = [INTENTS.close_tabs, INTENTS.clean_folder, INTENTS.close_windows];
@@ -332,6 +334,16 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
       opt(
         'route.system.display_sleep',
         'put the displays to sleep, the mac stays awake',
+        0.97,
+      ),
+    ]),
+  ],
+  // ADR 0183: the whole mac sleeps in the helper's own process; no app question, no card.
+  system_sleep: [
+    act('choose_move', [
+      opt(
+        'route.system.system_sleep',
+        'put the whole mac to sleep, nothing closed',
         0.97,
       ),
     ]),
@@ -659,9 +671,29 @@ const displaySleepOf = (text: string): Intent | null => {
   return 'display_sleep';
 };
 
+// ADR 0183: a mac word plus sleep; never the display alone, keeping it awake, waking it, its sleep settings, a
+// sleep timer, lock, restart, shut down or log out.
+const systemSleepOf = (text: string): Intent | null => {
+  if (
+    !/\b(mac|macs|macbook|macbooks|imac|computer|computers|laptop|laptops|machine|system)\b/i.test(
+      text,
+    )
+  )
+    return null;
+  if (!/\b(sleep|asleep)\b/i.test(text)) return null;
+  if (
+    /\b(display|displays|screen|screens|monitor|monitors|screensaver|saver|wake|wakes|waking|awake|keep|never|prevent|stop|don't|dont|not|caffeinate|settings|setting|preferences|timer|lock|locked|restart|reboot|shutdown|shut|log|logout)\b/i.test(
+      text,
+    )
+  )
+    return null;
+  return 'system_sleep';
+};
+
 const intentOf = (text: string): Intent | null =>
   ejectOf(text) ??
   displaySleepOf(text) ??
+  systemSleepOf(text) ??
   (clearsClipboard(text)
     ? 'clear_clipboard'
     : screensaverOf(text) !== null

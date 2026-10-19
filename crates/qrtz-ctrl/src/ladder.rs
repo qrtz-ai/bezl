@@ -117,6 +117,12 @@ pub enum WorkspaceOp {
     /// told anything, no key event, nothing is locked and the Mac stays awake. Reversible (any key or the mouse wakes
     /// the display), no gate.
     SleepDisplay,
+    /// ADR 0183: put the whole Mac to sleep now, in the helper's own process (IOKit: `IOPMSleepSystem` on the power
+    /// manager connection, the request `pmset sleepnow` makes, without spawning it). No app is told anything by ctrl
+    /// (the system sends its own will-sleep notice), no key event, nothing is quit or closed. Reversible (any key, the
+    /// mouse or opening the lid wakes it), no gate, but deferred while the user is typing or clicking: it stops
+    /// everything on the Mac, so it never happens under their hands.
+    SleepSystem,
 }
 
 /// ADR 0166: the Finder, the app that shows a folder.
@@ -322,7 +328,8 @@ impl Route {
                 | WorkspaceOp::SetFocus { .. }
                 | WorkspaceOp::ClearClipboard
                 | WorkspaceOp::EjectVolumes { .. }
-                | WorkspaceOp::SleepDisplay,
+                | WorkspaceOp::SleepDisplay
+                | WorkspaceOp::SleepSystem,
             ) => None,
             Route::Workspace(WorkspaceOp::OpenUrl { app, .. } | WorkspaceOp::LaunchHidden { app }) => {
                 Some(app)
@@ -516,6 +523,16 @@ pub fn judge(route: &Route, env: &Env) -> Verdict {
                 // ADR 0180: no app or window, no input; the display going dark is the task (like the screen saver,
                 // ADR 0178), and any key or the mouse wakes it.
                 WorkspaceOp::SleepDisplay => return Verdict::Allowed,
+                // ADR 0183: the whole Mac sleeping stops everything the user is doing, so like the clipboard it never
+                // happens while they're typing or clicking: retry later (a quiet Mac sleeps, as asked).
+                WorkspaceOp::SleepSystem => {
+                    if env.user_active() {
+                        return Verdict::Defer {
+                            why: DeferReason::UserActiveInTarget,
+                        };
+                    }
+                    return Verdict::Allowed;
+                }
                 // ADR 0168: no app or window either, but the clipboard is the user's own working buffer: never
                 // empty it while they're in the middle of something (a copy they're about to paste). Retry later.
                 WorkspaceOp::ClearClipboard => {

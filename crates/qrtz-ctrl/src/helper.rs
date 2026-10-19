@@ -80,6 +80,11 @@ pub enum Check {
     /// ADR 0180: 1 if the main display is asleep (`CGDisplayIsAsleep(CGMainDisplayID())`), 0 if it's on (read in the
     /// helper's own process; no app asked, no prompt).
     DisplayAsleep,
+    /// ADR 0183: when the Mac last went to sleep, in whole seconds since 1970 (`kern.sleeptime`, read in the helper's
+    /// own process; 0 if it hasn't slept since boot, `null` if unreadable). Right after a `sleep_system` act the
+    /// helper waits (bounded, under the host's helper timeout) for it to change, so the read after the act is the
+    /// sleep it asked for, taken once the Mac is awake again. Verified as increased.
+    LastSleep,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -588,6 +593,12 @@ pub struct FakeWorld {
     /// ADR 0180: the display is asleep. `display_sleep_unavailable`: the helper finds no display wrangler.
     pub display_asleep: bool,
     pub display_sleep_unavailable: bool,
+    /// ADR 0183: when the Mac last slept (seconds); a `sleep_system` act sleeps and wakes it (+60).
+    /// `system_sleep_refused`: the power manager refuses the request (nothing happens).
+    pub last_sleep: Option<i64>,
+    pub system_sleep_refused: bool,
+    /// ADR 0183: how many times the fake Mac slept.
+    pub system_sleeps: u32,
     /// ADR 0140: the output volume in percent (read back only while unmuted).
     pub volume: i64,
     /// ADR 0158: the user made the "qrtz Set Focus" shortcut (false: `focus.no_shortcut`).
@@ -663,6 +674,9 @@ impl FakeWorld {
             screensaver_running: false,
             display_asleep: false,
             display_sleep_unavailable: false,
+            last_sleep: Some(1_760_000_000),
+            system_sleep_refused: false,
+            system_sleeps: 0,
             focus_shortcut: false,
             shortcuts_denied: false,
             focus: crate::ladder::FocusMode::Off,
@@ -890,6 +904,15 @@ impl FakeWorld {
                 self.display_asleep = true;
                 Ok(())
             }
+            // ADR 0183: the whole Mac sleeps and (in the fake) wakes again a minute later; nothing else changes.
+            Route::Workspace(WorkspaceOp::SleepSystem) => {
+                if self.system_sleep_refused {
+                    return Err("sleep.refused".into());
+                }
+                self.system_sleeps += 1;
+                self.last_sleep = Some(self.last_sleep.unwrap_or(0) + 60);
+                Ok(())
+            }
             // ADR 0168: nothing read, everything gone.
             Route::Workspace(WorkspaceOp::ClearClipboard) => match self.clipboard {
                 Some(_) => {
@@ -1026,6 +1049,7 @@ impl FakeWorld {
                     Check::DockAutohide => Some(i64::from(self.dock_autohide)),
                     Check::ScreensaverRunning => Some(i64::from(self.screensaver_running)),
                     Check::DisplayAsleep => Some(i64::from(self.display_asleep)),
+                    Check::LastSleep => self.last_sleep,
                     Check::FocusOn => Some(i64::from(self.focus != crate::ladder::FocusMode::Off)),
                     Check::FolderOpen { folder } => self
                         .apps

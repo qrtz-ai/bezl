@@ -41,6 +41,10 @@ public enum CtrlRoute: Equatable, Sendable {
     /// ADR 0180: put the displays to sleep now, in the helper's own process (IOKit's display wrangler, what `pmset
     /// displaysleepnow` does, without spawning it). The Mac stays awake, nothing is locked. No app, no content, no gate.
     case sleepDisplay
+    /// ADR 0183: put the whole Mac to sleep now, in the helper's own process (IOKit's `IOPMSleepSystem`, the request
+    /// `pmset sleepnow` makes, without spawning it). Nothing quit or closed, no key event. No app, no content, no gate
+    /// (the host defers it while the user is typing or clicking).
+    case sleepSystem
     case scripting(app: String, verb: String)
     case axPerform(app: String, role: String, element: String, action: String)
     case axSet(app: String, role: String, element: String, attribute: String)
@@ -68,8 +72,10 @@ public enum CtrlRoute: Equatable, Sendable {
     /// ADR 0173: `dock_autohide` too (the Dock's own defaults, read in this process).
     /// ADR 0178: `screensaver_running` too (ScreenSaverEngine in the process list, read in this process).
     /// ADR 0180: `display_asleep` too (the main display's sleep state, read in this process).
+    /// ADR 0183: `last_sleep` too (when the Mac last slept, `kern.sleeptime`, read in this process).
     public static let applessChecks: Set<String> = ["output_muted", "dark_mode", "output_volume", "focus_on", CtrlClipboard.check,
-                                                    CtrlDock.check, CtrlVolumes.check, CtrlScreensaver.check, CtrlDisplay.check]
+                                                    CtrlDock.check, CtrlVolumes.check, CtrlScreensaver.check, CtrlDisplay.check,
+                                                    CtrlSystemSleep.check]
     /// Slice 7b's selective closes (ADR 0114 / 0119) have no fixed script: the backend reads the tabs first
     /// (`CtrlTabs`) and closes only the ones it can tell about; a backend that can't tell refuses, and the host asks.
     public static let tabVerbs: Set<String> = ["close_saved_tabs", "close_unpinned_tabs"]
@@ -90,6 +96,8 @@ public enum CtrlRoute: Equatable, Sendable {
             case "clear_clipboard": return .clearClipboard
             // ADR 0180: the bare op; nothing else is read from the request.
             case CtrlDisplay.op: return .sleepDisplay
+            // ADR 0183: the bare op likewise.
+            case CtrlSystemSleep.op: return .sleepSystem
             // ADR 0176: `single` must be a JSON true/false (objCType "c", ADR 0141); a number, a string or no field is
             // a bad request.
             case "eject_volumes":
@@ -282,7 +290,7 @@ public final class CtrlServer {
             guard let t = targetPid else { throw CtrlFailure("app.not_running") }
             do { try CtrlPolicy.checkKey(combo, targetPid: t, frontmostPid: frontmostPid) } catch { throw CtrlFailure("policy.refused") }
         case .files, .openURL, .launchHidden, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume,
-             .setFocus, .openFolder, .clearClipboard, .ejectVolumes, .sleepDisplay: break
+             .setFocus, .openFolder, .clearClipboard, .ejectVolumes, .sleepDisplay, .sleepSystem: break
         }
     }
 
@@ -292,7 +300,7 @@ public final class CtrlServer {
              let .pidKey(a, _): return a
         case .openFolder: return CtrlFolders.finder
         case .files, .takesOver, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume, .setFocus,
-             .clearClipboard, .ejectVolumes, .sleepDisplay:
+             .clearClipboard, .ejectVolumes, .sleepDisplay, .sleepSystem:
             return nil
         }
     }

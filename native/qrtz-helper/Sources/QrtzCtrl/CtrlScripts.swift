@@ -124,3 +124,35 @@ public enum CtrlDisplay {
     public static let wranglerPath = "IOService:/IOResources/IODisplayWrangler"
     public static let requestIdle = "IORequestIdle"
 }
+
+/// ADR 0183: "put my mac to sleep". The act asks the power manager for a system sleep the way `pmset sleepnow` does
+/// (IOKit: `IOPMSleepSystem` on the root power domain's connection), in the helper's own process: no process spawned,
+/// no Apple Event, no key event, nothing quit or closed (the system tells apps itself). The measure is when the Mac last
+/// went to sleep (`kern.sleeptime`, whole seconds), read in this process. Right after the act the read waits, bounded,
+/// for that time to move (the sleep itself suspends this process; the read finishes once the Mac is awake again), so
+/// the host's verify (increased) sees the sleep it asked for. The names and the wait live here (Foundation) so Linux
+/// tests see them; the calls are in mac/CtrlSystemSleepMac.swift.
+public enum CtrlSystemSleep {
+    public static let op = "sleep_system"
+    public static let check = "last_sleep"
+    /// The sysctl the measure reads; nothing else is read or written.
+    public static let sleepTimeName = "kern.sleeptime"
+    /// The longest a read after the act waits for the sleep (under the host's 10 s helper timeout).
+    public static let settleSeconds: Double = 8
+    public static let pollSeconds: Double = 0.25
+
+    /// `read()` until it differs from `baseline` or `settle` seconds of polling have passed; the last read either way
+    /// (nil stays nil: unreadable is never made up). No baseline (no act pending): one read, no wait.
+    public static func awaitSleep(baseline: Int?, settle: Double = settleSeconds, poll: Double = pollSeconds,
+                                  read: () -> Int?, wait: (Double) -> Void) -> Int? {
+        var now = read()
+        guard let b = baseline else { return now }
+        var waited = 0.0
+        while now == b && waited < settle {
+            wait(poll)
+            waited += poll
+            now = read()
+        }
+        return now
+    }
+}

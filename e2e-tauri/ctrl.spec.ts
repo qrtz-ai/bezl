@@ -948,6 +948,38 @@ test('ctrl: hide the dock and always show the dock set its auto-hide without a c
   expect(errors).toEqual([]);
 });
 
+// ADR 0183: "put my mac to sleep" puts the whole mac to sleep in the helper, no card, nothing asked.
+test('ctrl: put my mac to sleep sleeps the mac without a card', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  for (const text of [
+    'put my mac to sleep',
+    'every night at 11 put the computer to sleep',
+  ]) {
+    await ctrl.getByTestId('ctrl-task-input').fill(text);
+    await ctrl.getByTestId('ctrl-task-add').click();
+    const task = ctrl.getByTestId('ctrl-task').filter({ hasText: text });
+    await task.getByTestId('ctrl-task-run').click();
+    const run = ctrl.getByTestId('ctrl-run').first();
+    await expect(run.getByTestId('ctrl-run-status')).toHaveText('done');
+    await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
+    const decisions = ctrl.getByTestId('ctrl-decisions').first();
+    await expect(decisions).toContainText('put your mac to sleep');
+    await expect(decisions).toContainText(
+      'put the whole mac to sleep, nothing closed',
+    );
+    await expect(decisions).not.toContainText('turn off your display');
+  }
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 // ADR 0180: "turn off my display" puts the displays to sleep in the helper, no card, nothing asked.
 test('ctrl: turn off my display sleeps the display without a card', async ({
   page,

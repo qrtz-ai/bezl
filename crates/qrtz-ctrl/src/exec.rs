@@ -109,6 +109,9 @@ pub const CLEAR_CLIPBOARD_MOVE: &str = "route.system.clear_clipboard";
 /// ADR 0180: "turn off my display" / "put the screen to sleep": the displays sleep, the Mac stays awake.
 pub const DISPLAY_SLEEP_MOVE: &str = "route.system.display_sleep";
 
+/// ADR 0183: "put my mac to sleep" / "every night at 11 sleep my mac": the whole Mac sleeps.
+pub const SYSTEM_SLEEP_MOVE: &str = "route.system.system_sleep";
+
 /// ADR 0176: "eject my disks" / "eject all drives": every ejectable local volume the helper lists.
 pub const EJECT_ALL_MOVE: &str = "route.system.eject_all";
 /// ADR 0176: "eject the usb drive": the one ejectable volume, only while exactly one is mounted.
@@ -200,6 +203,18 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
             verify: Verify {
                 check: Check::DisplayAsleep,
                 expect: Expect::One,
+            },
+            content: BTreeMap::new(),
+        });
+    }
+    // ADR 0183: the whole Mac sleeps in the helper's own process; verified by its last sleep time moving forward (the
+    // read waits for the sleep and comes back once the Mac wakes). No pre-check: an asleep Mac runs no task.
+    if mv == SYSTEM_SLEEP_MOVE {
+        return Some(Step::Act {
+            routes: vec![Route::Workspace(WorkspaceOp::SleepSystem)],
+            verify: Verify {
+                check: Check::LastSleep,
+                expect: Expect::Increased,
             },
             content: BTreeMap::new(),
         });

@@ -533,6 +533,14 @@ const INTENTS: &[IntentDef] = &[
         slot: Slot::None,
         irreversible: false,
     },
+    // ADR 0183: put the whole Mac to sleep; any key / the mouse / the lid wakes it, nothing is closed: no gate, no app
+    // (deferred while the user is typing or clicking).
+    IntentDef {
+        id: "system_sleep",
+        app: AppMode::None,
+        slot: Slot::None,
+        irreversible: false,
+    },
     // ADR 0135: mute the Mac's sound output; reversible, no gate, no app.
     IntentDef {
         id: "mute",
@@ -735,6 +743,62 @@ const DISPLAY_NOT_WORDS: &[&str] = &[
     "not",
     "caffeinate",
 ];
+/// ADR 0183: words that name the whole Mac.
+const MAC_WORDS: &[&str] = &[
+    "mac",
+    "macs",
+    "macbook",
+    "macbooks",
+    "imac",
+    "computer",
+    "computers",
+    "laptop",
+    "laptops",
+    "machine",
+    "system",
+];
+/// ADR 0183: words that make a Mac-and-sleep task something else: the display only (ADR 0180), the screen saver, keeping
+/// it awake, waking it, its sleep settings or a sleep timer, locking it, or the other power moves.
+const SYSTEM_SLEEP_NOT_WORDS: &[&str] = &[
+    "display",
+    "displays",
+    "screen",
+    "screens",
+    "monitor",
+    "monitors",
+    "screensaver",
+    "saver",
+    "wake",
+    "wakes",
+    "waking",
+    "awake",
+    "keep",
+    "never",
+    "prevent",
+    "stop",
+    "don't",
+    "dont",
+    "not",
+    "caffeinate",
+    "settings",
+    "setting",
+    "preferences",
+    "timer",
+    "lock",
+    "locked",
+    "restart",
+    "reboot",
+    "shutdown",
+    "shut",
+    "log",
+    "logout",
+];
+/// ADR 0183: "put my mac to sleep", "sleep my mac", "every night at 11 put the computer to sleep". A Mac word plus a
+/// sleep word, and none of the words that mean another thing (the display alone is ADR 0180).
+fn system_sleep_task(toks: &[Tok]) -> bool {
+    has(toks, MAC_WORDS) && has(toks, &["sleep", "asleep"]) && !has(toks, SYSTEM_SLEEP_NOT_WORDS)
+}
+
 /// ADR 0180: "turn off my display", "put the screen to sleep", "sleep the displays", "monitor off". A display word plus
 /// a sleep word or "off", and none of the words that mean another screen thing. "put my mac to sleep" (no display
 /// word) is the whole Mac, not this, and is not built.
@@ -1043,6 +1107,15 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             p -= 3000;
             let full = named.iter().any(|(a, h)| *h as usize == a.tokens.len());
             if display_sleep_task(toks) && !full && !site {
+                p += 9500;
+            }
+        }
+        "system_sleep" => {
+            // ADR 0183: "put my mac to sleep", "every night at 11 sleep my mac". No app named in full, no site.
+            // Without it it sits well below.
+            p -= 3000;
+            let full = named.iter().any(|(a, h)| *h as usize == a.tokens.len());
+            if system_sleep_task(toks) && !full && !site {
                 p += 9500;
             }
         }
@@ -1590,6 +1663,8 @@ fn move_question(
         )],
         // ADR 0180: one move — the displays sleep.
         "display_sleep" => vec![route("system.display_sleep", 4500)],
+        // ADR 0183: one move — the whole Mac sleeps.
+        "system_sleep" => vec![route("system.system_sleep", 4500)],
         "mute" => vec![route("system.mute", 4500)],
         "unmute" => vec![route("system.unmute", 4500)],
         "set_volume" => vec![route("system.set_volume", 4500)],
@@ -1842,6 +1917,7 @@ fn intent_label(id: &str) -> &'static str {
         "clear_clipboard" => "clear your clipboard",
         "eject_disks" => "eject your disks",
         "display_sleep" => "turn off your display",
+        "system_sleep" => "put your mac to sleep",
         "mute" => "mute your mac",
         "unmute" => "unmute your mac",
         "set_volume" => "set the volume",
@@ -1877,6 +1953,7 @@ fn route_label(id: &str) -> &'static str {
         "system.clear_clipboard" => "empty the clipboard, nothing read from it",
         "system.eject_all" => "eject every external disk, none forced",
         "system.display_sleep" => "put the displays to sleep, the mac stays awake",
+        "system.system_sleep" => "put the whole mac to sleep, nothing closed",
         "system.eject_one" => "eject the one external disk, never forced",
         "system.mute" => "mute the sound output",
         "system.unmute" => "turn the sound output back on",

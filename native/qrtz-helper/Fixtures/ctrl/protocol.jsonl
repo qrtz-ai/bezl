@@ -40,5 +40,7 @@
 {"type":"ctrl.measure","id":"c30","check":{"check":"screensaver_running"}}
 {"type":"ctrl.act","id":"c31","actionId":"a12","route":{"route":"workspace","op":"sleep_display"},"content":{}}
 {"type":"ctrl.measure","id":"c32","check":{"check":"display_asleep"}}
+{"type":"ctrl.act","id":"c33","actionId":"a13","route":{"route":"workspace","op":"sleep_system"},"content":{}}
+{"type":"ctrl.measure","id":"c34","check":{"check":"last_sleep"}}
 {"type":"ctrl.laya.warm","id":"c12","model":"/models/ctrl/laya/laya.mlmodelc"}
 {"type":"ctrl.laya.warm.result","id":"c12","state":"started"}
