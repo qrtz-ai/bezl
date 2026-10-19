@@ -113,7 +113,8 @@ impl DashPort {
             // Validated here; the caller (AppService) opens it through the shell, which checks again.
             "dash:open-link" => {
                 let url = s("url");
-                if qrtz_dash::is_https_url(&url) {
+                // 2048-character cap, as in the TS contract (Bozniak nit).
+                if url.len() <= 2048 && qrtz_dash::is_https_url(&url) {
                     Ok(json!({ "url": url }))
                 } else {
                     Err(bad("links open only if they are https"))
@@ -160,6 +161,7 @@ mod tests {
             "javascript:alert(1)",
             "https://a.com:x",
             "file:///etc/passwd",
+            format!("https://qrtz.ai/{}", "a".repeat(2048)).as_str(),
         ] {
             assert!(port.call("dash:open-link", &json!({"url": u})).is_err(), "{u}");
         }

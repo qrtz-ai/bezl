@@ -264,13 +264,39 @@ fn is_jwt(w: &str) -> bool {
         && parts.iter().all(|p| !p.is_empty() && p.chars().all(is_b64url))
 }
 
+/// A key prefix at the start of the word or after any character that isn't a letter or digit, so `x|ghp_…`,
+/// `a&sk-ant-…` and `@xoxb-…` are caught (Bozniak M). The token (letters, digits, `-`, `_` from the prefix on)
+/// must run 12+ characters past the prefix. `lw` is lowercase.
+fn has_secret_prefix(lw: &str) -> bool {
+    let b = lw.as_bytes();
+    (0..b.len())
+        .filter(|&i| i == 0 || !b[i - 1].is_ascii_alphanumeric())
+        .any(|i| {
+            let run = b[i..]
+                .iter()
+                .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_'))
+                .count();
+            let tok = &lw[i..i + run];
+            SECRET_PREFIXES
+                .iter()
+                .any(|p| tok.starts_with(p) && tok.len() >= p.len() + 12)
+        })
+}
+
+/// A run of `n` or more ASCII lowercase letters.
+fn has_lower_run(s: &str, n: usize) -> bool {
+    let mut run = 0;
+    s.chars().any(|c| {
+        run = if c.is_ascii_lowercase() { run + 1 } else { 0 };
+        run >= n
+    })
+}
+
 /// One word (between split characters) that looks like a secret.
 fn is_secret_word(w: &str) -> bool {
     let core = w.trim_matches(|c: char| matches!(c, '.' | '!' | '?' | '`' | '*'));
     let lw = core.to_ascii_lowercase();
-    let keyish = SECRET_PREFIXES
-        .iter()
-        .any(|p| lw.starts_with(p) && lw.len() >= p.len() + 12);
+    let keyish = has_secret_prefix(&lw);
     let b = core.as_bytes();
     let ssn = b.len() == 11
         && b[3] == b'-'
@@ -278,13 +304,19 @@ fn is_secret_word(w: &str) -> bool {
         && b.iter()
             .enumerate()
             .all(|(i, c)| i == 3 || i == 6 || c.is_ascii_digit());
-    let long_hex = core.len() >= 32 && core.chars().all(|c| c.is_ascii_hexdigit());
-    // High entropy: 32+ base64 / base64url characters at 4.0+ bits per character.
+    // A git object hash (exactly 40 hex characters) is not a secret (Bozniak L3).
+    let long_hex = core.len() >= 32 && core.len() != 40 && core.chars().all(|c| c.is_ascii_hexdigit());
+    // High entropy: 32+ base64 / base64url characters at 4.0+ bits per character, mixing a digit with upper and
+    // lower case and holding no run of 4+ lowercase letters, so long identifiers and paths stay (Bozniak L3).
     let b64 = core.trim_end_matches('=');
     let high_entropy = b64.len() >= 32
         && b64
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '/' | '-' | '_'))
+        && b64.chars().any(|c| c.is_ascii_digit())
+        && b64.chars().any(|c| c.is_ascii_uppercase())
+        && b64.chars().any(|c| c.is_ascii_lowercase())
+        && !has_lower_run(b64, 4)
         && entropy(b64) >= 4.0;
     keyish || ssn || long_hex || high_entropy || is_jwt(core)
 }
@@ -292,10 +324,11 @@ fn is_secret_word(w: &str) -> bool {
 /// PEM blocks (`-----BEGIN … -----` through the matching `-----END … -----`, or to the end) are redacted whole.
 fn scrub_pem(s: &mut String) -> bool {
     let mut hit = false;
-    while let Some(start) = s.find("-----BEGIN") {
-        let rest = &s[start..];
+    // Case-insensitive (Bozniak L2); ASCII lowercasing keeps byte offsets.
+    while let Some(start) = s.to_ascii_lowercase().find("-----begin") {
+        let rest = s[start..].to_ascii_lowercase();
         let end = rest
-            .find("-----END")
+            .find("-----end")
             .map(|e| {
                 let after = &rest[e + 8..];
                 // the END line's closing dashes
@@ -1002,6 +1035,42 @@ mod tests {
         ] {
             assert_eq!(red(keep), (false, keep.to_owned()), "{keep}");
         }
+    }
+
+    #[test]
+    fn scrub_catches_prefixes_glued_to_punctuation() {
+        let tail = "abcdefghijklmnop1234";
+        for glue in ['|', '&', '@', '/', '\\', '!', '~', '^', '+', '?', '#', '`'] {
+            for p in ["ghp_", "sk-ant-", "xoxb-"] {
+                let inp = format!("x{glue}{p}{tail}");
+                let (hit, out) = red(&inp);
+                assert!(hit && !out.contains(tail), "{inp} -> {out}");
+            }
+        }
+        // a prefix inside a word is not a key
+        assert!(!red("task-abcdefghijklmnop").0);
+    }
+
+    #[test]
+    fn scrub_pem_is_case_insensitive() {
+        let pem = "a -----begin private key-----\nMIIEvQ\n-----end private key----- b";
+        assert_eq!(red(pem), (true, "a [redacted] b".to_owned()));
+    }
+
+    #[test]
+    fn scrub_keeps_git_hashes_identifiers_and_paths() {
+        for keep in [
+            "commit 098dfc3be9eb2fa1b2c3d4e5f60718293a4b5c6d",
+            "SomeVeryLongTypeNameForTheDashboardWidget2Builder",
+            "MAX_ENROLLMENT_CODE_GUESSES_PER_MINUTE_V2",
+            "crates/qrtz-dash/src/store.rs",
+            "/Users/dev/code/qrtz/apps/desktop/src/Main2View.tsx",
+            "src/features/DashView/WidgetRenderer2Long.tsx",
+        ] {
+            assert_eq!(red(keep), (false, keep.to_owned()), "{keep}");
+        }
+        // 41 hex characters is still redacted
+        assert!(red("098dfc3be9eb2fa1b2c3d4e5f60718293a4b5c6d0").0);
     }
 
     #[test]
