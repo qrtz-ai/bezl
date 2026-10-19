@@ -10,12 +10,22 @@
     ".": "./src/index.ts",
     "./gallery": "./src/gallery/Gallery.tsx"
   },
+  "scripts": {
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build -o storybook-static && bun .storybook/strip-fonts.mjs"
+  },
   "peerDependencies": {
     "react": "^19.0.0"
   },
   "devDependencies": {
+    "@storybook/react-vite": "^10.6.2",
     "@types/react": "^19.3.0",
-    "react": "^19.3.1"
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "storybook": "^10.6.2",
+    "vite": "^8.3.4"
   },
   "license": "UNLICENSED",
   "dependencies": {
