@@ -375,6 +375,131 @@
       "in": "h 098dfc3be9eb2fa1b2c3d4e5f60718293a4b5c6d0",
       "out": "h [redacted]",
       "hit": true
+    },
+    {
+      "in": "café",
+      "out": "café",
+      "hit": false
+    },
+    {
+      "in": "naïve café crème brûlée",
+      "out": "naïve café crème brûlée",
+      "hit": false
+    },
+    {
+      "in": "ship it 🚀🔥 done",
+      "out": "ship it 🚀🔥 done",
+      "hit": false
+    },
+    {
+      "in": "İstanbul",
+      "out": "İstanbul",
+      "hit": false
+    },
+    {
+      "in": "key 🔑ghp_abcdefghijklmnop1234 y",
+      "out": "key [redacted] y",
+      "hit": true
+    },
+    {
+      "in": "é/ghp_abcdefghijklmnop1234",
+      "out": "[redacted]",
+      "hit": true
+    },
+    {
+      "in": "g​hp_abcdefghijklmnop1234 y",
+      "out": "[redacted] y",
+      "hit": true
+    },
+    {
+      "in": "sk⁠-ant-abcdefghijklmnop1234 y",
+      "out": "[redacted] y",
+      "hit": true
+    },
+    {
+      "in": "﻿xoxb-abcdefghijklmnop1234",
+      "out": "[redacted]",
+      "hit": true
+    },
+    {
+      "in": "ｇｈｐ＿abcdefghijklmnop1234 y",
+      "out": "[redacted] y",
+      "hit": true
+    },
+    {
+      "in": "xghp_abcdefghijklmnop1234",
+      "out": "xghp_abcdefghijklmnop1234",
+      "hit": false
+    },
+    {
+      "in": "1ghp_abcdefghijklmnop1234",
+      "out": "1ghp_abcdefghijklmnop1234",
+      "hit": false
+    },
+    {
+      "in": "İİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİ -----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n-----END PRIVATE KEY----- after",
+      "out": "İİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİİ [redacted] after",
+      "hit": true
+    },
+    {
+      "in": "İİİ-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n-----END PRIVATE KEY-----tail",
+      "out": "İİİ[redacted]tail",
+      "hit": true
+    },
+    {
+      "in": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "out": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "hit": false
+    },
+    {
+      "in": "SHA256=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "out": "SHA256=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "hit": false
+    },
+    {
+      "in": "digest 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "out": "digest [redacted]",
+      "hit": true
+    },
+    {
+      "in": "tok Xk9mQ2pL7vR4tZ8wN3bF6hJ1",
+      "out": "tok [redacted]",
+      "hit": true
+    },
+    {
+      "in": "aB3dE5gH7jK9mN1pQ3sT5vX7",
+      "out": "[redacted]",
+      "hit": true
+    },
+    {
+      "in": "getUserAccountSettingsById2024",
+      "out": "getUserAccountSettingsById2024",
+      "hit": false
+    },
+    {
+      "in": "DASH_ENROLLMENT_CODE_LIMIT",
+      "out": "DASH_ENROLLMENT_CODE_LIMIT",
+      "hit": false
+    },
+    {
+      "in": "MAX_ENROLLMENT_CODE_GUESSES_PER_MINUTE_V2",
+      "out": "MAX_ENROLLMENT_CODE_GUESSES_PER_MINUTE_V2",
+      "hit": false
+    },
+    {
+      "in": "packages/features/dash/src/DashView",
+      "out": "packages/features/dash/src/DashView",
+      "hit": false
+    },
+    {
+      "in": "src/features/DashView/WidgetRenderer2Long",
+      "out": "src/features/DashView/WidgetRenderer2Long",
+      "hit": false
+    },
+    {
+      "in": "SomeVeryLongTypeNameForTheDashboardWidget2Builder",
+      "out": "SomeVeryLongTypeNameForTheDashboardWidget2Builder",
+      "hit": false
     }
   ],
   "https_url": [

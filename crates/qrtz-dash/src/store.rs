@@ -6,6 +6,7 @@ use crate::*;
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use unicode_normalization::UnicodeNormalization;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -264,11 +265,18 @@ fn is_jwt(w: &str) -> bool {
         && parts.iter().all(|p| !p.is_empty() && p.chars().all(is_b64url))
 }
 
-/// A key prefix at the start of the word or after any character that isn't a letter or digit, so `x|ghp_…`,
+/// Zero-width characters dropped before the prefix check (Bozniak L): U+200B–U+200D, U+2060, U+FEFF.
+fn is_zero_width(c: char) -> bool {
+    matches!(c, '\u{200B}'..='\u{200D}' | '\u{2060}' | '\u{FEFF}')
+}
+
+/// A key prefix at the start of the word or after any byte that isn't an ASCII letter or digit, so `x|ghp_…`,
 /// `a&sk-ant-…` and `@xoxb-…` are caught (Bozniak M). The token (letters, digits, `-`, `_` from the prefix on)
-/// must run 12+ characters past the prefix. `lw` is lowercase.
-fn has_secret_prefix(lw: &str) -> bool {
-    let b = lw.as_bytes();
+/// must run 12+ characters past the prefix. The word is checked with zero-width characters removed and NFKC
+/// applied; bytes are compared, never sliced, so non-ASCII text can't panic (Bozniak H1).
+fn has_secret_prefix(w: &str) -> bool {
+    let norm: String = w.chars().filter(|c| !is_zero_width(*c)).nfkc().collect();
+    let b = norm.to_ascii_lowercase().into_bytes();
     (0..b.len())
         .filter(|&i| i == 0 || !b[i - 1].is_ascii_alphanumeric())
         .any(|i| {
@@ -276,27 +284,83 @@ fn has_secret_prefix(lw: &str) -> bool {
                 .iter()
                 .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_'))
                 .count();
-            let tok = &lw[i..i + run];
+            let tok = &b[i..i + run];
             SECRET_PREFIXES
                 .iter()
-                .any(|p| tok.starts_with(p) && tok.len() >= p.len() + 12)
+                .any(|p| tok.starts_with(p.as_bytes()) && tok.len() >= p.len() + 12)
         })
 }
 
-/// A run of `n` or more ASCII lowercase letters.
-fn has_lower_run(s: &str, n: usize) -> bool {
-    let mut run = 0;
-    s.chars().any(|c| {
-        run = if c.is_ascii_lowercase() { run + 1 } else { 0 };
-        run >= n
-    })
+/// Identifier-like: the camelCase / ALLCAPS / digit runs (`[A-Z]?[a-z]+|[A-Z]+(?![a-z])|[0-9]+`) average 4+
+/// characters. `_`, `-` and other characters separate runs (Bozniak H2).
+fn is_wordy(w: &str) -> bool {
+    let b = w.as_bytes();
+    let (mut i, mut count, mut total) = (0, 0usize, 0usize);
+    while i < b.len() {
+        let c = b[i];
+        let len = if c.is_ascii_uppercase() && b.get(i + 1).is_some_and(u8::is_ascii_lowercase) {
+            1 + b[i + 1..].iter().take_while(|c| c.is_ascii_lowercase()).count()
+        } else if c.is_ascii_lowercase() {
+            b[i..].iter().take_while(|c| c.is_ascii_lowercase()).count()
+        } else if c.is_ascii_uppercase() {
+            let k = b[i..].iter().take_while(|c| c.is_ascii_uppercase()).count();
+            // the last capital starts a camelCase run when lowercase follows
+            if b.get(i + k).is_some_and(u8::is_ascii_lowercase) {
+                k - 1
+            } else {
+                k
+            }
+        } else if c.is_ascii_digit() {
+            b[i..].iter().take_while(|c| c.is_ascii_digit()).count()
+        } else {
+            i += 1;
+            continue;
+        };
+        count += 1;
+        total += len;
+        i += len;
+    }
+    count > 0 && total as f64 / count as f64 >= 4.0
 }
 
-/// One word (between split characters) that looks like a secret.
-fn is_secret_word(w: &str) -> bool {
+/// The high-entropy rule (Bozniak H2, his prototype `rule`): 24+ base64 / base64url characters mixing 2+ of
+/// lowercase, uppercase and digits, not all hex (the hex rule decides those), not an identifier, not a path of
+/// identifiers or short segments, and at least 0.8·log2(min(len, 64)) bits per character.
+fn is_high_entropy(core: &str) -> bool {
+    let w = core.trim_end_matches('=');
+    if w.len() < 24
+        || !w
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'+' | b'/' | b'_' | b'-'))
+    {
+        return false;
+    }
+    let classes = [
+        w.bytes().any(|c| c.is_ascii_lowercase()),
+        w.bytes().any(|c| c.is_ascii_uppercase()),
+        w.bytes().any(|c| c.is_ascii_digit()),
+    ];
+    if classes.iter().filter(|x| **x).count() < 2 || w.bytes().all(|c| c.is_ascii_hexdigit()) {
+        return false;
+    }
+    let path_ok = w.contains('/')
+        && w.split('/').all(|p| {
+            p.len() <= 24
+                && p.bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'.' | b'-'))
+                && (is_wordy(p) || p.len() < 8)
+        });
+    if path_ok || is_wordy(w) {
+        return false;
+    }
+    entropy(w) >= 0.8 * (w.len().min(64) as f64).log2()
+}
+
+/// One word (between split characters) that looks like a secret. `sha_ctx`: the word follows `sha256:` or
+/// `sha256=`, so a 64-hex digest is not a secret.
+fn is_secret_word(w: &str, sha_ctx: bool) -> bool {
     let core = w.trim_matches(|c: char| matches!(c, '.' | '!' | '?' | '`' | '*'));
-    let lw = core.to_ascii_lowercase();
-    let keyish = has_secret_prefix(&lw);
+    let keyish = has_secret_prefix(w);
     let b = core.as_bytes();
     let ssn = b.len() == 11
         && b[3] == b'-'
@@ -304,21 +368,12 @@ fn is_secret_word(w: &str) -> bool {
         && b.iter()
             .enumerate()
             .all(|(i, c)| i == 3 || i == 6 || c.is_ascii_digit());
-    // A git object hash (exactly 40 hex characters) is not a secret (Bozniak L3).
-    let long_hex = core.len() >= 32 && core.len() != 40 && core.chars().all(|c| c.is_ascii_hexdigit());
-    // High entropy: 32+ base64 / base64url characters at 4.0+ bits per character, mixing a digit with upper and
-    // lower case and holding no run of 4+ lowercase letters, so long identifiers and paths stay (Bozniak L3).
-    let b64 = core.trim_end_matches('=');
-    let high_entropy = b64.len() >= 32
-        && b64
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '/' | '-' | '_'))
-        && b64.chars().any(|c| c.is_ascii_digit())
-        && b64.chars().any(|c| c.is_ascii_uppercase())
-        && b64.chars().any(|c| c.is_ascii_lowercase())
-        && !has_lower_run(b64, 4)
-        && entropy(b64) >= 4.0;
-    keyish || ssn || long_hex || high_entropy || is_jwt(core)
+    // Exactly 40 hex is a git object hash; 64 hex after `sha256:` / `sha256=` is a digest (Bozniak L3, H2).
+    let long_hex = core.len() >= 32
+        && core.len() != 40
+        && !(core.len() == 64 && sha_ctx)
+        && core.bytes().all(|c| c.is_ascii_hexdigit());
+    keyish || ssn || long_hex || is_high_entropy(core) || is_jwt(core)
 }
 
 /// PEM blocks (`-----BEGIN … -----` through the matching `-----END … -----`, or to the end) are redacted whole.
@@ -349,7 +404,10 @@ fn scrub(s: &mut String) -> bool {
     let mut word = String::new();
     let flush = |word: &mut String, out: &mut String, hit: &mut bool| {
         if !word.is_empty() {
-            if is_secret_word(word) {
+            let tail = out.len().checked_sub(7).and_then(|i| out.get(i..));
+            let sha_ctx =
+                tail.is_some_and(|t| t.eq_ignore_ascii_case("sha256:") || t.eq_ignore_ascii_case("sha256="));
+            if is_secret_word(word, sha_ctx) {
                 out.push_str("[redacted]");
                 *hit = true;
             } else {
