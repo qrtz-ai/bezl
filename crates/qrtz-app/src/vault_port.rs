@@ -345,7 +345,7 @@ impl NotesVault {
         match rep {
             Ok(r) if !r.is_empty() => self.changed(r.ids()),
             Ok(_) => {}
-            Err(e) => tracing::warn!(error = %e, "vault rescan failed"),
+            Err(e) => tracing::warn!(kind = e.kind(), "vault rescan failed"),
         }
     }
 

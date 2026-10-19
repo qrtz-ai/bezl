@@ -24,6 +24,7 @@ const doc = (
   title: noteTitle(body),
   path: `${id}.md`,
   hash: `h-${id}-0`,
+  readOnly: false,
 });
 
 function fake(initial: Doc[]) {
@@ -135,6 +136,21 @@ describe('noteTitle', () => {
 });
 
 describe('Notes (doc:*)', () => {
+  it('a read-only note is shown, says so, and is never saved', async () => {
+    vi.useFakeTimers();
+    const { el, f } = await mount([
+      { ...doc('a', 'caf\ufffd', 1), readOnly: true },
+    ]);
+    await act(async () => q<HTMLButtonElement>(el, 'note')!.click());
+    await settle();
+    const ed = q<HTMLTextAreaElement>(el, 'note-editor')!;
+    expect(ed.readOnly).toBe(true);
+    expect(ed.value).toBe('caf\ufffd');
+    expect(q(el, 'note-read-only')?.textContent).toContain('read-only');
+    await act(async () => vi.advanceTimersByTime(SAVE_DEBOUNCE_MS * 2));
+    expect(f.calls.some(([ch]) => ch === 'doc:save')).toBe(false);
+  });
+
   it('empty state, then every note newest first', async () => {
     const empty = await mount([]);
     expect(q(empty.el, 'empty-state')?.textContent).toContain('no notes yet');

@@ -36,6 +36,7 @@ export function NotesApp({
   emptyTitle = 'no notes yet',
   banner,
   tools,
+  readOnly,
 }: {
   notes: NotesAppItem[];
   /** Selected note id, `'new'` for an unsaved new note, or null when nothing is open. */
@@ -57,6 +58,8 @@ export function NotesApp({
   banner?: ReactNode;
   /** In the editor's footer, before delete (e.g. the note's meeting links). */
   tools?: ReactNode;
+  /** Shown but not editable (a file qrtz won't change). */
+  readOnly?: boolean;
 }) {
   const t = useTheme();
   const editor = useRef<HTMLTextAreaElement>(null);
@@ -163,6 +166,7 @@ export function NotesApp({
               aria-label={editorLabel}
               data-testid="note-editor"
               value={draft}
+              readOnly={readOnly}
               maxLength={4000}
               placeholder="start typing"
               onChange={(e) => onDraft(e.target.value)}

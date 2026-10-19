@@ -10850,6 +10850,9 @@
           },
           "hash": {
             "type": "string"
+          },
+          "readOnly": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -10859,7 +10862,8 @@
           "updatedAt",
           "meetings",
           "body",
-          "hash"
+          "hash",
+          "readOnly"
         ],
         "additionalProperties": false
       }
@@ -10909,6 +10913,9 @@
           },
           "hash": {
             "type": "string"
+          },
+          "readOnly": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -10918,7 +10925,8 @@
           "updatedAt",
           "meetings",
           "body",
-          "hash"
+          "hash",
+          "readOnly"
         ],
         "additionalProperties": false
       }
@@ -10980,6 +10988,9 @@
           },
           "hash": {
             "type": "string"
+          },
+          "readOnly": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -10989,7 +11000,8 @@
           "updatedAt",
           "meetings",
           "body",
-          "hash"
+          "hash",
+          "readOnly"
         ],
         "additionalProperties": false
       }
@@ -11074,6 +11086,9 @@
           },
           "hash": {
             "type": "string"
+          },
+          "readOnly": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -11083,7 +11098,8 @@
           "updatedAt",
           "meetings",
           "body",
-          "hash"
+          "hash",
+          "readOnly"
         ],
         "additionalProperties": false
       }
@@ -11137,6 +11153,9 @@
           },
           "hash": {
             "type": "string"
+          },
+          "readOnly": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -11146,7 +11165,8 @@
           "updatedAt",
           "meetings",
           "body",
-          "hash"
+          "hash",
+          "readOnly"
         ],
         "additionalProperties": false
       }

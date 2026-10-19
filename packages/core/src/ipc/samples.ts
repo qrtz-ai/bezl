@@ -329,8 +329,9 @@ const doc = {
   meetings: [],
   body: '# interview prep\n\nask about the team\n',
   hash: '00112233445566778899aabbccddeeff',
+  readOnly: false,
 };
-const { body: _b, hash: _h, ...docSummary } = doc;
+const { body: _b, hash: _h, readOnly: _r, ...docSummary } = doc;
 const docSamples = {
   'vault:get': { request: undefined, response: vaultInfo },
   'vault:choose': {

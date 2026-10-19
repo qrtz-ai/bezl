@@ -26,7 +26,21 @@ use std::time::UNIX_EPOCH;
 pub const MAX_NOTE_BYTES: usize = 1 << 20;
 /// The hidden folder `trash` moves notes into (recoverable; phase 1 does not use the macOS Trash).
 pub const TRASH_DIR: &str = ".trash";
-const INDEX_VERSION: i64 = 1;
+const INDEX_VERSION: i64 = 2;
+/// File stems qrtz names stay under this (UTF-8 bytes), so temp and conflict names stay under 255 bytes.
+pub const MAX_STEM_BYTES: usize = 150;
+
+/// `s` cut to at most `max` UTF-8 bytes on a char boundary.
+pub fn cap_bytes(s: &str, max: usize) -> &str {
+    if s.len() <= max {
+        return s;
+    }
+    let mut i = max;
+    while !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    s[..i].trim_end()
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum VaultError {
@@ -42,6 +56,20 @@ pub enum VaultError {
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Sqlite(#[from] rusqlite::Error),
+}
+
+impl VaultError {
+    /// A path- and title-free label for logs.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::Invalid(_) => "invalid",
+            Self::Escape => "escape",
+            Self::NotFound(_) => "not_found",
+            Self::Conflict { .. } => "conflict",
+            Self::Io(_) => "io",
+            Self::Sqlite(_) => "sqlite",
+        }
+    }
 }
 pub type VResult<T> = std::result::Result<T, VaultError>;
 
@@ -77,6 +105,8 @@ pub struct Doc {
     pub meetings: Vec<String>,
     pub body: String,
     pub hash: String,
+    /// Not UTF-8, or over [`MAX_NOTE_BYTES`]: shown, never changed.
+    pub read_only: bool,
 }
 
 pub fn hash_bytes(b: &[u8]) -> String {
@@ -226,28 +256,20 @@ pub fn file_stem_for(title: &str) -> String {
         })
         .collect();
     let s = s.split_whitespace().collect::<Vec<_>>().join(" ");
-    let s = s
-        .trim_start_matches('.')
-        .trim()
-        .chars()
-        .take(80)
-        .collect::<String>();
+    let s = s.trim_start_matches('.').trim();
+    let s = cap_bytes(s, MAX_STEM_BYTES);
     if s.is_empty() {
         "untitled".to_owned()
     } else {
-        s
+        s.to_owned()
     }
 }
 
 /// Write `bytes` to `path` atomically: hidden temp file in the same folder, fsync, rename, fsync the folder.
 pub fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let dir = path.parent().ok_or_else(|| std::io::Error::other("no parent"))?;
-    let name = path
-        .file_name()
-        .ok_or_else(|| std::io::Error::other("no file name"))?;
     let tmp = dir.join(format!(
-        ".{}.qrtz-tmp-{}-{:08x}",
-        name.to_string_lossy(),
+        ".qrtz-tmp-{}-{:08x}",
         std::process::id(),
         rand::random::<u32>()
     ));
@@ -305,28 +327,132 @@ pub struct Vault {
     db: Connection,
 }
 
+/// What a file in the vault is, for the index (the file is never changed by indexing it).
+struct Parsed {
+    id: String,
+    title: String,
+    body: String,
+    meetings: Vec<String>,
+    read_only: bool,
+}
+
+/// The message for a folder that isn't just for notes.
+pub const ROOT_REFUSED: &str = "pick a folder just for notes, not your whole home or a system folder.";
+/// Upper bounds on a scan (a vault is a notes folder, not a disk).
+pub const MAX_FILES: usize = 20_000;
+pub const MAX_DEPTH: usize = 16;
+/// Why a note can't be changed by qrtz.
+pub const NOT_UTF8: &str =
+    "this note isn't plain UTF-8 text, so qrtz shows it read-only and won't change it.";
+pub const TOO_BIG: &str = "this note is too large for qrtz to edit (over 1 MB); it is listed by name only.";
+
+fn canon_or(p: &Path) -> PathBuf {
+    fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
+}
+
+/// ADR 0220 (security review H1): a notes folder must be a folder just for notes. Refused: `/`, the home folder
+/// itself, `~/Library` (and inside it), any folder that contains the qrtz data dir (or is it), `/System`,
+/// `/Library`, `/Applications` (and inside them), `/Volumes` and a volume's root. Compared after canonicalizing.
+pub fn refuse_root(root: &Path, home: Option<&Path>, data: &Path) -> VResult<()> {
+    let r = canon_or(root);
+    let no = || Err(VaultError::Invalid(ROOT_REFUSED.into()));
+    if r.parent().is_none() {
+        return no();
+    }
+    for sys in ["/System", "/Library", "/Applications"] {
+        if r.starts_with(sys) {
+            return no();
+        }
+    }
+    if r == Path::new("/Volumes") || r.parent() == Some(Path::new("/Volumes")) {
+        return no();
+    }
+    if let Some(h) = home {
+        let h = canon_or(h);
+        if r == h || r.starts_with(h.join("Library")) {
+            return no();
+        }
+    }
+    let d = canon_or(data);
+    if d.starts_with(&r) {
+        return no();
+    }
+    Ok(())
+}
+
+/// A stable id for a file that has none (or a copy's duplicate): derived from its vault-relative path, so it is
+/// the same on every scan without writing anything. qrtz writes it into front matter only when the user saves the
+/// note through qrtz.
+pub fn derived_id(rel: &str) -> String {
+    format!("p{}", &hash_bytes(rel.as_bytes())[..24])
+}
+
+/// Rename without replacing an existing file (macOS `renamex_np(RENAME_EXCL)`, else a hard link + unlink, which
+/// also fails when the target exists).
+pub fn rename_noreplace(from: &Path, to: &Path) -> std::io::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        extern "C" {
+            fn renamex_np(from: *const std::ffi::c_char, to: *const std::ffi::c_char, flags: u32) -> i32;
+        }
+        const RENAME_EXCL: u32 = 0x0000_0004;
+        let f = std::ffi::CString::new(from.as_os_str().as_bytes()).map_err(std::io::Error::other)?;
+        let t = std::ffi::CString::new(to.as_os_str().as_bytes()).map_err(std::io::Error::other)?;
+        // SAFETY: two valid NUL-terminated paths; renamex_np only reads them.
+        let r = unsafe { renamex_np(f.as_ptr(), t.as_ptr(), RENAME_EXCL) };
+        if r == 0 {
+            return Ok(());
+        }
+        let e = std::io::Error::last_os_error();
+        // Filesystems without RENAME_EXCL (ENOTSUP/EINVAL) fall through to link + unlink.
+        if !matches!(e.raw_os_error(), Some(45) | Some(22)) {
+            return Err(e);
+        }
+    }
+    fs::hard_link(from, to)?;
+    fs::remove_file(from)
+}
+
+fn stem_of(rel: &str) -> String {
+    Path::new(rel)
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
 impl Vault {
-    /// Open (creating) the vault folder and its index. `root` must be absolute; it is canonicalized, so a vault
-    /// reached through a symlink is confined to where the link points.
+    /// Open (creating) the vault folder and its index. `root` must be absolute and a folder just for notes
+    /// ([`refuse_root`], with `$HOME` and the data dir the index lives under); it is canonicalized, so a vault
+    /// reached through a symlink is confined to where the link points (checked once here, see ADR 0220).
     pub fn open(root: &Path, index: &Path) -> VResult<Vault> {
         if !root.is_absolute() {
             return Err(VaultError::Invalid(
                 "the notes folder must be an absolute path".into(),
             ));
         }
+        let home = std::env::var_os("HOME").map(PathBuf::from);
+        // The index is `<data>/<dir>/index.db`.
+        let data = index.parent().and_then(Path::parent).unwrap_or(Path::new("/"));
+        refuse_root(root, home.as_deref(), data)?;
         fs::create_dir_all(root)?;
         let root = fs::canonicalize(root)?;
+        refuse_root(&root, home.as_deref(), data)?;
         if !fs::metadata(&root)?.is_dir() {
             return Err(VaultError::Invalid("the notes folder is not a folder".into()));
         }
         if let Some(p) = index.parent() {
             fs::create_dir_all(p)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(p, fs::Permissions::from_mode(0o700))?;
+            }
         }
         let db = match Self::open_index(index) {
             Ok(db) => db,
-            Err(e) => {
+            Err(_) => {
                 // A corrupt or foreign index is only a cache: drop it and rebuild from the files.
-                let _ = e;
                 let _ = fs::remove_file(index);
                 Self::open_index(index)?
             }
@@ -350,7 +476,8 @@ impl Vault {
             )?;
             db.execute_batch(&format!(
                 "CREATE TABLE docs (id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, title TEXT NOT NULL,
-                   mtime_ns INTEGER NOT NULL, size INTEGER NOT NULL, hash TEXT NOT NULL);
+                   mtime_ns INTEGER NOT NULL, size INTEGER NOT NULL, hash TEXT NOT NULL,
+                   read_only INTEGER NOT NULL DEFAULT 0);
                  CREATE INDEX docs_mtime ON docs(mtime_ns DESC);
                  CREATE VIRTUAL TABLE docs_fts USING fts5(id UNINDEXED, title, body, tokenize='porter unicode61');
                  CREATE TABLE doc_meetings (doc_id TEXT NOT NULL, meeting_id TEXT NOT NULL,
@@ -399,13 +526,17 @@ impl Vault {
             .map(|r| r.to_string_lossy().into_owned())
     }
 
-    /// Every `.md` file under the vault: hidden entries, the trash and symlinks are skipped (never followed).
+    /// Every `.md` file under the vault: hidden entries, the trash and symlinks are skipped (never followed); at
+    /// most [`MAX_FILES`] files and [`MAX_DEPTH`] folders deep.
     fn walk(&self) -> Vec<(String, fs::Metadata)> {
         let mut out = vec![];
-        let mut stack = vec![self.root.clone()];
-        while let Some(d) = stack.pop() {
+        let mut stack = vec![(self.root.clone(), 0usize)];
+        while let Some((d, depth)) = stack.pop() {
             let Ok(rd) = fs::read_dir(&d) else { continue };
             for e in rd.flatten() {
+                if out.len() >= MAX_FILES {
+                    return out;
+                }
                 let name = e.file_name().to_string_lossy().into_owned();
                 if name.starts_with('.') {
                     continue;
@@ -417,7 +548,9 @@ impl Vault {
                     continue;
                 }
                 if m.is_dir() {
-                    stack.push(e.path());
+                    if depth + 1 < MAX_DEPTH {
+                        stack.push((e.path(), depth + 1));
+                    }
                 } else if m.is_file() && name.to_ascii_lowercase().ends_with(".md") {
                     if let Some(rel) = self.rel_of(&e.path()) {
                         out.push((rel, m));
@@ -428,8 +561,8 @@ impl Vault {
         out
     }
 
-    /// Bring the index in line with the files. Unchanged `(mtime, size)` costs one stat; a changed file is read,
-    /// given an id if it has none (or a duplicate one), and reindexed. Leftover temp files from a crash are removed.
+    /// Bring the index in line with the files. Unchanged `(mtime, size)` costs one stat; a changed file is read
+    /// and reindexed. Indexing never writes to a note. Leftover qrtz temp files from a crash are removed.
     pub fn rescan(&mut self) -> VResult<ScanReport> {
         self.sweep_temps();
         let files = self.walk();
@@ -478,8 +611,8 @@ impl Vault {
     }
 
     fn sweep_temps(&self) {
-        let mut stack = vec![self.root.clone()];
-        while let Some(d) = stack.pop() {
+        let mut stack = vec![(self.root.clone(), 0usize)];
+        while let Some((d, depth)) = stack.pop() {
             let Ok(rd) = fs::read_dir(&d) else { continue };
             for e in rd.flatten() {
                 let name = e.file_name().to_string_lossy().into_owned();
@@ -489,8 +622,8 @@ impl Vault {
                 if m.file_type().is_symlink() {
                     continue;
                 }
-                if m.is_dir() && !name.starts_with('.') {
-                    stack.push(e.path());
+                if m.is_dir() && !name.starts_with('.') && depth + 1 < MAX_DEPTH {
+                    stack.push((e.path(), depth + 1));
                 } else if m.is_file() && is_temp(&name) {
                     let _ = fs::remove_file(e.path());
                 }
@@ -505,12 +638,59 @@ impl Vault {
         Ok(())
     }
 
-    /// Read and index one file. Returns its id, or None when its bytes were already indexed (a touch).
-    fn index_file(&mut self, rel: &str, known_hash: Option<&str>) -> VResult<Option<String>> {
+    fn id_taken_elsewhere(&self, id: &str, rel: &str) -> VResult<bool> {
+        Ok(self
+            .db
+            .query_row("SELECT path FROM docs WHERE id=?", [id], |r| {
+                r.get::<_, String>(0)
+            })
+            .optional()?
+            .is_some_and(|p| p != rel && self.root.join(&p).exists()))
+    }
+
+    /// Stat, then (if small enough) read and parse a file. Never writes it.
+    fn read_parsed(&self, rel: &str) -> VResult<(Parsed, String, fs::Metadata)> {
         let full = self.resolve(rel)?;
+        let m = fs::metadata(&full)?;
+        let stem = stem_of(rel);
+        if m.len() as usize > MAX_NOTE_BYTES {
+            let hash = format!("big-{}-{}", m.len(), mtime_ns(&m));
+            let p = Parsed {
+                id: derived_id(rel),
+                title: stem,
+                body: String::new(),
+                meetings: vec![],
+                read_only: true,
+            };
+            return Ok((p, hash, m));
+        }
         let bytes = fs::read(&full)?;
         let hash = hash_bytes(&bytes);
-        let m = fs::metadata(&full)?;
+        let p = match std::str::from_utf8(&bytes) {
+            Ok(text) => {
+                let n = parse_note(text);
+                Parsed {
+                    id: n.id.clone().unwrap_or_default(),
+                    title: title_of(&n.body, &stem),
+                    body: n.body,
+                    meetings: n.meetings,
+                    read_only: false,
+                }
+            }
+            Err(_) => Parsed {
+                id: derived_id(rel),
+                title: stem,
+                body: String::from_utf8_lossy(&bytes).into_owned(),
+                meetings: vec![],
+                read_only: true,
+            },
+        };
+        Ok((p, hash, m))
+    }
+
+    /// Index one file (read-only: the file is never touched). Returns its id, or None for a touch.
+    fn index_file(&mut self, rel: &str, known_hash: Option<&str>) -> VResult<Option<String>> {
+        let (mut p, hash, m) = self.read_parsed(rel)?;
         if known_hash == Some(hash.as_str()) {
             self.db.execute(
                 "UPDATE docs SET mtime_ns=?, size=? WHERE path=?",
@@ -518,54 +698,32 @@ impl Vault {
             )?;
             return Ok(None);
         }
-        let text = String::from_utf8_lossy(&bytes).into_owned();
-        let mut note = parse_note(&text);
-        // An id another indexed file already holds (a copied note) or no id at all: issue one and write it into
-        // the front matter (body bytes untouched).
-        let clash = match &note.id {
-            Some(id) => self
-                .db
-                .query_row("SELECT path FROM docs WHERE id=?", [id], |r| {
-                    r.get::<_, String>(0)
-                })
-                .optional()?
-                .is_some_and(|p| p != rel && self.root.join(&p).exists()),
-            None => true,
-        };
-        let (bytes, hash, m) = if clash {
-            note.id = Some(new_id());
-            let out = render_note(&note);
-            atomic_write(&full, out.as_bytes())?;
-            let m = fs::metadata(&full)?;
-            (out.into_bytes(), String::new(), m)
-        } else {
-            (bytes, hash, m)
-        };
-        let hash = if hash.is_empty() { hash_bytes(&bytes) } else { hash };
-        let id = note.id.clone().unwrap_or_default();
-        let stem = Path::new(rel)
-            .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let title = title_of(&note.body, &stem);
+        // No id, or one another file already holds (a copy): a path-derived id, written only on a qrtz save.
+        if p.id.is_empty() || self.id_taken_elsewhere(&p.id, rel)? {
+            p.id = derived_id(rel);
+        }
+        let id = p.id.clone();
         let tx = self.db.transaction()?;
         tx.execute("DELETE FROM docs WHERE id=? OR path=?", params![id, rel])?;
         tx.execute("DELETE FROM docs_fts WHERE id=?", [&id])?;
         tx.execute("DELETE FROM doc_meetings WHERE doc_id=?", [&id])?;
         tx.execute(
-            "INSERT INTO docs (id,path,title,mtime_ns,size,hash) VALUES (?,?,?,?,?,?)",
-            params![id, rel, title, mtime_ns(&m), m.len() as i64, hash],
+            "INSERT INTO docs (id,path,title,mtime_ns,size,hash,read_only) VALUES (?,?,?,?,?,?,?)",
+            params![
+                id,
+                rel,
+                p.title,
+                mtime_ns(&m),
+                m.len() as i64,
+                hash,
+                p.read_only as i64
+            ],
         )?;
-        let body = if note.body.len() > MAX_NOTE_BYTES {
-            ""
-        } else {
-            note.body.as_str()
-        };
         tx.execute(
             "INSERT INTO docs_fts (id,title,body) VALUES (?,?,?)",
-            params![id, title, body],
+            params![id, p.title, p.body],
         )?;
-        for mid in &note.meetings {
+        for mid in &p.meetings {
             tx.execute(
                 "INSERT OR IGNORE INTO doc_meetings VALUES (?,?)",
                 params![id, mid],
@@ -662,36 +820,29 @@ impl Vault {
     /// Read a note from disk (the file, not the index, is the truth), reindexing it if it moved on.
     pub fn get(&mut self, id: &str) -> VResult<Doc> {
         let rel = self.path_of(id)?;
-        let full = self.resolve(&rel)?;
-        let bytes = match fs::read(&full) {
-            Ok(b) => b,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+        let (p, hash, m) = match self.read_parsed(&rel) {
+            Ok(x) => x,
+            Err(VaultError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
                 self.rescan()?;
                 return Err(VaultError::NotFound(id.to_owned()));
             }
-            Err(e) => return Err(e.into()),
+            Err(e) => return Err(e),
         };
-        let hash = hash_bytes(&bytes);
         let known: String = self
             .db
             .query_row("SELECT hash FROM docs WHERE id=?", [id], |r| r.get(0))?;
         if known != hash {
             self.index_file(&rel, Some(&known))?;
         }
-        let note = parse_note(&String::from_utf8_lossy(&bytes));
-        let m = fs::metadata(&full)?;
-        let stem = full
-            .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_default();
         Ok(Doc {
             id: id.to_owned(),
-            title: title_of(&note.body, &stem),
+            title: p.title,
             path: rel,
             updated_at: mtime_ns(&m) / 1_000_000,
-            meetings: note.meetings,
-            body: note.body,
+            meetings: p.meetings,
+            body: p.body,
             hash,
+            read_only: p.read_only,
         })
     }
 
@@ -701,6 +852,7 @@ impl Vault {
         } else {
             format!("{dir}/")
         };
+        let stem = cap_bytes(stem, MAX_STEM_BYTES);
         for n in 1..10_000 {
             let name = if n == 1 {
                 format!("{stem}.md")
@@ -712,7 +864,7 @@ impl Vault {
                 return rel;
             }
         }
-        format!("{base}{stem} {}.md", new_id())
+        format!("{base}{} {}.md", cap_bytes(stem, 100), new_id())
     }
 
     /// A new note at the vault's top level: `title` becomes its `# heading` and file name.
@@ -738,63 +890,79 @@ impl Vault {
                 .map(str::to_owned)
                 .unwrap_or_else(|| title.map(|t| format!("# {t}\n\n")).unwrap_or_default()),
         };
-        atomic_write(&full, render_note(&note).as_bytes())?;
+        write_new(&full, render_note(&note).as_bytes())?;
         self.index_file(&rel, None)?;
         self.get(&id)
     }
 
-    /// Save a note's body. `base_hash` is the hash the editor loaded; a file changed on disk since then is a
-    /// conflict unless `force`, and a forced save keeps the other version as a conflict copy first. Front matter
-    /// (id, meetings, other keys) is kept as on disk. An `untitled` file is renamed after its title on save.
-    pub fn save(&mut self, id: &str, body: &str, base_hash: &str, force: bool) -> VResult<Doc> {
-        if body.len() > MAX_NOTE_BYTES {
-            return Err(VaultError::Invalid("note is too large".into()));
-        }
-        let rel = self.path_of(id)?;
-        let full = self.resolve(&rel)?;
-        let disk = fs::read(&full).map_err(|e| {
+    /// The editable text of a note on disk (refusing read-only notes), with its current hash.
+    fn editable(&self, id: &str, rel: &str) -> VResult<(NoteFile, String)> {
+        let full = self.resolve(rel)?;
+        let m = fs::metadata(&full).map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 VaultError::NotFound(id.to_owned())
             } else {
                 e.into()
             }
         })?;
-        let current = hash_bytes(&disk);
-        let mut note = parse_note(&String::from_utf8_lossy(&disk));
+        if m.len() as usize > MAX_NOTE_BYTES {
+            return Err(VaultError::Invalid(TOO_BIG.into()));
+        }
+        let bytes = fs::read(&full)?;
+        let text = std::str::from_utf8(&bytes).map_err(|_| VaultError::Invalid(NOT_UTF8.into()))?;
+        Ok((parse_note(text), hash_bytes(&bytes)))
+    }
+
+    /// Save a note's body. `base_hash` is the hash the editor loaded; a file changed on disk since then is a
+    /// conflict unless `force`, and a forced save keeps the other version as a conflict copy first. Front matter
+    /// is kept as on disk; the note's `id` is written into it here (the first qrtz save of a file made elsewhere).
+    /// An `untitled` file is renamed after its title (never over another file).
+    pub fn save(&mut self, id: &str, body: &str, base_hash: &str, force: bool) -> VResult<Doc> {
+        if body.len() > MAX_NOTE_BYTES {
+            return Err(VaultError::Invalid("note is too large".into()));
+        }
+        let rel = self.path_of(id)?;
+        let full = self.resolve(&rel)?;
+        let (mut note, current) = self.editable(id, &rel)?;
         if current != base_hash {
             if !force {
                 return Err(VaultError::Conflict {
                     current_hash: current,
                 });
             }
-            let stem = full
-                .file_stem()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_default();
             let stamp = chrono_like(now_ms());
-            let crel = self.unique_rel(dir_of(&rel), &format!("{stem} (conflict {stamp})"));
+            let crel = self.unique_rel(
+                dir_of(&rel),
+                &format!(
+                    "{} (conflict {stamp})",
+                    cap_bytes(&stem_of(&rel), MAX_STEM_BYTES - 40)
+                ),
+            );
             let mut other = note.clone();
-            other.id = None; // the copy is a new note; the scanner gives it its own id
-            atomic_write(&self.resolve(&crel)?, render_note(&other).as_bytes())?;
+            other.id = None; // the copy is its own note (path-derived id until saved)
+            write_new(&self.resolve(&crel)?, render_note(&other).as_bytes())?;
         }
-        if note.id.as_deref() != Some(id) {
-            note.id = Some(id.to_owned());
-        }
+        note.id = Some(id.to_owned());
         note.body = body.to_owned();
         atomic_write(&full, render_note(&note).as_bytes())?;
         let mut rel = rel;
-        let stem = Path::new(&rel)
-            .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_default();
+        let stem = stem_of(&rel);
         let title = title_of(body, &stem);
         if (stem == "untitled" || stem.starts_with("untitled (")) && title != stem && !body.trim().is_empty()
         {
-            let nrel = self.unique_rel(dir_of(&rel), &file_stem_for(&title));
-            fs::rename(&full, self.resolve(&nrel)?)?;
-            self.db
-                .execute("UPDATE docs SET path=? WHERE id=?", params![nrel, id])?;
-            rel = nrel;
+            for _ in 0..5 {
+                let nrel = self.unique_rel(dir_of(&rel), &file_stem_for(&title));
+                match rename_noreplace(&full, &self.resolve(&nrel)?) {
+                    Ok(()) => {
+                        self.db
+                            .execute("UPDATE docs SET path=? WHERE id=?", params![nrel, id])?;
+                        rel = nrel;
+                        break;
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                    Err(e) => return Err(e.into()),
+                }
+            }
         }
         self.index_file(&rel, None)?;
         self.rescan()?;
@@ -804,7 +972,7 @@ impl Vault {
     fn set_meetings(&mut self, id: &str, f: impl FnOnce(&mut Vec<String>)) -> VResult<Doc> {
         let rel = self.path_of(id)?;
         let full = self.resolve(&rel)?;
-        let mut note = parse_note(&String::from_utf8_lossy(&fs::read(&full)?));
+        let (mut note, _) = self.editable(id, &rel)?;
         f(&mut note.meetings);
         note.id = Some(id.to_owned());
         atomic_write(&full, render_note(&note).as_bytes())?;
@@ -827,21 +995,41 @@ impl Vault {
         self.set_meetings(id, |m| m.retain(|x| x != meeting_id))
     }
 
-    /// Move a note into the vault's hidden `.trash` folder (recoverable from Finder).
+    /// Move a note into the vault's hidden `.trash` folder (recoverable from Finder). The trash folder is resolved
+    /// like any vault path (a symlinked `.trash` is refused) and nothing in it is ever replaced.
     pub fn trash(&mut self, id: &str) -> VResult<()> {
         let rel = self.path_of(id)?;
         let full = self.resolve(&rel)?;
-        let tdir = self.root.join(TRASH_DIR);
-        fs::create_dir_all(&tdir)?;
+        let tdir = self.resolve(TRASH_DIR)?;
+        match fs::symlink_metadata(&tdir) {
+            Ok(m) if m.is_dir() => {}
+            Ok(_) => return Err(VaultError::Escape),
+            Err(_) => fs::create_dir(&tdir)?,
+        }
         let name = full
             .file_name()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let mut dst = tdir.join(&name);
-        if dst.exists() {
-            dst = tdir.join(format!("{} {}", now_ms(), name));
+        let mut moved = false;
+        for n in 0..20 {
+            let dname = if n == 0 {
+                name.clone()
+            } else {
+                format!("{} {}", now_ms() + n, name)
+            };
+            let dst = self.resolve(&format!("{TRASH_DIR}/{dname}"))?;
+            match rename_noreplace(&full, &dst) {
+                Ok(()) => {
+                    moved = true;
+                    break;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(e.into()),
+            }
         }
-        fs::rename(&full, &dst)?;
+        if !moved {
+            return Err(VaultError::Invalid("couldn't move the note to the trash".into()));
+        }
         self.drop_row(id)?;
         Ok(())
     }
@@ -873,7 +1061,7 @@ impl Vault {
                 let id = self.create(Some(meeting_title), Some(meeting_id), None)?.id;
                 let rel = self.path_of(&id)?;
                 let full = self.resolve(&rel)?;
-                let mut n = parse_note(&String::from_utf8_lossy(&fs::read(&full)?));
+                let (mut n, _) = self.editable(&id, &rel)?;
                 n.extra.push(format!("{MIGRATED_KEY}: {meeting_id}"));
                 atomic_write(&full, render_note(&n).as_bytes())?;
                 self.index_file(&rel, None)?;
@@ -888,6 +1076,33 @@ impl Vault {
         body.push_str(&format!("- {line}\n"));
         self.save(&id, &body, &d.hash, false)
     }
+}
+
+/// Write a file that must not exist yet (a new note, a conflict copy): temp + no-replace rename.
+fn write_new(path: &Path, bytes: &[u8]) -> VResult<()> {
+    let dir = path
+        .parent()
+        .ok_or_else(|| VaultError::Invalid("no folder".into()))?;
+    let tmp = dir.join(format!(
+        ".qrtz-tmp-{}-{:08x}",
+        std::process::id(),
+        rand::random::<u32>()
+    ));
+    let r = (|| {
+        let mut f = fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+        drop(f);
+        rename_noreplace(&tmp, path)?;
+        if let Ok(d) = fs::File::open(dir) {
+            let _ = d.sync_all();
+        }
+        Ok::<(), std::io::Error>(())
+    })();
+    if r.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    Ok(r?)
 }
 
 fn dir_of(rel: &str) -> &str {
@@ -942,6 +1157,9 @@ pub fn migrate_meeting_notes(v: &mut Vault, meetings: &[LegacyMeeting]) -> VResu
     // Markers live in the files, so read them from disk (the index doesn't keep extra front matter).
     for (rel, _) in v.walk() {
         if let Ok(full) = v.resolve(&rel) {
+            if fs::metadata(&full).map_or(true, |m| m.len() as usize > MAX_NOTE_BYTES) {
+                continue;
+            }
             if let Ok(t) = fs::read_to_string(full) {
                 for l in parse_note(&t).extra {
                     if let Some(m) = l.strip_prefix(&format!("{MIGRATED_KEY}:")) {
@@ -981,7 +1199,7 @@ pub fn migrate_meeting_notes(v: &mut Vault, meetings: &[LegacyMeeting]) -> VResu
             extra: vec![format!("{MIGRATED_KEY}: {}", m.id)],
             body,
         };
-        atomic_write(&v.resolve(&rel)?, render_note(&note).as_bytes())?;
+        write_new(&v.resolve(&rel)?, render_note(&note).as_bytes())?;
         v.index_file(&rel, None)?;
         done.insert(m.id.clone());
         out.push(m.id.clone());
