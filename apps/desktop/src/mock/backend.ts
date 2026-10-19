@@ -872,6 +872,11 @@ export function createMockBridge(): TauriBridge {
     'dash:rotate-codes': () => ({ ok: true as const }),
     // The browser mock opens nothing; it says whether the host would (https only).
     'dash:open-link': ({ url }) => ({ opened: url.startsWith('https://') }),
+    // ADR 0231: the browser mock never talks to a server.
+    'dash:connect': () => {
+      throw new Error('no dash server in the browser mock');
+    },
+    'dash:disconnect': () => ({ ok: true as const }),
     'dash:review-agent': ({ agentId, approve }) => {
       const a = dashMock.agents.find((x) => x.id === agentId);
       if (!a || a.status !== 'pending') return { ok: false };

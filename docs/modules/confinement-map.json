@@ -17,6 +17,7 @@
     "qrtz-modules": "shell",
     "qrtz-publish": "shell",
     "qrtz-dash": "shell",
+    "qrtz-dash-net": "shell",
     "qrtz-speech-types": "shared",
     "qrtz-ipc": "shared",
     "qrtz-helper-bridge": "shared",
@@ -28,6 +29,17 @@
     "qrtz-llm": "nano",
     "qrtz-backup": "nano",
     "qrtz-ctrl": "ctrl"
+  },
+  "networkRoles": {
+    "about": "ADR 0231 amendment 1 (Bozniak): the one generic exception to the ADR 0078 offline checks. offline_graph.rs applies every offline check to every crate except one mapped here, and holds each mapped crate to its own rule instead: a separate process that no workspace crate links (normal edge), whose direct network crates are exactly netCrates, whose workspace dependencies are shared-owned only, whose sources name no URL outside egress, and which never ships in a release bundle (scripts/release/verify-bundle.sh). A new entry needs its own ADR and Bozniak's review.",
+    "crates": {
+      "qrtz-dash-net": {
+        "role": "dash-egress",
+        "adr": "0231",
+        "egress": ["https://dash.qrtz.ai"],
+        "netCrates": ["reqwest"]
+      }
+    }
   },
   "swiftTargets": {
     "qrtz-helper": "monolith",

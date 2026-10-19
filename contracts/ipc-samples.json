@@ -1656,6 +1656,21 @@
         "ok": true
       }
     },
+    "dash:connect": {
+      "request": {
+        "setupToken": "setup-token-sample"
+      },
+      "response": {
+        "connected": true,
+        "origin": "https://dash.qrtz.ai"
+      }
+    },
+    "dash:disconnect": {
+      "request": null,
+      "response": {
+        "ok": true
+      }
+    },
     "calendar:status": {
       "request": null,
       "response": {

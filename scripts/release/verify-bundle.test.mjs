@@ -39,6 +39,26 @@ describe('verify-bundle.sh', () => {
     expect(s).toContain('Notarized Developer ID');
   });
 
+  it("fails on agent dash's network helper anywhere in the bundle (ADR 0231)", () => {
+    for (const rel of [
+      'Contents/MacOS/qrtz-dash-net',
+      'Contents/Resources/bin/qrtz-dash-net',
+    ]) {
+      const app = path.join(
+        mkdtempSync(path.join(os.tmpdir(), 'vb-')),
+        'qrtz.app',
+      );
+      mkdirSync(path.join(app, 'Contents/MacOS'), { recursive: true });
+      mkdirSync(path.dirname(path.join(app, rel)), { recursive: true });
+      writeFileSync(path.join(app, rel), '#!/bin/sh\n', { mode: 0o755 });
+      const r = spawnSync('bash', [script, app], { encoding: 'utf8' });
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toContain(
+        `${rel}: qrtz-dash-net (Agent Dash's network helper) must not ship`,
+      );
+    }
+  });
+
   it('is called by release:mac, publish-local.sh and app-release.yml', () => {
     expect(read('scripts/release/sign-notarize.sh')).toContain(
       'scripts/release/verify-bundle.sh" "$APP"',

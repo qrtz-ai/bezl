@@ -961,6 +961,24 @@ export const ipcContract = {
     request: DashDelete,
     response: z.object({ ok: z.boolean() }),
   }),
+  /**
+   * ADR 0231 amendment 1: use the dash server through the qrtz-dash-net helper (opt-in; debug builds only). With a
+   * setup token the helper trades it for a new dashboard's owner key, which it keeps in its own Keychain item (the
+   * app never sees it); without one it reuses the dashboard it already holds a key for.
+   */
+  'dash:connect': defineChannel({
+    version: 1,
+    capability: 'dash.manage',
+    request: z.object({ setupToken: z.string().min(1).max(256).optional() }),
+    response: z.object({ connected: z.literal(true), origin: z.string() }),
+  }),
+  /** ADR 0231 amendment 1: forget the dash server (the helper deletes its owner key; the dashboard stays on the server) and stop the helper. */
+  'dash:disconnect': defineChannel({
+    version: 1,
+    capability: 'dash.manage',
+    request: z.void(),
+    response: z.object({ ok: z.literal(true) }),
+  }),
 } as const satisfies Record<string, ChannelDef>;
 
 export type IpcContract = typeof ipcContract;

@@ -1241,7 +1241,7 @@ impl Handler for AppService {
                 let url = r["url"].as_str().unwrap_or("");
                 Ok(json!({ "opened": self.shell.open_https(url) }))
             }
-            Some("dash") => self.dash.call(channel, &payload),
+            Some("dash") => self.dash.call_async(channel, &payload).await,
             Some("storage") => self.storage.call(channel, payload).await,
             Some("talk") => self.talk.call(channel, payload).await,
             Some("app") => self.app_channel(channel, payload, &ctx.sub_app).await,

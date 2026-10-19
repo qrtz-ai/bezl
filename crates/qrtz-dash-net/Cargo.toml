@@ -1,0 +1,28 @@
+[package]
+name = "qrtz-dash-net"
+description = "Agent Dash's network helper (ADR 0231 amendment 1): a separate process that talks only to https://dash.qrtz.ai, and to the app only over stdio dash.read/dash.manage messages. The only crate with a network role in docs/modules/confinement-map.json."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "qrtz-dash-net"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true, features = ["io-std"] }
+qrtz-ipc = { workspace = true }
+# The one network library (ADR 0231 amendment 1): the same reqwest and features qrtz-speech already uses.
+reqwest = { version = "0.12", default-features = false, features = [
+  "rustls-tls",
+] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3"
+
+[dev-dependencies]
+qrtz-dash = { workspace = true }

@@ -317,13 +317,14 @@ async fn only_dash_reads_and_manages_the_dashboard() {
         .keys()
         .filter(|c| c.starts_with("dash:"))
         .collect();
-    assert_eq!(channels.len(), 6);
+    assert_eq!(channels.len(), 8);
     let others: Vec<&String> = contract().manifests.keys().filter(|k| *k != "dash").collect();
     assert!(others.len() >= 7);
     for ch in &channels {
         let payload = match ch.as_str() {
             "dash:review-agent" => json!({"agentId": "ag_1", "approve": true}),
             "dash:delete" => json!({"scope": "dashboard"}),
+            "dash:connect" => json!({}),
             "dash:open-link" => json!({"url": "https://qrtz.ai"}),
             _ => Value::Null,
         };

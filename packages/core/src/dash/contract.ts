@@ -148,6 +148,8 @@ export type DashAgent = z.infer<typeof DashAgent>;
 
 export const DashView = z.object({
   origin: z.string(),
+  /** ADR 0231: true when this view came from the dash server (agents can reach it); absent or false in memory. */
+  connected: z.boolean().optional(),
   readmeVersion: z.string(),
   deleted: z.boolean(),
   retentionDays: z.number(),

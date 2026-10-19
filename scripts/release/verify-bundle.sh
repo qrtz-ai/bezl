@@ -41,6 +41,12 @@ ent_keys() { codesign -d --entitlements - --xml "$1" 2>/dev/null | plutil -conve
 
 for name in qrtz-app qrtz-echo qrtz; do [[ -x "$macos/$name" ]] || fail "$name is missing from Contents/MacOS"; done
 
+# ADR 0231 amendment 1: Agent Dash's network helper is dev-only until Bozniak clears dash for release. Any file of
+# that name anywhere in the bundle fails, signed or not, executable or not.
+while IFS= read -r -d '' f; do
+  fail "${f#"$app"/}: qrtz-dash-net (Agent Dash's network helper) must not ship in a release bundle (ADR 0231)"
+done < <(find "$app" -name 'qrtz-dash-net*' -print0)
+
 for bin in "$macos"/*; do
   [[ -f "$bin" ]] || continue
   name="$(basename "$bin")"

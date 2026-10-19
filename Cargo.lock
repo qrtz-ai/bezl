@@ -3448,6 +3448,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "qrtz-dash-net"
+version = "0.2.3"
+dependencies = [
+ "async-trait",
+ "qrtz-dash",
+ "qrtz-ipc",
+ "reqwest 0.12.28",
+ "security-framework",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "qrtz-desktop"
 version = "0.2.3"
 dependencies = [

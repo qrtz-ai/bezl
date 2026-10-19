@@ -11829,6 +11829,9 @@
           "origin": {
             "type": "string"
           },
+          "connected": {
+            "type": "boolean"
+          },
           "readmeVersion": {
             "type": "string"
           },
@@ -12184,6 +12187,60 @@
         "properties": {
           "ok": {
             "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "dash:connect": {
+      "version": 1,
+      "capability": "dash.manage",
+      "request": {
+        "optional": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "setupToken": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          }
+        }
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "connected": {
+            "type": "boolean",
+            "const": true
+          },
+          "origin": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "connected",
+          "origin"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "dash:disconnect": {
+      "version": 1,
+      "capability": "dash.manage",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
           }
         },
         "required": [

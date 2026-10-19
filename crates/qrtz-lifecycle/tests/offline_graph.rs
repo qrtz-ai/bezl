@@ -28,6 +28,12 @@
 //!    required, and may hold only the app's TCC allowlist (`appTccEntitlements`, each entry with an ADR note); inference
 //!    XPC services stay strict (app-sandbox, no network/device/personal-information/automation).
 //!
+//! 7. ADR 0231 amendment 1: every check above applies to every crate except one mapped to a network role in
+//!    `docs/modules/confinement-map.json` (`networkRoles`; today only qrtz-dash-net). A network-role crate is held
+//!    to its own rule instead (`network_role_crates_*`): no workspace crate links it, its direct network crates are
+//!    exactly its `netCrates`, its workspace dependencies are shared-owned only, and its sources name no URL outside
+//!    its `egress`. qrtz-app's own graph still reaches no network crate but the speech channel.
+//!
 //! A new network path has to change this test and its ADR, on purpose.
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
@@ -225,11 +231,26 @@ fn the_app_reaches_no_network_crate_except_the_speech_update_channel() {
     }
 }
 
+/// ADR 0231 amendment 1: crates mapped to a network role (`networkRoles.crates` in the confinement map). The
+/// offline checks skip exactly these; `network_role_crates_*` hold them to their own rule.
+fn network_roles() -> BTreeMap<String, Value> {
+    let p = root().join("docs/modules/confinement-map.json");
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
+    v["networkRoles"]["crates"]
+        .as_object()
+        .map(|o| o.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+        .unwrap_or_default()
+}
+
 #[test]
 fn only_qrtz_speech_names_a_network_crate_directly() {
     let g = graph("aarch64-apple-darwin");
+    let roles = network_roles();
     let mut direct = vec![];
     for m in &g.members {
+        if roles.contains_key(&g.name[m]) {
+            continue;
+        }
         for d in &g.normal[m] {
             if NET_CRATES.contains(&g.name[d].as_str()) {
                 direct.push((g.name[m].clone(), g.name[d].clone()));
@@ -273,9 +294,13 @@ fn no_rust_source_opens_a_socket_or_names_an_http_client_outside_the_exception()
     // ADR 0153: release tools (qrtz-publish) are held to the same rule: they write files, never sockets.
     rust_sources(&r.join("tools"), &mut files);
     assert!(files.len() > 50, "found only {} sources", files.len());
+    let roles: Vec<String> = network_roles().keys().map(|c| format!("crates/{c}/")).collect();
     let mut bad = vec![];
     for f in &files {
         let rel = f.strip_prefix(&r).unwrap().to_string_lossy().replace('\\', "/");
+        if roles.iter().any(|p| rel.starts_with(p.as_str())) {
+            continue;
+        }
         // The speech test kit (feature `testkit`, never in the app) serves bundles on 127.0.0.1.
         if rel.ends_with("qrtz-speech/src/testkit.rs")
             || rel.contains("/examples/")
@@ -1881,4 +1906,137 @@ fn model_files_come_from_hugging_face_and_are_never_uploaded() {
     // The client fetcher: a blob with signed URLs never asks a module host.
     let f = std::fs::read_to_string(root().join("crates/qrtz-modules/src/fetch.rs")).unwrap();
     assert!(f.contains("ADR 0171"), "fetch.rs: the model-source rule");
+}
+
+// ---- ADR 0231 amendment 1: network-role crates -------------------------------------------------------------------
+
+#[test]
+fn network_role_crates_are_separate_processes_with_only_their_declared_network_crates() {
+    let roles = network_roles();
+    let owner = str_map(&confinement_map()["crates"]);
+    assert!(
+        !roles.is_empty(),
+        "networkRoles.crates is empty: drop this test and the role rule"
+    );
+    for t in TARGETS {
+        let g = graph(t);
+        for (c, rule) in &roles {
+            let id = g.id(c);
+            assert!(
+                rule["role"].as_str().is_some_and(|r| !r.is_empty()),
+                "{c}: no role"
+            );
+            assert!(rule["adr"].as_str().is_some_and(|r| !r.is_empty()), "{c}: no ADR");
+            // No workspace crate links it: it only ever runs as its own process.
+            for m in &g.members {
+                assert!(
+                    !g.normal[m].contains(&id),
+                    "{t}: {} links the network-role crate {c}",
+                    g.name[m]
+                );
+            }
+            // Its direct network crates are exactly the declared ones.
+            let want: BTreeSet<String> = rule["netCrates"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap().to_owned())
+                .collect();
+            let got: BTreeSet<String> = g.normal[&id]
+                .iter()
+                .map(|d| g.name[d].clone())
+                .filter(|n| NET_CRATES.contains(&n.as_str()))
+                .collect();
+            assert_eq!(got, want, "{t}: {c}'s direct network crates");
+            // Its workspace dependencies are shared-owned only (no vault, notes, transcripts, keys, app).
+            for d in &g.normal[&id] {
+                let n = &g.name[d];
+                if let Some(o) = owner.get(n) {
+                    assert_eq!(o, "shared", "{t}: {c} depends on {n} ({o})");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn network_role_crate_sources_name_no_url_outside_their_egress() {
+    let r = root();
+    for (c, rule) in network_roles() {
+        let egress: Vec<String> = rule["egress"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_owned())
+            .collect();
+        assert!(
+            egress.iter().all(|e| e.starts_with("https://")),
+            "{c}: egress must be https: {egress:?}"
+        );
+        let mut files = vec![];
+        rust_sources(&r.join("crates").join(&c).join("src"), &mut files);
+        assert!(!files.is_empty(), "{c}: no sources");
+        let mut bad = vec![];
+        for f in &files {
+            let rel = f.strip_prefix(&r).unwrap().to_string_lossy().replace('\\', "/");
+            for (n, l) in code(f) {
+                for (i, _) in l.match_indices("://") {
+                    let start = l[..i]
+                        .rfind(|ch: char| !ch.is_ascii_alphanumeric())
+                        .map_or(0, |x| x + 1);
+                    let url = &l[start..];
+                    if !egress.iter().any(|e| url.starts_with(e.as_str())) {
+                        bad.push(format!("{rel}:{n}: {}", l.trim()));
+                    }
+                }
+                // Sockets stay out of it too: the HTTP client is its only way out.
+                for k in [
+                    "TcpStream",
+                    "TcpListener",
+                    "UdpSocket",
+                    "TcpSocket",
+                    "ToSocketAddrs",
+                ] {
+                    if l.contains(k) {
+                        bad.push(format!("{rel}:{n}: {}", l.trim()));
+                    }
+                }
+            }
+        }
+        assert!(
+            bad.is_empty(),
+            "{c} names a URL outside its egress:\n{}",
+            bad.join("\n")
+        );
+    }
+}
+
+#[test]
+fn qrtz_app_own_graph_reaches_no_network_crate_but_the_speech_channel() {
+    let roles = network_roles();
+    for t in TARGETS {
+        let g = graph(t);
+        let cut = g.reach("qrtz-app", true);
+        assert!(
+            cut.is_empty(),
+            "{t}: qrtz-app reaches the network:\n{}",
+            cut.join("\n")
+        );
+        // And no network-role crate is anywhere in its graph (it is spawned, never linked).
+        let start = g.id("qrtz-app");
+        let mut seen = BTreeSet::from([start.clone()]);
+        let mut q = VecDeque::from([start]);
+        while let Some(at) = q.pop_front() {
+            for d in &g.normal[&at] {
+                assert!(
+                    !roles.contains_key(&g.name[d]),
+                    "{t}: qrtz-app reaches {}",
+                    g.name[d]
+                );
+                if seen.insert(d.clone()) {
+                    q.push_back(d.clone());
+                }
+            }
+        }
+    }
 }

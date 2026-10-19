@@ -309,6 +309,11 @@ const dashSamples = {
     request: { scope: 'widget' as const, agentId: 'ag_2', key: 'state-farm' },
     response: { ok: true },
   },
+  'dash:connect': {
+    request: { setupToken: 'setup-token-sample' },
+    response: { connected: true as const, origin: 'https://dash.qrtz.ai' },
+  },
+  'dash:disconnect': { request: undefined, response: { ok: true as const } },
 } satisfies { [C in Extract<IpcChannel, `dash:${string}`>]: ChannelSample<C> };
 
 /** ADR 0217: nano's Apple Calendar. */

@@ -6,8 +6,10 @@ import {
   Card,
   CardGrid,
   EmptyState,
+  Field,
   GridCard,
   IconButton,
+  Input,
   Mono,
   Page,
   SettingsSection,
@@ -45,6 +47,8 @@ export default function DashView() {
     null,
   );
   const [confirmDash, setConfirmDash] = useState(false);
+  const [setupToken, setSetupToken] = useState('');
+  const [serverError, setServerError] = useState<string | null>(null);
   const load = useCallback(
     () => void qrtz.invoke('dash:view').then(setView, () => setView(null)),
     [qrtz],
@@ -67,6 +71,28 @@ export default function DashView() {
     );
   const issue = () =>
     void qrtz.invoke('dash:issue-code').then(setCode, () => setCode(null));
+
+  // ADR 0231: the setup token is sent once and dropped; the owner key it buys stays in the keychain (rust side).
+  const connect = () =>
+    void qrtz.invoke('dash:connect', { setupToken }).then(
+      () => {
+        setSetupToken('');
+        setServerError(null);
+        load();
+      },
+      () => setServerError("couldn't connect. check the setup token."),
+    );
+  // ADR 0231 amendment 1: no token = the dashboard the helper already holds a key for.
+  const reconnect = () =>
+    void qrtz.invoke('dash:connect', {}).then(
+      () => {
+        setServerError(null);
+        load();
+      },
+      () => setServerError('no saved server yet. use a setup token.'),
+    );
+  const disconnect = () =>
+    void qrtz.invoke('dash:disconnect').then(load, () => {});
 
   const pending = view?.agents.filter((a) => a.status === 'pending') ?? [];
   const live = view?.agents.filter((a) => a.status === 'approved') ?? [];
@@ -155,6 +181,59 @@ export default function DashView() {
           open={open}
         />
       ))}
+      {view ? (
+        <SettingsSection title="server">
+          {view.connected ? (
+            <Stack dir="row" gap={2} align="center">
+              <Text variant="caption" muted data-testid="dash-connected">
+                {`connected to ${view.origin}. agents can reach this dashboard.`}
+              </Text>
+              <Button size="sm" variant="ghost" onClick={disconnect}>
+                disconnect
+              </Button>
+            </Stack>
+          ) : (
+            <Stack gap={2}>
+              <Text variant="caption" muted>
+                {`local only: agents can't reach it. connect to ${view.origin} with its setup token.`}
+              </Text>
+              <Stack dir="row" gap={2} align="end">
+                <Field label="setup token">
+                  <Input
+                    type="password"
+                    autoComplete="off"
+                    value={setupToken}
+                    onChange={(e) => setSetupToken(e.target.value)}
+                    data-testid="dash-setup-token"
+                  />
+                </Field>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={!setupToken.trim()}
+                  onClick={connect}
+                  data-testid="dash-connect"
+                >
+                  connect
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={reconnect}
+                  data-testid="dash-reconnect"
+                >
+                  reconnect
+                </Button>
+              </Stack>
+              {serverError ? (
+                <Text variant="caption" tone="danger">
+                  {serverError}
+                </Text>
+              ) : null}
+            </Stack>
+          )}
+        </SettingsSection>
+      ) : null}
       {view && !view.deleted ? (
         <SettingsSection title="danger zone">
           <Stack dir="row" gap={2} align="center">
