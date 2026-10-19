@@ -1,0 +1,7 @@
+# Review gate for the confinement and release boundary (ADR 0078, 0144, 0231).
+# @jlgrimes is the review gate on behalf of tech lead Bozniak: changes to these files need his review first.
+# Branch protection is unchanged; this file only requests the review.
+/docs/modules/confinement-map.json            @jlgrimes
+/crates/qrtz-lifecycle/tests/offline_graph.rs @jlgrimes
+/scripts/release/verify-bundle.sh             @jlgrimes
+/contracts/ipc-contract.json                  @jlgrimes

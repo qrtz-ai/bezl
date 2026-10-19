@@ -2040,3 +2040,45 @@ fn qrtz_app_own_graph_reaches_no_network_crate_but_the_speech_channel() {
         }
     }
 }
+
+#[test]
+fn every_network_role_names_an_adr_that_names_its_crate() {
+    let adrs = root().join("docs/adr");
+    for (c, rule) in network_roles() {
+        let n = rule["adr"].as_str().unwrap_or_else(|| panic!("{c}: no adr"));
+        let files: Vec<PathBuf> = std::fs::read_dir(&adrs)
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| {
+                p.file_name()
+                    .and_then(|f| f.to_str())
+                    .is_some_and(|f| f.starts_with(&format!("{n}-")) && f.ends_with(".md"))
+            })
+            .collect();
+        assert_eq!(files.len(), 1, "{c}: ADR {n} is not exactly one file in docs/adr");
+        let text = std::fs::read_to_string(&files[0]).unwrap();
+        assert!(
+            text.contains(c.as_str()),
+            "{c}: ADR {n} ({}) never names the crate",
+            files[0].display()
+        );
+    }
+}
+
+#[test]
+fn codeowners_gates_the_confinement_and_release_files() {
+    let s = std::fs::read_to_string(root().join(".github/CODEOWNERS")).unwrap();
+    for f in [
+        "/docs/modules/confinement-map.json",
+        "/crates/qrtz-lifecycle/tests/offline_graph.rs",
+        "/scripts/release/verify-bundle.sh",
+        "/contracts/ipc-contract.json",
+    ] {
+        assert!(
+            s.lines()
+                .any(|l| l.split_whitespace().next() == Some(f) && l.contains("@jlgrimes")),
+            "CODEOWNERS: {f}"
+        );
+    }
+}
