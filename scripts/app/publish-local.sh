@@ -55,6 +55,12 @@ unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 
 die() { echo "publish-local: $*" >&2; exit 1; }
 say() { echo "== $*"; }
+# dev-local is never published: not from a dev-local shell, and not when the HEAD build turns the feature on by
+# default (verify-bundle.sh also refuses a binary that carries its strings).
+[[ -n "${QRTZ_DEV_REPO:-}${QRTZ_DEV_LOCAL:-}" ]] && die "dev-local is enabled in this shell (QRTZ_DEV_REPO set): refused"
+for t in "$repo/apps/desktop/src-tauri/Cargo.toml" "$repo/crates/qrtz-app/Cargo.toml"; do
+  grep -Eq '^default *= *\[[^]]*dev-local' "$t" && die "${t#"$repo"/} enables dev-local by default: refused"
+done
 run() { # <command…>: run it, or print it (--dry-run)
   if [[ $dry == 1 ]]; then
     printf '+'; printf ' %q' "$@"; printf '\n'

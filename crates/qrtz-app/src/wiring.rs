@@ -370,7 +370,10 @@ pub fn module_sync(
                     tracing::warn!(problem = %p, "model view not linked");
                 }
             }
-            crate::installed::installed_modules(&crate::installed::read_lock(&lock_root))
+            let mut im = crate::installed::installed_modules(&crate::installed::read_lock(&lock_root));
+            // dev-local (debug + feature only): a checkout override counts as installed.
+            crate::dev_local::merge_installed(&mut im);
+            im
         }),
     }
 }
