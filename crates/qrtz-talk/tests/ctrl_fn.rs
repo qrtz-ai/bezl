@@ -240,7 +240,13 @@ async fn a_mic_or_asr_error_while_a_ctrl_command_finalizes_runs_nothing() {
 /// dictation ended early (abort while finalizing sets `reason`): its text may be half a command, so nothing runs.
 #[tokio::test(start_paused = true)]
 async fn a_ctrl_final_that_carries_a_reason_runs_nothing() {
-    for reason in ["mic-lost", "permission-revoked"] {
+    // L2: a reason talk has never heard of, and a non-string one (L1), cut it short too.
+    for reason in [
+        json!("mic-lost"),
+        json!("permission-revoked"),
+        json!("made-up-reason-n9"),
+        json!(7),
+    ] {
         let r = rig(RigOpts::default());
         r.helper.set_opts(|o| o.stopped_delay_ms = 60_000);
         let id = hold_ctrl(&r).await;

@@ -1467,7 +1467,12 @@ impl TalkService {
             // Bozniak HIGH (ADR 0216 amendment 3): the helper's final can itself say it ended early (abort while
             // the stop was finalizing: `stopped{reason: mic-lost|permission-revoked|...}`): its text may be half
             // a command, so a ctrl press runs nothing.
-            let final_reason = stopped.as_ref().is_some_and(|m| !s(m, "reason").is_empty());
+            // Bozniak L1: any non-null `reason` that isn't an empty string counts (a number or object too).
+            let final_reason = stopped.as_ref().is_some_and(|m| match &m["reason"] {
+                serde_json::Value::Null => false,
+                serde_json::Value::String(r) => !r.is_empty(),
+                _ => true,
+            });
             let ctrl_cut = ctrl
                 .as_ref()
                 .is_some_and(|a| empty_final || final_reason || a.cut_short);
