@@ -2,7 +2,9 @@
 //! protocol to the `FakeHelper`. One System Events script (a faceless agent) starts the current screen saver, the
 //! helper's read of ScreenSaverEngine verifies it, nothing is gated (the user undoes it by moving the mouse), no app
 //! is activated and the user's frontmost app / cursor / focus are untouched. Without the System Events Automation
-//! grant the run asks and nothing runs; other tasks keep their intents.
+//! grant the run asks and nothing runs; other tasks keep their intents. ADR 0178 amendment 1 (run 47): "stop the
+//! screensaver" is the sibling `stop current screen saver`, verified by the engine being gone; a Mac that locks
+//! after the screen saver keeps its password prompt (the verify fails, nothing is typed).
 use chrono_tz::America::Los_Angeles;
 use qrtz_ctrl::decide::{replay_check, Goal};
 use qrtz_ctrl::helper::{FakeHelper, FakeWorld, HelperClient};
@@ -177,24 +179,158 @@ fn without_the_system_events_grant_it_asks_and_nothing_runs() {
 }
 
 #[test]
-fn lock_stop_and_other_tasks_are_not_this() {
+fn lock_its_setting_and_other_tasks_are_not_this() {
     for text in [
         "lock the screen",
-        "stop the screensaver",
-        "quit the screensaver",
         "turn off the screensaver",
+        "disable the screen saver",
+        "never start the screensaver",
+        "don't start the screensaver",
+        "stop the screensaver from starting",
+        "unlock the screensaver",
         "hide the dock",
         "turn on dark mode",
         "mute my mac",
         "start slack",
     ] {
         let d = tempfile::tempdir().unwrap();
-        let (s, _) = rig(d.path(), granted());
+        let (s, fake) = rig(d.path(), granted());
         let t = create(&s, text);
         let v = run_now(&s, &t);
         assert_ne!(
             v["state"]["decisions"][0]["chosen"], "intent.screensaver",
             "{text}: {v}"
         );
+        assert!(
+            !fake.world().acted.iter().any(|a| matches!(
+                a.1,
+                Route::Scripting {
+                    verb: ScriptVerb::StartScreenSaver | ScriptVerb::StopScreenSaver,
+                    ..
+                }
+            )),
+            "{text}: no screensaver script"
+        );
     }
+}
+
+/// ADR 0178 amendment 1 (run 47): "stop the screensaver" is the sibling verb: one System Events script, no gate,
+/// verified by ScreenSaverEngine being gone; the user's frontmost app / cursor / focus untouched.
+#[test]
+fn stop_the_screensaver_runs_through_system_events_and_verifies_it_is_gone() {
+    for text in [
+        "stop the screensaver",
+        "stop screensaver",
+        "quit the screen saver",
+        "dismiss the screensaver",
+        "end the screen saver",
+        "stop the running screensaver",
+        "every morning at 8 stop the screensaver",
+    ] {
+        let d = tempfile::tempdir().unwrap();
+        let mut w = granted();
+        w.screensaver_running = true;
+        let (s, fake) = rig(d.path(), w);
+        let before = fake.world();
+        let t = create(&s, text);
+        let v = run_now(&s, &t);
+        assert_eq!(v["state"]["status"], "done", "{text}: {v}");
+        assert!(v["state"]["confirm"].is_null(), "{text}: no gate");
+        assert_eq!(
+            v["state"]["decisions"][0]["chosen"], "intent.screensaver",
+            "{text}"
+        );
+        let w = fake.world();
+        assert_eq!(
+            w.acted.iter().map(|a| a.1.clone()).collect::<Vec<_>>(),
+            vec![Route::Scripting {
+                app: "com.apple.systemevents".into(),
+                verb: ScriptVerb::StopScreenSaver
+            }],
+            "{text}: one stop, never a start"
+        );
+        assert!(!w.screensaver_running, "{text}");
+        assert_eq!(w.dark, before.dark, "{text}: appearance untouched");
+        assert_eq!(w.dock_autohide, before.dock_autohide, "{text}: dock untouched");
+        assert_eq!(w.frontmost_pid, before.frontmost_pid);
+        assert_eq!(w.cursor, before.cursor);
+        assert_eq!(w.focused, before.focused);
+        let raw = log_of(d.path(), &v, &t, text);
+        assert!(raw.contains("route.scripting.screensaver_stop"), "{text}");
+        assert!(
+            !raw.contains("the screensaver") && !raw.contains("screen saver"),
+            "{text}: task words in the log"
+        );
+    }
+}
+
+#[test]
+fn stop_with_no_screensaver_up_is_done_and_a_locked_mac_fails_the_verify() {
+    // Not running: done, nothing acted (the pre-check reads 0).
+    let d = tempfile::tempdir().unwrap();
+    let (s, fake) = rig(d.path(), granted());
+    let t = create(&s, "stop the screensaver");
+    let v = run_now(&s, &t);
+    assert_eq!(v["state"]["status"], "done", "{v}");
+    assert!(fake.world().acted.is_empty(), "nothing up: nothing acted");
+
+    // A Mac that asks for a password after the screen saver keeps it up: the verify fails, nothing is typed or
+    // unlocked, and the run doesn't say done.
+    let d = tempfile::tempdir().unwrap();
+    let mut w = granted();
+    w.screensaver_running = true;
+    w.screensaver_locks = true;
+    let (s, fake) = rig(d.path(), w);
+    let t = create(&s, "stop the screensaver");
+    let v = run_now(&s, &t);
+    assert_ne!(v["state"]["status"], "done", "{v}");
+    let w = fake.world();
+    assert!(w.screensaver_running);
+    assert!(
+        w.acted.iter().all(|a| a.1
+            == Route::Scripting {
+                app: "com.apple.systemevents".into(),
+                verb: ScriptVerb::StopScreenSaver
+            }),
+        "only the stop script, nothing typed: {:?}",
+        w.acted
+    );
+}
+
+#[test]
+fn stop_without_the_system_events_grant_asks_and_nothing_runs() {
+    let d = tempfile::tempdir().unwrap();
+    let mut w = world();
+    w.screensaver_running = true;
+    let (s, fake) = rig(d.path(), w);
+    let t = create(&s, "stop the screensaver");
+    let v = run_now(&s, &t);
+    assert_eq!(v["state"]["status"], "asked-out", "{v}");
+    assert!(v.to_string().contains("com.apple.systemevents"), "{v}");
+    assert!(fake.world().acted.is_empty());
+    assert!(fake.world().screensaver_running);
+}
+
+#[test]
+fn the_stop_verb_goes_over_the_wire_as_stop_screen_saver_and_never_to_another_app() {
+    let r = Route::Scripting {
+        app: "com.apple.systemevents".into(),
+        verb: ScriptVerb::StopScreenSaver,
+    };
+    let j = serde_json::to_value(&r).unwrap();
+    assert_eq!(
+        j,
+        json!({"route": "scripting", "app": "com.apple.systemevents", "verb": "stop_screen_saver"})
+    );
+    assert_eq!(serde_json::from_value::<Route>(j).unwrap(), r);
+    // The fake refuses it to anything but System Events, like the start.
+    let mut w = granted();
+    w.screensaver_running = true;
+    let fake = FakeHelper::new(w);
+    let client = HelperClient::new(Box::new(fake));
+    let bad = Route::Scripting {
+        app: "com.apple.ScreenSaver.Engine".into(),
+        verb: ScriptVerb::StopScreenSaver,
+    };
+    assert!(client.act("a1", &bad, &Default::default()).is_err());
 }

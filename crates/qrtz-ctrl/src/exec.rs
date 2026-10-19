@@ -262,8 +262,8 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
         return Some(dock_step(mv == DOCK_AUTOHIDE_ON_MOVE));
     }
     // ADR 0178: start the screen saver the same way (System Events only; the helper sees ScreenSaverEngine).
-    if mv == SCREENSAVER_MOVE {
-        return Some(screensaver_step());
+    if mv == SCREENSAVER_MOVE || mv == SCREENSAVER_STOP_MOVE {
+        return Some(screensaver_step(mv == SCREENSAVER_MOVE));
     }
     // ADR 0140: the level from the plan's `level.N`, set and unmuted in the helper's own process; verified by reading
     // the volume back (exactly N, give or take 1). No level, nothing to set: the layers asked, so this can't happen
@@ -668,16 +668,21 @@ fn dock_step(hide: bool) -> Step {
 pub const DOCK_AUTOHIDE_ON_MOVE: &str = "route.scripting.dock_autohide_on";
 pub const DOCK_AUTOHIDE_OFF_MOVE: &str = "route.scripting.dock_autohide_off";
 
-/// ADR 0178: one System Events script starts the current screen saver; the helper's read of ScreenSaverEngine verifies it.
-fn screensaver_step() -> Step {
+/// ADR 0178: one System Events script starts (or, amendment 1, stops) the current screen saver; the helper's read of
+/// ScreenSaverEngine verifies it.
+fn screensaver_step(start: bool) -> Step {
     Step::Act {
         routes: vec![Route::Scripting {
             app: SYSTEM_EVENTS.into(),
-            verb: ScriptVerb::StartScreenSaver,
+            verb: if start {
+                ScriptVerb::StartScreenSaver
+            } else {
+                ScriptVerb::StopScreenSaver
+            },
         }],
         verify: Verify {
             check: Check::ScreensaverRunning,
-            expect: Expect::One,
+            expect: if start { Expect::One } else { Expect::Zero },
         },
         content: BTreeMap::new(),
     }
@@ -685,6 +690,8 @@ fn screensaver_step() -> Step {
 
 /// ADR 0178: "start the screensaver" (reversible by the user, no gate).
 pub const SCREENSAVER_MOVE: &str = "route.scripting.screensaver";
+/// ADR 0178 amendment 1: "stop the screensaver" (no gate; a password prompt after it stays, nothing unlocked).
+pub const SCREENSAVER_STOP_MOVE: &str = "route.scripting.screensaver_stop";
 
 pub const DARK_MODE_ON_MOVE: &str = "route.scripting.dark_mode_on";
 pub const DARK_MODE_OFF_MOVE: &str = "route.scripting.dark_mode_off";
@@ -897,12 +904,12 @@ impl Driver<'_> {
             {
                 return sink.push(log, finish(TaskStatus::Done));
             }
-            // ADR 0178: the screen saver already up is done with nothing acted.
-            if fplan.is_none()
-                && mv == SCREENSAVER_MOVE
-                && self.helper.measure(&Check::ScreensaverRunning) == Some(1)
-            {
-                return sink.push(log, finish(TaskStatus::Done));
+            // ADR 0178: the screen saver already up is done with nothing acted (amendment 1: already off, for a stop).
+            if fplan.is_none() && (mv == SCREENSAVER_MOVE || mv == SCREENSAVER_STOP_MOVE) {
+                let want = i64::from(mv == SCREENSAVER_MOVE);
+                if self.helper.measure(&Check::ScreensaverRunning) == Some(want) {
+                    return sink.push(log, finish(TaskStatus::Done));
+                }
             }
             // ADR 0130: "quit unused apps" is planned from the helper's last-used report each round, so the gate's
             // re-check and the act both see the apps as they are now.

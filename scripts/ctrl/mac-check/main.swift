@@ -4,7 +4,8 @@
 // keystroke, no click, no window change, and nothing that can show a permission dialog. Accessibility trust is
 // read with prompt = false; Apple Events consent with askUserIfNeeded = false, and a browser's tabs are read only
 // where that consent is already granted (titles and URLs only, without the page script; nothing but counts is
-// printed). No protected folder (Desktop, Downloads, Documents, ~/.Trash) is touched: that could prompt.
+// printed). No protected folder (Desktop, Downloads, Documents, ~/.Trash) is touched: that could prompt. Run 47: if
+// qrtz installed model.laya, its fixed first questions are asked through the shipped Core ML runtime (read-only).
 import AppKit
 import ApplicationServices
 import Foundation
@@ -84,6 +85,37 @@ for id in ids {
     browsers[id] = b
 }
 out["browsers"] = browsers
+
+// Run 47: the first real Laya questions, when qrtz has installed model.laya with ctrl (or QRTZ_CTRL_LAYA_PACKAGE
+// names a package). Read-only: qrtz's own store, the shipped runtime's as-is load (nothing compiled or written into
+// the store), no network, no UI. Nothing installed → "installed": false, nothing loaded.
+var laya: [String: Any] = [:]
+let env = ProcessInfo.processInfo.environment
+let home = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(CtrlLayaFirstQuestion.dataDir).path
+if let pkg = env["QRTZ_CTRL_LAYA_PACKAGE"].flatMap({ $0.isEmpty ? nil : $0 }) ?? CtrlLayaFirstQuestion.installedModel(root: home) {
+    laya["installed"] = true
+    laya["model"] = URL(fileURLWithPath: pkg).lastPathComponent
+    laya["version"] = URL(fileURLWithPath: pkg).deletingLastPathComponent().lastPathComponent
+    switch CtrlLayaLoad.plan(path: pkg, fromHost: true) {
+    case let .refuse(code): laya["load"] = code
+    case .compile: laya["load"] = "laya.needs_compiled"
+    case .asIs:
+        laya["load"] = "as_is"
+        var answers: [[String: Any]] = []
+        for q in CtrlLayaFirstQuestion.questions {
+            let t0 = Date()
+            var p: [Double]?, err: String?
+            do { p = try backend.laya(model: pkg, state: q.state, question: q.question, options: q.options) } catch let f as CtrlFailure {
+                err = f.code
+            } catch { err = "laya.load_failed" }
+            answers.append(CtrlLayaFirstQuestion.report(q, probabilities: p, error: err, ms: Int(Date().timeIntervalSince(t0) * 1000)))
+        }
+        laya["answers"] = answers // the first one's ms includes the Core ML load
+    }
+} else {
+    laya["installed"] = false
+}
+out["laya"] = laya
 
 let after = CtrlProbe.snapshot()
 out["guard_before"] = beforeUi

@@ -126,7 +126,12 @@ const INTENTS = {
   dark_toggle: opt('intent.dark_mode', 'switch dark mode', 0.07),
   dock_hide: opt('intent.dock_autohide', 'hide or show the dock', 0.07),
   dock_show: opt('intent.dock_autohide', 'hide or show the dock', 0.07),
-  screensaver: opt('intent.screensaver', 'start the screensaver', 0.07),
+  screensaver: opt('intent.screensaver', 'start or stop the screensaver', 0.07),
+  screensaver_stop: opt(
+    'intent.screensaver',
+    'start or stop the screensaver',
+    0.07,
+  ),
   display_sleep: opt('intent.display_sleep', 'turn off your display', 0.07),
   system_sleep: opt('intent.system_sleep', 'put your mac to sleep', 0.07),
   open_email: opt('intent.open_app', 'open an app', 0.07),
@@ -161,6 +166,7 @@ type Intent =
   | 'dock_hide'
   | 'dock_show'
   | 'screensaver'
+  | 'screensaver_stop'
   | 'display_sleep'
   | 'system_sleep'
   | 'open_email';
@@ -324,6 +330,19 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
       opt(
         'route.scripting.screensaver',
         'start the current screen saver',
+        0.95,
+      ),
+    ]),
+  ],
+  // ADR 0178 amendment 1: stop it the same way; a password prompt after it stays (nothing unlocked), no card.
+  screensaver_stop: [
+    act('choose_app', [
+      opt('app.com.apple.systemevents', 'systemevents', 0.95),
+    ]),
+    act('choose_move', [
+      opt(
+        'route.scripting.screensaver_stop',
+        'stop the screen saver, nothing unlocked',
         0.95,
       ),
     ]),
@@ -643,14 +662,34 @@ const dockOf = (text: string): Intent | null => {
     : 'dock_show';
 };
 
-// ADR 0178: screensaver / screen saver plus a start word; not stop/quit/lock.
+// ADR 0178: screensaver / screen saver plus a start word, or (amendment 1) a stop word; never its setting
+// (off / disable / never), a negation or lock.
 const screensaverOf = (text: string): Intent | null => {
   const named =
     /\bscreensaver\b/i.test(text) ||
     (/\bscreen\b/i.test(text) && /\bsaver\b/i.test(text));
   if (!named) return null;
-  if (/\b(stop|quit|exit|end|disable|off|lock)\b/i.test(text)) return null;
-  if (!/\b(start|run|launch|begin|activate|enable|on|turn)\b/i.test(text))
+  if (
+    /\b(disable|disables|off|never|don't|dont|not|no|lock|locks|locking|locked|unlock|unlocks|password)\b/i.test(
+      text,
+    )
+  )
+    return null;
+  const stop =
+    /\b(stop|stops|stopping|quit|quits|exit|exits|end|ends|dismiss|dismisses|close|closes)\b/i.test(
+      text,
+    );
+  if (stop)
+    return /\b(start|starts|starting|begin|begins|launch|launches|activate|on)\b/i.test(
+      text,
+    )
+      ? null
+      : 'screensaver_stop';
+  if (
+    !/\b(start|starts|starting|run|runs|running|launch|launches|begin|begins|activate|enable|on|turn)\b/i.test(
+      text,
+    )
+  )
     return null;
   return 'screensaver';
 };

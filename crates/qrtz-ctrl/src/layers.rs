@@ -682,19 +682,58 @@ fn dock_hides(toks: &[Tok]) -> bool {
 fn screensaver_named(toks: &[Tok]) -> bool {
     has(toks, &["screensaver", "screensavers"]) || (has(toks, &["screen"]) && has(toks, &["saver", "savers"]))
 }
-/// ADR 0178: words that start it (not stop/quit/lock).
+/// ADR 0178: words that start it.
 const SCREENSAVER_START_WORDS: &[&str] = &[
     "start", "starts", "starting", "run", "runs", "running", "launch", "launches", "begin", "begins",
     "activate", "enable", "on", "turn",
 ];
-/// ADR 0178: words that mean something else (stop, lock the screen, …).
+/// ADR 0178 amendment 1 (run 47): words that stop the running one ("stop the screensaver", "quit the screen saver",
+/// "dismiss the screensaver"). Not "turn off" / "disable": those read as its idle setting (never start it), which
+/// ctrl doesn't change.
+const SCREENSAVER_STOP_WORDS: &[&str] = &[
+    "stop",
+    "stops",
+    "stopping",
+    "quit",
+    "quits",
+    "exit",
+    "exits",
+    "end",
+    "ends",
+    "dismiss",
+    "dismisses",
+    "close",
+    "closes",
+];
+/// ADR 0178: words that make a screensaver task something else: its setting (disable / off / never), a negation
+/// ("don't start the screensaver"), locking the screen.
 const SCREENSAVER_NOT_WORDS: &[&str] = &[
-    "stop", "stops", "stopping", "quit", "exit", "end", "disable", "off", "lock", "locks", "locking",
-    "locked",
+    "disable", "disables", "off", "never", "don't", "dont", "not", "no", "lock", "locks", "locking",
+    "locked", "unlock", "unlocks", "password",
 ];
 /// ADR 0178: "start the screensaver" / "start screensaver" / "turn on the screen saver".
+fn screensaver_starts(toks: &[Tok]) -> bool {
+    screensaver_named(toks)
+        && has(toks, SCREENSAVER_START_WORDS)
+        && !has(toks, SCREENSAVER_STOP_WORDS)
+        && !has(toks, SCREENSAVER_NOT_WORDS)
+}
+/// ADR 0178 amendment 1: "stop the screensaver" / "quit the screen saver". A stop word with a start word ("stop the
+/// screensaver from starting") is the setting again, so neither.
+fn screensaver_stops(toks: &[Tok]) -> bool {
+    screensaver_named(toks)
+        && has(toks, SCREENSAVER_STOP_WORDS)
+        && !has(
+            toks,
+            &[
+                "start", "starts", "starting", "begin", "begins", "launch", "launches", "activate", "on",
+            ],
+        )
+        && !has(toks, SCREENSAVER_NOT_WORDS)
+}
+/// ADR 0178: a screensaver task, starting or stopping it.
 fn screensaver_task(toks: &[Tok]) -> bool {
-    screensaver_named(toks) && has(toks, SCREENSAVER_START_WORDS) && !has(toks, SCREENSAVER_NOT_WORDS)
+    screensaver_starts(toks) || screensaver_stops(toks)
 }
 
 /// ADR 0180: words that name the display.
@@ -1176,8 +1215,8 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             }
         }
         "screensaver" => {
-            // ADR 0178: "start the screensaver" / "start screensaver" / "turn on the screen saver". No named app, no
-            // site, and not a lock/stop. Without it it sits well below.
+            // ADR 0178: "start the screensaver" / "start screensaver" / "turn on the screen saver", and (amendment 1)
+            // "stop the screensaver". No named app, no site, not its setting or a lock. Without it it sits well below.
             p -= 3000;
             if screensaver_task(toks) && !named_app && !site {
                 p += 9500;
@@ -1726,8 +1765,15 @@ fn move_question(
                 route("scripting.dock_autohide_off", if hide { 2000 } else { 4500 }),
             ]
         }
-        // ADR 0178: one move — start the current screen saver.
-        "screensaver" => vec![route("scripting.screensaver", 4500)],
+        // ADR 0178: one move — start the current screen saver, or (amendment 1) stop it. Never both: a stop task
+        // never backtracks into starting it.
+        "screensaver" => {
+            if screensaver_stops(toks) {
+                vec![route("scripting.screensaver_stop", 4500)]
+            } else {
+                vec![route("scripting.screensaver", 4500)]
+            }
+        }
         "search" => vec![shortcut("cmd+f", 3000)],
         "send_message" => vec![shortcut("cmd+n", 3000), irreversible(shortcut("cmd+return", 0))],
         _ => vec![],
@@ -1925,7 +1971,7 @@ fn intent_label(id: &str) -> &'static str {
         "empty_trash" => "empty the trash",
         "dark_mode" => "switch dark mode",
         "dock_autohide" => "hide or show the dock",
-        "screensaver" => "start the screensaver",
+        "screensaver" => "start or stop the screensaver",
         "search" => "search in an app",
         "send_message" => "send a message",
         _ => "something else",
@@ -1966,6 +2012,7 @@ fn route_label(id: &str) -> &'static str {
         "scripting.dock_autohide_on" => "hide the dock until the pointer reaches it",
         "scripting.dock_autohide_off" => "always show the dock",
         "scripting.screensaver" => "start the current screen saver",
+        "scripting.screensaver_stop" => "stop the screen saver, nothing unlocked",
         "files.tidy" => "sort by kind, nothing deleted",
         "files.sort_by_kind" => "sort files into folders by kind",
         "files.trash_old" => "move old installers to the trash",

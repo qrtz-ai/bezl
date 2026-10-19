@@ -56,13 +56,13 @@ public enum CtrlRoute: Equatable, Sendable {
     /// These have a fixed script (`CtrlScripts.source`).
     public static let scriptVerbs: Set<String> = ["count_tabs", "close_all_tabs", "close_tab", "count_windows", "close_window",
                                                   "set_dark_mode", "set_light_mode", "set_dock_autohide", "set_dock_shown",
-                                                  "start_screen_saver"]
+                                                  "start_screen_saver", "stop_screen_saver"]
     /// ADR 0137: the appearance verbs, only ever to System Events (a faceless agent, never brought forward).
     public static let appearanceVerbs: Set<String> = ["set_dark_mode", "set_light_mode"]
     /// ADR 0173: the Dock's auto-hide verbs, likewise only ever to System Events.
     public static let dockVerbs: Set<String> = ["set_dock_autohide", "set_dock_shown"]
-    /// ADR 0178: start the current screen saver, likewise only ever to System Events.
-    public static let screensaverVerbs: Set<String> = ["start_screen_saver"]
+    /// ADR 0178: start the current screen saver (amendment 1: or stop it), likewise only ever to System Events.
+    public static let screensaverVerbs: Set<String> = ["start_screen_saver", "stop_screen_saver"]
     /// The verbs that go to System Events, and the only ones that may (ADR 0137, ADR 0173, ADR 0178).
     public static let systemEventsVerbs: Set<String> = appearanceVerbs.union(dockVerbs).union(screensaverVerbs)
     public static let systemEvents = "com.apple.systemevents"

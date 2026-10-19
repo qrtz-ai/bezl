@@ -42,5 +42,6 @@
 {"type":"ctrl.measure","id":"c32","check":{"check":"display_asleep"}}
 {"type":"ctrl.act","id":"c33","actionId":"a13","route":{"route":"workspace","op":"sleep_system"},"content":{}}
 {"type":"ctrl.measure","id":"c34","check":{"check":"last_sleep"}}
+{"type":"ctrl.act","id":"c35","actionId":"a14","route":{"route":"scripting","app":"com.apple.systemevents","verb":"stop_screen_saver"},"content":{}}
 {"type":"ctrl.laya.warm","id":"c12","model":"/models/ctrl/laya/laya.mlmodelc"}
 {"type":"ctrl.laya.warm.result","id":"c12","state":"started"}

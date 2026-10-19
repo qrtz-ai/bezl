@@ -44,6 +44,8 @@ public enum CtrlScripts {
         case "set_dock_shown": body = "tell dock preferences to set autohide to false"
         // ADR 0178: the current screen saver (System Events starts it; the screensaver covers the display by design).
         case "start_screen_saver": body = "start current screen saver"
+        // ADR 0178 amendment 1: stop it. A password-on-wake Mac keeps its login prompt; nothing here unlocks.
+        case "stop_screen_saver": body = "stop current screen saver"
         default: return nil
         }
         return "tell application id \"\(bundleId)\"\n\(body)\nend tell"

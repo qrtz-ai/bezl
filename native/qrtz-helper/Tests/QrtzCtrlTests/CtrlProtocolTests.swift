@@ -54,7 +54,7 @@ final class CtrlProtocolTests: XCTestCase {
     func testEveryHostLineOfTheFixtureParses() throws {
         let all = try lines()
         let host = all.filter { !(($0["type"] as! String).hasSuffix(".result")) && $0["type"] as! String != "ctrl.error" }
-        XCTAssertEqual(host.count, 35)
+        XCTAssertEqual(host.count, 36)
         for o in host {
             let line = String(decoding: try JSONSerialization.data(withJSONObject: o), as: UTF8.self)
             XCTAssertNotNil(CtrlRequest.parse(line), "\(o["type"]!)")
@@ -297,6 +297,28 @@ final class CtrlProtocolTests: XCTestCase {
         XCTAssertTrue(CtrlScreensaver.running(bundleIds: [CtrlScreensaver.engineBundle], names: []))
         XCTAssertTrue(CtrlScreensaver.running(bundleIds: [], names: ["ScreenSaverEngine"]))
         XCTAssertFalse(CtrlScreensaver.running(bundleIds: ["com.apple.finder"], names: ["Finder"]))
+    }
+
+    func testStoppingTheScreensaverGoesOnlyToSystemEventsAndNeverUnlocks() throws {
+        // ADR 0178 amendment 1: stop_screen_saver parses from the fixture and reaches the backend; its script is the
+        // one fixed `stop current screen saver` to System Events, and nothing in it types or touches a password.
+        let all = try lines()
+        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["verb"] as? String == "stop_screen_saver" }!
+        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
+        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("stop_screen_saver") }
+        XCTAssertEqual(route, .scripting(app: "com.apple.systemevents", verb: "stop_screen_saver"))
+        let fake = Fake()
+        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: line))["ok"] as? Bool, true)
+        XCTAssertEqual(fake.acted, [route])
+        let src = CtrlScripts.source(verb: "stop_screen_saver", bundleId: "com.apple.systemevents")!
+        XCTAssertEqual(src, "tell application id \"com.apple.systemevents\"\nstop current screen saver\nend tell")
+        for word in ["keystroke", "password", "security", "do shell script", "key code"] {
+            XCTAssertFalse(src.contains(word), word)
+        }
+        for id in ["com.apple.ScreenSaver.Engine", "com.apple.loginwindow", "com.apple.Safari", "com.apple.finder"] {
+            XCTAssertNil(CtrlScripts.source(verb: "stop_screen_saver", bundleId: id), id)
+        }
+        XCTAssertTrue(CtrlRoute.systemEventsVerbs.contains("stop_screen_saver"))
     }
 
     func testTheLastUsedRecordKeepsTheLatestActivationAndMidnightIsLocal() {

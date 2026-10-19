@@ -590,6 +590,8 @@ pub struct FakeWorld {
     pub dock_autohide: bool,
     /// ADR 0178: the screen saver is running (ScreenSaverEngine).
     pub screensaver_running: bool,
+    /// ADR 0178 amendment 1: the Mac asks for a password after the screen saver, so stopping it leaves the lock up.
+    pub screensaver_locks: bool,
     /// ADR 0180: the display is asleep. `display_sleep_unavailable`: the helper finds no display wrangler.
     pub display_asleep: bool,
     pub display_sleep_unavailable: bool,
@@ -672,6 +674,7 @@ impl FakeWorld {
             dark: false,
             dock_autohide: false,
             screensaver_running: false,
+            screensaver_locks: false,
             display_asleep: false,
             display_sleep_unavailable: false,
             last_sleep: Some(1_760_000_000),
@@ -758,15 +761,20 @@ impl FakeWorld {
                 self.dock_autohide = *v == ScriptVerb::SetDockAutohide;
                 Ok(())
             }
-            // ADR 0178: start the screen saver, through System Events only.
+            // ADR 0178: start (amendment 1: stop) the screen saver, through System Events only. A Mac that asks for a
+            // password on wake keeps its lock up: the engine stays, so a stop's verify fails (ctrl never unlocks).
             Route::Scripting {
                 app,
-                verb: ScriptVerb::StartScreenSaver,
+                verb: v @ (ScriptVerb::StartScreenSaver | ScriptVerb::StopScreenSaver),
             } => {
                 if app != crate::exec::SYSTEM_EVENTS {
                     return Err("policy.refused".into());
                 }
-                self.screensaver_running = true;
+                if *v == ScriptVerb::StartScreenSaver {
+                    self.screensaver_running = true;
+                } else if !self.screensaver_locks {
+                    self.screensaver_running = false;
+                }
                 Ok(())
             }
             Route::Scripting { app, verb } => {
@@ -792,7 +800,8 @@ impl FakeWorld {
                     | ScriptVerb::SetLightMode
                     | ScriptVerb::SetDockAutohide
                     | ScriptVerb::SetDockShown
-                    | ScriptVerb::StartScreenSaver => return Err("script.unsupported".into()),
+                    | ScriptVerb::StartScreenSaver
+                    | ScriptVerb::StopScreenSaver => return Err("script.unsupported".into()),
                 }
                 Ok(())
             }

@@ -260,6 +260,9 @@ pub enum ScriptVerb {
     /// nothing comes forward as a key event; the screensaver itself covers the display by design). Reversible by the
     /// user (move the mouse / press a key) or by a later "stop the screensaver" task.
     StartScreenSaver,
+    /// ADR 0178 amendment 1: System Events `stop current screen saver` (only to `com.apple.systemevents`). Stops the
+    /// running screen saver; if the Mac asks for a password after it, the login prompt stays (ctrl never unlocks).
+    StopScreenSaver,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -1030,8 +1030,35 @@ test('ctrl: start the screensaver starts it without a card', async ({
   await expect(run.getByTestId('ctrl-run-status')).toHaveText('done');
   await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
   const decisions = ctrl.getByTestId('ctrl-decisions').first();
-  await expect(decisions).toContainText('start the screensaver');
+  await expect(decisions).toContainText('start or stop the screensaver');
   await expect(decisions).toContainText('start the current screen saver');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+// ADR 0178 amendment 1: "stop the screensaver" stops it through system events, no card, nothing unlocked.
+test('ctrl: stop the screensaver stops it without a card', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  await ctrl.getByTestId('ctrl-task-input').fill('stop the screensaver');
+  await ctrl.getByTestId('ctrl-task-add').click();
+  const task = ctrl
+    .getByTestId('ctrl-task')
+    .filter({ hasText: 'stop the screensaver' });
+  await task.getByTestId('ctrl-task-run').click();
+  const run = ctrl.getByTestId('ctrl-run').first();
+  await expect(run.getByTestId('ctrl-run-status')).toHaveText('done');
+  await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
+  const decisions = ctrl.getByTestId('ctrl-decisions').first();
+  await expect(decisions).toContainText('start or stop the screensaver');
+  await expect(decisions).toContainText(
+    'stop the screen saver, nothing unlocked',
+  );
+  await expect(decisions).not.toContainText('start the current screen saver');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(await axe(page, 'ctrl')).toEqual([]);
   expect(errors).toEqual([]);
