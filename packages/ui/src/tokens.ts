@@ -187,8 +187,8 @@ export function globalCss(t: Tokens = tokens, fontUrl?: string): string {
     : '';
   return `${face}:root{${vars}color-scheme:${t.mode};}
 *,*::before,*::after{box-sizing:border-box;}
-html,body,#root{height:100%;margin:0;}
-body{background:var(--q-color-bg);color:var(--q-color-text);font-family:var(--q-font-family);font-weight:var(--q-font-weight);font-size:var(--q-type-body-size);line-height:var(--q-type-body-line-height);letter-spacing:var(--q-type-body-tracking);font-synthesis:none;-webkit-font-smoothing:antialiased;}
+html,body,#root{height:100%;margin:0;overflow-x:hidden;overscroll-behavior:none;}
+body{overflow-wrap:break-word;background:var(--q-color-bg);color:var(--q-color-text);font-family:var(--q-font-family);font-weight:var(--q-font-weight);font-size:var(--q-type-body-size);line-height:var(--q-type-body-line-height);letter-spacing:var(--q-type-body-tracking);font-synthesis:none;-webkit-font-smoothing:antialiased;}
 button,input,select,textarea,option,code,kbd,pre,samp{font:inherit;letter-spacing:inherit;color:inherit;}
 h1,h2,h3,h4,h5,h6,strong,b,th{font-weight:inherit;}
 :focus-visible{outline:var(--q-focus-width) var(--q-focus-style) var(--q-color-ring)!important;outline-offset:var(--q-focus-offset)!important;}

@@ -441,3 +441,52 @@ test("talk: echo's own settings have a toggle for every automatic behaviour; eac
     await expect.poll(async () => (await talk())[key]).toBe(!before);
   }
 });
+
+test('no page scrolls sideways: every page fits its width, at the default and a narrow window', async ({
+  page,
+}) => {
+  const errors = watch(page);
+  const overflow = () =>
+    page.evaluate(() =>
+      [
+        document.documentElement,
+        document.body,
+        document.getElementById('root'),
+        document.querySelector('[data-scroll-root]'),
+        ...document.querySelectorAll('[data-subapp]:not([hidden]) [data-page]'),
+      ]
+        .filter((e): e is HTMLElement => !!e)
+        .filter((e) => e.scrollWidth > e.clientWidth)
+        .map(
+          (e) =>
+            `${e.tagName.toLowerCase()}${e.dataset.testid ? `#${e.dataset.testid}` : ''} ${e.scrollWidth}>${e.clientWidth}`,
+        ),
+    );
+  for (const width of [1100, 760]) {
+    await page.setViewportSize({ width, height: 720 });
+    await page.goto('/?dev=1&seed=1&mockSpeech=missing#/note');
+    await expect(page.getByTestId('note-app')).toBeVisible();
+    await page.getByText('Weekly Product Sync').first().click();
+    await expect(page.getByText("Let's start.")).toBeVisible();
+    expect(await overflow(), `note @${width}`).toEqual([]);
+    for (const view of [
+      'talk',
+      'ctrl',
+      'snap',
+      'marketplace',
+      'gallery',
+      'settings',
+    ]) {
+      await tab(page, view).click();
+      await expect(
+        page.locator(`[data-subapp="${view}"] [data-page]`),
+      ).toBeVisible();
+      expect(await overflow(), `${view} @${width}`).toEqual([]);
+    }
+    const market = page.locator('[data-subapp="marketplace"]');
+    await tab(page, 'marketplace').click();
+    await market.getByTestId('tab-installed').click();
+    expect(await overflow(), `module manager @${width}`).toEqual([]);
+  }
+  expect(errors).toEqual([]);
+});

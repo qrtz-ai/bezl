@@ -47,7 +47,7 @@ export const TranscriptRow = memo(function TranscriptRow({
       }}
       style={{
         display: 'grid',
-        gridTemplateColumns: '56px 1fr',
+        gridTemplateColumns: '56px minmax(0, 1fr)',
         gap: t.space[2],
         padding: `${t.space[1]} ${t.space[2]}`,
         borderRadius: t.radius.md,
@@ -866,7 +866,7 @@ export function MiniHudFrame({
         className="q-drag-all"
         style={{
           display: 'grid',
-          gridTemplateColumns: 'auto 1fr auto',
+          gridTemplateColumns: 'auto minmax(0, 1fr) auto',
           alignItems: 'center',
           gap: t.space[3],
           padding: `0 ${t.space[3]}`,

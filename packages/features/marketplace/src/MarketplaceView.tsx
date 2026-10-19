@@ -14,7 +14,6 @@ import {
   ExtensionGrid,
   ExtensionHeader,
   FactList,
-  Heading,
   IconButton,
   IconLine,
   IconLines,
@@ -390,15 +389,18 @@ export default function MarketplaceView() {
 
   if (at.page === 'item')
     return (
-      <Page width={760} data-testid="marketplace-item">
-        <Toolbar>
+      <Page
+        data-testid="marketplace-item"
+        title="marketplace"
+        leading={
           <IconButton
             icon="back"
             label="back to marketplace"
             onClick={() => go({ page: 'browse' })}
             data-testid="marketplace-back"
           />
-        </Toolbar>
+        }
+      >
         {errorBox}
         {restartBox}
         <Detail
@@ -424,8 +426,7 @@ export default function MarketplaceView() {
     ];
     const shared = rows.filter((r) => r.kind !== 'extension');
     return (
-      <Page width={760} data-testid="module-manager">
-        <Heading>marketplace</Heading>
+      <Page data-testid="module-manager" title="marketplace">
         {tabs}
         {soonBox}
         {errorBox}
@@ -583,8 +584,7 @@ export default function MarketplaceView() {
   }
 
   return (
-    <Page width={760} data-testid="marketplace">
-      <Heading>marketplace</Heading>
+    <Page data-testid="marketplace" title="marketplace">
       {tabs}
       <Toolbar
         end={

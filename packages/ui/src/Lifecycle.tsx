@@ -42,7 +42,7 @@ function StreamRow({
       {...rest}
       style={{
         display: 'grid',
-        gridTemplateColumns: '56px 1fr',
+        gridTemplateColumns: '56px minmax(0, 1fr)',
         gap: t.space[2],
         padding: `${t.space[1]} ${t.space[2]}`,
       }}

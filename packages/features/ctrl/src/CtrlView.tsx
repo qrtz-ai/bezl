@@ -10,7 +10,6 @@ import {
   CtrlTaskRow,
   DecisionList,
   EmptyState,
-  Heading,
   Input,
   Page,
   PlainList,
@@ -183,11 +182,12 @@ export default function CtrlView() {
       </ModuleSettingsPage>
     );
   return (
-    <Page data-testid="ctrl">
-      <Stack dir="row" align="center" justify="between">
-        <Heading>ctrl</Heading>
-        <Stack dir="row" gap={2} align="center">
-          <Text variant="caption" muted>
+    <Page
+      data-testid="ctrl"
+      title="ctrl"
+      actions={
+        <>
+          <Text variant="caption" muted truncate>
             runs in the background, never takes over your screen
           </Text>
           <ModuleSettingsButton
@@ -195,8 +195,9 @@ export default function CtrlView() {
             onClick={() => setSettingsOpen(true)}
             data-testid="ctrl-settings-open"
           />
-        </Stack>
-      </Stack>
+        </>
+      }
+    >
       <Stack as="form" gap={2} onSubmit={add} data-testid="ctrl-new">
         <Input
           aria-label="task"

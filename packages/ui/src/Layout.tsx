@@ -6,6 +6,7 @@ import {
 } from 'react';
 import { useTheme } from './theme';
 import { Text } from './Text';
+import { Heading } from './Heading';
 import { Icon, isIconName, type IconName } from './Icon';
 import { transition, typeStyle, type Tokens } from './tokens';
 import { lowerTitle } from './case';
@@ -126,14 +127,25 @@ export function AppFrame({
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: 'auto 1fr',
+        gridTemplateColumns: 'auto minmax(0, 1fr)',
         height: '100%',
         background: t.color.bg,
+        overflow: 'hidden',
       }}
     >
       {embedded ? null : <div className="q-drag" aria-hidden />}
       {sidebar}
-      <Main style={{ minWidth: 0, minHeight: 0, overflow: 'auto' }}>
+      <Main
+        data-scroll-root=""
+        style={{
+          minWidth: 0,
+          minHeight: 0,
+          overflowX: 'hidden',
+          overflowY: 'auto',
+          overscrollBehavior: 'none',
+          scrollbarGutter: 'stable',
+        }}
+      >
         {children}
       </Main>
     </div>
@@ -233,7 +245,109 @@ export function SideNav({
   );
 }
 
-/** Two-pane layout: fixed-width sidebar (list) and a detail pane that fills the rest. */
+/**
+ * The one page geometry every routed view shares, so nothing moves when you switch pages in the sidebar:
+ * content column max 880px, centered in the main area; 40px top (level with the sidebar's first row), 32px
+ * gutters, 48px bottom; a 40px header row (title left, actions right); 24px between sections. Pages never
+ * scroll sideways (the AppFrame main scrolls vertically only and keeps a stable scrollbar gutter).
+ */
+export const PAGE = {
+  maxWidth: 880,
+  padTop: 40,
+  gutter: 32,
+  padBottom: 48,
+  headerHeight: 40,
+  gap: 24,
+} as const;
+
+/**
+ * The shared page container. `title` is the page's h1 (lowercased; `preserveCase` for user content), `leading`
+ * sits before it (a back button), `actions` on the right of the header row. Children are the page's sections.
+ * Marks itself `data-page` (and its header `data-page-header`) so tests can check every route uses it.
+ */
+export function Page({
+  children,
+  title,
+  leading,
+  actions,
+  preserveCase,
+  inset,
+  'data-testid': testId,
+}: {
+  children?: ReactNode;
+  /** A page shown inside another page's column (nano's settings in its detail pane): same header row and
+   * section spacing, no outer padding or width of its own. */
+  inset?: boolean;
+  title: ReactNode;
+  leading?: ReactNode;
+  actions?: ReactNode;
+  preserveCase?: boolean;
+  'data-testid'?: string;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      {...(inset ? { 'data-page-inset': '' } : { 'data-page': '' })}
+      style={{
+        boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: PAGE.gap,
+        width: '100%',
+        maxWidth: inset ? '100%' : PAGE.maxWidth + 2 * PAGE.gutter,
+        minWidth: 0,
+        margin: inset ? 0 : '0 auto',
+        padding: inset
+          ? 0
+          : `${PAGE.padTop}px ${PAGE.gutter}px ${PAGE.padBottom}px`,
+        overflowX: 'hidden',
+      }}
+    >
+      <header
+        data-page-header=""
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          height: PAGE.headerHeight,
+          minHeight: PAGE.headerHeight,
+          flex: '0 0 auto',
+          minWidth: 0,
+        }}
+      >
+        {leading}
+        <Heading
+          {...(preserveCase ? { preserveCase } : {})}
+          style={{
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {title}
+        </Heading>
+        {actions ? (
+          <div
+            style={{
+              marginLeft: 'auto',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              minWidth: 0,
+              flex: '0 1 auto',
+            }}
+          >
+            {actions}
+          </div>
+        ) : null}
+      </header>
+      {children}
+    </div>
+  );
+}
+
+/** Two columns inside a Page body: a fixed 240px list and a detail column that takes the rest (nano). */
 export function SplitView({
   sidebar,
   children,
@@ -249,9 +363,10 @@ export function SplitView({
       data-testid={testId}
       style={{
         display: 'grid',
-        gridTemplateColumns: '264px 1fr',
-        height: '100%',
-        minHeight: 0,
+        gridTemplateColumns: `240px minmax(0, 1fr)`,
+        gap: PAGE.gutter,
+        minWidth: 0,
+        alignItems: 'start',
       }}
     >
       <aside
@@ -259,52 +374,13 @@ export function SplitView({
           display: 'flex',
           flexDirection: 'column',
           gap: t.space[2],
-          padding: `40px ${t.space[3]} ${t.space[3]}`,
-          borderRight: `1px solid ${t.color.border}`,
+          minWidth: 0,
           minHeight: 0,
-          overflow: 'hidden',
         }}
       >
         {sidebar}
       </aside>
-      <section
-        style={{
-          minWidth: 0,
-          minHeight: 0,
-          overflow: 'auto',
-          padding: `40px ${t.space[8]} ${t.space[8]}`,
-        }}
-      >
-        {children}
-      </section>
-    </div>
-  );
-}
-
-/** Single centered column page (Settings, Gallery). */
-export function Page({
-  children,
-  width = 640,
-  'data-testid': testId,
-}: {
-  children: ReactNode;
-  width?: number;
-  'data-testid'?: string;
-}) {
-  const t = useTheme();
-  return (
-    <div
-      data-testid={testId}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: t.space[6],
-        maxWidth: width,
-        margin: '0 auto',
-        padding: `40px ${t.space[6]} ${t.space[8]}`,
-      }}
-    >
-      {children}
+      <section style={{ minWidth: 0, minHeight: 0 }}>{children}</section>
     </div>
   );
 }
@@ -556,11 +632,11 @@ export function SettingRow({
         minHeight: 28,
       }}
     >
-      <Text>{lowerTitle(label)}</Text>
+      <Text style={{ minWidth: 0, flex: '1 1 auto' }}>{lowerTitle(label)}</Text>
       <div
         style={{
-          flex: '0 0 auto',
-          width: 240,
+          flex: '0 1 240px',
+          minWidth: 0,
           display: 'flex',
           justifyContent: 'flex-end',
         }}

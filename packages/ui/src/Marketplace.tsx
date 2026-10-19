@@ -53,7 +53,7 @@ export function ExtensionGrid({
       data-testid={testId}
       style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(min(220px, 100%), 1fr))',
         gap: t.space[4],
       }}
     >
@@ -217,7 +217,7 @@ export function FactList({
       data-testid={testId}
       style={{
         display: 'grid',
-        gridTemplateColumns: 'max-content 1fr',
+        gridTemplateColumns: 'minmax(0, max-content) minmax(0, 1fr)',
         columnGap: t.space[6],
         rowGap: t.space[2],
         margin: 0,
@@ -230,7 +230,10 @@ export function FactList({
               {i.label.toLowerCase()}
             </Text>
           </dt>
-          <dd style={{ margin: 0 }} data-testid={i['data-testid']}>
+          <dd
+            style={{ margin: 0, minWidth: 0, overflowWrap: 'anywhere' }}
+            data-testid={i['data-testid']}
+          >
             <Text variant="caption">{i.value}</Text>
           </dd>
         </div>

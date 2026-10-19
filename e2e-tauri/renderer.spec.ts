@@ -189,8 +189,8 @@ test('deep links open a meeting tab; tab switches keep the url and never refetch
   await page.getByTestId('nav-note').click();
   await expect(page).toHaveURL(new RegExp(`#/note/meetings/${id}$`));
   await expect(note.getByText("Let's start.")).toBeVisible();
-  // An unknown route goes to the default app.
+  // An unknown route goes to the default app: echo, the first sidebar row.
   await page.evaluate(() => (location.hash = '#/nope'));
-  await expect(page).toHaveURL(/#\/note$/);
+  await expect(page).toHaveURL(/#\/talk$/);
   expect(errors).toEqual([]);
 });

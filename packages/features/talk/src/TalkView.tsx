@@ -4,7 +4,6 @@ import {
   Callout,
   DictionaryTerm,
   EmptyState,
-  Heading,
   Input,
   Kbd,
   Page,
@@ -162,11 +161,7 @@ export default function TalkView() {
   const echo = useEchoSwitch();
   if (echo.loaded && !echo.on)
     return (
-      <Page data-testid="talk-off">
-        <Stack dir="row" align="center" justify="between">
-          <Heading>echo</Heading>
-          {echo.control}
-        </Stack>
+      <Page data-testid="talk-off" title="echo" actions={echo.control}>
         <EmptyState title="echo is off: turn it on to dictate with fn" />
         {echo.dialog}
       </Page>
@@ -249,11 +244,12 @@ function TalkOn({
       </ModuleSettingsPage>
     );
   return (
-    <Page data-testid="talk">
-      <Stack dir="row" align="center" justify="between">
-        <Heading>echo</Heading>
-        <Stack dir="row" gap={2} align="center">
-          <Text variant="caption" muted>
+    <Page
+      data-testid="talk"
+      title="echo"
+      actions={
+        <>
+          <Text variant="caption" muted truncate>
             hold <Kbd>fn</Kbd> or <Kbd>⌘⇧Space</Kbd>
           </Text>
           <Button
@@ -270,8 +266,9 @@ function TalkOn({
             data-testid="talk-settings-open"
           />
           {switchControl}
-        </Stack>
-      </Stack>
+        </>
+      }
+    >
       {dialog}
       {offer}
       {/* ADR 0175: one notice at a time. While echo's own download offer is up, the generic speech notice (and

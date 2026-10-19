@@ -3,7 +3,6 @@ import {
   Button,
   Callout,
   Dialog,
-  Heading,
   LongText,
   Page,
   Progress,
@@ -156,8 +155,7 @@ export default function SettingsView() {
     </SettingRow>
   );
   return (
-    <Page data-testid="settings">
-      <Heading>settings</Heading>
+    <Page data-testid="settings" title="settings">
       {error ? (
         <Callout
           tone="danger"
@@ -358,7 +356,7 @@ export default function SettingsView() {
         <Text variant="caption" muted>
           {h ? `native helper: ${h.state} (restarts ${h.restarts})` : ''}
         </Text>
-        <Stack dir="row" gap={2}>
+        <Stack dir="row" gap={2} wrap>
           <Button
             variant="ghost"
             size="sm"

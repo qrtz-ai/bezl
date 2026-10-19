@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   Badge,
   Callout,
-  Heading,
   Kbd,
   ModuleSettingsButton,
   ModuleSettingsPage,
@@ -10,7 +9,6 @@ import {
   PermissionPrompt,
   SettingRow,
   SettingsSection,
-  Stack,
   Text,
 } from '@qrtz/ui';
 import {
@@ -75,11 +73,12 @@ export default function SnapView() {
       </ModuleSettingsPage>
     );
   return (
-    <Page data-testid="snap">
-      <Stack dir="row" align="center" justify="between">
-        <Heading>snap</Heading>
-        <Stack dir="row" gap={2} align="center">
-          <Text variant="caption" muted>
+    <Page
+      data-testid="snap"
+      title="snap"
+      actions={
+        <>
+          <Text variant="caption" muted truncate>
             move and resize windows from the keyboard
           </Text>
           <ModuleSettingsButton
@@ -87,8 +86,9 @@ export default function SnapView() {
             onClick={() => setSettingsOpen(true)}
             data-testid="snap-settings-open"
           />
-        </Stack>
-      </Stack>
+        </>
+      }
+    >
       {status && !status.running ? (
         <Callout
           tone="info"

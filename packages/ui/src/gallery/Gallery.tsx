@@ -35,6 +35,7 @@ import {
   Chip,
   IconButton,
   MeetingRow,
+  Page,
   SettingRow,
   SettingsSection,
   SplitView,
@@ -179,17 +180,8 @@ function Showcase({
   const [page, setPage] = useState<'components' | 'icons'>('components');
   const meetings = ['Weekly Product Sync', 'Design review', '1:1 with Grace'];
   return (
-    <div
-      style={{
-        display: 'grid',
-        gap: t.space[8],
-        maxWidth: 880,
-        margin: '0 auto',
-        padding: `40px ${t.space[6]} ${t.space[8]}`,
-      }}
-    >
+    <Page title="gallery" data-testid="gallery">
       <header style={{ display: 'grid', gap: t.space[2] }}>
-        <Heading cursor>gallery</Heading>
         <div data-testid="gallery-theme">
           <Tabs
             tabs={[
@@ -918,7 +910,7 @@ function Showcase({
           </Section>
         </>
       )}
-    </div>
+    </Page>
   );
 }
 

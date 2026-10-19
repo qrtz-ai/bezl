@@ -131,7 +131,7 @@ export function CtrlTaskRow({
       style={{
         listStyle: 'none',
         display: 'grid',
-        gridTemplateColumns: '1fr auto',
+        gridTemplateColumns: 'minmax(0, 1fr) auto',
         gap: t.space[3],
         padding: `${t.space[2]} ${t.space[3]}`,
         borderRadius: t.radius.md,

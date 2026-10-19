@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
-import { Heading } from './Heading';
-import { IconButton, Page, Stack } from './Layout';
+import { IconButton, Page } from './Layout';
 import { Text } from './Text';
 
 /**
@@ -11,24 +10,30 @@ export function ModuleSettingsPage({
   module,
   onClose,
   children,
+  inset,
   'data-testid': testId,
 }: {
+  /** Inside another page's column (nano's detail pane) rather than a page of its own. */
+  inset?: boolean;
   module: string;
   onClose: () => void;
   children: ReactNode;
   'data-testid'?: string;
 }) {
   return (
-    <Page data-testid={testId}>
-      <Stack dir="row" align="center" justify="between">
-        <Heading>{`${module} settings`}</Heading>
+    <Page
+      data-testid={testId}
+      {...(inset ? { inset } : {})}
+      title={`${module} settings`}
+      actions={
         <IconButton
           icon="close"
           label={`close ${module} settings`}
           onClick={onClose}
           data-testid={testId ? `${testId}-close` : undefined}
         />
-      </Stack>
+      }
+    >
       {children}
     </Page>
   );

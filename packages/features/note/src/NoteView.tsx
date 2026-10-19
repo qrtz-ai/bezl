@@ -7,10 +7,10 @@ import {
   IconButton,
   Input,
   MeetingRow,
+  Page,
   SplitView,
   Spinner,
   Stack,
-  Toolbar,
   useToast,
   SpeechNotice,
   ModuleSettingsButton,
@@ -159,168 +159,174 @@ export default function NoteView() {
     session.phase === 'stopping' ||
     session.phase === 'processing';
   return (
-    <SplitView
+    <Page
       data-testid="note-app"
-      sidebar={
+      title="nano"
+      actions={
         <>
-          <Toolbar
-            end={
-              <>
-                <ModuleSettingsButton
-                  module="nano"
-                  onClick={() => setSettingsOpen(true)}
-                  data-testid="note-settings-open"
-                />
-                <IconButton
-                  icon="search"
-                  label="search meetings"
-                  pressed={searching}
-                  data-testid="note-search-toggle"
-                  onClick={() => {
-                    if (searching) setQuery('');
-                    setSearching(!searching);
-                  }}
-                />
-              </>
-            }
-          >
-            {busy ? null : (
-              <Button
-                size="sm"
-                onClick={() => void act(qrtz.invoke('note:start', {}))}
-                data-testid="note-record-manual"
-                icon="circle"
-              >
-                record
-              </Button>
-            )}
-          </Toolbar>
-          {searching ? (
-            <Input
-              autoFocus
-              placeholder="search"
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setPages(1);
-              }}
-              data-testid="note-search"
-              aria-label="search meetings"
-            />
-          ) : null}
-          <SpeechNotice
-            status={speechSetup.speech}
-            onOpenSettings={() => requestNavigate({ app: 'settings' })}
+          {busy ? null : (
+            <Button
+              size="sm"
+              onClick={() => void act(qrtz.invoke('note:start', {}))}
+              data-testid="note-record-manual"
+              icon="circle"
+            >
+              record
+            </Button>
+          )}
+          <IconButton
+            icon="search"
+            label="search meetings"
+            pressed={searching}
+            data-testid="note-search-toggle"
+            onClick={() => {
+              if (searching) setQuery('');
+              setSearching(!searching);
+            }}
           />
-          <Stack as="ul" gap={0} scroll grow aria-label="meetings">
-            {visible.length === 0 ? (
-              <Stack as="li">
-                <EmptyState title={query ? 'no matches' : 'no meetings'} />
-              </Stack>
-            ) : (
-              visible.map(({ meeting, hit }) => (
-                <MeetingRow
-                  key={meeting.id}
-                  title={meeting.title}
-                  date={
-                    meeting.status === 'done'
-                      ? fmtDate(meeting.startedAt)
-                      : `${fmtDate(meeting.startedAt)} · ${meeting.status}`
-                  }
-                  {...(hit ? { snippet: hit.snippet } : {})}
-                  selected={selected === meeting.id}
-                  onSelect={() => setSelected(meeting.id)}
-                />
-              ))
-            )}
-            {hasMore ? (
-              <Stack as="li">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setPages((n) => n + 1)}
-                  data-testid="note-show-more"
-                >
-                  more
-                </Button>
-              </Stack>
-            ) : null}
-          </Stack>
+          <ModuleSettingsButton
+            module="nano"
+            onClick={() => setSettingsOpen(true)}
+            data-testid="note-settings-open"
+          />
         </>
       }
     >
-      <Stack gap={6}>
-        {session?.helper === 'missing' || session?.helper === 'down' ? (
-          <Callout
-            tone="danger"
-            data-testid="helper-notice"
-            title={
-              session.helper === 'missing'
-                ? 'recording unavailable: capture helper missing'
-                : 'capture helper stopped, restarting'
-            }
-          />
-        ) : null}
-        {error ? (
-          <Callout
-            tone="danger"
-            title={error}
-            data-testid="note-error"
-            action={
-              <Button variant="ghost" size="sm" onClick={() => setError(null)}>
-                dismiss
-              </Button>
-            }
-          />
-        ) : null}
-        <CaptureStatus
-          degraded={[]}
-          error={session.errorInfo?.message ?? null}
-          onDismiss={() => void act(qrtz.invoke('note:dismiss'))}
-        />
-        <Hud
-          s={session}
-          onRecord={() => void act(qrtz.invoke('note:start', {}))}
-          onStop={() => void act(qrtz.invoke('note:stop'))}
-          onPause={() => void act(qrtz.invoke('note:pause', {}))}
-          onDismiss={() => void act(qrtz.invoke('note:dismiss'))}
-          onAlways={() =>
-            void act(
-              qrtz
-                .invoke('note:set-auto-record', { enabled: true })
-                .then(() => qrtz.invoke('note:start', {})),
-            )
-          }
-          onOpen={(id) => setSelected(id)}
-        />
-        {settingsOpen ? (
-          // ADR 0146 M1.4: nano's settings open in the detail pane, so the meeting list, the hud and the record
-          // prompt stay where they are.
-          <ModuleSettingsPage
-            module="nano"
-            onClose={() => {
-              setSettingsOpen(false);
-              if (route.path === SETTINGS_PATH)
-                route.navigate('', { replace: true });
-            }}
-            data-testid="note-settings"
-          >
-            <NoteSettings />
-          </ModuleSettingsPage>
-        ) : selected ? (
-          <Suspense fallback={<Spinner />}>
-            <MeetingDetail
-              key={selected}
-              id={selected}
-              tab={tab}
-              onTab={setTab}
-              onDelete={(title) => requestDelete(selected, title)}
+      <SplitView
+        sidebar={
+          <>
+            {searching ? (
+              <Input
+                autoFocus
+                placeholder="search"
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setPages(1);
+                }}
+                data-testid="note-search"
+                aria-label="search meetings"
+              />
+            ) : null}
+            <SpeechNotice
+              status={speechSetup.speech}
+              onOpenSettings={() => requestNavigate({ app: 'settings' })}
             />
-          </Suspense>
-        ) : isCapturingPhase(session.phase) ? null : (
-          <EmptyState title="no meeting selected" />
-        )}
-      </Stack>
-    </SplitView>
+            <Stack as="ul" gap={0} scroll grow aria-label="meetings">
+              {visible.length === 0 ? (
+                <Stack as="li">
+                  <EmptyState title={query ? 'no matches' : 'no meetings'} />
+                </Stack>
+              ) : (
+                visible.map(({ meeting, hit }) => (
+                  <MeetingRow
+                    key={meeting.id}
+                    title={meeting.title}
+                    date={
+                      meeting.status === 'done'
+                        ? fmtDate(meeting.startedAt)
+                        : `${fmtDate(meeting.startedAt)} · ${meeting.status}`
+                    }
+                    {...(hit ? { snippet: hit.snippet } : {})}
+                    selected={selected === meeting.id}
+                    onSelect={() => setSelected(meeting.id)}
+                  />
+                ))
+              )}
+              {hasMore ? (
+                <Stack as="li">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPages((n) => n + 1)}
+                    data-testid="note-show-more"
+                  >
+                    more
+                  </Button>
+                </Stack>
+              ) : null}
+            </Stack>
+          </>
+        }
+      >
+        <Stack gap={6}>
+          {session?.helper === 'missing' || session?.helper === 'down' ? (
+            <Callout
+              tone="danger"
+              data-testid="helper-notice"
+              title={
+                session.helper === 'missing'
+                  ? 'recording unavailable: capture helper missing'
+                  : 'capture helper stopped, restarting'
+              }
+            />
+          ) : null}
+          {error ? (
+            <Callout
+              tone="danger"
+              title={error}
+              data-testid="note-error"
+              action={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setError(null)}
+                >
+                  dismiss
+                </Button>
+              }
+            />
+          ) : null}
+          <CaptureStatus
+            degraded={[]}
+            error={session.errorInfo?.message ?? null}
+            onDismiss={() => void act(qrtz.invoke('note:dismiss'))}
+          />
+          <Hud
+            s={session}
+            onRecord={() => void act(qrtz.invoke('note:start', {}))}
+            onStop={() => void act(qrtz.invoke('note:stop'))}
+            onPause={() => void act(qrtz.invoke('note:pause', {}))}
+            onDismiss={() => void act(qrtz.invoke('note:dismiss'))}
+            onAlways={() =>
+              void act(
+                qrtz
+                  .invoke('note:set-auto-record', { enabled: true })
+                  .then(() => qrtz.invoke('note:start', {})),
+              )
+            }
+            onOpen={(id) => setSelected(id)}
+          />
+          {settingsOpen ? (
+            // ADR 0146 M1.4: nano's settings open in the detail pane, so the meeting list, the hud and the record
+            // prompt stay where they are.
+            <ModuleSettingsPage
+              module="nano"
+              inset
+              onClose={() => {
+                setSettingsOpen(false);
+                if (route.path === SETTINGS_PATH)
+                  route.navigate('', { replace: true });
+              }}
+              data-testid="note-settings"
+            >
+              <NoteSettings />
+            </ModuleSettingsPage>
+          ) : selected ? (
+            <Suspense fallback={<Spinner />}>
+              <MeetingDetail
+                key={selected}
+                id={selected}
+                tab={tab}
+                onTab={setTab}
+                onDelete={(title) => requestDelete(selected, title)}
+              />
+            </Suspense>
+          ) : isCapturingPhase(session.phase) ? null : (
+            <EmptyState title="no meeting selected" />
+          )}
+        </Stack>
+      </SplitView>
+    </Page>
   );
 }

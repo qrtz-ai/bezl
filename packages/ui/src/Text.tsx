@@ -135,14 +135,20 @@ export function Code({
         margin: 0,
         padding: t.space[3],
         overflow: 'auto',
+        maxWidth: '100%',
+        minWidth: 0,
         whiteSpace: 'pre-wrap',
+        overflowWrap: 'anywhere',
         ...style,
       }}
     >
       <code>{children}</code>
     </pre>
   ) : (
-    <code {...rest} style={{ ...base, padding: '0 4px', ...style }}>
+    <code
+      {...rest}
+      style={{ ...base, padding: '0 4px', overflowWrap: 'anywhere', ...style }}
+    >
       {children}
     </code>
   );

@@ -116,7 +116,7 @@ export function TalkHistoryRow({
       style={{
         listStyle: 'none',
         display: 'grid',
-        gridTemplateColumns: '1fr auto',
+        gridTemplateColumns: 'minmax(0, 1fr) auto',
         gap: t.space[3],
         padding: `${t.space[3]} 0`,
         borderBottom: `1px solid ${t.color.border}`,
