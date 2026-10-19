@@ -1,6 +1,7 @@
 //! The recording runtime (feature `runtime`): the `NoteService` port plus the ports the shell injects.
 
 pub mod api;
+pub mod prompt_dedupe;
 pub mod service;
 pub mod steps;
 pub mod store;

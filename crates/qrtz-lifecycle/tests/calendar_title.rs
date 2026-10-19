@@ -147,7 +147,11 @@ async fn the_event_beats_the_ax_window_title_and_gets_the_platform() {
     tokio::time::sleep(Duration::from_millis(50)).await;
     start(&r, None).await;
     assert_eq!(title(&r), "weekly sync");
-    assert_eq!(*cal.asked.lock().unwrap(), [Some("zoom".to_string())]);
+    // Once at detection (the prompt's meeting identity), once at start (the title).
+    assert_eq!(
+        *cal.asked.lock().unwrap(),
+        [Some("zoom".to_string()), Some("zoom".to_string())]
+    );
 }
 
 #[tokio::test]

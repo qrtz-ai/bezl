@@ -392,6 +392,8 @@ struct State {
     /// (a part is one helper process: its diarizer run is new). The meeting's capture record gets them.
     speakers_down: Vec<(qrtz_model::Ms, qrtz_model::SpeakersUnavailable)>,
     participants: Vec<String>,
+    /// Detection prompts already shown, by meeting identity (once per meeting).
+    prompted: super::prompt_dedupe::PromptDedupe,
     level: f64,
     permissions: PermissionsStatus,
     waiters: Vec<WaiterEntry>,
@@ -453,6 +455,7 @@ impl State {
             turns: Vec::new(),
             speakers_down: Vec::new(),
             participants: Vec::new(),
+            prompted: Default::default(),
             level: 0.0,
             permissions: [
                 OsPermission::Accessibility,
@@ -1038,6 +1041,23 @@ impl Shared {
                     tracing::info!(platform = platform.as_str(), "meeting ignored (excluded app)");
                     return;
                 }
+                // Once per meeting: the overlapping calendar event, else the helper key, is the identity.
+                let now = self.now();
+                let identity = match key.strip_prefix("calendar:") {
+                    Some(id) => super::prompt_dedupe::PromptDedupe::identity(&key, Some(id)),
+                    None => {
+                        let ev = self
+                            .d
+                            .calendar
+                            .as_ref()
+                            .and_then(|c| c.event_at(now, Some(platform.as_str())));
+                        super::prompt_dedupe::PromptDedupe::identity(
+                            &key,
+                            ev.as_ref().map(|(id, _)| id.as_str()),
+                        )
+                    }
+                };
+                let first = self.lock().prompted.observe(&key, &identity, now);
                 let meeting = qrtz_model::DetectedMeeting {
                     key,
                     title: title.clone(),
@@ -1047,6 +1067,8 @@ impl Shared {
                 if cfg.auto_detect_meetings
                     && (cfg.auto_record || cfg.detect_prompt)
                     && self.send(LifecycleEvent::Detected { meeting })
+                    && first
+                    && !is_capturing(s.phase)
                 {
                     if self.config().auto_record {
                         let sh = self.clone();
@@ -1061,6 +1083,8 @@ impl Shared {
                 }
             }
             HelperInput::MeetingEnded { key } => {
+                let now = self.now();
+                self.lock().prompted.ended(&key, now);
                 if is_capturing(s.phase) && s.detected.as_ref().is_some_and(|d| d.key == key) {
                     let sh = self.clone();
                     self.spawn(async move {
