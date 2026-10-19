@@ -936,6 +936,11 @@ impl AppService {
             "app:licenses" => Ok(json!({ "text": crate::THIRD_PARTY_NOTICES })),
             "config:get" => Ok(self.config()),
             // ADR 0169: what is installed is the host's to say (from qrtz.lock), never a renderer's.
+            // P3.5: a non-object patch would replace the whole config, and with it the host-written keys.
+            "config:set" if !crate::installed::patch_is_object(&p["patch"]) => Err(AppError::new(
+                ErrorCode::Validation,
+                "a config patch is an object",
+            )),
             "config:set" if crate::installed::patch_touches_installed(&p["patch"]) => Err(AppError::new(
                 ErrorCode::Validation,
                 "modules are installed from the marketplace, not through config",

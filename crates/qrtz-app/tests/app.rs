@@ -248,7 +248,21 @@ async fn config_defaults_validation_persistence_and_events() {
         assert_eq!(bad["error"]["code"], "E_VALIDATION", "{bad}");
         assert!(bad.to_string().contains("set by qrtz"), "{bad}");
     }
+    // P3.5: replacing modules, or a module's object, with a non-object (which deep_merge would apply wholesale and so
+    // wipe installed and bundledFallback) is refused too, and so is a patch that isn't an object.
+    let before = call(&r, "settings", "config:get", Value::Null).await["data"].clone();
+    for patch in [
+        json!({"modules": null}),
+        json!({"modules": {"echo": null}}),
+        json!({"modules": {"echo": []}}),
+        json!(null),
+        json!([]),
+    ] {
+        let bad = call(&r, "settings", "config:set", json!({ "patch": patch })).await;
+        assert_eq!(bad["error"]["code"], "E_VALIDATION", "{patch}: {bad}");
+    }
     let after = call(&r, "settings", "config:get", Value::Null).await["data"].clone();
+    assert_eq!(after, before, "nothing changed");
     assert!(
         after["modules"]["echo"].get("bundledFallback").is_none(),
         "{after}"

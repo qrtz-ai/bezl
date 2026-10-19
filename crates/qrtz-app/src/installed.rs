@@ -95,10 +95,23 @@ pub fn patch_touches_bundled_fallback(patch: &Value) -> bool {
     patch_touches(patch, "bundledFallback")
 }
 
+/// A patch can change `modules.<id>.<key>`: it names it, or it replaces `modules` or a module's object wholesale
+/// with something that isn't an object (`{"modules": null}`, `{"modules": {"echo": null}}`), which `deep_merge`
+/// would apply as a replacement and so wipe every host-written key below it (Bozniak's P3.5).
 fn patch_touches(patch: &Value, key: &str) -> bool {
-    patch["modules"]
-        .as_object()
-        .is_some_and(|m| m.values().any(|v| v.get(key).is_some()))
+    match patch.get("modules") {
+        None => false,
+        // `modules.enabled` (the global switch) is a scalar; a module's own entry is an object.
+        Some(Value::Object(m)) => m.iter().any(|(id, v)| {
+            v.get(key).is_some() || (qrtz_modules::MODULE_IDS.contains(&id.as_str()) && !v.is_object())
+        }),
+        Some(_) => true,
+    }
+}
+
+/// A `config:set` patch is an object: anything else would replace the whole config (`deep_merge`).
+pub fn patch_is_object(patch: &Value) -> bool {
+    patch.is_object()
 }
 
 /// An installed extension's helper, as the lock and its `qrtz.json` name it.
@@ -658,5 +671,37 @@ mod tests {
         assert!(!patch_touches_bundled_fallback(
             &json!({"echo": {"bundledFallback": true}})
         ));
+    }
+
+    /// P3.5: a patch that replaces `modules` or a module's object with a non-object would wipe the host-written keys
+    /// under it through `deep_merge`, so it counts as touching them.
+    #[test]
+    fn replacing_a_module_object_counts_as_touching_its_host_keys() {
+        for p in [
+            json!({"modules": null}),
+            json!({"modules": []}),
+            json!({"modules": "x"}),
+            json!({"modules": {"echo": null}}),
+            json!({"modules": {"echo": 1}}),
+            json!({"modules": {"nano": {"enabled": true}, "echo": []}}),
+        ] {
+            assert!(patch_touches_bundled_fallback(&p), "{p}");
+            assert!(patch_touches_installed(&p), "{p}");
+        }
+        assert!(!patch_touches_installed(&json!({"modules": {}})));
+        assert!(
+            !patch_touches_installed(&json!({"modules": {"enabled": false}})),
+            "the global switch"
+        );
+        assert!(!patch_touches_installed(&json!({"theme": "dark"})));
+        assert!(!patch_is_object(&Value::Null));
+        assert!(!patch_is_object(&json!([])));
+        assert!(patch_is_object(&json!({})));
+        // What deep_merge would have done with them.
+        let cfg = json!({"modules": {"echo": {"installed": true, "bundledFallback": true}}});
+        assert_eq!(
+            crate::config::deep_merge(&cfg, &json!({"modules": {"echo": null}}))["modules"]["echo"],
+            Value::Null
+        );
     }
 }
