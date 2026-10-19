@@ -683,6 +683,54 @@
       "category": "vocative",
       "raw": "Hey pria did you book the flights for Friday",
       "ideal": "Hey Priya, did you book the flights for Friday?"
+    },
+    {
+      "id": "p110",
+      "category": "tag-question",
+      "raw": "It's a nice day, isn't it",
+      "ideal": "It's a nice day, isn't it?"
+    },
+    {
+      "id": "p111",
+      "category": "tag-question",
+      "raw": "You finished the report already, didn't you",
+      "ideal": "You finished the report already, didn't you?"
+    },
+    {
+      "id": "p112",
+      "category": "tag-question",
+      "raw": "We should leave before the traffic gets bad, shouldn't we",
+      "ideal": "We should leave before the traffic gets bad, shouldn't we?"
+    },
+    {
+      "id": "p113",
+      "category": "tag-question",
+      "raw": "They're still coming to the dinner tonight, aren't they",
+      "ideal": "They're still coming to the dinner tonight, aren't they?"
+    },
+    {
+      "id": "p114",
+      "category": "tag-question",
+      "raw": "There's still time to fix the build, isn't there",
+      "ideal": "There's still time to fix the build, isn't there?"
+    },
+    {
+      "id": "p115",
+      "category": "tag-question",
+      "raw": "Thanks for checking. That was the last blocker, wasn't it",
+      "ideal": "Thanks for checking. That was the last blocker, wasn't it?"
+    },
+    {
+      "id": "p116",
+      "category": "tag-question",
+      "raw": "It's too late to change the venue now, don't you think",
+      "ideal": "It's too late to change the venue now, don't you think?"
+    },
+    {
+      "id": "p117",
+      "category": "tag-question",
+      "raw": "I was right about the date, wasn't I",
+      "ideal": "I was right about the date, wasn't I?"
     }
   ],
   "keep": [
@@ -2471,6 +2519,144 @@
       "dict": true,
       "raw": "Hey Priya did you credit in the writeup",
       "expect": "Hey Priya did you credit in the writeup."
+    },
+    {
+      "id": "k294",
+      "rule": "tag-question",
+      "raw": "Maybe they will, maybe they won't",
+      "expect": "Maybe they will, maybe they won't."
+    },
+    {
+      "id": "k295",
+      "rule": "tag-question",
+      "raw": "She said she would come, but she didn't",
+      "expect": "She said she would come, but she didn't."
+    },
+    {
+      "id": "k296",
+      "rule": "tag-question",
+      "raw": "Some of us can, the rest of us can't",
+      "expect": "Some of us can, the rest of us can't."
+    },
+    {
+      "id": "k297",
+      "rule": "tag-question",
+      "raw": "If you can't, don't worry about it",
+      "expect": "If you can't, don't worry about it."
+    },
+    {
+      "id": "k298",
+      "rule": "tag-question",
+      "raw": "Go up, down, left, right",
+      "expect": "Go up, down, left, right."
+    },
+    {
+      "id": "k299",
+      "rule": "tag-question",
+      "raw": "Mark the first answer wrong, the second correct",
+      "expect": "Mark the first answer wrong, the second correct."
+    },
+    {
+      "id": "k300",
+      "rule": "tag-question",
+      "raw": "Whatever they decide, we won't",
+      "expect": "Whatever they decide, we won't."
+    },
+    {
+      "id": "k301",
+      "rule": "tag-question",
+      "raw": "Not because we can't, but because we won't",
+      "expect": "Not because we can't, but because we won't."
+    },
+    {
+      "id": "k302",
+      "rule": "tag-question",
+      "raw": "The car isn't mine, it's Sam's",
+      "expect": "The car isn't mine, it's Sam's."
+    },
+    {
+      "id": "k303",
+      "rule": "tag-question",
+      "raw": "We tried it twice, didn't work",
+      "expect": "We tried it twice, didn't work."
+    },
+    {
+      "id": "k304",
+      "rule": "tag-question",
+      "raw": "I know it isn't, it never was",
+      "expect": "I know it isn't, it never was."
+    },
+    {
+      "id": "k305",
+      "rule": "tag-question",
+      "raw": "He asked me twice and I said no, I won't",
+      "expect": "He asked me twice and I said no, I won't."
+    },
+    {
+      "id": "k306",
+      "rule": "tag-question",
+      "raw": "Whatever happens, don't you worry",
+      "expect": "Whatever happens, don't you worry."
+    },
+    {
+      "id": "k307",
+      "rule": "tag-question",
+      "raw": "If it rains, don't you dare cancel",
+      "expect": "If it rains, don't you dare cancel."
+    },
+    {
+      "id": "k308",
+      "rule": "tag-question",
+      "raw": "It's a nice day, isn't it.",
+      "expect": "It's a nice day, isn't it."
+    },
+    {
+      "id": "k309",
+      "rule": "tag-question",
+      "raw": "It's a great song, isn't it!",
+      "expect": "It's a great song, isn't it!"
+    },
+    {
+      "id": "k310",
+      "rule": "tag-question",
+      "raw": "Nice, isn't it",
+      "expect": "Nice, isn't it"
+    },
+    {
+      "id": "k311",
+      "rule": "tag-question",
+      "raw": "Just ask her, she won't",
+      "expect": "Just ask her, she won't."
+    },
+    {
+      "id": "k312",
+      "rule": "tag-question",
+      "raw": "Wait, don't you go anywhere",
+      "expect": "Wait, don't you go anywhere."
+    },
+    {
+      "id": "k313",
+      "rule": "tag-question",
+      "raw": "As far as I know, it isn't",
+      "expect": "As far as I know, it isn't."
+    },
+    {
+      "id": "k314",
+      "rule": "tag-question",
+      "raw": "If they ask, we didn't",
+      "expect": "If they ask, we didn't."
+    },
+    {
+      "id": "k315",
+      "rule": "tag-question",
+      "raw": "I'll do it, okay",
+      "expect": "I'll do it, okay."
+    },
+    {
+      "id": "k316",
+      "rule": "tag-question",
+      "raw": "Turn left at the light, then right",
+      "expect": "Turn left at the light, then right."
     }
   ]
 }

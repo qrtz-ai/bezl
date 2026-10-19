@@ -1564,7 +1564,8 @@ fn unmarked_question(t: &str) -> bool {
 /// when it ends on a word. ADR 0188: a list of short lines ends like a short dictation: no "." is added, and a "."
 /// the recogniser ended it with is dropped only when it is a clean sentence end (not "p.m.", "etc.", "..."). ADR 0196:
 /// the mark added is "?" when the last sentence can only be a question ([`unmarked_question`]). ADR 0206: also when it
-/// is "Hey <dictionary name> <question>" ([`vocative_question`]), with a comma after the name.
+/// is "Hey <dictionary name> <question>" ([`vocative_question`]), with a comma after the name. ADR 0227: also when it
+/// ends in a tag question ([`tag_question`]: "..., isn't it").
 fn terminal_punctuation(mut t: String, dict: &[DictionaryEntry]) -> String {
     if is_short_list(&t) {
         if t.ends_with('.') && clean_sentence_end(&t) {
@@ -1584,6 +1585,9 @@ fn terminal_punctuation(mut t: String, dict: &[DictionaryEntry]) -> String {
             t.push('?');
         } else if let Some(at) = vocative_question(&t, dict) {
             t.insert(at, ',');
+            t.push('?');
+        } else if tag_question(&t) {
+            // ADR 0227: "It's a nice day, isn't it" → "It's a nice day, isn't it?".
             t.push('?');
         } else {
             t.push('.');
@@ -1740,6 +1744,78 @@ fn vocative_question(t: &str, dict: &[DictionaryEntry]) -> Option<usize> {
     let after_hey = lead + words[0].len();
     let gap = run_len(&s[after_hey..], char::is_whitespace);
     Some(start + after_hey + gap + words[1].len())
+}
+
+/// ADR 0227: a tag question's tag, the closed list: a negative contraction and the pronouns it takes as a tag ("It's a
+/// nice day, isn't it", "You sent it, didn't you", "There's time, isn't there", "I was right, wasn't I"). Agreement
+/// is checked, so "isn't they" or "don't it" refuse. Left out: positive tags ("is it", "do you", "will you": a
+/// cut-off question start or "Close the door, will you" need their own evidence), "shan't" and "ain't" (thin
+/// evidence), "amn't", and "this" / "that" ("isn't that" is as often an unfinished "isn't that the one"). Same table
+/// in cleanup.ts.
+pub const TAG_QUESTIONS: &[(&str, &[&str])] = &[
+    ("isn't", &["he", "she", "it", "there"]),
+    ("wasn't", &["he", "she", "it", "there", "I"]),
+    ("doesn't", &["he", "she", "it"]),
+    ("hasn't", &["he", "she", "it", "there"]),
+    ("aren't", &["I", "you", "we", "they", "there"]),
+    ("weren't", &["you", "we", "they", "there"]),
+    ("don't", &["I", "you", "we", "they"]),
+    ("haven't", &["I", "you", "we", "they", "there"]),
+    ("hadn't", &["I", "you", "we", "they", "he", "she", "it", "there"]),
+    ("didn't", &["I", "you", "we", "they", "he", "she", "it"]),
+    ("won't", &["I", "you", "we", "they", "he", "she", "it", "there"]),
+    (
+        "wouldn't",
+        &["I", "you", "we", "they", "he", "she", "it", "there"],
+    ),
+    ("can't", &["I", "you", "we", "they", "he", "she", "it"]),
+    ("couldn't", &["I", "you", "we", "they", "he", "she", "it"]),
+    ("shouldn't", &["I", "you", "we", "they", "he", "she", "it"]),
+    ("mustn't", &["I", "you", "we", "they", "he", "she", "it"]),
+];
+
+/// ADR 0227: the one three-word tag form, "don't you think" / "don't you agree" / "wouldn't you say" ("It's too late
+/// now, don't you think"). Any other word after the pronoun is a clause ("Whatever happens, don't you worry").
+const TAG_THIRD_WORDS: &[(&str, &[&str])] = &[
+    ("don't", &["think", "agree"]),
+    ("wouldn't", &["think", "agree", "say"]),
+];
+
+/// ADR 0227: does the dictation end in a tag question with no mark of its own? Called only where a "." would be
+/// added and [`unmarked_question`] and [`vocative_question`] said no. The last sentence ends in ", " then exactly one
+/// [`TAG_QUESTIONS`] pair (or a [`TAG_THIRD_WORDS`] form after "you"), written as the recogniser writes a tag mid-sentence:
+/// the contraction lowercase (ASCII or curly apostrophe), the pronoun lowercase or "I"; with at least one word
+/// before the comma, and no `; : " ( )` in the sentence. Short dictations (≤ 3 words) never get here (ADR 0101).
+fn tag_question(t: &str) -> bool {
+    let s = &t[last_sentence_start(t)..];
+    if s.contains([';', ':', '"', '(', ')']) {
+        return false;
+    }
+    let Some(comma) = s.rfind(',') else {
+        return false;
+    };
+    if s[..comma].split_whitespace().next().is_none() || !s[comma + 1..].starts_with(' ') {
+        return false;
+    }
+    let tag: Vec<String> = s[comma + 1..]
+        .split_whitespace()
+        .map(|w| w.replace('\u{2019}', "'"))
+        .collect();
+    let (aux, pronoun, third) = match tag.as_slice() {
+        [a, p] => (a, p, None),
+        [a, p, x] => (a, p, Some(x)),
+        _ => return false,
+    };
+    let agrees = TAG_QUESTIONS
+        .iter()
+        .any(|(a, ps)| a == aux && ps.contains(&pronoun.as_str()));
+    let third_ok = third.is_none_or(|x| {
+        pronoun == "you"
+            && TAG_THIRD_WORDS
+                .iter()
+                .any(|(a, xs)| a == aux && xs.contains(&x.as_str()))
+    });
+    agrees && third_ok
 }
 
 fn rep(r: &Regex, s: &str, with: &str) -> String {
@@ -1922,7 +1998,8 @@ fn remove_fillers(src: &str) -> String {
 /// On-device cleanup: spoken commands, fillers (ADR 0192: with the comma before them where none belongs), stutters,
 /// spacing, "Scratch that" (ADR 0186), a final spoken "question mark" / "exclamation point" (ADR 0189),
 /// capitalization, terminal punctuation (ADR 0101: which repeats collapse, and no "." on a short dictation; ADR 0188:
-/// nor on a list of short lines; ADR 0201: whose line commas go; ADR 0206: "Hey <dictionary name>, <question>?"), then
+/// nor on a list of short lines; ADR 0201: whose line commas go; ADR 0206: "Hey <dictionary name>, <question>?"; ADR
+/// 0227: "..., isn't it?"), then
 /// spoken amounts as figures (ADR 0193: "$25", "15%", "3:30 p.m.").
 pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
     let mut t = format!(" {raw} ");

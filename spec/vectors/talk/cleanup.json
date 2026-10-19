@@ -2746,6 +2746,234 @@
       "raw": "Hey Priya did you finish",
       "dict": true,
       "expect": "Hey Priya, did you finish?"
+    },
+    {
+      "raw": "It's a nice day, isn't it",
+      "expect": "It's a nice day, isn't it?"
+    },
+    {
+      "raw": "You finished the report already, didn't you",
+      "expect": "You finished the report already, didn't you?"
+    },
+    {
+      "raw": "We should leave before the traffic gets bad, shouldn't we",
+      "expect": "We should leave before the traffic gets bad, shouldn't we?"
+    },
+    {
+      "raw": "They're still coming to the dinner tonight, aren't they",
+      "expect": "They're still coming to the dinner tonight, aren't they?"
+    },
+    {
+      "raw": "There's still time to fix the build, isn't there",
+      "expect": "There's still time to fix the build, isn't there?"
+    },
+    {
+      "raw": "Thanks for checking. That was the last blocker, wasn't it",
+      "expect": "Thanks for checking. That was the last blocker, wasn't it?"
+    },
+    {
+      "raw": "It's too late to change the venue now, don't you think",
+      "expect": "It's too late to change the venue now, don't you think?"
+    },
+    {
+      "raw": "I was right about the date, wasn't I",
+      "expect": "I was right about the date, wasn't I?"
+    },
+    {
+      "raw": "It's a nice day, isn’t it",
+      "expect": "It's a nice day, isn’t it?"
+    },
+    {
+      "raw": "Thanks\nIt works now, doesn't it",
+      "expect": "Thanks\nIt works now, doesn't it?"
+    },
+    {
+      "raw": "It costs twenty five dollars, doesn't it",
+      "expect": "It costs $25, doesn't it?"
+    },
+    {
+      "raw": "That's the whole plan, wouldn't you say",
+      "expect": "That's the whole plan, wouldn't you say?"
+    },
+    {
+      "raw": "The new office is great, wouldn't you agree",
+      "expect": "The new office is great, wouldn't you agree?"
+    },
+    {
+      "raw": "Sit down for a minute, won't you",
+      "expect": "Sit down for a minute, won't you?"
+    },
+    {
+      "raw": "The draft is ready, isn't it",
+      "expect": "The draft is ready, isn't it?"
+    },
+    {
+      "raw": "He fixed it last night, didn't he",
+      "expect": "He fixed it last night, didn't he?"
+    },
+    {
+      "raw": "It's a nice day isn't it",
+      "expect": "It's a nice day isn't it."
+    },
+    {
+      "raw": "It's a nice day, Isn't it",
+      "expect": "It's a nice day, Isn't it."
+    },
+    {
+      "raw": "The twins are here, isn't they",
+      "expect": "The twins are here, isn't they."
+    },
+    {
+      "raw": "That one works, don't it",
+      "expect": "That one works, don't it."
+    },
+    {
+      "raw": "You can come tonight, can you",
+      "expect": "You can come tonight, can you."
+    },
+    {
+      "raw": "Close the door for me, will you",
+      "expect": "Close the door for me, will you."
+    },
+    {
+      "raw": "It's late already, isn't that",
+      "expect": "It's late already, isn't that."
+    },
+    {
+      "raw": "They're coming tonight, aren't they Sam",
+      "expect": "They're coming tonight, aren't they Sam."
+    },
+    {
+      "raw": "It's a nice day, don't you think so",
+      "expect": "It's a nice day, don't you think so."
+    },
+    {
+      "raw": "That's the plan, don't you say",
+      "expect": "That's the plan, don't you say."
+    },
+    {
+      "raw": "We won the game, didn't we. Then we celebrated",
+      "expect": "We won the game, didn't we. Then we celebrated."
+    },
+    {
+      "raw": "It works now, doesn't it\nThanks",
+      "expect": "It works now, doesn't it\nThanks."
+    },
+    {
+      "raw": "Fine, isn't it",
+      "expect": "Fine, isn't it"
+    },
+    {
+      "raw": "Isn't it",
+      "expect": "Isn't it"
+    },
+    {
+      "raw": "It's a nice day, isn't it?",
+      "expect": "It's a nice day, isn't it?"
+    },
+    {
+      "raw": "We need to talk; it's late, isn't it",
+      "expect": "We need to talk; it's late, isn't it."
+    },
+    {
+      "raw": "He said \"it's late, isn't it",
+      "expect": "He said \"it's late, isn't it."
+    },
+    {
+      "raw": "Whatever happens, don't you worry",
+      "expect": "Whatever happens, don't you worry."
+    },
+    {
+      "raw": ", isn't it",
+      "expect": "Isn't it"
+    },
+    {
+      "raw": "Maybe they will, maybe they won't",
+      "expect": "Maybe they will, maybe they won't."
+    },
+    {
+      "raw": "She said she would come, but she didn't",
+      "expect": "She said she would come, but she didn't."
+    },
+    {
+      "raw": "Some of us can, the rest of us can't",
+      "expect": "Some of us can, the rest of us can't."
+    },
+    {
+      "raw": "If you can't, don't worry about it",
+      "expect": "If you can't, don't worry about it."
+    },
+    {
+      "raw": "Go up, down, left, right",
+      "expect": "Go up, down, left, right."
+    },
+    {
+      "raw": "Mark the first answer wrong, the second correct",
+      "expect": "Mark the first answer wrong, the second correct."
+    },
+    {
+      "raw": "Whatever they decide, we won't",
+      "expect": "Whatever they decide, we won't."
+    },
+    {
+      "raw": "Not because we can't, but because we won't",
+      "expect": "Not because we can't, but because we won't."
+    },
+    {
+      "raw": "The car isn't mine, it's Sam's",
+      "expect": "The car isn't mine, it's Sam's."
+    },
+    {
+      "raw": "We tried it twice, didn't work",
+      "expect": "We tried it twice, didn't work."
+    },
+    {
+      "raw": "I know it isn't, it never was",
+      "expect": "I know it isn't, it never was."
+    },
+    {
+      "raw": "He asked me twice and I said no, I won't",
+      "expect": "He asked me twice and I said no, I won't."
+    },
+    {
+      "raw": "If it rains, don't you dare cancel",
+      "expect": "If it rains, don't you dare cancel."
+    },
+    {
+      "raw": "It's a nice day, isn't it.",
+      "expect": "It's a nice day, isn't it."
+    },
+    {
+      "raw": "It's a great song, isn't it!",
+      "expect": "It's a great song, isn't it!"
+    },
+    {
+      "raw": "Nice, isn't it",
+      "expect": "Nice, isn't it"
+    },
+    {
+      "raw": "Just ask her, she won't",
+      "expect": "Just ask her, she won't."
+    },
+    {
+      "raw": "Wait, don't you go anywhere",
+      "expect": "Wait, don't you go anywhere."
+    },
+    {
+      "raw": "As far as I know, it isn't",
+      "expect": "As far as I know, it isn't."
+    },
+    {
+      "raw": "If they ask, we didn't",
+      "expect": "If they ask, we didn't."
+    },
+    {
+      "raw": "I'll do it, okay",
+      "expect": "I'll do it, okay."
+    },
+    {
+      "raw": "Turn left at the light, then right",
+      "expect": "Turn left at the light, then right."
     }
   ],
   "dictionaryOnly": [

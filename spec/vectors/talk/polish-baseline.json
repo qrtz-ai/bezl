@@ -108,7 +108,15 @@
     "p96": "We should probably push the launch to next week.",
     "p97": "I checked the numbers. So we can afford the second server.",
     "p98": "Hey Jared, are you free tomorrow afternoon?",
-    "p99": "Hey Priya, can you send me the slides?"
+    "p99": "Hey Priya, can you send me the slides?",
+    "p110": "It's a nice day, isn't it.",
+    "p111": "You finished the report already, didn't you.",
+    "p112": "We should leave before the traffic gets bad, shouldn't we.",
+    "p113": "They're still coming to the dinner tonight, aren't they.",
+    "p114": "There's still time to fix the build, isn't there.",
+    "p115": "Thanks for checking. That was the last blocker, wasn't it.",
+    "p116": "It's too late to change the venue now, don't you think.",
+    "p117": "I was right about the date, wasn't I."
   },
   "note": "rule_cleanup's output for each polish case at the last accepted change (ADR 0182, after N185/N186; the first baseline was origin/main d457ff0). A case may only get closer to its ideal; polish_set.rs fails on any case that moves further. Refresh with QRTZ_POLISH_BASELINE=1 cargo test -p qrtz-talk --test polish_set after an accepted change."
 }

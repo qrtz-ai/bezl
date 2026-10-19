@@ -469,7 +469,9 @@ function terminalPunctuation(
   if (unmarkedQuestion(t)) return `${openerComma(t)}?`;
   // ADR 0206: "Hey <dictionary name> <question>" gets a comma after the name and "?".
   const at = vocativeQuestion(t, dict);
-  return at === null ? `${t}.` : `${t.slice(0, at)},${t.slice(at)}?`;
+  if (at !== null) return `${t.slice(0, at)},${t.slice(at)}?`;
+  // ADR 0227: "It's a nice day, isn't it" -> "It's a nice day, isn't it?".
+  return tagQuestion(t) ? `${t}?` : `${t}.`;
 }
 
 /** ADR 0206: the subjects a question may have after a vocative name. Same as cleanup.rs VOCATIVE_SUBJECTS. */
@@ -611,6 +613,65 @@ function vocativeQuestion(
   const afterHey = lead + words[0].length;
   const gap = /^\s*/.exec(s.slice(afterHey))![0].length;
   return start + afterHey + gap + words[1].length;
+}
+
+/** ADR 0227: a tag question's tag: a negative contraction and the pronouns it takes as a tag ("It's a nice day, isn't
+ * it"). Same table as cleanup.rs TAG_QUESTIONS (agreement checked; no positive tags, "shan't", "ain't", "this",
+ * "that"). */
+export const TAG_QUESTIONS: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ["isn't", ['he', 'she', 'it', 'there']],
+  ["wasn't", ['he', 'she', 'it', 'there', 'I']],
+  ["doesn't", ['he', 'she', 'it']],
+  ["hasn't", ['he', 'she', 'it', 'there']],
+  ["aren't", ['I', 'you', 'we', 'they', 'there']],
+  ["weren't", ['you', 'we', 'they', 'there']],
+  ["don't", ['I', 'you', 'we', 'they']],
+  ["haven't", ['I', 'you', 'we', 'they', 'there']],
+  ["hadn't", ['I', 'you', 'we', 'they', 'he', 'she', 'it', 'there']],
+  ["didn't", ['I', 'you', 'we', 'they', 'he', 'she', 'it']],
+  ["won't", ['I', 'you', 'we', 'they', 'he', 'she', 'it', 'there']],
+  ["wouldn't", ['I', 'you', 'we', 'they', 'he', 'she', 'it', 'there']],
+  ["can't", ['I', 'you', 'we', 'they', 'he', 'she', 'it']],
+  ["couldn't", ['I', 'you', 'we', 'they', 'he', 'she', 'it']],
+  ["shouldn't", ['I', 'you', 'we', 'they', 'he', 'she', 'it']],
+  ["mustn't", ['I', 'you', 'we', 'they', 'he', 'she', 'it']],
+];
+
+/** ADR 0227: "don't you think" / "don't you agree" / "wouldn't you say". Same as cleanup.rs TAG_THIRD_WORDS. */
+const TAG_THIRD_WORDS: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ["don't", ['think', 'agree']],
+  ["wouldn't", ['think', 'agree', 'say']],
+];
+
+/** ADR 0227: does the dictation end in an unmarked tag question ("..., isn't it")? Same checks as cleanup.rs
+ * tag_question. */
+function tagQuestion(t: string): boolean {
+  const line = t.lastIndexOf('\n') + 1;
+  let start = line;
+  for (const m of t.slice(line).matchAll(/[.!?]\s/g))
+    start = line + (m.index ?? 0) + m[0].length;
+  const s = t.slice(start);
+  if (/[;:"()]/.test(s)) return false;
+  const comma = s.lastIndexOf(',');
+  if (comma < 0 || s.slice(0, comma).trim() === '' || s[comma + 1] !== ' ')
+    return false;
+  const tag = s
+    .slice(comma + 1)
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w.replaceAll('\u2019', "'"));
+  if (tag.length !== 2 && tag.length !== 3) return false;
+  const [aux, pronoun, third] = tag;
+  const agrees = TAG_QUESTIONS.some(
+    ([a, ps]) => a === aux && ps.includes(pronoun),
+  );
+  const thirdOk =
+    third === undefined ||
+    (pronoun === 'you' &&
+      TAG_THIRD_WORDS.some(([a, xs]) => a === aux && xs.includes(third)));
+  return agrees && thirdOk;
 }
 
 /** ADR 0204: the interjections among QUESTION_OPENERS that take a comma before the question they open. Same as

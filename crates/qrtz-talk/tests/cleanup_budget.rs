@@ -113,4 +113,11 @@ fn the_cleanup_chain_fits_its_budget_on_a_long_dictation() {
         .text
         .ends_with("Hey Postgres, can you take the backup tonight?"));
     assert_fits_budget(&text, " ending in a vocative question");
+    // ADR 0227: ending in a tag question, so the ADR 0196 and ADR 0206 checks run and say no, then the tag check
+    // runs and fires.
+    let text = format!("{}Thanks. The backup ran last night, didn't it", long_dictation());
+    assert!(cleanup_dictation(&text, &dictionary(), true)
+        .text
+        .ends_with("The backup ran last night, didn't it?"));
+    assert_fits_budget(&text, " ending in a tag question");
 }

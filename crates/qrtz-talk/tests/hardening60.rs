@@ -55,6 +55,7 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
     // ("Hey, are you free?"). Any other difference fails.
     // ADR 0205/0207 (cycles 65/67) may also drop the second pronoun of "we, we <modal>" / "they, they <modal>".
     // ADR 0206 (cycle 66): "Hey <term> ..." may end with "?" instead of "." and gain a comma after the term.
+    // ADR 0227 (cycle 76): a sentence ending in ", <negative contraction> <pronoun>" (a tag) may end with "?".
     let old = if new != old && new == without_subject_repeats(&old) {
         new.clone()
     } else {
@@ -74,8 +75,15 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
                         QUESTION_OPENERS.contains(&w.trim_end_matches(',').to_ascii_lowercase().as_str())
                     })
         });
+        let tag = old.strip_suffix('.').is_some_and(|body| {
+            new == format!("{body}?")
+                && body.rsplit_once(", ").is_some_and(|(_, t)| {
+                    let w: Vec<&str> = t.split(' ').collect();
+                    (2..=3).contains(&w.len()) && (w[0].ends_with("n't") || w[0].ends_with("n\u{2019}t"))
+                })
+        });
         assert!(
-            list || opener,
+            list || opener || tag,
             "rule_cleanup({raw:?}): {new:?} vs cycle 59 {old:?}"
         );
     }
