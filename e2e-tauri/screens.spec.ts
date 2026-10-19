@@ -137,9 +137,9 @@ test('a fresh install opens straight to qrtz → settings → record → review'
   await expect(mic).toContainText('allowed');
   await closeApp();
   await openApp('ctrl');
-  await expect(modal.getByTestId('perm-ctrl-automation')).toContainText(
-    'asked on first use',
-  );
+  // ctrl needs accessibility only (no automation since the permissions review).
+  await expect(modal.getByTestId('perm-ctrl-accessibility')).toBeVisible();
+  await expect(modal.getByTestId('perm-ctrl-automation')).toHaveCount(0);
   await closeApp();
   await openApp('nano');
   await expect(modal.getByTestId('perm-nano-screen-recording')).toBeVisible();

@@ -24,7 +24,8 @@ test('qrtz page: list apps, read a detail modal, open app settings', async ({
   await m.getByTestId('app-open-ctrl').click();
   const modal = page.getByTestId('app-modal');
   await expect(modal.getByTestId('fact-version')).toHaveText('v0.1.0');
-  await expect(modal.getByTestId('permission-automation')).toBeVisible();
+  await expect(modal.getByTestId('permission-accessibility')).toBeVisible();
+  await expect(modal.getByTestId('permission-automation')).toHaveCount(0);
   await expect(modal.getByTestId('dep-model.laya')).toContainText('model');
 
   // ctrl comes with the build (config-installed, no package row), so there's nothing to remove; installing and
