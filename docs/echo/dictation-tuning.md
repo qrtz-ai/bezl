@@ -2040,3 +2040,81 @@ P5's p50 / p95 budget still waits on `node scripts/echo-timing-report.mjs` outpu
 3. Optional crash check: hold fn, and while holding run `pkill -x qrtz-echo` in a terminal (`pkill -x qrtz-helper` if
    Activity Monitor shows no qrtz-echo process), then let go of fn. The pill must not come back stuck listening once the helper
    restarts; the next fn press dictates normally.
+
+## 48. Cycle 76: an unmarked tag question ends with "?" (ADR 0227, `3ba0597`)
+
+Polish first. When the recogniser writes no final mark, the terminal step adds "." to anything over three words, so
+a tag question read as a statement: "It's a nice day, isn't it." / "You finished the report already, didn't you."
+Now a last sentence ending in ", " + a negative contraction and the pronoun it agrees with ("isn't it", "didn't
+you", "aren't they", "wasn't I", "isn't there") or "don't you think / agree", "wouldn't you say / agree / think"
+ends with "?". Only where a "." would be added: a mark Parakeet wrote, a short dictation, a list and every earlier
+sentence stay as they were.
+
+| Run                                    | Exact     | Edit distance              | Regressions | Keep set (hits / n) |
+| -------------------------------------- | --------- | -------------------------- | ----------- | ------------------- |
+| old cleanup (`fb36f8c`), the 109 cases | 105 / 109 | 42 chars (1.20 % of 3504)  | 0           | 0 / 292             |
+| `3ba0597`, the 109 cases               | 105 / 109 | 42 chars (no case changes) | 0           | 0 / 292             |
+| old cleanup, 117 cases (+8 tag)        | 105 / 117 | 50 chars                   | -           | -                   |
+| `3ba0597`, 117 cases                   | 113 / 117 | 42 chars (1.08 % of 3887)  | 0           | 0 / 315             |
+
+- **Examples:** "Thanks for checking. That was the last blocker, wasn't it" → "…, wasn't it?"; "It's too late to
+  change the venue now, don't you think" → "…, don't you think?"; "It costs twenty five dollars, doesn't it" →
+  "It costs $25, doesn't it?". Kept: "Maybe they will, maybe they won't." (pronoun first), "Whatever happens, don't
+  you worry." (a clause), "Go up, down, left, right." / "I'll do it, okay." (not tags), "Close the door for me,
+  will you." (positive tags not in this rule), "The twins are here, isn't they." (no agreement), "They're coming
+  tonight, aren't they Sam." (a word after the tag), "It's a great song, isn't it!" (Parakeet's mark).
+- **False-positive evidence:** 23 keep vectors against 8 positives, 41 refusals in cleanup.json, and 0 fires on the
+  5672 real Parakeet TDT v2 texts cached on the box (2836 hypotheses, with and without their final mark) or on any
+  older vector.
+- **Rejected this cycle** (details in ADR 0227): positive tags (deferred, needs its own keep set), ", right / correct
+  / okay / yeah / huh / no / eh", "isn't that / this", shan't / ain't / amn't, a tag without its comma, a
+  capitalised contraction, a word after the tag, any other third word, changing a mark the recogniser wrote. Two
+  seam ideas measured with segmented Parakeet on spliced LibriSpeech audio
+  (`linux-crosscheck/seg/seam_stutter.py`): an article repeated across a segment cut ("talk to the … the design
+  team") came out with no mark after the article in 71 / 71 seams (36 "the The", 35 "the the"), and the current
+  `collapse_repeats` already fixes all 71, so no rule; a capital after an unmarked seam is sometimes a sentence end,
+  sometimes a continuation ("full Complement"), sometimes a name ("cried Cynthia"), so neither "." nor lowercasing
+  is safe from text (ADR 0120 decision 3, the helper's cut window, is the path).
+- **Still failing (4):** p15 spoken "comma" / "period" (waits on section 36 step 5 on the Mac), p19 / p20 spoken
+  email and URL (ADR 0223), p41 (ADR 0188's "don't retry").
+- **Latency:** release `cleanup_budget` on the box, old and new binaries interleaved 15×, two rounds with the order
+  swapped (median of medians): 495 words 0.114 / 0.122 → 0.129 / 0.120 ms; 504 words ending in a question 0.125 /
+  0.126 → 0.131 / 0.128 ms; 504 words ending in a vocative question 0.133 / 0.137 → 0.137 / 0.132 ms; the new
+  503-word text ending in a tag question 0.131 / 0.122 ms. Noise. Ceiling 2 ms; the benchmark test now times the tag
+  text too. The check reads only the last sentence, once, on the final text. Capture, segmenting, the decode
+  schedule, Parakeet's settings, the drain / final pass, insert and the timing log are unchanged.
+- **Dictation path review since `84f8fa7`:** `1ce3eb4` (ADR 0225 amendment 1: a secure refusal after the insert
+  bound, insert path only), `4ecb16e` (Bobs, B1: `micFailureReason` says `denied` from the mic authorization first,
+  `no-device` only when granted and the error names a missing device; N198 notch fail-closed), `985bb13` (ctrl+fn,
+  ADR 0216 amendment 2: sleep releases and a mic error cut a ctrl command short; every change in service.rs is gated
+  on `to_ctrl`, plain fn still inserts), `162eca8` / `66adcae` / `fb36f8c` (nano calendar) and `5532135` (modules
+  .tmp sweep) are off the press path. All correct for dictation.
+- **N202 (new, low, helper side; proposal for Bobs):** after `4ecb16e`, a mic open that fails with permission
+  granted and an error that doesn't name a missing device sends `error{dictation.mic}` with no `reason`; talk's
+  `mic_error` (crates/qrtz-talk/src/service.rs ~l.1922) maps a missing reason to mic-denied, so the pill shows a
+  permission-style error while permission is granted (a device held in exclusive use, a Core Audio start error).
+  Proposed: the helper sends `reason: "failed"` in that case; talk then maps it to "the microphone couldn't start"
+  (talk side, Echo's, after the helper change lands). N197 (needs the Mac's device-switch gap) and N199 (Jared's
+  call) stay open.
+- **Box note:** worktrees sharing `/workspace/cargo-target` can link each other's workspace crates (same artifact
+  names, path-independent fingerprints), and `env!("CARGO_MANIFEST_DIR")` in a test then points at another
+  worktree's spec files; this cycle's numbers come from a per-agent profile (`--profile echo76`,
+  `CARGO_PROFILE_ECHO76_INHERITS=dev`), see docs/hardening/LOG.md.
+
+Next: positive tags with their own keep set if real dictations show them, p15 after the Mac check, then P7 (idle
+memory / CPU on the Mac first) or P6's talk side. N202's talk half after the helper sends `reason: "failed"`.
+
+### Test on Jared's Mac (cycle 76)
+
+1. `cd ~/code/qrtz && git pull` (main at or after `3ba0597`), build and run the app as usual.
+2. `cargo test --release -p qrtz-talk --test cleanup_budget --test hardening60 --test hardening76 --test polish_set
+   -- --nocapture`: four budget medians well under 0.5 ms (box 0.12-0.14 ms), "polish set: 113/117 exact",
+   regressions 0, all pass.
+3. Hold fn and say "It's a nice day, isn't it" without lifting your voice at the end: it types "It's a nice day,
+   isn't it?". Then "You finished the report already, didn't you" → "…, didn't you?".
+4. Statements keep their period: "Maybe they will, maybe they won't" → "Maybe they will, maybe they won't.";
+   "Whatever happens, don't you worry" → "…, don't you worry.".
+5. Optional, bench before/after: with the echo-bench results from section 46, run `node
+   scripts/echo-bench-compare.mjs <before.json> <after.json>`: it must pass (raw WER identical; formatted WER equal
+   or lower on every clip).
+6. If anything reads worse, `git revert 3ba0597` (talk-only) and tell Echo the dictation.
