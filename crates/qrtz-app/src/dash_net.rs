@@ -65,9 +65,16 @@ impl DashNet {
         if let Some(h) = std::env::var_os("HOME") {
             cmd.env("HOME", h);
         }
-        let mut child = cmd
-            .spawn()
-            .map_err(|_| unavailable("the dash helper can't start"))?;
+        // One retry on ETXTBSY (a just-written binary still open for writing in a forking process).
+        const ETXTBSY: i32 = 26;
+        let mut child = match cmd.spawn() {
+            Err(e) if e.raw_os_error() == Some(ETXTBSY) => {
+                std::thread::sleep(Duration::from_millis(50));
+                cmd.spawn()
+            }
+            r => r,
+        }
+        .map_err(|_| unavailable("the dash helper can't start"))?;
         let stdin = child
             .stdin
             .take()
@@ -88,8 +95,10 @@ impl DashNet {
     pub async fn call(&mut self, channel: &str, capability: &str, params: &Value) -> Result<Value, AppError> {
         let id = self.next;
         self.next += 1;
-        let mut line =
-            json!({"id": id, "channel": channel, "capability": capability, "params": params}).to_string();
+        // The line may carry the setup token: zeroed when dropped (Bozniak L).
+        let mut line = zeroize::Zeroizing::new(
+            json!({"id": id, "channel": channel, "capability": capability, "params": params}).to_string(),
+        );
         line.push('\n');
         let gone = || unavailable("the dash helper stopped");
         self.stdin.write_all(line.as_bytes()).await.map_err(|_| gone())?;

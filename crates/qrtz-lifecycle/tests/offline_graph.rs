@@ -2113,3 +2113,77 @@ fn codeowners_gates_the_confinement_and_release_files() {
         );
     }
 }
+
+/// Bozniak L: no workspace crate's build dependencies (build scripts and proc macros run at build time, with the
+/// network the build machine has) reach a network crate, on any target, through normal or build edges.
+#[test]
+fn no_crate_build_dependency_reaches_a_network_crate() {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    for t in TARGETS {
+        let out = std::process::Command::new(&cargo)
+            .current_dir(root())
+            .args(["metadata", "--format-version", "1", "--filter-platform", t])
+            .output()
+            .expect("cargo metadata");
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let m: Value = serde_json::from_slice(&out.stdout).unwrap();
+        let name: HashMap<String, String> = m["packages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| {
+                (
+                    p["id"].as_str().unwrap().to_owned(),
+                    p["name"].as_str().unwrap().to_owned(),
+                )
+            })
+            .collect();
+        // id -> (dep id, is build edge) over normal and build edges.
+        let mut edges: HashMap<String, Vec<(String, bool)>> = HashMap::new();
+        for n in m["resolve"]["nodes"].as_array().unwrap() {
+            let v = n["deps"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|d| {
+                    let kinds = d["dep_kinds"].as_array().unwrap();
+                    let build = kinds.iter().any(|k| k["kind"] == "build");
+                    let normal = kinds.iter().any(|k| k["kind"].is_null());
+                    (build || normal).then(|| (d["pkg"].as_str().unwrap().to_owned(), build))
+                })
+                .collect();
+            edges.insert(n["id"].as_str().unwrap().to_owned(), v);
+        }
+        let mut bad = vec![];
+        let mut checked = 0;
+        for member in m["workspace_members"].as_array().unwrap() {
+            let member = member.as_str().unwrap();
+            for (b, is_build) in &edges[member] {
+                if !is_build {
+                    continue;
+                }
+                checked += 1;
+                let mut seen = BTreeSet::from([b.clone()]);
+                let mut q = VecDeque::from([b.clone()]);
+                while let Some(at) = q.pop_front() {
+                    if NET_CRATES.contains(&name[&at].as_str()) {
+                        bad.push(format!(
+                            "{}: build-dependency {} reaches {}",
+                            name[member], name[b], name[&at]
+                        ));
+                    }
+                    for (d, _) in &edges[&at] {
+                        if seen.insert(d.clone()) {
+                            q.push_back(d.clone());
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            checked > 0,
+            "{t}: no build dependencies found (the check would be vacuous)"
+        );
+        assert!(bad.is_empty(), "{t}:\n{}", bad.join("\n"));
+    }
+}

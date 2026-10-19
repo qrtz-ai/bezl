@@ -21,7 +21,12 @@ async fn main() {
     let mut out = tokio::io::stdout();
     loop {
         let reply = match read_line_capped(&mut input, MAX_LINE).await {
-            Ok(Line::Ok(b)) => helper.handle_line(&String::from_utf8_lossy(&b)).await,
+            Ok(Line::Ok(b)) => {
+                // The line may carry the setup token: both copies are zeroed when dropped (Bozniak L).
+                let b = zeroize::Zeroizing::new(b);
+                let line = zeroize::Zeroizing::new(String::from_utf8_lossy(&b).into_owned());
+                helper.handle_line(&line).await
+            }
             // Over the cap: refused; the rest of it was drained, never held.
             Ok(Line::TooLong) => line_too_long(),
             Ok(Line::Eof) | Err(_) => break,

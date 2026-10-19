@@ -14,6 +14,7 @@ path = "src/main.rs"
 [dependencies]
 serde_json = { workspace = true }
 async-trait = { workspace = true }
+zeroize = { workspace = true }
 tokio = { workspace = true, features = ["io-std"] }
 qrtz-ipc = { workspace = true }
 # The one network library (ADR 0231 amendment 1): the same reqwest and features qrtz-speech already uses.

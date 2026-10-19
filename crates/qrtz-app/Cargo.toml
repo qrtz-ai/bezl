@@ -40,6 +40,7 @@ unicode-normalization = { workspace = true }
 qrtz-ipc = { workspace = true }
 # ADR 0228: Agent Dash (the `dash:*` channels).
 qrtz-dash = { workspace = true }
+zeroize = { workspace = true }
 # ADR 0146: module manifests, lockfile and the global module switches (pure Rust, no network).
 qrtz-modules = { workspace = true }
 # ADR 0161: the marketplace catalog picks dependency versions the way the resolver does.

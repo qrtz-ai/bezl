@@ -13,6 +13,7 @@
 //!   reads ([`KEYCHAIN_SERVICE`]), and is never sent to the app.
 use qrtz_ipc::{AppError, ErrorCode};
 use serde_json::{json, Value};
+use zeroize::{Zeroize, Zeroizing};
 
 /// The one origin this process may reach.
 pub const ORIGIN: &str = "https://dash.qrtz.ai";
@@ -25,6 +26,13 @@ pub const MAX_RESPONSE: usize = 1024 * 1024;
 /// Compiled into the helper binary (Bozniak M5): scripts/release/verify-bundle.sh greps every bundle file for it, so
 /// a renamed copy of the helper still fails the release gate. Keep the two in sync (a test checks).
 pub const BUNDLE_MARKER: &str = "qrtz-dash-net:adr-0231:never-in-a-release-bundle:5c1e9b";
+
+/// Zeroes a `setupToken` string in place (Bozniak L).
+pub fn scrub_setup_token(p: &mut Value) {
+    if let Some(Value::String(t)) = p.get_mut("setupToken") {
+        t.zeroize();
+    }
+}
 
 /// The answer to a line over [`MAX_LINE`] (its id is never parsed).
 pub fn line_too_long() -> Value {
@@ -402,11 +410,12 @@ impl Helper {
         match channel {
             "dash:connect" => {
                 if let Some(token) = p.get("setupToken").and_then(Value::as_str) {
-                    let token = token.trim();
+                    // Bozniak L: the setup token is held zeroized for as long as it is held.
+                    let token = Zeroizing::new(token.trim().to_owned());
                     if token.is_empty() || token.len() > 256 {
                         return Err(bad("setup token missing"));
                     }
-                    return self.connect_raw(token).await;
+                    return self.connect_raw(&token).await;
                 }
                 // No token: reuse the dashboard this helper already holds a key for.
                 if self.store.load().is_some() {
@@ -467,8 +476,10 @@ impl Helper {
             return json!({"id": Value::Null, "error": bad("invalid json").to_json()});
         };
         let id = v.get("id").cloned().unwrap_or(Value::Null);
-        let channel = v["channel"].as_str().unwrap_or("");
-        let cap = v["capability"].as_str().unwrap_or("");
+        let channel = v["channel"].as_str().unwrap_or("").to_owned();
+        let channel = channel.as_str();
+        let cap = v["capability"].as_str().unwrap_or("").to_owned();
+        let cap = cap.as_str();
         let Some((_, want)) = CHANNELS.iter().find(|(c, _)| *c == channel) else {
             return json!({"id": id, "error": qrtz_ipc::no_handler(channel).to_json()});
         };
@@ -476,8 +487,11 @@ impl Helper {
             let e = AppError::new(ErrorCode::Forbidden, format!("{channel} needs {want}")).retryable(false);
             return json!({"id": id, "error": e.to_json()});
         }
-        let params = v.get("params").cloned().unwrap_or(Value::Null);
-        match self.call(channel, &params).await {
+        let mut v = v;
+        let mut params = v.get_mut("params").map(Value::take).unwrap_or(Value::Null);
+        let r = self.call(channel, &params).await;
+        scrub_setup_token(&mut params);
+        match r {
             Ok(r) => json!({"id": id, "ok": r}),
             Err(e) => json!({"id": id, "error": e.to_json()}),
         }

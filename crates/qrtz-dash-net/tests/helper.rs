@@ -254,3 +254,10 @@ fn the_entitlements_hold_exactly_the_access_group_the_code_uses() {
         assert!(!e.contains(&format!("<key>{k}")), "{k}");
     }
 }
+
+#[test]
+fn the_setup_token_is_zeroed_in_place() {
+    let mut p = json!({"setupToken": "secret-setup"});
+    scrub_setup_token(&mut p);
+    assert!(!p.to_string().contains("secret-setup"));
+}

@@ -75,6 +75,13 @@ impl DashPort {
             .ok_or_else(|| no_handler(channel))
     }
 
+    /// Zeroes a `setupToken` string in a payload in place (Bozniak L); the service calls it after `dash:connect`.
+    pub fn scrub_setup_token(p: &mut Value) {
+        if let Some(Value::String(t)) = p.get_mut("setupToken") {
+            zeroize::Zeroize::zeroize(t);
+        }
+    }
+
     /// ADR 0231 amendment 1: every `dash:*` call. `dash:connect` is the opt-in that starts the helper; while it
     /// runs, the server answers; otherwise the in-memory `Dash` does. `dash:open-link` is always local.
     pub async fn call_async(&self, channel: &str, p: &Value) -> Result<Value, AppError> {
@@ -209,18 +216,21 @@ mod tests {
     fn fake_helper(dir: &std::path::Path) -> std::path::PathBuf {
         use std::os::unix::fs::PermissionsExt;
         let p = dir.join("qrtz-dash-net");
+        // Written under a temp name and renamed, so no fd open for writing is inherited by a forked child (ETXTBSY).
+        let tmp = dir.join("qrtz-dash-net.tmp");
         std::fs::write(
-            &p,
+            &tmp,
             r#"#!/bin/sh
 while IFS= read -r l; do
   id=${l#*\"id\":}
   id=${id%%[,\}]*}
-  printf '{"id":%s,"ok":{"echo":%s,"env":"%s"}}\n' "$id" "$l" "${QRTZ_PROBE:-}"
+  printf '{"id":%s,"ok":{"echo":%s,"env":"%s"}}\n' "$id" "$l" "${CARGO_MANIFEST_DIR:-}"
 done
 "#,
         )
         .unwrap();
-        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::rename(&tmp, &p).unwrap();
         p
     }
 
@@ -242,7 +252,10 @@ done
         assert!(v.get("echo").is_none());
         assert!(port.net.lock().await.is_none());
         // Opt in: the helper starts and gets the call with its contract capability.
-        std::env::set_var("QRTZ_PROBE", "leaked");
+        assert!(
+            std::env::var_os("PATH").is_some(),
+            "the test process has a PATH to leak"
+        );
         let r = port
             .call_async("dash:connect", &json!({"setupToken": "t"}))
             .await

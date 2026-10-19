@@ -3399,6 +3399,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "unicode-normalization",
+ "zeroize",
 ]
 
 [[package]]
@@ -3458,6 +3459,7 @@ dependencies = [
  "security-framework",
  "serde_json",
  "tokio",
+ "zeroize",
 ]
 
 [[package]]
