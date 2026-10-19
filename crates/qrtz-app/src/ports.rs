@@ -58,6 +58,8 @@ pub const APP_CHANNELS: &[&str] = &[
     // ADR 0083: the local log.
     "log:write",
     "logs:export",
+    // ADR 0161: the module manager's on/off switch (packages.manage; writes only `modules.<id>.enabled`).
+    "packages:set-enabled",
 ];
 pub const TALK_PREFIX: &str = "talk:";
 /// ctrl (ADR 0103): tasks, schedules and run history (`qrtz_ctrl::service::CtrlService`).

@@ -6,6 +6,7 @@ import { PermissionsStatus, SessionView } from '../note/contract';
 import { LiveTranscriptDelta, PipelineView } from '../note/lifecycle';
 import { TalkView } from '../talk/contract';
 import { SpeechSetupStatus } from '../speech/setup';
+import { PackagesProgress } from '../packages/contract';
 
 export interface EventDef<P extends z.ZodType = z.ZodType> {
   capability: Capability;
@@ -73,6 +74,12 @@ export const eventContract = {
   'speech:status': defineEvent({
     capability: 'speech.read',
     payload: SpeechSetupStatus,
+    stream: true,
+  }),
+  /** ADR 0161: the marketplace's install bar while `packages:apply` downloads. */
+  'packages:progress': defineEvent({
+    capability: 'packages.read',
+    payload: PackagesProgress,
     stream: true,
   }),
   /** ctrl's scheduler recorded one or more runs (ADR 0105); the view reloads without polling. */

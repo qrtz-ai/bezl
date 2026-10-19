@@ -78,7 +78,9 @@ test('echo, nano and ctrl each open their own settings; the global settings keep
   // global settings
   await page.getByTestId('nav-settings').click();
   const settings = page.getByTestId('settings');
-  await expect(settings.getByTestId('modules-all')).toBeVisible();
+  // ADR 0161: the module switches live in the marketplace's module manager now.
+  await expect(settings.getByTestId('modules-all')).toHaveCount(0);
+  await expect(settings.getByTestId('open-marketplace')).toBeVisible();
   await expect(settings.getByTestId('speech-settings')).toBeVisible();
   for (const id of ['talk-show-pill', 'auto-record', 'excluded-apps'])
     await expect(settings.getByTestId(id)).toHaveCount(0);

@@ -57,3 +57,30 @@ describe('main window routes (ADR 0091)', () => {
     expect(navTarget({ app: 'gone' }, apps)).toBe('/note');
   });
 });
+
+describe('marketplace and module settings routes (ADR 0161)', () => {
+  const all = ['note', 'talk', 'ctrl', 'marketplace', 'settings'];
+  it('keeps the marketplace pages and module settings pages', () => {
+    for (const p of [
+      '/marketplace',
+      '/marketplace/installed',
+      '/marketplace/item/echo',
+      '/marketplace/item/model.laya',
+      '/talk/settings',
+      '/note/settings',
+      '/ctrl/settings',
+    ])
+      expect(resolveRoute(p, all)).toBe(p);
+    expect(resolveRoute('/marketplace/item', all)).toBe('/marketplace');
+    expect(resolveRoute('/marketplace/item/Bad', all)).toBe('/marketplace');
+    expect(resolveRoute('/settings/settings', all)).toBe('/settings');
+  });
+  it('a settings request opens the module view at its settings page', () => {
+    expect(navTarget({ app: 'talk', settings: true }, all)).toBe(
+      '/talk/settings',
+    );
+    expect(navTarget({ app: 'settings', settings: true }, all)).toBe(
+      '/settings',
+    );
+  });
+});

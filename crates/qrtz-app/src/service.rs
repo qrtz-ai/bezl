@@ -660,6 +660,26 @@ impl AppService {
                 let next = self.set_config(&p["patch"])?;
                 Ok(crate::modules::pick_settings(&next, m))
             }
+            // ADR 0161: the module manager switches one extension on or off, and nothing else in config.
+            "packages:set-enabled" => {
+                let name = p["name"].as_str().unwrap_or_default();
+                if !qrtz_modules::EXTENSION_NAMES.contains(&name) {
+                    return Err(AppError::new(ErrorCode::Validation, "not an extension"));
+                }
+                let on = p["enabled"].as_bool().unwrap_or(true);
+                // Settings no longer has the "all modules" switch: turning one on while it is off leaves only that
+                // one on (the others keep their own state as off), so nothing else starts behind the user's back.
+                let all = self.config()["modules"]["enabled"].as_bool().unwrap_or(true);
+                let mut patch = json!({name: {"enabled": on}});
+                if on && !all {
+                    patch["enabled"] = json!(true);
+                    for other in qrtz_modules::EXTENSION_NAMES.iter().filter(|o| **o != name) {
+                        patch[*other] = json!({"enabled": false});
+                    }
+                }
+                let cfg = self.set_config(&json!({ "modules": patch }))?;
+                Ok(json!({"name": name, "enabled": crate::modules::is_on(&cfg, name)}))
+            }
             "note:set-auto-record" => {
                 let on = p["enabled"].as_bool().unwrap_or(false);
                 let cfg = self.set_config(&json!({"note": {"autoRecord": on}}))?;

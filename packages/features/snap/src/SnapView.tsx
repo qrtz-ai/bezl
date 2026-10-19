@@ -18,7 +18,8 @@ import {
   shortcutSymbols,
   type SnapStatus,
 } from '@qrtz/core';
-import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
+import { useQrtz, useQrtzEvent, useSubAppRoute } from '@qrtz/core/react';
+import { SETTINGS_PATH } from '@qrtz/core';
 import SnapSettings from './SnapSettings';
 
 /**
@@ -29,6 +30,15 @@ export default function SnapView() {
   const qrtz = useQrtz();
   const changed = useQrtzEvent('snap:changed');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // ADR 0161: the module manager's "settings" opens this view at `settings`.
+  const route = useSubAppRoute();
+  useEffect(() => {
+    if (route.path === SETTINGS_PATH) setSettingsOpen(true);
+  }, [route.path]);
+  const closeSettings = () => {
+    setSettingsOpen(false);
+    if (route.path === SETTINGS_PATH) route.navigate('', { replace: true });
+  };
   const [status, setStatus] = useState<SnapStatus | null>(null);
   const load = useCallback(
     () =>
@@ -41,7 +51,7 @@ export default function SnapView() {
     return (
       <ModuleSettingsPage
         module="snap"
-        onClose={() => setSettingsOpen(false)}
+        onClose={closeSettings}
         data-testid="snap-settings"
       >
         <SnapSettings status={status} onSaved={load} />

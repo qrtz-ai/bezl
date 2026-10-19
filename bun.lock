@@ -23,6 +23,7 @@
         "@qrtz/core": "workspace:*",
         "@qrtz/feature-ctrl": "workspace:*",
         "@qrtz/feature-gallery": "workspace:*",
+        "@qrtz/feature-marketplace": "workspace:*",
         "@qrtz/feature-note": "workspace:*",
         "@qrtz/feature-settings": "workspace:*",
         "@qrtz/feature-snap": "workspace:*",
@@ -69,6 +70,21 @@
     },
     "packages/features/gallery": {
       "name": "@qrtz/feature-gallery",
+      "version": "0.1.0",
+      "dependencies": {
+        "@qrtz/core": "workspace:*",
+        "@qrtz/ui": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/react": "^19.3.0",
+        "react": "^19.3.1",
+      },
+      "peerDependencies": {
+        "react": "^19.0.0",
+      },
+    },
+    "packages/features/marketplace": {
+      "name": "@qrtz/feature-marketplace",
       "version": "0.1.0",
       "dependencies": {
         "@qrtz/core": "workspace:*",
@@ -293,6 +309,8 @@
     "@qrtz/feature-ctrl": ["@qrtz/feature-ctrl@workspace:packages/features/ctrl"],
 
     "@qrtz/feature-gallery": ["@qrtz/feature-gallery@workspace:packages/features/gallery"],
+
+    "@qrtz/feature-marketplace": ["@qrtz/feature-marketplace@workspace:packages/features/marketplace"],
 
     "@qrtz/feature-note": ["@qrtz/feature-note@workspace:packages/features/note"],
 

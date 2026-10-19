@@ -20,6 +20,7 @@ import {
   eventContract,
   isEventName,
   isModuleOn,
+  MODULE_IDS,
   moduleOfView,
   modulePatchError,
   pickModuleSettings,
@@ -38,6 +39,7 @@ import {
 import { resolveManifest } from '../shared/manifests';
 import { ctrlHandlers } from './ctrl';
 import { SNAP_DEFAULT_SHORTCUTS } from '@qrtz/core';
+import { packagesHandlers } from './packages';
 
 type Json = Record<string, unknown>;
 const params = new URLSearchParams(window.location.search);
@@ -396,12 +398,20 @@ export function createMockBridge(): TauriBridge {
         { installed: null, bytes: 0 },
       );
     },
-    // ADR 0157: the Extensions screen against the golden samples (no store, nothing downloads).
-    'packages:list': () => ipcSamples['packages:list'].response,
-    'packages:refresh': () => ipcSamples['packages:refresh'].response,
-    'packages:plan': () => ipcSamples['packages:plan'].response,
-    'packages:apply': () => ipcSamples['packages:apply'].response,
-    'packages:prune': () => ipcSamples['packages:prune'].response,
+    // ADR 0157/0161: the marketplace and module manager over an in-memory lock (nothing downloads).
+    ...packagesHandlers(emit, (name, on) => {
+      const all = config.modules.enabled;
+      const patch: Record<string, unknown> = { [name]: { enabled: on } };
+      // Like crates/qrtz-app: turning one on under the old "all off" leaves only that one on.
+      if (on && !all) {
+        patch.enabled = true;
+        for (const o of MODULE_IDS)
+          if (o !== name) patch[o] = { enabled: false };
+      }
+      config = applyConfigPatch(config, { modules: patch });
+      emit('config:changed', config);
+      return isModuleOn(config, name);
+    }),
     'note:session': () => session as never,
     'note:dismiss': () => {
       if (['done', 'error'].includes(String(session.phase)))

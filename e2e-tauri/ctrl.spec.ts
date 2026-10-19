@@ -1019,7 +1019,7 @@ test('ctrl: turn it up a bit steps the volume from where it is without a card (A
   expect(errors).toEqual([]);
 });
 
-test('ctrl: switched off in settings → modules, ctrl has no tab and runs nothing; back on, its tasks are there (ADR 0146)', async ({
+test('ctrl: switched off in the module manager, ctrl has no tab and runs nothing; back on, its tasks are there (ADR 0146)', async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -1033,9 +1033,11 @@ test('ctrl: switched off in settings → modules, ctrl has no tab and runs nothi
   await ctrl.getByTestId('ctrl-task-add').click();
   await expect(ctrl.getByTestId('ctrl-task')).toHaveCount(1);
 
-  await page.getByTestId('nav-settings').click();
-  const settings = page.locator('[data-subapp="settings"]');
-  const sw = settings.getByTestId('module-ctrl');
+  // ADR 0161: the switch is in marketplace → installed.
+  await page.getByTestId('nav-marketplace').click();
+  const market = page.locator('[data-subapp="marketplace"]');
+  await market.getByTestId('tab-installed').click();
+  const sw = market.getByTestId('module-enabled-ctrl');
   await sw.click();
   await expect(page.getByTestId('nav-ctrl')).toHaveCount(0);
   await expect(page.locator('[data-subapp="ctrl"]')).toHaveCount(0);
@@ -1052,7 +1054,7 @@ test('ctrl: switched off in settings → modules, ctrl has no tab and runs nothi
   const before = await ctrlCalls();
   await page.waitForTimeout(300);
   expect(await ctrlCalls()).toBe(before);
-  expect(await axe(page, 'settings')).toEqual([]);
+  expect(await axe(page, 'marketplace')).toEqual([]);
 
   await sw.click();
   await page.getByTestId('nav-ctrl').click();

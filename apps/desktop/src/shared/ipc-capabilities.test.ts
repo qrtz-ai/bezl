@@ -29,6 +29,19 @@ describe('sub-app capability matrix', () => {
     ['gallery', 'note:list', { query: '' }, false],
     ['settings', 'config:set', { patch: {} }, true],
     ['settings', 'note:delete', { id: 'm' }, false],
+    // ADR 0161: the package manager is the marketplace's, not settings'.
+    ['marketplace', 'packages:list', undefined, true],
+    ['marketplace', 'packages:plan', { op: 'install', names: ['echo'] }, true],
+    [
+      'marketplace',
+      'packages:set-enabled',
+      { name: 'ctrl', enabled: false },
+      true,
+    ],
+    ['marketplace', 'config:get', undefined, true],
+    ['marketplace', 'config:set', { patch: {} }, false],
+    ['settings', 'packages:plan', { op: 'install', names: ['echo'] }, false],
+    ['talk', 'packages:set-enabled', { name: 'ctrl', enabled: false }, false],
   ] as const)(
     '%s → %s allowed=%s',
     async (subApp, channel, payload, allowed) => {

@@ -15,6 +15,7 @@ import { SummaryTemplateId } from '../note/templates';
 import { DictionaryEntry, TalkEntry, TalkView } from '../talk/contract';
 import { SpeechSetupStatus } from '../speech/setup';
 import {
+  ModuleEnabled,
   PackageOp,
   PackagePlan,
   PackagesApplied,
@@ -412,7 +413,7 @@ export const ipcContract = {
     request: z.object({ entries: z.array(DictionaryEntry).max(500) }),
     response: z.array(DictionaryEntry),
   }),
-  // --- the package manager (ADR 0157): the Extensions screen ---
+  // --- the package manager (ADR 0157): the marketplace and the module manager (ADR 0161) ---
   /** Installed packages and the stored index; local only. */
   'packages:list': defineChannel({
     version: 1,
@@ -450,6 +451,13 @@ export const ipcContract = {
     capability: 'packages.manage',
     request: z.void(),
     response: PackagesPruned,
+  }),
+  /** ADR 0161: switch one extension on or off (writes only `modules.<name>.enabled`). */
+  'packages:set-enabled': defineChannel({
+    version: 1,
+    capability: 'packages.manage',
+    request: ModuleEnabled,
+    response: ModuleEnabled,
   }),
   // --- qrtz speech setup (ADR 0046 §7) ---
   'speech:status': defineChannel({

@@ -22,6 +22,7 @@ import {
   meetingPath,
   parseMeetingPath,
   requestNavigate,
+  SETTINGS_PATH,
   type MeetingTab,
 } from '@qrtz/core';
 import {
@@ -71,8 +72,9 @@ export default function NoteView() {
   }, []);
   const route = useSubAppRoute();
   const { meetingId: selected, tab } = parseMeetingPath(route.path);
-  // Opening a meeting (list, palette, hud) closes nano's settings.
-  useEffect(() => setSettingsOpen(false), [route.path]);
+  // Opening a meeting (list, palette, hud) closes nano's settings; `settings` (the module manager, ADR 0161) opens
+  // them.
+  useEffect(() => setSettingsOpen(route.path === SETTINGS_PATH), [route.path]);
   const { navigate } = route;
   const setSelected = useCallback(
     (id: string | null, opts?: { replace?: boolean }) =>
@@ -296,7 +298,11 @@ export default function NoteView() {
           // prompt stay where they are.
           <ModuleSettingsPage
             module="nano"
-            onClose={() => setSettingsOpen(false)}
+            onClose={() => {
+              setSettingsOpen(false);
+              if (route.path === SETTINGS_PATH)
+                route.navigate('', { replace: true });
+            }}
             data-testid="note-settings"
           >
             <NoteSettings />

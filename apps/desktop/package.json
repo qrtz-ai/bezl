@@ -20,6 +20,7 @@
     "@qrtz/feature-ctrl": "workspace:*",
     "@qrtz/feature-snap": "workspace:*",
     "@qrtz/feature-gallery": "workspace:*",
+    "@qrtz/feature-marketplace": "workspace:*",
     "@qrtz/feature-note": "workspace:*",
     "@qrtz/feature-settings": "workspace:*",
     "@qrtz/feature-talk": "workspace:*",

@@ -24,3 +24,4 @@ export * from './Waveform';
 export * from './case';
 export * from './Setup';
 export * from './ModuleSettings';
+export * from './Marketplace';

@@ -24,14 +24,28 @@ import type {
   TalkEntry,
   TalkView as TalkState,
 } from '@qrtz/core';
-import { useQrtz, useQrtzEvent, useSpeechSetup } from '@qrtz/core/react';
-import { requestNavigate } from '@qrtz/core';
+import {
+  useQrtz,
+  useQrtzEvent,
+  useSpeechSetup,
+  useSubAppRoute,
+} from '@qrtz/core/react';
+import { SETTINGS_PATH, requestNavigate } from '@qrtz/core';
 import { entryMeta, parseTerm } from './format';
 import TalkSettings from './TalkSettings';
 
 export default function TalkView() {
   // ADR 0146 M1.4: this module's own settings open here, not in the global settings.
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // ADR 0161: the module manager's "settings" opens this view at `settings`.
+  const route = useSubAppRoute();
+  useEffect(() => {
+    if (route.path === SETTINGS_PATH) setSettingsOpen(true);
+  }, [route.path]);
+  const closeSettings = () => {
+    setSettingsOpen(false);
+    if (route.path === SETTINGS_PATH) route.navigate('', { replace: true });
+  };
   const qrtz = useQrtz();
   const speechSetup = useSpeechSetup({ check: false });
   const toast = useToast();
@@ -74,7 +88,7 @@ export default function TalkView() {
     return (
       <ModuleSettingsPage
         module="echo"
-        onClose={() => setSettingsOpen(false)}
+        onClose={closeSettings}
         data-testid="talk-settings"
       >
         <TalkSettings />

@@ -14,6 +14,7 @@ import {
   Text,
 } from '@qrtz/ui';
 import type { IpcResponse } from '@qrtz/core';
+import { requestNavigate } from '@qrtz/core';
 import { useQrtz, useQrtzEvent, useSpeechSetup } from '@qrtz/core/react';
 
 export default function SettingsView() {
@@ -98,22 +99,6 @@ export default function SettingsView() {
       .then(setCfg)
       .catch((e: Error) => setError(e.message));
   };
-  // ADR 0146: the global switches that control every module. Each module's own settings live in its view (M1.4).
-  const modulesCfg = (cfg?.modules ?? {}) as {
-    enabled?: boolean;
-    echo?: { enabled?: boolean };
-    nano?: { enabled?: boolean };
-    ctrl?: { enabled?: boolean };
-  };
-  const patchModules = (p: Record<string, unknown>) => {
-    setCfg((prev) =>
-      prev ? { ...prev, modules: { ...(prev.modules as object), ...p } } : prev,
-    );
-    return qrtz
-      .invoke('config:set', { patch: { modules: p } })
-      .then(setCfg)
-      .catch((e: Error) => setError(e.message));
-  };
   const toggle = (
     label: string,
     testId: string,
@@ -145,40 +130,24 @@ export default function SettingsView() {
           }
         />
       ) : null}
-      <SettingsSection title="modules" data-testid="modules-settings">
-        {toggle(
-          'all modules',
-          'modules-all',
-          modulesCfg.enabled,
-          true,
-          (v) => void patchModules({ enabled: v }),
-        )}
-        {toggle(
-          'echo (dictation)',
-          'module-echo',
-          modulesCfg.echo?.enabled,
-          true,
-          (v) => void patchModules({ echo: { enabled: v } }),
-        )}
-        {toggle(
-          'nano (meetings)',
-          'module-nano',
-          modulesCfg.nano?.enabled,
-          true,
-          (v) => void patchModules({ nano: { enabled: v } }),
-        )}
-        {toggle(
-          'ctrl (tasks)',
-          'module-ctrl',
-          modulesCfg.ctrl?.enabled,
-          true,
-          (v) => void patchModules({ ctrl: { enabled: v } }),
-        )}
-        <Text variant="caption" muted data-testid="modules-note">
-          a module that is off has no tab, no hotkeys and runs nothing. each
-          module's own settings are in its view, behind the gear, and are kept
-          while it is off.
-        </Text>
+      {/* ADR 0161: extensions are installed, switched on and off and removed in the marketplace; each one's own
+          settings are in its view. Settings keeps only what spans all of qrtz. */}
+      <SettingsSection title="extensions" data-testid="extensions-link">
+        <Stack dir="row" gap={2} align="center" justify="between">
+          <Text variant="caption" muted data-testid="modules-note">
+            install, switch off and remove extensions in the marketplace. each
+            one's own settings are in its view, behind the gear.
+          </Text>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="package"
+            onClick={() => requestNavigate({ app: 'marketplace' })}
+            data-testid="open-marketplace"
+          >
+            marketplace
+          </Button>
+        </Stack>
       </SettingsSection>
       <SettingsSection title="speech" data-testid="speech-settings">
         {setup.error ? (
@@ -247,7 +216,8 @@ export default function SettingsView() {
       <SettingsSection title="privacy" data-testid="privacy-card">
         <Text variant="caption" muted data-testid="offline-note">
           qrtz runs entirely on this computer: audio, transcripts and notes
-          never leave it. it only goes online to download signed speech updates.
+          never leave it. it only goes online when you ask: to check for and
+          download signed extensions, models and speech updates.
         </Text>
       </SettingsSection>
       <SettingsSection title="app">

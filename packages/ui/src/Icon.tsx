@@ -1,5 +1,14 @@
 import {
   AlertTriangle,
+  ArrowUpCircle,
+  ChevronLeft,
+  Cpu,
+  Database,
+  Folder,
+  Monitor,
+  MousePointer,
+  Package,
+  Zap,
   Check,
   ChevronDown,
   ChevronRight,
@@ -37,6 +46,16 @@ import type { Tokens } from './tokens';
  */
 export const ICONS = {
   alert: AlertTriangle,
+  // ADR 0161: the marketplace and module manager.
+  back: ChevronLeft,
+  update: ArrowUpCircle,
+  package: Package,
+  service: Cpu,
+  model: Database,
+  folder: Folder,
+  'screen-recording': Monitor,
+  accessibility: MousePointer,
+  automation: Zap,
   check: Check,
   'chevron-down': ChevronDown,
   'chevron-right': ChevronRight,

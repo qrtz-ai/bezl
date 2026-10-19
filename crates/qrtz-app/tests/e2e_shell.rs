@@ -165,3 +165,64 @@ async fn each_modules_settings_page_reaches_only_its_own_settings() {
     assert_eq!(cfg["modules"]["enabled"], true);
     a.quit().await;
 }
+
+/// ADR 0161: the module manager switches one extension on or off through `packages:set-enabled` (the marketplace
+/// has no config.write), and nothing else in config moves. Turning one on while "all modules" was off (the old
+/// settings switch) leaves only that one on.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_module_manager_switches_one_extension_and_nothing_else() {
+    let tmp = tempfile::tempdir().unwrap();
+    let a = App::launch(&tmp.path().join("data"), Opts::default()).await;
+    let r = a
+        .call(
+            "marketplace",
+            "packages:set-enabled",
+            json!({"name": "ctrl", "enabled": false}),
+        )
+        .await;
+    assert_eq!(r, json!({"name": "ctrl", "enabled": false}));
+    let cfg = a.settings("config:get", Value::Null).await;
+    assert_eq!(cfg["modules"]["ctrl"]["enabled"], false);
+    assert_eq!(cfg["modules"]["echo"]["enabled"], true);
+    assert_eq!(cfg["modules"]["enabled"], true);
+    // A switched-off module's view is refused; the marketplace itself is not.
+    let r = a.raw("ctrl", "ctrl:tasks", Value::Null).await;
+    assert_eq!(r["error"]["code"], "E_UNAVAILABLE", "{r}");
+    // The marketplace can't write config directly, and a module view can't switch modules.
+    let r = a
+        .raw("marketplace", "config:set", json!({"patch": {"theme": "light"}}))
+        .await;
+    assert_eq!(r["error"]["code"], "E_FORBIDDEN", "{r}");
+    let r = a
+        .raw(
+            "talk",
+            "packages:set-enabled",
+            json!({"name": "ctrl", "enabled": true}),
+        )
+        .await;
+    assert_eq!(r["error"]["code"], "E_FORBIDDEN", "{r}");
+    let r = a
+        .raw(
+            "marketplace",
+            "packages:set-enabled",
+            json!({"name": "weather", "enabled": true}),
+        )
+        .await;
+    assert_eq!(r["error"]["code"], "E_VALIDATION", "{r}");
+    // Under the old "all modules: off", turning nano on leaves only nano on.
+    a.settings("config:set", json!({"patch": {"modules": {"enabled": false}}}))
+        .await;
+    let r = a
+        .call(
+            "marketplace",
+            "packages:set-enabled",
+            json!({"name": "nano", "enabled": true}),
+        )
+        .await;
+    assert_eq!(r, json!({"name": "nano", "enabled": true}));
+    let cfg = a.settings("config:get", Value::Null).await;
+    assert_eq!(cfg["modules"]["enabled"], true);
+    assert_eq!(cfg["modules"]["echo"]["enabled"], false);
+    assert_eq!(cfg["modules"]["ctrl"]["enabled"], false);
+    a.quit().await;
+}

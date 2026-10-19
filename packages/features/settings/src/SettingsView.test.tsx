@@ -14,7 +14,7 @@ import SettingsView from './SettingsView';
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe('global settings (ADR 0146 M1.4)', () => {
-  it('keep the module switches and the global sections, and no module settings', async () => {
+  it('keep only the global sections: no module switches and no module settings (ADR 0161)', async () => {
     const client = {
       subApp: 'settings',
       invoke: async (channel: string) =>
@@ -41,10 +41,7 @@ describe('global settings (ADR 0146 M1.4)', () => {
     });
     const q = (id: string) => el.querySelector(`[data-testid="${id}"]`);
     for (const id of [
-      'modules-all',
-      'module-echo',
-      'module-nano',
-      'module-ctrl',
+      'open-marketplace',
       'speech-settings',
       'offline-note',
       'theme',
@@ -55,7 +52,13 @@ describe('global settings (ADR 0146 M1.4)', () => {
     ])
       expect(q(id), id).not.toBeNull();
     // echo's, nano's and ctrl's own settings live in their views now.
+    // The module list and its switches moved to the marketplace's module manager.
     for (const id of [
+      'modules-settings',
+      'modules-all',
+      'module-echo',
+      'module-nano',
+      'module-ctrl',
       'talk-enabled',
       'talk-show-pill',
       'talk-push-key',

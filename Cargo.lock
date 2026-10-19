@@ -3440,6 +3440,7 @@ dependencies = [
  "qrtz-talk",
  "rand 0.8.8",
  "security-framework",
+ "semver",
  "serde",
  "serde_json",
  "tempfile",

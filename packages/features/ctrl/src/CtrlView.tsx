@@ -32,7 +32,8 @@ import {
   type CtrlModelState,
   type CtrlTask,
 } from '@qrtz/core';
-import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
+import { useQrtz, useQrtzEvent, useSubAppRoute } from '@qrtz/core/react';
+import { SETTINGS_PATH } from '@qrtz/core';
 import {
   decisionItem,
   describeApproval,
@@ -58,6 +59,15 @@ import CtrlSettings from './CtrlSettings';
 export default function CtrlView() {
   // ADR 0146 M1.4: this module's own settings open here, not in the global settings.
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // ADR 0161: the module manager's "settings" opens this view at `settings`.
+  const route = useSubAppRoute();
+  useEffect(() => {
+    if (route.path === SETTINGS_PATH) setSettingsOpen(true);
+  }, [route.path]);
+  const closeSettings = () => {
+    setSettingsOpen(false);
+    if (route.path === SETTINGS_PATH) route.navigate('', { replace: true });
+  };
   const qrtz = useQrtz();
   const toast = useToast();
   const changed = useQrtzEvent('ctrl:changed');
@@ -166,7 +176,7 @@ export default function CtrlView() {
     return (
       <ModuleSettingsPage
         module="ctrl"
-        onClose={() => setSettingsOpen(false)}
+        onClose={closeSettings}
         data-testid="ctrl-settings"
       >
         <CtrlSettings />

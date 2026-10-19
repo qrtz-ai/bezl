@@ -666,11 +666,111 @@
         "index": {
           "version": 12,
           "issuedMs": 1790000000000
-        }
+        },
+        "available": [
+          {
+            "name": "echo",
+            "kind": "extension",
+            "version": "0.3.0",
+            "versions": [
+              "0.3.0",
+              "0.2.0"
+            ],
+            "sizeBytes": 9400000,
+            "installSizeBytes": 628500000,
+            "dependencies": [
+              {
+                "name": "inference.voice",
+                "range": "^1.0.0",
+                "version": "1.0.0",
+                "kind": "service",
+                "sizeBytes": 4100000,
+                "direct": true
+              },
+              {
+                "name": "model.parakeet-tdt-v2-en",
+                "range": "^1.0.0",
+                "version": "1.0.0",
+                "kind": "model",
+                "sizeBytes": 615000000,
+                "direct": false
+              }
+            ],
+            "permissions": [
+              "microphone",
+              "accessibility"
+            ],
+            "minOs": "14.2",
+            "teamId": "ABCDE12345"
+          },
+          {
+            "name": "nano",
+            "kind": "extension",
+            "version": "0.3.0",
+            "versions": [
+              "0.3.0"
+            ],
+            "sizeBytes": 12200000,
+            "installSizeBytes": 631300000,
+            "dependencies": [
+              {
+                "name": "inference.voice",
+                "range": "^1.0.0",
+                "version": "1.0.0",
+                "kind": "service",
+                "sizeBytes": 4100000,
+                "direct": true
+              },
+              {
+                "name": "model.parakeet-tdt-v2-en",
+                "range": "^1.0.0",
+                "version": "1.0.0",
+                "kind": "model",
+                "sizeBytes": 615000000,
+                "direct": false
+              }
+            ],
+            "permissions": [
+              "microphone",
+              "screen-recording",
+              "accessibility"
+            ],
+            "minOs": "14.2",
+            "teamId": "ABCDE12345"
+          },
+          {
+            "name": "ctrl",
+            "kind": "extension",
+            "version": "0.1.0",
+            "versions": [
+              "0.1.0"
+            ],
+            "sizeBytes": 6800000,
+            "installSizeBytes": 490800000,
+            "dependencies": [
+              {
+                "name": "model.laya",
+                "range": "^1.0.0",
+                "version": "1.0.0",
+                "kind": "model",
+                "sizeBytes": 484000000,
+                "direct": true
+              }
+            ],
+            "permissions": [
+              "accessibility",
+              "automation",
+              "files-and-folders"
+            ],
+            "minOs": "14.2",
+            "teamId": "ABCDE12345"
+          }
+        ]
       },
       "idle": {
         "packages": [],
-        "index": null
+        "index": null,
+        "available": []
       }
     },
     "packages:refresh": {
@@ -712,7 +812,106 @@
         "index": {
           "version": 12,
           "issuedMs": 1790000000000
-        }
+        },
+        "available": [
+          {
+            "name": "echo",
+            "kind": "extension",
+            "version": "0.3.0",
+            "versions": [
+              "0.3.0",
+              "0.2.0"
+            ],
+            "sizeBytes": 9400000,
+            "installSizeBytes": 628500000,
+            "dependencies": [
+              {
+                "name": "inference.voice",
+                "range": "^1.0.0",
+                "version": "1.0.0",
+                "kind": "service",
+                "sizeBytes": 4100000,
+                "direct": true
+              },
+              {
+                "name": "model.parakeet-tdt-v2-en",
+                "range": "^1.0.0",
+                "version": "1.0.0",
+                "kind": "model",
+                "sizeBytes": 615000000,
+                "direct": false
+              }
+            ],
+            "permissions": [
+              "microphone",
+              "accessibility"
+            ],
+            "minOs": "14.2",
+            "teamId": "ABCDE12345"
+          },
+          {
+            "name": "nano",
+            "kind": "extension",
+            "version": "0.3.0",
+            "versions": [
+              "0.3.0"
+            ],
+            "sizeBytes": 12200000,
+            "installSizeBytes": 631300000,
+            "dependencies": [
+              {
+                "name": "inference.voice",
+                "range": "^1.0.0",
+                "version": "1.0.0",
+                "kind": "service",
+                "sizeBytes": 4100000,
+                "direct": true
+              },
+              {
+                "name": "model.parakeet-tdt-v2-en",
+                "range": "^1.0.0",
+                "version": "1.0.0",
+                "kind": "model",
+                "sizeBytes": 615000000,
+                "direct": false
+              }
+            ],
+            "permissions": [
+              "microphone",
+              "screen-recording",
+              "accessibility"
+            ],
+            "minOs": "14.2",
+            "teamId": "ABCDE12345"
+          },
+          {
+            "name": "ctrl",
+            "kind": "extension",
+            "version": "0.1.0",
+            "versions": [
+              "0.1.0"
+            ],
+            "sizeBytes": 6800000,
+            "installSizeBytes": 490800000,
+            "dependencies": [
+              {
+                "name": "model.laya",
+                "range": "^1.0.0",
+                "version": "1.0.0",
+                "kind": "model",
+                "sizeBytes": 484000000,
+                "direct": true
+              }
+            ],
+            "permissions": [
+              "accessibility",
+              "automation",
+              "files-and-folders"
+            ],
+            "minOs": "14.2",
+            "teamId": "ABCDE12345"
+          }
+        ]
       }
     },
     "packages:plan": {
@@ -776,6 +975,16 @@
         "dirs": 1,
         "blobs": 4,
         "bytes": 615000000
+      }
+    },
+    "packages:set-enabled": {
+      "request": {
+        "name": "ctrl",
+        "enabled": false
+      },
+      "response": {
+        "name": "ctrl",
+        "enabled": false
       }
     },
     "speech:status": {
@@ -1562,6 +1771,10 @@
       "ids": [
         "task-0"
       ]
+    },
+    "packages:progress": {
+      "doneBytes": 314000000,
+      "totalBytes": 628500000
     }
   }
 }

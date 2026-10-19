@@ -397,6 +397,95 @@ const packagesState = {
     },
   ],
   index: { version: 12, issuedMs: 1_790_000_000_000 },
+  available: [
+    {
+      name: 'echo',
+      kind: 'extension' as const,
+      version: '0.3.0',
+      versions: ['0.3.0', '0.2.0'],
+      sizeBytes: 9_400_000,
+      installSizeBytes: 628_500_000,
+      dependencies: [
+        {
+          name: 'inference.voice',
+          range: '^1.0.0',
+          version: '1.0.0',
+          kind: 'service' as const,
+          sizeBytes: 4_100_000,
+          direct: true,
+        },
+        {
+          name: 'model.parakeet-tdt-v2-en',
+          range: '^1.0.0',
+          version: '1.0.0',
+          kind: 'model' as const,
+          sizeBytes: 615_000_000,
+          direct: false,
+        },
+      ],
+      permissions: ['microphone' as const, 'accessibility' as const],
+      minOs: '14.2',
+      teamId: 'ABCDE12345',
+    },
+    {
+      name: 'nano',
+      kind: 'extension' as const,
+      version: '0.3.0',
+      versions: ['0.3.0'],
+      sizeBytes: 12_200_000,
+      installSizeBytes: 631_300_000,
+      dependencies: [
+        {
+          name: 'inference.voice',
+          range: '^1.0.0',
+          version: '1.0.0',
+          kind: 'service' as const,
+          sizeBytes: 4_100_000,
+          direct: true,
+        },
+        {
+          name: 'model.parakeet-tdt-v2-en',
+          range: '^1.0.0',
+          version: '1.0.0',
+          kind: 'model' as const,
+          sizeBytes: 615_000_000,
+          direct: false,
+        },
+      ],
+      permissions: [
+        'microphone' as const,
+        'screen-recording' as const,
+        'accessibility' as const,
+      ],
+      minOs: '14.2',
+      teamId: 'ABCDE12345',
+    },
+    {
+      name: 'ctrl',
+      kind: 'extension' as const,
+      version: '0.1.0',
+      versions: ['0.1.0'],
+      sizeBytes: 6_800_000,
+      installSizeBytes: 490_800_000,
+      dependencies: [
+        {
+          name: 'model.laya',
+          range: '^1.0.0',
+          version: '1.0.0',
+          kind: 'model' as const,
+          sizeBytes: 484_000_000,
+          direct: true,
+        },
+      ],
+      permissions: [
+        'accessibility' as const,
+        'automation' as const,
+        'files-and-folders' as const,
+      ],
+      minOs: '14.2',
+      teamId: 'ABCDE12345',
+    },
+  ],
 };
 const packagePlan = {
   planSha256: 'ab'.repeat(32),
@@ -617,6 +706,10 @@ export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
     request: undefined,
     response: { dirs: 1, blobs: 4, bytes: 615_000_000 },
   },
+  'packages:set-enabled': {
+    request: { name: 'ctrl', enabled: false },
+    response: { name: 'ctrl', enabled: false },
+  },
   'speech:status': { request: undefined, response: speechInstalled },
   'speech:check': { request: undefined, response: speechInstalled },
   'speech:download': { request: {}, response: speechDownloading },
@@ -653,6 +746,7 @@ export const eventSamples: { [E in EventName]: EventPayload<E> } = {
   'permissions:changed': unknownPermissions,
   'speech:status': speechDownloading,
   'ctrl:changed': { ids: ['task-0'] },
+  'packages:progress': { doneBytes: 314_000_000, totalBytes: 628_500_000 },
 };
 
 /** Idle answers per channel (what an empty backend says); a channel absent here has no idle answer. */
@@ -670,5 +764,5 @@ export const idleResponses: Partial<Record<IpcChannel, unknown>> = {
   'talk:dictionary': [],
   'speech:status': { ...speechNone, configured: false },
   'ctrl:tasks': [],
-  'packages:list': { packages: [], index: null },
+  'packages:list': { packages: [], index: null, available: [] },
 };

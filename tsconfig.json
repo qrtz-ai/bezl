@@ -26,6 +26,9 @@
       "path": "packages/features/gallery"
     },
     {
+      "path": "packages/features/marketplace"
+    },
+    {
       "path": "apps/desktop"
     }
   ]

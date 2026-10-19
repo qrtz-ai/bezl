@@ -8,7 +8,12 @@ export interface NavRequest {
   meetingId?: string;
   /** With `meetingId`: which meeting tab to open (default transcript). */
   tab?: MeetingTab;
+  /** ADR 0161: open the module's own settings page in its view (the module manager's "settings"). */
+  settings?: boolean;
 }
+
+/** The sub-path a module view opens its own settings page at (`/talk/settings`, `/ctrl/settings`, `/note/settings`). */
+export const SETTINGS_PATH = 'settings';
 
 export const MEETING_TABS = ['transcript', 'summary', 'notes'] as const;
 export type MeetingTab = (typeof MEETING_TABS)[number];

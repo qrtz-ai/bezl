@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ModuleId } from '../modules';
 
 /**
  * ADR 0157: the package manager as the Extensions screen sees it. Extensions (echo, nano, ctrl), the sandboxed
@@ -31,12 +32,57 @@ export const PackageRow = z.object({
 });
 export type PackageRow = z.infer<typeof PackageRow>;
 
+/** The macOS permissions a module uses (ADR 0154: they are qrtz's own; an extension shares them). */
+export const ModulePermission = z.enum([
+  'microphone',
+  'accessibility',
+  'screen-recording',
+  'automation',
+  'files-and-folders',
+]);
+export type ModulePermission = z.infer<typeof ModulePermission>;
+
+/** Something an extension pulls in (a service or a model), at the version the resolver would pick. */
+export const CatalogDependency = z.object({
+  name: PackageName,
+  range: z.string(),
+  /** null: nothing in the index matches the range (the install would fail to resolve). */
+  version: z.string().nullable(),
+  kind: PackageKind,
+  sizeBytes: z.number().int().nonnegative(),
+  /** Named in the extension's own qrtz.json (false: needed by one of its dependencies). */
+  direct: z.boolean(),
+});
+export type CatalogDependency = z.infer<typeof CatalogDependency>;
+
+/**
+ * ADR 0161: one marketplace card, from the stored signed index (no network): the newest unrevoked version, every
+ * dependency it pulls in, the size of all of it together, and the permissions it uses.
+ */
+export const CatalogEntry = z.object({
+  name: PackageName,
+  kind: z.literal('extension'),
+  version: z.string(),
+  /** Every unrevoked version, newest first. */
+  versions: z.array(z.string()),
+  sizeBytes: z.number().int().nonnegative(),
+  /** The extension and every dependency (before what is already installed is subtracted; the plan says that). */
+  installSizeBytes: z.number().int().nonnegative(),
+  dependencies: z.array(CatalogDependency),
+  permissions: z.array(ModulePermission),
+  minOs: z.string().nullable(),
+  teamId: z.string(),
+});
+export type CatalogEntry = z.infer<typeof CatalogEntry>;
+
 export const PackagesState = z.object({
   packages: z.array(PackageRow),
   /** The stored signed index, or null before the first check. */
   index: z
     .object({ version: z.number().int(), issuedMs: z.number().int() })
     .nullable(),
+  /** ADR 0161: the marketplace catalog (extensions in the stored index); empty before the first check. */
+  available: z.array(CatalogEntry),
 });
 export type PackagesState = z.infer<typeof PackagesState>;
 
@@ -90,3 +136,17 @@ export const PackagesPruned = z.object({
   bytes: z.number().int().nonnegative(),
 });
 export type PackagesPruned = z.infer<typeof PackagesPruned>;
+
+/** ADR 0161: `packages:apply`'s download, at most once per percent. */
+export const PackagesProgress = z.object({
+  doneBytes: z.number().int().nonnegative(),
+  totalBytes: z.number().int().nonnegative(),
+});
+export type PackagesProgress = z.infer<typeof PackagesProgress>;
+
+/** ADR 0161: the module manager's switch for one extension. */
+export const ModuleEnabled = z.object({
+  name: ModuleId,
+  enabled: z.boolean(),
+});
+export type ModuleEnabled = z.infer<typeof ModuleEnabled>;
