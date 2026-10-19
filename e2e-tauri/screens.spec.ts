@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { axe } from './axe';
+import { go } from './nav';
 
 // A fresh install (no first-run screen, ADR 0163), the speech setup in settings and every view in both themes (e2e-parity rows 8, 12, 13, 29, 30, 39, 40),
 // against the mocked backend. Screenshots go to test-results/screens, or docs/screenshots with QRTZ_DOC_SHOTS=1.
@@ -50,7 +51,29 @@ const invoke = (
     [subApp, channel, payload] as const,
   );
 
-const tab = (page: Page, name: string) => page.getByTestId(`nav-${name}`);
+const tab = (page: Page, name: string) => ({
+  click: () => go(page, name),
+  locator: page.getByTestId(`nav-${name}`),
+});
+
+/** The qrtz page's app manager and an app's detail modal there. */
+const appModal = (page: Page) => {
+  const market = page.locator('[data-subapp="marketplace"]');
+  const modal = page.getByTestId('app-modal');
+  return {
+    market,
+    modal,
+    open: async (name: string) => {
+      await go(page, 'marketplace');
+      await market.getByTestId(`app-open-${name}`).click();
+      await expect(modal).toBeVisible();
+    },
+    close: async () => {
+      await page.keyboard.press('Escape');
+      await expect(modal).toHaveCount(0);
+    },
+  };
+};
 
 const mockCalls = (page: Page) =>
   page.evaluate(
@@ -66,10 +89,10 @@ test('a fresh install opens straight to qrtz → settings → record → review'
   page,
 }) => {
   const errors = watch(page);
-  // ADR 0163: no first-run screen. A fresh install (speech not downloaded, nothing granted) opens on echo, the
-  // first sidebar row; nano is one click away.
-  await page.goto('/?dev=1&mockSpeech=missing&mockPerms=denied&mockSpeed=60');
-  await expect(page.locator('[data-subapp="talk"]')).toBeVisible();
+  // ADR 0163: no first-run screen. A fresh install (speech not downloaded, nothing granted) opens on the qrtz page,
+  // the first sidebar row; nano is one click away.
+  await page.goto('/?dev=1&mockSpeech=missing&mockPerms=denied&mockSpeed=150');
+  await expect(page.getByTestId('qrtz-page')).toBeVisible();
   await tab(page, 'note').click();
   await expect(page.getByTestId('note-app')).toBeVisible();
   await expect(page.locator('[data-testid^="onboarding"]')).toHaveCount(0);
@@ -93,50 +116,68 @@ test('a fresh install opens straight to qrtz → settings → record → review'
   // ADR 0184: the mock starts past the permissions onboarding (onboarding.spec.ts covers the first run).
   expect(cfg.data.onboarding).toEqual({ done: true });
 
-  // marketplace → installed (the module manager): each module's permissions beside its switch, live state, allow.
+  // The qrtz page: each app's permissions beside its switch in its detail modal, live state, allow.
   await tab(page, 'marketplace').click();
   const market = page.locator('[data-subapp="marketplace"]');
-  await market.getByTestId('tab-installed').click();
-  const mic = market.getByTestId('perm-echo-microphone');
+  const modal = page.getByTestId('app-modal');
+  const openApp = async (name: string) => {
+    await market.getByTestId(`app-open-${name}`).click();
+    await expect(modal).toBeVisible();
+  };
+  const closeApp = async () => {
+    await page.keyboard.press('Escape');
+    await expect(modal).toHaveCount(0);
+  };
+  await openApp('echo');
+  const mic = modal.getByTestId('perm-echo-microphone');
   await expect(mic.getByRole('button', { name: 'allow' })).toBeVisible();
-  await expect(market.getByTestId('perm-nano-screen-recording')).toBeVisible();
-  await expect(market.getByTestId('perm-ctrl-automation')).toContainText(
-    'asked on first use',
-  );
   await clean(page, 'module-manager-permissions');
   await shot(page, 'module-manager-permissions');
   await mic.getByRole('button', { name: 'allow' }).click();
   await expect(mic).toContainText('allowed');
+  await closeApp();
+  await openApp('ctrl');
+  await expect(modal.getByTestId('perm-ctrl-automation')).toContainText(
+    'asked on first use',
+  );
+  await closeApp();
+  await openApp('nano');
+  await expect(modal.getByTestId('perm-nano-screen-recording')).toBeVisible();
   // One grant covers every module (ADR 0154): nano's microphone row follows.
-  await expect(market.getByTestId('perm-nano-microphone')).toContainText(
+  await expect(modal.getByTestId('perm-nano-microphone')).toContainText(
     'allowed',
   );
 
-  await tab(page, 'settings').click();
-  // settings → speech: size, download with progress, pause / resume, installed (the user's yes).
-  const sec = page.getByTestId('speech-settings');
-  await expect(sec.getByTestId('speech-size')).toHaveText('speech · 412 mb');
-  await sec.getByTestId('speech-download').click();
-  await expect(sec.getByTestId('speech-progress')).toBeVisible();
-  await sec.getByTestId('speech-pause').click();
-  await expect(sec.getByTestId('speech-progress-text')).toContainText('paused');
+  // nano's models (they moved here from settings → speech): size, download with progress, pause / resume,
+  // installed (the user's yes).
+  const sec = modal.getByTestId('models-nano-panel');
+  await expect(sec.getByTestId('models-nano-panel-state')).toContainText(
+    'not downloaded',
+  );
+  await sec.getByTestId('models-nano-panel-download').click();
+  await expect(sec.getByTestId('models-nano-panel-progress')).toBeVisible();
+  await sec.getByTestId('models-nano-panel-pause').click();
+  await expect(sec).toContainText('paused');
   await clean(page, 'settings-speech-download');
   await shot(page, 'settings-speech-download');
   const paused = await sec
-    .getByTestId('speech-progress')
+    .getByTestId('models-nano-panel-progress')
     .getAttribute('aria-valuenow');
   await page.waitForTimeout(300);
   expect(
-    await sec.getByTestId('speech-progress').getAttribute('aria-valuenow'),
+    await sec
+      .getByTestId('models-nano-panel-progress')
+      .getAttribute('aria-valuenow'),
   ).toBe(paused);
-  await sec.getByTestId('speech-resume').click();
-  await expect(sec.getByTestId('speech-installed')).toHaveText(
-    'speech 1.0.0 · 412 mb',
+  await sec.getByTestId('models-nano-panel-resume').click();
+  await expect(sec.getByTestId('models-nano-panel-state')).toContainText(
+    'on this mac',
     { timeout: 10_000 },
   );
   expect(
     (await mockCalls(page)).some((c) => c.channel === 'speech:check'),
   ).toBe(false);
+  await closeApp();
 
   await tab(page, 'note').click();
   await expect(page.getByTestId('speech-notice')).toHaveCount(0);
@@ -172,99 +213,96 @@ test('a failed speech download shows the error and retries', async ({
   await page.goto(
     '/?dev=1&mockSpeech=missing&mockFail=speech-once&mockSpeed=40',
   );
-  await tab(page, 'settings').click();
-  const sec = page.getByTestId('speech-settings');
-  await sec.getByTestId('speech-download').click();
-  await expect(sec.getByTestId('speech-error')).toContainText(
-    "couldn't reach the download server",
-  );
+  // The models live in each app's detail modal on the qrtz page (they moved there from settings → speech).
+  const app = appModal(page);
+  await app.open('nano');
+  const sec = app.modal.getByTestId('models-nano-panel');
+  await sec.getByTestId('models-nano-panel-download').click();
+  await expect(
+    sec.getByTestId('models-nano-panel-download-error'),
+  ).toContainText("couldn't reach the download server");
   await clean(page, 'settings-speech-error');
-  await sec.getByTestId('speech-retry').click();
-  await expect(sec.getByTestId('speech-installed')).toBeVisible({
-    timeout: 10_000,
-  });
+  await sec.getByTestId('models-nano-panel-retry').click();
+  await expect(sec.getByTestId('models-nano-panel-state')).toContainText(
+    'on this mac',
+    { timeout: 10_000 },
+  );
 });
 
-test('switching a module on is the yes to its download; it continues in the background and note shows it', async ({
+test('switching an app off and on downloads nothing (ADR 0169); its permissions follow the switch', async ({
   page,
 }) => {
   await page.goto('/?dev=1&mockSpeech=missing&mockSpeed=150');
-  await tab(page, 'marketplace').click();
-  const market = page.locator('[data-subapp="marketplace"]');
-  await market.getByTestId('tab-installed').click();
+  const app = appModal(page);
   const downloads = async () =>
     (await mockCalls(page)).filter((c) => c.channel === 'speech:download')
       .length;
-  const sw = (n: string) => market.getByTestId(`module-enabled-${n}`);
-  // Switching off never downloads; switching ctrl on doesn't either (its model has its own yes in ctrl's settings).
-  await sw('echo').click();
-  await expect(sw('echo')).toHaveAttribute('aria-checked', 'false');
-  await sw('ctrl').click();
-  await expect(sw('ctrl')).toHaveAttribute('aria-checked', 'false');
-  await sw('ctrl').click();
-  await expect(sw('ctrl')).toHaveAttribute('aria-checked', 'true');
+  await app.open('echo');
+  const sw = app.modal.getByTestId('module-enabled-echo');
+  await expect(app.modal.getByTestId('perm-echo-microphone')).toBeVisible();
+  await sw.click();
+  await expect(sw).toHaveAttribute('aria-checked', 'false');
+  await expect(app.modal.getByTestId('perm-echo-microphone')).toHaveCount(0);
+  await sw.click();
+  await expect(sw).toHaveAttribute('aria-checked', 'true');
+  await expect(app.modal.getByTestId('perm-echo-microphone')).toBeVisible();
+  await app.close();
+  await app.open('ctrl');
+  const ctrl = app.modal.getByTestId('module-enabled-ctrl');
+  await ctrl.click();
+  await expect(ctrl).toHaveAttribute('aria-checked', 'false');
+  await ctrl.click();
+  await expect(ctrl).toHaveAttribute('aria-checked', 'true');
+  await page.waitForTimeout(300);
   expect(await downloads()).toBe(0);
-  await expect(market.getByTestId('perm-echo-microphone')).toHaveCount(0);
-  // echo back on: speech starts downloading.
-  await sw('echo').click();
-  await expect.poll(downloads).toBe(1);
-  await expect(market.getByTestId('perm-echo-microphone')).toBeVisible();
-  await tab(page, 'note').click();
-  await expect(page.getByTestId('speech-notice')).toContainText(
-    'downloading speech',
-  );
-  await expect(page.getByTestId('speech-notice')).toHaveCount(0, {
-    timeout: 10_000,
-  });
 });
 
-test('note and talk point to settings while speech is not downloaded', async ({
+test("note points to nano's models and echo offers its own download in place while speech is not downloaded", async ({
   page,
 }) => {
   await page.goto('/?dev=1&mockSpeech=missing#/note');
-  await expect(page.getByTestId('speech-notice')).toContainText(
-    "speech isn't downloaded",
-  );
+  const notice = page.getByTestId('speech-notice');
+  await expect(notice).toContainText("speech isn't downloaded");
+  // The notice opens nano's detail modal on the qrtz page, at its models (ADR 0175).
+  await page.getByTestId('speech-notice-open').click();
+  await expect(page).toHaveURL(/#\/qrtz\/item\/nano$/);
+  await expect(
+    page.getByTestId('app-modal').getByTestId('models-nano-panel'),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  // echo (on by default) offers parakeet in place, with the consent beside it.
   await tab(page, 'talk').click();
-  // Visited sub apps stay mounted (hidden), so scope to the talk app.
   const talk = page.locator('[data-subapp="talk"]');
-  await expect(talk.getByTestId('speech-notice')).toBeVisible();
-  await talk.getByTestId('speech-notice-open').click();
-  await expect(page.getByTestId('speech-settings')).toBeVisible();
-  await page.getByTestId('speech-download').click();
-  await expect(page.getByTestId('speech-installed')).toBeVisible({
+  await expect(talk.getByTestId('echo-offer')).toBeVisible();
+  await talk.getByTestId('echo-download').click();
+  await expect(talk.getByTestId('echo-offer')).toHaveCount(0, {
     timeout: 10_000,
   });
 });
 
-test('settings speech section: re-download, delete', async ({ page }) => {
+test("an app's models: installed, delete behind a confirm, download again", async ({
+  page,
+}) => {
   const errors = watch(page);
   await page.goto('/?dev=1&mockSpeed=40');
-  await tab(page, 'settings').click();
-  const sec = page.getByTestId('speech-settings');
-  await expect(sec.getByTestId('speech-installed')).toHaveText(
-    'speech 1.0.0 · 412 mb',
+  const app = appModal(page);
+  await app.open('nano');
+  const sec = app.modal.getByTestId('models-nano-panel');
+  await expect(sec.getByTestId('models-nano-panel-state')).toContainText(
+    'on this mac',
   );
-  // ADR 0078: opening settings doesn't check for a speech update; the button does.
-  const checks = () =>
-    page.evaluate(
-      () =>
-        (
-          window as unknown as {
-            __qrtzMock: { calls: { channel: string }[] };
-          }
-        ).__qrtzMock.calls.filter((c) => c.channel === 'speech:check').length,
-    );
-  expect(await checks()).toBe(0);
-  await sec.getByTestId('speech-check').click();
-  await expect.poll(checks).toBe(1);
-  await sec.getByTestId('speech-redownload').click();
-  await expect(sec.getByTestId('speech-progress')).toBeVisible();
-  await expect(sec.getByTestId('speech-installed')).toBeVisible({
-    timeout: 10_000,
-  });
-  await sec.getByTestId('speech-delete').click();
-  await expect(sec.getByTestId('speech-download')).toBeVisible();
+  // ADR 0078: opening the models doesn't check for a speech update.
+  expect(
+    (await mockCalls(page)).filter((c) => c.channel === 'speech:check').length,
+  ).toBe(0);
+  await sec.getByTestId('models-nano-panel-delete').click();
+  await page.getByTestId('models-nano-confirm-delete').click();
+  await expect(sec.getByTestId('models-nano-panel-download')).toBeVisible();
+  await sec.getByTestId('models-nano-panel-download').click();
+  await expect(sec.getByTestId('models-nano-panel-state')).toContainText(
+    'on this mac',
+    { timeout: 10_000 },
+  );
   await clean(page, 'settings-speech');
   expect(errors).toEqual([]);
 });
@@ -302,7 +340,7 @@ test('cold start: the note view paints within budget', async ({ page }) => {
 test('palette and gallery', async ({ page }) => {
   const errors = watch(page);
   await page.goto('/?dev=1&seed=1#/note');
-  await expect(tab(page, 'note')).toBeVisible();
+  await expect(tab(page, 'note').locator).toBeVisible();
   const input = page.getByTestId('palette-input');
   // The shortcut listener attaches after the first render: press until the palette opens.
   await expect(async () => {
@@ -342,7 +380,7 @@ for (const theme of ['dark', 'light'] as const) {
   }) => {
     const errors = watch(page);
     await page.goto(`/?dev=1&seed=1&theme=${theme}#/note`);
-    await expect(tab(page, 'note')).toBeVisible();
+    await expect(tab(page, 'note').locator).toBeVisible();
     // The theme applies once config:get answers.
     await expect
       .poll(() =>
@@ -486,8 +524,10 @@ test('no page scrolls sideways: every page fits its width, at the default and a 
     }
     const market = page.locator('[data-subapp="marketplace"]');
     await tab(page, 'marketplace').click();
-    await market.getByTestId('tab-installed').click();
-    expect(await overflow(), `module manager @${width}`).toEqual([]);
+    await market.getByTestId('app-open-nano').click();
+    await expect(page.getByTestId('app-modal')).toBeVisible();
+    expect(await overflow(), `app detail @${width}`).toEqual([]);
+    await page.keyboard.press('Escape');
   }
   expect(errors).toEqual([]);
 });

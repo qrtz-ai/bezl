@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { axe } from './axe';
+import { openSettings } from './nav';
 
 // The shipped renderer + createTauriTransport against the mocked Tauri IPC backend.
 async function open(page: Page, query = '') {
@@ -39,7 +40,7 @@ test('boots the shared shell over the Tauri transport with no errors', async ({
   page,
 }) => {
   const errors = await open(page);
-  for (const tab of ['nano', 'echo', 'settings'])
+  for (const tab of ['qrtz', 'nano', 'echo'])
     await expect(
       page.getByRole('button', { name: tab, exact: true }),
     ).toBeVisible();
@@ -139,7 +140,7 @@ test('a failed summary step offers Retry and recovers', async ({ page }) => {
 
 test('settings toggles write config through the backend', async ({ page }) => {
   await open(page);
-  await page.getByRole('button', { name: 'settings', exact: true }).click();
+  await openSettings(page);
   const before = (await invoke(page, 'settings', 'config:get')) as {
     data: { app: { launchAtLogin: boolean } };
   };
@@ -161,7 +162,7 @@ test('seeded meeting opens; views pass axe', async ({ page }, info) => {
   await expect(page.getByText("Let's start.")).toBeVisible();
   if (info.project.name === 'chromium')
     expect(await axe(page, 'tauri-note')).toEqual([]);
-  await page.getByRole('button', { name: 'settings', exact: true }).click();
+  await openSettings(page);
   if (info.project.name === 'chromium')
     expect(await axe(page, 'tauri-settings')).toEqual([]);
 });
@@ -183,14 +184,13 @@ test('deep links open a meeting tab; tab switches keep the url and never refetch
   await expect(page).toHaveURL(new RegExp(`#/note/meetings/${id}$`));
   await expect(note.getByText("Let's start.")).toBeVisible();
   // Another app and back: the same meeting and tab, still mounted.
-  await page.getByTestId('nav-settings').click();
-  await expect(page).toHaveURL(/#\/settings$/);
+  await openSettings(page);
   await expect(note).toBeHidden();
   await page.getByTestId('nav-note').click();
   await expect(page).toHaveURL(new RegExp(`#/note/meetings/${id}$`));
   await expect(note.getByText("Let's start.")).toBeVisible();
-  // An unknown route goes to the default app: echo, the first sidebar row.
+  // An unknown route goes to the default page: qrtz, the first sidebar row.
   await page.evaluate(() => (location.hash = '#/nope'));
-  await expect(page).toHaveURL(/#\/talk$/);
+  await expect(page).toHaveURL(/#\/qrtz$/);
   expect(errors).toEqual([]);
 });

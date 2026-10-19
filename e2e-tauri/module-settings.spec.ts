@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { axe } from './axe';
+import { openSettings } from './nav';
 
 // ADR 0146 M1.4: each module's settings live in its own view, behind a gear, and reach only that module's
 // settings; the global settings keep the module switches and what spans every module.
@@ -76,13 +77,19 @@ test('echo, nano and ctrl each open their own settings; the global settings keep
   ).toBeVisible();
 
   // global settings
-  await page.getByTestId('nav-settings').click();
+  await openSettings(page);
   const settings = page.getByTestId('settings');
-  // ADR 0161: the module switches live in the marketplace's module manager now.
-  await expect(settings.getByTestId('modules-all')).toHaveCount(0);
-  await expect(settings.getByTestId('open-marketplace')).toBeVisible();
-  await expect(settings.getByTestId('speech-settings')).toBeVisible();
-  for (const id of ['talk-show-pill', 'auto-record', 'excluded-apps'])
+  // ADR 0161: the module switches live in each app's detail modal on the qrtz page, and the speech models in the
+  // app that uses them (its models section), so qrtz's settings keep only global things.
+  await expect(settings.getByTestId('theme')).toBeVisible();
+  await expect(settings.getByTestId('permissions-card')).toBeVisible();
+  for (const id of [
+    'modules-all',
+    'speech-settings',
+    'talk-show-pill',
+    'auto-record',
+    'excluded-apps',
+  ])
     await expect(settings.getByTestId(id)).toHaveCount(0);
 
   // A module's page can't reach another module's settings or the global ones.
