@@ -218,7 +218,9 @@ pub const SAVE_ATTEMPTS: usize = 3;
 /// 2. only then is the old item deleted (still delete-then-add, so an old item can't keep weaker attributes), and the
 ///    key is added under [`KEYCHAIN_ACCOUNT`], retried [`SAVE_ATTEMPTS`] times, and read back;
 /// 3. only then is the pending item deleted. If step 2 keeps failing the pending item stays, and [`KeyStore::load`]
-///    falls back to it, so the key is never lost.
+///    falls back to it, and the next save first moves it into [`KEYCHAIN_ACCOUNT`], so the key is never lost.
+/// 4. if deleting the old item fails, the pending item is removed and the save fails, so no new key is stranded
+///    beside an old one that load would keep returning.
 pub struct TwoPhase<R: RawKeychain>(pub R);
 
 fn holds(r: &dyn RawKeychain, account: &str, key: &str) -> bool {
@@ -237,6 +239,21 @@ impl<R: RawKeychain> KeyStore for TwoPhase<R> {
     }
     fn save(&self, key: &str) -> Result<(), String> {
         let r = &self.0;
+        // Bozniak M6 round 2: a key left only under pending by an earlier failed save is moved into the main
+        // account first (and read back), so the pending item is never deleted while it is the only copy.
+        if r.get(KEYCHAIN_ACCOUNT)?.is_none() {
+            if let Some(stranded) = r.get(KEYCHAIN_PENDING_ACCOUNT)?.and_then(valid) {
+                r.add(KEYCHAIN_ACCOUNT, stranded.as_bytes())
+                    .map_err(|e| format!("{e} (the earlier owner key is kept under the pending account)"))?;
+                if !holds(r, KEYCHAIN_ACCOUNT, &stranded) {
+                    let _ = r.delete(KEYCHAIN_ACCOUNT);
+                    return Err(
+                        "the earlier owner key did not read back; it is kept under the pending account"
+                            .into(),
+                    );
+                }
+            }
+        }
         r.delete(KEYCHAIN_PENDING_ACCOUNT)?;
         r.add(KEYCHAIN_PENDING_ACCOUNT, key.as_bytes())?;
         if !holds(r, KEYCHAIN_PENDING_ACCOUNT, key) {
@@ -244,7 +261,13 @@ impl<R: RawKeychain> KeyStore for TwoPhase<R> {
             return Err("the new owner key did not read back; the old one is kept".into());
         }
         // Past here the new key is safe under the pending account.
-        r.delete(KEYCHAIN_ACCOUNT)?;
+        if let Err(e) = r.delete(KEYCHAIN_ACCOUNT) {
+            // The old key is still in place and load would keep returning it; don't strand the new one beside it.
+            let _ = r.delete(KEYCHAIN_PENDING_ACCOUNT);
+            return Err(format!(
+                "could not replace the old owner key ({e}); the old key is kept and the new one discarded"
+            ));
+        }
         let mut last = String::new();
         for _ in 0..SAVE_ATTEMPTS {
             match r.add(KEYCHAIN_ACCOUNT, key.as_bytes()) {
@@ -260,7 +283,8 @@ impl<R: RawKeychain> KeyStore for TwoPhase<R> {
                 Err(e) => last = e,
             }
         }
-        // Kept under the pending account; load still finds it and the next connect tries again.
+        // Kept under the pending account: load still finds it, and the next save moves it into the main
+        // account before doing anything else. The setup token is one-time, so nothing re-runs the connect.
         Err(format!(
             "{last} (the key is kept and will be moved on the next save)"
         ))
