@@ -498,3 +498,26 @@ fn trash_and_renames_never_replace_a_file() {
     let r = rename_noreplace(&v.root().join("Taken (2).md"), &v.root().join("Taken.md"));
     assert_eq!(r.unwrap_err().kind(), std::io::ErrorKind::AlreadyExists);
 }
+
+#[test]
+fn meeting_link_writes_recheck_the_hash_before_the_rename() {
+    let t = tempfile::tempdir().unwrap();
+    let f = t.path().join("n.md");
+    fs::write(&f, "edited elsewhere").unwrap();
+    let stale = qrtz_storage::vault::hash_bytes(b"what qrtz read");
+    match qrtz_storage::vault::atomic_write_if_unchanged(&f, b"qrtz's rewrite", &stale) {
+        Err(VaultError::Conflict { current_hash }) => {
+            assert_eq!(current_hash, qrtz_storage::vault::hash_bytes(b"edited elsewhere"))
+        }
+        r => panic!("wrote over an outside edit: {r:?}"),
+    }
+    assert_eq!(fs::read_to_string(&f).unwrap(), "edited elsewhere");
+    let names: Vec<_> = fs::read_dir(t.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(names.len(), 1, "temp file left behind: {names:?}");
+    let ok = qrtz_storage::vault::hash_bytes(b"edited elsewhere");
+    qrtz_storage::vault::atomic_write_if_unchanged(&f, b"qrtz's rewrite", &ok).unwrap();
+    assert_eq!(fs::read_to_string(&f).unwrap(), "qrtz's rewrite");
+}

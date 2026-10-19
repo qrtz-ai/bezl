@@ -290,6 +290,39 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     r
 }
 
+/// [`atomic_write`], but the file must still hash to `expected` (see [`hash_bytes`]) right before the rename, after
+/// the new bytes are written and synced (amendment L1): an edit made outside qrtz since the caller read the file
+/// is a [`VaultError::Conflict`] and the file is left as it is.
+pub fn atomic_write_if_unchanged(path: &Path, bytes: &[u8], expected: &str) -> VResult<()> {
+    let dir = path.parent().ok_or_else(|| std::io::Error::other("no parent"))?;
+    let tmp = dir.join(format!(
+        ".qrtz-tmp-{}-{:08x}",
+        std::process::id(),
+        rand::random::<u32>()
+    ));
+    let r = (|| -> VResult<()> {
+        let mut f = fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+        drop(f);
+        let current = hash_bytes(&fs::read(path)?);
+        if current != expected {
+            return Err(VaultError::Conflict {
+                current_hash: current,
+            });
+        }
+        fs::rename(&tmp, path)?;
+        if let Ok(d) = fs::File::open(dir) {
+            let _ = d.sync_all();
+        }
+        Ok(())
+    })();
+    if r.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    r
+}
+
 fn is_temp(name: &str) -> bool {
     name.starts_with('.') && name.contains(".qrtz-tmp-")
 }
@@ -996,10 +1029,11 @@ impl Vault {
     fn set_meetings(&mut self, id: &str, f: impl FnOnce(&mut Vec<String>)) -> VResult<Doc> {
         let rel = self.path_of(id)?;
         let full = self.resolve(&rel)?;
-        let (mut note, _) = self.editable(id, &rel)?;
+        let (mut note, read_hash) = self.editable(id, &rel)?;
         f(&mut note.meetings);
         note.id = Some(id.to_owned());
-        atomic_write(&full, render_note(&note).as_bytes())?;
+        // L1: an edit made outside qrtz while this ran is kept; the caller sees a conflict and can retry.
+        atomic_write_if_unchanged(&full, render_note(&note).as_bytes(), &read_hash)?;
         self.index_file(&rel, None)?;
         self.get(id)
     }
