@@ -916,21 +916,24 @@ fn the_legacy_lockfile_migrates_to_requests() {
     let d = tempfile::tempdir().unwrap();
     let old = qrtz_modules::lock::Lockfile::parse(qrtz_modules::bundled::LOCK.as_bytes()).unwrap();
     let reqs = qrtz_modules::qrtz_lock::migrate_legacy(&old);
+    // Every bundled extension (echo, nano, ctrl and, ADR 0159, snap) becomes a caret request on the version its
+    // module manifest carries, so a release bump doesn't need this test edited.
+    let expected: BTreeMap<String, String> = qrtz_modules::bundled::manifests()
+        .into_iter()
+        .map(|(id, src)| {
+            let m = qrtz_modules::ModuleManifest::parse(src.as_bytes()).unwrap();
+            (id.to_string(), format!("^{}", m.version))
+        })
+        .collect();
     assert_eq!(
-        reqs,
-        BTreeMap::from([
-            ("ctrl".to_string(), "^0.2.0".to_string()),
-            ("echo".to_string(), "^0.2.0".to_string()),
-            ("nano".to_string(), "^0.2.0".to_string()),
-            // ADR 0159: qrtz snap.
-            ("snap".to_string(), "^0.1.0".to_string())
-        ])
+        expected.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["ctrl", "echo", "nano", "snap"]
     );
+    assert_eq!(reqs, expected);
     // snap's legacy entry is pinned exactly: version, manifest hash, team and designated requirement, and the name
     // is an extension (so the migration keeps it; a model or service entry would be dropped).
     let snap = &old.modules["snap"];
     let snap_manifest = qrtz_modules::ModuleManifest::parse(qrtz_modules::bundled::SNAP.as_bytes()).unwrap();
-    assert_eq!(snap.version, "0.1.0");
     assert_eq!(snap.version, snap_manifest.version);
     assert_eq!(
         snap.manifest_sha256,
