@@ -500,6 +500,11 @@
       "in": "SomeVeryLongTypeNameForTheDashboardWidget2Builder",
       "out": "SomeVeryLongTypeNameForTheDashboardWidget2Builder",
       "hit": false
+    },
+    {
+      "in": "tok xghp_Lu9U8hnEIsrTbwiaUIsCP9rJuefyPqoCflz6 y",
+      "out": "tok [redacted] y",
+      "hit": true
     }
   ],
   "https_url": [
