@@ -911,3 +911,104 @@ fn the_legacy_lockfile_migrates_to_requests() {
         "model.parakeet-tdt-v2-en"
     );
 }
+
+/// ADR 0157 §6 + §9 (Bozniak): model.laya is read by ctrl's own process, so it is not exempt from the freshness
+/// rule the way plain data is, and ctrl loads it read-only straight from the store-linked package.
+#[tokio::test]
+async fn a_model_an_extension_reads_needs_a_fresh_list_and_loads_read_only_from_the_store() {
+    let w = World::new();
+    let laya = qrtz_modules::models::ModelSource {
+        package: "model.laya".into(),
+        version: "1.0.0".into(),
+        task: "decision".into(),
+        repo: "org/laya".into(),
+        revision: "abc123".into(),
+        license: String::new(),
+        files: vec![qrtz_modules::models::ModelFile {
+            remote: "laya.gguf".into(),
+            path: "laya.gguf".into(),
+            size: 4,
+            sha256: qrtz_modules::sha256_hex(b"laya"),
+        }],
+    };
+    let hf = w.base.join("hf");
+    write(&hf.join("org/laya/resolve/abc123/laya.gguf"), b"laya", false);
+    let i = w.installer("c");
+    let mut offline = Dirs::new(vec![]);
+    offline.urls.insert("https://huggingface.co/".into(), hf.clone());
+    // Offline, no list: refused (plain pinned data still installs offline, see the test above).
+    let plan = i.plan(Op::Pinned(vec![laya.pinned(TEAM)])).unwrap();
+    assert_eq!(
+        i.apply(&offline, &plan, &plan.consent(), w.now, &|_, _| {})
+            .await
+            .unwrap_err(),
+        InstallError::Refused(Refusal::RevocationListExpired)
+    );
+    assert!(i.extension_read_path("ctrl", "model.laya", true).is_err());
+    // With a fresh signed list it installs, and ctrl gets the package dir (read-only, store-linked).
+    w.publish(vec![], vec![], w.now);
+    let mut t = w.hosts();
+    t.urls.insert("https://huggingface.co/".into(), hf);
+    i.refresh(&t, &RefreshConsent::user_asked(), w.now).await.unwrap();
+    let plan = i.plan(Op::Pinned(vec![laya.pinned(TEAM)])).unwrap();
+    i.apply(&t, &plan, &plan.consent(), w.now, &|_, _| {})
+        .await
+        .unwrap();
+    let dir = i.extension_read_path("ctrl", "model.laya", true).unwrap();
+    assert_eq!(dir, i.package_path("model.laya", "1.0.0"));
+    assert_eq!(std::fs::read(dir.join("laya.gguf")).unwrap(), b"laya");
+    let mode = std::fs::metadata(dir.join("laya.gguf")).unwrap().permissions();
+    assert!(mode.readonly());
+    // Only the one exception: nobody else gets a read path, not even for laya.
+    assert!(i.extension_read_path("echo", "model.laya", false).is_err());
+    assert!(i
+        .extension_read_path("ctrl", "model.parakeet-tdt-v2-en", false)
+        .is_err());
+    // A writable (or changed) file is refused at load.
+    let f = dir.join("laya.gguf");
+    let mut p = mode.clone();
+    #[allow(clippy::permissions_set_readonly_false)]
+    p.set_readonly(false);
+    std::fs::set_permissions(&f, p).unwrap();
+    assert!(i.extension_read_path("ctrl", "model.laya", false).is_err());
+    std::fs::set_permissions(&f, mode).unwrap();
+    assert!(i.extension_read_path("ctrl", "model.laya", true).is_ok());
+}
+
+/// ADR 0157 §9: an extension's index entry may carry `models` only as its one `extension.reads` exception (ctrl →
+/// model.laya, a dependency); the publisher writes it from `extension.reads` and the client re-checks it.
+#[tokio::test]
+async fn an_extension_index_entry_carries_models_only_as_its_reads_exception() {
+    let mut w = World::new();
+    let l = w.model("model.laya", "1.0.0", "decision", &[3u8; 3000]);
+    let d = w.dir();
+    write(
+        &d.join("qrtz.json"),
+        &serde_json::to_vec(&json!({"name": "ctrl", "version": "0.3.0", "kind": "extension",
+            "dependencies": {"model.laya": "^1.0.0"},
+            "extension": {"entry": "bin/helper", "protocol": 1, "minApp": "0.3.0", "reads": ["model.laya"]}}))
+        .unwrap(),
+        false,
+    );
+    write(&d.join("bin/helper"), b"ctrl", true);
+    w.publish(vec![l, d], vec![], w.now);
+    let i = w.installer("c");
+    i.refresh(&w.hosts(), &RefreshConsent::user_asked(), w.now)
+        .await
+        .unwrap();
+    let (_, v) = i.cached_index().unwrap();
+    let e = v.index.entry("ctrl", "0.3.0").unwrap().clone();
+    assert_eq!(e.models, ["model.laya"]);
+    e.validate("ctrl").unwrap();
+    // The same entry under another extension's name, another model, a second model, or one it doesn't depend on.
+    assert!(e.validate("echo").is_err());
+    for models in [vec!["model.nemotron"], vec!["model.laya", "model.nemotron"]] {
+        let mut x = e.clone();
+        x.models = models.iter().map(|s| s.to_string()).collect();
+        x.dependencies.insert("model.nemotron".into(), "1.0.0".into());
+        assert!(x.validate("ctrl").is_err(), "{models:?}");
+    }
+    let mut x = e.clone();
+    x.dependencies.clear();
+    assert!(x.validate("ctrl").is_err());
+}

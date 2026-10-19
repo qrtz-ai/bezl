@@ -818,8 +818,19 @@ impl Installer {
         }) || plan.wants.values().any(|w| {
             w.locked.kind.has_code() && w.tree.blobs().iter().any(|b| !self.store.has(&b.sha256, b.size))
         });
+        // ADR 0157 §6: the data exemption is data-only AND no extension.reads consumer. A model an extension's own
+        // process reads (model.laya) follows code's rule, whether or not its bytes are already in the store.
+        let read_model = plan.wants.values().any(|w| {
+            w.locked.kind == PackageKind::Model
+                && (crate::qrtz_json::read_by_extension(&w.name)
+                    || plan
+                        .next
+                        .packages
+                        .values()
+                        .any(|l| l.kind == PackageKind::Extension && l.models.contains(&w.name)))
+        });
         // Rule 1, no override.
-        if (plan.online || fetches_code) && !fresh {
+        if (plan.online || fetches_code || read_model) && !fresh {
             return Err(Refusal::RevocationListExpired.into());
         }
         // Rule 2 on every package the plan installs, both paths.
@@ -908,6 +919,19 @@ impl Installer {
             .is_some_and(|h| *h != crate::sha256_hex(&mbytes))
         {
             return Err(mismatch("qrtz.json sha256"));
+        }
+        // ADR 0157 §9: a model an extension reads in its own process is loaded straight from this dir, so every file
+        // is re-hashed after the clone (or link) and must be read-only.
+        if w.locked.kind == PackageKind::Model && crate::qrtz_json::read_by_extension(&w.name) {
+            for f in &w.tree.files {
+                let p = dir.join(&f.path);
+                if !file_is_immutable_copy(&p, &f.sha256, f.size)? {
+                    return Err(mismatch(&format!(
+                        "{}: changed after linking, or writable",
+                        f.path
+                    )));
+                }
+            }
         }
         let m = PackageManifest::parse(&mbytes)?;
         if m.name != w.name || m.version != w.version || m.kind != w.locked.kind {
@@ -1236,6 +1260,58 @@ impl Installer {
     /// The models a service may be handed for an extension (ADR 0157 §7): each (service, model, dir) pair where the
     /// extension depends on both and the service's `qrtz.json` declares the model. The shell opens the dir and passes
     /// the handle (or a sandbox extension token) at connect; the service never opens a path itself.
+    /// ADR 0157 §9: the dir an extension's own process may load `model` from (ctrl's `model.laya`), straight from
+    /// the store-linked package: only a [`crate::qrtz_json::EXTENSION_READS`] model, installed and not disabled,
+    /// every file read-only and of its locked size (cheap, at every load; the sha256 was re-checked after linking,
+    /// and `verify_sha256` re-checks it now as well).
+    pub fn extension_read_path(
+        &self,
+        extension: &str,
+        model: &str,
+        verify_sha256: bool,
+    ) -> Result<PathBuf, InstallError> {
+        if !crate::qrtz_json::EXTENSION_READS.contains(&(extension, model)) {
+            return Err(InstallError::NotLocked(format!("{extension} reads {model}")));
+        }
+        let lock = self.lock()?;
+        let v = lock
+            .workspace
+            .resolved
+            .get(model)
+            .cloned()
+            .or_else(|| lock.versions(model).last().map(|(v, _)| v.to_string()))
+            .ok_or_else(|| InstallError::NotInstalled(model.into()))?;
+        let l = lock
+            .get(model, &v)
+            .ok_or_else(|| InstallError::NotInstalled(model.into()))?;
+        if l.disabled.is_some() {
+            return Err(InstallError::NotInstalled(model.into()));
+        }
+        let dir = self.package_path(model, &v);
+        let tree = self
+            .store
+            .read_verified(&l.sha256, crate::index::MAX_INDEX_BYTES)?
+            .map(|b| Tree::parse(&b))
+            .transpose()?
+            .ok_or_else(|| InstallError::NoTree(key(model, &v)))?;
+        for f in &tree.files {
+            let p = dir.join(&f.path);
+            let ok = if verify_sha256 {
+                file_is_immutable_copy(&p, &f.sha256, f.size)?
+            } else {
+                std::fs::symlink_metadata(&p)
+                    .is_ok_and(|m| m.is_file() && m.len() == f.size && m.permissions().readonly())
+            };
+            if !ok {
+                return Err(InstallError::ManifestMismatch {
+                    key: key(model, &v),
+                    why: format!("{}: missing, changed or writable", f.path),
+                });
+            }
+        }
+        Ok(dir)
+    }
+
     pub fn model_grants(&self, extension: &str) -> Result<Vec<(String, String, PathBuf)>, InstallError> {
         let lock = self.lock()?;
         let v = lock
@@ -1343,6 +1419,16 @@ pub fn recheck_lock(lock: &QrtzLock, fresh: &RevocationSnapshot) -> (QrtzLock, V
         }
     }
     (next, notices)
+}
+
+/// The file has exactly this size and sha256 and no write bit.
+fn file_is_immutable_copy(p: &Path, sha256: &str, size: u64) -> std::io::Result<bool> {
+    let m = std::fs::symlink_metadata(p)?;
+    if !m.is_file() || m.len() != size || !m.permissions().readonly() {
+        return Ok(false);
+    }
+    let (n, h) = fsutil::sha256_file(p)?;
+    Ok(n == size && h == sha256)
 }
 
 fn make_read_only(dir: &Path) -> std::io::Result<()> {

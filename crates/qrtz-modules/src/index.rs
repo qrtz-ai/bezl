@@ -682,8 +682,27 @@ impl PackageEntry {
         if (self.kind == PackageKind::Model) != self.task.is_some() {
             return Err("task only (and always) on models".into());
         }
-        if self.kind != PackageKind::Service && !self.models.is_empty() {
-            return Err("models is for services".into());
+        match self.kind {
+            PackageKind::Service => {}
+            // An extension's `models` is its `extension.reads` (the qrtz.json is checked against it at stage): only
+            // ADR 0157 §9's one exception, and only a model it depends on.
+            PackageKind::Extension => {
+                if self.models.len() > 1 {
+                    return Err("models: at most one extension.reads (ADR 0157 §9)".into());
+                }
+                for m in &self.models {
+                    if !crate::qrtz_json::EXTENSION_READS.contains(&(name, m.as_str())) {
+                        return Err(format!(
+                            "models: {name} may not read {m} in its own process (ADR 0157 §9)"
+                        ));
+                    }
+                    if !self.dependencies.contains_key(m) {
+                        return Err(format!("models: {m} must be one of its dependencies"));
+                    }
+                }
+            }
+            _ if !self.models.is_empty() => return Err("models is for services and extension.reads".into()),
+            _ => {}
         }
         for m in &self.models {
             if crate::qrtz_json::kind_of(m).ok() != Some(PackageKind::Model) {

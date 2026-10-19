@@ -417,8 +417,6 @@ async fn freshness_code_never_installs_without_a_fresh_list() {
 }
 
 #[tokio::test]
-#[ignore = "pending Bobs's installer rule (ADR 0157 §6 / 0144 §7): the freshness exemption is data-only AND no \
-            extension.reads consumer; Installer::apply exempts every data-only pinned plan today, model.laya included"]
 async fn freshness_model_laya_read_in_ctrls_process_needs_a_fresh_list() {
     let w = World::new();
     let i = w.installer("c");
@@ -432,10 +430,6 @@ async fn freshness_model_laya_read_in_ctrls_process_needs_a_fresh_list() {
 }
 
 #[tokio::test]
-#[ignore = "pending Bobs: (1) an extension with extension.reads can't be published today (the index entry refuses \
-            `models` on anything but a service: \"ctrl@0.3.0: models is for services\"), and (2) the installer rule \
-            (ADR 0157 §6 / 0144 §7) that a model an extension reads in-process needs a fresh list isn't in \
-            Installer::apply yet"]
 async fn freshness_a_model_an_installed_extension_reads_needs_a_fresh_list() {
     let mut w = World::new();
     w.catalogue();
