@@ -144,3 +144,52 @@ for (const size of [
     });
   });
 }
+
+// Jared 2026-10-19: app rows show a bare icon like the shared model rows (no tile, border or outline), on the
+// section label's left edge, with the same size, tone and icon-to-text gap.
+test('qrtz page: app rows use the shared rows’ bare icon, size and left edge', async ({
+  page,
+}) => {
+  await page.goto('/?dev=1&seed=1#/qrtz');
+  const market = page.locator('[data-subapp="marketplace"]');
+  await expect(market.locator('[data-app-row]').first()).toBeVisible();
+  await expect(market.getByLabel('shared packages')).toBeVisible();
+  const g = await page.evaluate(() => {
+    const m = document.querySelector('[data-subapp="marketplace"]')!;
+    const box = (e: Element) => e.getBoundingClientRect();
+    const look = (svg: Element) => {
+      const text = svg.nextElementSibling!;
+      return {
+        x: box(svg).x,
+        size: box(svg).width,
+        color: getComputedStyle(svg).color + svg.getAttribute('stroke'),
+        gap: box(text).x - box(svg).right,
+        tile: (() => {
+          const p = svg.parentElement!;
+          const s = getComputedStyle(p);
+          return `${s.backgroundColor} ${s.borderTopWidth}`;
+        })(),
+      };
+    };
+    return {
+      apps: [...m.querySelectorAll('[data-testid^="app-icon-"]')].map(look),
+      shared: [...m.querySelectorAll('[aria-label="shared packages"] svg')].map(
+        look,
+      ),
+      label: box(m.querySelector('section')!.firstElementChild!).x,
+    };
+  });
+  expect(g.apps.length).toBeGreaterThan(0);
+  expect(g.shared.length).toBeGreaterThan(0);
+  const ref = g.shared[0]!;
+  expect(ref.x).toBe(g.label);
+  for (const a of g.apps) {
+    expect({ x: a.x, size: a.size, color: a.color, gap: a.gap }).toEqual({
+      x: ref.x,
+      size: ref.size,
+      color: ref.color,
+      gap: ref.gap,
+    });
+    expect(a.tile).toBe('rgba(0, 0, 0, 0) 0px');
+  }
+});

@@ -416,7 +416,8 @@ export function AppList({
 }
 
 /**
- * One app on the qrtz page, in a short row: glyph, name, one line of description, the version and size, an
+ * One app on the qrtz page, in a short row: a bare Feather icon (no tile, same size, tone and left edge as the
+ * shared section's IconLine), name, one line of description, the version and size, an
  * optional status word, and its action on the right (a download icon, an inline progress bar, or the "more
  * actions" menu). Clicking anywhere on the row but the action opens the app's detail (`onOpen`); the action's
  * clicks and keys never reach the row.
@@ -459,8 +460,11 @@ export function AppRow({
           gridTemplateColumns: 'minmax(0, 1fr) auto auto',
           alignItems: 'center',
           columnGap: t.space[3],
-          minHeight: 52,
-          padding: `${t.space[2]} ${t.space[3]}`,
+          // The row's own inset is pulled back out (negative margin), so its icon sits on the section label's
+          // left edge and its action on the column's right edge, like the shared rows' IconLine; the hover fill
+          // bleeds into the page gutter.
+          padding: `${t.space[1]} ${t.space[2]}`,
+          margin: `0 -${t.space[2]}`,
           borderRadius: t.radius.md,
           cursor: 'pointer',
           background: hover ? t.color.surfaceHover : 'transparent',
@@ -489,7 +493,12 @@ export function AppRow({
             borderRadius: t.radius.sm,
           }}
         >
-          <ExtensionGlyph icon={icon} size="sm" />
+          <Icon
+            name={icon}
+            size="sm"
+            tone="muted"
+            data-testid={`app-icon-${name}`}
+          />
           <span style={{ display: 'grid', gap: 0, minWidth: 0 }}>
             <span
               style={{
