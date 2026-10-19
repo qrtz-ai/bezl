@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import { useTheme } from './theme';
 import { transition } from './tokens';
 import { Text } from './Text';
@@ -373,6 +373,20 @@ export function ModuleRow({
   );
 }
 
+/** Read by screen readers, not shown (the AppRow button's trailing "details"). */
+const VISUALLY_HIDDEN: CSSProperties = {
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  margin: -1,
+  padding: 0,
+  overflow: 'hidden',
+  clip: 'rect(0 0 0 0)',
+  clipPath: 'inset(50%)',
+  whiteSpace: 'nowrap',
+  border: 0,
+};
+
 /** The qrtz page's app lists ("installed", "available"): a plain list of AppRows, one per line. */
 export function AppList({
   children,
@@ -460,10 +474,12 @@ export function AppRow({
             e.stopPropagation();
             onOpen();
           }}
-          aria-label={`${name} details`}
+          // WCAG 2.5.3 (axe label-content-name-mismatch): no aria-label. The button is named by what it shows
+          // (name, meta, description) plus a visually hidden "details", so the name contains the visible text.
           data-testid={`app-open-${name}`}
           style={{
             all: 'unset',
+            position: 'relative',
             boxSizing: 'border-box',
             display: 'grid',
             gridTemplateColumns: 'auto minmax(0, 1fr)',
@@ -497,6 +513,7 @@ export function AppRow({
               {description.toLowerCase()}
             </Text>
           </span>
+          <span style={VISUALLY_HIDDEN}> details</span>
         </button>
         {status ? (
           <Text
