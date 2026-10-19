@@ -20,43 +20,27 @@ macOS minutes count 10x on a private repo, so the macOS job only does what Linux
 stub sidecar in `src-tauri/binaries/`; the real helper is built only for releases. Caches: cargo
 (`Swatinem/rust-cache`), bun's install cache, SwiftPM `.build`, and the Playwright browsers.
 
-## `release.yml`: on a tag `v*`
+## `app-release.yml`: qrtz.app releases (ADR 0180)
 
-1. Checks that the tag matches `apps/desktop/src-tauri/tauri.conf.json` `version` and takes the release notes from the
-   `CHANGELOG.md` section `## X.Y.Z` (or `## vX.Y.Z`, optionally followed by a date or title) with
-   `scripts/release-notes.mjs`. A missing or empty section fails the release.
-2. On `macos-26`: `bun run build:helper` (release arm64 Swift helper → `src-tauri/binaries/`), then
-   `tauri build --bundles app,dmg`.
-3. Publishes the GitHub release with `qrtz_X.Y.Z_aarch64.dmg`, `qrtz_X.Y.Z_aarch64.app.zip` and `SHA256SUMS.txt`
-   (also kept 14 days as a workflow artifact).
+Replaces `release.yml` (unsigned `v*` tag builds). It runs on a push to main whose
+`apps/desktop/src-tauri/tauri.conf.json` version went up (`node scripts/app/version.mjs bump` writes every version
+file and the CHANGELOG section; a commit that leaves the version alone never releases), or by hand
+(`gh workflow run app-release.yml`).
 
-Apple Silicon only: a universal build would need an x86_64 helper (and FluidAudio) too. Running the workflow by hand
-(`gh workflow run release.yml`) builds the same artifacts without publishing.
+1. `plan` (Linux): the version, whether it is a bump, whether `app-v<version>` exists, and which secrets are set.
+2. `release` (`macos-latest`): `scripts/ci/macos-signing.sh setup-identity` (temporary keychain: the Developer ID
+   identity and the notary profile, from `MACOS_CERT_*` and `AC_*`), then `scripts/release/sign-notarize.sh` (build
+   with echo bundled, re-sign nested code, notarize and staple the app and the dmg, Gatekeeper checks). The step after
+   checks the bundle's version and identifier and the designated requirements of qrtz.app (`and notarized`) and
+   `qrtz-echo` (`ai.qrtz.echo`, MR26CCZ496). The dmg and its `.sha256` are uploaded as the artifact
+   `qrtz-<version>-macos-aarch64-dmg` (30 days) on every run.
+3. Only with the app-update key (`APP_UPDATE_KEY` secret + the committed `crates/qrtz-app/src/app_update_key.pub`):
+   the `.app.tar.gz` is signed with `tauri signer sign --app-version`, verified with `minisign` against the committed
+   public key, `scripts/app/feed.mjs` writes `latest.json`, `scripts/app/upload.sh` uploads to R2 `v1/app/`,
+   `scripts/app/verify-live.sh` compares what modules.qrtz.ai serves, and `version.mjs tag --push` tags
+   `app-v<version>`. Without the key the run ends after the artifact with a warning: nothing is published.
 
-To cut a release: bump the version in `package.json`, `apps/desktop/package.json`, `apps/desktop/src-tauri/Cargo.toml`
-and `tauri.conf.json`, rename the CHANGELOG's unreleased section to `## X.Y.Z`, push to main, then
-`git tag vX.Y.Z && git push origin vX.Y.Z`.
-
-### Not yet: signing and notarization
-
-Builds are **unsigned**: a downloaded copy is quarantined and macOS may call it damaged; clear that with
-`xattr -dr com.apple.quarantine /Applications/qrtz.app`. Microphone and screen-audio permissions granted to an
-unsigned build don't carry over to the next build. Signing and notarizing in CI need
-these repository secrets, which the Tauri bundler reads from the environment of the `tauri build` step:
-
-| Secret                       | What                                                                           |
-| ---------------------------- | ------------------------------------------------------------------------------ |
-| `APPLE_CERTIFICATE`          | the Developer ID Application certificate + key, exported as .p12, base64       |
-| `APPLE_CERTIFICATE_PASSWORD` | the .p12 password                                                              |
-| `APPLE_SIGNING_IDENTITY`     | e.g. `Developer ID Application: Jared Grimes (MR26CCZ496)`                     |
-| `KEYCHAIN_PASSWORD`          | any random string, for the temporary CI keychain                               |
-| `APPLE_API_ISSUER`           | App Store Connect API key issuer id (notarization)                             |
-| `APPLE_API_KEY`              | the API key id                                                                 |
-| `APPLE_API_KEY_P8`           | the `.p8` contents; the step writes it to a file and sets `APPLE_API_KEY_PATH` |
-
-(Instead of the API key: `APPLE_ID`, `APPLE_PASSWORD` (app-specific password) and `APPLE_TEAM_ID`.) The later step
-imports the certificate into a temporary keychain before `tauri build`; the bundler then signs the app and the
-`qrtz-helper` sidecar with `entitlements.mac.plist`, notarizes and staples. See docs/release.md.
+Apple Silicon only.
 
 The speech module source is baked in at build time from the secrets `QRTZ_SPEECH_URL`, `QRTZ_SPEECH_KEY_ID`,
 `QRTZ_SPEECH_KEY`, `QRTZ_SPEECH_ROOT_KEY_ID` and `QRTZ_SPEECH_ROOT_KEY`; until they're set, release builds ship

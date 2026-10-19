@@ -4,6 +4,7 @@
 #
 #   scripts/ci/setup-secrets.sh                 every secret
 #   scripts/ci/setup-secrets.sh cert|notary|keys|r2   just one group (e.g. to rotate it)
+#   scripts/ci/setup-secrets.sh app-update      qrtz.app's update key (ADR 0180): made here once, never on a server
 #   scripts/ci/setup-secrets.sh --list          what it sets, from where (sets nothing)
 #
 # Every value goes from its source straight into `gh secret set` on stdin: from the keychain (`security`), from a
@@ -19,6 +20,10 @@
 #   QRTZ_INDEX_KEY, QRTZ_TIMESTAMP_KEY    the ONLINE signing keys publish.sh and timestamp-job.sh use:
 #                                         ~/.qrtz-keys/index.key and ~/.qrtz-keys/timestamp.key
 #   R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ACCOUNT_ID   the keychain item qrtz-r2 (account = access key id)
+#   APP_UPDATE_KEY                        `app-update` (not part of `all`): ~/.qrtz-keys/app-update.key, made on this
+#                                         Mac by `tauri signer generate` (no password; 0600, like index.key) the first
+#                                         time; its public key goes into crates/qrtz-app/src/app_update_key.pub (commit
+#                                         it). An existing key is never replaced: it is only uploaded again.
 set -euo pipefail
 repo="${QRTZ_REPO:-qrtz-ai/qrtz}"
 team="MR26CCZ496"
@@ -29,7 +34,7 @@ die() { echo "setup-secrets: $*" >&2; exit 1; }
 say() { echo "setup-secrets: $*"; }
 
 if [[ "${1:-}" == --list ]]; then
-  sed -n '/^# Secrets/,/^#   R2_ACCESS/p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '/^# Secrets/,/only uploaded again/p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
 fi
 [[ "$(uname -s)" == Darwin ]] || die "run this on your Mac (it reads the login keychain)"
@@ -171,13 +176,52 @@ do_r2() {
   printf '%s' "${R2_ACCOUNT_ID:-$r2_account_default}" | put R2_ACCOUNT_ID
 }
 
+do_app_update() {
+  # ADR 0180: the key that signs qrtz.app's update archives. Separate from the module root, index and timestamp keys;
+  # its public half is compiled into the app. The private key is made here and lives only in this file and in the
+  # APP_UPDATE_KEY secret: never printed, never on a command line, never on a server.
+  local root key pub out
+  root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+  key="$keys/app-update.key"
+  pub="$root/crates/qrtz-app/src/app_update_key.pub"
+  case "$keys" in *qrtz-root*) die "QRTZ_KEYS=$keys is a root key dir: refused" ;; esac
+  mkdir -p "$keys"
+  chmod 700 "$keys"
+  if [[ -e "$key" ]]; then
+    not_root "$key"
+    [[ -f "$key.pub" ]] || die "$key exists but $key.pub doesn't: not replacing it (see ADR 0180, rotation)"
+    say "$key exists: uploading it again (never replaced here)"
+  else
+    local tauri="$root/node_modules/.bin/tauri"
+    [[ -x "$tauri" ]] || die "no tauri CLI at $tauri (run \`bun install\` in $root first)"
+    # --ci -p "": no password (a 0600 file, like index.key). Its output (which names the key) goes nowhere.
+    "$tauri" signer generate --ci -p "" -w "$key" >/dev/null 2>&1 || die "tauri signer generate failed"
+    [[ -f "$key" && -f "$key.pub" ]] || die "tauri signer generate wrote no key"
+  fi
+  chmod 600 "$key" "$key.pub"
+  tr -d '[:space:]' <"$key" | put APP_UPDATE_KEY
+  out="$(tr -d '[:space:]' <"$key.pub")"
+  [[ "$out" =~ ^[A-Za-z0-9+/]+=*$ ]] || die "$key.pub isn't a base64 public key"
+  {
+    echo "# ADR 0180: qrtz.app's update public key (minisign, base64 of the .pub text), compiled into the app."
+    echo "# Made by scripts/ci/setup-secrets.sh app-update; the private key is ~/.qrtz-keys/app-update.key and the"
+    echo "# APP_UPDATE_KEY secret only. Rotation: ADR 0180."
+    echo "$out"
+  } >"$pub"
+  chmod 644 "$pub"
+  say "the app-update public key (also written to crates/qrtz-app/src/app_update_key.pub; commit and push it):"
+  echo "$out"
+}
+
 case "${1:-all}" in
   all) do_cert; do_notary; do_keys; do_r2 ;;
   cert) do_cert ;;
   notary) do_notary ;;
   keys) do_keys ;;
   r2) do_r2 ;;
-  *) die "usage: setup-secrets.sh [all|cert|notary|keys|r2|--list]" ;;
+  app-update) do_app_update ;;
+  *) die "usage: setup-secrets.sh [all|cert|notary|keys|r2|app-update|--list]" ;;
 esac
 say "done. In $repo: $(gh secret list --repo "$repo" | cut -f1 | tr '\n' ' ')"
-say "Run a release: gh workflow run modules-release.yml --repo $repo   (the timestamp: modules-timestamp.yml)"
+say "Run a release: gh workflow run modules-release.yml --repo $repo   (the timestamp: modules-timestamp.yml;"
+say "  qrtz.app itself: gh workflow run app-release.yml --repo $repo)"

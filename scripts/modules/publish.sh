@@ -319,7 +319,8 @@ upload() { # <remote:bucket>
   if [[ "$mode" != timestamp ]]; then
     # Everything but the timestamp: immutable, cached for a year.
     # --checksum: an object already up with the same bytes (e.g. root 1, uploaded another way) is not "modified".
-    rclone copy "$out/v1" "$1/v1" --immutable --checksum --exclude "timestamp.json*" \
+    # ADR 0180: never v1/app/ (qrtz.app's own update, app-release.yml; its latest.json changes on every release).
+    rclone copy "$out/v1" "$1/v1" --immutable --checksum --exclude "timestamp.json*" --exclude "app/**" \
       --header-upload "Cache-Control: public, max-age=31536000, immutable" --transfers 4 --s3-chunk-size 64M -v
   fi
   # The timestamp last (its .sig first is fine: the client fetches the pair), cached 5 minutes.

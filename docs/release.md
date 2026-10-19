@@ -4,8 +4,8 @@ The goal is a signed, notarized qrtz that opens without Gatekeeper warnings. The
 bundler signs, then `scripts/release/sign-mac.sh` re-signs the nested executables (the bundler gives every one the
 app's entitlements; ADR 0162), reseals, notarizes and staples.
 
-CI builds an unsigned Apple Silicon release from a `v*` tag (`.github/workflows/release.yml`, docs/ci.md); the
-steps below are the local, signed path.
+CI builds, signs, notarizes and (with the app-update key) publishes qrtz.app (`.github/workflows/app-release.yml`,
+"qrtz.app releases" below, ADR 0180); the steps below are the local, signed path, the same scripts.
 
 Step by step, with the exact commands and checks: [docs/modules/production-setup.md](modules/production-setup.md) Part A.
 
@@ -119,15 +119,42 @@ ADR 0179.
 
 The workflows need a push from a token with the `workflow` scope (`gh auth refresh -s workflow`).
 
+## qrtz.app releases (ADR 0180)
+
+qrtz updates itself from settings → qrtz: it checks `https://modules.qrtz.ai/v1/app/latest.json` quietly at launch
+(after a minute) and every 6 hours, a dot on the sidebar's qrtz row says a newer qrtz is there, "update" downloads it
+with progress, and "restart to update" relaunches into it (ADR 0172's restart). Before swapping the bundle the app
+checks the archive's size and sha256 (the feed's), its minisign signature against the app-update public key compiled
+in (`crates/qrtz-app/src/app_update_key.pub`, its trusted comment naming the same version), that the new qrtz.app is
+`ai.qrtz.desktop` at that version, signed by Developer ID team MR26CCZ496 and notarized (`codesign -R … and
+notarized`, `spctl`), and that the version is above both this build and the highest one it ever accepted (the
+high-water mark in its data dir). Never a downgrade, never a reinstall.
+
+On R2 (bucket `qrtz-modules`, never touched by the module publish: hydrate-out.sh and publish.sh exclude `app/**`):
+
+| Object                                         | Cache         |
+| ---------------------------------------------- | ------------- |
+| `v1/app/<v>/qrtz_<v>_aarch64.app.tar.gz{,.sig}` | 1 year, immutable |
+| `v1/app/<v>/qrtz_<v>_aarch64.dmg`               | 1 year, immutable |
+| `v1/app/qrtz-latest.dmg` (the download link)    | 60 s          |
+| `v1/app/latest.json` (uploaded last)            | 60 s          |
+
+To cut a release: `node scripts/app/version.mjs bump` (patch: tauri.conf.json, both package.json, the workspace
+Cargo.toml and Cargo.lock, CHANGELOG `## Unreleased` → `## <v> (<date>)`), commit, push to main. app-release.yml does
+the rest and tags `app-v<v>`. echo is part of qrtz.app (ADR 0174): a change to echo is a qrtz release.
+
+One-time, on the release Mac: `scripts/ci/setup-secrets.sh app-update` makes `~/.qrtz-keys/app-update.key` (0600,
+no password) with `tauri signer generate`, sets the `APP_UPDATE_KEY` secret from it (stdin, never printed), writes
+the public key into `crates/qrtz-app/src/app_update_key.pub` and prints only the public key. Commit that file. Until
+then builds say "updates aren't set up in this build yet" and app-release.yml publishes nothing.
+
 ## Updates and diagnostics
 
 Package hosting is `modules.qrtz.ai` only (Cloudflare R2; ADR 0167 — no Backblaze B2 mirror). Publish with
 `scripts/modules/publish.sh`; setup in [docs/modules/production-setup.md](modules/production-setup.md) Part B.
 
-- **Check for updates** (settings → system) runs only when pressed: `packages:check-update` refreshes the signed
-  index from the package host (verified against the pinned root) and compares its newest `qrtz` with this build. It
-  installs nothing. Before the host exists (`module_hosts.json` `root1Sha256` is null) it answers "updates aren't set
-  up yet" without a request.
+- **Check for updates** (settings → qrtz) is qrtz's own updater (ADR 0180, above). `packages:check-update` (the
+  signed index's newest `qrtz`) stays as a channel; settings no longer calls it.
 - **Export diagnostics** (settings → system) saves one text file of the local logs plus macOS's crash, hang and spin
   reports for qrtz and its helpers (`~/Library/Logs/DiagnosticReports/qrtz*.ips`, last 30 days, at most 20, 2 MB
   each). Local only: it reads files on this Mac and writes the one file; the user sends it.

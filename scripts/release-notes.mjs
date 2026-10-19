@@ -1,4 +1,4 @@
-// Prints the CHANGELOG.md section for one version (release.yml uses it for the GitHub release notes).
+// Prints the CHANGELOG.md section for one version (app-release.yml uses it for the update notes in latest.json).
 //   bun scripts/release-notes.mjs v0.2.0
 // Matches a heading "## 0.2.0" or "## v0.2.0", optionally followed by a date or title ("## 0.2.0 (2026-10-18)",
 // "## v0.2.0: offline"), up to the next "## " heading. Exits 1 if there is no such section or it is empty.

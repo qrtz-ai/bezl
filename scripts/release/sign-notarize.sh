@@ -72,7 +72,10 @@ if [ "$DRY" != 1 ]; then
   security find-identity -v -p codesigning | grep -Fq "\"$QRTZ_SIGN_ID\"" \
     || die "identity not in the keychain: $QRTZ_SIGN_ID"
   if [ "$NOTARIZE" = 1 ]; then
-    xcrun notarytool history --keychain-profile "$PROFILE" >/dev/null 2>&1 \
+    # QRTZ_NOTARY_KEYCHAIN: CI keeps the profile in its temporary keychain (ADR 0179/0180), as notarize.sh reads it.
+    NKC=()
+    [ -n "${QRTZ_NOTARY_KEYCHAIN:-}" ] && NKC=(--keychain "$QRTZ_NOTARY_KEYCHAIN")
+    xcrun notarytool history --keychain-profile "$PROFILE" "${NKC[@]+"${NKC[@]}"}" >/dev/null 2>&1 \
       || die "no notarytool profile '$PROFILE' (xcrun notarytool store-credentials $PROFILE …)"
   fi
 fi
