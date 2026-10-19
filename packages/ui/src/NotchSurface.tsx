@@ -99,11 +99,48 @@ const reducedMotion = () =>
   typeof window.matchMedia === 'function' &&
   window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/** A spring with very little overshoot, as the native surface's (0..1 over ~230 ms). */
-const springOut = (u: number) => {
-  const x = Math.min(1, Math.max(0, u));
-  return 1 - Math.pow(1 - x, 3) * Math.cos(x * 1.2);
-};
+/**
+ * A step response (0 to 1, at rest) of Apple's spring given as perceptual duration (s) and bounce, the same model as
+ * `CASpringAnimation(perceptualDuration:bounce:)` / SwiftUI `.spring(duration:bounce:)`: ω0 = 2π / duration, damping
+ * ratio 1 - bounce. Overshoots past 1 when bounce > 0. `t` in seconds.
+ */
+export function springStep(
+  t: number,
+  duration: number,
+  bounce: number,
+): number {
+  if (t <= 0) return 0;
+  const w0 = (2 * Math.PI) / duration;
+  const z = 1 - bounce;
+  if (z >= 1) return 1 - Math.exp(-w0 * t) * (1 + w0 * t);
+  const wd = w0 * Math.sqrt(1 - z * z);
+  return (
+    1 -
+    Math.exp(-z * w0 * t) *
+      (Math.cos(wd * t) + ((z * w0) / wd) * Math.sin(wd * t))
+  );
+}
+
+/**
+ * The native surface's motion (NotchSurface.swift, ADR 0221). Show: the shape on a bouncy system spring
+ * (perceptual 0.35 s, bounce 0.25), content fading in from 0.13 s over 0.10 s. Hide: content fades out over 0.06 s,
+ * the shape retracts from 0.04 s on a no-bounce spring (perceptual 0.3 s). Seconds.
+ */
+export const NOTCH_MOTION = {
+  expand: {
+    duration: 0.35,
+    bounce: 0.25,
+    contentDelay: 0.13,
+    contentFade: 0.1,
+  },
+  retract: { duration: 0.3, bounce: 0, delay: 0.04, contentFade: 0.06 },
+} as const;
+
+/** Close enough to rest to stop the frame loop. */
+const settled = (t: number, d: number, b: number) =>
+  t > d &&
+  Math.abs(1 - springStep(t, d, b)) < 0.001 &&
+  Math.abs(1 - springStep(t - 0.016, d, b)) < 0.001;
 
 export function NotchSurface({
   content,
@@ -135,24 +172,45 @@ export function NotchSurface({
   const panelW = nw + 2 * (g.sideGrow + g.widenMax + g.expandedEar);
   const panelH = top + g.dropGrow + 4;
   const [p, setP] = useState(open ? 1 : 0);
+  const [c, setC] = useState(open ? 1 : 0);
   const from = useRef(p);
+  const fromC = useRef(c);
   useEffect(() => {
     const target = open ? 1 : 0;
     if (reducedMotion() || typeof requestAnimationFrame !== 'function') {
+      from.current = fromC.current = target;
       setP(target);
+      setC(target);
       return;
     }
     const start = performance.now();
     const p0 = from.current;
-    const dur = open ? 230 : 180;
+    const c0 = fromC.current;
+    const m = NOTCH_MOTION;
     let raf = 0;
     const frame = (now: number) => {
-      const u = (now - start) / dur;
-      const k = open ? springOut(u) : Math.pow(Math.min(1, u), 2);
-      const v = p0 + (target - p0) * k;
+      const t = (now - start) / 1000;
+      let k: number, kc: number, done: boolean;
+      if (open) {
+        const { duration: d, bounce: b, contentDelay, contentFade } = m.expand;
+        k = springStep(t, d, b);
+        // Interrupting a retract: the content comes back at once, as Swift's 0.04 s fromCurrent delay.
+        const delay = p0 > 0 ? 0.04 : contentDelay;
+        kc = Math.min(1, Math.max(0, (t - delay) / contentFade));
+        done = settled(t, d, b) && kc >= 1;
+      } else {
+        const { duration: d, bounce: b, delay, contentFade } = m.retract;
+        k = springStep(t - delay, d, b);
+        kc = Math.min(1, t / contentFade);
+        done = t > delay && settled(t - delay, d, b) && kc >= 1;
+      }
+      const v = done ? target : p0 + (target - p0) * k;
+      const vc = c0 + (target - c0) * (1 - Math.pow(1 - kc, open ? 2 : 1));
       from.current = v;
+      fromC.current = vc;
       setP(v);
-      if (u < 1) raf = requestAnimationFrame(frame);
+      setC(vc);
+      if (!done) raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
@@ -164,8 +222,8 @@ export function NotchSurface({
   const w = nw + (ew - nw) * q;
   const h = restH + (top + g.dropGrow - restH) * q;
   const r = g.restRadius + (g.expandedRadius - g.restRadius) * q;
-  const e = g.expandedEar * q;
-  const contentOpacity = still ? (open ? 1 : 0) : Math.max(0, (p - 0.6) / 0.4);
+  const e = g.expandedEar * Math.max(0, q);
+  const contentOpacity = still ? (open ? 1 : 0) : c;
   const text = (s: string) => (
     <span
       style={{

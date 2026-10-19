@@ -5,8 +5,10 @@ import { describe, expect, it } from 'vitest';
 import {
   NOTCH_GEOMETRY,
   NOTCH_ICONS,
+  NOTCH_MOTION,
   NotchSurface,
   notchPath,
+  springStep,
 } from './NotchSurface';
 
 const swift = (rel: string) =>
@@ -56,5 +58,21 @@ describe('NotchSurface (ADR 0221)', () => {
         `data-kind="${c.kind}"`,
       );
     }
+  });
+});
+
+describe('springStep (the native surface springs)', () => {
+  it('bouncy expand overshoots then settles; no-bounce retract never overshoots', () => {
+    const { expand, retract } = NOTCH_MOTION;
+    let peak = 0;
+    for (let t = 0; t < 1.5; t += 0.005)
+      peak = Math.max(peak, springStep(t, expand.duration, expand.bounce));
+    expect(peak).toBeGreaterThan(1.02);
+    expect(springStep(1.5, expand.duration, expand.bounce)).toBeCloseTo(1, 2);
+    for (let t = 0; t < 1; t += 0.005)
+      expect(
+        springStep(t, retract.duration, retract.bounce),
+      ).toBeLessThanOrEqual(1);
+    expect(springStep(0, 0.5, 0.3)).toBe(0);
   });
 });
