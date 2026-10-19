@@ -17,8 +17,8 @@ public enum CtrlScripts {
     /// `saving no`, which would throw away unsaved work).
     public static func source(verb: String, bundleId: String) -> String? {
         guard safeBundleId(bundleId), CtrlRoute.scriptVerbs.contains(verb) else { return nil }
-        // ADR 0137 / 0173 / 0195: the appearance and Dock verbs go to System Events and nothing else; nothing else goes to
-        // System Events.
+        // ADR 0137 / 0173 / 0195 / 0197: the appearance, Dock and menu-bar verbs go to System Events and nothing else;
+        // nothing else goes to System Events.
         guard CtrlRoute.systemEventsVerbs.contains(verb) == (bundleId == CtrlRoute.systemEvents) else { return nil }
         let body: String
         switch verb {
@@ -46,6 +46,10 @@ public enum CtrlScripts {
         case "set_dock_edge_left": body = "tell dock preferences to set screen edge to left"
         case "set_dock_edge_right": body = "tell dock preferences to set screen edge to right"
         case "set_dock_edge_bottom": body = "tell dock preferences to set screen edge to bottom"
+        // ADR 0197: the menu bar's "automatically hide and show" (System Events' dock preferences; no app comes
+        // forward). Only on / off: macOS 13+'s desktop-only and full-screen-only choices stay as the user set them.
+        case "set_menu_bar_autohide": body = "tell dock preferences to set autohide menu bar to true"
+        case "set_menu_bar_shown": body = "tell dock preferences to set autohide menu bar to false"
         // ADR 0178: the current screen saver (System Events starts it; the screensaver covers the display by design).
         case "start_screen_saver": body = "start current screen saver"
         // ADR 0178 amendment 1: stop it. A password-on-wake Mac keeps its login prompt; nothing here unlocks.
@@ -125,6 +129,23 @@ public enum CtrlDock {
         case "left": return edgeLeft
         case "right": return edgeRight
         default: return edgeBottom
+        }
+    }
+}
+
+/// ADR 0197: reads the global defaults domain's `_HIHideMenuBar`: true when the menu bar hides itself, absent (never
+/// hidden on this Mac) or false when it's shown. Nothing else in the domain is looked at, and nothing is written (macOS
+/// ignores a plain defaults write of it; the setting goes through System Events).
+public enum CtrlMenuBar {
+    public static let check = "menu_bar_autohide"
+    public static let key = "_HIHideMenuBar"
+
+    public static func autohides(_ global: [String: Any]?) -> Bool {
+        switch global?[key] {
+        case let b as Bool: return b
+        case let n as NSNumber: return n.boolValue
+        case let s as String: return ["1", "true", "yes"].contains(s.lowercased())
+        default: return false
         }
     }
 }

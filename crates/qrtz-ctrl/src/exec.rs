@@ -348,6 +348,10 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
         };
         return Some(dock_edge_step(edge));
     }
+    // ADR 0197: the menu bar's auto-hide, the same way (System Events only, read back in the helper).
+    if mv == MENU_BAR_AUTOHIDE_ON_MOVE || mv == MENU_BAR_AUTOHIDE_OFF_MOVE {
+        return Some(menu_bar_step(mv == MENU_BAR_AUTOHIDE_ON_MOVE));
+    }
     // ADR 0178: start the screen saver the same way (System Events only; the helper sees ScreenSaverEngine).
     if mv == SCREENSAVER_MOVE || mv == SCREENSAVER_STOP_MOVE {
         return Some(screensaver_step(mv == SCREENSAVER_MOVE));
@@ -794,6 +798,30 @@ pub const DOCK_EDGE_LEFT_MOVE: &str = "route.scripting.dock_edge_left";
 pub const DOCK_EDGE_RIGHT_MOVE: &str = "route.scripting.dock_edge_right";
 pub const DOCK_EDGE_BOTTOM_MOVE: &str = "route.scripting.dock_edge_bottom";
 
+/// ADR 0197: one System Events script sets the menu bar's auto-hide; the helper's read of the global defaults'
+/// `_HIHideMenuBar` verifies it.
+fn menu_bar_step(hide: bool) -> Step {
+    Step::Act {
+        routes: vec![Route::Scripting {
+            app: SYSTEM_EVENTS.into(),
+            verb: if hide {
+                ScriptVerb::SetMenuBarAutohide
+            } else {
+                ScriptVerb::SetMenuBarShown
+            },
+        }],
+        verify: Verify {
+            check: Check::MenuBarAutohide,
+            expect: if hide { Expect::One } else { Expect::Zero },
+        },
+        content: BTreeMap::new(),
+    }
+}
+
+/// ADR 0197: "hide the menu bar" / "always show the menu bar" (reversible, no gate).
+pub const MENU_BAR_AUTOHIDE_ON_MOVE: &str = "route.scripting.menu_bar_autohide_on";
+pub const MENU_BAR_AUTOHIDE_OFF_MOVE: &str = "route.scripting.menu_bar_autohide_off";
+
 /// ADR 0178: one System Events script starts (or, amendment 1, stops) the current screen saver; the helper's read of
 /// ScreenSaverEngine verifies it.
 fn screensaver_step(start: bool) -> Step {
@@ -1042,6 +1070,14 @@ impl Driver<'_> {
             if fplan.is_none() && mv == ALLOW_SLEEP_MOVE && self.helper.measure(&Check::KeptAwake) == Some(0)
             {
                 return sink.push(log, finish(TaskStatus::Done));
+            }
+            // ADR 0197: the menu bar already hidden (or shown) the way the task wants is done with nothing acted, so a
+            // task that changes nothing never asks for the System Events grant. A helper that can't read it acts.
+            if fplan.is_none() && (mv == MENU_BAR_AUTOHIDE_ON_MOVE || mv == MENU_BAR_AUTOHIDE_OFF_MOVE) {
+                let want = i64::from(mv == MENU_BAR_AUTOHIDE_ON_MOVE);
+                if self.helper.measure(&Check::MenuBarAutohide) == Some(want) {
+                    return sink.push(log, finish(TaskStatus::Done));
+                }
             }
             // ADR 0178: the screen saver already up is done with nothing acted (amendment 1: already off, for a stop).
             if fplan.is_none() && (mv == SCREENSAVER_MOVE || mv == SCREENSAVER_STOP_MOVE) {

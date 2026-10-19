@@ -74,6 +74,9 @@ pub enum Check {
     /// from the `com.apple.dock` defaults' `orientation`; absent = bottom, the macOS default; no app asked, no
     /// prompt). Verified with [`Expect::Level`] (values spaced so the ±1 volume tolerance never confuses edges).
     DockEdge,
+    /// ADR 0197: 1 if the menu bar hides itself automatically, 0 if it's shown (read in the helper's own process from
+    /// the global defaults' `_HIHideMenuBar`; absent = shown, the macOS default; no app asked, no prompt).
+    MenuBarAutohide,
     /// ADR 0176: how many mounted volumes "eject my disks" would eject (ejectable or removable, local, not the root
     /// file system; `null`: the helper can't list volumes). Only the mount table's resource values are read, never
     /// anything on a volume, and only the count crosses the wire.
@@ -602,6 +605,8 @@ pub struct FakeWorld {
     pub dock_autohide: bool,
     /// ADR 0195: the Dock's screen edge (`"left"` / `"bottom"` / `"right"`; default bottom).
     pub dock_edge: String,
+    /// ADR 0197: the menu bar hides itself automatically.
+    pub menu_bar_autohide: bool,
     /// ADR 0178: the screen saver is running (ScreenSaverEngine).
     pub screensaver_running: bool,
     /// ADR 0178 amendment 1: the Mac asks for a password after the screen saver, so stopping it leaves the lock up.
@@ -697,6 +702,7 @@ impl FakeWorld {
             dark: false,
             dock_autohide: false,
             dock_edge: "bottom".into(),
+            menu_bar_autohide: false,
             screensaver_running: false,
             screensaver_locks: false,
             display_asleep: false,
@@ -809,6 +815,17 @@ impl FakeWorld {
                 .into();
                 Ok(())
             }
+            // ADR 0197: the menu bar's auto-hide, through System Events only.
+            Route::Scripting {
+                app,
+                verb: v @ (ScriptVerb::SetMenuBarAutohide | ScriptVerb::SetMenuBarShown),
+            } => {
+                if app != crate::exec::SYSTEM_EVENTS {
+                    return Err("policy.refused".into());
+                }
+                self.menu_bar_autohide = *v == ScriptVerb::SetMenuBarAutohide;
+                Ok(())
+            }
             // ADR 0178: start (amendment 1: stop) the screen saver, through System Events only. A Mac that asks for a
             // password on wake keeps its lock up: the engine stays, so a stop's verify fails (ctrl never unlocks).
             Route::Scripting {
@@ -851,6 +868,8 @@ impl FakeWorld {
                     | ScriptVerb::SetDockEdgeLeft
                     | ScriptVerb::SetDockEdgeRight
                     | ScriptVerb::SetDockEdgeBottom
+                    | ScriptVerb::SetMenuBarAutohide
+                    | ScriptVerb::SetMenuBarShown
                     | ScriptVerb::StartScreenSaver
                     | ScriptVerb::StopScreenSaver => return Err("script.unsupported".into()),
                 }
@@ -1129,6 +1148,7 @@ impl FakeWorld {
                     Check::DarkMode => Some(i64::from(self.dark)),
                     Check::DockAutohide => Some(i64::from(self.dock_autohide)),
                     Check::DockEdge => Some(crate::exec::dock_edge_code(&self.dock_edge)),
+                    Check::MenuBarAutohide => Some(i64::from(self.menu_bar_autohide)),
                     Check::ScreensaverRunning => Some(i64::from(self.screensaver_running)),
                     Check::DisplayAsleep => Some(i64::from(self.display_asleep)),
                     Check::LastSleep => self.last_sleep,

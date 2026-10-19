@@ -50,5 +50,7 @@
 {"type":"ctrl.measure","id":"c40","check":{"check":"kept_awake"}}
 {"type":"ctrl.act","id":"c41","actionId":"a18","route":{"route":"scripting","app":"com.apple.systemevents","verb":"set_dock_edge_left"},"content":{}}
 {"type":"ctrl.measure","id":"c42","check":{"check":"dock_edge"}}
+{"type":"ctrl.act","id":"c43","actionId":"a19","route":{"route":"scripting","app":"com.apple.systemevents","verb":"set_menu_bar_autohide"},"content":{}}
+{"type":"ctrl.measure","id":"c44","check":{"check":"menu_bar_autohide"}}
 {"type":"ctrl.laya.warm","id":"c12","model":"/models/ctrl/laya/laya.mlmodelc"}
 {"type":"ctrl.laya.warm.result","id":"c12","state":"started"}

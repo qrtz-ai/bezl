@@ -638,6 +638,13 @@ const INTENTS: &[IntentDef] = &[
         slot: Slot::None,
         irreversible: false,
     },
+    // ADR 0197: the menu bar's auto-hide, through System Events (faceless), like the Dock's; reversible, no gate.
+    IntentDef {
+        id: "menu_bar_autohide",
+        app: AppMode::Fixed("com.apple.systemevents"),
+        slot: Slot::None,
+        irreversible: false,
+    },
     // ADR 0178: start the screen saver, through System Events (faceless); reversible by the user, no gate.
     IntentDef {
         id: "screensaver",
@@ -710,6 +717,68 @@ fn dock_task(toks: &[Tok]) -> bool {
             || has(toks, DOCK_SHOW_WORDS)
             || has(toks, &["turn", "enable", "disable", "on", "off", "keep"]))
         && !dock_edge_task(toks)
+        && !menu_bar_named(toks)
+}
+
+/// ADR 0197: words that name the menu bar ("menu bar", "menubar", "menu-bar").
+fn menu_bar_named(toks: &[Tok]) -> bool {
+    has(toks, &["menubar", "menu-bar", "menubars"]) || (has(toks, &["menu"]) && has(toks, &["bar", "bars"]))
+}
+
+/// ADR 0197: words that make a menu-bar task something else: its full-screen / desktop-only modes (macOS 13+ has four
+/// "automatically hide and show" choices; ctrl sets only the one System Events exposes), the items and icons in it,
+/// its look (background, transparency), a toggle (would need a read first, like ADR 0145).
+const MENU_BAR_NOT_WORDS: &[&str] = &[
+    "toggle",
+    "flip",
+    "full",
+    "fullscreen",
+    "full-screen",
+    "desktop",
+    "icon",
+    "icons",
+    "item",
+    "items",
+    "extra",
+    "extras",
+    "clock",
+    "date",
+    "battery",
+    "wifi",
+    "wi-fi",
+    "bluetooth",
+    "sound",
+    "volume",
+    "spotlight",
+    "siri",
+    "control",
+    "center",
+    "centre",
+    "background",
+    "transparent",
+    "transparency",
+    "tint",
+    "color",
+    "colour",
+    "size",
+    "spacing",
+];
+
+/// ADR 0197: the task is about the menu bar's auto-hide: the menu bar plus a hide / show / on-off word, no Dock (one
+/// move per task: "hide the dock and the menu bar" is neither), nothing from [`MENU_BAR_NOT_WORDS`]. "hide the menu
+/// bar", "always show the menu bar", "stop hiding the menu bar", "turn on menu bar auto-hide".
+fn menu_bar_task(toks: &[Tok]) -> bool {
+    menu_bar_wording(toks) && !has(toks, &["dock"]) && !has(toks, MENU_BAR_NOT_WORDS)
+}
+
+/// ADR 0197: the menu bar plus a hide / show / on-off word, whatever else is said. Such a task is never an open (a
+/// hidden launch) of an app named beside it: "hide the dock and the menu bar" with the Dock running would otherwise
+/// read as "open the Dock" and finish with nothing done.
+fn menu_bar_wording(toks: &[Tok]) -> bool {
+    menu_bar_named(toks)
+        && (has(toks, DOCK_HIDE_WORDS)
+            || has(toks, DOCK_SHOW_WORDS)
+            || has(toks, &["turn", "enable", "disable", "on", "off", "keep"]))
 }
 
 /// ADR 0195: words that name a Dock screen edge (macOS has no top).
@@ -1420,7 +1489,7 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             {
                 p += if open { 3000 } else { 4500 };
             }
-            if named_app && (!site || full_named) {
+            if named_app && (!site || full_named) && !menu_bar_wording(toks) {
                 p += 3000;
             }
             if full_named && site {
@@ -1490,7 +1559,14 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
                 ],
             );
             // ADR 0173: "hide the dock" is the Dock's auto-hide, not hiding the Dock app.
-            if has(toks, &["hide"]) && named_app && !group && !dock_task(toks) && !dock_edge_task(toks) {
+            // ADR 0197: nor is "hide the menu bar" (or "hide the dock and the menu bar") a hide of an app.
+            if has(toks, &["hide"])
+                && named_app
+                && !group
+                && !dock_task(toks)
+                && !dock_edge_task(toks)
+                && !menu_bar_named(toks)
+            {
                 p += 9000;
             }
         }
@@ -1520,6 +1596,7 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
                 && (!site || full_named)
                 && !dock_task(toks)
                 && !dock_edge_task(toks)
+                && !menu_bar_named(toks)
             {
                 p += 9000;
             }
@@ -1726,6 +1803,14 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             p -= 3000;
             let other_app = named.iter().any(|(a, _)| a.id != DOCK_APP);
             if dock_edge_task(toks) && !other_app && !site {
+                p += 9500;
+            }
+        }
+        "menu_bar_autohide" => {
+            // ADR 0197: "hide the menu bar", "always show the menu bar", "stop hiding the menu bar". The menu bar plus
+            // a hide / show / on-off word, no Dock, no app named, no site. Without it it sits well below.
+            p -= 3000;
+            if menu_bar_task(toks) && !named_app && !site {
                 p += 9500;
             }
         }
@@ -2303,6 +2388,14 @@ fn move_question(
                 route("scripting.dock_autohide_off", if hide { 2000 } else { 4500 }),
             ]
         }
+        // ADR 0197: one move from the words (see `dock_hides`, the same words): hidden or always shown, never both.
+        "menu_bar_autohide" => {
+            if dock_hides(toks) {
+                vec![route("scripting.menu_bar_autohide_on", 4500)]
+            } else {
+                vec![route("scripting.menu_bar_autohide_off", 4500)]
+            }
+        }
         // ADR 0195: one move from the words (left / right / bottom). Ambiguous → all three low so the run asks.
         "dock_edge" => match dock_edge_of(toks) {
             Some("left") => vec![route("scripting.dock_edge_left", 4500)],
@@ -2527,6 +2620,7 @@ fn intent_label(id: &str) -> &'static str {
         "dark_mode" => "switch dark mode",
         "dock_autohide" => "hide or show the dock",
         "dock_edge" => "move the dock to an edge",
+        "menu_bar_autohide" => "hide or show the menu bar",
         "screensaver" => "start or stop the screensaver",
         "search" => "search in an app",
         "send_message" => "send a message",
@@ -2577,6 +2671,8 @@ fn route_label(id: &str) -> &'static str {
         "scripting.dock_edge_left" => "put the dock on the left",
         "scripting.dock_edge_right" => "put the dock on the right",
         "scripting.dock_edge_bottom" => "put the dock on the bottom",
+        "scripting.menu_bar_autohide_on" => "hide the menu bar until the pointer reaches it",
+        "scripting.menu_bar_autohide_off" => "always show the menu bar, full screen as set",
         "scripting.screensaver" => "start the current screen saver",
         "scripting.screensaver_stop" => "stop the screen saver, nothing unlocked",
         "files.tidy" => "sort by kind, nothing deleted",
@@ -2748,6 +2844,8 @@ mod label_tests {
             "left",
             "right",
             "bottom",
+            "menu bar",
+            "always show the menu bar",
         ];
         for d in INTENTS {
             for p in phrasings {

@@ -54,7 +54,7 @@ final class CtrlProtocolTests: XCTestCase {
     func testEveryHostLineOfTheFixtureParses() throws {
         let all = try lines()
         let host = all.filter { !(($0["type"] as! String).hasSuffix(".result")) && $0["type"] as! String != "ctrl.error" }
-        XCTAssertEqual(host.count, 43)
+        XCTAssertEqual(host.count, 45)
         for o in host {
             let line = String(decoding: try JSONSerialization.data(withJSONObject: o), as: UTF8.self)
             XCTAssertNotNil(CtrlRequest.parse(line), "\(o["type"]!)")
@@ -311,6 +311,52 @@ final class CtrlProtocolTests: XCTestCase {
         XCTAssertTrue(CtrlRoute.applessChecks.contains(CtrlDock.edgeCheck))
         XCTAssertTrue(CtrlRoute.dockVerbs.contains("set_dock_edge_left"))
         XCTAssertTrue(CtrlRoute.systemEventsVerbs.contains("set_dock_edge_bottom"))
+    }
+
+    func testTheMenuBarAutohideGoesOnlyToSystemEventsAndItsMeasureHasNoApp() throws {
+        // ADR 0197: set_menu_bar_autohide parses from the fixture and reaches the backend; both menu-bar scripts go to
+        // System Events only and set nothing but the menu bar's auto-hide, and menu_bar_autohide is measured without
+        // an app from the global defaults' _HIHideMenuBar (absent = shown).
+        let all = try lines()
+        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["verb"] as? String == "set_menu_bar_autohide" }!
+        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
+        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("set_menu_bar_autohide") }
+        XCTAssertEqual(route, .scripting(app: "com.apple.systemevents", verb: "set_menu_bar_autohide"))
+        let fake = Fake()
+        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: line))["ok"] as? Bool, true)
+        XCTAssertEqual(fake.acted, [route])
+        XCTAssertEqual(CtrlScripts.source(verb: "set_menu_bar_autohide", bundleId: "com.apple.systemevents"),
+                       "tell application id \"com.apple.systemevents\"\ntell dock preferences to set autohide menu bar to true\nend tell")
+        XCTAssertEqual(CtrlScripts.source(verb: "set_menu_bar_shown", bundleId: "com.apple.systemevents"),
+                       "tell application id \"com.apple.systemevents\"\ntell dock preferences to set autohide menu bar to false\nend tell")
+        for id in ["com.apple.dock", "com.apple.Safari", "com.apple.finder", "com.apple.systemuiserver"] {
+            XCTAssertNil(CtrlScripts.source(verb: "set_menu_bar_autohide", bundleId: id), id)
+            XCTAssertNil(CtrlScripts.source(verb: "set_menu_bar_shown", bundleId: id), id)
+        }
+        // Strict wire spellings: nothing near them is a verb.
+        for verb in ["set_menu_bar_hidden", "set_menubar_autohide", "Set_Menu_Bar_Autohide", "set_menu_bar_autohide ",
+                     "set_menu_bar_toggle"] {
+            XCTAssertNil(CtrlScripts.source(verb: verb, bundleId: "com.apple.systemevents"), verb)
+            let bad = #"{"type":"ctrl.act","id":"x","actionId":"a","route":{"route":"scripting","app":"com.apple.systemevents","verb":"\#(verb)"},"content":{}}"#
+            if case .act? = CtrlRequest.parse(bad) {
+                XCTAssertFalse(CtrlRoute.scriptVerbs.contains(verb), verb)
+            }
+        }
+        guard case let .measure(_, check, app)? = CtrlRequest.parse(#"{"type":"ctrl.measure","id":"c44","check":{"check":"menu_bar_autohide"}}"#)
+        else { return XCTFail("menu_bar_autohide") }
+        XCTAssertEqual(check, "menu_bar_autohide")
+        XCTAssertEqual(app, "")
+        XCTAssertTrue(CtrlMenuBar.autohides(["_HIHideMenuBar": true]))
+        XCTAssertTrue(CtrlMenuBar.autohides(["_HIHideMenuBar": NSNumber(value: 1)]))
+        XCTAssertTrue(CtrlMenuBar.autohides(["_HIHideMenuBar": "1"]))
+        XCTAssertFalse(CtrlMenuBar.autohides(["_HIHideMenuBar": false]))
+        XCTAssertFalse(CtrlMenuBar.autohides(["_HIHideMenuBar": NSNumber(value: 0)]))
+        XCTAssertFalse(CtrlMenuBar.autohides(["AppleInterfaceStyle": "Dark"]), "absent: shown (the default)")
+        XCTAssertFalse(CtrlMenuBar.autohides(["autohide": true]), "the dock's key isn't the menu bar's")
+        XCTAssertFalse(CtrlMenuBar.autohides(nil))
+        XCTAssertTrue(CtrlRoute.applessChecks.contains(CtrlMenuBar.check))
+        XCTAssertTrue(CtrlRoute.menuBarVerbs.isSubset(of: CtrlRoute.systemEventsVerbs))
+        XCTAssertTrue(CtrlRoute.menuBarVerbs.isSubset(of: CtrlRoute.scriptVerbs))
     }
 
     func testTheScreensaverGoesOnlyToSystemEventsAndItsMeasureHasNoApp() throws {

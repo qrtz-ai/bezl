@@ -471,6 +471,8 @@ public final class MacCtrlBackend: CtrlBackend {
         case CtrlDock.check: return CtrlDock.autohides(UserDefaults.standard.persistentDomain(forName: CtrlDock.domain)) ? 1 : 0
         // ADR 0195: the Dock's screen edge (`orientation`), same defaults domain (no app asked, no prompt).
         case CtrlDock.edgeCheck: return CtrlDock.edgeCode(UserDefaults.standard.persistentDomain(forName: CtrlDock.domain))
+        // ADR 0197: the menu bar's auto-hide, read from the global defaults in this process (no app asked, no prompt).
+        case CtrlMenuBar.check: return CtrlMenuBar.autohides(UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)) ? 1 : 0
         // ADR 0178: ScreenSaverEngine in this process's NSWorkspace list (no app asked, no prompt, nothing activated).
         case CtrlScreensaver.check:
             let apps = NSWorkspace.shared.runningApplications

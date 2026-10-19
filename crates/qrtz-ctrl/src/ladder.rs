@@ -278,6 +278,13 @@ pub enum ScriptVerb {
     SetDockEdgeRight,
     /// ADR 0195: the same with `bottom` (macOS's default Dock edge; no top).
     SetDockEdgeBottom,
+    /// ADR 0197: System Events `tell dock preferences to set autohide menu bar to true` (only to
+    /// `com.apple.systemevents`, nothing comes forward, no key event): the menu bar slides away until the pointer
+    /// reaches the top of the screen. Reversible.
+    SetMenuBarAutohide,
+    /// ADR 0197: the same with `false` (the menu bar shown outside full screen; full-screen behaviour as the user set
+    /// it).
+    SetMenuBarShown,
     /// ADR 0178: System Events `start current screen saver` (only to `com.apple.systemevents`, a faceless agent:
     /// nothing comes forward as a key event; the screensaver itself covers the display by design). Reversible by the
     /// user (move the mouse / press a key) or by a later "stop the screensaver" task.
