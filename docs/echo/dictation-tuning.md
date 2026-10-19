@@ -798,4 +798,3 @@ No dictation speed or accuracy change. Echo's Parakeet set now installs through 
 trying `modules.qrtz.ai` and its mirror before the pinned Hugging Face URL. When those hosts can't be reached and are
 slow to fail, the first download used to wait about 14 minutes of timeouts before any byte came; now about 30 s
 (`8a3b994`). Already-downloaded models are kept as they are. The ranked plan above is unchanged.
-

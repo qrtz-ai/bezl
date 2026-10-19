@@ -2,7 +2,7 @@
 
 The goal is a signed, notarized qrtz that opens without Gatekeeper warnings. The app is Tauri 2 (ADR 0061); the
 bundler signs, then `scripts/release/sign-mac.sh` re-signs the nested executables (the bundler gives every one the
-app's entitlements; ADR 0160), reseals, notarizes and staples.
+app's entitlements; ADR 0162), reseals, notarizes and staples.
 
 CI builds an unsigned Apple Silicon release from a `v*` tag (`.github/workflows/release.yml`, docs/ci.md); the
 steps below are the local, signed path.

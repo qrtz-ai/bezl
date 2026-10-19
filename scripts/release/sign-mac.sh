@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ADR 0160, ADR 0159: sign the nested executables of a built qrtz.app the way docs/modules/confinement-map.json
+# ADR 0162, ADR 0159: sign the nested executables of a built qrtz.app the way docs/modules/confinement-map.json
 # (bundledCode) says, reseal the app, check every signature, then notarize and staple the app and a fresh .dmg.
 #
 # Why: `tauri build` re-signs every externalBin with the app's entitlements (allow-jit, audio-input, apple-events)

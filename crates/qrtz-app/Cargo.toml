@@ -19,7 +19,7 @@ runtime = [
   "dep:qrtz-speech",
 ]
 
-# ADR 0157 §9, ADR 0160: the package manager's command line, shipped inside qrtz.app as Contents/MacOS/qrtz (an
+# ADR 0157 §9, ADR 0162: the package manager's command line, shipped inside qrtz.app as Contents/MacOS/qrtz (an
 # externalBin built by `bun run build:helper`; the app's own executable is Contents/MacOS/qrtz-app).
 [[bin]]
 name = "qrtz"

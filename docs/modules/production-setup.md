@@ -9,7 +9,7 @@ v1 ships one signed, notarized qrtz.app and its package hosting: `modules.qrtz.a
 - **The `qrtz` command is in every build** as `qrtz.app/Contents/MacOS/qrtz`, an `externalBin` that
   `bun run build:helper` builds. The app's own executable is now `Contents/MacOS/qrtz-app`. The bundle, its identifier
   and its Privacy entries are unchanged, and the login item is fixed on the first launch
-  ([ADR 0160](../adr/0160-the-qrtz-command-ships-as-contents-macos-qrtz.md)). `qrtz link` puts `~/.local/bin/qrtz`
+  ([ADR 0162](../adr/0162-the-qrtz-command-ships-as-contents-macos-qrtz.md)). `qrtz link` puts `~/.local/bin/qrtz`
   on your PATH as a symlink into the bundle. Until `root1Sha256` is pinned it refuses every install, as designed.
 - **Every executable in `Contents/MacOS` gets the right signature.** `tauri build` gives every bundled executable the
   app's entitlements, so `scripts/release/sign-mac.sh` signs each one again: `qrtz` with none and `qrtz-snap` as
@@ -33,7 +33,7 @@ v1 ships one signed, notarized qrtz.app and its package hosting: `modules.qrtz.a
   OpenMDW-1.1, and LocalVQE and Laya are Apache-2.0.
 
 Not ready yet (ours, not yours): ctrl can't be published until the index accepts `extension.reads` (Bobs is fixing
-it). No extension can pass the installer's notarization check until bare helpers get a stapleable check (ADR 0160).
+it). No extension can pass the installer's notarization check until bare helpers get a stapleable check (ADR 0162).
 The `inference.voice` XPC service doesn't exist yet. So the first publish is models only.
 
 ## Part A: the signed v1 build (needed for launch)

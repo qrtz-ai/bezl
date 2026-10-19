@@ -173,5 +173,5 @@ refuses network installs, like the app.
 - The LocalVQE and Laya licenses must allow mirroring before those models are published (until then the app keeps
   fetching them from their pinned Hugging Face URLs, verified the same way; Laya's download also needs the live,
   fresh index above).
-- Done (ADR 0160): `qrtz` ships as the externalBin `qrtz.app/Contents/MacOS/qrtz`; the app's own executable is
+- Done (ADR 0162): `qrtz` ships as the externalBin `qrtz.app/Contents/MacOS/qrtz`; the app's own executable is
   `Contents/MacOS/qrtz-app`.

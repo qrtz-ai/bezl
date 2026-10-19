@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The automatic timestamp re-sign (ADR 0153 §3, ADR 0160): a launchd job on the release Mac that runs
+# The automatic timestamp re-sign (ADR 0153 §3, ADR 0162): a launchd job on the release Mac that runs
 # `publish.sh --timestamp` every day at 09:00 and again at every login/wake after a missed run. The timestamp is
 # signed for 7 days and clients refuse it after 8, so a daily run leaves a week of slack for a Mac that's asleep,
 # offline or travelling; a failure posts a macOS notification and is logged to ~/Library/Logs/qrtz-timestamp.log.

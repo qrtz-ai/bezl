@@ -111,7 +111,7 @@ fs.copyFileSync(path.join(binPath.stdout.trim(), 'qrtz-snap'), snapDest);
 fs.chmodSync(snapDest, 0o755);
 console.log(`[build:helper] ${path.relative(process.cwd(), snapDest)}`);
 
-// ADR 0160: the `qrtz` command ships as the second externalBin (qrtz.app/Contents/MacOS/qrtz; the app itself is
+// ADR 0162: the `qrtz` command ships as the second externalBin (qrtz.app/Contents/MacOS/qrtz; the app itself is
 // Contents/MacOS/qrtz-app). Built here so `bun run make` and the release workflow (which runs build:helper) bundle the
 // real one; a debug `cargo build` without it gets a stub from src-tauri/build.rs.
 const repo = path.resolve(import.meta.dirname, '..');

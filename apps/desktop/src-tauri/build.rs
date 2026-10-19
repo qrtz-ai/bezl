@@ -13,7 +13,7 @@ fn main() {
     .expect("tauri build script");
 }
 
-/// ADR 0160, ADR 0159: on macOS `binaries/qrtz` (the `qrtz` command) and `binaries/qrtz-snap` (snap's helper) are
+/// ADR 0162, ADR 0159: on macOS `binaries/qrtz` (the `qrtz` command) and `binaries/qrtz-snap` (snap's helper) are
 /// externalBins, which tauri-build requires to exist. `bun run build:helper` builds the real ones. A debug build
 /// (`cargo check`, `tauri dev`, the CI check) without them gets a stub that says how to build them; a release build
 /// never does, so a bundle can't ship a stub. (`binaries/qrtz-helper` has always been required as is.)

@@ -1,5 +1,5 @@
 //! `qrtz`: the package manager's command line (ADR 0157 §9). See `qrtz_app::pm_cli`. Shipped as
-//! `qrtz.app/Contents/MacOS/qrtz` (a Tauri externalBin; the app itself is `Contents/MacOS/qrtz-app`, ADR 0160).
+//! `qrtz.app/Contents/MacOS/qrtz` (a Tauri externalBin; the app itself is `Contents/MacOS/qrtz-app`, ADR 0162).
 use qrtz_app::module_hosting::Packages;
 use qrtz_app::pm_cli::{ask_tty, parse, run, Io};
 

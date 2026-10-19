@@ -1380,7 +1380,7 @@ fn at_most_one_extension_reads_a_model_in_its_own_process() {
     }
 }
 
-/// ADR 0160, ADR 0159: every executable Tauri bundles into Contents/MacOS (tauri.macos.conf.json externalBin) is in
+/// ADR 0162, ADR 0159: every executable Tauri bundles into Contents/MacOS (tauri.macos.conf.json externalBin) is in
 /// the confinement map's bundledCode, scripts/release/sign-mac.sh signs exactly those with the identifier and
 /// entitlements listed there, each entitlements file passes the lint, and an extension's bundled helper signs as the
 /// identifier its lock entry pins.
