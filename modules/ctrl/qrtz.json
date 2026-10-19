@@ -2,7 +2,7 @@
   "name": "ctrl",
   "version": "0.2.2",
   "kind": "extension",
-  "description": "Background actions on this Mac, decided by an on-device model; never takes over the UI.",
+  "description": "ctrl do: one command, carried out in the foreground through the accessibility tree; esc stops it.",
   "dependencies": {
     "model.laya": "^1.0.0"
   },

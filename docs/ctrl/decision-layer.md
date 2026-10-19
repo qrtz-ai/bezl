@@ -1,6 +1,6 @@
 # Ctrl decision layer: spec (draft, 2026-10-17)
 
-Status: draft from Jared's design. Research basis: local-decision-models.md (same folder). No code yet.
+Status: implemented as ctrl do ([ADR 0214](../adr/0214-ctrl-do-is-a-foreground-decision-chain-over-the-accessibility-tree.md), 2026-10-19). Research basis: local-decision-models.md (same folder).
 
 ## 1. Principle
 
