@@ -397,7 +397,29 @@ function terminalPunctuation(t: string): string {
   }
   // ADR 0196: "?" when the last sentence can only be a question.
   if (!/[\p{L}\p{N}]$/u.test(t)) return t;
-  return unmarkedQuestion(t) ? `${t}?` : `${t}.`;
+  return unmarkedQuestion(t) ? `${openerComma(t)}?` : `${t}.`;
+}
+
+/** ADR 0204: the interjections among QUESTION_OPENERS that take a comma before the question they open. Same as
+ * cleanup.rs QUESTION_COMMA_OPENERS. */
+export const QUESTION_COMMA_OPENERS = ['hey', 'okay', 'ok', 'alright'];
+
+/** ADR 0204: called only when unmarkedQuestion is true; "Hey are you free" gets its comma after "Hey". Same as
+ * cleanup.rs opener_comma. */
+function openerComma(t: string): string {
+  const line = t.lastIndexOf('\n') + 1;
+  let start = line;
+  for (const m of t.slice(line).matchAll(/[.!?]\s/g))
+    start = line + (m.index ?? 0) + m[0].length;
+  const s = t.slice(start);
+  const lead = s.length - s.trimStart().length;
+  const rest = s.slice(lead);
+  const len = rest.search(/\s/);
+  if (len < 0) return t;
+  const first = rest.slice(0, len).replace(/[A-Z]+/g, (c) => c.toLowerCase());
+  if (!QUESTION_COMMA_OPENERS.includes(first)) return t;
+  const at = start + lead + len;
+  return `${t.slice(0, at)},${t.slice(at)}`;
 }
 
 // ADR 0120 (N167): a lone "." on a word with a lowercase word after it is not a sentence end (the recogniser

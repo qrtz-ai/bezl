@@ -20,10 +20,7 @@ fn a_question_after_an_opener_gets_a_question_mark() {
     for raw in [
         "So do you want to grab lunch",
         "So, do you want to grab lunch",
-        "Okay can you send me the file",
         "Okay, can you send me the file",
-        "OK can we move the meeting",
-        "Hey are you free tomorrow afternoon",
         "Hey, can you take a look at this",
         "And did you hear back from them",
         "But do you have time today",
@@ -36,7 +33,18 @@ fn a_question_after_an_opener_gets_a_question_mark() {
     ] {
         assert_eq!(clean(raw), format!("{raw}?"), "{raw:?}");
     }
-    assert_eq!(clean("Hey can you check cue arts"), "Hey can you check qrtz?");
+    // ADR 0204 (cycle 64): "hey", "okay", "ok" take a comma before the question.
+    for (raw, want) in [
+        ("Okay can you send me the file", "Okay, can you send me the file?"),
+        ("OK can we move the meeting", "OK, can we move the meeting?"),
+        (
+            "Hey are you free tomorrow afternoon",
+            "Hey, are you free tomorrow afternoon?",
+        ),
+    ] {
+        assert_eq!(clean(raw), want, "{raw:?}");
+    }
+    assert_eq!(clean("Hey can you check cue arts"), "Hey, can you check qrtz?");
     assert_eq!(
         clean("Um so do you want to grab lunch"),
         "So do you want to grab lunch?"

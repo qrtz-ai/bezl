@@ -569,6 +569,24 @@
       "category": "question",
       "raw": "Hey, can you take a look at this",
       "ideal": "Hey, can you take a look at this?"
+    },
+    {
+      "id": "p92",
+      "category": "question",
+      "raw": "Ok can you call me back",
+      "ideal": "Ok, can you call me back?"
+    },
+    {
+      "id": "p93",
+      "category": "question",
+      "raw": "Alright are we still on for tonight",
+      "ideal": "Alright, are we still on for tonight?"
+    },
+    {
+      "id": "p94",
+      "category": "question",
+      "raw": "I'm outside. Hey are you home",
+      "ideal": "I'm outside. Hey, are you home?"
     }
   ],
   "keep": [
@@ -1885,6 +1903,84 @@
       "rule": "question-opener",
       "raw": "Also did it again last night",
       "expect": "Also did it again last night."
+    },
+    {
+      "id": "k220",
+      "rule": "question-comma",
+      "raw": "Okay we can do that",
+      "expect": "Okay we can do that."
+    },
+    {
+      "id": "k221",
+      "rule": "question-comma",
+      "raw": "Okay you can send it",
+      "expect": "Okay you can send it."
+    },
+    {
+      "id": "k222",
+      "rule": "question-comma",
+      "raw": "Hey you did great today",
+      "expect": "Hey you did great today."
+    },
+    {
+      "id": "k223",
+      "rule": "question-comma",
+      "raw": "Hey Sam are you free tomorrow",
+      "expect": "Hey Sam are you free tomorrow."
+    },
+    {
+      "id": "k224",
+      "rule": "question-comma",
+      "raw": "Okay so do you want to go",
+      "expect": "Okay so do you want to go."
+    },
+    {
+      "id": "k225",
+      "rule": "question-comma",
+      "raw": "Hey hey are you there",
+      "expect": "Hey hey are you there."
+    },
+    {
+      "id": "k226",
+      "rule": "question-comma",
+      "raw": "Alright then can we start",
+      "expect": "Alright then can we start."
+    },
+    {
+      "id": "k227",
+      "rule": "question-comma",
+      "raw": "Heyday is it today",
+      "expect": "Heyday is it today."
+    },
+    {
+      "id": "k228",
+      "rule": "question-comma",
+      "raw": "Hey are you free. Thanks",
+      "expect": "Hey are you free. Thanks."
+    },
+    {
+      "id": "k229",
+      "rule": "question-comma",
+      "raw": "Hey can you check this. Okay it works",
+      "expect": "Hey can you check this. Okay it works."
+    },
+    {
+      "id": "k230",
+      "rule": "question-comma",
+      "raw": "Hey are you",
+      "expect": "Hey are you"
+    },
+    {
+      "id": "k231",
+      "rule": "question-comma",
+      "raw": "Also can you send the slides",
+      "expect": "Also can you send the slides?"
+    },
+    {
+      "id": "k232",
+      "rule": "question-comma",
+      "raw": "Hey, are you free",
+      "expect": "Hey, are you free?"
     }
   ]
 }

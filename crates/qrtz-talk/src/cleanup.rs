@@ -1504,8 +1504,38 @@ fn terminal_punctuation(mut t: String) -> String {
             }
         }
     } else if ENDS_WORD.is_match(&t).unwrap_or(false) {
-        let mark = if unmarked_question(&t) { '?' } else { '.' };
-        t.push(mark);
+        if unmarked_question(&t) {
+            t = opener_comma(t);
+            t.push('?');
+        } else {
+            t.push('.');
+        }
+    }
+    t
+}
+
+/// ADR 0204: the interjections among [`QUESTION_OPENERS`] that take a comma before the question they open ("Hey,
+/// are you free tomorrow?", "OK, can we move it?"). Left out: "so", "and", "but", "also" (conjunctions and adverbs,
+/// written with or without a comma: "So do you want to grab lunch?" stays as said). Same list in cleanup.ts.
+pub const QUESTION_COMMA_OPENERS: &[&str] = &["hey", "okay", "ok", "alright"];
+
+/// ADR 0204: called only when [`unmarked_question`] has said the last sentence is a question; if that sentence opens
+/// with one of [`QUESTION_COMMA_OPENERS`] with no comma of its own ("Hey are you free"), the comma goes after it.
+/// Anything else is returned as it is.
+fn opener_comma(mut t: String) -> String {
+    let line = t.rfind('\n').map_or(0, |i| i + 1);
+    let start = match INNER_END.find_iter(&t[line..]).flatten().last() {
+        Some(m) => line + m.end(),
+        None => line,
+    };
+    let s = &t[start..];
+    let lead = s.len() - s.trim_start().len();
+    let rest = &s[lead..];
+    let Some(len) = rest.find(char::is_whitespace) else {
+        return t;
+    };
+    if QUESTION_COMMA_OPENERS.contains(&rest[..len].to_ascii_lowercase().as_str()) {
+        t.insert(start + lead + len, ',');
     }
     t
 }

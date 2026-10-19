@@ -10,10 +10,7 @@ describe('ADR 0203 a question after a discourse opener', () => {
   it.each([
     'So do you want to grab lunch',
     'So, do you want to grab lunch',
-    'Okay can you send me the file',
     'Okay, can you send me the file',
-    'OK can we move the meeting',
-    'Hey are you free tomorrow afternoon',
     'Hey, can you take a look at this',
     'And did you hear back from them',
     'But do you have time today',
@@ -27,9 +24,20 @@ describe('ADR 0203 a question after a discourse opener', () => {
     expect(ruleCleanup(raw, dict)).toBe(`${raw}?`);
   });
 
+  it.each([
+    ['Okay can you send me the file', 'Okay, can you send me the file?'],
+    ['OK can we move the meeting', 'OK, can we move the meeting?'],
+    [
+      'Hey are you free tomorrow afternoon',
+      'Hey, are you free tomorrow afternoon?',
+    ],
+  ])('%s gets a question mark and (ADR 0204) its comma', (raw, want) => {
+    expect(ruleCleanup(raw, dict)).toBe(want);
+  });
+
   it('a dictionary term and a filler before the opener', () => {
     expect(ruleCleanup('Hey can you check cue arts', dict)).toBe(
-      'Hey can you check qrtz?',
+      'Hey, can you check qrtz?',
     );
     expect(ruleCleanup('Um so do you want to grab lunch', dict)).toBe(
       'So do you want to grab lunch?',

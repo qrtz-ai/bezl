@@ -2,7 +2,9 @@
 //! and a dictionary term of plain words is written by a scan instead of the backtracking pattern. A pure speed-up: the text out must be byte for
 //! byte the cycle-59 chain's (frozen in `oracle/cleanup_c59.rs`) on every vector and on generated text, and the long
 //! dictation must now run in a quarter of the 2 ms budget (it took 1.5-1.8 ms before, so this fails without the fix).
-use qrtz_talk::cleanup::{apply_dictionary, cleanup_dictation, rule_cleanup, QUESTION_OPENERS};
+use qrtz_talk::cleanup::{
+    apply_dictionary, cleanup_dictation, rule_cleanup, QUESTION_COMMA_OPENERS, QUESTION_OPENERS,
+};
 use qrtz_talk::DictionaryEntry;
 use serde_json::Value;
 use std::time::Instant;
@@ -47,13 +49,14 @@ fn dictionaries() -> Vec<Vec<DictionaryEntry>> {
 
 fn same(raw: &str, dict: &[DictionaryEntry]) {
     let (new, old) = (rule_cleanup(raw, dict), c59::rule_cleanup(raw, dict));
-    // ADR 0201 (cycle 62) and ADR 0203 (cycle 63) are the only text changes since the oracle: a dictated list's line
-    // commas go, and a question after a discourse opener ("So do you want ...") ends with "?" where cycle 59 added
-    // ".". Any other difference fails.
+    // ADR 0201 (cycle 62), ADR 0203 (cycle 63) and ADR 0204 (cycle 64) are the only text changes since the oracle:
+    // a dictated list's line commas go, and a question after a discourse opener ("So do you want ...") ends with "?"
+    // where cycle 59 added "."; if that opener is "hey"/"okay"/"ok"/"alright" with no comma, the comma goes after it
+    // ("Hey, are you free?"). Any other difference fails.
     if new != old {
         let list = old.contains(",\n") && new == old.replace(",\n", "\n");
         let opener = old.strip_suffix('.').is_some_and(|body| {
-            new == format!("{body}?")
+            (new == format!("{body}?") || new == format!("{}?", with_opener_comma(body)))
                 && body
                     .rsplit(['\n', '.', '!', '?'])
                     .next()
@@ -77,6 +80,29 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
         c59::cleanup_dictation(raw, dict, false).text,
         "cleanup off ({raw:?})"
     );
+}
+
+/// ADR 0204's one allowed edit: a comma after the last sentence's first word when that word is one of
+/// QUESTION_COMMA_OPENERS (written independently of cleanup.rs: split at the last ". " / "? " / "! " or line).
+fn with_opener_comma(body: &str) -> String {
+    let start = body
+        .char_indices()
+        .filter(|&(i, c)| {
+            c == '\n'
+                || (body[i..].starts_with(['.', '!', '?']) && body[i + 1..].starts_with(char::is_whitespace))
+        })
+        .map(|(i, c)| i + c.len_utf8())
+        .last()
+        .unwrap_or(0);
+    let s = &body[start..];
+    let lead = s.len() - s.trim_start().len();
+    match s[lead..].find(char::is_whitespace) {
+        Some(len) if QUESTION_COMMA_OPENERS.contains(&s[lead..lead + len].to_ascii_lowercase().as_str()) => {
+            let at = start + lead + len;
+            format!("{},{}", &body[..at], &body[at..])
+        }
+        _ => body.to_owned(),
+    }
 }
 
 fn load(path: &str) -> Value {
