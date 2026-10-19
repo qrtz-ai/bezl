@@ -108,8 +108,11 @@ impl SnapHost {
     }
 
     /// Start or stop qrtz-snap for the switch, and send the settings when they changed. True if anything changed.
+    /// "On" is installed (ADR 0169: `modules.snap.installed`, from `qrtz.lock`) and switched on: a snap that isn't
+    /// installed is stopped and never spawned, whatever its switch or settings say, so nothing retries it.
     pub fn apply(&self, cfg: &Value) -> bool {
-        let on = crate::modules::is_on(cfg, MODULE_ID);
+        let g = qrtz_modules::settings::GlobalSettings::from_config(cfg);
+        let on = g.is_installed(MODULE_ID) && g.is_on(MODULE_ID);
         let line = configure_line(cfg);
         let mut last = self.applied.lock().unwrap_or_else(|p| p.into_inner());
         let was = last.clone();
@@ -345,6 +348,53 @@ mod tests {
         assert!(
             !h.apply(&changed),
             "an unrelated config:set still changes nothing"
+        );
+    }
+
+    /// Design call (e): snap not installed means no spawn at all: not on launch, not when its switch or settings
+    /// change, not after a stop. Installed, it starts; uninstalled, it stops and stays stopped.
+    #[tokio::test]
+    async fn a_snap_that_is_not_installed_is_never_spawned_or_retried() {
+        let tries = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let opts = qrtz_helper_bridge::SupervisorOptions {
+            name: "qrtz-snap".into(),
+            base_delay: std::time::Duration::from_millis(1),
+            max_delay: std::time::Duration::from_millis(2),
+            max_restarts: 2,
+            heartbeat_timeout: std::time::Duration::ZERO,
+            ..Default::default()
+        };
+        let h = SnapHost::new(Supervisor::spawn(
+            opts,
+            std::sync::Arc::new(Broken(tries.clone())),
+        ));
+        let n = || tries.load(std::sync::atomic::Ordering::SeqCst);
+        let cfg = |installed: bool, enabled: bool, status_item: bool| {
+            json!({"modules": {"enabled": true, "snap": {"enabled": enabled, "installed": installed}},
+                   "snap": {"statusItem": status_item}})
+        };
+        h.apply(&cfg(false, true, true));
+        h.apply(&cfg(false, true, false));
+        h.apply(&cfg(false, false, false));
+        h.apply(&cfg(false, true, true));
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert_eq!(n(), 0, "never spawned while not installed");
+        assert_ne!(h.sup.status().state, HelperState::Failed);
+        assert!(h.apply(&cfg(true, true, true)));
+        until(&h.sup, HelperState::Failed).await;
+        assert_eq!(
+            n(),
+            3,
+            "installed: it starts (here: fails twice more, then gives up)"
+        );
+        assert!(h.apply(&cfg(false, true, true)));
+        until(&h.sup, HelperState::Stopped).await;
+        h.apply(&cfg(false, true, false));
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert_eq!(
+            n(),
+            3,
+            "uninstalled: stopped, and a settings change doesn't retry it"
         );
     }
 

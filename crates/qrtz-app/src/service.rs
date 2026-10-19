@@ -559,7 +559,11 @@ impl AppService {
     /// Split: qrtz-ctrl runs exactly while `modules.ctrl` (and the global switch) is on (run 31); qrtz-nano and
     /// qrtz-echo run while their module is installed (ADR 0169; their switches still gate their channels, as
     /// before). Acts on a change only, so an unrelated `config:set` never relaunches a helper whose circuit opened.
+    /// qrtz-snap (either layout) runs exactly while snap is installed and on ([`crate::snap::SnapHost::apply`]): a
+    /// snap that isn't installed is never spawned, so its supervisor never retries a launch that can't work
+    /// (Bozniak's 902bcab review, design call (e)).
     fn apply_module_switches(&self, cfg: &Value) {
+        self.apply_snap(cfg);
         let Some(h) = self.module_helpers.get() else {
             return;
         };
@@ -882,7 +886,6 @@ impl AppService {
         self.events.emit("config:changed", next.clone());
         self.talk.config_changed();
         self.apply_module_switches(&next);
-        self.apply_snap(&next);
         Ok(next)
     }
 
