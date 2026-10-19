@@ -805,3 +805,12 @@ No dictation speed or accuracy change, and no numbers from the Mac yet. When a d
 through one of Parakeet's files and the next source resumes it, the bar no longer counts the finished part again
 (`4f21e28`); it can't pass 100 % early. It only matters once `modules.qrtz.ai` is live; today Parakeet comes from
 Hugging Face alone. The ranked plan above is unchanged.
+
+## 24. Cycle 51: Echo updates and the running process (ADR 0172, N178)
+
+No dictation speed or accuracy change, and no numbers from the Mac yet. With qrtz shipping empty (`902bcab`), Echo
+runs from its installed package; installing it still gives a warm first press, because Parakeet is linked before
+`qrtz-echo` starts. Updating Echo from the marketplace, though, doesn't reach dictation until qrtz is relaunched: the
+old process keeps running (from a package dir the cleanup already removed). Proposed to Bobs: relaunch echo after an
+update, but only once no dictation is in progress (ADR 0172). The ranked plan above is unchanged.
+
