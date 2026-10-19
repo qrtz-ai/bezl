@@ -96,6 +96,22 @@ pub fn request(pane: &str) -> bool {
     }
 }
 
+/// The system Accessibility prompt, at most once per launch (no settings pane): for a module that is on and can't
+/// work without it. Answers whether it asked now.
+pub fn ask_accessibility_once() -> bool {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static ASKED: AtomicBool = AtomicBool::new(false);
+    if ASKED.swap(true, Ordering::SeqCst) {
+        return false;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        tracing::info!("accessibility: asking macOS for qrtz (snap is on)");
+        mac::ax_prompt();
+    }
+    true
+}
+
 /// Opens System Settings at `pane`. False for an unknown pane or off macOS.
 pub fn open_settings(pane: &str) -> bool {
     let Some(url) = settings_url(pane) else {
@@ -211,6 +227,12 @@ mod tests {
         }
         assert_eq!(settings_url("camera"), None);
         assert!(!open_settings("nope"));
+    }
+
+    #[test]
+    fn the_automatic_prompt_comes_once_per_launch() {
+        assert!(ask_accessibility_once());
+        assert!(!ask_accessibility_once());
     }
 
     #[test]

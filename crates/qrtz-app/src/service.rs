@@ -448,7 +448,18 @@ impl AppService {
             loop {
                 match lines.recv().await {
                     Ok(line) => match s2.on_line(&line, &me.config.get()) {
-                        crate::snap::SnapLine::Status => me.events.emit("snap:changed", s2.status()),
+                        crate::snap::SnapLine::Status => {
+                            let mut st = s2.status();
+                            if crate::tcc::ax_trusted() {
+                                st["axTrusted"] = json!(true);
+                            } else if st["running"].as_bool() == Some(true) {
+                                // snap is on and can't move windows: qrtz-app asks macOS once per launch, which
+                                // adds qrtz to the Accessibility list and shows its own prompt (snap's view has
+                                // the button to the pane too).
+                                crate::tcc::ask_accessibility_once();
+                            }
+                            me.events.emit("snap:changed", st)
+                        }
                         crate::snap::SnapLine::Patch(p) => {
                             if let Err(e) = me.set_config(&p) {
                                 tracing::warn!(error = %e, "snap: disable-app not saved");
