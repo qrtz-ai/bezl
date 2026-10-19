@@ -4,9 +4,10 @@
 # holds ~/.qrtz-keys (index + timestamp keys).
 #
 #   scripts/modules/publish.sh                          build, verify, upload (R2 via rclone), check the live host
-#   scripts/modules/publish.sh --out-only               build and verify, write the upload list; no upload, no R2
-#                                                       token, no rclone (upload the listed small files yourself,
-#                                                       e.g. through the Cloudflare connector). --no-upload = same.
+#   scripts/modules/publish.sh --out-only               build and verify in a scratch copy of $QRTZ_PUBLISH_OUT
+#                                                       (mktemp; the out dir itself is never written), write the
+#                                                       upload list; no upload, no R2 token, no rclone (upload the
+#                                                       listed files from the scratch dir). --no-upload = same.
 #   scripts/modules/publish.sh --timestamp              re-sign the timestamp and upload only it (at least weekly)
 #   scripts/modules/publish.sh --timestamp --out-only   re-sign it and list only the timestamp pair
 #   scripts/modules/publish.sh --release [--only nano[,ctrl]] [--force-bump]  the whole module release in one command: bump each module
@@ -109,6 +110,29 @@ out="${QRTZ_PUBLISH_OUT:-$HOME/qrtz-publish-out}"
 models_dir="${QRTZ_MODELS_DIR:-$HOME/Library/Application Support/ai.qrtz.desktop/models}"
 hosts_json="$repo/crates/qrtz-app/src/module_hosts.json"
 r2_bucket="${R2_BUCKET:-qrtz-modules}"
+
+# The persistent out dir must always mirror what modules.qrtz.ai serves (timestamp-job.sh skips itself otherwise).
+# --out-only is a dry run: it works on a scratch copy (mktemp) and never writes to $out; its upload list sits beside
+# the scratch dir. A real run re-hydrates $out from the bucket first (scripts/ci/hydrate-out.sh into a fresh dir; the
+# previous dir is kept as $out.prev until the next real run), so a stale or dry-run-touched out can't leak into a publish.
+if [[ "$out_only" == 1 ]]; then
+  [[ -d "$out/v1" ]] || die "$out: no v1/ to dry-run from"
+  scratch="$(mktemp -d "${TMPDIR:-/tmp}/qrtz-publish-dry.XXXXXX")"
+  cp -Rp "$out/v1" "$scratch/v1"
+  [[ -f "$out/ROOT1_SHA256" ]] && cp -p "$out/ROOT1_SHA256" "$scratch/ROOT1_SHA256"
+  echo "publish: --out-only: working in the scratch copy $scratch ($out is left untouched)"
+  out="$scratch"
+else
+  fresh="$(mktemp -d "$out.hydrate.XXXXXX")"
+  bash "$repo/scripts/ci/hydrate-out.sh" "$fresh" || { rm -rf "$fresh"; die "couldn't re-hydrate $out from the bucket"; }
+  [[ -f "$out/ROOT1_SHA256" ]] && cp -p "$out/ROOT1_SHA256" "$fresh/ROOT1_SHA256"
+  if [[ -e "$out" ]]; then
+    rm -rf "$out.prev"
+    mv "$out" "$out.prev"
+  fi
+  mv "$fresh" "$out"
+  echo "publish: re-hydrated $out from the bucket"
+fi
 
 [[ -f "$keys/timestamp.key" ]] || die "$keys: no timestamp key (run scripts/modules/release-keys.sh first)"
 [[ "$mode" == timestamp || -f "$keys/index.key" ]] || die "$keys: no index key (run scripts/modules/release-keys.sh first)"
