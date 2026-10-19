@@ -8,7 +8,8 @@ async function open(page: Page, query = '') {
   page.on('console', (m) => {
     if (m.type() === 'error') errors.push(m.text());
   });
-  await page.goto(`/?dev=1&${query}`);
+  // echo is the first sidebar row and so the landing view; these specs drive nano, so they open on it.
+  await page.goto(`/?dev=1&${query}${query.includes('#') ? '' : '#/note'}`);
   await expect(
     page.getByRole('button', { name: 'nano', exact: true }),
   ).toBeVisible();

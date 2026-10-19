@@ -4,7 +4,7 @@ export const manifest = SubAppManifest.parse({
   id: 'note',
   name: 'nano',
   icon: 'notebook',
-  order: 10,
+  order: 20,
   capabilities: [
     'note.read',
     'note.record',

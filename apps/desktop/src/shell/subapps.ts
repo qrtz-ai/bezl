@@ -15,6 +15,6 @@ export const isDevBuild = () =>
 /** Renderer-side registry. Keep in sync with shared/manifests.ts (checked by a test). */
 export const registry = createRegistry(
   isDevBuild()
-    ? [note, talk, ctrl, snap, marketplace, gallery, settings]
-    : [note, talk, ctrl, snap, marketplace, settings],
+    ? [talk, note, ctrl, snap, marketplace, gallery, settings]
+    : [talk, note, ctrl, snap, marketplace, settings],
 );

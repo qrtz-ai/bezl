@@ -66,9 +66,11 @@ test('a fresh install opens straight to qrtz → settings → record → review'
   page,
 }) => {
   const errors = watch(page);
-  // ADR 0163: no first-run screen. A fresh install (speech not downloaded, nothing granted) opens on note.
+  // ADR 0163: no first-run screen. A fresh install (speech not downloaded, nothing granted) opens on echo, the
+  // first sidebar row; nano is one click away.
   await page.goto('/?dev=1&mockSpeech=missing&mockPerms=denied&mockSpeed=60');
-  await expect(tab(page, 'note')).toBeVisible();
+  await expect(page.locator('[data-subapp="talk"]')).toBeVisible();
+  await tab(page, 'note').click();
   await expect(page.getByTestId('note-app')).toBeVisible();
   await expect(page.locator('[data-testid^="onboarding"]')).toHaveCount(0);
   await expect(page.getByTestId('speech-notice')).toContainText(
@@ -218,7 +220,7 @@ test('switching a module on is the yes to its download; it continues in the back
 test('note and talk point to settings while speech is not downloaded', async ({
   page,
 }) => {
-  await page.goto('/?dev=1&mockSpeech=missing');
+  await page.goto('/?dev=1&mockSpeech=missing#/note');
   await expect(page.getByTestId('speech-notice')).toContainText(
     "speech isn't downloaded",
   );
@@ -283,7 +285,7 @@ test('settings → open-source licenses shows the notices that ship (audit P0-4)
 });
 
 test('cold start: the note view paints within budget', async ({ page }) => {
-  await page.goto('/?dev=1');
+  await page.goto('/?dev=1#/note');
   await expect(page.getByTestId('note-app')).toBeVisible();
   const fcp = await page.evaluate(
     () =>
@@ -298,7 +300,7 @@ test('cold start: the note view paints within budget', async ({ page }) => {
 
 test('palette and gallery', async ({ page }) => {
   const errors = watch(page);
-  await page.goto('/?dev=1&seed=1');
+  await page.goto('/?dev=1&seed=1#/note');
   await expect(tab(page, 'note')).toBeVisible();
   const input = page.getByTestId('palette-input');
   // The shortcut listener attaches after the first render: press until the palette opens.
@@ -338,7 +340,7 @@ for (const theme of ['dark', 'light'] as const) {
     page,
   }) => {
     const errors = watch(page);
-    await page.goto(`/?dev=1&seed=1&theme=${theme}`);
+    await page.goto(`/?dev=1&seed=1&theme=${theme}#/note`);
     await expect(tab(page, 'note')).toBeVisible();
     // The theme applies once config:get answers.
     await expect
