@@ -7,8 +7,8 @@
 //! probabilities to the chain's logits ([`LayaScorer`]). The runtime itself (Core ML, in the Swift helper) is
 //! behind [`LayaRuntime`] and arrives with the helper protocol in slice 5. [`select_scorer`] only ever picks Laya on
 //! macOS with the `laya` feature, a consented and installed model, and a runtime; otherwise the heuristic layer.
+use crate::decide::Question;
 use crate::decide::{Goal, Heuristic, ModelId, Node, Scorer};
-use crate::layers::{label, Question};
 use std::path::PathBuf;
 
 /// What Laya reads for a `choice` question. In memory only: never logged, never written.
@@ -21,12 +21,11 @@ pub struct LayaRequest {
 
 fn question_text(node: Node) -> &'static str {
     match node {
-        Node::ChooseIntent => "what kind of task is this?",
         Node::ChooseApp => "which app should do it?",
-        Node::ChooseTarget => "what should it act on?",
+        Node::ChooseMove => "which move gets closer?",
+        Node::ChooseElement => "which element in it?",
         Node::ChooseText => "what should be typed?",
-        Node::ChooseMove => "which move does it?",
-        Node::ChooseControl => "which control in it?",
+        Node::Verify => "is the task done?",
     }
 }
 
@@ -35,7 +34,14 @@ pub fn laya_request(q: &Question, goal: &Goal) -> LayaRequest {
     LayaRequest {
         state: format!("task: {}", goal.text),
         question: question_text(q.node).into(),
-        options: q.choices.iter().map(|c| label(&c.opt, Some(goal))).collect(),
+        options: q
+            .choices
+            .iter()
+            .map(|c| match (&c.opt.label_ref, c.label.is_empty()) {
+                (Some(r), true) => crate::chain::resolve(r, goal.text).unwrap_or_default(),
+                _ => c.label.clone(),
+            })
+            .collect(),
     }
 }
 

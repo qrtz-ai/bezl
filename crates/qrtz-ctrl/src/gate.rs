@@ -1,322 +1,412 @@
-//! The confirm gate (slice 6, ADR 0111): Bound → Confirm → Act (decision-layer spec §9).
+//! The confirm gate (ADR 0214; decision-layer spec §9; Bound → Confirm → Act). Before an action that may not be
+//! undoable, the run stops with `confirm.requested` and Jared sees exactly what would happen: the action, the app
+//! and the element. Approve acts once; deny ends the run.
 //!
-//! Before an irreversible plan acts, the run stops with `confirm.requested` and a concrete preview of what it would
-//! touch: the action, the app, and every window or tab it affects (titles are hashed into item keys before they
-//! reach the log; the readable titles live only in memory for the view). The user approves, denies, or approves
-//! and remembers it for this task: a standing approval scoped to (intent, move, app) and bounded by the preview's
-//! item and unsaved counts. Every answer, expiry, standing-approval use and the re-check before acting are events,
-//! so a replay is exact and a fork from before the answer asks again.
+//! The rules are a **fixed table owned by the host** (role, label, app, key combo). No scorer is consulted to
+//! lower it: a model may only add a reason to ask, never remove one. Labels are matched after folding (case,
+//! homoglyphs from Cyrillic and Greek, full-width and mathematical letters, zero-width and combining characters,
+//! letter-spaced words, digit-for-letter spellings), and a word mixing Latin with other letters is itself a reason
+//! to ask, so "Ѕend", "s e n d", "SEND!!" and "s3nd" all gate.
 //!
-//! Pure: the preview's inputs come from the helper ([`crate::exec`]); everything here is comparison and hashing.
-use crate::decide::Node;
-use crate::helper::{PreviewItemWire, PreviewWhat};
-use crate::log::CtrlState;
+//! An approval binds to (app, element handle, action with its parameters, tree hash). Right before acting the
+//! driver reads the tree again; if its hash moved the approval is void and the gate asks again, and the helper
+//! re-checks the element's fingerprint at the moment it acts.
+use crate::act::{normalize_combo, Action};
+use crate::ax::{words, AxNode};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
 
-/// A pending gate expires after this long without an answer (a scheduled run while the user is away waits this
-/// long, then ends `expired`; nothing acts). A newer run of the same task supersedes it sooner.
-pub const CONFIRM_TTL_MS: u64 = 12 * 60 * 60 * 1000;
+/// Label words that make an action ask first: sends, purchases, deletions, quits, irreversible settings.
+pub const LABEL_RULES: &[&str] = &[
+    "send",
+    "post",
+    "submit",
+    "publish",
+    "tweet",
+    "reply",
+    "purchase",
+    "buy",
+    "pay",
+    "checkout",
+    "order",
+    "subscribe",
+    "unsubscribe",
+    "donate",
+    "transfer",
+    "delete",
+    "remove",
+    "erase",
+    "trash",
+    "discard",
+    "overwrite",
+    "replace",
+    "quit",
+    "reset",
+    "format",
+    "uninstall",
+    "install",
+    "restart",
+    "shutdown",
+    "logout",
+    "signout",
+    "revoke",
+    "block",
+    "report",
+    "allow",
+    "accept",
+    "approve",
+    "confirm",
+    "share",
+    "forward",
+    "deploy",
+    "merge",
+    "dont",
+];
+/// Two-word phrases folded to one rule (the rule id is the joined word).
+const LABEL_PHRASES: &[(&str, &str, &str)] = &[
+    ("log", "out", "logout"),
+    ("sign", "out", "signout"),
+    ("shut", "down", "shutdown"),
+    ("don", "t", "dont"),
+];
+
+/// Words that make a text input a password or payment field: excluded from the tree entirely.
+pub const SENSITIVE_WORDS: &[&str] = &[
+    "password",
+    "passwort",
+    "passcode",
+    "passphrase",
+    "pin",
+    "cvv",
+    "cvv2",
+    "cvc",
+    "csc",
+    "iban",
+    "ssn",
+    "otp",
+    "2fa",
+    "expiry",
+    "expiration",
+    "card",
+    "creditcard",
+    "routing",
+    "swift",
+    "bic",
+];
+const SENSITIVE_PHRASES: &[(&str, &str)] = &[
+    ("security", "code"),
+    ("account", "number"),
+    ("social", "security"),
+    ("verification", "code"),
+    ("one", "time"),
+];
+
+/// Apps where any change asks (System Settings).
+pub const SETTINGS_APPS: &[&str] = &["com.apple.systempreferences", "com.apple.Settings"];
+/// Apps where Return in a field sends a message.
+pub const MESSAGING_APPS: &[&str] = &[
+    "com.apple.MobileSMS",
+    "com.apple.mail",
+    "com.tinyspeck.slackmacgap",
+    "com.hnc.Discord",
+    "net.whatsapp.WhatsApp",
+    "ru.keepcoder.Telegram",
+    "com.microsoft.teams2",
+];
+/// Apps where Return in a field runs a command.
+pub const TERMINAL_APPS: &[&str] = &[
+    "com.apple.Terminal",
+    "com.googlecode.iterm2",
+    "dev.warp.Warp-Stable",
+];
+/// Key combos that ask, with their rule id.
+pub const COMBO_RULES: &[(&str, &str)] = &[
+    ("cmd+q", "key:quit"),
+    ("cmd+delete", "key:delete"),
+    ("cmd+option+delete", "key:delete"),
+    ("cmd+shift+delete", "key:empty_trash"),
+    ("cmd+option+shift+delete", "key:empty_trash"),
+    ("cmd+return", "key:send"),
+    ("cmd+shift+d", "key:send"),
+    ("cmd+shift+q", "key:log_out"),
+    ("ctrl+cmd+q", "key:lock"),
+];
+
+fn fold_char(c: char) -> Option<char> {
+    let cp = c as u32;
+    // Invisible: zero-width, joiners, soft hyphen, BOM, word joiner, variation selectors; combining marks.
+    if matches!(cp, 0x200B..=0x200F | 0x2060..=0x2064 | 0xFEFF | 0x00AD | 0xFE00..=0xFE0F | 0x0300..=0x036F) {
+        return None;
+    }
+    // Full-width ASCII.
+    if (0xFF01..=0xFF5E).contains(&cp) {
+        return char::from_u32(cp - 0xFEE0);
+    }
+    // Mathematical alphanumeric letters (bold, italic, script, …): 52 letters per style.
+    if (0x1D400..=0x1D6A3).contains(&cp) {
+        let i = (cp - 0x1D400) % 52;
+        return char::from_u32(if i < 26 {
+            'a' as u32 + i
+        } else {
+            'a' as u32 + i - 26
+        });
+    }
+    let m = match c {
+        'а' | 'А' | 'α' | 'Α' => 'a',
+        'в' | 'В' | 'β' | 'Β' => 'b',
+        'с' | 'С' | 'ϲ' => 'c',
+        'ԁ' => 'd',
+        'е' | 'Е' | 'ё' | 'ε' | 'Ε' => 'e',
+        'ɡ' => 'g',
+        'һ' | 'Н' | 'Η' => 'h',
+        'і' | 'І' | 'ι' | 'Ι' | 'ӏ' => 'i',
+        'ј' | 'Ј' => 'j',
+        'к' | 'К' | 'κ' | 'Κ' => 'k',
+        'м' | 'М' | 'Μ' => 'm',
+        'п' | 'ν' | 'Ν' => 'n',
+        'о' | 'О' | 'ο' | 'Ο' | 'σ' => 'o',
+        'р' | 'Р' | 'ρ' | 'Ρ' => 'p',
+        'ԛ' => 'q',
+        'ѕ' | 'Ѕ' => 's',
+        'т' | 'Т' | 'τ' | 'Τ' => 't',
+        'υ' | 'ս' => 'u',
+        'ѵ' => 'v',
+        'ԝ' | 'ω' => 'w',
+        'х' | 'Х' | 'χ' | 'Χ' => 'x',
+        'у' | 'У' | 'γ' => 'y',
+        'Ζ' => 'z',
+        c => c,
+    };
+    Some(m)
+}
+
+/// The label as the rules read it: lowercase, folded.
+pub fn fold_label(s: &str) -> String {
+    s.chars()
+        .filter_map(fold_char)
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+fn leet(w: &str) -> String {
+    w.chars()
+        .map(|c| match c {
+            '0' => 'o',
+            '1' => 'i',
+            '3' => 'e',
+            '4' => 'a',
+            '5' => 's',
+            '7' => 't',
+            c => c,
+        })
+        .collect()
+}
+
+/// The words a rule matches: folded words, their digit-for-letter spellings, and runs of single letters joined
+/// ("s e n d" → "send").
+fn rule_words(label: &str) -> (Vec<String>, bool) {
+    let folded = fold_label(label);
+    let raw: Vec<String> = words(&folded).into_iter().map(|(w, _, _)| w).collect();
+    let mixed = raw.iter().any(|w| {
+        w.chars().any(|c| c.is_ascii_alphabetic()) && w.chars().any(|c| c.is_alphabetic() && !c.is_ascii())
+    });
+    let mut out: Vec<String> = Vec::new();
+    let mut run = String::new();
+    for w in &raw {
+        out.push(w.clone());
+        let l = leet(w);
+        if l != *w {
+            out.push(l);
+        }
+        if w.chars().count() == 1 {
+            run.push_str(w);
+        } else {
+            if run.chars().count() > 1 {
+                out.push(leet(&run));
+            }
+            run.clear();
+        }
+    }
+    if run.chars().count() > 1 {
+        out.push(leet(&run));
+    }
+    // Plurals and -ing / -ed forms of a rule word count ("deleting", "sends", "posted").
+    let stems: Vec<String> = out
+        .iter()
+        .flat_map(|w| {
+            ["ing", "ed", "es", "s"]
+                .iter()
+                .filter_map(|suf| w.strip_suffix(suf).map(str::to_string))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    out.extend(stems);
+    (out, mixed)
+}
+
+/// The label rules a title matches (rule ids `label:<word>`, plus `label:mixed_script`), sorted and deduped.
+pub fn label_risk(title: &str) -> Vec<String> {
+    let (ws, mixed) = rule_words(title);
+    let mut out: Vec<String> = LABEL_RULES
+        .iter()
+        .filter(|r| ws.iter().any(|w| w == *r))
+        .map(|r| format!("label:{r}"))
+        .collect();
+    for (a, b, id) in LABEL_PHRASES {
+        if ws.windows(2).any(|p| p[0] == *a && p[1] == *b) {
+            out.push(format!("label:{id}"));
+        }
+    }
+    if mixed {
+        out.push("label:mixed_script".into());
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// A text input whose label names a password, passcode or payment detail.
+pub fn sensitive_field(label: &str) -> bool {
+    let (ws, _) = rule_words(label);
+    ws.iter().any(|w| SENSITIVE_WORDS.contains(&w.as_str()))
+        || SENSITIVE_PHRASES
+            .iter()
+            .any(|(a, b)| ws.windows(2).any(|p| p[0] == *a && p[1] == *b))
+}
+
+/// The host's rules for one action: the element's label rules, the app rules and the combo rules. `extra` is what
+/// a model adds (it can only add). Sorted, deduped; empty = no confirm.
+pub fn rules_for(action: &Action, node: Option<&AxNode>, app: &str, extra: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    if action.handle().is_some() {
+        if let Some(n) = node {
+            out.extend(n.risk.iter().cloned());
+        }
+    }
+    let changes = !matches!(
+        action,
+        Action::OpenApp { .. } | Action::Scroll { .. } | Action::Focus { .. }
+    );
+    if changes && SETTINGS_APPS.contains(&app) {
+        out.push("app:system_settings".into());
+    }
+    let submits = match action {
+        Action::SetValue { submit, .. } => *submit,
+        Action::KeyCombo { combo, .. } => normalize_combo(combo) == "return",
+        _ => false,
+    };
+    if submits && MESSAGING_APPS.contains(&app) {
+        out.push("app:messaging_submit".into());
+    }
+    if submits && TERMINAL_APPS.contains(&app) {
+        out.push("app:terminal_submit".into());
+    }
+    if let Action::KeyCombo { combo, .. } = action {
+        let c = normalize_combo(combo);
+        out.extend(
+            COMBO_RULES
+                .iter()
+                .filter(|(k, _)| *k == c)
+                .map(|(_, id)| id.to_string()),
+        );
+    }
+    out.extend(extra.iter().cloned());
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// What an approval covers: exactly this action on this element in this tree.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Binding {
+    pub app: String,
+    pub handle: Option<String>,
+    pub action: String,
+    pub tree_hash: String,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ItemKind {
-    Window,
-    Tab,
-    /// A file a batch sends to the Trash (slice 7); keyed by `path_ref`, the name kept in memory.
-    File,
-    /// A running app "quit unused apps" would quit (ADR 0130); keyed by its hashed name.
-    App,
-    /// No enumerable items (a setting, a send): the action itself is the one item.
-    Action,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PreviewItem {
-    pub kind: ItemKind,
-    /// `sha256(title)[..12]#occurrence`, or `n<i>` when the helper only gave a count.
-    pub key: String,
-    /// `None`: unknown, counted as unsaved (the gate errs toward asking).
-    pub unsaved: Option<bool>,
-}
-
-/// What an irreversible step would do, as logged. No titles, no task text.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Preview {
-    /// The chosen intent option (`intent.quit_app`) and move (`route.workspace.quit_app`).
-    pub intent: String,
-    #[serde(rename = "move")]
-    pub mv: String,
-    pub app: Option<String>,
-    pub items: Vec<PreviewItem>,
-    /// `true`: the helper enumerated the items; `false`: only a count was available.
-    pub complete: bool,
-}
-
-/// What a standing approval covers: this intent and move in this app, up to this many items and unsaved items.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Scope {
-    pub intent: String,
-    #[serde(rename = "move")]
-    pub mv: String,
-    pub app: Option<String>,
-    pub items: u32,
-    pub unsaved: u32,
-}
-
-impl Scope {
-    /// `other` fits inside this scope (same action and app, no more items, no more unsaved ones).
-    pub fn covers(&self, other: &Scope) -> bool {
-        self.intent == other.intent
-            && self.mv == other.mv
-            && self.app == other.app
-            && other.items <= self.items
-            && other.unsaved <= self.unsaved
-    }
-}
-
-impl Preview {
-    pub fn scope(&self) -> Scope {
-        Scope {
-            intent: self.intent.clone(),
-            mv: self.mv.clone(),
-            app: self.app.clone(),
-            items: self.items.len() as u32,
-            unsaved: self.items.iter().filter(|i| i.unsaved != Some(false)).count() as u32,
-        }
-    }
-
-    /// The re-check right before acting: the world now (`self`) is still inside what was approved. Fewer items is
-    /// fine (something the user closed meanwhile); a new item, more unsaved work or another app re-asks.
-    pub fn within(&self, approved: &Preview) -> bool {
-        if !approved.scope().covers(&self.scope()) {
-            return false;
-        }
-        if self.complete && approved.complete {
-            return self.items.iter().all(|i| {
-                approved
-                    .items
-                    .iter()
-                    .any(|a| a.key == i.key && (a.unsaved == i.unsaved || i.unsaved == Some(false)))
-            });
-        }
-        self.complete == approved.complete
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ExpiredWhy {
-    Timeout,
-    Superseded,
-}
-
-/// How a gate was resolved.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "answer", rename_all = "snake_case")]
 pub enum ConfirmAnswer {
     Approve,
     Deny,
-    /// Approved, and a standing approval for this task was granted (store id).
-    ApproveRemember {
-        approval_id: String,
-        scope: Scope,
-    },
-    /// A standing approval of this task covered the preview: no question asked. The scope is copied in so the
-    /// run's log replays without the task store.
-    Standing {
-        approval_id: String,
-        scope: Scope,
-    },
-    Expired {
-        why: ExpiredWhy,
-    },
-}
-
-impl ConfirmAnswer {
-    pub fn approves(&self) -> bool {
-        matches!(
-            self,
-            ConfirmAnswer::Approve | ConfirmAnswer::ApproveRemember { .. } | ConfirmAnswer::Standing { .. }
-        )
-    }
-}
-
-/// A standing approval of one task (kept in the task store, `approval.granted` / `approval.revoked`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Approval {
-    pub id: String,
-    pub scope: Scope,
-    pub granted_at: u64,
 }
 
 /// The gate as the state holds it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GateState {
     pub id: String,
-    pub preview: Preview,
+    pub binding: Binding,
     pub rules: Vec<String>,
     pub answer: Option<ConfirmAnswer>,
-    /// The re-check before acting: `Some(true)` = still inside the approval.
+    /// The re-check right before acting: `Some(true)` = same tree, same element, same action.
     pub reverified: Option<bool>,
     /// The approved action was requested: the approval is spent (approve acts once).
     pub used: bool,
 }
 
-/// Selector (spec §13.3): the run waits for the user's answer.
-pub fn needs_confirm(s: &CtrlState) -> bool {
-    s.confirm.as_ref().is_some_and(|g| g.answer.is_none())
-}
-
-/// What the preview enumerates for an intent.
-pub fn preview_what(intent: &str) -> Option<(PreviewWhat, ItemKind)> {
-    match intent {
-        "intent.quit_app" => Some((PreviewWhat::Windows, ItemKind::Window)),
-        "intent.close_tabs" => Some((PreviewWhat::Tabs, ItemKind::Tab)),
-        "intent.close_window" => Some((PreviewWhat::Windows, ItemKind::Window)),
-        _ => None,
+impl GateState {
+    /// This gate lets exactly `b` act now.
+    pub fn allows(&self, b: &Binding) -> bool {
+        self.answer == Some(ConfirmAnswer::Approve)
+            && self.reverified == Some(true)
+            && !self.used
+            && self.binding == *b
     }
-}
-
-fn title_key(title: &str) -> String {
-    hex::encode(&Sha256::digest(title.as_bytes())[..6])
-}
-
-/// Hash the helper's items into preview items. Returns the items and `key → title` for the in-memory label cache.
-pub fn hash_items(kind: ItemKind, wire: &[PreviewItemWire]) -> (Vec<PreviewItem>, Vec<(String, String)>) {
-    let mut seen: BTreeMap<String, u32> = BTreeMap::new();
-    let mut items = Vec::with_capacity(wire.len());
-    let mut labels = Vec::with_capacity(wire.len());
-    for w in wire {
-        let base = title_key(&w.title);
-        let n = seen.entry(base.clone()).or_insert(0);
-        let key = format!("{base}#{n}");
-        *n += 1;
-        labels.push((key.clone(), w.title.clone()));
-        items.push(PreviewItem {
-            kind,
-            key,
-            unsaved: w.unsaved,
-        });
-    }
-    (items, labels)
-}
-
-/// Items from a bare count (the helper couldn't enumerate): unknown unsaved state.
-pub fn counted_items(kind: ItemKind, n: i64) -> Vec<PreviewItem> {
-    (0..n.max(0))
-        .map(|i| PreviewItem {
-            kind,
-            key: format!("n{i}"),
-            unsaved: None,
-        })
-        .collect()
-}
-
-/// The rules that put the plan behind the gate (`choose_intent:intent.quit_app`, …), from the irreversible marks.
-pub fn rules(s: &CtrlState) -> Vec<String> {
-    let Some(plan) = s.plan.as_ref() else {
-        return Vec::new();
-    };
-    plan.steps
-        .iter()
-        .filter(|st| {
-            s.decisions
-                .iter()
-                .filter(|d| d.node == st.node)
-                .any(|d| d.options.iter().any(|o| o.id == st.option && o.irreversible))
-        })
-        .map(|st| format!("{}:{}", st.node.as_str(), st.option))
-        .collect()
-}
-
-/// The chosen intent and move of the plan.
-pub fn intent_and_move(s: &CtrlState) -> (String, String) {
-    let c = s.chosen();
-    (
-        c.get(&Node::ChooseIntent).cloned().unwrap_or_default(),
-        c.get(&Node::ChooseMove).cloned().unwrap_or_default(),
-    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn p(items: &[(&str, Option<bool>)], complete: bool) -> Preview {
-        Preview {
-            intent: "intent.quit_app".into(),
-            mv: "shortcut.cmd+q".into(),
-            app: Some("com.apple.TextEdit".into()),
-            items: items
-                .iter()
-                .map(|(k, u)| PreviewItem {
-                    kind: ItemKind::Window,
-                    key: (*k).into(),
-                    unsaved: *u,
-                })
-                .collect(),
-            complete,
+    #[test]
+    fn folding_catches_homoglyphs_spacing_and_leet() {
+        for l in [
+            "Send",
+            "SEND!!",
+            "Ѕend",
+            "Sеnd",
+            "s e n d",
+            "s3nd",
+            "S\u{200B}end",
+            "Ｓｅｎｄ",
+            "𝐒𝐞𝐧𝐝",
+            "sending",
+        ] {
+            assert!(
+                label_risk(l).contains(&"label:send".to_string()),
+                "{l:?}: {:?}",
+                label_risk(l)
+            );
         }
-    }
-
-    #[test]
-    fn scope_covers_only_the_same_action_with_no_more_items() {
-        let a = p(&[("a", Some(false)), ("b", Some(false))], true).scope();
-        assert!(a.covers(&p(&[("x", Some(false))], true).scope()));
-        assert!(!a.covers(
-            &p(
-                &[("a", Some(false)), ("b", Some(false)), ("c", Some(false))],
-                true
-            )
-            .scope()
-        ));
-        assert!(
-            !a.covers(&p(&[("a", Some(true))], true).scope()),
-            "unsaved work grows the scope"
+        assert!(label_risk("Sеnd").contains(&"label:send".into()));
+        assert_eq!(
+            label_risk("Sеnd mеssage").len(),
+            1,
+            "fully folded: one rule, no mixed-script flag left"
         );
+        assert!(label_risk("Sжnd").contains(&"label:mixed_script".into()));
+        assert!(label_risk("Log Out").contains(&"label:logout".into()));
+        assert!(label_risk("Don't Save").contains(&"label:dont".into()));
+        assert!(label_risk("new note").is_empty());
         assert!(
-            !a.covers(&p(&[("a", None)], true).scope()),
-            "unknown counts as unsaved"
-        );
-        let mut other_app = p(&[("a", Some(false))], true);
-        other_app.app = Some("com.apple.Safari".into());
-        assert!(!a.covers(&other_app.scope()));
-    }
-
-    #[test]
-    fn within_allows_fewer_items_but_not_new_ones() {
-        let approved = p(&[("a", Some(false)), ("b", Some(false))], true);
-        assert!(p(&[("a", Some(false))], true).within(&approved));
-        assert!(
-            !p(&[("a", Some(false)), ("c", Some(false))], true).within(&approved),
-            "a new window re-asks"
-        );
-        assert!(
-            !p(&[("a", Some(true))], true).within(&approved),
-            "now unsaved re-asks"
-        );
-        assert!(
-            !p(&[("n0", None)], false).within(&approved),
-            "losing the enumeration re-asks"
+            label_risk("sender").is_empty(),
+            "a longer word isn't the rule word"
         );
     }
 
     #[test]
-    fn same_titles_get_distinct_keys() {
-        let w = |t: &str| PreviewItemWire {
-            title: t.into(),
-            unsaved: Some(false),
-            pinned: None,
-        };
-        let (items, labels) = hash_items(ItemKind::Window, &[w("untitled"), w("untitled"), w("notes")]);
-        assert_eq!(items.len(), 3);
-        assert_ne!(items[0].key, items[1].key);
-        assert!(
-            items.iter().all(|i| !i.key.contains("untitled")),
-            "no titles in keys"
-        );
-        assert_eq!(labels[2].1, "notes");
+    fn password_and_payment_labels_are_sensitive() {
+        for l in [
+            "Password",
+            "pаssword",
+            "Card Number",
+            "CVC",
+            "Security code",
+            "IBAN",
+            "one-time code",
+        ] {
+            assert!(sensitive_field(l), "{l}");
+        }
+        assert!(!sensitive_field("search") && !sensitive_field("address and search"));
     }
 }

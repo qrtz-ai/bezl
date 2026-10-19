@@ -1226,524 +1226,326 @@
         }
       }
     },
-    "ctrl:tasks": {
+    "ctrl:do": {
+      "request": {
+        "text": "open youtube"
+      },
+      "response": {
+        "runId": "run-1",
+        "doId": "do-0",
+        "text": "open youtube",
+        "status": "done",
+        "stop": null,
+        "app": "safari",
+        "startedAt": 1760659260000,
+        "at": 3,
+        "total": 3,
+        "events": [
+          {
+            "seq": 0,
+            "kind": "do.started"
+          },
+          {
+            "seq": 1,
+            "kind": "obs.apps"
+          },
+          {
+            "seq": 2,
+            "kind": "decision.made"
+          }
+        ],
+        "decisions": [
+          {
+            "id": "d0",
+            "node": "choose-app",
+            "question": "which app should do it?",
+            "chosen": "app.com.apple.Safari",
+            "chosenLabel": "open safari",
+            "p": 0.93,
+            "outcome": "act",
+            "answered": false,
+            "backtracks": 0,
+            "model": "qrtz-heuristic 2",
+            "options": 7
+          }
+        ],
+        "actions": [
+          {
+            "id": "a0",
+            "kind": "open_app",
+            "label": "open safari",
+            "status": "done",
+            "err": null
+          },
+          {
+            "id": "a1",
+            "kind": "key_combo",
+            "label": "press cmd+l",
+            "status": "done",
+            "err": null
+          },
+          {
+            "id": "a2",
+            "kind": "set_value",
+            "label": "type “youtube.com” and press return",
+            "status": "done",
+            "err": null
+          }
+        ],
+        "ask": null,
+        "confirm": null,
+        "backtracks": 0
+      }
+    },
+    "ctrl:runs": {
       "request": null,
       "response": [
         {
-          "id": "task-0",
-          "text": "every week clean up my downloads folder",
-          "schedule": {
-            "kind": "weekly",
-            "weekday": 0,
-            "hour": 18,
-            "minute": 0
-          },
-          "paused": false,
-          "createdAt": 1760659200000,
-          "runs": 1,
-          "lastRunAt": 1760659260000,
-          "nextRunAt": 1761264000000
+          "runId": "run-1",
+          "doId": "do-0",
+          "text": "open youtube",
+          "status": "done",
+          "startedAt": 1760659260000,
+          "actions": 3
         }
       ],
       "idle": []
     },
-    "ctrl:create-task": {
-      "request": {
-        "text": "every week clean up my downloads folder",
-        "schedule": {
-          "kind": "weekly",
-          "weekday": 0,
-          "hour": 18,
-          "minute": 0
-        }
-      },
-      "response": {
-        "id": "task-0",
-        "text": "every week clean up my downloads folder",
-        "schedule": {
-          "kind": "weekly",
-          "weekday": 0,
-          "hour": 18,
-          "minute": 0
-        },
-        "paused": false,
-        "createdAt": 1760659200000,
-        "runs": 0,
-        "lastRunAt": null,
-        "nextRunAt": 1761264000000
-      }
-    },
-    "ctrl:set-paused": {
-      "request": {
-        "id": "task-0",
-        "paused": true
-      },
-      "response": {
-        "id": "task-0",
-        "text": "every week clean up my downloads folder",
-        "schedule": {
-          "kind": "weekly",
-          "weekday": 0,
-          "hour": 18,
-          "minute": 0
-        },
-        "paused": true,
-        "createdAt": 1760659200000,
-        "runs": 1,
-        "lastRunAt": 1760659260000,
-        "nextRunAt": null
-      }
-    },
-    "ctrl:delete-task": {
-      "request": {
-        "id": "task-0"
-      },
-      "response": {
-        "ok": true
-      }
-    },
-    "ctrl:run-now": {
-      "request": {
-        "id": "task-0"
-      },
-      "response": {
-        "id": "run-1",
-        "taskId": "task-0",
-        "at": 1760659260000,
-        "status": "asking",
-        "events": 4,
-        "violations": 0
-      }
-    },
-    "ctrl:runs": {
-      "request": {
-        "taskId": "task-0"
-      },
-      "response": [
-        {
-          "id": "run-1",
-          "taskId": "task-0",
-          "at": 1760659260000,
-          "status": "asking",
-          "events": 4,
-          "violations": 0
-        }
-      ]
-    },
     "ctrl:run": {
       "request": {
-        "runId": "run-1",
-        "at": 4
+        "runId": "run-3",
+        "at": 2
       },
       "response": {
-        "run": {
-          "id": "run-1",
-          "taskId": "task-0",
-          "at": 1760659260000,
-          "status": "asking",
-          "events": 4,
-          "violations": 0
-        },
+        "runId": "run-3",
+        "doId": "do-2",
+        "text": "message the design channel in slack",
+        "status": "asking",
+        "stop": null,
+        "app": "slack",
+        "startedAt": 1760659260000,
+        "at": 2,
+        "total": 3,
         "events": [
           {
             "seq": 0,
-            "kind": "task.started",
-            "at": 1760659260000,
-            "actionId": null
+            "kind": "do.started"
           },
           {
             "seq": 1,
-            "kind": "intent.pending",
-            "at": 1760659260000,
-            "actionId": null
+            "kind": "obs.apps"
           },
           {
             "seq": 2,
-            "kind": "obs.apps",
-            "at": 1760659260000,
-            "actionId": null,
-            "node": null
-          },
-          {
-            "seq": 3,
-            "kind": "decision.made",
-            "at": 1760659260000,
-            "actionId": null,
-            "node": "choose_intent"
+            "kind": "decision.made"
           }
         ],
-        "at": 4,
-        "state": {
-          "actions": [],
-          "violations": 0,
-          "inconclusive": 0,
-          "quarantined": [],
-          "status": "asking",
-          "decisions": [
-            {
-              "id": "d0",
-              "node": "choose_intent",
-              "outcome": "ask",
-              "answered": false,
-              "chosen": "none",
-              "chosenLabel": "none of these",
-              "p": 0.2,
-              "model": "qrtz-heuristic 1",
-              "options": [
-                {
-                  "id": "intent.clean_folder",
-                  "label": "clean up a folder",
-                  "p": 0.07,
-                  "irreversible": false,
-                  "refusedInBackground": false
-                },
-                {
-                  "id": "intent.close_tabs",
-                  "label": "close browser tabs",
-                  "p": 0.07,
-                  "irreversible": false,
-                  "refusedInBackground": false
-                },
-                {
-                  "id": "none",
-                  "label": "none of these",
-                  "p": 0.2,
-                  "irreversible": false,
-                  "refusedInBackground": false
-                }
-              ]
-            }
-          ],
-          "plan": null,
-          "ask": {
-            "decisionId": "d0",
-            "node": "choose_intent",
-            "options": [
-              {
-                "id": "intent.clean_folder",
-                "label": "clean up a folder",
-                "p": 0.07,
-                "irreversible": false,
-                "refusedInBackground": false
-              },
-              {
-                "id": "intent.close_tabs",
-                "label": "close browser tabs",
-                "p": 0.07,
-                "irreversible": false,
-                "refusedInBackground": false
-              }
-            ]
+        "decisions": [
+          {
+            "id": "d0",
+            "node": "choose-app",
+            "question": "which app should do it?",
+            "chosen": "app.com.apple.Safari",
+            "chosenLabel": "open safari",
+            "p": 0.93,
+            "outcome": "act",
+            "answered": false,
+            "backtracks": 0,
+            "model": "qrtz-heuristic 2",
+            "options": 7
           }
-        }
+        ],
+        "actions": [
+          {
+            "id": "a0",
+            "kind": "open_app",
+            "label": "open slack",
+            "status": "done",
+            "err": null
+          }
+        ],
+        "ask": {
+          "decisionId": "d2",
+          "node": "choose-move",
+          "question": "what should ctrl do next?",
+          "options": [
+            {
+              "id": "menu.m:60:1",
+              "label": "switch workspace… (menu)",
+              "p": 0.31,
+              "gated": false
+            },
+            {
+              "id": "branch.e:60:2",
+              "label": "look in web area",
+              "p": 0.22,
+              "gated": false
+            },
+            {
+              "id": "key.cmd+f",
+              "label": "find (cmd+f)",
+              "p": 0.12,
+              "gated": false
+            }
+          ]
+        },
+        "confirm": null,
+        "backtracks": 0
       }
     },
     "ctrl:answer": {
       "request": {
-        "runId": "run-1",
-        "decisionId": "d0",
+        "runId": "run-3",
+        "decisionId": "d2",
         "optionId": null
       },
       "response": {
-        "run": {
-          "id": "run-1",
-          "taskId": "task-0",
-          "at": 1760659260000,
-          "status": "cancelled",
-          "events": 6,
-          "violations": 0
-        },
+        "runId": "run-3",
+        "doId": "do-0",
+        "text": "open youtube",
+        "status": "cancelled",
+        "stop": null,
+        "app": "safari",
+        "startedAt": 1760659260000,
+        "at": 3,
+        "total": 3,
         "events": [
           {
             "seq": 0,
-            "kind": "task.started",
-            "at": 1760659260000,
-            "actionId": null
+            "kind": "do.started"
           },
           {
             "seq": 1,
-            "kind": "intent.pending",
-            "at": 1760659260000,
-            "actionId": null
+            "kind": "obs.apps"
           },
           {
             "seq": 2,
-            "kind": "obs.apps",
-            "at": 1760659260000,
-            "actionId": null,
-            "node": null
-          },
-          {
-            "seq": 3,
-            "kind": "decision.made",
-            "at": 1760659260000,
-            "actionId": null,
-            "node": "choose_intent"
-          },
-          {
-            "seq": 4,
-            "kind": "decision.answered_by_user",
-            "at": 1760659261000,
-            "actionId": null,
-            "node": null
-          },
-          {
-            "seq": 5,
-            "kind": "task.finished",
-            "at": 1760659261000,
-            "actionId": null,
-            "node": null
+            "kind": "decision.made"
           }
         ],
-        "at": 6,
-        "state": {
-          "actions": [],
-          "violations": 0,
-          "inconclusive": 0,
-          "quarantined": [],
-          "status": "cancelled",
-          "decisions": [
-            {
-              "id": "d0",
-              "node": "choose_intent",
-              "outcome": "ask",
-              "answered": false,
-              "chosen": "none",
-              "chosenLabel": "none of these",
-              "p": 0.2,
-              "model": "qrtz-heuristic 1",
-              "options": [
-                {
-                  "id": "intent.clean_folder",
-                  "label": "clean up a folder",
-                  "p": 0.07,
-                  "irreversible": false,
-                  "refusedInBackground": false
-                },
-                {
-                  "id": "intent.close_tabs",
-                  "label": "close browser tabs",
-                  "p": 0.07,
-                  "irreversible": false,
-                  "refusedInBackground": false
-                },
-                {
-                  "id": "none",
-                  "label": "none of these",
-                  "p": 0.2,
-                  "irreversible": false,
-                  "refusedInBackground": false
-                }
-              ]
-            }
-          ],
-          "plan": null,
-          "ask": null
-        }
+        "decisions": [
+          {
+            "id": "d0",
+            "node": "choose-app",
+            "question": "which app should do it?",
+            "chosen": "app.com.apple.Safari",
+            "chosenLabel": "open safari",
+            "p": 0.93,
+            "outcome": "act",
+            "answered": false,
+            "backtracks": 0,
+            "model": "qrtz-heuristic 2",
+            "options": 7
+          }
+        ],
+        "actions": [
+          {
+            "id": "a0",
+            "kind": "open_app",
+            "label": "open safari",
+            "status": "done",
+            "err": null
+          },
+          {
+            "id": "a1",
+            "kind": "key_combo",
+            "label": "press cmd+l",
+            "status": "done",
+            "err": null
+          },
+          {
+            "id": "a2",
+            "kind": "set_value",
+            "label": "type “youtube.com” and press return",
+            "status": "done",
+            "err": null
+          }
+        ],
+        "ask": null,
+        "confirm": null,
+        "backtracks": 0
       }
     },
     "ctrl:confirm": {
       "request": {
-        "runId": "run-1",
+        "runId": "run-5",
         "gateId": "g0",
-        "answer": "deny"
+        "answer": "approve"
       },
       "response": {
-        "run": {
-          "id": "run-1",
-          "taskId": "task-0",
-          "at": 1760659260000,
-          "status": "cancelled",
-          "events": 6,
-          "violations": 0
-        },
+        "runId": "run-5",
+        "doId": "do-0",
+        "text": "press send in mail",
+        "status": "done",
+        "stop": null,
+        "app": "mail",
+        "startedAt": 1760659260000,
+        "at": 3,
+        "total": 3,
         "events": [
           {
             "seq": 0,
-            "kind": "task.started",
-            "at": 1760659260000,
-            "actionId": null
+            "kind": "do.started"
           },
           {
             "seq": 1,
-            "kind": "intent.pending",
-            "at": 1760659260000,
-            "actionId": null
+            "kind": "obs.apps"
           },
           {
             "seq": 2,
-            "kind": "obs.apps",
-            "at": 1760659260000,
-            "actionId": null,
-            "node": null
-          },
-          {
-            "seq": 3,
-            "kind": "decision.made",
-            "at": 1760659260000,
-            "actionId": null,
-            "node": "choose_intent"
-          },
-          {
-            "seq": 4,
-            "kind": "confirm.requested",
-            "at": 1760659260000,
-            "actionId": null,
-            "node": null
-          },
-          {
-            "seq": 5,
-            "kind": "confirm.resolved",
-            "at": 1760659261000,
-            "actionId": null,
-            "node": null
+            "kind": "decision.made"
           }
         ],
-        "at": 6,
-        "state": {
-          "actions": [],
-          "violations": 0,
-          "inconclusive": 0,
-          "quarantined": [],
-          "status": "cancelled",
-          "decisions": [],
-          "plan": null,
-          "ask": null,
-          "confirm": {
-            "gateId": "g0",
-            "action": "quit an app",
-            "app": "textedit",
-            "move": "quit",
-            "items": [
-              {
-                "key": "3f2a9c1d0b7e#0",
-                "kind": "window",
-                "label": "notes.txt",
-                "unsaved": false
-              },
-              {
-                "key": "8c1e44a0d2f9#0",
-                "kind": "window",
-                "label": "draft.txt",
-                "unsaved": true
-              }
-            ],
-            "complete": true,
-            "rules": [
-              "choose_intent:intent.quit_app",
-              "choose_move:shortcut.cmd+q"
-            ],
-            "answer": "denied",
-            "reverified": null,
-            "used": false
-          }
-        }
-      }
-    },
-    "ctrl:undo": {
-      "request": {
-        "runId": "run-1",
-        "rest": true
-      },
-      "response": {
-        "run": {
-          "id": "run-1",
-          "taskId": "task-0",
-          "at": 1760659260000,
-          "status": "done",
-          "events": 6,
-          "violations": 0
-        },
-        "events": [
+        "decisions": [
           {
-            "seq": 0,
-            "kind": "task.started",
-            "at": 1760659260000,
-            "actionId": null
-          },
-          {
-            "seq": 1,
-            "kind": "intent.pending",
-            "at": 1760659260000,
-            "actionId": null
-          },
-          {
-            "seq": 2,
-            "kind": "obs.apps",
-            "at": 1760659260000,
-            "actionId": null,
-            "node": null
-          },
-          {
-            "seq": 3,
-            "kind": "decision.made",
-            "at": 1760659260000,
-            "actionId": null,
-            "node": "choose_intent"
-          },
-          {
-            "seq": 4,
-            "kind": "task.finished",
-            "at": 1760659260000,
-            "actionId": null,
-            "node": null
-          },
-          {
-            "seq": 5,
-            "kind": "undo.done",
-            "at": 1760659261000,
-            "actionId": "a0",
-            "node": null
+            "id": "d0",
+            "node": "choose-app",
+            "question": "which app should do it?",
+            "chosen": "app.com.apple.Safari",
+            "chosenLabel": "open safari",
+            "p": 0.93,
+            "outcome": "act",
+            "answered": false,
+            "backtracks": 0,
+            "model": "qrtz-heuristic 2",
+            "options": 7
           }
         ],
-        "at": 6,
-        "state": {
-          "actions": [],
-          "violations": 0,
-          "inconclusive": 0,
-          "quarantined": [],
-          "status": "done",
-          "decisions": [],
-          "plan": null,
-          "ask": null,
-          "undo": {
-            "actionId": "a0",
-            "files": 3,
-            "ready": 0,
-            "cantUndo": [
-              {
-                "key": "f3f2a9c1d0b7e",
-                "label": "photo.png",
-                "why": "moved"
-              }
-            ],
-            "done": {
-              "undone": 2
-            }
+        "actions": [
+          {
+            "id": "a0",
+            "kind": "open_app",
+            "label": "open safari",
+            "status": "done",
+            "err": null
+          },
+          {
+            "id": "a1",
+            "kind": "key_combo",
+            "label": "press cmd+l",
+            "status": "done",
+            "err": null
+          },
+          {
+            "id": "a2",
+            "kind": "set_value",
+            "label": "type “youtube.com” and press return",
+            "status": "done",
+            "err": null
           }
-        }
+        ],
+        "ask": null,
+        "confirm": null,
+        "backtracks": 0
       }
     },
-    "ctrl:revoke-approval": {
+    "ctrl:stop": {
       "request": {
-        "taskId": "task-0",
-        "approvalId": "approval-4"
+        "runId": "run-5"
       },
       "response": {
-        "id": "task-0",
-        "text": "every week clean up my downloads folder",
-        "schedule": {
-          "kind": "weekly",
-          "weekday": 0,
-          "hour": 18,
-          "minute": 0
-        },
-        "paused": false,
-        "createdAt": 1760659200000,
-        "runs": 1,
-        "lastRunAt": 1760659260000,
-        "nextRunAt": 1761264000000,
-        "approvals": []
+        "runId": "run-5",
+        "status": "stopping"
       }
     },
     "ctrl:model": {

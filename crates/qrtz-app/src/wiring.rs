@@ -603,13 +603,13 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     if let Some(w) = echo_warm {
         service.set_echo_hello_hook(Arc::new(move || w.on_hello()));
     }
-    // ADR 0103: ctrl's task store and run logs, <data>/ctrl (0700, files 0600).
+    // ADR 0214: ctrl do's store and run logs, <data>/ctrl/do (0700, files 0600).
     let mut ctrl = qrtz_ctrl::service::CtrlService::open(
         dirs.data.join("ctrl"),
         Box::new(qrtz_ctrl::service::SystemClock::default()),
     );
-    // ADR 0110: on macOS the helper process carries ctrl's `ctrl.*` protocol; runs execute through it while it is
-    // up and stop at `planned` while it isn't. Elsewhere the helper has no ctrl backend, so ctrl stays plan-only.
+    // ADR 0110: on macOS the helper process carries ctrl's `ctrl.*` protocol; ctrl do acts through it while it is
+    // up. Elsewhere the helper has no ctrl backend, so a do fails with E_UNAVAILABLE.
     if let (true, Some(sup), Ok(rt)) = (
         cfg!(target_os = "macos"),
         ctrl_helper.clone(),

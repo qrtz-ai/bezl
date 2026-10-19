@@ -1,0 +1,61 @@
+{
+  "bundleId": "com.tinyspeck.slackmacgap",
+  "name": "Slack",
+  "running": true,
+  "start": "main",
+  "states": {
+    "main": {
+      "id": "e:60:0",
+      "role": "AXWindow",
+      "title": "Slack",
+      "sig": "s60-0-3044",
+      "children": [
+        {
+          "id": "e:60:1",
+          "role": "AXGroup",
+          "title": "",
+          "sig": "s60-1-3337",
+          "children": [
+            {
+              "id": "e:60:2",
+              "role": "AXWebArea",
+              "title": "",
+              "sig": "s60-2-8574",
+              "children": [
+                {
+                  "id": "e:60:3",
+                  "role": "AXGroup",
+                  "title": "",
+                  "sig": "s60-3-3337",
+                  "actions": ["AXPress"]
+                },
+                {
+                  "id": "e:60:4",
+                  "role": "AXGroup",
+                  "title": "",
+                  "sig": "s60-4-3337",
+                  "actions": ["AXPress"]
+                },
+                {
+                  "id": "e:60:5",
+                  "role": "AXButton",
+                  "title": "",
+                  "sig": "s60-5-5548",
+                  "actions": ["AXPress"]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "menu": [
+    {
+      "id": "m:60:1",
+      "path": ["Go", "Switch Workspace…"],
+      "combo": "cmd+shift+s"
+    }
+  ],
+  "transitions": []
+}

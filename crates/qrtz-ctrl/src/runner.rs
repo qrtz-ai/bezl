@@ -1,116 +1,160 @@
-//! The execution effect (ADR 0100): decide on the ladder, snapshot what the user owns, execute, snapshot again,
-//! record everything in the log. The runner never retries a route that violated the guard: the violation
-//! quarantines that (app, rung) for the rest of the run, through the log-derived state.
-use crate::guard::{compare, Field, UiSnapshot};
-use crate::ladder::{choose, Decision, Env, Route};
-use crate::log::{Event, EventLog, Phase};
-
-/// Reads what the user owns. On macOS: `NSWorkspace.frontmostApplication`, `CGEvent(source: nil).location`, the
-/// system-wide `AXFocusedUIElement`, the key window, and HID idle time.
-pub trait UiProbe {
-    fn snapshot(&self) -> UiSnapshot;
-}
-
-/// Performs one route. Errors are short codes, never content.
-pub trait Executor {
-    fn execute(&mut self, route: &Route) -> Result<(), String>;
-    /// Put back what an action changed (re-activate the previously frontmost app). Returns whether it worked.
-    /// The default does nothing: a violation is still recorded either way.
-    fn restore(&mut self, _before: &UiSnapshot, _fields: &[Field]) -> bool {
-        false
-    }
-}
+//! One guarded action (ADR 0214, amending ADR 0100 §4–§5). The runner never acts without the stop-key watcher:
+//!
+//! 1. the host's policy ([`check`]): the handle is in the tree or the menu, the element offers the action, the
+//!    combo is the app's own or built-in, the address is http(s), the text is bounded;
+//! 2. arm the watcher (`ctrl.observe {arm: true}`); a tripped or unarmed watcher ends the run before anything is
+//!    sent (`stopped`);
+//! 3. `ctrl.ax.act` (the helper re-checks the handle's `sig` and refuses once the watcher has tripped);
+//! 4. read the watcher again: Esc or Jared's input during the action ends the run `stopped`.
+//!
+//! Everything lands in the log as ids, enums and numbers.
+use crate::act::{combo_allowed, http_url, offered, Action, Refusal, TEXT_MAX};
+use crate::ax::find;
+use crate::chain::resolve;
+use crate::guard::{verdict, StopReason};
+use crate::helper::HelperClient;
+use crate::log::{CtrlState, Event, EventLog, GuardPhase};
 
 /// Monotonic and wall time; injected so tests are deterministic.
-pub trait Clock {
+pub trait Clock: Send + Sync {
     fn mono_ns(&self) -> u64;
     fn wall_ms(&self) -> u64;
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum RunOutcome {
-    Done { clean: bool },
-    Failed { err: String, clean: bool },
-    Deferred { retry_after_ms: u64 },
-    Asked,
+/// The host's policy over one action in the current state: the element's signature to send (if any) or why not.
+pub fn check(a: &Action, s: &CtrlState, goal: &str) -> Result<Option<String>, Refusal> {
+    let app = s.app.as_deref().unwrap_or_default();
+    let browser = s
+        .apps
+        .as_ref()
+        .is_some_and(|x| x.apps.iter().any(|y| y.id == app && y.browser));
+    let menu = s.shortcuts.get(app).map(Vec::as_slice).unwrap_or_default();
+    // A menu handle: pressing it is `press` on a handle the menu read produced.
+    if let Action::Press { handle } = a {
+        if menu.iter().any(|m| &m.id == handle)
+            && s.tree.as_ref().is_none_or(|t| find(&t.root, handle).is_none())
+        {
+            return Ok(None);
+        }
+    }
+    match a {
+        Action::OpenApp { app } => {
+            let known = s
+                .apps
+                .as_ref()
+                .is_some_and(|x| x.apps.iter().any(|y| &y.id == app));
+            known.then_some(None).ok_or(Refusal::UnknownApp)
+        }
+        Action::KeyCombo { combo, .. } => {
+            let combos: Vec<String> = menu.iter().map(|m| m.combo.clone()).collect();
+            combo_allowed(combo, &combos, browser)
+                .then_some(None)
+                .ok_or(Refusal::ComboNotAllowed)
+        }
+        Action::OpenUrl { url_ref, .. } => match resolve(url_ref, goal) {
+            Some(u) if http_url(&u) && browser => Ok(None),
+            _ => Err(Refusal::BadUrl),
+        },
+        _ => {
+            let h = a.handle().ok_or(Refusal::Stale)?;
+            let n = s
+                .tree
+                .as_ref()
+                .and_then(|t| find(&t.root, h))
+                .ok_or(Refusal::Stale)?;
+            if !offered(a, n) {
+                return Err(Refusal::NotOffered);
+            }
+            if let Some(r) = a.text_ref() {
+                match resolve(r, goal) {
+                    Some(t) if t.chars().count() <= TEXT_MAX => {}
+                    _ => return Err(Refusal::BadText),
+                }
+            }
+            Ok(Some(n.sig.clone()))
+        }
+    }
+}
+
+/// How one action ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ran {
+    /// Acted (the log says whether the helper succeeded).
+    Acted,
+    /// The policy refused it.
     Refused,
+    /// Esc, Jared's input, or no watcher: the run is over.
+    Stopped(StopReason),
 }
 
-pub struct Runner<'a, P: UiProbe, E: Executor, C: Clock> {
+pub struct Runner<'a> {
     pub log: &'a mut EventLog,
-    pub probe: &'a P,
-    pub exec: &'a mut E,
-    pub clock: &'a C,
+    pub helper: &'a HelperClient,
+    pub clock: &'a dyn Clock,
+    pub goal: &'a str,
 }
 
-impl<P: UiProbe, E: Executor, C: Clock> Runner<'_, P, E, C> {
+impl Runner<'_> {
     fn push(&mut self, e: Event) {
         let (m, w) = (self.clock.mono_ns(), self.clock.wall_ms());
         self.log.append(m, w, e);
     }
 
-    /// Run one action. `env` comes from the helper's probes; its quarantine set is replaced by the log's.
-    pub fn run(&mut self, action_id: &str, routes: &[Route], env: &Env) -> RunOutcome {
-        let mut env = env.clone();
-        env.quarantined = self.log.state().quarantined;
-        self.push(Event::ActionRequested {
-            action_id: action_id.into(),
-            routes: routes.to_vec(),
-        });
-        let (decision, verdicts) = choose(routes, &env);
-        self.push(Event::ActionDecided {
-            action_id: action_id.into(),
-            decision: decision.clone(),
-            verdicts,
-        });
-        let (index, rung) = match decision {
-            Decision::Execute { index, rung } => (index, rung),
-            Decision::Defer { retry_after_ms } => return RunOutcome::Deferred { retry_after_ms },
-            Decision::Ask { .. } => return RunOutcome::Asked,
-            Decision::Refuse => return RunOutcome::Refused,
-        };
-        let route = &routes[index];
-        let before = self.probe.snapshot();
-        self.push(Event::GuardSnapshot {
-            action_id: action_id.into(),
-            phase: Phase::Before,
-            snapshot: before.clone(),
-        });
-        let t0 = self.clock.mono_ns();
-        let result = self.exec.execute(route);
-        let elapsed_ms = self.clock.mono_ns().saturating_sub(t0) / 1_000_000;
-        let after = self.probe.snapshot();
-        self.push(Event::GuardSnapshot {
-            action_id: action_id.into(),
-            phase: Phase::After,
-            snapshot: after.clone(),
-        });
-        let outcome = compare(&before, &after, elapsed_ms);
-        let clean = outcome.clean();
-        let violated = outcome.violations.clone();
-        self.push(Event::ActionExecuted {
-            action_id: action_id.into(),
-            ok: result.is_ok(),
-            err: result.as_ref().err().cloned(),
-            elapsed_ms,
-        });
+    fn guard(&mut self, action_id: &str, phase: GuardPhase, arm: Option<bool>) -> Option<StopReason> {
+        let run = self.log.run_id().to_string();
+        let o = self.helper.observe(&run, arm).unwrap_or_default();
+        let stop = verdict(&o);
         self.push(Event::GuardResult {
             action_id: action_id.into(),
-            app: route.app().map(str::to_string),
-            rung,
-            outcome,
+            phase,
+            stop,
+            frontmost: o.frontmost,
         });
-        if !clean {
-            let ok = self.exec.restore(&before, &violated);
-            self.push(Event::GuardRestored {
-                action_id: action_id.into(),
-                fields: violated,
-                ok,
-            });
+        stop
+    }
+
+    pub fn run(&mut self, action_id: &str, action: &Action) -> Ran {
+        let st = self.log.state();
+        let sig = match check(action, &st, self.goal) {
+            Ok(s) => s,
+            Err(r) => {
+                self.push(Event::ActionRequested {
+                    action_id: action_id.into(),
+                    action: action.clone(),
+                });
+                self.push(Event::ActionRefused {
+                    action_id: action_id.into(),
+                    code: r.code().into(),
+                });
+                return Ran::Refused;
+            }
+        };
+        if let Some(stop) = self.guard(action_id, GuardPhase::Before, Some(true)) {
+            return Ran::Stopped(stop);
         }
-        match result {
-            Ok(()) => RunOutcome::Done { clean },
-            Err(err) => RunOutcome::Failed { err, clean },
+        self.push(Event::ActionRequested {
+            action_id: action_id.into(),
+            action: action.clone(),
+        });
+        let text = action.text_ref().and_then(|r| resolve(r, self.goal));
+        let t0 = self.clock.mono_ns();
+        let run = self.log.run_id().to_string();
+        let res = self
+            .helper
+            .act(&run, action.wire(text.as_deref()), sig.as_deref());
+        let elapsed_ms = self.clock.mono_ns().saturating_sub(t0) / 1_000_000;
+        // A helper that refused because its watcher tripped is a stop, not a failed action.
+        let stopped_by_helper = matches!(&res, Err(c) if c == "guard.stopped");
+        self.push(Event::ActionExecuted {
+            action_id: action_id.into(),
+            ok: res.is_ok(),
+            err: res.err(),
+            elapsed_ms,
+        });
+        match self.guard(action_id, GuardPhase::After, None) {
+            Some(stop) => Ran::Stopped(stop),
+            None if stopped_by_helper => Ran::Stopped(StopReason::StopKey),
+            None => Ran::Acted,
         }
     }
 }

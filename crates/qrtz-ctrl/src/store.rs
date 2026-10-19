@@ -1,18 +1,16 @@
-//! ctrl's on-disk state (slice 2, ADR 0103): two kinds of append-only, hash-chained JSON-lines files under
-//! `<app data>/ctrl/`:
+//! ctrl do's on-disk state (ADR 0103, reshaped by ADR 0214): two kinds of append-only, hash-chained JSON-lines
+//! files under `<app data>/ctrl/do/` (the chores' files one folder up are left alone and never read):
 //!
-//! - `tasks.jsonl`: the task store's log (`task.created`, `task.paused`, `task.deleted`, `run.recorded`). The
-//!   task list is a pure fold over it ([`fold_store`]), like a run's state is a fold over its events.
+//! - `do.jsonl`: the commands Jared typed and their runs (`do.created`, `run.recorded`), a pure fold
+//!   ([`fold_store`]).
 //! - `runs/<run id>.jsonl`: one [`EventLog`] per run, a record per line, written as it happens.
 //!
 //! A line is written whole and `fsync`ed before the call returns. A crash mid-write leaves a torn last line (no
 //! `\n`); opening drops it and truncates the file back to the last whole record. Anything else that doesn't
 //! verify (a bad line in the middle, a broken hash chain, a wrong seq) is damage: the file is never rewritten,
-//! the store refuses writes and says so. Ids come from the store's own seq (`task-7`, `run-12`), so a replay of
+//! the store refuses writes and says so. Ids come from the store's own seq (`do-7`, `run-12`), so a replay of
 //! the same log gives the same ids.
-use crate::gate::{Approval, Scope};
 use crate::log::{Event, EventLog, Record};
-use crate::task::{clean_text, Schedule, Task, TaskError};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -20,34 +18,64 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
-pub const STORE_SCHEMA_V: u32 = 1;
+/// Schema 2: ctrl do (ADR 0214). The chores' `tasks.jsonl` (schema 1) lives one folder up and is not read.
+pub const STORE_SCHEMA_V: u32 = 2;
 const GENESIS: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+/// Longest command ctrl accepts.
+pub const TEXT_MAX_CHARS: usize = 500;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum StoreEvent {
-    #[serde(rename = "task.created")]
-    TaskCreated {
-        task_id: String,
-        text: String,
-        schedule: Schedule,
-    },
-    #[serde(rename = "task.paused")]
-    TaskPaused { task_id: String, paused: bool },
-    #[serde(rename = "task.deleted")]
-    TaskDeleted { task_id: String },
-    /// A run of this task exists in `runs/<run_id>.jsonl`.
+    /// Jared typed a command (`ctrl:do`).
+    #[serde(rename = "do.created")]
+    DoCreated { do_id: String, text: String },
+    /// Its run is `runs/<run_id>.jsonl`.
     #[serde(rename = "run.recorded")]
-    RunRecorded { task_id: String, run_id: String },
-    /// The user approved an irreversible step and asked ctrl to remember it for this task (slice 6, ADR 0111).
-    #[serde(rename = "approval.granted")]
-    ApprovalGranted {
-        task_id: String,
-        approval_id: String,
-        scope: Scope,
-    },
-    #[serde(rename = "approval.revoked")]
-    ApprovalRevoked { task_id: String, approval_id: String },
+    RunRecorded { do_id: String, run_id: String },
+}
+
+/// One command.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DoEntry {
+    pub id: String,
+    pub text: String,
+    pub created_at: u64,
+    pub runs: Vec<String>,
+}
+
+/// Why a command was refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextError {
+    Empty,
+    TooLong,
+}
+
+impl TextError {
+    pub fn message(self) -> &'static str {
+        match self {
+            TextError::Empty => "type what ctrl should do",
+            TextError::TooLong => "that's too long for one command",
+        }
+    }
+}
+
+/// Trim, collapse whitespace, drop control characters, bound the length.
+pub fn clean_text(t: &str) -> Result<String, TextError> {
+    let t: String = t
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if t.is_empty() {
+        return Err(TextError::Empty);
+    }
+    if t.chars().count() > TEXT_MAX_CHARS {
+        return Err(TextError::TooLong);
+    }
+    Ok(t)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -81,69 +109,35 @@ fn store_digest(r: &StoreRecord) -> String {
     ))
 }
 
-/// The task list, derived. `order` is creation order; deleted tasks leave it.
+/// The commands, derived. `order` is creation order.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StoreState {
-    pub tasks: BTreeMap<String, Task>,
+    pub dos: BTreeMap<String, DoEntry>,
     pub order: Vec<String>,
-    /// run id → (task id, when it was recorded).
+    /// run id → (do id, when it was recorded).
     pub runs: BTreeMap<String, (String, u64)>,
 }
 
 /// The store reducer. Pure: the time is the record's.
 pub fn apply_store(mut s: StoreState, r: &StoreRecord) -> StoreState {
     match &r.event {
-        StoreEvent::TaskCreated {
-            task_id,
-            text,
-            schedule,
-        } => {
-            s.order.push(task_id.clone());
-            s.tasks.insert(
-                task_id.clone(),
-                Task {
-                    id: task_id.clone(),
+        StoreEvent::DoCreated { do_id, text } => {
+            s.order.push(do_id.clone());
+            s.dos.insert(
+                do_id.clone(),
+                DoEntry {
+                    id: do_id.clone(),
                     text: text.clone(),
-                    schedule: *schedule,
-                    paused: false,
                     created_at: r.t_wall_ms,
                     runs: Vec::new(),
-                    approvals: Vec::new(),
                 },
             );
         }
-        StoreEvent::TaskPaused { task_id, paused } => {
-            if let Some(t) = s.tasks.get_mut(task_id) {
-                t.paused = *paused;
+        StoreEvent::RunRecorded { do_id, run_id } => {
+            if let Some(d) = s.dos.get_mut(do_id) {
+                d.runs.push(run_id.clone());
             }
-        }
-        StoreEvent::TaskDeleted { task_id } => {
-            s.tasks.remove(task_id);
-            s.order.retain(|t| t != task_id);
-        }
-        StoreEvent::RunRecorded { task_id, run_id } => {
-            if let Some(t) = s.tasks.get_mut(task_id) {
-                t.runs.push(run_id.clone());
-            }
-            s.runs.insert(run_id.clone(), (task_id.clone(), r.t_wall_ms));
-        }
-        StoreEvent::ApprovalGranted {
-            task_id,
-            approval_id,
-            scope,
-        } => {
-            if let Some(t) = s.tasks.get_mut(task_id) {
-                t.approvals.push(Approval {
-                    id: approval_id.clone(),
-                    scope: scope.clone(),
-                    granted_at: r.t_wall_ms,
-                });
-            }
-        }
-        StoreEvent::ApprovalRevoked { task_id, approval_id } => {
-            if let Some(t) = s.tasks.get_mut(task_id) {
-                t.approvals.retain(|a| &a.id != approval_id);
-            }
+            s.runs.insert(run_id.clone(), (do_id.clone(), r.t_wall_ms));
         }
     }
     s
@@ -156,7 +150,7 @@ pub fn fold_store<'a>(records: impl IntoIterator<Item = &'a StoreRecord>) -> Sto
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StoreError {
     NotFound,
-    Invalid(TaskError),
+    Invalid(TextError),
     /// A file that doesn't verify. `file` is the name inside the ctrl folder, `line` is 0-based.
     Damaged {
         file: String,
@@ -233,9 +227,9 @@ impl Store {
         private_dir(&dir.join("runs"))?;
         let mut records: Vec<StoreRecord> = Vec::new();
         let mut prev = GENESIS.to_string();
-        for (i, line) in read_whole_lines(&dir.join("tasks.jsonl"))?.iter().enumerate() {
+        for (i, line) in read_whole_lines(&dir.join("do.jsonl"))?.iter().enumerate() {
             let damaged = || StoreError::Damaged {
-                file: "tasks.jsonl".into(),
+                file: "do.jsonl".into(),
                 line: i as u64,
             };
             let r: StoreRecord = serde_json::from_str(line).map_err(|_| damaged())?;
@@ -261,18 +255,18 @@ impl Store {
         &self.state
     }
 
-    /// Tasks, newest first.
-    pub fn tasks(&self) -> Vec<&Task> {
+    /// Commands, newest first.
+    pub fn dos(&self) -> Vec<&DoEntry> {
         self.state
             .order
             .iter()
             .rev()
-            .filter_map(|id| self.state.tasks.get(id))
+            .filter_map(|id| self.state.dos.get(id))
             .collect()
     }
 
-    pub fn task(&self, id: &str) -> Result<&Task, StoreError> {
-        self.state.tasks.get(id).ok_or(StoreError::NotFound)
+    pub fn do_entry(&self, id: &str) -> Result<&DoEntry, StoreError> {
+        self.state.dos.get(id).ok_or(StoreError::NotFound)
     }
 
     fn next_seq(&self) -> u64 {
@@ -292,91 +286,38 @@ impl Store {
             hash: String::new(),
         };
         r.hash = store_digest(&r);
-        append_line(&self.dir.join("tasks.jsonl"), &r)?;
+        append_line(&self.dir.join("do.jsonl"), &r)?;
         self.state = apply_store(std::mem::take(&mut self.state), &r);
         self.records.push(r);
         Ok(())
     }
 
-    pub fn create_task(&mut self, now_ms: u64, text: &str, schedule: Schedule) -> Result<Task, StoreError> {
+    pub fn create_do(&mut self, now_ms: u64, text: &str) -> Result<DoEntry, StoreError> {
         let text = clean_text(text).map_err(StoreError::Invalid)?;
-        schedule.validate().map_err(StoreError::Invalid)?;
-        let task_id = format!("task-{}", self.next_seq());
+        let do_id = format!("do-{}", self.next_seq());
         self.append(
             now_ms,
-            StoreEvent::TaskCreated {
-                task_id: task_id.clone(),
+            StoreEvent::DoCreated {
+                do_id: do_id.clone(),
                 text,
-                schedule,
             },
         )?;
-        self.task(&task_id).cloned()
+        self.do_entry(&do_id).cloned()
     }
 
-    pub fn set_paused(&mut self, now_ms: u64, id: &str, paused: bool) -> Result<Task, StoreError> {
-        if self.task(id)?.paused != paused {
-            self.append(
-                now_ms,
-                StoreEvent::TaskPaused {
-                    task_id: id.into(),
-                    paused,
-                },
-            )?;
-        }
-        self.task(id).cloned()
-    }
-
-    pub fn delete_task(&mut self, now_ms: u64, id: &str) -> Result<(), StoreError> {
-        self.task(id)?;
-        self.append(now_ms, StoreEvent::TaskDeleted { task_id: id.into() })
-    }
-
-    /// Remember an approval for this task (a standing approval, ADR 0111). Returns its id.
-    pub fn grant_approval(&mut self, now_ms: u64, task_id: &str, scope: Scope) -> Result<String, StoreError> {
-        self.task(task_id)?;
-        let approval_id = format!("approval-{}", self.next_seq());
-        self.append(
-            now_ms,
-            StoreEvent::ApprovalGranted {
-                task_id: task_id.into(),
-                approval_id: approval_id.clone(),
-                scope,
-            },
-        )?;
-        Ok(approval_id)
-    }
-
-    pub fn revoke_approval(
-        &mut self,
-        now_ms: u64,
-        task_id: &str,
-        approval_id: &str,
-    ) -> Result<(), StoreError> {
-        if !self.task(task_id)?.approvals.iter().any(|a| a.id == approval_id) {
-            return Err(StoreError::NotFound);
-        }
-        self.append(
-            now_ms,
-            StoreEvent::ApprovalRevoked {
-                task_id: task_id.into(),
-                approval_id: approval_id.into(),
-            },
-        )
-    }
-
-    /// Start a run of `task_id`: `run.recorded` in the store, then the run's own log with its first events.
+    /// Start a run of `do_id`: `run.recorded` in the store, then the run's own log with its first events.
     pub fn start_run(
         &mut self,
         now_ms: u64,
-        task_id: &str,
+        do_id: &str,
         first: &[(u64, Event)],
     ) -> Result<EventLog, StoreError> {
-        self.task(task_id)?;
+        self.do_entry(do_id)?;
         let run_id = format!("run-{}", self.next_seq());
         self.append(
             now_ms,
             StoreEvent::RunRecorded {
-                task_id: task_id.into(),
+                do_id: do_id.into(),
                 run_id: run_id.clone(),
             },
         )?;
@@ -434,7 +375,7 @@ impl Store {
         Ok(log)
     }
 
-    /// The task a run belongs to and when it was recorded.
+    /// The command a run belongs to and when it was recorded.
     pub fn run_meta(&self, run_id: &str) -> Option<&(String, u64)> {
         self.state.runs.get(run_id)
     }

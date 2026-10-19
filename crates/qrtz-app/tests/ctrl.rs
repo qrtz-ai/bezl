@@ -1,26 +1,36 @@
-//! ctrl through the real router (ADR 0103): the generated contract validates requests and responses, the ctrl
-//! manifest's capabilities gate the channels, and the store under the data dir survives a restart.
+//! ctrl do through the real router (ADR 0214): the generated contract validates requests and responses, the ctrl
+//! manifest's capabilities gate the channels, runs act through the fixture helper, and the history survives a
+//! restart.
 use qrtz_app::ports::*;
 use qrtz_app::*;
+use qrtz_ctrl::helper::{FakeApp, FakeHelper, FakeWorld, HelperClient};
 use qrtz_ctrl::service::{CtrlService, SystemClock};
 use qrtz_ipc::Router;
 use serde_json::{json, Value};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-/// Records the notices the core raises.
-#[derive(Default)]
-struct RecShell(Mutex<Vec<Notice>>);
-impl ShellHooks for RecShell {
-    fn set_hud_expanded(&self, expanded: bool) -> bool {
-        expanded
+/// The ctrl crate's fixture world: Safari, Notes, Finder, System Settings, Mail and Slack.
+fn world() -> FakeWorld {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../qrtz-ctrl/tests/fixtures");
+    let mut w = FakeWorld {
+        default_browser: Some("com.apple.Safari".into()),
+        frontmost: Some("com.apple.finder".into()),
+        ..Default::default()
+    };
+    for name in ["safari", "notes", "finder", "settings", "mail", "slack"] {
+        let a: FakeApp =
+            serde_json::from_str(&std::fs::read_to_string(dir.join(format!("{name}.json"))).unwrap())
+                .unwrap();
+        if a.running {
+            w.state.insert(a.bundle_id.clone(), a.start.clone());
+        }
+        w.apps.push(a);
     }
-    fn notify(&self, n: Notice) {
-        self.0.lock().unwrap().push(n);
-    }
+    w
 }
 
-fn app(dir: &Path, with_ctrl: bool) -> Router<Shared> {
+fn app(dir: &Path, ctrl: Option<Option<Arc<FakeHelper>>>) -> Router<Shared> {
     let svc = AppService::new(AppDeps {
         info: AppInfo {
             name: "qrtz".into(),
@@ -37,11 +47,12 @@ fn app(dir: &Path, with_ctrl: bool) -> Router<Shared> {
         helper: None,
         events: Events::new(),
     });
-    if with_ctrl {
-        svc.set_ctrl(Arc::new(CtrlService::open(
-            dir.join("ctrl"),
-            Box::new(SystemClock::default()),
-        )));
+    if let Some(helper) = ctrl {
+        let mut c = CtrlService::open(dir.join("ctrl"), Box::new(SystemClock::default()));
+        if let Some(fake) = helper {
+            c = c.with_helper(Arc::new(HelperClient::new(Box::new(fake))));
+        }
+        svc.set_ctrl(Arc::new(c));
     }
     Router::new(Shared(svc))
 }
@@ -51,257 +62,72 @@ async fn call(r: &Router<Shared>, sub: &str, ch: &str, payload: Value) -> Value 
         .await
 }
 
-#[tokio::test]
-async fn create_list_run_and_scrub_through_the_router_and_a_restart() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_do_runs_lists_scrubs_and_survives_a_restart() {
     let d = tempfile::tempdir().unwrap();
-    let r = app(d.path(), true);
+    let fake = Arc::new(FakeHelper::new(world()));
+    let r = app(d.path(), Some(Some(fake.clone())));
     assert_eq!(
-        call(&r, "ctrl", "ctrl:tasks", Value::Null).await["data"],
+        call(&r, "ctrl", "ctrl:runs", Value::Null).await["data"],
         json!([])
     );
-    let t = call(
-        &r,
-        "ctrl",
-        "ctrl:create-task",
-        json!({"text": "every day close all my tabs", "schedule": {"kind": "daily", "hour": 9, "minute": 0}}),
-    )
-    .await;
-    assert_eq!(t["ok"], true, "{t}");
-    assert!(
-        t["data"]["nextRunAt"].as_u64().is_some(),
-        "daily has a next due: {t}"
-    );
-    let id = t["data"]["id"].as_str().unwrap().to_string();
-    let run = call(&r, "ctrl", "ctrl:run-now", json!({"id": id})).await;
-    // The decision layers (ADR 0106) plan it right away; nothing executes (slice 5).
-    assert_eq!(run["data"]["status"], "planned", "{run}");
-    let run_id = run["data"]["id"].as_str().unwrap().to_string();
+    let v = call(&r, "ctrl", "ctrl:do", json!({"text": "open youtube"})).await;
+    let v = &v["data"];
+    assert_eq!(v["status"], "done", "{v:#}");
+    assert_eq!(v["app"], "safari");
+    let run = v["runId"].as_str().unwrap().to_string();
+    let early = call(&r, "ctrl", "ctrl:run", json!({"runId": run, "at": 1})).await;
+    assert_eq!(early["data"]["status"], "running", "{early}");
 
-    // A new app over the same data dir (a relaunch).
-    let r = app(d.path(), true);
-    let tasks = call(&r, "ctrl", "ctrl:tasks", Value::Null).await;
-    assert_eq!(tasks["data"][0]["text"], "every day close all my tabs");
-    assert_eq!(tasks["data"][0]["runs"], 1);
-    let runs = call(&r, "ctrl", "ctrl:runs", json!({"taskId": id})).await;
-    assert_eq!(runs["data"][0]["id"], run_id.as_str());
-    let at1 = call(&r, "ctrl", "ctrl:run", json!({"runId": run_id, "at": 1})).await;
-    assert_eq!(at1["data"]["state"]["status"], "running", "{at1}");
-    assert_eq!(at1["data"]["events"][1]["kind"], "intent.pending");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode(&d.path().join("ctrl")), 0o700);
-        assert_eq!(mode(&d.path().join("ctrl/tasks.jsonl")), 0o600);
-    }
+    let again = app(d.path(), Some(None));
+    let runs = call(&again, "ctrl", "ctrl:runs", Value::Null).await;
+    assert_eq!(runs["data"][0]["runId"], run.as_str(), "{runs}");
+    assert_eq!(runs["data"][0]["status"], "done");
 }
 
-#[tokio::test]
-async fn an_unclear_task_asks_and_answers_resume_the_decision_layers_through_the_router() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_gated_press_waits_for_confirm_and_stop_answers_with_the_status() {
     let d = tempfile::tempdir().unwrap();
-    let r = app(d.path(), true);
-    let t = call(
+    let fake = Arc::new(FakeHelper::new(world()));
+    let r = app(d.path(), Some(Some(fake.clone())));
+    let v = call(&r, "ctrl", "ctrl:do", json!({"text": "press send in mail"})).await;
+    let v = &v["data"];
+    assert_eq!(v["status"], "needs-confirm", "{v:#}");
+    let run = v["runId"].as_str().unwrap();
+    let gate = v["confirm"]["gateId"].as_str().unwrap();
+    let denied = call(
         &r,
         "ctrl",
-        "ctrl:create-task",
-        json!({"text": "do the thing", "schedule": {"kind": "once", "at": null}}),
+        "ctrl:confirm",
+        json!({"runId": run, "gateId": gate, "answer": "deny"}),
     )
     .await;
-    let run = call(&r, "ctrl", "ctrl:run-now", json!({"id": t["data"]["id"]})).await;
-    assert_eq!(run["data"]["status"], "asking", "{run}");
-    let run_id = run["data"]["id"].clone();
-    let v = call(&r, "ctrl", "ctrl:run", json!({"runId": run_id})).await;
-    assert_eq!(v["ok"], true, "the response matches the contract: {v}");
-    let ask = &v["data"]["state"]["ask"];
-    assert_eq!(ask["node"], "choose_intent");
-    let a1 = call(
-        &r,
-        "ctrl",
-        "ctrl:answer",
-        json!({"runId": run_id, "decisionId": ask["decisionId"], "optionId": "intent.close_tabs"}),
-    )
-    .await;
-    assert_eq!(a1["data"]["run"]["status"], "asking", "{a1}");
-    let ask2 = a1["data"]["state"]["ask"].clone();
-    assert_eq!(ask2["node"], "choose_target");
-    let a2 = call(
-        &r,
-        "ctrl",
-        "ctrl:answer",
-        json!({"runId": run_id, "decisionId": ask2["decisionId"], "optionId": "scope.all_tabs"}),
-    )
-    .await;
-    assert_eq!(a2["data"]["run"]["status"], "planned", "{a2}");
-    assert_eq!(
-        a2["data"]["state"]["plan"]["steps"][1]["label"],
-        "your default browser"
-    );
-    // Answering again, or a run id that isn't one, is refused; other sub apps can't answer.
-    let again = call(
-        &r,
-        "ctrl",
-        "ctrl:answer",
-        json!({"runId": run_id, "decisionId": ask2["decisionId"], "optionId": "scope.all_tabs"}),
-    )
-    .await;
-    assert_eq!(again["error"]["code"], "E_VALIDATION", "{again}");
-    let other = call(
-        &r,
-        "talk",
-        "ctrl:answer",
-        json!({"runId": run_id, "decisionId": "d0", "optionId": null}),
-    )
-    .await;
-    assert_eq!(other["error"]["code"], "E_FORBIDDEN");
+    assert_eq!(denied["data"]["status"], "cancelled", "{denied}");
+    let v = call(&r, "ctrl", "ctrl:do", json!({"text": "press send in mail"})).await;
+    let run = v["data"]["runId"].as_str().unwrap();
+    let stop = call(&r, "ctrl", "ctrl:stop", json!({"runId": run})).await;
+    assert_eq!(stop["data"], json!({"runId": run, "status": "stopped"}), "{stop}");
 }
 
 #[tokio::test]
 async fn ctrl_channels_are_validated_gated_and_honest_when_missing() {
     let d = tempfile::tempdir().unwrap();
-    let r = app(d.path(), true);
-    let bad = call(
-        &r,
-        "ctrl",
-        "ctrl:create-task",
-        json!({"text": "x", "schedule": {"kind": "daily", "hour": 24, "minute": 0}}),
-    )
-    .await;
-    assert_eq!(bad["error"]["code"], "E_VALIDATION", "{bad}");
-    let empty = call(
-        &r,
-        "ctrl",
-        "ctrl:create-task",
-        json!({"text": "  ", "schedule": {"kind": "once", "at": null}}),
-    )
-    .await;
+    let r = app(d.path(), Some(None));
+    let empty = call(&r, "ctrl", "ctrl:do", json!({"text": 7})).await;
     assert_eq!(empty["error"]["code"], "E_VALIDATION", "{empty}");
     // Other sub apps don't hold ctrl's capabilities.
     assert_eq!(
-        call(&r, "talk", "ctrl:tasks", Value::Null).await["error"]["code"],
+        call(&r, "talk", "ctrl:runs", Value::Null).await["error"]["code"],
         "E_FORBIDDEN"
     );
     assert_eq!(
-        call(&r, "ctrl", "ctrl:run-now", json!({"id": "task-9"})).await["error"]["code"],
+        call(&r, "ctrl", "ctrl:run", json!({"runId": "run-9"})).await["error"]["code"],
         "E_NOT_FOUND"
     );
-    let none = app(d.path(), false);
-    let v = call(&none, "ctrl", "ctrl:tasks", Value::Null).await;
+    // No helper: a do is unavailable, not a silent no-op.
+    let v = call(&r, "ctrl", "ctrl:do", json!({"text": "open youtube"})).await;
     assert_eq!(v["error"]["code"], "E_UNAVAILABLE", "{v}");
-}
-
-/// Slice 5 (ADR 0108) through the router: with the ctrl helper connected (the in-memory fake speaking the real
-/// ctrl protocol), "close all my tabs" executes in the background, verifies, and every response validates against
-/// the generated contract; an irreversible task stops at needs-confirm with nothing acted.
-#[tokio::test]
-async fn with_a_helper_a_run_executes_verifies_and_holds_irreversible_plans_through_the_router() {
-    use qrtz_ctrl::helper::{FakeApp, FakeHelper, FakeWorld, HelperClient};
-    let d = tempfile::tempdir().unwrap();
-    let mut world = FakeWorld::typical(4);
-    world
-        .apps
-        .push(FakeApp::new("com.apple.TextEdit", "TextEdit", 400));
-    let fake = Arc::new(FakeHelper::new(world));
-    let shell = Arc::new(RecShell::default());
-    let svc = AppService::new(AppDeps {
-        info: AppInfo {
-            name: "qrtz".into(),
-            version: "0.1.0".into(),
-            platform: "linux".into(),
-            arch: "x64".into(),
-            shell: "tauri test".into(),
-        },
-        config: ConfigStore::open(d.path().join("config.json")).into(),
-        runtime: Arc::new(StubRuntime::default()),
-        storage: Arc::new(StubStorage),
-        talk: Arc::new(StubTalk),
-        shell: shell.clone(),
-        helper: None,
-        events: Events::new(),
-    });
-    svc.set_ctrl(Arc::new(
-        CtrlService::open(d.path().join("ctrl"), Box::new(SystemClock::default()))
-            .with_helper(Arc::new(HelperClient::new(Box::new(fake.clone())))),
-    ));
-    let r = Router::new(Shared(svc));
-    for (text, status) in [
-        ("every day close all my tabs", "done"),
-        ("every week quit textedit", "needs-confirm"),
-    ] {
-        let t = call(
-            &r,
-            "ctrl",
-            "ctrl:create-task",
-            json!({"text": text, "schedule": {"kind": "once", "at": null}}),
-        )
-        .await;
-        let id = t["data"]["id"].as_str().unwrap().to_string();
-        let run = call(&r, "ctrl", "ctrl:run-now", json!({"id": id})).await;
-        assert_eq!(run["ok"], true, "{run}");
-        assert_eq!(run["data"]["status"], status, "{run}");
-        let v = call(&r, "ctrl", "ctrl:run", json!({"runId": run["data"]["id"]})).await;
-        assert_eq!(v["ok"], true, "{v}");
-        assert_eq!(v["data"]["state"]["violations"], 0);
-    }
-    assert_eq!(fake.world().acted.len(), 1, "only the reversible task acted");
-    // ADR 0111: the waiting gate raised one notice; the confirm card's answer goes through the router.
-    let notices = shell.0.lock().unwrap().clone();
-    assert_eq!(notices.len(), 1, "{notices:?}");
-    let Notice::CtrlConfirm { task_id, run_id } = &notices[0] else {
-        panic!("{notices:?}")
-    };
-    let v = call(&r, "ctrl", "ctrl:run", json!({"runId": run_id})).await;
-    assert_eq!(v["data"]["state"]["confirm"]["gateId"], "g0", "{v}");
-    let other = call(
-        &r,
-        "echo",
-        "ctrl:confirm",
-        json!({"runId": run_id, "gateId": "g0", "answer": "approve"}),
-    )
-    .await;
-    assert_eq!(other["ok"], false, "another sub app can't answer: {other}");
-    let bad = call(
-        &r,
-        "ctrl",
-        "ctrl:confirm",
-        json!({"runId": run_id, "gateId": "g0", "answer": "maybe"}),
-    )
-    .await;
-    assert_eq!(bad["ok"], false, "{bad}");
-    let v = call(
-        &r,
-        "ctrl",
-        "ctrl:confirm",
-        json!({"runId": run_id, "gateId": "g0", "answer": "remember"}),
-    )
-    .await;
-    assert_eq!(v["ok"], true, "{v}");
-    assert_eq!(v["data"]["state"]["status"], "done", "{v}");
-    let tasks = call(&r, "ctrl", "ctrl:tasks", Value::Null).await;
-    let t = tasks["data"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|t| &t["id"] == task_id)
-        .unwrap()
-        .clone();
-    let approval = t["approvals"][0]["id"].as_str().unwrap().to_string();
-    let v = call(
-        &r,
-        "ctrl",
-        "ctrl:revoke-approval",
-        json!({"taskId": task_id, "approvalId": approval}),
-    )
-    .await;
-    assert_eq!(v["data"]["approvals"], json!([]), "{v}");
-    let w = fake.world();
-    assert_eq!(w.acted.len(), 2, "the approved quit acted once");
-    assert_eq!(w.frontmost_pid, 100, "the user's app stayed frontmost");
-    assert_eq!(
-        w.apps
-            .iter()
-            .find(|a| a.bundle_id == "com.apple.Safari")
-            .unwrap()
-            .tabs,
-        0
-    );
+    let none = app(d.path(), None);
+    let v = call(&none, "ctrl", "ctrl:runs", Value::Null).await;
+    assert_eq!(v["error"]["code"], "E_UNAVAILABLE", "{v}");
 }

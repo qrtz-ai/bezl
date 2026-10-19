@@ -1,0 +1,270 @@
+{
+  "bundleId": "com.apple.Notes",
+  "name": "Notes",
+  "running": false,
+  "start": "list",
+  "states": {
+    "list": {
+      "id": "e:20:0",
+      "role": "AXWindow",
+      "title": "Notes",
+      "sig": "s20-0-1887",
+      "children": [
+        {
+          "id": "e:20:1",
+          "role": "AXToolbar",
+          "title": "",
+          "sig": "s20-1-8615",
+          "children": [
+            {
+              "id": "e:20:2",
+              "role": "AXButton",
+              "title": "New Note",
+              "sig": "s20-2-6825",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:20:3",
+              "role": "AXButton",
+              "title": "Delete",
+              "sig": "s20-3-9136",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:20:4",
+              "role": "AXTextField",
+              "title": "Search",
+              "sig": "s20-4-4413",
+              "subrole": "AXSearchField",
+              "placeholder": "Search"
+            }
+          ]
+        },
+        {
+          "id": "e:20:5",
+          "role": "AXOutline",
+          "title": "Notes list",
+          "sig": "s20-5-6651",
+          "children": [
+            {
+              "id": "e:20:10",
+              "role": "AXRow",
+              "title": "Shopping ideas",
+              "sig": "s20-10-4991",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:20:11",
+              "role": "AXRow",
+              "title": "Trip plan",
+              "sig": "s20-11-6897",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:20:12",
+              "role": "AXRow",
+              "title": "Book list",
+              "sig": "s20-12-3196",
+              "actions": ["AXPress"]
+            }
+          ]
+        }
+      ]
+    },
+    "new": {
+      "id": "e:20:0",
+      "role": "AXWindow",
+      "title": "Notes",
+      "sig": "s20-0-1887",
+      "children": [
+        {
+          "id": "e:20:1",
+          "role": "AXToolbar",
+          "title": "",
+          "sig": "s20-1-8615",
+          "children": [
+            {
+              "id": "e:20:2",
+              "role": "AXButton",
+              "title": "New Note",
+              "sig": "s20-2-6825",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:20:3",
+              "role": "AXButton",
+              "title": "Delete",
+              "sig": "s20-3-9136",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:20:4",
+              "role": "AXTextField",
+              "title": "Search",
+              "sig": "s20-4-4413",
+              "subrole": "AXSearchField",
+              "placeholder": "Search"
+            }
+          ]
+        },
+        {
+          "id": "e:20:5",
+          "role": "AXOutline",
+          "title": "Notes list",
+          "sig": "s20-5-6651",
+          "children": [
+            {
+              "id": "e:20:10",
+              "role": "AXRow",
+              "title": "Shopping ideas",
+              "sig": "s20-10-4991",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:20:11",
+              "role": "AXRow",
+              "title": "Trip plan",
+              "sig": "s20-11-6897",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:20:12",
+              "role": "AXRow",
+              "title": "Book list",
+              "sig": "s20-12-3196",
+              "actions": ["AXPress"]
+            }
+          ]
+        },
+        {
+          "id": "e:20:6",
+          "role": "AXTextArea",
+          "title": "Note body",
+          "sig": "s20-6-1314",
+          "value": "",
+          "focused": true
+        }
+      ]
+    },
+    "typed": {
+      "id": "e:20:0",
+      "role": "AXWindow",
+      "title": "Notes",
+      "sig": "s20-0-1887",
+      "children": [
+        {
+          "id": "e:20:1",
+          "role": "AXToolbar",
+          "title": "",
+          "sig": "s20-1-8615",
+          "children": [
+            {
+              "id": "e:20:2",
+              "role": "AXButton",
+              "title": "New Note",
+              "sig": "s20-2-6825",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:20:3",
+              "role": "AXButton",
+              "title": "Delete",
+              "sig": "s20-3-9136",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:20:4",
+              "role": "AXTextField",
+              "title": "Search",
+              "sig": "s20-4-4413",
+              "subrole": "AXSearchField",
+              "placeholder": "Search"
+            }
+          ]
+        },
+        {
+          "id": "e:20:5",
+          "role": "AXOutline",
+          "title": "Notes list",
+          "sig": "s20-5-6651",
+          "children": [
+            {
+              "id": "e:20:10",
+              "role": "AXRow",
+              "title": "Shopping ideas",
+              "sig": "s20-10-4991",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:20:11",
+              "role": "AXRow",
+              "title": "Trip plan",
+              "sig": "s20-11-6897",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:20:12",
+              "role": "AXRow",
+              "title": "Book list",
+              "sig": "s20-12-3196",
+              "actions": ["AXPress"]
+            }
+          ]
+        },
+        {
+          "id": "e:20:6",
+          "role": "AXTextArea",
+          "title": "Note body",
+          "sig": "s20-6-1314",
+          "value": "{text}",
+          "focused": true
+        }
+      ]
+    }
+  },
+  "menu": [
+    {
+      "id": "m:20:1",
+      "path": ["File", "New Note"],
+      "combo": "cmd+n"
+    },
+    {
+      "id": "m:20:2",
+      "path": ["File", "New Folder"],
+      "combo": "cmd+shift+n"
+    },
+    {
+      "id": "m:20:3",
+      "path": ["Edit", "Find…"],
+      "combo": "cmd+f"
+    },
+    {
+      "id": "m:20:4",
+      "path": ["Notes", "Quit Notes"],
+      "combo": "cmd+q"
+    }
+  ],
+  "transitions": [
+    {
+      "on": "press:m:20:1",
+      "to": "new",
+      "focus": "e:20:6"
+    },
+    {
+      "on": "key:cmd+n",
+      "to": "new",
+      "focus": "e:20:6"
+    },
+    {
+      "on": "press:e:20:2",
+      "to": "new",
+      "focus": "e:20:6"
+    },
+    {
+      "from": "new",
+      "on": "set_value:e:20:6",
+      "to": "typed",
+      "focus": "e:20:6"
+    }
+  ]
+}

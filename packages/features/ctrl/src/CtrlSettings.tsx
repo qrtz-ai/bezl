@@ -2,8 +2,8 @@ import { Button, ModuleSettingsEmpty, Stack } from '@qrtz/ui';
 import { requestNavigate } from '@qrtz/core';
 
 /**
- * ADR 0146 M1.4: ctrl's own settings page, inside ctrl's view. ctrl keeps no settings yet (its tasks and schedules
- * are its data); the page is here so every module's settings live with the module. Switching it off and its
+ * ADR 0146 M1.4: ctrl's own settings page, inside ctrl's view. ctrl keeps no settings yet (its history
+ * is its data); the page is here so every module's settings live with the module. Switching it off and its
  * permissions are in its detail on the qrtz page.
  */
 export default function CtrlSettings() {

@@ -1,26 +1,27 @@
-//! The `ctrl:*` channels (slice 2) and the in-process scheduler ticker (slice 3, ADR 0105). Payloads arrive already
-//! validated against the IPC contract (`packages/core/src/ipc/contract.ts`); answers are the contract's shapes
-//! (camelCase). Nothing here executes a task yet: a due run (manual or scheduled) records `task.started` +
-//! `intent.pending`, then the decision layers (slice 4, ADR 0106) observe the app catalog and decide the intent
-//! (`decision.made` … `plan.produced`, or an ask the user answers through `ctrl:answer`). With a helper connected
-//! (slice 5, ADR 0108) the catalog comes from it (running apps, the real default browser) and the plan executes
-//! through the ctrl helper protocol (`exec::Driver`): routes, guard, verify, backtrack. Irreversible plans stop at
-//! the confirm gate (slice 6, ADR 0111): `needs-confirm` until `ctrl:confirm` approves (once, or remembered for the
-//! task), denies, or the gate expires on the scheduler's tick; `ctrl:revoke-approval` drops a remembered one.
-use crate::decide::{ask_options, run_chain, Goal, Heuristic, Scorer};
-use crate::exec::{Driver, HoldReason, Sink, VerifyOutcome};
-use crate::files::{plan_undo, run_undo, UndoSkip, UndoWhy};
-use crate::gate::{needs_confirm, ConfirmAnswer, ExpiredWhy, CONFIRM_TTL_MS};
-use crate::helper::{HelperApps, HelperClient};
-use crate::ladder::{FsOp, Route};
-use crate::layers::{label, AppSource, ScanApps};
-use crate::log::{fold, ActionStatus, CtrlState, DecisionState, Event, EventLog, TaskStatus};
+//! The `ctrl:*` channels of ctrl do (ADR 0214). Payloads arrive already validated against the IPC contract
+//! (`packages/core/src/ipc/contract.ts`); answers are the contract's shapes (camelCase).
+//!
+//! - `ctrl:do {text}`: record the command, start its run and drive the chain until it asks, waits for a confirm,
+//!   or ends. One run drives at a time; a new command cancels a run that was still waiting on Jared.
+//! - `ctrl:runs`, `ctrl:run {runId, at?}`: the history and one run's view (at any point of its log).
+//! - `ctrl:answer {runId, decisionId, optionId | null}`: Jared's pick for an ask (`null` cancels the run).
+//! - `ctrl:confirm {runId, gateId, answer}`: approve or deny a gated action (approve acts once, re-checked).
+//! - `ctrl:stop {runId}`: the stop button (the stop key is Esc, watched by the helper).
+//!
+//! The store lock is never held across a helper call: the run's log is loaded, driven in memory, then its new
+//! records are written. Readable labels (element titles, app names) live in memory only, per run.
+use crate::chain::resolve;
+use crate::decide::{ask_options, Heuristic, Node, Scorer};
+use crate::driver::{Driver, Step};
+use crate::gate::ConfirmAnswer;
+use crate::guard::StopReason;
+use crate::helper::HelperClient;
+use crate::log::{ActionStatus, CtrlState, Event, EventLog, TaskStatus};
 use crate::runner::Clock;
-use crate::schedule::{is_due, next_due, LocalZone, SystemLocalZone};
 use crate::store::{Store, StoreError};
-use crate::task::{Schedule, Task};
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,7 +50,7 @@ impl CtrlError {
 impl From<StoreError> for CtrlError {
     fn from(e: StoreError) -> Self {
         match e {
-            StoreError::NotFound => CtrlError::new(CtrlErrorCode::NotFound, "that task or run is gone"),
+            StoreError::NotFound => CtrlError::new(CtrlErrorCode::NotFound, "that run is gone"),
             StoreError::Invalid(t) => CtrlError::new(CtrlErrorCode::Validation, t.message()),
             StoreError::Damaged { file, line } => CtrlError::new(
                 CtrlErrorCode::Internal,
@@ -57,7 +58,7 @@ impl From<StoreError> for CtrlError {
             ),
             StoreError::Io(k) => CtrlError::new(
                 CtrlErrorCode::Internal,
-                format!("couldn't save ctrl's tasks ({k})"),
+                format!("couldn't save ctrl's history ({k})"),
             ),
         }
     }
@@ -84,315 +85,17 @@ impl Clock for SystemClock {
 pub struct CtrlService {
     /// `Err` = the store didn't open (damaged or unreadable): every channel answers that error, nothing writes.
     store: Mutex<Result<Store, StoreError>>,
-    clock: Box<dyn Clock + Send + Sync>,
-    zone: Box<dyn LocalZone>,
-    apps: Box<dyn AppSource>,
+    clock: Box<dyn Clock>,
     scorer: Box<dyn Scorer>,
-    /// The ctrl helper (slice 5). `None`: runs stop at `planned` (nothing executes).
+    /// The ctrl helper. `None` (or down): `ctrl:do` answers unavailable; history still reads.
     helper: Option<Arc<HelperClient>>,
-    /// Where file routes act (slice 7, ADR 0113): `~/Downloads` + `~/.Trash` on macOS, a temp dir in tests.
-    files: Option<crate::files::FileRoots>,
-    /// Gate preview item key → readable title (slice 6). Memory only: titles never reach a file.
-    labels: Mutex<BTreeMap<String, String>>,
-    /// Runs whose gate waits for the user; `None` until the first tick scanned the store.
-    waiting: Mutex<Option<BTreeSet<String>>>,
-    /// (task id, run id) of gates that started waiting, for the shell's non-activating notification.
+    /// run id → readable labels. Memory only.
+    labels: Mutex<BTreeMap<String, BTreeMap<String, String>>>,
+    /// The run being driven right now.
+    active: Mutex<Option<String>>,
+    stop: AtomicBool,
+    /// (do id, run id) of gates that started waiting, for the shell's non-activating notification.
     notices: Mutex<Vec<(String, String)>>,
-}
-
-/// Writes the driver's events to the run's file as they happen.
-struct StoreSink<'a>(&'a Store, u64, &'a dyn Clock, &'a CtrlService, &'a str);
-impl Sink for StoreSink<'_> {
-    fn labels(&mut self, labels: Vec<(String, String)>) {
-        self.3
-            .labels
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .extend(labels);
-    }
-    fn confirm_waiting(&mut self, _gate_id: &str) {
-        let run_id = self.4.to_string();
-        let task_id = self.0.run_meta(&run_id).map(|m| m.0.clone()).unwrap_or_default();
-        if let Some(w) = self.3.waiting.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
-            w.insert(run_id.clone());
-        }
-        self.3
-            .notices
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push((task_id, run_id));
-    }
-    fn push(&mut self, log: &mut EventLog, e: Event) -> Result<(), String> {
-        self.0
-            .append_run_record(log, self.2.mono_ns(), self.1, e)
-            .map_err(|e| format!("{e:?}"))
-    }
-    fn flush(&mut self, log: &EventLog, from: usize) -> Result<(), String> {
-        self.0.persist_tail(log, from).map_err(|e| format!("{e:?}"))
-    }
-}
-
-/// The status a run shows: its `task.finished`, else asking the user, else waiting for an intent, else planned
-/// (a plan and no action yet: the executor is slice 5), else running.
-pub fn run_status(s: &CtrlState) -> &'static str {
-    match s.task_status {
-        Some(TaskStatus::Done) => "done",
-        Some(TaskStatus::Failed) => "failed",
-        Some(TaskStatus::Cancelled) => "cancelled",
-        Some(TaskStatus::AskedOut) => "asked-out",
-        Some(TaskStatus::Deferred) => "deferred",
-        Some(TaskStatus::Expired) => "expired",
-        None if s.ask.is_some() => "asking",
-        None if needs_confirm(s) => "needs-confirm",
-        None if s.held == Some(HoldReason::Irreversible) => "needs-confirm",
-        None if s.intent_pending => "pending-intent",
-        None if s.plan.is_some() && s.actions.is_empty() => "planned",
-        None => "running",
-    }
-}
-
-fn action_status(a: ActionStatus) -> &'static str {
-    match a {
-        ActionStatus::Requested => "requested",
-        ActionStatus::Executing => "executing",
-        ActionStatus::Deferred => "deferred",
-        ActionStatus::Asked => "asked",
-        ActionStatus::Refused => "refused",
-        ActionStatus::Done => "done",
-        ActionStatus::Failed => "failed",
-    }
-}
-
-fn event_action(e: &Event) -> Option<&str> {
-    match e {
-        Event::ActionRequested { action_id, .. }
-        | Event::ActionDecided { action_id, .. }
-        | Event::GuardSnapshot { action_id, .. }
-        | Event::ActionExecuted { action_id, .. }
-        | Event::GuardResult { action_id, .. }
-        | Event::GuardRestored { action_id, .. } => Some(action_id),
-        Event::TaskStarted { .. }
-        | Event::IntentPending { .. }
-        | Event::TaskFinished { .. }
-        | Event::ObsApps { .. }
-        | Event::DecisionMade { .. }
-        | Event::DecisionAnswered { .. }
-        | Event::Backtrack { .. }
-        | Event::PlanProduced { .. }
-        | Event::ObsSnapshot { .. }
-        | Event::ExecHeld { .. }
-        | Event::ConfirmRequested { .. }
-        | Event::ConfirmResolved { .. }
-        | Event::ConfirmReverified { .. } => None,
-        Event::ObsDiff { action_id, .. }
-        | Event::VerifyResult { action_id, .. }
-        | Event::UndoRefused { action_id, .. }
-        | Event::UndoDone { action_id, .. } => Some(action_id),
-    }
-}
-
-/// The run's finished file batch (ADR 0117): the last `files` action that executed ok, in the first `n` events.
-fn done_batch(log: &EventLog, n: usize) -> Option<(String, FsOp)> {
-    let st = fold(log.events().take(n));
-    log.events()
-        .take(n)
-        .filter_map(|e| match e {
-            Event::ActionRequested { action_id, routes } => routes.iter().find_map(|r| match r {
-                // Emptying the Trash (ADR 0122) has nothing to put back.
-                Route::Files(op @ FsOp::Batch { ops })
-                    if !ops.iter().any(|o| matches!(o, FsOp::Delete { .. })) =>
-                {
-                    Some((action_id.clone(), op.clone()))
-                }
-                _ => None,
-            }),
-            _ => None,
-        })
-        .filter(|(id, _)| st.actions.get(id) == Some(&ActionStatus::Done))
-        .last()
-}
-
-fn why_name(w: UndoWhy) -> &'static str {
-    match w {
-        UndoWhy::Moved => "moved",
-        UndoWhy::Occupied => "occupied",
-    }
-}
-
-fn skipped_json(skipped: &[UndoSkip], labels: &BTreeMap<String, String>) -> Vec<Value> {
-    skipped
-        .iter()
-        .map(|k| {
-            json!({
-                "key": k.file,
-                "label": labels.get(&k.file).map(|l| l.to_lowercase()).unwrap_or_else(|| "a file ctrl moved".into()),
-                "why": why_name(k.why),
-            })
-        })
-        .collect()
-}
-
-fn event_node(e: &Event) -> Option<&'static str> {
-    match e {
-        Event::DecisionMade { node, .. } => Some(node.as_str()),
-        _ => None,
-    }
-}
-
-fn pct(bp: u32) -> f64 {
-    f64::from(bp) / 10000.0
-}
-
-fn option_json(d: &DecisionState, i: usize, goal: Option<&Goal>) -> Value {
-    let o = &d.options[i];
-    json!({
-        "id": o.id,
-        "label": label(o, goal),
-        "p": pct(d.p_bp[i]),
-        "irreversible": o.irreversible,
-        "refusedInBackground": o.ladder.is_some(),
-    })
-}
-
-fn decision_json(d: &DecisionState, goal: Option<&Goal>) -> Value {
-    let outcome = match d.outcome {
-        crate::decide::Outcome::Act => "act",
-        crate::decide::Outcome::Tentative => "tentative",
-        crate::decide::Outcome::Ask => "ask",
-    };
-    let chosen = d.options.iter().find(|o| o.id == d.chosen);
-    json!({
-        "id": d.id,
-        "node": d.node.as_str(),
-        "outcome": outcome,
-        "answered": d.answered,
-        "chosen": d.chosen,
-        "chosenLabel": chosen.map_or_else(|| d.chosen.clone(), |o| label(o, goal)),
-        "p": pct(d.p_chosen_bp),
-        "model": format!("{} {}", d.model.id, d.model.version),
-        "options": (0..d.options.len()).map(|i| option_json(d, i, goal)).collect::<Vec<_>>(),
-    })
-}
-
-fn event_kind(e: &Event) -> String {
-    serde_json::to_value(e)
-        .ok()
-        .and_then(|v| v["kind"].as_str().map(str::to_string))
-        .unwrap_or_default()
-}
-
-fn chosen_label(s: &CtrlState, node: crate::decide::Node, goal: Option<&Goal>) -> Option<String> {
-    let d = s.decisions.iter().rev().find(|d| d.node == node)?;
-    d.options
-        .iter()
-        .find(|o| o.id == d.chosen)
-        .map(|o| label(o, goal))
-}
-
-fn answer_name(a: &ConfirmAnswer) -> &'static str {
-    match a {
-        ConfirmAnswer::Approve => "approved",
-        ConfirmAnswer::Deny => "denied",
-        ConfirmAnswer::ApproveRemember { .. } => "remembered",
-        ConfirmAnswer::Standing { .. } => "standing",
-        ConfirmAnswer::Expired { .. } => "expired",
-    }
-}
-
-/// The confirm card's view: what will happen, item by item (titles from memory, else `window 2`).
-fn confirm_json(s: &CtrlState, goal: Option<&Goal>, labels: &BTreeMap<String, String>) -> Value {
-    let Some(g) = s.confirm.as_ref() else {
-        return Value::Null;
-    };
-    use crate::decide::Node;
-    let kind = |k: crate::gate::ItemKind| match k {
-        crate::gate::ItemKind::Window => "window",
-        crate::gate::ItemKind::Tab => "tab",
-        crate::gate::ItemKind::File => "file",
-        crate::gate::ItemKind::App => "app",
-        crate::gate::ItemKind::Action => "action",
-    };
-    let action = chosen_label(s, Node::ChooseIntent, goal)
-        .unwrap_or_else(|| "do something that can't be undone".into());
-    let items: Vec<Value> = g
-        .preview
-        .items
-        .iter()
-        .enumerate()
-        .map(|(i, it)| {
-            let fallback = match it.kind {
-                crate::gate::ItemKind::Action => action.clone(),
-                k => format!("{} {}", kind(k), i + 1),
-            };
-            json!({
-                "key": it.key,
-                "kind": kind(it.kind),
-                "label": labels.get(&it.key).map_or(fallback, |t| t.to_lowercase()),
-                "unsaved": it.unsaved,
-            })
-        })
-        .collect();
-    json!({
-        "gateId": g.id,
-        "action": action,
-        "app": chosen_label(s, Node::ChooseApp, goal),
-        "move": chosen_label(s, Node::ChooseMove, goal),
-        "items": items,
-        "complete": g.preview.complete,
-        "rules": g.rules,
-        "answer": g.answer.as_ref().map(answer_name),
-        "reverified": g.reverified,
-        "used": g.used,
-    })
-}
-
-fn state_json(s: &CtrlState, goal: Option<&Goal>) -> Value {
-    let ask = s
-        .ask
-        .as_ref()
-        .and_then(|id| s.decisions.iter().find(|d| &d.id == id))
-        .map(|d| {
-            json!({
-                "decisionId": d.id,
-                "node": d.node.as_str(),
-                "options": ask_options(d).into_iter().map(|i| option_json(d, i, goal)).collect::<Vec<_>>(),
-            })
-        });
-    let plan = s.plan.as_ref().map(|p| {
-        json!({
-            "irreversible": p.irreversible,
-            "steps": p.steps.iter().map(|st| {
-                let o = s.decisions.iter().filter(|d| d.node == st.node).flat_map(|d| d.options.iter()).find(|o| o.id == st.option);
-                json!({"node": st.node.as_str(), "option": st.option, "label": o.map_or_else(|| st.option.clone(), |o| label(o, goal))})
-            }).collect::<Vec<_>>(),
-        })
-    });
-    json!({
-        "decisions": s.decisions.iter().map(|d| decision_json(d, goal)).collect::<Vec<_>>(),
-        "plan": plan,
-        "ask": ask,
-        "actions": s.actions.iter().map(|(id, st)| json!({"id": id, "status": action_status(*st)})).collect::<Vec<_>>(),
-        "violations": s.violations,
-        "inconclusive": s.inconclusive,
-        "quarantined": s.quarantined.iter().map(|(app, rung)| json!({"app": app, "rung": rung})).collect::<Vec<_>>(),
-        "status": run_status(s),
-        "confirm": Value::Null,
-        "undo": Value::Null,
-        "held": s.held.map(|h| match h {
-            HoldReason::Irreversible => "irreversible",
-            HoldReason::FilesNotYet => "files-not-yet",
-            HoldReason::NoRoute => "no-route",
-            HoldReason::UnknownApp => "unknown-app",
-            HoldReason::FolderNotYet => "folder-not-yet",
-            HoldReason::FocusNoShortcut => "focus-no-shortcut",
-            HoldReason::AutomationDenied => "automation-denied",
-        }),
-        "verified": s.verified.iter().map(|(id, v)| json!({"actionId": id, "outcome": match v {
-            VerifyOutcome::Passed => "passed",
-            VerifyOutcome::Failed => "failed",
-            VerifyOutcome::Unverifiable => "unverifiable",
-        }})).collect::<Vec<_>>(),
-    })
 }
 
 fn str_field<'a>(p: &'a Value, k: &str) -> Result<&'a str, CtrlError> {
@@ -400,35 +103,162 @@ fn str_field<'a>(p: &'a Value, k: &str) -> Result<&'a str, CtrlError> {
         .ok_or_else(|| CtrlError::new(CtrlErrorCode::Validation, format!("{k} is required")))
 }
 
-impl CtrlService {
-    pub fn open(dir: impl Into<std::path::PathBuf>, clock: Box<dyn Clock + Send + Sync>) -> Self {
-        Self::open_with_zone(dir, clock, Box::new(SystemLocalZone))
+/// What a run shows.
+pub fn run_status(s: &CtrlState) -> &'static str {
+    match s.status {
+        Some(TaskStatus::Done) => "done",
+        Some(TaskStatus::Failed) => "failed",
+        Some(TaskStatus::Cancelled) => "cancelled",
+        Some(TaskStatus::AskedOut) => "asked-out",
+        Some(TaskStatus::Stopped) => "stopped",
+        Some(TaskStatus::OutOfSteps) => "out-of-steps",
+        None if s.ask.is_some() => "asking",
+        None if s.confirm.as_ref().is_some_and(|g| g.answer.is_none()) => "needs-confirm",
+        None => "running",
     }
+}
 
-    pub fn open_with_zone(
-        dir: impl Into<std::path::PathBuf>,
-        clock: Box<dyn Clock + Send + Sync>,
-        zone: Box<dyn LocalZone>,
-    ) -> Self {
+fn stop_str(r: StopReason) -> &'static str {
+    match r {
+        StopReason::StopKey => "stop-key",
+        StopReason::UserInput => "user-input",
+        StopReason::StopButton => "stop-button",
+        StopReason::NoWatcher => "no-watcher",
+    }
+}
+
+fn node_str(n: Node) -> &'static str {
+    match n {
+        Node::ChooseApp => "choose-app",
+        Node::ChooseMove => "choose-move",
+        Node::ChooseElement => "choose-element",
+        Node::ChooseText => "choose-text",
+        Node::Verify => "verify",
+    }
+}
+
+fn question(n: Node) -> &'static str {
+    match n {
+        Node::ChooseApp => "which app should do it?",
+        Node::ChooseMove => "what should ctrl do next?",
+        Node::ChooseElement => "which one?",
+        Node::ChooseText => "what should ctrl type?",
+        Node::Verify => "is it done?",
+    }
+}
+
+/// A readable label for an option (lowercase): from the run's label cache and the goal, never from the log.
+pub fn option_label(o: &crate::decide::Opt, labels: &BTreeMap<String, String>, goal: &str) -> String {
+    let id = o.id.as_str();
+    let l = |k: &str| labels.get(k).map(|s| s.to_lowercase());
+    let role = || {
+        o.role
+            .clone()
+            .unwrap_or_else(|| "element".into())
+            .replace('_', " ")
+    };
+    let text = || {
+        o.label_ref
+            .as_deref()
+            .and_then(|r| resolve(r, goal))
+            .unwrap_or_default()
+    };
+    if id == "none" {
+        return "none of these".into();
+    }
+    if let Some(a) = id.strip_prefix("app.") {
+        return format!("open {}", l(a).unwrap_or_else(|| a.to_lowercase()));
+    }
+    if let Some(h) = id.strip_prefix("menu.") {
+        return format!("{} (menu)", l(h).unwrap_or_else(|| "a menu item".into()));
+    }
+    if let Some(c) = id.strip_prefix("key.") {
+        let named = crate::act::BUILTIN_SHORTCUTS.iter().find(|(k, _, _)| *k == c);
+        return match named {
+            Some((_, n, _)) => format!("{n} ({c})"),
+            None => format!("press {c}"),
+        };
+    }
+    if id.starts_with("url.") {
+        return format!("open {}", text());
+    }
+    if let Some(h) = id.strip_prefix("branch.") {
+        return format!("look in {}", l(h).unwrap_or_else(role));
+    }
+    if let Some(g) = id.strip_prefix("group.") {
+        let (r, p) = g.rsplit_once('~').unwrap_or((g, "0"));
+        let page: u32 = p.parse().unwrap_or(0);
+        return format!("{}s, page {}", r.replace('_', " "), page + 1);
+    }
+    if let Some(rest) = id.strip_prefix("ax.") {
+        let (h, act) = rest.rsplit_once('.').unwrap_or((rest, "press"));
+        let what = l(h).unwrap_or_else(role);
+        return match act {
+            "focus" => format!("click into {what}"),
+            "show_menu" => format!("open the menu of {what}"),
+            "scroll_down" => format!("scroll down {what}"),
+            "scroll_up" => format!("scroll up {what}"),
+            a => format!("{a} {what}"),
+        };
+    }
+    if id.starts_with("text.") {
+        let go = if id.ends_with(".go") {
+            " and press return"
+        } else {
+            ""
+        };
+        return format!("type “{}”{go}", text());
+    }
+    match id {
+        "verify.done" => "it's done".into(),
+        "verify.continue" => "keep going".into(),
+        "verify.failed" => "that didn't work".into(),
+        _ => id.into(),
+    }
+}
+
+fn action_label(a: &crate::act::Action, labels: &BTreeMap<String, String>, goal: &str) -> String {
+    use crate::act::Action as A;
+    let l = |k: &str| {
+        labels
+            .get(k)
+            .map(|s| s.to_lowercase())
+            .unwrap_or_else(|| "an element".into())
+    };
+    match a {
+        A::OpenApp { app } => format!(
+            "open {}",
+            labels.get(app).map_or(app.to_lowercase(), |s| s.to_lowercase())
+        ),
+        A::Press { handle } => format!("press {}", l(handle)),
+        A::SetValue { text_ref, submit, .. } => format!(
+            "type “{}”{}",
+            resolve(text_ref, goal).unwrap_or_default(),
+            if *submit { " and press return" } else { "" }
+        ),
+        A::Increment { handle } => format!("increase {}", l(handle)),
+        A::Decrement { handle } => format!("decrease {}", l(handle)),
+        A::ShowMenu { handle } => format!("open the menu of {}", l(handle)),
+        A::Focus { handle } => format!("click into {}", l(handle)),
+        A::Scroll { handle, .. } => format!("scroll {}", l(handle)),
+        A::KeyCombo { combo, .. } => format!("press {combo}"),
+        A::OpenUrl { url_ref, .. } => format!("open {}", resolve(url_ref, goal).unwrap_or_default()),
+    }
+}
+
+impl CtrlService {
+    /// Open ctrl do's store under `dir` (`<app data>/ctrl`; the store itself is `dir/do`).
+    pub fn open(dir: impl Into<std::path::PathBuf>, clock: Box<dyn Clock>) -> Self {
         CtrlService {
-            store: Mutex::new(Store::open(dir)),
+            store: Mutex::new(Store::open(dir.into().join("do"))),
             clock,
-            zone,
-            apps: Box::new(ScanApps::mac_default()),
             scorer: Box::new(Heuristic),
             helper: None,
-            files: crate::files::FileRoots::default_for_os(),
             labels: Mutex::new(BTreeMap::new()),
-            waiting: Mutex::new(None),
+            active: Mutex::new(None),
+            stop: AtomicBool::new(false),
             notices: Mutex::new(Vec::new()),
         }
-    }
-
-    /// Connect the ctrl helper: the app catalog comes from it and plans execute through it (slice 5).
-    /// Act on these folders for file routes (slice 7).
-    pub fn with_files(mut self, roots: crate::files::FileRoots) -> Self {
-        self.files = Some(roots);
-        self
     }
 
     pub fn with_helper(mut self, helper: Arc<HelperClient>) -> Self {
@@ -436,566 +266,371 @@ impl CtrlService {
         self
     }
 
-    /// The connected helper if it is up right now (slice 5b): a restarting helper process means the run
-    /// behaves as without one (stops at `planned`) instead of failing every call.
-    fn live_helper(&self) -> Option<&Arc<HelperClient>> {
-        self.helper.as_ref().filter(|h| h.is_up())
-    }
-
-    /// Where the decision layers get the app catalog (default: the application folders).
-    pub fn with_apps(mut self, apps: Box<dyn AppSource>) -> Self {
-        self.apps = apps;
-        self
-    }
-
-    /// The decision layers' scorer (default: the heuristic layer; see `laya::select_scorer`).
+    /// The chain's scorer (default: the heuristic layer; see `laya::select_scorer`).
     pub fn with_scorer(mut self, scorer: Box<dyn Scorer>) -> Self {
         self.scorer = scorer;
         self
     }
 
-    fn last_run_at(store: &Store, t: &Task) -> Option<u64> {
-        t.runs.last().and_then(|r| store.run_meta(r)).map(|m| m.1)
+    fn live_helper(&self) -> Option<Arc<HelperClient>> {
+        self.helper.clone().filter(|h| h.is_up())
     }
 
-    fn run_json(store: &Store, log: &EventLog) -> Value {
-        let s = log.state();
-        let (task_id, at) = store.run_meta(log.run_id()).cloned().unwrap_or_default();
-        json!({
-            "id": log.run_id(),
-            "taskId": task_id,
-            "at": at,
-            "status": run_status(&s),
-            "events": log.records().len(),
-            "violations": s.violations,
-        })
-    }
-
-    fn task_json(&self, store: &Store, t: &Task) -> Value {
-        let last = Self::last_run_at(store, t);
-        let next = if t.paused {
-            None
-        } else {
-            next_due(&t.schedule, t.created_at, last, self.zone.as_ref())
-        };
-        json!({
-            "id": t.id,
-            "text": t.text,
-            "schedule": t.schedule,
-            "paused": t.paused,
-            "createdAt": t.created_at,
-            "runs": t.runs.len(),
-            "lastRunAt": last,
-            "nextRunAt": next,
-            "approvals": t.approvals.iter().map(|a| json!({
-                "id": a.id,
-                "intent": a.scope.intent,
-                "move": a.scope.mv,
-                "app": a.scope.app,
-                "items": a.scope.items,
-                "unsaved": a.scope.unsaved,
-                "grantedAt": a.granted_at,
-            })).collect::<Vec<_>>(),
-        })
-    }
-
-    /// Record a run the same way for `ctrl:run-now` and a scheduled fire: `run.recorded` + `task.started` +
-    /// `intent.pending`, then `obs.apps` and the decision chain (ADR 0106).
-    fn record_pending_run(&self, store: &mut Store, now: u64, task_id: &str) -> Result<EventLog, CtrlError> {
-        // A newer run replaces a gate still waiting from an older run of the same task (it never acts later).
-        if let Some(prev) = store.task(task_id)?.runs.last().cloned() {
-            self.expire_gate(store, &prev, now, ExpiredWhy::Superseded)?;
-        }
-        let mono = self.clock.mono_ns();
-        let id = task_id.to_string();
-        let mut log = store.start_run(
-            now,
-            task_id,
-            &[
-                (mono, Event::TaskStarted { task_id: id.clone() }),
-                (mono, Event::IntentPending { task_id: id.clone() }),
-            ],
-        )?;
-        let apps = match self.live_helper() {
-            Some(h) => HelperApps(h).catalog().observe(),
-            None => self.apps.catalog().observe(),
-        };
-        store.append_run_record(&mut log, self.clock.mono_ns(), now, Event::ObsApps { apps })?;
-        let text = store.task(task_id)?.text.clone();
-        self.continue_chain(store, &mut log, now, task_id, &text)?;
-        Ok(log)
-    }
-
-    /// Run the chain from the log's state and append what it decides.
-    fn continue_chain(
-        &self,
-        store: &Store,
-        log: &mut EventLog,
-        now: u64,
-        task_id: &str,
-        text: &str,
-    ) -> Result<(), CtrlError> {
-        let goal = Goal { task_id, text };
-        if let Some(h) = self.live_helper() {
-            let standing = store
-                .task(task_id)
-                .map(|t| t.approvals.clone())
-                .unwrap_or_default();
-            let driver = Driver {
-                helper: h,
-                scorer: self.scorer.as_ref(),
-                clock: self.clock.as_ref(),
-                standing: &standing,
-                files: self.files.as_ref(),
-            };
-            let run_id = log.run_id().to_string();
-            let mut sink = StoreSink(store, now, self.clock.as_ref(), self, &run_id);
-            return driver.drive(&goal, log, &mut sink).map_err(|e| {
-                CtrlError::new(CtrlErrorCode::Internal, format!("couldn't save ctrl's run ({e})"))
-            });
-        }
-        for e in run_chain(&goal, &log.state(), self.scorer.as_ref(), self.clock.as_ref()) {
-            store.append_run_record(log, self.clock.mono_ns(), now, e)?;
-        }
-        Ok(())
-    }
-
-    /// End a run whose gate still waits (`confirm.resolved {expired}` + `task.finished {expired}`). Nothing acts.
-    fn expire_gate(&self, store: &Store, run_id: &str, now: u64, why: ExpiredWhy) -> Result<bool, CtrlError> {
-        let mut log = store.run(run_id)?;
-        let s = log.state();
-        let (Some(g), true) = (s.confirm.as_ref(), needs_confirm(&s)) else {
-            return Ok(false);
-        };
-        let task_id = store.run_meta(run_id).map(|m| m.0.clone()).unwrap_or_default();
-        let mono = self.clock.mono_ns();
-        store.append_run_record(
-            &mut log,
-            mono,
-            now,
-            Event::ConfirmResolved {
-                gate_id: g.id.clone(),
-                answer: ConfirmAnswer::Expired { why },
-            },
-        )?;
-        store.append_run_record(
-            &mut log,
-            mono,
-            now,
-            Event::TaskFinished {
-                task_id,
-                status: TaskStatus::Expired,
-            },
-        )?;
-        self.unwait(run_id);
-        Ok(true)
-    }
-
-    fn unwait(&self, run_id: &str) {
-        if let Some(w) = self.waiting.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
-            w.remove(run_id);
-        }
-    }
-
-    /// Gates past [`CONFIRM_TTL_MS`] expire. Returns the task ids whose run changed.
-    fn expire_due(&self, store: &Store, now: u64) -> Result<Vec<String>, CtrlError> {
-        let runs: Vec<String> = {
-            let mut w = self.waiting.lock().unwrap_or_else(|e| e.into_inner());
-            if w.is_none() {
-                // First tick: find the runs that were waiting when the app last quit.
-                let mut set = BTreeSet::new();
-                for t in store.tasks() {
-                    if let Some(r) = t.runs.last() {
-                        if store.run(r).is_ok_and(|l| needs_confirm(&l.state())) {
-                            set.insert(r.clone());
-                        }
-                    }
-                }
-                *w = Some(set);
-            }
-            w.as_ref()
-                .map(|s| s.iter().cloned().collect())
-                .unwrap_or_default()
-        };
-        let mut changed = Vec::new();
-        for r in runs {
-            let Ok(log) = store.run(&r) else {
-                self.unwait(&r);
-                continue;
-            };
-            let asked_at = log
-                .records()
-                .iter()
-                .rev()
-                .find(|x| matches!(x.event, Event::ConfirmRequested { .. }))
-                .map_or(0, |x| x.t_wall_ms);
-            if !needs_confirm(&log.state()) {
-                self.unwait(&r);
-            } else if now.saturating_sub(asked_at) >= CONFIRM_TTL_MS
-                && self.expire_gate(store, &r, now, ExpiredWhy::Timeout)?
-            {
-                changed.extend(store.run_meta(&r).map(|m| m.0.clone()));
-            }
-        }
-        Ok(changed)
-    }
-
-    /// (task id, run id) of the gates that started waiting since the last call (the shell raises a notification
-    /// that doesn't activate qrtz; the answer happens in the ctrl view).
+    /// (do id, run id) of the gates that started waiting since the last call.
     pub fn take_confirm_notices(&self) -> Vec<(String, String)> {
         std::mem::take(&mut *self.notices.lock().unwrap_or_else(|e| e.into_inner()))
     }
 
-    /// The run's view (`ctrl:run`): events, and the state after `at` with labels resolved from the task text.
-    fn run_view(&self, store: &Store, log: &EventLog, at: Option<u64>) -> Value {
+    fn with_store<R>(&self, f: impl FnOnce(&mut Store) -> Result<R, CtrlError>) -> Result<R, CtrlError> {
+        let mut g = self.store.lock().unwrap_or_else(|e| e.into_inner());
+        let s = g.as_mut().map_err(|e| CtrlError::from(e.clone()))?;
+        f(s)
+    }
+
+    fn load(&self, run_id: &str) -> Result<(EventLog, String, String), CtrlError> {
+        self.with_store(|s| {
+            let log = s.run(run_id)?;
+            let do_id = s.run_meta(run_id).map(|m| m.0.clone()).unwrap_or_default();
+            let text = s.do_entry(&do_id)?.text.clone();
+            Ok((log, do_id, text))
+        })
+    }
+
+    fn append(&self, log: &mut EventLog, e: Event) -> Result<(), CtrlError> {
+        let (m, w) = (self.clock.mono_ns(), self.clock.wall_ms());
+        self.with_store(|s| s.append_run_record(log, m, w, e).map_err(CtrlError::from))
+    }
+
+    /// Drive a run (outside the store lock) and write what it appended.
+    fn drive(&self, log: &mut EventLog, do_id: &str, goal: &str) -> Result<(), CtrlError> {
+        let Some(helper) = self.live_helper() else {
+            return Err(CtrlError::new(
+                CtrlErrorCode::Unavailable,
+                "ctrl's helper isn't running",
+            ));
+        };
+        {
+            let mut a = self.active.lock().unwrap_or_else(|e| e.into_inner());
+            if a.is_some() {
+                return Err(CtrlError::new(
+                    CtrlErrorCode::Validation,
+                    "ctrl is already doing something",
+                ));
+            }
+            *a = Some(log.run_id().to_string());
+        }
+        self.stop.store(false, Ordering::SeqCst);
+        let from = log.records().len();
+        let mut labels = self
+            .labels
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(log.run_id())
+            .unwrap_or_default();
+        let step = Driver {
+            log,
+            helper: &helper,
+            scorer: self.scorer.as_ref(),
+            clock: self.clock.as_ref(),
+            goal,
+            labels: &mut labels,
+            stop: &self.stop,
+        }
+        .drive();
+        self.labels
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(log.run_id().to_string(), labels);
+        *self.active.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        if step == Step::Confirming {
+            self.notices
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push((do_id.to_string(), log.run_id().to_string()));
+        }
+        self.with_store(|s| s.persist_tail(log, from).map_err(CtrlError::from))
+    }
+
+    /// The run's view (`ctrl:run`): the state after `at` records, with labels from memory and the goal.
+    fn run_view(&self, log: &EventLog, do_id: &str, text: &str, at: Option<u64>) -> Value {
         let total = log.records().len();
         let at = at.map_or(total, |a| (a as usize).min(total));
-        let task_id = store
-            .run_meta(log.run_id())
-            .map(|m| m.0.clone())
-            .unwrap_or_default();
-        let text = store.task(&task_id).ok().map(|t| t.text.clone());
-        let goal = text.as_deref().map(|text| Goal {
-            task_id: &task_id,
-            text,
+        let s = log.state_at(at);
+        let all = self.labels.lock().unwrap_or_else(|e| e.into_inner());
+        let empty = BTreeMap::new();
+        let labels = all.get(log.run_id()).unwrap_or(&empty);
+        let decisions: Vec<Value> = s
+            .decisions
+            .iter()
+            .map(|d| {
+                let chosen = d.options.iter().find(|o| o.id == d.chosen);
+                json!({
+                    "id": d.id,
+                    "node": node_str(d.node),
+                    "question": question(d.node),
+                    "chosen": d.chosen,
+                    "chosenLabel": chosen.map(|o| option_label(o, labels, text)).unwrap_or_default(),
+                    "p": d.p_chosen_bp as f64 / 10_000.0,
+                    "outcome": format!("{:?}", d.outcome).to_lowercase(),
+                    "answered": d.answered,
+                    "backtracks": d.backtracks,
+                    "model": d.model.to_string(),
+                    "options": d.options.len(),
+                })
+            })
+            .collect();
+        let ask = s
+            .ask
+            .as_ref()
+            .and_then(|id| s.decisions.iter().find(|d| &d.id == id))
+            .map(|d| {
+                json!({
+                    "decisionId": d.id,
+                    "node": node_str(d.node),
+                    "question": question(d.node),
+                    "options": ask_options(d).into_iter().map(|i| json!({
+                        "id": d.options[i].id,
+                        "label": option_label(&d.options[i], labels, text),
+                        "p": d.p_bp[i] as f64 / 10_000.0,
+                        "gated": d.options[i].gated,
+                    })).collect::<Vec<_>>(),
+                })
+            });
+        let confirm = s.confirm.as_ref().filter(|g| g.answer.is_none()).map(|g| {
+            let action = match &s.phase {
+                crate::log::Phase::Act { action } => action_label(action, labels, text),
+                _ => String::new(),
+            };
+            json!({
+                "gateId": g.id,
+                "rules": g.rules,
+                "action": action,
+                "app": labels.get(&g.binding.app).map_or(g.binding.app.to_lowercase(), |l| l.to_lowercase()),
+            })
         });
+        let actions: Vec<Value> = s
+            .actions
+            .iter()
+            .map(|a| {
+                json!({
+                    "id": a.id,
+                    "kind": a.action.kind(),
+                    "label": action_label(&a.action, labels, text),
+                    "status": match a.status {
+                        ActionStatus::Requested => "requested",
+                        ActionStatus::Refused => "refused",
+                        ActionStatus::Done => "done",
+                        ActionStatus::Failed => "failed",
+                    },
+                    "err": a.err,
+                })
+            })
+            .collect();
+        let started = log.records().first().map_or(0, |r| r.t_wall_ms);
+        // The timeline: kinds only (`decision.made`, `action.executed`), never content.
         let events: Vec<Value> = log
             .records()
             .iter()
             .map(|r| {
-                json!({
-                    "seq": r.seq,
-                    "kind": event_kind(&r.event),
-                    "at": r.t_wall_ms,
-                    "actionId": event_action(&r.event),
-                    "node": event_node(&r.event),
-                })
+                let kind = serde_json::to_value(&r.event)
+                    .ok()
+                    .and_then(|v| v["kind"].as_str().map(str::to_string))
+                    .unwrap_or_default();
+                json!({ "seq": r.seq, "kind": kind })
             })
             .collect();
-        let st = fold(log.events().take(at));
-        let mut state = state_json(&st, goal.as_ref());
-        let labels = self.labels.lock().unwrap_or_else(|e| e.into_inner());
-        state["confirm"] = confirm_json(&st, goal.as_ref(), &labels);
-        state["undo"] = self.undo_json(log, &st, at, &labels);
         json!({
-            "run": Self::run_json(store, log),
-            "events": events,
+            "runId": log.run_id(),
+            "doId": do_id,
+            "text": text,
+            "status": run_status(&s),
+            "stop": s.stop.map(stop_str),
+            "app": s.app.as_ref().map(|a| labels.get(a).map_or(a.to_lowercase(), |l| l.to_lowercase())),
+            "startedAt": started,
             "at": at,
-            "state": state,
+            "total": total,
+            "events": events,
+            "decisions": decisions,
+            "actions": actions,
+            "ask": ask,
+            "confirm": confirm,
+            "backtracks": s.backtracks,
         })
     }
 
-    /// The put-back of the run's finished file batch (ADR 0117): what would go back now (read from the disk, only
-    /// at the end of the log), or what went back. `null`: nothing to put back.
-    fn undo_json(
-        &self,
-        log: &EventLog,
-        st: &CtrlState,
-        at: usize,
-        labels: &BTreeMap<String, String>,
-    ) -> Value {
-        let Some((action_id, op)) = done_batch(log, at) else {
-            return Value::Null;
-        };
-        if st.task_status != Some(TaskStatus::Done) {
-            return Value::Null;
-        }
-        if let Some(u) = st.undo.as_ref() {
-            return json!({
-                "actionId": u.action_id,
-                "files": u.undone as usize + u.skipped.len(),
-                "ready": 0,
-                "cantUndo": skipped_json(&u.skipped, labels),
-                "done": {"undone": u.undone},
-            });
-        }
-        let (files, ready, cant) = match (self.files.as_ref(), at == log.records().len()) {
-            (Some(roots), true) => {
-                let p = plan_undo(&op, roots);
-                (p.files, p.back.len(), skipped_json(&p.skipped, labels))
-            }
-            // Scrubbed back, or no folder to read: the batch as logged, nothing judged.
-            _ => {
-                let FsOp::Batch { ops } = &op else {
-                    return Value::Null;
-                };
-                let n = ops.iter().filter(|o| !matches!(o, FsOp::MakeDir { .. })).count();
-                (n, 0, Vec::new())
-            }
-        };
-        json!({
-            "actionId": action_id,
-            "files": files,
-            "ready": ready,
-            "cantUndo": cant,
-            "done": Value::Null,
-        })
-    }
-
-    /// `ctrl:undo` (ADR 0117): put a finished file batch back. Everything that can go back goes back together; if
-    /// anything moved since, ctrl refuses (`undo.refused`, nothing moves) unless the user said `rest`.
-    fn undo(&self, store: &Store, log: &mut EventLog, now: u64, rest: bool) -> Result<(), CtrlError> {
-        let refuse = |m: &str| Err(CtrlError::new(CtrlErrorCode::Validation, m.to_string()));
+    fn summary(&self, store: &Store, run_id: &str) -> Option<Value> {
+        let log = store.run(run_id).ok()?;
+        let (do_id, at) = store.run_meta(run_id)?.clone();
+        let text = store.do_entry(&do_id).ok()?.text.clone();
         let s = log.state();
-        let Some((action_id, op)) = done_batch(log, log.records().len()) else {
-            return refuse("this run didn't move any files");
-        };
-        if s.task_status != Some(TaskStatus::Done) {
-            return refuse("this run didn't finish");
-        }
-        if s.undo.is_some() {
-            return refuse("this run was already put back");
-        }
-        let Some(roots) = self.files.as_ref() else {
-            return refuse("ctrl can't reach your files here");
-        };
-        let p = plan_undo(&op, roots);
-        let mono = self.clock.mono_ns();
-        if p.back.is_empty() || (!p.skipped.is_empty() && !rest) {
-            store.append_run_record(
-                log,
-                mono,
-                now,
-                Event::UndoRefused {
-                    action_id,
-                    skipped: p.skipped,
-                },
-            )?;
-            return Ok(());
-        }
-        let (ok, undone, err) = match run_undo(&p) {
-            Ok(n) => (true, n as u32, None),
-            Err(e) => (false, 0, Some(e)),
-        };
-        store.append_run_record(
-            log,
-            mono,
-            now,
-            Event::UndoDone {
-                action_id,
-                undone,
-                skipped: p.skipped,
-                ok,
-                err,
-            },
-        )?;
-        Ok(())
-    }
-
-    /// One scheduler pass (ADR 0105): for every non-paused task that is due, record exactly one run (catch-up
-    /// once after sleep/quit; no burst). Returns the task ids that got a run (for `ctrl:changed`).
-    pub fn tick(&self) -> Result<Vec<String>, CtrlError> {
-        let mut guard = self.store.lock().unwrap_or_else(|e| e.into_inner());
-        let store = guard.as_mut().map_err(|e| CtrlError::from(e.clone()))?;
-        let now = self.clock.wall_ms();
-        let zone = self.zone.as_ref();
-        // Snapshot ids first: recording a run mutates the fold.
-        let due: Vec<String> = store
-            .tasks()
-            .into_iter()
-            .filter(|t| !t.paused)
-            .filter(|t| {
-                let last = Self::last_run_at(store, t);
-                is_due(&t.schedule, t.created_at, last, now, zone)
-            })
-            .map(|t| t.id.clone())
-            .collect();
-        let mut fired = Vec::with_capacity(due.len());
-        for id in due {
-            // Re-check: a previous fire in this pass shouldn't matter (different tasks), but skip if gone/paused.
-            let Some(t) = store.task(&id).ok().cloned() else {
-                continue;
-            };
-            if t.paused {
-                continue;
-            }
-            let last = Self::last_run_at(store, &t);
-            if !is_due(&t.schedule, t.created_at, last, now, zone) {
-                continue;
-            }
-            self.record_pending_run(store, now, &id)?;
-            fired.push(id);
-        }
-        for id in self.expire_due(store, now)? {
-            if !fired.contains(&id) {
-                fired.push(id);
-            }
-        }
-        Ok(fired)
+        Some(json!({
+            "runId": run_id,
+            "doId": do_id,
+            "text": text,
+            "status": run_status(&s),
+            "startedAt": at,
+            "actions": s.executed(),
+        }))
     }
 
     /// One `ctrl:*` call.
     pub fn call(&self, channel: &str, p: Value) -> Result<Value, CtrlError> {
-        let mut guard = self.store.lock().unwrap_or_else(|e| e.into_inner());
-        let store = guard.as_mut().map_err(|e| CtrlError::from(e.clone()))?;
-        let now = self.clock.wall_ms();
         match channel {
-            "ctrl:tasks" => Ok(Value::Array(
-                store
-                    .tasks()
-                    .into_iter()
-                    .map(|t| self.task_json(store, t))
-                    .collect(),
-            )),
-            "ctrl:create-task" => {
-                let schedule: Schedule = serde_json::from_value(p["schedule"].clone())
-                    .map_err(|_| CtrlError::new(CtrlErrorCode::Validation, "pick when the task runs"))?;
-                let t = store.create_task(now, str_field(&p, "text")?, schedule)?;
-                Ok(self.task_json(store, &t))
-            }
-            "ctrl:set-paused" => {
-                let paused = p["paused"].as_bool().unwrap_or(true);
-                let t = store.set_paused(now, str_field(&p, "id")?, paused)?;
-                Ok(self.task_json(store, &t))
-            }
-            "ctrl:delete-task" => {
-                store.delete_task(now, str_field(&p, "id")?)?;
-                Ok(json!({"ok": true}))
-            }
-            "ctrl:run-now" => {
-                let id = str_field(&p, "id")?.to_string();
-                let log = self.record_pending_run(store, now, &id)?;
-                Ok(Self::run_json(store, &log))
-            }
-            "ctrl:runs" => {
-                let t = store.task(str_field(&p, "taskId")?)?;
-                let runs = t
-                    .runs
-                    .iter()
-                    .rev()
-                    .map(|r| store.run(r).map(|log| Self::run_json(store, &log)))
-                    .collect::<Result<Vec<_>, _>>()?;
-                Ok(Value::Array(runs))
-            }
+            "ctrl:runs" => self.with_store(|s| {
+                let mut out = Vec::new();
+                for d in s.dos() {
+                    for r in d.runs.iter().rev() {
+                        if let Some(v) = self.summary(s, r) {
+                            out.push(v);
+                        }
+                    }
+                }
+                Ok(Value::Array(out))
+            }),
             "ctrl:run" => {
-                let log = store.run(str_field(&p, "runId")?)?;
-                Ok(self.run_view(store, &log, p["at"].as_u64()))
+                let (log, do_id, text) = self.load(str_field(&p, "runId")?)?;
+                Ok(self.run_view(&log, &do_id, &text, p["at"].as_u64()))
             }
-            // Answer the decision the run is asking about (or cancel the run), then continue the chain.
+            "ctrl:do" => {
+                if self.live_helper().is_none() {
+                    return Err(CtrlError::new(
+                        CtrlErrorCode::Unavailable,
+                        "ctrl's helper isn't running, so ctrl can't act right now",
+                    ));
+                }
+                if self.active.lock().unwrap_or_else(|e| e.into_inner()).is_some() {
+                    return Err(CtrlError::new(
+                        CtrlErrorCode::Validation,
+                        "ctrl is already doing something",
+                    ));
+                }
+                let text = str_field(&p, "text")?.to_string();
+                let (m, now) = (self.clock.mono_ns(), self.clock.wall_ms());
+                // A run still waiting on Jared is cancelled by a new command.
+                // (Only the latest run can be unfinished: every earlier one was ended this way.)
+                let waiting: Vec<String> = self.with_store(|s| {
+                    Ok(s.dos()
+                        .first()
+                        .and_then(|d| d.runs.last())
+                        .filter(|r| s.run(r).is_ok_and(|l| l.state().status.is_none()))
+                        .cloned()
+                        .into_iter()
+                        .collect())
+                })?;
+                for r in waiting {
+                    let (mut log, _, _) = self.load(&r)?;
+                    self.append(
+                        &mut log,
+                        Event::TaskFinished {
+                            status: TaskStatus::Cancelled,
+                            stop: None,
+                        },
+                    )?;
+                }
+                let (mut log, do_id) = self.with_store(|s| {
+                    let d = s.create_do(now, &text)?;
+                    let log = s.start_run(now, &d.id, &[(m, Event::DoStarted { do_id: d.id.clone() })])?;
+                    Ok((log, d.id))
+                })?;
+                let text = self.with_store(|s| Ok(s.do_entry(&do_id)?.text.clone()))?;
+                self.drive(&mut log, &do_id, &text)?;
+                Ok(self.run_view(&log, &do_id, &text, None))
+            }
             "ctrl:answer" => {
-                let mut log = store.run(str_field(&p, "runId")?)?;
+                let (mut log, do_id, text) = self.load(str_field(&p, "runId")?)?;
                 let decision_id = str_field(&p, "decisionId")?.to_string();
                 let s = log.state();
-                if s.ask.as_deref() != Some(decision_id.as_str()) {
+                let Some(d) = s
+                    .decisions
+                    .iter()
+                    .find(|d| d.id == decision_id && s.ask.as_ref() == Some(&d.id))
+                else {
                     return Err(CtrlError::new(
                         CtrlErrorCode::Validation,
                         "that question was already answered",
                     ));
-                }
-                let task_id = store
-                    .run_meta(log.run_id())
-                    .map(|m| m.0.clone())
-                    .unwrap_or_default();
-                let text = store.task(&task_id)?.text.clone();
-                let choice = match &p["optionId"] {
-                    Value::Null => None,
-                    v => {
-                        let id = v.as_str().unwrap_or_default();
-                        let d = s.decisions.iter().find(|d| d.id == decision_id);
-                        let ok = d.is_some_and(|d| ask_options(d).iter().any(|&i| d.options[i].id == id));
-                        if !ok {
-                            return Err(CtrlError::new(
-                                CtrlErrorCode::Validation,
-                                "pick one of the options",
-                            ));
-                        }
-                        Some(id.to_string())
+                };
+                let choice = match p["optionId"].as_str() {
+                    None => None,
+                    Some(o) if d.options.iter().any(|x| x.id == o) => Some(o.to_string()),
+                    Some(_) => {
+                        return Err(CtrlError::new(
+                            CtrlErrorCode::Validation,
+                            "that isn't one of the choices",
+                        ))
                     }
                 };
-                let mono = self.clock.mono_ns();
                 let cancel = choice.is_none();
-                store.append_run_record(
-                    &mut log,
-                    mono,
-                    now,
-                    Event::DecisionAnswered { decision_id, choice },
-                )?;
+                self.append(&mut log, Event::DecisionAnswered { decision_id, choice })?;
                 if cancel {
-                    store.append_run_record(
+                    self.append(
                         &mut log,
-                        mono,
-                        now,
                         Event::TaskFinished {
-                            task_id,
                             status: TaskStatus::Cancelled,
+                            stop: None,
                         },
                     )?;
                 } else {
-                    self.continue_chain(store, &mut log, now, &task_id, &text)?;
+                    self.drive(&mut log, &do_id, &text)?;
                 }
-                Ok(self.run_view(store, &log, None))
+                Ok(self.run_view(&log, &do_id, &text, None))
             }
-            // The confirm gate's answer (ADR 0111): approve acts once, remember also grants a standing approval for
-            // this task, deny ends the run without acting.
             "ctrl:confirm" => {
-                let mut log = store.run(str_field(&p, "runId")?)?;
+                let (mut log, do_id, text) = self.load(str_field(&p, "runId")?)?;
                 let gate_id = str_field(&p, "gateId")?.to_string();
                 let s = log.state();
-                let Some(g) = s
+                if !s
                     .confirm
                     .as_ref()
-                    .filter(|g| g.id == gate_id && g.answer.is_none())
-                else {
+                    .is_some_and(|g| g.id == gate_id && g.answer.is_none())
+                {
                     return Err(CtrlError::new(
                         CtrlErrorCode::Validation,
                         "that request was already answered",
                     ));
-                };
-                let task_id = store
-                    .run_meta(log.run_id())
-                    .map(|m| m.0.clone())
-                    .unwrap_or_default();
-                let text = store.task(&task_id)?.text.clone();
+                }
                 let answer = match str_field(&p, "answer")? {
                     "approve" => ConfirmAnswer::Approve,
                     "deny" => ConfirmAnswer::Deny,
-                    "remember" => {
-                        let scope = g.preview.scope();
-                        let approval_id = store.grant_approval(now, &task_id, scope.clone())?;
-                        ConfirmAnswer::ApproveRemember { approval_id, scope }
-                    }
                     _ => {
                         return Err(CtrlError::new(
                             CtrlErrorCode::Validation,
-                            "answer approve, remember or deny",
+                            "answer approve or deny",
                         ))
                     }
                 };
-                let approves = answer.approves();
-                // "Close all my tabs" (ADR 0114): the other tabs are already closed; deny keeps the held ones open
-                // and the run is done.
-                let denied_status = if g.preview.mv == crate::exec::HELD_TABS_MOVE {
-                    TaskStatus::Done
-                } else {
-                    TaskStatus::Cancelled
-                };
-                let mono = self.clock.mono_ns();
-                store.append_run_record(&mut log, mono, now, Event::ConfirmResolved { gate_id, answer })?;
-                self.unwait(log.run_id());
-                if approves {
-                    self.continue_chain(store, &mut log, now, &task_id, &text)?;
-                } else {
-                    store.append_run_record(
+                self.append(&mut log, Event::ConfirmResolved { gate_id, answer })?;
+                match answer {
+                    ConfirmAnswer::Approve => self.drive(&mut log, &do_id, &text)?,
+                    ConfirmAnswer::Deny => self.append(
                         &mut log,
-                        mono,
-                        now,
                         Event::TaskFinished {
-                            task_id,
-                            status: denied_status,
+                            status: TaskStatus::Cancelled,
+                            stop: None,
+                        },
+                    )?,
+                }
+                Ok(self.run_view(&log, &do_id, &text, None))
+            }
+            "ctrl:stop" => {
+                let run_id = str_field(&p, "runId")?.to_string();
+                let driving = self.active.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                if driving.as_deref() == Some(run_id.as_str()) {
+                    self.stop.store(true, Ordering::SeqCst);
+                    return Ok(json!({ "runId": run_id, "status": "stopping" }));
+                }
+                let (mut log, do_id, text) = self.load(&run_id)?;
+                if log.state().status.is_none() {
+                    self.append(
+                        &mut log,
+                        Event::TaskFinished {
+                            status: TaskStatus::Stopped,
+                            stop: Some(StopReason::StopButton),
                         },
                     )?;
                 }
-                Ok(self.run_view(store, &log, None))
-            }
-            "ctrl:undo" => {
-                let mut log = store.run(str_field(&p, "runId")?)?;
-                self.undo(store, &mut log, now, p["rest"].as_bool().unwrap_or(false))?;
-                Ok(self.run_view(store, &log, None))
-            }
-            "ctrl:revoke-approval" => {
-                let task_id = str_field(&p, "taskId")?.to_string();
-                store.revoke_approval(now, &task_id, str_field(&p, "approvalId")?)?;
-                Ok(self.task_json(store, store.task(&task_id)?))
+                let view = self.run_view(&log, &do_id, &text, None);
+                Ok(json!({ "runId": run_id, "status": view["status"] }))
             }
             _ => Err(CtrlError::new(
                 CtrlErrorCode::Unavailable,

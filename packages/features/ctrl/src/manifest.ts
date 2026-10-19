@@ -1,6 +1,6 @@
 import { SubAppManifest } from '@qrtz/core';
 
-/** ctrl (ADR 0100, 0103): typed tasks that run in the background, once or on a cadence. No voice, no cloud. */
+/** ctrl do (ADR 0214): type one command, ctrl does it on screen over the accessibility tree. No voice, no cloud. */
 export const manifest = SubAppManifest.parse({
   id: 'ctrl',
   name: 'ctrl',

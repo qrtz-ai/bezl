@@ -1,35 +1,28 @@
-//! The append-only ctrl event log (decision-layer spec §13). State is `fold(apply, CtrlState::default(), events)`;
-//! [`apply`] is pure (no clock, no I/O: times and ids arrive inside events). Each record carries the SHA-256 of
-//! the previous one, so a rewritten or dropped record breaks [`EventLog::verify`]. Payloads hold ids, refs, enums
-//! and numbers only, never paths, labels or text (ADR 0083).
+//! The append-only ctrl do event log (decision-layer spec §13). State is `fold(apply, CtrlState::default(), events)`;
+//! [`apply`] is pure (no clock, no I/O, no goal text: times and ids arrive inside events). Each record carries the
+//! SHA-256 of the previous one, so a rewritten or dropped record breaks [`EventLog::verify`].
 //!
-//! Slice 2 persists each run as its own file (`store.rs`, ADR 0103). Slice 1 covers the execution events: what was decided for an action, the guard snapshots around it, the result
-//! and any violation. Slice 4 (ADR 0106) adds the decision layers' events: `obs.apps` (the app catalog the chain
-//! chose from), `decision.made` (options, probabilities, chosen option, outcome), `decision.answered_by_user`,
-//! `backtrack` and `plan.produced`. Slice 5 (ADR 0108) adds the executor's: `obs.snapshot` (an AX scope of a
-//! background app, hashed), `obs.diff` (what an action changed in it), `verify.result` and `exec.held` (the plan
-//! stops before acting: irreversible, not yet supported, or no background route). Slice 6 (ADR 0111) adds the
-//! confirm gate's: `confirm.requested` (the preview and the rules that triggered it), `confirm.resolved` (approve,
-//! deny, approve-and-remember, a standing approval's use, or an expiry) and `confirm.reverified` (the re-check of
-//! the preview right before acting).
-use crate::ax::{AxDiff, AxSnapshot};
+//! Payloads hold ids, refs, enums, numbers and hashed tokens only (ADR 0083, ADR 0214): never a window title, an
+//! element label, a value, the goal or the typed text. Text from the goal is a pointer into it (`goal#5..12`).
+//!
+//! The reducer also tracks where the chain is ([`Phase`]): which question comes next, which action is pending. A
+//! decision moves the phase; a backtrack or an answer re-applies the decision's move from the phase it was asked in.
+use crate::act::Action;
+use crate::ax::{AxDiff, ScopeStep, ShortcutObs, TreeObs};
+use crate::chain::AppsObs;
 use crate::decide::{BacktrackReason, ModelId, Node, Opt, Outcome, Thresholds};
-use crate::exec::{HoldReason, VerifyOutcome};
-use crate::files::UndoSkip;
-use crate::gate::{ConfirmAnswer, GateState, Preview};
-use crate::guard::{Field, GuardOutcome, UiSnapshot};
-use crate::helper::{Check, Expect};
-use crate::ladder::{Decision, Route, Rung, Verdict};
-use crate::layers::AppsObs;
+use crate::gate::{Binding, ConfirmAnswer, GateState};
+use crate::guard::StopReason;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const SCHEMA_V: u32 = 1;
+/// Schema 2: ctrl do (ADR 0214). Schema-1 runs (the chores) are not read.
+pub const SCHEMA_V: u32 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum Phase {
+pub enum GuardPhase {
     Before,
     After,
 }
@@ -37,17 +30,26 @@ pub enum Phase {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Event {
-    #[serde(rename = "task.started")]
-    TaskStarted { task_id: String },
-    /// The run is waiting for an intent: the decision layers (slice 4) haven't produced a plan yet. Slice 2
-    /// records runs this far ("run now" in the ctrl view) so history, scrub and replay work end to end.
-    #[serde(rename = "intent.pending")]
-    IntentPending { task_id: String },
-    /// The app catalog the decision layers chose from: bundle ids and hashed name tokens, never names.
+    #[serde(rename = "do.started")]
+    DoStarted { do_id: String },
+    /// The app catalog the chain chose from: bundle ids and hashed name tokens.
     #[serde(rename = "obs.apps")]
     ObsApps { apps: AppsObs },
-    /// One small decision (spec §13.2): the options, their logits and calibrated probabilities (basis points),
-    /// the chosen option and what the chain does with it.
+    /// The pruned tree of an app's front window (`scope: None`) or one element's children; `None` + `err`: the
+    /// helper couldn't read it.
+    #[serde(rename = "obs.tree")]
+    ObsTree {
+        app: String,
+        scope: Option<String>,
+        tree: Option<TreeObs>,
+        err: Option<String>,
+    },
+    #[serde(rename = "obs.shortcuts")]
+    ObsShortcuts {
+        app: String,
+        items: Vec<ShortcutObs>,
+        err: Option<String>,
+    },
     #[serde(rename = "decision.made")]
     DecisionMade {
         decision_id: String,
@@ -60,89 +62,39 @@ pub enum Event {
         p_chosen_bp: u32,
         thresholds: Thresholds,
         outcome: Outcome,
-        /// Tentative only: the next-best options, the backtrack stack.
         alternatives: Vec<String>,
         model: ModelId,
-        seed: u64,
         input_hash: String,
         latency_us: u64,
     },
-    /// The user's answer to an asked decision; `None` = cancel.
+    /// Jared's answer to an asked decision; `None` = cancel the run.
     #[serde(rename = "decision.answered_by_user")]
     DecisionAnswered {
         decision_id: String,
         choice: Option<String>,
     },
-    /// A tentative choice didn't verify: take the next alternative; later decisions are dropped.
     #[serde(rename = "backtrack")]
     Backtrack {
         decision_id: String,
         to: String,
         reason: BacktrackReason,
     },
-    /// Every node has a choice: the plan the executor (slice 5) runs.
-    #[serde(rename = "plan.produced")]
-    PlanProduced {
-        steps: Vec<PlanStep>,
-        irreversible: bool,
-        model: ModelId,
-    },
-    /// An AX scope of a background app as the helper saw it (`None` + `err`: it couldn't, e.g. not running).
-    #[serde(rename = "obs.snapshot")]
-    ObsSnapshot {
-        app: String,
-        scope: Option<String>,
-        snapshot: Option<AxSnapshot>,
-        err: Option<String>,
-    },
-    /// What an action changed in an observed scope (the new snapshot follows as `obs.snapshot`).
-    #[serde(rename = "obs.diff")]
-    ObsDiff {
-        action_id: String,
-        app: String,
-        scope: Option<String>,
-        diff: AxDiff,
-    },
-    /// Did the action do what the move meant? A failure drives `backtrack` (or asks when out of alternatives).
-    #[serde(rename = "verify.result")]
-    VerifyResult {
-        action_id: String,
-        check: Check,
-        expect: Expect,
-        before: Option<i64>,
-        after: Option<i64>,
-        outcome: VerifyOutcome,
-    },
-    /// The executor stopped before acting (slice 6's confirm gate resumes an irreversible plan).
-    #[serde(rename = "exec.held")]
-    ExecHeld { reason: HoldReason },
-    /// An irreversible step waits for the user: exactly what it would do (spec §9, Bound → Confirm → Act).
     #[serde(rename = "confirm.requested")]
     ConfirmRequested {
         gate_id: String,
-        preview: Preview,
+        binding: Binding,
         rules: Vec<String>,
     },
     #[serde(rename = "confirm.resolved")]
     ConfirmResolved { gate_id: String, answer: ConfirmAnswer },
-    /// Right before acting, the preview was taken again: still inside what was approved (`ok`), or the world
-    /// changed and the gate asks again.
+    /// Right before acting, the tree was read again: the same (`ok`), or it moved and the gate asks again.
     #[serde(rename = "confirm.reverified")]
     ConfirmReverified { gate_id: String, ok: bool },
     #[serde(rename = "action.requested")]
-    ActionRequested { action_id: String, routes: Vec<Route> },
-    #[serde(rename = "action.decided")]
-    ActionDecided {
-        action_id: String,
-        decision: Decision,
-        verdicts: Vec<Verdict>,
-    },
-    #[serde(rename = "guard.snapshot")]
-    GuardSnapshot {
-        action_id: String,
-        phase: Phase,
-        snapshot: UiSnapshot,
-    },
+    ActionRequested { action_id: String, action: Action },
+    /// The host's policy refused the action before sending it (stale handle, combo not allowed, …).
+    #[serde(rename = "action.refused")]
+    ActionRefused { action_id: String, code: String },
     #[serde(rename = "action.executed")]
     ActionExecuted {
         action_id: String,
@@ -150,47 +102,23 @@ pub enum Event {
         err: Option<String>,
         elapsed_ms: u64,
     },
+    /// The stop-key watcher's flags around an action (`stop: None`: clear).
     #[serde(rename = "guard.result")]
     GuardResult {
         action_id: String,
-        app: Option<String>,
-        rung: Rung,
-        outcome: GuardOutcome,
+        phase: GuardPhase,
+        stop: Option<StopReason>,
+        frontmost: Option<String>,
     },
-    /// ctrl tried to put back what it changed (re-activate the previous app). Recorded, not hidden.
-    #[serde(rename = "guard.restored")]
-    GuardRestored {
-        action_id: String,
-        fields: Vec<Field>,
-        ok: bool,
-    },
+    /// What the action changed in the window's tree.
+    #[serde(rename = "obs.diff")]
+    ObsDiff { action_id: String, diff: AxDiff },
     #[serde(rename = "task.finished")]
-    TaskFinished { task_id: String, status: TaskStatus },
-    /// The user asked to put a finished file batch back (ADR 0117) and ctrl didn't: some files moved since and the
-    /// user hadn't said "put back the rest", or nothing could go back. Nothing moved.
-    #[serde(rename = "undo.refused")]
-    UndoRefused {
-        action_id: String,
-        skipped: Vec<UndoSkip>,
+    TaskFinished {
+        status: TaskStatus,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stop: Option<StopReason>,
     },
-    /// A finished file batch was put back: `undone` files moved back, `skipped` stayed (with why). `ok: false`:
-    /// a move failed and the ones already moved went where they were (nothing changed).
-    #[serde(rename = "undo.done")]
-    UndoDone {
-        action_id: String,
-        undone: u32,
-        skipped: Vec<UndoSkip>,
-        ok: bool,
-        err: Option<String>,
-    },
-}
-
-/// A put-back of a file batch (ADR 0117), as the state holds it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct UndoState {
-    pub action_id: String,
-    pub undone: u32,
-    pub skipped: Vec<UndoSkip>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -198,18 +126,20 @@ pub struct UndoState {
 pub enum TaskStatus {
     Done,
     Failed,
+    /// Jared cancelled an ask or denied a confirm.
     Cancelled,
+    /// Out of alternatives: ctrl couldn't do it and says so.
     AskedOut,
-    Deferred,
-    /// The confirm gate went unanswered past its timeout (or a newer run replaced it): nothing acted.
-    Expired,
+    /// The stop key, Jared's input, or the stop button.
+    Stopped,
+    /// The step budget ran out.
+    OutOfSteps,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Record {
     pub seq: u64,
     pub run_id: String,
-    /// Set on the first record of a fork: the parent run's seq it continues from.
     pub parent_seq: Option<u64>,
     pub t_mono_ns: u64,
     pub t_wall_ms: u64,
@@ -241,8 +171,9 @@ fn digest(r: &Record) -> String {
         event: &r.event,
         prev_hash: &r.prev_hash,
     };
-    let bytes = serde_json::to_vec(&body).expect("records serialize");
-    hex::encode(Sha256::digest(bytes))
+    hex::encode(Sha256::digest(
+        serde_json::to_vec(&body).expect("records serialize"),
+    ))
 }
 
 const GENESIS: &str = "0000000000000000000000000000000000000000000000000000000000000000";
@@ -253,7 +184,7 @@ pub enum LogError {
     BadSeq { expected: u64, got: u64 },
 }
 
-/// The run's log. Append-only: there is no API that edits or removes a record.
+/// A run's log. Append-only: no API edits or removes a record.
 #[derive(Debug, Clone, Default)]
 pub struct EventLog {
     run_id: String,
@@ -303,7 +234,7 @@ impl EventLog {
     }
 
     /// A new run that starts with this run's records `[0..=at]` (rehashed under the new run id; the first record
-    /// carries `parent_seq = at`). Continue it live with a different option, model or threshold.
+    /// carries `parent_seq = at`).
     pub fn fork(&self, at: u64, run_id: impl Into<String>) -> EventLog {
         let mut f = EventLog::new(run_id);
         for r in self.records.iter().take(at as usize + 1) {
@@ -312,7 +243,6 @@ impl EventLog {
         if let Some(first) = f.records.first_mut() {
             first.parent_seq = Some(at);
         }
-        // parent_seq changed the first record's body: rechain.
         let mut prev = GENESIS.to_string();
         for r in &mut f.records {
             r.prev_hash = prev;
@@ -339,7 +269,6 @@ impl EventLog {
         Ok(())
     }
 
-    /// JSON lines (one record per line): the on-disk form for now, and what replay tests round-trip.
     pub fn to_jsonl(&self) -> String {
         self.records
             .iter()
@@ -369,28 +298,51 @@ impl EventLog {
     }
 }
 
+/// Where the chain is.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "phase", rename_all = "snake_case")]
+pub enum Phase {
+    /// Waiting for the app catalog.
+    #[default]
+    Catalog,
+    ChooseApp,
+    /// A decision chose an action; it runs next (through the gate when a rule matches).
+    Act {
+        action: Action,
+    },
+    /// The action ran; the window's tree is read next.
+    AfterAction,
+    /// After that read: verify (or choose the text when a text field just got focus).
+    Verify,
+    ChooseMove,
+    Descend {
+        path: Vec<ScopeStep>,
+    },
+    /// Verify said done.
+    Done,
+    /// Verify said it didn't work, or the action failed or was refused, or the path is gone: backtrack or give up.
+    Failed {
+        reason: BacktrackReason,
+    },
+    Finished,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ActionStatus {
     Requested,
-    Executing,
-    Deferred,
-    Asked,
     Refused,
     Done,
     Failed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PlanStep {
-    pub node: Node,
-    pub option: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PlanState {
-    pub steps: Vec<PlanStep>,
-    pub irreversible: bool,
+pub struct ActionState {
+    pub id: String,
+    pub action: Action,
+    pub status: ActionStatus,
+    pub err: Option<String>,
+    pub diff: Option<AxDiff>,
 }
 
 /// A decision as the state holds it (from `decision.made`, then answers and backtracks).
@@ -407,66 +359,228 @@ pub struct DecisionState {
     pub answered: bool,
     pub backtracks: u32,
     pub model: ModelId,
+    /// The phase it was asked in (a backtrack or an answer re-applies the move from here).
+    pub phase_before: Phase,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct CtrlState {
-    pub actions: BTreeMap<String, ActionStatus>,
-    /// Total guard violations in this run.
-    pub violations: u64,
-    /// Guard results that couldn't judge every field.
-    pub inconclusive: u64,
-    /// (app, rung) pairs that violated the guard: the ladder refuses them for the rest of the run.
-    pub quarantined: BTreeSet<(String, Rung)>,
-    pub task_status: Option<TaskStatus>,
-    /// `task.started` was seen.
     pub started: bool,
-    /// Waiting for the decision layers; cleared by `plan.produced`, the first `action.requested` or
-    /// `task.finished`.
-    pub intent_pending: bool,
-    /// The app catalog of `obs.apps`.
     pub apps: Option<AppsObs>,
-    /// The chain so far, in order (a backtrack drops the decisions after the one it changes).
+    /// The app ctrl opened (the one the chain works in).
+    pub app: Option<String>,
+    pub tree: Option<TreeObs>,
+    /// The tree hash right before the last action (for verify).
+    pub tree_before: Option<String>,
+    pub shortcuts: BTreeMap<String, Vec<ShortcutObs>>,
+    pub phase: Phase,
     pub decisions: Vec<DecisionState>,
-    /// Every `decision.made` ever applied (decision ids stay unique across backtracks).
+    /// Every `decision.made` ever applied (ids stay unique across backtracks).
     pub decisions_made: u64,
-    pub plan: Option<PlanState>,
-    /// The decision waiting for the user's answer.
     pub ask: Option<String>,
     pub backtracks: u32,
-    /// AX observations (`obs.snapshot`), in order; questions read the latest per (app, scope).
-    pub snapshots: Vec<AxSnapshot>,
-    /// Verify outcomes per action.
-    pub verified: BTreeMap<String, VerifyOutcome>,
-    /// Why the executor stopped before acting, until a new plan (or the confirm gate) moves on.
-    pub held: Option<HoldReason>,
-    /// The confirm gate of the current plan (slice 6); a new plan or a backtrack clears it.
+    pub actions: Vec<ActionState>,
+    /// Text fields ctrl already typed into in this run.
+    pub typed: BTreeSet<String>,
+    /// The hashed label tokens of the element (or menu item) the latest action acted on.
+    pub acted_tokens: Vec<String>,
+    pub acted_role: Option<String>,
     pub confirm: Option<GateState>,
-    /// Every `confirm.requested` ever applied (gate ids stay unique).
     pub gates: u64,
-    /// The batch that was put back (ADR 0117); a batch is put back at most once.
-    pub undo: Option<UndoState>,
-    /// `undo.refused` and failed `undo.done` events.
-    pub undo_refused: u32,
+    pub status: Option<TaskStatus>,
+    pub stop: Option<StopReason>,
 }
 
 impl CtrlState {
-    /// The option chosen at each node: acted, tentative, or answered by the user (an unanswered ask isn't).
-    pub fn chosen(&self) -> BTreeMap<Node, String> {
-        self.decisions
-            .iter()
-            .filter(|d| d.outcome != Outcome::Ask || d.answered)
-            .map(|d| (d.node, d.chosen.clone()))
-            .collect()
+    pub fn last_action(&self) -> Option<&ActionState> {
+        self.actions.last()
     }
+    pub fn executed(&self) -> usize {
+        self.actions
+            .iter()
+            .filter(|a| a.status == ActionStatus::Done || a.status == ActionStatus::Failed)
+            .count()
+    }
+}
+
+/// The move a chosen option makes from `phase` (pure). `None`: the option doesn't lead anywhere from here.
+pub fn advance(phase: &Phase, s: &CtrlState, node: Node, opt: &Opt) -> Phase {
+    let app = s.app.clone().unwrap_or_default();
+    let id = opt.id.as_str();
+    let fail = Phase::Failed {
+        reason: BacktrackReason::NoneOfThese,
+    };
+    let ax_action = |rest: &str| -> Option<Action> {
+        let (h, a) = rest.rsplit_once('.')?;
+        let handle = h.to_string();
+        Some(match a {
+            "press" => Action::Press { handle },
+            "increment" => Action::Increment { handle },
+            "decrement" => Action::Decrement { handle },
+            "show_menu" => Action::ShowMenu { handle },
+            "focus" => Action::Focus { handle },
+            "scroll_down" => Action::Scroll {
+                handle,
+                dir: crate::act::ScrollDir::Down,
+            },
+            "scroll_up" => Action::Scroll {
+                handle,
+                dir: crate::act::ScrollDir::Up,
+            },
+            _ => return None,
+        })
+    };
+    let path = match phase {
+        Phase::Descend { path } => path.clone(),
+        _ => Vec::new(),
+    };
+    let descend = |step: ScopeStep| {
+        let mut p = path.clone();
+        p.push(step);
+        Phase::Descend { path: p }
+    };
+    match node {
+        Node::ChooseApp => match id.strip_prefix("app.") {
+            Some(a) => Phase::Act {
+                action: Action::OpenApp { app: a.into() },
+            },
+            None => fail,
+        },
+        Node::ChooseMove | Node::ChooseElement => {
+            if let Some(h) = id.strip_prefix("menu.") {
+                Phase::Act {
+                    action: Action::Press { handle: h.into() },
+                }
+            } else if let Some(c) = id.strip_prefix("key.") {
+                Phase::Act {
+                    action: Action::KeyCombo { app, combo: c.into() },
+                }
+            } else if id.starts_with("url.") {
+                match &opt.label_ref {
+                    Some(r) => Phase::Act {
+                        action: Action::OpenUrl {
+                            app,
+                            url_ref: r.clone(),
+                        },
+                    },
+                    None => fail,
+                }
+            } else if let Some(h) = id.strip_prefix("branch.") {
+                descend(ScopeStep::Node { id: h.into() })
+            } else if let Some(g) = id.strip_prefix("group.") {
+                match g.rsplit_once('~').and_then(|(r, p)| Some((r, p.parse().ok()?))) {
+                    Some((role, page)) => descend(ScopeStep::Group {
+                        role: role.into(),
+                        page,
+                    }),
+                    None => fail,
+                }
+            } else if let Some(rest) = id.strip_prefix("ax.") {
+                match ax_action(rest) {
+                    Some(action) => Phase::Act { action },
+                    None => fail,
+                }
+            } else {
+                fail
+            }
+        }
+        Node::ChooseText => {
+            let focused = s.tree.as_ref().and_then(|t| t.focused.clone());
+            match (focused, &opt.label_ref) {
+                (Some(handle), Some(r)) => Phase::Act {
+                    action: Action::SetValue {
+                        handle,
+                        text_ref: r.clone(),
+                        submit: id.ends_with(".go"),
+                    },
+                },
+                _ => fail,
+            }
+        }
+        Node::Verify => match id {
+            "verify.done" => Phase::Done,
+            "verify.continue" => Phase::ChooseMove,
+            _ => Phase::Failed {
+                reason: BacktrackReason::VerifyFailed,
+            },
+        },
+    }
+}
+
+fn reapply(s: &mut CtrlState, idx: usize) {
+    let d = &s.decisions[idx];
+    let Some(opt) = d.options.iter().find(|o| o.id == d.chosen).cloned() else {
+        return;
+    };
+    let (phase, node) = (d.phase_before.clone(), d.node);
+    s.phase = advance(&phase, s, node, &opt);
 }
 
 /// The reducer. Pure.
 pub fn apply(mut s: CtrlState, e: &Event) -> CtrlState {
     match e {
-        Event::TaskStarted { .. } => s.started = true,
-        Event::IntentPending { .. } => s.intent_pending = true,
-        Event::ObsApps { apps } => s.apps = Some(apps.clone()),
+        Event::DoStarted { .. } => s.started = true,
+        Event::ObsApps { apps } => {
+            s.apps = Some(apps.clone());
+            if s.phase == Phase::Catalog {
+                s.phase = Phase::ChooseApp;
+            }
+        }
+        Event::ObsTree { scope, tree, app, .. } => match (scope, tree) {
+            (None, Some(t)) => {
+                s.tree = Some(t.clone());
+                if s.phase == Phase::AfterAction {
+                    s.phase = Phase::Verify;
+                }
+            }
+            (None, None) => {
+                // Unreadable window: an empty tree, so the chain carries on with shortcuts only.
+                s.tree = Some(crate::ax::prune(
+                    app,
+                    None,
+                    &crate::ax::AxNodeWire {
+                        id: "root".into(),
+                        role: "AXWindow".into(),
+                        enabled: true,
+                        ..Default::default()
+                    },
+                    None,
+                ));
+                if s.phase == Phase::AfterAction {
+                    s.phase = Phase::Verify;
+                }
+            }
+            (Some(sc), Some(sub)) => {
+                if let Some(t) = s.tree.as_mut() {
+                    if crate::ax::merge(&mut t.root, sc, &sub.root) {
+                        t.hash = crate::ax::tree_hash(&t.root);
+                    }
+                }
+            }
+            (Some(sc), None) => {
+                // The element's children can't be read: it has none, as far as the chain is concerned.
+                if let Some(t) = s.tree.as_mut() {
+                    let empty = crate::ax::AxNode {
+                        id: sc.clone(),
+                        role: String::new(),
+                        subrole: None,
+                        tokens: vec![],
+                        value_tokens: vec![],
+                        actions: vec![],
+                        text_input: false,
+                        focused: false,
+                        risk: vec![],
+                        children: vec![],
+                        more: 0,
+                        sig: String::new(),
+                    };
+                    crate::ax::merge(&mut t.root, sc, &empty);
+                }
+            }
+        },
+        Event::ObsShortcuts { app, items, .. } => {
+            s.shortcuts.insert(app.clone(), items.clone());
+        }
         Event::DecisionMade {
             decision_id,
             node,
@@ -480,12 +594,6 @@ pub fn apply(mut s: CtrlState, e: &Event) -> CtrlState {
             ..
         } => {
             s.decisions_made += 1;
-            s.plan = None;
-            s.held = None;
-            s.confirm = None;
-            if *outcome == Outcome::Ask {
-                s.ask = Some(decision_id.clone());
-            }
             s.decisions.push(DecisionState {
                 id: decision_id.clone(),
                 node: *node,
@@ -498,15 +606,23 @@ pub fn apply(mut s: CtrlState, e: &Event) -> CtrlState {
                 answered: false,
                 backtracks: 0,
                 model: model.clone(),
+                phase_before: s.phase.clone(),
             });
+            if *outcome == Outcome::Ask {
+                s.ask = Some(decision_id.clone());
+            } else {
+                let i = s.decisions.len() - 1;
+                reapply(&mut s, i);
+            }
         }
         Event::DecisionAnswered { decision_id, choice } => {
             if s.ask.as_deref() == Some(decision_id.as_str()) {
                 s.ask = None;
-            }
-            if let (Some(c), Some(d)) = (choice, s.decisions.iter_mut().find(|d| &d.id == decision_id)) {
-                d.chosen = c.clone();
-                d.answered = true;
+                if let (Some(c), Some(i)) = (choice, s.decisions.iter().position(|d| &d.id == decision_id)) {
+                    s.decisions[i].chosen = c.clone();
+                    s.decisions[i].answered = true;
+                    reapply(&mut s, i);
+                }
             }
         }
         Event::Backtrack { decision_id, to, .. } => {
@@ -517,30 +633,20 @@ pub fn apply(mut s: CtrlState, e: &Event) -> CtrlState {
                 d.alternatives.retain(|a| a != to);
                 d.backtracks += 1;
                 s.backtracks += 1;
-                s.plan = None;
-                s.held = None;
                 s.ask = None;
                 s.confirm = None;
+                reapply(&mut s, i);
             }
-        }
-        Event::PlanProduced {
-            steps, irreversible, ..
-        } => {
-            s.intent_pending = false;
-            s.plan = Some(PlanState {
-                steps: steps.clone(),
-                irreversible: *irreversible,
-            });
         }
         Event::ConfirmRequested {
             gate_id,
-            preview,
+            binding,
             rules,
         } => {
             s.gates += 1;
             s.confirm = Some(GateState {
                 id: gate_id.clone(),
-                preview: preview.clone(),
+                binding: binding.clone(),
                 rules: rules.clone(),
                 answer: None,
                 reverified: None,
@@ -553,7 +659,7 @@ pub fn apply(mut s: CtrlState, e: &Event) -> CtrlState {
                 .as_mut()
                 .filter(|g| &g.id == gate_id && g.answer.is_none())
             {
-                g.answer = Some(answer.clone());
+                g.answer = Some(*answer);
             }
         }
         Event::ConfirmReverified { gate_id, ok } => {
@@ -563,90 +669,103 @@ pub fn apply(mut s: CtrlState, e: &Event) -> CtrlState {
                         g.reverified = Some(true);
                     }
                 } else {
-                    // The world changed since the answer: this gate is void; the next step asks again.
                     s.confirm = None;
                 }
             }
         }
-        Event::ActionRequested { action_id, .. } => {
+        Event::ActionRequested { action_id, action } => {
             if let Some(g) = s
                 .confirm
                 .as_mut()
-                .filter(|g| g.answer.as_ref().is_some_and(|a| a.approves()))
+                .filter(|g| g.answer == Some(ConfirmAnswer::Approve))
             {
                 g.used = true;
             }
-            s.intent_pending = false;
-            s.actions.insert(action_id.clone(), ActionStatus::Requested);
+            s.tree_before = s.tree.as_ref().map(|t| t.hash.clone());
+            s.acted_role = action
+                .handle()
+                .and_then(|h| s.tree.as_ref().and_then(|t| crate::ax::find(&t.root, h)))
+                .map(|n| n.role.clone());
+            s.acted_tokens = action
+                .handle()
+                .and_then(|h| {
+                    let in_tree = s
+                        .tree
+                        .as_ref()
+                        .and_then(|t| crate::ax::find(&t.root, h))
+                        .map(|n| n.tokens.clone());
+                    in_tree.or_else(|| {
+                        s.shortcuts
+                            .values()
+                            .flatten()
+                            .find(|m| m.id == h)
+                            .map(|m| m.tokens.clone())
+                    })
+                })
+                .unwrap_or_default();
+            s.actions.push(ActionState {
+                id: action_id.clone(),
+                action: action.clone(),
+                status: ActionStatus::Requested,
+                err: None,
+                diff: None,
+            });
         }
-        Event::ActionDecided {
-            action_id, decision, ..
-        } => {
-            let st = match decision {
-                Decision::Execute { .. } => ActionStatus::Executing,
-                Decision::Defer { .. } => ActionStatus::Deferred,
-                Decision::Ask { .. } => ActionStatus::Asked,
-                Decision::Refuse => ActionStatus::Refused,
+        Event::ActionRefused { action_id, code } => {
+            if let Some(a) = s.actions.iter_mut().find(|a| &a.id == action_id) {
+                a.status = ActionStatus::Refused;
+                a.err = Some(code.clone());
+            }
+            s.phase = Phase::Failed {
+                reason: BacktrackReason::ActionFailed,
             };
-            s.actions.insert(action_id.clone(), st);
         }
-        Event::GuardSnapshot { .. } | Event::GuardRestored { .. } | Event::ObsDiff { .. } => {}
-        Event::ObsSnapshot {
-            app, scope, snapshot, ..
-        } => s.snapshots.push(snapshot.clone().unwrap_or(AxSnapshot {
-            app: app.clone(),
-            scope: scope.clone(),
-            nodes: Vec::new(),
-            truncated: 0,
-        })),
-        Event::VerifyResult {
-            action_id, outcome, ..
+        Event::ActionExecuted {
+            action_id, ok, err, ..
         } => {
-            s.verified.insert(action_id.clone(), *outcome);
-        }
-        Event::ExecHeld { reason } => s.held = Some(*reason),
-        Event::ActionExecuted { action_id, ok, .. } => {
-            s.actions.insert(
-                action_id.clone(),
-                if *ok {
+            if let Some(a) = s.actions.iter_mut().find(|a| &a.id == action_id) {
+                a.status = if *ok {
                     ActionStatus::Done
                 } else {
                     ActionStatus::Failed
-                },
-            );
-        }
-        Event::GuardResult {
-            app, rung, outcome, ..
-        } => {
-            if !outcome.violations.is_empty() {
-                s.violations += outcome.violations.len() as u64;
-                if let Some(app) = app {
-                    s.quarantined.insert((app.clone(), *rung));
+                };
+                a.err = err.clone();
+                if *ok {
+                    match &a.action {
+                        Action::OpenApp { app } => s.app = Some(app.clone()),
+                        Action::SetValue { handle, .. } => {
+                            s.typed.insert(handle.clone());
+                        }
+                        _ => {}
+                    }
                 }
             }
-            if !outcome.inconclusive.is_empty() {
-                s.inconclusive += 1;
+            s.confirm = None;
+            s.phase = if *ok {
+                Phase::AfterAction
+            } else {
+                Phase::Failed {
+                    reason: BacktrackReason::ActionFailed,
+                }
+            };
+        }
+        Event::GuardResult { stop, .. } => {
+            if stop.is_some() {
+                s.stop = *stop;
             }
         }
-        Event::TaskFinished { status, .. } => {
-            s.intent_pending = false;
-            s.task_status = Some(*status)
-        }
-        Event::UndoRefused { .. } | Event::UndoDone { ok: false, .. } => s.undo_refused += 1,
-        Event::UndoDone {
-            action_id,
-            undone,
-            skipped,
-            ok: true,
-            ..
-        } => {
-            if s.undo.is_none() {
-                s.undo = Some(UndoState {
-                    action_id: action_id.clone(),
-                    undone: *undone,
-                    skipped: skipped.clone(),
-                });
+        Event::ObsDiff { action_id, diff } => {
+            if let Some(a) = s.actions.iter_mut().find(|a| &a.id == action_id) {
+                a.diff = Some(diff.clone());
             }
+        }
+        Event::TaskFinished { status, stop } => {
+            s.status = Some(*status);
+            if stop.is_some() {
+                s.stop = *stop;
+            }
+            s.phase = Phase::Finished;
+            s.ask = None;
         }
     }
     s

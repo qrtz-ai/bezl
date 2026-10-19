@@ -1,0 +1,253 @@
+{
+  "bundleId": "com.apple.systempreferences",
+  "name": "System Settings",
+  "running": false,
+  "start": "home",
+  "states": {
+    "home": {
+      "id": "e:40:0",
+      "role": "AXWindow",
+      "title": "System Settings",
+      "sig": "s40-0-2196",
+      "children": [
+        {
+          "id": "e:40:1",
+          "role": "AXOutline",
+          "title": "Sidebar",
+          "sig": "s40-1-1052",
+          "children": [
+            {
+              "id": "e:40:10",
+              "role": "AXRow",
+              "title": "Wi-Fi",
+              "sig": "s40-10-8200",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:40:11",
+              "role": "AXRow",
+              "title": "Bluetooth",
+              "sig": "s40-11-8411",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:40:12",
+              "role": "AXRow",
+              "title": "Network",
+              "sig": "s40-12-6493",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:40:13",
+              "role": "AXRow",
+              "title": "Battery",
+              "sig": "s40-13-852",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:40:14",
+              "role": "AXRow",
+              "title": "General",
+              "sig": "s40-14-6403",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:40:15",
+              "role": "AXRow",
+              "title": "Displays",
+              "sig": "s40-15-3805",
+              "actions": ["AXPress"]
+            }
+          ]
+        }
+      ]
+    },
+    "wifi": {
+      "id": "e:40:0",
+      "role": "AXWindow",
+      "title": "System Settings",
+      "sig": "s40-0-2196",
+      "children": [
+        {
+          "id": "e:40:1",
+          "role": "AXOutline",
+          "title": "Sidebar",
+          "sig": "s40-1-1052",
+          "children": [
+            {
+              "id": "e:40:10",
+              "role": "AXRow",
+              "title": "Wi-Fi",
+              "sig": "s40-10-8200",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:40:11",
+              "role": "AXRow",
+              "title": "Bluetooth",
+              "sig": "s40-11-8411",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:40:12",
+              "role": "AXRow",
+              "title": "Network",
+              "sig": "s40-12-6493",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:40:13",
+              "role": "AXRow",
+              "title": "Battery",
+              "sig": "s40-13-852",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:40:14",
+              "role": "AXRow",
+              "title": "General",
+              "sig": "s40-14-6403",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:40:15",
+              "role": "AXRow",
+              "title": "Displays",
+              "sig": "s40-15-3805",
+              "actions": ["AXPress"]
+            }
+          ]
+        },
+        {
+          "id": "e:40:2",
+          "role": "AXGroup",
+          "title": "Wi-Fi",
+          "sig": "s40-2-6450",
+          "children": [
+            {
+              "id": "e:40:3",
+              "role": "AXCheckBox",
+              "title": "Wi-Fi",
+              "sig": "s40-3-3240",
+              "actions": ["AXPress"],
+              "value": "0"
+            },
+            {
+              "id": "e:40:4",
+              "role": "AXSecureTextField",
+              "title": "Password",
+              "sig": "s40-4-4670",
+              "value": "hunter2-secret"
+            },
+            {
+              "id": "e:40:5",
+              "role": "AXButton",
+              "title": "Details…",
+              "sig": "s40-5-634",
+              "actions": ["AXPress"]
+            }
+          ]
+        }
+      ]
+    },
+    "wifi_on": {
+      "id": "e:40:0",
+      "role": "AXWindow",
+      "title": "System Settings",
+      "sig": "s40-0-2196",
+      "children": [
+        {
+          "id": "e:40:1",
+          "role": "AXOutline",
+          "title": "Sidebar",
+          "sig": "s40-1-1052",
+          "children": [
+            {
+              "id": "e:40:10",
+              "role": "AXRow",
+              "title": "Wi-Fi",
+              "sig": "s40-10-8200",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:40:11",
+              "role": "AXRow",
+              "title": "Bluetooth",
+              "sig": "s40-11-8411",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:40:12",
+              "role": "AXRow",
+              "title": "Network",
+              "sig": "s40-12-6493",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:40:13",
+              "role": "AXRow",
+              "title": "Battery",
+              "sig": "s40-13-852",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:40:14",
+              "role": "AXRow",
+              "title": "General",
+              "sig": "s40-14-6403",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:40:15",
+              "role": "AXRow",
+              "title": "Displays",
+              "sig": "s40-15-3805",
+              "actions": ["AXPress"]
+            }
+          ]
+        },
+        {
+          "id": "e:40:2",
+          "role": "AXGroup",
+          "title": "Wi-Fi",
+          "sig": "s40-2-6450",
+          "children": [
+            {
+              "id": "e:40:3",
+              "role": "AXCheckBox",
+              "title": "Wi-Fi",
+              "sig": "s40-3-3240",
+              "actions": ["AXPress"],
+              "value": "1"
+            },
+            {
+              "id": "e:40:5",
+              "role": "AXButton",
+              "title": "Details…",
+              "sig": "s40-5-634",
+              "actions": ["AXPress"]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "menu": [
+    {
+      "id": "m:40:1",
+      "path": ["System Settings", "Quit System Settings"],
+      "combo": "cmd+q"
+    }
+  ],
+  "transitions": [
+    {
+      "on": "press:e:40:10",
+      "to": "wifi"
+    },
+    {
+      "from": "wifi",
+      "on": "press:e:40:3",
+      "to": "wifi_on"
+    }
+  ]
+}

@@ -88,7 +88,7 @@ export const eventContract = {
     capability: 'app.update.read',
     payload: AppUpdateStatus,
   }),
-  /** ctrl's scheduler recorded one or more runs (ADR 0105); the view reloads without polling. */
+  /** A ctrl do run changed (started, asked, acted, stopped); the view reloads without polling. */
   'ctrl:changed': defineEvent({
     capability: 'ctrl.read',
     payload: z.object({ ids: z.array(z.string()) }),

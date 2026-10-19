@@ -1,5 +1,6 @@
-//! Slice 5b (ADR 0110): ctrl over the supervised helper process. A fake child behind the real `Supervisor` speaks
-//! the echo/nano lines (hello, heartbeats) and answers `ctrl.*` lines with the in-memory `FakeHelper`, so a run goes
+//! Slice 5b (ADR 0110, ctrl do since ADR 0214): ctrl over the supervised helper process. A fake child behind the
+//! real `Supervisor` speaks the echo/nano lines (hello, heartbeats) and answers `ctrl.*` lines with the in-memory
+//! `FakeHelper` (the ctrl crate's fixture world), so a run goes
 //! router → `CtrlService` → `HelperClient` → `SupervisorWire` → supervisor stdio → child and back, with the app's
 //! own line pump (`start_helper`) running next to it.
 use qrtz_app::ctrl_helper::{ctrl_line_id, SupervisorWire};
@@ -97,29 +98,30 @@ async fn call(r: &Router<Shared>, ch: &str, payload: Value) -> Value {
         .await
 }
 
-async fn run_task(r: &Router<Shared>, text: &str) -> Value {
-    let t = call(
-        r,
-        "ctrl:create-task",
-        json!({"text": text, "schedule": {"kind": "once", "at": null}}),
-    )
-    .await;
-    let id = t["data"]["id"].as_str().unwrap().to_string();
-    let run = call(r, "ctrl:run-now", json!({"id": id})).await;
-    assert_eq!(run["ok"], true, "{run}");
-    run
+/// The ctrl crate's fixture world: Safari, Notes, Finder, System Settings, Mail and Slack.
+fn world() -> FakeWorld {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../qrtz-ctrl/tests/fixtures");
+    let mut w = FakeWorld {
+        default_browser: Some("com.apple.Safari".into()),
+        frontmost: Some("com.apple.finder".into()),
+        ..Default::default()
+    };
+    for name in ["safari", "notes", "finder", "settings", "mail", "slack"] {
+        let a: qrtz_ctrl::helper::FakeApp =
+            serde_json::from_str(&std::fs::read_to_string(dir.join(format!("{name}.json"))).unwrap())
+                .unwrap();
+        if a.running {
+            w.state.insert(a.bundle_id.clone(), a.start.clone());
+        }
+        w.apps.push(a);
+    }
+    w
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_run_executes_through_the_supervised_helper_stdio_next_to_the_echo_nano_pump() {
+async fn a_do_runs_through_the_supervised_helper_stdio_next_to_the_echo_nano_pump() {
     let d = tempfile::tempdir().unwrap();
-    let mut world = FakeWorld::typical(4);
-    world.apps.push(qrtz_ctrl::helper::FakeApp::new(
-        "com.apple.TextEdit",
-        "TextEdit",
-        400,
-    ));
-    let fake = Arc::new(FakeHelper::new(world));
+    let fake = Arc::new(FakeHelper::new(world()));
     let sup = Supervisor::spawn(
         opts(),
         Arc::new(FakeChild {
@@ -132,35 +134,31 @@ async fn a_run_executes_through_the_supervised_helper_stdio_next_to_the_echo_nan
     svc.start_helper(); // the app's own pump sees the ctrl replies too and skips them
     running(&sup).await;
     let r = Router::new(Shared(svc));
-    let run = run_task(&r, "close all my tabs").await;
+    let run = call(&r, "ctrl:do", json!({"text": "open youtube"})).await;
     assert_eq!(run["data"]["status"], "done", "{run}");
-    let v = call(&r, "ctrl:run", json!({"runId": run["data"]["id"]})).await;
-    assert_eq!(v["data"]["state"]["violations"], 0, "{v}");
-    let w = fake.world();
-    assert_eq!(w.acted.len(), 1);
-    assert_eq!(w.frontmost_pid, 100, "the user's app stayed frontmost");
-    let safari = w.apps.iter().find(|a| a.bundle_id == "com.apple.Safari").unwrap();
-    assert_eq!(safari.tabs, 0);
-    // An irreversible task stops at the confirm gate over the real stdio (the preview rides `ctrl.preview`).
-    let run = run_task(&r, "quit textedit").await;
+    assert_eq!(fake.world().acts.len(), 3);
+    assert_eq!(fake.world().acts[2]["text"], "youtube.com");
+    // A gated action stops at the confirm card over the real stdio, and acts once approved.
+    let run = call(&r, "ctrl:do", json!({"text": "press send in mail"})).await;
     assert_eq!(run["data"]["status"], "needs-confirm", "{run}");
-    assert_eq!(fake.world().acted.len(), 1);
-    let v = call(&r, "ctrl:run", json!({"runId": run["data"]["id"]})).await;
-    assert_eq!(v["data"]["state"]["confirm"]["complete"], true, "{v}");
+    // Opening mail is not gated; the press on send waits.
+    assert_eq!(fake.world().acts.len(), 4);
     let v = call(
         &r,
         "ctrl:confirm",
-        json!({"runId": run["data"]["id"], "gateId": "g0", "answer": "approve"}),
+        json!({"runId": run["data"]["runId"], "gateId": run["data"]["confirm"]["gateId"], "answer": "approve"}),
     )
     .await;
-    assert_eq!(v["data"]["state"]["status"], "done", "{v}");
-    assert_eq!(fake.world().acted.len(), 2);
+    assert_eq!(v["data"]["status"], "done", "{v}");
+    assert_eq!(fake.world().acts.len(), 5);
+    let runs = call(&r, "ctrl:runs", Value::Null).await;
+    assert_eq!(runs["data"].as_array().unwrap().len(), 2, "{runs}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn while_the_helper_is_down_runs_stop_at_planned_without_waiting() {
+async fn while_the_helper_is_down_do_is_unavailable_without_waiting() {
     let d = tempfile::tempdir().unwrap();
-    let fake = Arc::new(FakeHelper::new(FakeWorld::typical(4)));
+    let fake = Arc::new(FakeHelper::new(world()));
     // Never started: the supervisor is stopped, like a helper that's restarting.
     let sup = Supervisor::spawn(
         opts(),
@@ -178,15 +176,16 @@ async fn while_the_helper_is_down_runs_stop_at_planned_without_waiting() {
     );
     let r = Router::new(Shared(service(d.path(), None, Some(wire))));
     let t0 = Instant::now();
-    let run = run_task(&r, "close all my tabs").await;
-    assert_eq!(run["data"]["status"], "planned", "{run}");
+    let run = call(&r, "ctrl:do", json!({"text": "open youtube"})).await;
+    assert_eq!(run["ok"], false, "{run}");
+    assert_eq!(run["error"]["code"], "E_UNAVAILABLE", "{run}");
     assert!(t0.elapsed() < Duration::from_secs(2));
-    assert!(fake.world().acted.is_empty());
+    assert!(fake.world().acts.is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_helper_that_never_answers_ctrl_times_out_instead_of_hanging() {
-    let fake = Arc::new(FakeHelper::new(FakeWorld::typical(4)));
+    let fake = Arc::new(FakeHelper::new(world()));
     let sup = Supervisor::spawn(
         opts(),
         Arc::new(FakeChild {
@@ -211,7 +210,7 @@ async fn a_helper_that_never_answers_ctrl_times_out_instead_of_hanging() {
 #[test]
 fn only_ctrl_lines_are_ctrl_lines() {
     assert_eq!(
-        ctrl_line_id(r#"{"type":"ctrl.act.result","id":"c3","ok":true,"err":null}"#).as_deref(),
+        ctrl_line_id(r#"{"type":"ctrl.ax.act.result","id":"c3","ok":true,"err":null}"#).as_deref(),
         Some("c3")
     );
     assert_eq!(ctrl_line_id(r#"{"type":"heartbeat"}"#), None);

@@ -1,6 +1,6 @@
 [package]
 name = "qrtz-ctrl"
-description = "qrtz ctrl core: the never-takes-over-the-ui execution ladder, the UI guard and the append-only event log (ADR 0100). UI-free, no network."
+description = "qrtz ctrl core: \"ctrl do\", a chain of small calibrated decisions over the macOS accessibility tree, the host-owned confirm gate and the append-only, text-free event log (ADR 0214). UI-free, no network."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,20 +11,12 @@ publish.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2 = "0.10"
-# Read-only parse of the Screenshot app's preferences file for a custom capture folder (ADR 0126).
-plist = "1"
 hex = "0.4"
-# Local wall-clock schedules and DST (ADR 0105): next-due math against the system zone or an injected zone in tests.
-chrono = { version = "0.4", default-features = false, features = [
-  "clock",
-  "std",
-] }
-chrono-tz = "0.10"
 
 [dev-dependencies]
 tempfile.workspace = true
 
 [features]
-# The Laya (Core ML) scorer for the decision layers (ADR 0106). macOS only, and only used with a consented,
-# installed model and a runtime; without it (and everywhere else) the deterministic heuristic layer answers.
+# The Laya (Core ML) scorer for the decision chain (ADR 0106, kept by ADR 0214). macOS only, and only used with a
+# consented, installed model and a runtime; without it (and everywhere else) the deterministic heuristic answers.
 laya = []

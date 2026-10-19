@@ -121,234 +121,123 @@ const note = {
 };
 const talkIdle = { phase: 'idle' as const, text: '', partial: '', level: 0 };
 
-const ctrlTask = {
-  id: 'task-0',
-  text: 'every week clean up my downloads folder',
-  schedule: { kind: 'weekly' as const, weekday: 0, hour: 18, minute: 0 },
-  paused: false,
-  createdAt: T0,
-  runs: 1,
-  lastRunAt: T0 + 60_000,
-  nextRunAt: T0 + 7 * 86_400_000,
-};
-const ctrlRun = {
-  id: 'run-1',
-  taskId: 'task-0',
-  at: T0 + 60_000,
-  status: 'asking' as const,
-  events: 4,
-  violations: 0,
-};
-const ctrlOption = (id: string, label: string, p: number) => ({
-  id,
-  label,
-  p,
-  irreversible: false,
-  refusedInBackground: false,
-});
-const ctrlAskDecision = {
-  id: 'd0',
-  node: 'choose_intent' as const,
-  outcome: 'ask' as const,
-  answered: false,
-  chosen: 'none',
-  chosenLabel: 'none of these',
-  p: 0.2,
-  model: 'qrtz-heuristic 1',
+const ctrlAsk = {
+  decisionId: 'd2',
+  node: 'choose-move' as const,
+  question: 'what should ctrl do next?',
   options: [
-    ctrlOption('intent.clean_folder', 'clean up a folder', 0.07),
-    ctrlOption('intent.close_tabs', 'close browser tabs', 0.07),
-    ctrlOption('none', 'none of these', 0.2),
+    {
+      id: 'menu.m:60:1',
+      label: 'switch workspace… (menu)',
+      p: 0.31,
+      gated: false,
+    },
+    { id: 'branch.e:60:2', label: 'look in web area', p: 0.22, gated: false },
+    { id: 'key.cmd+f', label: 'find (cmd+f)', p: 0.12, gated: false },
   ],
 };
-const ctrlEvents = [
-  { seq: 0, kind: 'task.started', at: T0 + 60_000, actionId: null },
-  { seq: 1, kind: 'intent.pending', at: T0 + 60_000, actionId: null },
-  { seq: 2, kind: 'obs.apps', at: T0 + 60_000, actionId: null, node: null },
-  {
-    seq: 3,
-    kind: 'decision.made',
-    at: T0 + 60_000,
-    actionId: null,
-    node: 'choose_intent',
-  },
-];
-const ctrlState = {
-  actions: [],
-  violations: 0,
-  inconclusive: 0,
-  quarantined: [],
+const ctrlView = {
+  runId: 'run-1',
+  doId: 'do-0',
+  text: 'open youtube',
+  status: 'done' as const,
+  stop: null,
+  app: 'safari',
+  startedAt: T0 + 60_000,
+  at: 3,
+  total: 3,
+  events: [
+    { seq: 0, kind: 'do.started' },
+    { seq: 1, kind: 'obs.apps' },
+    { seq: 2, kind: 'decision.made' },
+  ],
+  decisions: [
+    {
+      id: 'd0',
+      node: 'choose-app' as const,
+      question: 'which app should do it?',
+      chosen: 'app.com.apple.Safari',
+      chosenLabel: 'open safari',
+      p: 0.93,
+      outcome: 'act' as const,
+      answered: false,
+      backtracks: 0,
+      model: 'qrtz-heuristic 2',
+      options: 7,
+    },
+  ],
+  actions: [
+    {
+      id: 'a0',
+      kind: 'open_app' as const,
+      label: 'open safari',
+      status: 'done' as const,
+      err: null,
+    },
+    {
+      id: 'a1',
+      kind: 'key_combo' as const,
+      label: 'press cmd+l',
+      status: 'done' as const,
+      err: null,
+    },
+    {
+      id: 'a2',
+      kind: 'set_value' as const,
+      label: 'type “youtube.com” and press return',
+      status: 'done' as const,
+      err: null,
+    },
+  ],
+  ask: null,
+  confirm: null,
+  backtracks: 0,
 };
 const ctrlSamples = {
-  'ctrl:tasks': { request: undefined, response: [ctrlTask] },
-  'ctrl:create-task': {
-    request: { text: ctrlTask.text, schedule: ctrlTask.schedule },
-    response: {
-      ...ctrlTask,
-      runs: 0,
-      lastRunAt: null,
-      nextRunAt: T0 + 7 * 86_400_000,
-    },
-  },
-  'ctrl:set-paused': {
-    request: { id: 'task-0', paused: true },
-    response: { ...ctrlTask, paused: true, nextRunAt: null },
-  },
-  'ctrl:delete-task': { request: { id: 'task-0' }, response: { ok: true } },
-  'ctrl:run-now': { request: { id: 'task-0' }, response: ctrlRun },
-  'ctrl:runs': { request: { taskId: 'task-0' }, response: [ctrlRun] },
-  'ctrl:run': {
-    request: { runId: 'run-1', at: 4 },
-    response: {
-      run: ctrlRun,
-      events: ctrlEvents,
-      at: 4,
-      state: {
-        ...ctrlState,
-        status: 'asking',
-        decisions: [ctrlAskDecision],
-        plan: null,
-        ask: {
-          decisionId: 'd0',
-          node: 'choose_intent',
-          options: ctrlAskDecision.options.slice(0, 2),
-        },
+  'ctrl:do': { request: { text: 'open youtube' }, response: ctrlView },
+  'ctrl:runs': {
+    request: undefined,
+    response: [
+      {
+        runId: 'run-1',
+        doId: 'do-0',
+        text: 'open youtube',
+        status: 'done',
+        startedAt: T0 + 60_000,
+        actions: 3,
       },
+    ],
+  },
+  'ctrl:run': {
+    request: { runId: 'run-3', at: 2 },
+    response: {
+      ...ctrlView,
+      runId: 'run-3',
+      doId: 'do-2',
+      text: 'message the design channel in slack',
+      status: 'asking',
+      app: 'slack',
+      at: 2,
+      actions: [{ ...ctrlView.actions[0]!, label: 'open slack' }],
+      ask: ctrlAsk,
     },
   },
   'ctrl:answer': {
-    request: { runId: 'run-1', decisionId: 'd0', optionId: null },
-    response: {
-      run: { ...ctrlRun, status: 'cancelled', events: 6 },
-      events: [
-        ...ctrlEvents,
-        {
-          seq: 4,
-          kind: 'decision.answered_by_user',
-          at: T0 + 61_000,
-          actionId: null,
-          node: null,
-        },
-        {
-          seq: 5,
-          kind: 'task.finished',
-          at: T0 + 61_000,
-          actionId: null,
-          node: null,
-        },
-      ],
-      at: 6,
-      state: {
-        ...ctrlState,
-        status: 'cancelled',
-        decisions: [ctrlAskDecision],
-        plan: null,
-        ask: null,
-      },
-    },
+    request: { runId: 'run-3', decisionId: 'd2', optionId: null },
+    response: { ...ctrlView, runId: 'run-3', status: 'cancelled', ask: null },
   },
   'ctrl:confirm': {
-    request: { runId: 'run-1', gateId: 'g0', answer: 'deny' },
+    request: { runId: 'run-5', gateId: 'g0', answer: 'approve' },
     response: {
-      run: { ...ctrlRun, status: 'cancelled', events: 6 },
-      events: [
-        ...ctrlEvents,
-        {
-          seq: 4,
-          kind: 'confirm.requested',
-          at: T0 + 60_000,
-          actionId: null,
-          node: null,
-        },
-        {
-          seq: 5,
-          kind: 'confirm.resolved',
-          at: T0 + 61_000,
-          actionId: null,
-          node: null,
-        },
-      ],
-      at: 6,
-      state: {
-        ...ctrlState,
-        status: 'cancelled',
-        decisions: [],
-        plan: null,
-        ask: null,
-        confirm: {
-          gateId: 'g0',
-          action: 'quit an app',
-          app: 'textedit',
-          move: 'quit',
-          items: [
-            {
-              key: '3f2a9c1d0b7e#0',
-              kind: 'window',
-              label: 'notes.txt',
-              unsaved: false,
-            },
-            {
-              key: '8c1e44a0d2f9#0',
-              kind: 'window',
-              label: 'draft.txt',
-              unsaved: true,
-            },
-          ],
-          complete: true,
-          rules: [
-            'choose_intent:intent.quit_app',
-            'choose_move:shortcut.cmd+q',
-          ],
-          answer: 'denied',
-          reverified: null,
-          used: false,
-        },
-      },
+      ...ctrlView,
+      runId: 'run-5',
+      text: 'press send in mail',
+      app: 'mail',
     },
   },
-  'ctrl:undo': {
-    request: { runId: 'run-1', rest: true },
-    response: {
-      run: { ...ctrlRun, status: 'done', events: 6 },
-      events: [
-        ...ctrlEvents,
-        {
-          seq: 4,
-          kind: 'task.finished',
-          at: T0 + 60_000,
-          actionId: null,
-          node: null,
-        },
-        {
-          seq: 5,
-          kind: 'undo.done',
-          at: T0 + 61_000,
-          actionId: 'a0',
-          node: null,
-        },
-      ],
-      at: 6,
-      state: {
-        ...ctrlState,
-        status: 'done',
-        decisions: [],
-        plan: null,
-        ask: null,
-        undo: {
-          actionId: 'a0',
-          files: 3,
-          ready: 0,
-          cantUndo: [
-            { key: 'f3f2a9c1d0b7e', label: 'photo.png', why: 'moved' },
-          ],
-          done: { undone: 2 },
-        },
-      },
-    },
-  },
-  'ctrl:revoke-approval': {
-    request: { taskId: 'task-0', approvalId: 'approval-4' },
-    response: { ...ctrlTask, approvals: [] },
+  'ctrl:stop': {
+    request: { runId: 'run-5' },
+    response: { runId: 'run-5', status: 'stopping' },
   },
   'ctrl:model': {
     request: undefined,
@@ -820,7 +709,7 @@ export const idleResponses: Partial<Record<IpcChannel, unknown>> = {
   'talk:history': [],
   'talk:dictionary': [],
   'speech:status': { ...speechNone, configured: false },
-  'ctrl:tasks': [],
+  'ctrl:runs': [],
   'packages:list': {
     packages: [],
     index: null,

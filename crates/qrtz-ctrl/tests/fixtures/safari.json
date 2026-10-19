@@ -1,0 +1,286 @@
+{
+  "bundleId": "com.apple.Safari",
+  "name": "Safari",
+  "browser": true,
+  "running": true,
+  "start": "start",
+  "states": {
+    "start": {
+      "id": "e:10:0",
+      "role": "AXWindow",
+      "title": "Start Page",
+      "sig": "s10-0-6570",
+      "children": [
+        {
+          "id": "e:10:1",
+          "role": "AXToolbar",
+          "title": "",
+          "sig": "s10-1-8615",
+          "children": [
+            {
+              "id": "e:10:2",
+              "role": "AXButton",
+              "title": "Back",
+              "sig": "s10-2-9841",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:10:3",
+              "role": "AXButton",
+              "title": "Forward",
+              "sig": "s10-3-5546",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:10:4",
+              "role": "AXTextField",
+              "title": "Address and Search",
+              "sig": "s10-4-5605",
+              "placeholder": "Search or enter website name",
+              "value": "",
+              "focused": false
+            },
+            {
+              "id": "e:10:5",
+              "role": "AXButton",
+              "title": "Share",
+              "sig": "s10-5-9990",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:10:6",
+              "role": "AXButton",
+              "title": "New Tab",
+              "sig": "s10-6-740",
+              "actions": ["AXPress"]
+            }
+          ]
+        },
+        {
+          "id": "e:10:7",
+          "role": "AXWebArea",
+          "title": "Start Page",
+          "sig": "s10-7-3967",
+          "value": "",
+          "children": [
+            {
+              "id": "e:10:8",
+              "role": "AXStaticText",
+              "title": "Favorites",
+              "sig": "s10-8-4368"
+            },
+            {
+              "id": "e:10:9",
+              "role": "AXButton",
+              "title": "Apple",
+              "sig": "s10-9-2299",
+              "actions": ["AXPress"]
+            }
+          ]
+        }
+      ]
+    },
+    "address": {
+      "id": "e:10:0",
+      "role": "AXWindow",
+      "title": "Start Page",
+      "sig": "s10-0-6570",
+      "children": [
+        {
+          "id": "e:10:1",
+          "role": "AXToolbar",
+          "title": "",
+          "sig": "s10-1-8615",
+          "children": [
+            {
+              "id": "e:10:2",
+              "role": "AXButton",
+              "title": "Back",
+              "sig": "s10-2-9841",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:10:3",
+              "role": "AXButton",
+              "title": "Forward",
+              "sig": "s10-3-5546",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:10:4",
+              "role": "AXTextField",
+              "title": "Address and Search",
+              "sig": "s10-4-5605",
+              "placeholder": "Search or enter website name",
+              "value": "",
+              "focused": true
+            },
+            {
+              "id": "e:10:5",
+              "role": "AXButton",
+              "title": "Share",
+              "sig": "s10-5-9990",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:10:6",
+              "role": "AXButton",
+              "title": "New Tab",
+              "sig": "s10-6-740",
+              "actions": ["AXPress"]
+            }
+          ]
+        },
+        {
+          "id": "e:10:7",
+          "role": "AXWebArea",
+          "title": "Start Page",
+          "sig": "s10-7-3967",
+          "value": "",
+          "children": [
+            {
+              "id": "e:10:8",
+              "role": "AXStaticText",
+              "title": "Favorites",
+              "sig": "s10-8-4368"
+            },
+            {
+              "id": "e:10:9",
+              "role": "AXButton",
+              "title": "Apple",
+              "sig": "s10-9-2299",
+              "actions": ["AXPress"]
+            }
+          ]
+        }
+      ]
+    },
+    "site": {
+      "id": "e:10:0",
+      "role": "AXWindow",
+      "title": "{text}",
+      "sig": "s10-0-9253",
+      "children": [
+        {
+          "id": "e:10:1",
+          "role": "AXToolbar",
+          "title": "",
+          "sig": "s10-1-8615",
+          "children": [
+            {
+              "id": "e:10:2",
+              "role": "AXButton",
+              "title": "Back",
+              "sig": "s10-2-9841",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:10:3",
+              "role": "AXButton",
+              "title": "Forward",
+              "sig": "s10-3-5546",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:10:4",
+              "role": "AXTextField",
+              "title": "Address and Search",
+              "sig": "s10-4-5605",
+              "placeholder": "Search or enter website name",
+              "value": "{text}",
+              "focused": false
+            },
+            {
+              "id": "e:10:5",
+              "role": "AXButton",
+              "title": "Share",
+              "sig": "s10-5-9990",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:10:6",
+              "role": "AXButton",
+              "title": "New Tab",
+              "sig": "s10-6-740",
+              "actions": ["AXPress"]
+            }
+          ]
+        },
+        {
+          "id": "e:10:7",
+          "role": "AXWebArea",
+          "title": "{text}",
+          "sig": "s10-7-8651",
+          "value": "https://{text}/",
+          "children": [
+            {
+              "id": "e:10:8",
+              "role": "AXStaticText",
+              "title": "Favorites",
+              "sig": "s10-8-4368"
+            },
+            {
+              "id": "e:10:9",
+              "role": "AXButton",
+              "title": "Apple",
+              "sig": "s10-9-2299",
+              "actions": ["AXPress"]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "menu": [
+    {
+      "id": "m:10:1",
+      "path": ["File", "New Window"],
+      "combo": "cmd+n"
+    },
+    {
+      "id": "m:10:2",
+      "path": ["File", "New Tab"],
+      "combo": "cmd+t"
+    },
+    {
+      "id": "m:10:3",
+      "path": ["File", "Open Location…"],
+      "combo": "cmd+l"
+    },
+    {
+      "id": "m:10:4",
+      "path": ["File", "Close Tab"],
+      "combo": "cmd+w"
+    },
+    {
+      "id": "m:10:5",
+      "path": ["Safari", "Quit Safari"],
+      "combo": "cmd+q"
+    },
+    {
+      "id": "m:10:6",
+      "path": ["Edit", "Find…"],
+      "combo": "cmd+f"
+    }
+  ],
+  "transitions": [
+    {
+      "on": "key:cmd+l",
+      "to": "address",
+      "focus": "e:10:4"
+    },
+    {
+      "on": "press:m:10:3",
+      "to": "address",
+      "focus": "e:10:4"
+    },
+    {
+      "on": "set_value:e:10:4:go",
+      "to": "site"
+    },
+    {
+      "on": "open_url",
+      "to": "site"
+    }
+  ]
+}

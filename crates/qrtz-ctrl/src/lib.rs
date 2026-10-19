@@ -1,51 +1,38 @@
-//! qrtz ctrl core (slice 1, ADR 0100: ctrl never takes over the UI).
+//! qrtz ctrl core: **ctrl do** (ADR 0214, which amends ADR 0100 and supersedes the per-chore ctrl ADRs).
 //!
-//! ctrl runs typed tasks in the background while the user keeps working. This crate holds the parts that are pure
-//! and testable on Linux:
+//! Jared types one command ("open youtube", "create a new note titled groceries") and ctrl does it in the
+//! foreground, the way a person would, through a chain of small decisions over the macOS accessibility tree
+//! (`docs/ctrl/decision-layer.md`, Jared's Jev-style design):
 //!
-//! - [`ladder`]: every action arrives with the routes that could perform it. The ladder picks the lowest rung that
-//!   can run without touching the user's screen, mouse or keyboard (files → workspace → app scripting → background
-//!   AX → per-process key events). Anything that needs focus, the cursor or activation is refused, never attempted.
-//! - [`guard`]: snapshots of what the user owns (frontmost app, cursor, focused element, key window) taken before and
-//!   after every action, and the comparison that turns a difference into a violation.
-//! - [`log`]: the append-only, hash-chained event log; state is a pure fold over it (replay, scrub, fork).
-//! - [`runner`]: the effect that ties them together: decide, snapshot, execute, snapshot, record.
-//! - [`fs_exec`]: the first executor, plain file moves (downloads cleanup needs no UI at all).
-//! - [`task`], [`store`], [`service`] (slice 2, ADR 0103): typed tasks with a schedule, persisted as append-only
-//!   hash-chained files in the app data dir, and the `ctrl:*` channels the shell's ctrl view calls.
-//! - [`schedule`] (slice 3, ADR 0105): next-due math against the local zone (DST gap/overlap rules), used by the
-//!   in-process scheduler ticker on [`service::CtrlService`].
-//! - [`decide`], [`layers`], [`laya`] (slice 4, ADR 0106): the decision layers. A chain of small questions
-//!   (intent → app → target/text → move, ≤ 20 options each) answered with calibrated probabilities by the
-//!   deterministic heuristic layer (no model) or, with consent, a Laya model; act / tentative / ask outcomes and the
-//!   resulting plan are appended to the run's log and replay exactly.
-//! - [`ax`], [`helper`], [`exec`] (slice 5, ADR 0108): the executor. A plan's move becomes ladder routes, each runs
-//!   through the ctrl helper protocol between two guard snapshots, a verify step checks it, and a failure
-//!   backtracks or asks; AX snapshots of a background app's front window (hashed) join the move question.
+//! choose the app → choose a move (a menu-bar shortcut, the built-in shortcut table, or a branch of the window's
+//! tree) → descend → choose an element action → choose the text → act → verify against the tree diff, and loop
+//! within a step budget. Every question has at most 20 options including "none of these"; a calibrated probability
+//! acts at p ≥ 0.8, tries with backtracking at p ≥ 0.5, and otherwise asks Jared to pick from the top three.
 //!
-//! - [`gate`] (slice 6, ADR 0111): the confirm gate. An irreversible plan stops with a concrete preview until the
-//!   user approves, denies or approves and remembers it for the task; answers, expiries and standing-approval uses
-//!   are events.
+//! - [`ax`]: the tree as the helper sends it (wire) and as the log holds it (hashed tokens only), pruning, grouping
+//!   to ≤ 20 options, the tree hash and diff. Secure, password and payment fields never enter it.
+//! - [`chain`]: the option sources and heuristic priors of every node, a pure function of the goal and the state.
+//! - [`decide`]: scoring, calibration, act / tentative / ask, backtracking, replay check.
+//! - [`act`]: the fixed action set and its policy (no free-form AppleScript, no coordinate clicks).
+//! - [`gate`]: the host-owned confirm rules table; approvals bind to (element handle, action, tree hash).
+//! - [`guard`]: the stop key (Esc) and "user input wins".
+//! - [`log`], [`store`]: the append-only hash-chained run log (a pure fold) and the `ctrl:do` store.
+//! - [`runner`], [`driver`]: one guarded action, and the loop that runs the chain through the helper.
+//! - [`helper`], [`laya`]: the `ctrl.*` helper protocol (`ctrl.tree`, `ctrl.menu.shortcuts`, `ctrl.ax.act`,
+//!   `ctrl.observe`, plus `ctrl.catalog` and Laya) and the Laya scorer.
+//! - [`service`]: the `ctrl:*` channels the shell's ctrl view calls.
 //!
-//! The macOS side (real probes, AX, `CGEventPostToPid`, `NSWorkspace`) is `native/qrtz-helper/Sources/QrtzCtrl`.
-//! Both sides test their policy tables and guard semantics against the same fixtures in
-//! `native/qrtz-helper/Fixtures/ctrl/`.
-pub mod apps;
+//! The macOS side (the tree reader, the actor and the stop-key watcher) is `native/qrtz-helper/Sources/QrtzCtrl`.
+pub mod act;
 pub mod ax;
+pub mod chain;
 pub mod decide;
-pub mod exec;
-pub mod files;
-pub mod fs_exec;
+pub mod driver;
 pub mod gate;
 pub mod guard;
 pub mod helper;
-pub mod ladder;
 pub mod laya;
-pub mod layers;
 pub mod log;
-pub mod policy;
 pub mod runner;
-pub mod schedule;
 pub mod service;
 pub mod store;
-pub mod task;

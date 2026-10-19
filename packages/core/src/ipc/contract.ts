@@ -24,10 +24,9 @@ import {
 } from '../packages/contract';
 import {
   CTRL_TEXT_MAX,
-  CtrlRun,
+  CtrlRunStatus,
+  CtrlRunSummary,
   CtrlRunView,
-  CtrlSchedule,
-  CtrlTask,
   CtrlModelState,
 } from '../ctrl/contract';
 import { SnapStatus } from '../snap/contract';
@@ -625,51 +624,26 @@ export const ipcContract = {
     request: SpeechScope,
     response: SpeechSetupStatus,
   }),
-  // --- qrtz ctrl (ADR 0100, 0103) ---
-  /** Every task, newest first. */
-  'ctrl:tasks': defineChannel({
-    version: 1,
-    capability: 'ctrl.read',
-    request: z.void(),
-    response: z.array(CtrlTask),
-  }),
-  'ctrl:create-task': defineChannel({
+  // --- qrtz ctrl do (ADR 0214) ---
+  /**
+   * Do one command now: ctrl takes the foreground and runs the decision chain until it's done, asks, needs an ok,
+   * or stops (Esc, or any input of Jared's). Answers the run's view. One run at a time; a new command cancels a run
+   * that was still waiting on Jared.
+   */
+  'ctrl:do': defineChannel({
     version: 1,
     capability: 'ctrl.write',
-    request: z.object({
-      text: z.string().trim().min(1).max(CTRL_TEXT_MAX),
-      schedule: CtrlSchedule,
-    }),
-    response: CtrlTask,
+    request: z.object({ text: z.string().trim().min(1).max(CTRL_TEXT_MAX) }),
+    response: CtrlRunView,
   }),
-  'ctrl:set-paused': defineChannel({
-    version: 1,
-    capability: 'ctrl.write',
-    request: z.object({ id: z.string().max(64), paused: z.boolean() }),
-    response: CtrlTask,
-  }),
-  /** The task leaves the list; its runs' logs stay on disk (append-only, ADR 0103). */
-  'ctrl:delete-task': defineChannel({
-    version: 1,
-    capability: 'ctrl.write',
-    request: z.object({ id: z.string().max(64) }),
-    response: z.object({ ok: z.literal(true) }),
-  }),
-  /** Record a run now; the decision layers decide its intent right away (`planned` or `asking`, ADR 0106). */
-  'ctrl:run-now': defineChannel({
-    version: 1,
-    capability: 'ctrl.write',
-    request: z.object({ id: z.string().max(64) }),
-    response: CtrlRun,
-  }),
-  /** A task's runs, newest first, each derived from its event log. */
+  /** Every run, newest first. */
   'ctrl:runs': defineChannel({
     version: 1,
     capability: 'ctrl.read',
-    request: z.object({ taskId: z.string().max(64) }),
-    response: z.array(CtrlRun),
+    request: z.void(),
+    response: z.array(CtrlRunSummary),
   }),
-  /** One run's events and the state after the first `at` of them (omit `at` = all): scrub without executing. */
+  /** One run's view after the first `at` records of its log (omit `at` = all): scrub without acting. */
   'ctrl:run': defineChannel({
     version: 1,
     capability: 'ctrl.read',
@@ -679,10 +653,7 @@ export const ipcContract = {
     }),
     response: CtrlRunView,
   }),
-  /**
-   * Answer the decision a run is asking about (one of its top three options), or cancel the run (`optionId:
-   * null`). The decision layers then continue (ADR 0106). Answers the run's view after all events.
-   */
+  /** Answer the question a run is asking (one of its options), or cancel the run (`optionId: null`). */
   'ctrl:answer': defineChannel({
     version: 1,
     capability: 'ctrl.write',
@@ -693,43 +664,26 @@ export const ipcContract = {
     }),
     response: CtrlRunView,
   }),
-  /**
-   * Answer a run's confirm gate (ADR 0111): approve (acts once, after the preview is checked again), remember
-   * (approve, and let this task do the same again without asking while it stays inside this scope) or deny (the
-   * run ends, nothing acts). Answers the run's view after all events.
-   */
+  /** Approve (acts once, after the window is read again) or deny (the run ends, nothing acts) a gated action. */
   'ctrl:confirm': defineChannel({
     version: 1,
     capability: 'ctrl.write',
     request: z.object({
       runId: z.string().max(64),
       gateId: z.string().max(32),
-      answer: z.enum(['approve', 'remember', 'deny']),
+      answer: z.enum(['approve', 'deny']),
     }),
     response: CtrlRunView,
   }),
-  /**
-   * Put a finished downloads cleanup back (ADR 0117): every file goes back where it was, all or nothing. If any file
-   * moved since, ctrl refuses (logged, nothing moves) unless `rest` says to put back the others. Once per run.
-   */
-  'ctrl:undo': defineChannel({
+  /** The stop button: a run being driven stops before its next step (`stopping`); a waiting one ends now. */
+  'ctrl:stop': defineChannel({
     version: 1,
     capability: 'ctrl.write',
-    request: z.object({
-      runId: z.string().max(64),
-      rest: z.boolean().optional(),
+    request: z.object({ runId: z.string().max(64) }),
+    response: z.object({
+      runId: z.string(),
+      status: z.union([CtrlRunStatus, z.literal('stopping')]),
     }),
-    response: CtrlRunView,
-  }),
-  /** Drop a task's standing approval: the next run of that action asks again. */
-  'ctrl:revoke-approval': defineChannel({
-    version: 1,
-    capability: 'ctrl.write',
-    request: z.object({
-      taskId: z.string().max(64),
-      approvalId: z.string().max(64),
-    }),
-    response: CtrlTask,
   }),
   /** ctrl's decision model (ADR 0116): consent, download state and which scorer decides. */
   'ctrl:model': defineChannel({

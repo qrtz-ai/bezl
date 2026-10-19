@@ -1,0 +1,520 @@
+{
+  "bundleId": "com.apple.finder",
+  "name": "Finder",
+  "running": true,
+  "start": "recents",
+  "states": {
+    "recents": {
+      "id": "e:30:0",
+      "role": "AXWindow",
+      "title": "Recents",
+      "sig": "s30-0-3936",
+      "children": [
+        {
+          "id": "e:30:1",
+          "role": "AXToolbar",
+          "title": "",
+          "sig": "s30-1-8615",
+          "children": [
+            {
+              "id": "e:30:2",
+              "role": "AXButton",
+              "title": "Back",
+              "sig": "s30-2-9841",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:3",
+              "role": "AXButton",
+              "title": "View",
+              "sig": "s30-3-9128",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:4",
+              "role": "AXTextField",
+              "title": "Search",
+              "sig": "s30-4-4413",
+              "subrole": "AXSearchField"
+            }
+          ]
+        },
+        {
+          "id": "e:30:5",
+          "role": "AXOutline",
+          "title": "Sidebar",
+          "sig": "s30-5-1052",
+          "children": [
+            {
+              "id": "e:30:100",
+              "role": "AXRow",
+              "title": "AirDrop",
+              "sig": "s30-100-7798",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:101",
+              "role": "AXRow",
+              "title": "Recents",
+              "sig": "s30-101-9464",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:102",
+              "role": "AXRow",
+              "title": "Applications",
+              "sig": "s30-102-5737",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:103",
+              "role": "AXRow",
+              "title": "Desktop",
+              "sig": "s30-103-7694",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:104",
+              "role": "AXRow",
+              "title": "Documents",
+              "sig": "s30-104-6619",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:105",
+              "role": "AXRow",
+              "title": "Downloads",
+              "sig": "s30-105-2158",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:106",
+              "role": "AXRow",
+              "title": "Movies",
+              "sig": "s30-106-5737",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:107",
+              "role": "AXRow",
+              "title": "Music",
+              "sig": "s30-107-29",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:108",
+              "role": "AXRow",
+              "title": "Pictures",
+              "sig": "s30-108-8158",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:109",
+              "role": "AXRow",
+              "title": "iCloud Drive",
+              "sig": "s30-109-484",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:110",
+              "role": "AXRow",
+              "title": "Shared",
+              "sig": "s30-110-5590",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:111",
+              "role": "AXRow",
+              "title": "Macintosh HD",
+              "sig": "s30-111-4669",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:112",
+              "role": "AXRow",
+              "title": "Network",
+              "sig": "s30-112-6493",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:113",
+              "role": "AXRow",
+              "title": "Red",
+              "sig": "s30-113-9419",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:114",
+              "role": "AXRow",
+              "title": "Orange",
+              "sig": "s30-114-7003",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:115",
+              "role": "AXRow",
+              "title": "Yellow",
+              "sig": "s30-115-4086",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:116",
+              "role": "AXRow",
+              "title": "Green",
+              "sig": "s30-116-8791",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:117",
+              "role": "AXRow",
+              "title": "Blue",
+              "sig": "s30-117-2896",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:118",
+              "role": "AXRow",
+              "title": "Purple",
+              "sig": "s30-118-5172",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:119",
+              "role": "AXRow",
+              "title": "Gray",
+              "sig": "s30-119-9419",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:120",
+              "role": "AXRow",
+              "title": "Work",
+              "sig": "s30-120-5226",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:121",
+              "role": "AXRow",
+              "title": "Home",
+              "sig": "s30-121-6716",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:122",
+              "role": "AXRow",
+              "title": "Projects",
+              "sig": "s30-122-6466",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:123",
+              "role": "AXRow",
+              "title": "Archive",
+              "sig": "s30-123-5495",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:124",
+              "role": "AXRow",
+              "title": "Backups",
+              "sig": "s30-124-5894",
+              "actions": ["AXPress"]
+            }
+          ]
+        },
+        {
+          "id": "e:30:6",
+          "role": "AXGroup",
+          "title": "",
+          "sig": "s30-6-3337",
+          "children": [
+            {
+              "id": "e:30:7",
+              "role": "AXList",
+              "title": "Files",
+              "sig": "s30-7-5032",
+              "children": [
+                {
+                  "id": "e:30:8",
+                  "role": "AXStaticText",
+                  "title": "report.pdf",
+                  "sig": "s30-8-5556"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "downloads": {
+      "id": "e:30:0",
+      "role": "AXWindow",
+      "title": "Downloads",
+      "sig": "s30-0-767",
+      "children": [
+        {
+          "id": "e:30:1",
+          "role": "AXToolbar",
+          "title": "",
+          "sig": "s30-1-8615",
+          "children": [
+            {
+              "id": "e:30:2",
+              "role": "AXButton",
+              "title": "Back",
+              "sig": "s30-2-9841",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:3",
+              "role": "AXButton",
+              "title": "View",
+              "sig": "s30-3-9128",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:4",
+              "role": "AXTextField",
+              "title": "Search",
+              "sig": "s30-4-4413",
+              "subrole": "AXSearchField"
+            }
+          ]
+        },
+        {
+          "id": "e:30:5",
+          "role": "AXOutline",
+          "title": "Sidebar",
+          "sig": "s30-5-1052",
+          "children": [
+            {
+              "id": "e:30:100",
+              "role": "AXRow",
+              "title": "AirDrop",
+              "sig": "s30-100-7798",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:101",
+              "role": "AXRow",
+              "title": "Recents",
+              "sig": "s30-101-9464",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:102",
+              "role": "AXRow",
+              "title": "Applications",
+              "sig": "s30-102-5737",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:103",
+              "role": "AXRow",
+              "title": "Desktop",
+              "sig": "s30-103-7694",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:104",
+              "role": "AXRow",
+              "title": "Documents",
+              "sig": "s30-104-6619",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:105",
+              "role": "AXRow",
+              "title": "Downloads",
+              "sig": "s30-105-2158",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:106",
+              "role": "AXRow",
+              "title": "Movies",
+              "sig": "s30-106-5737",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:107",
+              "role": "AXRow",
+              "title": "Music",
+              "sig": "s30-107-29",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:108",
+              "role": "AXRow",
+              "title": "Pictures",
+              "sig": "s30-108-8158",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:109",
+              "role": "AXRow",
+              "title": "iCloud Drive",
+              "sig": "s30-109-484",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:110",
+              "role": "AXRow",
+              "title": "Shared",
+              "sig": "s30-110-5590",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:111",
+              "role": "AXRow",
+              "title": "Macintosh HD",
+              "sig": "s30-111-4669",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:112",
+              "role": "AXRow",
+              "title": "Network",
+              "sig": "s30-112-6493",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:113",
+              "role": "AXRow",
+              "title": "Red",
+              "sig": "s30-113-9419",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:114",
+              "role": "AXRow",
+              "title": "Orange",
+              "sig": "s30-114-7003",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:115",
+              "role": "AXRow",
+              "title": "Yellow",
+              "sig": "s30-115-4086",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:116",
+              "role": "AXRow",
+              "title": "Green",
+              "sig": "s30-116-8791",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:117",
+              "role": "AXRow",
+              "title": "Blue",
+              "sig": "s30-117-2896",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:118",
+              "role": "AXRow",
+              "title": "Purple",
+              "sig": "s30-118-5172",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:119",
+              "role": "AXRow",
+              "title": "Gray",
+              "sig": "s30-119-9419",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:120",
+              "role": "AXRow",
+              "title": "Work",
+              "sig": "s30-120-5226",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:121",
+              "role": "AXRow",
+              "title": "Home",
+              "sig": "s30-121-6716",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:122",
+              "role": "AXRow",
+              "title": "Projects",
+              "sig": "s30-122-6466",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:123",
+              "role": "AXRow",
+              "title": "Archive",
+              "sig": "s30-123-5495",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:30:124",
+              "role": "AXRow",
+              "title": "Backups",
+              "sig": "s30-124-5894",
+              "actions": ["AXPress"]
+            }
+          ]
+        },
+        {
+          "id": "e:30:6",
+          "role": "AXGroup",
+          "title": "",
+          "sig": "s30-6-3337",
+          "children": [
+            {
+              "id": "e:30:7",
+              "role": "AXList",
+              "title": "Files",
+              "sig": "s30-7-5032",
+              "children": [
+                {
+                  "id": "e:30:8",
+                  "role": "AXStaticText",
+                  "title": "report.pdf",
+                  "sig": "s30-8-5556"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "menu": [
+    {
+      "id": "m:30:1",
+      "path": ["File", "New Finder Window"],
+      "combo": "cmd+n"
+    },
+    {
+      "id": "m:30:2",
+      "path": ["File", "New Folder"],
+      "combo": "cmd+shift+n"
+    },
+    {
+      "id": "m:30:3",
+      "path": ["File", "Move to Trash"],
+      "combo": "cmd+delete"
+    },
+    {
+      "id": "m:30:4",
+      "path": ["Edit", "Find"],
+      "combo": "cmd+f"
+    }
+  ],
+  "transitions": [
+    {
+      "on": "press:e:30:105",
+      "to": "downloads"
+    }
+  ]
+}

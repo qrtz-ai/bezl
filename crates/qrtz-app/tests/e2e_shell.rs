@@ -186,7 +186,7 @@ async fn the_module_manager_switches_one_extension_and_nothing_else() {
     assert_eq!(cfg["modules"]["echo"]["enabled"], true);
     assert_eq!(cfg["modules"]["enabled"], true);
     // A switched-off module's view is refused; the marketplace itself is not.
-    let r = a.raw("ctrl", "ctrl:tasks", Value::Null).await;
+    let r = a.raw("ctrl", "ctrl:runs", Value::Null).await;
     assert_eq!(r["error"]["code"], "E_UNAVAILABLE", "{r}");
     // The marketplace can't write config directly, and a module view can't switch modules.
     let r = a

@@ -339,48 +339,13 @@ impl AppService {
         let _ = self.ctrl_model.set(m);
     }
 
-    /// ADR 0105: in-process ctrl scheduler. Call once inside tokio (next to `start_helper`). Ticks every second
-    /// and once immediately so a catch-up after sleep/quit and `once` ASAP both fire without a window.
-    pub fn start_ctrl_scheduler(self: &Arc<Self>) {
-        let Some(ctrl) = self.ctrl.get().cloned() else {
-            return;
-        };
-        let events = self.events.clone();
-        let shell = self.shell.clone();
-        let config = self.config.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
-            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-            loop {
-                interval.tick().await;
-                // ADR 0146: ctrl switched off pauses its cadences; nothing runs until it's back on.
-                let c = ctrl.clone();
-                let cfg = config.get();
-                let fired =
-                    match tokio::task::spawn_blocking(move || crate::modules::ctrl_scheduler_pass(&cfg, &c))
-                        .await
-                    {
-                        Ok(None) => continue,
-                        Ok(Some(Ok(ids))) => ids,
-                        Ok(Some(Err(e))) => {
-                            tracing::error!(err = %e.message, "ctrl scheduler tick");
-                            continue;
-                        }
-                        Err(_) => {
-                            tracing::error!("ctrl scheduler tick join failed");
-                            continue;
-                        }
-                    };
-                if !fired.is_empty() {
-                    events.emit("ctrl:changed", serde_json::json!({ "ids": fired }));
-                }
-                Self::notify_ctrl_confirms(&ctrl, shell.as_ref());
-            }
-        });
-    }
+    /// ctrl do (ADR 0214) has no scheduler: runs start from `ctrl:do` only. Kept as a no-op so the shell's
+    /// startup (`start_helper`, then this) doesn't change.
+    pub fn start_ctrl_scheduler(self: &Arc<Self>) {}
 
     /// ADR 0111: a confirm gate that started waiting raises one non-activating notification.
     fn notify_ctrl_confirms(ctrl: &qrtz_ctrl::service::CtrlService, shell: &dyn ShellHooks) {
+        // `task_id` carries the command's id (`do-7`).
         for (task_id, run_id) in ctrl.take_confirm_notices() {
             shell.notify(crate::ports::Notice::CtrlConfirm { task_id, run_id });
         }
@@ -426,6 +391,14 @@ impl AppService {
             .await
             .map_err(|_| AppError::new(ErrorCode::Internal, "ctrl call failed"))?;
         Self::notify_ctrl_confirms(&ctrl, self.shell.as_ref());
+        if let Ok(v) = &r {
+            if matches!(channel, "ctrl:do" | "ctrl:answer" | "ctrl:confirm" | "ctrl:stop") {
+                self.events.emit(
+                    "ctrl:changed",
+                    json!({ "ids": [v["runId"].as_str().unwrap_or_default()] }),
+                );
+            }
+        }
         r.map_err(|e| {
             let code = match e.code {
                 C::Validation => ErrorCode::Validation,

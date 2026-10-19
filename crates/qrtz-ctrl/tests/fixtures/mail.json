@@ -1,0 +1,160 @@
+{
+  "bundleId": "com.apple.mail",
+  "name": "Mail",
+  "running": true,
+  "start": "draft",
+  "states": {
+    "draft": {
+      "id": "e:50:0",
+      "role": "AXWindow",
+      "title": "Lunch plans",
+      "sig": "s50-0-5019",
+      "children": [
+        {
+          "id": "e:50:1",
+          "role": "AXToolbar",
+          "title": "",
+          "sig": "s50-1-8615",
+          "children": [
+            {
+              "id": "e:50:2",
+              "role": "AXButton",
+              "title": "Send",
+              "sig": "s50-2-8388",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:50:3",
+              "role": "AXButton",
+              "title": "Attach",
+              "sig": "s50-3-1814",
+              "actions": ["AXPress"]
+            }
+          ]
+        },
+        {
+          "id": "e:50:4",
+          "role": "AXTextField",
+          "title": "To:",
+          "sig": "s50-4-4319",
+          "value": "bob@example.com"
+        },
+        {
+          "id": "e:50:5",
+          "role": "AXTextField",
+          "title": "Subject:",
+          "sig": "s50-5-1700",
+          "value": "Lunch plans"
+        },
+        {
+          "id": "e:50:6",
+          "role": "AXTextField",
+          "title": "Card Number",
+          "sig": "s50-6-1056",
+          "value": "4242 4242 4242 4242"
+        },
+        {
+          "id": "e:50:7",
+          "role": "AXTextArea",
+          "title": "Message body",
+          "sig": "s50-7-2234",
+          "value": "See you at noon"
+        }
+      ]
+    },
+    "draft_spoof": {
+      "id": "e:50:0",
+      "role": "AXWindow",
+      "title": "Lunch plans",
+      "sig": "s50-0-5019",
+      "children": [
+        {
+          "id": "e:50:1",
+          "role": "AXToolbar",
+          "title": "",
+          "sig": "s50-1-8615",
+          "children": [
+            {
+              "id": "e:50:2",
+              "role": "AXButton",
+              "title": "Ѕend",
+              "sig": "s50-2-7153",
+              "actions": ["AXPress"]
+            },
+            {
+              "id": "e:50:3",
+              "role": "AXButton",
+              "title": "Attach",
+              "sig": "s50-3-1814",
+              "actions": ["AXPress"]
+            }
+          ]
+        },
+        {
+          "id": "e:50:4",
+          "role": "AXTextField",
+          "title": "To:",
+          "sig": "s50-4-4319",
+          "value": "bob@example.com"
+        },
+        {
+          "id": "e:50:5",
+          "role": "AXTextField",
+          "title": "Subject:",
+          "sig": "s50-5-1700",
+          "value": "Lunch plans"
+        },
+        {
+          "id": "e:50:6",
+          "role": "AXTextField",
+          "title": "Card Number",
+          "sig": "s50-6-1056",
+          "value": "4242 4242 4242 4242"
+        },
+        {
+          "id": "e:50:7",
+          "role": "AXTextArea",
+          "title": "Message body",
+          "sig": "s50-7-2234",
+          "value": "See you at noon"
+        }
+      ]
+    },
+    "sent": {
+      "id": "e:50:0",
+      "role": "AXWindow",
+      "title": "Lunch plans",
+      "sig": "s50-0-5019",
+      "children": [
+        {
+          "id": "e:50:8",
+          "role": "AXStaticText",
+          "title": "Message sent",
+          "sig": "s50-8-9679"
+        }
+      ]
+    }
+  },
+  "menu": [
+    {
+      "id": "m:50:1",
+      "path": ["Message", "Send"],
+      "combo": "cmd+shift+d"
+    },
+    {
+      "id": "m:50:2",
+      "path": ["File", "New Message"],
+      "combo": "cmd+n"
+    }
+  ],
+  "transitions": [
+    {
+      "on": "press:e:50:2",
+      "to": "sent"
+    },
+    {
+      "on": "press:m:50:1",
+      "to": "sent"
+    }
+  ]
+}

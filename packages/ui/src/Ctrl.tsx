@@ -1,186 +1,12 @@
 import type { ReactNode } from 'react';
 import { useTheme } from './theme';
-import { transition, typeStyle } from './tokens';
+import { typeStyle } from './tokens';
 import { Text } from './Text';
 import { Badge, type BadgeTone } from './Badge';
-import { IconButton, Chip } from './Layout';
-import { Input, Select } from './Input';
 import { Button } from './Button';
 import { Icon } from './Icon';
 
 /** ctrl (ADR 0103): the views' building blocks. Data in, handlers out; all copy lowercase. */
-
-export type ScheduleKind = 'once' | 'daily' | 'weekly';
-export const WEEKDAYS = [
-  'sunday',
-  'monday',
-  'tuesday',
-  'wednesday',
-  'thursday',
-  'friday',
-  'saturday',
-] as const;
-const KINDS: ScheduleKind[] = ['once', 'daily', 'weekly'];
-
-/**
- * When a task runs: once / daily / weekly, a time (hh:mm, local), and the day for weekly. For `once` an empty
- * time means as soon as possible.
- */
-export function SchedulePicker({
-  kind,
-  time,
-  weekday,
-  onKind,
-  onTime,
-  onWeekday,
-}: {
-  kind: ScheduleKind;
-  /** `hh:mm` (24 h) or '' (once only: as soon as possible). */
-  time: string;
-  weekday: number;
-  onKind: (k: ScheduleKind) => void;
-  onTime: (t: string) => void;
-  onWeekday: (d: number) => void;
-}) {
-  const t = useTheme();
-  return (
-    <div
-      role="group"
-      aria-label="schedule"
-      data-testid="ctrl-schedule"
-      data-kind={kind}
-      style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        alignItems: 'center',
-        gap: t.space[2],
-      }}
-    >
-      {KINDS.map((k) => (
-        <Chip
-          key={k}
-          pressed={k === kind}
-          onClick={() => onKind(k)}
-          data-testid={`ctrl-schedule-${k}`}
-        >
-          {k}
-        </Chip>
-      ))}
-      {kind === 'weekly' ? (
-        <Select
-          aria-label="day"
-          value={String(weekday)}
-          onChange={(e) => onWeekday(Number(e.target.value))}
-          data-testid="ctrl-schedule-day"
-          style={{ width: 130 }}
-        >
-          {WEEKDAYS.map((d, i) => (
-            <option key={d} value={i}>
-              {d}
-            </option>
-          ))}
-        </Select>
-      ) : null}
-      <Input
-        type="time"
-        aria-label={kind === 'once' ? 'time (empty = now)' : 'time'}
-        value={time}
-        required={kind !== 'once'}
-        onChange={(e) => onTime(e.target.value)}
-        data-testid="ctrl-schedule-time"
-        style={{ width: 120 }}
-      />
-      {kind === 'once' && !time ? (
-        <Text variant="caption" muted>
-          as soon as possible
-        </Text>
-      ) : null}
-    </div>
-  );
-}
-
-/** One task: what was typed, when it runs, and run / pause / delete. Selecting it shows its runs. */
-export function CtrlTaskRow({
-  text,
-  schedule,
-  meta,
-  paused,
-  selected,
-  onSelect,
-  onRun,
-  onPause,
-  onDelete,
-}: {
-  text: string;
-  /** "every monday at 09:30". */
-  schedule: string;
-  meta?: ReactNode;
-  paused: boolean;
-  selected?: boolean;
-  onSelect: () => void;
-  onRun: () => void;
-  onPause: () => void;
-  onDelete: () => void;
-}) {
-  const t = useTheme();
-  return (
-    <li
-      data-testid="ctrl-task"
-      data-paused={paused || undefined}
-      aria-current={selected || undefined}
-      style={{
-        listStyle: 'none',
-        display: 'grid',
-        gridTemplateColumns: 'minmax(0, 1fr) auto',
-        gap: t.space[3],
-        padding: `${t.space[2]} ${t.space[3]}`,
-        borderRadius: t.radius.md,
-        background: selected ? t.color.accent : 'transparent',
-        transition: transition('background', 'hover', t),
-      }}
-    >
-      <button
-        type="button"
-        onClick={onSelect}
-        data-testid="ctrl-task-select"
-        style={{
-          all: 'unset',
-          cursor: 'pointer',
-          minWidth: 0,
-          display: 'grid',
-          gap: t.space[1],
-        }}
-      >
-        <Text data-testid="ctrl-task-text">{text}</Text>
-        <Text variant="caption" muted data-testid="ctrl-task-schedule">
-          {paused ? `paused · ${schedule}` : schedule}
-          {meta ? <> · {meta}</> : null}
-        </Text>
-      </button>
-      <div style={{ display: 'flex', gap: t.space[1], alignItems: 'start' }}>
-        <IconButton
-          icon="play"
-          label="run now"
-          onClick={onRun}
-          data-testid="ctrl-task-run"
-        />
-        <IconButton
-          icon="pause"
-          label={paused ? 'resume' : 'pause'}
-          pressed={paused}
-          onClick={onPause}
-          data-testid="ctrl-task-pause"
-        />
-        <IconButton
-          icon="trash"
-          label="delete"
-          onClick={onDelete}
-          data-testid="ctrl-task-delete"
-        />
-      </div>
-    </li>
-  );
-}
 
 export interface RunItem {
   id: string;
@@ -317,8 +143,6 @@ export interface DecisionOptionItem {
   chosen?: boolean;
   /** Can't be undone: the confirm gate asks before it runs. */
   irreversible?: boolean;
-  /** A shortcut the never-takes-over-the-ui ladder refuses in the background. */
-  refused?: boolean;
 }
 
 export interface DecisionItem {
@@ -379,7 +203,6 @@ function OptionBar({ o }: { o: DecisionOptionItem }) {
             data-testid="ctrl-option-irreversible"
           />
         ) : null}
-        {o.refused ? <span>· not in the background</span> : null}
       </span>
       <span
         aria-hidden
@@ -470,37 +293,6 @@ export function DecisionList({
   );
 }
 
-/** The plan the decision layers produced, one step per layer, and whether it waits for an ok first. */
-export function PlanSummary({
-  steps,
-  irreversible,
-}: {
-  steps: string[];
-  irreversible: boolean;
-}) {
-  const t = useTheme();
-  return (
-    <div
-      data-testid="ctrl-plan"
-      style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        alignItems: 'center',
-        gap: t.space[2],
-      }}
-    >
-      <Text variant="caption" data-testid="ctrl-plan-steps">
-        plan: {steps.join(' → ')}
-      </Text>
-      {irreversible ? (
-        <Badge tone="warning" data-testid="ctrl-plan-confirm">
-          asks you before it acts
-        </Badge>
-      ) : null}
-    </div>
-  );
-}
-
 /** A decision layer wasn't sure: "which one: …" with its top options, or cancel the run. */
 export function AskCard({
   question,
@@ -557,43 +349,25 @@ export function AskCard({
   );
 }
 
-export interface ConfirmItem {
-  key: string;
-  label: string;
-  /** window, tab, file or action (the gate's preview kind). */
-  kind?: string;
-  /** null: ctrl can't tell (it asks as if it were unsaved). */
-  unsaved: boolean | null;
-}
-
 /**
- * The confirm gate (ADR 0111): exactly what an irreversible step will do, item by item, and the three answers.
- * It's a card in the ctrl view, never a modal: it takes no focus and blocks nothing else on screen.
+ * The confirm gate (ADR 0214): the host's rules matched (a send, a purchase, a deletion, a quit, a system settings
+ * change). The ok covers exactly this action on this element in this window; if the window changes before ctrl
+ * acts, it asks again. A card in the ctrl view, never a modal.
  */
 export function ConfirmCard({
   action,
   app,
-  items,
-  complete,
+  rules,
   onApprove,
-  onRemember,
   onDeny,
 }: {
   action: string;
   app: string | null;
-  items: ConfirmItem[];
-  complete: boolean;
+  rules: string[];
   onApprove: () => void;
-  onRemember: () => void;
   onDeny: () => void;
 }) {
   const t = useTheme();
-  const unsaved = items.filter((i) => i.unsaved !== false).length;
-  // ADR 0119: every listed tab reads "can't tell" when the browser blocks ctrl's read-only page script.
-  const blind =
-    complete &&
-    items.length > 0 &&
-    items.every((i) => i.kind === 'tab' && i.unsaved === null);
   return (
     <div
       role="group"
@@ -610,49 +384,14 @@ export function ConfirmCard({
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: t.space[2] }}>
         <Icon name="alert" size="sm" />
-        <Text variant="label">
+        <Text variant="label" data-testid="ctrl-confirm-action">
           {action}
-          {app ? ` · ${app}` : ''}: this can't be undone
+          {app ? ` · ${app}` : ''}
         </Text>
       </div>
-      <Text variant="caption" muted>
-        {complete
-          ? `it will touch ${items.length} ${items.length === 1 ? 'item' : 'items'}:`
-          : `it will touch ${items.length} ${items.length === 1 ? 'item' : 'items'} (ctrl could only count them):`}
+      <Text variant="caption" muted data-testid="ctrl-confirm-rules">
+        asks first because: {rules.map(ruleLabel).join(', ')}
       </Text>
-      <ul
-        aria-label="what will happen"
-        data-testid="ctrl-confirm-items"
-        style={{
-          margin: 0,
-          paddingLeft: t.space[4],
-          display: 'grid',
-          gap: t.space[1],
-        }}
-      >
-        {items.map((i) => (
-          <li key={i.key} data-testid="ctrl-confirm-item">
-            <Text variant="caption">
-              {i.label}
-              {i.unsaved === true ? ' · unsaved changes' : ''}
-              {i.unsaved === null ? ' · may have unsaved changes' : ''}
-            </Text>
-          </li>
-        ))}
-      </ul>
-      {blind ? (
-        <Text variant="caption" muted data-testid="ctrl-confirm-tabs-hint">
-          ctrl can't see inside these tabs. to let it check for unsaved input,
-          turn on "allow javascript from apple events" (safari: develop menu;
-          chrome: view, developer)
-        </Text>
-      ) : null}
-      {unsaved ? (
-        <Text variant="caption" data-testid="ctrl-confirm-unsaved">
-          {unsaved} with unsaved work: the app will ask before it discards
-          anything
-        </Text>
-      ) : null}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: t.space[2] }}>
         <Button
           size="sm"
@@ -660,14 +399,6 @@ export function ConfirmCard({
           data-testid="ctrl-confirm-approve"
         >
           do it once
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={onRemember}
-          data-testid="ctrl-confirm-remember"
-        >
-          do it and don't ask again for this task
         </Button>
         <Button
           size="sm"
@@ -682,177 +413,51 @@ export function ConfirmCard({
   );
 }
 
-/** How a gate was answered, for a run scrubbed past it. */
-export function ConfirmOutcome({ answer }: { answer: string }) {
-  return (
-    <Badge
-      tone={answer === 'denied' || answer === 'expired' ? 'neutral' : 'success'}
-      data-testid="ctrl-confirm-outcome"
-    >
-      {answer === 'approved' && 'you said yes, once'}
-      {answer === 'remembered' && "you said yes and don't ask again"}
-      {answer === 'standing' && 'allowed by your standing ok'}
-      {answer === 'denied' && 'you said no; nothing was done'}
-      {answer === 'expired' && 'no answer in time; nothing was done'}
-    </Badge>
-  );
-}
-
-export interface UndoItem {
-  key: string;
-  label: string;
-  /** moved: renamed or moved since; occupied: something with its name is back where it came from. */
-  why: 'moved' | 'occupied';
+/** A host rule id (`label:send`, `app:system_settings`, `key:quit`) as copy. */
+export function ruleLabel(rule: string): string {
+  const [kind, what = ''] = rule.split(':');
+  const w = what.replace(/_/g, ' ');
+  if (kind === 'label')
+    return w === 'mixed script' ? 'a label mixing alphabets' : `it says "${w}"`;
+  if (kind === 'app')
+    return w === 'system settings'
+      ? 'it changes a system setting'
+      : `it ${w.replace('submit', 'sends')}`;
+  if (kind === 'key') return `the shortcut ${w}s`;
+  return w || rule;
 }
 
 /**
- * Put a finished file cleanup back (ADR 0117). A card in the run, never a modal. When some files changed since, it
- * says which ones stay and only offers to put back the others; it never guesses where they went.
+ * While ctrl acts in the foreground: esc stops it at once, and so does any key, click or scroll of yours.
  */
-export function UndoCard({
-  files,
-  ready,
-  cantUndo,
-  done,
-  onUndo,
-  onRest,
-}: {
-  files: number;
-  ready: number;
-  cantUndo: UndoItem[];
-  /** How many files went back, once the batch was put back. */
-  done: number | null;
-  onUndo: () => void;
-  onRest: () => void;
-}) {
+export function StopBar({ onStop }: { onStop: () => void }) {
   const t = useTheme();
-  const n = (k: number) => `${k} ${k === 1 ? 'file' : 'files'}`;
   return (
     <div
-      role="group"
-      aria-label="put it back"
-      data-testid="ctrl-undo"
+      role="status"
+      data-testid="ctrl-stopbar"
       style={{
-        display: 'grid',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
         gap: t.space[2],
-        padding: t.space[3],
+        padding: t.space[2],
         borderRadius: t.radius.md,
         border: `1px solid ${t.color.border}`,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: t.space[2] }}>
-        <Icon name={done === null ? 'undo' : 'check'} size="sm" />
-        <Text variant="label" data-testid="ctrl-undo-title">
-          {done === null ? `ctrl moved ${n(files)}` : `put back ${n(done)}`}
-        </Text>
-      </div>
-      {cantUndo.length ? (
-        <>
-          <Text variant="caption" muted>
-            {done === null
-              ? `${n(cantUndo.length)} can't go back:`
-              : `${n(cantUndo.length)} stayed put:`}
-          </Text>
-          <ul
-            aria-label="can't go back"
-            data-testid="ctrl-undo-cant"
-            style={{
-              margin: 0,
-              paddingLeft: t.space[4],
-              display: 'grid',
-              gap: t.space[1],
-            }}
-          >
-            {cantUndo.map((i) => (
-              <li key={i.key} data-testid="ctrl-undo-cant-item">
-                <Text variant="caption">
-                  {i.label}
-                  {i.why === 'moved'
-                    ? ' · moved or renamed since'
-                    : ' · a file with its name is back in its place'}
-                </Text>
-              </li>
-            ))}
-          </ul>
-        </>
-      ) : null}
-      {done === null ? (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: t.space[2] }}>
-          {cantUndo.length === 0 && ready > 0 ? (
-            <Button size="sm" onClick={onUndo} data-testid="ctrl-undo-all">
-              put them back
-            </Button>
-          ) : null}
-          {cantUndo.length > 0 && ready > 0 ? (
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={onRest}
-              data-testid="ctrl-undo-rest"
-            >
-              put back the other {ready}
-            </Button>
-          ) : null}
-          {ready === 0 ? (
-            <Text variant="caption" muted data-testid="ctrl-undo-none">
-              nothing can go back right now
-            </Text>
-          ) : null}
-        </div>
-      ) : null}
+      <Text variant="caption">
+        ctrl is using your screen · press esc or touch any key to stop
+      </Text>
+      <Button
+        size="sm"
+        variant="secondary"
+        onClick={onStop}
+        data-testid="ctrl-stop"
+      >
+        stop
+      </Button>
     </div>
-  );
-}
-
-export interface ApprovalItem {
-  id: string;
-  label: string;
-}
-
-/** A task's standing approvals of the confirm gate; each can be revoked. */
-export function StandingApprovals({
-  approvals,
-  onRevoke,
-}: {
-  approvals: ApprovalItem[];
-  onRevoke: (id: string) => void;
-}) {
-  const t = useTheme();
-  return (
-    <ul
-      aria-label="standing approvals"
-      data-testid="ctrl-approvals"
-      style={{
-        margin: 0,
-        padding: 0,
-        listStyle: 'none',
-        display: 'grid',
-        gap: t.space[1],
-      }}
-    >
-      {approvals.map((a) => (
-        <li
-          key={a.id}
-          data-testid="ctrl-approval"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: t.space[2],
-          }}
-        >
-          <Text variant="caption">{a.label}</Text>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => onRevoke(a.id)}
-            data-testid="ctrl-approval-revoke"
-          >
-            revoke
-          </Button>
-        </li>
-      ))}
-    </ul>
   );
 }
 
