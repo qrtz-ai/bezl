@@ -28,7 +28,7 @@ export const eventContract = {
   }),
   /** ADR 0217: nano's calendar status changed (a read, access, on/off). */
   'calendar:changed': defineEvent({
-    capability: 'note.read',
+    capability: 'calendar.read',
     payload: CalendarStatus,
   }),
   'config:changed': defineEvent({

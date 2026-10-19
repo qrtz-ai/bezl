@@ -9,6 +9,7 @@ export const manifest = SubAppManifest.parse({
     'note.read',
     'note.record',
     'note.write',
+    'calendar.read',
     'os.permissions',
     'speech.read',
     'module.settings',

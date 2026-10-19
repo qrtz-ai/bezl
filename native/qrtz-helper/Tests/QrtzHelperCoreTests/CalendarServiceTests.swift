@@ -58,12 +58,25 @@ final class CalendarServiceTests: XCTestCase {
     func testReadSortsClipsAndRefusesWideWindows() async {
         let st = StubCalendarStore(.granted), out = Sent()
         st.evs = [cev("b", 50, 60), cev("a", 10, 20), cev("gone", -20, -10), cev("", 1, 2)]
-        let svc = CalendarService(store: st, send: out.add)
+        let svc = CalendarService(store: st, send: out.add, now: { 50 })
         await svc.handle(.calendarRead(id: "r", fromMs: 0, toMs: 100))
         XCTAssertEqual(out.all, [.calendarEvents(id: "r", calendars: [CalendarInfo(id: "w", title: "Work")], events: [cev("a", 10, 20), cev("b", 50, 60)])])
         await svc.handle(.calendarRead(id: "w", fromMs: 0, toMs: CalendarLimits.windowMaxMs + 1))
         XCTAssertEqual(out.all.last, .calendarEvents(id: "w", calendars: [], events: []))
         XCTAssertEqual(st.reads.count, 1)
+    }
+
+    func testReadRefusesWindowsAwayFromNow() async {
+        let h: Int64 = 3_600_000, t: Int64 = 1_790_000_000_000
+        let st = StubCalendarStore(.granted), out = Sent()
+        let svc = CalendarService(store: st, send: out.add, now: { t })
+        await svc.handle(.calendarRead(id: "ok", fromMs: t - 24 * h, toMs: t + 14 * 24 * h))
+        XCTAssertEqual(st.reads.count, 1, "the host's own window passes")
+        await svc.handle(.calendarRead(id: "old", fromMs: t - 30 * 24 * h, toMs: t - 29 * 24 * h))
+        await svc.handle(.calendarRead(id: "far", fromMs: t + 20 * 24 * h, toMs: t + 21 * 24 * h))
+        await svc.handle(.calendarRead(id: "edge", fromMs: t - 26 * h, toMs: t))
+        XCTAssertEqual(st.reads.count, 1, "past or far-future windows never reach the store")
+        XCTAssertEqual(out.all.last, .calendarEvents(id: "edge", calendars: [], events: []))
     }
 
     func testChangesAreReportedAndAccessChangesAnnounced() async {

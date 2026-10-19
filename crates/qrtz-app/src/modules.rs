@@ -167,6 +167,16 @@ pub fn is_on(cfg: &Value, id: &str) -> bool {
     GlobalSettings::from_config(cfg).is_on(id)
 }
 
+/// ADR 0217 (M1): `calendar:connect` (the macOS prompt) and `calendar:refresh` (an EventKit read) run only while
+/// nano is installed and switched on, whoever calls them. `calendar:connect` is under `os.permissions`, which the
+/// shell shares, so the capability gate alone would let it through with nano off.
+pub fn check_calendar_call(cfg: &Value, channel: &str) -> Result<(), AppError> {
+    if matches!(channel, "calendar:connect" | "calendar:refresh") && !is_on(cfg, "nano") {
+        return Err(off("nano"));
+    }
+    Ok(())
+}
+
 /// ADR 0146 M1.4: what each module's own settings page reads and writes (`module:get-settings` /
 /// `module:set-settings`): a whole config section, or one key of a section. Same table as
 /// packages/core/src/modules.ts `MODULE_SETTINGS_PATHS` (the test below reads it). Storage (M2.3) follows it: `talk`
@@ -392,6 +402,25 @@ mod tests {
         assert!(check_view_speech_call(&off, "settings", "speech:status", &json!({})).is_ok());
         // Other channels pass through.
         assert!(check_view_speech_call(&off, "talk", "config:get", &json!(null)).is_ok());
+    }
+
+    #[test]
+    fn calendar_connect_and_refresh_need_nano_installed_and_on() {
+        let on = json!({});
+        let off = json!({"modules": {"nano": {"enabled": false}}});
+        let gone = json!({"modules": {"nano": {"installed": false}}});
+        for ch in ["calendar:connect", "calendar:refresh"] {
+            assert!(is_on(&on, "nano") == check_calendar_call(&on, ch).is_ok(), "{ch}");
+            for cfg in [&off, &gone] {
+                let e = check_calendar_call(cfg, ch).unwrap_err();
+                assert_eq!(e.code, ErrorCode::Unavailable, "{ch} {cfg}");
+            }
+        }
+        // Reads of the cache are not prompts or EventKit reads: the capability gate covers them.
+        assert!(check_calendar_call(&off, "calendar:status").is_ok());
+        // H1: calendar.read is nano's alone, so with nano off the gate refuses the reads too.
+        assert!(gate(&off, "shell", "calendar:status").is_err());
+        assert!(gate(&off, "shell", "calendar:upcoming").is_err());
     }
 
     #[test]

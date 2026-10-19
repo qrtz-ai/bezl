@@ -11,7 +11,11 @@ final class CalendarProtocolTests: XCTestCase {
     }
 
     func testOnlyKnownHttpsMeetingLinksSurvive() {
-        XCTAssertEqual(CalendarText.meetingURL("https://us02web.zoom.us/j/1?pwd=x#f"), "https://us02web.zoom.us/j/1?pwd=x")
+        XCTAssertEqual(CalendarText.meetingURL("https://us02web.zoom.us/j/1?pwd=x#f"), "https://us02web.zoom.us/j/1")
+        // M2: no query or fragment ever leaves the helper (Zoom pwd=, Meet authuser=).
+        XCTAssertEqual(CalendarText.meetingURL("https://zoom.us/j/9#pwd=y"), "https://zoom.us/j/9")
+        XCTAssertEqual(CalendarText.meetingURL("https://meet.google.com/abc?authuser=1"), "https://meet.google.com/abc")
+        XCTAssertEqual(CalendarText.firstMeetingURL(in: "join: https://zoom.us/j/5?pwd=abc now"), "https://zoom.us/j/5")
         XCTAssertNotNil(CalendarText.meetingURL("https://meet.google.com/abc-defg-hij"))
         for bad in ["http://zoom.us/j/1", "https://zoom.us.evil.example/j", "https://u@zoom.us/j", "javascript:x", "https://evil.example"] {
             XCTAssertNil(CalendarText.meetingURL(bad), bad)

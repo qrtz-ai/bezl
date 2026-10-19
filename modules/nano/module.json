@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "nano",
   "name": "nano",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "protocol": 1,
   "minApp": "0.2.0",
   "code": {
@@ -28,6 +28,7 @@
     "note.read",
     "note.record",
     "note.write",
+    "calendar.read",
     "os.permissions",
     "speech.read",
     "module.settings"

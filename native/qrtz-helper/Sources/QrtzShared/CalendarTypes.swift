@@ -15,6 +15,10 @@ public enum CalendarLimits {
     public static let eventsMax = 2000
     /// The widest window one `calendar.read` may ask for: 15 days.
     public static let windowMaxMs: Int64 = 15 * 24 * 3_600_000
+    /// L1: how far before now a read may start (the host asks for one day back; an hour of slack).
+    public static let backMaxMs: Int64 = 25 * 3_600_000
+    /// L1: how far after now a read may end (the host asks for 14 days ahead).
+    public static let aheadMaxMs: Int64 = 15 * 24 * 3_600_000
 }
 
 /// One calendar the user can pick in nano's settings.
@@ -67,7 +71,8 @@ public enum CalendarText {
     public static let meetingHosts = ["zoom.us", "meet.google.com", "teams.microsoft.com", "teams.live.com", "webex.com",
                                       "whereby.com", "facetime.apple.com"]
 
-    /// An https link to a known video-call host, without its fragment and at most `urlMax` long; else nil.
+    /// An https link to a known video-call host, cut to scheme + host + path (no query, no fragment: a Zoom
+    /// `?pwd=` passcode never leaves the helper; ADR 0217 M2) and at most `urlMax` long; else nil.
     public static func meetingURL(_ raw: String?) -> String? {
         guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty,
               raw.utf16.count <= CalendarLimits.urlMax,
@@ -78,7 +83,8 @@ public enum CalendarText {
         guard !authority.isEmpty, !authority.contains("@") else { return nil }
         let host = (authority.split(separator: ":").first.map(String.init) ?? "").lowercased()
         guard meetingHosts.contains(where: { host == $0 || host.hasSuffix("." + $0) }) else { return nil }
-        return raw.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init)
+        let cut = raw.firstIndex(where: { $0 == "?" || $0 == "#" }).map { String(raw[..<$0]) } ?? raw
+        return cut
     }
 
     /// The first meeting link in free text (an event's notes or location; the text itself is never kept).

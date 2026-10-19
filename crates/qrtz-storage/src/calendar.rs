@@ -93,14 +93,15 @@ pub fn meeting_host(url: &str) -> Option<&'static str> {
         .copied()
 }
 
-/// The meeting link to store: an allowed https link, without its fragment, at most 500 chars; else none.
+/// The meeting link to store: an allowed https link cut to scheme + host + path (no query, no fragment: a Zoom
+/// `?pwd=` passcode is never cached; ADR 0217 M2), at most 500 chars; else none.
 pub fn clean_meeting_url(url: Option<&str>) -> Option<String> {
     let u = url?.trim();
     if u.len() > 500 || u.chars().any(|c| c.is_control() || c.is_whitespace()) {
         return None;
     }
     meeting_host(u)?;
-    Some(u.split('#').next().unwrap_or(u).to_string())
+    Some(u.split(['?', '#']).next().unwrap_or(u).to_string())
 }
 
 /// The platform a link's host belongs to, in `MeetingPlatform` names (`zoom`, `google-meet`, `teams`, `webex`).
@@ -209,6 +210,29 @@ impl<'a> CalendarRepo<'a> {
                 Err(e)
             }
         }
+    }
+
+    /// Re-cleans every cached meeting link (a cache written before links lost their query keeps no passcode at
+    /// rest): drops the query and fragment, or the link when it no longer passes. Returns the rows changed.
+    pub fn scrub_links(&self) -> Result<usize> {
+        let mut st = self
+            .conn
+            .prepare_cached("SELECT id, meeting_url FROM calendar_events WHERE meeting_url IS NOT NULL")?;
+        let rows: Vec<(String, String)> = st
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<std::result::Result<_, _>>()?;
+        let mut up = self
+            .conn
+            .prepare_cached("UPDATE calendar_events SET meeting_url=? WHERE id=?")?;
+        let mut n = 0;
+        for (id, url) in rows {
+            let clean = clean_meeting_url(Some(&url));
+            if clean.as_deref() != Some(url.as_str()) {
+                up.execute(params![clean, id])?;
+                n += 1;
+            }
+        }
+        Ok(n)
     }
 
     /// Wipes the cache (calendar turned off, or access revoked). Notes keep their titles and links.

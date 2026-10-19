@@ -61,6 +61,8 @@ export const SHELL_MANIFEST: SubAppManifest = {
     'talk.dictate',
     // ADR 0184: the first-run permissions onboarding (live state, allow, System Settings, restart; finish).
     'os.permissions',
+    // ADR 0217 (H1): the onboarding's calendar row reads calendar:status / calendar:changed.
+    'calendar.read',
     // ADR 0083: uncaught errors and player errors from every window go to the local log.
     'log.write',
     // ADR 0181: the sidebar dot when a newer qrtz is waiting (reads only).

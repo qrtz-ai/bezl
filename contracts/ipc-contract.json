@@ -10410,7 +10410,7 @@
     },
     "calendar:status": {
       "version": 1,
-      "capability": "note.read",
+      "capability": "calendar.read",
       "request": {
         "void": true
       },
@@ -10554,7 +10554,7 @@
     },
     "calendar:refresh": {
       "version": 1,
-      "capability": "note.read",
+      "capability": "calendar.read",
       "request": {
         "void": true
       },
@@ -10626,7 +10626,7 @@
     },
     "calendar:upcoming": {
       "version": 1,
-      "capability": "note.read",
+      "capability": "calendar.read",
       "request": {
         "void": true
       },
@@ -11206,7 +11206,7 @@
       }
     },
     "calendar:changed": {
-      "capability": "note.read",
+      "capability": "calendar.read",
       "payload": {
         "type": "object",
         "properties": {
@@ -12953,6 +12953,7 @@
         "talk.read",
         "talk.dictate",
         "os.permissions",
+        "calendar.read",
         "log.write",
         "app.update.read"
       ]
@@ -12963,6 +12964,7 @@
         "note.read",
         "note.record",
         "note.write",
+        "calendar.read",
         "os.permissions",
         "speech.read",
         "module.settings"

@@ -343,6 +343,8 @@ impl NanoCalendar {
                 .db
                 .call(|db| {
                     let c = db.calendar();
+                    // M2: a cache from before links lost their query keeps no passcode at rest.
+                    c.scrub_links()?;
                     Ok((c.calendars()?, c.events_from(now_ms() - WINDOW_BACK_MS)?))
                 })
                 .await
@@ -424,7 +426,8 @@ fn event_from_wire(v: &Value) -> Option<CalendarEvent> {
         end_at: v["endMs"].as_i64()?,
         all_day: v["allDay"].as_bool().unwrap_or(false),
         attendee_count: v["attendees"].as_u64().unwrap_or(0).min(10_000) as u32,
-        meeting_url: v["meetingUrl"].as_str().map(str::to_owned),
+        // Defensive (M2): an older or broken helper's link still loses its query/fragment before the cache.
+        meeting_url: qrtz_storage::calendar::clean_meeting_url(v["meetingUrl"].as_str()),
     })
 }
 

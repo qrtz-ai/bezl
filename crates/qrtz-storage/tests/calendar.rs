@@ -52,7 +52,7 @@ fn replace_swaps_the_whole_window_and_keeps_minimal_fields() {
     assert_eq!(got[0].title, "weekly sync");
     assert_eq!(
         got[0].meeting_url.as_deref(),
-        Some("https://us02web.zoom.us/j/123?pwd=x")
+        Some("https://us02web.zoom.us/j/123")
     );
     assert_eq!(got[0].attendee_count, 3);
     assert_eq!(
@@ -198,4 +198,39 @@ fn upcoming_and_links() {
     c.clear().unwrap();
     assert!(c.events_from(0).unwrap().is_empty());
     assert_eq!(c.meeting_event("m1").unwrap().as_deref(), Some("a"));
+}
+
+#[test]
+fn m2_links_lose_query_and_fragment_and_old_cache_is_scrubbed() {
+    for (raw, want) in [
+        (
+            "https://us02web.zoom.us/j/123?pwd=s3cr3t",
+            Some("https://us02web.zoom.us/j/123"),
+        ),
+        (
+            "https://meet.google.com/abc-defg-hij?authuser=1#x",
+            Some("https://meet.google.com/abc-defg-hij"),
+        ),
+        ("https://zoom.us/j/9#pwd=y", Some("https://zoom.us/j/9")),
+        ("https://zoom.us?pwd=y", Some("https://zoom.us")),
+        ("https://evil.example/?u=https://zoom.us", None),
+    ] {
+        assert_eq!(clean_meeting_url(Some(raw)).as_deref(), want, "{raw}");
+    }
+    // A cache written by the old code (query kept) is cleaned in place.
+    let db = db();
+    let c = db.calendar();
+    c.replace(&cals(), &[ev("a", "w", NOW, NOW + H), ev("b", "w", NOW, NOW + H)])
+        .unwrap();
+    db.connection()
+        .execute(
+            "UPDATE calendar_events SET meeting_url='https://zoom.us/j/1?pwd=old#f' WHERE id='a'",
+            [],
+        )
+        .unwrap();
+    assert_eq!(c.scrub_links().unwrap(), 1);
+    let got = c.events_from(NOW - H).unwrap();
+    assert_eq!(got[0].meeting_url.as_deref(), Some("https://zoom.us/j/1"));
+    assert_eq!(got[1].meeting_url, None);
+    assert_eq!(c.scrub_links().unwrap(), 0, "idempotent");
 }

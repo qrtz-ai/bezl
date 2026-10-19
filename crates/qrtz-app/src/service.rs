@@ -518,6 +518,7 @@ impl AppService {
 
     #[cfg(feature = "runtime")]
     async fn calendar_channel(&self, channel: &str) -> Result<Value, AppError> {
+        crate::modules::check_calendar_call(&self.config.get(), channel)?;
         let Some(c) = self.calendar.get() else {
             return Ok(match channel {
                 "calendar:upcoming" => json!({"events": []}),

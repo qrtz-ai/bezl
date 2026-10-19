@@ -55,10 +55,10 @@
           "version": "1.0.0"
         }
       ],
-      "manifestSha256": "097470ff9a459597cbdfe4c32dd9d49ba81c10c5e18e44b1c3d5561517cb7047",
+      "manifestSha256": "27dbd03b223c59eed3cb5df0b1a13a8d0bba0d5f94627c8aa01b515a110f8b48",
       "source": "bundled",
       "staleRevocation": false,
-      "version": "0.2.2"
+      "version": "0.2.3"
     },
     "snap": {
       "code": {

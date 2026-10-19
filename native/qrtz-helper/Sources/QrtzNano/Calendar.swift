@@ -26,9 +26,11 @@ public final class CalendarService: @unchecked Sendable {
     private let lock = NSLock()
     private var observing = false
     private var last: CalendarAccessState?
+    private let now: @Sendable () -> Int64
 
-    public init(store: CalendarStore?, send: @escaping @Sendable (HelperMessage) -> Void) {
-        self.store = store; self.send = send
+    public init(store: CalendarStore?, send: @escaping @Sendable (HelperMessage) -> Void,
+                now: @escaping @Sendable () -> Int64 = { Int64((Date().timeIntervalSince1970 * 1000).rounded()) }) {
+        self.store = store; self.send = send; self.now = now
     }
 
     public static func owns(_ m: HostMessage) -> Bool {
@@ -58,7 +60,10 @@ public final class CalendarService: @unchecked Sendable {
             let st = store.access()
             guard st == .granted else { return answer(id, st) }
             noteAccess(st)
-            guard to > from, to - from <= CalendarLimits.windowMaxMs else {
+            // L1: only a window around now (about now-1d..now+15d), never the whole calendar history.
+            let t = now()
+            guard to > from, to - from <= CalendarLimits.windowMaxMs,
+                  from >= t - CalendarLimits.backMaxMs, to <= t + CalendarLimits.aheadMaxMs else {
                 send(.log(level: .warn, msg: "calendar.read: window \(from)..\(to) refused"))
                 send(.calendarEvents(id: id, calendars: [], events: []))
                 return

@@ -770,7 +770,7 @@ export const ipcContract = {
    */
   'calendar:status': defineChannel({
     version: 1,
-    capability: 'note.read',
+    capability: 'calendar.read',
     request: z.void(),
     response: CalendarStatus,
   }),
@@ -787,14 +787,14 @@ export const ipcContract = {
   /** ADR 0217: read the calendar again now. */
   'calendar:refresh': defineChannel({
     version: 1,
-    capability: 'note.read',
+    capability: 'calendar.read',
     request: z.void(),
     response: CalendarStatus,
   }),
   /** ADR 0217: the nano page's 'upcoming' block: the next timed events on the chosen calendars. */
   'calendar:upcoming': defineChannel({
     version: 1,
-    capability: 'note.read',
+    capability: 'calendar.read',
     request: z.void(),
     response: z.object({ events: z.array(CalendarEvent).max(20) }),
   }),

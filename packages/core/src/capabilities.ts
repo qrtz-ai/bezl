@@ -25,6 +25,11 @@ export const Capability = z.enum([
   'ctrl.write',
   /** qrtz snap (ADR 0159): what its helper reports (the shortcuts it holds, the Accessibility grant). */
   'snap.read',
+  /**
+   * ADR 0217 (H1): nano's Apple Calendar cache (status, upcoming events, refresh, calendar:changed). Its own
+   * capability so a module holding note.read never sees the calendar.
+   */
+  'calendar.read',
   /** ADR 0083: write a line to the local log (uncaught renderer errors, the audio player's errors). */
   'log.write',
   /** ADR 0083: save a copy of the local logs, or show their folder. */
