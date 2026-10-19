@@ -469,16 +469,30 @@ const directionOf = (text: string): 'volume_up' | 'volume_down' | null => {
 
 /** ADR 0143: the step of a relative change: "by N" / "up N" / "down N", "a bit" is 5, else 10. */
 // ADR 0166: the folder "open my …" shows, from the closed set.
-const folderOf = (text: string): 'downloads' | 'desktop' | 'documents' =>
+const folderOf = (
+  text: string,
+): 'downloads' | 'desktop' | 'documents' | 'pictures' | 'music' | 'movies' =>
   /\b(documents|docs)\b/i.test(text)
     ? 'documents'
     : /\bdesktop\b/i.test(text)
       ? 'desktop'
-      : 'downloads';
+      : /\b(pictures|pics)\b/i.test(text)
+        ? 'pictures'
+        : /\bmusic\b/i.test(text)
+          ? 'music'
+          : /\b(movies|videos)\b/i.test(text)
+            ? 'movies'
+            : 'downloads';
+// Run 40 (ADR 0166 amendment 1): pictures / movies need "my" or "folder"; music only with "folder" (else the music app).
+const namesFolder = (text: string): boolean =>
+  /\b(downloads?|desktop|documents|docs)\b/i.test(text) ||
+  (/\b(pictures|pics|movies|videos)\b/i.test(text) &&
+    /\b(my|folder)\b/i.test(text)) ||
+  (/\bmusic\b/i.test(text) && /\bfolder\b/i.test(text));
 const opensFolder = (text: string): boolean =>
   (/\b(open|browse|view)\b/i.test(text) ||
     (/\b(show|go)\b/i.test(text) && /\b(my|folder)\b/i.test(text))) &&
-  /\b(downloads?|desktop|documents|docs)\b/i.test(text) &&
+  namesFolder(text) &&
   !/\b(clean|tidy|organi[sz]e|sort|declutter|clear|delete|trash|remove|move)\b/i.test(
     text,
   );

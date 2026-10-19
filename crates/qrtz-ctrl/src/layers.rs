@@ -591,6 +591,11 @@ fn mail_words(toks: &[Tok]) -> bool {
 
 /// ADR 0166: the words that name a folder "open my …" can show (a closed set, [`crate::ladder::UserFolder`]).
 const USER_FOLDER_WORDS: &[&str] = &["downloads", "download", "desktop", "documents", "docs"];
+/// Run 40 (ADR 0166 amendment 1): the media folders' words, which count only with "my" / "folder" (Music only with
+/// "folder"). No "photos": that's the Photos app.
+const MEDIA_FOLDER_WORDS: &[&str] = &["pictures", "pics", "movies", "videos"];
+/// The Music app, which "open my music" means (run 40).
+const MUSIC_APP: &str = "com.apple.Music";
 
 const FOLDER_WORDS: &[&str] = &[
     "downloads",
@@ -792,7 +797,13 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             // Finder. "show" counts only with "my" / "folder": "show the desktop" is macOS's Show Desktop (windows
             // aside), not a Finder window. Before this, "open my downloads" scored as clean_folder and asked.
             p -= 3000;
-            let folder = has(toks, USER_FOLDER_WORDS);
+            // Run 40 (ADR 0166 amendment 1): Pictures and Movies count with "my" or "folder" ("open my pictures",
+            // "open the movies folder"); Music only with "folder", since "open music" / "open my music" is the Music
+            // app. When the Music folder is what's named, the Music app named by that same word isn't another app.
+            let music_folder = has(toks, &["music"]) && has(toks, &["folder"]);
+            let folder = has(toks, USER_FOLDER_WORDS)
+                || (has(toks, MEDIA_FOLDER_WORDS) && has(toks, &["my", "folder"]))
+                || music_folder;
             let opens = has(toks, &["open", "browse", "view"])
                 || (has(toks, &["show", "go"]) && has(toks, &["my", "folder"]));
             let tidy = has(
@@ -811,7 +822,9 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
                     "move",
                 ],
             );
-            let other_app = named.iter().any(|(a, _)| a.id != crate::ladder::FINDER);
+            let other_app = named
+                .iter()
+                .any(|(a, _)| a.id != crate::ladder::FINDER && !(music_folder && a.id == MUSIC_APP));
             if folder && opens && !tidy && !other_app && !site {
                 p += 9000;
             }
@@ -1049,10 +1062,13 @@ fn folder_question(toks: &[Tok]) -> Question {
 /// ADR 0166: which of the user's own folders to show. Only the closed set (no screenshots: that's a place on the
 /// Desktop, not a folder of its own here); nothing named, nothing preferred, so the chain asks.
 fn user_folder_question(toks: &[Tok]) -> Question {
-    let folders: [(crate::ladder::UserFolder, &[&str]); 3] = [
+    let folders: [(crate::ladder::UserFolder, &[&str]); 6] = [
         (crate::ladder::UserFolder::Downloads, &["downloads", "download"]),
         (crate::ladder::UserFolder::Desktop, &["desktop"]),
         (crate::ladder::UserFolder::Documents, &["documents", "docs"]),
+        (crate::ladder::UserFolder::Pictures, &["pictures", "pics"]),
+        (crate::ladder::UserFolder::Music, &["music"]),
+        (crate::ladder::UserFolder::Movies, &["movies", "videos"]),
     ];
     let cs = folders
         .iter()

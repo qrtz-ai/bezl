@@ -857,6 +857,42 @@ test('ctrl: open my downloads opens the folder in the finder without a card', as
   expect(errors).toEqual([]);
 });
 
+// Run 40 (ADR 0166 amendment 1): the media folders open the same way; "my music folder" is the folder, not the app.
+test('ctrl: open my pictures and my music folder open in the finder without a card', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  for (const [text, folder] of [
+    ['open my pictures', 'pictures'],
+    ['open my music folder', 'music'],
+  ]) {
+    await ctrl.getByTestId('ctrl-task-input').fill(text);
+    await ctrl.getByTestId('ctrl-task-add').click();
+    await ctrl
+      .getByTestId('ctrl-task')
+      .filter({ hasText: text })
+      .getByTestId('ctrl-task-run')
+      .click();
+    const run = ctrl.getByTestId('ctrl-run').first();
+    await expect(run.getByTestId('ctrl-run-status')).toHaveText('done');
+    await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
+    const decisions = ctrl.getByTestId('ctrl-decisions').first();
+    await expect(decisions).toContainText('open a folder');
+    await expect(decisions).toContainText(folder);
+    await expect(decisions).toContainText(
+      'show it in a finder window, nothing comes forward',
+    );
+    await expect(decisions).not.toContainText('open an app');
+  }
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 // ADR 0168: "every hour clear my clipboard" empties the clipboard without a card; nothing is read from it.
 test('ctrl: clear my clipboard empties it without a card', async ({ page }) => {
   const errors: string[] = [];

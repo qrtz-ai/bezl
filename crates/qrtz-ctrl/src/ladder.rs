@@ -97,7 +97,7 @@ pub enum WorkspaceOp {
     /// once; without it the helper answers `focus.no_shortcut`, without Automation `automation.denied`, and stops.
     /// Reversible, no gate.
     SetFocus { mode: FocusMode },
-    /// ADR 0166: show one of the user's own folders (Downloads, Desktop, Documents) in a Finder window, opened by
+    /// ADR 0166: show one of the user's own folders (Downloads, Desktop, Documents, Pictures, Music, Movies) in a Finder window, opened by
     /// LaunchServices with `activates = false` (no activation, no key event, nothing read from the folder). The folder
     /// is a closed set resolved by the helper from the system's own location, never a path from the task. Reversible
     /// (close the window), no gate. Its app is always the Finder ([`FINDER`]).
@@ -120,16 +120,31 @@ pub enum UserFolder {
     Downloads,
     Desktop,
     Documents,
+    /// Run 40 (ADR 0166 amendment 1): Pictures, Music, Movies, the rest of the user's own system folders.
+    Pictures,
+    Music,
+    Movies,
 }
 
 impl UserFolder {
-    pub const ALL: [UserFolder; 3] = [UserFolder::Downloads, UserFolder::Desktop, UserFolder::Documents];
-    /// The wire spelling (`downloads`, `desktop`, `documents`), also the layers' `folder.<name>` option.
+    pub const ALL: [UserFolder; 6] = [
+        UserFolder::Downloads,
+        UserFolder::Desktop,
+        UserFolder::Documents,
+        UserFolder::Pictures,
+        UserFolder::Music,
+        UserFolder::Movies,
+    ];
+    /// The wire spelling (`downloads`, `desktop`, `documents`, `pictures`, `music`, `movies`), also the layers'
+    /// `folder.<name>` option.
     pub fn as_str(self) -> &'static str {
         match self {
             UserFolder::Downloads => "downloads",
             UserFolder::Desktop => "desktop",
             UserFolder::Documents => "documents",
+            UserFolder::Pictures => "pictures",
+            UserFolder::Music => "music",
+            UserFolder::Movies => "movies",
         }
     }
     /// Exactly one of the spellings above, nothing else.

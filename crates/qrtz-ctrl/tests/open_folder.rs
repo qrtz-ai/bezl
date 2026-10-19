@@ -302,3 +302,102 @@ fn other_phrasings_keep_their_intents() {
     assert_ne!(v["state"]["decisions"][0]["chosen"], "intent.open_folder", "{v}");
     assert!(fake.world().open_folders.is_empty());
 }
+
+/// Run 40 (ADR 0166 amendment 1): Pictures, Music and Movies join the closed set. Pictures / Movies count with "my" or
+/// "folder"; Music only with "folder" (the Music app is what "open my music" means), and then the Music app named by
+/// that same word isn't another app.
+fn world_with_music() -> FakeWorld {
+    let mut w = world();
+    w.apps.push(FakeApp::new("com.apple.Music", "Music", 800));
+    w
+}
+
+#[test]
+fn the_media_folders_open_in_the_finder_like_the_others() {
+    for (text, folder) in [
+        ("open my pictures", UserFolder::Pictures),
+        ("open the pictures folder", UserFolder::Pictures),
+        ("every friday open my pics", UserFolder::Pictures),
+        ("open my movies", UserFolder::Movies),
+        ("show my videos folder", UserFolder::Movies),
+        ("open my music folder", UserFolder::Music),
+        ("open the music folder every morning", UserFolder::Music),
+    ] {
+        let d = tempfile::tempdir().unwrap();
+        let (s, fake, lines) = rig_recording(d.path(), world_with_music());
+        let before = fake.world();
+        let t = create(&s, text);
+        let v = run_now(&s, &t);
+        let st = &v["state"];
+        assert_eq!(st["decisions"][0]["chosen"], "intent.open_folder", "{text}: {v}");
+        assert_eq!(st["status"], "done", "{text}: {v}");
+        assert!(st["confirm"].is_null(), "{text}: reversible, no card");
+        let w = fake.world();
+        assert_eq!(
+            w.acted.iter().map(|(_, r)| r).collect::<Vec<_>>(),
+            vec![&Route::Workspace(WorkspaceOp::OpenFolder { folder })],
+            "{text}"
+        );
+        assert_eq!(w.open_folders, vec![folder], "{text}");
+        assert_eq!(
+            w.frontmost_pid, before.frontmost_pid,
+            "{text}: nothing comes forward"
+        );
+        assert!(
+            !w.apps
+                .iter()
+                .any(|a| a.bundle_id == "com.apple.Music" && a.windows != 1),
+            "{text}: the Music app is left alone"
+        );
+        let lines = lines.lock().unwrap();
+        let act: Value = serde_json::from_str(
+            lines
+                .iter()
+                .find(|l| l.contains("\"ctrl.act\""))
+                .expect("one act"),
+        )
+        .unwrap();
+        assert_eq!(
+            act["route"],
+            json!({"route": "workspace", "op": "open_folder", "folder": folder.as_str()}),
+            "{text}: only the enum crosses the wire"
+        );
+        let store = Store::open(d.path()).unwrap();
+        let log = store.run(v["run"]["id"].as_str().unwrap()).unwrap();
+        log.verify().unwrap();
+        replay_check(&log, &Goal { task_id: &t, text }).unwrap();
+        assert!(log.to_jsonl().contains("\"passed\""), "{text}: verified");
+    }
+}
+
+#[test]
+fn music_without_folder_is_the_music_app_and_photos_is_the_photos_app() {
+    for (text, not) in [
+        ("open music", "intent.open_folder"),
+        ("open my music", "intent.open_folder"),
+        ("open pictures", "intent.open_folder"),
+        ("open my photos", "intent.open_folder"),
+        ("clean up my pictures folder", "intent.open_folder"),
+    ] {
+        let d = tempfile::tempdir().unwrap();
+        let (s, fake) = rig(d.path(), world_with_music());
+        let t = create(&s, text);
+        let v = run_now(&s, &t);
+        assert_ne!(v["state"]["decisions"][0]["chosen"], not, "{text}: {v}");
+        assert!(fake.world().open_folders.is_empty(), "{text}");
+    }
+    let d = tempfile::tempdir().unwrap();
+    let (s, _) = rig(d.path(), world_with_music());
+    let t = create(&s, "open my music");
+    let v = run_now(&s, &t);
+    assert_eq!(v["state"]["decisions"][0]["chosen"], "intent.open_app", "{v}");
+    // The wire takes the new spellings and still nothing else.
+    for ok in ["pictures", "music", "movies"] {
+        let wire = json!({"route": "workspace", "op": "open_folder", "folder": ok});
+        assert!(serde_json::from_value::<Route>(wire).is_ok(), "{ok}");
+    }
+    for bad in ["Pictures", "photos", "videos", "~/Music", "public", "library"] {
+        let wire = json!({"route": "workspace", "op": "open_folder", "folder": bad});
+        assert!(serde_json::from_value::<Route>(wire).is_err(), "{bad:?}");
+    }
+}

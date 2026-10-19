@@ -28,7 +28,7 @@ final class CtrlFoldersTests: XCTestCase {
     func testOnlyTheEnumParses() {
         for f in CtrlFolder.allCases { XCTAssertEqual(CtrlFolders.folder(f.rawValue), f) }
         for bad in ["Downloads", " downloads", "downloads/", "../downloads", "/Users/jared/Downloads", "~/Downloads",
-                    "screenshots", "trash", ""] {
+                    "screenshots", "trash", "Pictures", "photos", "videos", "~/Music", "public", "library", ""] {
             XCTAssertNil(CtrlFolders.folder(bad), bad)
             XCTAssertNil(CtrlRequest.parse(#"{"type":"ctrl.act","id":"x","actionId":"a","route":{"route":"workspace","op":"open_folder","folder":"# +
                 String(decoding: try! JSONSerialization.data(withJSONObject: [bad]), as: UTF8.self).dropFirst().dropLast() + #"},"content":{}}"#), bad)
@@ -73,6 +73,23 @@ final class CtrlFoldersTests: XCTestCase {
             XCTAssertEqual(u, FileManager.default.urls(for: CtrlFolders.directory(f), in: .userDomainMask).first!.standardizedFileURL)
         }
         XCTAssertNotEqual(CtrlFolders.url(.downloads), CtrlFolders.url(.documents))
+    }
+
+    // Run 40 (ADR 0166 amendment 1): Pictures, Music and Movies are their own system folders and parse as the enum.
+    func testTheMediaFoldersAreTheSystemsOwn() {
+        XCTAssertEqual(CtrlFolder.allCases.map(\.rawValue), ["downloads", "desktop", "documents", "pictures", "music", "movies"])
+        XCTAssertEqual(CtrlFolders.directory(.pictures), .picturesDirectory)
+        XCTAssertEqual(CtrlFolders.directory(.music), .musicDirectory)
+        XCTAssertEqual(CtrlFolders.directory(.movies), .moviesDirectory)
+        let urls = CtrlFolder.allCases.compactMap { CtrlFolders.url($0) }
+        XCTAssertEqual(Set(urls).count, urls.count, "six different places")
+        let line = #"{"type":"ctrl.act","id":"c40","actionId":"a1","route":{"route":"workspace","op":"open_folder","folder":"music"},"content":{}}"#
+        guard case let .act(_, _, route, content)? = CtrlRequest.parse(line) else { return XCTFail("music") }
+        XCTAssertEqual(route, .openFolder(folder: .music))
+        XCTAssertTrue(content.isEmpty)
+        XCTAssertEqual(CtrlServer.appOf(route), CtrlFolders.finder)
+        XCTAssertEqual(CtrlFolders.measured("folder_open.movies"), .movies)
+        XCTAssertEqual(CtrlFolders.shown(windows: 1, documents: [], titles: ["Pictures"], path: "/Users/me/Pictures"), 1)
     }
 
     func testShownFromWindowDocumentsAndTitles() {

@@ -9,6 +9,8 @@ import Foundation
 /// The folders ctrl can show. Mirrors Rust `UserFolder`; anything else is a bad request.
 public enum CtrlFolder: String, CaseIterable, Sendable {
     case downloads, desktop, documents
+    /// Run 40 (ADR 0166 amendment 1).
+    case pictures, music, movies
 }
 
 public enum CtrlFolders {
@@ -32,6 +34,9 @@ public enum CtrlFolders {
         case .downloads: return .downloadsDirectory
         case .desktop: return .desktopDirectory
         case .documents: return .documentDirectory
+        case .pictures: return .picturesDirectory
+        case .music: return .musicDirectory
+        case .movies: return .moviesDirectory
         }
     }
 
