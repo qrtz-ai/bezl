@@ -1184,17 +1184,6 @@ checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
 
 [[package]]
 name = "fancy-regex"
-version = "0.16.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "998b056554fbe42e03ae0e152895cd1a7e1002aec800fdc6635d20270260c46f"
-dependencies = [
- "bit-set",
- "regex-automata",
- "regex-syntax",
-]
-
-[[package]]
-name = "fancy-regex"
 version = "0.19.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d301f5bf187b3c295fce6468d3875037a0bccc5f6b151c63cac2f85babf21912"
@@ -2300,7 +2289,7 @@ dependencies = [
  "bytecount",
  "data-encoding",
  "email_address",
- "fancy-regex 0.19.2",
+ "fancy-regex",
  "fraction",
  "getrandom 0.3.4",
  "itoa",
@@ -3399,7 +3388,7 @@ dependencies = [
  "qrtz-speech",
  "qrtz-storage",
  "qrtz-talk",
- "rand 0.8.8",
+ "rand 0.9.5",
  "security-framework",
  "semver",
  "serde",
@@ -3476,7 +3465,7 @@ dependencies = [
  "jsonschema",
  "libc",
  "qrtz-cloexec",
- "rand 0.8.8",
+ "rand 0.9.5",
  "serde",
  "serde_json",
  "tempfile",
@@ -3524,7 +3513,7 @@ version = "0.2.3"
 dependencies = [
  "qrtz-model",
  "qrtz-storage",
- "rand 0.8.8",
+ "rand 0.9.5",
  "regex",
  "serde",
  "serde_json",
@@ -3569,7 +3558,7 @@ dependencies = [
  "ed25519-dalek",
  "hex",
  "qrtz-modules",
- "rand 0.8.8",
+ "rand 0.9.5",
  "semver",
  "serde",
  "serde_json",
@@ -3621,7 +3610,7 @@ version = "0.2.3"
 dependencies = [
  "indexmap 2.14.2",
  "qrtz-model",
- "rand 0.8.8",
+ "rand 0.9.5",
  "regex",
  "rusqlite",
  "serde",
@@ -3639,7 +3628,7 @@ version = "0.2.3"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
- "fancy-regex 0.16.2",
+ "fancy-regex",
  "qrtz-ipc",
  "qrtz-lifecycle",
  "qrtz-model",
@@ -3757,22 +3746,11 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "rand"
-version = "0.8.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e058c7de0b26af77780c769414d6257830bb240f3c38477dbc2c16e5f54d6d4c"
-dependencies = [
- "libc",
- "rand_chacha 0.3.1",
- "rand_core 0.6.4",
-]
-
-[[package]]
-name = "rand"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9ef1d0d795eb7d84685bca4f72f3649f064e6641543d3a8c415898726a57b41"
 dependencies = [
- "rand_chacha 0.9.0",
+ "rand_chacha",
  "rand_core 0.9.5",
 ]
 
@@ -3785,16 +3763,6 @@ dependencies = [
  "chacha20",
  "getrandom 0.4.3",
  "rand_core 0.10.1",
-]
-
-[[package]]
-name = "rand_chacha"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88"
-dependencies = [
- "ppv-lite86",
- "rand_core 0.6.4",
 ]
 
 [[package]]

@@ -1081,7 +1081,7 @@ fn spoken_clock(w: &[&str]) -> Option<String> {
 fn collapse_repeats(s: &str) -> String {
     if s.contains(['\u{17F}', '\u{212A}']) {
         return REPEATS
-            .replace_all(s, |c: &fancy_regex::Captures| {
+            .replace_all(s, |c: &fancy_regex::Captures<str>| {
                 let (all, word) = (c.get(0).unwrap(), c.get(1).unwrap());
                 if collapses(&c[1], &c[0]) || subject_stutter(s, all.start(), word.end(), all.end()) {
                     c[1].to_owned()
@@ -2160,7 +2160,7 @@ mod scans_match_their_patterns {
                 phrase,
                 |s| layout_command(phrase, s, with),
                 |s| {
-                    r.replace_all(s, |c: &Captures| {
+                    r.replace_all(s, |c: &Captures<str>| {
                         let start = c.get(0).map_or(0, |m| m.start());
                         if ends_with_determiner(s[..start].trim_end()) {
                             c[0].to_owned()
@@ -2209,7 +2209,7 @@ mod scans_match_their_patterns {
     fn repeats_blanks_dots_starts_and_lone_i() {
         let repeats = |s: &str| {
             REPEATS
-                .replace_all(s, |c: &Captures| {
+                .replace_all(s, |c: &Captures<str>| {
                     if collapses(&c[1], &c[0]) {
                         c[1].to_owned()
                     } else {
@@ -2225,7 +2225,7 @@ mod scans_match_their_patterns {
         });
         let dot = re(&format!(r"(?<![{W}.])([A-Za-z]+)\.(?=\s+[a-z])"));
         check("continued dot", continued_dot, |s| {
-            dot.replace_all(s, |c: &Captures| {
+            dot.replace_all(s, |c: &Captures<str>| {
                 if is_abbreviation(&c[1]) {
                     c[0].to_owned()
                 } else {
@@ -2237,7 +2237,7 @@ mod scans_match_their_patterns {
         let start = re(r"(^|(?<![A-Za-z]\.[A-Za-z])[.!?]\s+|\n)([a-z])");
         check("sentence starts", sentence_starts, |src| {
             start
-                .replace_all(src, |c: &Captures| {
+                .replace_all(src, |c: &Captures<str>| {
                     let at = c.get(0).map_or(0, |m| m.start());
                     if c[1].starts_with('.') && ends_with_abbreviation(&src[..at]) {
                         c[0].to_owned()

@@ -61,9 +61,12 @@ fn read_secret(p: &Path) -> Result<String, String> {
 
 impl Keys {
     pub fn generate() -> SigningKey {
-        use rand::RngCore;
+        use rand::TryRngCore;
         let mut b = [0u8; 32];
-        rand::rngs::OsRng.fill_bytes(&mut b);
+        // rand 0.9: OsRng is fallible; no key is ever made from anything but the OS's randomness.
+        rand::rngs::OsRng
+            .try_fill_bytes(&mut b)
+            .expect("OS randomness for a signing key");
         SigningKey::from_bytes(&b)
     }
 

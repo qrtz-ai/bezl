@@ -16,7 +16,7 @@ serde_json = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 tracing = { workspace = true }
-fancy-regex = "0.16"
+fancy-regex = "0.19"
 # ADR 0182 (N187): a DFA prefilter for dictionary patterns (already in the tree through fancy-regex).
 regex = { workspace = true }
 

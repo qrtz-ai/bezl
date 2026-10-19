@@ -111,7 +111,7 @@ fn ends_with_determiner(before: &str) -> bool {
 
 /// A spoken layout command (`NEW_PARAGRAPH`, `NEW_LINE`) becomes `with`, unless it is a noun phrase (ADR 0182).
 fn layout_command(r: &Regex, s: &str, with: &str) -> String {
-    r.replace_all(s, |c: &Captures| {
+    r.replace_all(s, |c: &Captures<str>| {
         let start = c.get(0).map_or(0, |m| m.start());
         if ends_with_determiner(s[..start].trim_end()) {
             c[0].to_owned()
@@ -1259,7 +1259,7 @@ pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
     t = layout_command(&NEW_LINE, &t, "\n");
     t = remove_fillers(&t);
     t = REPEATS
-        .replace_all(&t, |c: &Captures| {
+        .replace_all(&t, |c: &Captures<str>| {
             if collapses(&c[1], &c[0]) {
                 c[1].to_owned()
             } else {
@@ -1276,7 +1276,7 @@ pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
     // Only for a recogniser that writes capitals: an all-lowercase text's "so. i can" is its own sentence end.
     if raw.chars().any(|c| c.is_ascii_uppercase()) {
         t = CONTINUED_DOT
-            .replace_all(&t, |c: &Captures| {
+            .replace_all(&t, |c: &Captures<str>| {
                 if is_abbreviation(&c[1]) {
                     c[0].to_owned()
                 } else {
@@ -1289,7 +1289,7 @@ pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
     t = final_mark(t);
     let src = t.clone();
     t = SENTENCE_START
-        .replace_all(&src, |c: &Captures| {
+        .replace_all(&src, |c: &Captures<str>| {
             let start = c.get(0).map_or(0, |m| m.start());
             if c[1].starts_with('.') && ends_with_abbreviation(&src[..start]) {
                 c[0].to_owned()
