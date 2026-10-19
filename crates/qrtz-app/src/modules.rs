@@ -124,6 +124,41 @@ pub fn check_view_config_patch(sub_app: &str, channel: &str, payload: &Value) ->
     }
 }
 
+/// ADR 0175 (N181): a module view's speech calls (only bundled echo's view holds `speech.manage`) reach only its
+/// own models. `speech:download`, `speech:pause`, `speech:resume`, `speech:delete` and `speech:check` must name
+/// `extensions == ["<id>"]` (omitted would mean every switched-on module, or the whole store), and the host scopes
+/// each call to that set (`setup.rs` `*_for`). While the module is off, `speech:status` must name exactly it too.
+/// Least privilege, not a confinement boundary: `sub_app` is the renderer's own claim.
+pub fn check_view_speech_call(
+    cfg: &Value,
+    sub_app: &str,
+    channel: &str,
+    payload: &Value,
+) -> Result<(), AppError> {
+    let Some(m) = module_of_view(sub_app) else {
+        return Ok(());
+    };
+    let scoped = matches!(
+        channel,
+        "speech:download" | "speech:pause" | "speech:resume" | "speech:delete" | "speech:check"
+    ) || (channel == "speech:status" && !is_on(cfg, m));
+    if !scoped {
+        return Ok(());
+    }
+    let own = payload["extensions"]
+        .as_array()
+        .is_some_and(|a| a.len() == 1 && a[0].as_str() == Some(m));
+    if own {
+        Ok(())
+    } else {
+        Err(AppError::new(
+            ErrorCode::Validation,
+            format!("{m}'s view can only reach {m}'s own models (extensions: [\"{m}\"])"),
+        )
+        .retryable(false))
+    }
+}
+
 /// Helper events that only a switched-off module reacts to are dropped (meeting detection while nano is off).
 pub fn drops_helper_event(cfg: &Value, ty: &str) -> bool {
     let g = GlobalSettings::from_config(cfg);
@@ -310,6 +345,67 @@ mod tests {
         let all = json!({"modules": {"enabled": false}});
         assert!(gate(&all, "ctrl", "ctrl:tasks").is_err());
         assert!(gate(&all, "settings", "config:set").is_ok());
+    }
+
+    #[test]
+    fn a_module_view_reaches_only_its_own_models() {
+        let on = json!({});
+        let off = json!({"modules": {"echo": {"enabled": false}}});
+        let own = json!({"extensions": ["echo"]});
+        let bad = [
+            json!({}),
+            json!(null),
+            json!({"force": true}),
+            json!({"extensions": []}),
+            json!({"extensions": ["nano"]}),
+            json!({"extensions": ["ctrl"]}),
+            json!({"extensions": ["echo", "nano"]}),
+            json!({"extensions": ["echo", "echo"]}),
+            json!({"extensions": "echo"}),
+            json!({"extensions": [["echo"]]}),
+        ];
+        for ch in [
+            "speech:download",
+            "speech:pause",
+            "speech:resume",
+            "speech:delete",
+            "speech:check",
+        ] {
+            for cfg in [&on, &off] {
+                assert!(check_view_speech_call(cfg, "talk", ch, &own).is_ok(), "{ch}");
+                assert!(check_view_speech_call(
+                    cfg,
+                    "talk",
+                    ch,
+                    &json!({"extensions": ["echo"], "force": true})
+                )
+                .is_ok());
+                for b in &bad {
+                    let e = check_view_speech_call(cfg, "talk", ch, b).unwrap_err();
+                    assert_eq!(e.code, ErrorCode::Validation, "{ch} {b}");
+                }
+            }
+            // Settings and the shell are not module views: unchanged (settings manages every model).
+            for b in &bad {
+                assert!(check_view_speech_call(&on, "settings", ch, b).is_ok(), "{ch} {b}");
+                assert!(check_view_speech_call(&on, "shell", ch, b).is_ok(), "{ch} {b}");
+            }
+        }
+        // speech:status: while echo is off its view may ask only about echo's models; on, unchanged.
+        assert!(check_view_speech_call(&off, "talk", "speech:status", &own).is_ok());
+        for b in &bad {
+            assert!(
+                check_view_speech_call(&off, "talk", "speech:status", b).is_err(),
+                "{b}"
+            );
+            assert!(
+                check_view_speech_call(&on, "talk", "speech:status", b).is_ok(),
+                "{b}"
+            );
+        }
+        assert!(check_view_speech_call(&off, "settings", "speech:status", &json!({})).is_ok());
+        // Other channels pass through.
+        assert!(check_view_speech_call(&off, "talk", "config:get", &json!(null)).is_ok());
     }
 
     #[test]

@@ -562,6 +562,106 @@ impl SpeechManager {
         self.set_dl(Dl::idle());
         Ok(self.status())
     }
+
+    // ---- ADR 0175 (N181): calls scoped to one module's own models (a module view names exactly itself) ----
+
+    fn scope_error(what: &str) -> AppError {
+        AppError::new(ErrorCode::Validation, what.to_owned()).retryable(false)
+    }
+
+    /// The extensions the current (or paused) download was asked for.
+    fn download_scope(&self) -> Option<Vec<String>> {
+        self.wanted
+            .lock()
+            .unwrap()
+            .clone()
+            .or_else(|| self.marker().and_then(|m| m.extensions))
+    }
+
+    /// `speech:pause`: `Some(e)` pauses only a download that was asked for exactly `e`.
+    pub fn pause_for(&self, extensions: Option<&[String]>) -> Result<Value, AppError> {
+        let Some(e) = extensions else {
+            return Ok(self.pause());
+        };
+        let busy = self.running.load(Ordering::SeqCst) || self.marker().is_some();
+        if busy && self.download_scope().as_deref() != Some(e) {
+            return Err(Self::scope_error("this download isn't for these models"));
+        }
+        if busy {
+            self.pause();
+        }
+        Ok(self.status_for(Some(e)))
+    }
+
+    /// `speech:resume`: `Some(e)` resumes only a download that was asked for exactly `e`.
+    pub fn resume_for(self: &Arc<Self>, extensions: Option<&[String]>) -> Result<Value, AppError> {
+        let Some(e) = extensions else {
+            return self.resume();
+        };
+        let Some(m) = self.marker() else {
+            return Ok(self.status_for(Some(e)));
+        };
+        if m.extensions.as_deref() != Some(e) {
+            return Err(Self::scope_error("this download isn't for these models"));
+        }
+        self.download_for(m.force, Some(e.to_vec()))?;
+        Ok(self.status_for(Some(e)))
+    }
+
+    /// `speech:check`: `Some(e)` answers with the status of only those models.
+    pub async fn check_for(&self, extensions: Option<&[String]>) -> Result<Value, AppError> {
+        let all = self.check().await?;
+        Ok(match extensions {
+            Some(e) => self.status_for(Some(e)),
+            None => all,
+        })
+    }
+
+    /// `speech:delete`: `Some(e)` removes only the pinned sets `e` needs that no other switched-on module needs. The
+    /// speech module source is one shared bundle: only settings deletes it.
+    pub fn delete_for(&self, extensions: Option<&[String]>) -> Result<Value, AppError> {
+        let Some(e) = extensions else {
+            return self.delete();
+        };
+        if self.setup.is_some() {
+            return Err(Self::scope_error(
+                "the speech module is shared: remove it in settings",
+            ));
+        }
+        let Some(full) = &self.local else {
+            return Err(Self::unconfigured());
+        };
+        if self.running.load(Ordering::SeqCst) {
+            return Err(AppError::new(ErrorCode::Unavailable, "pause the download first").retryable(true));
+        }
+        let others: Vec<String> = self
+            .selector
+            .lock()
+            .unwrap()
+            .clone()
+            .map(|f| f())
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|x| !e.contains(x))
+            .collect();
+        let kept: Vec<String> = others
+            .iter()
+            .flat_map(|o| crate::local_models::sets_needed_by(o))
+            .collect();
+        let view = full.for_extensions(e).without_sets(&kept);
+        if let Err(err) = view.delete() {
+            return Err(AppError::new(ErrorCode::Internal, err.to_string()));
+        }
+        if self.marker().is_some_and(|m| m.extensions.as_deref() == Some(e)) {
+            self.set_marker(None);
+            *self.wanted.lock().unwrap() = None;
+            self.ctl.resume();
+            self.set_dl(Dl::idle());
+        } else {
+            self.emit(true);
+        }
+        Ok(self.status_for(Some(e)))
+    }
 }
 
 // ------------------------------------------------------------------------------------------------ port
@@ -570,31 +670,27 @@ pub struct Setup {
     pub speech: Arc<SpeechManager>,
 }
 
+/// A speech request's `extensions` (None = not named).
+fn scope(p: &Value) -> Option<Vec<String>> {
+    p["extensions"].as_array().map(|a| {
+        a.iter()
+            .filter_map(|e| e.as_str().map(str::to_owned))
+            .collect::<Vec<_>>()
+    })
+}
+
 #[async_trait]
 impl SetupPort for Setup {
     async fn call(&self, channel: &str, p: Value) -> Result<Value, AppError> {
         match channel {
-            "speech:status" => {
-                let extensions = p["extensions"].as_array().map(|a| {
-                    a.iter()
-                        .filter_map(|e| e.as_str().map(str::to_owned))
-                        .collect::<Vec<_>>()
-                });
-                Ok(self.speech.status_for(extensions.as_deref()))
-            }
-            "speech:check" => self.speech.check().await,
-            "speech:download" => {
-                let extensions = p["extensions"].as_array().map(|a| {
-                    a.iter()
-                        .filter_map(|e| e.as_str().map(str::to_owned))
-                        .collect::<Vec<_>>()
-                });
-                self.speech
-                    .download_for(p["force"].as_bool().unwrap_or(false), extensions)
-            }
-            "speech:pause" => Ok(self.speech.pause()),
-            "speech:resume" => self.speech.resume(),
-            "speech:delete" => self.speech.delete(),
+            "speech:status" => Ok(self.speech.status_for(scope(&p).as_deref())),
+            "speech:check" => self.speech.check_for(scope(&p).as_deref()).await,
+            "speech:download" => self
+                .speech
+                .download_for(p["force"].as_bool().unwrap_or(false), scope(&p)),
+            "speech:pause" => self.speech.pause_for(scope(&p).as_deref()),
+            "speech:resume" => self.speech.resume_for(scope(&p).as_deref()),
+            "speech:delete" => self.speech.delete_for(scope(&p).as_deref()),
             _ => Err(AppError::new(ErrorCode::UnknownChannel, channel.to_owned())),
         }
     }

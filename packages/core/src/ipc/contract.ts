@@ -79,6 +79,16 @@ export const HelperStatus = z.object({
 });
 export type HelperStatus = z.infer<typeof HelperStatus>;
 
+/** ADR 0175: the speech calls a module view makes name exactly its own models (`extensions: [<id>]`). */
+const SpeechScope = z
+  .object({
+    extensions: z
+      .array(z.enum(['echo', 'nano', 'ctrl']))
+      .max(8)
+      .optional(),
+  })
+  .optional();
+
 /** The single source of truth for request/response IPC. */
 export const ipcContract = {
   'app:get-info': defineChannel({
@@ -521,11 +531,14 @@ export const ipcContract = {
       .optional(),
     response: SpeechSetupStatus,
   }),
-  /** Look for the newest release (version + size); never downloads. */
+  /**
+   * Look for the newest release (version + size); never downloads. `extensions`: answer with the status of only
+   * these models (ADR 0175: a module view must name exactly itself).
+   */
   'speech:check': defineChannel({
     version: 1,
     capability: 'speech.read',
-    request: z.void(),
+    request: SpeechScope,
     response: SpeechSetupStatus,
   }),
   /**
@@ -546,23 +559,28 @@ export const ipcContract = {
       .default({}),
     response: SpeechSetupStatus,
   }),
+  /** `extensions`: only a download of exactly these models (ADR 0175: a module view must name exactly itself). */
   'speech:pause': defineChannel({
     version: 1,
     capability: 'speech.manage',
-    request: z.void(),
+    request: SpeechScope,
     response: SpeechSetupStatus,
   }),
+  /** `extensions`: only a download of exactly these models (ADR 0175: a module view must name exactly itself). */
   'speech:resume': defineChannel({
     version: 1,
     capability: 'speech.manage',
-    request: z.void(),
+    request: SpeechScope,
     response: SpeechSetupStatus,
   }),
-  /** Remove every installed version and partial download (refused while a session runs). */
+  /**
+   * Remove every installed version and partial download (refused while a session runs). `extensions`: only the
+   * models these need and no other switched-on module does (ADR 0175: a module view must name exactly itself).
+   */
   'speech:delete': defineChannel({
     version: 1,
     capability: 'speech.manage',
-    request: z.void(),
+    request: SpeechScope,
     response: SpeechSetupStatus,
   }),
   // --- qrtz ctrl (ADR 0100, 0103) ---

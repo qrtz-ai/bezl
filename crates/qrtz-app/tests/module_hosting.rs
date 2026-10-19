@@ -253,6 +253,32 @@ async fn publish_serve_refresh_plan_and_install_a_tree_over_localhost() {
         let e = c.plan(op).unwrap_err().to_string();
         assert!(e.contains("built into qrtz.app"), "{e}");
     }
+    // ADR 0175 (a): the store's engine switch for echo no longer fails as "not installed" (echo has no lock
+    // entry). Its own model plans nothing (Parakeet comes through speech); any other engine is refused.
+    assert_eq!(
+        qrtz_app::local_models::packages_needed_by("echo"),
+        vec!["model.parakeet-tdt-v2-en".to_string()]
+    );
+    let own = c
+        .plan(Op::Engine {
+            extension: "echo".into(),
+            model: "model.parakeet-tdt-v2-en".into(),
+        })
+        .unwrap();
+    assert!(own.fetch.is_empty() && own.changes.is_empty());
+    for model in ["model.nemotron", "model.laya", "nano"] {
+        let e = c
+            .plan(Op::Engine {
+                extension: "echo".into(),
+                model: model.into(),
+            })
+            .unwrap_err()
+            .to_string();
+        assert!(
+            e.contains("built into qrtz.app") && !e.contains("not installed"),
+            "{e}"
+        );
+    }
     let rm = c.plan(Op::Remove(vec!["nano".into()])).unwrap();
     c.apply(&rm, &rm.consent(), w.now, &no_progress).await.unwrap();
     let p = c.prune().unwrap();

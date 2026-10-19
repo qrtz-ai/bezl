@@ -117,3 +117,21 @@ fn the_voice_mach_service_override_stays_ours() {
         );
     }
 }
+
+/// ADR 0174 cut `inference.voice` and the Mac gate dropped its override (3d44630): no leftover environment name for
+/// the voice service in the crate or the gate script (ADR 0175 review, item c).
+#[test]
+fn no_voice_service_environment_override_is_left() {
+    let needle = ["QRTZ_VOICE", "_SERVICE"].concat();
+    for (path, text) in [
+        ("src/ipc.rs", include_str!("../src/ipc.rs")),
+        ("src/lib.rs", include_str!("../src/lib.rs")),
+        (
+            "scripts/modules/mac-gate.sh",
+            include_str!("../../../scripts/modules/mac-gate.sh"),
+        ),
+    ] {
+        assert!(!text.contains(&needle), "{path} still names {needle}");
+        assert!(!text.contains("VOICE_SERVICE_ENV"), "{path}");
+    }
+}

@@ -20,10 +20,9 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 
 pub const ENVELOPE_VERSION: u32 = 1;
-/// The voice service's LaunchAgent mach service (ADR 0144 §5). The Mac gate and dev builds override it with
-/// `QRTZ_VOICE_SERVICE`; the platform binding reads the variable and passes it to [`mach_service_name`].
+/// The voice service's LaunchAgent mach service (ADR 0144 §5). Nothing ships it in v1 (ADR 0174 cut
+/// `inference.voice`); the service mechanism and its fixtures keep the name. No environment override.
 pub const VOICE_MACH_SERVICE: &str = "ai.qrtz.inference.voice";
-pub const VOICE_SERVICE_ENV: &str = "QRTZ_VOICE_SERVICE";
 pub const MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 
 /// A shared service as the shell knows it (from its own package's lockfile entry).

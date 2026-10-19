@@ -335,3 +335,46 @@ async fn every_saved_key_is_deleted_at_launch() {
     assert!(!data.join("secrets.json.tmp").exists());
     a.runtime.kill();
 }
+
+/// ADR 0175 (N181), through the real router: echo's view must name exactly its own models on every speech call
+/// that acts, and with the speech module source (one shared bundle) its delete is refused; settings is unchanged.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn echo_view_speech_calls_name_only_echo_and_never_delete_the_shared_bundle() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = speech_env(tmp.path()).await;
+    let a = app(&tmp.path().join("data"), &env);
+    let r = &Router::new(Shared(a.service.clone())).validate_responses(true);
+    let from = |sub: &'static str, ch: &'static str, p: Value| {
+        r.dispatch(json!({"v":1,"id":"t","channel":ch,"version":1,"subApp":sub,"payload":p}))
+    };
+    for ch in [
+        "speech:download",
+        "speech:pause",
+        "speech:resume",
+        "speech:delete",
+        "speech:check",
+    ] {
+        for p in [
+            json!({}),
+            json!({"extensions": ["nano"]}),
+            json!({"extensions": ["echo", "nano"]}),
+        ] {
+            let v = from("talk", ch, p.clone()).await;
+            assert_eq!(v["ok"], false, "{ch} {p}: {v}");
+            assert!(
+                v["error"]["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("echo's own models"),
+                "{ch}: {v}"
+            );
+        }
+    }
+    let v = from("talk", "speech:delete", json!({"extensions": ["echo"]})).await;
+    assert_eq!(v["ok"], false, "{v}");
+    assert!(v["error"]["message"].as_str().unwrap().contains("shared"), "{v}");
+    let v = from("talk", "speech:status", json!({"extensions": ["echo"]})).await;
+    assert_eq!(v["ok"], true, "{v}");
+    // Settings keeps every action, unscoped.
+    call(r, "speech:status", json!({})).await;
+}

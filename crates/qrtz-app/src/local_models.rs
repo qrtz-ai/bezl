@@ -101,6 +101,21 @@ pub fn sets_needed_by(ext: &str) -> Vec<String> {
         .collect()
 }
 
+/// The `model.*` packages a bundled extension runs (echo: `model.parakeet-tdt-v2-en`): its manifest's `model:<dir>`
+/// sets, as the pinned manifest names them. A bundled extension's engine is these and only these (ADR 0174/0175).
+pub fn packages_needed_by(ext: &str) -> Vec<String> {
+    let dirs = sets_needed_by(ext);
+    let mut out: Vec<String> = Manifest::pinned()
+        .sets
+        .into_iter()
+        .filter(|s| dirs.contains(&s.dir))
+        .map(|s| s.package)
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// Which of this build's modules a `model.*` package the app pinned is for (ADR 0163: switching echo or nano on
 /// pins their models as workspace requests, and a Mac upgrading from before the package manager adopts its
 /// downloads the same way): every bundled module whose manifest declares a `model:<dir>` dependency on one of the
@@ -197,6 +212,12 @@ impl LocalModels {
             base: self.base.clone(),
             index: self.index.clone(),
         }
+    }
+
+    /// This view without the sets in `dirs` (ADR 0175: a module's delete keeps what another switched-on module needs).
+    pub fn without_sets(mut self, dirs: &[String]) -> LocalModels {
+        self.manifest.sets.retain(|s| !dirs.contains(&s.dir));
+        self
     }
 
     /// The ids of the sets this view covers (`asr`, `diarizer`, `echo`, `echo-asr`).

@@ -428,7 +428,23 @@ impl Packages {
     }
 
     /// ADR 0174: a bundled extension (echo) is never a package, from the Extensions screen or the `qrtz` command.
+    ///
+    /// Its engine switch can't go through qrtz.lock (echo has no lock entry, so the installer's switch said "not
+    /// installed"): a bundled extension runs exactly the models its signed manifest names, which come through speech
+    /// (`speech:download {extensions:["echo"]}`). Switching it to its own model plans nothing; any other is refused.
     pub fn plan(&self, op: Op) -> Result<Plan, InstallError> {
+        if let Op::Engine { extension, model } = &op {
+            if qrtz_modules::is_bundled_extension(extension) {
+                let own = crate::local_models::packages_needed_by(extension);
+                if own.contains(model) {
+                    return self.installer.plan(Op::Frozen);
+                }
+                return Err(InstallError::NotLocked(format!(
+                    "{extension} is built into qrtz.app and runs only {}; download it in {extension}'s view",
+                    own.join(", ")
+                )));
+            }
+        }
         let named: Vec<&String> = match &op {
             Op::Install(reqs) => reqs.iter().map(|(n, _)| n).collect(),
             Op::Remove(names) | Op::Update { names, .. } => names.iter().collect(),

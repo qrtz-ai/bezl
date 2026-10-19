@@ -251,3 +251,87 @@ async fn the_pinned_models_download_from_the_real_host() {
     l.download(false, &ctl, &|_| {}).await.unwrap();
     assert!(l.installed());
 }
+
+/// ADR 0175 (N181): echo's view reaches only echo's models. A pinned set for echo (Parakeet's dir) and one for nano
+/// (Nemotron's): a download, pause or resume for one module is refused for the other, `check` answers with that
+/// module's status only, and a scoped delete removes echo's set and keeps the one switched-on nano needs.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn speech_calls_scoped_to_one_module_touch_only_its_models() {
+    let tmp = tempfile::tempdir().unwrap();
+    let srv = Server::start().await;
+    let mut sets: Vec<Value> = vec![];
+    for (dir, body) in [
+        ("parakeet-tdt-v2", bytes(BIG, 3)),
+        ("nemotron-560ms", bytes(BIG, 4)),
+    ] {
+        let repo = format!("org/{dir}");
+        let rev = "c".repeat(40);
+        srv.put(&format!("{repo}/resolve/{rev}/w.bin"), body.clone());
+        sets.push(
+            json!({"id": dir, "package": format!("model.{dir}"), "task": "asr", "dir": dir,
+            "repo": repo, "revision": rev,
+            "files": [{"remote": "w.bin", "path": "w.bin", "size": body.len(), "sha256": sha(&body)}]}),
+        );
+    }
+    let m: Manifest =
+        serde_json::from_value(json!({"version": "1.0.0", "base": "https://huggingface.co", "sets": sets}))
+            .unwrap();
+    let root = tmp.path().join("models");
+    let mgr = SpeechManager::with_local(
+        None,
+        Some(LocalModels::with_manifest(&root, m, Some(srv.base.clone()))),
+        Events::new(),
+    );
+    mgr.select_extensions(Arc::new(|| vec!["echo".to_string(), "nano".to_string()]));
+    let echo = ["echo".to_string()];
+    let nano = ["nano".to_string()];
+
+    // check: echo's own status (one set's bytes), no request.
+    let c = mgr.check_for(Some(&echo)).await.unwrap();
+    assert_eq!(c["latestBytes"], BIG as u64);
+    assert_eq!(mgr.check_for(None).await.unwrap()["latestBytes"], 2 * BIG as u64);
+
+    // A throttled download for nano: echo's scope can neither pause nor resume it.
+    let nemo = format!("org/nemotron-560ms/resolve/{}/w.bin", "c".repeat(40));
+    srv.faults
+        .lock()
+        .unwrap()
+        .throttle
+        .insert(nemo.clone(), Duration::from_millis(5));
+    mgr.download_for(false, Some(nano.to_vec())).unwrap();
+    until("nano's download under way", || {
+        srv.faults.lock().unwrap().hits.contains_key(&nemo)
+    })
+    .await;
+    let e = mgr.pause_for(Some(&echo)).unwrap_err();
+    assert_eq!(e.code, qrtz_ipc::ErrorCode::Validation);
+    assert_ne!(mgr.status()["download"]["state"], "paused");
+    mgr.pause_for(Some(&nano)).unwrap();
+    until("paused", || mgr.status()["download"]["state"] == "paused").await;
+    assert!(mgr.resume_for(Some(&echo)).is_err());
+    assert_eq!(mgr.status()["download"]["state"], "paused");
+    srv.faults.lock().unwrap().throttle.remove(&nemo);
+    mgr.resume_for(Some(&nano)).unwrap();
+    until("nano installed", || {
+        mgr.status_for(Some(&nano))["installed"] == "1.0.0"
+    })
+    .await;
+    assert_eq!(mgr.status_for(Some(&echo))["installed"], Value::Null);
+    assert!(!root.join("parakeet-tdt-v2").exists(), "only nano's set came");
+
+    // echo's own download, then echo's delete: Parakeet goes, Nemotron (nano is on) stays.
+    mgr.download_for(false, Some(echo.to_vec())).unwrap();
+    until("echo installed", || {
+        mgr.status_for(Some(&echo))["installed"] == "1.0.0" && mgr.status()["download"]["state"] == "idle"
+    })
+    .await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let s = mgr.delete_for(Some(&echo)).unwrap();
+    assert_eq!(s["installed"], Value::Null);
+    assert!(!root.join("parakeet-tdt-v2").exists());
+    assert_eq!(
+        std::fs::read_to_string(root.join("nemotron-560ms").join(MARKER)).unwrap(),
+        "1.0.0"
+    );
+    assert_eq!(mgr.status_for(Some(&nano))["installed"], "1.0.0");
+}

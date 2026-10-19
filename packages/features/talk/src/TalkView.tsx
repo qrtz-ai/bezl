@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   Button,
+  Callout,
   DictionaryTerm,
   EmptyState,
   Heading,
@@ -45,10 +46,17 @@ import TalkSettings from './TalkSettings';
 
 const mb = (b: number) => `${Math.max(1, Math.round(b / 1e6))} MB`;
 
+/** A download is under way (or waiting to resume): nothing to offer, the speech notice shows its bar. */
+const BUSY = new Set(['checking', 'downloading', 'paused', 'installing']);
+
 /**
  * ADR 0174: echo ships in qrtz.app, so its view is always in the sidebar and holds its switch. Turning it on asks
  * once to download Parakeet (from Hugging Face, checked against the hashes pinned in qrtz) unless it is already
  * there; turning it off keeps the model. The host lets this view change only `modules.echo.enabled`.
+ *
+ * ADR 0175: a fresh config has echo on, so the "on" page offers the same consent in place ("download parakeet")
+ * while Parakeet is configured, not installed and not downloading; and the switch waits for `speech:status` (N180),
+ * so a click can't turn echo on before we know whether it needs the download.
  */
 function useEchoSwitch() {
   const qrtz = useQrtz();
@@ -57,6 +65,8 @@ function useEchoSwitch() {
   const [cfg, setCfg] = useState<Config | null>(null);
   const [parakeet, setParakeet] = useState<SpeechSetupStatus | null>(null);
   const [asking, setAsking] = useState(false);
+  // The host streams the (global) speech status while a download runs; its state says whether one is under way.
+  const live = useQrtzEvent('speech:status');
   useEffect(() => {
     if (changed) setCfg(loadConfig(changed));
   }, [changed]);
@@ -70,8 +80,17 @@ function useEchoSwitch() {
       .then(setParakeet, () => {});
   }, [qrtz]);
   useEffect(refresh, [refresh]);
+  const liveState = live?.download.state;
+  const busy = BUSY.has(liveState ?? parakeet?.download.state ?? 'idle');
+  // A download finished (or failed): read echo's own status again so the offer reflects it.
+  useEffect(() => {
+    if (liveState && !BUSY.has(liveState)) refresh();
+  }, [liveState, refresh]);
   const on = !!cfg && isModuleOn(cfg, 'echo');
+  const needsParakeet = !!parakeet?.configured && !parakeet.installed;
   const fail = (e: Error) => toast(e.message, 'error');
+  const download = () =>
+    qrtz.invoke('speech:download', { extensions: ['echo'] });
   const setOn = (v: boolean) =>
     qrtz
       .invoke('config:set', { patch: { modules: { echo: { enabled: v } } } })
@@ -79,13 +98,10 @@ function useEchoSwitch() {
   const turnOn = () => {
     setAsking(false);
     setOn(true)
-      .then(() =>
-        parakeet?.configured && !parakeet.installed
-          ? qrtz.invoke('speech:download', { extensions: ['echo'] })
-          : undefined,
-      )
+      .then(() => (needsParakeet ? download() : undefined))
       .then(refresh, fail);
   };
+  const consent = `echo needs its speech model, parakeet (${mb(parakeet?.latestBytes ?? 0)}). it downloads once from hugging face, is checked against the fingerprint built into qrtz, and stays on this mac.`;
   const toggle = (v: boolean) => {
     if (!v) return void setOn(false).catch(fail);
     // Already downloaded (or nothing to download in this build): no question.
@@ -96,7 +112,7 @@ function useEchoSwitch() {
     <ConfirmDialog
       open={asking}
       title="turn on echo?"
-      body={`echo needs its speech model, parakeet (${mb(parakeet?.latestBytes ?? 0)}). it downloads once from hugging face, is checked against the fingerprint built into qrtz, and stays on this mac.`}
+      body={consent}
       confirmLabel="download and turn on"
       onCancel={() => setAsking(false)}
       onConfirm={turnOn}
@@ -108,11 +124,31 @@ function useEchoSwitch() {
       checked={on}
       onChange={toggle}
       label="echo"
-      disabled={!cfg}
+      disabled={!cfg || !parakeet}
       data-testid="echo-switch"
     />
   );
-  return { on, loaded: !!cfg, control, dialog };
+  const offer =
+    on && needsParakeet && !busy ? (
+      <Callout
+        title="parakeet isn't downloaded yet"
+        action={
+          <Button
+            size="sm"
+            variant="primary"
+            icon="download"
+            onClick={() => void download().then(setParakeet, fail)}
+            data-testid="echo-download"
+          >
+            download parakeet
+          </Button>
+        }
+        data-testid="echo-offer"
+      >
+        {consent}
+      </Callout>
+    ) : null;
+  return { on, loaded: !!cfg, control, dialog, offer };
 }
 
 export default function TalkView() {
@@ -128,15 +164,23 @@ export default function TalkView() {
         {echo.dialog}
       </Page>
     );
-  return <TalkOn switchControl={echo.control} dialog={echo.dialog} />;
+  return (
+    <TalkOn
+      switchControl={echo.control}
+      dialog={echo.dialog}
+      offer={echo.offer}
+    />
+  );
 }
 
 function TalkOn({
   switchControl,
   dialog,
+  offer,
 }: {
   switchControl: ReactNode;
   dialog: ReactNode;
+  offer: ReactNode;
 }) {
   // ADR 0146 M1.4: this module's own settings open here, not in the global settings.
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -222,6 +266,7 @@ function TalkOn({
         </Stack>
       </Stack>
       {dialog}
+      {offer}
       <SpeechNotice
         status={speechSetup.speech}
         onOpenSettings={() => requestNavigate({ app: 'settings' })}

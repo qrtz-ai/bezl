@@ -116,11 +116,11 @@ export function useSpeechSetup(_opts: { check?: boolean } = {}) {
     error,
     download: (force = false) =>
       act(() => client.invoke('speech:download', { force }), setSpeech)(),
-    pause: act(() => client.invoke('speech:pause'), setSpeech),
-    resume: act(() => client.invoke('speech:resume'), setSpeech),
-    remove: act(() => client.invoke('speech:delete'), setSpeech),
+    pause: act(() => client.invoke('speech:pause', {}), setSpeech),
+    resume: act(() => client.invoke('speech:resume', {}), setSpeech),
+    remove: act(() => client.invoke('speech:delete', {}), setSpeech),
     /** The user asked to check for a newer speech module (the only time a screen looks online). */
-    check: act(() => client.invoke('speech:check'), setSpeech),
+    check: act(() => client.invoke('speech:check', {}), setSpeech),
   };
 }
 
