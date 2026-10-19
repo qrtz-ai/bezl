@@ -17,7 +17,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-/// `split` turns the per-module helpers on. Anything else, or unset, keeps the monolith.
+/// `split` turns the per-module helpers on. Anything else, or unset, keeps the monolith. dev-local builds only
+/// (Bozniak, 23d892af): a release or plain debug build has neither this name nor the `QRTZ_<ID>_BIN` reads.
+#[cfg(any(test, all(debug_assertions, feature = "dev-local")))]
 pub const LAYOUT_ENV: &str = "QRTZ_MODULE_HELPERS";
 /// Told to each module helper: which module it runs as.
 pub const MODULE_ENV: &str = "QRTZ_MODULE";
@@ -46,10 +48,9 @@ pub enum HelperLayout {
 }
 
 impl HelperLayout {
-    pub fn from_env() -> Self {
-        Self::from_vars(|k| std::env::var(k).ok())
-    }
-
+    /// The split layout from the environment, unchecked: only [`crate::dev_local::split_layout`] calls this, after
+    /// which every path goes through `check_bin`.
+    #[cfg(any(test, all(debug_assertions, feature = "dev-local")))]
     pub fn from_vars(get: impl Fn(&str) -> Option<String>) -> Self {
         if get(LAYOUT_ENV).as_deref().map(str::trim) != Some("split") {
             return Self::Monolith;

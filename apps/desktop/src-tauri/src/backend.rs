@@ -286,7 +286,14 @@ pub fn setup(app: &mut tauri::App, started: Instant) -> Result<(), Box<dyn std::
     let data = paths::data_dir(&handle);
     tracing::info!(data = %data.display(), "data dir");
     // dev-local (scripts/dev/dev-local.sh; debug + the `dev-local` feature only): checkout modules, or refuse to start.
-    let dev_local = qrtz_app::dev_local::activate(handle.path().app_data_dir().ok()).map_err(|e| {
+    // The real data dir is always the production app's (ai.qrtz.desktop), not this run's own (dev-local runs as
+    // ai.qrtz.desktop.dev), so QRTZ_USER_DATA is checked against the dir the installed app uses.
+    let real_data = handle
+        .path()
+        .app_data_dir()
+        .ok()
+        .and_then(|d| d.parent().map(|p| p.join(qrtz_app::dev_local::PRODUCTION_ID)));
+    let dev_local = qrtz_app::dev_local::activate(real_data).map_err(|e| {
         eprintln!("{e}");
         e
     })?;
@@ -335,7 +342,10 @@ pub fn setup(app: &mut tauri::App, started: Instant) -> Result<(), Box<dyn std::
         helper_layout: if installed_modules {
             crate::paths::installed_layout(&data)
         } else {
-            crate::paths::helper_layout()
+            crate::paths::helper_layout().map_err(|e| {
+                eprintln!("{e}");
+                e
+            })?
         },
         // ADR 0169: qrtz starts empty; what runs is what qrtz.lock installed (not with the mock or a dev monolith).
         modules_from_lock: installed_modules,

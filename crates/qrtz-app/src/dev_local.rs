@@ -26,6 +26,11 @@ use std::sync::OnceLock;
 /// Whether this build can honour dev-local overrides at all: decided at compile time.
 pub const ENABLED: bool = cfg!(all(debug_assertions, feature = "dev-local"));
 
+/// The production app's bundle id: its data dir is the one dev-local must never use.
+pub const PRODUCTION_ID: &str = "ai.qrtz.desktop";
+/// The id a dev-local run has (`tauri dev --config '{"identifier":"ai.qrtz.desktop.dev"}'`, scripts/dev/dev-local.sh).
+pub const DEV_ID: &str = "ai.qrtz.desktop.dev";
+
 /// The modules dev-local can run from the checkout.
 pub const IDS: [&str; 4] = ["nano", "snap", "ctrl", "echo"];
 
@@ -66,10 +71,7 @@ pub fn resolve(enabled: bool, i: &Inputs) -> Result<Vec<Override>, String> {
     let repo = var("QRTZ_DEV_REPO")
         .ok_or("dev-local: QRTZ_DEV_REPO (the checkout) is not set")
         .and_then(|r| canonical_dir(&r).ok_or("dev-local: QRTZ_DEV_REPO is not an existing absolute dir"))?;
-    let mut roots = vec![repo.clone()];
-    if let Some(t) = var("CARGO_TARGET_DIR").and_then(|t| canonical_dir(&t)) {
-        roots.push(t);
-    }
+    let roots = bin_roots(&repo, var("CARGO_TARGET_DIR").as_deref());
     wanted
         .into_iter()
         .map(|(id, p)| {
@@ -84,6 +86,60 @@ pub fn resolve(enabled: bool, i: &Inputs) -> Result<Vec<Override>, String> {
             })
         })
         .collect()
+}
+
+#[cfg(any(test, all(debug_assertions, feature = "dev-local")))]
+/// Where a module binary may be (Bozniak, 23d892af review): `<repo>/target`, `<repo>/native/qrtz-helper/.build/debug`
+/// (canonical, so SwiftPM's `.build/debug` → `.build/<triple>/debug` link resolves), and `CARGO_TARGET_DIR` only when
+/// it is inside the checkout. Nothing else under the checkout (no scripts/, modules/, a stray dir).
+pub fn bin_roots(repo: &Path, cargo_target: Option<&str>) -> Vec<PathBuf> {
+    let mut roots: Vec<PathBuf> = [repo.join("target"), repo.join("native/qrtz-helper/.build/debug")]
+        .iter()
+        .filter_map(|p| canonical_dir(p.to_str()?))
+        .collect();
+    if let Some(t) = cargo_target
+        .and_then(canonical_dir)
+        .filter(|t| t.starts_with(repo))
+    {
+        roots.push(t);
+    }
+    roots
+}
+
+#[cfg(all(debug_assertions, feature = "dev-local"))]
+/// ADR 0146 M2.4's legacy split layout (`QRTZ_MODULE_HELPERS=split`, `QRTZ_<ID>_BIN`), dev-local builds only: each
+/// named binary goes through [`check_bin`] under [`bin_roots`] (`QRTZ_DEV_REPO` required). `Err` refuses the start.
+pub fn split_layout(
+    get: &dyn Fn(&str) -> Option<String>,
+) -> Result<crate::module_helpers::HelperLayout, String> {
+    use crate::module_helpers::HelperLayout;
+    let layout = HelperLayout::from_vars(get);
+    let HelperLayout::Split { programs } = layout else {
+        return Ok(layout);
+    };
+    if programs.is_empty() {
+        return Ok(HelperLayout::Split { programs });
+    }
+    let repo = get("QRTZ_DEV_REPO")
+        .filter(|v| !v.is_empty())
+        .and_then(|r| canonical_dir(&r))
+        .ok_or("dev-local: split mode with a QRTZ_<ID>_BIN needs QRTZ_DEV_REPO (an existing absolute dir)")?;
+    let roots = bin_roots(&repo, get("CARGO_TARGET_DIR").as_deref());
+    // SAFETY: getuid has no preconditions.
+    let uid = unsafe { libc::getuid() };
+    let programs = programs
+        .into_iter()
+        .map(|(id, p)| Ok((id.clone(), check_bin(&id, &p, &roots, uid)?)))
+        .collect::<Result<_, String>>()?;
+    Ok(HelperLayout::Split { programs })
+}
+
+/// Without dev-local compiled in the split layout and its paths don't exist: always the monolith.
+#[cfg(not(all(debug_assertions, feature = "dev-local")))]
+pub fn split_layout(
+    _get: &dyn Fn(&str) -> Option<String>,
+) -> Result<crate::module_helpers::HelperLayout, String> {
+    Ok(crate::module_helpers::HelperLayout::Monolith)
 }
 
 #[cfg(any(test, all(debug_assertions, feature = "dev-local")))]
@@ -151,7 +207,9 @@ pub fn check_bin(id: &str, p: &Path, roots: &[PathBuf], uid: u32) -> Result<Path
         return refuse("is not owned by you");
     }
     if !roots.iter().any(|r| p.starts_with(r)) {
-        return refuse("is outside the checkout and CARGO_TARGET_DIR");
+        return refuse(
+            "is outside <repo>/target, native/qrtz-helper/.build/debug and an in-repo CARGO_TARGET_DIR",
+        );
     }
     Ok(p.to_path_buf())
 }
@@ -402,9 +460,81 @@ mod tests {
         std::fs::write(&outside, b"x").unwrap();
         std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o755)).unwrap();
         let e = run(&f, true, &[("QRTZ_NANO_BIN", outside.display().to_string())]).unwrap_err();
-        assert!(e.contains("outside the checkout"), "{e}");
+        assert!(e.contains("is outside"), "{e}");
         let e = run(&f, true, &[("QRTZ_NANO_BIN", dir.display().to_string())]).unwrap_err();
         assert!(e.contains("not a regular file"), "{e}");
+    }
+
+    /// Bozniak's 23d892af review: only `<repo>/target`, `native/qrtz-helper/.build/debug` and an in-repo
+    /// CARGO_TARGET_DIR. Any other path under the checkout is refused, and so is a CARGO_TARGET_DIR outside it.
+    #[test]
+    fn only_the_build_dirs_are_bin_roots() {
+        let f = fixture();
+        let exe = |p: &Path| {
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, b"#!/bin/sh\n").unwrap();
+            std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        };
+        for rel in [
+            "scripts/qrtz-nano",
+            "modules/nano/qrtz-nano",
+            "qrtz-nano",
+            "native/qrtz-helper/qrtz-nano",
+            "native/qrtz-helper/.build/release/qrtz-nano",
+            "elsewhere/target/qrtz-nano",
+        ] {
+            let p = f.repo.join(rel);
+            exe(&p);
+            let e = run(&f, true, &[("QRTZ_NANO_BIN", p.display().to_string())]).unwrap_err();
+            assert!(e.contains("is outside"), "{rel}: {e}");
+            let e = run(
+                &f,
+                true,
+                &[
+                    ("QRTZ_NANO_BIN", p.display().to_string()),
+                    ("CARGO_TARGET_DIR", f.real.display().to_string()),
+                ],
+            )
+            .unwrap_err();
+            assert!(e.contains("is outside"), "{rel}: {e}");
+        }
+        let t = f.repo.join("target/debug/qrtz-nano");
+        exe(&t);
+        assert!(run(&f, true, &[("QRTZ_NANO_BIN", t.display().to_string())]).is_ok());
+        // CARGO_TARGET_DIR: honoured inside the checkout, ignored outside it.
+        let inside = f.repo.join("ct/debug/qrtz-nano");
+        exe(&inside);
+        let ct = f.repo.join("ct").display().to_string();
+        assert!(run(
+            &f,
+            true,
+            &[
+                ("QRTZ_NANO_BIN", inside.display().to_string()),
+                ("CARGO_TARGET_DIR", ct)
+            ]
+        )
+        .is_ok());
+        let out = f.dev.parent().unwrap().join("ct/qrtz-nano");
+        exe(&out);
+        let ct = out.parent().unwrap().display().to_string();
+        let e = run(
+            &f,
+            true,
+            &[
+                ("QRTZ_NANO_BIN", out.display().to_string()),
+                ("CARGO_TARGET_DIR", ct),
+            ],
+        )
+        .unwrap_err();
+        assert!(e.contains("is outside"), "{e}");
+        let roots = bin_roots(&f.repo, Some(f.real.to_str().unwrap()));
+        assert_eq!(
+            roots,
+            vec![
+                f.repo.join("target"),
+                f.repo.join("native/qrtz-helper/.build/debug")
+            ]
+        );
     }
 
     #[test]

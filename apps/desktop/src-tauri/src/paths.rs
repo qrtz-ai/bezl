@@ -85,11 +85,15 @@ pub fn helper_spawn() -> Option<(ProcessSpawn, HelperAvailability)> {
     if std::env::var("QRTZ_MOCK_HELPER").as_deref() == Ok("1") && mock.exists() {
         return Some(mock_spawn());
     }
-    if code_knobs {
+    // The dev monolith (QRTZ_HELPER_BIN): dev-local builds only (Bozniak, 23d892af); not in a plain debug or release
+    // build's binary at all.
+    #[cfg(all(debug_assertions, feature = "dev-local"))]
+    if code_knobs && qrtz_app::dev_local::ENABLED {
         if let Some(p) = std::env::var_os("QRTZ_HELPER_BIN") {
             return Some((ProcessSpawn::helper(PathBuf::from(p)), HelperAvailability::Native));
         }
     }
+    let _ = code_knobs;
     if cfg!(target_os = "macos") {
         return Some((
             ProcessSpawn::helper(PathBuf::from(qrtz_app::module_helpers::INSTALLED_PROGRAM)),
@@ -234,14 +238,22 @@ pub fn reveal(dir: &std::path::Path) -> bool {
 /// ADR 0146 M2.4: `QRTZ_MODULE_HELPERS=split` runs qrtz-nano, qrtz-echo and qrtz-ctrl instead of qrtz-helper (default
 /// off). Where a module app is (`QRTZ_<ID>_BIN`) may only be overridden in a debug build ([`CODE_KNOBS`]); a release
 /// build runs the apps next to the helper.
-pub fn helper_layout() -> qrtz_app::module_helpers::HelperLayout {
-    layout_from(CODE_KNOBS, |k| std::env::var(k).ok())
+/// Bozniak, 23d892af: `QRTZ_MODULE_HELPERS=split` and every `QRTZ_<ID>_BIN` are read only in a dev-local build
+/// ([`qrtz_app::dev_local::ENABLED`]), and each split-mode bin goes through dev-local's `check_bin`. A bad one refuses
+/// the start; anything else is the monolith.
+pub fn helper_layout() -> Result<qrtz_app::module_helpers::HelperLayout, String> {
+    layout_from(CODE_KNOBS, &|k| std::env::var(k).ok())
 }
 
-fn layout_from(dev: bool, get: impl Fn(&str) -> Option<String>) -> qrtz_app::module_helpers::HelperLayout {
-    qrtz_app::module_helpers::HelperLayout::from_vars(
-        |k| if k.ends_with("_BIN") && !dev { None } else { get(k) },
-    )
+fn layout_from(
+    dev: bool,
+    get: &dyn Fn(&str) -> Option<String>,
+) -> Result<qrtz_app::module_helpers::HelperLayout, String> {
+    if dev && qrtz_app::dev_local::ENABLED {
+        qrtz_app::dev_local::split_layout(get)
+    } else {
+        Ok(qrtz_app::module_helpers::HelperLayout::Monolith)
+    }
 }
 
 #[cfg(test)]
@@ -266,24 +278,30 @@ mod layout_tests {
     use super::layout_from;
     use qrtz_app::module_helpers::HelperLayout;
 
+    /// Bozniak, 23d892af: a release build and a plain debug build (no `dev-local` feature) ignore
+    /// `QRTZ_MODULE_HELPERS=split` and every `QRTZ_<ID>_BIN`; with dev-local a bin outside the build dirs refuses.
     #[test]
-    fn a_release_build_ignores_module_app_overrides() {
+    fn only_dev_local_reads_split_and_module_bins() {
         let get = |k: &str| match k {
             "QRTZ_MODULE_HELPERS" => Some("split".to_owned()),
-            "QRTZ_ECHO_BIN" => Some("/tmp/evil".to_owned()),
+            "QRTZ_ECHO_BIN" | "QRTZ_NANO_BIN" | "QRTZ_CTRL_BIN" => Some("/tmp/evil".to_owned()),
             _ => None,
         };
-        assert_eq!(
-            layout_from(false, get),
-            HelperLayout::Split {
-                programs: Default::default()
-            }
+        assert_eq!(layout_from(false, &get), Ok(HelperLayout::Monolith));
+        if qrtz_app::dev_local::ENABLED {
+            let e = layout_from(true, &get).unwrap_err();
+            assert!(e.contains("QRTZ_DEV_REPO"), "{e}");
+            assert_eq!(layout_from(true, &|_| None), Ok(HelperLayout::Monolith));
+        } else {
+            // a plain debug build (this test run without --features dev-local)
+            assert_eq!(layout_from(true, &get), Ok(HelperLayout::Monolith));
+        }
+        let src = include_str!("paths.rs");
+        let src = &src[..src.find("#[cfg(test)]").expect("tests")];
+        assert!(
+            !src.contains("HelperLayout::from_vars"),
+            "split goes through dev_local::split_layout only"
         );
-        let HelperLayout::Split { programs } = layout_from(true, get) else {
-            panic!()
-        };
-        assert_eq!(programs.len(), 1);
-        assert_eq!(layout_from(true, |_| None), HelperLayout::Monolith);
     }
 
     #[test]
@@ -357,8 +375,8 @@ mod layout_tests {
         let spawn = &src[src.find("pub fn helper_spawn(").unwrap()..];
         let spawn = &spawn[..spawn.find("\n}\n").unwrap()];
         assert!(
-            spawn.contains("if code_knobs {\n        if let Some(p) = std::env::var_os(\"QRTZ_HELPER_BIN\")"),
-            "QRTZ_HELPER_BIN behind CODE_KNOBS"
+            spawn.contains("#[cfg(all(debug_assertions, feature = \"dev-local\"))]\n    if code_knobs && qrtz_app::dev_local::ENABLED {\n        if let Some(p) = std::env::var_os(\"QRTZ_HELPER_BIN\")"),
+            "QRTZ_HELPER_BIN behind dev-local and CODE_KNOBS"
         );
         assert_eq!(spawn.matches("QRTZ_HELPER_BIN\")").count(), 1);
         if !cfg!(debug_assertions) {

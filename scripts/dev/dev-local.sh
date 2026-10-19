@@ -76,5 +76,5 @@ if pgrep -f '/Applications/qrtz.app/Contents/MacOS/' >/dev/null 2>&1; then
 fi
 
 [[ $build_only == 1 ]] && { say "built (--build-only): not launching"; exit 0; }
-say "launching (tauri dev --features dev-local); it logs 'dev-local: <id> from <path>' and shows a dev-local badge"
-cd "$repo/apps/desktop" && exec bun --bun run tauri dev --features dev-local
+say "launching as ai.qrtz.desktop.dev (tauri dev --features dev-local --config identifier); it logs 'dev-local: <id> from <path>' and shows a dev-local badge"
+cd "$repo/apps/desktop" && exec bun --bun run tauri dev --features dev-local --config '{"identifier":"ai.qrtz.desktop.dev"}'

@@ -148,10 +148,11 @@ gk="$(spctl -a -vv "$app" 2>&1)"
 if grep -q 'accepted' <<<"$gk" && grep -q 'source=Notarized Developer ID' <<<"$gk"; then ok "spctl: Notarized Developer ID"; else fail "spctl: $(tr '\n' ' ' <<<"$gk")"; fi
 if xcrun stapler validate "$app" >/dev/null 2>&1; then ok "stapler validate"; else fail "stapler validate: no valid stapled ticket"; fi
 # dev-local (scripts/dev/dev-local.sh, src/dev_local.rs) is debug-only and behind a non-default feature: a release
-# qrtz-app carries none of its override names or its startup line.
-for bin in "$macos/qrtz-app" "$macos/qrtz"; do
+# qrtz-app, qrtz-echo and qrtz carry none of its override names or its startup line, nor the legacy split/monolith
+# overrides it gates (QRTZ_MODULE_HELPERS, QRTZ_HELPER_BIN; Bozniak, 23d892af review).
+for bin in "$macos/qrtz-app" "$macos/qrtz-echo" "$macos/qrtz"; do
   [[ -f "$bin" ]] || continue
-  if LC_ALL=C grep -aEq 'QRTZ_(NANO|SNAP|CTRL|ECHO)_BIN|QRTZ_DEV_REPO|dev-local: ' "$bin"; then
+  if LC_ALL=C grep -aEq 'QRTZ_(NANO|SNAP|CTRL|ECHO|HELPER)_BIN|QRTZ_MODULE_HELPERS|QRTZ_DEV_REPO|dev-local: ' "$bin"; then
     fail "${bin##*/} contains dev-local override strings (built with --features dev-local or as debug?)"
   else ok "${bin##*/}: no dev-local override strings"; fi
 done

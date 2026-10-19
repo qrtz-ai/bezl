@@ -90,3 +90,16 @@ describe('dev-local.sh', () => {
     );
   });
 });
+
+// Bozniak's 23d892af review: a real dev bundle id, and the release guard covers echo and the legacy overrides.
+describe('dev-local review (23d892af)', () => {
+  it('launches as ai.qrtz.desktop.dev, not the production id', () => {
+    const s = read('scripts/dev/dev-local.sh');
+    expect(s).toContain(`tauri dev --features dev-local --config '{"identifier":"ai.qrtz.desktop.dev"}'`);
+  });
+  it('verify-bundle scans qrtz-echo too and refuses QRTZ_MODULE_HELPERS / QRTZ_HELPER_BIN', () => {
+    const v = read('scripts/release/verify-bundle.sh');
+    expect(v).toContain('for bin in "$macos/qrtz-app" "$macos/qrtz-echo" "$macos/qrtz"; do');
+    expect(v).toContain('QRTZ_(NANO|SNAP|CTRL|ECHO|HELPER)_BIN|QRTZ_MODULE_HELPERS|QRTZ_DEV_REPO|dev-local: ');
+  });
+});

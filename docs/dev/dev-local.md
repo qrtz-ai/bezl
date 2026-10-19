@@ -14,7 +14,8 @@ it shares the real data dir. `dev:local` instead:
    `cargo build`s the app with the non-default `dev-local` feature (debug, the normal `target/`).
 2. Sets `QRTZ_USER_DATA=~/Library/Application Support/ai.qrtz.desktop-dev` (override with `QRTZ_DEV_LOCAL_DATA`),
    `QRTZ_DEV_REPO` and `QRTZ_{NANO,SNAP,CTRL,ECHO}_BIN` to the `.build/debug` products.
-3. Launches `tauri dev --features dev-local`: the app is signed `ai.qrtz.desktop.dev` and runs from `target/debug`.
+3. Launches `tauri dev --features dev-local --config '{"identifier":"ai.qrtz.desktop.dev"}'`: the app runs as
+   `ai.qrtz.desktop.dev` (not the production `ai.qrtz.desktop`) from `target/debug`.
    It logs `dev-local: <id> from <path>` per module and shows a red **dev-local** badge and window title.
 
 ## ⚠ Hazard: the dev app is a different app to macOS
@@ -31,7 +32,9 @@ launch broke dictation once already). The script warns when the installed app is
   `scripts/app/publish-local.sh` refuses from a dev-local shell or when the feature is on by default.
 - `QRTZ_USER_DATA` must be set, absolute, and not the real data dir or inside it. Nothing is copied from it.
 - Each bin must be absolute, canonical (no symlink), a regular executable you own, not group/world-writable, and
-  under the checkout or `CARGO_TARGET_DIR`.
+  under `<repo>/target`, `native/qrtz-helper/.build/debug`, or `CARGO_TARGET_DIR` only when it is inside the checkout.
+  The legacy `QRTZ_MODULE_HELPERS=split`, `QRTZ_<ID>_BIN` split paths and `QRTZ_HELPER_BIN` work only in a dev-local
+  build too, and split-mode bins go through the same checks.
 - The checkout's `modules/<id>/module.json` goes through the shared manifest checker and may not declare anything
   (capabilities, permissions, entitlements, channels, views, provides, dependencies, code identity) beyond this
   build's manifest for that id.
