@@ -5,9 +5,7 @@
   },
   "overrides": [
     {
-      "files": [
-        "services/dash-worker/src/**/*.ts"
-      ],
+      "files": ["services/dash-worker/src/**/*.ts"],
       "rules": {
         "no-console": "error"
       }

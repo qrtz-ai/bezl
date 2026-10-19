@@ -69,8 +69,14 @@ mod tests {
     #[test]
     fn pill_motion_is_forwarded_only_when_an_object() {
         assert_eq!(TalkConfig::from_app_config(&json!({})).pill_motion, None);
-        assert_eq!(TalkConfig::from_app_config(&json!({"talk": {"pillMotion": 3}})).pill_motion, None);
+        assert_eq!(
+            TalkConfig::from_app_config(&json!({"talk": {"pillMotion": 3}})).pill_motion,
+            None
+        );
         let m = json!({"expandBounce": 0.2});
-        assert_eq!(TalkConfig::from_app_config(&json!({"talk": {"pillMotion": m}})).pill_motion, Some(m));
+        assert_eq!(
+            TalkConfig::from_app_config(&json!({"talk": {"pillMotion": m}})).pill_motion,
+            Some(m)
+        );
     }
 }
