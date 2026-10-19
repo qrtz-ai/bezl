@@ -1,0 +1,40 @@
+# dev-local: run all of qrtz from this checkout
+
+```sh
+bun run dev:local                      # or scripts/dev/dev-local.sh
+bun run dev:local -- --without ctrl    # leave a module out (repeatable)
+bun run dev:local -- --quit-installed  # quit /Applications/qrtz.app first
+bun run dev:local -- --build-only      # build and check, don't launch
+```
+
+Plain `bun start` runs only echo from main; nano, snap and ctrl come from the installed packages (`qrtz.lock`), and
+it shares the real data dir. `dev:local` instead:
+
+1. `swift build`s `qrtz-nano`, `qrtz-snap`, `qrtz-ctrl` and `qrtz-echo` (native/qrtz-helper, debug) and
+   `cargo build`s the app with the non-default `dev-local` feature (debug, the normal `target/`).
+2. Sets `QRTZ_USER_DATA=~/Library/Application Support/ai.qrtz.desktop-dev` (override with `QRTZ_DEV_LOCAL_DATA`),
+   `QRTZ_DEV_REPO` and `QRTZ_{NANO,SNAP,CTRL,ECHO}_BIN` to the `.build/debug` products.
+3. Launches `tauri dev --features dev-local`: the app is signed `ai.qrtz.desktop.dev` and runs from `target/debug`.
+   It logs `dev-local: <id> from <path>` per module and shows a red **dev-local** badge and window title.
+
+## ⚠ Hazard: the dev app is a different app to macOS
+
+It has **none of the installed qrtz's grants**. Give it its own Accessibility and Microphone grant when macOS asks.
+If it runs alongside (or instead of) `/Applications/qrtz.app`, both grab fn and **echo's hotkeys break** (a debug
+launch broke dictation once already). The script warns when the installed app is running and only quits it with
+`--quit-installed`; it never kills it otherwise. Quit the dev app and reopen qrtz to get normal dictation back.
+
+## Gates (src: crates/qrtz-app/src/dev_local.rs)
+
+- Compiled in only with `debug_assertions` **and** `--features dev-local`. A release build ignores the
+  environment and carries none of the override strings; `scripts/release/verify-bundle.sh` checks the binary and
+  `scripts/app/publish-local.sh` refuses from a dev-local shell or when the feature is on by default.
+- `QRTZ_USER_DATA` must be set, absolute, and not the real data dir or inside it. Nothing is copied from it.
+- Each bin must be absolute, canonical (no symlink), a regular executable you own, not group/world-writable, and
+  under the checkout or `CARGO_TARGET_DIR`.
+- The checkout's `modules/<id>/module.json` goes through the shared manifest checker and may not declare anything
+  (capabilities, permissions, entitlements, channels, views, provides, dependencies, code identity) beyond this
+  build's manifest for that id.
+- An override skips only the signature and lock-hash check: the module counts as installed in the dev data dir.
+  It is never switched on for you; ctrl still asks for consent and its enable prompt (ADR 0216 unchanged).
+- Any failure refuses the start with a `dev-local:` error. No R2, keychain or update key is ever read.

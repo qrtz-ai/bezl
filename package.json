@@ -11,6 +11,7 @@
     "bun": ">=1.4.0"
   },
   "scripts": {
+    "dev:local": "bash scripts/dev/dev-local.sh",
     "start": "bun run build:helper && bun --bun run --cwd apps/desktop start",
     "make": "bun run build:helper && bun --bun run --cwd apps/desktop make",
     "release:mac": "bash scripts/release/sign-notarize.sh",

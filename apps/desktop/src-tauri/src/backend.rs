@@ -280,6 +280,14 @@ pub fn setup(app: &mut tauri::App, started: Instant) -> Result<(), Box<dyn std::
     let handle = app.handle().clone();
     let data = paths::data_dir(&handle);
     tracing::info!(data = %data.display(), "data dir");
+    // dev-local (scripts/dev/dev-local.sh; debug + the `dev-local` feature only): checkout modules, or refuse to start.
+    let dev_local = qrtz_app::dev_local::activate(handle.path().app_data_dir().ok()).map_err(|e| {
+        eprintln!("{e}");
+        e
+    })?;
+    if !dev_local.is_empty() {
+        dev_local_badge(&handle);
+    }
 
     // Spawning tasks (supervisor, storage, runtime timers) needs the tokio runtime Tauri owns.
     let rt = tauri::async_runtime::handle();
@@ -631,6 +639,21 @@ pub fn shutdown(app: &AppHandle) {
             tauri::async_runtime::block_on(h.shutdown(bye, grace));
         }
     }
+}
+
+/// dev-local: say so loudly in the window title and with a badge in the page.
+fn dev_local_badge(app: &AppHandle) {
+    const JS: &str = "(()=>{const f=()=>{if(document.getElementById('qrtz-dev-local'))return;const b=document.createElement('div');b.id='qrtz-dev-local';b.textContent='dev-local';b.style.cssText='position:fixed;bottom:8px;right:8px;z-index:2147483647;padding:2px 8px;border-radius:4px;background:#e5484d;color:#fff;font:600 11px monospace;pointer-events:none';document.body.appendChild(b)};document.body?f():addEventListener('DOMContentLoaded',f)})()";
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        for _ in 0..10 {
+            for (_, w) in app.webview_windows() {
+                let _ = w.set_title("qrtz (dev-local)");
+                let _ = w.eval(JS);
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+    });
 }
 
 #[cfg(test)]

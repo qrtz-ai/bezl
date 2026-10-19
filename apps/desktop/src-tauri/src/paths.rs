@@ -146,15 +146,11 @@ fn installed_layout_from(
     dev: bool,
     get: impl Fn(&str) -> Option<String>,
 ) -> qrtz_app::module_helpers::HelperLayout {
-    let programs = if dev {
-        ["nano", "echo", "ctrl", "snap"]
-            .iter()
-            .filter_map(|id| {
-                get(&format!("QRTZ_{}_BIN", id.to_uppercase()))
-                    .filter(|p| !p.is_empty())
-                    .map(|p| ((*id).to_owned(), PathBuf::from(p)))
-            })
-            .collect()
+    // Only dev-local (debug + the `dev-local` feature, checked by qrtz_app::dev_local::activate) may name a module's
+    // program; the environment alone never does.
+    let _ = get;
+    let programs = if dev && qrtz_app::dev_local::ENABLED {
+        qrtz_app::dev_local::programs()
     } else {
         Default::default()
     };
@@ -278,7 +274,8 @@ mod layout_tests {
         else {
             panic!()
         };
-        assert_eq!(programs.len(), 1);
+        // dev-local's gate: the environment alone names no program, even in a debug build (nothing activated here).
+        assert!(programs.is_empty());
     }
 
     /// Design call (b): a release build's data dir is the platform's, whatever `QRTZ_USER_DATA` says; a debug

@@ -88,6 +88,14 @@ fi
 gk="$(spctl -a -vv "$app" 2>&1)"
 if grep -q 'accepted' <<<"$gk" && grep -q 'source=Notarized Developer ID' <<<"$gk"; then ok "spctl: Notarized Developer ID"; else fail "spctl: $(tr '\n' ' ' <<<"$gk")"; fi
 if xcrun stapler validate "$app" >/dev/null 2>&1; then ok "stapler validate"; else fail "stapler validate: no valid stapled ticket"; fi
+# dev-local (scripts/dev/dev-local.sh, src/dev_local.rs) is debug-only and behind a non-default feature: a release
+# qrtz-app carries none of its override names or its startup line.
+for bin in "$macos/qrtz-app" "$macos/qrtz"; do
+  [[ -f "$bin" ]] || continue
+  if LC_ALL=C grep -aEq 'QRTZ_(NANO|SNAP|CTRL|ECHO)_BIN|QRTZ_DEV_REPO|dev-local: ' "$bin"; then
+    fail "${bin##*/} contains dev-local override strings (built with --features dev-local or as debug?)"
+  else ok "${bin##*/}: no dev-local override strings"; fi
+done
 
 if ((fails)); then echo "verify-bundle: $app is NOT shippable ($fails check(s) failed)" >&2; exit 1; fi
 echo "verify-bundle: $app passed"
