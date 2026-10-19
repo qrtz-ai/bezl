@@ -1,11 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "qrtz-windows",
-  "description": "Bundled renderer windows may only listen for events and call the qrtz IPC commands (invoke, subscribe and the ADR 0095 stream open/join/close). Per-sub-app capability scoping happens in the qrtz-ipc router.",
+  "description": "Bundled renderer windows may only listen for events, be dragged by their data-tauri-drag-region areas (start dragging; double-click zooms) and call the qrtz IPC commands (invoke, subscribe and the ADR 0095 stream open/join/close). Per-sub-app capability scoping happens in the qrtz-ipc router.",
   "windows": ["main", "hud"],
   "permissions": [
     "core:event:allow-listen",
     "core:event:allow-unlisten",
+    "core:window:allow-start-dragging",
+    "core:window:allow-internal-toggle-maximize",
     "allow-qrtz-invoke",
     "allow-qrtz-subscribe",
     "allow-qrtz-stream-open",

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Badge, type BadgeTone } from './Badge';
 import { Button } from './Button';
 import { Icon, type IconName } from './Icon';
-import { Page } from './Layout';
+import { DragStrip, Page } from './Layout';
 import { Text } from './Text';
 import { useTheme } from './theme';
 
@@ -33,7 +33,7 @@ export function OnboardingFrame({
         display: 'grid',
       }}
     >
-      <div className="q-drag" aria-hidden />
+      <DragStrip />
       <main
         data-scroll-root=""
         data-testid={testId}

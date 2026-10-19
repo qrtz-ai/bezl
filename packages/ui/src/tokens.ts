@@ -210,7 +210,7 @@ h1,h2,h3,h4,h5,h6,strong,b,th{font-weight:inherit;}
 @keyframes q-fade-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 @keyframes q-pulse{0%,100%{opacity:1}50%{opacity:.4}}
 html,body,#root{height:100%;margin:0;}
-.q-drag{position:fixed;inset:0 0 auto 0;height:32px;-webkit-app-region:drag;}
+.q-drag{position:fixed;inset:0 0 auto 0;height:32px;z-index:1;-webkit-app-region:drag;}
 .q-drag-all{-webkit-app-region:drag;}.q-no-drag{-webkit-app-region:no-drag;}
 .q-underline{position:relative}.q-underline::after{content:'';position:absolute;left:0;bottom:-2px;height:2px;width:100%;background:var(--q-color-primary);transform:scaleX(0);transform-origin:left;transition:transform var(--q-motion-normal) var(--q-motion-ease-out)}.q-underline:hover::after{transform:scaleX(1)}
 @media (prefers-reduced-motion: reduce){*{animation-duration:var(--q-motion-instant)!important;transition-duration:var(--q-motion-instant)!important}}`;

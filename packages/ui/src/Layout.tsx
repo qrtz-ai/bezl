@@ -112,6 +112,15 @@ export function Stack({
   );
 }
 
+/**
+ * The window's invisible drag strip: a transparent, fixed 32px overlay across the top of the window (sidebar and
+ * content, under the macOS traffic lights) that takes no layout space. Tauri drags the window from it
+ * (`data-tauri-drag-region`; double-click zooms like a native title bar). Nothing interactive sits in that strip.
+ */
+export function DragStrip() {
+  return <div className="q-drag" data-tauri-drag-region="" aria-hidden />;
+}
+
 /** Whole-window app frame: the nav sidebar on the left, content fills the rest. There is no bottom bar. */
 export function AppFrame({
   children,
@@ -135,7 +144,7 @@ export function AppFrame({
         overflow: 'hidden',
       }}
     >
-      {embedded ? null : <div className="q-drag" aria-hidden />}
+      {embedded ? null : <DragStrip />}
       {sidebar}
       <Main
         data-scroll-root=""
@@ -246,6 +255,8 @@ export function SideNav({
   return (
     <nav
       aria-label={label}
+      // Its empty space (top inset, between the rows and the foot) drags the window; the rows are buttons, so not.
+      {...(embedded ? {} : { 'data-tauri-drag-region': '' })}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -338,6 +349,8 @@ export function Page({
     >
       <header
         data-page-header=""
+        // The empty part of the 40px header row drags the window like a title bar (title and actions don't).
+        {...(inset ? {} : { 'data-tauri-drag-region': '' })}
         style={{
           display: 'flex',
           alignItems: 'center',

@@ -864,6 +864,7 @@ export function MiniHudFrame({
       <div
         data-testid="mini-hud"
         className="q-drag-all"
+        data-tauri-drag-region="deep"
         style={{
           display: 'grid',
           gridTemplateColumns: 'auto minmax(0, 1fr) auto',
@@ -878,6 +879,7 @@ export function MiniHudFrame({
       {body ? (
         <div
           className="q-no-drag"
+          data-tauri-drag-region="false"
           data-testid="mini-hud-notes"
           style={{
             display: 'grid',
@@ -900,6 +902,7 @@ export function NoDrag({ children }: { children: ReactNode }) {
   return (
     <div
       className="q-no-drag"
+      data-tauri-drag-region="false"
       style={{ display: 'flex', alignItems: 'center', gap: t.space[2] }}
     >
       {children}
