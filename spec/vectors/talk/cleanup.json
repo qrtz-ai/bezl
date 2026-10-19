@@ -1835,6 +1835,126 @@
       "raw": "Thanks, new line, Jared, new line, cue arts",
       "dict": true,
       "expect": "Thanks,\nJared,\nqrtz"
+    },
+    {
+      "raw": "So do you want to grab lunch",
+      "dict": false,
+      "expect": "So do you want to grab lunch?"
+    },
+    {
+      "raw": "So, do you want to grab lunch",
+      "dict": false,
+      "expect": "So, do you want to grab lunch?"
+    },
+    {
+      "raw": "Okay can you send me the file",
+      "dict": false,
+      "expect": "Okay can you send me the file?"
+    },
+    {
+      "raw": "Hey are you free tomorrow afternoon",
+      "dict": false,
+      "expect": "Hey are you free tomorrow afternoon?"
+    },
+    {
+      "raw": "And did you hear back from them",
+      "dict": false,
+      "expect": "And did you hear back from them?"
+    },
+    {
+      "raw": "I like it. So do you want to grab lunch",
+      "dict": false,
+      "expect": "I like it. So do you want to grab lunch?"
+    },
+    {
+      "raw": "OK can we move the meeting",
+      "dict": false,
+      "expect": "OK can we move the meeting?"
+    },
+    {
+      "raw": "Alright, are we ready to start",
+      "dict": false,
+      "expect": "Alright, are we ready to start?"
+    },
+    {
+      "raw": "Also can you send the slides",
+      "dict": false,
+      "expect": "Also can you send the slides?"
+    },
+    {
+      "raw": "And how was the trip",
+      "dict": false,
+      "expect": "And how was the trip?"
+    },
+    {
+      "raw": "Hey can you check cue arts",
+      "dict": true,
+      "expect": "Hey can you check qrtz?"
+    },
+    {
+      "raw": "So did we last year",
+      "dict": false,
+      "expect": "So did we last year."
+    },
+    {
+      "raw": "So do I at work",
+      "dict": false,
+      "expect": "So do I at work."
+    },
+    {
+      "raw": "So could you at that age",
+      "dict": false,
+      "expect": "So could you at that age."
+    },
+    {
+      "raw": "Well do I remember that day",
+      "dict": false,
+      "expect": "Well do I remember that day."
+    },
+    {
+      "raw": "Oh, was it hot outside",
+      "dict": false,
+      "expect": "Oh, was it hot outside."
+    },
+    {
+      "raw": "Man was I tired last night",
+      "dict": false,
+      "expect": "Man was I tired last night."
+    },
+    {
+      "raw": "And so do I every day",
+      "dict": false,
+      "expect": "And so do I every day."
+    },
+    {
+      "raw": "Hey, Sam, can you send it",
+      "dict": false,
+      "expect": "Hey, Sam, can you send it."
+    },
+    {
+      "raw": "Okay so do you want to go",
+      "dict": false,
+      "expect": "Okay so do you want to go."
+    },
+    {
+      "raw": "And were we to lose the deal",
+      "dict": false,
+      "expect": "And were we to lose the deal."
+    },
+    {
+      "raw": "Alright, can I just say something",
+      "dict": false,
+      "expect": "Alright, can I just say something."
+    },
+    {
+      "raw": "But can we still make it",
+      "dict": false,
+      "expect": "But can we still make it."
+    },
+    {
+      "raw": "So do you",
+      "dict": false,
+      "expect": "So do you"
     }
   ],
   "dictionaryOnly": [

@@ -1383,20 +1383,61 @@ const LATER_CLAUSE: &[&str] = &[
     "must", "does", "did", "had", "i", "we", "they", "he", "she", "thank", "thanks",
 ];
 
+/// ADR 0203: a discourse word that may stand before a question's opening, with or without its own comma: "So do you
+/// want to grab lunch", "Okay, can you send me the file", "Hey are you free tomorrow". Left out on purpose: "well",
+/// "oh", "boy", "man" (exclamatory inversion: "Well do I remember that day", "Oh do I love that song", "Boy do I need
+/// a break") and "now" ("Now would you look at that"). Two openers ("Okay so do you") are refused. After "and" /
+/// "but" a yes/no question needs "you" as its subject: a story's exclamatory inversion ("And was he mad", "And do
+/// I miss it", "And were we surprised") takes the others.
+pub const QUESTION_OPENERS: &[&str] = &["so", "okay", "ok", "hey", "and", "but", "also", "alright"];
+/// ADR 0203: "So" with no comma also opens the agreeing ellipsis ("So did we last year", "So do I at work", "So can
+/// we in the summer"), so after a bare "So" only these auxiliaries, and only when a plain verb from
+/// [`SO_QUESTION_VERBS`] follows the subject (a verb there means the verb phrase is said, so it can't be the ellipsis).
+const SO_QUESTION_AUX: &[&str] = &["do", "does", "did", "can", "could", "will", "would"];
+const SO_QUESTION_VERBS: &[&str] = &[
+    "want",
+    "wanna",
+    "need",
+    "know",
+    "think",
+    "have",
+    "mind",
+    "remember",
+    "see",
+    "mean",
+    "get",
+    "feel",
+    "agree",
+    "understand",
+    "send",
+    "make",
+    "help",
+    "check",
+    "take",
+    "give",
+    "tell",
+    "call",
+    "look",
+    "come",
+    "go",
+];
+
 /// ADR 0196: does the dictation end in an unpunctuated sentence that can only be a question? Its opening is a yes/no
 /// question's ([`yes_no_opening`], the auxiliary capitalised as a sentence start) or a wh-question's, it has 3 to
 /// [`QUESTION_MAX_WORDS`] words, no comma, colon, semicolon, quote, bracket or apostrophe, and nothing after the
 /// opening that starts another clause ([`LATER_CLAUSE`]). Also refused: "ever" unless the verb is "have"/"has"
 /// ("Is it ever hot", "Did I ever love that car" are exclamations), "were" with a "to" ("Were we to lose"), "just
 /// say" ("Can I just say"), "What do you know", "Have I got" ("Have I got news for you"), and the spoken name of a
-/// mark ("question mark", "exclamation"): ADR 0189's sentences stay exactly as that rule leaves them.
+/// mark ("question mark", "exclamation"): ADR 0189's sentences stay exactly as that rule leaves them. ADR 0203: the
+/// sentence may start with one of [`QUESTION_OPENERS`] (its comma, if any, is the only comma allowed); the checks
+/// then run on the words after it, which must still be 3 or more.
 fn unmarked_question(t: &str) -> bool {
     let line = &t[t.rfind('\n').map_or(0, |i| i + 1)..];
     let s = match INNER_END.find_iter(line).flatten().last() {
         Some(m) => &line[m.end()..],
         None => line,
     };
-    if s.contains([',', ';', ':', '"', '(', ')', '\'', '\u{2019}']) {
+    if s.contains([';', ':', '"', '(', ')', '\'', '\u{2019}']) {
         return false;
     }
     let words: Vec<&str> = s.split_whitespace().collect();
@@ -1407,6 +1448,17 @@ fn unmarked_question(t: &str) -> bool {
     }
     let w: Vec<String> = words.iter().map(|w| w.to_ascii_lowercase()).collect();
     let w: Vec<&str> = w.iter().map(String::as_str).collect();
+    let first = w[0].strip_suffix(',');
+    let opener = QUESTION_OPENERS.contains(&first.unwrap_or(w[0]));
+    if s.matches(',').count() != usize::from(first.is_some()) || (first.is_some() && !opener) {
+        return false;
+    }
+    let bare_so = w[0] == "so";
+    let you_only = matches!(first.unwrap_or(w[0]), "and" | "but");
+    let w = if opener { &w[1..] } else { &w[..] };
+    if w.len() < 3 {
+        return false;
+    }
     let (aux_at, opening) = if WH_WORDS.contains(&w[0]) {
         let aux_at = if WH_MODIFIERS.contains(&w[1]) { 2 } else { 1 };
         let ok = aux_at + 1 < w.len()
@@ -1416,7 +1468,10 @@ fn unmarked_question(t: &str) -> bool {
             && w[..] != ["what", "do", "you", "know"];
         (aux_at, ok)
     } else {
-        (0, yes_no_opening(w[0], w[1], w.get(2).copied().unwrap_or("")))
+        let ok = yes_no_opening(w[0], w[1], w.get(2).copied().unwrap_or(""))
+            && (!bare_so || (SO_QUESTION_AUX.contains(&w[0]) && SO_QUESTION_VERBS.contains(&w[2])))
+            && (!opener || !you_only || w[1] == "you");
+        (0, ok)
     };
     let aux = w[aux_at];
     let rest = &w[(aux_at + 2).min(w.len())..];

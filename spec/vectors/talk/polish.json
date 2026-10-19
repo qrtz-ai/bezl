@@ -521,6 +521,54 @@
       "category": "list",
       "raw": "Options, new line, red, new line, blue, new line, green.",
       "ideal": "Options\nRed\nBlue\nGreen"
+    },
+    {
+      "id": "p84",
+      "category": "question",
+      "raw": "So do you want to grab lunch",
+      "ideal": "So do you want to grab lunch?"
+    },
+    {
+      "id": "p85",
+      "category": "question",
+      "raw": "Okay, can you send me the file",
+      "ideal": "Okay, can you send me the file?"
+    },
+    {
+      "id": "p86",
+      "category": "question",
+      "raw": "Hey are you free tomorrow afternoon",
+      "ideal": "Hey, are you free tomorrow afternoon?"
+    },
+    {
+      "id": "p87",
+      "category": "question",
+      "raw": "I just got back. So what time does the store close",
+      "ideal": "I just got back. So what time does the store close?"
+    },
+    {
+      "id": "p88",
+      "category": "question",
+      "raw": "And did you hear back from them",
+      "ideal": "And did you hear back from them?"
+    },
+    {
+      "id": "p89",
+      "category": "question",
+      "raw": "Alright, are we ready to start",
+      "ideal": "Alright, are we ready to start?"
+    },
+    {
+      "id": "p90",
+      "category": "question",
+      "raw": "OK can we move the meeting to Thursday",
+      "ideal": "OK, can we move the meeting to Thursday?"
+    },
+    {
+      "id": "p91",
+      "category": "question",
+      "raw": "Hey, can you take a look at this",
+      "ideal": "Hey, can you take a look at this?"
     }
   ],
   "keep": [
@@ -1675,6 +1723,168 @@
       "rule": "list-comma",
       "raw": "Kind regards, new line, the team, new line, San Francisco",
       "expect": "Kind regards,\nThe team,\nSan Francisco"
+    },
+    {
+      "id": "k193",
+      "rule": "question-opener",
+      "raw": "So did we last year",
+      "expect": "So did we last year."
+    },
+    {
+      "id": "k194",
+      "rule": "question-opener",
+      "raw": "So do I at work",
+      "expect": "So do I at work."
+    },
+    {
+      "id": "k195",
+      "rule": "question-opener",
+      "raw": "So can we in the summer",
+      "expect": "So can we in the summer."
+    },
+    {
+      "id": "k196",
+      "rule": "question-opener",
+      "raw": "So would I if I could",
+      "expect": "So would I if I could."
+    },
+    {
+      "id": "k197",
+      "rule": "question-opener",
+      "raw": "So are we at the moment",
+      "expect": "So are we at the moment."
+    },
+    {
+      "id": "k198",
+      "rule": "question-opener",
+      "raw": "So is it on weekends",
+      "expect": "So is it on weekends."
+    },
+    {
+      "id": "k199",
+      "rule": "question-opener",
+      "raw": "So have I many times",
+      "expect": "So have I many times."
+    },
+    {
+      "id": "k200",
+      "rule": "question-opener",
+      "raw": "Okay do the dishes",
+      "expect": "Okay do the dishes."
+    },
+    {
+      "id": "k201",
+      "rule": "question-opener",
+      "raw": "So do it now",
+      "expect": "So do it now."
+    },
+    {
+      "id": "k202",
+      "rule": "question-opener",
+      "raw": "Okay is the store open",
+      "expect": "Okay is the store open."
+    },
+    {
+      "id": "k203",
+      "rule": "question-opener",
+      "raw": "Well do I remember that day",
+      "expect": "Well do I remember that day."
+    },
+    {
+      "id": "k204",
+      "rule": "question-opener",
+      "raw": "Well, was he surprised",
+      "expect": "Well, was he surprised."
+    },
+    {
+      "id": "k205",
+      "rule": "question-opener",
+      "raw": "Oh do I love that song",
+      "expect": "Oh do I love that song."
+    },
+    {
+      "id": "k206",
+      "rule": "question-opener",
+      "raw": "Now would you look at that",
+      "expect": "Now would you look at that."
+    },
+    {
+      "id": "k207",
+      "rule": "question-opener",
+      "raw": "Boy do I need a vacation",
+      "expect": "Boy do I need a vacation."
+    },
+    {
+      "id": "k208",
+      "rule": "question-opener",
+      "raw": "And was he mad about it",
+      "expect": "And was he mad about it."
+    },
+    {
+      "id": "k209",
+      "rule": "question-opener",
+      "raw": "And do I miss it every day",
+      "expect": "And do I miss it every day."
+    },
+    {
+      "id": "k210",
+      "rule": "question-opener",
+      "raw": "But were we surprised by that",
+      "expect": "But were we surprised by that."
+    },
+    {
+      "id": "k211",
+      "rule": "question-opener",
+      "raw": "But so did we last year",
+      "expect": "But so did we last year."
+    },
+    {
+      "id": "k212",
+      "rule": "question-opener",
+      "raw": "Okay can you send it we need it today",
+      "expect": "Okay can you send it we need it today."
+    },
+    {
+      "id": "k213",
+      "rule": "question-opener",
+      "raw": "Hey, should I bring anything",
+      "expect": "Hey, should I bring anything."
+    },
+    {
+      "id": "k214",
+      "rule": "question-opener",
+      "raw": "Okay, have I got news for you",
+      "expect": "Okay, have I got news for you."
+    },
+    {
+      "id": "k215",
+      "rule": "question-opener",
+      "raw": "But what do you know",
+      "expect": "But what do you know."
+    },
+    {
+      "id": "k216",
+      "rule": "question-opener",
+      "raw": "So, I was thinking we could go",
+      "expect": "So, I was thinking we could go."
+    },
+    {
+      "id": "k217",
+      "rule": "question-opener",
+      "raw": "So will they at the next one",
+      "expect": "So will they at the next one."
+    },
+    {
+      "id": "k218",
+      "rule": "question-opener",
+      "raw": "So did he after the game",
+      "expect": "So did he after the game."
+    },
+    {
+      "id": "k219",
+      "rule": "question-opener",
+      "raw": "Also did it again last night",
+      "expect": "Also did it again last night."
     }
   ]
 }

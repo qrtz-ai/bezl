@@ -277,14 +277,56 @@ const LATER_CLAUSE = [
   'thanks',
 ];
 
+/** ADR 0203: a discourse word that may stand before a question's opening. Same as cleanup.rs QUESTION_OPENERS. */
+export const QUESTION_OPENERS = [
+  'so',
+  'okay',
+  'ok',
+  'hey',
+  'and',
+  'but',
+  'also',
+  'alright',
+];
+/** ADR 0203: after a bare "So" (no comma), only these auxiliaries and then a plain verb (not the agreeing ellipsis
+ * "So did we last year"). Same as cleanup.rs. */
+const SO_QUESTION_AUX = ['do', 'does', 'did', 'can', 'could', 'will', 'would'];
+const SO_QUESTION_VERBS = [
+  'want',
+  'wanna',
+  'need',
+  'know',
+  'think',
+  'have',
+  'mind',
+  'remember',
+  'see',
+  'mean',
+  'get',
+  'feel',
+  'agree',
+  'understand',
+  'send',
+  'make',
+  'help',
+  'check',
+  'take',
+  'give',
+  'tell',
+  'call',
+  'look',
+  'come',
+  'go',
+];
+
 /** ADR 0196: does the dictation end in an unpunctuated sentence that can only be a question? Same as cleanup.rs
- * unmarked_question. */
+ * unmarked_question, including ADR 0203's discourse opener. */
 function unmarkedQuestion(t: string): boolean {
   const line = t.slice(t.lastIndexOf('\n') + 1);
   let s = line;
   for (const m of line.matchAll(/[.!?]\s/g))
     s = line.slice((m.index ?? 0) + m[0].length);
-  if (/[,;:"()'\u2019]/.test(s)) return false;
+  if (/[;:"()'\u2019]/.test(s)) return false;
   const words = s.split(/\s+/).filter(Boolean);
   if (
     words.length < 3 ||
@@ -292,7 +334,19 @@ function unmarkedQuestion(t: string): boolean {
     !/^[A-Z]/.test(words[0])
   )
     return false;
-  const w = words.map((x) => x.replace(/[A-Z]+/g, (c) => c.toLowerCase()));
+  const all = words.map((x) => x.replace(/[A-Z]+/g, (c) => c.toLowerCase()));
+  const hasComma = all[0].endsWith(',');
+  const firstWord = hasComma ? all[0].slice(0, -1) : all[0];
+  const opener = QUESTION_OPENERS.includes(firstWord);
+  if (
+    (s.match(/,/g) ?? []).length !== (hasComma ? 1 : 0) ||
+    (hasComma && !opener)
+  )
+    return false;
+  const bareSo = all[0] === 'so';
+  const youOnly = firstWord === 'and' || firstWord === 'but';
+  const w = opener ? all.slice(1) : all;
+  if (w.length < 3) return false;
   let auxAt = 0;
   let opening: boolean;
   if (WH_WORDS.includes(w[0])) {
@@ -303,7 +357,12 @@ function unmarkedQuestion(t: string): boolean {
       WH_SUBJECTS.includes(w[auxAt + 1]) &&
       !(w[auxAt] === 'did' && w[auxAt + 1] === 'it') &&
       w.join(' ') !== 'what do you know';
-  } else opening = yesNoOpening(w[0], w[1], w[2] ?? '');
+  } else
+    opening =
+      yesNoOpening(w[0], w[1], w[2] ?? '') &&
+      (!bareSo ||
+        (SO_QUESTION_AUX.includes(w[0]) && SO_QUESTION_VERBS.includes(w[2]))) &&
+      (!opener || !youOnly || w[1] === 'you');
   const aux = w[auxAt];
   const rest = w.slice(auxAt + 2);
   return (
