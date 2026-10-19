@@ -13,7 +13,7 @@ export function tokensMarkdown(): string {
     '<!-- Generated from packages/ui/src/tokens.ts by tokens-doc.test.ts (UPDATE_TOKENS_DOC=1 bun run test). Do not edit by hand. -->',
     '',
     'Use tokens through `useTheme()` in components, or the CSS custom properties that `ThemeProvider` injects.',
-    'Dark is the qrtz.ai brand default. Light is an opt-in palette with the same roles; choose it in Settings → Appearance (Dark / Light / System).',
+    'Dark is the qrtz.ai brand default. Light is an opt-in palette with the same roles; choose it in opts → appearance (Dark / Light / System).',
     '',
     '## Color',
     '',

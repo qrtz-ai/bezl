@@ -161,7 +161,7 @@ describe('module settings pages (ADR 0146 M1.4)', () => {
     expect(modulePatchError('echo', { note: {} })).toContain('note');
     expect(modulePatchError('echo', { theme: 'light' })).toContain('theme');
     expect(modulePatchError('nano', { speech: { autoUpdate: false } })).toBe(
-      "nano settings can't change speech.autoUpdate",
+      "nano opts can't change speech.autoUpdate",
     );
     expect(modulePatchError('ctrl', { modules: {} })).toContain('modules');
   });

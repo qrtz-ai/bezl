@@ -41,7 +41,7 @@ test('echo, nano and ctrl each open their own settings; the global settings keep
   const echo = page.locator('[data-subapp="talk"]');
   await echo.getByTestId('talk-settings-open').click();
   const echoPage = echo.getByTestId('talk-settings');
-  await expect(echoPage.getByText('echo settings')).toBeVisible();
+  await expect(echoPage.getByText('echo opts')).toBeVisible();
   await expect(echoPage.getByTestId('auto-record')).toHaveCount(0);
   const pill = (await config(page)).talk.showPill;
   await echoPage.getByRole('switch', { name: 'floating pill' }).click();
@@ -57,7 +57,7 @@ test('echo, nano and ctrl each open their own settings; the global settings keep
   const nano = page.locator('[data-subapp="note"]');
   await nano.getByTestId('note-settings-open').click();
   const nanoPage = nano.getByTestId('note-settings');
-  await expect(nanoPage.getByText('nano settings')).toBeVisible();
+  await expect(nanoPage.getByText('nano opts')).toBeVisible();
   await expect(nano.getByTestId('note-record-manual')).toBeVisible();
   await expect(nanoPage.getByTestId('talk-show-pill')).toHaveCount(0);
   const auto = (await config(page)).note.autoRecord;

@@ -428,7 +428,7 @@ export default function MarketplaceView() {
         ? [
             {
               id: 'settings',
-              label: 'app settings',
+              label: 'app opts',
               icon: 'settings' as const,
               disabled: !on,
               onSelect: () => appSettings(name),
@@ -707,7 +707,7 @@ export default function MarketplaceView() {
               onClick={() => appSettings(item)}
               data-testid={`module-settings-${item}`}
             >
-              app settings
+              app opts
             </Button>
           ) : null}
           {removable(item) ? (

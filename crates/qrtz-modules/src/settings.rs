@@ -171,14 +171,14 @@ impl ModuleSettingsStore {
         if let Some(k) = p.keys().find(|k| GLOBAL_SECTIONS.contains(&k.as_str())) {
             return Err(ModuleError::invalid(
                 format!("settings.{k}"),
-                "a global setting; change it in the global settings",
+                "a global setting; change it in the global opts",
             ));
         }
         for (sec, v) in p {
             if let Some(gk) = global_keys_of(sec).find(|gk| v.get(*gk).is_some()) {
                 return Err(ModuleError::invalid(
                     format!("settings.{sec}.{gk}"),
-                    "a global setting; change it in the global settings",
+                    "a global setting; change it in the global opts",
                 ));
             }
         }
@@ -206,7 +206,7 @@ impl ModuleSettingsStore {
         if let Some(k) = o.keys().find(|k| GLOBAL_SECTIONS.contains(&k.as_str())) {
             return Err(ModuleError::invalid(
                 format!("settings.{k}"),
-                "a global setting; change it in the global settings",
+                "a global setting; change it in the global opts",
             ));
         }
         let bytes = serde_json::to_vec_pretty(value).expect("json");

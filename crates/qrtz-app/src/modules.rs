@@ -229,7 +229,7 @@ pub fn check_settings_patch(module: &str, patch: &Value) -> Result<(), AppError>
             continue;
         }
         if paths.is_empty() {
-            return refuse(format!("{module} settings can't change {section}"));
+            return refuse(format!("{module} opts can't change {section}"));
         }
         let Some(o) = v.as_object() else {
             return Err(AppError::new(
@@ -241,7 +241,7 @@ pub fn check_settings_patch(module: &str, patch: &Value) -> Result<(), AppError>
             .keys()
             .find(|k| !paths.iter().any(|(_, x)| *x == Some(k.as_str())))
         {
-            return refuse(format!("{module} settings can't change {section}.{bad}"));
+            return refuse(format!("{module} opts can't change {section}.{bad}"));
         }
     }
     Ok(())

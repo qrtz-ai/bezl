@@ -24,11 +24,11 @@ export function ModuleSettingsPage({
     <Page
       data-testid={testId}
       {...(inset ? { inset } : {})}
-      title={`${module} settings`}
+      title={`${module} opts`}
       actions={
         <IconButton
           icon="close"
-          label={`close ${module} settings`}
+          label={`close ${module} opts`}
           onClick={onClose}
           data-testid={testId ? `${testId}-close` : undefined}
         />
@@ -52,7 +52,7 @@ export function ModuleSettingsButton({
   return (
     <IconButton
       icon="settings"
-      label={`${module} settings`}
+      label={`${module} opts`}
       onClick={onClick}
       data-testid={testId}
     />

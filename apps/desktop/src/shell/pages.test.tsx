@@ -63,7 +63,7 @@ describe('page layout', () => {
       // The qrtz page: title "qrtz" and its gear; its settings: "qrtz settings" with a close button.
       if (path === '/qrtz') expect(header.textContent).toBe('qrtz');
       if (path === '/qrtz/settings')
-        expect(header.querySelector('h1')?.textContent).toBe('qrtz settings');
+        expect(header.querySelector('h1')?.textContent).toBe('qrtz opts');
       // The main area scrolls vertically only and never bounces.
       const main = el.querySelector<HTMLElement>('[data-scroll-root]')!;
       expect(main.style.overflowX).toBe('hidden');

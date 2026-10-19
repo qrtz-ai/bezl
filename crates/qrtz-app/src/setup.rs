@@ -759,7 +759,7 @@ impl SpeechManager {
         };
         if self.setup.is_some() {
             return Err(Self::scope_error(
-                "the speech module is shared: remove it in settings",
+                "the speech module is shared: remove it in opts",
             ));
         }
         let Some(full) = &self.local else {

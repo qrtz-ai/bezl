@@ -437,7 +437,7 @@ function Showcase({
                       { id: 'note', label: 'nano', icon: 'edit-3' },
                       {
                         id: 'settings',
-                        label: 'settings',
+                        label: 'opts',
                         icon: 'settings',
                         group: 'foot',
                       },
@@ -697,7 +697,7 @@ function Showcase({
             </div>
           </Section>
 
-          <Section id="settings" title="settings rows, permissions">
+          <Section id="settings" title="opts rows, permissions">
             <div style={{ display: 'grid', gap: t.space[4], width: '100%' }}>
               <SettingsSection title="recording">
                 <SettingRow label="record automatically">
@@ -779,7 +779,7 @@ function Showcase({
               onQuery={setPq}
               results={[
                 { id: 'rec', title: 'start recording', hint: '⌘⇧R' },
-                { id: 'set', title: 'go to settings' },
+                { id: 'set', title: 'go to opts' },
               ].filter((r) => r.title.toLowerCase().includes(pq.toLowerCase()))}
               index={pi}
               onIndex={setPi}

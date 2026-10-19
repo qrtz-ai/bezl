@@ -83,9 +83,7 @@ describe('global settings (ADR 0146 M1.4)', () => {
       expect(q(id), id).toBeNull();
     expect(el.textContent).not.toContain('apps page');
     // The qrtz page's settings page: titled like every app's, and its close goes back to the qrtz page.
-    expect(q('settings')?.querySelector('h1')?.textContent).toBe(
-      'qrtz settings',
-    );
+    expect(q('settings')?.querySelector('h1')?.textContent).toBe('qrtz opts');
     const seen: NavRequest[] = [];
     const off = onNavigateRequest((r) => seen.push(r));
     await act(async () => (q('settings-close') as HTMLElement).click());

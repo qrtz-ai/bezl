@@ -90,9 +90,9 @@ export function Palette({
       },
       {
         id: 'nav.qrtz-settings',
-        title: 'qrtz settings',
+        title: 'qrtz opts',
         icon: 'settings',
-        keywords: 'open preferences settings theme backup logs updates',
+        keywords: 'open opts preferences settings theme backup logs updates',
         run: () => requestNavigate({ app: QRTZ, settings: true }),
       },
       ...registry

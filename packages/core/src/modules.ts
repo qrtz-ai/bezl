@@ -241,11 +241,10 @@ export function modulePatchError(
     const keys = paths
       .filter(([s, k]) => s === section && k !== undefined)
       .map(([, k]) => k);
-    if (!keys.length) return `${id} settings can't change ${section}`;
+    if (!keys.length) return `${id} opts can't change ${section}`;
     if (!isRecord(v)) return `${section} must be an object`;
     const bad = Object.keys(v).find((k) => !keys.includes(k));
-    if (bad !== undefined)
-      return `${id} settings can't change ${section}.${bad}`;
+    if (bad !== undefined) return `${id} opts can't change ${section}.${bad}`;
   }
   return null;
 }

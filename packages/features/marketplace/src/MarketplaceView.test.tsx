@@ -145,7 +145,7 @@ describe('the qrtz page (ADR 0161, Jared 2026-10-18)', () => {
     const page = q('qrtz-page')!;
     expect(page.querySelector('h1')?.textContent).toBe('qrtz');
     expect(q('qrtz-settings-open')?.getAttribute('aria-label')).toBe(
-      'qrtz settings',
+      'qrtz opts',
     );
     for (const n of ['echo', 'nano', 'ctrl'])
       expect(
@@ -396,7 +396,7 @@ describe("an app's detail modal", () => {
     await render(fake().client);
     await clickRow('echo');
     expect(q('extension-remove-echo')).toBeNull();
-    expect(q('module-settings-echo')?.textContent).toBe('app settings');
+    expect(q('module-settings-echo')?.textContent).toBe('app opts');
   });
 
   it('switches an app off through packages:set-enabled only', async () => {
@@ -622,7 +622,7 @@ describe("each app's models, in its modal (moved from settings → speech)", () 
       'speech:delete': () => {
         throw new AppError(
           'E_VALIDATION',
-          'the speech module is shared: remove it in settings',
+          'the speech module is shared: remove it in opts',
           { retryable: false },
         );
       },
@@ -634,7 +634,7 @@ describe("each app's models, in its modal (moved from settings → speech)", () 
     expect(q('models-echo-panel-error')?.textContent).toContain(
       "part of qrtz's shared speech",
     );
-    expect(el.textContent).not.toContain('remove it in settings');
+    expect(el.textContent).not.toContain('remove it in opts');
   });
 
   it('switching an app on downloads nothing: its models came with its install (ADR 0169)', async () => {

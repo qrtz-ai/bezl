@@ -56,7 +56,7 @@ describe("echo's own settings (ADR 0146 M1.4)", () => {
     expect(calls.some((c) => c.channel === 'module:get-settings')).toBe(false);
     await act(async () => q('talk-settings-open')!.click());
     await settle();
-    expect(q('talk-settings')?.textContent).toContain('echo settings');
+    expect(q('talk-settings')?.textContent).toContain('echo opts');
     expect(q('talk-show-pill')?.getAttribute('aria-checked')).toBe('true');
     // Nothing of nano's or the global settings here.
     expect(q('auto-record')).toBeNull();
