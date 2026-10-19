@@ -73,7 +73,9 @@ $P root --keys /Volumes/ROOTKEY-A --out ~/qrtz-publish-out
 ```
 
 `root` prints `root 1: sha256 <hex>`. Send me that hex (it's public): it becomes `root1Sha256` in
-`module_hosts.json`. Until it's there, the app refuses every network install. Eject both sticks and store them apart.
+`module_hosts.json`. Until it's there, the app refuses every network install, and ctrl's Laya model too: ctrl
+reads it in its own process, so it needs a fresh signed revocation list like code (ADR 0157 §6, §9; ctrl falls back
+to its heuristic scorer). The helper's speech models don't wait for it. Eject both sticks and store them apart.
 Each key file is 0600; `qrtz-publish` refuses one that isn't. Instead of `--keys`, the env vars
 `QRTZ_PUBLISH_INDEX_KEY` / `QRTZ_PUBLISH_TIMESTAMP_KEY` (and `QRTZ_PUBLISH_ROOT_KEYS`) work, e.g. read from the
 macOS Keychain in a shell; never put them in a file in the repo.
@@ -164,5 +166,6 @@ refuses network installs, like the app.
 - Developer ID signing, notarization and stapling of the module apps (docs/release.md); until then manifests use
   the placeholder team and the installer refuses them.
 - The LocalVQE and Laya licenses must allow mirroring before those models are published (until then the app keeps
-  fetching them from their pinned Hugging Face URLs, verified the same way).
+  fetching them from their pinned Hugging Face URLs, verified the same way; Laya's download also needs the live,
+  fresh index above).
 - `qrtz` in the app bundle needs a Tauri `externalBin` entry in the release build.
