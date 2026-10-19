@@ -467,6 +467,7 @@ const MSG_ASR: &str = "speech recognition isn't ready yet; try again in a moment
 /// text as the speech module's not-installed refusal (ADR 0175 decision 5), so every route says one thing.
 pub const MSG_SPEECH_MISSING: &str = crate::speech::MSG_NOT_INSTALLED;
 /// A dictation ended with no words although the mic was open (see `nothing_heard`).
+pub const MSG_CTRL_CUT_SHORT: &str = "didn't catch it all, so ctrl didn't run it. try again";
 pub const MSG_NOTHING_HEARD: &str = "didn't catch any words. hold the key while you speak, then let go";
 /// ...and the mic sent (next to) digital silence the whole time: macOS gave qrtz no sound.
 pub const MSG_SILENT_MIC: &str =
@@ -717,14 +718,19 @@ impl TalkService {
     /// ADR 0092: show a failure or notice only the host knows on the helper's native pill (`kind`: error|info).
     /// The text is sent lowercase and capped at the contract's 200 characters.
     pub fn pill_flash(&self, kind: &str, message: &str) {
+        self.try_pill_flash(kind, message);
+    }
+
+    /// `pill_flash`, saying whether the line reached a helper (it can't when the helper is gone).
+    fn try_pill_flash(&self, kind: &str, message: &str) -> bool {
         let mut m: String = message.trim().to_lowercase();
         if m.is_empty() {
-            return;
+            return false;
         }
         if m.chars().count() > 200 {
             m = m.chars().take(199).collect::<String>() + "…";
         }
-        self.send(json!({"type": "pill.flash", "kind": kind, "message": m}));
+        self.send(json!({"type": "pill.flash", "kind": kind, "message": m}))
     }
 
     /// ADR 0221: a `notch.show` / `notch.update` / `notch.dismiss` line the host's notch broker
@@ -1327,10 +1333,11 @@ impl TalkService {
                 g.asr = Some(a);
             }
             let ctrl = g.attempt.as_mut().filter(|a| a.id == id && a.to_ctrl);
-            let ctrl_cut = timed_out && ctrl.is_some();
-            if let Some(a) = ctrl.filter(|_| timed_out) {
-                // Review H-C: a ctrl command never gets a late final (it would land on the clipboard or in
-                // history); `finish` runs nothing and says so.
+            // Review H-C/H-C2: a ctrl command runs only on the helper's real final. A timeout, or a lost helper
+            // (which releases the waiter with nothing), cuts it short: no late final (it would land on the
+            // clipboard or in history), no fallback to what was shown; `finish` runs nothing and says so.
+            let ctrl_cut = stopped.is_none() && ctrl.is_some();
+            if let Some(a) = ctrl.filter(|_| ctrl_cut) {
                 a.cut_short = true;
                 g.late.remove(&id);
             }
@@ -1502,12 +1509,13 @@ impl TalkService {
         let t = self.deps().timeouts;
         // N165 (ADR 0109): the helper's `dictation.stopped` text wins when non-empty, so don't wait up to
         // `final_ms` for a speech-module flush we won't use. Still call `finish` so the session exits cleanly.
-        let wait_for_module = local_text.trim().is_empty();
         let local_rx = {
             let mut g = self.lock();
             let Some(a) = g.attempt.as_mut().filter(|a| a.id == id) else {
                 return g.view.id.as_deref() == Some(id.as_str());
             };
+            // Review H-C2: a cut-short ctrl command never falls back to the on-device engine.
+            let wait_for_module = local_text.trim().is_empty() && !(a.to_ctrl && a.cut_short);
             a.local.as_ref().and_then(|l| {
                 l.finish();
                 if wait_for_module {
@@ -1531,6 +1539,7 @@ impl TalkService {
             };
             // The helper's full text from `dictation.stopped` wins; else what the session heard.
             let text = match local_text.trim() {
+                "" if a.to_ctrl && a.cut_short => String::new(),
                 "" => a.live(),
                 t => t.to_owned(),
             };
@@ -1548,6 +1557,24 @@ impl TalkService {
         };
         let (text, (started_at, key_down, key_up, first_partial, head_ms, level, segs), (to_ctrl, cut_short)) =
             text;
+        if to_ctrl && cut_short {
+            // Review H-C2: no real final for a ctrl command: run nothing, whatever was shown so far.
+            tracing::info!(audio_ms = duration_ms.max(0.0).round(), "talk: ctrl+fn cut short");
+            // The pill says so; with no helper to draw it (it was lost), the view carries the error instead.
+            let flashed = self.try_pill_flash("error", MSG_CTRL_CUT_SHORT);
+            let mut g = self.lock();
+            let own = g.view.id.as_deref() == Some(id.as_str());
+            if own {
+                g.view = g.view.idle_keeping();
+                if !flashed {
+                    g.view.phase = TalkPhase::Error;
+                    g.view.error = Some(MSG_CTRL_CUT_SHORT.to_owned());
+                    g.view.error_kind = Some(TalkErrorKind::HelperLost);
+                }
+            }
+            self.emit_view(&g);
+            return own;
+        }
         if text.trim().is_empty() {
             // Oct 18 (Jared: "holding fn does nothing"): a dictation that heard no words used to end with no line
             // and no sign at all. Now it logs the mic level (content-free, like `talk latency`) and says on the
@@ -1601,7 +1628,7 @@ impl TalkService {
             self.emit_view(&g);
             drop(g);
             if cut_short {
-                self.pill_flash("error", "didn't catch it all, so ctrl didn't run it. try again");
+                self.pill_flash("error", MSG_CTRL_CUT_SHORT);
             } else if took {
                 self.pill_flash("info", &format!("ctrl: {}", cleaned.text));
             } else {
