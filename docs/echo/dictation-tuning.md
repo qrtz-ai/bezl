@@ -2118,3 +2118,64 @@ memory / CPU on the Mac first) or P6's talk side. N202's talk half after the hel
    scripts/echo-bench-compare.mjs <before.json> <after.json>`: it must pass (raw WER identical; formatted WER equal
    or lower on every clip).
 6. If anything reads worse, `git revert 3ba0597` (talk-only) and tell Echo the dictation.
+
+## 49. Cycle 78: an imperative with its tag ends with "?" (ADR 0229, `eae7777`)
+
+Polish first. Cycle 77 landed nothing (N202's talk half came in `d1e1ba1` first; reviewed, correct). This cycle takes
+the narrowest piece of the positive tags ADR 0227 deferred: when the last sentence opens with "Let's" and ends in ",
+shall we", or opens with "Please" and ends in ", will / would / can / could you", the added mark is "?" instead of ".".
+The opener makes the sentence a suggestion or a request, so the tag can only ask. Only where a "." would be added: a
+mark Parakeet wrote, a short dictation, a list and every earlier sentence stay as they were.
+
+| Run                                     | Exact     | Edit distance              | Regressions | Keep set (hits / n) |
+| --------------------------------------- | --------- | -------------------------- | ----------- | ------------------- |
+| old cleanup (`3ba0597`), the 117 cases  | 113 / 117 | 42 chars (1.08 % of 3887)  | 0           | 0 / 315             |
+| `eae7777`, the 117 cases                | 113 / 117 | 42 chars (no case changes) | 0           | 0 / 315             |
+| old cleanup, 128 cases (+11 imperative) | 113 / 128 | 53 chars                   | -           | -                   |
+| `eae7777`, 128 cases                    | 124 / 128 | 42 chars (0.96 % of 4387)  | 0           | 0 / 332             |
+
+- **Examples:** "Let's grab lunch after the standup, shall we" → "…, shall we?"; "Please close the door on your way
+  out, will you" → "…, will you?"; "Please pay the twenty dollars at the front desk, would you" → "Please pay the $20
+  at the front desk, would you?". Kept: "Close the door for me, will you." (no opener), "Please stop, you will hurt
+  yourself." (statement order), "Please, Will, you have to see this." (a name), "Let's see how it goes, we shall.",
+  "Please share the doc, will you. Thanks." (only the last sentence), "Please send it over, will you!" (Parakeet's
+  mark).
+- **False-positive evidence:** 17 keep vectors against 11 positives, 17 refusals in cleanup.json, and old / new
+  output identical on 8079 texts: the 2835 cached Parakeet TDT v2 hypotheses with and without their final mark,
+  with and without the dictionary, plus every existing vector.
+- **Rejected this cycle** (details in ADR 0229): any other opener ("Close the door, will you", "Okay, let's …",
+  "Let me know, will you"), "shall I", "let us" / "let me", "Lets" without the apostrophe, other tags after
+  "Please" ("will they", "do you"), "do it" / "have it" / "be it", a capitalised "Will", a word after the tag.
+- **Still failing (4):** p15 spoken "comma" / "period" (waits on section 36 step 5 on the Mac), p19 / p20 spoken
+  email and URL (ADR 0223), p41 (ADR 0188's "don't retry").
+- **Latency:** release `cleanup_budget` on the box, old and new binaries interleaved 12×, two rounds with the order
+  swapped (median of medians): 495 words 0.118 / 0.120 → 0.122 / 0.113 ms; question 0.123 / 0.116 → 0.127 / 0.122;
+  vocative 0.135 / 0.123 → 0.136 / 0.129; tag 0.116 / 0.114 → 0.126 / 0.121; the new text ending in "Please …, will
+  you" 0.129 / 0.123 ms. Noise, ceiling 2 ms; the benchmark now times the imperative text too. The check reads one
+  word of the last sentence, once, on the final text. Capture, segmenting, the decode schedule, Parakeet's settings,
+  the drain / final pass, insert and the timing log are unchanged.
+- **Dictation path review since `9d91197`:** `d1e1ba1` / `cce72c0` / `049c470` (N202 both halves: the helper sends
+  `reason: "failed"`, talk maps it to "the microphone couldn't start"; **N202 fixed**), `2fce233` (ADR 0225
+  follow-up: the secure-refused ids are a capped queue, insert path only), `83368f1` (Bobs, ADR 0221 temporary pill
+  tuning: `talk.pillMotion` forwarded in `dictation.configure`, nothing on press / release / final / cleanup),
+  `dce4adf` / `12080d9` (notch springs, helper drawing only), `7f0cd28` (fancy-regex 0.19: `Captures<str>` in
+  cleanup.rs, patterns unchanged; the polish and keep sets are byte-identical before and after). All correct for
+  dictation. N197 (needs the Mac's device-switch gap) and N199 (Jared's call) stay open.
+- **Nano quick check:** vitest on the Note core and feature files: 102 tests passed in 15 files; the other 12 files
+  can't load on the box (Vite "Denied ID" through a borrowed node_modules, and this node has no `node:sqlite`), not a
+  code failure. No Note code changed.
+
+Next: p15 after the Mac check, then P7 (idle memory / CPU on the Mac first) or P6's remaining helper side. P5's p50 /
+p95 budget still waits on `node scripts/echo-timing-report.mjs` output from the Mac.
+
+### Test on Jared's Mac (cycle 78)
+
+1. `cd ~/code/qrtz && git pull` (main at or after `eae7777`), build and run the app as usual.
+2. `cargo test --release -p qrtz-talk --test cleanup_budget --test hardening60 --test hardening78 --test polish_set
+   -- --nocapture`: five budget medians well under 0.5 ms (box 0.11-0.14 ms), "polish set: 124/128 exact",
+   regressions 0, all pass.
+3. Hold fn and say "Let's grab lunch after the standup, shall we" in a flat voice: it types "…, shall we?". Then
+   "Please close the door on your way out, will you" → "…, will you?".
+4. Statements keep their period: "Please stop, you will hurt yourself" → "…, you will hurt yourself."; "Close the
+   door for me, will you" still ends with "." (no "Let's" / "Please" at the start).
+5. If anything reads worse, `git revert eae7777` (talk-only) and tell Echo the dictation.
