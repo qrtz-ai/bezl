@@ -10669,7 +10669,7 @@
     },
     "vault:get": {
       "version": 1,
-      "capability": "note.read",
+      "capability": "doc.read",
       "request": {
         "void": true
       },
@@ -10731,7 +10731,7 @@
     },
     "doc:list": {
       "version": 1,
-      "capability": "note.read",
+      "capability": "doc.read",
       "request": {
         "optional": true,
         "schema": {
@@ -10790,7 +10790,7 @@
     },
     "doc:get": {
       "version": 1,
-      "capability": "note.read",
+      "capability": "doc.read",
       "request": {
         "optional": false,
         "schema": {
@@ -12422,7 +12422,7 @@
       "stream": true
     },
     "doc:changed": {
-      "capability": "note.read",
+      "capability": "doc.read",
       "payload": {
         "type": "object",
         "properties": {
@@ -12966,6 +12966,7 @@
         "note.record",
         "note.write",
         "calendar.read",
+        "doc.read",
         "os.permissions",
         "speech.read",
         "module.settings"

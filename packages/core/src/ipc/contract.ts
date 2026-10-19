@@ -819,7 +819,7 @@ export const ipcContract = {
   /** ADR 0220: nano's notes vault (a folder of .md files the user can see; the host only). */
   'vault:get': defineChannel({
     version: 1,
-    capability: 'note.read',
+    capability: 'doc.read',
     request: z.void(),
     response: VaultInfo,
   }),
@@ -832,7 +832,7 @@ export const ipcContract = {
   }),
   'doc:list': defineChannel({
     version: 1,
-    capability: 'note.read',
+    capability: 'doc.read',
     request: z
       .object({
         query: z.string().max(200).optional(),
@@ -844,7 +844,7 @@ export const ipcContract = {
   }),
   'doc:get': defineChannel({
     version: 1,
-    capability: 'note.read',
+    capability: 'doc.read',
     request: z.object({ id: z.string().max(64) }),
     response: Doc,
   }),

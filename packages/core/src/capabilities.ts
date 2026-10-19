@@ -30,6 +30,11 @@ export const Capability = z.enum([
    * capability so a module holding note.read never sees the calendar.
    */
   'calendar.read',
+  /**
+   * ADR 0220 (M1): nano's notes vault (vault:get, doc:list, doc:get, doc:changed). Its own capability so the shell's
+   * note.read (meetings, transcripts) never reaches the note files.
+   */
+  'doc.read',
   /** ADR 0083: write a line to the local log (uncaught renderer errors, the audio player's errors). */
   'log.write',
   /** ADR 0083: save a copy of the local logs, or show their folder. */

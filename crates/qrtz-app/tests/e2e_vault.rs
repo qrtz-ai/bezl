@@ -136,6 +136,15 @@ async fn standalone_notes_migration_links_conflicts_and_confinement() {
     assert_eq!(r["ok"], false, "{r}");
     let r = a.raw("ctrl", "vault:get", Value::Null).await;
     assert_eq!(r["ok"], false, "{r}");
+    // M1: the shell holds note.read (meetings, transcripts) but not doc.read, so the note files stay nano's.
+    for (ch, p) in [
+        ("vault:get", Value::Null),
+        ("doc:list", json!({})),
+        ("doc:get", json!({"id": d["id"]})),
+    ] {
+        let r = a.raw("shell", ch, p).await;
+        assert_eq!(r["ok"], false, "shell {ch}: {r}");
+    }
 
     // Trash = the hidden .trash folder.
     a.note("doc:trash", json!({"id": d["id"]})).await;
