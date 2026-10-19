@@ -39,7 +39,12 @@ fn spec(dir: PathBuf) -> Spec {
 }
 
 /// A fresh output dir (as on a Mac whose local out is missing or stale) built against `live`.
-fn build_fresh(base: &Path, name: &str, dir: PathBuf, live: &qrtz_modules::index::Index) -> Result<(), String> {
+fn build_fresh(
+    base: &Path,
+    name: &str,
+    dir: PathBuf,
+    live: &qrtz_modules::index::Index,
+) -> Result<(), String> {
     let keys = Keys::ephemeral();
     let out = base.join(name);
     qrtz_publish::write_root(&out, &keys, None, 1, NOW).unwrap();
