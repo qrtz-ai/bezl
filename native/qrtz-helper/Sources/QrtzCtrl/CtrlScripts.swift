@@ -17,7 +17,7 @@ public enum CtrlScripts {
     /// `saving no`, which would throw away unsaved work).
     public static func source(verb: String, bundleId: String) -> String? {
         guard safeBundleId(bundleId), CtrlRoute.scriptVerbs.contains(verb) else { return nil }
-        // ADR 0137 / 0173: the appearance and Dock verbs go to System Events and nothing else; nothing else goes to
+        // ADR 0137 / 0173 / 0195: the appearance and Dock verbs go to System Events and nothing else; nothing else goes to
         // System Events.
         guard CtrlRoute.systemEventsVerbs.contains(verb) == (bundleId == CtrlRoute.systemEvents) else { return nil }
         let body: String
@@ -42,6 +42,10 @@ public enum CtrlScripts {
         // forward).
         case "set_dock_autohide": body = "tell dock preferences to set autohide to true"
         case "set_dock_shown": body = "tell dock preferences to set autohide to false"
+        // ADR 0195: the Dock's screen edge (System Events tells the Dock; no app comes forward). macOS has no top.
+        case "set_dock_edge_left": body = "tell dock preferences to set screen edge to left"
+        case "set_dock_edge_right": body = "tell dock preferences to set screen edge to right"
+        case "set_dock_edge_bottom": body = "tell dock preferences to set screen edge to bottom"
         // ADR 0178: the current screen saver (System Events starts it; the screensaver covers the display by design).
         case "start_screen_saver": body = "start current screen saver"
         // ADR 0178 amendment 1: stop it. A password-on-wake Mac keeps its login prompt; nothing here unlocks.
@@ -86,11 +90,17 @@ public enum CtrlAppearance {
     }
 }
 
-/// ADR 0173: reads the Dock's own defaults domain (`com.apple.dock`): `autohide` true when the Dock hides itself,
-/// absent or false when it's always shown. Nothing else in the domain is looked at.
+/// ADR 0173 / 0195: reads the Dock's own defaults domain (`com.apple.dock`): `autohide` for hide/show, `orientation`
+/// for the screen edge (`left` / `bottom` / `right`; absent = bottom, the macOS default). Nothing else in the domain
+/// is looked at.
 public enum CtrlDock {
     public static let check = "dock_autohide"
+    /// ADR 0195: the Dock's screen edge (0 left, 10 bottom, 20 right — spaced so a Level ±1 never confuses edges).
+    public static let edgeCheck = "dock_edge"
     public static let domain = "com.apple.dock"
+    public static let edgeLeft = 0
+    public static let edgeBottom = 10
+    public static let edgeRight = 20
 
     public static func autohides(_ dock: [String: Any]?) -> Bool {
         switch dock?["autohide"] {
@@ -98,6 +108,23 @@ public enum CtrlDock {
         case let n as NSNumber: return n.boolValue
         case let s as String: return ["1", "true", "yes"].contains(s.lowercased())
         default: return false
+        }
+    }
+
+    /// ADR 0195: `orientation` as left / right / bottom (absent or anything else → bottom).
+    public static func edge(_ dock: [String: Any]?) -> String {
+        switch (dock?["orientation"] as? String)?.lowercased() {
+        case "left": return "left"
+        case "right": return "right"
+        default: return "bottom"
+        }
+    }
+
+    public static func edgeCode(_ dock: [String: Any]?) -> Int {
+        switch edge(dock) {
+        case "left": return edgeLeft
+        case "right": return edgeRight
+        default: return edgeBottom
         }
     }
 }

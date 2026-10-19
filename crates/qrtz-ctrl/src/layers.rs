@@ -631,6 +631,13 @@ const INTENTS: &[IntentDef] = &[
         slot: Slot::None,
         irreversible: false,
     },
+    // ADR 0195: the Dock's screen edge (left / right / bottom), through System Events; reversible, no gate.
+    IntentDef {
+        id: "dock_edge",
+        app: AppMode::Fixed("com.apple.systemevents"),
+        slot: Slot::None,
+        irreversible: false,
+    },
     // ADR 0178: start the screen saver, through System Events (faceless); reversible by the user, no gate.
     IntentDef {
         id: "screensaver",
@@ -695,13 +702,51 @@ const DOCK_NOT_WORDS: &[&str] = &[
 ];
 
 /// ADR 0173: the task is about the Dock's auto-hide: "dock" plus a hide / show / on-off word. Not a toggle ("toggle
-/// dock hiding" would need a read first, like ADR 0145; left out until asked for).
+/// dock hiding" would need a read first, like ADR 0145; left out until asked for). Not an edge move (ADR 0195).
 fn dock_task(toks: &[Tok]) -> bool {
     has(toks, &["dock"])
         && !has(toks, &["toggle", "flip"])
         && (has(toks, DOCK_HIDE_WORDS)
             || has(toks, DOCK_SHOW_WORDS)
             || has(toks, &["turn", "enable", "disable", "on", "off", "keep"]))
+        && !dock_edge_task(toks)
+}
+
+/// ADR 0195: words that name a Dock screen edge (macOS has no top).
+const DOCK_EDGE_WORDS: &[&str] = &["left", "right", "bottom"];
+
+/// ADR 0195: the task is about moving the Dock to an edge: "dock" plus left / right / bottom, no hide / show /
+/// autohide word (those stay `dock_autohide`), no toggle. "move the dock to the left", "put the dock on the right",
+/// "dock on the bottom".
+fn dock_edge_task(toks: &[Tok]) -> bool {
+    has(toks, &["dock"])
+        && has(toks, DOCK_EDGE_WORDS)
+        && !has(toks, DOCK_HIDE_WORDS)
+        && !has(toks, DOCK_SHOW_WORDS)
+        && !has(
+            toks,
+            &[
+                "toggle",
+                "flip",
+                "autohide",
+                "auto-hide",
+                "autohiding",
+                "auto-hiding",
+            ],
+        )
+}
+
+/// ADR 0195: which edge the words name. One clear edge, or `None` when two differ (the move question asks).
+fn dock_edge_of(toks: &[Tok]) -> Option<&'static str> {
+    let left = has(toks, &["left"]);
+    let right = has(toks, &["right"]);
+    let bottom = has(toks, &["bottom"]);
+    match (left, right, bottom) {
+        (true, false, false) => Some("left"),
+        (false, true, false) => Some("right"),
+        (false, false, true) => Some("bottom"),
+        _ => None,
+    }
 }
 
 /// ADR 0173: whether the task wants the Dock hidden (auto-hide on). "show the dock", "always show the dock",
@@ -1445,7 +1490,7 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
                 ],
             );
             // ADR 0173: "hide the dock" is the Dock's auto-hide, not hiding the Dock app.
-            if has(toks, &["hide"]) && named_app && !group && !dock_task(toks) {
+            if has(toks, &["hide"]) && named_app && !group && !dock_task(toks) && !dock_edge_task(toks) {
                 p += 9000;
             }
         }
@@ -1469,7 +1514,13 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             // without "me" / "my"; "unhide" always does.
             let asks = has(toks, &["unhide"]) || (has(toks, &["show"]) && !has(toks, &["me", "my"]));
             // ADR 0173: "show the dock" turns its auto-hide off, it doesn't unhide the Dock app.
-            if asks && named_app && !group && (!site || full_named) && !dock_task(toks) {
+            if asks
+                && named_app
+                && !group
+                && (!site || full_named)
+                && !dock_task(toks)
+                && !dock_edge_task(toks)
+            {
                 p += 9000;
             }
         }
@@ -1666,6 +1717,15 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             p -= 3000;
             let other_app = named.iter().any(|(a, _)| a.id != DOCK_APP);
             if dock_task(toks) && !other_app && !site {
+                p += 9500;
+            }
+        }
+        "dock_edge" => {
+            // ADR 0195: "move the dock to the left", "put the dock on the right", "dock on the bottom". The Dock
+            // plus an edge word, no hide / show / autohide (those stay dock_autohide), no other app named, no site.
+            p -= 3000;
+            let other_app = named.iter().any(|(a, _)| a.id != DOCK_APP);
+            if dock_edge_task(toks) && !other_app && !site {
                 p += 9500;
             }
         }
@@ -2243,6 +2303,17 @@ fn move_question(
                 route("scripting.dock_autohide_off", if hide { 2000 } else { 4500 }),
             ]
         }
+        // ADR 0195: one move from the words (left / right / bottom). Ambiguous → all three low so the run asks.
+        "dock_edge" => match dock_edge_of(toks) {
+            Some("left") => vec![route("scripting.dock_edge_left", 4500)],
+            Some("right") => vec![route("scripting.dock_edge_right", 4500)],
+            Some("bottom") => vec![route("scripting.dock_edge_bottom", 4500)],
+            _ => vec![
+                route("scripting.dock_edge_left", 2000),
+                route("scripting.dock_edge_right", 2000),
+                route("scripting.dock_edge_bottom", 2000),
+            ],
+        },
         // ADR 0178: one move — start the current screen saver, or (amendment 1) stop it. Never both: a stop task
         // never backtracks into starting it.
         "screensaver" => {
@@ -2455,6 +2526,7 @@ fn intent_label(id: &str) -> &'static str {
         "empty_trash" => "empty the trash",
         "dark_mode" => "switch dark mode",
         "dock_autohide" => "hide or show the dock",
+        "dock_edge" => "move the dock to an edge",
         "screensaver" => "start or stop the screensaver",
         "search" => "search in an app",
         "send_message" => "send a message",
@@ -2502,6 +2574,9 @@ fn route_label(id: &str) -> &'static str {
         "scripting.dark_mode_toggle" => "flip the appearance",
         "scripting.dock_autohide_on" => "hide the dock until the pointer reaches it",
         "scripting.dock_autohide_off" => "always show the dock",
+        "scripting.dock_edge_left" => "put the dock on the left",
+        "scripting.dock_edge_right" => "put the dock on the right",
+        "scripting.dock_edge_bottom" => "put the dock on the bottom",
         "scripting.screensaver" => "start the current screen saver",
         "scripting.screensaver_stop" => "stop the screen saver, nothing unlocked",
         "files.tidy" => "sort by kind, nothing deleted",
@@ -2670,6 +2745,9 @@ mod label_tests {
             "clean",
             "trash",
             "screen awake",
+            "left",
+            "right",
+            "bottom",
         ];
         for d in INTENTS {
             for p in phrasings {

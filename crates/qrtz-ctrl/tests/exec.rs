@@ -429,8 +429,8 @@ fn the_ctrl_protocol_fixture_round_trips() {
     }
     assert_eq!(
         (host, helper),
-        (41, 11),
-        "every message, nineteen act routes (ADR 0130 quit_apps, ADR 0134 hide_apps, ADR 0135 mute_output, ADR 0137 set_dark_mode, ADR 0139 unmute_output, ADR 0140 set_volume, ADR 0166 open_folder, ADR 0168 clear_clipboard, ADR 0173 set_dock_autohide, ADR 0176 eject_volumes, ADR 0178 start_screen_saver and stop_screen_saver, ADR 0180 sleep_display, ADR 0183 sleep_system, ADR 0191 set_wifi, ADR 0194 keep_awake and allow_sleep), the app-less output_muted, dark_mode, output_volume, clipboard_cleared (ADR 0168), dock_autohide (ADR 0173), ejectable_volumes (ADR 0176), screensaver_running (ADR 0178), display_asleep (ADR 0180) last_sleep (ADR 0183) wifi_on (ADR 0191) and kept_awake (ADR 0194) measures, the folder_open measure (ADR 0166), laya with and without a model, laya.warm (ADR 0133)"
+        (43, 11),
+        "every message, twenty act routes (ADR 0130 quit_apps, ADR 0134 hide_apps, ADR 0135 mute_output, ADR 0137 set_dark_mode, ADR 0139 unmute_output, ADR 0140 set_volume, ADR 0166 open_folder, ADR 0168 clear_clipboard, ADR 0173 set_dock_autohide, ADR 0176 eject_volumes, ADR 0178 start_screen_saver and stop_screen_saver, ADR 0180 sleep_display, ADR 0183 sleep_system, ADR 0191 set_wifi, ADR 0194 keep_awake and allow_sleep, ADR 0195 set_dock_edge_left), the app-less output_muted, dark_mode, output_volume, clipboard_cleared (ADR 0168), dock_autohide (ADR 0173), ejectable_volumes (ADR 0176), screensaver_running (ADR 0178), display_asleep (ADR 0180) last_sleep (ADR 0183) wifi_on (ADR 0191) kept_awake (ADR 0194) and dock_edge (ADR 0195) measures, the folder_open measure (ADR 0166), laya with and without a model, laya.warm (ADR 0133)"
     );
 }
 

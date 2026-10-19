@@ -271,6 +271,13 @@ pub enum ScriptVerb {
     SetDockAutohide,
     /// ADR 0173: the same with `false` (the Dock always shown).
     SetDockShown,
+    /// ADR 0195: System Events `tell dock preferences to set screen edge to left` (only to
+    /// `com.apple.systemevents`, nothing comes forward, no key event). Reversible.
+    SetDockEdgeLeft,
+    /// ADR 0195: the same with `right`.
+    SetDockEdgeRight,
+    /// ADR 0195: the same with `bottom` (macOS's default Dock edge; no top).
+    SetDockEdgeBottom,
     /// ADR 0178: System Events `start current screen saver` (only to `com.apple.systemevents`, a faceless agent:
     /// nothing comes forward as a key event; the screensaver itself covers the display by design). Reversible by the
     /// user (move the mouse / press a key) or by a later "stop the screensaver" task.

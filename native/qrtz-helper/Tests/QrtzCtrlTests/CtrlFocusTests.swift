@@ -46,8 +46,8 @@ final class CtrlFocusTests: XCTestCase {
     /// Technology Preview, TextEdit; other browsers come from the catalog at run time). Mail is named only on the Rust
     /// side, as an app id; QrtzCtrl sends it nothing. ADR 0166 names the Finder, for the LaunchServices open
     /// (`activates = false`) of a folder and the AX read of its windows; no new Apple Event or script comes with it.
-    /// ADR 0173 names `com.apple.dock` only as the defaults domain the Dock's auto-hide is read from (no Apple Event,
-    /// no LaunchServices: the setting goes through System Events, already here). ADR 0178 names
+    /// ADR 0173 / 0195 names `com.apple.dock` only as the defaults domain the Dock's auto-hide and screen edge are
+    /// read from (no Apple Event, no LaunchServices: the setting goes through System Events, already here). ADR 0178 names
     /// `com.apple.ScreenSaver.Engine` only as the process observed for verify (no Apple Event either). Nothing in
     /// QrtzCtrl spawns a process.
     func testTargetsAreExactAndNothingSpawns() throws {

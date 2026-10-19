@@ -337,6 +337,17 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
     if mv == DOCK_AUTOHIDE_ON_MOVE || mv == DOCK_AUTOHIDE_OFF_MOVE {
         return Some(dock_step(mv == DOCK_AUTOHIDE_ON_MOVE));
     }
+    // ADR 0195: the Dock's screen edge, the same way (System Events only, read back in the helper).
+    if mv == DOCK_EDGE_LEFT_MOVE || mv == DOCK_EDGE_RIGHT_MOVE || mv == DOCK_EDGE_BOTTOM_MOVE {
+        let edge = if mv == DOCK_EDGE_LEFT_MOVE {
+            "left"
+        } else if mv == DOCK_EDGE_RIGHT_MOVE {
+            "right"
+        } else {
+            "bottom"
+        };
+        return Some(dock_edge_step(edge));
+    }
     // ADR 0178: start the screen saver the same way (System Events only; the helper sees ScreenSaverEngine).
     if mv == SCREENSAVER_MOVE || mv == SCREENSAVER_STOP_MOVE {
         return Some(screensaver_step(mv == SCREENSAVER_MOVE));
@@ -743,6 +754,45 @@ fn dock_step(hide: bool) -> Step {
 /// ADR 0173: "hide the dock automatically" / "always show the dock" (reversible, no gate).
 pub const DOCK_AUTOHIDE_ON_MOVE: &str = "route.scripting.dock_autohide_on";
 pub const DOCK_AUTOHIDE_OFF_MOVE: &str = "route.scripting.dock_autohide_off";
+
+/// ADR 0195: the Dock's screen-edge codes for [`Check::DockEdge`] / [`Expect::Level`] (spaced by 10 so the volume
+/// ±1 tolerance never confuses neighbouring edges). Absent orientation on macOS is bottom.
+pub const DOCK_EDGE_LEFT: i64 = 0;
+pub const DOCK_EDGE_BOTTOM: i64 = 10;
+pub const DOCK_EDGE_RIGHT: i64 = 20;
+
+pub fn dock_edge_code(edge: &str) -> i64 {
+    match edge {
+        "left" => DOCK_EDGE_LEFT,
+        "right" => DOCK_EDGE_RIGHT,
+        _ => DOCK_EDGE_BOTTOM,
+    }
+}
+
+/// ADR 0195: one System Events script sets the Dock's screen edge; the helper's read of the Dock's defaults verifies it.
+fn dock_edge_step(edge: &str) -> Step {
+    let verb = match edge {
+        "left" => ScriptVerb::SetDockEdgeLeft,
+        "right" => ScriptVerb::SetDockEdgeRight,
+        _ => ScriptVerb::SetDockEdgeBottom,
+    };
+    Step::Act {
+        routes: vec![Route::Scripting {
+            app: SYSTEM_EVENTS.into(),
+            verb,
+        }],
+        verify: Verify {
+            check: Check::DockEdge,
+            expect: Expect::Level(dock_edge_code(edge)),
+        },
+        content: BTreeMap::new(),
+    }
+}
+
+/// ADR 0195: "move the dock to the left" / "put the dock on the right" / "dock on the bottom" (reversible, no gate).
+pub const DOCK_EDGE_LEFT_MOVE: &str = "route.scripting.dock_edge_left";
+pub const DOCK_EDGE_RIGHT_MOVE: &str = "route.scripting.dock_edge_right";
+pub const DOCK_EDGE_BOTTOM_MOVE: &str = "route.scripting.dock_edge_bottom";
 
 /// ADR 0178: one System Events script starts (or, amendment 1, stops) the current screen saver; the helper's read of
 /// ScreenSaverEngine verifies it.

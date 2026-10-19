@@ -48,5 +48,7 @@
 {"type":"ctrl.act","id":"c38","actionId":"a16","route":{"route":"workspace","op":"keep_awake","minutes":120,"display":false},"content":{}}
 {"type":"ctrl.act","id":"c39","actionId":"a17","route":{"route":"workspace","op":"allow_sleep"},"content":{}}
 {"type":"ctrl.measure","id":"c40","check":{"check":"kept_awake"}}
+{"type":"ctrl.act","id":"c41","actionId":"a18","route":{"route":"scripting","app":"com.apple.systemevents","verb":"set_dock_edge_left"},"content":{}}
+{"type":"ctrl.measure","id":"c42","check":{"check":"dock_edge"}}
 {"type":"ctrl.laya.warm","id":"c12","model":"/models/ctrl/laya/laya.mlmodelc"}
 {"type":"ctrl.laya.warm.result","id":"c12","state":"started"}

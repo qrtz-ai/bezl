@@ -132,6 +132,9 @@ const INTENTS = {
   dark_toggle: opt('intent.dark_mode', 'switch dark mode', 0.07),
   dock_hide: opt('intent.dock_autohide', 'hide or show the dock', 0.07),
   dock_show: opt('intent.dock_autohide', 'hide or show the dock', 0.07),
+  dock_edge_left: opt('intent.dock_edge', 'move the dock to an edge', 0.07),
+  dock_edge_right: opt('intent.dock_edge', 'move the dock to an edge', 0.07),
+  dock_edge_bottom: opt('intent.dock_edge', 'move the dock to an edge', 0.07),
   screensaver: opt('intent.screensaver', 'start or stop the screensaver', 0.07),
   screensaver_stop: opt(
     'intent.screensaver',
@@ -182,6 +185,9 @@ type Intent =
   | 'dark_toggle'
   | 'dock_hide'
   | 'dock_show'
+  | 'dock_edge_left'
+  | 'dock_edge_right'
+  | 'dock_edge_bottom'
   | 'screensaver'
   | 'screensaver_stop'
   | 'display_sleep'
@@ -341,6 +347,49 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
         'hide the dock until the pointer reaches it',
         0.05,
       ),
+    ]),
+  ],
+  // ADR 0195: the dock's screen edge, through system events; reversible, no card.
+  dock_edge_left: [
+    act('choose_app', [
+      opt('app.com.apple.systemevents', 'systemevents', 0.95),
+    ]),
+    act('choose_move', [
+      opt('route.scripting.dock_edge_left', 'put the dock on the left', 0.9),
+      opt('route.scripting.dock_edge_right', 'put the dock on the right', 0.05),
+      opt(
+        'route.scripting.dock_edge_bottom',
+        'put the dock on the bottom',
+        0.05,
+      ),
+    ]),
+  ],
+  dock_edge_right: [
+    act('choose_app', [
+      opt('app.com.apple.systemevents', 'systemevents', 0.95),
+    ]),
+    act('choose_move', [
+      opt('route.scripting.dock_edge_right', 'put the dock on the right', 0.9),
+      opt('route.scripting.dock_edge_left', 'put the dock on the left', 0.05),
+      opt(
+        'route.scripting.dock_edge_bottom',
+        'put the dock on the bottom',
+        0.05,
+      ),
+    ]),
+  ],
+  dock_edge_bottom: [
+    act('choose_app', [
+      opt('app.com.apple.systemevents', 'systemevents', 0.95),
+    ]),
+    act('choose_move', [
+      opt(
+        'route.scripting.dock_edge_bottom',
+        'put the dock on the bottom',
+        0.9,
+      ),
+      opt('route.scripting.dock_edge_left', 'put the dock on the left', 0.05),
+      opt('route.scripting.dock_edge_right', 'put the dock on the right', 0.05),
     ]),
   ],
   // ADR 0178: start the current screen saver through system events; reversible by the user, no card.
@@ -732,9 +781,29 @@ const ejectOf = (text: string): Intent | null =>
       : 'eject_one'
     : null;
 
+// ADR 0195: "dock" plus left / right / bottom, no hide / show / autohide (those stay dock_autohide).
+const dockEdgeOf = (text: string): Intent | null => {
+  if (!/\bdock\b/i.test(text) || /\b(toggle|flip)\b/i.test(text)) return null;
+  if (
+    /\b(hide|hides|hiding|hidden|auto-?hide|auto-?hiding|automatically|show|shows|shown|showing|visible|unhide|always)\b/i.test(
+      text,
+    )
+  )
+    return null;
+  const left = /\bleft\b/i.test(text);
+  const right = /\bright\b/i.test(text);
+  const bottom = /\bbottom\b/i.test(text);
+  if (left && !right && !bottom) return 'dock_edge_left';
+  if (right && !left && !bottom) return 'dock_edge_right';
+  if (bottom && !left && !right) return 'dock_edge_bottom';
+  return null;
+};
+
 // ADR 0173: "dock" plus a hide / show / on-off word (not a toggle); off when it says show, stop, don't, off, never.
+// Not an edge move (ADR 0195).
 const dockOf = (text: string): Intent | null => {
   if (!/\bdock\b/i.test(text) || /\b(toggle|flip)\b/i.test(text)) return null;
+  if (dockEdgeOf(text) !== null) return null;
   const hide =
     /\b(hide|hides|hiding|hidden|auto-?hide|auto-?hiding|automatically)\b/i.test(
       text,
@@ -922,72 +991,74 @@ const intentOf = (text: string): Intent | null =>
     ? 'clear_clipboard'
     : screensaverOf(text) !== null
       ? screensaverOf(text)
-      : dockOf(text) !== null
-        ? dockOf(text)
-        : relativeOf(text) !== null
-          ? relativeOf(text)
-          : /\b(volume|sound)\b/i.test(text) && levelOf(text) !== null
-            ? 'set_volume'
-            : /\b(disturb|dnd)\b/i.test(text) ||
-                (/\bfocus\b/i.test(text) &&
-                  /\b(on|off|turn|enable|disable|start|stop|end|mode|set|toggle)\b/i.test(
-                    text,
-                  ))
-              ? /\b(off|disable|stop|end)\b/i.test(text)
-                ? 'focus_off'
-                : 'focus_mode'
-              : /\b(unmute|unsilence)\b/i.test(text)
-                ? 'unmute'
-                : /\b(dark|light)\s+mode\b/i.test(text)
-                  ? /\b(toggle|flip)\b/i.test(text)
-                    ? 'dark_toggle'
-                    : /\b(light|off|disable)\b/i.test(text)
-                      ? 'light_mode'
-                      : 'dark_mode'
-                  : /\b(open|check)\b/i.test(text) &&
-                      /\b(email|emails|inbox)\b/i.test(text)
-                    ? 'open_email'
-                    : /\b(mute|silence)\b/i.test(text)
-                      ? 'mute'
-                      : /\bhide\b/i.test(text) &&
-                          /\b(apps|applications|other|others|everything|all)\b/i.test(
-                            text,
-                          )
-                        ? 'hide_others'
-                        : /\bhide\b/i.test(text)
-                          ? 'hide_app'
-                          : opensFolder(text)
-                            ? 'open_folder'
-                            : /\bunhide\b/i.test(text) ||
-                                (/\bshow\b/i.test(text) &&
-                                  !/\b(me|my)\b/i.test(text))
-                              ? 'show_app'
-                              : /\b(quit|close)\b/i.test(text) &&
-                                  /\bapps?\b/i.test(text) &&
-                                  /\b(unused|used|using|idle)\b/i.test(text)
-                                ? 'quit_unused'
-                                : /\bquit\b/i.test(text)
-                                  ? 'quit_app'
-                                  : /\bcalendar\b/i.test(text)
-                                    ? 'open_calendar'
-                                    : /\bempty\b/i.test(text) &&
-                                        /\b(trash|bin)\b/i.test(text)
-                                      ? 'empty_trash'
-                                      : /\btabs?\b/i.test(text)
-                                        ? 'close_tabs'
-                                        : /\bdocuments\b/i.test(text)
-                                          ? 'tidy_documents'
-                                          : /\b(desktop|screenshots?)\b/i.test(
-                                                text,
-                                              )
-                                            ? 'tidy_desktop'
-                                            : /download|folder/i.test(text)
-                                              ? /\b(delete|trash|old)\b/i.test(
+      : dockEdgeOf(text) !== null
+        ? dockEdgeOf(text)
+        : dockOf(text) !== null
+          ? dockOf(text)
+          : relativeOf(text) !== null
+            ? relativeOf(text)
+            : /\b(volume|sound)\b/i.test(text) && levelOf(text) !== null
+              ? 'set_volume'
+              : /\b(disturb|dnd)\b/i.test(text) ||
+                  (/\bfocus\b/i.test(text) &&
+                    /\b(on|off|turn|enable|disable|start|stop|end|mode|set|toggle)\b/i.test(
+                      text,
+                    ))
+                ? /\b(off|disable|stop|end)\b/i.test(text)
+                  ? 'focus_off'
+                  : 'focus_mode'
+                : /\b(unmute|unsilence)\b/i.test(text)
+                  ? 'unmute'
+                  : /\b(dark|light)\s+mode\b/i.test(text)
+                    ? /\b(toggle|flip)\b/i.test(text)
+                      ? 'dark_toggle'
+                      : /\b(light|off|disable)\b/i.test(text)
+                        ? 'light_mode'
+                        : 'dark_mode'
+                    : /\b(open|check)\b/i.test(text) &&
+                        /\b(email|emails|inbox)\b/i.test(text)
+                      ? 'open_email'
+                      : /\b(mute|silence)\b/i.test(text)
+                        ? 'mute'
+                        : /\bhide\b/i.test(text) &&
+                            /\b(apps|applications|other|others|everything|all)\b/i.test(
+                              text,
+                            )
+                          ? 'hide_others'
+                          : /\bhide\b/i.test(text)
+                            ? 'hide_app'
+                            : opensFolder(text)
+                              ? 'open_folder'
+                              : /\bunhide\b/i.test(text) ||
+                                  (/\bshow\b/i.test(text) &&
+                                    !/\b(me|my)\b/i.test(text))
+                                ? 'show_app'
+                                : /\b(quit|close)\b/i.test(text) &&
+                                    /\bapps?\b/i.test(text) &&
+                                    /\b(unused|used|using|idle)\b/i.test(text)
+                                  ? 'quit_unused'
+                                  : /\bquit\b/i.test(text)
+                                    ? 'quit_app'
+                                    : /\bcalendar\b/i.test(text)
+                                      ? 'open_calendar'
+                                      : /\bempty\b/i.test(text) &&
+                                          /\b(trash|bin)\b/i.test(text)
+                                        ? 'empty_trash'
+                                        : /\btabs?\b/i.test(text)
+                                          ? 'close_tabs'
+                                          : /\bdocuments\b/i.test(text)
+                                            ? 'tidy_documents'
+                                            : /\b(desktop|screenshots?)\b/i.test(
                                                   text,
                                                 )
-                                                ? 'trash_old'
-                                                : 'clean_folder'
-                                              : null);
+                                              ? 'tidy_desktop'
+                                              : /download|folder/i.test(text)
+                                                ? /\b(delete|trash|old)\b/i.test(
+                                                    text,
+                                                  )
+                                                  ? 'trash_old'
+                                                  : 'clean_folder'
+                                                : null);
 
 const PREVIEW: CtrlConfirm['items'] = [
   { key: '3f2a9c1d0b7e#0', kind: 'window', label: 'notes.txt', unsaved: false },

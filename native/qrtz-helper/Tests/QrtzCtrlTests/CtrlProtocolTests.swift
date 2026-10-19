@@ -54,7 +54,7 @@ final class CtrlProtocolTests: XCTestCase {
     func testEveryHostLineOfTheFixtureParses() throws {
         let all = try lines()
         let host = all.filter { !(($0["type"] as! String).hasSuffix(".result")) && $0["type"] as! String != "ctrl.error" }
-        XCTAssertEqual(host.count, 41)
+        XCTAssertEqual(host.count, 43)
         for o in host {
             let line = String(decoding: try JSONSerialization.data(withJSONObject: o), as: UTF8.self)
             XCTAssertNotNil(CtrlRequest.parse(line), "\(o["type"]!)")
@@ -272,6 +272,45 @@ final class CtrlProtocolTests: XCTestCase {
         XCTAssertFalse(CtrlDock.autohides(["autohide": false]))
         XCTAssertFalse(CtrlDock.autohides(["orientation": "left"]), "absent: always shown (the default)")
         XCTAssertFalse(CtrlDock.autohides(nil))
+    }
+
+    func testTheDockEdgeGoesOnlyToSystemEventsAndItsMeasureHasNoApp() throws {
+        // ADR 0195: set_dock_edge_left parses from the fixture and reaches the backend; its script goes to System
+        // Events only, sets nothing but the Dock's screen edge, and dock_edge is measured without an app.
+        let all = try lines()
+        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["verb"] as? String == "set_dock_edge_left" }!
+        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
+        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("set_dock_edge_left") }
+        XCTAssertEqual(route, .scripting(app: "com.apple.systemevents", verb: "set_dock_edge_left"))
+        let fake = Fake()
+        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: line))["ok"] as? Bool, true)
+        XCTAssertEqual(fake.acted, [route])
+        let left = CtrlScripts.source(verb: "set_dock_edge_left", bundleId: "com.apple.systemevents")!
+        XCTAssertEqual(left, "tell application id \"com.apple.systemevents\"\ntell dock preferences to set screen edge to left\nend tell")
+        XCTAssertEqual(CtrlScripts.source(verb: "set_dock_edge_right", bundleId: "com.apple.systemevents"),
+                       "tell application id \"com.apple.systemevents\"\ntell dock preferences to set screen edge to right\nend tell")
+        XCTAssertEqual(CtrlScripts.source(verb: "set_dock_edge_bottom", bundleId: "com.apple.systemevents"),
+                       "tell application id \"com.apple.systemevents\"\ntell dock preferences to set screen edge to bottom\nend tell")
+        for id in ["com.apple.dock", "com.apple.Safari", "com.apple.finder"] {
+            XCTAssertNil(CtrlScripts.source(verb: "set_dock_edge_left", bundleId: id), id)
+            XCTAssertNil(CtrlScripts.source(verb: "set_dock_edge_right", bundleId: id), id)
+            XCTAssertNil(CtrlScripts.source(verb: "set_dock_edge_bottom", bundleId: id), id)
+        }
+        guard case let .measure(_, check, app)? = CtrlRequest.parse(#"{"type":"ctrl.measure","id":"c42","check":{"check":"dock_edge"}}"#)
+        else { return XCTFail("dock_edge") }
+        XCTAssertEqual(check, "dock_edge")
+        XCTAssertEqual(app, "")
+        XCTAssertEqual(CtrlDock.edge(["orientation": "left"]), "left")
+        XCTAssertEqual(CtrlDock.edge(["orientation": "right"]), "right")
+        XCTAssertEqual(CtrlDock.edge(["orientation": "bottom"]), "bottom")
+        XCTAssertEqual(CtrlDock.edge(["autohide": true]), "bottom", "absent orientation: bottom (the default)")
+        XCTAssertEqual(CtrlDock.edge(nil), "bottom")
+        XCTAssertEqual(CtrlDock.edgeCode(["orientation": "left"]), CtrlDock.edgeLeft)
+        XCTAssertEqual(CtrlDock.edgeCode(["orientation": "right"]), CtrlDock.edgeRight)
+        XCTAssertEqual(CtrlDock.edgeCode(nil), CtrlDock.edgeBottom)
+        XCTAssertTrue(CtrlRoute.applessChecks.contains(CtrlDock.edgeCheck))
+        XCTAssertTrue(CtrlRoute.dockVerbs.contains("set_dock_edge_left"))
+        XCTAssertTrue(CtrlRoute.systemEventsVerbs.contains("set_dock_edge_bottom"))
     }
 
     func testTheScreensaverGoesOnlyToSystemEventsAndItsMeasureHasNoApp() throws {

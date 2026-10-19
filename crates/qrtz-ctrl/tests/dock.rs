@@ -211,6 +211,9 @@ fn dock_words_dont_steal_other_tasks_and_other_tasks_dont_take_the_dock() {
         "turn on dark mode",
         "mute my mac",
         "toggle the dock",
+        "move the dock to the left",
+        "put the dock on the right",
+        "dock on the bottom",
     ] {
         let d = tempfile::tempdir().unwrap();
         let (s, _) = rig(d.path(), granted());

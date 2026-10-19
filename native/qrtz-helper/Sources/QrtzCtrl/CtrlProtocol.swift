@@ -66,11 +66,13 @@ public enum CtrlRoute: Equatable, Sendable {
     /// These have a fixed script (`CtrlScripts.source`).
     public static let scriptVerbs: Set<String> = ["count_tabs", "close_all_tabs", "close_tab", "count_windows", "close_window",
                                                   "set_dark_mode", "set_light_mode", "set_dock_autohide", "set_dock_shown",
+                                                  "set_dock_edge_left", "set_dock_edge_right", "set_dock_edge_bottom",
                                                   "start_screen_saver", "stop_screen_saver"]
     /// ADR 0137: the appearance verbs, only ever to System Events (a faceless agent, never brought forward).
     public static let appearanceVerbs: Set<String> = ["set_dark_mode", "set_light_mode"]
-    /// ADR 0173: the Dock's auto-hide verbs, likewise only ever to System Events.
-    public static let dockVerbs: Set<String> = ["set_dock_autohide", "set_dock_shown"]
+    /// ADR 0173 / 0195: the Dock's auto-hide and screen-edge verbs, likewise only ever to System Events.
+    public static let dockVerbs: Set<String> = ["set_dock_autohide", "set_dock_shown",
+                                                "set_dock_edge_left", "set_dock_edge_right", "set_dock_edge_bottom"]
     /// ADR 0178: start the current screen saver (amendment 1: or stop it), likewise only ever to System Events.
     public static let screensaverVerbs: Set<String> = ["start_screen_saver", "stop_screen_saver"]
     /// The verbs that go to System Events, and the only ones that may (ADR 0137, ADR 0173, ADR 0178).
@@ -80,13 +82,14 @@ public enum CtrlRoute: Equatable, Sendable {
     /// ADR 0158: `focus_on` too (the Mac backend answers nil: reading a Focus needs its own prompt).
     /// ADR 0168: `clipboard_cleared` too (the pasteboard's change count, never its contents).
     /// ADR 0173: `dock_autohide` too (the Dock's own defaults, read in this process).
+    /// ADR 0195: `dock_edge` too (the Dock's `orientation`, read from the same defaults domain).
     /// ADR 0178: `screensaver_running` too (ScreenSaverEngine in the process list, read in this process).
     /// ADR 0180: `display_asleep` too (the main display's sleep state, read in this process).
     /// ADR 0183: `last_sleep` too (when the Mac last slept, `kern.sleeptime`, read in this process).
     /// ADR 0191: `wifi_on` too (the Wi-Fi radio's power, read in this process; never a network's name).
     /// ADR 0194: `kept_awake` too (this process's own keep-awake assertion, read from IOKit; no other app's).
     public static let applessChecks: Set<String> = ["output_muted", "dark_mode", "output_volume", "focus_on", CtrlClipboard.check,
-                                                    CtrlDock.check, CtrlVolumes.check, CtrlScreensaver.check, CtrlDisplay.check,
+                                                    CtrlDock.check, CtrlDock.edgeCheck, CtrlVolumes.check, CtrlScreensaver.check, CtrlDisplay.check,
                                                     CtrlSystemSleep.check, CtrlWifi.check, CtrlKeepAwake.check]
     /// Slice 7b's selective closes (ADR 0114 / 0119) have no fixed script: the backend reads the tabs first
     /// (`CtrlTabs`) and closes only the ones it can tell about; a backend that can't tell refuses, and the host asks.
