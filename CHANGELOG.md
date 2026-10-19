@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **A new look for every letter:** qrtz now draws everything in Geist Pixel Square instead of Geist Pixel Circle: the app, every module's view, and echo's pill. Same sizes and spacing, so nothing moves; the font is still bundled, so nothing downloads.
 - **No more setup screens (ADR 0163):** qrtz opens straight to its views. Nothing downloads until you ask: press download in settings → speech, or switch echo or nano on in marketplace → installed (that switch is your yes). The module manager now shows each module's permissions beside its switch with an "allow" button, and macOS asks for the rest the first time a feature needs them. Old settings files load as before.
 - **echo hears you better in noisy rooms (ADR 0115):** the microphone's audio is now converted to the rate the recogniser uses with a proper filter, so fan noise, hiss and sharp "s" sounds no longer fold into the speech it listens to.
 - **echo now hears you with Parakeet:** echo's speech recognition is now Parakeet TDT v2 (English, on the Neural Engine), which makes fewer mistakes on full sentences. While you hold fn, echo transcribes each phrase as you pause, so letting go only has to finish the last one. It's a one-time download of about 460 MB from settings → speech. Until then echo uses Apple's on-device speech on macOS 26. Meetings keep their own recogniser, and it now loads only for a recording.

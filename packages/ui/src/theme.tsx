@@ -14,7 +14,7 @@ import {
   type ThemeMode,
   type Tokens,
 } from './tokens';
-import fontUrl from './fonts/GeistPixel-Circle.woff2?url';
+import fontUrl from './fonts/GeistPixel-Square.woff2?url';
 
 const ThemeContext = createContext<Tokens>(tokens);
 

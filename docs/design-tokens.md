@@ -59,7 +59,7 @@ Dark is the qrtz.ai brand default. Light is an opt-in palette with the same role
 
 | Token | CSS variable | Value |
 |---|---|---|
-| `font.family` | `--q-font-family` | `'Geist Pixel', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace` |
+| `font.family` | `--q-font-family` | `'Geist Pixel Square', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace` |
 | `font.weight` | `--q-font-weight` | `500` |
 
 ## Motion

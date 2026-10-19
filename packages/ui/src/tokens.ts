@@ -72,13 +72,13 @@ export const tokens = {
   },
   radius: { sm: '4px', md: '6px', lg: '8px', full: '9999px' },
   /**
-   * One family everywhere: Geist Pixel (Circle), bundled locally from Vercel's `geist` 1.8.1 release (OFL-1.1).
+   * One family everywhere: Geist Pixel Square, bundled locally from Vercel's `geist` 1.8.1 release (OFL-1.1).
    * It ships one weight and draws on a 38/1000 em pixel grid, so sizes are multiples of 13.158px (one font
    * pixel = 0.5 CSS px = one device pixel on Retina). Hierarchy comes from size and color, never fake bold.
    */
   font: {
     family:
-      "'Geist Pixel', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      "'Geist Pixel Square', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
     /** The only weight the font has; every type style uses it (font-synthesis is off). */
     weight: 500,
   },
@@ -183,7 +183,7 @@ export function globalCss(t: Tokens = tokens, fontUrl?: string): string {
     .map(([k, v]) => `${k}:${v};`)
     .join('');
   const face = fontUrl
-    ? `@font-face{font-family:'Geist Pixel';src:url(${fontUrl}) format('woff2');font-weight:100 900;font-style:normal;font-display:block;}`
+    ? `@font-face{font-family:'Geist Pixel Square';src:url(${fontUrl}) format('woff2');font-weight:100 900;font-style:normal;font-display:block;}`
     : '';
   return `${face}:root{${vars}color-scheme:${t.mode};}
 *,*::before,*::after{box-sizing:border-box;}

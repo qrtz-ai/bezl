@@ -249,7 +249,7 @@ The selectors `currentOptions(state)` and `needsConfirm(state)` are pure functio
 - **Retention:** 7 days by default, with a user-set value and a "delete all history" control. Deleting the content store leaves an id-and-timing skeleton that still replays structurally.
 - The OS-level operational logs (`~/Library/Logs/qrtz`) stay separate and follow ADR 0083 unchanged.
 
-### 13.7 History scrubber UI (@qrtz/ui, lowercase, Geist Pixel Circle, Feather icons)
+### 13.7 History scrubber UI (@qrtz/ui, lowercase, Geist Pixel Square, Feather icons)
 
 - **Timeline strip:** one tick per event, colored by kind (obs / decision / action / confirm / verify). A play / pause / step control steps one event at a time.
 - **Decision inspector:** at a selected tick, shows the node type, the options with probability bars, the chosen option, thresholds, the model and version, and latency.

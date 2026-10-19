@@ -28,7 +28,7 @@ the tokens are derived from the site's Tailwind/shadcn class names and its visua
 
 ## One font, one scale (redesign)
 
-Everything renders in **Geist Pixel** (Square, OFL-1.1, bundled from the `geist` npm package into
+Everything renders in **Geist Pixel Square** (OFL-1.1, `GeistPixel-Square.woff2`, bundled from the `geist` npm package into
 `packages/ui/src/fonts`). It has one weight, so every weight token is 500 and `font-synthesis: none`
 stops fake bold. Sizes sit on the font's pixel grid (13.158px = one device pixel per font pixel on
 Retina), so nothing renders below 13.158px. Hierarchy comes from size, color, case and tracking.

@@ -135,7 +135,7 @@ public final class PillContentView: NSView {
         layer?.addSublayer(waveBox)
         icon.image = NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: nil)
         icon.symbolConfiguration = .init(pointSize: 12, weight: .regular)
-        label.font = NSFont(name: PillFont.family, size: PillGeometry.fontSize) ?? .systemFont(ofSize: PillGeometry.fontSize)
+        label.font = NSFont(name: PillFont.postScriptName, size: PillGeometry.fontSize) ?? .systemFont(ofSize: PillGeometry.fontSize)
         label.lineBreakMode = .byTruncatingTail
         label.maximumNumberOfLines = 1
         label.cell?.truncatesLastVisibleLine = true

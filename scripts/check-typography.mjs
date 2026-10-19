@@ -3,6 +3,9 @@
 // <Text variant>, <Heading level>, <Label>, <Code>, <Link> or typeStyle() instead.
 //   bun scripts/check-typography.mjs           → fail on violations
 //   bun scripts/check-typography.mjs --audit   → distinct raw values per property, whole repo (incl. packages/ui)
+// It also holds the one-font rule: Geist Pixel Square is the only font. packages/ui/src/fonts bundles only
+// GeistPixel-Square.woff2 (plus its OFL), tokens.font.family leads with 'Geist Pixel Square', and no file in
+// apps/ or packages/ names another font face (an @font-face, a font file, or another Geist Pixel style).
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -66,6 +69,43 @@ for (const f of files) {
           );
       }
 }
+// One font: Geist Pixel Square.
+const FONT = 'Geist Pixel Square';
+const FONT_FILE = 'GeistPixel-Square.woff2';
+const fontDir = path.join(root, 'packages', 'ui', 'src', 'fonts');
+for (const name of fs.readdirSync(fontDir))
+  if (name !== FONT_FILE && !/^OFL-.*\.txt$/.test(name))
+    violations.push(
+      `packages/ui/src/fonts/${name}  only ${FONT_FILE} is bundled`,
+    );
+if (!fs.existsSync(path.join(fontDir, FONT_FILE)))
+  violations.push(`packages/ui/src/fonts/${FONT_FILE}  missing`);
+const tokensSrc = fs.readFileSync(
+  path.join(root, 'packages', 'ui', 'src', 'tokens.ts'),
+  'utf8',
+);
+const fam = /\bfamily:\s*["'`](.*?)["'`],?\n/s.exec(tokensSrc)?.[1] ?? '';
+if (!fam.startsWith(`'${FONT}'`))
+  violations.push(
+    `packages/ui/src/tokens.ts  font.family must lead with '${FONT}' (got ${fam || 'nothing'})`,
+  );
+const OTHER_STYLE = /Geist ?Pixel[- ]?(Circle|Grid|Line|Triangle)\b/gi;
+const FONT_FILE_REF = /[\w.-]+\.(?:woff2?|ttf|otf)\b/g;
+const FACE = /@font-face\s*\{\s*font-family\s*:\s*(['"]?)([^;'"}]+)\1/g;
+for (const f of files) {
+  const rel = path.relative(root, f);
+  const src = fs.readFileSync(f, 'utf8');
+  const at = (i) => `${rel}:${src.slice(0, i).split('\n').length}`;
+  for (const m of src.matchAll(OTHER_STYLE))
+    violations.push(`${at(m.index)}  font: ${m[0]} (the only font is ${FONT})`);
+  for (const m of src.matchAll(FONT_FILE_REF))
+    if (m[0] !== FONT_FILE)
+      violations.push(`${at(m.index)}  font file: ${m[0]} (only ${FONT_FILE})`);
+  for (const m of src.matchAll(FACE))
+    if (m[2].trim() !== FONT)
+      violations.push(`${at(m.index)}  @font-face: ${m[2]} (only ${FONT})`);
+}
+
 if (process.argv.includes('--audit')) {
   let total = 0;
   for (const [k, s] of Object.entries(distinct)) {
@@ -81,7 +121,7 @@ if (process.argv.includes('--audit')) {
 }
 if (violations.length) {
   console.error(
-    `Raw typography outside packages/ui (${violations.length}). Use <Text variant>, <Heading>, <Label>, <Code>, <Link> or typeStyle():\n  ${violations.join('\n  ')}`,
+    `Typography violations (${violations.length}). The only font is Geist Pixel Square; outside packages/ui use <Text variant>, <Heading>, <Label>, <Code>, <Link> or typeStyle():\n  ${violations.join('\n  ')}`,
   );
   process.exit(1);
 }
