@@ -26,6 +26,7 @@ pub mod onboarding;
 pub mod packages_ipc;
 #[cfg(feature = "runtime")]
 pub mod pill;
+pub mod pill_theme;
 #[cfg(feature = "runtime")]
 pub mod pm_cli;
 pub mod ports;

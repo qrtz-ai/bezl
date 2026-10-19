@@ -381,6 +381,11 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     let service_version = b.info.version.clone();
     let config: SharedConfig = crate::ConfigStore::open(dirs.data.join("config.json")).into();
     let events = Events::new();
+    // ADR 0211: echo's pill draws in qrtz's theme setting: the file it reads, written before the helper starts and
+    // after every config:changed.
+    let pill_theme = crate::pill_theme::path(&dirs.data);
+    crate::pill_theme::sync(&pill_theme, &config.get());
+    crate::pill_theme::follow(pill_theme.clone(), events.subscribe());
     // ADR 0079: without a speech module source (the Mac build today) the helper transcribes with its own models,
     // downloaded from settings into <data>/models and read by the helper from there only.
     let model_views =
@@ -395,6 +400,11 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
                 // ADR 0092: the macOS helper draws echo's pill (no web pill window).
                 if cfg!(target_os = "macos") {
                     spawn.env.push(("QRTZ_NATIVE_PILL".to_owned(), "1".to_owned()));
+                    // ADR 0211: and in qrtz's theme, from this file.
+                    spawn.env.push((
+                        crate::pill_theme::ENV.to_owned(),
+                        pill_theme.to_string_lossy().into_owned(),
+                    ));
                 }
                 if let Some(l) = &local_models {
                     spawn.env.push((

@@ -12,12 +12,29 @@ import QuartzCore
 /// transcript; a 240 pt pill; three layered tapered sines eased to the mic level every display frame; a slow low
 /// swell while processing; an alert icon and lowercase error text truncated with an ellipsis. With reduced motion
 /// the wave's phase stands still and only the amplitude follows the level. `PillDriver` (core) decides the phase.
+///
+/// ADR 0211: its appearance is qrtz's theme setting (dark, light or system), set on the panel, never macOS's alone:
+/// read from the host's theme file when it is built and followed live as the file changes (`PillThemeWatch`).
 public final class NativePill: PillView, @unchecked Sendable {
     private var panel: NSPanel?
     private var view: PillContentView?
+    private var themeWatch: PillThemeWatch?
+    /// The theme the panel draws (nil: the host named none, so macOS's appearance, as before ADR 0211).
+    public private(set) var theme: PillTheme?
 
-    public init() {
-        if Thread.isMainThread { build() } else { DispatchQueue.main.sync { build() } }
+    /// `themeFile`: the host's theme file (`QRTZ_PILL_THEME_FILE`); nil: none, the pill follows macOS.
+    public init(themeFile: String? = PillTheme.file()) {
+        if Thread.isMainThread { build(themeFile: themeFile) } else { DispatchQueue.main.sync { build(themeFile: themeFile) } }
+    }
+
+    /// qrtz's theme setting, now (also while the pill is up).
+    public func setTheme(_ t: PillTheme) { DispatchQueue.main.async { [self] in applyTheme(t) } }
+
+    private func applyTheme(_ t: PillTheme?) {
+        theme = t
+        // Explicit on the panel: dark or light whatever macOS uses; system (nil) inherits macOS's appearance.
+        panel?.appearance = t?.appearance
+        view?.recolor()
     }
 
     public func show(_ phase: PillPhase) { DispatchQueue.main.async { [self] in apply(phase) } }
@@ -33,7 +50,7 @@ public final class NativePill: PillView, @unchecked Sendable {
         }
     }
 
-    private func build() {
+    private func build(themeFile: String?) {
         // A window needs the app object; accessory: no Dock icon, no menu bar, never frontmost.
         let app = NSApplication.shared
         if app.activationPolicy() != .accessory { app.setActivationPolicy(.accessory) }
@@ -54,6 +71,12 @@ public final class NativePill: PillView, @unchecked Sendable {
         let v = PillContentView(frame: p.contentLayoutRect)
         p.contentView = v
         panel = p; view = v
+        if let f = themeFile {
+            let initial = PillTheme.read(path: f)
+            applyTheme(initial)
+            themeWatch = PillThemeWatch(path: f, initial: initial) { [weak self] t in self?.applyTheme(t) }
+            if themeWatch == nil { logErr("pill: theme folder unreadable; the pill keeps its launch theme") }
+        }
     }
 
     private func apply(_ phase: PillPhase) {
@@ -168,8 +191,9 @@ public final class PillContentView: NSView {
 
     public override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); recolor() }
 
-    /// packages/ui tokens: surface, borderStrong and text, dark and light.
-    private func recolor() {
+    /// packages/ui tokens: surface, borderStrong and text, dark and light, from the effective appearance (the panel's
+    /// theme, ADR 0211, or macOS's for system).
+    func recolor() {
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         func c(_ hex: UInt32) -> CGColor {
             CGColor(red: CGFloat(hex >> 16 & 0xff) / 255, green: CGFloat(hex >> 8 & 0xff) / 255, blue: CGFloat(hex & 0xff) / 255, alpha: 1)
