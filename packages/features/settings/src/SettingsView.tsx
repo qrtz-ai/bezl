@@ -62,6 +62,37 @@ export default function SettingsView() {
       (e: Error) => setLogsMsg(e.message),
     );
   };
+  // Audit P1-3: the logs plus macOS's crash reports for qrtz and its helpers, in one file the user sends.
+  const diagnostics = () => {
+    setLogsMsg(null);
+    void qrtz.invoke('logs:export', { diagnostics: true }).then(
+      (r) =>
+        setLogsMsg(
+          r.savedTo
+            ? `saved ${r.files} log files and ${r.crashReports ?? 0} crash reports`
+            : 'canceled',
+        ),
+      (e: Error) => setLogsMsg(e.message),
+    );
+  };
+  const [updateMsg, setUpdateMsg] = useState<string | null>(null);
+  // Only when pressed: the signed index's newest qrtz, compared with this build. Installs nothing.
+  const checkUpdate = () => {
+    setUpdateMsg('checking…');
+    void qrtz.invoke('packages:check-update').then(
+      (r) =>
+        setUpdateMsg(
+          r.state === 'available'
+            ? `qrtz ${r.latest} is available (you have ${r.current})`
+            : r.state === 'up-to-date'
+              ? `qrtz ${r.current} is up to date`
+              : r.state === 'none-listed'
+                ? 'no qrtz release is listed yet'
+                : "updates aren't set up yet",
+        ),
+      (e: Error) => setUpdateMsg(e.message),
+    );
+  };
   const [backupBusy, setBackupBusy] = useState(false);
   const backup = (kind: 'export' | 'import') => {
     setBackupBusy(true);
@@ -343,10 +374,36 @@ export default function SettingsView() {
           >
             show logs
           </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={diagnostics}
+            data-testid="diagnostics-export"
+          >
+            export diagnostics
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={checkUpdate}
+            data-testid="update-check"
+          >
+            check for updates
+          </Button>
         </Stack>
         {logsMsg ? (
           <Text variant="caption" muted data-testid="logs-result" role="status">
             {logsMsg}
+          </Text>
+        ) : null}
+        {updateMsg ? (
+          <Text
+            variant="caption"
+            muted
+            data-testid="update-result"
+            role="status"
+          >
+            {updateMsg}
           </Text>
         ) : null}
       </SettingsSection>

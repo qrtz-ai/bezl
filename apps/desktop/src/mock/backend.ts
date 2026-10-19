@@ -348,10 +348,16 @@ export function createMockBridge(): TauriBridge {
     },
     'db:health': () => ipcSamples['db:health'].response,
     'log:write': () => ({ accepted: true }),
-    'logs:export': ({ reveal }) =>
+    'logs:export': ({ reveal, diagnostics }) =>
       reveal
         ? { revealed: true, files: 1, bytes: 0 }
-        : ipcSamples['logs:export'].response,
+        : diagnostics
+          ? {
+              ...ipcSamples['logs:export'].response,
+              savedTo: '/Users/me/Documents/qrtz-diagnostics-0.2.0.txt',
+              crashReports: 1,
+            }
+          : ipcSamples['logs:export'].response,
     'helper:status': () => ipcSamples['helper:status'].response,
     'permissions:get': () => perms as never,
     'permissions:request': ({ permission }) => {
@@ -406,6 +412,7 @@ export function createMockBridge(): TauriBridge {
       emit('config:changed', config);
       return isModuleOn(config, name);
     }),
+    'packages:check-update': () => ipcSamples['packages:check-update'].response,
     'note:session': () => session as never,
     'note:dismiss': () => {
       if (['done', 'error'].includes(String(session.phase)))

@@ -42,6 +42,9 @@ describe('sub-app capability matrix', () => {
     ['marketplace', 'config:set', { patch: {} }, false],
     ['settings', 'packages:plan', { op: 'install', names: ['echo'] }, false],
     ['talk', 'packages:set-enabled', { name: 'ctrl', enabled: false }, false],
+    // Audit P1: "check for updates" lives in settings → system; it installs nothing.
+    ['settings', 'packages:check-update', undefined, true],
+    ['talk', 'packages:check-update', undefined, false],
   ] as const)(
     '%s → %s allowed=%s',
     async (subApp, channel, payload, allowed) => {

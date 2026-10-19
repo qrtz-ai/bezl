@@ -106,6 +106,9 @@ pub struct AppService {
     renderer_log: Mutex<crate::logging::RendererGate>,
     /// The log folder `logs:export` reads (`set_log_dir`; default: the one `logging::init` opened).
     log_dir: std::sync::OnceLock<std::path::PathBuf>,
+    /// Where `logs:export {diagnostics}` looks for macOS crash reports (tests; default
+    /// `crate::diagnostics::default_report_dirs`).
+    report_dirs: std::sync::OnceLock<Vec<std::path::PathBuf>>,
 }
 
 /// Sees every valid helper line first; `true` = consumed (not routed to talk or the runtime).
@@ -140,7 +143,12 @@ impl AppService {
             delivered: Default::default(),
             renderer_log: Mutex::new(crate::logging::RendererGate::new()),
             log_dir: std::sync::OnceLock::new(),
+            report_dirs: std::sync::OnceLock::new(),
         })
+    }
+    /// Where `logs:export {diagnostics}` reads crash reports from (tests; the app uses macOS's own folders).
+    pub fn set_crash_report_dirs(&self, dirs: Vec<std::path::PathBuf>) {
+        let _ = self.report_dirs.set(dirs);
     }
     /// Where `logs:export` reads the logs from (tests; the app uses the folder `logging::init` opened).
     pub fn set_log_dir(&self, dir: std::path::PathBuf) {
@@ -154,7 +162,8 @@ impl AppService {
     }
 
     /// `logs:export`: save one text file of every log (oldest first) where the user picks, or reveal the folder.
-    async fn export_logs(&self, reveal: bool) -> Result<Value, AppError> {
+    /// `diagnostics` (audit P1-3): the same file plus macOS's crash reports for qrtz and its helpers. Local only.
+    async fn export_logs(&self, reveal: bool, diagnostics: bool) -> Result<Value, AppError> {
         let dir = self.log_dir().ok_or_else(|| {
             AppError::new(ErrorCode::Unavailable, "no log folder in this build").retryable(false)
         })?;
@@ -183,6 +192,37 @@ impl AppService {
             self.info.shell,
             crate::logging::os_version()
         );
+        if diagnostics {
+            let report_dirs = self
+                .report_dirs
+                .get()
+                .cloned()
+                .unwrap_or_else(crate::diagnostics::default_report_dirs);
+            let name = format!("qrtz-diagnostics-{}.txt", self.info.version);
+            return tokio::task::spawn_blocking(move || {
+                let Some(dest) = shell.logs_save_path(&name) else {
+                    return Ok(json!({"files": 0, "bytes": 0, "crashReports": 0}));
+                };
+                let e = crate::diagnostics::export_to(&dir, &report_dirs, &dest, &header).map_err(|e| {
+                    AppError::new(
+                        ErrorCode::Internal,
+                        format!("couldn't save the diagnostics ({})", e.kind()),
+                    )
+                })?;
+                tracing::info!(
+                    files = e.logs,
+                    crash_reports = e.crash_reports,
+                    bytes = e.bytes,
+                    "diagnostics exported"
+                );
+                Ok(
+                    json!({"savedTo": dest.display().to_string(), "files": e.logs, "bytes": e.bytes,
+                          "crashReports": e.crash_reports}),
+                )
+            })
+            .await
+            .map_err(|_| AppError::new(ErrorCode::Internal, "diagnostics export failed"))?;
+        }
         let name = format!("qrtz-logs-{}.log", self.info.version);
         tokio::task::spawn_blocking(move || {
             let Some(dest) = shell.logs_save_path(&name) else {
@@ -699,7 +739,13 @@ impl AppService {
                 );
                 Ok(json!({"accepted": accepted}))
             }
-            "logs:export" => self.export_logs(p["reveal"].as_bool().unwrap_or(false)).await,
+            "logs:export" => {
+                self.export_logs(
+                    p["reveal"].as_bool().unwrap_or(false),
+                    p["diagnostics"].as_bool().unwrap_or(false),
+                )
+                .await
+            }
             "hud:set-expanded" => {
                 let e = self
                     .shell

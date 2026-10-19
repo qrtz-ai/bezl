@@ -2,7 +2,8 @@
 //!
 //! - **Sources**, in order: each module host (`modules.qrtz.ai`, then its mirrors) at `v1/blobs/sha256/<hex>`, then
 //!   the blob's own extra mirror URLs from the signed tree (a model's pinned Hugging Face URL). A source that fails,
-//!   or whose bytes don't hash right, is dropped for the next one.
+//!   or whose bytes don't hash right, is dropped for the next one. A host the transport reports as not configured
+//!   ([`Transport::host_configured`]: no live index behind it yet) is skipped without a request (audit P0-3).
 //! - **Parallel ranges**: a blob is fetched as [`RANGE_BYTES`] ranges, [`PARALLEL_RANGES`] at a time, written in
 //!   place into a preallocated `store/.tmp/<sha256>.part`; [`PARALLEL_BLOBS`] blobs go at once.
 //! - **Dead sources cost one round** (N176, ADR 0159): once a range from a source fails, that blob starts no more
@@ -45,6 +46,11 @@ pub enum Source {
 #[async_trait::async_trait]
 pub trait Transport: Send + Sync {
     fn hosts(&self) -> usize;
+    /// Whether module host `host` is set up to serve blobs. A host that isn't (the pinned hosts before the signed
+    /// index exists) is never asked for a blob, so a pinned model goes straight to its own mirror URL.
+    fn host_configured(&self, _host: usize) -> bool {
+        true
+    }
     /// A small document; `Ok(None)` when the host doesn't have it.
     async fn get(&self, host: usize, path: &str, max: usize) -> Result<Option<Vec<u8>>, String>;
     /// Exactly `len` bytes of blob `sha256` starting at `start`, from `src`. Anything else is an error.
@@ -108,10 +114,7 @@ pub async fn fetch_blobs(
                     return Ok(());
                 }
                 let mut errs = vec![];
-                let sources = (0..t.hosts())
-                    .map(Source::Host)
-                    .chain(b.mirrors.iter().cloned().map(Source::Url));
-                for src in sources {
+                for src in sources(t, b) {
                     let host = match src {
                         Source::Host(i) => Some(i),
                         Source::Url(_) => None,
@@ -149,6 +152,15 @@ pub async fn fetch_blobs(
     } else {
         Err(errs.join("; "))
     }
+}
+
+/// Where `b` is fetched from, in order: the configured module hosts, then the blob's own mirror URLs.
+pub fn sources(t: &dyn Transport, b: &BlobRef) -> Vec<Source> {
+    (0..t.hosts())
+        .filter(|h| t.host_configured(*h))
+        .map(Source::Host)
+        .chain(b.mirrors.iter().cloned().map(Source::Url))
+        .collect()
 }
 
 async fn fetch_one(
@@ -242,4 +254,92 @@ async fn fetch_one(
         done.fetch_sub(b.size, Ordering::SeqCst);
     }
     Ok(ok)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sha2::{Digest, Sha256};
+
+    /// Two module hosts (only `configured` of them set up) and any mirror URL, all serving `data`; every request
+    /// is recorded.
+    struct Mock {
+        data: Vec<u8>,
+        configured: usize,
+        asked: Mutex<Vec<Source>>,
+    }
+
+    #[async_trait::async_trait]
+    impl Transport for Mock {
+        fn hosts(&self) -> usize {
+            2
+        }
+        fn host_configured(&self, host: usize) -> bool {
+            host < self.configured
+        }
+        async fn get(&self, _host: usize, _path: &str, _max: usize) -> Result<Option<Vec<u8>>, String> {
+            Ok(None)
+        }
+        async fn get_range(
+            &self,
+            src: &Source,
+            _sha256: &str,
+            start: u64,
+            len: u64,
+        ) -> Result<Vec<u8>, String> {
+            self.asked.lock().unwrap().push(src.clone());
+            let (s, e) = (start as usize, (start + len) as usize);
+            Ok(self.data[s..e].to_vec())
+        }
+    }
+
+    fn blob(data: &[u8]) -> BlobRef {
+        BlobRef {
+            sha256: hex::encode(Sha256::digest(data)),
+            size: data.len() as u64,
+            mirrors: vec!["https://huggingface.co/r/resolve/abc/f.bin".into()],
+        }
+    }
+
+    async fn run(configured: usize) -> Vec<Source> {
+        let data = b"qrtz model bytes".to_vec();
+        let tmp = tempfile::tempdir().unwrap();
+        let store = Store::new(tmp.path().join("store"));
+        let t = Mock {
+            data: data.clone(),
+            configured,
+            asked: Mutex::new(vec![]),
+        };
+        fetch_blobs(&t, &store, &[blob(&data)], &|_, _| {}).await.unwrap();
+        assert!(store.has(&blob(&data).sha256, data.len() as u64));
+        t.asked.into_inner().unwrap()
+    }
+
+    #[tokio::test]
+    async fn hosts_that_arent_configured_get_no_request() {
+        // P0-3: before modules.qrtz.ai and the B2 mirror exist, a pinned model goes straight to its mirror URL.
+        let asked = run(0).await;
+        assert!(!asked.is_empty());
+        assert!(asked.iter().all(|s| matches!(s, Source::Url(_))), "{asked:?}");
+    }
+
+    #[tokio::test]
+    async fn a_configured_host_is_still_tried_first() {
+        let asked = run(1).await;
+        assert!(asked.iter().all(|s| *s == Source::Host(0)), "{asked:?}");
+    }
+
+    #[test]
+    fn sources_skip_unconfigured_hosts_in_order() {
+        let t = Mock {
+            data: vec![],
+            configured: 1,
+            asked: Mutex::new(vec![]),
+        };
+        let b = blob(b"x");
+        assert_eq!(
+            sources(&t, &b),
+            vec![Source::Host(0), Source::Url(b.mirrors[0].clone())]
+        );
+    }
 }

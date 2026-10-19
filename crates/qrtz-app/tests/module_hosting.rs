@@ -722,3 +722,38 @@ async fn the_extensions_screen_applies_only_the_plan_it_was_shown() {
     check("packages:prune", &p);
     assert_eq!(p["dirs"], 3);
 }
+
+/// Audit P1: "check for updates" refreshes the signed index only when asked and installs nothing. The sample index
+/// lists no `qrtz` shell release yet; an unconfigured transport (today's pinned hosts) asks nothing at all.
+#[tokio::test]
+async fn check_for_updates_refreshes_the_signed_index_and_installs_nothing() {
+    use qrtz_app::packages_ipc::PackagesIpc;
+    use qrtz_app::ports::PackagesPort;
+    use serde_json::json;
+    let w = world().await;
+    let ipc = PackagesIpc::new(w.client("ui", &[&w.primary])).with_app_version("0.3.0");
+    let c = qrtz_ipc::contract();
+    assert_eq!(w.hits(), 0);
+    let r = ipc.call("packages:check-update", json!(null)).await.unwrap();
+    assert!(c.channels["packages:check-update"].response.is_valid(&r), "{r}");
+    assert_eq!(
+        r,
+        json!({"current": "0.3.0", "state": "none-listed", "latest": null, "sizeBytes": null})
+    );
+    assert!(w.hits() > 0, "the check refreshed the index");
+    let s = ipc.call("packages:list", json!(null)).await.unwrap();
+    assert_eq!(s["packages"], json!([]), "nothing installed");
+    assert_eq!(s["index"]["version"], 1);
+
+    let before = w.hits();
+    let off = Packages::with(
+        Installer::new(w.dir.join("off"), Some(w.pin.clone()), Box::new(NoAppleChecks)),
+        HttpTransport::new(std::slice::from_ref(&w.primary.base), &[]).unconfigured(),
+    );
+    let r = PackagesIpc::new(off)
+        .call("packages:check-update", json!(null))
+        .await
+        .unwrap();
+    assert_eq!(r["state"], "not-set-up");
+    assert_eq!(w.hits(), before, "an unconfigured host gets no request");
+}

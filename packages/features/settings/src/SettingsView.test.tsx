@@ -74,4 +74,52 @@ describe('global settings (ADR 0146 M1.4)', () => {
     expect(q('modules-note')?.textContent).toContain('behind the gear');
     root.unmount();
   });
+
+  it('export diagnostics and check for updates only when pressed', async () => {
+    const calls: [string, unknown][] = [];
+    const client = {
+      subApp: 'settings',
+      invoke: async (channel: string, req?: unknown) => {
+        calls.push([channel, req]);
+        if (channel === 'config:get') return defaultConfig();
+        if (channel === 'logs:export')
+          return { savedTo: '/tmp/d.txt', files: 2, bytes: 9, crashReports: 3 };
+        return (ipcSamples as Record<string, { response: unknown }>)[channel]
+          ?.response;
+      },
+      on: () => () => {},
+    } as unknown as QrtzClient;
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const root = createRoot(el);
+    await act(async () =>
+      root.render(
+        <ThemeProvider mode="light">
+          <QrtzClientProvider client={client}>
+            <SettingsView />
+          </QrtzClientProvider>
+        </ThemeProvider>,
+      ),
+    );
+    const q = (id: string) =>
+      el.querySelector(`[data-testid="${id}"]`) as HTMLElement | null;
+    expect(calls.some(([c]) => c === 'packages:check-update')).toBe(false);
+    await act(async () => {
+      q('diagnostics-export')?.click();
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    expect(calls).toContainEqual(['logs:export', { diagnostics: true }]);
+    expect(q('logs-result')?.textContent).toBe(
+      'saved 2 log files and 3 crash reports',
+    );
+    await act(async () => {
+      q('update-check')?.click();
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    expect(calls.filter(([c]) => c === 'packages:check-update')).toHaveLength(
+      1,
+    );
+    expect(q('update-result')?.textContent).toBe("updates aren't set up yet");
+    root.unmount();
+  });
 });

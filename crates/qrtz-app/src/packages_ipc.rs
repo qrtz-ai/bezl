@@ -19,6 +19,8 @@ pub struct PackagesIpc {
     packages: Packages,
     plan: Mutex<Option<Plan>>,
     events: Option<Events>,
+    /// This build's version, for `packages:check-update`.
+    app_version: String,
 }
 
 /// The highest unrevoked version of `name` matching `range` (`*` when the range doesn't parse).
@@ -167,7 +169,14 @@ impl PackagesIpc {
             packages,
             plan: Mutex::new(None),
             events: None,
+            app_version: env!("CARGO_PKG_VERSION").to_owned(),
         }
+    }
+
+    /// The app's own version (`AppInfo.version`), which `packages:check-update` compares with the index's `qrtz`.
+    pub fn with_app_version(mut self, v: impl Into<String>) -> Self {
+        self.app_version = v.into();
+        self
     }
 
     /// Report `packages:apply`'s download as `packages:progress` (the marketplace's install bar).
@@ -231,6 +240,13 @@ impl PackagesPort for PackagesIpc {
     async fn call(&self, channel: &str, p: Value) -> Result<Value, AppError> {
         match channel {
             "packages:list" => self.state(),
+            // The user pressed "check for updates": the signed index's newest `qrtz`, nothing installed.
+            "packages:check-update" => {
+                let c = crate::app_update::check(&self.packages, &self.app_version, now_ms())
+                    .await
+                    .map_err(err)?;
+                Ok(crate::app_update::to_json(&self.app_version, &c))
+            }
             "packages:refresh" => {
                 self.packages
                     .refresh(&RefreshConsent::user_asked(), now_ms())

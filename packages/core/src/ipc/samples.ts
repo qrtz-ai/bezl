@@ -691,6 +691,15 @@ export const ipcSamples: { [C in IpcChannel]: ChannelSample<C> } = {
   },
   'packages:list': { request: undefined, response: packagesState },
   'packages:refresh': { request: undefined, response: packagesState },
+  'packages:check-update': {
+    request: undefined,
+    response: {
+      current: '0.3.0',
+      state: 'not-set-up',
+      latest: null,
+      sizeBytes: null,
+    },
+  },
   'packages:plan': {
     request: { op: 'install', names: ['echo'] },
     response: packagePlan,

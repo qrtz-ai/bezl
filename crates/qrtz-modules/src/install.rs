@@ -262,6 +262,10 @@ impl Installer {
         }
     }
 
+    /// The pinned `1.root.json` sha256 (none until the offline root exists: no index can be refreshed).
+    pub fn pinned_root(&self) -> Option<&str> {
+        self.pinned_root_sha256.as_deref()
+    }
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -1464,6 +1468,14 @@ impl Transport for PkgTransport<'_> {
                 .ok_or_else(|| format!("{sha256}: not in the file")),
             _ => Err("a sideload fetches nothing".into()),
         }
+    }
+}
+
+/// `latest` is a newer semver than `current` (an unparsable one is never newer): the app's update check.
+pub fn is_newer(latest: &str, current: &str) -> bool {
+    match (semver::Version::parse(latest), semver::Version::parse(current)) {
+        (Ok(l), Ok(c)) => l > c,
+        _ => false,
     }
 }
 

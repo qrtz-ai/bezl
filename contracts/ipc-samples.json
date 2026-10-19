@@ -914,6 +914,15 @@
         ]
       }
     },
+    "packages:check-update": {
+      "request": null,
+      "response": {
+        "current": "0.3.0",
+        "state": "not-set-up",
+        "latest": null,
+        "sizeBytes": null
+      }
+    },
     "packages:plan": {
       "request": {
         "op": "install",

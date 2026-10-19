@@ -87,6 +87,19 @@ fn reader_of(package: &str) -> Option<&'static str> {
         .map(|(e, _)| *e)
 }
 
+/// The model set dirs extension `ext` needs: its bundled manifest's `model:<dir>` data dependencies (echo:
+/// Parakeet; nano: Nemotron, the diarizer and LocalVQE). Unknown extensions need none (audit P0-3).
+pub fn sets_needed_by(ext: &str) -> Vec<String> {
+    crate::modules::bundled()
+        .manifests
+        .iter()
+        .filter(|m| m.id == ext)
+        .flat_map(|m| &m.dependencies)
+        .filter_map(|d| d.id.strip_prefix("model:"))
+        .map(str::to_owned)
+        .collect()
+}
+
 fn safe_rel(p: &str) -> bool {
     !p.is_empty()
         && !p.starts_with('/')
@@ -131,6 +144,29 @@ impl LocalModels {
     pub fn with_packages_root(mut self, p: impl Into<PathBuf>) -> Self {
         self.packages_root = p.into();
         self
+    }
+
+    /// Only the sets `extensions` need ([`sets_needed_by`]), with the same roots and hosts: what onboarding or
+    /// settings downloads for the installed/selected extensions, instead of every pinned set (audit P0-3).
+    pub fn for_extensions<S: AsRef<str>>(&self, extensions: &[S]) -> LocalModels {
+        let dirs: Vec<String> = extensions
+            .iter()
+            .flat_map(|e| sets_needed_by(e.as_ref()))
+            .collect();
+        let mut manifest = self.manifest.clone();
+        manifest.sets.retain(|s| dirs.contains(&s.dir));
+        LocalModels {
+            root: self.root.clone(),
+            packages_root: self.packages_root.clone(),
+            manifest,
+            base: self.base.clone(),
+            index: self.index.clone(),
+        }
+    }
+
+    /// The ids of the sets this view covers (`asr`, `diarizer`, `echo`, `echo-asr`).
+    pub fn set_ids(&self) -> Vec<&str> {
+        self.manifest.sets.iter().map(|s| s.id.as_str()).collect()
     }
 
     /// The signed index's root pin and package hosts (tests serve a published index from loopback).
@@ -480,6 +516,31 @@ mod tests {
         assert!(has("echo-asr", "parakeet_vocab.json"));
         let total = m.total_size();
         assert!((1_250_000_000..1_350_000_000).contains(&total), "{total}");
+    }
+
+    /// P0-3: each extension's manifest names exactly the sets it loads, and together they cover every pinned set.
+    #[test]
+    fn each_extension_needs_only_its_own_sets() {
+        assert_eq!(sets_needed_by("echo"), ["parakeet-tdt-v2"]);
+        assert_eq!(
+            sets_needed_by("nano"),
+            ["nemotron-560ms", "nemotron3-diarizer", "localvqe"]
+        );
+        // ctrl's Laya is its own manifest (ctrl_model.rs), not one of these sets.
+        assert!(sets_needed_by("nobody").is_empty());
+        let tmp = tempfile::tempdir().unwrap();
+        let all = LocalModels::new(tmp.path().join("models"), None);
+        let echo = all.for_extensions(&["echo"]);
+        assert_eq!(echo.set_ids(), ["echo-asr"]);
+        let echo_bytes = echo.total_size();
+        assert!((400_000_000..520_000_000).contains(&echo_bytes), "{echo_bytes}");
+        let nano = all.for_extensions(&["nano"]);
+        assert_eq!(nano.set_ids(), ["asr", "diarizer", "echo"]);
+        assert_eq!(echo_bytes + nano.total_size(), all.total_size());
+        assert_eq!(all.for_extensions(&["echo", "nano"]).set_ids(), all.set_ids());
+        let none = all.for_extensions::<&str>(&[]);
+        assert_eq!(none.total_size(), 0);
+        assert!(none.installed(), "nothing selected: nothing to download");
     }
 
     #[test]

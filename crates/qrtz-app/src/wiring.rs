@@ -351,6 +351,7 @@ pub struct BuiltApp {
 pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     use crate::runtime_port::{HelperAvailability, NoteRuntimePort};
     let dirs = AppDirs::prepare(&b.data_dir)?;
+    let app_version = b.info.version.clone();
     let config: SharedConfig = crate::ConfigStore::open(dirs.data.join("config.json")).into();
     let events = Events::new();
     // ADR 0079: without a speech module source (the Mac build today) the helper transcribes with its own models,
@@ -463,6 +464,19 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     let setup = Arc::new(crate::setup::Setup {
         speech: crate::setup::SpeechManager::with_local(b.speech.clone(), local_models, events.clone()),
     });
+    // Audit P0-3: the local models download only what the switched-on extensions load (echo: Parakeet; nano:
+    // Nemotron, the diarizer and LocalVQE), not every pinned set; `speech:download` may name the extensions itself.
+    {
+        let cfg = config.clone();
+        setup.speech.select_extensions(Arc::new(move || {
+            let c = cfg.get();
+            ["echo", "nano"]
+                .into_iter()
+                .filter(|m| crate::modules::is_on(&c, m))
+                .map(str::to_owned)
+                .collect()
+        }));
+    }
     // ADR 0079 / N121: warm the just-downloaded models so the first recording doesn't spend its diarizer backlog
     // on the OS model compile; N129: a warm the helper misses is sent on its next hello.
     let warm_on = {
@@ -507,7 +521,9 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     // asks: `packages:refresh`, or a plan that needs the network).
     if let Some(p) = crate::module_hosting::Packages::pinned(Some(dirs.data.clone())) {
         service.set_packages(Arc::new(
-            crate::packages_ipc::PackagesIpc::new(p).with_events(service.events.clone()),
+            crate::packages_ipc::PackagesIpc::new(p)
+                .with_events(service.events.clone())
+                .with_app_version(app_version),
         ));
     }
     if let Some(h) = &helpers {

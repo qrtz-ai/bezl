@@ -4822,6 +4822,9 @@
           "properties": {
             "reveal": {
               "type": "boolean"
+            },
+            "diagnostics": {
+              "type": "boolean"
             }
           }
         }
@@ -4841,6 +4844,11 @@
             "maximum": 9007199254740991
           },
           "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "crashReports": {
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991
@@ -6980,6 +6988,55 @@
         "additionalProperties": false
       }
     },
+    "packages:check-update": {
+      "version": 1,
+      "capability": "app.update",
+      "request": {
+        "void": true
+      },
+      "response": {
+        "type": "object",
+        "properties": {
+          "current": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "not-set-up",
+              "none-listed",
+              "up-to-date",
+              "available"
+            ]
+          },
+          "latest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sizeBytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "current",
+          "state",
+          "latest",
+          "sizeBytes"
+        ],
+        "additionalProperties": false
+      }
+    },
     "packages:plan": {
       "version": 1,
       "capability": "packages.manage",
@@ -7528,6 +7585,18 @@
           "properties": {
             "force": {
               "type": "boolean"
+            },
+            "extensions": {
+              "maxItems": 8,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "echo",
+                  "nano",
+                  "ctrl"
+                ]
+              }
             }
           }
         }
@@ -13536,7 +13605,8 @@
         "data.backup",
         "speech.read",
         "speech.manage",
-        "logs.export"
+        "logs.export",
+        "app.update"
       ]
     }
   ],

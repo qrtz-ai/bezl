@@ -165,7 +165,7 @@ pub fn cut_chars(s: &str, max: usize) -> &str {
 }
 
 #[cfg(unix)]
-fn owner_only_file(path: &Path) -> io::Result<File> {
+pub(crate) fn owner_only_file(path: &Path) -> io::Result<File> {
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
     let f = OpenOptions::new()
         .create(true)
@@ -177,7 +177,7 @@ fn owner_only_file(path: &Path) -> io::Result<File> {
     Ok(f)
 }
 #[cfg(not(unix))]
-fn owner_only_file(path: &Path) -> io::Result<File> {
+pub(crate) fn owner_only_file(path: &Path) -> io::Result<File> {
     OpenOptions::new().create(true).append(true).open(path)
 }
 

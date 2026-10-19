@@ -301,16 +301,25 @@ export const ipcContract = {
     request: LogWrite,
     response: z.object({ accepted: z.boolean() }),
   }),
-  /** Save every local log file as one text file where the user picks, or (`reveal`) show the log folder. */
+  /**
+   * Save every local log file as one text file where the user picks, or (`reveal`) show the log folder.
+   * `diagnostics`: the same file plus macOS's crash reports for qrtz and its helpers (local only; the user sends it).
+   */
   'logs:export': defineChannel({
     version: 1,
     capability: 'logs.export',
-    request: z.object({ reveal: z.boolean().optional() }).default({}),
+    request: z
+      .object({
+        reveal: z.boolean().optional(),
+        diagnostics: z.boolean().optional(),
+      })
+      .default({}),
     response: z.object({
       savedTo: z.string().optional(),
       revealed: z.boolean().optional(),
       files: z.number().int().nonnegative(),
       bytes: z.number().int().nonnegative(),
+      crashReports: z.number().int().nonnegative().optional(),
     }),
   }),
   /** Floating mini HUD: grow to show the notes field, or collapse back to the strip. */
@@ -428,6 +437,23 @@ export const ipcContract = {
     request: z.void(),
     response: PackagesState,
   }),
+  /**
+   * "check for updates" (the user pressed it): refresh the signed index and compare its newest `qrtz` with this
+   * build. Installs nothing. `not-set-up` = the package hosts don't exist yet; nothing was requested.
+   */
+  'packages:check-update': defineChannel({
+    version: 1,
+    capability: 'app.update',
+    request: z.void(),
+    response: z
+      .object({
+        current: z.string(),
+        state: z.enum(['not-set-up', 'none-listed', 'up-to-date', 'available']),
+        latest: z.string().nullable(),
+        sizeBytes: z.number().int().nonnegative().nullable(),
+      })
+      .strict(),
+  }),
   /** What a change would add, remove and download; changes nothing. */
   'packages:plan': defineChannel({
     version: 1,
@@ -473,11 +499,22 @@ export const ipcContract = {
     request: z.void(),
     response: SpeechSetupStatus,
   }),
-  /** Download + install the newest release in the background (resumes a paused or cut one). `force` = re-download. */
+  /**
+   * Download + install the newest release in the background (resumes a paused or cut one). `force` = re-download.
+   * `extensions`: only the models these need (echo, nano); omitted = the modules switched on.
+   */
   'speech:download': defineChannel({
     version: 1,
     capability: 'speech.manage',
-    request: z.object({ force: z.boolean().optional() }).default({}),
+    request: z
+      .object({
+        force: z.boolean().optional(),
+        extensions: z
+          .array(z.enum(['echo', 'nano', 'ctrl']))
+          .max(8)
+          .optional(),
+      })
+      .default({}),
     response: SpeechSetupStatus,
   }),
   'speech:pause': defineChannel({

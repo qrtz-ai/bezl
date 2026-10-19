@@ -58,6 +58,9 @@ impl Dl {
 struct Marker {
     force: bool,
     paused: bool,
+    /// The extensions the download was asked for (`speech:download` `extensions`), so a resume fetches the same sets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    extensions: Option<Vec<String>>,
 }
 
 fn error_kind(e: &SpeechError) -> &'static str {
@@ -101,7 +104,14 @@ pub struct SpeechManager {
     last_emit: Mutex<Option<Instant>>,
     /// Runs after the local models finished installing (wiring: `models.warm` to the helper, ADR 0079 / N121).
     on_installed: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
+    /// Audit P0-3: the extensions whose models the local download fetches when a request names none (wiring: the
+    /// modules switched on). Without one, every pinned set.
+    selector: Mutex<Option<Selector>>,
+    /// The extensions the current (or last) download request named.
+    wanted: Mutex<Option<Vec<String>>>,
 }
+
+type Selector = Arc<dyn Fn() -> Vec<String> + Send + Sync>;
 
 impl SpeechManager {
     pub fn new(setup: Option<SpeechSetup>, events: Events) -> Arc<Self> {
@@ -125,6 +135,28 @@ impl SpeechManager {
             running: AtomicBool::new(false),
             last_emit: Mutex::default(),
             on_installed: Mutex::default(),
+            selector: Mutex::default(),
+            wanted: Mutex::default(),
+        })
+    }
+
+    /// Which extensions' models the local download fetches when a request names none (audit P0-3).
+    pub fn select_extensions(&self, f: Selector) {
+        *self.selector.lock().unwrap() = Some(f);
+    }
+
+    /// The pinned sets the next download covers: the request's extensions, else the selector's, else all.
+    fn local_view(&self) -> Option<Arc<LocalModels>> {
+        let full = self.local.clone()?;
+        let exts = self
+            .wanted
+            .lock()
+            .unwrap()
+            .clone()
+            .or_else(|| self.selector.lock().unwrap().clone().map(|f| f()));
+        Some(match exts {
+            Some(e) => Arc::new(full.for_extensions(&e)),
+            None => full,
         })
     }
 
@@ -165,7 +197,7 @@ impl SpeechManager {
 
     pub fn status(&self) -> Value {
         let dl = self.dl.lock().unwrap().clone();
-        if let (None, Some(l)) = (&self.setup, &self.local) {
+        if let (None, Some(l)) = (&self.setup, &self.local_view()) {
             let installed = l.installed();
             return json!({
                 "configured": true,
@@ -221,6 +253,7 @@ impl SpeechManager {
     /// Launch: resume a download a quit interrupted (not one the user paused: that one shows paused).
     pub fn resume_pending(self: &Arc<Self>) {
         let Some(m) = self.marker() else { return };
+        *self.wanted.lock().unwrap() = m.extensions.clone();
         if m.paused {
             self.ctl.pause();
             *self.dl.lock().unwrap() = Dl {
@@ -234,8 +267,22 @@ impl SpeechManager {
 
     /// Start (or resume) the background download; answers at once with the new status.
     pub fn download(self: &Arc<Self>, force: bool) -> Result<Value, AppError> {
+        let wanted = self.wanted.lock().unwrap().clone();
+        self.download_for(force, wanted)
+    }
+
+    /// [`Self::download`] of only the models `extensions` need (audit P0-3); `None` = the selector's (the modules
+    /// switched on), or every set without one. The speech module source ignores it (one bundle).
+    pub fn download_for(
+        self: &Arc<Self>,
+        force: bool,
+        extensions: Option<Vec<String>>,
+    ) -> Result<Value, AppError> {
         if self.setup.is_none() && self.local.is_none() {
             return Err(Self::unconfigured());
+        }
+        if !self.running.load(Ordering::SeqCst) {
+            *self.wanted.lock().unwrap() = extensions;
         }
         self.ctl.resume();
         if !self.running.load(Ordering::SeqCst) {
@@ -251,7 +298,11 @@ impl SpeechManager {
         if self.running.swap(true, Ordering::SeqCst) {
             return;
         }
-        self.set_marker(Some(Marker { force, paused: false }));
+        self.set_marker(Some(Marker {
+            force,
+            paused: false,
+            extensions: None,
+        }));
         let keep = self.dl.lock().unwrap().clone();
         self.set_dl(Dl {
             state: "checking",
@@ -307,7 +358,11 @@ impl SpeechManager {
                     me.set_dl(Dl::idle());
                 }
                 Err(SpeechError::Paused) => {
-                    me.set_marker(Some(Marker { force, paused: true }));
+                    me.set_marker(Some(Marker {
+                        force,
+                        paused: true,
+                        extensions: None,
+                    }));
                     let d = me.dl.lock().unwrap().clone();
                     me.set_dl(Dl {
                         state: "paused",
@@ -335,14 +390,20 @@ impl SpeechManager {
 
     /// The helper's pinned models: one resumable transfer, verified file by file, each set marked when complete.
     fn spawn_local(self: &Arc<Self>, force: bool) {
-        let Some(local) = self.local.clone() else { return };
+        let Some(local) = self.local_view() else { return };
         if self.running.swap(true, Ordering::SeqCst) {
             return;
         }
         if let Err(e) = qrtz_speech::fsx::mkdir_private(local.root()) {
             tracing::warn!(err = %e, "speech models dir");
         }
-        self.set_marker(Some(Marker { force, paused: false }));
+        let extensions = self.wanted.lock().unwrap().clone();
+        tracing::info!(sets = ?local.set_ids(), bytes = local.total_size(), "speech models download");
+        self.set_marker(Some(Marker {
+            force,
+            paused: false,
+            extensions: extensions.clone(),
+        }));
         let keep = self.dl.lock().unwrap().clone();
         self.set_dl(Dl {
             state: "downloading",
@@ -378,6 +439,7 @@ impl SpeechManager {
                     me.set_marker(Some(Marker {
                         force: false,
                         paused: true,
+                        extensions,
                     }));
                     let d = me.dl.lock().unwrap().clone();
                     me.set_dl(Dl {
@@ -406,10 +468,11 @@ impl SpeechManager {
 
     pub fn pause(&self) -> Value {
         self.ctl.pause();
-        if self.marker().is_some() {
+        if let Some(m) = self.marker() {
             self.set_marker(Some(Marker {
-                force: self.marker().is_some_and(|m| m.force),
+                force: m.force,
                 paused: true,
+                extensions: m.extensions,
             }));
             let d = self.dl.lock().unwrap().clone();
             if d.state != "installing" {
@@ -503,7 +566,15 @@ impl SetupPort for Setup {
         match channel {
             "speech:status" => Ok(self.speech.status()),
             "speech:check" => self.speech.check().await,
-            "speech:download" => self.speech.download(p["force"].as_bool().unwrap_or(false)),
+            "speech:download" => {
+                let extensions = p["extensions"].as_array().map(|a| {
+                    a.iter()
+                        .filter_map(|e| e.as_str().map(str::to_owned))
+                        .collect::<Vec<_>>()
+                });
+                self.speech
+                    .download_for(p["force"].as_bool().unwrap_or(false), extensions)
+            }
             "speech:pause" => Ok(self.speech.pause()),
             "speech:resume" => self.speech.resume(),
             "speech:delete" => self.speech.delete(),

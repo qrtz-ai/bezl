@@ -41,6 +41,12 @@ impl Hosts {
     pub fn pinned() -> Self {
         serde_json::from_str(HOSTS).expect("module_hosts.json")
     }
+    /// The package hosts are set up once the offline root exists and is pinned here (`hosting-setup.md`). Before
+    /// that nothing is published to them, so the fetcher never asks them for a blob (audit P0-3: no failed requests
+    /// to `modules.qrtz.ai` and B2 ahead of every Hugging Face file).
+    pub fn configured(&self) -> bool {
+        self.root1_sha256.is_some()
+    }
     pub fn all(&self) -> Vec<String> {
         std::iter::once(self.primary.clone())
             .chain(self.mirrors.iter().cloned())
@@ -54,6 +60,8 @@ pub struct HttpTransport {
     /// `(allowed prefix, downloader)`: a mirror URL `<prefix>/<path>` is fetched as `<path>` from the downloader's
     /// base (the prefix itself in the app; a loopback server in tests).
     extra: Vec<(String, Downloader)>,
+    /// Whether the package hosts serve anything yet ([`Hosts::configured`]); unconfigured hosts get no request.
+    configured: bool,
     ctl: DownloadControl,
 }
 
@@ -68,14 +76,28 @@ impl HttpTransport {
                 .iter()
                 .map(|(p, b)| (p.trim_end_matches('/').to_owned(), Downloader::new(b)))
                 .collect(),
+            configured: true,
             ctl: DownloadControl::default(),
         }
+    }
+    /// Marks the package hosts as not set up: no index request and no blob request reaches them.
+    pub fn unconfigured(mut self) -> Self {
+        self.configured = false;
+        self
+    }
+    pub fn hosts_configured(&self) -> bool {
+        self.configured && !self.hosts.is_empty()
     }
     /// The pinned hosts and model mirrors.
     pub fn pinned() -> Self {
         let h = Hosts::pinned();
         let extra: Vec<(String, String)> = h.model_mirrors.iter().map(|m| (m.clone(), m.clone())).collect();
-        Self::new(&h.all(), &extra)
+        let t = Self::new(&h.all(), &extra);
+        if h.configured() {
+            t
+        } else {
+            t.unconfigured()
+        }
     }
     /// Pause stops at the next range boundary, keeping the `.part` and its finished ranges; the next `apply`
     /// resumes them.
@@ -94,7 +116,14 @@ impl Transport for HttpTransport {
         self.hosts.len()
     }
 
+    fn host_configured(&self, _host: usize) -> bool {
+        self.configured
+    }
+
     async fn get(&self, host: usize, path: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
+        if !self.configured {
+            return Err(format!("{path}: the package hosts aren't set up yet"));
+        }
         let b = self.hosts[host]
             .fetch_meta(path)
             .await
@@ -110,6 +139,7 @@ impl Transport for HttpTransport {
             return Err("paused".into());
         }
         let (dl, path) = match src {
+            Source::Host(_) if !self.configured => return Err("the package hosts aren't set up yet".into()),
             Source::Host(i) => (self.hosts.get(*i).ok_or("no such host")?, layout::blob(sha256)),
             Source::Url(u) => self
                 .extra
@@ -208,6 +238,11 @@ impl Packages {
         Self { installer, transport }
     }
 
+    /// Whether the installer has a pinned root to verify an index against (none = nothing can be refreshed).
+    pub fn installer_has_root(&self) -> bool {
+        self.installer.pinned_root().is_some()
+    }
+
     pub async fn refresh(&self, consent: &RefreshConsent, now_ms: u64) -> Result<Refreshed, InstallError> {
         self.installer.refresh(&self.transport, consent, now_ms).await
     }
@@ -253,5 +288,42 @@ mod tests {
         }
         assert!(h.all().iter().all(|u| !u.contains('?') && !u.ends_with('/')));
         assert_eq!(h.model_mirrors, ["https://huggingface.co"]);
+    }
+
+    /// P0-3: with no pinned root (today), the pinned transport reaches only the model mirror: a pinned model file
+    /// never waits on modules.qrtz.ai or B2 first.
+    #[test]
+    fn the_pinned_hosts_are_skipped_until_the_root_is_pinned() {
+        let h = Hosts::pinned();
+        let t = HttpTransport::pinned();
+        assert_eq!(t.hosts_configured(), h.configured());
+        for i in 0..t.hosts() {
+            assert_eq!(t.host_configured(i), h.configured());
+        }
+        if !h.configured() {
+            let b = qrtz_modules::index::BlobRef {
+                sha256: "0".repeat(64),
+                size: 1,
+                mirrors: vec!["https://huggingface.co/r/resolve/abc/f".into()],
+            };
+            let src = qrtz_modules::fetch::sources(&t, &b);
+            assert_eq!(src, vec![Source::Url(b.mirrors[0].clone())]);
+        }
+    }
+
+    #[test]
+    fn an_unconfigured_transport_sends_nothing_to_its_hosts() {
+        // A closed loopback port: a request would fail as a connection error, not this message.
+        let t = HttpTransport::new(&["http://127.0.0.1:9".into()], &[]).unconfigured();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let e = rt.block_on(t.get(0, "v1/root/1.root.json", 1024)).unwrap_err();
+        assert!(e.contains("aren't set up"), "{e}");
+        let e = rt
+            .block_on(t.get_range(&Source::Host(0), &"0".repeat(64), 0, 1))
+            .unwrap_err();
+        assert!(e.contains("aren't set up"), "{e}");
     }
 }
