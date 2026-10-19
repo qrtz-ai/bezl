@@ -889,8 +889,19 @@ impl TalkService {
                 }
                 tracing::warn!(%code, "dictation error");
                 if code == "dictation.mic" {
+                    // N194 (ADR 0222): this error names no dictation. The helper sends it when a mic open fails:
+                    // a refused or failed start, or the arm of a new press (`pushKey(.down)` → `attachMic`) after
+                    // the input device went away, which can come while the last dictation is finalizing or
+                    // inserting with its mic already closed. Only a listening dictation (the one it names, if it
+                    // names one) is the one whose mic failed; a finishing one keeps its words, and the new press's
+                    // own start reports the mic when it runs.
                     let mut g = self.lock();
-                    if g.view.active() {
+                    let ours = m["id"].as_str().is_none_or(|id| g.view.id.as_deref() == Some(id));
+                    if g.view.phase != TalkPhase::Listening || !ours {
+                        if g.view.active() {
+                            tracing::warn!(phase = ?g.view.phase, ours, "dictation.mic for another press; the dictation keeps going");
+                        }
+                    } else {
                         let msg = m["message"]
                             .as_str()
                             .unwrap_or("microphone access denied")
