@@ -387,12 +387,62 @@ const SO_QUESTION_VERBS = [
 
 /** ADR 0196: does the dictation end in an unpunctuated sentence that can only be a question? Same as cleanup.rs
  * unmarked_question, including ADR 0203's discourse opener. */
+/** ADR 0232: a wh-word with its auxiliary contracted, as the first word of a question: [contraction, auxiliary it
+ * is read as, subjects that agree]. Same table as cleanup.rs WH_CONTRACTIONS. */
+export const WH_CONTRACTIONS: ReadonlyArray<
+  readonly [string, string, readonly string[]]
+> = [
+  [
+    's',
+    'is',
+    ['he', 'she', 'it', 'the', 'this', 'that', 'my', 'your', 'our', 'their'],
+  ],
+  ['re', 'are', ['you', 'we', 'they', 'the', 'my', 'your', 'our', 'their']],
+  ['ll', 'will', WH_SUBJECTS],
+  ['d', 'would', WH_SUBJECTS],
+  ['ve', 'have', ['i', 'you', 'we', 'they']],
+];
+
+/** ADR 0232: a verb that can take the whole wh-clause as its subject ("What's the right answer depends on the
+ * context"); the contraction is refused when any follows it. Same list as cleanup.rs. */
+const EMBEDDED_PREDICATES = [
+  'depends',
+  'matters',
+  'varies',
+  'remains',
+  'seems',
+  'determines',
+  'decides',
+  'counts',
+  'changes',
+  'has',
+  'makes',
+  'means',
+  'tells',
+  'shows',
+  'stays',
+];
+
+/** ADR 0232: a lowercased word as a wh-contraction ("what's", "how\u2019d"), or null. Same as cleanup.rs. */
+function whContraction(
+  word: string,
+): readonly [string, string, readonly string[]] | null {
+  const at = word.search(/['\u2019]/);
+  if (at < 0) return null;
+  const wh = word.slice(0, at);
+  const tail = word.slice(at + 1);
+  if (!WH_WORDS.includes(wh)) return null;
+  const c = WH_CONTRACTIONS.find(([t]) => t === tail);
+  return c ? [wh, c[1], c[2]] : null;
+}
+
 function unmarkedQuestion(t: string): boolean {
   const line = t.slice(t.lastIndexOf('\n') + 1);
   let s = line;
   for (const m of line.matchAll(/[.!?]\s/g))
     s = line.slice((m.index ?? 0) + m[0].length);
-  if (/[;:"()'\u2019]/.test(s)) return false;
+  const apostrophes = (s.match(/['\u2019]/g) ?? []).length;
+  if (/[;:"()]/.test(s) || apostrophes > 1) return false;
   const words = s.split(/\s+/).filter(Boolean);
   if (
     words.length < 3 ||
@@ -411,8 +461,24 @@ function unmarkedQuestion(t: string): boolean {
     return false;
   const bareSo = all[0] === 'so';
   const youOnly = firstWord === 'and' || firstWord === 'but';
-  const w = opener ? all.slice(1) : all;
+  let w = opener ? all.slice(1) : all;
   if (w.length < 3) return false;
+  // ADR 0232: the one apostrophe must be a wh-contraction's, and the sentence reads as its two words.
+  let subjects: readonly string[] = WH_SUBJECTS;
+  if (apostrophes === 1) {
+    const c = whContraction(w[0]);
+    if (c === null) return false;
+    const [wh, aux, agree] = c;
+    if (
+      (wh === 'what' &&
+        aux === 'would' &&
+        w.slice(1).join(' ') === 'you know') ||
+      w.slice(1).some((x) => EMBEDDED_PREDICATES.includes(x))
+    )
+      return false;
+    subjects = agree;
+    w = [wh, aux, ...w.slice(1)];
+  }
   let auxAt = 0;
   let opening: boolean;
   if (WH_WORDS.includes(w[0])) {
@@ -420,7 +486,7 @@ function unmarkedQuestion(t: string): boolean {
     opening =
       auxAt + 1 < w.length &&
       WH_AUX.includes(w[auxAt]) &&
-      WH_SUBJECTS.includes(w[auxAt + 1]) &&
+      subjects.includes(w[auxAt + 1]) &&
       !(w[auxAt] === 'did' && w[auxAt + 1] === 'it') &&
       w.join(' ') !== 'what do you know';
   } else
@@ -584,7 +650,8 @@ function vocativeQuestion(
   for (const m of t.slice(line).matchAll(/[.!?]\s/g))
     start = line + (m.index ?? 0) + m[0].length;
   const s = t.slice(start);
-  if (s.includes(',')) return null;
+  // ADR 0232: no apostrophe, so a wh-contraction after a name stays as ADR 0206 left it.
+  if (/[,'\u2019]/.test(s)) return null;
   const words = s.split(/\s+/).filter(Boolean);
   const low = (x: string) => x.replace(/[A-Z]+/g, (c) => c.toLowerCase());
   if (

@@ -58,6 +58,7 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
     // ADR 0227 (cycle 76): a sentence ending in ", <negative contraction> <pronoun>" (a tag) may end with "?".
     // ADR 0229 (cycle 78): so may one opening with "Let's" / "Please" and ending in ", shall we" / ", <modal> you".
     // ADR 0230 (cycle 79): a month's ordinal day may be written as a figure ("on October 21st").
+    // ADR 0232 (cycle 80): a question opening with a wh-contraction ("What's the plan") may end with "?".
     let old = if new != old && new == without_subject_repeats(&old) {
         new.clone()
     } else {
@@ -99,8 +100,27 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
         });
         // ADR 0230: a spoken day after a month written as a figure ("October twenty first" -> "October 21st").
         let date = days_as_words(&new).replace('-', " ") == old.replace('-', " ");
+        // ADR 0232 (cycle 80): a last sentence opening (after an opener, if any) with a wh-word contracted with its
+        // auxiliary ("What's", "How'd", "Where're") may end with "?" (and gain the opener's comma) instead of ".".
+        let wh_contraction = old.strip_suffix('.').is_some_and(|body| {
+            (new == format!("{body}?") || new == format!("{}?", with_opener_comma(body)))
+                && body.rsplit(['\n', '.', '!', '?']).next().is_some_and(|s| {
+                    let mut w = s.split_whitespace().map(str::to_ascii_lowercase);
+                    let first = w.next().unwrap_or_default();
+                    let first = if QUESTION_OPENERS.contains(&first.trim_end_matches(',')) {
+                        w.next().unwrap_or_default()
+                    } else {
+                        first
+                    };
+                    ["what", "where", "when", "why", "how", "who"].iter().any(|wh| {
+                        first
+                            .strip_prefix(wh)
+                            .is_some_and(|t| t.starts_with(['\'', '\u{2019}']))
+                    })
+                })
+        });
         assert!(
-            list || opener || tag || imperative || date,
+            list || opener || tag || imperative || date || wh_contraction,
             "rule_cleanup({raw:?}): {new:?} vs cycle 59 {old:?}"
         );
     }

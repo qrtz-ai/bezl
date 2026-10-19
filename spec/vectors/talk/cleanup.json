@@ -3256,6 +3256,361 @@
       "raw": "We met on October fifth, or the sixth at the latest.",
       "dict": false,
       "expect": "We met on October fifth, or the sixth at the latest."
+    },
+    {
+      "raw": "What's the plan for tonight",
+      "dict": false,
+      "expect": "What's the plan for tonight?"
+    },
+    {
+      "raw": "Where's the meeting this afternoon",
+      "dict": false,
+      "expect": "Where's the meeting this afternoon?"
+    },
+    {
+      "raw": "How's the new job going",
+      "dict": false,
+      "expect": "How's the new job going?"
+    },
+    {
+      "raw": "When's the next train to the city",
+      "dict": false,
+      "expect": "When's the next train to the city?"
+    },
+    {
+      "raw": "Who's the lead on this project",
+      "dict": false,
+      "expect": "Who's the lead on this project?"
+    },
+    {
+      "raw": "Why's the build so slow today",
+      "dict": false,
+      "expect": "Why's the build so slow today?"
+    },
+    {
+      "raw": "How'd it go with the client",
+      "dict": false,
+      "expect": "How'd it go with the client?"
+    },
+    {
+      "raw": "Where'd you put the charger",
+      "dict": false,
+      "expect": "Where'd you put the charger?"
+    },
+    {
+      "raw": "What're your plans for the weekend",
+      "dict": false,
+      "expect": "What're your plans for the weekend?"
+    },
+    {
+      "raw": "What've you been up to lately",
+      "dict": false,
+      "expect": "What've you been up to lately?"
+    },
+    {
+      "raw": "When'll it be ready for review",
+      "dict": false,
+      "expect": "When'll it be ready for review?"
+    },
+    {
+      "raw": "So what's the plan for tomorrow",
+      "dict": false,
+      "expect": "So what's the plan for tomorrow?"
+    },
+    {
+      "raw": "Hey what's the status on the release",
+      "dict": false,
+      "expect": "Hey, what's the status on the release?"
+    },
+    {
+      "raw": "I just got back. What's the plan now",
+      "dict": false,
+      "expect": "I just got back. What's the plan now?"
+    },
+    {
+      "raw": "What's done is done and we move on",
+      "dict": false,
+      "expect": "What's done is done and we move on."
+    },
+    {
+      "raw": "What's left needs to go in the fridge",
+      "dict": false,
+      "expect": "What's left needs to go in the fridge."
+    },
+    {
+      "raw": "What's more we saved a lot of money",
+      "dict": false,
+      "expect": "What's more we saved a lot of money."
+    },
+    {
+      "raw": "What's his name called me this morning",
+      "dict": false,
+      "expect": "What's his name called me this morning."
+    },
+    {
+      "raw": "What's her name from accounting stopped by",
+      "dict": false,
+      "expect": "What's her name from accounting stopped by."
+    },
+    {
+      "raw": "What's important is that we ship on time",
+      "dict": false,
+      "expect": "What's important is that we ship on time."
+    },
+    {
+      "raw": "What's the right answer depends on the context",
+      "dict": false,
+      "expect": "What's the right answer depends on the context."
+    },
+    {
+      "raw": "When's the launch matters less than the quality",
+      "dict": false,
+      "expect": "When's the launch matters less than the quality."
+    },
+    {
+      "raw": "What's the best plan really varies by team",
+      "dict": false,
+      "expect": "What's the best plan really varies by team."
+    },
+    {
+      "raw": "Who's on call has the pager this week",
+      "dict": false,
+      "expect": "Who's on call has the pager this week."
+    },
+    {
+      "raw": "Here's what's happening with the launch",
+      "dict": false,
+      "expect": "Here's what's happening with the launch."
+    },
+    {
+      "raw": "That's what's up with the build",
+      "dict": false,
+      "expect": "That's what's up with the build."
+    },
+    {
+      "raw": "What's mine stays mine",
+      "dict": false,
+      "expect": "What's mine stays mine."
+    },
+    {
+      "raw": "What's your loss is my gain",
+      "dict": false,
+      "expect": "What's your loss is my gain."
+    },
+    {
+      "raw": "Where's Waldo is my favorite book",
+      "dict": false,
+      "expect": "Where's Waldo is my favorite book."
+    },
+    {
+      "raw": "Who's coming is up to you",
+      "dict": false,
+      "expect": "Who's coming is up to you."
+    },
+    {
+      "raw": "What's on the agenda is the budget",
+      "dict": false,
+      "expect": "What's on the agenda is the budget."
+    },
+    {
+      "raw": "She's what's holding the team together",
+      "dict": false,
+      "expect": "She's what's holding the team together."
+    },
+    {
+      "raw": "What's-his-name called me this morning",
+      "dict": false,
+      "expect": "What's-his-name called me this morning."
+    },
+    {
+      "raw": "Whatever's left goes to the food bank",
+      "dict": false,
+      "expect": "Whatever's left goes to the food bank."
+    },
+    {
+      "raw": "Let's see what's left in the budget",
+      "dict": false,
+      "expect": "Let's see what's left in the budget."
+    },
+    {
+      "raw": "He's the lead on this project",
+      "dict": false,
+      "expect": "He's the lead on this project."
+    },
+    {
+      "raw": "It's the plan for tonight",
+      "dict": false,
+      "expect": "It's the plan for tonight."
+    },
+    {
+      "raw": "What's the plan for tonight.",
+      "dict": false,
+      "expect": "What's the plan for tonight."
+    },
+    {
+      "raw": "Where's the meeting this afternoon!",
+      "dict": false,
+      "expect": "Where's the meeting this afternoon!"
+    },
+    {
+      "raw": "What's the plan depends on the weather",
+      "dict": false,
+      "expect": "What's the plan depends on the weather."
+    },
+    {
+      "raw": "How's it going is what I always ask",
+      "dict": false,
+      "expect": "How's it going is what I always ask."
+    },
+    {
+      "raw": "What's it like to be you is the question",
+      "dict": false,
+      "expect": "What's it like to be you is the question."
+    },
+    {
+      "raw": "Where's the line between work and life is a good question",
+      "dict": false,
+      "expect": "Where's the line between work and life is a good question."
+    },
+    {
+      "raw": "What’s the best way to get there",
+      "dict": false,
+      "expect": "What’s the best way to get there?"
+    },
+    {
+      "raw": "Okay, how's the weather out there",
+      "dict": false,
+      "expect": "Okay, how's the weather out there?"
+    },
+    {
+      "raw": "And how'd the meeting go",
+      "dict": false,
+      "expect": "And how'd the meeting go?"
+    },
+    {
+      "raw": "Where's the guy who called you",
+      "dict": false,
+      "expect": "Where's the guy who called you?"
+    },
+    {
+      "raw": "How'd he do it so fast",
+      "dict": false,
+      "expect": "How'd he do it so fast?"
+    },
+    {
+      "raw": "Who's coming to the party on Saturday",
+      "dict": false,
+      "expect": "Who's coming to the party on Saturday."
+    },
+    {
+      "raw": "What time's the meeting tomorrow",
+      "dict": false,
+      "expect": "What time's the meeting tomorrow."
+    },
+    {
+      "raw": "What’s up with that",
+      "dict": false,
+      "expect": "What’s up with that."
+    },
+    {
+      "raw": "What'd you know",
+      "dict": false,
+      "expect": "What'd you know"
+    },
+    {
+      "raw": "I asked. What'd you know",
+      "dict": false,
+      "expect": "I asked. What'd you know."
+    },
+    {
+      "raw": "What's the deal with Sam's car",
+      "dict": false,
+      "expect": "What's the deal with Sam's car."
+    },
+    {
+      "raw": "What's the plan, Sam",
+      "dict": false,
+      "expect": "What's the plan, Sam."
+    },
+    {
+      "raw": "What's the plan we talked about yesterday",
+      "dict": false,
+      "expect": "What's the plan we talked about yesterday."
+    },
+    {
+      "raw": "What're you doing tonight I'm bored",
+      "dict": false,
+      "expect": "What're you doing tonight I'm bored."
+    },
+    {
+      "raw": "What's she said is true",
+      "dict": false,
+      "expect": "What's she said is true."
+    },
+    {
+      "raw": "Why's he ever late to the standup",
+      "dict": false,
+      "expect": "Why's he ever late to the standup."
+    },
+    {
+      "raw": "Hey Priya what's the plan for today",
+      "dict": true,
+      "expect": "Hey Priya what's the plan for today."
+    },
+    {
+      "raw": "Hey Priya where's the meeting today",
+      "dict": true,
+      "expect": "Hey Priya where's the meeting today."
+    },
+    {
+      "raw": "what's the plan for tonight",
+      "dict": false,
+      "expect": "What's the plan for tonight?"
+    },
+    {
+      "raw": "WHAT'S THE PLAN FOR TONIGHT",
+      "dict": false,
+      "expect": "WHAT'S THE PLAN FOR TONIGHT?"
+    },
+    {
+      "raw": "What's the plan for tonight new line thanks",
+      "dict": false,
+      "expect": "What's the plan for tonight\nThanks."
+    },
+    {
+      "raw": "So, what's the plan for tonight",
+      "dict": false,
+      "expect": "So, what's the plan for tonight?"
+    },
+    {
+      "raw": "Well what's the plan for tonight",
+      "dict": false,
+      "expect": "Well what's the plan for tonight."
+    },
+    {
+      "raw": "What's the plan",
+      "dict": false,
+      "expect": "What's the plan"
+    },
+    {
+      "raw": "What's'll the plan for tonight",
+      "dict": false,
+      "expect": "What's'll the plan for tonight."
+    },
+    {
+      "raw": "Who're they meeting with today",
+      "dict": false,
+      "expect": "Who're they meeting with today?"
+    },
+    {
+      "raw": "What's they doing over there",
+      "dict": false,
+      "expect": "What's they doing over there."
+    },
+    {
+      "raw": "Where've he gone this time",
+      "dict": false,
+      "expect": "Where've he gone this time."
     }
   ],
   "dictionaryOnly": [

@@ -138,4 +138,10 @@ fn the_cleanup_chain_fits_its_budget_on_a_long_dictation() {
         .text
         .ends_with("Let's meet on October 21st at noon."));
     assert_fits_budget(&text, " ending in a spoken date");
+    // ADR 0232: ending in a question that opens with a wh-contraction, so the contraction path runs.
+    let text = format!("{}Thanks. What's the plan for tonight", long_dictation());
+    assert!(cleanup_dictation(&text, &dictionary(), true)
+        .text
+        .ends_with("What's the plan for tonight?"));
+    assert_fits_budget(&text, " ending in a wh-contraction question");
 }

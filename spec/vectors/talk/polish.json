@@ -869,6 +869,90 @@
       "category": "itn-date",
       "raw": "Tuesday, August eighteenth",
       "ideal": "Tuesday, August 18th"
+    },
+    {
+      "id": "p141",
+      "category": "question",
+      "raw": "What's the plan for tonight",
+      "ideal": "What's the plan for tonight?"
+    },
+    {
+      "id": "p142",
+      "category": "question",
+      "raw": "Where's the meeting this afternoon",
+      "ideal": "Where's the meeting this afternoon?"
+    },
+    {
+      "id": "p143",
+      "category": "question",
+      "raw": "How's the new job going",
+      "ideal": "How's the new job going?"
+    },
+    {
+      "id": "p144",
+      "category": "question",
+      "raw": "When's the next train to the city",
+      "ideal": "When's the next train to the city?"
+    },
+    {
+      "id": "p145",
+      "category": "question",
+      "raw": "Who's the lead on this project",
+      "ideal": "Who's the lead on this project?"
+    },
+    {
+      "id": "p146",
+      "category": "question",
+      "raw": "Why's the build so slow today",
+      "ideal": "Why's the build so slow today?"
+    },
+    {
+      "id": "p147",
+      "category": "question",
+      "raw": "How'd it go with the client",
+      "ideal": "How'd it go with the client?"
+    },
+    {
+      "id": "p148",
+      "category": "question",
+      "raw": "Where'd you put the charger",
+      "ideal": "Where'd you put the charger?"
+    },
+    {
+      "id": "p149",
+      "category": "question",
+      "raw": "What're your plans for the weekend",
+      "ideal": "What're your plans for the weekend?"
+    },
+    {
+      "id": "p150",
+      "category": "question",
+      "raw": "What've you been up to lately",
+      "ideal": "What've you been up to lately?"
+    },
+    {
+      "id": "p151",
+      "category": "question",
+      "raw": "When'll it be ready for review",
+      "ideal": "When'll it be ready for review?"
+    },
+    {
+      "id": "p152",
+      "category": "question",
+      "raw": "So what's the plan for tomorrow",
+      "ideal": "So what's the plan for tomorrow?"
+    },
+    {
+      "id": "p153",
+      "category": "question",
+      "raw": "Hey what's the status on the release",
+      "ideal": "Hey, what's the status on the release?"
+    },
+    {
+      "id": "p154",
+      "category": "question",
+      "raw": "I just got back. What's the plan now",
+      "ideal": "I just got back. What's the plan now?"
     }
   ],
   "keep": [
@@ -3029,6 +3113,180 @@
       "rule": "date",
       "raw": "We met on October fifth, or the sixth at the latest.",
       "expect": "We met on October fifth, or the sixth at the latest."
+    },
+    {
+      "id": "k356",
+      "rule": "question-contraction",
+      "raw": "What's done is done and we move on",
+      "expect": "What's done is done and we move on."
+    },
+    {
+      "id": "k357",
+      "rule": "question-contraction",
+      "raw": "What's left needs to go in the fridge",
+      "expect": "What's left needs to go in the fridge."
+    },
+    {
+      "id": "k358",
+      "rule": "question-contraction",
+      "raw": "What's more we saved a lot of money",
+      "expect": "What's more we saved a lot of money."
+    },
+    {
+      "id": "k359",
+      "rule": "question-contraction",
+      "raw": "What's his name called me this morning",
+      "expect": "What's his name called me this morning."
+    },
+    {
+      "id": "k360",
+      "rule": "question-contraction",
+      "raw": "What's her name from accounting stopped by",
+      "expect": "What's her name from accounting stopped by."
+    },
+    {
+      "id": "k361",
+      "rule": "question-contraction",
+      "raw": "What's important is that we ship on time",
+      "expect": "What's important is that we ship on time."
+    },
+    {
+      "id": "k362",
+      "rule": "question-contraction",
+      "raw": "What's the right answer depends on the context",
+      "expect": "What's the right answer depends on the context."
+    },
+    {
+      "id": "k363",
+      "rule": "question-contraction",
+      "raw": "When's the launch matters less than the quality",
+      "expect": "When's the launch matters less than the quality."
+    },
+    {
+      "id": "k364",
+      "rule": "question-contraction",
+      "raw": "What's the best plan really varies by team",
+      "expect": "What's the best plan really varies by team."
+    },
+    {
+      "id": "k365",
+      "rule": "question-contraction",
+      "raw": "Who's on call has the pager this week",
+      "expect": "Who's on call has the pager this week."
+    },
+    {
+      "id": "k366",
+      "rule": "question-contraction",
+      "raw": "Here's what's happening with the launch",
+      "expect": "Here's what's happening with the launch."
+    },
+    {
+      "id": "k367",
+      "rule": "question-contraction",
+      "raw": "That's what's up with the build",
+      "expect": "That's what's up with the build."
+    },
+    {
+      "id": "k368",
+      "rule": "question-contraction",
+      "raw": "What's mine stays mine",
+      "expect": "What's mine stays mine."
+    },
+    {
+      "id": "k369",
+      "rule": "question-contraction",
+      "raw": "What's your loss is my gain",
+      "expect": "What's your loss is my gain."
+    },
+    {
+      "id": "k370",
+      "rule": "question-contraction",
+      "raw": "Where's Waldo is my favorite book",
+      "expect": "Where's Waldo is my favorite book."
+    },
+    {
+      "id": "k371",
+      "rule": "question-contraction",
+      "raw": "Who's coming is up to you",
+      "expect": "Who's coming is up to you."
+    },
+    {
+      "id": "k372",
+      "rule": "question-contraction",
+      "raw": "What's on the agenda is the budget",
+      "expect": "What's on the agenda is the budget."
+    },
+    {
+      "id": "k373",
+      "rule": "question-contraction",
+      "raw": "She's what's holding the team together",
+      "expect": "She's what's holding the team together."
+    },
+    {
+      "id": "k374",
+      "rule": "question-contraction",
+      "raw": "What's-his-name called me this morning",
+      "expect": "What's-his-name called me this morning."
+    },
+    {
+      "id": "k375",
+      "rule": "question-contraction",
+      "raw": "Whatever's left goes to the food bank",
+      "expect": "Whatever's left goes to the food bank."
+    },
+    {
+      "id": "k376",
+      "rule": "question-contraction",
+      "raw": "Let's see what's left in the budget",
+      "expect": "Let's see what's left in the budget."
+    },
+    {
+      "id": "k377",
+      "rule": "question-contraction",
+      "raw": "He's the lead on this project",
+      "expect": "He's the lead on this project."
+    },
+    {
+      "id": "k378",
+      "rule": "question-contraction",
+      "raw": "It's the plan for tonight",
+      "expect": "It's the plan for tonight."
+    },
+    {
+      "id": "k379",
+      "rule": "question-contraction",
+      "raw": "What's the plan for tonight.",
+      "expect": "What's the plan for tonight."
+    },
+    {
+      "id": "k380",
+      "rule": "question-contraction",
+      "raw": "Where's the meeting this afternoon!",
+      "expect": "Where's the meeting this afternoon!"
+    },
+    {
+      "id": "k381",
+      "rule": "question-contraction",
+      "raw": "What's the plan depends on the weather",
+      "expect": "What's the plan depends on the weather."
+    },
+    {
+      "id": "k382",
+      "rule": "question-contraction",
+      "raw": "How's it going is what I always ask",
+      "expect": "How's it going is what I always ask."
+    },
+    {
+      "id": "k383",
+      "rule": "question-contraction",
+      "raw": "What's it like to be you is the question",
+      "expect": "What's it like to be you is the question."
+    },
+    {
+      "id": "k384",
+      "rule": "question-contraction",
+      "raw": "Where's the line between work and life is a good question",
+      "expect": "Where's the line between work and life is a good question."
     }
   ]
 }

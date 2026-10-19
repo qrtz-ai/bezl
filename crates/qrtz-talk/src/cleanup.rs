@@ -1746,6 +1746,60 @@ const SO_QUESTION_VERBS: &[&str] = &[
     "go",
 ];
 
+/// ADR 0232: a wh-word with its auxiliary contracted, as the first word of a question: the wh-word, the auxiliary
+/// it is read as, and the subjects that agree with it ("What's the plan", "Where're you headed", "How'd it go",
+/// "When'll it be ready", "What've you got"). "'s" takes only singular subjects and determiners (not "I" / "you" /
+/// "we" / "they"); "'re" only plural ones; "'ve" only "I" / "you" / "we" / "they". "'s" is read as "is" and "'d" as
+/// "would" for the later checks ("ever" refuses after both). Not here: "his" / "her" after "What's" (not in
+/// [`WH_SUBJECTS`]: "What's his name called me" is the placeholder name), a modifier before the contraction ("What
+/// time's"), "'d" + "you know", and any other contraction or apostrophe. Same table in cleanup.ts.
+pub const WH_CONTRACTIONS: &[(&str, &str, &[&str])] = &[
+    (
+        "s",
+        "is",
+        &[
+            "he", "she", "it", "the", "this", "that", "my", "your", "our", "their",
+        ],
+    ),
+    (
+        "re",
+        "are",
+        &["you", "we", "they", "the", "my", "your", "our", "their"],
+    ),
+    ("ll", "will", WH_SUBJECTS),
+    ("d", "would", WH_SUBJECTS),
+    ("ve", "have", &["i", "you", "we", "they"]),
+];
+
+/// ADR 0232: after a wh-contraction, a verb that can take the whole wh-clause as its subject ("What's the right
+/// answer depends on the context", "When's the launch matters less") makes the sentence a statement; the
+/// contraction is refused when any of these follows it. (LATER_CLAUSE already covers "is", "will", "should", ...)
+const EMBEDDED_PREDICATES: &[&str] = &[
+    "depends",
+    "matters",
+    "varies",
+    "remains",
+    "seems",
+    "determines",
+    "decides",
+    "counts",
+    "changes",
+    "has",
+    "makes",
+    "means",
+    "tells",
+    "shows",
+    "stays",
+];
+
+/// ADR 0232: `word` (lowercased) as a wh-contraction: "what's" / "how\u{2019}d" → (wh-word, auxiliary, subjects).
+fn wh_contraction(word: &str) -> Option<(&'static str, &'static str, &'static [&'static str])> {
+    let (wh, tail) = word.split_once(['\'', '\u{2019}'])?;
+    let wh = WH_WORDS.iter().find(|w| **w == wh)?;
+    let (_, aux, agree) = WH_CONTRACTIONS.iter().find(|(t, _, _)| *t == tail)?;
+    Some((wh, aux, agree))
+}
+
 /// ADR 0196: does the dictation end in an unpunctuated sentence that can only be a question? Its opening is a yes/no
 /// question's ([`yes_no_opening`], the auxiliary capitalised as a sentence start) or a wh-question's, it has 3 to
 /// [`QUESTION_MAX_WORDS`] words, no comma, colon, semicolon, quote, bracket or apostrophe, and nothing after the
@@ -1754,14 +1808,18 @@ const SO_QUESTION_VERBS: &[&str] = &[
 /// say" ("Can I just say"), "What do you know", "Have I got" ("Have I got news for you"), and the spoken name of a
 /// mark ("question mark", "exclamation"): ADR 0189's sentences stay exactly as that rule leaves them. ADR 0203: the
 /// sentence may start with one of [`QUESTION_OPENERS`] (its comma, if any, is the only comma allowed); the checks
-/// then run on the words after it, which must still be 3 or more.
+/// then run on the words after it, which must still be 3 or more. ADR 0232: that first word (after any opener) may
+/// be a wh-word with its auxiliary contracted ([`wh_contraction`]: "What's the plan for tonight", "How'd it go
+/// with the client"), the only apostrophe allowed; it is read as the two words, its subject checked against the
+/// contraction's own list.
 fn unmarked_question(t: &str) -> bool {
     let line = &t[t.rfind('\n').map_or(0, |i| i + 1)..];
     let s = match INNER_END.find_iter(line).flatten().last() {
         Some(m) => &line[m.end()..],
         None => line,
     };
-    if s.contains([';', ':', '"', '(', ')', '\'', '\u{2019}']) {
+    let apostrophes = s.matches(['\'', '\u{2019}']).count();
+    if s.contains([';', ':', '"', '(', ')']) || apostrophes > 1 {
         return false;
     }
     let words: Vec<&str> = s.split_whitespace().collect();
@@ -1783,11 +1841,29 @@ fn unmarked_question(t: &str) -> bool {
     if w.len() < 3 {
         return false;
     }
+    // ADR 0232: the one apostrophe must be a wh-contraction's, and the sentence reads as its two words.
+    let mut subjects: &[&str] = WH_SUBJECTS;
+    let spelled: Vec<&str>;
+    let w = if apostrophes == 1 {
+        let Some((wh, aux, agree)) = wh_contraction(w[0]) else {
+            return false;
+        };
+        if (wh == "what" && aux == "would" && w[1..] == ["you", "know"])
+            || w[1..].iter().any(|x| EMBEDDED_PREDICATES.contains(x))
+        {
+            return false;
+        }
+        subjects = agree;
+        spelled = [wh, aux].into_iter().chain(w[1..].iter().copied()).collect();
+        &spelled[..]
+    } else {
+        w
+    };
     let (aux_at, opening) = if WH_WORDS.contains(&w[0]) {
         let aux_at = if WH_MODIFIERS.contains(&w[1]) { 2 } else { 1 };
         let ok = aux_at + 1 < w.len()
             && WH_AUX.contains(&w[aux_at])
-            && WH_SUBJECTS.contains(&w[aux_at + 1])
+            && subjects.contains(&w[aux_at + 1])
             && !(w[aux_at] == "did" && w[aux_at + 1] == "it")
             && w[..] != ["what", "do", "you", "know"];
         (aux_at, ok)
@@ -1966,7 +2042,10 @@ fn vocative_question(t: &str, dict: &[DictionaryEntry]) -> Option<usize> {
     let s = &t[start..];
     let lead = s.len() - s.trim_start().len();
     let rest = &s[lead..];
-    if !rest[..run_len(rest, |c| !c.is_whitespace())].eq_ignore_ascii_case("hey") || s.contains(',') {
+    // ADR 0232: no apostrophe, so a wh-contraction after a name stays as ADR 0206 left it.
+    if !rest[..run_len(rest, |c| !c.is_whitespace())].eq_ignore_ascii_case("hey")
+        || s.contains([',', '\'', '\u{2019}'])
+    {
         return None;
     }
     let words: Vec<&str> = s.split_whitespace().collect();
