@@ -505,3 +505,174 @@ async fn a_pause_after_a_waiting_resume_stands() {
     })
     .await;
 }
+
+// ---- Backlog P3 (cycle 70, ADR 0210): an installed and verified Parakeet never touches or waits on the network ----
+
+/// A loopback "network" that accepts connections and never answers (a captive portal, a dead route): every
+/// connection is counted and held open. A request to it hangs until the downloader's read timeout (60 s).
+struct BlackHole {
+    base: String,
+    accepted: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+async fn black_hole() -> BlackHole {
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", l.local_addr().unwrap());
+    let accepted = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let n = accepted.clone();
+    tokio::spawn(async move {
+        let mut held = vec![];
+        while let Ok((s, _)) = l.accept().await {
+            n.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            held.push(s);
+        }
+    });
+    BlackHole { base, accepted }
+}
+
+impl BlackHole {
+    fn hits(&self) -> usize {
+        self.accepted.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+/// Echo's set (Parakeet's dir) and nano's, served from loopback; returns the manifest.
+fn echo_and_nano(srv: &Server) -> Manifest {
+    let rev = "e".repeat(40);
+    let mut sets: Vec<Value> = vec![];
+    for (dir, body) in [
+        ("parakeet-tdt-v2", bytes(64 * 1024, 8)),
+        ("nemotron-560ms", bytes(32 * 1024, 9)),
+    ] {
+        let repo = format!("org/{dir}");
+        srv.put(&format!("{repo}/resolve/{rev}/w.bin"), body.clone());
+        sets.push(
+            json!({"id": dir, "package": format!("model.{dir}"), "task": "asr", "dir": dir,
+            "repo": repo, "revision": rev,
+            "files": [{"remote": "w.bin", "path": "w.bin", "size": body.len(), "sha256": sha(&body)}]}),
+        );
+    }
+    serde_json::from_value(json!({"version": "1.0.0", "base": "https://huggingface.co", "sets": sets}))
+        .unwrap()
+}
+
+/// Parakeet downloaded and verified from the loopback host; then the same data dir with the network down: the
+/// model host and the package hosts are a black hole.
+async fn installed_parakeet_offline(tmp: &Path) -> (Manifest, BlackHole) {
+    let srv = Server::start().await;
+    let m = echo_and_nano(&srv);
+    let root = tmp.join("models");
+    let echo = LocalModels::with_manifest(&root, m.clone(), Some(srv.base.clone())).for_extensions(&["echo"]);
+    let ctl = qrtz_speech::download::DownloadControl::default();
+    echo.download(false, &ctl, &|_| {}).await.unwrap();
+    assert!(echo.installed());
+    drop(srv);
+    (m, black_hole().await)
+}
+
+/// An index refresh stuck on a dead network (the qrtz page's refresh, "check for updates", `qrtz update` on a
+/// captive portal): it holds the package manager's install lock while it waits up to the read timeout.
+async fn refresh_stuck_on(tmp: &Path, net: &BlackHole) {
+    let installer = qrtz_modules::install::Installer::new(
+        tmp,
+        Some("0".repeat(64)),
+        Box::new(qrtz_app::module_hosting::AppleCodeChecks),
+    );
+    let t = qrtz_app::module_hosting::HttpTransport::new(std::slice::from_ref(&net.base), &[]);
+    let before = net.hits();
+    tokio::spawn(async move {
+        let _ = installer
+            .refresh(&t, &qrtz_modules::install::RefreshConsent::user_asked(), 0)
+            .await;
+    });
+    let end = std::time::Instant::now() + Duration::from_secs(10);
+    while net.hits() == before {
+        assert!(
+            std::time::Instant::now() < end,
+            "the refresh never reached the network"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
+/// Backlog P3: with Parakeet installed and verified, echo's download asks nothing of the network and waits on
+/// nothing that does: not with the network down, and not while an index refresh stuck on that network holds the
+/// install lock (before cycle 70 the empty install took the lock and failed "busy", reported as "the download
+/// failed its signature check").
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_installed_parakeet_downloads_with_the_network_down_without_touching_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (m, net) = installed_parakeet_offline(tmp.path()).await;
+    let root = tmp.path().join("models");
+    let echo = LocalModels::with_manifest(&root, m, Some(net.base.clone()))
+        .with_index(Some("0".repeat(64)), vec![net.base.clone()])
+        .for_extensions(&["echo"]);
+    let ctl = qrtz_speech::download::DownloadControl::default();
+
+    let t0 = std::time::Instant::now();
+    tokio::time::timeout(Duration::from_secs(2), echo.download(false, &ctl, &|_| {}))
+        .await
+        .expect("returns promptly")
+        .unwrap();
+    assert_eq!(net.hits(), 0, "no connection");
+
+    refresh_stuck_on(tmp.path(), &net).await;
+    let hits = net.hits();
+    let last = std::sync::Mutex::new(None);
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        echo.download(false, &ctl, &|p| *last.lock().unwrap() = Some((p.done, p.total))),
+    )
+    .await
+    .expect("returns promptly")
+    .unwrap();
+    assert_eq!(net.hits(), hits, "no connection of its own");
+    let total = echo.total_size();
+    assert_eq!(
+        *last.lock().unwrap(),
+        Some((total, total)),
+        "progress says complete"
+    );
+    assert!(echo.installed());
+    assert!(t0.elapsed() < Duration::from_secs(3), "{:?}", t0.elapsed());
+}
+
+/// Backlog P3, through settings / echo's view: with Parakeet installed, `speech:status` and `speech:download`
+/// answer at once, the row goes back to idle with no error and the model stays installed, all with the network
+/// down and an index refresh hanging on it; no connection is made.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn speech_status_and_download_with_parakeet_installed_never_wait_on_the_network() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (m, net) = installed_parakeet_offline(tmp.path()).await;
+    let mgr = SpeechManager::with_local(
+        None,
+        Some(
+            LocalModels::with_manifest(tmp.path().join("models"), m, Some(net.base.clone()))
+                .with_index(Some("0".repeat(64)), vec![net.base.clone()]),
+        ),
+        Events::new(),
+    );
+    mgr.select_extensions(Arc::new(|| vec!["echo".to_string(), "nano".to_string()]));
+    let echo = ["echo".to_string()];
+    refresh_stuck_on(tmp.path(), &net).await;
+    let hits = net.hits();
+
+    let t0 = std::time::Instant::now();
+    let s = mgr.status_for(Some(&echo));
+    assert_eq!(s["installed"], "1.0.0", "{s}");
+    mgr.download_for(false, Some(echo.to_vec())).unwrap();
+    within(&mgr, Duration::from_secs(2), "idle", || {
+        mgr.status()["download"]["state"] == "idle"
+    })
+    .await;
+    let s = mgr.status_for(Some(&echo));
+    assert_eq!(s["installed"], "1.0.0", "{s}");
+    assert_eq!(s["download"]["state"], "idle", "{s}");
+    assert_eq!(s["download"]["error"], Value::Null, "{s}");
+    assert!(t0.elapsed() < Duration::from_secs(2), "{:?}", t0.elapsed());
+    assert_eq!(net.hits(), hits, "no connection");
+    assert!(
+        !tmp.path().join("models/download.json").exists(),
+        "no resume marker left"
+    );
+}

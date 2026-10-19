@@ -375,6 +375,14 @@ impl LocalModels {
             self.delete()?;
         }
         let installer = self.installer();
+        if !force && self.up_to_date(&installer) {
+            // Backlog P3 (ADR 0210): already installed and verified, nothing to fetch, link or record. No transport,
+            // no index refresh and no install lock: before, the empty install took `.qrtz-install.lock` and failed
+            // "another install is running" whenever an index refresh stuck on a dead network held it.
+            let total = self.total_size();
+            on_progress(Progress { done: total, total });
+            return Ok(());
+        }
         let t = self.transport(ctl);
         if self.manifest.sets.iter().any(|s| reader_of(&s.package).is_some()) {
             // ADR 0157 §6: a model an extension reads needs a fresh signed list, like code. The user's yes to this
@@ -429,6 +437,23 @@ impl LocalModels {
         }
         on_progress(Progress { done: total, total });
         Ok(())
+    }
+
+    /// Backlog P3 (ADR 0210): every set is installed and verified (its view marked, sizes right) and `qrtz.lock`
+    /// already holds exactly what the pinned plan would write, so a download has nothing to do. Disk only. A set an
+    /// extension reads in its own process (ctrl's Laya) is never "up to date" here: its download keeps ADR 0157
+    /// §6's refresh first.
+    fn up_to_date(&self, installer: &Installer) -> bool {
+        if self.manifest.sets.is_empty()
+            || self.manifest.sets.iter().any(|s| reader_of(&s.package).is_some())
+            || !self.installed()
+        {
+            return false;
+        }
+        let Ok(lock) = installer.lock() else { return false };
+        installer
+            .plan(Op::Pinned(self.packages()))
+            .is_ok_and(|p| p.is_noop() && p.fetch.is_empty() && p.next == lock)
     }
 
     /// The helper's view of set `s`: store links of its files under `<models>/<dir>/`, then the marker.
