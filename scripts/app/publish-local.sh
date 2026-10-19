@@ -258,6 +258,9 @@ else
   codesign --verify --strict -R='anchor apple generic and identifier "ai.qrtz.echo" and certificate leaf[subject.OU] = "MR26CCZ496"' "$app/Contents/MacOS/qrtz-echo"
   codesign --verify --deep --strict -R='anchor apple generic and identifier "ai.qrtz.desktop" and certificate leaf[subject.OU] = "MR26CCZ496" and notarized' "$app"
 fi
+# The release gate shared with release:mac and app-release.yml: every helper's launch requirement, entitlements,
+# notarization and staple (the 0.2.4 candidate shipped tauri build's signatures and the app refused to start echo).
+run bash "$repo/scripts/release/verify-bundle.sh" "$app"
 
 say "the update archive, signed with the app-update key"
 if [[ $dry == 0 ]]; then work="$(mktemp -d)"; fi

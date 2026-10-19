@@ -118,6 +118,8 @@ if [ "$NOTARIZE" = 1 ]; then
   run xcrun stapler validate "$DMG"
   run spctl --assess --type execute --verbose=2 "$APP"
   run spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
+  # The release gate (scripts/release/verify-bundle.sh): launch requirements, entitlements, notarization, staple.
+  run bash "$ROOT/scripts/release/verify-bundle.sh" "$APP"
   if [ "$DRY" = 1 ]; then
     run shasum -a 256 "$DMG"
   else

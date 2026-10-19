@@ -162,6 +162,7 @@ jobs:
           codesign -dv "$app/Contents/MacOS/qrtz-echo" 2>&1 | grep -qx 'Identifier=ai.qrtz.echo'
           codesign --verify --strict -R='anchor apple generic and identifier "ai.qrtz.echo" and certificate leaf[subject.OU] = "MR26CCZ496"' "$app/Contents/MacOS/qrtz-echo"
           codesign --verify --deep --strict -R='anchor apple generic and identifier "ai.qrtz.desktop" and certificate leaf[subject.OU] = "MR26CCZ496" and notarized' "$app"
+          bash scripts/release/verify-bundle.sh "$app"
           mkdir -p "$RUNNER_TEMP/dist"
           cp "$dmg" "$dmg.sha256" "$RUNNER_TEMP/dist/"
           echo "app=$app" >>"$GITHUB_OUTPUT"
