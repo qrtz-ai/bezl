@@ -1198,3 +1198,54 @@ Talk-only change; the helper doesn't run talk's cleanup, so `echo-bench.sh` timi
 3. Optional: hold fn, dictate a long paragraph with "um", a repeated word and "new line"; the text inserted reads the
    same as before, and release-to-text feels unchanged.
 4. If anything reads differently: revert `2bfa59c` (talk-only commit).
+
+## 34. Cycle 62: a dictated list drops the comma before each "new line" (ADR 0201, `d68b415`)
+
+| Run               | Exact   | Edit distance     | Regressions | False-positive hits |
+| ----------------- | ------- | ----------------- | ----------- | ------------------- |
+| fc07f63, 79 cases | 73 / 79 | 48 chars (2.03 %) | -           | 0 / 180             |
+| d68b415, same 79  | 74 / 79 | 46 chars (1.94 %) | 0           | -                   |
+| fc07f63, 83 cases | 73 / 83 | 59 chars (2.38 %) | -           | 0 / 192             |
+| d68b415, 83 cases | 78 / 83 | 46 chars (1.85 %) | 0           | 0 / 192             |
+
+Regressions are counted against `fc07f63`'s own output for every case (`polish-baseline.json` then refreshed to
+`d68b415`); 5 cases better (p49, p80-p83), none worse.
+
+- ADR 0201: "Groceries, new line, eggs, new line, milk." → "Groceries⏎Eggs⏎Milk" (was "Groceries,⏎Eggs,⏎Milk").
+  Only when the whole text is a list: 3+ lines, no blank line, a comma on every line but the last, every line 1-2
+  words of ASCII letters, every line after the first lowercase as Parakeet wrote it, no greeting/sign-off word, and a
+  recogniser that writes capitals. Greetings and sign-offs ("Hi team,⏎Thanks,⏎Jared"), names and addresses, 3-word
+  verse, digits, apostrophes, inner commas and partial lists keep every comma. 5 positives, 12 new keep vectors,
+  13 new cleanup.json vectors (Rust and TS same text).
+- Cost (release, box CPU; old and new `cleanup_budget` binaries built one after the other, copied to /tmp, run
+  interleaved 3×): 495 words old 0.111 / 0.122 / 0.121 ms median, new 0.111 / 0.119 / 0.111 ms; 504 words ending in a
+  question old 0.115 / 0.123 / 0.115 ms, new 0.120 / 0.123 / 0.115 ms. hardening60 ceiling (≤ 0.5 ms): 0.131 ms.
+  No added latency: the step returns at once without a ",⏎" in the text.
+- `tests/hardening60.rs`'s oracle (the frozen cycle-59 chain) now allows exactly this difference and nothing else.
+- Path review: no capture, VAD, model config, drain, insert, pill or timing-log change since `267c826` (origin moved
+  only by ctrl run 54, `fc07f63`, ADR 0200: qrtz-ctrl, the ctrl helper sources and ctrl mocks/e2e). Findings list
+  unchanged; backlog P1-P8 still open (polish took the cycle; P1 the `local_models` timeout is next when no polish
+  rule clears the bar).
+
+Still not exact (5 of 83): p10 "So we, we can" (repeat across a comma), p15 spoken "comma"/"period", p19/p20 email
+and URL, p41 a numbered list with a 4-word line.
+
+Next polish candidates, ranked: (1) a discourse opener before a question ("So do you want", "Okay can you") getting
+"?" (extend ADR 0196), with its own false-positive set ("So do it now", "Okay do the dishes"); (2) spoken "comma" /
+"period" between list items (p15) only in an unambiguous enumeration ("X comma Y comma and Z period"), against "a comma
+splice", "the period of"; (3) p10's repeat across a comma for "we" / "you" only before a modal ("we, we can").
+
+### Measurement plan for Jared's Mac (cycle 62; proves no added latency and no worse transcript)
+
+Talk-only change (`d68b415`); the helper does not run talk's cleanup, so `echo-bench.sh` timings can't move from it.
+
+1. `cd ~/code/qrtz && git pull` (main at or after `d68b415`).
+2. `cargo test --release -p qrtz-talk --test cleanup_budget --test hardening60 --test hardening62 --test polish_set --
+   --nocapture`: budget medians well under 0.5 ms (box 0.11-0.12 ms), polish 78/83 exact, regressions 0, all green.
+3. Score the same raw reports with the old cleanup: `git -C ~/code/qrtz worktree add --detach /tmp/qrtz-c61 fc07f63 &&
+   cd /tmp/qrtz-c61 && cargo run -q -p qrtz-talk --example echo_score -- ~/qrtz-echo-bench/results/<run>-<stamp>.json`,
+   keep a copy of `<report>.scored.json`, then score again from `~/code/qrtz`. Raw WER identical; formatted WER equal
+   or lower on every clip. `git -C ~/code/qrtz worktree remove /tmp/qrtz-c61`.
+4. Hold fn and say "Groceries, new line, eggs, new line, milk": it types three lines with no commas. Then "Hi team, new
+   line, thanks, new line, Jared": the commas stay.
+5. If anything reads worse: revert `d68b415` (talk-only commit).
