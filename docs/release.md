@@ -29,8 +29,39 @@ bun run make                                       # tauri build → signed .app
 scripts/release/sign-mac.sh target/release/bundle/macos/qrtz.app   # nested signatures, notarize, staple, .dmg
 ```
 
+Or all of it in one command (audit P0-1), which also checks the team on every executable and writes the dmg's
+sha256:
+
+```sh
+export QRTZ_SIGN_ID="Developer ID Application: Jared Grimes (<TEAM ID>)"
+export QRTZ_TEAM_ID=<TEAM ID>
+# export QRTZ_NOTARY_PROFILE=qrtz-notary            # the default
+scripts/release/sign-notarize.sh                     # make → sign-mac.sh → team/runtime checks → staple checks → sha256
+scripts/release/sign-notarize.sh --app <qrtz.app>    # an existing `bun run make` output
+scripts/release/sign-notarize.sh --no-notarize       # sign and check only; nothing goes to Apple
+```
+
+It runs `bun run make` with `APPLE_SIGNING_IDENTITY=$QRTZ_SIGN_ID` and every notarization variable unset, hands the
+app to `sign-mac.sh` (inside-out nested signatures from `confinement-map.json` `bundledCode`, reseal, DR, runtime and
+entitlement checks, notarize and staple app and dmg), then checks that `qrtz.app` and every executable in
+`Contents/MacOS` (`qrtz-app`, `qrtz`, the helpers) carry `TeamIdentifier=$QRTZ_TEAM_ID` and the hardened runtime,
+re-validates the staples and Gatekeeper, and writes `<dmg>.sha256`. It refuses a missing or non-Developer-ID
+identity, a team id that doesn't match it, and the placeholder team before running anything. `QRTZ_SIGN_DRY_RUN=1`
+prints the plan instead (`scripts/release/sign-notarize.test.mjs` checks it on any OS).
+
 The speech module source (download URL and the two pinned Ed25519 keys, hex) is baked in at compile time
-(`SpeechSetup::from_vars`, ADR 0046 §9.4). Without them the build has no speech module.
+(`SpeechSetup::from_vars`, ADR 0046 §9.4). Without them the build has no speech module; export the `QRTZ_SPEECH_*`
+variables before running the script if this release carries one.
+
+## Updates and diagnostics
+
+- **Check for updates** (settings → system) runs only when pressed: `packages:check-update` refreshes the signed
+  index from the package hosts (verified against the pinned root) and compares its newest `qrtz` with this build. It
+  installs nothing. Before the hosts exist (`module_hosts.json` `root1Sha256` is null) it answers "updates aren't set
+  up yet" without a request.
+- **Export diagnostics** (settings → system) saves one text file of the local logs plus macOS's crash, hang and spin
+  reports for qrtz and its helpers (`~/Library/Logs/DiagnosticReports/qrtz*.ips`, last 30 days, at most 20, 2 MB
+  each). Local only: it reads files on this Mac and writes the one file; the user sends it.
 
 ## Checklist
 
@@ -45,5 +76,5 @@ The speech module source (download URL and the two pinned Ed25519 keys, hex) is 
 | Speech module source baked in                                                                        | `QRTZ_SPEECH_*` at build time                                | ☐ needs the release server |
 | Release builds never read `QRTZ_SPEECH_*` at run time, even with `QRTZ_ALLOW_DEV_KNOBS=1` (ADR 0078) | `backend.rs` `speech_var` + `speech_source_tests`            | ☑                          |
 | System-audio and mic capture on a real Mac                                                           | docs/mac-verify.md                                           | ☐ verify on hardware       |
-| App auto-update                                                                                      | not wired (Tauri updater plugin is the follow-up)            | ☐                          |
+| App update check (user-started, signed index)                                                        | `packages:check-update`; installing an update is not wired   | ☑ check / ☐ install        |
 | Version bump + changelog                                                                             | `apps/desktop/src-tauri/Cargo.toml`, `tauri.conf.json`       | ☐ per release              |
