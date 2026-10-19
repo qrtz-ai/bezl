@@ -1042,6 +1042,7 @@ impl Handler for AppService {
     async fn handle(&self, channel: &str, payload: Value, ctx: &CallContext) -> Result<Value, AppError> {
         // ADR 0146: a switched-off module's views and channels are refused (config stays reachable).
         crate::modules::gate(&self.config.get(), &ctx.sub_app, channel)?;
+        crate::modules::check_view_config_patch(&ctx.sub_app, channel, &payload)?;
         match Self::owner(channel) {
             Some("runtime") if channel.starts_with("permissions:") => {
                 self.permissions_channel(channel, payload).await

@@ -158,10 +158,24 @@ export function isModuleInstalled(
   return cfg.modules[id].installed !== false;
 }
 
-/** Whether a view is shown: shell views always; module views only while their module is on. */
+/**
+ * ADR 0174: the modules qrtz.app carries itself (v1: echo). Always installed, never in the marketplace; their view
+ * stays in the sidebar while they are off and holds their on/off switch. Same list as qrtz-modules
+ * `BUNDLED_EXTENSIONS`.
+ */
+export const BUNDLED_MODULES: readonly ModuleId[] = ['echo'];
+
+export function isBundledModule(id: string): boolean {
+  return (BUNDLED_MODULES as readonly string[]).includes(id);
+}
+
+/**
+ * Whether a view is shown: shell views always; a bundled module's view always (its switch is in it, ADR 0174);
+ * other module views only while their module is on.
+ */
 export function isViewOn(cfg: Pick<Config, 'modules'>, view: string): boolean {
   const m = moduleOfView(view);
-  return m === undefined || isModuleOn(cfg, m);
+  return m === undefined || isBundledModule(m) || isModuleOn(cfg, m);
 }
 
 /** A whole config section (`['talk']`) or one key of a section (`['privacy', 'excludedApps']`). */

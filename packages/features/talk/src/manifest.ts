@@ -10,6 +10,11 @@ export const manifest = SubAppManifest.parse({
     'talk.dictate',
     'talk.write',
     'speech.read',
+    // ADR 0174: echo is bundled; its view holds its switch (config:set of modules.echo.enabled only, enforced by
+    // the host) and asks to download Parakeet when switched on.
+    'speech.manage',
+    'config.read',
+    'config.write',
     'module.settings',
   ],
   permissions: ['microphone', 'accessibility'],

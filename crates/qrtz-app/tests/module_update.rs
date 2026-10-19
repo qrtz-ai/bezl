@@ -96,6 +96,7 @@ fn app(data: &Path, out: &Path, pin: &str) -> BuiltApp {
         helper_layout: HelperLayout::Installed {
             root: data.to_path_buf(),
             programs: Default::default(),
+            bundled: Default::default(),
         },
         modules_from_lock: false,
         packages: Some(Packages::with(

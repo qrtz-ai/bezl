@@ -51,6 +51,15 @@ pub const MODULE_IDS: &[&str] = &["echo", "nano", "ctrl", "snap"];
 /// The extensions this shell knows (ADR 0157 §2). An extension runs inside qrtz's own TCC identity, so the list is
 /// part of the shell: a new extension needs a shell release, never just an index entry.
 pub const EXTENSION_NAMES: &[&str] = &["echo", "nano", "ctrl", "snap"];
+/// ADR 0174: the extensions qrtz.app carries itself (v1: echo, `Contents/MacOS/qrtz-echo`, signed `ai.qrtz.echo`).
+/// Always installed, never a marketplace package; their bundled `module.json` has launch kind `bundled-helper` and
+/// pins the designated requirement the launcher checks. The others (nano, ctrl, snap) install from the marketplace.
+pub const BUNDLED_EXTENSIONS: &[&str] = &["echo"];
+
+/// True if `name` ships inside qrtz.app ([`BUNDLED_EXTENSIONS`]).
+pub fn is_bundled_extension(name: &str) -> bool {
+    BUNDLED_EXTENSIONS.contains(&name)
+}
 
 /// The manifests that ship in this repo (`modules/<id>/module.json`) and the lockfile for the bundled state.
 pub mod bundled {

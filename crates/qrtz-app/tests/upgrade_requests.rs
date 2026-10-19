@@ -121,16 +121,20 @@ async fn an_upgrade_drops_old_app_requests_only_for_modules_that_arent_installed
     assert_eq!(models.sync_views(), Vec::<String>::new());
     assert_eq!(lock(data), l, "a second launch changes nothing");
 
-    // Removing echo later: its old app request goes too, and with nothing left the model is gone.
+    // ADR 0174: echo ships in qrtz.app, so even with its old marketplace package gone from the lock its Parakeet
+    // request (what switching echo on downloads) stays, locked and linked.
     let mut l = lock(data);
     l.packages.remove(&key("echo", "0.3.0"));
     l.workspace.dependencies.remove("echo");
     l.workspace.resolved.remove("echo");
     l.save(&data.join("qrtz.lock")).unwrap();
-    assert_eq!(orphaned_app_requests(&l), vec![ECHO.to_owned()]);
+    assert!(
+        orphaned_app_requests(&l).is_empty(),
+        "bundled echo keeps its model"
+    );
     assert_eq!(models.sync_views(), Vec::<String>::new());
-    assert!(lock(data).get(ECHO, "1.0.0").is_none());
-    assert!(!has_view(data, "parakeet-tdt-v2"));
+    assert!(lock(data).get(ECHO, "1.0.0").is_some());
+    assert!(has_view(data, "parakeet-tdt-v2"));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

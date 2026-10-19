@@ -69,22 +69,22 @@
     ["QrtzNanoMac", "FluidAudio"]
   ],
   "bundledCode": {
-    "about": "ADR 0162, ADR 0169: the executables Tauri bundles as externalBin into qrtz.app/Contents/MacOS (tauri.macos.conf.json). qrtz ships empty (ADR 0169): only the `qrtz` command; no module code. tauri build re-signs every externalBin with the app's entitlements and its file name as identifier, so scripts/release/sign-mac.sh signs each again as listed here (identifier, entitlements file or none) and reseals the app before notarization.",
+    "about": "ADR 0162, ADR 0169, ADR 0174: the executables Tauri bundles as externalBin into qrtz.app/Contents/MacOS (tauri.macos.conf.json): the `qrtz` command and, since ADR 0174, echo's own executable qrtz-echo (signed ai.qrtz.echo with its own entitlements; the app's notarization covers it, so it has no per-module notarization record). nano, ctrl and snap ship only in their packages (moduleCode). tauri build re-signs every externalBin with the app's entitlements and its file name as identifier, so scripts/release/sign-mac.sh signs each again as listed here (identifier, entitlements file or none) and reseals the app before notarization.",
     "teamId": "MR26CCZ496",
     "qrtz": {
       "owner": "shell",
       "identifier": "ai.qrtz.cli",
       "entitlements": null
-    }
-  },
-  "moduleCode": {
-    "about": "ADR 0169, ADR 0170: each module's executable, shipped only in its own extension package (bin/qrtz-<id>, the package's extension.entry and module.json launch.entry), never in qrtz.app. scripts/modules/build-packages.sh signs each as listed (its identifier is the one the module's lock entry and module.json code pin, so the installer's and the launcher's designated-requirement checks pass) and scripts/modules/publish.sh notarizes it before it enters the index. inherits: runs as qrtz's child under qrtz's one TCC identity (ADR 0154).",
-    "teamId": "MR26CCZ496",
+    },
     "qrtz-echo": {
       "owner": "echo",
       "identifier": "ai.qrtz.echo",
       "entitlements": "native/qrtz-helper/entitlements/ai.qrtz.echo.entitlements"
-    },
+    }
+  },
+  "moduleCode": {
+    "about": "ADR 0169, ADR 0170: each downloadable module's executable (nano, ctrl, snap; echo is bundledCode since ADR 0174), shipped only in its own extension package (bin/qrtz-<id>, the package's extension.entry and module.json launch.entry), never in qrtz.app. scripts/modules/build-packages.sh signs each as listed (its identifier is the one the module's lock entry and module.json code pin, so the installer's and the launcher's designated-requirement checks pass) and scripts/modules/publish.sh notarizes it before it enters the index. inherits: runs as qrtz's child under qrtz's one TCC identity (ADR 0154).",
+    "teamId": "MR26CCZ496",
     "qrtz-nano": {
       "owner": "nano",
       "identifier": "ai.qrtz.nano",

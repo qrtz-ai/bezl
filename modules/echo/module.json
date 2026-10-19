@@ -11,8 +11,8 @@
     "designatedRequirement": "identifier \"ai.qrtz.echo\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = \"MR26CCZ496\""
   },
   "launch": {
-    "kind": "package",
-    "entry": "bin/qrtz-echo",
+    "kind": "bundled-helper",
+    "entry": "qrtz-echo",
     "channels": ["dictation.*", "pill.*", "insert.*"]
   },
   "views": ["talk"],
@@ -21,6 +21,9 @@
     "talk.dictate",
     "talk.write",
     "speech.read",
+    "speech.manage",
+    "config.read",
+    "config.write",
     "module.settings"
   ],
   "permissions": ["microphone", "accessibility"],

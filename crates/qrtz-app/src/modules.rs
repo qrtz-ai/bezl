@@ -79,7 +79,10 @@ pub fn gate(cfg: &Value, sub_app: &str, channel: &str) -> Result<(), AppError> {
         return Ok(());
     }
     if let Some(m) = module_of_view(sub_app) {
-        if !g.is_on(m) {
+        // ADR 0174: a bundled module's view stays in the sidebar while it is off and holds its own switch, so it
+        // may read the status of the models switching it on would download.
+        let bundled_status = qrtz_modules::is_bundled_extension(m) && channel == "speech:status";
+        if !(g.is_on(m) || bundled_status) {
             return Err(off(m));
         }
     }
@@ -94,6 +97,31 @@ pub fn gate(cfg: &Value, sub_app: &str, channel: &str) -> Result<(), AppError> {
         }
     }
     Ok(())
+}
+
+/// ADR 0174: a module view's `config:set` (only bundled echo's view holds `config.write`) may change exactly its own
+/// module's switch, `{"modules": {"<id>": {"enabled": bool}}}`, and nothing else in config.
+pub fn check_view_config_patch(sub_app: &str, channel: &str, payload: &Value) -> Result<(), AppError> {
+    let Some(m) = module_of_view(sub_app) else {
+        return Ok(());
+    };
+    if channel != "config:set" {
+        return Ok(());
+    }
+    let patch = &payload["patch"];
+    let only_switch = patch.as_object().is_some_and(|o| o.len() == 1)
+        && patch["modules"].as_object().is_some_and(|o| o.len() == 1)
+        && patch["modules"][m].as_object().is_some_and(|o| o.len() == 1)
+        && patch["modules"][m]["enabled"].is_boolean();
+    if only_switch {
+        Ok(())
+    } else {
+        Err(AppError::new(
+            ErrorCode::Validation,
+            format!("{m}'s view can only switch {m} on or off"),
+        )
+        .retryable(false))
+    }
 }
 
 /// Helper events that only a switched-off module reacts to are dropped (meeting detection while nano is off).
@@ -241,6 +269,28 @@ mod tests {
         assert!(gate(&cfg, "shell", "talk:state").is_err());
         // Speech setup is shared with settings.
         assert!(gate(&cfg, "settings", "speech:status").is_ok());
+        // ADR 0174: echo's view, while echo is off, may still read the speech status (to show Parakeet's size).
+        {
+            let mut off = cfg.clone();
+            off["modules"]["echo"]["enabled"] = serde_json::json!(false);
+            assert!(gate(&off, "talk", "speech:status").is_ok());
+            assert!(gate(&off, "talk", "talk:history").is_err());
+            assert!(gate(&off, "talk", "speech:download").is_err());
+        }
+        let only = |p: serde_json::Value| {
+            check_view_config_patch("talk", "config:set", &serde_json::json!({ "patch": p }))
+        };
+        assert!(only(serde_json::json!({"modules": {"echo": {"enabled": true}}})).is_ok());
+        assert!(only(serde_json::json!({"modules": {"nano": {"enabled": true}}})).is_err());
+        assert!(only(serde_json::json!({"modules": {"enabled": true}})).is_err());
+        assert!(only(serde_json::json!({"modules": {"echo": {"enabled": true}}, "theme": "dark"})).is_err());
+        assert!(only(serde_json::json!({"talk": {"enabled": true}})).is_err());
+        assert!(check_view_config_patch(
+            "settings",
+            "config:set",
+            &serde_json::json!({"patch": {"theme": "dark"}})
+        )
+        .is_ok());
         let all = json!({"modules": {"enabled": false}});
         assert!(gate(&all, "ctrl", "ctrl:tasks").is_err());
         assert!(gate(&all, "settings", "config:set").is_ok());

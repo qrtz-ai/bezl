@@ -98,7 +98,7 @@ export function useSpeechSetup(_opts: { check?: boolean } = {}) {
   useEffect(() => {
     let live = true;
     const fail = (e: Error) => live && setError(e.message);
-    client.invoke('speech:status').then((s) => live && setSpeech(s), fail);
+    client.invoke('speech:status', {}).then((s) => live && setSpeech(s), fail);
     const offs = [client.on('speech:status', (s) => setSpeech(s))];
     return () => {
       live = false;

@@ -62,4 +62,6 @@ if [[ -n "${QRTZ_HELPER_BIN:-}" && -f "$QRTZ_HELPER_BIN" ]]; then
   dir="$(dirname "$QRTZ_HELPER_BIN")" sign "$(basename "$QRTZ_HELPER_BIN")" ai.qrtz.helper || true
 fi
 sign qrtz ai.qrtz.cli
+# ADR 0174: echo is bundled (Contents/MacOS/qrtz-echo, target/debug/qrtz-echo in dev), signed as in a release.
+sign qrtz-echo ai.qrtz.echo
 sign qrtz-app ai.qrtz.desktop.dev

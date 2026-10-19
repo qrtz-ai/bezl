@@ -30,16 +30,19 @@ pub fn read_lock(root: &Path) -> QrtzLock {
     })
 }
 
-/// The extensions the lock resolves and doesn't disable (a revoked one counts as not installed).
+/// The extensions the lock resolves and doesn't disable (a revoked one counts as not installed), plus the ones qrtz.app
+/// bundles (ADR 0174: echo), which are always installed whatever the lock says.
 pub fn installed_extensions(lock: &QrtzLock) -> BTreeSet<String> {
     qrtz_modules::EXTENSION_NAMES
         .iter()
         .filter(|n| {
-            lock.workspace
-                .resolved
-                .get(**n)
-                .and_then(|v| lock.get(n, v))
-                .is_some_and(|l| l.kind == PackageKind::Extension && l.disabled.is_none())
+            qrtz_modules::is_bundled_extension(n)
+                || lock
+                    .workspace
+                    .resolved
+                    .get(**n)
+                    .and_then(|v| lock.get(n, v))
+                    .is_some_and(|l| l.kind == PackageKind::Extension && l.disabled.is_none())
         })
         .map(|n| (*n).to_owned())
         .collect()
@@ -67,6 +70,8 @@ pub struct InstalledModules {
 pub fn installed_modules(lock: &QrtzLock) -> InstalledModules {
     let versions = installed_extensions(lock)
         .into_iter()
+        // ADR 0174: a bundled extension updates only with qrtz.app, never through the lock.
+        .filter(|n| !qrtz_modules::is_bundled_extension(n))
         .filter_map(|n| {
             let v = lock.workspace.resolved.get(&n)?.clone();
             Some((n, v))
@@ -132,6 +137,38 @@ pub fn entry(root: &Path, name: &str) -> Result<ModuleEntry, String> {
         dir,
         identifier: l.identifier.clone(),
         requirement: l.designated_requirement.clone(),
+    })
+}
+
+/// ADR 0174: a bundled extension's helper (echo: `qrtz.app/Contents/MacOS/qrtz-echo`). The requirement comes from the
+/// manifest compiled into this signed build (`modules/<id>/module.json` `code`, launch kind `bundled-helper`), never
+/// from `qrtz.lock` or any other user-writable file, so the check needs no lock or index. A release launch still
+/// rebuilds the requirement from the name and team MR26CCZ496 ([`launch_requirement`]) and refuses a bundled manifest
+/// that says anything else; the program must be a plain file directly in its dir (`Contents/MacOS`).
+pub fn bundled_entry(name: &str, program: &Path) -> Result<ModuleEntry, String> {
+    if !qrtz_modules::is_bundled_extension(name) {
+        return Err(format!("{name} isn't bundled in qrtz.app"));
+    }
+    let m = crate::modules::bundled()
+        .manifests
+        .iter()
+        .find(|m| m.id == name)
+        .ok_or_else(|| format!("{name}: no bundled manifest"))?;
+    if m.launch.kind != qrtz_modules::manifest::LaunchKind::BundledHelper {
+        return Err(format!(
+            "{name}: the bundled manifest doesn't launch a bundled helper"
+        ));
+    }
+    let dir = program
+        .parent()
+        .ok_or_else(|| format!("{name}: {} has no parent dir", program.display()))?;
+    Ok(ModuleEntry {
+        name: name.to_owned(),
+        version: m.version.clone(),
+        dir: dir.to_path_buf(),
+        program: program.to_path_buf(),
+        identifier: Some(m.code.bundle_id.clone()),
+        requirement: Some(m.code.designated_requirement.clone()),
     })
 }
 
@@ -259,6 +296,8 @@ pub struct InstalledSpawn {
     pub base: ProcessSpawn,
     /// A dev override (`QRTZ_<ID>_BIN`, debug builds only): run this file instead of the installed entry.
     pub fixed: Option<PathBuf>,
+    /// ADR 0174: the module ships in qrtz.app at this path; its requirement is the bundled manifest's.
+    pub bundled: Option<PathBuf>,
     pub check: LaunchCheck,
 }
 
@@ -268,7 +307,10 @@ impl InstalledSpawn {
         if let (Some(p), LaunchCheck::Dev) = (&self.fixed, self.check) {
             return Ok(p.clone());
         }
-        let e = entry(&self.root, &self.module)?;
+        let e = match &self.bundled {
+            Some(p) => bundled_entry(&self.module, p)?,
+            None => entry(&self.root, &self.module)?,
+        };
         check_launch(&e, self.check)?;
         Ok(e.program)
     }
@@ -313,12 +355,14 @@ mod tests {
     fn an_empty_or_missing_lock_installs_nothing() {
         let tmp = tempfile::tempdir().unwrap();
         let lock = read_lock(tmp.path());
-        assert!(installed_extensions(&lock).is_empty());
+        assert_eq!(installed_extensions(&lock), BTreeSet::from(["echo".to_owned()]));
         let p = installed_patch(&lock);
         for id in qrtz_modules::MODULE_IDS {
-            assert_eq!(p["modules"][*id]["installed"], false, "{id}");
+            // ADR 0174: echo ships in qrtz.app, so it is installed with no lock at all.
+            let bundled = qrtz_modules::is_bundled_extension(id);
+            assert_eq!(p["modules"][*id]["installed"], bundled, "{id}");
         }
-        assert!(entry(tmp.path(), "echo").unwrap_err().contains("not installed"));
+        assert!(entry(tmp.path(), "nano").unwrap_err().contains("not installed"));
     }
 
     #[test]
@@ -330,8 +374,12 @@ mod tests {
         lock.workspace.resolved.insert("model.x".into(), "1.0.0".into());
         lock.packages
             .insert("model.x@1.0.0".into(), locked(PackageKind::Model));
-        assert_eq!(installed_extensions(&lock), BTreeSet::from(["snap".to_owned()]));
+        assert_eq!(
+            installed_extensions(&lock),
+            BTreeSet::from(["echo".to_owned(), "snap".to_owned()])
+        );
         let m = installed_modules(&lock);
+        // ADR 0174: bundled echo has no locked version; it changes only with qrtz itself.
         assert_eq!(
             m.versions,
             BTreeMap::from([("snap".to_owned(), "0.1.0".to_owned())])
@@ -339,7 +387,54 @@ mod tests {
         assert_eq!(m.patch, installed_patch(&lock));
         lock.packages.get_mut("snap@0.1.0").unwrap().disabled = Some("revoked".into());
         assert!(installed_modules(&lock).versions.is_empty());
-        assert!(installed_extensions(&lock).is_empty());
+        assert_eq!(installed_extensions(&lock), BTreeSet::from(["echo".to_owned()]));
+    }
+
+    /// ADR 0174: bundled echo's launch check uses the requirement of the manifest bundled in this build (identifier
+    /// ai.qrtz.echo, team MR26CCZ496), not a lock, and a missing bundled executable never starts.
+    #[test]
+    fn bundled_echo_is_checked_against_its_bundled_manifest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let exe = tmp.path().join("qrtz-echo");
+        let e = bundled_entry("echo", &exe).unwrap();
+        assert_eq!(e.identifier.as_deref(), Some("ai.qrtz.echo"));
+        let req = e.requirement.as_deref().unwrap();
+        assert_eq!(
+            Some(req),
+            launch_requirement("echo").as_deref(),
+            "bundled DR = name + team"
+        );
+        assert!(
+            req.starts_with("identifier \"ai.qrtz.echo\" and anchor apple generic"),
+            "{req}"
+        );
+        assert!(
+            req.ends_with("certificate leaf[subject.OU] = \"MR26CCZ496\""),
+            "{req}"
+        );
+        assert!(check_launch(&e, LaunchCheck::Dev)
+            .unwrap_err()
+            .contains("missing"));
+        std::fs::write(&exe, b"x").unwrap();
+        assert!(check_launch(&e, LaunchCheck::Dev).is_ok());
+        // A release build runs codesign -R; an unsigned file fails it (or, off macOS, the check refuses outright).
+        assert!(check_launch(&e, LaunchCheck::Release).is_err());
+        for other in ["nano", "ctrl", "snap"] {
+            assert!(bundled_entry(other, &exe).is_err(), "{other}");
+        }
+        let s = InstalledSpawn {
+            module: "echo".into(),
+            root: tmp.path().join("no-data"),
+            base: qrtz_helper_bridge::ProcessSpawn::helper(PathBuf::from("unused")),
+            fixed: None,
+            bundled: Some(exe.clone()),
+            check: LaunchCheck::Dev,
+        };
+        assert_eq!(
+            s.program().unwrap(),
+            exe,
+            "no lock, no index: bundled echo still starts"
+        );
     }
 
     fn installed_entry(root: &Path, dr: Option<String>, identifier: Option<&str>) -> ModuleEntry {
@@ -434,6 +529,7 @@ mod tests {
                 env: vec![],
             },
             fixed: Some(PathBuf::from("/tmp/evil")),
+            bundled: None,
             check,
         };
         assert_eq!(

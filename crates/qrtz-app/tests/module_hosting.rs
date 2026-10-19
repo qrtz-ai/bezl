@@ -133,7 +133,7 @@ impl World {
 fn no_progress(_: u64, _: u64) {}
 
 fn echo() -> Op {
-    Op::Install(vec![("echo".into(), None)])
+    Op::Install(vec![("nano".into(), None)])
 }
 
 async fn install(c: &Packages, now: u64) -> Result<qrtz_app::module_hosting::Applied, InstallError> {
@@ -145,7 +145,7 @@ fn echo_lock(c: &Packages) -> qrtz_modules::qrtz_lock::Locked {
     c.installer
         .lock()
         .unwrap()
-        .get("echo", "0.3.0")
+        .get("nano", "0.3.0")
         .cloned()
         .expect("echo locked")
 }
@@ -185,7 +185,7 @@ async fn publish_serve_refresh_plan_and_install_a_tree_over_localhost() {
     let root = c.installer.root();
     assert_eq!(echo_lock(&c).source, Source::Network);
     assert!(root.join("qrtz.lock").exists());
-    assert!(root.join("packages/echo/0.3.0/qrtz.json").exists());
+    assert!(root.join("packages/nano/0.3.0/qrtz.json").exists());
     assert!(root.join("packages/model.sample/1.0.0/weights/a.bin").exists());
     assert!(root
         .join("packages/inference.sample/1.0.0/sample.xpc/Contents/MacOS/sample")
@@ -195,12 +195,12 @@ async fn publish_serve_refresh_plan_and_install_a_tree_over_localhost() {
         use std::os::unix::fs::PermissionsExt;
         let mode = |p: &str| std::fs::metadata(root.join(p)).unwrap().permissions().mode() & 0o777;
         assert_eq!(
-            mode("packages/echo/0.3.0/bin/qrtz-echo"),
+            mode("packages/nano/0.3.0/bin/qrtz-nano"),
             0o500,
             "code is copied, owner-only"
         );
         // Data is a store link (a clone on APFS, a hardlink here): never writable.
-        assert_eq!(mode("packages/echo/0.3.0/qrtz.json") & 0o222, 0);
+        assert_eq!(mode("packages/nano/0.3.0/qrtz.json") & 0o222, 0);
         assert_eq!(mode("packages/model.sample/1.0.0"), 0o500);
     }
     // The big model file came in closed 8 MiB ranges, from its Hugging Face URL only (ADR 0171): the package hosts
@@ -241,12 +241,12 @@ async fn publish_serve_refresh_plan_and_install_a_tree_over_localhost() {
     let again = c.plan(echo()).unwrap();
     assert!(again.fetch.is_empty() && again.changes.is_empty());
     // Remove and prune: the dirs and the blobs go.
-    let rm = c.plan(Op::Remove(vec!["echo".into()])).unwrap();
+    let rm = c.plan(Op::Remove(vec!["nano".into()])).unwrap();
     c.apply(&rm, &rm.consent(), w.now, &no_progress).await.unwrap();
     let p = c.prune().unwrap();
     assert_eq!(p.dirs.len(), 3);
     assert!(p.bytes > 20 * 1024 * 1024);
-    assert!(!root.join("packages/echo").exists());
+    assert!(!root.join("packages/nano").exists());
 }
 
 #[tokio::test]
@@ -419,7 +419,7 @@ async fn a_revocation_disables_the_installed_extension_and_refuses_new_installs(
     c.refresh(&RefreshConsent::user_asked(), w.now).await.unwrap();
     install(&c, w.now).await.unwrap();
     let pulled = Revoked {
-        package: "echo".into(),
+        package: "nano".into(),
         versions: vec!["0.3.0".into()],
         reason: "pulled: crash on launch".into(),
     };
@@ -429,7 +429,7 @@ async fn a_revocation_disables_the_installed_extension_and_refuses_new_installs(
         .await
         .unwrap();
     assert_eq!(r.notices.len(), 1);
-    assert_eq!(r.notices[0].module, "echo");
+    assert_eq!(r.notices[0].module, "nano");
     assert_eq!(echo_lock(&c).disabled.as_deref(), Some("pulled: crash on launch"));
     // A fresh client can't install it either: resolution skips revoked versions.
     let c2 = w.client("client2", &[&w.primary]);
@@ -438,7 +438,7 @@ async fn a_revocation_disables_the_installed_extension_and_refuses_new_installs(
         .unwrap();
     assert!(c2.plan(echo()).is_err(), "no unrevoked echo");
     assert!(c2
-        .plan(Op::Install(vec![("echo".into(), Some("=0.3.0".into()))]))
+        .plan(Op::Install(vec![("nano".into(), Some("=0.3.0".into()))]))
         .is_err());
 }
 
@@ -446,7 +446,7 @@ async fn a_revocation_disables_the_installed_extension_and_refuses_new_installs(
 async fn sideload_follows_bozniaks_rules() {
     let w = world().await;
     let pkg = w.dir.join("echo-0.3.0.qrtzpkg");
-    pack(&w.out, "echo", "0.3.0", &pkg).unwrap();
+    pack(&w.out, "nano", "0.3.0", &pkg).unwrap();
     let late = w.now + 20 * DAY_MS;
 
     // Rule 4: a file from a watched folder is refused; a user-picked one asks first, showing the list's age.
@@ -504,14 +504,14 @@ async fn sideload_follows_bozniaks_rules() {
 
     // Rule 2: a stored list that revokes it refuses the sideload after the yes, with no override.
     let pulled = Revoked {
-        package: "echo".into(),
+        package: "nano".into(),
         versions: vec![],
         reason: "pulled".into(),
     };
     // Issued a day before `late`, so it is still fresh on the air-gapped Mac, whose clock has seen `late`.
     w.republish(vec![pulled], late - DAY_MS);
     let pkg2 = w.dir.join("echo-0.3.0-b.qrtzpkg");
-    pack(&w.out, "echo", "0.3.0", &pkg2).unwrap();
+    pack(&w.out, "nano", "0.3.0", &pkg2).unwrap();
     let revoker = w.client("revoker", &[&w.primary]);
     revoker
         .refresh(&RefreshConsent::user_asked(), late)
@@ -623,24 +623,24 @@ async fn the_qrtz_cli_drives_the_same_installer() {
         run(c, cmd, &f, &mut io).await
     }
     // Asked, said no: nothing changes.
-    go(&c, "install echo", &mut out, &mut answers, &mut asked)
+    go(&c, "install nano", &mut out, &mut answers, &mut asked)
         .await
         .unwrap();
     assert_eq!(asked, ["Proceed?"]);
     assert!(c.installer.lock().unwrap().packages.is_empty());
     let text = String::from_utf8_lossy(&out).to_string();
     assert!(
-        text.contains("+ echo@0.3.0")
+        text.contains("+ nano@0.3.0")
             && text.contains("+ model.sample@1.0.0")
             && text.contains("nothing changed"),
         "{text}"
     );
     // --dry-run shows and stops; -y installs.
-    go(&c, "install echo --dry-run", &mut out, &mut answers, &mut asked)
+    go(&c, "install nano --dry-run", &mut out, &mut answers, &mut asked)
         .await
         .unwrap();
     assert!(c.installer.lock().unwrap().packages.is_empty());
-    go(&c, "install echo -y", &mut out, &mut answers, &mut asked)
+    go(&c, "install nano -y", &mut out, &mut answers, &mut asked)
         .await
         .unwrap();
     assert_eq!(c.installer.lock().unwrap().packages.len(), 3);
@@ -648,11 +648,11 @@ async fn the_qrtz_cli_drives_the_same_installer() {
     go(&c, "ls", &mut out, &mut answers, &mut asked).await.unwrap();
     let ls = String::from_utf8_lossy(&out).to_string();
     assert!(
-        ls.contains("echo@0.3.0  Extension") && ls.contains("requested ^0.3.0"),
+        ls.contains("nano@0.3.0  Extension") && ls.contains("requested ^0.3.0"),
         "{ls}"
     );
     assert!(
-        ls.contains("model.sample@1.0.0  Model") && ls.contains("for echo"),
+        ls.contains("model.sample@1.0.0  Model") && ls.contains("for nano"),
         "{ls}"
     );
     // Frozen and offline: nothing to do, no request.
@@ -661,7 +661,7 @@ async fn the_qrtz_cli_drives_the_same_installer() {
         .await
         .unwrap();
     assert_eq!(w.hits(), before);
-    go(&c, "remove echo -y", &mut out, &mut answers, &mut asked)
+    go(&c, "remove nano -y", &mut out, &mut answers, &mut asked)
         .await
         .unwrap();
     assert_eq!(w.hits(), before, "remove is local");
@@ -692,7 +692,7 @@ async fn the_extensions_screen_applies_only_the_plan_it_was_shown() {
     let s = ipc.call("packages:refresh", json!(null)).await.unwrap();
     assert_eq!(s["index"]["version"], 1);
     let plan = ipc
-        .call("packages:plan", json!({"op": "install", "names": ["echo"]}))
+        .call("packages:plan", json!({"op": "install", "names": ["nano"]}))
         .await
         .unwrap();
     check("packages:plan", &plan);
@@ -740,9 +740,9 @@ async fn the_extensions_screen_applies_only_the_plan_it_was_shown() {
         .iter()
         .map(|p| p["kind"].as_str().unwrap())
         .collect();
-    assert_eq!(kinds, ["extension", "service", "model"]);
+    assert_eq!(kinds, ["service", "model", "extension"]);
     let plan = ipc
-        .call("packages:plan", json!({"op": "remove", "names": ["echo"]}))
+        .call("packages:plan", json!({"op": "remove", "names": ["nano"]}))
         .await
         .unwrap();
     ipc.call(

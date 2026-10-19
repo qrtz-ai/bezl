@@ -10,6 +10,8 @@ import {
   modulePatchError,
   pickModuleSettings,
   isViewOn,
+  isBundledModule,
+  BUNDLED_MODULES,
   MODULE_IDS,
   MODULE_PERMISSIONS,
   MODULE_VIEWS,
@@ -91,6 +93,20 @@ describe('module manifests (ADR 0146)', () => {
       m[2],
     ]);
     expect(pairs).toEqual(GLOBAL_CONFIG_KEYS.map(([s, k]) => [s, k]));
+  });
+});
+
+describe('bundled echo (ADR 0174)', () => {
+  it('keeps its view in the sidebar while off, unlike a downloadable module', () => {
+    const cfg = ConfigSchema.parse({
+      modules: { echo: { enabled: false }, nano: { enabled: false } },
+    });
+    expect(isBundledModule('echo')).toBe(true);
+    expect(isBundledModule('nano')).toBe(false);
+    expect(BUNDLED_MODULES).toEqual(['echo']);
+    expect(isModuleOn(cfg, 'echo')).toBe(false);
+    expect(isViewOn(cfg, 'talk')).toBe(true);
+    expect(isViewOn(cfg, 'note')).toBe(false);
   });
 });
 

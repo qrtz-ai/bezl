@@ -3,13 +3,13 @@
 # executable with the module's identifier (the one its lock entry and module.json pin; confinement-map.json
 # moduleCode, checked by crates/qrtz-lifecycle/tests/offline_graph.rs), and optionally make a local dev index.
 #
-#   scripts/modules/build-packages.sh [--out <dir>] [--dev-index] [<module>...]   (default: every module)
+#   scripts/modules/build-packages.sh [--out <dir>] [--dev-index] [<module>...]   (default: nano ctrl snap; echo is bundled, ADR 0174)
 #
 # Output: <out>/packages/<module>/{qrtz.json, bin/qrtz-<module>} (default out: ~/qrtz-packages), ready for
 # QRTZ_PUBLISH_PACKAGES in scripts/modules/publish.sh, which notarizes each before it enters the index (ADR 0170).
 #
 # --dev-index: also a signed index in <out>/index with throwaway keys made in <out>/dev-keys (never the release keys,
-# never in the repo), holding the packages, a stub inference.voice service, and the pinned models found under
+# never in the repo), holding the packages and the pinned models (ADR 0174: no inference.voice in v1) found under
 # $QRTZ_MODELS_DIR (only hashed against their pins: like the real index, the dev index lists each model file's pinned
 # Hugging Face URL and the app downloads it from there, ADR 0171). Its notarization records are FAKE (submission 00000000-…): only a debug build reads a dev index
 # (QRTZ_DEV_INDEX_DIR + QRTZ_DEV_ROOT1_SHA256, printed at the end), and it checks signatures with DevCodeChecks.
@@ -38,12 +38,12 @@ done
 
 # module identifier entitlements. Must match docs/modules/confinement-map.json moduleCode (offline_graph.rs).
 MODULES="
-echo ai.qrtz.echo native/qrtz-helper/entitlements/ai.qrtz.echo.entitlements
 nano ai.qrtz.nano native/qrtz-helper/entitlements/ai.qrtz.nano.entitlements
 ctrl ai.qrtz.ctrl native/qrtz-helper/entitlements/ai.qrtz.ctrl.entitlements
 snap ai.qrtz.snap native/qrtz-helper/entitlements/ai.qrtz.snap.entitlements
 "
-[[ ${#want[@]} -gt 0 ]] || want=(echo nano ctrl snap)
+[[ ${#want[@]} -gt 0 ]] || want=(nano ctrl snap)
+# ADR 0174: echo ships inside qrtz.app (scripts/build-helper.mjs, sign-mac.sh), never as a package.
 
 identity="${QRTZ_SIGN_ID:-}"
 if [[ -z "$identity" ]]; then
@@ -97,24 +97,6 @@ if [[ ! -f "$idx/v1/root/1.root.json" ]]; then
 fi
 pin="$(shasum -a 256 "$idx/v1/root/1.root.json" | cut -d' ' -f1)"
 
-# A stub inference.voice: echo and nano depend on it (the speech engine runs in the module today; ADR 0157 §7).
-svc="$out/packages/inference.voice"
-rm -rf "$svc"
-xpc="$svc/ai.qrtz.inference.voice.xpc/Contents"
-mkdir -p "$xpc/MacOS"
-cp "$repo/tools/qrtz-publish/packages/inference.voice/qrtz.json" "$svc/qrtz.json"
-printf 'int main(void) { return 0; }\n' | cc -x c - -o "$xpc/MacOS/inference-voice"
-cat >"$xpc/Info.plist" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>CFBundleIdentifier</key><string>ai.qrtz.inference.voice</string>
-<key>CFBundleExecutable</key><string>inference-voice</string>
-<key>CFBundlePackageType</key><string>XPC!</string>
-</dict></plist>
-PLIST
-codesign --force --options runtime --timestamp=none --identifier ai.qrtz.inference.voice --sign "$identity" "$svc/ai.qrtz.inference.voice.xpc"
-
 fake() { # file: a FAKE notarization record for a dev index (a release build refuses it: the cdhash isn't real)
   local sha
   sha="$(shasum -a 256 "$1" | cut -d' ' -f1)"
@@ -140,9 +122,11 @@ spec="$out/dev-spec.json"
     printf '%s\n    { "name": "%s", "dir": "%s" }' "$sep" "$n" "$d"
     sep=","
   done
-  printf '\n  ],\n  "packages": [\n    { "dir": "%s", "notarization": %s }' "$svc" "$(fake "$xpc/MacOS/inference-voice")"
+  printf '\n  ],\n  "packages": ['
+  sep=""
   for m in "${want[@]}"; do
-    printf ',\n    { "dir": "%s", "notarization": %s }' "$out/packages/$m" "$(fake "$out/packages/$m/bin/qrtz-$m")"
+    printf '%s\n    { "dir": "%s", "notarization": %s }' "$sep" "$out/packages/$m" "$(fake "$out/packages/$m/bin/qrtz-$m")"
+    sep=","
   done
   printf '\n  ]\n}\n'
 } >"$spec"

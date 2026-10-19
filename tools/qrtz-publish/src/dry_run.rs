@@ -38,7 +38,8 @@ fn json(p: &Path, v: serde_json::Value) -> crate::Result<()> {
     write(p, &serde_json::to_vec_pretty(&v).expect("json"), false)
 }
 
-/// A sample model (`model.sample`), service (`inference.sample`) and the echo extension that depends on both.
+/// A sample model (`model.sample`), service (`inference.sample`) and the nano extension that depends on both (ADR
+/// 0174: echo is bundled in qrtz.app, never a published package).
 /// `big` makes the model's weights 20 MiB, so the fetcher splits them into ranges.
 /// The sample model's revision on its (fake) Hugging Face repo `qrtz/sample`.
 pub const SAMPLE_REVISION: &str = "abc0000000000000000000000000000000000000";
@@ -77,18 +78,18 @@ pub fn sample(dir: &Path, big: bool) -> crate::Result<Spec> {
         true,
     )?;
     write(&svc.join("sample.xpc/Contents/Info.plist"), b"<plist/>", false)?;
-    let echo = dir.join("sample/echo");
+    let nano = dir.join("sample/nano");
     json(
-        &echo.join("qrtz.json"),
-        serde_json::json!({"name": "echo", "version": "0.3.0", "kind": "extension",
+        &nano.join("qrtz.json"),
+        serde_json::json!({"name": "nano", "version": "0.3.0", "kind": "extension",
             "dependencies": {"inference.sample": "^1.0.0", "model.sample": "^1.0.0"},
-            "extension": {"entry": "bin/qrtz-echo", "protocol": 1, "minApp": "0.3.0",
-                          "channels": ["dictation.*"], "views": ["talk"], "permissions": ["microphone"]}}),
+            "extension": {"entry": "bin/qrtz-nano", "protocol": 1, "minApp": "0.3.0",
+                          "channels": ["recording.*"], "views": ["note"], "permissions": ["microphone"]}}),
     )?;
-    write(&echo.join("bin/qrtz-echo"), b"#!/bin/sh\necho dry-run\n", true)?;
+    write(&nano.join("bin/qrtz-nano"), b"#!/bin/sh\necho dry-run\n", true)?;
     Ok(Spec {
         team_id: TEAM.into(),
-        packages: [model, svc, echo]
+        packages: [model, svc, nano]
             .into_iter()
             .map(SpecPackage::fake_notarized)
             .collect(),
@@ -116,8 +117,8 @@ pub fn run(dir: &Path, big: bool) -> crate::Result<Vec<String>> {
         b.added.join(", ")
     ));
     report.push(verify(&out, &pin, now)?);
-    let pkg = dir.join("echo-0.3.0.qrtzpkg");
-    let set = pack(&out, "echo", "0.3.0", &pkg)?;
+    let pkg = dir.join("nano-0.3.0.qrtzpkg");
+    let set = pack(&out, "nano", "0.3.0", &pkg)?;
     report.push(format!(
         "packed {} ({} bytes): {}",
         pkg.file_name().unwrap_or_default().to_string_lossy(),

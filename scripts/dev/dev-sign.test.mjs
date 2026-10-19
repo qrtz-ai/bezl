@@ -19,15 +19,18 @@ describe('dev builds are TCC-stable (docs/dev-permissions.md)', () => {
   it('helpers keep the release identifiers; the app has its own dev id', () => {
     const dev = read('scripts/dev/sign.sh');
     const rel = read('scripts/release/sign-mac.sh');
-    for (const [name, id] of [['qrtz', 'ai.qrtz.cli']]) {
+    for (const [name, id] of [
+      ['qrtz', 'ai.qrtz.cli'],
+      ['qrtz-echo', 'ai.qrtz.echo'],
+    ]) {
       expect(dev).toContain(`\nsign ${name} ${id}\n`);
       expect(rel).toMatch(
         new RegExp(`\\n${name} ${id.replace(/\./g, '\\.')} `),
       );
     }
     expect(dev).toContain('\nsign qrtz-app ai.qrtz.desktop.dev\n');
-    // ADR 0169: no module code in the app; a dev monolith signs as ai.qrtz.helper, never as a module.
-    expect(rel).not.toMatch(/\nqrtz-(helper|snap|echo|nano|ctrl) /);
+    // ADR 0169, ADR 0174: the only module code in the app is echo; a dev monolith signs as ai.qrtz.helper.
+    expect(rel).not.toMatch(/\nqrtz-(helper|snap|nano|ctrl) /);
     expect(dev).toContain('ai.qrtz.helper');
   });
 

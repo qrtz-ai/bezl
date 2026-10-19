@@ -87,8 +87,9 @@ Package hosting is `modules.qrtz.ai` only (Cloudflare R2; ADR 0167 — no Backbl
 
 | Item                                                                                                 | Where                                                        | Status                     |
 | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | -------------------------- |
-| Developer ID signing of the app and `qrtz-helper` (external bin)                                     | Tauri bundler (`APPLE_SIGNING_IDENTITY`)                     | ☑ certificate (MR26CCZ496) |
-| `qrtz` (`ai.qrtz.cli`) and `qrtz-snap` (`ai.qrtz.snap`) signed with no entitlements                  | `scripts/release/sign-mac.sh` (confinement-map bundledCode)  | ☑ script; ☐ first run      |
+| Developer ID signing of the app and its external bins (`qrtz`, `qrtz-echo`)                          | Tauri bundler (`APPLE_SIGNING_IDENTITY`)                     | ☑ certificate (MR26CCZ496) |
+| `qrtz` (`ai.qrtz.cli`, no entitlements) and `qrtz-echo` (`ai.qrtz.echo`, microphone; ADR 0174)       | `scripts/release/sign-mac.sh` (confinement-map bundledCode)  | ☑ script; ☐ first run      |
+| nano, ctrl, snap: signed packages, notarized at publish (ADR 0169/0170), not in qrtz.app             | `scripts/modules/build-packages.sh`, `publish.sh`            | ☑ script; ☐ first publish  |
 | Hardened runtime + entitlements (`device.audio-input`)                                               | `apps/desktop/src-tauri/entitlements.mac.plist`              | ☑                          |
 | Usage strings: `NSMicrophoneUsageDescription`, `NSAudioCaptureUsageDescription`                      | `apps/desktop/src-tauri/Info.plist`                          | ☑                          |
 | Notarization + stapling                                                                              | `scripts/release/sign-mac.sh` (`qrtz-notary` profile)        | ☐ needs credentials        |

@@ -224,7 +224,11 @@ impl PackagesIpc {
             .map(|r| json!({"version": r.version, "issuedMs": r.issued_ms}));
         // The catalog is the stored index (signatures re-checked); none before the first check, no network here.
         let available = match self.packages.installer.cached_index() {
-            Ok((_, v)) => catalog(&v.index),
+            // ADR 0174: a bundled extension is never offered as installable.
+            Ok((_, v)) => catalog(&v.index)
+                .into_iter()
+                .filter(|r| !r["name"].as_str().is_some_and(qrtz_modules::is_bundled_extension))
+                .collect(),
             Err(_) => vec![],
         };
         // ADR 0172: which modules need a restart is the host's (`AppService` fills it in); none from here.
@@ -241,6 +245,19 @@ impl PackagesIpc {
                 .unwrap_or_default()
         };
         let s = |k: &str| p[k].as_str().unwrap_or_default().to_owned();
+        // ADR 0174: a bundled extension (echo) ships in qrtz.app; the marketplace never installs, updates or removes it.
+        let bundled = ["names"]
+            .iter()
+            .flat_map(|k| names(k))
+            .chain([s("extension")])
+            .find(|n| qrtz_modules::is_bundled_extension(n) && p["op"].as_str() != Some("engine"));
+        if let Some(n) = bundled {
+            return Err(AppError::new(
+                ErrorCode::Validation,
+                format!("{n} is built into qrtz: switch it on in its view"),
+            )
+            .retryable(false));
+        }
         Ok(match p["op"].as_str() {
             Some("install") => Op::Install(names("names").into_iter().map(|n| (n, None)).collect()),
             Some("remove") => Op::Remove(names("names")),

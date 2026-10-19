@@ -82,10 +82,10 @@ if (process.platform !== 'darwin') {
   );
   process.exit(0);
 }
-// ADR 0169: qrtz ships empty. No module code goes into the bundle any more: each module's executable (qrtz-echo,
-// qrtz-nano, qrtz-ctrl, qrtz-snap) ships signed in its own package (scripts/modules/build-packages.sh) and is
-// installed from the marketplace. A stale qrtz-helper or qrtz-snap sidecar left from an older build is removed so it
-// can't be mistaken for a bundled one.
+// ADR 0169, ADR 0174: the only module code in the bundle is echo's own executable (qrtz-echo, Contents/MacOS); nano,
+// ctrl and snap ship signed in their own packages (scripts/modules/build-packages.sh) and install from the
+// marketplace. A stale qrtz-helper or qrtz-snap sidecar left from an older build is removed so it can't be mistaken
+// for a bundled one.
 const binDir = path.resolve(
   import.meta.dirname,
   '../apps/desktop/src-tauri/binaries',
@@ -100,7 +100,32 @@ for (const old of ['qrtz-helper', 'qrtz-snap']) {
   fs.rmSync(path.join(targetDir, 'debug', old), { force: true });
 }
 
-// ADR 0162: the `qrtz` command ships as the one externalBin (qrtz.app/Contents/MacOS/qrtz; the app itself is
+// ADR 0174: echo, bundled. The SwiftPM product qrtz-echo, signed ai.qrtz.echo with its own entitlements (microphone);
+// tauri build re-signs it with the app's, so scripts/release/sign-mac.sh signs it again (confinement-map bundledCode).
+const swiftDir = path.join(repo, 'native/qrtz-helper');
+if (!swift) {
+  console.error(
+    '[build:helper] no Swift toolchain: qrtz-echo is bundled (ADR 0174)',
+  );
+  process.exit(1);
+}
+const echoBuild = spawnSync(
+  swift,
+  ['build', '-c', 'release', '--arch', 'arm64', '--product', 'qrtz-echo'],
+  { cwd: swiftDir, stdio: 'inherit' },
+);
+if (echoBuild.status !== 0) process.exit(1);
+const echoBin = spawnSync(
+  swift,
+  ['build', '-c', 'release', '--arch', 'arm64', '--show-bin-path'],
+  { cwd: swiftDir, encoding: 'utf8' },
+);
+if (echoBin.status !== 0) process.exit(1);
+const echoDest = path.join(binDir, 'qrtz-echo-aarch64-apple-darwin');
+install(path.join(echoBin.stdout.trim(), 'qrtz-echo'), echoDest);
+console.log(`[build:helper] ${path.relative(process.cwd(), echoDest)}`);
+
+// ADR 0162: the `qrtz` command ships as an externalBin (qrtz.app/Contents/MacOS/qrtz; the app itself is
 // Contents/MacOS/qrtz-app). Built here so `bun run make` and the release workflow (which runs build:helper) bundle the
 // real one; a debug `cargo build` without it gets a stub from src-tauri/build.rs.
 const cargo = spawnSync(
@@ -125,26 +150,42 @@ install(path.join(targetDir, 'release', 'qrtz'), cliDest);
 // never has it without the runtime flag.
 const identity = process.env.APPLE_SIGNING_IDENTITY;
 if (identity) {
-  const sign = spawnSync(
-    'codesign',
+  const signs = [
+    [cliDest, ['--identifier', 'ai.qrtz.cli']],
     [
-      '--force',
-      '--options',
-      'runtime',
-      '--timestamp',
-      '--identifier',
-      'ai.qrtz.cli',
-      '--sign',
-      identity,
-      cliDest,
+      echoDest,
+      [
+        '--identifier',
+        'ai.qrtz.echo',
+        '--entitlements',
+        path.join(swiftDir, 'entitlements/ai.qrtz.echo.entitlements'),
+      ],
     ],
-    { stdio: 'inherit' },
-  );
-  if (sign.status !== 0) process.exit(1);
+  ];
+  for (const [file, extra] of signs) {
+    const sign = spawnSync(
+      'codesign',
+      [
+        '--force',
+        '--options',
+        'runtime',
+        '--timestamp',
+        ...extra,
+        '--sign',
+        identity,
+        file,
+      ],
+      { stdio: 'inherit' },
+    );
+    if (sign.status !== 0) process.exit(1);
+  }
 }
 console.log(`[build:helper] ${path.relative(process.cwd(), cliDest)}`);
 // The copies `tauri dev` runs (target/debug/<name>), in case cargo doesn't rerun build.rs before it starts them.
-for (const [file, name] of [[cliDest, 'qrtz']]) {
+for (const [file, name] of [
+  [echoDest, 'qrtz-echo'],
+  [cliDest, 'qrtz'],
+]) {
   if (isStub(file)) {
     console.error(`[build:helper] ${file} is still the dev stub`);
     process.exit(1);

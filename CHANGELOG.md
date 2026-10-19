@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **echo comes built in (ADR 0174):** qrtz.app includes echo again, so dictation works on a fresh install without the marketplace. echo is in the sidebar with an on/off switch in its view; turning it on asks once to download its speech model, Parakeet (about 460 MB, straight from Hugging Face and checked against the fingerprint built into qrtz). nano, ctrl and snap still install from the marketplace.
 - **qrtz starts empty (ADR 0169):** the app no longer contains echo, nano, ctrl or snap. Install the ones you want from the marketplace; each module comes with its models in the same step (one yes, one progress bar, and nothing half-installed if a download fails). Removing a module also removes its models, unless another installed module uses them. The sidebar lists only what you installed. qrtz.app is about half the size. Until modules.qrtz.ai is live the marketplace says "coming soon".
 - **Models download straight from Hugging Face (ADR 0171):** a module's models come from Hugging Face at a fixed version, and qrtz checks every file against the hashes in the signed package index before using it (a file that doesn't match is refused; interrupted downloads resume). modules.qrtz.ai serves only the modules and the index.
 - **Downloaded modules are checked offline (ADR 0170):** every module's code is notarized by Apple before it's published, and qrtz checks the signature, the team, the file hashes and the notarized code hash on your Mac without asking Gatekeeper online.

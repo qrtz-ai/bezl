@@ -507,10 +507,18 @@ export const ipcContract = {
     response: ModuleEnabled,
   }),
   // --- qrtz speech setup (ADR 0046 §7) ---
+  /** `extensions`: the status of only the models these need (ADR 0174: echo's view, before switching echo on). */
   'speech:status': defineChannel({
     version: 1,
     capability: 'speech.read',
-    request: z.void(),
+    request: z
+      .object({
+        extensions: z
+          .array(z.enum(['echo', 'nano', 'ctrl']))
+          .max(8)
+          .optional(),
+      })
+      .optional(),
     response: SpeechSetupStatus,
   }),
   /** Look for the newest release (version + size); never downloads. */

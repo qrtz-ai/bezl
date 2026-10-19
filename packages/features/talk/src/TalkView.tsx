@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   Button,
   DictionaryTerm,
@@ -18,6 +18,8 @@ import {
   SpeechNotice,
   ModuleSettingsButton,
   ModuleSettingsPage,
+  Switch,
+  ConfirmDialog,
 } from '@qrtz/ui';
 import type {
   DictionaryEntry,
@@ -30,11 +32,112 @@ import {
   useSpeechSetup,
   useSubAppRoute,
 } from '@qrtz/core/react';
-import { SETTINGS_PATH, requestNavigate } from '@qrtz/core';
+import {
+  SETTINGS_PATH,
+  isModuleOn,
+  loadConfig,
+  requestNavigate,
+  type Config,
+  type SpeechSetupStatus,
+} from '@qrtz/core';
 import { entryMeta, parseTerm } from './format';
 import TalkSettings from './TalkSettings';
 
+const mb = (b: number) => `${Math.max(1, Math.round(b / 1e6))} MB`;
+
+/**
+ * ADR 0174: echo ships in qrtz.app, so its view is always in the sidebar and holds its switch. Turning it on asks
+ * once to download Parakeet (from Hugging Face, checked against the hashes pinned in qrtz) unless it is already
+ * there; turning it off keeps the model. The host lets this view change only `modules.echo.enabled`.
+ */
+function useEchoSwitch() {
+  const qrtz = useQrtz();
+  const toast = useToast();
+  const changed = useQrtzEvent('config:changed');
+  const [cfg, setCfg] = useState<Config | null>(null);
+  const [parakeet, setParakeet] = useState<SpeechSetupStatus | null>(null);
+  const [asking, setAsking] = useState(false);
+  useEffect(() => {
+    if (changed) setCfg(loadConfig(changed));
+  }, [changed]);
+  const refresh = useCallback(() => {
+    void qrtz.invoke('config:get').then(
+      (c) => setCfg(loadConfig(c)),
+      () => {},
+    );
+    void qrtz
+      .invoke('speech:status', { extensions: ['echo'] })
+      .then(setParakeet, () => {});
+  }, [qrtz]);
+  useEffect(refresh, [refresh]);
+  const on = !!cfg && isModuleOn(cfg, 'echo');
+  const fail = (e: Error) => toast(e.message, 'error');
+  const setOn = (v: boolean) =>
+    qrtz
+      .invoke('config:set', { patch: { modules: { echo: { enabled: v } } } })
+      .then((c) => setCfg(loadConfig(c)));
+  const turnOn = () => {
+    setAsking(false);
+    setOn(true)
+      .then(() =>
+        parakeet?.configured && !parakeet.installed
+          ? qrtz.invoke('speech:download', { extensions: ['echo'] })
+          : undefined,
+      )
+      .then(refresh, fail);
+  };
+  const toggle = (v: boolean) => {
+    if (!v) return void setOn(false).catch(fail);
+    // Already downloaded (or nothing to download in this build): no question.
+    if (!parakeet?.configured || parakeet.installed) return turnOn();
+    setAsking(true);
+  };
+  const dialog = (
+    <ConfirmDialog
+      open={asking}
+      title="turn on echo?"
+      body={`echo needs its speech model, parakeet (${mb(parakeet?.latestBytes ?? 0)}). it downloads once from hugging face, is checked against the fingerprint built into qrtz, and stays on this mac.`}
+      confirmLabel="download and turn on"
+      onCancel={() => setAsking(false)}
+      onConfirm={turnOn}
+      data-testid="echo-consent"
+    />
+  );
+  const control = (
+    <Switch
+      checked={on}
+      onChange={toggle}
+      label="echo"
+      disabled={!cfg}
+      data-testid="echo-switch"
+    />
+  );
+  return { on, loaded: !!cfg, control, dialog };
+}
+
 export default function TalkView() {
+  const echo = useEchoSwitch();
+  if (echo.loaded && !echo.on)
+    return (
+      <Page data-testid="talk-off">
+        <Stack dir="row" align="center" justify="between">
+          <Heading>echo</Heading>
+          {echo.control}
+        </Stack>
+        <EmptyState title="echo is off: turn it on to dictate with fn" />
+        {echo.dialog}
+      </Page>
+    );
+  return <TalkOn switchControl={echo.control} dialog={echo.dialog} />;
+}
+
+function TalkOn({
+  switchControl,
+  dialog,
+}: {
+  switchControl: ReactNode;
+  dialog: ReactNode;
+}) {
   // ADR 0146 M1.4: this module's own settings open here, not in the global settings.
   const [settingsOpen, setSettingsOpen] = useState(false);
   // ADR 0161: the module manager's "settings" opens this view at `settings`.
@@ -115,8 +218,10 @@ export default function TalkView() {
             onClick={() => setSettingsOpen(true)}
             data-testid="talk-settings-open"
           />
+          {switchControl}
         </Stack>
       </Stack>
+      {dialog}
       <SpeechNotice
         status={speechSetup.speech}
         onOpenSettings={() => requestNavigate({ app: 'settings' })}

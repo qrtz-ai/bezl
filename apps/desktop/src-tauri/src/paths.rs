@@ -87,11 +87,17 @@ pub const CODE_KNOBS: bool = cfg!(debug_assertions);
 /// ADR 0169: every module helper from its installed package under `data`. `QRTZ_<ID>_BIN` still overrides one in a
 /// debug build; a release build never takes a path from the environment (see [`CODE_KNOBS`]).
 pub fn installed_layout(data: &std::path::Path) -> qrtz_app::module_helpers::HelperLayout {
-    installed_layout_from(data, CODE_KNOBS, |k| std::env::var(k).ok())
+    // ADR 0174: echo ships in qrtz.app next to the app binary (Contents/MacOS/qrtz-echo).
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
+        .unwrap_or_default();
+    installed_layout_from(data, &exe_dir, CODE_KNOBS, |k| std::env::var(k).ok())
 }
 
 fn installed_layout_from(
     data: &std::path::Path,
+    exe_dir: &std::path::Path,
     dev: bool,
     get: impl Fn(&str) -> Option<String>,
 ) -> qrtz_app::module_helpers::HelperLayout {
@@ -110,6 +116,10 @@ fn installed_layout_from(
     qrtz_app::module_helpers::HelperLayout::Installed {
         root: data.to_path_buf(),
         programs,
+        bundled: qrtz_app::module_helpers::BUNDLED_EXTENSIONS
+            .iter()
+            .map(|id| ((*id).to_owned(), exe_dir.join(format!("qrtz-{id}"))))
+            .collect(),
     }
 }
 
@@ -194,13 +204,16 @@ mod layout_tests {
         let get = |k: &str| (k == "QRTZ_SNAP_BIN").then(|| "/tmp/evil".to_owned());
         let data = std::path::Path::new("/data");
         assert_eq!(
-            super::installed_layout_from(data, false, get),
+            super::installed_layout_from(data, std::path::Path::new("/app/MacOS"), false, get),
             HelperLayout::Installed {
                 root: data.into(),
-                programs: Default::default()
+                programs: Default::default(),
+                bundled: [("echo".to_owned(), "/app/MacOS/qrtz-echo".into())].into(),
             }
         );
-        let HelperLayout::Installed { programs, .. } = super::installed_layout_from(data, true, get) else {
+        let HelperLayout::Installed { programs, .. } =
+            super::installed_layout_from(data, std::path::Path::new("/app/MacOS"), true, get)
+        else {
             panic!()
         };
         assert_eq!(programs.len(), 1);

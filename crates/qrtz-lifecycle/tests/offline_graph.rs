@@ -1472,34 +1472,72 @@ fn every_lock_requirement_names_the_identifier_its_module_is_signed_with() {
     let map = confinement_map();
     let code = map["moduleCode"].as_object().expect("moduleCode");
     assert_eq!(code["teamId"].as_str(), Some(RELEASE_TEAM));
-    let mapped: BTreeMap<String, (String, String)> = code
-        .iter()
-        .filter(|(k, v)| v.is_object() && k.as_str() != "devHelper")
-        .map(|(k, v)| {
-            (
-                k.clone(),
+    let bundled = map["bundledCode"].as_object().unwrap();
+    let table_of = |t: &serde_json::Map<String, Value>| -> BTreeMap<String, (String, String)> {
+        t.iter()
+            .filter(|(k, v)| v.is_object() && k.as_str() != "devHelper" && k.as_str() != "qrtz")
+            .map(|(k, v)| {
                 (
-                    v["identifier"].as_str().unwrap().to_owned(),
-                    v["entitlements"].as_str().unwrap().to_owned(),
-                ),
-            )
-        })
-        .collect();
-    // Not vacuous (902bcab review): every module qrtz ships is in the table, so dropping one from the map, the
-    // signing script and the lock together still fails here.
+                    k.clone(),
+                    (
+                        v["identifier"].as_str().unwrap().to_owned(),
+                        v["entitlements"].as_str().unwrap().to_owned(),
+                    ),
+                )
+            })
+            .collect()
+    };
+    // ADR 0174: echo's executable is bundled (bundledCode); nano, ctrl and snap are packages (moduleCode).
+    let downloadable = table_of(code);
+    let in_app = table_of(bundled);
+    assert_eq!(
+        downloadable.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["qrtz-ctrl", "qrtz-nano", "qrtz-snap"],
+        "moduleCode names exactly the three downloadable modules"
+    );
+    assert_eq!(
+        in_app.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["qrtz-echo"],
+        "bundledCode carries exactly echo's module code"
+    );
+    let mut mapped = downloadable.clone();
+    mapped.extend(in_app.clone());
+    // Not vacuous (902bcab review): every module qrtz ships is in one of the tables, so dropping one from the maps,
+    // the signing scripts and the lock together still fails here.
     assert_eq!(
         mapped.keys().map(String::as_str).collect::<Vec<_>>(),
         ["qrtz-ctrl", "qrtz-echo", "qrtz-nano", "qrtz-snap"],
-        "moduleCode names exactly the four modules"
+        "the confinement map names exactly the four modules"
     );
-    // Nothing a module runs is bundled.
-    let bundled = map["bundledCode"].as_object().unwrap();
-    for name in mapped.keys().chain(std::iter::once(&"qrtz-helper".to_owned())) {
+    // A downloadable module (and the dev monolith) is never bundled; a bundled one is never a package.
+    for name in downloadable
+        .keys()
+        .chain(std::iter::once(&"qrtz-helper".to_owned()))
+    {
         assert!(
             !bundled.contains_key(name),
             "{name} is bundled in qrtz.app (ADR 0169)"
         );
     }
+    let bundled_ids = |s: &str| -> Vec<String> {
+        s.split("BUNDLED_EXTENSIONS: &[&str] = &[")
+            .nth(1)
+            .and_then(|t| t.split(']').next())
+            .unwrap()
+            .split(',')
+            .map(|x| x.trim().trim_matches('"').to_owned())
+            .filter(|x| !x.is_empty())
+            .collect()
+    };
+    let lib = std::fs::read_to_string(root().join("crates/qrtz-modules/src/lib.rs")).unwrap();
+    assert_eq!(
+        bundled_ids(&lib),
+        in_app
+            .keys()
+            .map(|n| n.trim_start_matches("qrtz-").to_owned())
+            .collect::<Vec<_>>(),
+        "qrtz_modules::BUNDLED_EXTENSIONS and bundledCode differ"
+    );
     // The signing script's table.
     let script = std::fs::read_to_string(root().join("scripts/modules/build-packages.sh")).unwrap();
     let table = script
@@ -1517,7 +1555,7 @@ fn every_lock_requirement_names_the_identifier_its_module_is_signed_with() {
         })
         .collect();
     assert_eq!(
-        signed, mapped,
+        signed, downloadable,
         "build-packages.sh signs differently from moduleCode"
     );
     let lock: Value =
@@ -1526,18 +1564,26 @@ fn every_lock_requirement_names_the_identifier_its_module_is_signed_with() {
     let locked: BTreeSet<String> = lock["modules"].as_object().unwrap().keys().cloned().collect();
     let owners: BTreeSet<String> = mapped
         .keys()
-        .map(|n| code[n]["owner"].as_str().unwrap().to_owned())
+        .map(|n| {
+            code.get(n).unwrap_or_else(|| &bundled[n])["owner"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
         .collect();
     assert_eq!(
         locked, owners,
-        "every locked module has its executable in moduleCode"
+        "every locked module has its executable in moduleCode or bundledCode"
     );
     let read = |p: &str| -> Value {
         serde_json::from_str(&std::fs::read_to_string(root().join(p)).unwrap())
             .unwrap_or_else(|e| panic!("{p}: {e}"))
     };
     for (name, (id, ent)) in &mapped {
-        let owner = code[name]["owner"].as_str().unwrap();
+        let is_bundled = in_app.contains_key(name);
+        let owner = code.get(name).unwrap_or_else(|| &bundled[name])["owner"]
+            .as_str()
+            .unwrap();
         assert_eq!(name, &format!("qrtz-{owner}"));
         let dr_id = |dr: &str| {
             dr.strip_prefix("identifier \"")
@@ -1578,15 +1624,35 @@ fn every_lock_requirement_names_the_identifier_its_module_is_signed_with() {
             Some(dr),
             "{owner}: module.json DR"
         );
-        assert_eq!(m["launch"]["kind"], "package", "{owner}: launch.kind");
-        let q = read(&format!("modules/{owner}/qrtz.json"));
-        let entry = q["extension"]["entry"].as_str().unwrap();
-        assert_eq!(entry, format!("bin/{name}"), "{owner}: qrtz.json extension.entry");
-        assert_eq!(
-            m["launch"]["entry"].as_str(),
-            Some(entry),
-            "{owner}: launch.entry"
-        );
+        if is_bundled {
+            // ADR 0174: qrtz.app/Contents/MacOS/qrtz-<id>, launched under the bundled manifest's requirement (the
+            // one checked above, compiled into the signed app), with no package and no notarization record.
+            assert_eq!(m["launch"]["kind"], "bundled-helper", "{owner}: launch.kind");
+            assert_eq!(
+                m["launch"]["entry"].as_str(),
+                Some(name.as_str()),
+                "{owner}: launch.entry"
+            );
+            let tauri: Value = read("apps/desktop/src-tauri/tauri.macos.conf.json");
+            assert!(
+                tauri["bundle"]["externalBin"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|b| b.as_str() == Some(&format!("binaries/{name}"))),
+                "{name} is an externalBin"
+            );
+        } else {
+            assert_eq!(m["launch"]["kind"], "package", "{owner}: launch.kind");
+            let q = read(&format!("modules/{owner}/qrtz.json"));
+            let entry = q["extension"]["entry"].as_str().unwrap();
+            assert_eq!(entry, format!("bin/{name}"), "{owner}: qrtz.json extension.entry");
+            assert_eq!(
+                m["launch"]["entry"].as_str(),
+                Some(entry),
+                "{owner}: launch.entry"
+            );
+        }
         // What the package installer pins for an extension (qrtz_modules::qrtz_json::identifier_for).
         assert_eq!(
             id,
@@ -1668,7 +1734,11 @@ fn release_team_findings() -> Vec<(String, String)> {
             }
         }
     }
-    for d in std::fs::read_dir(root().join("tools/qrtz-publish/packages")).unwrap() {
+    // ADR 0174: v1 publishes no service package (inference.voice was cut), so the dir may be absent.
+    for d in std::fs::read_dir(root().join("tools/qrtz-publish/packages"))
+        .into_iter()
+        .flatten()
+    {
         let f = d.unwrap().path().join("qrtz.json");
         if f.is_file() {
             files.push(f.strip_prefix(root()).unwrap().to_str().unwrap().to_owned());

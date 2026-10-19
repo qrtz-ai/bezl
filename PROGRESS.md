@@ -454,3 +454,17 @@ qrtz v0.1.0 is feature-complete for the Memo MVP and green on Linux on every pus
   the module hosts. qrtz-publish never writes model files to its output (`<out>.model-blobs` keeps them for offline
   packs); publish.sh hashes models (downloading once if needed), uploads only `v1/`, and `--out-only` writes an upload
   list (`qrtz-publish upload-list`) for an upload through the Cloudflare connector. Root 1 pinned (771769b).
+
+## 2026-10-18 ~20:15–20:50 PT: echo ships inside qrtz.app (ADR 0174)
+
+- Jared (8:14 PM, after Bozniak's architecture review): echo is bundled as `Contents/MacOS/qrtz-echo`, signed
+  `ai.qrtz.echo` with its own entitlements by sign-mac.sh (confinement-map bundledCode), covered by the app's
+  notarization; nano, ctrl and snap stay marketplace packages. echo is always installed (`BUNDLED_EXTENSIONS`), never
+  listed, planned, updated or removed by the marketplace, and absent from build-packages/the index.
+- echo's view holds its switch (sidebar row even while off); turning it on asks once to download Parakeet (pinned in
+  `local_models.json`, Hugging Face, sha256-checked, no index needed). The host limits a module view's `config:set` to
+  its own `enabled`; `speech:status` takes an optional `extensions` filter.
+- Launch: bundled echo's requirement comes from the manifest compiled into the app, rebuilt from name + team
+  MR26CCZ496 (861949c's `launch_requirement`), plain file in Contents/MacOS, `codesign -R` before every spawn.
+- `inference.voice` cut from v1 (echo/nano qrtz.json, build-packages dev index, tools/qrtz-publish/packages).
+- Base app estimate ~29–32 MB (25 MB empty + qrtz-echo), to measure at the next signed build.

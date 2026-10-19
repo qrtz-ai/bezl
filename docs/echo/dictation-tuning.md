@@ -813,4 +813,3 @@ runs from its installed package; installing it still gives a warm first press, b
 `qrtz-echo` starts. Updating Echo from the marketplace, though, doesn't reach dictation until qrtz is relaunched: the
 old process keeps running (from a package dir the cleanup already removed). Proposed to Bobs: relaunch echo after an
 update, but only once no dictation is in progress (ADR 0172). The ranked plan above is unchanged.
-

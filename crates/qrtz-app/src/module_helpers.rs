@@ -35,9 +35,13 @@ pub enum HelperLayout {
     /// ADR 0169, the shipping app: qrtz.app bundles no helper. Each module's helper is its installed package's
     /// entry under `root` (`<data>/packages/<name>/<version>/`, read from `qrtz.lock` at every start), and only an
     /// installed, switched-on module's helper runs. `programs` are dev overrides (debug builds only).
+    ///
+    /// ADR 0174: `bundled` names the modules qrtz.app carries itself (echo → `Contents/MacOS/qrtz-echo`): their
+    /// helper is that file, checked against the bundled manifest's requirement, with no lock or index needed.
     Installed {
         root: PathBuf,
         programs: BTreeMap<String, PathBuf>,
+        bundled: BTreeMap<String, PathBuf>,
     },
 }
 
@@ -70,7 +74,11 @@ impl HelperLayout {
         match self {
             Self::Monolith => Arc::new(module_spawn(base, id, &BTreeMap::new())),
             Self::Split { programs } => Arc::new(module_spawn(base, id, programs)),
-            Self::Installed { root, programs } => {
+            Self::Installed {
+                root,
+                programs,
+                bundled,
+            } => {
                 let mut b = base.clone();
                 b.env.push((MODULE_ENV.to_owned(), id.to_owned()));
                 Arc::new(crate::installed::InstalledSpawn {
@@ -78,6 +86,10 @@ impl HelperLayout {
                     root: root.clone(),
                     base: b,
                     fixed: programs.get(id).cloned(),
+                    bundled: bundled
+                        .get(id)
+                        .filter(|_| qrtz_modules::is_bundled_extension(id))
+                        .cloned(),
                     check: crate::installed::LaunchCheck::for_build(),
                 })
             }
@@ -88,6 +100,9 @@ impl HelperLayout {
 /// The placeholder program of the base spawn when the helpers come from installed packages (ADR 0169): never run
 /// itself, it only carries the arguments and environment every module helper gets.
 pub const INSTALLED_PROGRAM: &str = "qrtz-installed-module";
+
+/// ADR 0174: the modules qrtz.app carries in `Contents/MacOS/qrtz-<id>` (v1: echo).
+pub use qrtz_modules::BUNDLED_EXTENSIONS;
 
 /// Module `id`'s app next to the helper binary. The Rust mock helper plays every role itself (Linux dev and tests),
 /// told which by `QRTZ_MODULE`.

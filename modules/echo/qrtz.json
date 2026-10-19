@@ -4,7 +4,6 @@
   "kind": "extension",
   "description": "Dictation: hold fn, speak, release; the text is typed where your cursor is.",
   "dependencies": {
-    "inference.voice": "^1.0.0",
     "model.parakeet-tdt-v2-en": "^1.0.0"
   },
   "extension": {
@@ -18,6 +17,9 @@
       "talk.dictate",
       "talk.write",
       "speech.read",
+      "speech.manage",
+      "config.read",
+      "config.write",
       "module.settings"
     ],
     "permissions": ["microphone", "accessibility"],

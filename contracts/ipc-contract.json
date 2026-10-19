@@ -7528,7 +7528,24 @@
       "version": 1,
       "capability": "speech.read",
       "request": {
-        "void": true
+        "optional": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "extensions": {
+              "maxItems": 8,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "echo",
+                  "nano",
+                  "ctrl"
+                ]
+              }
+            }
+          }
+        }
       },
       "response": {
         "type": "object",
@@ -13760,6 +13777,9 @@
         "talk.dictate",
         "talk.write",
         "speech.read",
+        "speech.manage",
+        "config.read",
+        "config.write",
         "module.settings"
       ]
     },

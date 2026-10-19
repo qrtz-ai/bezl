@@ -196,8 +196,18 @@ impl SpeechManager {
     }
 
     pub fn status(&self) -> Value {
+        self.status_for(None)
+    }
+
+    /// [`Self::status`] of only the models `extensions` need (ADR 0174: echo's view asks about Parakeet before
+    /// switching echo on, whatever else is on). `None` = the next download's sets.
+    pub fn status_for(&self, extensions: Option<&[String]>) -> Value {
         let dl = self.dl.lock().unwrap().clone();
-        if let (None, Some(l)) = (&self.setup, &self.local_view()) {
+        let view = match (extensions, &self.local) {
+            (Some(e), Some(full)) => Some(Arc::new(full.for_extensions(e))),
+            _ => self.local_view(),
+        };
+        if let (None, Some(l)) = (&self.setup, &view) {
             let installed = l.installed();
             return json!({
                 "configured": true,
@@ -564,7 +574,14 @@ pub struct Setup {
 impl SetupPort for Setup {
     async fn call(&self, channel: &str, p: Value) -> Result<Value, AppError> {
         match channel {
-            "speech:status" => Ok(self.speech.status()),
+            "speech:status" => {
+                let extensions = p["extensions"].as_array().map(|a| {
+                    a.iter()
+                        .filter_map(|e| e.as_str().map(str::to_owned))
+                        .collect::<Vec<_>>()
+                });
+                Ok(self.speech.status_for(extensions.as_deref()))
+            }
             "speech:check" => self.speech.check().await,
             "speech:download" => {
                 let extensions = p["extensions"].as_array().map(|a| {

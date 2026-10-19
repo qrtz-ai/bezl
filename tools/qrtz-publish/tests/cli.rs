@@ -23,7 +23,7 @@ fn dry_run_publishes_packs_and_installs_with_runtime_keys() {
     assert!(o.status.success(), "{out}{}", String::from_utf8_lossy(&o.stderr));
     assert!(out.contains("client sideload installed 3 packages"), "{out}");
     assert!(
-        out.contains("echo@0.3.0, inference.sample@1.0.0, model.sample@1.0.0"),
+        out.contains("inference.sample@1.0.0, model.sample@1.0.0, nano@0.3.0"),
         "{out}"
     );
     assert!(out.contains("blobs checked"), "{out}");
@@ -41,7 +41,7 @@ fn dry_run_publishes_packs_and_installs_with_runtime_keys() {
     // The client's lock is text and names all three, exactly.
     let lock = std::fs::read_to_string(d.path().join("client/qrtz.lock")).unwrap();
     for k in [
-        "\"echo@0.3.0\"",
+        "\"nano@0.3.0\"",
         "\"inference.sample@1.0.0\"",
         "\"model.sample@1.0.0\"",
         "\"designatedRequirement\"",

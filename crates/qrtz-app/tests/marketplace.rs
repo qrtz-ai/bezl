@@ -70,7 +70,7 @@ async fn the_catalog_comes_from_the_signed_index_with_sizes_dependencies_and_pro
     assert!(available.iter().all(|e| e["kind"] == "extension"), "{s}");
     let echo = available
         .iter()
-        .find(|e| e["name"] == "echo")
+        .find(|e| e["name"] == "nano")
         .expect("echo listed");
     assert_eq!(echo["version"], "0.3.0");
     let deps = echo["dependencies"].as_array().unwrap();
@@ -83,11 +83,14 @@ async fn the_catalog_comes_from_the_signed_index_with_sizes_dependencies_and_pro
         echo["sizeBytes"].as_u64().unwrap() + dep_bytes
     );
     // The bundled manifest's permissions for the first-party extension.
-    assert_eq!(echo["permissions"], json!(["microphone", "accessibility"]));
+    assert_eq!(
+        echo["permissions"],
+        json!(["microphone", "screen-recording", "accessibility"])
+    );
 
     // The plan's download equals the card's install size on an empty store (nothing shared yet).
     let plan = ipc
-        .call("packages:plan", json!({"op": "install", "names": ["echo"]}))
+        .call("packages:plan", json!({"op": "install", "names": ["nano"]}))
         .await
         .unwrap();
     let total = plan["downloadBytes"].as_u64().unwrap();
@@ -116,5 +119,5 @@ async fn the_catalog_comes_from_the_signed_index_with_sizes_dependencies_and_pro
         .as_array()
         .unwrap()
         .iter()
-        .any(|p| p["name"] == "echo"));
+        .any(|p| p["name"] == "nano"));
 }

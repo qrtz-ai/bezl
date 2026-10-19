@@ -4,7 +4,6 @@
   "kind": "extension",
   "description": "Meeting and voice notes: records, transcribes, diarizes and summarizes on this Mac.",
   "dependencies": {
-    "inference.voice": "^1.0.0",
     "model.localvqe": "^1.0.0",
     "model.nemotron": "^1.0.0",
     "model.nemotron-diarizer": "^1.0.0"

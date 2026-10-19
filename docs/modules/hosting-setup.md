@@ -103,7 +103,7 @@ rclone copy ~/qrtz-publish-out r2:qrtz-modules --include 'v1/timestamp.json*'
 ```json
 {
   "teamId": "<Developer ID team>",
-  "packages": [{ "dir": "build/echo" }, { "dir": "build/inference.voice" }],
+  "packages": [{ "dir": "build/nano" }],
   "pinnedModels": [
     "crates/qrtz-app/src/local_models.json",
     "crates/qrtz-app/src/ctrl_laya_model.json"
@@ -149,8 +149,8 @@ run step 6 again. Installed copies are disabled on their next check; new install
 $P pack --out ~/qrtz-publish-out --name echo --version 0.3.0 --to echo-0.3.0.qrtzpkg
 ```
 
-The file carries the roots, the signed index and echo with everything it depends on (`inference.voice`,
-`model.parakeet-tdt-v2-en`); on the other Mac, settings → install from file, or `qrtz install ./echo-0.3.0.qrtzpkg`,
+The file carries the roots, the signed index and nano with everything it depends on (its `model.*` packages; ADR
+0174: echo is bundled, `inference.voice` cut); on the other Mac, settings → install from file, or `qrtz install ./nano-0.3.0.qrtzpkg`,
 asks once and shows how old its revocation info is.
 
 ## 10. The `qrtz` command (optional, on your Mac)
