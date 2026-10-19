@@ -56,5 +56,7 @@
 {"type":"ctrl.measure","id":"c46","check":{"check":"audio_output"}}
 {"type":"ctrl.act","id":"c47","actionId":"a21","route":{"route":"scripting","app":"com.apple.systemevents","verb":"shrink_dock"},"content":{}}
 {"type":"ctrl.measure","id":"c48","check":{"check":"dock_size"}}
+{"type":"ctrl.act","id":"c49","actionId":"a22","route":{"route":"scripting","app":"com.apple.systemevents","verb":"set_dock_magnification_on"},"content":{}}
+{"type":"ctrl.measure","id":"c50","check":{"check":"dock_magnification"}}
 {"type":"ctrl.laya.warm","id":"c12","model":"/models/ctrl/laya/laya.mlmodelc"}
 {"type":"ctrl.laya.warm.result","id":"c12","state":"started"}

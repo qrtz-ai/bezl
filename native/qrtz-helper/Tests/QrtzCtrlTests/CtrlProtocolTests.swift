@@ -54,7 +54,7 @@ final class CtrlProtocolTests: XCTestCase {
     func testEveryHostLineOfTheFixtureParses() throws {
         let all = try lines()
         let host = all.filter { !(($0["type"] as! String).hasSuffix(".result")) && $0["type"] as! String != "ctrl.error" }
-        XCTAssertEqual(host.count, 49)
+        XCTAssertEqual(host.count, 51)
         for o in host {
             let line = String(decoding: try JSONSerialization.data(withJSONObject: o), as: UTF8.self)
             XCTAssertNotNil(CtrlRequest.parse(line), "\(o["type"]!)")
@@ -353,6 +353,55 @@ final class CtrlProtocolTests: XCTestCase {
         XCTAssertTrue(CtrlRoute.applessChecks.contains(CtrlDock.sizeCheck))
         XCTAssertTrue(CtrlRoute.dockVerbs.isSuperset(of: ["shrink_dock", "grow_dock"]))
         XCTAssertTrue(CtrlRoute.systemEventsVerbs.isSuperset(of: ["shrink_dock", "grow_dock"]))
+    }
+
+    func testTheDockMagnificationGoesOnlyToSystemEventsAndItsMeasureHasNoApp() throws {
+        // ADR 0202: set_dock_magnification_on parses from the fixture and reaches the backend; both magnification
+        // scripts go to System Events only and set nothing but `magnification` (never its size, auto-hide, edge or the
+        // Dock's size), and dock_magnification is measured without an app from the Dock's `magnification` (absent =
+        // off).
+        let all = try lines()
+        let act = all.first { $0["type"] as? String == "ctrl.act" && ($0["route"] as? [String: Any])?["verb"] as? String == "set_dock_magnification_on" }!
+        let line = String(decoding: try JSONSerialization.data(withJSONObject: act), as: UTF8.self)
+        guard case let .act(_, _, route, _)? = CtrlRequest.parse(line) else { return XCTFail("set_dock_magnification_on") }
+        XCTAssertEqual(route, .scripting(app: "com.apple.systemevents", verb: "set_dock_magnification_on"))
+        let fake = Fake()
+        XCTAssertEqual(json(CtrlServer(backend: fake).handle(line: line))["ok"] as? Bool, true)
+        XCTAssertEqual(fake.acted, [route])
+        XCTAssertEqual(CtrlScripts.source(verb: "set_dock_magnification_on", bundleId: "com.apple.systemevents"),
+                       "tell application id \"com.apple.systemevents\"\ntell dock preferences to set magnification to true\nend tell")
+        XCTAssertEqual(CtrlScripts.source(verb: "set_dock_magnification_off", bundleId: "com.apple.systemevents"),
+                       "tell application id \"com.apple.systemevents\"\ntell dock preferences to set magnification to false\nend tell")
+        for verb in ["set_dock_magnification_on", "set_dock_magnification_off"] {
+            let src = CtrlScripts.source(verb: verb, bundleId: "com.apple.systemevents")!
+            for word in ["activate", "launch", "open", "reopen", "magnification size", "dock size", "autohide", "screen edge",
+                         "do shell script"] {
+                XCTAssertFalse(src.contains(word), "\(verb): \(word)")
+            }
+            for id in ["com.apple.dock", "com.apple.Safari", "com.apple.finder"] {
+                XCTAssertNil(CtrlScripts.source(verb: verb, bundleId: id), "\(verb) \(id)")
+            }
+        }
+        // Strict wire spellings: no toggle, no size, nothing near them is a verb.
+        for verb in ["set_dock_magnification", "set_dock_magnification_toggle", "set_dock_magnification_size",
+                     "Set_Dock_Magnification_On", "set_dock_magnification_on "] {
+            XCTAssertNil(CtrlScripts.source(verb: verb, bundleId: "com.apple.systemevents"), verb)
+            XCTAssertFalse(CtrlRoute.scriptVerbs.contains(verb), verb)
+        }
+        guard case let .measure(_, check, app)? = CtrlRequest.parse(#"{"type":"ctrl.measure","id":"c50","check":{"check":"dock_magnification"}}"#)
+        else { return XCTFail("dock_magnification") }
+        XCTAssertEqual(check, "dock_magnification")
+        XCTAssertEqual(app, "")
+        XCTAssertTrue(CtrlDock.magnifies(["magnification": true]))
+        XCTAssertTrue(CtrlDock.magnifies(["magnification": NSNumber(value: 1)]))
+        XCTAssertTrue(CtrlDock.magnifies(["magnification": "YES"]))
+        XCTAssertFalse(CtrlDock.magnifies(["magnification": false]))
+        XCTAssertFalse(CtrlDock.magnifies(["tilesize": 48]), "absent: off (the default)")
+        XCTAssertFalse(CtrlDock.magnifies(nil))
+        XCTAssertFalse(CtrlDock.magnifies(["magnification": "big"]))
+        XCTAssertTrue(CtrlRoute.applessChecks.contains(CtrlDock.magnificationCheck))
+        XCTAssertTrue(CtrlRoute.dockVerbs.isSuperset(of: ["set_dock_magnification_on", "set_dock_magnification_off"]))
+        XCTAssertTrue(CtrlRoute.systemEventsVerbs.isSuperset(of: ["set_dock_magnification_on", "set_dock_magnification_off"]))
     }
 
     func testTheMenuBarAutohideGoesOnlyToSystemEventsAndItsMeasureHasNoApp() throws {

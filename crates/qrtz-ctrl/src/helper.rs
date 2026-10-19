@@ -79,6 +79,9 @@ pub enum Check {
     /// its unset default isn't documented). Verified with [`Expect::Decreased`] / [`Expect::Increased`] against the
     /// read just before the act.
     DockSize,
+    /// ADR 0202: 1 if the Dock magnifies its icons under the pointer, 0 if not (read in the helper's own process from
+    /// the `com.apple.dock` defaults' `magnification`; absent = off, the macOS default; no app asked, no prompt).
+    DockMagnification,
     /// ADR 0197: 1 if the menu bar hides itself automatically, 0 if it's shown (read in the helper's own process from
     /// the global defaults' `_HIHideMenuBar`; absent = shown, the macOS default; no app asked, no prompt).
     MenuBarAutohide,
@@ -617,6 +620,8 @@ pub struct FakeWorld {
     pub dock_edge: String,
     /// ADR 0200: the Dock's icon size in points (`tilesize`; `None`: never set on this Mac).
     pub dock_tile: Option<i64>,
+    /// ADR 0202: the Dock magnifies its icons under the pointer.
+    pub dock_magnification: bool,
     /// ADR 0197: the menu bar hides itself automatically.
     pub menu_bar_autohide: bool,
     /// ADR 0178: the screen saver is running (ScreenSaverEngine).
@@ -721,6 +726,7 @@ impl FakeWorld {
             dock_autohide: false,
             dock_edge: "bottom".into(),
             dock_tile: Some(48),
+            dock_magnification: false,
             menu_bar_autohide: false,
             screensaver_running: false,
             screensaver_locks: false,
@@ -858,6 +864,17 @@ impl FakeWorld {
                 self.dock_tile = Some(crate::ladder::DOCK_TILE_MIN + (f * span).round() as i64);
                 Ok(())
             }
+            // ADR 0202: the Dock's magnification on / off, through System Events only (its size untouched).
+            Route::Scripting {
+                app,
+                verb: v @ (ScriptVerb::SetDockMagnificationOn | ScriptVerb::SetDockMagnificationOff),
+            } => {
+                if app != crate::exec::SYSTEM_EVENTS {
+                    return Err("policy.refused".into());
+                }
+                self.dock_magnification = *v == ScriptVerb::SetDockMagnificationOn;
+                Ok(())
+            }
             // ADR 0197: the menu bar's auto-hide, through System Events only.
             Route::Scripting {
                 app,
@@ -913,6 +930,8 @@ impl FakeWorld {
                     | ScriptVerb::SetDockEdgeBottom
                     | ScriptVerb::ShrinkDock
                     | ScriptVerb::GrowDock
+                    | ScriptVerb::SetDockMagnificationOn
+                    | ScriptVerb::SetDockMagnificationOff
                     | ScriptVerb::SetMenuBarAutohide
                     | ScriptVerb::SetMenuBarShown
                     | ScriptVerb::StartScreenSaver
@@ -1206,6 +1225,7 @@ impl FakeWorld {
                     Check::DockAutohide => Some(i64::from(self.dock_autohide)),
                     Check::DockEdge => Some(crate::exec::dock_edge_code(&self.dock_edge)),
                     Check::DockSize => self.dock_tile,
+                    Check::DockMagnification => Some(i64::from(self.dock_magnification)),
                     Check::MenuBarAutohide => Some(i64::from(self.menu_bar_autohide)),
                     Check::ScreensaverRunning => Some(i64::from(self.screensaver_running)),
                     Check::DisplayAsleep => Some(i64::from(self.display_asleep)),

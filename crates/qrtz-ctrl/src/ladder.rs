@@ -343,6 +343,12 @@ pub enum ScriptVerb {
     ShrinkDock,
     /// ADR 0200: the same one step bigger, never above 1.
     GrowDock,
+    /// ADR 0202: System Events `tell dock preferences to set magnification to true` (only to
+    /// `com.apple.systemevents`, nothing comes forward, no key event): the Dock's icons grow under the pointer. Its
+    /// size (`magnification size`) stays as the user set it. Reversible.
+    SetDockMagnificationOn,
+    /// ADR 0202: the same with `false` (the macOS default).
+    SetDockMagnificationOff,
     /// ADR 0197: System Events `tell dock preferences to set autohide menu bar to true` (only to
     /// `com.apple.systemevents`, nothing comes forward, no key event): the menu bar slides away until the pointer
     /// reaches the top of the screen. Reversible.

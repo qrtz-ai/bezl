@@ -51,6 +51,10 @@ public enum CtrlScripts {
         // number from the wire.
         case "shrink_dock": body = CtrlDock.sizeScript(bigger: false)
         case "grow_dock": body = CtrlDock.sizeScript(bigger: true)
+        // ADR 0202: the Dock's magnification on / off (System Events tells the Dock; no app comes forward). Its size
+        // (`magnification size`) is never set here.
+        case "set_dock_magnification_on": body = "tell dock preferences to set magnification to true"
+        case "set_dock_magnification_off": body = "tell dock preferences to set magnification to false"
         // ADR 0197: the menu bar's "automatically hide and show" (System Events' dock preferences; no app comes
         // forward). Only on / off: macOS 13+'s desktop-only and full-screen-only choices stay as the user set them.
         case "set_menu_bar_autohide": body = "tell dock preferences to set autohide menu bar to true"
@@ -99,9 +103,9 @@ public enum CtrlAppearance {
     }
 }
 
-/// ADR 0173 / 0195 / 0200: reads the Dock's own defaults domain (`com.apple.dock`): `autohide` for hide/show,
+/// ADR 0173 / 0195 / 0200 / 0202: reads the Dock's own defaults domain (`com.apple.dock`): `autohide` for hide/show,
 /// `orientation` for the screen edge (`left` / `bottom` / `right`; absent = bottom, the macOS default), `tilesize` for
-/// the icon size. Nothing else in the domain is looked at, and nothing in it is written (the size goes through System
+/// the icon size, `magnification` for magnification on / off (absent = off, the macOS default). Nothing else in the domain is looked at, and nothing in it is written (the size goes through System
 /// Events).
 public enum CtrlDock {
     public static let check = "dock_autohide"
@@ -149,6 +153,18 @@ public enum CtrlDock {
         bigger
             ? "tell dock preferences\nset s to (dock size) + \(sizeStep)\nif s > 1 then set s to 1\nset dock size to s\nend tell"
             : "tell dock preferences\nset s to (dock size) - \(sizeStep)\nif s < 0 then set s to 0\nset dock size to s\nend tell"
+    }
+
+    /// ADR 0202: whether the Dock magnifies its icons under the pointer (`magnification`; absent or junk = off).
+    public static let magnificationCheck = "dock_magnification"
+
+    public static func magnifies(_ dock: [String: Any]?) -> Bool {
+        switch dock?["magnification"] {
+        case let b as Bool: return b
+        case let n as NSNumber: return n.boolValue
+        case let s as String: return ["1", "true", "yes"].contains(s.lowercased())
+        default: return false
+        }
     }
 
     public static func edgeCode(_ dock: [String: Any]?) -> Int {

@@ -72,15 +72,17 @@ public enum CtrlRoute: Equatable, Sendable {
                                                   "set_dark_mode", "set_light_mode", "set_dock_autohide", "set_dock_shown",
                                                   "set_dock_edge_left", "set_dock_edge_right", "set_dock_edge_bottom",
                                                   "shrink_dock", "grow_dock",
+                                                  "set_dock_magnification_on", "set_dock_magnification_off",
                                                   "set_menu_bar_autohide", "set_menu_bar_shown",
                                                   "start_screen_saver", "stop_screen_saver"]
     /// ADR 0137: the appearance verbs, only ever to System Events (a faceless agent, never brought forward).
     public static let appearanceVerbs: Set<String> = ["set_dark_mode", "set_light_mode"]
-    /// ADR 0173 / 0195 / 0200: the Dock's auto-hide, screen-edge and size-step verbs, likewise only ever to System
-    /// Events.
+    /// ADR 0173 / 0195 / 0200 / 0202: the Dock's auto-hide, screen-edge, size-step and magnification verbs, likewise
+    /// only ever to System Events.
     public static let dockVerbs: Set<String> = ["set_dock_autohide", "set_dock_shown",
                                                 "set_dock_edge_left", "set_dock_edge_right", "set_dock_edge_bottom",
-                                                "shrink_dock", "grow_dock"]
+                                                "shrink_dock", "grow_dock",
+                                                "set_dock_magnification_on", "set_dock_magnification_off"]
     /// ADR 0197: the menu bar's auto-hide verbs (System Events' dock preferences), likewise only ever to System Events.
     public static let menuBarVerbs: Set<String> = ["set_menu_bar_autohide", "set_menu_bar_shown"]
     /// ADR 0178: start the current screen saver (amendment 1: or stop it), likewise only ever to System Events.
@@ -94,6 +96,7 @@ public enum CtrlRoute: Equatable, Sendable {
     /// ADR 0173: `dock_autohide` too (the Dock's own defaults, read in this process).
     /// ADR 0195: `dock_edge` too (the Dock's `orientation`, read from the same defaults domain).
     /// ADR 0200: `dock_size` too (the Dock's `tilesize`, read from the same defaults domain).
+    /// ADR 0202: `dock_magnification` too (the Dock's `magnification`, read from the same defaults domain).
     /// ADR 0197: `menu_bar_autohide` too (the global defaults' `_HIHideMenuBar`, read in this process).
     /// ADR 0178: `screensaver_running` too (ScreenSaverEngine in the process list, read in this process).
     /// ADR 0180: `display_asleep` too (the main display's sleep state, read in this process).
@@ -102,7 +105,7 @@ public enum CtrlRoute: Equatable, Sendable {
     /// ADR 0194: `kept_awake` too (this process's own keep-awake assertion, read from IOKit; no other app's).
     /// ADR 0198: `audio_output` too (the current sound output's kind, read from Core Audio; never a device's name).
     public static let applessChecks: Set<String> = ["output_muted", "dark_mode", "output_volume", "focus_on", CtrlClipboard.check,
-                                                    CtrlDock.check, CtrlDock.edgeCheck, CtrlDock.sizeCheck, CtrlMenuBar.check, CtrlVolumes.check, CtrlScreensaver.check, CtrlDisplay.check,
+                                                    CtrlDock.check, CtrlDock.edgeCheck, CtrlDock.sizeCheck, CtrlDock.magnificationCheck, CtrlMenuBar.check, CtrlVolumes.check, CtrlScreensaver.check, CtrlDisplay.check,
                                                     CtrlSystemSleep.check, CtrlWifi.check, CtrlKeepAwake.check,
                                                     CtrlAudioOutput.check]
     /// Slice 7b's selective closes (ADR 0114 / 0119) have no fixed script: the backend reads the tabs first

@@ -653,6 +653,13 @@ const INTENTS: &[IntentDef] = &[
         slot: Slot::None,
         irreversible: false,
     },
+    // ADR 0202: the Dock's magnification on or off, through System Events; reversible, no gate.
+    IntentDef {
+        id: "dock_magnification",
+        app: AppMode::Fixed("com.apple.systemevents"),
+        slot: Slot::None,
+        irreversible: false,
+    },
     // ADR 0197: the menu bar's auto-hide, through System Events (faceless), like the Dock's; reversible, no gate.
     IntentDef {
         id: "menu_bar_autohide",
@@ -997,6 +1004,7 @@ const DOCK_SIZE_NOT_WORDS: &[&str] = &[
     "magnified",
     "magnifying",
     "magnification",
+    "magnifier",
     "zoom",
     "smallest",
     "biggest",
@@ -1045,6 +1053,9 @@ const DOCK_SIZE_ANY_WORDS: &[&str] = &[
     "magnified",
     "magnifying",
     "magnification",
+    // ADR 0202: "magnifier" too, and "zoom" beside the Dock ("turn on dock zoom" is no "turn on the dock").
+    "magnifier",
+    "zoom",
 ];
 
 /// ADR 0200: the Dock plus a size or magnification word, whatever else is said. Such a task is never the Dock's
@@ -1077,6 +1088,102 @@ fn dock_size_bigger(toks: &[Tok]) -> Option<bool> {
     match (has(toks, DOCK_SMALLER_WORDS), has(toks, DOCK_BIGGER_WORDS)) {
         (true, false) => Some(false),
         (false, true) => Some(true),
+        _ => None,
+    }
+}
+
+/// ADR 0202: words that name the Dock's magnification (System Settings' "magnification", System Events'
+/// `magnification`). Not "zoom": beside the Dock it only makes other Dock intents refuse (see [`DOCK_SIZE_ANY_WORDS`]),
+/// it never turns this on (Zoom is an app, and Accessibility's zoom is another setting).
+const DOCK_MAGNIFY_WORDS: &[&str] = &[
+    "magnify",
+    "magnifies",
+    "magnified",
+    "magnifying",
+    "magnification",
+    "magnifier",
+];
+/// ADR 0202: words that turn it on ("enable dock magnification", "start magnifying the dock icons").
+const DOCK_MAGNIFY_ON_WORDS: &[&str] = &["enable", "enabled", "start", "activate"];
+/// ADR 0202: words that turn it off ("turn off dock magnification", "stop magnifying the dock", "disable …").
+const DOCK_MAGNIFY_OFF_WORDS: &[&str] = &["off", "disable", "disabled", "stop", "deactivate"];
+/// ADR 0202: words that make a magnification task something else: its size (`magnification size`, its own setting:
+/// more / less, bigger / smaller, a level, an absolute), a toggle (would need a read first, like ADR 0145), a negation
+/// (asked, never guessed), zoom, text / windows.
+const DOCK_MAGNIFY_NOT_WORDS: &[&str] = &[
+    "toggle", "flip", "don't", "dont", "never", "not", "no", "size", "sizes", "sized", "amount", "level",
+    "more", "less", "much", "small", "big", "large", "tiny", "huge", "smallest", "biggest", "largest",
+    "tiniest", "minimum", "maximum", "min", "max", "default", "normal", "original", "reset", "zoom", "text",
+    "font", "label", "labels", "window", "windows",
+];
+/// ADR 0202: what may follow an "on" that is a place or a time, not a switch ("magnification on the dock", "on
+/// hover", "on mondays").
+const ON_PREPOSITION_NEXT: &[&str] = &[
+    "the",
+    "my",
+    "your",
+    "this",
+    "that",
+    "its",
+    "dock",
+    "hover",
+    "mouseover",
+    "mouse",
+    "pointer",
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+    "mondays",
+    "tuesdays",
+    "wednesdays",
+    "thursdays",
+    "fridays",
+    "saturdays",
+    "sundays",
+    "weekdays",
+    "weekends",
+    "weekday",
+    "weekend",
+];
+
+/// ADR 0202: "turn on dock magnification", "turn off magnification on the dock", "enable dock magnification", "stop
+/// magnifying the dock icons", "magnify the dock". The Dock plus a magnification word, no size / level word, no
+/// smaller / bigger word, no hide / show / autohide / edge word (one move per task), nothing from
+/// [`DOCK_MAGNIFY_NOT_WORDS`], no number, not the menu bar. "always" is fine ("always magnify the dock").
+fn dock_magnification_task(toks: &[Tok]) -> bool {
+    has(toks, &["dock"])
+        && has(toks, DOCK_MAGNIFY_WORDS)
+        && !has(toks, DOCK_MAGNIFY_NOT_WORDS)
+        && !has(toks, DOCK_SMALLER_WORDS)
+        && !has(toks, DOCK_BIGGER_WORDS)
+        && !has(toks, DOCK_HIDE_WORDS)
+        && !has(toks, &["show", "shows", "shown", "showing", "visible", "unhide"])
+        && !has(toks, DOCK_EDGE_WORDS)
+        && !menu_bar_named(toks)
+        && !toks.iter().any(|t| t.w.chars().any(|c| c.is_ascii_digit()))
+}
+
+/// ADR 0202: which way the words go: `Some(true)` on, `Some(false)` off, `None` neither or both (the move question
+/// asks). An "on" counts right after turn / switch, or when what follows isn't a place or a time
+/// ([`ON_PREPOSITION_NEXT`]: "turn off magnification on the dock" is off). "magnify" / "magnifies" as the verb ("magnify
+/// the dock icons") is on.
+fn dock_magnifies(toks: &[Tok]) -> Option<bool> {
+    let switch_on = toks.iter().enumerate().any(|(i, t)| {
+        t.w == "on"
+            && ((i > 0 && ["turn", "turned", "switch", "switched", "put"].contains(&toks[i - 1].w.as_str()))
+                || toks
+                    .get(i + 1)
+                    .is_none_or(|n| !ON_PREPOSITION_NEXT.contains(&n.w.as_str())))
+    });
+    let off = has(toks, DOCK_MAGNIFY_OFF_WORDS);
+    let on = switch_on || has(toks, DOCK_MAGNIFY_ON_WORDS) || has(toks, &["magnify", "magnifies"]);
+    match (on, off) {
+        (true, false) => Some(true),
+        (false, true) => Some(false),
         _ => None,
     }
 }
@@ -2127,6 +2234,15 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
                 p += 9500;
             }
         }
+        "dock_magnification" => {
+            // ADR 0202: "turn on dock magnification", "turn off magnification on the dock". The Dock plus a
+            // magnification word, no other app named, no site. Without it it sits well below.
+            p -= 3000;
+            let other_app = named.iter().any(|(a, _)| a.id != DOCK_APP);
+            if dock_magnification_task(toks) && !other_app && !site {
+                p += 9500;
+            }
+        }
         "menu_bar_autohide" => {
             // ADR 0197: "hide the menu bar", "always show the menu bar", "stop hiding the menu bar". The menu bar plus
             // a hide / show / on-off word, no Dock, no app named, no site. Without it it sits well below.
@@ -2746,6 +2862,15 @@ fn move_question(
                 route("scripting.dock_size_bigger", 2000),
             ],
         },
+        // ADR 0202: one move from the words (on or off). Neither or both said → both low so the run asks.
+        "dock_magnification" => match dock_magnifies(toks) {
+            Some(true) => vec![route("scripting.dock_magnification_on", 4500)],
+            Some(false) => vec![route("scripting.dock_magnification_off", 4500)],
+            None => vec![
+                route("scripting.dock_magnification_on", 2000),
+                route("scripting.dock_magnification_off", 2000),
+            ],
+        },
         // ADR 0178: one move — start the current screen saver, or (amendment 1) stop it. Never both: a stop task
         // never backtracks into starting it.
         "screensaver" => {
@@ -2961,6 +3086,7 @@ fn intent_label(id: &str) -> &'static str {
         "dock_autohide" => "hide or show the dock",
         "dock_edge" => "move the dock to an edge",
         "dock_size" => "make the dock smaller or bigger",
+        "dock_magnification" => "turn dock magnification on or off",
         "menu_bar_autohide" => "hide or show the menu bar",
         "screensaver" => "start or stop the screensaver",
         "search" => "search in an app",
@@ -3018,6 +3144,8 @@ fn route_label(id: &str) -> &'static str {
         "scripting.dock_edge_bottom" => "put the dock on the bottom",
         "scripting.dock_size_smaller" => "make the dock a step smaller",
         "scripting.dock_size_bigger" => "make the dock a step bigger",
+        "scripting.dock_magnification_on" => "magnify the dock's icons under the pointer",
+        "scripting.dock_magnification_off" => "stop magnifying the dock's icons",
         "scripting.menu_bar_autohide_on" => "hide the menu bar until the pointer reaches it",
         "scripting.menu_bar_autohide_off" => "always show the menu bar, full screen as set",
         "scripting.screensaver" => "start the current screen saver",
@@ -3198,6 +3326,9 @@ mod label_tests {
             "dock smaller",
             "dock bigger",
             "smaller or bigger",
+            "dock magnification",
+            "turn off magnification on the dock",
+            "magnification on or off",
         ];
         for d in INTENTS {
             for p in phrasings {

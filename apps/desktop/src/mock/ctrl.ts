@@ -141,6 +141,16 @@ const INTENTS = {
     0.07,
   ),
   dock_bigger: opt('intent.dock_size', 'make the dock smaller or bigger', 0.07),
+  dock_magnify_on: opt(
+    'intent.dock_magnification',
+    'turn dock magnification on or off',
+    0.07,
+  ),
+  dock_magnify_off: opt(
+    'intent.dock_magnification',
+    'turn dock magnification on or off',
+    0.07,
+  ),
   menu_bar_hide: opt(
     'intent.menu_bar_autohide',
     'hide or show the menu bar',
@@ -210,6 +220,8 @@ type Intent =
   | 'dock_edge_bottom'
   | 'dock_smaller'
   | 'dock_bigger'
+  | 'dock_magnify_on'
+  | 'dock_magnify_off'
   | 'menu_bar_hide'
   | 'menu_bar_show'
   | 'screensaver'
@@ -427,6 +439,31 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
       opt(
         'route.scripting.dock_size_bigger',
         'make the dock a step bigger',
+        0.9,
+      ),
+    ]),
+  ],
+  // ADR 0202: the dock's magnification on or off, through system events like its size; one move from the words, no card.
+  dock_magnify_on: [
+    act('choose_app', [
+      opt('app.com.apple.systemevents', 'systemevents', 0.95),
+    ]),
+    act('choose_move', [
+      opt(
+        'route.scripting.dock_magnification_on',
+        "magnify the dock's icons under the pointer",
+        0.9,
+      ),
+    ]),
+  ],
+  dock_magnify_off: [
+    act('choose_app', [
+      opt('app.com.apple.systemevents', 'systemevents', 0.95),
+    ]),
+    act('choose_move', [
+      opt(
+        'route.scripting.dock_magnification_off',
+        "stop magnifying the dock's icons",
         0.9,
       ),
     ]),
@@ -901,7 +938,7 @@ const ejectOf = (text: string): Intent | null =>
 // ADR 0200: the dock plus a size or magnification word, whatever else is said (never its auto-hide or edge then).
 const dockSizeWording = (text: string): boolean =>
   /\bdock\b/i.test(text) &&
-  /\b(smaller|tinier|littler|shrinks?|shrinking|reduce|decrease|bigger|larger|enlarge|grows?|increase|expand|small|big|large|tiny|huge|smallest|biggest|largest|tiniest|sizes?|sized|magnif\w*)\b/i.test(
+  /\b(smaller|tinier|littler|shrinks?|shrinking|reduce|decrease|bigger|larger|enlarge|grows?|increase|expand|small|big|large|tiny|huge|smallest|biggest|largest|tiniest|sizes?|sized|magnif\w*|zoom)\b/i.test(
     text,
   );
 // ADR 0200: "make the dock smaller" / "make the dock bigger": one step, one way; not magnification, an absolute size,
@@ -923,6 +960,33 @@ const dockSizeOf = (text: string): Intent | null => {
   );
   if (smaller && !bigger) return 'dock_smaller';
   if (bigger && !smaller) return 'dock_bigger';
+  return null;
+};
+
+// ADR 0202: "turn on dock magnification" / "turn off magnification on the dock": one way; not its size, a level, a
+// toggle, a negation, zoom, a mixed dock task or a number. An "on" before the / my / dock / hover / a day is a place,
+// not a switch.
+const dockMagnifyOf = (text: string): Intent | null => {
+  if (
+    !/\bdock\b/i.test(text) ||
+    !/\bmagnif(y|ies|ied|ying|ication|ier)\b/i.test(text)
+  )
+    return null;
+  if (
+    /\b(toggle|flip|don't|dont|never|not|no|sizes?|sized|amount|level|more|less|much|small|big|large|tiny|huge|smallest|biggest|largest|tiniest|minimum|maximum|min|max|default|normal|original|reset|zoom|text|font|labels?|windows?|smaller|tinier|littler|shrinks?|shrinking|reduce|decrease|bigger|larger|enlarge|grows?|increase|expand|hide|hides|hiding|hidden|auto-?hide|auto-?hiding|automatically|show|shows|shown|showing|visible|unhide|left|right|bottom)\b|\d|menu\s*-?bar/i.test(
+      text,
+    )
+  )
+    return null;
+  const on =
+    /\b(turn|turned|switch|switched|put)\s+on\b/i.test(text) ||
+    /\bon\b(?!\s+(the|my|your|this|that|its|dock|hover|mouseover|mouse|pointer|(mon|tues|wednes|thurs|fri|satur|sun)days?|weekdays?|weekends?)\b)/i.test(
+      text,
+    ) ||
+    /\b(enable|enabled|start|activate|magnify|magnifies)\b/i.test(text);
+  const off = /\b(off|disable|disabled|stop|deactivate)\b/i.test(text);
+  if (on && !off) return 'dock_magnify_on';
+  if (off && !on) return 'dock_magnify_off';
   return null;
 };
 
@@ -1203,6 +1267,7 @@ const minutesLabel = (n: number): string =>
       : `for ${n} minutes`;
 
 const intentOf = (text: string): Intent | null =>
+  dockMagnifyOf(text) ??
   dockSizeOf(text) ??
   windowsOf(text) ??
   awakeOf(text) ??

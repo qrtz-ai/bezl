@@ -479,6 +479,8 @@ public final class MacCtrlBackend: CtrlBackend {
         case CtrlDock.edgeCheck: return CtrlDock.edgeCode(UserDefaults.standard.persistentDomain(forName: CtrlDock.domain))
         // ADR 0200: the Dock's icon size (`tilesize`), same defaults domain (no app asked, no prompt; absent: nil).
         case CtrlDock.sizeCheck: return CtrlDock.tileSize(UserDefaults.standard.persistentDomain(forName: CtrlDock.domain))
+        // ADR 0202: the Dock's magnification on / off, same defaults domain (no app asked, no prompt; absent: off).
+        case CtrlDock.magnificationCheck: return CtrlDock.magnifies(UserDefaults.standard.persistentDomain(forName: CtrlDock.domain)) ? 1 : 0
         // ADR 0197: the menu bar's auto-hide, read from the global defaults in this process (no app asked, no prompt).
         case CtrlMenuBar.check: return CtrlMenuBar.autohides(UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)) ? 1 : 0
         // ADR 0178: ScreenSaverEngine in this process's NSWorkspace list (no app asked, no prompt, nothing activated).

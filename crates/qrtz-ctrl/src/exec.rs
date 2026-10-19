@@ -377,6 +377,10 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
     if mv == DOCK_SMALLER_MOVE || mv == DOCK_BIGGER_MOVE {
         return Some(dock_size_step(mv == DOCK_BIGGER_MOVE));
     }
+    // ADR 0202: the Dock's magnification on / off, the same way (System Events only, read back in the helper).
+    if mv == DOCK_MAGNIFICATION_ON_MOVE || mv == DOCK_MAGNIFICATION_OFF_MOVE {
+        return Some(dock_magnification_step(mv == DOCK_MAGNIFICATION_ON_MOVE));
+    }
     // ADR 0197: the menu bar's auto-hide, the same way (System Events only, read back in the helper).
     if mv == MENU_BAR_AUTOHIDE_ON_MOVE || mv == MENU_BAR_AUTOHIDE_OFF_MOVE {
         return Some(menu_bar_step(mv == MENU_BAR_AUTOHIDE_ON_MOVE));
@@ -855,6 +859,30 @@ fn dock_size_step(bigger: bool) -> Step {
 pub const DOCK_SMALLER_MOVE: &str = "route.scripting.dock_size_smaller";
 pub const DOCK_BIGGER_MOVE: &str = "route.scripting.dock_size_bigger";
 
+/// ADR 0202: one System Events script turns the Dock's magnification on or off; the helper's read of the Dock's
+/// `magnification` verifies it.
+fn dock_magnification_step(on: bool) -> Step {
+    Step::Act {
+        routes: vec![Route::Scripting {
+            app: SYSTEM_EVENTS.into(),
+            verb: if on {
+                ScriptVerb::SetDockMagnificationOn
+            } else {
+                ScriptVerb::SetDockMagnificationOff
+            },
+        }],
+        verify: Verify {
+            check: Check::DockMagnification,
+            expect: if on { Expect::One } else { Expect::Zero },
+        },
+        content: BTreeMap::new(),
+    }
+}
+
+/// ADR 0202: "turn on dock magnification" / "turn off magnification on the dock" (reversible, no gate).
+pub const DOCK_MAGNIFICATION_ON_MOVE: &str = "route.scripting.dock_magnification_on";
+pub const DOCK_MAGNIFICATION_OFF_MOVE: &str = "route.scripting.dock_magnification_off";
+
 /// ADR 0197: one System Events script sets the menu bar's auto-hide; the helper's read of the global defaults'
 /// `_HIHideMenuBar` verifies it.
 fn menu_bar_step(hide: bool) -> Step {
@@ -1142,6 +1170,14 @@ impl Driver<'_> {
             if fplan.is_none() && (mv == MENU_BAR_AUTOHIDE_ON_MOVE || mv == MENU_BAR_AUTOHIDE_OFF_MOVE) {
                 let want = i64::from(mv == MENU_BAR_AUTOHIDE_ON_MOVE);
                 if self.helper.measure(&Check::MenuBarAutohide) == Some(want) {
+                    return sink.push(log, finish(TaskStatus::Done));
+                }
+            }
+            // ADR 0202: the Dock already magnifying (or not) the way the task wants is done with nothing acted, so a
+            // task that changes nothing never asks for the System Events grant. A helper that can't read it acts.
+            if fplan.is_none() && (mv == DOCK_MAGNIFICATION_ON_MOVE || mv == DOCK_MAGNIFICATION_OFF_MOVE) {
+                let want = i64::from(mv == DOCK_MAGNIFICATION_ON_MOVE);
+                if self.helper.measure(&Check::DockMagnification) == Some(want) {
                     return sink.push(log, finish(TaskStatus::Done));
                 }
             }
