@@ -58,16 +58,27 @@ public final class NativePill: PillView, @unchecked Sendable {
 
     private func apply(_ phase: PillPhase) {
         guard let p = panel, let v = view else { return }
+        let wasHidden = v.phase == .hidden
         v.phase = phase
         if phase == .hidden {
-            p.orderOut(nil)
-            v.running = false
+            // Out: shrink and fade while insertion runs; orderOut lands when it ends (never eats clicks after).
+            guard p.isVisible, !wasHidden else { p.orderOut(nil); v.running = false; return }
+            v.animateOut { [weak p, weak v] in
+                guard let p, let v, v.phase == .hidden else { return }  // a new press took over mid-fade
+                p.orderOut(nil)
+                v.running = false
+            }
             return
         }
         if !p.isVisible {
             place(p)
             v.resetAmp()
+            v.animateIn(fromCurrent: false)
             p.orderFrontRegardless()
+        } else if wasHidden {
+            v.animateIn(fromCurrent: true)  // pressed again mid-fade-out: grow back from where it is
+        } else {
+            v.crossfadeContent()
         }
         v.running = true
         NSAccessibility.post(element: v, notification: .announcementRequested,
@@ -174,6 +185,102 @@ public final class PillContentView: NSView {
         CATransaction.commit()
         icon.contentTintColor = NSColor(cgColor: text)
         label.textColor = NSColor(cgColor: text)
+    }
+
+    // MARK: appear / disappear (Core Animation on the content layer; never awaited by capture or insertion)
+
+    private static let inScale: CGFloat = 0.86
+    private static let outScale: CGFloat = 0.9
+    private var outGeneration = 0
+
+    private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+
+    /// A scale about the view's center (the backing layer's anchor is its bottom-left corner).
+    private func centered(_ k: CGFloat) -> CATransform3D {
+        let cx = bounds.midX, cy = bounds.midY
+        var t = CATransform3DMakeTranslation(cx, cy, 0)
+        t = CATransform3DScale(t, k, k, 1)
+        return CATransform3DTranslate(t, -cx, -cy, 0)
+    }
+
+    private func current() -> (CATransform3D, Float) {
+        guard let l = layer else { return (CATransform3DIdentity, 1) }
+        let pl = l.presentation() ?? l
+        return (pl.transform, pl.opacity)
+    }
+
+    /// In: a near-critically-damped spring from a small scale and 0 opacity (about 220 ms); a plain fade with Reduce Motion.
+    public func animateIn(fromCurrent: Bool) {
+        guard let l = layer else { return }
+        outGeneration += 1
+        let (t0, o0) = fromCurrent ? current() : (centered(Self.inScale), 0)
+        l.removeAllAnimations()
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        l.transform = CATransform3DIdentity
+        l.opacity = 1
+        CATransaction.commit()
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = o0; fade.toValue = 1
+        fade.duration = reduceMotion ? 0.12 : 0.16
+        fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        l.add(fade, forKey: "pill.opacity")
+        guard !reduceMotion else { return }
+        let grow = CASpringAnimation(perceptualDuration: 0.22, bounce: 0.04)
+        grow.keyPath = "transform"
+        grow.fromValue = NSValue(caTransform3D: t0)
+        grow.toValue = NSValue(caTransform3D: CATransform3DIdentity)
+        grow.duration = grow.settlingDuration
+        l.add(grow, forKey: "pill.transform")
+    }
+
+    /// Out: shrink and fade (about 170 ms), then `done` unless a press cancelled it.
+    public func animateOut(_ done: @escaping () -> Void) {
+        guard let l = layer else { done(); return }
+        outGeneration += 1
+        let gen = outGeneration
+        let (t0, o0) = current()
+        l.removeAllAnimations()
+        let dur = reduceMotion ? 0.12 : 0.17
+        let tEnd = reduceMotion ? CATransform3DIdentity : centered(Self.outScale)
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        l.transform = tEnd
+        l.opacity = 0
+        CATransaction.commit()
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { [weak self] in
+            guard let self, self.outGeneration == gen else { return }
+            done()
+        }
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = o0; fade.toValue = 0
+        fade.duration = dur
+        fade.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        l.add(fade, forKey: "pill.opacity")
+        if !reduceMotion {
+            let shrink = CABasicAnimation(keyPath: "transform")
+            shrink.fromValue = NSValue(caTransform3D: t0)
+            shrink.toValue = NSValue(caTransform3D: tEnd)
+            shrink.duration = dur
+            shrink.timingFunction = CAMediaTimingFunction(controlPoints: 0.4, 0, 1, 1)
+            l.add(shrink, forKey: "pill.transform")
+        }
+        CATransaction.commit()
+    }
+
+    /// A phase change while shown (listening -> processing -> error text): a quick crossfade plus a hair of spring.
+    public func crossfadeContent() {
+        guard let l = layer else { return }
+        let fade = CATransition()
+        fade.type = .fade
+        fade.duration = reduceMotion ? 0.1 : 0.14
+        l.add(fade, forKey: "pill.content")
+        guard !reduceMotion, l.animation(forKey: "pill.transform") == nil else { return }
+        let pop = CASpringAnimation(perceptualDuration: 0.2, bounce: 0.04)
+        pop.keyPath = "transform"
+        pop.fromValue = NSValue(caTransform3D: centered(0.97))
+        pop.toValue = NSValue(caTransform3D: CATransform3DIdentity)
+        pop.duration = pop.settlingDuration
+        l.add(pop, forKey: "pill.transform")
     }
 
     public func resetAmp() {
