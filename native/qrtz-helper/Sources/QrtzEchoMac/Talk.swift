@@ -222,7 +222,9 @@ public final class MacHotkeys: HotkeyMonitor, @unchecked Sendable {
             }
             guard type == .flagsChanged, var f = hk.filter else { return Unmanaged.passUnretained(event) }
             let r = f.handle(type: type.rawValue, keyCode: event.getIntegerValueField(.keyboardEventKeycode),
-                             flags: event.flags.rawValue)
+                             flags: event.flags.rawValue,
+                             sourceState: event.getIntegerValueField(.eventSourceStateID),
+                             userData: event.getIntegerValueField(.eventSourceUserData))
             hk.filter = f
             if let a = r.action { hk.onChange?(a) }
             return Unmanaged.passUnretained(event)

@@ -19,6 +19,11 @@ public struct HotkeyFilter: Equatable, Sendable {
     /// CGEventFlags raw values.
     public static let fnFlag: UInt64 = 0x80_0000, optionFlag: UInt64 = 0x8_0000, commandFlag: UInt64 = 0x10_0000,
         controlFlag: UInt64 = 0x4_0000
+    /// `CGEventSourceStateID.hidSystemState`: an event from real hardware.
+    public static let hidSystemState: Int64 = 1
+    /// The source user data ctrl's own posted events carry (`CtrlStopWatch.ctrlMarker`, "qrtzctrl"; QrtzEcho can't
+    /// import QrtzCtrl, so it is repeated here).
+    public static let ctrlMarker: Int64 = 0x7172_747A_6374_726C
 
     public let key: String
     public let keyCode: Int64
@@ -46,14 +51,21 @@ public struct HotkeyFilter: Equatable, Sendable {
     public var consumes: Bool { consumeFn && key == "fn" }
 
     /// What one event means: a push-to-talk edge (`action`), and whether the tap drops the event.
-    public mutating func handle(type: UInt32, keyCode code: Int64, flags: UInt64) -> (action: HotkeyAction?, consume: Bool) {
+    /// Review M-E: ⌃ makes a ctrl press only when the event came from the keyboard (`sourceState` is the HID
+    /// system state) and isn't one ctrl posted (`userData` is not `ctrlMarker`): a synthetic ⌃ (ctrl's own
+    /// key combo, another app's automation) never routes speech to ctrl do.
+    public mutating func handle(type: UInt32, keyCode code: Int64, flags: UInt64, sourceState: Int64 = HotkeyFilter.hidSystemState,
+                                userData: Int64 = 0) -> (action: HotkeyAction?, consume: Bool) {
         var action: HotkeyAction?
         if type == Self.flagsChanged, code == keyCode {
             let isDown = flags & flag != 0
             if isDown != down {
                 down = isDown
                 action = isDown ? .down : .up
-                if isDown { withControl = key == "fn" && flags & Self.controlFlag != 0 }
+                if isDown {
+                    withControl = key == "fn" && flags & Self.controlFlag != 0 && sourceState == Self.hidSystemState
+                        && userData != Self.ctrlMarker
+                }
             }
         }
         guard consumes else { return (action, false) }

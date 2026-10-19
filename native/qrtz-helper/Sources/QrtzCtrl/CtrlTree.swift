@@ -188,29 +188,49 @@ public struct CtrlTreeReader<S: CtrlAXSource> {
     public init(source: S, handles: CtrlHandles<S.Element>) { self.source = source; self.handles = handles }
 
     /// The element's fingerprint: role, subrole, title, offered actions, and (review M2) AXIdentifier, the
-    /// process, and every ancestor's role and title up to the window (no value).
-    public func sig(_ e: S.Element) -> String? {
+    /// process, and every ancestor's role and title up to the window (no value). Review H-D: the window's own
+    /// title is left out (it changes with the document, unread count, page title), and `ancestry`, when given, is
+    /// the ancestor part already built by the tree walk, so a read doesn't climb to the window once per node.
+    public func sig(_ e: S.Element, ancestry: [String]? = nil) -> String? {
         guard let role = source.role(e) else { return nil }
         let sub = source.subrole(e)
         var parts = ["\(source.pid(e))", role, sub ?? ""]
         if !CtrlTreeRules.secure(role: role, subrole: sub) {
-            parts += [source.title(e), source.actions(e).sorted().joined(separator: ","), source.identifier(e)]
+            parts += [role == "AXWindow" ? "" : source.title(e), source.actions(e).sorted().joined(separator: ","),
+                      source.identifier(e)]
         }
+        return ctrlSig(parts + (ancestry ?? self.ancestry(e)))
+    }
+
+    /// The ancestor part of `sig`: (role, title) of each ancestor, nearest first, up to the window (its title
+    /// left out), at most `maxHops` of them.
+    public static var maxHops: Int { 24 }
+    public func ancestry(_ e: S.Element) -> [String] {
+        var out: [String] = []
         var p = source.parent(e)
         var hops = 0
-        while let a = p, hops < 24 {
-            parts += [source.role(a) ?? "", source.title(a)]
+        while let a = p, hops < Self.maxHops {
+            out += Self.link(source.role(a) ?? "", source.title(a))
             if source.role(a) == "AXWindow" { break }
             p = source.parent(a); hops += 1
         }
-        return ctrlSig(parts)
+        return out
     }
+
+    /// The ancestry of a child of `e`, given `e`'s own (`parent`): `e`'s link, then `parent`'s, unless `e` is the
+    /// window, capped like `ancestry`.
+    func childAncestry(role: String, title: String, parent: [String]) -> [String] {
+        if role == "AXWindow" { return Self.link(role, title) }
+        return Array((Self.link(role, title) + parent).prefix(2 * Self.maxHops))
+    }
+
+    static func link(_ role: String, _ title: String) -> [String] { [role, role == "AXWindow" ? "" : title] }
 
     /// Read `root` down to `depth` levels. Returns nil if the root itself is secure or unreadable.
     public func read(_ root: S.Element, app: String, depth: Int, focused: S.Element?) -> (root: CtrlTreeNode, focused: String?)? {
         var budget = CtrlTreeRules.maxNodes
         var focusedId: String?
-        func walk(_ e: S.Element, _ level: Int) -> CtrlTreeNode? {
+        func walk(_ e: S.Element, _ level: Int, _ anc: [String]) -> CtrlTreeNode? {
             guard budget > 0, let role = source.role(e) else { return nil }
             let sub = source.subrole(e)
             if CtrlTreeRules.secure(role: role, subrole: sub) { return nil }
@@ -223,14 +243,15 @@ public struct CtrlTreeReader<S: CtrlAXSource> {
             if CtrlTreeRules.textRoles.contains(role) || role == "AXWebArea" {
                 value = source.value(e).map { CtrlTreeRules.cap(CtrlTreeRules.scrub($0, url: role == "AXWebArea"), CtrlTreeRules.maxValue) }
             }
-            let sig = self.sig(e) ?? ctrlSig([role])
+            let sig = self.sig(e, ancestry: anc) ?? ctrlSig([role])
             let id = handles.remember(e, app: app, sig: sig)
             let isFocused = focused.map { source.same($0, e) } ?? false
             if isFocused { focusedId = id }
             var kids: [CtrlTreeNode] = []
             var more = 0
             if level < depth {
-                for c in source.children(e) { if let n = walk(c, level + 1) { kids.append(n) } }
+                let down = childAncestry(role: role, title: source.title(e), parent: anc)
+                for c in source.children(e) { if let n = walk(c, level + 1, down) { kids.append(n) } }
             } else {
                 more = source.childCount(e)
             }
@@ -238,7 +259,7 @@ public struct CtrlTreeReader<S: CtrlAXSource> {
                                 actions: actions, enabled: source.enabled(e), hidden: false, size: source.size(e),
                                 focused: isFocused, children: kids, more: more, sig: sig)
         }
-        guard let n = walk(root, 0) else { return nil }
+        guard let n = walk(root, 0, ancestry(root)) else { return nil }
         return (n, focusedId)
     }
 }

@@ -45,6 +45,21 @@ final class HotkeyFilterTests: XCTestCase {
         XCTAssertFalse(o.withControl)
     }
 
+    /// Review M-E: a ⌃ that didn't come from the keyboard (a posted event, or ctrl's own marked one) never makes a
+    /// ctrl press: the words are dictated as usual.
+    func testOnlyAHardwareCtrlMakesACtrlPress() throws {
+        var f = try XCTUnwrap(F(key: "fn", consumeFn: true))
+        let both = F.fnFlag | F.controlFlag
+        for (state, data) in [(Int64(0), Int64(0)), (Int64(2), Int64(0)), (F.hidSystemState, F.ctrlMarker)] {
+            XCTAssertEqual(f.handle(type: F.flagsChanged, keyCode: F.fnKeyCode, flags: both, sourceState: state, userData: data).action, .down)
+            XCTAssertFalse(f.withControl, "state \(state) data \(data)")
+            _ = f.handle(type: F.flagsChanged, keyCode: F.fnKeyCode, flags: 0)
+        }
+        _ = f.handle(type: F.flagsChanged, keyCode: F.fnKeyCode, flags: both, sourceState: F.hidSystemState, userData: 0)
+        XCTAssertTrue(f.withControl)
+        XCTAssertEqual(F.ctrlMarker, 0x7172_747A_6374_726C, "the same marker as CtrlStopWatch.ctrlMarker")
+    }
+
     func testHotkeyLineCarriesCtrlOnlyWhenSet() throws {
         XCTAssertEqual(HelperMessage.hotkey(.down, ctrl: true).json.object?["ctrl"]?.bool, true)
         XCTAssertNil(HelperMessage.hotkey(.down).json.object?["ctrl"])

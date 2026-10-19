@@ -8,10 +8,13 @@ import XCTest
 private final class El {
     let role: String, subrole: String?, title: String, placeholder: String, value: String?, actions: [String]
     var kids: [El]
+    weak var parent: El?
+    var title_: String? = nil
     init(_ role: String, _ title: String = "", sub: String? = nil, placeholder: String = "", value: String? = nil,
          actions: [String] = [], kids: [El] = []) {
         self.role = role; self.subrole = sub; self.title = title; self.placeholder = placeholder; self.value = value
         self.actions = actions; self.kids = kids
+        kids.forEach { $0.parent = self }
     }
 }
 
@@ -21,7 +24,9 @@ private final class Source: CtrlAXSource {
     func note(_ e: El, _ a: String) { reads.append((e.role, a)) }
     func role(_ e: El) -> String? { e.role }
     func subrole(_ e: El) -> String? { e.subrole }
-    func title(_ e: El) -> String { note(e, "title"); return e.title }
+    func title(_ e: El) -> String { note(e, "title"); return e.title_ ?? e.title }
+    func parent(_ e: El) -> El? { parentReads += 1; return e.parent }
+    var parentReads = 0
     func placeholder(_ e: El) -> String { note(e, "placeholder"); return e.placeholder }
     func help(_ e: El) -> String { note(e, "help"); return "" }
     func value(_ e: El) -> String? { note(e, "value"); return e.value }
@@ -89,6 +94,31 @@ final class CtrlTreeTests: XCTestCase {
         XCTAssertEqual(reader.sig(a), reader.sig(El("AXButton", "send", actions: ["AXPress"])))
         XCTAssertNotEqual(reader.sig(a), reader.sig(b))
         XCTAssertEqual(ctrlSig(["x"]).count, 16)
+    }
+
+    /// Review H-D: the walk's fingerprints equal a standalone `sig` (what `live` re-checks at act time), the
+    /// walk doesn't climb to the window per node, and the window's title (document name, unread count) is not in
+    /// any fingerprint while ancestor titles still are.
+    func testTheWalkBuildsAncestryOnceAndLeavesTheWindowTitleOut() {
+        let send = El("AXButton", "send", actions: ["AXPress"])
+        let group = El("AXGroup", "reply", kids: [send])
+        let deep = (0..<6).reduce(group) { inner, _ in El("AXGroup", "", kids: [inner]) }
+        let win = El("AXWindow", "inbox (3)", kids: [deep])
+        let src = Source()
+        let handles = CtrlHandles<El>()
+        let reader = CtrlTreeReader(source: src, handles: handles)
+        let (root, _) = reader.read(win, app: "com.apple.mail", depth: 12, focused: nil)!
+        XCTAssertLessThanOrEqual(src.parentReads, 1, "only the root's ancestry is climbed")
+        for n in root.all { XCTAssertEqual(n.sig, reader.sig(handles.get(n.id)!.el), n.role) }
+        let before = reader.sig(send)
+        win.title_ = "inbox (4)"
+        XCTAssertEqual(reader.sig(send), before, "the window title is not in the fingerprint")
+        XCTAssertEqual(reader.sig(win), reader.sig(El("AXWindow", "other")))
+        group.title_ = "forward"
+        XCTAssertNotEqual(reader.sig(send), before, "an ancestor's title still is")
+        // A scoped read (root below the window) agrees with the standalone sig too.
+        let (scoped, _) = reader.read(group, app: "com.apple.mail", depth: 2, focused: nil)!
+        for n in scoped.all { XCTAssertEqual(n.sig, reader.sig(handles.get(n.id)!.el)) }
     }
 
     func testSensitiveLabelsAreWholeWords() {
