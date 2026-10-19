@@ -24,17 +24,23 @@ v1 ships one signed, notarized qrtz.app and its package hosting: `modules.qrtz.a
 - **`scripts/modules/timestamp-job.sh install`**: the automatic re-sign, a launchd job that runs every day at 09:00
   and after a missed run. It uses only the timestamp key and gets the R2/B2 keys from your keychain. A failure posts a
   notification.
-- **Proven end to end on the box** with throwaway keys (deleted afterwards): the five real pinned models (1.7 GB, every
-  file matched its pin) plus stub echo, nano and voice-service packages were published, verified, packed, then
-  sideloaded and installed over a local server by the CLI's own code, followed by `--frozen --offline`, `engine`,
-  `remove` and `prune`.
+- **Proven end to end on the box** with throwaway keys (deleted afterwards): `release-keys.sh` (threshold 2: root 1 signed by both root keys) → `publish.sh --no-upload` with the five real pinned
+  model sets (1.7 GB, every file matching its pin) and the repo's own `qrtz.json` for echo, nano, ctrl, snap and
+  `inference.voice` (stub executables) → index 1 with 10 packages, 79 blobs verified → `qrtz-publish timestamp`
+  (timestamp 2) → `pack echo`. Root 1 with one of its two signatures removed is refused by both `qrtz-publish verify`
+  and the client ("signature threshold not met"). The CLI's own code (`pm_cli::run` over `Packages`, throwaway pin,
+  accepting code checks) then sideloaded echo (3 packages), `install --frozen --offline` was a no-op,
+  `install nano` over a loopback Range server fetched 844.5 MB, `install ctrl snap` fetched `model.laya` (483.9 MB),
+  `engine echo model.nemotron` and back, `remove nano`, `prune` (4 dirs, 844.5 MB), and `--frozen --offline` again.
+  The real `qrtz` binary's `link`/`unlink` made and removed `~/.local/bin/qrtz` (under a scratch HOME), and it refuses
+  installs with `no root is pinned`, as it must until `root1Sha256` is set.
 - **Model licenses checked.** All five may be mirrored, with notices. Those are in `THIRD_PARTY_NOTICES.md`:
   Parakeet TDT v2 is CC-BY-4.0, Nemotron streaming is the NVIDIA Open Model License, the Nemotron 3 diarizer is
   OpenMDW-1.1, and LocalVQE and Laya are Apache-2.0.
 
-Not ready yet (ours, not yours): ctrl can't be published until the index accepts `extension.reads` (Bobs is fixing
-it). No extension can pass the installer's notarization check until bare helpers get a stapleable check (ADR 0162).
-The `inference.voice` XPC service doesn't exist yet. So the first publish is models only.
+Not ready yet (ours, not yours): no extension can pass the installer's notarization check until bare helpers get a stapleable check (ADR 0162).
+The `inference.voice` XPC service doesn't exist yet. So the first publish is models only. echo, nano, ctrl and
+snap are built into the app for v1, so nothing waits on that.
 
 ## Part A: the signed v1 build (needed for launch)
 

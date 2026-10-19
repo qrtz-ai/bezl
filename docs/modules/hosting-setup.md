@@ -170,8 +170,8 @@ refuses network installs, like the app.
 
 - Developer ID signing, notarization and stapling of the module apps (docs/release.md); until then manifests use
   the placeholder team and the installer refuses them.
-- The LocalVQE and Laya licenses must allow mirroring before those models are published (until then the app keeps
-  fetching them from their pinned Hugging Face URLs, verified the same way; Laya's download also needs the live,
-  fresh index above).
+- Done: every published model may be mirrored (Parakeet TDT v2 CC-BY-4.0, Nemotron streaming NVIDIA Open Model
+  License, Nemotron 3 diarizer OpenMDW-1.1, LocalVQE and Laya Apache-2.0); attribution is in THIRD_PARTY_NOTICES.md.
+  Laya's download still needs the live, fresh index above.
 - Done (ADR 0162): `qrtz` ships as the externalBin `qrtz.app/Contents/MacOS/qrtz`; the app's own executable is
   `Contents/MacOS/qrtz-app`.
