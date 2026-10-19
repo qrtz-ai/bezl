@@ -415,7 +415,7 @@ struct Inner {
     store: Store,
     hellos: u64,
     dictation_helper: u64,
-    /// N200/N201 (ADR 0225): how many times the supervisor reported the helper down (`helper_status(false)`).
+    /// N200/N201 (ADR 0226): how many times the supervisor reported the helper down (`helper_status(false)`).
     helper_downs: u64,
     /// N200: `hellos` and `helper_downs` when the push key last went down. A new process starts with its push key
     /// up, so the release of a press an older process heard never comes.
@@ -1231,7 +1231,7 @@ impl TalkService {
             if !g.view.takes_a_start() {
                 return g.view.clone();
             }
-            // N200 (ADR 0225): the helper that heard this press died or was replaced during the engine handshake,
+            // N200 (ADR 0226): the helper that heard this press died or was replaced during the engine handshake,
             // and a new process has said hello. It starts with its push key up, so this press's release will
             // never arrive: starting now would leave the pill listening until the next press. Drop the press and
             // say why. (The first hello ever is the same process, unless the supervisor saw it go down first; with
@@ -1319,7 +1319,7 @@ impl TalkService {
             .wait(format!("started:{id}"), started_rx, self.deps().timeouts.started)
             .await;
         let mut g = self.lock();
-        // N201 (ADR 0225): a helper that died (or was replaced) before answering released this wait with nothing;
+        // N201 (ADR 0226): a helper that died (or was replaced) before answering released this wait with nothing;
         // `helper_lost` ends the dictation as helper-lost, so this is not a mic that didn't start.
         let helper_gone = g.helper_downs != downs || g.hellos.max(1) != g.dictation_helper;
         if started.is_none()

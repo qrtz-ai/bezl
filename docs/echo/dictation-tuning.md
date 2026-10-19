@@ -890,7 +890,8 @@ P2 model download pause/resume/background/crash recovery with sha256: crash reco
 blocks dictation with an installed model: **fixed `de03608`** (cycle 70, ADR 0210, N188; section 42), and its follow-up N189 **fixed** (`b464db9` store side, Bobs; `7cf1272` speech side, cycle 71, ADR 0213; section 43); P4 mic edge cases (unplug, AirPods profile, permission revoked,
 sleep/wake): talk side **N194 fixed `88c97ae`** (cycle 73, ADR 0222; section 45), N195/N196 open (Bobs, helper), N197 open (talk, needs a Mac measurement); P5 key-up to text p50/p95 budget and a bench-compare script: bench-compare **done `2a0f708`** (cycle 74, ADR 0223; section 46), the Mac p50/p95 budget still needs Jared's numbers; P6 insertion fallbacks (secure fields,
 Electron, terminals); P7 idle memory/CPU and model unload without first-press cost; P8 crash safety (pill reset, echo
-restart with backoff).
+restart with backoff): talk side **N200/N201 fixed `c86cb60`** (cycle 75, ADR 0226; section 47; the app's restart
+with backoff already exists, `module_helpers.rs` `HelperState::Backoff`).
 
 ## 30. Cycle 57: a list of short lines, a final spoken mark, and what FluidAudio already does (ADRs 0188-0190, `3d9b8b7`)
 
@@ -1978,3 +1979,64 @@ tests. Polish candidate (1) stays p15 after the Mac check.
    two `sweep-*.json` files. PASS means no worse transcript and no latency stat slower than noise.
 4. Optional (N199): dictate "report final" into a Finder rename or a Save dialog's name field and see whether the
    trailing space bothers you.
+
+## 47. Cycle 75: backlog P8, a press heard by a helper that restarted never leaves the pill listening (ADR 0226, `c86cb60`)
+
+Polish re-check first: nothing new clears the bar. cleanup.rs, cleanup.ts and spec/vectors/talk are unchanged since
+`342e67b`; the 4 failing cases are the same as in section 46 (p15 waits on the Mac check in section 36 step 5;
+p19 / p20 ambiguous without a dictionary-known domain; p41 is ADR 0188's "don't retry"). No new candidate was
+found this cycle, so none is added to the rejected list. P5's other half needs Jared's Mac numbers and P7 needs a
+Mac measurement first, so the cycle took P8, crash safety, talk side.
+
+| Run                                                     | Result                                                                                                                                  |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| old service.rs (origin/main `dd3b591`), hardening75 (6) | **3 fail**: a dead helper's press listens on the new helper (twice: crash + respawn, and a fresh hello); a death before `started` says "Microphone did not start" |
+| `c86cb60`, hardening75                                  | 6 / 6 pass                                                                                                                              |
+| `c86cb60` rebased on `fce60f4`, qrtz-talk (41 binaries) | 165 passed, 0 failed (incl. `secure_field.rs` from ADR 0225, vectors, polish_set, cleanup_accuracy); clippy `-D warnings` all targets and rustfmt clean |
+
+- **What P8 already had, talk side:** a helper that goes while a dictation is listening, finalizing or inserting
+  ends it with what was heard (T1 `helper_lost`, service.rs l.987; N142 no insert wait on a gone helper; cycle-28
+  tests in hardening28.rs, hardening23.rs, dictation.rs). App side: the supervisor already restarts the helper with
+  backoff (`crates/qrtz-app/src/module_helpers.rs`, `HelperState::Backoff`); the pill is drawn by the helper, so it
+  goes with the process and the new one starts hidden.
+- **N200 (fixed `c86cb60`):** a press runs the engine handshake (`local.start`, service.rs l.1215) before it sends
+  `dictation.start`. If the helper that heard the press died and a new one said hello during the handshake, talk
+  started the dictation on the new helper. The new process starts with its push key up (`HotkeyFilter.down ==
+  false`, QrtzEcho/Hotkey.swift), so the release produces no `up`, and talk has no listen cap: the pill listened
+  (and recorded) until the next press. Now talk records the hello count and supervisor-down count at each press
+  (l.804) and drops a push-key start whose helper was replaced (l.1234-1251): nothing sent, no mic, "the capture
+  helper restarted, so dictation didn't start" (helper-lost). The first hello ever is the same process; a press
+  whose helper is down with no new hello still fails as helper-unavailable, as before.
+- **N201 (fixed `c86cb60`):** a helper death after `dictation.start` and before `dictation.started` released the
+  start wait with nothing, and `start_inner` usually won the lock and failed it as mic-did-not-start, "Microphone
+  did not start". Now a released wait with the helper down or replaced since the start leaves the ending to
+  `helper_lost` (l.1322-1324): helper-lost, with what was heard.
+- **Dictation path review since `ac424eb`:** `dd3b591` (Bobs, ADR 0224: N195 `micFailed` steps a mic that never
+  opened out of the arbiter, the managed-mic start retries once and refuses by id with `reason`; talk maps
+  `no-device` to mic-lost; N196 a held key ends at sleep and on wake when the fn flag is clear; N198 the notch
+  broker's tick is wired) reviewed: correct, and it closes N195 / N196 / N198 pending the Mac check in
+  docs/echo/mac-verify.md. The id-less `error{dictation.mic}` still only fails a listening dictation (N194 order
+  kept). `19ff5d3` / `5aec13f` (ADR 0225, never type into a password field) and `fce60f4` (TS narrowing) are on the
+  insert path and don't touch the press, release, final or cleanup. No capture, VAD, model config, drain / final
+  pass, cleanup or timing-log change. Findings: N197 open (talk, needs the Mac's device-switch gap), N199 open
+  (Jared's call), N200 / N201 fixed.
+- **Scores at `c86cb60`:** polish set 105 / 109 exact, 42 chars (1.20 % of 3504), baseline 42, regressions 0; keep
+  set 292, 0 hits (the vectors test passes); release cleanup_budget medians over 3 runs 0.123-0.194 /
+  0.132-0.149 / 0.137-0.156 ms (495 words / 504 ending in a question / 504 ending in a vocative question), ceiling
+  2 ms, the benchmark test passes.
+- **Latency:** none. One tuple store on the key-down line, one comparison inside the start's existing lock, one
+  in the started wait. Nothing on the release, final, cleanup or insert path.
+- **Nano quick check:** vitest on the TS talk twin, Note and the scripts: 397 tests passed in 29 files; the 6 Note
+  UI files that load fonts / SQL through Vite couldn't load on the box (a borrowed node_modules, Vite's fs allow
+  list), not a code failure. No TS changed this cycle.
+
+Next: P7 (measure idle memory / CPU on the Mac first) or P6's talk side, unless a polish candidate clears the bar.
+P5's p50 / p95 budget still waits on `node scripts/echo-timing-report.mjs` output from the Mac.
+
+### Test on Jared's Mac (cycle 75)
+
+1. `cd ~/code/qrtz && git pull` (main at or after `c86cb60`), build and run the app as usual.
+2. Normal use first: 5 ordinary fn dictations. Each one inserts as before (this change is only on a crash path).
+3. Optional crash check: hold fn, and while holding run `pkill -x qrtz-echo` in a terminal (`pkill -x qrtz-helper` if
+   Activity Monitor shows no qrtz-echo process), then let go of fn. The pill must not come back stuck listening once the helper
+   restarts; the next fn press dictates normally.
