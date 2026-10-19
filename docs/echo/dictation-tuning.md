@@ -2247,3 +2247,69 @@ on `node scripts/echo-timing-report.mjs` output from the Mac.
    sixth" keeps both words.
 5. If Parakeet already types "21st" for you, nothing changes (the rule only reads words). If anything reads worse,
    `git revert 3b81758` (talk-only) and tell Echo the dictation.
+
+## 51. Cycle 80: a question opening with a wh-contraction ends with "?" (ADR 0232, `9905058a`)
+
+Polish first. ADR 0196 refused any sentence with an apostrophe, so the commonest spoken wh-question typed with a
+period: "What's the plan for tonight" → "What's the plan for tonight." while "What is the plan for tonight" got "?".
+Now the first word of the last sentence (after an ADR 0203 opener) may be what / where / when / why / how / who + 's /
+'re / 'll / 'd / 've, the only apostrophe in the sentence; it is read as the wh-word and is / are / will / would /
+have, the next word must agree with it, and every ADR 0196 check runs as for the spelled-out form. A verb that takes
+the whole wh-clause as its subject ("depends", "matters", "has", … 15 words) refuses it.
+
+| Run                                         | Exact     | Edit distance              | Regressions | Keep set (hits / n) |
+| ------------------------------------------- | --------- | -------------------------- | ----------- | ------------------- |
+| old cleanup (`8fb9e555`), the 140 cases     | 136 / 140 | 42 chars (0.87 % of 4818)  | 0           | 0 / 354             |
+| `9905058a`, the 140 cases                   | 136 / 140 | 42 chars (no case changes) | 0           | 0 / 354             |
+| old cleanup, 154 cases (+14 wh-contraction) | 136 / 154 | 57 chars                   | -           | 0 / 383             |
+| `9905058a`, 154 cases                       | 150 / 154 | 42 chars (0.80 % of 5259)  | 0           | 0 / 383             |
+
+- **Examples:** "What's the plan for tonight" → "…tonight?"; "How'd it go with the client" → "…client?"; "What're
+  your plans for the weekend" → "…weekend?"; "Hey what's the status on the release" → "Hey, what's the status on the
+  release?". Kept: "What's done is done and we move on." (free relative), "What's left needs to go in the fridge."
+  (no subject after it), "What's the right answer depends on the context." (embedded predicate), "What's his name
+  called me this morning." (placeholder name), "Here's what's happening with the launch." (not the first word),
+  "Hey Priya what's the plan for today." (ADR 0206 path unchanged).
+- **False-positive evidence:** 29 keep vectors against 14 positives, 41 refusals in tests/hardening80.rs plus the
+  full tail × subject agreement table. Old / new output on 8574 runs (the 2836 cached Parakeet hypotheses with and
+  without their final mark, every polish / keep / cleanup.json raw, with and without the polish dictionary): **0
+  differences**. Rust and TS identical on 367 126 texts × 2 dictionaries (corpus, vectors, 360 000 generated shapes).
+- **Rejected this cycle** (details in ADR 0232): no subject after the contraction ("Who's coming", "What's up"),
+  "his" / "her" after "What's", a modifier before it ("What time's"), non-agreeing subjects, 'm / 't / two
+  contractions, a second apostrophe, the predicate list on the spelled-out form (N203), the vocative path.
+- **Still failing (4):** p15 spoken "comma" / "period" (waits on section 36 step 5 on the Mac), p19 / p20 spoken
+  email and URL (ADR 0223), p41 (ADR 0188's "don't retry").
+- **Latency:** release `cleanup_budget` on the box, old and new binaries interleaved 12×, two rounds with the order
+  swapped (median of medians): 495 words 0.117 / 0.117 → 0.117 / 0.117 ms; question 0.121 / 0.121 → 0.121 / 0.121;
+  vocative 0.130 / 0.131 → 0.131 / 0.129; tag 0.120 / 0.120 → 0.120 / 0.119; imperative 0.120 / 0.120 → 0.120 /
+  0.119; date 0.121 / 0.120 → 0.123 / 0.120; the new text ending in "What's the plan for tonight" 0.119 / 0.119 ms.
+  Noise; ceiling 2 ms. The check counts apostrophes in the last sentence once, on the final text. Capture,
+  segmenting, the decode schedule, Parakeet's settings, the drain / final pass, insert and the timing log are
+  unchanged.
+- **Dictation path review since `3b81758`:** no change to crates/qrtz-talk, packages/core/src/talk, native/ or the
+  press path. `60416b7` / `2e2164a` / `b593afb5` / `1cd529ed` / `8fb9e555` are the dash worker and scanner; the
+  `.oxlintrc` / `.oxfmtrc` overrides are dash-worker only; `dash_port.rs` caps dash links at 2048 chars. **N203 new
+  (open, low, talk):** the spelled-out form still has the free-relative false positive the contraction now refuses
+  ("What is the right answer depends on the context?", `unmarked_question`'s `LATER_CLAUSE`, cleanup.rs:1705); the
+  same refusal there would also drop "?" from "What do you think matters most", so it waits for its own evidence.
+  N197 (needs the Mac's device-switch gap) and N199 (Jared's call) stay open.
+- **Nano quick check:** vitest on the Note core and feature files: 159 tests passed in 27 files (node 22; the box's
+  node 20 has no `node:sqlite`, so 6 files can't load under it). No Note code changed.
+
+Next: p15 after the Mac check; "What time's" / "How long's" (a modifier before the contraction) with its own keep set;
+N203 if real dictations show it; then P7 (idle memory / CPU on the Mac first) or P6's remaining helper side. P5's
+p50 / p95 budget still waits on `node scripts/echo-timing-report.mjs` output from the Mac.
+
+### Test on Jared's Mac (cycle 80)
+
+1. `cd ~/code/qrtz && git pull` (main at or after `9905058a`), build and run the app as usual.
+2. `cargo test --release -p qrtz-talk --test cleanup_budget --test hardening60 --test hardening80 --test polish_set
+   -- --nocapture`: seven budget medians well under 0.5 ms (box 0.12-0.13 ms), "polish set: 150/154 exact",
+   regressions 0, all pass.
+3. Hold fn and say "What's the plan for tonight" in a flat voice and let go right after "tonight": it types "What's
+   the plan for tonight?". Then "How'd it go with the client" → "…client?"; "Hey what's the status on the release"
+   → "Hey, what's the status on the release?".
+4. Statements keep their period: "What's done is done and we move on" → "…move on."; "What's the right answer
+   depends on the context" → "…context.".
+5. If Parakeet already ends it with "?" for you, nothing changes (the rule only adds a mark where none was written).
+   If anything reads worse, `git revert 9905058a` (talk-only) and tell Echo the dictation.
