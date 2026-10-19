@@ -41,6 +41,11 @@ async fn a_press_before_echos_model_is_downloaded_points_at_the_download() {
     let (kind, msg) = refused_press(true).await;
     assert_eq!(kind, TalkErrorKind::SpeechUnavailable);
     assert_eq!(msg, MSG_SPEECH_MISSING);
+    assert_eq!(
+        msg,
+        qrtz_talk::speech::MSG_NOT_INSTALLED,
+        "one text on every route (ADR 0175 decision 5)"
+    );
     assert!(msg.contains("download"), "{msg}");
     assert!(!msg.contains("try again in a moment"), "{msg}");
 }

@@ -453,9 +453,9 @@ const MSG_BUSY: &str = "another dictation is still running";
 const MSG_NO_HELPER_INSERT: &str = "the capture helper could not take the text, so it was not pasted";
 /// N134: the helper refused the start because no recogniser could take it (all busy finishing, or none loads).
 const MSG_ASR: &str = "speech recognition isn't ready yet; try again in a moment";
-/// N182 (ADR 0177): ...and echo's speech model isn't downloaded, so trying again won't help until it is.
-pub const MSG_SPEECH_MISSING: &str =
-    "echo's speech model isn't downloaded yet. open echo in qrtz to download it, then try again";
+/// N182 (ADR 0177): ...and echo's speech model isn't downloaded, so trying again won't help until it is. The same
+/// text as the speech module's not-installed refusal (ADR 0175 decision 5), so every route says one thing.
+pub const MSG_SPEECH_MISSING: &str = crate::speech::MSG_NOT_INSTALLED;
 /// A dictation ended with no words although the mic was open (see `nothing_heard`).
 pub const MSG_NOTHING_HEARD: &str = "didn't catch any words. hold the key while you speak, then let go";
 /// ...and the mic sent (next to) digital silence the whole time: macOS gave qrtz no sound.
