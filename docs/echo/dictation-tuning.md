@@ -2179,3 +2179,71 @@ p95 budget still waits on `node scripts/echo-timing-report.mjs` output from the 
 4. Statements keep their period: "Please stop, you will hurt yourself" → "…, you will hurt yourself."; "Close the
    door for me, will you" still ends with "." (no "Let's" / "Please" at the start).
 5. If anything reads worse, `git revert eae7777` (talk-only) and tell Echo the dictation.
+
+## 50. Cycle 79: a spoken date's day is written as a figure (ADR 0230, `3b81758`)
+
+Polish first. ADR 0193 wrote amounts, percents and clock times as figures and left dates out. Parakeet writes a
+spoken date both ways (one cached decode of a LibriSpeech clip has "Saturday, August fifteenth.", another "Saturday,
+August 15th."), so a dictated "Let's meet on October twenty first" typed in words. Now an ordinal day 1-31 right
+after a capitalised month that follows a date word ("on", "by", "until", "since", "starting"; "to", "for", "is", …
+only for months that aren't first names) or a weekday is written as "21st", "5th", "2nd", when the day ends its
+sentence or line, or a preposition, pronoun or auxiliary follows it.
+
+| Run                                    | Exact     | Edit distance              | Regressions | Keep set (hits / n) |
+| -------------------------------------- | --------- | -------------------------- | ----------- | ------------------- |
+| old cleanup (`be9eb2f`), the 128 cases | 124 / 128 | 42 chars (0.96 % of 4387)  | 0           | 0 / 333             |
+| `3b81758`, the 128 cases               | 124 / 128 | 42 chars (no case changes) | 0           | 0 / 333             |
+| old cleanup, 140 cases (+12 date)      | 124 / 140 | 116 chars                  | -           | -                   |
+| `3b81758`, 140 cases                   | 136 / 140 | 42 chars (0.87 % of 4818)  | 0           | 0 / 355             |
+
+- **Examples:** "Let's meet on October twenty first" → "Let's meet on October 21st."; "Let's meet on October fifth
+  at three p.m." → "…October 5th at 3 p.m."; "Please send the contract by May second." → "…by May 2nd.". Kept: "Give
+  it to April first." (a name month), "Let's focus on October first, then November." (the adverb), "In March first
+  we went home." (no date word before), "On April fourth graders take the state test." (an adjective), "We are out
+  on October fifth and sixth." (a list), "We launched on October fifth, 2026, in Austin." (a year), "We met on
+  October twenty one at the cafe." (a cardinal).
+- **False-positive evidence:** 22 keep vectors against 12 positives, 26 refusals in tests/hardening79.rs, a dictionary
+  guard (a contact "June" turns the rule off for June). Old / new output on 8140 texts (the 2835 cached Parakeet
+  hypotheses with and without their final mark, with and without the dictionary, plus every pre-existing vector):
+  **8 diffs, all explained**, the 4 texts × 2 dictionaries "Tuesday(,) August eighteenth" → "…18th" and "Saturday,
+  August fifteenth. The sea unbroken all round. No land in sight(.)" → "…15th…", which is what the other decode of
+  that clip wrote. Rust and TS identical on 40 208 texts (corpus plus 36 652 generated date shapes).
+- **Rejected this cycle** (details in ADR 0230): a bare "first" after on / to / for / from / of / is / was (the
+  adverb), to / for / after … before a name month (April, May, June, August), "in" or nothing before the month,
+  cardinal days, "the fifth of May", day + year, ranges and lists of days, "and" / "or" or another word after an
+  unmarked day, "October 21" without the suffix, a lowercase or all-caps month.
+- **Still failing (4):** p15 spoken "comma" / "period" (waits on section 36 step 5 on the Mac), p19 / p20 spoken
+  email and URL (ADR 0223), p41 (ADR 0188's "don't retry").
+- **Latency:** release `cleanup_budget` on the box, old and new binaries interleaved 12×, two rounds with the order
+  swapped (median of medians): 495 words 0.111 / 0.115 → 0.118 / 0.122 ms; question 0.118 / 0.123 → 0.128 / 0.123;
+  vocative 0.131 / 0.133 → 0.136 / 0.134; tag 0.122 / 0.126 → 0.120 / 0.126; imperative 0.119 / 0.123 → 0.123 /
+  0.123; the new text ending in a date 0.120 / 0.121 ms. At most +0.010 ms on 500 words, noise; ceiling 2 ms. One
+  byte pass for a month capital, then only the words around each month; a first draft that split the whole text
+  into words cost +0.015-0.02 ms and was dropped. Capture, segmenting, the decode schedule, Parakeet's settings, the
+  drain / final pass, insert and the timing log are unchanged.
+- **Dictation path review since `f95244a`:** `be9eb2f` (Bozniak dependency review (b): every fancy-regex
+  `replace_all` in cleanup.rs goes through `replace_all_or_keep`, `try_replacen(s, 0, …)`, so a backtrack-limit
+  error keeps the text instead of panicking Talk) reviewed: same text on success (the polish and keep sets are
+  byte-identical before and after it), and the warning logs the error, not the transcript. `dcc05a7` / `6e7cf65` /
+  `a215009` / `e98a79b` (notch surface, helper drawing), `2068e5b` / `21100f8` (palette / sidebar), `098dfc3` (dash),
+  `e025247` (release verify script) are off the press path. N197 (needs the Mac's device-switch gap) and N199
+  (Jared's call) stay open; nothing new.
+- **Nano quick check:** vitest on the Note core and feature files: 159 tests passed in 27 files (every file loads with
+  a worktree-local node_modules). No Note code changed.
+
+Next: p15 after the Mac check; "the fifth of May" / "May the fifth" with their own keep set if real dictations show
+them; then P7 (idle memory / CPU on the Mac first) or P6's remaining helper side. P5's p50 / p95 budget still waits
+on `node scripts/echo-timing-report.mjs` output from the Mac.
+
+### Test on Jared's Mac (cycle 79)
+
+1. `cd ~/code/qrtz && git pull` (main at or after `3b81758`), build and run the app as usual.
+2. `cargo test --release -p qrtz-talk --test cleanup_budget --test hardening60 --test hardening79 --test polish_set
+   -- --nocapture`: six budget medians well under 0.5 ms (box 0.11-0.14 ms), "polish set: 136/140 exact",
+   regressions 0, all pass.
+3. Hold fn and say "Let's meet on October twenty first": it types "Let's meet on October 21st." Then "The deadline is
+   March thirty first" → "…March 31st."; "Can we push the review to November third" → "…November 3rd?".
+4. Left as said: "Let's focus on October first, then November" keeps "first"; "We are out on October fifth and
+   sixth" keeps both words.
+5. If Parakeet already types "21st" for you, nothing changes (the rule only reads words). If anything reads worse,
+   `git revert 3b81758` (talk-only) and tell Echo the dictation.
