@@ -1,0 +1,20 @@
+{
+  "name": "ctrl",
+  "version": "0.2.0",
+  "kind": "extension",
+  "description": "Background actions on this Mac, decided by an on-device model; never takes over the UI.",
+  "dependencies": {
+    "model.laya": "^1.0.0"
+  },
+  "extension": {
+    "entry": "bin/qrtz-ctrl",
+    "protocol": 1,
+    "minApp": "0.2.0",
+    "channels": ["ctrl.*"],
+    "views": ["ctrl"],
+    "capabilities": ["ctrl.read", "ctrl.write", "module.settings"],
+    "permissions": ["accessibility", "automation", "files-and-folders"],
+    "settings": { "namespace": "ctrl", "legacySections": [] },
+    "reads": ["model.laya"]
+  }
+}

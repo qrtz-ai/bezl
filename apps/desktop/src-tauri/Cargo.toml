@@ -6,10 +6,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-default-run = "qrtz"
+default-run = "qrtz-app"
 
+# ADR 0160: the app's executable is Contents/MacOS/qrtz-app; Contents/MacOS/qrtz is the `qrtz` command (externalBin).
+# Same bundle (qrtz.app), same identifier (ai.qrtz.desktop): the designated requirement and the TCC identity are unchanged.
 [[bin]]
-name = "qrtz"
+name = "qrtz-app"
 path = "src/main.rs"
 
 [lib]

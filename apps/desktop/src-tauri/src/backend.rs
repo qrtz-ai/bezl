@@ -464,7 +464,10 @@ fn apply_config(app: &AppHandle, cfg: &Value, first: bool) {
     if !cfg!(debug_assertions) && !cfg!(target_os = "linux") {
         let want = cfg["app"]["launchAtLogin"].as_bool().unwrap_or(false);
         let al = app.autolaunch();
-        if al.is_enabled().ok() != Some(want) {
+        // On the first apply, an enabled login item is written again: its LaunchAgent names the executable path,
+        // and ADR 0160 renamed the app's executable (Contents/MacOS/qrtz is now the `qrtz` command), so a login item
+        // made by an older build would start the command instead of the app.
+        if al.is_enabled().ok() != Some(want) || (first && want) {
             let r = if want { al.enable() } else { al.disable() };
             if let Err(e) = r {
                 tracing::warn!(err = %e, "login item update failed");

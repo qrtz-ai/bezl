@@ -143,6 +143,130 @@ fn every_config_section_has_one_owner() {
     );
 }
 
+/// What `id` owns in the confinement map that really exists under `root`: a crate (a Cargo.toml under crates/,
+/// tools/ or apps/ whose package has that name) or a Swift target (a `.target` or `.executableTarget` of that name
+/// in native/qrtz-helper/Package.swift, not a test target, with at least one .swift file in Sources/<name>). A map
+/// entry alone is not enough, so no module can skip owning real code by naming a target that isn't there.
+fn owned_code(map: &Value, id: &str, root: &Path) -> Vec<String> {
+    let owned_in = |k: &str| -> Vec<String> {
+        map[k]
+            .as_object()
+            .map(|o| {
+                o.iter()
+                    .filter(|(_, v)| *v == id)
+                    .map(|(n, _)| n.clone())
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let mut cargo_names = Vec::new();
+    for base in ["crates", "tools", "apps"] {
+        let Ok(rd) = std::fs::read_dir(root.join(base)) else {
+            continue;
+        };
+        for e in rd.flatten() {
+            for toml in [e.path().join("Cargo.toml"), e.path().join("src-tauri/Cargo.toml")] {
+                if let Ok(t) = std::fs::read_to_string(&toml) {
+                    if let Some(pkg) = t.split("[package]").nth(1) {
+                        let pkg = pkg.split("\n[").next().unwrap_or("");
+                        if let Some(n) = pkg.lines().find_map(|l| {
+                            let l = l.trim();
+                            l.strip_prefix("name")
+                                .map(|r| r.trim_start())
+                                .and_then(|r| r.strip_prefix('='))
+                                .map(|r| r.trim().trim_matches('"').to_owned())
+                        }) {
+                            cargo_names.push(n);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let pkg_dir = root.join("native/qrtz-helper");
+    let swift: String = std::fs::read_to_string(pkg_dir.join("Package.swift"))
+        .unwrap_or_default()
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
+    fn has_swift(d: &Path) -> bool {
+        std::fs::read_dir(d).is_ok_and(|rd| {
+            rd.flatten().any(|e| {
+                let p = e.path();
+                if p.is_dir() {
+                    has_swift(&p)
+                } else {
+                    p.extension().is_some_and(|x| x == "swift")
+                }
+            })
+        })
+    }
+    let mut out: Vec<String> = owned_in("crates")
+        .into_iter()
+        .filter(|c| cargo_names.contains(c))
+        .map(|c| format!("crate {c}"))
+        .collect();
+    out.extend(
+        owned_in("swiftTargets")
+            .into_iter()
+            .filter(|t| {
+                let declared = [".target(name:", ".executableTarget(name:"]
+                    .iter()
+                    .any(|k| swift.contains(&format!("{k}\"{t}\"")));
+                declared && has_swift(&pkg_dir.join("Sources").join(t))
+            })
+            .map(|t| format!("swift target {t}")),
+    );
+    out
+}
+
+/// The owner check above can't be satisfied by a map entry alone: a module needs a crate or Swift target that
+/// exists, and a Swift target only counts with sources and as a real (non-test) target.
+#[test]
+fn a_module_owns_code_only_when_the_crate_or_swift_target_exists() {
+    let d = tempfile::tempdir().unwrap();
+    let r = d.path();
+    let pkg = r.join("native/qrtz-helper");
+    std::fs::create_dir_all(pkg.join("Sources/Ghost")).unwrap();
+    std::fs::create_dir_all(pkg.join("Sources/GhostTests")).unwrap();
+    std::fs::write(pkg.join("Sources/GhostTests/a.swift"), "").unwrap();
+    let map = serde_json::json!({
+        "crates": { "ghost-crate": "ghost" },
+        "swiftTargets": { "Ghost": "ghost", "GhostTests": "ghost", "Missing": "ghost" }
+    });
+    // Neither the crate nor any target exists yet.
+    std::fs::write(
+        pkg.join("Package.swift"),
+        "targets: [ .testTarget(name: \"GhostTests\") ]",
+    )
+    .unwrap();
+    assert!(owned_code(&map, "ghost", r).is_empty());
+    // A module with no entries owns nothing.
+    assert!(owned_code(&map, "nobody", r).is_empty());
+    // Declared but without sources: still nothing.
+    std::fs::write(
+        pkg.join("Package.swift"),
+        "targets: [ .target(name: \"Ghost\"), .testTarget(name: \"GhostTests\") ]",
+    )
+    .unwrap();
+    assert!(owned_code(&map, "ghost", r).is_empty());
+    // With a source file it counts (a test target with sources never does).
+    std::fs::create_dir_all(pkg.join("Sources/Ghost/mac")).unwrap();
+    std::fs::write(pkg.join("Sources/Ghost/mac/a.swift"), "").unwrap();
+    assert_eq!(
+        owned_code(&map, "ghost", r),
+        vec!["swift target Ghost".to_string()]
+    );
+    // A crate counts once its Cargo.toml names it.
+    std::fs::create_dir_all(r.join("crates/ghost-crate")).unwrap();
+    std::fs::write(
+        r.join("crates/ghost-crate/Cargo.toml"),
+        "[package]\nname = \"ghost-crate\"\nversion = \"0.1.0\"\n",
+    )
+    .unwrap();
+    assert_eq!(owned_code(&map, "ghost", r).len(), 2);
+}
+
 /// The ADR 0144 map is the stand-in owner list until M1; the manifests already agree with it on what each module
 /// owns, and the shell's own crate is the shell's.
 #[test]
@@ -150,11 +274,14 @@ fn the_manifests_agree_with_the_confinement_map() {
     let map = read_json("docs/modules/confinement-map.json");
     assert_eq!(map["crates"]["qrtz-modules"], "shell");
     for m in manifests() {
-        // A module owns a Rust crate or (snap, ADR 0159: Swift only) a Swift target.
-        let owns = ["crates", "swiftTargets"]
-            .iter()
-            .any(|k| map[*k].as_object().unwrap().values().any(|o| o == m.id.as_str()));
-        assert!(owns, "{} owns no crate or Swift target in the map", m.id);
+        // A module owns a Rust crate or (snap, ADR 0159: Swift only) a Swift target, and what it owns must exist.
+        let owned = owned_code(&map, &m.id, &root());
+        assert!(
+            !owned.is_empty(),
+            "{} owns no existing crate or Swift target (a crate with a Cargo.toml, or a target or executableTarget \
+             in native/qrtz-helper/Package.swift with .swift sources)",
+            m.id
+        );
         // ADR 0154: one qrtz identity, so a module may declare only the app's TCC allowlist.
         let allowed = map["appTccEntitlements"].as_object().unwrap();
         for e in &m.entitlements {

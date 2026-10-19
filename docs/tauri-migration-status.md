@@ -97,7 +97,7 @@ Use the private bus config (no service dir):
 
 ```sh
 QRTZ_USER_DATA=/tmp/qrtz-run QRTZ_MOCK_HELPER=1 QRTZ_MULTI_INSTANCE=1 \
-  dbus-run-session --config-file=scripts/e2e-dbus.conf -- xvfb-run -a target/debug/qrtz
+  dbus-run-session --config-file=scripts/e2e-dbus.conf -- xvfb-run -a target/debug/qrtz-app
 ```
 
 A debug build loads `devUrl` (vite on 1420); build with `--features custom-protocol` to serve `dist/`.

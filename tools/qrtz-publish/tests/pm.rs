@@ -898,6 +898,31 @@ fn the_legacy_lockfile_migrates_to_requests() {
             ("snap".to_string(), "^0.1.0".to_string())
         ])
     );
+    // snap's legacy entry is pinned exactly: version, manifest hash, team and designated requirement, and the name
+    // is an extension (so the migration keeps it; a model or service entry would be dropped).
+    let snap = &old.modules["snap"];
+    let snap_manifest = qrtz_modules::ModuleManifest::parse(qrtz_modules::bundled::SNAP.as_bytes()).unwrap();
+    assert_eq!(snap.version, "0.1.0");
+    assert_eq!(snap.version, snap_manifest.version);
+    assert_eq!(
+        snap.manifest_sha256,
+        qrtz_modules::sha256_hex(qrtz_modules::bundled::SNAP.as_bytes())
+    );
+    assert_eq!(snap.code, snap_manifest.code);
+    assert_eq!(snap.code.bundle_id, "ai.qrtz.snap");
+    assert_eq!(
+        snap.code.team_id, "0000000000",
+        "the placeholder team until Jared's Developer ID lands"
+    );
+    assert_eq!(
+        snap.code.designated_requirement,
+        qrtz_modules::manifest::designated_requirement("ai.qrtz.snap", &snap.code.team_id)
+    );
+    assert!(snap.dependencies.is_empty());
+    assert_eq!(
+        qrtz_modules::qrtz_json::kind_of("snap").unwrap(),
+        PackageKind::Extension
+    );
     std::fs::create_dir_all(d.path().join("modules")).unwrap();
     std::fs::write(
         d.path().join("modules/modules.lock.json"),

@@ -48,13 +48,17 @@ the root sha256 are fine to share.
 
 ## 4. Keys (offline)
 
+`scripts/modules/release-keys.sh /Volumes/ROOTKEY-A /Volumes/ROOTKEY-B` does all of this section in one command
+(docs/modules/production-setup.md); the steps below are what it runs. `scripts/modules/publish.sh` does §5–§7
+with credentials from env vars.
+
 Four Ed25519 keys. The two root keys never touch a networked machine after this step.
 
 | Key                | Lives                                           | Used for                                    |
 | ------------------ | ----------------------------------------------- | ------------------------------------------- |
 | `root-a`, `root-b` | two encrypted USB sticks in two places, offline | signing a new root (rare: rotation, yearly) |
 | `index`            | the release machine (your Mac), `~/.qrtz-keys/` | every publish                               |
-| `timestamp`        | the release machine (later a scheduled job)     | the weekly re-sign                          |
+| `timestamp`        | the release machine (timestamp-job.sh, daily)   | the re-sign                                 |
 
 On an offline machine (or your Mac with Wi-Fi off), from a checkout:
 
@@ -136,8 +140,9 @@ The timestamp expires 7 days after it's signed; after 8 days every installed qrt
 $P timestamp --out ~/qrtz-publish-out --keys ~/.qrtz-keys && rclone copy ~/qrtz-publish-out r2:qrtz-modules --include 'v1/timestamp.json*' && rclone copy ~/qrtz-publish-out b2:qrtz-modules-mirror --include 'v1/timestamp.json*'
 ```
 
-A launchd job on the release Mac can do it daily; or later in CI once GitHub billing is fixed (then the timestamp key
-moves to a CI secret, and only that key).
+`scripts/modules/timestamp-job.sh install` does this automatically: a launchd job on the release Mac, daily at 09:00
+and after a missed run, with the R2/B2 keys from the login keychain and only the timestamp key. Later it can move to
+CI once GitHub billing is fixed (then the timestamp key moves to a CI secret, and only that key).
 
 ## 8. Pulling a bad release
 
@@ -168,4 +173,5 @@ refuses network installs, like the app.
 - The LocalVQE and Laya licenses must allow mirroring before those models are published (until then the app keeps
   fetching them from their pinned Hugging Face URLs, verified the same way; Laya's download also needs the live,
   fresh index above).
-- `qrtz` in the app bundle needs a Tauri `externalBin` entry in the release build.
+- Done (ADR 0160): `qrtz` ships as the externalBin `qrtz.app/Contents/MacOS/qrtz`; the app's own executable is
+  `Contents/MacOS/qrtz-app`.

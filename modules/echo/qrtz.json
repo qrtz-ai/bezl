@@ -1,0 +1,26 @@
+{
+  "name": "echo",
+  "version": "0.2.0",
+  "kind": "extension",
+  "description": "Dictation: hold fn, speak, release; the text is typed where your cursor is.",
+  "dependencies": {
+    "inference.voice": "^1.0.0",
+    "model.parakeet-tdt-v2-en": "^1.0.0"
+  },
+  "extension": {
+    "entry": "bin/qrtz-echo",
+    "protocol": 1,
+    "minApp": "0.2.0",
+    "channels": ["dictation.*", "pill.*", "insert.*"],
+    "views": ["talk"],
+    "capabilities": [
+      "talk.read",
+      "talk.dictate",
+      "talk.write",
+      "speech.read",
+      "module.settings"
+    ],
+    "permissions": ["microphone", "accessibility"],
+    "settings": { "namespace": "echo", "legacySections": ["talk"] }
+  }
+}

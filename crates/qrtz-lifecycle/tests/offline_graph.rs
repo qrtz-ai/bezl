@@ -1379,3 +1379,96 @@ fn at_most_one_extension_reads_a_model_in_its_own_process() {
         assert!(check_extension_reads(&two).is_err(), "{a} → {b}");
     }
 }
+
+/// ADR 0160, ADR 0159: every executable Tauri bundles into Contents/MacOS (tauri.macos.conf.json externalBin) is in
+/// the confinement map's bundledCode, scripts/release/sign-mac.sh signs exactly those with the identifier and
+/// entitlements listed there, each entitlements file passes the lint, and an extension's bundled helper signs as the
+/// identifier its lock entry pins.
+#[test]
+fn every_bundled_executable_is_signed_as_the_confinement_map_says() {
+    let map = confinement_map();
+    let code = map["bundledCode"].as_object().expect("bundledCode");
+    let mapped: BTreeMap<String, (String, String)> = code
+        .iter()
+        .filter(|(k, _)| *k != "about")
+        .map(|(k, v)| {
+            let ent = match &v["entitlements"] {
+                Value::Null => "none".to_owned(),
+                e => e.as_str().unwrap().to_owned(),
+            };
+            (k.clone(), (v["identifier"].as_str().unwrap().to_owned(), ent))
+        })
+        .collect();
+    // The externalBin list.
+    let conf: Value = serde_json::from_str(
+        &std::fs::read_to_string(root().join("apps/desktop/src-tauri/tauri.macos.conf.json")).unwrap(),
+    )
+    .unwrap();
+    let bins: BTreeSet<String> = conf["bundle"]["externalBin"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| b.as_str().unwrap().trim_start_matches("binaries/").to_owned())
+        .collect();
+    assert_eq!(
+        bins,
+        mapped.keys().cloned().collect(),
+        "externalBin and confinement-map bundledCode differ"
+    );
+    // The signing script's table.
+    let script = std::fs::read_to_string(root().join("scripts/release/sign-mac.sh")).unwrap();
+    let table = script
+        .split("NESTED=\"")
+        .nth(1)
+        .and_then(|t| t.split('"').next())
+        .expect("NESTED table in sign-mac.sh");
+    let signed: BTreeMap<String, (String, String)> = table
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            let f: Vec<&str> = l.split_whitespace().collect();
+            assert_eq!(f.len(), 3, "sign-mac.sh NESTED line: {l}");
+            (f[0].to_owned(), (f[1].to_owned(), f[2].to_owned()))
+        })
+        .collect();
+    assert_eq!(signed, mapped, "sign-mac.sh signs differently from bundledCode");
+    let owners: BTreeSet<&str> = map["owners"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| o.as_str().unwrap())
+        .collect();
+    let lock: Value =
+        serde_json::from_str(&std::fs::read_to_string(root().join("modules/modules.lock.json")).unwrap())
+            .unwrap();
+    for (name, (id, ent)) in &mapped {
+        let owner = code[name]["owner"].as_str().unwrap();
+        assert!(owners.contains(owner), "{name}: unknown owner {owner}");
+        if ent != "app" && ent != "none" {
+            let file = Path::new(ent).file_name().unwrap().to_str().unwrap();
+            let plist = std::fs::read_to_string(root().join(ent)).unwrap_or_else(|e| panic!("{ent}: {e}"));
+            lint_entitlements(file, &plist, &map).unwrap_or_else(|e| panic!("{name}: {e}"));
+        }
+        // A module's bundled helper signs as its lock entry's bundle id (what its designated requirement names).
+        if let Some(m) = lock["modules"].get(owner) {
+            assert_eq!(
+                m["code"]["bundleId"].as_str(),
+                Some(id.as_str()),
+                "{name}: identifier differs from {owner}'s lock entry"
+            );
+        }
+    }
+    // snap (ADR 0159): no entitlement at all, and the helper SnapHost spawns is the one that is bundled.
+    let snap = &mapped["qrtz-snap"];
+    assert_eq!(snap.0, "ai.qrtz.snap");
+    let ent = std::fs::read_to_string(root().join(&snap.1)).unwrap();
+    assert!(
+        granted(&ent).is_empty() && !ent.contains("<key>"),
+        "qrtz-snap carries no entitlement"
+    );
+    assert_eq!(
+        code["qrtz"]["entitlements"],
+        Value::Null,
+        "the qrtz command carries no entitlement"
+    );
+}

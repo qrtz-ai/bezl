@@ -68,6 +68,24 @@
     ["QrtzEchoMac", "FluidAudio"],
     ["QrtzNanoMac", "FluidAudio"]
   ],
+  "bundledCode": {
+    "about": "ADR 0160, ADR 0159: the executables Tauri bundles as externalBin into qrtz.app/Contents/MacOS (tauri.macos.conf.json). tauri build re-signs every one with the app's entitlements and its file name as identifier, so scripts/release/sign-mac.sh signs each again as listed here (identifier, entitlements file or none) and reseals the app before notarization. inherits: runs as qrtz's child under qrtz's one TCC identity (ADR 0154).",
+    "qrtz-helper": {
+      "owner": "monolith",
+      "identifier": "qrtz-helper",
+      "entitlements": "app"
+    },
+    "qrtz": {
+      "owner": "shell",
+      "identifier": "ai.qrtz.cli",
+      "entitlements": null
+    },
+    "qrtz-snap": {
+      "owner": "snap",
+      "identifier": "ai.qrtz.snap",
+      "entitlements": "native/qrtz-helper/entitlements/ai.qrtz.snap.entitlements"
+    }
+  },
   "appTccEntitlements": {
     "com.apple.security.device.audio-input": "ADR 0154: the microphone, for echo dictation and nano recordings (held by qrtz.app since M4.7)",
     "com.apple.security.automation.apple-events": "ADR 0154: Apple Events for ctrl (Jared approved 2026-10-18; NSAppleEventsUsageDescription goes with it)"

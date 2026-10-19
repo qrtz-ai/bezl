@@ -102,4 +102,74 @@ const dest = path.join(binDir, 'qrtz-helper-aarch64-apple-darwin');
 fs.copyFileSync(built, dest);
 fs.chmodSync(dest, 0o755);
 console.log(`[build:helper] ${path.relative(process.cwd(), dest)}`);
+// ADR 0159: qrtz-snap ships next to the helper (Contents/MacOS/qrtz-snap, the third externalBin); the same SwiftPM
+// build made it. Its signature carries no entitlement (ai.qrtz.snap.entitlements is empty) and the identifier its
+// lock entry pins. tauri build re-signs every externalBin with the app's entitlements, so
+// scripts/release/sign-mac.sh signs it again after the bundle (docs/modules/confinement-map.json bundledCode).
+const snapDest = path.join(binDir, 'qrtz-snap-aarch64-apple-darwin');
+fs.copyFileSync(path.join(binPath.stdout.trim(), 'qrtz-snap'), snapDest);
+fs.chmodSync(snapDest, 0o755);
+console.log(`[build:helper] ${path.relative(process.cwd(), snapDest)}`);
+
+// ADR 0160: the `qrtz` command ships as the second externalBin (qrtz.app/Contents/MacOS/qrtz; the app itself is
+// Contents/MacOS/qrtz-app). Built here so `bun run make` and the release workflow (which runs build:helper) bundle the
+// real one; a debug `cargo build` without it gets a stub from src-tauri/build.rs.
+const repo = path.resolve(import.meta.dirname, '..');
+const cargo = spawnSync(
+  'cargo',
+  [
+    'build',
+    '--release',
+    '-p',
+    'qrtz-app',
+    '--features',
+    'runtime',
+    '--bin',
+    'qrtz',
+  ],
+  { cwd: repo, stdio: 'inherit' },
+);
+if (cargo.status !== 0) process.exit(1);
+const targetDir = process.env.CARGO_TARGET_DIR
+  ? path.resolve(repo, process.env.CARGO_TARGET_DIR)
+  : path.join(repo, 'target');
+const cliDest = path.join(binDir, 'qrtz-aarch64-apple-darwin');
+fs.copyFileSync(path.join(targetDir, 'release', 'qrtz'), cliDest);
+fs.chmodSync(cliDest, 0o755);
+// Hardened runtime and a secure timestamp on the nested command (no entitlements, it needs none) and on qrtz-snap.
+// The bundler signs both again inside the app, and scripts/release/sign-mac.sh fixes that up; signing here means a
+// local `bun run make` never has them without the runtime flag.
+const identity = process.env.APPLE_SIGNING_IDENTITY;
+if (identity) {
+  const signs = [
+    [cliDest, ['--identifier', 'ai.qrtz.cli']],
+    [
+      snapDest,
+      [
+        '--identifier',
+        'ai.qrtz.snap',
+        '--entitlements',
+        path.join(dir, 'entitlements/ai.qrtz.snap.entitlements'),
+      ],
+    ],
+  ];
+  for (const [file, extra] of signs) {
+    const sign = spawnSync(
+      'codesign',
+      [
+        '--force',
+        '--options',
+        'runtime',
+        '--timestamp',
+        ...extra,
+        '--sign',
+        identity,
+        file,
+      ],
+      { stdio: 'inherit' },
+    );
+    if (sign.status !== 0) process.exit(1);
+  }
+}
+console.log(`[build:helper] ${path.relative(process.cwd(), cliDest)}`);
 process.exit(0);
