@@ -148,7 +148,8 @@ public enum HostMessage: Equatable, Sendable {
     case recordingResume
     /// consumeFn: nil = not sent (an older host): the helper's default, on.
     /// pill (ADR 0092): `talk.showPill`; nil = not sent: shown.
-    case dictationConfigure(warmMic: Bool, preRollMs: Int, streamAudio: Bool, pushKey: String, consumeFn: Bool? = nil, pill: Bool? = nil, autoInsert: Bool? = nil, echoGate: Bool? = nil)
+    /// pillMotion (ADR 0221, temporary for tuning): `talk.pillMotion`; nil = not sent: `NotchMotion()` defaults.
+    case dictationConfigure(warmMic: Bool, preRollMs: Int, streamAudio: Bool, pushKey: String, consumeFn: Bool? = nil, pill: Bool? = nil, autoInsert: Bool? = nil, echoGate: Bool? = nil, pillMotion: NotchMotion? = nil)
     /// ADR 0092: a failure (or notice) only the host knows, shown on the native pill: lowercase, ≤ 200 chars.
     case pillFlash(kind: PillFlashKind, message: String)
     /// ADR 0221: the notch surface. The host assigns owner and priority (never a module) and has already sanitized,
@@ -556,12 +557,13 @@ extension HostMessage {
         case .recordingPause: return .object(["type": s("recording.pause")])
         case .recordingResume: return .object(["type": s("recording.resume")])
         case .modelsWarm: return .object(["type": s("models.warm")])
-        case .dictationConfigure(let warm, let pre, let stream, let key, let consume, let pill, let autoInsert, let echoGate):
+        case .dictationConfigure(let warm, let pre, let stream, let key, let consume, let pill, let autoInsert, let echoGate, let motion):
             var o: [String: JSONValue] = ["type": s("dictation.configure"), "warmMic": .bool(warm), "preRollMs": n(Double(pre)), "streamAudio": .bool(stream), "pushKey": s(key)]
             if let consume { o["consumeFn"] = .bool(consume) }
             if let pill { o["pill"] = .bool(pill) }
             if let autoInsert { o["autoInsert"] = .bool(autoInsert) }
             if let echoGate { o["echoGate"] = .bool(echoGate) }
+            if let motion { o["pillMotion"] = motion.json }
             return .object(o)
         case .pillFlash(let kind, let message): return .object(["type": s("pill.flash"), "kind": s(kind.rawValue), "message": s(message)])
         case .notchShow(let owner, let priority, let content, let source):
@@ -612,8 +614,10 @@ extension HostMessage {
             if let c = f.o["pill"], c.bool == nil { throw ProtocolError("pill must be a bool") }
             if let c = f.o["autoInsert"], c.bool == nil { throw ProtocolError("autoInsert must be a bool") }
             if let c = f.o["echoGate"], c.bool == nil { throw ProtocolError("echoGate must be a bool") }
+            if let c = f.o["pillMotion"], c.object == nil { throw ProtocolError("pillMotion must be an object") }
             self = .dictationConfigure(warmMic: warm, preRollMs: Int(try f.num("preRollMs")), streamAudio: stream, pushKey: try f.str("pushKey"),
-                                       consumeFn: f.o["consumeFn"]?.bool, pill: f.o["pill"]?.bool, autoInsert: f.o["autoInsert"]?.bool, echoGate: f.o["echoGate"]?.bool)
+                                       consumeFn: f.o["consumeFn"]?.bool, pill: f.o["pill"]?.bool, autoInsert: f.o["autoInsert"]?.bool, echoGate: f.o["echoGate"]?.bool,
+                                       pillMotion: f.o["pillMotion"]?.object.map { NotchMotion(json: $0) })
         case "pill.flash":
             let m = try f.str("message")
             guard !m.isEmpty, m.utf16.count <= 200 else { throw ProtocolError("bad pill message") }

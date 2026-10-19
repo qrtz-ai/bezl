@@ -30,10 +30,13 @@ public protocol PillView: AnyObject, Sendable {
     func level(_ rms: Double)
     /// ADR 0221: a host `notch.show` / `notch.update` / `notch.dismiss` for the shared notch surface the pill draws on.
     func notch(_ m: HostMessage)
+    /// ADR 0221 (temporary, for tuning): the surface's springs, fades and corners for the next animations.
+    func motion(_ m: NotchMotion)
 }
 
 extension PillView {
     public func notch(_ m: HostMessage) {}
+    public func motion(_ m: NotchMotion) {}
 }
 
 /// Follows the helper's talk flow: the push key and the dictation lines it sends, and the host's start, stop, cancel
@@ -91,6 +94,16 @@ public final class PillDriver: @unchecked Sendable {
         get { lock.withLock { inserts } }
         set { lock.withLock { inserts = newValue } }
     }
+
+    /// `talk.pillMotion` (`dictation.configure{pillMotion}`), handed to the view; it applies on the next animation.
+    public var motion: NotchMotion {
+        get { lock.withLock { motionNow } }
+        set {
+            lock.withLock { motionNow = newValue }
+            view.motion(newValue)
+        }
+    }
+    private var motionNow = NotchMotion()
 
     /// Runs `fire` after `ms` (a timeout). Tests pass a manual clock so no test races the wall clock.
     public typealias After = @Sendable (_ ms: Int, _ fire: @escaping @Sendable () -> Void) -> Void

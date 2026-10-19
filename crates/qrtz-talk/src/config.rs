@@ -21,6 +21,10 @@ pub struct TalkConfig {
     /// `talk.echoGate` (ADR 0097, N153): while dictating with the speakers playing, gate the mic against the
     /// system audio (a short-lived system tap under the screen & system audio grant). `dictation.configure{echoGate}`.
     pub echo_gate: bool,
+    /// `talk.pillMotion` (ADR 0221, temporary for tuning): the pill's springs, fades and corners from echo's dev
+    /// opts, forwarded as is in `dictation.configure{pillMotion}` (the helper clamps each value). None: not an
+    /// object, so not sent, and the helper uses its snappy defaults.
+    pub pill_motion: Option<Value>,
 }
 
 impl TalkConfig {
@@ -43,6 +47,7 @@ impl TalkConfig {
             save_history: b("saveHistory", true),
             show_pill: b("showPill", true),
             echo_gate: b("echoGate", true),
+            pill_motion: t["pillMotion"].is_object().then(|| t["pillMotion"].clone()),
         }
     }
 }
@@ -59,5 +64,13 @@ mod tests {
         assert!(!TalkConfig::from_app_config(&json!({"modules": {"enabled": false}})).enabled);
         assert!(!TalkConfig::from_app_config(&json!({"talk": {"enabled": false}})).enabled);
         assert!(TalkConfig::from_app_config(&json!({"modules": {"nano": {"enabled": false}}})).enabled);
+    }
+
+    #[test]
+    fn pill_motion_is_forwarded_only_when_an_object() {
+        assert_eq!(TalkConfig::from_app_config(&json!({})).pill_motion, None);
+        assert_eq!(TalkConfig::from_app_config(&json!({"talk": {"pillMotion": 3}})).pill_motion, None);
+        let m = json!({"expandBounce": 0.2});
+        assert_eq!(TalkConfig::from_app_config(&json!({"talk": {"pillMotion": m}})).pill_motion, Some(m));
     }
 }

@@ -503,6 +503,8 @@ export const HostToHelper = z.discriminatedUnion('type', [
     pill: z.boolean().optional(),
     autoInsert: z.boolean().optional(),
     echoGate: z.boolean().optional(),
+    /** ADR 0221, temporary for tuning: `talk.pillMotion` (absent = the helper's snappy defaults). */
+    pillMotion: z.record(z.string(), z.number()).optional(),
   }),
   /** ADR 0092: a failure or notice only the host knows (an older dictation's failed insert, the clipboard
    * fallback: info "copied to clipboard"), shown on the helper's native pill. Lowercase text. */

@@ -74,3 +74,42 @@ describe("echo's own settings (ADR 0146 M1.4)", () => {
     root.unmount();
   });
 });
+
+describe("echo's dev opts (ADR 0221, temporary pill tuning)", () => {
+  it('stay collapsed until opened, write the whole talk.pillMotion on commit, and reset to the snappy defaults', async () => {
+    const { PillDevOpts } = await import('./PillDevOpts');
+    const { PILL_MOTION_DEFAULTS } = await import('@qrtz/core');
+    const commits: unknown[] = [];
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const root = createRoot(el);
+    await act(async () =>
+      root.render(
+        <ThemeProvider mode="dark">
+          <PillDevOpts
+            value={{ expandBounce: 0.9, collapseDuration: 0.5 }}
+            onCommit={(m) => commits.push(m)}
+          />
+        </ThemeProvider>,
+      ),
+    );
+    const q = (id: string) =>
+      el.querySelector<HTMLInputElement>(`[data-testid="${id}"]`);
+    expect(q('talk-motion-expandBounce')).toBeNull();
+    await act(async () => q('talk-dev-opts-toggle')!.click());
+    // Stored values are clamped to the slider's range; missing ones take the default.
+    expect(q('talk-motion-expandBounce')!.value).toBe('0.35');
+    expect(q('talk-motion-collapseDuration')!.value).toBe('0.5');
+    expect(q('talk-motion-expandDuration')!.value).toBe('0.3');
+    expect(el.textContent).not.toMatch(/settings/i);
+    await act(async () => q('talk-motion-reset')!.click());
+    expect(commits).toEqual([PILL_MOTION_DEFAULTS]);
+    expect(PILL_MOTION_DEFAULTS).toMatchObject({
+      expandDuration: 0.3,
+      expandBounce: 0.15,
+      collapseDuration: 0.3,
+      collapseBounce: 0,
+    });
+    root.unmount();
+  });
+});

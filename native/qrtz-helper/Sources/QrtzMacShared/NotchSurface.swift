@@ -54,6 +54,12 @@ public final class NotchSurface: @unchecked Sendable {
         ) { [weak self] _ in self?.screensChanged() }
     }
 
+    /// ADR 0221 (temporary, for tuning): read by every animation the stage builds; main thread only.
+    public var motion: NotchMotion {
+        get { stage.motion }
+        set { stage.motion = newValue }
+    }
+
     deinit {
         if let o = screenObserver { NotificationCenter.default.removeObserver(o) }
         secureTimer?.invalidate()
@@ -227,6 +233,9 @@ final class NotchStageView: NSView {
     private let font: NSFont
 
     var level = 0.0
+    /// The springs, fades and corners (`NotchMotion`); read each time an animation is built, so a change applies on
+    /// the next show, widen or hide.
+    var motion = NotchMotion()
     var running = false {
         didSet {
             guard running != oldValue else { return }
@@ -327,18 +336,18 @@ final class NotchStageView: NSView {
     /// At rest: exactly the hardware notch (invisible against it), or the fake tab collapsed to zero height.
     private var restPath: CGPath {
         let r = geo.rest
-        return path(width: r.width, height: r.height, radius: NotchGeometry.restRadius, ear: 0)
+        return path(width: r.width, height: r.height, radius: motion.radiusCollapsed, ear: 0)
     }
 
     /// Rest and expanded paths share `NotchShape.path`'s ten steps, and every point in them is linear in
     /// (w, h, radius, ear). Core Animation lerps path points with the spring's progress k (overshoot included), so
     /// mid-flight the shape is exactly `path(lerp(w), lerp(h), lerp(r), lerp(e))`: the bottom radius grows as
-    /// r = restRadius + (expandedRadius - restRadius) * p and the shoulders as e = expandedEar * p, where
+    /// r = radiusCollapsed + (radiusExpanded - radiusCollapsed) * p and the shoulders as e = shoulder * p, where
     /// p = (h - h_rest) / (h_expanded - h_rest) = k. Both endpoints satisfy the clamp (r <= h - e, e <= h / 2), and
     /// those are linear, so every in-between frame does too; the <1% overshoot keeps that margin.
     private var expandedPath: CGPath {
         let s = NotchGeometry.expanded(notchWidth: notchWidth, notchHeight: contentTop, extra: extra)
-        return path(width: s.w, height: s.h, radius: NotchGeometry.expandedRadius, ear: NotchGeometry.expandedEar)
+        return path(width: s.w, height: s.h, radius: motion.radiusExpanded, ear: motion.shoulder)
     }
 
     /// The body's width now (the shape minus its ears).
@@ -466,7 +475,7 @@ final class NotchStageView: NSView {
     private func presentedOpacity(_ l: CALayer) -> Float { (l.presentation() ?? l).opacity }
 
     /// Show: the shape springs from the rest rect (or from where a retract left it) to the expanded size on a system
-    /// spring with `.snappy`'s bounce (perceptual 0.3 s, bounce 0.15); the content fades in as the shape arrives
+    /// spring with `.snappy`'s bounce (by default perceptual 0.3 s, bounce 0.15; `motion`); the content fades in as the shape arrives
     /// (from 0.11 s over 0.09 s). The overshoot (~0.6% of the travel: under 1 pt each side and down) stays inside
     /// the panel, which has `widenMax` + ear spare each side and 4 pt below (`NotchGeometry.panelSize`), so nothing
     /// clips and it reaches no further over the menu bar than the panel already does. Reduce Motion: a 120 ms fade.
@@ -490,15 +499,15 @@ final class NotchStageView: NSView {
         CATransaction.begin(); CATransaction.setDisableActions(true)
         root.opacity = 1; shape.path = to; rowLayer.opacity = 1
         CATransaction.commit()
-        let grow = CASpringAnimation(perceptualDuration: 0.3, bounce: 0.15)
+        let grow = CASpringAnimation(perceptualDuration: motion.expandDuration, bounce: motion.expandBounce)
         grow.keyPath = "path"
         grow.fromValue = from; grow.toValue = to
         grow.duration = grow.settlingDuration
         shape.add(grow, forKey: "notch.path")
         let fade = CABasicAnimation(keyPath: "opacity")
         fade.fromValue = c0; fade.toValue = 1
-        fade.beginTime = CACurrentMediaTime() + (fromCurrent ? 0.04 : 0.11)
-        fade.duration = 0.09
+        fade.beginTime = CACurrentMediaTime() + (fromCurrent ? 0.04 : motion.fadeInDelay)
+        fade.duration = motion.fadeInDuration
         fade.fillMode = .backwards
         fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
         rowLayer.add(fade, forKey: "notch.content")
@@ -532,10 +541,10 @@ final class NotchStageView: NSView {
             shape.path = to; rowLayer.opacity = 0
             CATransaction.commit()
             let fade = CABasicAnimation(keyPath: "opacity")
-            fade.fromValue = c0; fade.toValue = 0; fade.duration = 0.06
+            fade.fromValue = c0; fade.toValue = 0; fade.duration = motion.fadeOutDuration
             fade.timingFunction = CAMediaTimingFunction(name: .easeIn)
             rowLayer.add(fade, forKey: "notch.content")
-            let shrink = CASpringAnimation(perceptualDuration: 0.3, bounce: 0)
+            let shrink = CASpringAnimation(perceptualDuration: motion.collapseDuration, bounce: motion.collapseBounce)
             shrink.keyPath = "path"
             shrink.fromValue = from; shrink.toValue = to
             shrink.beginTime = CACurrentMediaTime() + 0.04
@@ -557,7 +566,7 @@ final class NotchStageView: NSView {
         guard let from = presentedPath() else { return }
         CATransaction.begin(); CATransaction.setDisableActions(true); shape.path = to; CATransaction.commit()
         guard !reduceMotion else { return }
-        let widen = CASpringAnimation(perceptualDuration: 0.2, bounce: 0.04)
+        let widen = CASpringAnimation(perceptualDuration: motion.widenDuration, bounce: motion.widenBounce)
         widen.keyPath = "path"
         widen.fromValue = from; widen.toValue = to
         widen.duration = widen.settlingDuration

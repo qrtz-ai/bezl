@@ -265,7 +265,7 @@ final class PillDriverTests: XCTestCase {
         await c.handle(.dictationConfigure(warmMic: false, preRollMs: 0, streamAudio: false, pushKey: "", autoInsert: false))
         XCTAssertEqual(c.pill?.autoInsert, false)
         let line = HostMessage.parse(line: #"{"type":"dictation.configure","warmMic":false,"preRollMs":0,"streamAudio":false,"pushKey":"","autoInsert":false}"#)
-        guard case .success(.dictationConfigure(_, _, _, _, _, _, false, _)) = line else { return XCTFail("autoInsert parsed: \(line)") }
+        guard case .success(.dictationConfigure(_, _, _, _, _, _, false, _, _)) = line else { return XCTFail("autoInsert parsed: \(line)") }
         guard case .failure = HostMessage.parse(line: #"{"type":"dictation.configure","warmMic":false,"preRollMs":0,"streamAudio":false,"pushKey":"","autoInsert":1}"#) else { return XCTFail("a non-bool autoInsert is refused") }
     }
 

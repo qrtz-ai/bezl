@@ -97,8 +97,9 @@ public actor EchoController: ModulePart {
 
     public func handle(_ m: HostMessage) async {
         switch m {
-        case .dictationConfigure(let warm, let pre, let stream, let key, let consume, let showPill, let autoInsert, let echoGate):
+        case .dictationConfigure(let warm, let pre, let stream, let key, let consume, let showPill, let autoInsert, let echoGate, let motion):
             pill?.enabled = showPill ?? true
+            pill?.motion = motion ?? NotchMotion()
             pill?.autoInsert = autoInsert ?? true
             await configure(warmMic: warm, preRollMs: pre, streamAudio: stream, pushKey: key, consumeFn: consume, echoGate: echoGate)
             await link.watchPermissions()

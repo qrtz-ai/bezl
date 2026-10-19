@@ -1510,6 +1510,15 @@
           },
           "echoGate": {
             "type": "boolean"
+          },
+          "pillMotion": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "number"
+            }
           }
         },
         "required": [

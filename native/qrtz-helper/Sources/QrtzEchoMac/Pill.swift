@@ -36,6 +36,7 @@ public final class NativePill: PillView, @unchecked Sendable {
     public func show(_ phase: PillPhase) { DispatchQueue.main.async { [self] in apply(phase) } }
     public func level(_ rms: Double) { DispatchQueue.main.async { [self] in surface?.level(rms) } }
     public func notch(_ m: HostMessage) { DispatchQueue.main.async { [self] in surface?.host(m) } }
+    public func motion(_ m: NotchMotion) { DispatchQueue.main.async { [self] in surface?.motion = m } }
 
     public static func registerFont() {
         let data = PillFont.woff2 as CFData

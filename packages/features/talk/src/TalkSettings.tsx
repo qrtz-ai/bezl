@@ -8,6 +8,7 @@ import {
   Switch,
 } from '@qrtz/ui';
 import { useModuleSettings } from '@qrtz/core/react';
+import { PillDevOpts } from './PillDevOpts';
 
 /** ADR 0146 M1.4: echo's own settings (the `talk` section, kept in echo's settings file), inside echo's view. */
 export default function TalkSettings() {
@@ -24,6 +25,7 @@ export default function TalkSettings() {
     showPill?: boolean;
     echoGate?: boolean;
     saveHistory?: boolean;
+    pillMotion?: unknown;
   };
   const set = (p: Record<string, unknown>) => void patch('talk', p);
   const toggle = (
@@ -130,6 +132,10 @@ export default function TalkSettings() {
           (v) => set({ saveHistory: v }),
         )}
       </SettingsSection>
+      <PillDevOpts
+        value={talk.pillMotion}
+        onCommit={(m) => set({ pillMotion: m })}
+      />
     </>
   );
 }

@@ -14100,7 +14100,21 @@
         "restoreClipboard": true,
         "showPill": true,
         "echoGate": true,
-        "saveHistory": true
+        "saveHistory": true,
+        "pillMotion": {
+          "expandDuration": 0.3,
+          "expandBounce": 0.15,
+          "collapseDuration": 0.3,
+          "collapseBounce": 0,
+          "fadeInDelay": 0.11,
+          "fadeInDuration": 0.09,
+          "fadeOutDuration": 0.06,
+          "widenDuration": 0.2,
+          "widenBounce": 0.04,
+          "radiusCollapsed": 8,
+          "radiusExpanded": 14,
+          "shoulder": 8
+        }
       },
       "speech": {
         "speakerMode": "fast",
@@ -14333,6 +14347,98 @@
             "saveHistory": {
               "default": true,
               "type": "boolean"
+            },
+            "pillMotion": {
+              "type": "object",
+              "properties": {
+                "expandDuration": {
+                  "default": 0.3,
+                  "type": "number",
+                  "minimum": 0.05,
+                  "maximum": 1.5
+                },
+                "expandBounce": {
+                  "default": 0.15,
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 0.35
+                },
+                "collapseDuration": {
+                  "default": 0.3,
+                  "type": "number",
+                  "minimum": 0.05,
+                  "maximum": 1.5
+                },
+                "collapseBounce": {
+                  "default": 0,
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 0.35
+                },
+                "fadeInDelay": {
+                  "default": 0.11,
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 0.6
+                },
+                "fadeInDuration": {
+                  "default": 0.09,
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 0.6
+                },
+                "fadeOutDuration": {
+                  "default": 0.06,
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 0.6
+                },
+                "widenDuration": {
+                  "default": 0.2,
+                  "type": "number",
+                  "minimum": 0.05,
+                  "maximum": 1.5
+                },
+                "widenBounce": {
+                  "default": 0.04,
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 0.35
+                },
+                "radiusCollapsed": {
+                  "default": 8,
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 16
+                },
+                "radiusExpanded": {
+                  "default": 14,
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 32
+                },
+                "shoulder": {
+                  "default": 8,
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 16
+                }
+              },
+              "required": [
+                "expandDuration",
+                "expandBounce",
+                "collapseDuration",
+                "collapseBounce",
+                "fadeInDelay",
+                "fadeInDuration",
+                "fadeOutDuration",
+                "widenDuration",
+                "widenBounce",
+                "radiusCollapsed",
+                "radiusExpanded",
+                "shoulder"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [
@@ -14347,7 +14453,8 @@
             "restoreClipboard",
             "showPill",
             "echoGate",
-            "saveHistory"
+            "saveHistory",
+            "pillMotion"
           ],
           "additionalProperties": false
         },

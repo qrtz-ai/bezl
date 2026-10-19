@@ -208,6 +208,49 @@ public enum NotchGeometry {
     }
 }
 
+/// The notch surface's motion and corner values (ADR 0221). TEMPORARY, for tuning: the host sends
+/// `talk.pillMotion` (echo's "dev opts" sliders) in `dictation.configure{pillMotion}`; the surface reads it each time
+/// it builds an animation, so a change applies on the next show. Absent: these defaults (the snappy spring). Every
+/// value is clamped to the same range as the zod schema (packages/core/src/config.ts); bounce stops at 0.35 so the
+/// overshoot (≤ ~7% of the travel) stays inside the panel's spare width and 4 pt of bottom room.
+public struct NotchMotion: Equatable, Sendable {
+    public var expandDuration = 0.3, expandBounce = 0.15
+    public var collapseDuration = 0.3, collapseBounce = 0.0
+    public var fadeInDelay = 0.11, fadeInDuration = 0.09, fadeOutDuration = 0.06
+    public var widenDuration = 0.2, widenBounce = 0.04
+    public var radiusCollapsed = NotchGeometry.restRadius, radiusExpanded = NotchGeometry.expandedRadius
+    public var shoulder = NotchGeometry.expandedEar
+    public init() {}
+
+    /// name, min, max (seconds, bounce 0..1, or pt).
+    public static let ranges: [(String, Double, Double)] = [
+        ("expandDuration", 0.05, 1.5), ("expandBounce", 0, 0.35),
+        ("collapseDuration", 0.05, 1.5), ("collapseBounce", 0, 0.35),
+        ("fadeInDelay", 0, 0.6), ("fadeInDuration", 0, 0.6), ("fadeOutDuration", 0, 0.6),
+        ("widenDuration", 0.05, 1.5), ("widenBounce", 0, 0.35),
+        ("radiusCollapsed", 0, 16), ("radiusExpanded", 0, 32), ("shoulder", 0, 16),
+    ]
+
+    private static let keys: [(String, WritableKeyPath<NotchMotion, Double>)] = [
+        ("expandDuration", \.expandDuration), ("expandBounce", \.expandBounce),
+        ("collapseDuration", \.collapseDuration), ("collapseBounce", \.collapseBounce),
+        ("fadeInDelay", \.fadeInDelay), ("fadeInDuration", \.fadeInDuration), ("fadeOutDuration", \.fadeOutDuration),
+        ("widenDuration", \.widenDuration), ("widenBounce", \.widenBounce),
+        ("radiusCollapsed", \.radiusCollapsed), ("radiusExpanded", \.radiusExpanded), ("shoulder", \.shoulder),
+    ]
+
+    /// From the wire object: unknown keys ignored, a missing or non-number key keeps its default, values clamped.
+    public init(json o: [String: JSONValue]) {
+        self.init()
+        for (k, kp) in Self.keys {
+            guard let v = o[k]?.number, v.isFinite, let r = Self.ranges.first(where: { $0.0 == k }) else { continue }
+            self[keyPath: kp] = max(r.1, min(r.2, v))
+        }
+    }
+
+    public var json: JSONValue { .object(Dictionary(uniqueKeysWithValues: Self.keys.map { ($0.0, .number(self[keyPath: $0.1])) })) }
+}
+
 /// The screen facts the Mac reads (NSScreen), in Cocoa points, so the placement math is testable here.
 public struct NotchScreen: Equatable, Sendable {
     public var frameX: Double, frameMaxY: Double, frameWidth: Double

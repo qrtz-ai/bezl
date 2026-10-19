@@ -709,7 +709,7 @@ impl TalkService {
         if !cfg.enabled {
             self.switched_off();
         }
-        self.send(json!({
+        let mut msg = json!({
             "type": "dictation.configure",
             "warmMic": cfg.enabled && cfg.warm_mic,
             "preRollMs": cfg.pre_roll_ms,
@@ -719,7 +719,11 @@ impl TalkService {
             "pill": cfg.show_pill,
             "autoInsert": cfg.auto_insert,
             "echoGate": cfg.echo_gate,
-        }));
+        });
+        if let Some(m) = &cfg.pill_motion {
+            msg["pillMotion"] = m.clone();
+        }
+        self.send(msg);
     }
 
     /// N172 (ADR 0147): echo was switched off (`talk.enabled`, or ADR 0146's `modules.echo.enabled` /

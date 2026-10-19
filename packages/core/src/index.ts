@@ -41,3 +41,4 @@ export * from './talk';
 export * from './ctrl';
 export * from './snap';
 export * from './dash';
+export * from './pill-motion';

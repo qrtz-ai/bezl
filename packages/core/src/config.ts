@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MODULE_IDS } from './modules';
+import { PillMotionSchema } from './pill-motion';
 
 /**
  * App configuration (non-secret). Every field has a default so old files keep loading, and removed fields are
@@ -103,6 +104,8 @@ export const ConfigSchema = z.object({
        * recording indicator). */
       echoGate: z.boolean().default(true),
       saveHistory: z.boolean().default(true),
+      /** ADR 0221, temporary for tuning: the pill's springs, fades and corners (echo's dev opts). */
+      pillMotion: PillMotionSchema,
     })
     .prefault({}),
   /** qrtz speech (ADR 0046). Model-agnostic: the engine and its models live inside the speech module. */
