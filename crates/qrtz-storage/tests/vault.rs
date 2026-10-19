@@ -521,3 +521,71 @@ fn meeting_link_writes_recheck_the_hash_before_the_rename() {
     qrtz_storage::vault::atomic_write_if_unchanged(&f, b"qrtz's rewrite", &ok).unwrap();
     assert_eq!(fs::read_to_string(&f).unwrap(), "qrtz's rewrite");
 }
+
+/// Bozniak vault 1-4: an allow rule judged with `..` resolved and symlinks followed.
+#[test]
+fn the_allow_rule_resolves_dotdot_and_symlinks_first() {
+    let t = tempfile::tempdir().unwrap();
+    let home = t.path().join("home");
+    let data = home.join("Library/Application Support/qrtz");
+    fs::create_dir_all(&data).unwrap();
+    fs::create_dir_all(home.join(".ssh")).unwrap();
+    fs::create_dir_all(home.join("Documents")).unwrap();
+    let refused = |p: &Path| {
+        assert!(
+            matches!(refuse_root(p, Some(&home), &data), Err(VaultError::Invalid(ref m)) if m == ROOT_REFUSED),
+            "{p:?} allowed"
+        )
+    };
+    // `..` is resolved before judging: this is ~/.config/x.
+    refused(&home.join("Documents/../.config/x"));
+    refused(&home.join("Documents/../../home/.ssh"));
+    // A symlink inside the home pointing at ~/.ssh is ~/.ssh.
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(home.join(".ssh"), home.join("Documents/notes-link")).unwrap();
+        refused(&home.join("Documents/notes-link"));
+        refused(&home.join("Documents/notes-link/sub"));
+    }
+    // Case-insensitive on macOS: another user's home and ~/LIBRARY.
+    #[cfg(target_os = "macos")]
+    {
+        refused(Path::new("/USERS/someone-else/notes"));
+        refused(Path::new("/users/someone-else"));
+        refused(&home.join("LIBRARY/notes"));
+        refused(&home.join(".SSH"));
+    }
+    // Allowed: inside home, a volume, the user's temp folder.
+    assert!(refuse_root(&home.join("Documents/notes"), Some(&home), &data).is_ok());
+    assert!(refuse_root(Path::new("/Volumes/Backup/notes"), Some(&home), &data).is_ok());
+    let scratch = t.path().join("scratch");
+    assert!(
+        refuse_root(&scratch, Some(&home), &data).is_ok(),
+        "the user's temp folder"
+    );
+    // Everything else is refused.
+    for p in [
+        "/srv/notes",
+        "/mnt/notes",
+        "/tmpx/notes",
+        "/home/other/notes",
+        "/Network/notes",
+    ] {
+        refused(Path::new(p));
+    }
+}
+
+/// Bozniak vault 3 end to end: Vault::open never creates a refused folder.
+#[test]
+fn open_refuses_before_creating_anything() {
+    let t = tempfile::tempdir().unwrap();
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    let Some(home) = home else { return };
+    let probe = format!(".qrtz-vault-probe-{}", std::process::id());
+    let target = home.join("Documents/..").join(&probe).join("x");
+    assert!(Vault::open(&target, &t.path().join("idx/i.db")).is_err());
+    assert!(
+        !home.join(&probe).exists(),
+        "nothing was created in the home's hidden folder"
+    );
+}

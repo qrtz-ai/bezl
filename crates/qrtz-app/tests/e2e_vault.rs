@@ -132,8 +132,12 @@ async fn standalone_notes_migration_links_conflicts_and_confinement() {
     assert_eq!(r["ok"], false);
 
     // Confinement: another module's view can't reach nano's notes.
-    let r = a.raw("echo", "doc:list", json!({})).await;
-    assert_eq!(r["ok"], false, "{r}");
+    for sub in ["echo", "talk", "ctrl", "snap"] {
+        let r = a.raw(sub, "doc:list", json!({})).await;
+        assert_eq!(r["ok"], false, "{sub}: {r}");
+        let r = a.raw(sub, "doc:get", json!({"id": d["id"]})).await;
+        assert_eq!(r["ok"], false, "{sub}: {r}");
+    }
     let r = a.raw("ctrl", "vault:get", Value::Null).await;
     assert_eq!(r["ok"], false, "{r}");
     // M1: the shell holds note.read (meetings, transcripts) but not doc.read, so the note files stay nano's.

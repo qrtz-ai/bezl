@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ADR 0220 (amendment L2): the notes vault's Mac gate. Runs the vault tests on macOS, where the paths that differ from
 # Linux are real: renamex_np(RENAME_EXCL) for no-replace renames, /private/var/folders temp dirs and the /private,
-# /Users and ~/.* folder refusals. Builds and runs tests only; launches no app and touches no installed qrtz.
+# /Users (case-insensitive /USERS/<other>), symlink-to-~/.ssh and ~/.* folder refusals. Builds and runs tests only; launches no app and touches no installed qrtz.
 # Usage: scripts/nano/mac-vault-gate.sh   (uses $CARGO_TARGET_DIR if set, else the repo's target/)
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -11,4 +11,5 @@ if [ "$(uname -s)" != "Darwin" ]; then
 fi
 cargo test -p qrtz-storage --test vault
 cargo test -p qrtz-app --test e2e_vault
+cargo test -p qrtz-ipc --test router  # doc.read pinned to nano (Bozniak vault 6)
 echo "PASS nano vault Mac gate"

@@ -274,3 +274,28 @@ async fn only_nano_reads_the_calendar() {
         .collect();
     assert_eq!(holders, ["note"], "calendar.read is nano's view's alone");
 }
+
+/// Bozniak vault 6: doc.read (nano's note files) belongs to nano alone, and only nano can subscribe to
+/// `doc:changed`.
+#[test]
+fn doc_read_is_pinned_to_note_alone() {
+    let c = contract();
+    let holders: Vec<&String> = c
+        .manifests
+        .iter()
+        .filter(|(_, caps)| caps.contains("doc.read"))
+        .map(|(id, _)| id)
+        .collect();
+    assert_eq!(holders, ["note"], "only nano holds doc.read");
+    for ch in ["doc:list", "doc:get"] {
+        assert_eq!(c.channels[ch].capability, "doc.read", "{ch}");
+    }
+    let mut subs = Subscriptions::default();
+    assert!(subs.subscribe("w", "note", "doc:changed").is_ok());
+    for sub in c.manifests.keys().filter(|k| *k != "note") {
+        assert!(
+            subs.subscribe("w", sub, "doc:changed").is_err(),
+            "{sub} subscribed to doc:changed"
+        );
+    }
+}

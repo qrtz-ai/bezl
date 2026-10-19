@@ -383,58 +383,127 @@ fn canon_or(p: &Path) -> PathBuf {
     fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
 }
 
-/// ADR 0220 (security review H1): a notes folder must be a folder just for notes. Refused: `/`, the home folder
-/// itself, `~/Library` (and inside it), any folder that contains the qrtz data dir (or is it), `/System`,
-/// `/Library`, `/Applications` (and inside them), `/Volumes` and a volume's root. Compared after canonicalizing.
-/// Amendment M2 (Bozniak review): also `/usr`, `/bin`, `/sbin`, `/etc`, `/var`, `/opt`, `/private` (and inside
-/// them), `/Users` and anything under it that isn't inside the home folder (another user's home), and any hidden
-/// folder in the home folder (`~/.ssh`, `~/.config`, ...) or inside one. The one exception to the system list is
-/// the OS temp folder (`/private/var/folders/...` on macOS), which holds nothing of the user's and is where the
-/// tests and scratch vaults live.
-pub fn refuse_root(root: &Path, home: Option<&Path>, data: &Path) -> VResult<()> {
-    let r = canon_or(root);
-    let no = || Err(VaultError::Invalid(ROOT_REFUSED.into()));
-    if r.parent().is_none() {
-        return no();
-    }
-    for sys in ["/System", "/Library", "/Applications"] {
-        if r.starts_with(sys) {
-            return no();
-        }
-    }
-    let tmp = canon_or(&std::env::temp_dir());
-    let in_tmp = tmp.parent().is_some() && r.starts_with(&tmp) && r != tmp;
-    for sys in ["/usr", "/bin", "/sbin", "/etc", "/var", "/opt", "/private"] {
-        if r.starts_with(sys) && !in_tmp {
-            return no();
-        }
-    }
-    let h = home.map(canon_or);
-    if r.starts_with("/Users") && !h.as_ref().is_some_and(|h| r.starts_with(h)) {
-        return no();
-    }
-    if r == Path::new("/Volumes") || r.parent() == Some(Path::new("/Volumes")) {
-        return no();
-    }
-    if let Some(h) = &h {
-        if r == *h || r.starts_with(h.join("Library")) {
-            return no();
-        }
-        if let Ok(rest) = r.strip_prefix(h) {
-            if rest
-                .components()
-                .next()
-                .is_some_and(|c| c.as_os_str().to_string_lossy().starts_with('.'))
-            {
-                return no();
+/// `p` made absolute-clean: `.` dropped and `..` resolved lexically, then the deepest existing ancestor
+/// canonicalized (symlinks followed) and the not-yet-existing rest appended. So `~/notes/../.config/x` is judged as
+/// `~/.config/x` before anything is created (Bozniak vault 3).
+pub fn resolve_path(p: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut lex = PathBuf::new();
+    for c in p.components() {
+        match c {
+            Component::ParentDir => {
+                lex.pop();
             }
+            Component::CurDir => {}
+            c => lex.push(c.as_os_str()),
         }
     }
-    let d = canon_or(data);
-    if d.starts_with(&r) {
+    let mut rest = Vec::new();
+    let mut base = lex.clone();
+    loop {
+        if let Ok(c) = fs::canonicalize(&base) {
+            let mut out = c;
+            for r in rest.iter().rev() {
+                out.push(r);
+            }
+            return out;
+        }
+        match (base.file_name().map(|n| n.to_os_string()), base.parent()) {
+            (Some(n), Some(parent)) => {
+                rest.push(n);
+                base = parent.to_path_buf();
+            }
+            _ => return lex,
+        }
+    }
+}
+
+/// The user's own temp folder: `confstr(_CS_DARWIN_USER_TEMP_DIR)` on macOS (never `$TMPDIR`, which anyone
+/// launching qrtz can point anywhere), else `std::env::temp_dir()`. On macOS it must also be under
+/// `/private/var/folders` (Bozniak vault 2).
+pub fn user_temp_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::ffi::OsStringExt;
+        extern "C" {
+            fn confstr(name: i32, buf: *mut std::ffi::c_char, len: usize) -> usize;
+        }
+        const CS_DARWIN_USER_TEMP_DIR: i32 = 65537;
+        let mut buf = vec![0u8; 1024];
+        // SAFETY: buf is writable for buf.len() bytes; confstr writes at most that many, NUL included.
+        let n = unsafe { confstr(CS_DARWIN_USER_TEMP_DIR, buf.as_mut_ptr().cast(), buf.len()) };
+        if n == 0 || n > buf.len() {
+            return None;
+        }
+        buf.truncate(n - 1);
+        let t = canon_or(&PathBuf::from(std::ffi::OsString::from_vec(buf)));
+        t.starts_with("/private/var/folders").then_some(t)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Some(canon_or(&std::env::temp_dir()))
+    }
+}
+
+/// `a` is `b` or inside it; case-insensitive on macOS (APFS default), so `/USERS/x` is `/Users/x`.
+fn under(a: &Path, b: &Path) -> bool {
+    if cfg!(target_os = "macos") {
+        let (a, b) = (
+            a.to_string_lossy().to_lowercase(),
+            b.to_string_lossy().to_lowercase(),
+        );
+        Path::new(&a).starts_with(Path::new(&b))
+    } else {
+        a.starts_with(b)
+    }
+}
+
+/// ADR 0220 (security review H1, amendment M2, Bozniak vault 1): a notes folder must be a folder just for notes.
+/// An allow rule, judged on [`resolve_path`] (`..` resolved, symlinks followed):
+/// - inside the home folder (not the home itself), when its first component isn't hidden (`~/.ssh`,
+///   `~/.config`) and isn't `Library` (case-insensitive on macOS);
+/// - inside a volume, `/Volumes/<vol>/...` (not `/Volumes` or a volume's root);
+/// - inside the user's own temp folder ([`user_temp_dir`]), where tests and scratch vaults live.
+///
+/// Everything else (`/`, the system, `/Users/<other>`, `/private`, ...) is refused, as is any folder that holds
+/// the qrtz data dir. The home rules win over the temp rule (a home inside the temp folder is still a home).
+pub fn refuse_root(root: &Path, home: Option<&Path>, data: &Path) -> VResult<()> {
+    let r = resolve_path(root);
+    let no = || Err(VaultError::Invalid(ROOT_REFUSED.into()));
+    if !r.is_absolute() || r.parent().is_none() {
         return no();
     }
-    Ok(())
+    let d = resolve_path(data);
+    if under(&d, &r) {
+        return no();
+    }
+    let h = home.map(resolve_path).filter(|h| h.parent().is_some());
+    if let Some(h) = &h {
+        if under(&r, h) {
+            let rest_len = h.components().count();
+            let first = r.components().nth(rest_len);
+            return match first {
+                None => no(), // the home folder itself
+                Some(c) => {
+                    let n = c.as_os_str().to_string_lossy();
+                    if n.starts_with('.') || n.eq_ignore_ascii_case("Library") {
+                        no()
+                    } else {
+                        Ok(())
+                    }
+                }
+            };
+        }
+    }
+    if under(&r, Path::new("/Volumes")) && r.components().count() >= 4 {
+        return Ok(()); // "/", "Volumes", "<vol>", "<folder>"...
+    }
+    if let Some(t) = user_temp_dir() {
+        if t.parent().is_some() && under(&r, &t) && r.components().count() > t.components().count() {
+            return Ok(());
+        }
+    }
+    no()
 }
 
 /// A stable id for a file that has none (or a copy's duplicate): derived from its vault-relative path, so it is
@@ -491,9 +560,11 @@ impl Vault {
         let home = std::env::var_os("HOME").map(PathBuf::from);
         // The index is `<data>/<dir>/index.db`.
         let data = index.parent().and_then(Path::parent).unwrap_or(Path::new("/"));
-        refuse_root(root, home.as_deref(), data)?;
-        fs::create_dir_all(root)?;
-        let root = fs::canonicalize(root)?;
+        // Bozniak vault 3: judged with `..` resolved, before create_dir_all can make anything.
+        let root = resolve_path(root);
+        refuse_root(&root, home.as_deref(), data)?;
+        fs::create_dir_all(&root)?;
+        let root = fs::canonicalize(&root)?;
         refuse_root(&root, home.as_deref(), data)?;
         if !fs::metadata(&root)?.is_dir() {
             return Err(VaultError::Invalid("the notes folder is not a folder".into()));
@@ -1001,7 +1072,8 @@ impl Vault {
         }
         note.id = Some(id.to_owned());
         note.body = body.to_owned();
-        atomic_write(&full, render_note(&note).as_bytes())?;
+        // Bozniak vault 5: an edit made outside qrtz between the check above and the rename is kept (conflict).
+        atomic_write_if_unchanged(&full, render_note(&note).as_bytes(), &current)?;
         let mut rel = rel;
         let stem = stem_of(&rel);
         let title = title_of(body, &stem);
