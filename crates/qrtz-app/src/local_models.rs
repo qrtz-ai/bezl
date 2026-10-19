@@ -655,10 +655,14 @@ pub fn tmp_keep_fn(data: &Path, extra: Option<(Manifest, PathBuf)>) -> qrtz_modu
             Manifest::pinned(),
             crate::ctrl_model::CtrlManifest::pinned().manifest,
         ];
-        let mut markers = vec![
-            data.join("models").join("download.json"),
-            data.join("models").join("ctrl").join("download.json"),
-        ];
+        // ADR 0212: no package name here. Every extension that declares reading models in its own process
+        // downloads them under `<data>/models/<extension>/` (its own marker); the shared sets use `<data>/models/`.
+        let mut markers = vec![data.join("models").join("download.json")];
+        markers.extend(
+            qrtz_modules::bundled::declared_reads()
+                .into_iter()
+                .map(|(ext, _)| data.join("models").join(ext).join("download.json")),
+        );
         if let Some((m, marker)) = &extra {
             manifests.push(m.clone());
             markers.push(marker.clone());
@@ -802,6 +806,34 @@ mod tests {
         assert!(has("echo-asr", "parakeet_vocab.json"));
         let total = m.total_size();
         assert!((1_250_000_000..1_350_000_000).contains(&total), "{total}");
+    }
+
+    /// N193 L3: the sweep's pending check looks for the markers exactly where the downloads write them:
+    /// `<data>/models/download.json` (LocalModels at `<data>/models`, as wiring builds it) and
+    /// `<data>/models/ctrl/download.json` (Laya). A marker anywhere else does not hold the parts.
+    #[test]
+    fn tmp_keep_pins_the_download_marker_layout() {
+        let data = tempfile::tempdir().unwrap();
+        let keep = tmp_keep_fn(data.path(), None);
+        assert!(!keep().pending);
+        assert!(!keep().sha256.is_empty(), "the pinned sets' files are kept");
+        let lm = LocalModels::new(data.path().join("models"), None);
+        std::fs::create_dir_all(lm.root().join("ctrl")).unwrap();
+        for wrong in [
+            data.path().join("download.json"),
+            lm.root().join("download.json.tmp"),
+        ] {
+            std::fs::write(&wrong, b"{}").unwrap();
+            assert!(!keep().pending, "{}", wrong.display());
+            std::fs::remove_file(&wrong).unwrap();
+        }
+        let marker = lm.root().join("download.json");
+        assert_eq!(marker, data.path().join("models").join("download.json"));
+        std::fs::write(&marker, b"{}").unwrap();
+        assert!(keep().pending, "the models marker");
+        std::fs::remove_file(&marker).unwrap();
+        std::fs::write(lm.root().join("ctrl").join("download.json"), b"{}").unwrap();
+        assert!(keep().pending, "laya's marker");
     }
 
     /// P0-3: each extension's manifest names exactly the sets it loads, and together they cover every pinned set.
