@@ -417,6 +417,9 @@ public actor DictationEngine {
         guard var sess = session, !sess.closed else { return }
         sess.samples += s.count
         sess.pendingLevel += s
+        var pk = max(sess.timing.peak, 0)
+        for v in s { pk = max(pk, abs(v)) }
+        sess.timing.peak = pk
         let t = now()
         if t - sess.lastLevelMs >= 50 {
             send(.dictationLevel(rms: min(1, DSP.rms(sess.pendingLevel) * 4)))

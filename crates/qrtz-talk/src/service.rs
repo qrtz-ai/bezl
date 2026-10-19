@@ -449,6 +449,28 @@ const MSG_BUSY: &str = "another dictation is still running";
 const MSG_NO_HELPER_INSERT: &str = "the capture helper could not take the text, so it was not pasted";
 /// N134: the helper refused the start because no recogniser could take it (all busy finishing, or none loads).
 const MSG_ASR: &str = "speech recognition isn't ready yet; try again in a moment";
+/// A dictation ended with no words although the mic was open (see `nothing_heard`).
+pub const MSG_NOTHING_HEARD: &str = "didn't catch any words. hold the key while you speak, then let go";
+/// ...and the mic sent (next to) digital silence the whole time: macOS gave qrtz no sound.
+pub const MSG_SILENT_MIC: &str =
+    "no sound from the microphone. check system settings → privacy & security → \
+    microphone and the input in sound settings";
+/// Shorter holds than this are taps of the key, not attempts to speak: nothing is said about them.
+const NOTHING_HEARD_MIN_MS: f64 = 600.0;
+/// Speech level (p90) at or below this is no sound at all (the meter's floor is -100 dBFS).
+const SILENT_MIC_DBFS: i32 = -90;
+
+/// What the pill says when a dictation heard no words: nothing for a tap, else why (mic silent or just no words).
+pub fn nothing_heard(duration_ms: f64, level: Option<crate::level::LevelSummary>) -> Option<&'static str> {
+    if duration_ms.is_nan() || duration_ms < NOTHING_HEARD_MIN_MS {
+        return None;
+    }
+    Some(match level {
+        Some(l) if l.p90_dbfs <= SILENT_MIC_DBFS => MSG_SILENT_MIC,
+        _ => MSG_NOTHING_HEARD,
+    })
+}
+
 const MSG_HOTKEY: &str = "the push-to-talk key isn't available; allow qrtz in system settings → privacy & \
     security → input monitoring and accessibility";
 
@@ -1473,9 +1495,25 @@ impl TalkService {
         };
         let (text, (started_at, key_down, key_up, first_partial, head_ms, level, segs)) = text;
         if text.trim().is_empty() {
-            let mut g = self.lock();
-            g.view = g.view.idle_keeping();
-            self.emit_view(&g);
+            // Oct 18 (Jared: "holding fn does nothing"): a dictation that heard no words used to end with no line
+            // and no sign at all. Now it logs the mic level (content-free, like `talk latency`) and says on the
+            // pill why nothing was typed, unless it was only a tap of the key.
+            tracing::info!(
+                audio_ms = duration_ms.max(0.0).round(),
+                level_blocks = level.map(|l| l.blocks),
+                level_p10_dbfs = level.map(|l| l.p10_dbfs),
+                level_p90_dbfs = level.map(|l| l.p90_dbfs),
+                asr = segs.as_ref().map(|a| a.asr.as_str()),
+                "talk: nothing heard"
+            );
+            {
+                let mut g = self.lock();
+                g.view = g.view.idle_keeping();
+                self.emit_view(&g);
+            }
+            if let Some(msg) = nothing_heard(duration_ms, level) {
+                self.pill_flash("info", msg);
+            }
             return true;
         }
         let cfg = self.cfg();

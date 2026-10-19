@@ -98,6 +98,8 @@ pub struct HelperOpts {
     pub audio_every_ms: u64,
     /// Never answer dictation.start.
     pub mute: bool,
+    /// The recogniser hears no words (a silent mic, or nobody spoke): no partials, an empty final.
+    pub no_words: bool,
     /// A qrtz speech module as the on-device engine: (protocol, version). `None` = today's helper (its
     /// `dictation.asr` lines through `HelperAsrSpeech`).
     pub module: Option<(u32, String)>,
@@ -346,7 +348,9 @@ impl MockHelper {
                 self.deliver(json!({"type": "dictation.level", "rms": level}));
                 self.deliver(json!({"type": "dictation.audio", "id": id, "seq": seq, "pcm16": pcm}));
                 // The on-device recogniser: a growing partial.
+                let no_words = self.st.lock().unwrap().opts.no_words;
                 match speech {
+                    None if no_words => {}
                     None => self.deliver(json!({"type": "dictation.asr", "id": id, "event": {"kind": "partial",
                                                 "utteranceId": "u1", "startMs": 0, "text": heard_text(heard)}})),
                     Some(sp) => {
@@ -441,7 +445,11 @@ impl HelperSink for SinkHandle {
                     );
                     st.active = None;
                     if ty == "dictation.stop" {
-                        let text = heard_text(st.heard + st.opts.final_tail_words);
+                        let text = if st.opts.no_words {
+                            String::new()
+                        } else {
+                            heard_text(st.heard + st.opts.final_tail_words)
+                        };
                         st.finals.push(text.clone());
                         let delay = st.opts.stopped_delay_ms;
                         let st_extra = st.opts.stopped_extra.clone();

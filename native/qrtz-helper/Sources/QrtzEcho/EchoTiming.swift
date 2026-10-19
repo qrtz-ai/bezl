@@ -35,6 +35,14 @@ public struct DictationTiming: Sendable, Equatable {
     public var appendHeld = false
     /// Words in the final text (a count only).
     public var words = 0
+    /// The loudest sample fed to the recogniser (absolute, 0...1); -1 = no audio. Exactly 0 is digital silence: the
+    /// mic was open but macOS delivered no sound (a level, not content).
+    public var peak: Float = -1
+    /// `peak` in dBFS for the log line ("silent" for digital silence, nil with no audio).
+    public var peakDbfs: String? {
+        guard peak >= 0 else { return nil }
+        return peak == 0 ? "silent" : String(format: "%.1f", 20 * log10(Double(peak)))
+    }
     /// Echo gate: mic blocks held down / gated blocks seen (0/0 = no gate ran).
     public var gateDucked = 0
     public var gateBlocks = 0
@@ -63,6 +71,7 @@ public struct DictationTiming: Sendable, Equatable {
             "tail_ms=\(tailMs)", "drain_ms=\(drainMs)", "close_ms=\(closeMs)", "finalize_ms=\(finalizeMs)",
             "release_to_stopped_ms=\(releaseToStoppedMs)", "queued_ms=\(queuedAtReleaseMs)", "word_count=\(words)",
         ]
+        if let pk = peakDbfs { p.append("peak_dbfs=\(pk)") }
         if !drained { p.append("drain_timed_out=1") }
         if finalTimedOut { p.append("final_timed_out=1") }
         if appendHeld { p.append("append_held=1") }
@@ -94,7 +103,7 @@ public struct DictationTiming: Sendable, Equatable {
             "tailMs": tailMs, "drainMs": drainMs, "closeMs": closeMs, "finalizeMs": finalizeMs,
             "releaseToStoppedMs": releaseToStoppedMs, "queuedAtReleaseMs": queuedAtReleaseMs, "drained": drained,
             "finalTimedOut": finalTimedOut, "appendHeld": appendHeld, "words": words,
-            "gateDucked": gateDucked, "gateBlocks": gateBlocks, "gate": gate, "armed": armed,
+            "gateDucked": gateDucked, "gateBlocks": gateBlocks, "gate": gate, "armed": armed, "peak": Double(peak),
         ]
         if let g = segments {
             j["segments"] = g.segments; j["backgroundSegments"] = g.backgroundSegments; j["capCuts"] = g.capCuts

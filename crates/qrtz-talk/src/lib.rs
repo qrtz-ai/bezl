@@ -22,8 +22,9 @@ pub use contract::{
 /// The shared speech seam talk consumes (crates/qrtz-speech-types, ADR 0046 / ADR 0146 M2), under its old path.
 pub use qrtz_speech_types as qrtz_speech;
 pub use service::{
-    AsrInfo, Clipboard, Clock, HelperSink, HelperTail, IdSource, RandomIds, SystemClock, TalkDeps,
-    TalkEvents, TalkService, Timeouts, MSG_LATE_FINAL, SEGMENT_OVERLAP_MS,
+    nothing_heard, AsrInfo, Clipboard, Clock, HelperSink, HelperTail, IdSource, RandomIds, SystemClock,
+    TalkDeps, TalkEvents, TalkService, Timeouts, MSG_LATE_FINAL, MSG_NOTHING_HEARD, MSG_SILENT_MIC,
+    SEGMENT_OVERLAP_MS,
 };
 pub use speech::{HelperAsrSpeech, TalkValidator};
 pub use store::{FsIo, StoreIo};
