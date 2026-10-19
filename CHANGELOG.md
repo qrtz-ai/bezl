@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.2.2 (2026-10-19)
+
+- **update test release:** exercises the in-app update from 0.2.1 (settings → qrtz → update, then restart to update).
+- ctrl do: replace the chores and the scheduler with the decision chain (9526f90)
+- ctrl do: helper protocol 2 in QrtzCtrl (tree, menu shortcuts, fixed action set, stop key) (5e79daf)
+- chore(qrtz-modules): clippy type_complexity (172d241)
+- app: a model download waits for the install lock instead of failing as a signature check (backlog P3, N189 speech side, ADR 0213). Installer::apply try_locks… (7cf1272)
+- modules: release nano 0.2.2, ctrl 0.2.2, snap 0.1.2 (2fe6dee)
+- echo: harden pill theme file + onboarding (Bozniak Low review of d21947c/a0a09aa) (fc7fd9e)
+- modules: a refresh takes the install lock only to commit (backlog P3, N189, ADR 0210 follow-up). Installer::refresh held .qrtz-install.lock across every requ… (b464db9)
+
 ## 0.2.1 (2026-10-19)
 
 - **echo's pill follows qrtz's theme (ADR 0211):** the dictation pill now draws in qrtz's own light or dark setting (or follows macOS when qrtz is set to system) instead of always following macOS, and changes the moment you switch it.
