@@ -32,10 +32,12 @@ fn inserted(r: &Rig) -> Vec<(String, String)> {
         .sent_of("insert.text")
         .iter()
         .map(|m| {
-            (
-                m["id"].as_str().unwrap_or_default().to_owned(),
-                m["text"].as_str().unwrap_or_default().to_owned(),
-            )
+            (m["id"].as_str().unwrap_or_default().to_owned(), {
+                // The pasted text carries echo's one trailing space; compare the words.
+                let t = m["text"].as_str().unwrap_or_default();
+                assert!(t.ends_with(' '), "pasted text ends in a space: {t:?}");
+                t.strip_suffix(' ').unwrap_or(t).to_owned()
+            })
         })
         .collect()
 }

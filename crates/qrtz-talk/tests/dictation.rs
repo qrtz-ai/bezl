@@ -205,7 +205,38 @@ async fn insert_failure_lands_on_the_clipboard() {
     let e = v.last.unwrap();
     assert!(!e.inserted);
     assert!(e.error.unwrap().contains("copied to clipboard"));
-    assert_eq!(r.clip.0.lock().unwrap().last().unwrap(), &e.text);
+    assert_eq!(r.clip.0.lock().unwrap().last().unwrap(), &format!("{} ", e.text));
+    assert!(!e.text.ends_with(' '), "the history entry has no trailing space");
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_pasted_text_ends_in_a_space_and_the_history_text_does_not() {
+    let r = rig(RigOpts::default());
+    let v = r.dictate(400).await;
+    let e = v.last.expect("an entry");
+    assert!(e.inserted);
+    assert!(
+        !e.text.is_empty() && !e.text.ends_with(char::is_whitespace),
+        "history: {:?}",
+        e.text
+    );
+    let ins = r.helper.sent_of("insert.text");
+    assert_eq!(ins.len(), 1);
+    assert_eq!(ins[0]["text"].as_str().unwrap(), format!("{} ", e.text));
+    let saved = r.svc.history();
+    assert_eq!(
+        saved.last().unwrap().text,
+        e.text,
+        "the saved transcript is unchanged"
+    );
+}
+
+#[test]
+fn the_trailing_space_is_added_once_and_never_to_nothing() {
+    assert_eq!(service::with_trailing_space("hi there."), "hi there. ");
+    assert_eq!(service::with_trailing_space(""), "");
+    assert_eq!(service::with_trailing_space("hi "), "hi ");
+    assert_eq!(service::with_trailing_space("hi\n"), "hi\n");
 }
 
 #[tokio::test(start_paused = true)]

@@ -54,7 +54,7 @@ fn assert_pasted_in_full(r: &Rig, n: usize) {
     assert!(e.error.is_none(), "{:?}", e.error);
     let ins = r.helper.sent_of("insert.text");
     assert_eq!(ins.len(), n, "each pasted once");
-    assert_eq!(ins[n - 1]["text"].as_str().unwrap(), e.text);
+    assert_eq!(ins[n - 1]["text"].as_str().unwrap(), format!("{} ", e.text));
 }
 
 /// A press during the last dictation's finalizing, then a 0.5 s hold: the helper heard ~7 s (the head since the

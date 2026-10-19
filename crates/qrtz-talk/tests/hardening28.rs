@@ -47,7 +47,7 @@ async fn helper_crash_while_finalizing_ends_at_once_and_keeps_the_words() {
     assert!(!e.inserted);
     assert_eq!(
         r.clip.0.lock().unwrap().last(),
-        Some(&e.text),
+        Some(&format!("{} ", e.text)),
         "the words are on the clipboard"
     );
     assert_eq!(

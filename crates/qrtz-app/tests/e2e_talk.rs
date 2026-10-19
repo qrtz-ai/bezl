@@ -114,7 +114,12 @@ async fn talk_insertion_falls_back_to_paste_and_to_the_clipboard_when_nothing_ca
     );
     let want = "So I think we should ship cue arts talk on friday.";
     assert_eq!(e["text"], want, "{e}");
-    assert_eq!(storage.clip().as_deref(), Some(want));
+    assert_eq!(e["text"], want, "the history entry has no trailing space");
+    assert_eq!(
+        storage.clip().as_deref(),
+        Some(format!("{want} ").as_str()),
+        "the clipboard gets one trailing space"
+    );
     b.quit().await;
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "echo",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "kind": "extension",
   "description": "Dictation: hold fn, speak, release; the text is typed where your cursor is.",
   "dependencies": {

@@ -1657,9 +1657,12 @@ impl TalkService {
                 self.emit_view(&g);
                 Self::waiter(&mut g, format!("insert:{id}"))
             };
+            // The typed/pasted words end in one space so the next dictation doesn't run into them.
+            // Only what lands in the field changes: the history entry keeps `cleaned.text` as is.
+            let pasted = with_trailing_space(&cleaned.text);
             // N142 (ADR 0089): a helper that is gone (it crashed while this dictation finalized) can't paste.
             // Don't wait out the insert bound for an answer that won't come; the clipboard gets the words now.
-            let sent = self.send(json!({"type": "insert.text", "id": id, "text": cleaned.text, "restoreClipboard": cfg.restore_clipboard}));
+            let sent = self.send(json!({"type": "insert.text", "id": id, "text": pasted, "restoreClipboard": cfg.restore_clipboard}));
             if sent {
                 insert = self.wait(format!("insert:{id}"), rx, t.insert).await;
             } else {
@@ -1667,7 +1670,7 @@ impl TalkService {
             }
             if insert.as_ref().map(|m| m["ok"] == true) != Some(true) {
                 // Never lose the words: leave them on the clipboard to paste by hand.
-                self.deps().clipboard.write(&cleaned.text);
+                self.deps().clipboard.write(&pasted);
                 let why = insert
                     .as_ref()
                     .and_then(|m| m["error"].as_str())
@@ -1755,5 +1758,15 @@ impl TalkService {
         }
         self.emit_view(&g);
         own
+    }
+}
+
+/// The text echo inserts into the focused field: `text` plus one trailing space, unless it is empty or already
+/// ends in whitespace. The saved transcript never gets this space.
+pub fn with_trailing_space(text: &str) -> String {
+    if text.is_empty() || text.ends_with(char::is_whitespace) {
+        text.to_owned()
+    } else {
+        format!("{text} ")
     }
 }

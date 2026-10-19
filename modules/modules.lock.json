@@ -30,10 +30,10 @@
           "version": "1.0.0"
         }
       ],
-      "manifestSha256": "6993a1f636962c9a80c6a434fd1db701df2e590b1ecace949515b635f1b9812e",
+      "manifestSha256": "7e35ff85635e3ea040a1aa017c35e72dbd7f9e5844a04d4f94984b5ed44590dd",
       "source": "bundled",
       "staleRevocation": false,
-      "version": "0.2.0"
+      "version": "0.2.1"
     },
     "nano": {
       "code": {

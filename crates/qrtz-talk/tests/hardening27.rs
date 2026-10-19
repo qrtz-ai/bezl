@@ -123,7 +123,7 @@ async fn a_backlogged_final_is_pasted_in_full_not_the_last_partial() {
     assert!(e.error.is_none(), "{:?}", e.error);
     let ins = r.helper.sent_of("insert.text");
     assert_eq!(ins.len(), 1, "pasted once");
-    assert_eq!(ins[0]["text"].as_str().unwrap(), e.text);
+    assert_eq!(ins[0]["text"].as_str().unwrap(), format!("{} ", e.text));
 }
 
 /// The bound still ends a dictation whose helper never answers (a hung recogniser past the helper's own deadline):

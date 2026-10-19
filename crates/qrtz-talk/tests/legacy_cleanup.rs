@@ -49,7 +49,7 @@ async fn an_old_ai_cleanup_config_dictates_with_the_rules_and_inserts_on_release
     );
     let ins = r.helper.sent_of("insert.text");
     assert_eq!(ins.len(), 1);
-    assert_eq!(ins[0]["text"], e.text.as_str());
+    assert_eq!(ins[0]["text"], format!("{} ", e.text).as_str());
 }
 
 #[tokio::test(start_paused = true)]
