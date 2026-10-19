@@ -1,0 +1,37 @@
+{
+  "source": "model.laya 1.0.0 in the live signed index on modules.qrtz.ai (index v2, sha256 3933c81ee0c3721199ec0506e08b7628514b824689840a61626c6d41f687dd15, timestamp v4), read 2026-10-18 10:02 PM PT (run 45). crates/qrtz-app/tests/ctrl_live_index.rs checks this list against that snapshot and ctrl_laya_model.json.",
+  "entry": "laya_multilingual_e8_L512_options32.mlmodelc",
+  "tokenizer": "tokenizer.json",
+  "files": [
+    {
+      "path": "laya_multilingual_e8_L512_options32.mlmodelc/analytics/coremldata.bin",
+      "size": 243,
+      "sha256": "79f92be3397fadec16f32d121fdec01635f4f820d2b056c48819d9d422107944"
+    },
+    {
+      "path": "laya_multilingual_e8_L512_options32.mlmodelc/coremldata.bin",
+      "size": 1115,
+      "sha256": "428a8c1301947624d4bc79290a68a4eb2193542c8d6beb35454262ef3490add6"
+    },
+    {
+      "path": "laya_multilingual_e8_L512_options32.mlmodelc/model.mil",
+      "size": 384860,
+      "sha256": "c9c159a57c6aab6ab2760308c7df043443e59c80ede84c8d8a33558ab1b26092"
+    },
+    {
+      "path": "laya_multilingual_e8_L512_options32.mlmodelc/weights/weight.bin",
+      "size": 449175040,
+      "sha256": "70c299c32d118ab1e2549e9c0088d712bfe2e936ad37ab8f9b7366f277afed4b"
+    },
+    {
+      "path": "qrtz.json",
+      "size": 176,
+      "sha256": "259fb7e6249f13df1b0cf89bfd275669c63ac0016f69b45d9efc5a115c28837e"
+    },
+    {
+      "path": "tokenizer.json",
+      "size": 34363188,
+      "sha256": "609d8f4c067cd3950f88594c5a802616cea245823836ef5848ee4fc40aab5b6f"
+    }
+  ]
+}

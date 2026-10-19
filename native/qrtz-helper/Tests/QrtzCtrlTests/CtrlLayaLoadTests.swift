@@ -87,4 +87,36 @@ final class CtrlLayaLoadTests: XCTestCase {
         XCTAssertEqual(CtrlLayaLoad.plan(path: "/etc/passwd", fromHost: true), .refuse("laya.no_model"))
         XCTAssertEqual(CtrlLayaLoad.plan(path: "/etc/passwd", fromHost: false), .refuse("laya.no_model"))
     }
+    // Run 45: the layout of `model.laya` 1.0.0 in the live signed index (Fixtures/ctrl/laya-live-layout.json, the
+    // same list crates/qrtz-app/tests/ctrl_live_index.rs checks against the index snapshot), linked 0444 like the
+    // store does: the host's path is opened as is, and the tokenizer is the one beside it.
+    func testTheLiveModelLayaLayoutLoadsAsIsWithItsTokenizerBeside() throws {
+        struct Layout: Decodable { struct F: Decodable { let path: String }; let entry: String; let tokenizer: String; let files: [F] }
+        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../../Fixtures/ctrl/laya-live-layout.json").standardized
+        let l = try JSONDecoder().decode(Layout.self, from: Data(contentsOf: fixture))
+        XCTAssertEqual(l.files.count, 6)
+        let pkg = dir.appendingPathComponent("packages/model.laya/1.0.0")
+        for f in l.files {
+            let u = pkg.appendingPathComponent(f.path)
+            try fm.createDirectory(at: u.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("stand-in for \(f.path)".utf8).write(to: u)
+            try fm.setAttributes([.posixPermissions: 0o444], ofItemAtPath: u.path)
+        }
+        let model = pkg.appendingPathComponent(l.entry).path
+        XCTAssertEqual(CtrlLayaLoad.plan(path: model, fromHost: true), .asIs(model))
+        XCTAssertEqual(CtrlLayaWarmer.tokenizerPath(for: model, env: [:]), pkg.appendingPathComponent(l.tokenizer).path)
+        XCTAssertTrue(CtrlLayaWarmer.eligible(model, env: [:]))
+        // The weights alone changed in place: refused, the heuristic answers.
+        try fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: model + "/weights/weight.bin")
+        XCTAssertEqual(CtrlLayaLoad.plan(path: model, fromHost: true), .refuse("laya.not_read_only"))
+    }
+
+    /// The real install (`ctrl_live_index.rs -- --ignored` with QRTZ_CTRL_LIVE_DIR): QRTZ_CTRL_LAYA_PACKAGE = the
+    /// installed `.mlmodelc`. Read-only checks only; nothing is loaded (no Core ML on Linux).
+    func testARealInstalledModelLayaLoadsAsIsWhenGiven() throws {
+        guard let p = ProcessInfo.processInfo.environment["QRTZ_CTRL_LAYA_PACKAGE"], !p.isEmpty else { throw XCTSkip("no package") }
+        XCTAssertEqual(CtrlLayaLoad.plan(path: p, fromHost: true), .asIs(p))
+        XCTAssertTrue(CtrlLayaWarmer.eligible(p, env: [:]))
+    }
 }
