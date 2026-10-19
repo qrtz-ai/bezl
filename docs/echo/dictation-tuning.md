@@ -886,7 +886,7 @@ noun (the keep set already has "put a question mark"); (4) warming dictionary pa
 
 Worked one per cycle when no polish item is ready. P1 the `local_models::speech_calls_scoped_to_one_module_
 touch_only_its_models` timeout: **fixed `a8da381`** (cycle 69, ADR 0209; a lost resume, not a flake; section 41);
-P2 model download pause/resume/background/crash recovery with sha256; P3 no network or a failed index refresh never
+P2 model download pause/resume/background/crash recovery with sha256: crash recovery **fixed `b88bae3`** (cycle 72, ADR 0218, N190-N192; section 44; N193 open, Bobs); P3 no network or a failed index refresh never
 blocks dictation with an installed model: **fixed `de03608`** (cycle 70, ADR 0210, N188; section 42), and its follow-up N189 **fixed** (`b464db9` store side, Bobs; `7cf1272` speech side, cycle 71, ADR 0213; section 43); P4 mic edge cases (unplug, AirPods profile, permission revoked,
 sleep/wake); P5 key-up to text p50/p95 budget and a bench-compare script; P6 insertion fallbacks (secure fields,
 Electron, terminals); P7 idle memory/CPU and model unload without first-press cost; P8 crash safety (pill reset, echo
@@ -1737,4 +1737,86 @@ Polish: p15 only after the Mac check in section 36 step 5.
    "downloading" and finishes after nano's, with no "signature check" error.
 4. If anything misbehaves, revert `7cf1272` (local_models.rs, setup.rs, qrtz-speech-types and the tests only).
 5. Still open for p15: hold fn and say "Bring the charger comma the cable comma and the adapter period", and note
+   whether Parakeet writes the words or the marks (section 36 step 5).
+
+## 44. Cycle 72: backlog P2, a download cut short by a crash or a kill resumes cleanly (ADR 0218, `b88bae3`)
+
+Polish re-check first: nothing new clears the bar. No cleanup code changed since `342e67b` (cleanup.rs, cleanup.ts
+and spec/vectors/talk are byte-identical), and the 4 failing cases are the same as in section 43 (p15 waits on the
+Mac check in section 36 step 5; p19/p20 are ambiguous; p41 is ADR 0188's "don't retry"). So the cycle took the top
+backlog item: P2, crash recovery mid-download.
+
+| Run                                                       | Result                                                                                                                           |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| old fetch.rs, the 5 new tests                             | **4 fail** (marks read `10`; `bytes didn't match`; permission denied; the bound guard by its retry count); the kill guard passes |
+| old fetch.rs, torn-mark test with its marks check removed | **fails** at the next resume: `every source failed (bytes didn't match)`                                                         |
+| `b88bae3`, fetch_resume (5 tests), 20 runs                | 20 / 20 pass (~5 s each; the kill test is a real SIGKILL)                                                                        |
+| `b88bae3`, qrtz-modules / qrtz-talk / qrtz-app `runtime`  | 98 / 148 / 305 passed, 0 failed (2 ignored in qrtz-app)                                                                          |
+
+- **What already held (unchanged):** a clean quit or a pause resumed from `store/.tmp/<sha256>.part` + `.done`
+  (fetch.rs `fetch_one`); setup.rs writes `download.json` before the download and `resume_pending` restarts it at
+  launch; `.qrtz-install.lock` is a `flock` (install.rs `lock` ~l.373, `try_lock`), so a crash never leaves it held;
+  a part with the wrong size starts over; nothing enters the store unless the whole file matches the signed sha256.
+  The new kill test proves the main path end to end across processes.
+- **N190 (fixed):** a torn range mark merged with the next one. `writeln!(f, "{i}")` is two writes (checked:
+  `["12", "\n"]`). A kill between them left `1` with no newline, the next fetch appended `0\n`, and the marks read
+  range 10, which was zeros. The resume after that failed its hash. Fix: one `write_all` per mark (`append_mark`
+  ~l.96), only newline-terminated numbers count (`read_marks` ~l.75), and a torn file is rewritten atomically as
+  whole lines before anything is appended (~l.250).
+- **N191 (fixed):** a kept part that failed its sha256 failed the whole download, because a model file has one
+  source (its pinned Hugging Face URL, ADR 0171), even when the bad bytes were left by an earlier process. Fix: a
+  blob that had a full-size part with marks before this fetch (`kept_ranges` ~l.204) gets one fresh try from the
+  same source (~l.175). A fresh download with wrong bytes is not retried. A source that keeps serving wrong bytes
+  still fails after the one try.
+- **N192 (fixed):** a crash between `insert_file`'s chmod 0444 and its rename, with marks lost, left a part that
+  every later fetch kept and couldn't write ("permission denied" forever). Fix: a kept part is set to 0600 (~l.247).
+- **N193 (open, Bobs's area):** `Installer::sweep` never looks in `store/.tmp/`. A part for a blob nothing wants
+  any more stays (an interrupted download followed by delete, or a new model pin). It's sparse, so it holds only the
+  ranges that landed. Proposal below.
+- **Dictation path review since `342e67b`:** cleanup.rs unchanged (`rule_cleanup` l.1927, `terminal_punctuation`
+  l.1568, `vocative_question` l.1707), so is the TS twin. No capture, VAD, model config, drain / final pass, insert,
+  pill or timing-log change for a plain fn press. origin moved by ctrl do (`6006bf0`..`663fdac`, helper ctrl only),
+  `f1bc172` (feed.mjs), `f8d370b` (Package.resolved), nano calendar (`566c954`..`190b7ff`), and `85a126f` ctrl+fn:
+  talk service.rs records `press_ctrl` at `down` (l.765) and an attempt is `to_ctrl` only when started from the key
+  with ctrl held (l.1213). The cleaned text then goes to ctrl do instead of the insert (l.1553). A plain fn press
+  reads one bool and takes the old path; the cleanup still runs once on the final text. No new finding there.
+- **Scores at `b88bae3`:** polish set 105 / 109 exact, 42 chars (1.20 % of 3504), regressions 0; keep set 292, 0
+  hits; release cleanup_budget medians over 5 runs 0.109 / 0.122 / 0.130 ms (495 words / 504 ending in a question /
+  504 ending in a vocative question), ceiling 2 ms. TS twin (packages/core/src/talk vitest) 266 passed (10 files).
+  Note (Qrtz Nano): packages/features/note vitest 17 passed (5 files).
+- **Latency:** none. Only the fetcher changed. A mark is now one write instead of two, the marks file is rewritten
+  only after a torn line, and the press path never downloads.
+
+Proposal for Beve Bobs (N193, qrtz-modules install.rs):
+
+> `Installer::sweep` never looks in `store/.tmp/`, so a `<sha256>.part` + `.done` for a blob nothing wants any more
+> stays forever. Example: echo's Parakeet download is cut short (quit, crash), then the user deletes the model, or
+> the pin moves to a new revision. The part is sparse, so it holds only the ranges that landed, up to 445 MB for
+> Parakeet's largest file. Proposed: in `sweep` (it runs under the install lock, so no fetch is writing), with
+> `delete`, remove `store/.tmp/<sha256>.part` / `.done` whose sha256 no locked tree names and no `LocalModels`
+> manifest set names (that keeps a part a pending `download.json` will resume), plus `*.in-<pid>` and `*.sideload`
+> leftovers older than an hour; count their on-disk bytes in `reclaimable()` so the "clean up" button and the
+> prune agree. Expected gain: the disk an abandoned download used. Measure on Jared's Mac: start echo's Parakeet
+> download, `pkill -9 -x qrtz-app` at about 50 %, reopen, pause, delete echo's model, press "clean up", then
+> `du -sh ~/Library/Application\ Support/ai.qrtz.desktop/store/.tmp` (before: about half the model; after: ~0).
+> Latency: none, since sweep never runs on the press path. Transcripts: unchanged, since no store blob or model
+> view is touched and the helper never reads `.tmp`.
+
+Backlog after this cycle, ranked: (1) P5 the key-up-to-text p50/p95 bench-compare script for Jared's Mac bench
+output; (2) N193 (Bobs: sweep stale `store/.tmp` parts under the install lock, keeping one a pending `download.json`
+will resume); (3) P4/P6-P8. Polish: p15 only after the Mac check in section 36 step 5.
+
+### Test on Jared's Mac (cycle 72)
+
+1. `cd ~/code/qrtz && git pull` (main at or after `b88bae3`).
+2. `cargo test -p qrtz-modules --test fetch_resume`: 5 passed in about 5-10 s. The kill test starts a copy of the
+   test binary and kills it with SIGKILL mid-download.
+3. `for i in $(seq 1 10); do cargo test -q -p qrtz-modules --test fetch_resume || break; done`: every run passes.
+4. `cargo test -p qrtz-app --features runtime --test local_models --test setup`: all pass (12 + 1 ignored, 6).
+5. Optional, in the app (it re-downloads Parakeet, 464 MB): opts (formerly settings) → speech → delete echo's model, then download
+   it. At about 30-50 %, run `pkill -9 -x qrtz-app` (a crash, not a quit). Open qrtz again: the download resumes by
+   itself near where it stopped, not from 0, finishes, and echo dictates "Testing crash recovery one two three".
+   Then `ls ~/Library/Application\ Support/ai.qrtz.desktop/store/.tmp/` shows no `.part` or `.done` left for it.
+6. If anything misbehaves, revert `b88bae3` (fetch.rs and its test only).
+7. Still open for p15: hold fn and say "Bring the charger comma the cable comma and the adapter period", and note
    whether Parakeet writes the words or the marks (section 36 step 5).
