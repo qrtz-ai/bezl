@@ -1,6 +1,6 @@
 import Foundation
 
-// ADR 0218: the notch surface, the platform-free part (wire types, the arbiter, the shape and the geometry). It builds
+// ADR 0221: the notch surface, the platform-free part (wire types, the arbiter, the shape and the geometry). It builds
 // and tests on Linux; QrtzMacShared/NotchSurface.swift draws it. packages/ui/src/NotchSurface.tsx mirrors the shape and
 // the geometry (NotchTests checks the constants against it).
 
@@ -37,7 +37,7 @@ public enum NotchIcon: String, Sendable, CaseIterable {
 
 public enum NotchTone: String, Sendable { case normal, error }
 
-/// What the surface shows. No clickable actions in v1 (the window ignores the mouse; ADR 0218 future work).
+/// What the surface shows. No clickable actions in v1 (the window ignores the mouse; ADR 0221 future work).
 public enum NotchContent: Equatable, Sendable {
     /// The waveform following the mic level (`busy`: the slow swell of processing).
     case level(busy: Bool)
@@ -91,7 +91,7 @@ public enum NotchContent: Equatable, Sendable {
     }
 }
 
-/// The wire caps (the host sanitizes and caps module text to these before it sends; ADR 0218).
+/// The wire caps (the host sanitizes and caps module text to these before it sends; ADR 0221).
 public enum NotchLimits {
     public static let labelMax = 60, statusMax = 120, ownerMax = 64, sourceMax = 40
 }

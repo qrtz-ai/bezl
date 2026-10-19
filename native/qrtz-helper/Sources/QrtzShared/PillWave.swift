@@ -1,6 +1,6 @@
 import Foundation
 
-// ADR 0218: moved from QrtzEcho/Pill.swift so the shared notch surface (QrtzMacShared) can draw the waveform.
+// ADR 0221: moved from QrtzEcho/Pill.swift so the shared notch surface (QrtzMacShared) can draw the waveform.
 
 /// The wave, as in packages/ui/src/Waveform.tsx: three layered sines under a tapered envelope, the amplitude eased
 /// toward the mic level each display frame (fast attack, slower release), a slow low swell while processing.

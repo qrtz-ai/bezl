@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 @testable import QrtzShared
 
-/// ADR 0218: the notch surface's platform-free part (the shape, the geometry, the arbiter, the wire).
+/// ADR 0221: the notch surface's platform-free part (the shape, the geometry, the arbiter, the wire).
 final class NotchTests: XCTestCase {
     func testShapeHasAFlatTopRoundedBottomAndConcaveEars() {
         let ops = NotchShape.path(width: 200, height: 40, radius: 12, ear: 8)

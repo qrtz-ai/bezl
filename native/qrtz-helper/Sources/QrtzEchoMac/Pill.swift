@@ -5,7 +5,7 @@ import QrtzEcho
 import QrtzMacShared
 import QrtzShared
 
-/// ADR 0092 / ADR 0218: echo's dictation pill is one client of the shared notch surface (QrtzMacShared
+/// ADR 0092 / ADR 0221: echo's dictation pill is one client of the shared notch surface (QrtzMacShared
 /// NotchSurface): listening draws the waveform, processing its slow swell, an error or notice (and ctrl+fn's
 /// "ctrl: …") a line of text, all below the notch at the top center of the active screen. The old bottom pill is
 /// gone. The surface is built at launch (font registered, layers made), so the first fn press only orders it front.

@@ -28,7 +28,7 @@ public protocol PillView: AnyObject, Sendable {
     func show(_ phase: PillPhase)
     /// Mic RMS 0..1, about 20 Hz while listening.
     func level(_ rms: Double)
-    /// ADR 0218: a host `notch.show` / `notch.update` / `notch.dismiss` for the shared notch surface the pill draws on.
+    /// ADR 0221: a host `notch.show` / `notch.update` / `notch.dismiss` for the shared notch surface the pill draws on.
     func notch(_ m: HostMessage)
 }
 
@@ -202,7 +202,7 @@ public final class PillDriver: @unchecked Sendable {
             let m = Self.lower(message)
             go(kind == .error ? .error(m) : .info(m), timeoutMs: timing.errorFlashMs)
         case .notchShow, .notchUpdate, .notchDismiss:
-            // ADR 0218: host-owned content (ctrl run status, module requests); the surface arbitrates against dictation.
+            // ADR 0221: host-owned content (ctrl run status, module requests); the surface arbitrates against dictation.
             view.notch(m)
         default: break
         }
@@ -255,4 +255,4 @@ public final class PillDriver: @unchecked Sendable {
     }
 }
 
-// PillWave (the wave math) moved to QrtzShared/PillWave.swift (ADR 0218): the notch surface draws it.
+// PillWave (the wave math) moved to QrtzShared/PillWave.swift (ADR 0221): the notch surface draws it.

@@ -15,7 +15,7 @@ const swift = (rel: string) =>
     'utf8',
   );
 
-describe('NotchSurface (ADR 0218)', () => {
+describe('NotchSurface (ADR 0221)', () => {
   it('draws the same ten-step notch outline as Swift NotchShape.path', () => {
     // NotchTests.testShapeHasAFlatTopRoundedBottomAndConcaveEars, as an SVG path.
     expect(notchPath(200, 40, 12, 8)).toBe(

@@ -1,4 +1,4 @@
-//! ADR 0218: the host's side of the notch surface. Only the host drives it: the helper takes `notch.*` only from
+//! ADR 0221: the host's side of the notch surface. Only the host drives it: the helper takes `notch.*` only from
 //! its host stdin, and modules never reach the helper; they ask the host, and [`NotchBroker`] enforces the rules
 //! before a line goes out.
 //!

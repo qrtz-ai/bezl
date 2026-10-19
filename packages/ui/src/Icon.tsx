@@ -62,7 +62,7 @@ export const ICONS = {
   accessibility: MousePointer,
   automation: Zap,
   check: Check,
-  // ADR 0218: the notch surface's built-in set.
+  // ADR 0221: the notch surface's built-in set.
   calendar: Calendar,
   'chevron-down': ChevronDown,
   'chevron-right': ChevronRight,

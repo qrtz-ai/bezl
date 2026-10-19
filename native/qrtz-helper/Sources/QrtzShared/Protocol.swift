@@ -149,7 +149,7 @@ public enum HostMessage: Equatable, Sendable {
     case dictationConfigure(warmMic: Bool, preRollMs: Int, streamAudio: Bool, pushKey: String, consumeFn: Bool? = nil, pill: Bool? = nil, autoInsert: Bool? = nil, echoGate: Bool? = nil)
     /// ADR 0092: a failure (or notice) only the host knows, shown on the native pill: lowercase, ≤ 200 chars.
     case pillFlash(kind: PillFlashKind, message: String)
-    /// ADR 0218: the notch surface. The host assigns owner and priority (never a module) and has already sanitized,
+    /// ADR 0221: the notch surface. The host assigns owner and priority (never a module) and has already sanitized,
     /// capped and attributed module text (`source`: the module's registered display name, module owners only).
     case notchShow(owner: String, priority: NotchPriority, content: NotchContent, source: String? = nil)
     /// Only the current holder's updates and dismissals take effect.
@@ -528,7 +528,7 @@ extension HelperMessage {
 }
 
 extension HostMessage {
-    /// ADR 0218: a host-assigned owner id: 1...64 of [a-z0-9._-] (e.g. "echo.dictation", "ctrl.run", "module.<id>").
+    /// ADR 0221: a host-assigned owner id: 1...64 of [a-z0-9._-] (e.g. "echo.dictation", "ctrl.run", "module.<id>").
     static func notchOwner(_ f: Fields) throws -> String {
         let o = try f.str("owner")
         let ok = (1...NotchLimits.ownerMax).contains(o.utf8.count)

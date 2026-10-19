@@ -415,7 +415,7 @@ export const HelperToHost = z.discriminatedUnion('type', [
 ]);
 export type HelperToHost = z.infer<typeof HelperToHost>;
 
-/** ADR 0218: the notch surface's wire types (mirrored by native/qrtz-helper/Sources/QrtzShared/Notch.swift and
+/** ADR 0221: the notch surface's wire types (mirrored by native/qrtz-helper/Sources/QrtzShared/Notch.swift and
  * the @qrtz/ui NotchSurface mock). No clickable actions in v1. */
 export const NOTCH_PRIORITIES = ['system', 'ctrl', 'module'] as const;
 export const NOTCH_ICONS = [
@@ -507,7 +507,7 @@ export const HostToHelper = z.discriminatedUnion('type', [
     kind: z.enum(['error', 'info']),
     message: z.string().min(1).max(200),
   }),
-  /** ADR 0218: the notch surface. Owner and priority are host-assigned (never module-supplied); module text is
+  /** ADR 0221: the notch surface. Owner and priority are host-assigned (never module-supplied); module text is
    * sanitized, capped and attributed (`source`, the module's registered display name) by the host first. The
    * helper drops host `system` shows: that priority is its own dictation. */
   z.object({

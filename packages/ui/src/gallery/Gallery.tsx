@@ -669,7 +669,7 @@ function Showcase({
             </div>
           </Section>
 
-          <Section id="notch" title="notch surface (adr 0218)">
+          <Section id="notch" title="notch surface (adr 0221)">
             <div
               data-testid="notch-gallery"
               style={{ display: 'grid', gap: t.space[4], width: '100%' }}

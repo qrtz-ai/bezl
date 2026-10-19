@@ -4,7 +4,7 @@ import Carbon.HIToolbox
 import QrtzShared
 import QuartzCore
 
-// ADR 0218: the notch surface, qrtz's one top-of-screen status surface (echo's dictation is one client; ctrl run
+// ADR 0221: the notch surface, qrtz's one top-of-screen status surface (echo's dictation is one client; ctrl run
 // status and module requests reach it only through the host). A black notch-shaped layer flush with the top edge
 // grows down and out of the MacBook notch (or a fake notch tab elsewhere), draws its content below the notch, and
 // retracts back into it. Main thread only. Nothing here is ever awaited by capture, release or insertion.
@@ -83,7 +83,7 @@ public final class NotchSurface: @unchecked Sendable {
     /// Mic RMS 0...1 for the waveform.
     public func level(_ rms: Double) { stage.level = rms }
 
-    /// A host line (ADR 0218). `.system` belongs to the helper's dictation: a host `.system` show is dropped.
+    /// A host line (ADR 0221). `.system` belongs to the helper's dictation: a host `.system` show is dropped.
     public func host(_ m: HostMessage) {
         switch m {
         case .notchShow(let owner, let priority, let content, let source):
@@ -364,7 +364,7 @@ final class NotchStageView: NSView {
         return .idle
     }
 
-    /// The label's text: the module's registered name first (attribution, ADR 0218), dimmed.
+    /// The label's text: the module's registered name first (attribution, ADR 0221), dimmed.
     private func text(_ s: String) -> NSAttributedString {
         let out = NSMutableAttributedString()
         if let src = entry?.source {
