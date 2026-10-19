@@ -14,6 +14,7 @@ pub mod ctrl_helper;
 pub mod ctrl_model;
 pub mod dash_net;
 pub mod dash_port;
+pub mod dev_local;
 pub mod diagnostics;
 pub mod dirs;
 pub mod echo_updates;
