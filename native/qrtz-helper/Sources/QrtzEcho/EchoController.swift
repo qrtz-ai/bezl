@@ -88,7 +88,7 @@ public actor EchoController: ModulePart {
 
     public nonisolated func owns(_ m: HostMessage) -> Bool {
         switch m {
-        case .dictationConfigure, .dictationStart, .dictationStop, .dictationCancel, .insertText, .pillFlash: return true
+        case .dictationConfigure, .dictationStart, .dictationStop, .dictationCancel, .insertText, .pillFlash, .notchShow, .notchUpdate, .notchDismiss: return true
         case .modelsWarm: return ownsWarm
         default: return false
         }
@@ -108,7 +108,7 @@ public actor EchoController: ModulePart {
         case .dictationStop(let id): await stop(id: id)
         case .dictationCancel(let id): await cancel(id: id)
         case .insertText(let id, let text, let restore): await dictation.insert(id: id, text: text, restoreClipboard: restore)
-        case .pillFlash: break  // the pill driver took it (`observe`); without a native pill there is nothing to show
+        case .pillFlash, .notchShow, .notchUpdate, .notchDismiss: break  // the pill driver took it (`observe`); without a native pill there is nothing to show
         case .modelsWarm:
             // N174: a download (or a warm) finished; load the recogniser now, not on the first press.
             await dictation.prewarmIfKeyed(log: true)

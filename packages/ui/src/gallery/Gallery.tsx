@@ -15,6 +15,7 @@ import {
   TermList,
 } from '../Talk';
 import { Waveform } from '../Waveform';
+import { NotchSurface } from '../NotchSurface';
 import { Spinner } from '../Spinner';
 import { Progress } from '../Progress';
 import { Field, Input, Select } from '../Input';
@@ -665,6 +666,63 @@ function Showcase({
                   }
                 />
               </Frame>
+            </div>
+          </Section>
+
+          <Section id="notch" title="notch surface (adr 0218)">
+            <div
+              data-testid="notch-gallery"
+              style={{ display: 'grid', gap: t.space[4], width: '100%' }}
+            >
+              <NotchSurface
+                data-testid="notch-listening"
+                content={{ kind: 'level', busy: false }}
+                level={0.6}
+              />
+              <NotchSurface
+                data-testid="notch-processing"
+                content={{ kind: 'level', busy: true }}
+              />
+              <NotchSurface
+                data-testid="notch-ctrl"
+                content={{
+                  kind: 'status',
+                  text: 'ctrl: open system settings and turn on night shift',
+                  tone: 'normal',
+                }}
+              />
+              <NotchSurface
+                data-testid="notch-error"
+                content={{
+                  kind: 'status',
+                  text: 'microphone access was turned off',
+                  tone: 'error',
+                }}
+              />
+              <NotchSurface
+                data-testid="notch-progress"
+                source="nano"
+                content={{
+                  kind: 'progress',
+                  label: 'downloading parakeet',
+                  value: 0.42,
+                }}
+              />
+              <NotchSurface
+                data-testid="notch-icon"
+                source="nano"
+                notch={false}
+                content={{
+                  kind: 'icon',
+                  icon: 'calendar',
+                  label: 'standup in 5 min',
+                }}
+              />
+              <NotchSurface
+                data-testid="notch-closed"
+                open={false}
+                content={{ kind: 'level', busy: false }}
+              />
             </div>
           </Section>
 

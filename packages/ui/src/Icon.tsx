@@ -9,6 +9,7 @@ import {
   MousePointer,
   Package,
   Zap,
+  Calendar,
   Check,
   ChevronDown,
   ChevronRight,
@@ -61,6 +62,8 @@ export const ICONS = {
   accessibility: MousePointer,
   automation: Zap,
   check: Check,
+  // ADR 0218: the notch surface's built-in set.
+  calendar: Calendar,
   'chevron-down': ChevronDown,
   'chevron-right': ChevronRight,
   circle: Circle,

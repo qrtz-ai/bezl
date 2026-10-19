@@ -55,6 +55,9 @@
     "models.warm",
     "dictation.configure",
     "pill.flash",
+    "notch.show",
+    "notch.update",
+    "notch.dismiss",
     "dictation.start",
     "dictation.stop",
     "dictation.cancel",
@@ -1530,6 +1533,281 @@
           "type",
           "kind",
           "message"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "notch.show"
+          },
+          "owner": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9._-]+$"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "system",
+              "ctrl",
+              "module"
+            ]
+          },
+          "content": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "level"
+                  },
+                  "busy": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "busy"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "status"
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "tone": {
+                    "type": "string",
+                    "enum": [
+                      "normal",
+                      "error"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "text",
+                  "tone"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "progress"
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "value": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                },
+                "required": [
+                  "kind",
+                  "label"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "icon"
+                  },
+                  "icon": {
+                    "type": "string",
+                    "enum": [
+                      "check",
+                      "alert",
+                      "info",
+                      "mic",
+                      "clock",
+                      "download",
+                      "bolt",
+                      "calendar"
+                    ]
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  }
+                },
+                "required": [
+                  "kind",
+                  "icon",
+                  "label"
+                ]
+              }
+            ]
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          }
+        },
+        "required": [
+          "type",
+          "owner",
+          "priority",
+          "content"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "notch.update"
+          },
+          "owner": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9._-]+$"
+          },
+          "content": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "level"
+                  },
+                  "busy": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "busy"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "status"
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "tone": {
+                    "type": "string",
+                    "enum": [
+                      "normal",
+                      "error"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "text",
+                  "tone"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "progress"
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "value": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                },
+                "required": [
+                  "kind",
+                  "label"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "icon"
+                  },
+                  "icon": {
+                    "type": "string",
+                    "enum": [
+                      "check",
+                      "alert",
+                      "info",
+                      "mic",
+                      "clock",
+                      "download",
+                      "bolt",
+                      "calendar"
+                    ]
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  }
+                },
+                "required": [
+                  "kind",
+                  "icon",
+                  "label"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "owner",
+          "content"
+        ]
+      },
+      {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "notch.dismiss"
+          },
+          "owner": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9._-]+$"
+          }
+        },
+        "required": [
+          "type",
+          "owner"
         ]
       },
       {

@@ -149,6 +149,12 @@ public enum HostMessage: Equatable, Sendable {
     case dictationConfigure(warmMic: Bool, preRollMs: Int, streamAudio: Bool, pushKey: String, consumeFn: Bool? = nil, pill: Bool? = nil, autoInsert: Bool? = nil, echoGate: Bool? = nil)
     /// ADR 0092: a failure (or notice) only the host knows, shown on the native pill: lowercase, ≤ 200 chars.
     case pillFlash(kind: PillFlashKind, message: String)
+    /// ADR 0218: the notch surface. The host assigns owner and priority (never a module) and has already sanitized,
+    /// capped and attributed module text (`source`: the module's registered display name, module owners only).
+    case notchShow(owner: String, priority: NotchPriority, content: NotchContent, source: String? = nil)
+    /// Only the current holder's updates and dismissals take effect.
+    case notchUpdate(owner: String, content: NotchContent)
+    case notchDismiss(owner: String)
     case dictationStart(id: String)
     case dictationStop(id: String)
     case dictationCancel(id: String)
@@ -195,7 +201,7 @@ private extension DictationAsrInfo {
     }
 }
 
-private struct Fields {
+struct Fields {
     let o: [String: JSONValue]
     init(_ v: JSONValue) throws {
         guard let o = v.object else { throw ProtocolError("expected object") }
@@ -522,6 +528,15 @@ extension HelperMessage {
 }
 
 extension HostMessage {
+    /// ADR 0218: a host-assigned owner id: 1...64 of [a-z0-9._-] (e.g. "echo.dictation", "ctrl.run", "module.<id>").
+    static func notchOwner(_ f: Fields) throws -> String {
+        let o = try f.str("owner")
+        let ok = (1...NotchLimits.ownerMax).contains(o.utf8.count)
+            && o.utf8.allSatisfy { (0x61...0x7a).contains($0) || (0x30...0x39).contains($0) || $0 == 0x2e || $0 == 0x5f || $0 == 0x2d }
+        guard ok else { throw ProtocolError("bad notch owner") }
+        return o
+    }
+
     public var json: JSONValue {
         switch self {
         case .ping(let id): return .object(["type": s("ping"), "id": s(id)])
@@ -543,6 +558,12 @@ extension HostMessage {
             if let echoGate { o["echoGate"] = .bool(echoGate) }
             return .object(o)
         case .pillFlash(let kind, let message): return .object(["type": s("pill.flash"), "kind": s(kind.rawValue), "message": s(message)])
+        case .notchShow(let owner, let priority, let content, let source):
+            var o: [String: JSONValue] = ["type": s("notch.show"), "owner": s(owner), "priority": s(priority.rawValue), "content": content.json]
+            if let source { o["source"] = s(source) }
+            return .object(o)
+        case .notchUpdate(let owner, let content): return .object(["type": s("notch.update"), "owner": s(owner), "content": content.json])
+        case .notchDismiss(let owner): return .object(["type": s("notch.dismiss"), "owner": s(owner)])
         case .dictationStart(let id): return .object(["type": s("dictation.start"), "id": s(id)])
         case .dictationStop(let id): return .object(["type": s("dictation.stop"), "id": s(id)])
         case .dictationCancel(let id): return .object(["type": s("dictation.cancel"), "id": s(id)])
@@ -591,6 +612,13 @@ extension HostMessage {
             let m = try f.str("message")
             guard !m.isEmpty, m.utf16.count <= 200 else { throw ProtocolError("bad pill message") }
             self = .pillFlash(kind: try f.enumValue("kind", PillFlashKind.self), message: m)
+        case "notch.show":
+            let source = try f.optStr("source")
+            if let source { guard !source.isEmpty, source.utf16.count <= NotchLimits.sourceMax else { throw ProtocolError("bad notch source") } }
+            self = .notchShow(owner: try Self.notchOwner(f), priority: try f.enumValue("priority", NotchPriority.self),
+                              content: try NotchContent(json: f.o["content"] ?? .null), source: source)
+        case "notch.update": self = .notchUpdate(owner: try Self.notchOwner(f), content: try NotchContent(json: f.o["content"] ?? .null))
+        case "notch.dismiss": self = .notchDismiss(owner: try Self.notchOwner(f))
         case "dictation.start": self = .dictationStart(id: try f.str("id"))
         case "dictation.stop": self = .dictationStop(id: try f.str("id"))
         case "dictation.cancel": self = .dictationCancel(id: try f.str("id"))

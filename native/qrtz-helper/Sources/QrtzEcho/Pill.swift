@@ -28,6 +28,12 @@ public protocol PillView: AnyObject, Sendable {
     func show(_ phase: PillPhase)
     /// Mic RMS 0..1, about 20 Hz while listening.
     func level(_ rms: Double)
+    /// ADR 0218: a host `notch.show` / `notch.update` / `notch.dismiss` for the shared notch surface the pill draws on.
+    func notch(_ m: HostMessage)
+}
+
+extension PillView {
+    public func notch(_ m: HostMessage) {}
 }
 
 /// Follows the helper's talk flow: the push key and the dictation lines it sends, and the host's start, stop, cancel
@@ -195,6 +201,9 @@ public final class PillDriver: @unchecked Sendable {
         case .pillFlash(let kind, let message):
             let m = Self.lower(message)
             go(kind == .error ? .error(m) : .info(m), timeoutMs: timing.errorFlashMs)
+        case .notchShow, .notchUpdate, .notchDismiss:
+            // ADR 0218: host-owned content (ctrl run status, module requests); the surface arbitrates against dictation.
+            view.notch(m)
         default: break
         }
     }
@@ -246,63 +255,4 @@ public final class PillDriver: @unchecked Sendable {
     }
 }
 
-/// The wave, as in packages/ui/src/Waveform.tsx: three layered sines under a tapered envelope, the amplitude eased
-/// toward the mic level each display frame (fast attack, slower release), a slow low swell while processing.
-public enum PillWave {
-    public enum Mode: Sendable { case live, idle }
-    public static let liveFloor = 0.06
-    public static let idleAmp = 0.14
-    public static let attackMs = 60.0
-    public static let releaseMs = 220.0
-    public static func speed(_ m: Mode) -> Double { m == .live ? 7 : 2.2 }
-    public struct Layer: Sendable { public let cycles, gain, opacity, rate, offset: Double }
-    public static let layers = [
-        Layer(cycles: 1.6, gain: 1, opacity: 1, rate: 1, offset: 0),
-        Layer(cycles: 2.3, gain: 0.66, opacity: 0.5, rate: -1.3, offset: 1.9),
-        Layer(cycles: 3.1, gain: 0.4, opacity: 0.28, rate: 1.7, offset: 4.1),
-    ]
-    public static let width = 160.0, height = 24.0, points = 48
-
-    static func clamp01(_ x: Double) -> Double { x.isFinite ? min(1, max(0, x)) : 0 }
-
-    public static func target(_ mode: Mode, _ level: Double) -> Double {
-        mode == .idle ? idleAmp : liveFloor + (1 - liveFloor) * clamp01(level).squareRoot()
-    }
-
-    /// One frame of exponential smoothing toward `target` over `dtMs`; frame-rate independent.
-    public static func step(_ cur: Double, _ target: Double, _ dtMs: Double) -> Double {
-        let dt = max(0, min(dtMs, 250))
-        let tau = target > cur ? attackMs : releaseMs
-        return target + (cur - target) * exp(-dt / tau)
-    }
-
-    public static func envelope(_ u: Double) -> Double { pow(sin(Double.pi * clamp01(u)), 1.6) }
-
-    /// One layer's points, y measured from the top like the SVG (the view flips).
-    public static func layerPoints(amp: Double, phase: Double, cycles: Double, width: Double = width, height: Double = height) -> [(x: Double, y: Double)] {
-        let mid = height / 2, a = clamp01(amp) * (mid - 1)
-        return (0...points).map { i in
-            let u = Double(i) / Double(points)
-            return (u * width, mid + a * envelope(u) * sin(2 * Double.pi * cycles * u + phase))
-        }
-    }
-
-    public static func frame(amp: Double, phase: Double) -> [[(x: Double, y: Double)]] {
-        layers.map { layerPoints(amp: amp * $0.gain, phase: phase * $0.rate + $0.offset, cycles: $0.cycles) }
-    }
-}
-
-/// Where and how big: 240 x 52 pt (the web pill's window), bottom-center of the active window's screen, 24 pt above
-/// the bottom of its visible frame (above the Dock).
-public enum PillGeometry {
-    public static let width = 240.0, height = 52.0, bottomGap = 24.0, padding = 16.0, gap = 8.0, iconSize = 16.0
-    public static let fontSize = 13.158
-
-    /// Cocoa coordinates (origin bottom-left).
-    public static func frame(visibleX x: Double, y: Double, width w: Double, height _: Double) -> (x: Double, y: Double, w: Double, h: Double) {
-        (x + ((w - width) / 2).rounded(), y + bottomGap, width, height)
-    }
-
-    /// Room for the error text: the pill minus its padding, the icon and the gap.
-    public static var errorTextWidth: Double { width - 2 * padding - iconSize - gap }
-}
+// PillWave (the wave math) moved to QrtzShared/PillWave.swift (ADR 0218): the notch surface draws it.

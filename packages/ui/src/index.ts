@@ -23,6 +23,7 @@ export * from './NotesApp';
 export * from './Talk';
 export * from './Ctrl';
 export * from './Waveform';
+export * from './NotchSurface';
 export * from './case';
 export * from './Setup';
 export * from './ModuleSettings';

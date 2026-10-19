@@ -727,6 +727,20 @@ impl TalkService {
         self.send(json!({"type": "pill.flash", "kind": kind, "message": m}));
     }
 
+    /// ADR 0218: a `notch.show` / `notch.update` / `notch.dismiss` line the host's notch broker
+    /// (`qrtz_app::notch::NotchBroker`) already vetted, to echo's helper (it draws the notch surface). Anything else
+    /// is refused here, so this can't become a general path to the helper.
+    pub fn notch_send(&self, line: &Value) -> bool {
+        let ok = matches!(
+            line["type"].as_str(),
+            Some("notch.show" | "notch.update" | "notch.dismiss")
+        );
+        if ok {
+            self.send(line.clone());
+        }
+        ok
+    }
+
     // --------------------------------------------------------------------------------------------- helper in
 
     /// A validated helper → host line: `hello`, `hotkey`, `dictation.*`, `insert.*` and `error{dictation.*}`.

@@ -368,12 +368,6 @@ final class PillWaveTests: XCTestCase {
         }
     }
 
-    func testGeometry() {
-        let f = PillGeometry.frame(visibleX: 0, y: 70, width: 1440, height: 800)
-        XCTAssertEqual(f.x, 600); XCTAssertEqual(f.y, 94); XCTAssertEqual(f.w, 240); XCTAssertEqual(f.h, 52)
-        XCTAssertEqual(PillGeometry.errorTextWidth, 184)
-    }
-
     static let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../../..").standardized
 
     /// The native pill and the web Waveform must not drift apart (62b99fc's design).

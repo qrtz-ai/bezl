@@ -415,6 +415,50 @@ export const HelperToHost = z.discriminatedUnion('type', [
 ]);
 export type HelperToHost = z.infer<typeof HelperToHost>;
 
+/** ADR 0218: the notch surface's wire types (mirrored by native/qrtz-helper/Sources/QrtzShared/Notch.swift and
+ * the @qrtz/ui NotchSurface mock). No clickable actions in v1. */
+export const NOTCH_PRIORITIES = ['system', 'ctrl', 'module'] as const;
+export const NOTCH_ICONS = [
+  'check',
+  'alert',
+  'info',
+  'mic',
+  'clock',
+  'download',
+  'bolt',
+  'calendar',
+] as const;
+export const NOTCH_LIMITS = {
+  labelMax: 60,
+  statusMax: 120,
+  ownerMax: 64,
+  sourceMax: 40,
+} as const;
+const NotchOwner = z
+  .string()
+  .min(1)
+  .max(NOTCH_LIMITS.ownerMax)
+  .regex(/^[a-z0-9._-]+$/);
+export const NotchContent = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('level'), busy: z.boolean() }),
+  z.object({
+    kind: z.literal('status'),
+    text: z.string().min(1).max(NOTCH_LIMITS.statusMax),
+    tone: z.enum(['normal', 'error']),
+  }),
+  z.object({
+    kind: z.literal('progress'),
+    label: z.string().min(1).max(NOTCH_LIMITS.labelMax),
+    value: z.number().min(0).max(1).optional(),
+  }),
+  z.object({
+    kind: z.literal('icon'),
+    icon: z.enum(NOTCH_ICONS),
+    label: z.string().min(1).max(NOTCH_LIMITS.labelMax),
+  }),
+]);
+export type NotchContent = z.infer<typeof NotchContent>;
+
 export const HostToHelper = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ping'), id: z.string() }),
   z.object({ type: z.literal('permissions.check') }),
@@ -463,6 +507,23 @@ export const HostToHelper = z.discriminatedUnion('type', [
     kind: z.enum(['error', 'info']),
     message: z.string().min(1).max(200),
   }),
+  /** ADR 0218: the notch surface. Owner and priority are host-assigned (never module-supplied); module text is
+   * sanitized, capped and attributed (`source`, the module's registered display name) by the host first. The
+   * helper drops host `system` shows: that priority is its own dictation. */
+  z.object({
+    type: z.literal('notch.show'),
+    owner: NotchOwner,
+    priority: z.enum(NOTCH_PRIORITIES),
+    content: NotchContent,
+    source: z.string().min(1).max(NOTCH_LIMITS.sourceMax).optional(),
+  }),
+  /** Only the current holder's update takes effect. */
+  z.object({
+    type: z.literal('notch.update'),
+    owner: NotchOwner,
+    content: NotchContent,
+  }),
+  z.object({ type: z.literal('notch.dismiss'), owner: NotchOwner }),
   z.object({ type: z.literal('dictation.start'), id: z.string() }),
   z.object({ type: z.literal('dictation.stop'), id: z.string() }),
   z.object({ type: z.literal('dictation.cancel'), id: z.string() }),
