@@ -342,10 +342,21 @@ fn is_ident_segment(p: &str) -> bool {
                 || b.iter().all(u8::is_ascii_lowercase)))
 }
 
-/// The entropy and JWT checks on one candidate, trimmed like a word.
+/// The entropy and JWT checks on one candidate, trimmed like a word. A word with no `/` that has `_` or `-` is
+/// also entropy-checked with those separators removed, so a key split into short segments is still dense
+/// (Bozniak, review of ce60c75f).
 fn is_dense(s: &str) -> bool {
     let c = s.trim_matches(|c: char| matches!(c, '.' | '!' | '?' | '`' | '*'));
-    is_high_entropy(c) || is_jwt(c)
+    is_high_entropy(c) || is_jwt(c) || is_dense_joined(c)
+}
+
+/// `c` without `_` / `-`, entropy-checked when `c` has no `/`, had a separator and is still 24+ characters.
+fn is_dense_joined(c: &str) -> bool {
+    if c.contains('/') || !c.contains(['_', '-']) {
+        return false;
+    }
+    let j: String = c.chars().filter(|&x| x != '_' && x != '-').collect();
+    j.len() >= 24 && is_high_entropy(&j)
 }
 
 /// The high-entropy rule (Bozniak H2, his prototype `rule`): 24+ base64 / base64url characters mixing 2+ of

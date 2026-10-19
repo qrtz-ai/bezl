@@ -144,10 +144,18 @@ const isIdentSegment = (p: string) =>
 const isIdentifier = (w: string) =>
   isWordy(w) || (/[_-]/.test(w) && w.split(/[_-]/).every(isIdentSegment));
 
-/** The entropy and JWT checks on one candidate, trimmed like a word. Rust `is_dense`. */
+/** The entropy and JWT checks on one candidate, trimmed like a word, plus the separator-free form of a word
+ * with no / that has _ or - (Bozniak, review of ce60c75f). Rust `is_dense`. */
 const isDense = (s: string) => {
   const c = trimSet(s, '.!?`*');
-  return isHighEntropy(c) || isJwt(c);
+  return isHighEntropy(c) || isJwt(c) || isDenseJoined(c);
+};
+
+/** c without _ / -, entropy-checked when c has no /, had a separator and is still 24+ characters. Rust `is_dense_joined`. */
+const isDenseJoined = (c: string) => {
+  if (c.includes('/') || !/[_-]/.test(c)) return false;
+  const j = c.replace(/[_-]/g, '');
+  return j.length >= 24 && isHighEntropy(j);
 };
 
 /** Bozniak's H2 rule (his prototype `rule`). Rust `is_high_entropy`. */

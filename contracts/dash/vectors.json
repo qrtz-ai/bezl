@@ -580,6 +580,16 @@
       "in": "key aB3xY9z_Qw2eR5t_Lm8nK1p_Zx7cV4b_Hj6gF2d end",
       "out": "key [redacted] end",
       "hit": true
+    },
+    {
+      "in": "3J27XDC_lZGEO_gCtjf_Mz9C_Na1He_cm4p_XDuC_HoOsF",
+      "out": "[redacted]",
+      "hit": true
+    },
+    {
+      "in": "//rec/2026-10-17-weekly-sync",
+      "out": "//rec/2026-10-17-weekly-sync",
+      "hit": false
     }
   ],
   "https_url": [
