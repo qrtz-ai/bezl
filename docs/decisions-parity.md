@@ -43,15 +43,15 @@ taken 2026-10-17 11:30 PT at `7b2bb2e`. Test paths: Rust `crates/<crate>/tests/<
 
 ## UI rules
 
-| Decision                           | Code                                                      | Tests                                                                                | Status                                |
-| ---------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------- |
-| Lowercase everywhere               | `@qrtz/ui` `lowerTitle` (`case.ts`)                       | `scripts/check-titles.mjs` (AST lint), `case.test.ts`, `check-titles.test.mjs`       | covered                               |
-| Feather icons via @qrtz/ui only    | `packages/ui/src/Icon.tsx`                                | `scripts/check-ui-purity.mjs` (no icon libraries or glyphs outside ui)               | covered                               |
-| Geist Pixel                        | `packages/ui/src/tokens.ts`, `theme.tsx`, `fonts/`        | `scripts/check-typography.mjs`, `tokens.test.ts`                                     | covered                               |
-| All components in @qrtz/ui         | `packages/ui`                                             | `scripts/check-ui-purity.mjs` (no `style=`, `className=` or raw elements outside ui) | covered                               |
-| No blurbs                          | `Field` takes no hint text                                | none                                                                                 | **Gap:** manual review only (no lint) |
-| Bottom tabs note / talk / settings | `apps/desktop/src/shell/App.tsx` (`TabBar` in `AppFrame`) | `renderer.spec.ts` "boots the shared shell…" (the three tabs)                        | covered                               |
-| Light and dark themes, axe-clean   | `@qrtz/ui` theme, `useConfigTheme`                        | `screens.spec.ts` dark/light every view + mini hud light (axe asserted)              | covered                               |
+| Decision                                                                   | Code                                                       | Tests                                                                                | Status                                |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------- |
+| Lowercase everywhere                                                       | `@qrtz/ui` `lowerTitle` (`case.ts`)                        | `scripts/check-titles.mjs` (AST lint), `case.test.ts`, `check-titles.test.mjs`       | covered                               |
+| Feather icons via @qrtz/ui only                                            | `packages/ui/src/Icon.tsx`                                 | `scripts/check-ui-purity.mjs` (no icon libraries or glyphs outside ui)               | covered                               |
+| Geist Pixel                                                                | `packages/ui/src/tokens.ts`, `theme.tsx`, `fonts/`         | `scripts/check-typography.mjs`, `tokens.test.ts`                                     | covered                               |
+| All components in @qrtz/ui                                                 | `packages/ui`                                              | `scripts/check-ui-purity.mjs` (no `style=`, `className=` or raw elements outside ui) | covered                               |
+| No blurbs                                                                  | `Field` takes no hint text                                 | none                                                                                 | **Gap:** manual review only (no lint) |
+| Sidebar nav (modules, marketplace; settings pinned at foot), no bottom bar | `apps/desktop/src/shell/App.tsx` (`SideNav` in `AppFrame`) | `renderer.spec.ts` "boots the shared shell…" (the nav rows)                          | covered                               |
+| Light and dark themes, axe-clean                                           | `@qrtz/ui` theme, `useConfigTheme`                         | `screens.spec.ts` dark/light every view + mini hud light (axe asserted)              | covered                               |
 
 ## Behaviour
 

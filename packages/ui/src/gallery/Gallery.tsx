@@ -39,7 +39,7 @@ import {
   SettingsSection,
   SplitView,
   Stack,
-  TabBar,
+  SideNav,
   Toolbar,
 } from '../Layout';
 import {
@@ -432,17 +432,23 @@ function Showcase({
             </div>
           </Section>
 
-          <Section id="shell" title="app frame and tab bar">
+          <Section id="shell" title="app frame and sidebar">
             <Frame height={140}>
               <AppFrame
                 embedded
-                tabs={
-                  <TabBar
-                    label="example tabs"
-                    testIdPrefix="gallery-tab"
+                sidebar={
+                  <SideNav
+                    embedded
+                    label="example nav"
+                    testIdPrefix="gallery-nav"
                     items={[
-                      { id: 'note', label: 'nano' },
-                      { id: 'settings', label: 'settings' },
+                      { id: 'note', label: 'nano', icon: 'edit' },
+                      {
+                        id: 'settings',
+                        label: 'settings',
+                        icon: 'settings',
+                        group: 'foot',
+                      },
                     ]}
                     active={bar}
                     onSelect={setBar}

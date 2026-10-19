@@ -419,7 +419,7 @@ qrtz v0.1.0 is feature-complete for the Memo MVP and green on Linux on every pus
 ## Redesign: Geist Pixel, minimal two-pane UI, toggles, UI purity (2026-10-16)
 
 - Geist Pixel is the only font. The type scale is on its pixel grid, and typography is lint-enforced outside `@qrtz/ui`. Raw typography outside `packages/ui` went from 110 usages to 0.
-- Every visual component lives in `@qrtz/ui`. The shell and features compose `Stack`, `AppFrame`/`TabBar`, `SplitView`, `MeetingRow`, `TranscriptRow`, `NotesEditor`, `SummaryBlock`, `RecordingBar`, `CommandPalette` and the rest. `scripts/check-ui-purity.mjs` blocks `style`, `className`, raw elements, token styling and CSS outside `packages/ui`.
+- Every visual component lives in `@qrtz/ui`. The shell and features compose `Stack`, `AppFrame`/`SideNav`, `SplitView`, `MeetingRow`, `TranscriptRow`, `NotesEditor`, `SummaryBlock`, `RecordingBar`, `CommandPalette` and the rest. `scripts/check-ui-purity.mjs` blocks `style`, `className`, raw elements, token styling and CSS outside `packages/ui`.
 - Home is removed, with bottom tabs and a two-pane Memo. Gallery is dev only. The UI no longer has blurbs.
 - Settings has 10 toggles for every automatic behavior, wired in main and the worker (tray live toggle, login item, update gate, detect-prompt gate, summarize and indexing gates).
 - OpenRouter free-tier fallback, covered by 4 unit tests, plus an opt-in live test. The live call was not run this session: `/home/box/.secrets/openrouter_qrtz.key` is not on the box (the reset wiped it).

@@ -50,7 +50,7 @@ handlers only. `scripts/check-ui-purity.mjs` (part of `bun run lint`) fails outs
   used as icons (■ ▶ ⌕ ✎ ⚙ …); keyboard symbols (⌘ ⇧ ⌥) and typography (… ·) are text and stay allowed
 
 Layout uses `Stack` (token gaps and padding only, semantic `as` for form/ul/li/nav/section).
-App and note pieces: `AppFrame`, `TabBar`, `SplitView`, `Page`, `Toolbar`, `IconButton`, `Chip`,
+App and note pieces: `AppFrame`, `SideNav`, `SplitView`, `Page`, `Toolbar`, `IconButton`, `Chip`,
 `ListRow`/`MeetingRow`, `SettingsSection`/`SettingRow`, `TranscriptRow`/`TranscriptList`,
 `NotesEditor`, `SummaryBlock`, `ChatQuestion`/`ChatAnswer`/`Composer`, `RecordingBar`, `RecordDot`,
 `LevelMeter`, `StreamingTranscript`/`PipelineSteps`/`CaptureStatus`, `Banner`, `AudioPlayer`, `ActionMenu`, `ConfirmDialog`,
@@ -71,7 +71,8 @@ always carries an accessible `label`. `Button icon=`, `IconButton icon=`, `Empty
 
 ## Layout
 
-Tiny lowercase tabs along the bottom (`note`, `settings`, plus `gallery` in dev builds), with the
-content taking the full window. Note is two panes: the meeting list (Record button, search toggle,
+All main navigation lives in a left sidebar (`SideNav` in `AppFrame`): one icon + lowercase label row
+per view (the modules, then marketplace), with `settings` (and `gallery` in dev builds) pinned to the
+sidebar's foot. There is no bottom bar. Content fills the rest of the window. Note is two panes: the meeting list (Record button, search toggle,
 ask-all) on the left, the selected meeting on the right (summary first, then notes, transcript and
 ask one tab away). No explanatory copy: labels, glyphs and layout carry the UI.

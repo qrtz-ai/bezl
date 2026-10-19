@@ -6,7 +6,7 @@ import {
 } from 'react';
 import { useTheme } from './theme';
 import { Text } from './Text';
-import { Icon, type IconName } from './Icon';
+import { Icon, isIconName, type IconName } from './Icon';
 import { transition, typeStyle, type Tokens } from './tokens';
 import { lowerTitle } from './case';
 
@@ -109,14 +109,14 @@ export function Stack({
   );
 }
 
-/** Whole-window app frame: content fills the window, tiny tabs along the bottom edge. */
+/** Whole-window app frame: the nav sidebar on the left, content fills the rest. There is no bottom bar. */
 export function AppFrame({
   children,
-  tabs,
+  sidebar,
   embedded,
 }: {
   children: ReactNode;
-  tabs: ReactNode;
+  sidebar: ReactNode;
   /** Preview inside another page (gallery): no window drag strip, no main landmark. */
   embedded?: boolean;
 }) {
@@ -126,68 +126,109 @@ export function AppFrame({
     <div
       style={{
         display: 'grid',
-        gridTemplateRows: '1fr auto',
+        gridTemplateColumns: 'auto 1fr',
         height: '100%',
         background: t.color.bg,
       }}
     >
       {embedded ? null : <div className="q-drag" aria-hidden />}
-      <Main style={{ minHeight: 0, overflow: 'auto' }}>{children}</Main>
-      {tabs}
+      {sidebar}
+      <Main style={{ minWidth: 0, minHeight: 0, overflow: 'auto' }}>
+        {children}
+      </Main>
     </div>
   );
 }
 
-/** Minimal bottom tab bar (lowercase labels). Each tab gets data-testid `nav-<id>`. */
-export function TabBar({
+export type SideNavItem = {
+  id: string;
+  label: string;
+  /** Feather icon name; an unknown name renders the label alone. */
+  icon?: string;
+  /** `foot` items sit pinned at the bottom of the sidebar (settings, gallery). */
+  group?: 'main' | 'foot';
+};
+
+/** The app's main navigation: a vertical sidebar of icon + lowercase label rows. Each row gets data-testid `nav-<id>`. */
+export function SideNav({
   items,
   active,
   onSelect,
   label = 'Apps',
   testIdPrefix = 'nav',
+  embedded,
 }: {
-  items: { id: string; label: string }[];
+  items: SideNavItem[];
   active: string;
   onSelect: (id: string) => void;
   label?: string;
   testIdPrefix?: string;
+  /** Inside a preview frame: no room left for the window controls. */
+  embedded?: boolean;
 }) {
   const t = useTheme();
+  const row = (it: SideNavItem) => {
+    const on = it.id === active;
+    return (
+      <button
+        key={it.id}
+        type="button"
+        data-testid={`${testIdPrefix}-${it.id}`}
+        aria-current={on ? 'page' : undefined}
+        onClick={() => onSelect(it.id)}
+        style={{
+          all: 'unset',
+          boxSizing: 'border-box',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: t.space[2],
+          width: '100%',
+          padding: `${t.space[1]} ${t.space[2]}`,
+          borderRadius: t.radius.md,
+          background: on ? t.color.accent : 'transparent',
+          color: on ? t.color.text : t.color.textMuted,
+          transition: transition('background', 'hover', t),
+        }}
+      >
+        {isIconName(it.icon) ? <Icon name={it.icon} size="sm" /> : null}
+        <Text tone={on ? 'default' : 'muted'} truncate>
+          {it.label.toLowerCase()}
+        </Text>
+      </button>
+    );
+  };
+  const main = items.filter((i) => i.group !== 'foot');
+  const foot = items.filter((i) => i.group === 'foot');
   return (
     <nav
       aria-label={label}
       style={{
         display: 'flex',
-        justifyContent: 'center',
-        gap: t.space[1],
-        padding: `${t.space[1]} ${t.space[3]}`,
-        borderTop: `1px solid ${t.color.border}`,
+        flexDirection: 'column',
+        gap: 2,
+        width: 176,
+        boxSizing: 'border-box',
+        padding: `${embedded ? t.space[2] : '40px'} ${t.space[2]} ${t.space[2]}`,
+        borderRight: `1px solid ${t.color.border}`,
+        minHeight: 0,
+        overflow: 'auto',
       }}
     >
-      {items.map((it) => {
-        const on = it.id === active;
-        return (
-          <button
-            key={it.id}
-            type="button"
-            data-testid={`${testIdPrefix}-${it.id}`}
-            aria-current={on ? 'page' : undefined}
-            onClick={() => onSelect(it.id)}
-            style={{
-              all: 'unset',
-              cursor: 'pointer',
-              padding: `2px ${t.space[3]}`,
-              borderRadius: t.radius.sm,
-              background: on ? t.color.accent : 'transparent',
-              transition: transition('background', 'hover', t),
-            }}
-          >
-            <Text variant="caption" tone={on ? 'default' : 'muted'}>
-              {it.label.toLowerCase()}
-            </Text>
-          </button>
-        );
-      })}
+      {main.map(row)}
+      {foot.length ? (
+        <div
+          style={{
+            marginTop: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+            paddingTop: t.space[2],
+          }}
+        >
+          {foot.map(row)}
+        </div>
+      ) : null}
     </nav>
   );
 }

@@ -14,7 +14,7 @@ import {
   useNavigate,
   type RouteObject,
 } from 'react-router';
-import { AppFrame, TabBar, ThemeProvider, ToastProvider } from '@qrtz/ui';
+import { AppFrame, SideNav, ThemeProvider, ToastProvider } from '@qrtz/ui';
 import { isViewOn, onNavigateRequest } from '@qrtz/core';
 import type { SubAppRoute } from '@qrtz/core/react';
 import { registry } from './subapps';
@@ -28,6 +28,9 @@ import { joinRoute, navTarget, resolveRoute, splitRoute } from './routes';
 const loadPalette = () => import('./Palette');
 const Palette = lazy(() => loadPalette().then((m) => ({ default: m.Palette })));
 
+/** Pinned to the bottom of the sidebar; everything else (modules, marketplace) lists above. */
+const FOOT = new Set(['settings', 'gallery']);
+
 /** One splat route: the shell owns the whole path and stays mounted across every navigation (ADR 0091). */
 export const routes: RouteObject[] = [{ path: '*', element: <Shell /> }];
 
@@ -39,7 +42,7 @@ export function App() {
 }
 
 export function Shell() {
-  // ADR 0146: a module switched off in settings → modules has no tab and no view.
+  // ADR 0146: a module switched off in settings → modules has no sidebar row and no view.
   const switches = useModuleSwitches();
   const visible = useMemo(
     () => registry.list().filter((a) => isViewOn(switches, a.manifest.id)),
@@ -56,7 +59,7 @@ export function Shell() {
   }, [path, location.pathname, navigate]);
 
   // Sub apps mount on first visit and then stay mounted (hidden) so switching back is instant; each keeps
-  // the path it was last on, which its tab returns to.
+  // the path it was last on, which its sidebar row returns to.
   const [visited, setVisited] = useState<ReadonlySet<string>>(
     () => new Set([active]),
   );
@@ -125,11 +128,13 @@ export function Shell() {
           </Suspense>
         ) : null}
         <AppFrame
-          tabs={
-            <TabBar
+          sidebar={
+            <SideNav
               items={visible.map(({ manifest }) => ({
                 id: manifest.id,
                 label: manifest.name,
+                icon: manifest.icon,
+                group: FOOT.has(manifest.id) ? 'foot' : 'main',
               }))}
               active={active}
               onSelect={selectApp}
