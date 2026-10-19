@@ -861,6 +861,31 @@ mod tests {
         assert!(none.installed(), "nothing selected: nothing to download");
     }
 
+    /// One name per model: a bundled manifest's `model:<dir>`, qrtz_lock's ADR 0146 → 0157 table and the package the
+    /// runtime resolves (the pinned set's `package`, which scripts/modules/qrtz-json.mjs writes into qrtz.json) agree.
+    #[test]
+    fn module_json_model_ids_map_to_the_pinned_package() {
+        let ctrl = crate::ctrl_model::CtrlManifest::pinned().manifest;
+        for s in Manifest::pinned().sets.into_iter().chain(ctrl.sets) {
+            assert_eq!(
+                qrtz_modules::qrtz_lock::legacy_name(&format!("model:{}", s.dir)),
+                s.package,
+                "{}",
+                s.dir
+            );
+        }
+        for m in &crate::modules::bundled().manifests {
+            for d in m.dependencies.iter().filter(|d| d.id.starts_with("model:")) {
+                assert!(
+                    !packages_needed_by(&m.id).is_empty() || m.id == "ctrl",
+                    "{}: {} is no pinned set",
+                    m.id,
+                    d.id
+                );
+            }
+        }
+    }
+
     /// Jared's "used by nothing": each pinned model names the module it is for.
     #[test]
     fn each_pinned_model_names_its_module() {
