@@ -1,6 +1,6 @@
 {
   "name": "snap",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "kind": "extension",
   "description": "window snapping with spectacle's shortcuts",
   "extension": {

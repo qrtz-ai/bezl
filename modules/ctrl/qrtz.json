@@ -1,6 +1,6 @@
 {
   "name": "ctrl",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "kind": "extension",
   "description": "Background actions on this Mac, decided by an on-device model; never takes over the UI.",
   "dependencies": {

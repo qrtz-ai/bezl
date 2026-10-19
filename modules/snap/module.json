@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "snap",
   "name": "snap",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "protocol": 1,
   "minApp": "0.2.0",
   "code": {

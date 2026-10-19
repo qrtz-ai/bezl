@@ -13,10 +13,10 @@
           "version": "1.0.0"
         }
       ],
-      "manifestSha256": "955d2bb82a9221e5f5654ec2003ec0fc6785df27dd4ed6a6129f1e13b370b027",
+      "manifestSha256": "1d92fd11b3220273ac92882e205c321f274f2ff5aca61834141f3a0d53dded22",
       "source": "bundled",
       "staleRevocation": false,
-      "version": "0.2.1"
+      "version": "0.2.2"
     },
     "echo": {
       "code": {
@@ -67,10 +67,10 @@
         "teamId": "MR26CCZ496"
       },
       "dependencies": [],
-      "manifestSha256": "2e5aa61596e9f2743e8782f3ef8db3af4fe4116fdf3319bdc212b05f6392eb68",
+      "manifestSha256": "78a9062ef757507179780c2c1192ebb61736393c8febbe45a939e408b7223d58",
       "source": "bundled",
       "staleRevocation": false,
-      "version": "0.1.1"
+      "version": "0.1.2"
     }
   },
   "packages": {
