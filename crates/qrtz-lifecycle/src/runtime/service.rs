@@ -438,7 +438,7 @@ struct State {
     /// Jared: flipping away from the meeting tab ended the meeting after the helper's ~4 s grace and stopped the
     /// recording. A `meeting.ended` for the recorded meeting only arms this timer: (key, identity, gen, timer).
     /// The meeting coming back (same key or identity) disarms it; the stop runs after [`AUTO_STOP_GRACE_MS`].
-    auto_stop: Option<(String, String, u64, Option<AbortHandle>)>,
+    auto_stop: Option<(String, u64, u64, Option<AbortHandle>)>,
     auto_stop_gen: u64,
 }
 
@@ -996,6 +996,7 @@ impl Shared {
     fn dispatch(self: &Arc<Self>, m: HelperInput, s: RecordingState) {
         match m {
             HelperInput::Hello {} => {
+                self.lock().prompted.clear(); // M1: a (re)started helper re-detects from scratch
                 if self.send_helper(HelperCommand::PermissionsCheck).is_err() {
                     return; // TS: `send` throws out of `handle`
                 }
@@ -1053,7 +1054,7 @@ impl Shared {
                 }
                 // Once per meeting: the overlapping calendar event, else the helper key, is the identity.
                 let now = self.now();
-                let identity = match key.strip_prefix("calendar:") {
+                let identity = match super::prompt_dedupe::calendar_event(&key) {
                     Some(id) => super::prompt_dedupe::PromptDedupe::identity(&key, Some(id)),
                     None => {
                         let ev = self
@@ -1069,11 +1070,9 @@ impl Shared {
                 };
                 let first = {
                     let mut st = self.lock();
-                    if st
-                        .auto_stop
-                        .as_ref()
-                        .is_some_and(|(k, id, _, _)| *k == key || *id == identity)
-                    {
+                    if st.auto_stop.as_ref().is_some_and(|(k, id, _, _)| {
+                        *k == key || *id == super::prompt_dedupe::hash(&identity)
+                    }) {
                         if let Some((_, _, _, Some(t))) = st.auto_stop.take() {
                             t.abort();
                         }
@@ -1109,7 +1108,11 @@ impl Shared {
                 let now = self.now();
                 let identity = {
                     let mut st = self.lock();
-                    let id = st.prompted.identity_of(&key).unwrap_or_else(|| key.clone());
+                    // The identity (hash) the key was detected under: calendar event or the key itself.
+                    let id = st
+                        .prompted
+                        .identity_of(&key)
+                        .unwrap_or_else(|| super::prompt_dedupe::hash(&key));
                     st.prompted.ended(&key, now);
                     id
                 };
@@ -2082,6 +2085,7 @@ impl Shared {
     // ------------------------------------------------------------------ helper crash / reconnect
 
     fn on_helper_down(self: &Arc<Self>, reason: &str) {
+        self.lock().prompted.clear(); // M1: its live meeting keys will never end
         let s = self.lock().machine.state().clone();
         if !is_capturing(s.phase) || s.meeting_id.is_none() {
             return;

@@ -77,3 +77,20 @@ async fn tab_flips_on_one_meeting_prompt_once_and_another_meeting_prompts_again(
     tokio::time::sleep(Duration::from_millis(20)).await;
     assert_eq!(*prompts.0.lock().unwrap(), ["Weekly Product Sync", "1:1"]);
 }
+
+/// Bozniak M1: a helper restart (new `hello`) forgets the prompted set; the live keys of the old helper never end.
+#[tokio::test]
+async fn a_helper_restart_clears_the_prompted_set() {
+    let (rt, prompts, _tmp) = rig().await;
+    detected(&rt, "meet:abc-defg-hij", "Weekly Product Sync");
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    detected(&rt, "meet:abc-defg-hij", "Weekly Product Sync");
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert_eq!(prompts.0.lock().unwrap().len(), 1);
+    rt.helper_json(
+        &json!({"type": "hello", "protocol": 1, "helperVersion": "test", "os": "macos", "features": []}),
+    );
+    detected(&rt, "meet:abc-defg-hij", "Weekly Product Sync");
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert_eq!(prompts.0.lock().unwrap().len(), 2);
+}

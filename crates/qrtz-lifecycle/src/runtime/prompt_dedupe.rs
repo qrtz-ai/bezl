@@ -4,28 +4,46 @@
 //! detected again and again. The prompt is keyed by meeting identity instead: the overlapping calendar event
 //! (`calendar:<id>`) when there is one, else the helper's key (Meet code, Zoom id, app + window). An identity
 //! counts as prompted from its first prompt (dismissed or declined included) until it has been gone for
-//! [`GONE_MS`]. In memory only.
+//! [`GONE_MS`]. In memory only, keys and identities stored as 64-bit hashes (no meeting codes kept), at most
+//! [`CAP`] identities (the oldest goes), and cleared when the helper is lost or restarts (its live keys will
+//! never see a `meeting.ended`).
+//!
+//! L1: a detection while recording (or while any capture runs) still counts: it uses up that meeting's one
+//! prompt, so the meeting doesn't prompt again after the recording stops while it's still on.
 
 use std::collections::{HashMap, HashSet};
+use std::hash::{BuildHasher, BuildHasherDefault, DefaultHasher};
 
 use qrtz_model::EpochMs;
 
 /// How long a meeting must be gone before the same identity prompts again.
 pub const GONE_MS: EpochMs = 5 * 60 * 1000;
+/// Most identities kept; the one seen longest ago is evicted first.
+pub const CAP: usize = 64;
+
+/// The calendar event id of a `calendar:<id>` key (shared by [`PromptDedupe::observe`] and the service).
+pub fn calendar_event(key: &str) -> Option<&str> {
+    key.strip_prefix("calendar:")
+}
+
+/// The stored hash of a key or identity.
+pub fn hash(s: &str) -> u64 {
+    BuildHasherDefault::<DefaultHasher>::default().hash_one(s)
+}
 
 #[derive(Debug)]
 struct Entry {
     /// Helper keys currently live for this identity (calendar keys never end, so they are not tracked).
-    live: HashSet<String>,
+    live: HashSet<u64>,
     /// Last detection, or when the last live key ended.
     last_ms: EpochMs,
 }
 
 #[derive(Debug, Default)]
 pub struct PromptDedupe {
-    entries: HashMap<String, Entry>,
-    /// helper key -> identity, so `meeting.ended { key }` finds its entry.
-    by_key: HashMap<String, String>,
+    entries: HashMap<u64, Entry>,
+    /// helper key -> identity (hashes), so `meeting.ended { key }` finds its entry.
+    by_key: HashMap<u64, u64>,
 }
 
 impl PromptDedupe {
@@ -40,32 +58,59 @@ impl PromptDedupe {
     /// Records a detection; true when this identity has not been prompted (so prompt now).
     pub fn observe(&mut self, key: &str, identity: &str, now: EpochMs) -> bool {
         self.expire(now);
-        let first = !self.entries.contains_key(identity);
-        let e = self.entries.entry(identity.to_string()).or_insert_with(|| Entry {
+        let (k, id) = (hash(key), hash(identity));
+        let first = !self.entries.contains_key(&id);
+        if first && self.entries.len() >= CAP {
+            if let Some(old) = self
+                .entries
+                .iter()
+                .min_by_key(|(_, e)| e.last_ms)
+                .map(|(i, _)| *i)
+            {
+                self.entries.remove(&old);
+                self.by_key.retain(|_, i| *i != old);
+            }
+        }
+        let e = self.entries.entry(id).or_insert_with(|| Entry {
             live: HashSet::new(),
             last_ms: now,
         });
         e.last_ms = now;
-        if !key.starts_with("calendar:") {
-            e.live.insert(key.to_string());
-            self.by_key.insert(key.to_string(), identity.to_string());
+        if calendar_event(key).is_none() {
+            e.live.insert(k);
+            self.by_key.insert(k, id);
         }
         first
     }
 
-    /// The identity a live helper key was detected under.
-    pub fn identity_of(&self, key: &str) -> Option<String> {
-        self.by_key.get(key).cloned()
+    /// The identity hash a live helper key was detected under.
+    pub fn identity_of(&self, key: &str) -> Option<u64> {
+        self.by_key.get(&hash(key)).copied()
     }
 
     /// A helper key ended: its identity starts counting as gone once no key of it is live.
     pub fn ended(&mut self, key: &str, now: EpochMs) {
-        if let Some(id) = self.by_key.remove(key) {
+        let k = hash(key);
+        if let Some(id) = self.by_key.remove(&k) {
             if let Some(e) = self.entries.get_mut(&id) {
-                e.live.remove(key);
+                e.live.remove(&k);
                 e.last_ms = now;
             }
         }
+    }
+
+    /// M1: the helper was lost or restarted; its live keys will never end, so forget everything.
+    pub fn clear(&mut self) {
+        self.entries.clear();
+        self.by_key.clear();
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
     }
 
     fn expire(&mut self, now: EpochMs) {
@@ -138,5 +183,34 @@ mod tests {
         assert!(d.observe("calendar:ev2", "calendar:ev2", 0));
         assert!(!d.observe("calendar:ev2", "calendar:ev2", 4 * MIN));
         assert!(d.observe("calendar:ev2", "calendar:ev2", 10 * MIN));
+    }
+
+    #[test]
+    fn clear_forgets_everything() {
+        let mut d = PromptDedupe::default();
+        assert!(d.observe("meet:abc", "meet:abc", 0));
+        d.clear();
+        assert!(d.is_empty());
+        assert!(
+            d.observe("meet:abc", "meet:abc", MIN),
+            "after a helper restart the meeting may prompt again"
+        );
+    }
+
+    #[test]
+    fn cap_evicts_the_oldest() {
+        let mut d = PromptDedupe::default();
+        for i in 0..CAP as i64 {
+            assert!(d.observe(&format!("zoom-app:{i}"), &format!("zoom-app:{i}"), i));
+        }
+        assert_eq!(d.len(), CAP);
+        assert!(d.observe("zoom-app:new", "zoom-app:new", 1_000));
+        assert_eq!(d.len(), CAP);
+        assert!(
+            d.observe("zoom-app:0", "zoom-app:0", 1_001),
+            "the oldest was evicted"
+        );
+        assert!(!d.observe("zoom-app:new", "zoom-app:new", 1_002));
+        assert!(!d.observe("zoom-app:63", "zoom-app:63", 1_003));
     }
 }
