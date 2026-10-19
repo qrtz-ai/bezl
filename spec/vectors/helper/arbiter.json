@@ -1968,6 +1968,155 @@
      }
     }
    ]
+  },
+  {
+   "name": "N195: a dictation reader whose mic never opened is forgotten, so the next press subscribes again",
+   "initialDenied": [],
+   "steps": [
+    {
+     "event": {
+      "configure": {
+       "warmMic": true
+      }
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.subscribe:dictation"
+      ],
+      "state": {
+       "recording": false,
+       "activeAudioPath": null,
+       "dictating": false,
+       "warm": true,
+       "mic": [
+        "dictation"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "micFailed": "dictation"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": false,
+       "activeAudioPath": null,
+       "dictating": false,
+       "warm": true,
+       "mic": [],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "micFailed": "dictation"
+     },
+     "expect": {
+      "decision": "ignore",
+      "reason": "not-subscribed",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": false,
+       "activeAudioPath": null,
+       "dictating": false,
+       "warm": true,
+       "mic": [],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.start"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.subscribe:dictation"
+      ],
+      "state": {
+       "recording": false,
+       "activeAudioPath": null,
+       "dictating": true,
+       "warm": true,
+       "mic": [
+        "dictation"
+       ],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "micFailed": "dictation"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": false,
+       "activeAudioPath": null,
+       "dictating": true,
+       "warm": true,
+       "mic": [],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "cmd": "dictation.cancel"
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [],
+      "state": {
+       "recording": false,
+       "activeAudioPath": null,
+       "dictating": false,
+       "warm": true,
+       "mic": [],
+       "denied": []
+      }
+     }
+    },
+    {
+     "event": {
+      "configure": {
+       "warmMic": true
+      }
+     },
+     "expect": {
+      "decision": "accept",
+      "mux": false,
+      "effects": [
+       "mic.subscribe:dictation"
+      ],
+      "state": {
+       "recording": false,
+       "activeAudioPath": null,
+       "dictating": false,
+       "warm": true,
+       "mic": [
+        "dictation"
+       ],
+       "denied": []
+      }
+     }
+    }
+   ]
   }
  ]
 }

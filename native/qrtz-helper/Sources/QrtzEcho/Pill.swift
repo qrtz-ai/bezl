@@ -169,7 +169,7 @@ public final class PillDriver: @unchecked Sendable {
                 let m: String? = self.lock.withLock { self.gen == g ? self.pendingInsertError : nil }
                 if let m { self.go(.error(m), timeoutMs: self.timing.errorFlashMs) }
             }
-        case .error(let code, let message, _, let id, _, _, _):
+        case .error(let code, let message, _, let id, _, _, _, _):
             // Only while the pill is up (a configure-time hotkey error must not pop it), and only for the dictation
             // it follows. A refused press (`dictation.busy`) has nothing to show: it ends quietly.
             guard code.hasPrefix("dictation."), state != .hidden else { return }

@@ -324,7 +324,7 @@ final class DictationTailTests: XCTestCase {
         await c.handle(.dictationStart(id: "d2"))
         await c.dictation.onSamples(level(3, 8960))
         XCTAssertTrue(out.value.contains { if case .log(.warn, let m) = $0 { m.contains("still finishing") } else { false } })
-        XCTAssertTrue(out.value.contains { if case .error("dictation.asr", _, false, "d2", _, _, _) = $0 { true } else { false } })
+        XCTAssertTrue(out.value.contains { if case .error("dictation.asr", _, false, "d2", _, _, _, _) = $0 { true } else { false } })
         XCTAssertFalse(out.value.contains(.dictationStarted(id: "d2", preRollMs: 0)))
         XCTAssertEqual(asr.lock.withLock { asr.appendsWhileFinishing }, 0)
         // Once it returns, the next dictation has it again.
@@ -442,7 +442,7 @@ final class DictationTailTests: XCTestCase {
         guard let cb = mic.cb else { return XCTFail("mic attached") }
         for _ in 0..<20 { cb(level(1, 1360)) }
         await c.handle(.dictationStop(id: "d1"))
-        let errs = out.value.filter { if case .error(let code, _, _, _, _, _, _) = $0 { code == "dictation.backlog" } else { false } }
+        let errs = out.value.filter { if case .error(let code, _, _, _, _, _, _, _) = $0 { code == "dictation.backlog" } else { false } }
         XCTAssertEqual(errs.count, 1, "said once")
         XCTAssertLessThanOrEqual(asr.lock.withLock { asr.appended }, 4800, "nothing past the cap reached the recogniser")
         // The next dictation is re-armed.
@@ -586,7 +586,7 @@ final class DictationBoundsTests: XCTestCase {
         XCTAssertEqual(stoppedText(out.value, "d1"), "w1")
         XCTAssertTrue(warned(out.value, "final text not ready"))
         await c.handle(.dictationStart(id: "d2"))  // held until the pad and finish return: refused (N134)
-        XCTAssertTrue(out.value.contains { if case .error("dictation.asr", _, false, "d2", _, _, _) = $0 { true } else { false } })
+        XCTAssertTrue(out.value.contains { if case .error("dictation.asr", _, false, "d2", _, _, _, _) = $0 { true } else { false } })
         asr.release()
     }
 
@@ -597,7 +597,7 @@ final class DictationBoundsTests: XCTestCase {
         a.prepareFails = true; b.prepareFails = true
         let (c, out) = controller([a, b], DictationTail(tailMs: 0), mic: mic)
         await c.handle(.dictationStart(id: "d1"))
-        XCTAssertTrue(out.value.contains { if case .error("dictation.asr", let m, false, "d1", _, _, _) = $0 { m.contains("ready") } else { false } })
+        XCTAssertTrue(out.value.contains { if case .error("dictation.asr", let m, false, "d1", _, _, _, _) = $0 { m.contains("ready") } else { false } })
         XCTAssertFalse(out.value.contains { if case .dictationStarted = $0 { true } else { false } })
         let active = await c.dictation.isActive
         XCTAssertFalse(active)

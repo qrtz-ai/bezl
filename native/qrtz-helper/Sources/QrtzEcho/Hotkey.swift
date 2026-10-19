@@ -79,4 +79,15 @@ public struct HotkeyFilter: Equatable, Sendable {
         defer { down = false }
         return down ? .up : nil  // `withControl` stays for this release; the next press sets it again
     }
+
+    /// N196 (ADR 0224): the Mac is going to sleep (lid closed while holding the key). The release may never reach
+    /// the tap, so a held key ends here, like a disabled tap.
+    public mutating func willSleep() -> HotkeyAction? { reset() }
+
+    /// N196: the Mac woke. `flags` is the session's current modifier state (`CGEventSource.flagsState`); a key
+    /// still believed held whose flag is clear was released while asleep (or the sleep notice never came).
+    public mutating func didWake(flags: UInt64) -> HotkeyAction? {
+        guard down, flags & flag == 0 else { return nil }
+        return reset()
+    }
 }

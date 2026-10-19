@@ -28,6 +28,7 @@ final class ArbiterTests: XCTestCase {
         if let p = o["revoked"]?.string { return .revoked(perm(p)) }
         if let p = o["granted"]?.string { return .granted(perm(p)) }
         if let c = o["configure"]?.object { return .configure(warmMic: c["warmMic"]!.bool!) }
+        if let w = o["micFailed"]?.string { return .micFailed(w) }
         return .helperLost
     }
 
@@ -43,7 +44,7 @@ final class ArbiterTests: XCTestCase {
 
     /// Same vectors as packages/core/src/helper/arbiter.test.ts: the TS and Swift arbiters cannot drift.
     func testSharedVectors() throws {
-        let steps = try replay(Self.vectors, expectCases: 17)
+        let steps = try replay(Self.vectors, expectCases: 18)
         XCTAssertGreaterThan(steps, 40)
     }
 
@@ -176,6 +177,44 @@ final class ArbiterTests: XCTestCase {
     private func tmp(_ n: String) -> String { FileManager.default.temporaryDirectory.appendingPathComponent("\(n)-\(UUID()).wav").path }
 
     /// Bug 1: configure warm, record, revoke the mic with no dictation, re-grant: the next dictation must hear.
+    /// N195 (ADR 0224): the mic fails to open on the warm subscribe (device gone). The arbiter forgets the reader,
+    /// so once the device is back the next start subscribes again and hears; before the fix the arbiter kept
+    /// "dictation" as a reader and every later start reused a reader that never attached (silent dictations).
+    func testAFailedMicOpenIsSteppedBackSoTheNextStartSubscribesAgain() async throws {
+        let out = Box<[HelperMessage]>([]), mic = FlakyMic(), hub = MicHub(source: mic)
+        let c = controller(MutablePerms(), hub, out)
+        mic.fails.mutate { $0 = 3 }  // the warm subscribe, then d1's admit subscribe and its one retry
+        await c.handle(.dictationConfigure(warmMic: true, preRollMs: 300, streamAudio: false, pushKey: ""))
+        var st = await c.arbiter
+        XCTAssertEqual(st.mic, [], "the reader that never attached is forgotten")
+        XCTAssertTrue(out.value.contains { if case .error("dictation.mic", _, false, nil, _, _, _, "no-device") = $0 { true } else { false } })
+        // A start while the device is still gone: refused by its id, nothing left running in the arbiter.
+        await c.handle(.dictationStart(id: "d1"))
+        XCTAssertTrue(out.value.contains { if case .error("dictation.mic", _, false, "d1", _, _, _, "no-device") = $0 { true } else { false } })
+        XCTAssertFalse(out.value.contains { if case .dictationStarted("d1", _) = $0 { true } else { false } })
+        st = await c.arbiter
+        XCTAssertFalse(st.dictating); XCTAssertEqual(st.mic, [])
+        // The device is back: the next start subscribes and hears.
+        await c.handle(.dictationStart(id: "d2"))
+        st = await c.arbiter
+        XCTAssertTrue(st.dictating); XCTAssertEqual(st.mic, ["dictation"]); XCTAssertEqual(hub.subscribers, ["dictation"])
+        mic.send([Float](repeating: 0.1, count: 1600))
+        try await Task.sleep(nanoseconds: 100_000_000)
+        await c.handle(.dictationStop(id: "d2"))
+        XCTAssertTrue(out.value.contains { if case .dictationStopped("d2", let text, _, nil, _) = $0 { text == "hello world" } else { false } })
+        await c.handle(.dictationConfigure(warmMic: false, preRollMs: 300, streamAudio: false, pushKey: ""))
+        XCTAssertEqual(hub.subscribers, []); XCTAssertFalse(hub.isRunning)
+    }
+
+    /// N195: Dictation.start with a managed mic opens it itself when the arbiter's subscribe didn't (reader dropped
+    /// under a warm mic), and the reason mapping.
+    func testMicFailureReasons() {
+        struct E: Error, CustomStringConvertible { let description: String }
+        XCTAssertEqual(DictationEngine.micFailureReason(E(description: "no microphone input device")), "no-device")
+        XCTAssertEqual(DictationEngine.micFailureReason(E(description: "microphone access denied")), "denied")
+        XCTAssertNil(DictationEngine.micFailureReason(E(description: "AVAudioEngine -10868")))
+    }
+
     func testWarmMicHearsAgainAfterRevokeAndRegrant() async throws {
         let out = Box<[HelperMessage]>([]), mic = FakeMic(), hub = MicHub(source: mic), perms = MutablePerms()
         let c = controller(perms, hub, out)
@@ -376,7 +415,7 @@ final class ArbiterTests: XCTestCase {
         await c.handle(.dictationStart(id: "d1"))
         let bad = "/dev/null/qrtz-\(UUID()).wav"  // parent is not a directory: the file can never be created
         await c.handle(.recordingStart(audioPath: bad))
-        XCTAssertTrue(out.value.contains { if case .error("recording.file", _, false, _, _, bad, nil) = $0 { true } else { false } })
+        XCTAssertTrue(out.value.contains { if case .error("recording.file", _, false, _, _, bad, nil, _) = $0 { true } else { false } })
         XCTAssertFalse(out.value.contains { if case .recordingStarted = $0 { true } else { false } })
         var rec = await c.isRecording
         XCTAssertFalse(rec)
@@ -387,7 +426,7 @@ final class ArbiterTests: XCTestCase {
         XCTAssertEqual(hub.subscribers, ["dictation"], "the recording's mic permit was revoked")
         let good = tmp("after-file-failure")
         await c.handle(.recordingStart(audioPath: good))
-        XCTAssertFalse(out.value.contains { if case .error("recording.busy", _, _, _, _, _, _) = $0 { true } else { false } })
+        XCTAssertFalse(out.value.contains { if case .error("recording.busy", _, _, _, _, _, _, _) = $0 { true } else { false } })
         XCTAssertTrue(out.value.contains(.recordingStarted(audioPath: good)))
         st = await c.arbiter
         XCTAssertEqual(st.activeAudioPath, good)
@@ -476,4 +515,18 @@ final class SlowMic: MicSource, @unchecked Sendable {
         if failNext.value { failNext.mutate { $0 = false }; throw Failed() }
     }
     func stop() { stops.mutate { $0 += 1 } }
+}
+
+/// N195: throws on the next `fails` opens ("no microphone input device"), then works.
+final class FlakyMic: MicSource, @unchecked Sendable {
+    struct NoDevice: Error, CustomStringConvertible { var description: String { "no microphone input device" } }
+    let fails = Box<Int>(0), starts = Box<Int>(0)
+    private let cb = Box<(@Sendable ([Float]) -> Void)?>(nil)
+    func start(onSamples: @escaping @Sendable ([Float]) -> Void) throws {
+        starts.mutate { $0 += 1 }
+        if fails.value > 0 { fails.mutate { $0 -= 1 }; throw NoDevice() }
+        cb.mutate { $0 = onSamples }
+    }
+    func stop() { cb.mutate { $0 = nil } }
+    func send(_ s: [Float]) { cb.value?(s) }
 }

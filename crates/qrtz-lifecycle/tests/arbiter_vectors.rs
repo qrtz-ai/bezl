@@ -54,7 +54,7 @@ fn run(file: &str) -> usize {
 fn arbiter_vectors_match_ts_and_swift() {
     assert_eq!(
         load("arbiter.json")["cases"].as_array().unwrap().len(),
-        17,
+        18,
         "coverage changed: update this count"
     );
     assert!(run("arbiter.json") > 20);

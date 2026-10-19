@@ -301,8 +301,21 @@ public actor DictationEngine {
         }
     }
 
-    func startMic() {
-        guard !micRunning, let mic else { return }
+    /// N195 (ADR 0224): why a mic open failed, for `error{dictation.mic}.reason` (nil when the error doesn't say).
+    /// Talk maps `no-device` to mic-lost and anything else to mic-denied.
+    public static func micFailureReason(_ error: Error) -> String? {
+        let d = "\(error)".lowercased()
+        if d.contains("no microphone") || d.contains("no input device") || d.contains("device not found") { return "no-device" }
+        if d.contains("denied") || d.contains("not authorized") || d.contains("not permitted") { return "denied" }
+        return nil
+    }
+
+    /// Opens the mic (no-op while it runs). False when it could not open; the error is sent, naming `id` when a
+    /// start asked (N195).
+    @discardableResult
+    func startMic(id: String? = nil) -> Bool {
+        guard !micRunning else { return true }
+        guard let mic else { return false }
         // Mic callbacks arrive on an audio thread; keep their order with one stream into the actor.
         // Unbounded, but MicBacklog caps what's queued and stands the mic down explicitly past it.
         let (blocks, input) = AsyncStream<[Float]>.makeStream(bufferingPolicy: .unbounded)
@@ -316,14 +329,19 @@ public actor DictationEngine {
                 if r.ok { input.yield(s) } else if r.first { Task { await self?.backlogStoodDown() } }
             })
             micRunning = true
+            return true
         } catch {
-            input.finish(); consumer?.cancel(); consumer = nil; micIn = nil
-            send(.error(code: "dictation.mic", message: "\(error)", fatal: false))
+            input.finish(); consumer?.cancel(); consumer = nil; micIn = nil; backlog = nil
+            send(.error(code: "dictation.mic", message: "\(error)", fatal: false, id: id, reason: Self.micFailureReason(error)))
+            return false
         }
     }
 
-    /// Arbiter effect mic.subscribe:dictation.
-    public func attachMic() { startMic() }
+    /// Arbiter effect mic.subscribe:dictation. False when the mic did not open: the controller then steps the
+    /// arbiter back (`micFailed`) so the next press or start subscribes again (N195).
+    @discardableResult
+    public func attachMic() -> Bool { startMic() }
+
     /// Arbiter effect mic.unsubscribe:dictation.
     public func detachMic() { stopMic() }
     /// The shared tap was dropped under us (microphone revoked): forget the reader so the next attach really
@@ -386,6 +404,10 @@ public actor DictationEngine {
             send(.error(code: "dictation.asr", message: why, fatal: false, id: id))
             return
         }
+        // N195 (ADR 0224): with a managed mic the arbiter's mic.subscribe opens it, at the press (the arm) or at
+        // this start's admit. If that open failed (or the reader was dropped under a warm mic), try once more here;
+        // if it still fails, refuse this start by its id (error{dictation.mic, id, reason}), like N134.
+        if managedMic, !micRunning, !startMic(id: id) { return }
         let pre = preRoll.drain()
         if armed {
             armed = false; s.timing.armed = true

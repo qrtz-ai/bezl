@@ -33,6 +33,10 @@ public enum ArbiterEvent: Equatable, Sendable {
     case helperLost
     /// The file of the admitted recording could not be created: fail closed (tear the recording down).
     case recordingFileFailed(audioPath: String)
+    /// N195 (ADR 0224): a reader's `mic.subscribe` effect ran but its mic never opened (`startMic` threw). The
+    /// reader is forgotten so the next press or start subscribes it again; nothing else changes (a live dictation
+    /// keeps `dictating`, its own start reports the mic and the host ends it).
+    case micFailed(String)
 }
 
 public struct ArbiterResult: Equatable, Sendable {
@@ -91,6 +95,10 @@ public enum SessionArbiter {
             n.recording = false; n.activeAudioPath = nil
             n.mic.removeAll { $0 == "recording" }
             return r(n, "accept", ["recording.lost"] + (unsub ? ["mic.unsubscribe:recording"] : []))
+        case .micFailed(let who):
+            guard s.mic.contains(who) else { return r(s, "ignore", [], "not-subscribed") }
+            n.mic.removeAll { $0 == who }
+            return r(n, "accept")
         case .configure(let warm):
             n.warm = warm
             if warm && micOk && !hasDict { n.mic.append("dictation"); return r(n, "accept", ["mic.subscribe:dictation"]) }

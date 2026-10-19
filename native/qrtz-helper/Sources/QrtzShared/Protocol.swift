@@ -75,7 +75,8 @@ public enum HelperMessage: Equatable, Sendable {
     case log(level: LogLevel, msg: String)
     /// id/activeId are set on dictation.busy (the ignored start, the dictation that owns the helper);
     /// audioPath/activeAudioPath on recording.busy (the ignored start's file, the running recording's file).
-    case error(code: String, message: String, fatal: Bool, id: String? = nil, activeId: String? = nil, audioPath: String? = nil, activeAudioPath: String? = nil)
+    /// reason (N195, dictation.mic only): "denied" | "no-device" when the mic open's error says which.
+    case error(code: String, message: String, fatal: Bool, id: String? = nil, activeId: String? = nil, audioPath: String? = nil, activeAudioPath: String? = nil, reason: String? = nil)
     case meetingDetected(key: String, title: String, platform: MeetingPlatform, app: String)
     case meetingEnded(key: String)
     case axParticipants(names: [String])
@@ -276,12 +277,13 @@ extension HelperMessage {
             for p in OsPermission.allCases { o[p.rawValue] = s((st[p] ?? .notDetermined).rawValue) }
             return obj("permissions.status", ["status": .object(o)])
         case .log(let level, let msg): return obj("log", ["level": s(level.rawValue), "msg": s(msg)])
-        case .error(let code, let message, let fatal, let id, let activeId, let audioPath, let activeAudioPath):
+        case .error(let code, let message, let fatal, let id, let activeId, let audioPath, let activeAudioPath, let reason):
             var o: [String: JSONValue] = ["code": s(code), "message": s(message), "fatal": .bool(fatal)]
             if let id { o["id"] = s(id) }
             if let activeId { o["activeId"] = s(activeId) }
             if let audioPath { o["audioPath"] = s(audioPath) }
             if let activeAudioPath { o["activeAudioPath"] = s(activeAudioPath) }
+            if let reason { o["reason"] = s(reason) }
             return obj("error", o)
         case .meetingDetected(let key, let title, let platform, let app):
             return obj("meeting.detected", ["key": s(key), "title": s(title), "platform": s(platform.rawValue), "app": s(app)])
@@ -402,7 +404,8 @@ extension HelperMessage {
         case "error":
             self = .error(code: try f.str("code"), message: try f.str("message"), fatal: f.o["fatal"]?.bool ?? false,
                           id: try f.optStr("id"), activeId: try f.optStr("activeId"),
-                          audioPath: try f.optStr("audioPath"), activeAudioPath: try f.optStr("activeAudioPath"))
+                          audioPath: try f.optStr("audioPath"), activeAudioPath: try f.optStr("activeAudioPath"),
+                          reason: try f.optStr("reason"))
         case "meeting.detected": self = .meetingDetected(key: try f.str("key"), title: try f.str("title"), platform: try f.enumValue("platform", MeetingPlatform.self), app: try f.str("app"))
         case "meeting.ended": self = .meetingEnded(key: try f.str("key"))
         case "ax.participants": self = .axParticipants(names: try f.strs("names"))

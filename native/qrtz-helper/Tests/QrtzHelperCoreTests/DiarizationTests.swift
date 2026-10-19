@@ -120,7 +120,7 @@ final class PerChannelRecordingTests: XCTestCase {
         let msgs = out.value
         XCTAssertTrue(msgs.contains { if case .asr(.final(let id, _, _, "Hello from the fake recogniser.", _)) = $0 { !id.contains("-") } else { false } })
         XCTAssertFalse(msgs.contains { if case .diarizationSegment = $0 { true } else { false } })
-        XCTAssertFalse(msgs.contains { if case .error(let code, _, _, _, _, _, _) = $0 { code == "asr.unavailable" } else { false } })
+        XCTAssertFalse(msgs.contains { if case .error(let code, _, _, _, _, _, _, _) = $0 { code == "asr.unavailable" } else { false } })
         try? FileManager.default.removeItem(atPath: path)
     }
 }

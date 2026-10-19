@@ -58,7 +58,12 @@ export type HelperArbiterEvent =
    * is torn down (mic and taps released, `recording.lost`), the helper answers
    * error{code: recording.file, audioPath, fatal: false} and the arbiter is idle for recordings again.
    */
-  | { recordingFileFailed: { audioPath: string } };
+  | { recordingFileFailed: { audioPath: string } }
+  /**
+   * N195 (ADR 0224): the reader's `mic.subscribe` effect ran but its mic never opened. The reader is forgotten
+   * (no effects: it never attached) so the next press or start subscribes it again; `dictating` is unchanged.
+   */
+  | { micFailed: 'recording' | 'dictation' };
 
 /**
  * Side effects, as strings so vectors stay language-neutral:
@@ -184,6 +189,10 @@ function step(
       'accept',
       ['recording.lost', ...(unsub ? ['mic.unsubscribe:recording'] : [])],
     );
+  }
+  if ('micFailed' in e) {
+    if (!s.mic.includes(e.micFailed)) return r(s, 'ignore', [], 'not-subscribed');
+    return r({ ...s, mic: without(s.mic, e.micFailed) }, 'accept');
   }
   if ('configure' in e) {
     const warm = e.configure.warmMic;

@@ -98,7 +98,7 @@ pub struct FileFailed {
 }
 
 /// Wire shape matches the TS union: `{cmd, audioPath?}`, `{configure:{warmMic}}`, `{revoked}`, `{granted}`,
-/// `{helperLost:true}`, `{recordingFileFailed:{audioPath}}`.
+/// `{helperLost:true}`, `{recordingFileFailed:{audioPath}}`, `{micFailed:<who>}`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ArbiterEvent {
@@ -124,6 +124,12 @@ pub enum ArbiterEvent {
     HelperLost {
         #[serde(rename = "helperLost")]
         helper_lost: bool,
+    },
+    /// N195 (ADR 0224): the reader's `mic.subscribe` ran but its mic never opened; forget it (no effects) so the
+    /// next press or start subscribes it again. `dictating` is unchanged.
+    MicFailed {
+        #[serde(rename = "micFailed")]
+        mic_failed: MicSubscriber,
     },
 }
 
@@ -242,6 +248,20 @@ fn transition(s: &ArbiterState, e: &ArbiterEvent) -> ArbiterResult {
                 },
                 Decision::Accept,
                 fx,
+                None,
+            )
+        }
+        ArbiterEvent::MicFailed { mic_failed } => {
+            if !s.reads(*mic_failed) {
+                return res(s.clone(), Decision::Ignore, vec![], Some("not-subscribed"));
+            }
+            res(
+                ArbiterState {
+                    mic: s.without(*mic_failed),
+                    ..s.clone()
+                },
+                Decision::Accept,
+                vec![],
                 None,
             )
         }

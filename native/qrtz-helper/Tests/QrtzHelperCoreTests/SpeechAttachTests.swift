@@ -158,7 +158,7 @@ final class SpeechAttachTests: XCTestCase {
         await c.handle(.recordingStop())
         XCTAssertEqual(asr.text, "", "the helper's recogniser was not fed")
         XCTAssertFalse(out.value.contains { if case .asr = $0 { true } else { false } })
-        XCTAssertFalse(out.value.contains { if case .error(let code, _, _, _, _, _, _) = $0 { code == "asr.unavailable" } else { false } })
+        XCTAssertFalse(out.value.contains { if case .error(let code, _, _, _, _, _, _, _) = $0 { code == "asr.unavailable" } else { false } })
         XCTAssertEqual(readAll(mic.r).count, 0, "EOF at stop (FakeAudio delivered no blocks)")
         XCTAssertEqual(readAll(sys.r).count, 0)
         close(mic.r); close(sys.r)

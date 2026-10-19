@@ -74,7 +74,7 @@ final class ModuleControllersTests: XCTestCase {
         XCTAssertFalse(recording)
         let admitted = await host.arbiter.recording
         XCTAssertFalse(admitted)
-        XCTAssertTrue(out.value.contains { if case .error("recording.file", _, _, _, _, let p, _) = $0 { p == path } else { false } })
+        XCTAssertTrue(out.value.contains { if case .error("recording.file", _, _, _, _, let p, _, _) = $0 { p == path } else { false } })
     }
 
     /// qrtz-nano isn't echo: a dictation reaching it (a host routing bug) is logged and left alone.

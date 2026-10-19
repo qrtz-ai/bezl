@@ -119,6 +119,8 @@ public final class MacHotkeys: HotkeyMonitor, @unchecked Sendable {
     private var blockTap: CFMachPort?
     private var blockSource: CFRunLoopSource?
     private var retry: DispatchSourceTimer?
+    /// N196: NSWorkspace sleep/wake observers (main queue, like the taps' callbacks).
+    private var powerObservers: [NSObjectProtocol] = []
     private var key = ""
     fileprivate var onChange: (@Sendable (HotkeyAction) -> Void)?
     /// Edge state (listen tap only).
@@ -145,12 +147,36 @@ public final class MacHotkeys: HotkeyMonitor, @unchecked Sendable {
         let ok = installListener()
         if !ok { removeBlocker() }  // never swallow the key with nothing listening for it
         if !complete { scheduleRetry() }
+        if ok { observePower() }
         return ok
+    }
+
+    /// N196 (ADR 0224): a lid closed while holding the push key can lose the release, leaving dictation stuck
+    /// listening. On sleep a held key ends; on wake one still believed held ends if the session's flags say it is up.
+    private func observePower() {
+        let nc = NSWorkspace.shared.notificationCenter
+        let sleep = nc.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self, let up = self.filter?.willSleep() else { return }
+            self.onChange?(up)
+        }
+        let wake = nc.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            let flags = CGEventSource.flagsState(.combinedSessionState).rawValue
+            if let up = self.filter?.didWake(flags: flags) { self.onChange?(up) }
+        }
+        powerObservers = [sleep, wake]
+    }
+
+    private func removePowerObservers() {
+        let nc = NSWorkspace.shared.notificationCenter
+        for o in powerObservers { nc.removeObserver(o) }
+        powerObservers = []
     }
 
     public func stop() {
         lock.lock(); defer { lock.unlock() }
         retry?.cancel(); retry = nil
+        removePowerObservers()
         removeListener()
         removeBlocker()
         filter = nil; blocker = nil

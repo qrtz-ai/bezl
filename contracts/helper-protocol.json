@@ -229,6 +229,13 @@
           },
           "activeAudioPath": {
             "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "denied",
+              "no-device"
+            ]
           }
         },
         "required": [

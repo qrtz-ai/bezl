@@ -124,7 +124,7 @@ public actor EchoController: ModulePart {
 
     public func apply(effect: String) async {
         switch effect {
-        case "mic.subscribe:dictation": await dictation.attachMic()
+        case "mic.subscribe:dictation": _ = await dictation.attachMic()
         case "mic.unsubscribe:dictation": await dictation.detachMic()
         case "dictation.stop:permission-revoked": await dictation.abort(reason: .permissionRevoked)
         default: break
@@ -138,6 +138,13 @@ public actor EchoController: ModulePart {
     /// Test seam.
     public var isArmed: Bool { armed }
 
+    /// N195 (ADR 0224): after an admit that may have subscribed the dictation reader, a mic that didn't open is
+    /// stepped back out of the arbiter (`micFailed`), so the next press or start subscribes again instead of
+    /// reusing a reader that never attached. Ignored by the arbiter when the reader isn't subscribed.
+    private func settleMic() async {
+        if await !dictation.isMicRunning { await link.step(.micFailed("dictation")) }
+    }
+
     /// The push key's lines, seen as they are sent (the arm doesn't wait for the host).
     func pushKey(_ a: HotkeyAction) async {
         switch a {
@@ -146,6 +153,7 @@ public actor EchoController: ModulePart {
             armed = true; armGen += 1
             await dictation.arm(maxMs: Self.armMaxMs)
             _ = await link.admit(.configure(warmMic: true))
+            await settleMic()
         case .up:
             guard armed else { return }
             let g = armGen
@@ -178,6 +186,7 @@ public actor EchoController: ModulePart {
         if warm, armed { armed = false; armHeld = false; await dictation.disarm() }
         await dictation.configure(warmMic: warm, preRollMs: pre, streamAudio: stream, pushKey: key, consumeFn: consume ?? true)
         _ = await link.admit(.configure(warmMic: warm || armed || armHeld))
+        await settleMic()
     }
 
     /// `dictation.start`, after the arbiter admitted it.
@@ -185,7 +194,9 @@ public actor EchoController: ModulePart {
         let fromArm = armed
         if fromArm { armed = false; armHeld = true }
         await dictation.start(id: id)
-        // The engine could not start (no source): undo through the arbiter so the reader is released too.
+        await settleMic()
+        // The engine could not start (no source, no recogniser, no mic): undo through the arbiter so the reader is
+        // released too.
         if await !dictation.isActive {
             _ = await link.admit(.cmd("dictation.cancel"))
             if armHeld { await releaseArm() }

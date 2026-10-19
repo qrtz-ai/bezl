@@ -902,11 +902,10 @@ impl TalkService {
                             tracing::warn!(phase = ?g.view.phase, ours, "dictation.mic for another press; the dictation keeps going");
                         }
                     } else {
-                        let msg = m["message"]
-                            .as_str()
-                            .unwrap_or("microphone access denied")
-                            .to_owned();
-                        self.fail(&mut g, TalkErrorKind::MicDenied, &msg, true);
+                        // N195 (ADR 0224): the helper says why when it can; a device that isn't there is
+                        // mic-lost, not a permission problem.
+                        let (kind, msg) = mic_error(m);
+                        self.fail(&mut g, kind, &msg, true);
                     }
                 } else if code == "dictation.busy" {
                     self.on_busy(m);
@@ -1769,4 +1768,20 @@ pub fn with_trailing_space(text: &str) -> String {
     } else {
         format!("{text} ")
     }
+}
+
+/// N195 (ADR 0224): `error{dictation.mic, reason?}` as talk's error: `no-device` is mic-lost (the input device is
+/// gone), anything else (`denied`, or no reason from an older helper) stays mic-denied with the helper's message.
+pub fn mic_error(m: &Value) -> (TalkErrorKind, String) {
+    if m["reason"].as_str() == Some("no-device") {
+        return (
+            TalkErrorKind::MicLost,
+            "no microphone was found, so dictation didn't start".to_owned(),
+        );
+    }
+    let msg = m["message"]
+        .as_str()
+        .unwrap_or("microphone access denied")
+        .to_owned();
+    (TalkErrorKind::MicDenied, msg)
 }

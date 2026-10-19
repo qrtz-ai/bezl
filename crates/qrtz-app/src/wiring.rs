@@ -501,7 +501,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
     let voice_ctrl: Arc<std::sync::OnceLock<std::sync::Weak<crate::AppService>>> = Default::default();
     let talk: Arc<dyn crate::ports::TalkPort> = match b.talk {
         Some(t) => t,
-        None => Arc::new(crate::talk::Talk(crate::talk::talk_service(
+        None => Arc::new(crate::talk::Talk(with_notch_ticker(crate::talk::talk_service(
             crate::talk::TalkWiring {
                 helper: echo_helper.clone(),
                 events: events.clone(),
@@ -523,7 +523,7 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
                     })
                 },
             },
-        ))),
+        )))),
     };
     let setup = Arc::new(crate::setup::Setup {
         speech: crate::setup::SpeechManager::with_local(b.speech.clone(), local_models, events.clone()),
@@ -728,6 +728,28 @@ pub fn build_app(b: AppBuild) -> std::io::Result<BuiltApp> {
         setup,
     })
 }
+
+/// N198 (ADR 0224): the app's notch broker gets a real 1 s timer for its 10 s module-content expiry, sending through
+/// talk's `notch_send` (echo's helper draws the surface). Only with a tokio runtime (the app's; unit wirings have
+/// none). Secure input is not read on the host yet: `show`/`update` take it per request.
+fn with_notch_ticker(talk: qrtz_talk::TalkService) -> qrtz_talk::TalkService {
+    if tokio::runtime::Handle::try_current().is_ok() {
+        let t = talk.clone();
+        let host = crate::notch::NotchHost::new(
+            Arc::new(move |l: &serde_json::Value| {
+                t.notch_send(l);
+            }),
+            Arc::new(|| false),
+        );
+        // The task holds the host weakly; keep one strong reference for the app's life.
+        let _ = NOTCH.set(host.clone());
+        host.spawn_ticker(crate::notch::TICK_EVERY);
+    }
+    talk
+}
+
+/// The app's notch host (module notch requests reach the broker through it).
+pub static NOTCH: std::sync::OnceLock<Arc<crate::notch::NotchHost>> = std::sync::OnceLock::new();
 
 #[cfg(test)]
 mod knob_tests {

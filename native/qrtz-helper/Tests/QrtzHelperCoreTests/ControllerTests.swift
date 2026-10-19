@@ -37,7 +37,7 @@ final class CaptureFallbackTests: XCTestCase {
         await c.handle(.recordingStart(audioPath: path))
         let fbs = out.value.filter { if case .captureFallback = $0 { true } else { false } }
         XCTAssertEqual(fbs, [.captureFallback(from: "tap", to: "sck", reason: "denied"), .captureFallback(from: "sck", to: nil, reason: "denied")])
-        XCTAssertTrue(out.value.contains { if case .error(let code, _, _, _, _, _, _) = $0 { code == "audio.unavailable" } else { false } })
+        XCTAssertTrue(out.value.contains { if case .error(let code, _, _, _, _, _, _, _) = $0 { code == "audio.unavailable" } else { false } })
         XCTAssertTrue(out.value.contains(.recordingStarted(audioPath: path)))
         await c.handle(.recordingStop())
         try? FileManager.default.removeItem(atPath: path)

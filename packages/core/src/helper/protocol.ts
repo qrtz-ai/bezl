@@ -130,6 +130,8 @@ export const HelperToHost = z.discriminatedUnion('type', [
      */
     audioPath: z.string().optional(),
     activeAudioPath: z.string().optional(),
+    /** N195 (ADR 0224), `dictation.mic` only: why the mic didn't open, when the helper can tell. */
+    reason: z.enum(['denied', 'no-device']).optional(),
   }),
   // --- note (AX + audio + ASR) ---
   z.object({

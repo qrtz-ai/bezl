@@ -171,4 +171,23 @@ final class HotkeyFilterTests: XCTestCase {
         guard case .failure = HostMessage.parse(line: #"{"preRollMs":0,"pushKey":"fn","streamAudio":false,"type":"dictation.configure","warmMic":false,"consumeFn":"yes"}"#)
         else { return XCTFail() }
     }
+
+    /// N196 (ADR 0224): a lid closed while holding fn ends the press at sleep; a wake with the key still believed
+    /// held ends it only when the session's flags show fn up.
+    func testSleepAndWakeEndAHeldKey() {
+        var f = HotkeyFilter(key: "fn", consumeFn: true)!
+        XCTAssertNil(f.willSleep(), "nothing held: nothing to end")
+        _ = f.handle(type: HotkeyFilter.flagsChanged, keyCode: HotkeyFilter.fnKeyCode, flags: HotkeyFilter.fnFlag)
+        XCTAssertEqual(f.willSleep(), .up)
+        XCTAssertFalse(f.down)
+        XCTAssertNil(f.didWake(flags: 0), "already ended at sleep")
+        // The sleep notice never came: the wake decides from the live flags.
+        _ = f.handle(type: HotkeyFilter.flagsChanged, keyCode: HotkeyFilter.fnKeyCode, flags: HotkeyFilter.fnFlag)
+        XCTAssertNil(f.didWake(flags: HotkeyFilter.fnFlag), "still really held: keeps going")
+        XCTAssertTrue(f.down)
+        XCTAssertEqual(f.didWake(flags: 0), .up)
+        XCTAssertFalse(f.down)
+        // The next real press starts clean.
+        XCTAssertEqual(f.handle(type: HotkeyFilter.flagsChanged, keyCode: HotkeyFilter.fnKeyCode, flags: HotkeyFilter.fnFlag).action, .down)
+    }
 }

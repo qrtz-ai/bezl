@@ -18,6 +18,7 @@
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{HashMap, VecDeque};
+use std::sync::{Arc, Mutex};
 
 pub const LABEL_MAX: usize = 60;
 pub const STATUS_MAX: usize = 120;
@@ -406,6 +407,79 @@ fn dismiss(owner: &str) -> Value {
     json!({"type": "notch.dismiss", "owner": owner})
 }
 
+/// How often [`NotchHost`]'s timer runs [`NotchBroker::tick`] ("about once a second").
+pub const TICK_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
+
+type Sink = Arc<dyn Fn(&Value) + Send + Sync>;
+type SecureInput = Arc<dyn Fn() -> bool + Send + Sync>;
+
+/// N198 (ADR 0224): the app's one [`NotchBroker`] with its clock, its way to echo's helper (`sink`, talk's
+/// `notch_send`) and a real timer for [`NotchBroker::tick`], so module content really goes after 10 s without an
+/// update (or at once under secure input). Requests go through [`NotchHost::with`] with [`NotchHost::now_ms`].
+pub struct NotchHost {
+    broker: Mutex<NotchBroker>,
+    sink: Sink,
+    secure_input: SecureInput,
+    start: tokio::time::Instant,
+}
+
+impl NotchHost {
+    pub fn new(sink: Sink, secure_input: SecureInput) -> Arc<Self> {
+        Arc::new(Self {
+            broker: Mutex::new(NotchBroker::new()),
+            sink,
+            secure_input,
+            start: tokio::time::Instant::now(),
+        })
+    }
+
+    /// Milliseconds on the host's monotonic notch clock (what `show`/`update`/`tick` are given).
+    pub fn now_ms(&self) -> u64 {
+        u64::try_from(self.start.elapsed().as_millis()).unwrap_or(u64::MAX)
+    }
+
+    /// Whether secure input is on now (a password prompt is up).
+    pub fn secure_input(&self) -> bool {
+        (self.secure_input)()
+    }
+
+    /// Runs `f` on the broker, then sends the lines it returned (in order).
+    pub fn with<R>(&self, f: impl FnOnce(&mut NotchBroker) -> (Vec<Value>, R)) -> R {
+        let (lines, r) = f(&mut self
+            .broker
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner));
+        for l in &lines {
+            (self.sink)(l);
+        }
+        r
+    }
+
+    /// One tick at `now_ms`: sends what expired and returns how many lines went out.
+    pub fn tick_at(&self, now_ms: u64) -> usize {
+        let secure = self.secure_input();
+        self.with(|b| {
+            let lines = b.tick(now_ms, secure);
+            let n = lines.len();
+            (lines, n)
+        })
+    }
+
+    /// The real timer: a tokio task that ticks every `every` until the host is dropped.
+    pub fn spawn_ticker(self: &Arc<Self>, every: std::time::Duration) -> tokio::task::JoinHandle<()> {
+        let weak = Arc::downgrade(self);
+        tokio::spawn(async move {
+            let mut iv = tokio::time::interval(every);
+            iv.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                iv.tick().await;
+                let Some(h) = weak.upgrade() else { break };
+                h.tick_at(h.now_ms());
+            }
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -639,5 +713,48 @@ mod tests {
         // Ctrl doesn't time out here (its run owns its lifetime).
         b.show(&Requester::Ctrl, &status("ctrl: x"), 0, false).unwrap();
         assert!(b.tick(60_000, true).is_empty());
+    }
+
+    /// N198: the timer really runs `tick`: a module's status goes 10 s after its last update, with no other call.
+    #[tokio::test(start_paused = true)]
+    async fn the_ticker_dismisses_stale_module_content_on_its_own() {
+        let sent: Arc<Mutex<Vec<Value>>> = Arc::default();
+        let s2 = sent.clone();
+        let host = NotchHost::new(
+            Arc::new(move |l: &Value| s2.lock().unwrap().push(l.clone())),
+            Arc::new(|| false),
+        );
+        let now = host.now_ms();
+        host.with(|b| (b.show(&NANO, &status("syncing"), now, false).unwrap(), ()));
+        let t = host.spawn_ticker(TICK_EVERY);
+        tokio::time::sleep(std::time::Duration::from_millis(9_000)).await;
+        assert_eq!(sent.lock().unwrap().len(), 1, "still shown at 9 s");
+        tokio::time::sleep(std::time::Duration::from_millis(2_500)).await;
+        let lines = sent.lock().unwrap().clone();
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert_eq!(lines[1], json!({"type": "notch.dismiss", "owner": "module.nano"}));
+        drop(host);
+        tokio::time::sleep(TICK_EVERY * 2).await;
+        assert!(t.is_finished(), "the timer ends with the host");
+    }
+
+    /// N198: secure input turning on dismisses module content at the next tick.
+    #[tokio::test(start_paused = true)]
+    async fn the_ticker_dismisses_module_content_under_secure_input() {
+        let sent: Arc<Mutex<Vec<Value>>> = Arc::default();
+        let secure = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (s2, sec) = (sent.clone(), secure.clone());
+        let host = NotchHost::new(
+            Arc::new(move |l: &Value| s2.lock().unwrap().push(l.clone())),
+            Arc::new(move || sec.load(std::sync::atomic::Ordering::SeqCst)),
+        );
+        let now = host.now_ms();
+        host.with(|b| (b.show(&SNAP, &status("saved"), now, false).unwrap(), ()));
+        let _t = host.spawn_ticker(TICK_EVERY);
+        tokio::time::sleep(std::time::Duration::from_millis(1_500)).await;
+        assert_eq!(sent.lock().unwrap().len(), 1);
+        secure.store(true, std::sync::atomic::Ordering::SeqCst);
+        tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
+        assert_eq!(sent.lock().unwrap().len(), 2);
     }
 }
