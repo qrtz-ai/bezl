@@ -1164,3 +1164,37 @@ Talk-only change (`f40d440`); the helper does not run talk's cleanup, so `echo-b
    keep a copy of `<report>.scored.json`, then score again from `~/code/qrtz`. Raw WER identical; formatted WER equal
    or lower on every clip. `git -C ~/code/qrtz worktree remove /tmp/qrtz-c58`.
 5. If any clip gets worse: revert `f40d440` (talk-only commit).
+
+## 33. Cycles 60-61: the cleanup chain, same text, ~12x faster (ADR 0199, `2bfa59c`)
+
+No text change, so no score change: 73 / 79 exact, 48 chars (2.03 %), **regressions 0**, keep set 180 with **0 hits**.
+What changed is cost: section 32 left ~0.3 ms of headroom in the 2 ms budget; the steps whose patterns had a
+look-around or a backreference (spoken layout commands, fillers, repeats, the continued dot, sentence starts, the lone
+"i", the dictionary replace) now run as hand-written scans of the same patterns.
+
+| Release, box CPU, median            | d409ede (old) | 2bfa59c (new) |
+| ----------------------------------- | ------------- | ------------- |
+| 495-word dictation, whole chain     | 1.48-1.50 ms  | 0.11-0.20 ms  |
+| 504 words ending in a question      | 1.53-1.85 ms  | 0.115 ms      |
+| One sentence with a one-term dict   | 0.030 ms      | 0.0036 ms     |
+
+- Proof of same text: `tests/hardening60.rs` runs the frozen cycle-59 chain (`tests/oracle/cleanup_c59.rs`) beside the
+  new one on every cleanup.json / polish.json text with four dictionaries, plus 60,000 generated texts (3,000,000 in
+  release twice in cycle 60, identical). It fails without the fix (≤ 0.5 ms ceiling on the 495-word dictation).
+- Measurement caveat found on the way: two worktrees sharing `CARGO_TARGET_DIR` build the same test-binary names, so
+  "old vs new interleaved" numbers in sections 31-32 may have compared one binary. From now on, bench binaries are
+  built one after the other and copied to /tmp before running.
+- Path review: no capture, VAD, model config, drain, insert, pill or timing change since d409ede (origin moved only by
+  ctrl runs 52-53, ADRs 0197-0198). Findings and backlog P1-P8 unchanged; next cycle takes polish candidate (1) or (2)
+  from section 32, now with ~1.8 ms of headroom, or P1 if no polish rule clears the bar.
+
+### Measurement plan for Jared's Mac (cycle 61)
+
+Talk-only change; the helper doesn't run talk's cleanup, so `echo-bench.sh` timings can't move from it.
+
+1. `cd ~/code/qrtz && git pull` (main at or after `2bfa59c`).
+2. `cargo test --release -p qrtz-talk --test cleanup_budget --test hardening60 -- --nocapture`: medians well under
+   0.5 ms, and the oracle test passes (same text as cycle 59 on every vector).
+3. Optional: hold fn, dictate a long paragraph with "um", a repeated word and "new line"; the text inserted reads the
+   same as before, and release-to-text feels unchanged.
+4. If anything reads differently: revert `2bfa59c` (talk-only commit).
