@@ -91,3 +91,17 @@ public struct HotkeyFilter: Equatable, Sendable {
         return reset()
     }
 }
+
+/// R2 + Bozniak MEDIUM (ADR 0216 amendment 3): a release the helper makes up itself (sleep, wake, or the event tap
+/// disabled by timeout/user input) is not the user letting go. `report` sets `active` only while the edge is handed
+/// to `onChange`, which reads it synchronously (`HotkeyMonitor.releaseAtSleep`, wire `hotkey{up, sleep: true}`), so
+/// a ctrl+fn press it ends runs nothing. Used on the main queue/run loop only.
+public final class SyntheticRelease: @unchecked Sendable {
+    public private(set) var active = false
+    public init() {}
+    public func report(_ up: HotkeyAction?, to onChange: ((HotkeyAction) -> Void)?) {
+        guard let up else { return }
+        active = true; defer { active = false }
+        onChange?(up)
+    }
+}

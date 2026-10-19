@@ -155,8 +155,10 @@ async fn hold_ctrl(r: &Rig) -> String {
 async fn a_ctrl_hold_the_helper_ends_runs_nothing() {
     let r = rig(RigOpts::default());
     let id = hold_ctrl(&r).await;
-    r.helper.deliver(json!({"type": "dictation.stopped", "id": id, "text": "delete the",
-        "durationMs": 1500, "reason": "mic-lost"}));
+    r.helper.deliver(
+        json!({"type": "dictation.stopped", "id": id, "text": "delete the",
+        "durationMs": 1500, "reason": "mic-lost"}),
+    );
     until(|| r.view().phase == TalkPhase::Error, 10_000).await;
     sleep(10_000).await;
     nothing_ran(&r);
@@ -169,14 +171,16 @@ async fn a_ctrl_press_with_an_empty_final_runs_nothing() {
     let r = rig(RigOpts::default());
     r.helper.set_opts(|o| o.stopped_delay_ms = 60_000);
     let id = hold_ctrl(&r).await;
-    assert!(!r.view().text.is_empty() || !r.view().partial.is_empty(), "live words were shown");
+    assert!(
+        !r.view().text.is_empty() || !r.view().partial.is_empty(),
+        "live words were shown"
+    );
     r.helper
         .deliver(json!({"type": "hotkey", "action": "up", "ctrl": true}));
     until(|| r.view().phase == TalkPhase::Finalizing, 2000).await;
     sleep(50).await;
-    r.helper.deliver(
-        json!({"type": "dictation.stopped", "id": id, "text": "  ", "durationMs": 1500}),
-    );
+    r.helper
+        .deliver(json!({"type": "dictation.stopped", "id": id, "text": "  ", "durationMs": 1500}));
     until(|| r.view().phase == TalkPhase::Idle, 10_000).await;
     sleep(10_000).await;
     nothing_ran(&r);
@@ -187,9 +191,8 @@ async fn a_ctrl_press_with_an_empty_final_runs_nothing() {
 async fn a_sleep_release_during_a_ctrl_hold_runs_nothing() {
     let r = rig(RigOpts::default());
     hold_ctrl(&r).await;
-    r.helper.deliver(
-        json!({"type": "hotkey", "action": "up", "ctrl": true, "sleep": true}),
-    );
+    r.helper
+        .deliver(json!({"type": "hotkey", "action": "up", "ctrl": true, "sleep": true}));
     until(|| r.view().phase == TalkPhase::Idle, 10_000).await;
     sleep(10_000).await;
     nothing_ran(&r);
@@ -202,8 +205,7 @@ async fn a_sleep_release_during_a_ctrl_hold_runs_nothing() {
 #[tokio::test(start_paused = true)]
 async fn a_sleep_release_of_plain_fn_still_inserts() {
     let r = rig(RigOpts::default());
-    r.helper
-        .deliver(json!({"type": "hotkey", "action": "down"}));
+    r.helper.deliver(json!({"type": "hotkey", "action": "down"}));
     until(|| r.view().phase == TalkPhase::Listening, 2000).await;
     sleep(1500).await;
     r.helper
@@ -231,5 +233,107 @@ async fn a_mic_or_asr_error_while_a_ctrl_command_finalizes_runs_nothing() {
         assert!(r.helper.sent_of("insert.text").is_empty(), "{code}");
         assert!(r.clip.0.lock().unwrap().is_empty(), "{code}");
         assert!(r.svc.history().is_empty(), "{code}");
+    }
+}
+
+/// Bozniak HIGH (ADR 0216 amendment 3): the user let go, but the helper's final (answering stop's wait) says the
+/// dictation ended early (abort while finalizing sets `reason`): its text may be half a command, so nothing runs.
+#[tokio::test(start_paused = true)]
+async fn a_ctrl_final_that_carries_a_reason_runs_nothing() {
+    for reason in ["mic-lost", "permission-revoked"] {
+        let r = rig(RigOpts::default());
+        r.helper.set_opts(|o| o.stopped_delay_ms = 60_000);
+        let id = hold_ctrl(&r).await;
+        r.helper
+            .deliver(json!({"type": "hotkey", "action": "up", "ctrl": true}));
+        until(|| r.view().phase == TalkPhase::Finalizing, 2000).await;
+        sleep(50).await;
+        r.helper.deliver(
+            json!({"type": "dictation.stopped", "id": id, "text": "delete the",
+            "durationMs": 1500, "reason": reason}),
+        );
+        sleep(10_000).await;
+        assert!(r.commands.lock().unwrap().is_empty(), "{reason}: nothing ran");
+        assert!(r.helper.sent_of("insert.text").is_empty(), "{reason}");
+        assert!(r.clip.0.lock().unwrap().is_empty(), "{reason}");
+        assert!(r.svc.history().is_empty(), "{reason}");
+    }
+}
+
+/// HIGH, the other way: the same final with no reason still runs (the fix keys on `reason`, not on the stop).
+#[tokio::test(start_paused = true)]
+async fn a_ctrl_final_without_a_reason_still_runs() {
+    let r = rig(RigOpts::default());
+    r.helper.set_opts(|o| o.stopped_delay_ms = 60_000);
+    let id = hold_ctrl(&r).await;
+    r.helper
+        .deliver(json!({"type": "hotkey", "action": "up", "ctrl": true}));
+    until(|| r.view().phase == TalkPhase::Finalizing, 2000).await;
+    sleep(50).await;
+    r.helper.deliver(
+        json!({"type": "dictation.stopped", "id": id, "text": "delete the line",
+        "durationMs": 1500}),
+    );
+    sleep(10_000).await;
+    let cmds = r.commands.lock().unwrap().clone();
+    assert_eq!(cmds.len(), 1, "{cmds:?}");
+    assert_eq!(cmds[0].to_lowercase(), "delete the line");
+}
+
+/// Bozniak LOW: talk:stop / talk:toggle while ctrl+fn is still held end the press, but run nothing.
+#[tokio::test(start_paused = true)]
+async fn talk_stop_or_toggle_while_ctrl_fn_is_held_runs_nothing() {
+    for ch in ["stop", "toggle"] {
+        let r = rig(RigOpts::default());
+        hold_ctrl(&r).await;
+        if ch == "stop" {
+            r.svc.call("talk:stop", json!({})).await.unwrap();
+        } else {
+            r.svc.toggle().await;
+        }
+        sleep(10_000).await;
+        r.helper
+            .deliver(json!({"type": "hotkey", "action": "up", "ctrl": true}));
+        sleep(10_000).await;
+        assert!(r.commands.lock().unwrap().is_empty(), "{ch}: nothing ran");
+        assert!(r.helper.sent_of("insert.text").is_empty(), "{ch}");
+        assert!(r.clip.0.lock().unwrap().is_empty(), "{ch}");
+        assert!(r.svc.history().is_empty(), "{ch}");
+        // The next ordinary ctrl+fn press runs again.
+        press(&r, true).await;
+        assert_eq!(r.commands.lock().unwrap().len(), 1, "{ch}");
+    }
+}
+
+/// R2 (Bozniak test ask): the sleep release arrives while the on-device engine is still starting (before
+/// `dictation.started`): the press is cut short when it starts; an ordinary release there still runs.
+#[tokio::test(start_paused = true)]
+async fn a_sleep_release_during_engine_start_runs_nothing() {
+    for sleep_release in [true, false] {
+        let r = rig(RigOpts {
+            local_start_delay_ms: 1000,
+            ..Default::default()
+        });
+        r.helper
+            .deliver(json!({"type": "hotkey", "action": "down", "ctrl": true}));
+        sleep(100).await;
+        r.helper
+            .deliver(json!({"type": "hotkey", "action": "up", "ctrl": true, "sleep": sleep_release}));
+        sleep(15_000).await;
+        until(
+            || r.view().phase != TalkPhase::Listening && r.view().phase != TalkPhase::Finalizing,
+            10_000,
+        )
+        .await;
+        sleep(100).await;
+        assert!(r.helper.sent_of("insert.text").is_empty(), "never typed");
+        if sleep_release {
+            assert!(
+                r.commands.lock().unwrap().is_empty(),
+                "sleep release: nothing ran"
+            );
+            assert!(r.clip.0.lock().unwrap().is_empty());
+            assert!(r.svc.history().is_empty());
+        }
     }
 }

@@ -827,7 +827,11 @@ impl TalkService {
                     if m["sleep"] == true {
                         g.release_sleep = true;
                         let id = g.view.id.clone();
-                        if let Some(a) = g.attempt.as_mut().filter(|a| a.to_ctrl && Some(&a.id) == id.as_ref()) {
+                        if let Some(a) = g
+                            .attempt
+                            .as_mut()
+                            .filter(|a| a.to_ctrl && Some(&a.id) == id.as_ref())
+                        {
                             a.cut_short = true;
                         }
                     }
@@ -942,8 +946,10 @@ impl TalkService {
                         // be missing its tail.
                         let vid = g.view.id.clone();
                         if g.view.phase == TalkPhase::Finalizing && ours {
-                            if let Some(a) =
-                                g.attempt.as_mut().filter(|a| a.to_ctrl && Some(&a.id) == vid.as_ref())
+                            if let Some(a) = g
+                                .attempt
+                                .as_mut()
+                                .filter(|a| a.to_ctrl && Some(&a.id) == vid.as_ref())
                             {
                                 a.cut_short = true;
                             }
@@ -1401,6 +1407,13 @@ impl TalkService {
                 return g.view.clone();
             };
             g.key_up = self.mono();
+            // Bozniak LOW (ADR 0216 amendment 3): talk:stop / talk:toggle ending a ctrl press while ctrl+fn is
+            // still held is not the user's release: the command so far may be half of it, so it runs nothing.
+            if g.key_held {
+                if let Some(a) = g.attempt.as_mut().filter(|a| a.id == id && a.to_ctrl) {
+                    a.cut_short = true;
+                }
+            }
             g.view.phase = TalkPhase::Finalizing;
             g.view.level = 0.0;
             self.emit_view(&g);
@@ -1447,7 +1460,13 @@ impl TalkService {
             // H-C4: an empty final is no command either (never the shown words or the on-device engine's), and a
             // press already cut short (R2 sleep release, M1 mic error) stays cut short.
             let empty_final = stopped.as_ref().is_none_or(|m| s(m, "text").trim().is_empty());
-            let ctrl_cut = ctrl.as_ref().is_some_and(|a| empty_final || a.cut_short);
+            // Bozniak HIGH (ADR 0216 amendment 3): the helper's final can itself say it ended early (abort while
+            // the stop was finalizing: `stopped{reason: mic-lost|permission-revoked|...}`): its text may be half
+            // a command, so a ctrl press runs nothing.
+            let final_reason = stopped.as_ref().is_some_and(|m| !s(m, "reason").is_empty());
+            let ctrl_cut = ctrl
+                .as_ref()
+                .is_some_and(|a| empty_final || final_reason || a.cut_short);
             if let Some(a) = ctrl.filter(|_| ctrl_cut) {
                 a.cut_short = true;
                 g.late.remove(&id);

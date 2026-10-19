@@ -154,9 +154,10 @@ public final class MacHotkeys: HotkeyMonitor, @unchecked Sendable {
 
     /// ADR 0216: read on the tap's thread right after the filter reported the edge.
     public var pressWithControl: Bool { filter?.withControl ?? false }
-    /// R2 (ADR 0216): set only while a sleep/wake release is reported (main queue), so a ctrl+fn command runs nothing.
-    private var powerRelease = false
-    public var releaseAtSleep: Bool { powerRelease }
+    /// R2 (ADR 0216): set only while a release the helper made up (sleep, wake, tap disabled) is reported (main
+    /// queue / main run loop), so a ctrl+fn command runs nothing.
+    let synthetic = SyntheticRelease()
+    public var releaseAtSleep: Bool { synthetic.active }
 
     public func start(key: String, consumeFn: Bool, onChange: @escaping @Sendable (HotkeyAction) -> Void) -> Bool {
         stop()
@@ -178,16 +179,13 @@ public final class MacHotkeys: HotkeyMonitor, @unchecked Sendable {
     private func observePower() {
         let nc = NSWorkspace.shared.notificationCenter
         let sleep = nc.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
-            guard let self, let up = self.filter?.willSleep() else { return }
-            self.powerRelease = true; defer { self.powerRelease = false }
-            self.onChange?(up)
+            guard let self else { return }
+            self.synthetic.report(self.filter?.willSleep(), to: self.onChange)
         }
         let wake = nc.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             guard let self else { return }
             let flags = CGEventSource.flagsState(.combinedSessionState).rawValue
-            guard let up = self.filter?.didWake(flags: flags) else { return }
-            self.powerRelease = true; defer { self.powerRelease = false }
-            self.onChange?(up)
+            self.synthetic.report(self.filter?.didWake(flags: flags), to: self.onChange)
         }
         powerObservers = [sleep, wake]
     }
@@ -267,7 +265,9 @@ public final class MacHotkeys: HotkeyMonitor, @unchecked Sendable {
             guard let ctx else { return Unmanaged.passUnretained(event) }
             let hk = Unmanaged<MacHotkeys>.fromOpaque(ctx).takeUnretainedValue()
             if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-                if let up = hk.filter?.reset() { hk.onChange?(up) }
+                // Bozniak MEDIUM (ADR 0216): a disabled tap's made-up release is synthetic too: a held ctrl+fn
+                // runs nothing (plain fn still inserts what it heard).
+                hk.synthetic.report(hk.filter?.reset(), to: hk.onChange)
                 if let t = hk.listenTap { CGEvent.tapEnable(tap: t, enable: true) }
                 return Unmanaged.passUnretained(event)
             }

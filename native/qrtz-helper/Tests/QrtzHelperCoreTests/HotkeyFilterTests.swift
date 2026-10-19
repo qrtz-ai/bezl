@@ -196,4 +196,58 @@ final class HotkeyFilterTests: XCTestCase {
         // The next real press starts clean.
         XCTAssertEqual(f.handle(type: HotkeyFilter.flagsChanged, keyCode: HotkeyFilter.fnKeyCode, flags: HotkeyFilter.fnFlag).action, .down)
     }
+
+    /// Bozniak R2/MEDIUM (ADR 0216): a release the monitor makes up (sleep, wake, tap disabled) goes out as
+    /// `hotkey{up, sleep: true}` through the engine, only for that edge; a real release carries no `sleep`.
+    final class SyntheticHotkeys: HotkeyMonitor, @unchecked Sendable {
+        let synthetic = SyntheticRelease()
+        var filter = HotkeyFilter(key: "fn", consumeFn: true)!
+        var onChange: (@Sendable (HotkeyAction) -> Void)?
+        var pressWithControl: Bool { filter.withControl }
+        var releaseAtSleep: Bool { synthetic.active }
+        func start(key: String, consumeFn: Bool, onChange: @escaping @Sendable (HotkeyAction) -> Void) -> Bool {
+            self.onChange = onChange; return true
+        }
+        func stop() {}
+        func press(ctrl: Bool) {
+            let r = filter.handle(type: HotkeyFilter.flagsChanged, keyCode: HotkeyFilter.fnKeyCode,
+                                  flags: HotkeyFilter.fnFlag | (ctrl ? HotkeyFilter.controlFlag : 0))
+            if let a = r.action { onChange?(a) }
+        }
+        func release() {
+            let r = filter.handle(type: HotkeyFilter.flagsChanged, keyCode: HotkeyFilter.fnKeyCode, flags: 0)
+            if let a = r.action { onChange?(a) }
+        }
+    }
+
+    final class Lines: @unchecked Sendable {
+        private let lock = NSLock(); private var all: [JSONValue] = []
+        func add(_ v: JSONValue) { lock.lock(); all.append(v); lock.unlock() }
+        var hotkeys: [JSONValue] { lock.lock(); defer { lock.unlock() }; return all.filter { $0.object?["type"]?.string == "hotkey" } }
+    }
+
+    func testSyntheticReleasesSetReleaseAtSleepOnlyForThatEdge() async throws {
+        let hk = SyntheticHotkeys()
+        let lines = Lines()
+        let c = HelperController(
+            deps: HelperDeps(permissions: FakePerms(), meetings: nil, audio: [], transcribers: [], helperVersion: "t", os: "linux", features: [],
+                             dictationMic: FakeMic(), dictationTranscribers: [], insertion: nil, hotkeys: hk),
+            send: { m in lines.add(m.json) }, now: { 0 })
+        await c.handle(.dictationConfigure(warmMic: false, preRollMs: 0, streamAudio: false, pushKey: "fn", consumeFn: true))
+        // Tap disabled while ctrl+fn is held (MEDIUM), then sleep and wake (R2): each made-up release says so.
+        hk.press(ctrl: true); hk.synthetic.report(hk.filter.reset(), to: hk.onChange)
+        XCTAssertFalse(hk.releaseAtSleep, "cleared once the edge is reported")
+        hk.press(ctrl: true); hk.synthetic.report(hk.filter.willSleep(), to: hk.onChange)
+        hk.press(ctrl: true); hk.synthetic.report(hk.filter.didWake(flags: 0), to: hk.onChange)
+        hk.synthetic.report(hk.filter.reset(), to: hk.onChange)  // nothing held: no edge
+        // A real release carries no `sleep`.
+        hk.press(ctrl: true); hk.release()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let ups = lines.hotkeys.filter { $0.object?["action"]?.string == "up" }
+        XCTAssertEqual(ups.count, 4)
+        XCTAssertEqual(ups.prefix(3).map { $0.object?["sleep"]?.bool }, [true, true, true])
+        XCTAssertEqual(ups.prefix(3).map { $0.object?["ctrl"]?.bool }, [true, true, true])
+        XCTAssertNil(ups[3].object?["sleep"])
+        XCTAssertEqual(lines.hotkeys.filter { $0.object?["action"]?.string == "down" }.compactMap { $0.object?["sleep"] }.count, 0)
+    }
 }
