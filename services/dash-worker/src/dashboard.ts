@@ -585,7 +585,12 @@ export class Dashboard extends DurableObject<Env> {
         return fail(422, 'body is not json');
       }
     }
-    const p = c.path.split('/').filter(Boolean).map(decodeURIComponent); // ['v1','owner',...]
+    let p: string[]; // ['v1','owner',...]
+    try {
+      p = c.path.split('/').filter(Boolean).map(decodeURIComponent);
+    } catch {
+      return fail(404, 'no such endpoint'); // a malformed %-escape (Bozniak L5), not a 500
+    }
     const m = c.method;
     const r = await (async (): Promise<Out> => {
       if (m === 'GET' && p[2] === 'view' && p.length === 3)

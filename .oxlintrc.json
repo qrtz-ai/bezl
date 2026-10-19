@@ -2,5 +2,15 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "categories": {
     "correctness": "warn"
-  }
+  },
+  "overrides": [
+    {
+      "files": [
+        "services/dash-worker/src/**/*.ts"
+      ],
+      "rules": {
+        "no-console": "error"
+      }
+    }
+  ]
 }

@@ -25,6 +25,9 @@ export const ENROLL_FAILS_BEFORE_ROTATION = 50;
 export const ENROLL_IP_FAILS_PER_MIN = 10;
 export const ENROLL_IP_FAILS_BEFORE_LOCK = 50;
 export const ENROLL_IP_LOCK_MS = DAY_MS;
+/** Server only (Bozniak M2): the looser count on an IPv6 /48 (the per-IP limits above apply to its /64s). */
+export const ENROLL_V6_48_FAILS_PER_MIN = 40;
+export const ENROLL_V6_48_FAILS_BEFORE_LOCK = 200;
 /** Server only: all wrong codes across the service per minute before enrollment pauses for everyone. */
 export const ENROLL_GLOBAL_FAILS_PER_MIN = 600;
 /** Server only: live-update pushes per owner socket, at most one per this many ms. */

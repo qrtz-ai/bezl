@@ -22,6 +22,7 @@ import type { Env } from './env';
 export { Dashboard } from './dashboard';
 import { unwire } from './dashboard';
 export { EnrollDirectory } from './directory';
+import { sourceOf } from './ip';
 
 const AGENT_TOKEN = /^at_([0-9a-f]{32})_[0-9a-f]{64}$/;
 const OWNER_KEY = /^ok_([0-9a-f]{32})_[0-9a-f]{64}$/;
@@ -90,14 +91,22 @@ async function enroll(req: Request, env: Env): Promise<Out> {
   } catch {
     return fail(422, 'body is not json');
   }
-  const ip = req.headers.get('cf-connecting-ip') ?? 'unknown';
-  const ipHash = await hmacHex(env.DASH_PEPPER, `ip:${ip}`);
+  // Bozniak M2: no address, no attempt (never one shared 'unknown' bucket). Cloudflare always sets this header.
+  const source = sourceOf(req.headers.get('cf-connecting-ip'));
+  if (!source) return fail(400, 'client address missing');
+  const src = {
+    narrow: await hmacHex(env.DASH_PEPPER, `ip:${source.narrow}`),
+    wide:
+      source.wide === null
+        ? null
+        : await hmacHex(env.DASH_PEPPER, `ip:${source.wide}`),
+  };
   const code = (typeof body.code === 'string' ? body.code : '')
     .trim()
     .toUpperCase();
   const codeHash = await hmacHex(env.DASH_PEPPER, code);
   const dir = env.ENROLL.getByName('enroll');
-  const claim = await dir.claim(ipHash, codeHash);
+  const claim = await dir.claim(src, codeHash);
   if (!claim.ok) {
     if (claim.status === 429)
       return out(429, {
@@ -116,7 +125,7 @@ async function enroll(req: Request, env: Env): Promise<Out> {
       tokenHash,
     }),
   );
-  if (r.status === 401) await dir.fail(ipHash);
+  if (r.status === 401) await dir.fail(src);
   // The token is only ever in this one response.
   return r.status === 201
     ? { status: 201, body: { ...r.body, agent_token: token } }
@@ -164,6 +173,9 @@ async function setup(req: Request, env: Env): Promise<Out> {
       await hmacHex(env.DASH_PEPPER, `setup:${env.DASH_SETUP_TOKEN}`),
     );
   if (!ok) return stop(401, 'setup token invalid');
+  // Bozniak M1: one dashboard per setup token, ever; the ADR deploy steps rotate the secret afterwards too.
+  if (!(await env.ENROLL.getByName('enroll').useSetup()))
+    return fail(410, 'setup already used');
   const dashId = randomHex(16);
   const ownerKey = `ok_${dashId}_${randomHex(32)}`;
   const created = await env.DASHBOARD.getByName(dashId).setup(

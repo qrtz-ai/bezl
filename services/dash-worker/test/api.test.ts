@@ -3,7 +3,9 @@ import { runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import * as C from '../src/constants';
 import type { Dashboard } from '../src/dashboard';
+import type { EnrollDirectory } from '../src/directory';
 import { clearTombCache } from '../src/index';
+import { sourceOf } from '../src/ip';
 
 const O = 'https://dash.qrtz.ai';
 type J = Record<string, any>;
@@ -40,7 +42,24 @@ const call = async (
   return { status: r.status, json, text, headers: r.headers };
 };
 
+/** Test seam: clear the one-time setup flag so each test can make its own dashboards. */
+const resetSetup = () =>
+  runInDurableObject(
+    env.ENROLL.getByName('enroll'),
+    (_i: EnrollDirectory, state) => {
+      state.storage.sql.exec("DELETE FROM meta WHERE k = 'setup_used'");
+    },
+  );
+const failureRows = () =>
+  runInDurableObject(
+    env.ENROLL.getByName('enroll'),
+    (_i: EnrollDirectory, state) =>
+      state.storage.sql
+        .exec<{ n: number }>('SELECT COUNT(*) AS n FROM failures')
+        .one().n,
+  );
 const setup = async () => {
+  await resetSetup();
   const r = await call('POST', '/v1/owner/setup', {
     bearer: env.DASH_SETUP_TOKEN,
   });
@@ -117,6 +136,40 @@ describe('setup and the owner key', () => {
     expect((await call('GET', `/v1/owner/view?key=${a.owner}`)).status).toBe(
       401,
     );
+  });
+  it('setup is one-time: a second use of the token is 410, even with the right token (M1)', async () => {
+    await setup();
+    const again = await call('POST', '/v1/owner/setup', {
+      bearer: env.DASH_SETUP_TOKEN,
+    });
+    expect(again.status).toBe(410);
+    expect(again.json.owner_key).toBeUndefined();
+    // A wrong token still gets 401, not a hint that setup happened.
+    expect(
+      (await call('POST', '/v1/owner/setup', { bearer: 'nope' })).status,
+    ).toBe(401);
+    // Concurrent uses: exactly one wins.
+    await resetSetup();
+    const rs = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        call('POST', '/v1/owner/setup', { bearer: env.DASH_SETUP_TOKEN }),
+      ),
+    );
+    expect(rs.map((r) => r.status).sort()).toEqual([201, 410, 410, 410, 410]);
+  });
+  it('a malformed %-escape in an owner path is 404, not 500 (L5)', async () => {
+    const { owner } = await setup();
+    for (const path of [
+      '/v1/owner/agents/%E0%A4%A/review',
+      '/v1/owner/agents/%/review',
+      '/v1/owner/widgets/%ZZ',
+    ]) {
+      const r = await call('POST', path, {
+        bearer: owner,
+        body: { approve: true },
+      });
+      expect(r.status, path).toBe(404);
+    }
   });
   it('stores only HMACs at rest', async () => {
     const { dashId, owner } = await setup();
@@ -259,12 +312,188 @@ describe('enrollment', () => {
     await enroll(owner, 'other bot', '192.0.2.41');
     // Lockout after 50 in a day (failures recorded straight into the directory, as the Worker would).
     const dir = env.ENROLL.getByName('enroll');
-    const lockIp = 'iphash-test-lock';
+    const lockIp = { narrow: 'iphash-test-lock', wide: null };
     for (let i = 0; i < C.ENROLL_IP_FAILS_BEFORE_LOCK; i++)
       await dir.fail(lockIp, Date.now() - 2 * 60_000 - i);
     const c = await dir.claim(lockIp, 'whatever');
     expect(c).toMatchObject({ ok: false, status: 429 });
     expect(c.ok === false && (c.retryAfterMs ?? 0) > 60 * 60_000).toBe(true);
+  });
+
+  it('limiter buckets: ipv4 /32, ipv6 /64 with a /48 count, mapped v4 is v4, junk refused (M2)', () => {
+    expect(sourceOf('203.0.113.7')).toEqual({
+      narrow: 'v4:203.0.113.7',
+      wide: null,
+    });
+    expect(sourceOf('2001:db8:1:2:aaaa::1')).toEqual({
+      narrow: 'v6/64:2001:db8:1:2',
+      wide: 'v6/48:2001:db8:1',
+    });
+    // Same /64 however it is written.
+    expect(sourceOf('2001:DB8:1:2:ffff:ffff:ffff:ffff')?.narrow).toBe(
+      sourceOf('2001:db8:1:2::')?.narrow,
+    );
+    expect(sourceOf('2001:db8:1:3::1')?.wide).toBe(
+      sourceOf('2001:db8:1:2::1')?.wide,
+    );
+    expect(sourceOf('::ffff:192.0.2.9')).toEqual({
+      narrow: 'v4:192.0.2.9',
+      wide: null,
+    });
+    expect(sourceOf('::1')?.narrow).toBe('v6/64:0:0:0:0');
+    for (const bad of [
+      null,
+      '',
+      'unknown',
+      '1.2.3',
+      '256.1.1.1',
+      '01.2.3.4',
+      '1::2::3',
+      '1:2:3:4:5:6:7:8:9',
+      'fe80::1%eth0',
+      'g::1',
+    ])
+      expect(sourceOf(bad), String(bad)).toBeNull();
+  });
+
+  it('no or junk CF-Connecting-IP is refused, never pooled as unknown (M2)', async () => {
+    const { owner } = await setup();
+    const code = await issue(owner);
+    const before = await failureRows();
+    for (const ip of [undefined, '', 'unknown']) {
+      const headers: Record<string, string> = {
+        'content-type': 'application/json',
+      };
+      if (ip !== undefined) headers['cf-connecting-ip'] = ip;
+      const r = await exports.default.fetch(
+        new Request(O + '/v1/enroll', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ code, name: 'x bot' }),
+        }),
+      );
+      expect(r.status, String(ip)).toBe(400);
+    }
+    // Nothing was counted, and the code is still good from a real address.
+    expect(await failureRows()).toBe(before);
+    const ok = await call('POST', '/v1/enroll', {
+      body: { code, name: 'x bot' },
+      ip: '192.0.2.70',
+    });
+    expect(ok.status).toBe(201);
+  });
+
+  it('ipv6: rotating inside a /64 is one bucket; many /64s in one /48 hit the /48 count (M2)', async () => {
+    const wrong = (ip: string) =>
+      call('POST', '/v1/enroll', {
+        body: { code: 'ENR-AAAA-AAAA', name: 'x' },
+        ip,
+      });
+    // One /64, a new address every try.
+    for (let i = 0; i < C.ENROLL_IP_FAILS_PER_MIN; i++)
+      expect(
+        (await wrong(`2001:db8:a:1::${(i + 1).toString(16)}`)).status,
+      ).toBe(401);
+    expect((await wrong('2001:db8:a:1:dead:beef:0:1')).status).toBe(429);
+    // Other /64s in the same /48 until the looser /48 count is spent.
+    let n = C.ENROLL_IP_FAILS_PER_MIN;
+    for (let net = 2; n < C.ENROLL_V6_48_FAILS_PER_MIN; net++)
+      for (
+        let i = 0;
+        i < C.ENROLL_IP_FAILS_PER_MIN && n < C.ENROLL_V6_48_FAILS_PER_MIN;
+        i++, n++
+      )
+        expect(
+          (await wrong(`2001:db8:a:${net.toString(16)}::${i + 1}`)).status,
+        ).toBe(401);
+    expect((await wrong('2001:db8:a:ff::1')).status).toBe(429);
+    // A different /48 and an ipv4 client are untouched.
+    const { owner } = await setup();
+    await enroll(owner, 'v6 bot', '2001:db8:b:1::1');
+    await enroll(owner, 'v4 bot', '192.0.2.60');
+  });
+
+  it('ipv6 lockout covers the whole /64 and the /48 (M2)', async () => {
+    const dir = env.ENROLL.getByName('enroll');
+    const a = { narrow: 'h64-a', wide: 'h48-x' };
+    for (let i = 0; i < C.ENROLL_IP_FAILS_BEFORE_LOCK; i++)
+      await dir.fail(a, Date.now() - 2 * 60_000 - i);
+    expect(await dir.claim(a, 'whatever')).toMatchObject({
+      ok: false,
+      status: 429,
+    });
+    // Another /64 in the same /48 is fine until the /48 itself reaches its lock count.
+    const b = { narrow: 'h64-b', wide: 'h48-x' };
+    expect(await dir.claim(b, 'whatever')).toMatchObject({
+      ok: false,
+      status: 401,
+    });
+    for (let i = 0; i < C.ENROLL_V6_48_FAILS_BEFORE_LOCK; i++)
+      await dir.fail(
+        { narrow: `h64-${i}`, wide: 'h48-y' },
+        Date.now() - 2 * 60_000 - i,
+      );
+    const c = await dir.claim(
+      { narrow: 'h64-fresh', wide: 'h48-y' },
+      'whatever',
+    );
+    expect(c).toMatchObject({ ok: false, status: 429 });
+    expect(c.ok === false && (c.retryAfterMs ?? 0) > 60 * 60_000).toBe(true);
+  });
+
+  it('one attacker cannot trip the service-wide brake (M2)', async () => {
+    const wrong = (ip: string) =>
+      call('POST', '/v1/enroll', {
+        body: { code: 'ENR-AAAA-AAAA', name: 'x' },
+        ip,
+      });
+    // One /48 tries far more than the brake, over thousands of addresses.
+    const before = await failureRows();
+    let refused = 0;
+    for (let i = 0; i < C.ENROLL_V6_48_FAILS_PER_MIN * 3; i++)
+      if (
+        (
+          await wrong(
+            `2001:db8:c:${(i % 200).toString(16)}::${(i + 1).toString(16)}`,
+          )
+        ).status === 429
+      )
+        refused++;
+    expect(refused).toBe(C.ENROLL_V6_48_FAILS_PER_MIN * 2);
+    // Only what the /48 cap let through reached the brake's count.
+    expect((await failureRows()) - before).toBe(C.ENROLL_V6_48_FAILS_PER_MIN);
+    const { owner } = await setup();
+    await enroll(owner, 'bystander', '198.51.100.200');
+    // The brake still exists for a real distributed flood.
+    await runInDurableObject(
+      env.ENROLL.getByName('enroll'),
+      (_i: EnrollDirectory, state) => {
+        for (let i = 0; i < C.ENROLL_GLOBAL_FAILS_PER_MIN; i++)
+          state.storage.sql.exec(
+            'INSERT INTO failures (narrow, wide, at) VALUES (?, NULL, ?)',
+            `flood-${i}`,
+            Date.now(),
+          );
+      },
+    );
+    const { owner: o2 } = await setup();
+    const code = await issue(o2);
+    expect(
+      (
+        await call('POST', '/v1/enroll', {
+          body: { code, name: 'z bot' },
+          ip: '198.51.100.201',
+        })
+      ).status,
+    ).toBe(429);
+    await runInDurableObject(
+      env.ENROLL.getByName('enroll'),
+      (_i: EnrollDirectory, state) => {
+        state.storage.sql.exec(
+          "DELETE FROM failures WHERE narrow LIKE 'flood-%'",
+        );
+      },
+    );
   });
 
   it('dashboard-wide: 50 attributed wrong codes force a rotation', async () => {

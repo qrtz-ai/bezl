@@ -7,6 +7,7 @@
   "scripts": {
     "test": "node scripts/gen-readme.mjs --check && vitest run",
     "typecheck": "tsc --noEmit",
+    "lint": "oxlint -c ../../.oxlintrc.json --deny-warnings src test && oxfmt -c ../../.oxfmtrc.json --check src test",
     "check:build": "bunx --bun wrangler deploy --dry-run --outdir dist",
     "gen:readme": "node scripts/gen-readme.mjs"
   },
@@ -16,6 +17,8 @@
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.4.5",
     "@cloudflare/workers-types": "^5.20261019.1",
+    "oxfmt": "^0.73.0",
+    "oxlint": "^1.88.0",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5",
     "wrangler": "^4.151.2"
