@@ -25,8 +25,9 @@
 #                       (MR26CCZ496)"; ad-hoc when it isn't in the keychain, or when set to the empty string)
 #   QRTZ_GATE_TEAM_ID   that identity's team id (default MR26CCZ496; gate d's and gate h's designated requirement)
 #   QRTZ_GATE_DIR       where the probe bundles live (default ~/qrtz-gate; keep it stable so TCC grants persist)
-#   QRTZ_DATA_DIR       qrtz's data dir, where qrtz.lock and packages/ are (default QRTZ_USER_DATA, else
-#                       ~/Library/Application Support/ai.qrtz.desktop)
+#   QRTZ_DATA_DIR       qrtz's data dir, where qrtz.lock and packages/ are (default
+#                       ~/Library/Application Support/ai.qrtz.desktop; QRTZ_USER_DATA is not a fallback, since a
+#                       signed build ignores it since 218a200, so a fresh-user check uses a new macOS user)
 #   QRTZ_APP            the signed qrtz.app whose bundled echo gate (h) runs (default /Applications/qrtz.app)
 set -uo pipefail
 
@@ -68,7 +69,7 @@ if ! command -v xcrun >/dev/null || ! xcrun --find swiftc >/dev/null 2>&1; then
 fi
 
 gate_dir="${QRTZ_GATE_DIR:-$HOME/qrtz-gate}"
-data_dir="${QRTZ_DATA_DIR:-${QRTZ_USER_DATA:-$HOME/Library/Application Support/ai.qrtz.desktop}}"
+data_dir="${QRTZ_DATA_DIR:-$HOME/Library/Application Support/ai.qrtz.desktop}"
 qrtz_app="${QRTZ_APP:-/Applications/qrtz.app}"
 # Jared's Developer ID (ADR 0170: the team every release path pins). `${VAR-default}`: set to "" for ad-hoc.
 release_team="MR26CCZ496"

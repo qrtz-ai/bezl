@@ -38,9 +38,12 @@ type Call = { channel: string; req: unknown };
 async function mount(
   status: () => Promise<SpeechSetupStatus>,
   initial: Record<string, unknown> = {},
+  /** The unscoped `speech:status` (the speech notice's); the samples' "installed" when absent. */
+  globalStatus?: () => Promise<SpeechSetupStatus>,
 ) {
   const calls: Call[] = [];
-  const listeners = new Map<string, (p: unknown) => void>();
+  // Several hooks listen to the same event (echo's switch and the speech notice both follow `speech:status`).
+  const listeners = new Map<string, Set<(p: unknown) => void>>();
   let cfg = initial;
   const client = {
     subApp: 'talk',
@@ -56,13 +59,16 @@ async function mount(
         (req as { extensions?: string[] })?.extensions
       )
         return status();
+      if (channel === 'speech:status' && globalStatus) return globalStatus();
       if (channel === 'speech:download') return downloading;
       return (ipcSamples as Record<string, { response: unknown }>)[channel]
         ?.response;
     },
     on: (event: string, fn: (p: unknown) => void) => {
-      listeners.set(event, fn);
-      return () => listeners.delete(event);
+      const set = listeners.get(event) ?? new Set();
+      set.add(fn);
+      listeners.set(event, set);
+      return () => set.delete(fn);
     },
   } as unknown as QrtzClient;
   const el = document.createElement('div');
@@ -85,7 +91,7 @@ async function mount(
   const q = (id: string) =>
     el.querySelector<HTMLElement>(`[data-testid="${id}"]`);
   const emit = (event: string, p: unknown) =>
-    act(async () => listeners.get(event)?.(p));
+    act(async () => listeners.get(event)?.forEach((fn) => fn(p)));
   return { calls, q, settle, emit, unmount: () => root.unmount() };
 }
 
@@ -109,6 +115,41 @@ describe("echo's view offers parakeet in place (ADR 0175)", () => {
     // Downloading now: the offer goes away (the notice shows the bar), and nothing touched the config.
     expect(v.q('echo-offer')).toBeNull();
     expect(v.calls.some((c) => c.channel === 'config:set')).toBe(false);
+    v.unmount();
+  });
+
+  it('shows only the offer, not also the speech notice with its settings link, until a download starts', async () => {
+    const v = await mount(
+      async () => none,
+      {},
+      async () => none,
+    );
+    expect(v.q('echo-offer')).not.toBeNull();
+    expect(v.q('speech-notice')).toBeNull();
+    expect(v.q('speech-notice-settings')).toBeNull();
+    await act(async () => v.q('echo-download')!.click());
+    await v.emit('speech:status', downloading);
+    await v.settle();
+    // Downloading: the offer is gone and the notice is back, with the progress bar.
+    expect(v.q('echo-offer')).toBeNull();
+    expect(v.q('speech-notice')?.textContent).toContain('downloading speech');
+    v.unmount();
+  });
+
+  it('a failed download shows its reason in the offer, which still replaces the notice', async () => {
+    const failed: SpeechSetupStatus = {
+      ...none,
+      download: { state: 'error', done: 0, total: 0, error: 'network' },
+    };
+    const v = await mount(
+      async () => failed,
+      {},
+      async () => failed,
+    );
+    expect(v.q('echo-offer')?.textContent).toContain(
+      "parakeet couldn't be downloaded: network",
+    );
+    expect(v.q('speech-notice')).toBeNull();
     v.unmount();
   });
 

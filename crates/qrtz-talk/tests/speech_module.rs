@@ -358,6 +358,22 @@ async fn a_running_session_on_a_revoked_version_ends_at_its_next_safe_point() {
 }
 
 #[test]
+fn not_installed_points_to_echos_own_download_offer() {
+    use qrtz_talk::qrtz_speech::FailReason as F;
+    // ADR 0175: the same text whether `start` is refused or a running session reports it.
+    let want = "echo's speech model isn't downloaded yet; open echo to download it (about 464 MB)";
+    assert_eq!(speech::MSG_NOT_INSTALLED, want);
+    let (k, m) = speech::start_error(&qrtz_talk::qrtz_speech::SpeechError::NotInstalled);
+    assert_eq!((k, m.as_str()), (TalkErrorKind::SpeechUnavailable, want));
+    assert_eq!(
+        speech::fail_error(F::NotInstalled),
+        (TalkErrorKind::SpeechUnavailable, want)
+    );
+    // No settings path: the download lives in echo's view now.
+    assert!(!want.to_lowercase().contains("settings"), "{want}");
+}
+
+#[test]
 fn failure_reasons_tell_not_installed_and_revoked_from_a_crash() {
     use qrtz_talk::qrtz_speech::FailReason as F;
     for r in [F::NotInstalled, F::Revoked, F::Stale] {

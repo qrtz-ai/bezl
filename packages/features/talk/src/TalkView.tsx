@@ -128,10 +128,17 @@ function useEchoSwitch() {
       data-testid="echo-switch"
     />
   );
+  // The speech notice is hidden while this offer is up, so a failed download's reason is shown here instead.
+  const failed = (live?.download.state ?? parakeet?.download.state) === 'error';
   const offer =
     on && needsParakeet && !busy ? (
       <Callout
-        title="parakeet isn't downloaded yet"
+        {...(failed
+          ? {
+              tone: 'warning' as const,
+              title: `parakeet couldn't be downloaded${parakeet?.download.error ? `: ${parakeet.download.error}` : ''}`,
+            }
+          : { title: "parakeet isn't downloaded yet" })}
         action={
           <Button
             size="sm"
@@ -267,10 +274,14 @@ function TalkOn({
       </Stack>
       {dialog}
       {offer}
-      <SpeechNotice
-        status={speechSetup.speech}
-        onOpenSettings={() => requestNavigate({ app: 'settings' })}
-      />
+      {/* ADR 0175: one notice at a time. While echo's own download offer is up, the generic speech notice (and
+          its settings link) stays hidden; it comes back for the progress bar once a download starts. */}
+      {offer ? null : (
+        <SpeechNotice
+          status={speechSetup.speech}
+          onOpenSettings={() => requestNavigate({ app: 'settings' })}
+        />
+      )}
       {state && state.phase !== 'idle' ? (
         <Stack data-testid="talk-live">
           <TalkPill
