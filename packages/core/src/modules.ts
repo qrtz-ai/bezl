@@ -27,7 +27,7 @@ export const MODULE_PERMISSIONS: Readonly<
 > = {
   echo: ['microphone', 'accessibility'],
   nano: ['microphone', 'screen-recording', 'accessibility'],
-  ctrl: ['accessibility', 'automation', 'files-and-folders'],
+  ctrl: ['accessibility'],
   snap: ['accessibility'],
 };
 

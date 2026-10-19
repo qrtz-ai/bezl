@@ -321,15 +321,14 @@ fn every_extension_helper_has_a_target_its_per_process_entitlement_and_the_launc
             "qrtz-{id} product"
         );
         let needs = match *id {
-            "ctrl" => "com.apple.security.automation.apple-events",
-            // ADR 0159: snap needs Accessibility only (a TCC grant, not an entitlement) and Carbon hotkeys (none),
+            // ADR 0159: snap (and, since the ADR 0214 review, ctrl: Accessibility only, no Apple Events) needs Accessibility only (a TCC grant, not an entitlement) and Carbon hotkeys (none),
             // so its signature carries no entitlement at all.
-            "snap" => {
-                let ent =
-                    std::fs::read_to_string(pkg.join("entitlements/ai.qrtz.snap.entitlements")).unwrap();
+            "snap" | "ctrl" => {
+                let ent = std::fs::read_to_string(pkg.join(format!("entitlements/ai.qrtz.{id}.entitlements")))
+                    .unwrap();
                 assert!(
                     !ent.contains("<key>"),
-                    "qrtz-snap's signature carries no entitlement"
+                    "qrtz-{id}'s signature carries no entitlement"
                 );
                 continue;
             }

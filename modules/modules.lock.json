@@ -13,7 +13,7 @@
           "version": "1.0.0"
         }
       ],
-      "manifestSha256": "1d92fd11b3220273ac92882e205c321f274f2ff5aca61834141f3a0d53dded22",
+      "manifestSha256": "a54f719f68349060544ab6782fd4159a4a2ae68b961c0c08d84a02c624074537",
       "source": "bundled",
       "staleRevocation": false,
       "version": "0.2.2"

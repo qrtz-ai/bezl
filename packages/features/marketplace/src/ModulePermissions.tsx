@@ -23,9 +23,7 @@ const WHY: Record<ModuleId, Partial<Record<ModulePermission, string>>> = {
     accessibility: 'reads who is talking in the meeting app',
   },
   ctrl: {
-    accessibility: 'clicks and types for a task',
-    automation: 'asks apps to do a task',
-    'files-and-folders': 'tidies the folders a task names',
+    accessibility: 'reads the window and clicks and types for a command',
   },
   snap: { accessibility: 'moves and sizes windows' },
 };

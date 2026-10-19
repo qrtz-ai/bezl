@@ -108,7 +108,7 @@
   },
   "appTccEntitlements": {
     "com.apple.security.device.audio-input": "ADR 0154: the microphone, for echo dictation and nano recordings (held by qrtz.app since M4.7)",
-    "com.apple.security.automation.apple-events": "ADR 0154: Apple Events for ctrl (Jared approved 2026-10-18; NSAppleEventsUsageDescription goes with it)"
+    "com.apple.security.automation.apple-events": "ADR 0154: Apple Events, held by qrtz.app only. ctrl's use is REVOKED (ADR 0214 security review, 2026-10-19): ctrl do never sends Apple Events and qrtz-ctrl's signature carries no entitlement; kept on the host until Bozniak rules on it"
   },
   "entitlements": {
     "naming": "ai.qrtz.<extension>.entitlements for an extension helper (echo, nano, ctrl, snap; accepted, not required, ADR 0154); ai.qrtz.inference.<name>.entitlements for a sandboxed inference XPC service (e.g. ai.qrtz.inference.voice.entitlements)",

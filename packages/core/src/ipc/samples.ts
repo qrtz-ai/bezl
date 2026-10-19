@@ -393,11 +393,7 @@ const packagesState = {
           direct: true,
         },
       ],
-      permissions: [
-        'accessibility' as const,
-        'automation' as const,
-        'files-and-folders' as const,
-      ],
+      permissions: ['accessibility' as const],
       minOs: '14.2',
       teamId: 'ABCDE12345',
     },

@@ -92,7 +92,7 @@ fn publish(dir: &Path) -> (PathBuf, String) {
             "dependencies": {"model.laya": "^1.0.0"},
             "extension": {"entry": "bin/qrtz-ctrl", "protocol": 1, "minApp": "0.2.0", "channels": ["ctrl.*"],
                           "views": ["ctrl"], "capabilities": ["ctrl.read", "ctrl.write", "module.settings"],
-                          "permissions": ["accessibility", "automation", "files-and-folders"],
+                          "permissions": ["accessibility"],
                           "settings": {"namespace": "ctrl", "legacySections": []},
                           "reads": ["model.laya"]}}))
         .unwrap()

@@ -792,9 +792,7 @@
               }
             ],
             "permissions": [
-              "accessibility",
-              "automation",
-              "files-and-folders"
+              "accessibility"
             ],
             "minOs": "14.2",
             "teamId": "ABCDE12345"
@@ -957,9 +955,7 @@
               }
             ],
             "permissions": [
-              "accessibility",
-              "automation",
-              "files-and-folders"
+              "accessibility"
             ],
             "minOs": "14.2",
             "teamId": "ABCDE12345"

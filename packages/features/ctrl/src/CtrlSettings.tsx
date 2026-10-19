@@ -11,7 +11,7 @@ export default function CtrlSettings() {
     <Stack gap={3} align="start">
       <ModuleSettingsEmpty>
         ctrl has no settings of its own yet. you can turn it off in qrtz, where
-        its accessibility and automation access are one click: allow, then
+        its accessibility access is one click: allow, then
         switch on qrtz.
       </ModuleSettingsEmpty>
       <Button

@@ -13,7 +13,7 @@
     "channels": ["ctrl.*"],
     "views": ["ctrl"],
     "capabilities": ["ctrl.read", "ctrl.write", "module.settings"],
-    "permissions": ["accessibility", "automation", "files-and-folders"],
+    "permissions": ["accessibility"],
     "settings": { "namespace": "ctrl", "legacySections": [] },
     "reads": ["model.laya"]
   }

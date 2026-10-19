@@ -756,9 +756,9 @@ describe('every permission is granted from inside qrtz (in each app modal)', () 
     ).not.toBeNull();
     await click('app-modal-close');
     await clickRow('ctrl');
-    expect(q('perm-ctrl-automation')?.textContent).toContain(
-      'asked on first use',
-    );
+    // ADR 0214 review: ctrl asks for accessibility only.
+    expect(q('perm-ctrl-accessibility')).not.toBeNull();
+    expect(q('perm-ctrl-automation')).toBeNull();
     // An app that is off shows no rows.
     await click('module-enabled-ctrl');
     expect(q('perm-ctrl-accessibility')).toBeNull();
@@ -795,7 +795,7 @@ describe('every permission is granted from inside qrtz (in each app modal)', () 
     expect(q('perm-echo-accessibility-hint')).toBeNull();
   });
 
-  it('screen recording offers "restart qrtz" after asking; automation opens its own pane', async () => {
+  it('screen recording offers "restart qrtz" after asking', async () => {
     const perms = () => ({
       microphone: 'granted',
       accessibility: 'granted',
@@ -814,12 +814,6 @@ describe('every permission is granted from inside qrtz (in each app modal)', () 
     await settle();
     await click('perm-nano-screen-recording-restart');
     expect(f.calls.map((c) => c.channel)).toContain('app:restart');
-    await click('app-modal-close');
-    await clickRow('ctrl');
-    await click('perm-ctrl-automation-open');
-    expect(
-      f.calls.find((c) => c.channel === 'permissions:open-settings')?.payload,
-    ).toEqual({ pane: 'automation' });
     expect(el.textContent).toBe(el.textContent?.toLowerCase());
   });
 
