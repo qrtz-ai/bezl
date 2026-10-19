@@ -2980,8 +2980,8 @@
       "expect": "Let's grab lunch after the standup, shall we?"
     },
     {
-      "raw": "Let's move the design review to Thursday, shall we",
-      "expect": "Let's move the design review to Thursday, shall we?"
+      "raw": "Let's push the budget sync to Friday, shall we",
+      "expect": "Let's push the budget sync to Friday, shall we?"
     },
     {
       "raw": "Please close the door on your way out, will you",
