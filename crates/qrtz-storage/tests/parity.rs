@@ -267,8 +267,8 @@ fn opens_the_electron_created_db() {
     let db = f.open_copy("electron.sqlite");
     assert_eq!(
         db.migration().unwrap().applied,
-        Vec::<String>::new(),
-        "an up-to-date Electron DB needs no migration"
+        ["6_calendar"],
+        "the Electron DB (schema 5, the last it shipped) gains only the calendar cache (ADR 0216)"
     );
     assert_same(
         &dump(&db, &f.seed, &f.results),

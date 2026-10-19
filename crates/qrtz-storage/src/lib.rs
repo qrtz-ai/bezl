@@ -10,6 +10,7 @@
 //! renumber (meetings has a TEXT primary key). Only `VACUUM INTO` (snapshots) is used; a test enforces it until a
 //! migration re-keys `meetings_fts`.
 
+pub mod calendar;
 mod db;
 mod error;
 mod fts;
@@ -21,6 +22,7 @@ mod pending_deletes;
 pub mod recordings;
 mod row;
 
+pub use calendar::{CalendarEvent, CalendarInfo, CalendarRepo};
 pub use db::{Db, DbHealth, ImportHooks, ImportReport};
 pub use error::{Result, StorageError};
 pub use fts::unsegmented as is_unsegmented;

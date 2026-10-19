@@ -10,13 +10,19 @@
   true,
   false
  ],
- "userVersion": 5,
+ "userVersion": 6,
  "health": {
   "ok": true,
-  "schemaVersion": 5,
+  "schemaVersion": 6,
   "fts5": true
  },
  "schema": [
+  {
+   "type": "index",
+   "name": "calendar_events_start",
+   "tbl": "calendar_events",
+   "sql": "CREATE INDEX calendar_events_start ON calendar_events(start_at)"
+  },
   {
    "type": "index",
    "name": "meetings_started",
@@ -46,6 +52,18 @@
    "name": "segments_meeting",
    "tbl": "segments",
    "sql": "CREATE INDEX segments_meeting ON segments(meeting_id, source, start_ms)"
+  },
+  {
+   "type": "index",
+   "name": "sqlite_autoindex_calendar_calendars_1",
+   "tbl": "calendar_calendars",
+   "sql": null
+  },
+  {
+   "type": "index",
+   "name": "sqlite_autoindex_calendar_events_1",
+   "tbl": "calendar_events",
+   "sql": null
   },
   {
    "type": "index",
@@ -91,6 +109,18 @@
   },
   {
    "type": "table",
+   "name": "calendar_calendars",
+   "tbl": "calendar_calendars",
+   "sql": "CREATE TABLE calendar_calendars (\n  id TEXT PRIMARY KEY,\n  title TEXT NOT NULL\n)"
+  },
+  {
+   "type": "table",
+   "name": "calendar_events",
+   "tbl": "calendar_events",
+   "sql": "CREATE TABLE calendar_events (\n  id TEXT PRIMARY KEY,\n  calendar_id TEXT NOT NULL,\n  title TEXT NOT NULL,\n  start_at INTEGER NOT NULL,\n  end_at INTEGER NOT NULL,\n  all_day INTEGER NOT NULL DEFAULT 0,\n  attendee_count INTEGER NOT NULL DEFAULT 0,\n  meeting_url TEXT\n)"
+  },
+  {
+   "type": "table",
    "name": "kv",
    "tbl": "kv",
    "sql": "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)"
@@ -105,7 +135,7 @@
    "type": "table",
    "name": "meetings",
    "tbl": "meetings",
-   "sql": "CREATE TABLE meetings (\n  id TEXT PRIMARY KEY,\n  title TEXT NOT NULL,\n  platform TEXT NOT NULL,\n  started_at INTEGER NOT NULL,\n  ended_at INTEGER,\n  status TEXT NOT NULL,\n  participants TEXT NOT NULL DEFAULT '[]',\n  audio_path TEXT,\n  duration_ms INTEGER\n, template TEXT NOT NULL DEFAULT 'general')"
+   "sql": "CREATE TABLE meetings (\n  id TEXT PRIMARY KEY,\n  title TEXT NOT NULL,\n  platform TEXT NOT NULL,\n  started_at INTEGER NOT NULL,\n  ended_at INTEGER,\n  status TEXT NOT NULL,\n  participants TEXT NOT NULL DEFAULT '[]',\n  audio_path TEXT,\n  duration_ms INTEGER\n, template TEXT NOT NULL DEFAULT 'general', calendar_event_id TEXT)"
   },
   {
    "type": "table",

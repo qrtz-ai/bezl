@@ -14,7 +14,7 @@ fn root() -> &'static Path {
 fn applies_in_order_and_is_idempotent() {
     let mut c = Connection::open_in_memory().unwrap();
     let r = migrate(&mut c, MIGRATIONS).unwrap();
-    assert_eq!((r.from, r.to), (0, 5));
+    assert_eq!((r.from, r.to), (0, 6));
     assert_eq!(
         r.applied,
         [
@@ -22,7 +22,8 @@ fn applies_in_order_and_is_idempotent() {
             "2_memo",
             "3_segment_vectors",
             "4_notes_templates",
-            "5_recording_lifecycle"
+            "5_recording_lifecycle",
+            "6_calendar"
         ]
     );
     assert!(migrate(&mut c, MIGRATIONS).unwrap().applied.is_empty());
@@ -33,13 +34,13 @@ fn rolls_back_a_failing_migration() {
     let mut c = Connection::open_in_memory().unwrap();
     let mut ms = MIGRATIONS.to_vec();
     ms.push(Migration {
-        version: 6,
+        version: 7,
         name: "bad",
         sql: "CREATE TABLE t(x); NOT SQL",
     });
     let e = migrate(&mut c, &ms).unwrap_err();
-    assert!(e.to_string().contains("6_bad"), "{e}");
-    assert_eq!(schema_version(&c).unwrap(), 5);
+    assert!(e.to_string().contains("7_bad"), "{e}");
+    assert_eq!(schema_version(&c).unwrap(), 6);
     let t: Option<String> = c
         .query_row("SELECT name FROM sqlite_master WHERE name='t'", [], |r| r.get(0))
         .ok();
@@ -62,7 +63,7 @@ fn rejects_gaps_and_newer_databases() {
     assert!(matches!(e, StorageError::NonContiguous { .. }) && e.to_string().contains("contiguous"));
     c.execute_batch("PRAGMA user_version = 9").unwrap();
     let e = migrate(&mut c, MIGRATIONS).unwrap_err();
-    assert!(matches!(e, StorageError::SchemaTooNew { db: 9, app: 5 }) && e.to_string().contains("newer"));
+    assert!(matches!(e, StorageError::SchemaTooNew { db: 9, app: 6 }) && e.to_string().contains("newer"));
     assert_eq!(e.code(), "E_VALIDATION");
 }
 
@@ -148,7 +149,7 @@ fn open_sets_the_worker_pragmas() {
     let fk: i64 = c.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
     let bt: i64 = c.query_row("PRAGMA busy_timeout", [], |r| r.get(0)).unwrap();
     assert_eq!((jm.as_str(), fk, bt), ("wal", 1, 5000));
-    assert_eq!(db.migration().unwrap().to, 5);
+    assert_eq!(db.migration().unwrap().to, 6);
     drop(db);
     assert!(Db::open(dir.path().join("q.db"))
         .unwrap()

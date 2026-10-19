@@ -13,7 +13,7 @@ async fn smoke_boots_and_serves_typed_ipc_with_capability_scoping() {
     a.helper_ready().await;
     // Settings shows "database: ok · schema v5 · fts5 on" and "native helper: running".
     let h = a.settings("db:health", Value::Null).await;
-    assert_eq!(h, json!({"ok": true, "schemaVersion": 5, "fts5": true}));
+    assert_eq!(h, json!({"ok": true, "schemaVersion": 6, "fts5": true}));
     let st = a.settings("helper:status", Value::Null).await;
     assert_eq!(st["state"], "running", "{st}");
     let info = a.call("shell", "app:get-info", Value::Null).await;

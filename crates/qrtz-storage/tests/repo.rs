@@ -208,7 +208,7 @@ async fn handle_serializes_jobs_and_survives_panics() {
     let v = tokio::task::spawn_blocking(move || blocking.call_blocking(|db| db.schema_version()))
         .await
         .unwrap();
-    assert_eq!(v.unwrap(), 5);
+    assert_eq!(v.unwrap(), 6);
 }
 
 #[test]

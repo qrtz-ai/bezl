@@ -4,6 +4,7 @@ import memo from '../db/sql/0002_memo.sql?raw';
 import segmentVectors from '../db/sql/0003_segment_vectors.sql?raw';
 import notesTemplates from '../db/sql/0004_notes_templates.sql?raw';
 import recordingLifecycle from '../db/sql/0005_recording_lifecycle.sql?raw';
+import calendar from '../db/sql/0006_calendar.sql?raw';
 
 /** Note tables. Appended to the app migration list (never edit once shipped). */
 export const noteMigrations: Migration[] = [
@@ -15,4 +16,6 @@ export const noteMigrations: Migration[] = [
   { version: 4, name: 'notes_templates', up: notesTemplates },
   // Durable recording lifecycle: the live session snapshot and per-meeting post-processing pipelines.
   { version: 5, name: 'recording_lifecycle', up: recordingLifecycle },
+  // ADR 0216: nano's Apple Calendar cache and meetings.calendar_event_id.
+  { version: 6, name: 'calendar', up: calendar },
 ];

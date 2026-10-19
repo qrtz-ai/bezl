@@ -36,11 +36,12 @@ describe('hardening stress: DB versions', () => {
     expect(migrate(db, early)).toMatchObject({ from: 0, to: 2 });
     const again = migrate(db, migrations);
     expect(again.from).toBe(2);
-    expect(again.to).toBe(5);
+    expect(again.to).toBe(6);
     expect(again.applied).toEqual([
       '3_segment_vectors',
       '4_notes_templates',
       '5_recording_lifecycle',
+      '6_calendar',
     ]);
   });
 

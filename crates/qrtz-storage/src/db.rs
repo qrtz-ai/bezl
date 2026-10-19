@@ -107,6 +107,11 @@ impl Db {
         NoteRepo::new(&self.conn)
     }
 
+    /// nano's Apple Calendar cache (ADR 0216).
+    pub fn calendar(&self) -> crate::CalendarRepo<'_> {
+        crate::CalendarRepo::new(&self.conn)
+    }
+
     pub fn lifecycle(&self) -> LifecycleRepo<'_> {
         LifecycleRepo::new(&self.conn)
     }

@@ -30,6 +30,12 @@
       "name": "recording_lifecycle",
       "file": "packages/core/src/db/sql/0005_recording_lifecycle.sql",
       "sha256": "6df15435ba2e8bc4cf0d530d8682bfc17239d11e47c4abdc19ef41f9410a5a23"
+    },
+    {
+      "version": 6,
+      "name": "calendar",
+      "file": "packages/core/src/db/sql/0006_calendar.sql",
+      "sha256": "6a0689b2739550de693b58be511f3ca1ab138d4d0d8641a27b42cef1dbdd016b"
     }
   ]
 }

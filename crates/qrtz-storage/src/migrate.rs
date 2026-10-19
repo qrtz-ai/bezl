@@ -50,6 +50,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "recording_lifecycle",
         sql: shared_sql!("0005_recording_lifecycle.sql"),
     },
+    Migration {
+        version: 6,
+        name: "calendar",
+        sql: shared_sql!("0006_calendar.sql"),
+    },
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
