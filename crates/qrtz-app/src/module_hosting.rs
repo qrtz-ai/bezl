@@ -297,6 +297,7 @@ pub fn cdhash(file: &Path) -> Result<String, String> {
 /// Dev only (ADR 0169, [`dev_index`]): a dev-signed module (Apple Development or ad hoc, `bun run modules:dev`)
 /// must carry a valid signature with exactly the identifier its requirement names (`ai.qrtz.<name>`). Team and
 /// notarization aren't checked; a release build never uses this.
+#[cfg(debug_assertions)]
 pub struct DevCodeChecks;
 
 /// The identifier a designated requirement names (`identifier "ai.qrtz.echo" and ...` → `ai.qrtz.echo`).
@@ -306,6 +307,7 @@ pub fn requirement_identifier(requirement: &str) -> Option<&str> {
     rest.split('"').next()
 }
 
+#[cfg(debug_assertions)]
 impl CodeChecks for DevCodeChecks {
     #[cfg(target_os = "macos")]
     fn check(
@@ -343,10 +345,12 @@ impl CodeChecks for DevCodeChecks {
 /// `QRTZ_DEV_INDEX_DIR` (a `qrtz-publish build --out` dir, `bun run modules:dev`) and `QRTZ_DEV_ROOT1_SHA256` (its
 /// root 1's sha256): a debug build installs modules from that local signed index, so the marketplace's install,
 /// models and remove flow is testable before modules.qrtz.ai is live. A release build ignores both, always.
+#[cfg(debug_assertions)]
 pub fn dev_index() -> Option<(PathBuf, String)> {
     dev_index_from(cfg!(debug_assertions), |k| std::env::var(k).ok())
 }
 
+#[cfg(debug_assertions)]
 pub fn dev_index_from(debug_build: bool, get: impl Fn(&str) -> Option<String>) -> Option<(PathBuf, String)> {
     if !debug_build {
         return None;
@@ -395,6 +399,8 @@ impl Packages {
     /// The app's data dir (or `QRTZ_USER_DATA`), the pinned hosts and root, and the Apple checks.
     pub fn pinned(root: Option<PathBuf>) -> Option<Self> {
         let root = root.or_else(qrtz_modules::install::default_root)?;
+        // Compiled into debug builds only (design call (d)): a release qrtz has no dev index and no dev checks.
+        #[cfg(debug_assertions)]
         if let Some((dir, pin)) = dev_index() {
             tracing::warn!(dir = %dir.display(), "dev build: modules install from a local dev index");
             return Some(Self {
@@ -487,6 +493,31 @@ mod tests {
         assert_eq!(src, vec![Source::Url(b.mirrors[0].clone())]);
     }
 
+    /// Design call (d): the dev index and the dev code checks aren't in a release build at all, not just unused.
+    #[test]
+    fn the_dev_index_and_dev_checks_exist_only_in_debug_builds() {
+        let src = include_str!("module_hosting.rs");
+        let src = &src[..src.find("#[cfg(test)]\nmod tests").expect("tests")];
+        for item in [
+            "pub struct DevCodeChecks;",
+            "impl CodeChecks for DevCodeChecks {",
+            "pub fn dev_index() -> Option<(PathBuf, String)> {",
+            "pub fn dev_index_from(",
+            "        if let Some((dir, pin)) = dev_index() {",
+        ] {
+            let at = src.find(item).unwrap_or_else(|| panic!("{item}"));
+            let before: Vec<&str> = src[..at]
+                .lines()
+                .rev()
+                .map(str::trim)
+                .filter(|l| !l.starts_with("//"))
+                .take(1)
+                .collect();
+            assert_eq!(before, ["#[cfg(debug_assertions)]"], "{item}");
+        }
+    }
+
+    #[cfg(debug_assertions)]
     #[test]
     fn a_release_build_never_uses_a_dev_index() {
         let pin = "a".repeat(64);
