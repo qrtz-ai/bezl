@@ -236,3 +236,48 @@ describe('the echo switch waits for the model status (N180)', () => {
     v.unmount();
   });
 });
+
+describe('a failed speech:status (N183)', () => {
+  it('says so with a retry, and leaves the switch usable through the consent dialog', async () => {
+    let fail = true;
+    const v = await mount(
+      () =>
+        fail
+          ? Promise.reject(new Error('E_UNAVAILABLE'))
+          : Promise.resolve(none),
+      { modules: { echo: { enabled: false } } },
+    );
+    const sw = () => v.q('echo-switch') as HTMLButtonElement;
+    expect(v.q('echo-status-error')?.textContent).toContain(
+      "couldn't check speech, retry",
+    );
+    // Not dead: the switch is enabled, and turning echo on asks first (the model's state is unknown).
+    expect(sw().disabled).toBe(false);
+    await act(async () => sw().click());
+    await v.settle();
+    expect(document.body.textContent).toContain('download and turn on');
+    expect(v.calls.some((c) => c.channel === 'config:set')).toBe(false);
+    // retry reads the status again; once it answers, the error goes away.
+    fail = false;
+    await act(async () => v.q('echo-status-retry')!.click());
+    await v.settle();
+    expect(v.q('echo-status-error')).toBeNull();
+    expect(
+      v.calls.filter(
+        (c) =>
+          c.channel === 'speech:status' &&
+          (c.req as { extensions?: string[] })?.extensions,
+      ).length,
+    ).toBeGreaterThanOrEqual(2);
+    v.unmount();
+  });
+
+  it('on the on page, the error takes the offer place and the switch still works', async () => {
+    const v = await mount(() => Promise.reject(new Error('E_UNAVAILABLE')));
+    expect(v.q('talk')).not.toBeNull();
+    expect(v.q('echo-status-error')).not.toBeNull();
+    expect(v.q('echo-offer')).toBeNull();
+    expect((v.q('echo-switch') as HTMLButtonElement).disabled).toBe(false);
+    v.unmount();
+  });
+});

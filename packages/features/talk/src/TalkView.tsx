@@ -56,6 +56,9 @@ const BUSY = new Set(['checking', 'downloading', 'paused', 'installing']);
  * ADR 0175: a fresh config has echo on, so the "on" page offers the same consent in place ("download parakeet")
  * while Parakeet is configured, not installed and not downloading; and the switch waits for `speech:status` (N180),
  * so a click can't turn echo on before we know whether it needs the download.
+ *
+ * N183: if `speech:status` fails, the view says so ("couldn't check speech, retry") and the switch is enabled
+ * anyway: with the model's state unknown, turning echo on goes through the consent dialog and downloads.
  */
 function useEchoSwitch() {
   const qrtz = useQrtz();
@@ -63,6 +66,7 @@ function useEchoSwitch() {
   const changed = useQrtzEvent('config:changed');
   const [cfg, setCfg] = useState<Config | null>(null);
   const [parakeet, setParakeet] = useState<SpeechSetupStatus | null>(null);
+  const [statusFailed, setStatusFailed] = useState(false);
   const [asking, setAsking] = useState(false);
   // The host streams the (global) speech status while a download runs; its state says whether one is under way.
   const live = useQrtzEvent('speech:status');
@@ -74,9 +78,13 @@ function useEchoSwitch() {
       (c) => setCfg(loadConfig(c)),
       () => {},
     );
-    void qrtz
-      .invoke('speech:status', { extensions: ['echo'] })
-      .then(setParakeet, () => {});
+    void qrtz.invoke('speech:status', { extensions: ['echo'] }).then(
+      (s) => {
+        setParakeet(s);
+        setStatusFailed(false);
+      },
+      () => setStatusFailed(true),
+    );
   }, [qrtz]);
   useEffect(refresh, [refresh]);
   const liveState = live?.download.state;
@@ -86,7 +94,10 @@ function useEchoSwitch() {
     if (liveState && !BUSY.has(liveState)) refresh();
   }, [liveState, refresh]);
   const on = !!cfg && isModuleOn(cfg, 'echo');
-  const needsParakeet = !!parakeet?.configured && !parakeet.installed;
+  // Unknown (speech:status failed): assume the download is needed, so turning on asks first.
+  const needsParakeet = parakeet
+    ? !!parakeet.configured && !parakeet.installed
+    : statusFailed;
   const fail = (e: Error) => toast(e.message, 'error');
   const download = () =>
     qrtz.invoke('speech:download', { extensions: ['echo'] });
@@ -100,11 +111,12 @@ function useEchoSwitch() {
       .then(() => (needsParakeet ? download() : undefined))
       .then(refresh, fail);
   };
-  const consent = `echo needs its speech model, parakeet (${mb(parakeet?.latestBytes ?? 0)}). it downloads once from hugging face, is checked against the fingerprint built into qrtz, and stays on this mac.`;
+  const size = parakeet?.latestBytes ? ` (${mb(parakeet.latestBytes)})` : '';
+  const consent = `echo needs its speech model, parakeet${size}. it downloads once from hugging face, is checked against the fingerprint built into qrtz, and stays on this mac.`;
   const toggle = (v: boolean) => {
     if (!v) return void setOn(false).catch(fail);
     // Already downloaded (or nothing to download in this build): no question.
-    if (!parakeet?.configured || parakeet.installed) return turnOn();
+    if (!needsParakeet) return turnOn();
     setAsking(true);
   };
   const dialog = (
@@ -123,14 +135,14 @@ function useEchoSwitch() {
       checked={on}
       onChange={toggle}
       label="echo"
-      disabled={!cfg || !parakeet}
+      disabled={!cfg || (!parakeet && !statusFailed)}
       data-testid="echo-switch"
     />
   );
   // The speech notice is hidden while this offer is up, so a failed download's reason is shown here instead.
   const failed = (live?.download.state ?? parakeet?.download.state) === 'error';
   const offer =
-    on && needsParakeet && !busy ? (
+    on && parakeet && needsParakeet && !busy ? (
       <Callout
         {...(failed
           ? {
@@ -154,7 +166,34 @@ function useEchoSwitch() {
         {consent}
       </Callout>
     ) : null;
-  return { on, loaded: !!cfg, control, dialog, offer };
+  const statusError =
+    statusFailed && !parakeet ? (
+      <Callout
+        tone="warning"
+        title="couldn't check speech, retry"
+        action={
+          <Button
+            size="sm"
+            variant="secondary"
+            icon="refresh"
+            onClick={refresh}
+            data-testid="echo-status-retry"
+          >
+            retry
+          </Button>
+        }
+        data-testid="echo-status-error"
+      />
+    ) : null;
+  // On the "on" page the error takes the offer's place (the offer needs the status it couldn't read).
+  return {
+    on,
+    loaded: !!cfg,
+    control,
+    dialog,
+    offer: statusError ?? offer,
+    statusError,
+  };
 }
 
 export default function TalkView() {
@@ -162,6 +201,7 @@ export default function TalkView() {
   if (echo.loaded && !echo.on)
     return (
       <Page data-testid="talk-off" title="echo" actions={echo.control}>
+        {echo.statusError}
         <EmptyState title="echo is off: turn it on to dictate with fn" />
         {echo.dialog}
       </Page>
