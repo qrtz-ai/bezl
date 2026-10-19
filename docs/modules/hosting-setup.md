@@ -4,7 +4,7 @@ The code side is done ([ADR 0153](../adr/0153-module-hosting-the-signed-index-an
 manager on top of it, [ADR 0157](../adr/0157-qrtz-is-its-own-package-manager.md)): the signed index, the installer,
 the `qrtz` command, the `.qrtzpkg` sideload and the `qrtz-publish` tool. Nothing is published and no key exists yet.
 These steps need your accounts and your hands. They take about an hour; nothing here costs money until real
-traffic (R2: 10 GB storage and 10M reads a month free, no egress fees; B2: 10 GB free).
+traffic (R2: 10 GB storage and 10M reads a month free, no egress fees).
 
 Never paste a private key (`*.key`) into chat, a ticket, the repo, CI or a shared drive. Public keys (`*.pub`) and
 the root sha256 are fine to share.
@@ -35,16 +35,12 @@ the root sha256 are fine to share.
 6. **R2 → Manage API tokens → Create API token**: permission **Object Read & Write**, only bucket `qrtz-modules`.
    Keep the access key id and secret in your password manager; they go into `rclone` on the release machine only.
 
-## 3. The Backblaze B2 mirror
+## 3. No package-host mirror (ADR 0167)
 
-1. Create an account at <https://www.backblaze.com/sign-up/cloud-storage> (two-factor on).
-2. **Buckets → Create a bucket**: name `qrtz-modules-mirror` (if taken, pick another and tell me), files
-   **Public**, encryption off, object lock off.
-3. Note the bucket's **Endpoint** (e.g. `s3.us-west-004.backblazeb2.com`). The mirror URL is
-   `https://<bucket>.<endpoint>`, e.g. `https://qrtz-modules-mirror.s3.us-west-004.backblazeb2.com`. If the name or
-   region differ from that, send me the URL; it's pinned in `crates/qrtz-app/src/module_hosts.json` and checked by
-   `offline_graph`.
-4. **Application Keys → Add a new key**: only bucket `qrtz-modules-mirror`, Read and Write. Password manager.
+Jared decided (2026-10-18) not to run a Backblaze B2 mirror. `modules.qrtz.ai` (Cloudflare R2, bucket
+`qrtz-modules`) is the sole package host. `module_hosts.json` pins only that primary (`mirrors: []`); the client
+retries on it and then falls through to a blob's own model mirror URLs (Hugging Face) when the signed tree lists
+them. Proposal §4's B2 cold-copy plan is withdrawn; see [ADR 0167](../adr/0167-no-backblaze-b2-package-host-mirror.md).
 
 ## 4. Keys (offline)
 
@@ -89,7 +85,6 @@ macOS Keychain in a shell; never put them in a file in the repo.
 ```sh
 brew install rclone
 rclone config   # add "r2": type s3, provider Cloudflare, the R2 token, endpoint https://<account-id>.r2.cloudflarestorage.com
-                # add "b2": type s3, provider Other (or b2), the B2 key, endpoint https://s3.<region>.backblazeb2.com
 ```
 
 ## 6. Each publish
@@ -101,8 +96,6 @@ $P verify --out ~/qrtz-publish-out --root-sha256 <root 1 sha256>
 # immutable objects first, the timestamp last, never --delete:
 rclone copy ~/qrtz-publish-out r2:qrtz-modules --exclude v1/timestamp.json --exclude v1/timestamp.json.sig --immutable
 rclone copy ~/qrtz-publish-out r2:qrtz-modules --include 'v1/timestamp.json*'
-rclone copy ~/qrtz-publish-out b2:qrtz-modules-mirror --exclude v1/timestamp.json --exclude v1/timestamp.json.sig --immutable
-rclone copy ~/qrtz-publish-out b2:qrtz-modules-mirror --include 'v1/timestamp.json*'
 ```
 
 `publish.json` (paths relative to it):
@@ -137,11 +130,11 @@ The timestamp expires 7 days after it's signed; after 8 days every installed qrt
 (modules already installed keep working). Re-sign at least weekly:
 
 ```sh
-$P timestamp --out ~/qrtz-publish-out --keys ~/.qrtz-keys && rclone copy ~/qrtz-publish-out r2:qrtz-modules --include 'v1/timestamp.json*' && rclone copy ~/qrtz-publish-out b2:qrtz-modules-mirror --include 'v1/timestamp.json*'
+$P timestamp --out ~/qrtz-publish-out --keys ~/.qrtz-keys && rclone copy ~/qrtz-publish-out r2:qrtz-modules --include 'v1/timestamp.json*'
 ```
 
 `scripts/modules/timestamp-job.sh install` does this automatically: a launchd job on the release Mac, daily at 09:00
-and after a missed run, with the R2/B2 keys from the login keychain and only the timestamp key. Later it can move to
+and after a missed run, with the R2 key from the login keychain and only the timestamp key. Later it can move to
 CI once GitHub billing is fixed (then the timestamp key moves to a CI secret, and only that key).
 
 ## 8. Pulling a bad release

@@ -1,8 +1,9 @@
 //! The one fetcher (ADR 0157 §6): every blob, of every package kind, from every source, through here.
 //!
-//! - **Sources**, in order: each module host (`modules.qrtz.ai`, then its mirrors) at `v1/blobs/sha256/<hex>`, then
-//!   the blob's own extra mirror URLs from the signed tree (a model's pinned Hugging Face URL). A source that fails,
-//!   or whose bytes don't hash right, is dropped for the next one. A host the transport reports as not configured
+//! - **Sources**, in order: each module host (`modules.qrtz.ai`; ADR 0167: the sole package host, no B2 mirror)
+//!   at `v1/blobs/sha256/<hex>`, then the blob's own extra mirror URLs from the signed tree (a model's pinned
+//!   Hugging Face URL). A source that fails, or whose bytes don't hash right, is dropped for the next one (retries
+//!   stay on the primary until it is marked dead for this fetch). A host the transport reports as not configured
 //!   ([`Transport::host_configured`]: no live index behind it yet) is skipped without a request (audit P0-3).
 //! - **Parallel ranges**: a blob is fetched as [`RANGE_BYTES`] ranges, [`PARALLEL_RANGES`] at a time, written in
 //!   place into a preallocated `store/.tmp/<sha256>.part`; [`PARALLEL_BLOBS`] blobs go at once.

@@ -72,9 +72,12 @@ variables before running the script if this release carries one.
 
 ## Updates and diagnostics
 
+Package hosting is `modules.qrtz.ai` only (Cloudflare R2; ADR 0167 — no Backblaze B2 mirror). Publish with
+`scripts/modules/publish.sh`; setup in [docs/modules/production-setup.md](modules/production-setup.md) Part B.
+
 - **Check for updates** (settings → system) runs only when pressed: `packages:check-update` refreshes the signed
-  index from the package hosts (verified against the pinned root) and compares its newest `qrtz` with this build. It
-  installs nothing. Before the hosts exist (`module_hosts.json` `root1Sha256` is null) it answers "updates aren't set
+  index from the package host (verified against the pinned root) and compares its newest `qrtz` with this build. It
+  installs nothing. Before the host exists (`module_hosts.json` `root1Sha256` is null) it answers "updates aren't set
   up yet" without a request.
 - **Export diagnostics** (settings → system) saves one text file of the local logs plus macOS's crash, hang and spin
   reports for qrtz and its helpers (`~/Library/Logs/DiagnosticReports/qrtz*.ips`, last 30 days, at most 20, 2 MB

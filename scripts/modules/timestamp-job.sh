@@ -9,9 +9,9 @@
 #   scripts/modules/timestamp-job.sh status | uninstall
 #
 # Keys it uses: only ~/.qrtz-keys/timestamp.key (it never reads the index key or a root key). Credentials come from
-# the login keychain at run time (services qrtz-r2 and qrtz-b2, account = the access key id), never from a file.
-# Needs, once: `security add-generic-password -s qrtz-r2 -a <R2 access key id> -w` and the same for qrtz-b2 with the
-# B2 key id; R2_ACCOUNT_ID in ~/.qrtz-keys/r2-account-id (not secret).
+# the login keychain at run time (service qrtz-r2, account = the access key id), never from a file.
+# Needs, once: `security add-generic-password -s qrtz-r2 -a <R2 access key id> -w`;
+# R2_ACCOUNT_ID in ~/.qrtz-keys/r2-account-id (not secret). ADR 0167: R2 is the sole package host (no B2 key).
 set -euo pipefail
 label=ai.qrtz.timestamp
 plist="$HOME/Library/LaunchAgents/$label.plist"
@@ -55,12 +55,10 @@ PLIST
     ;;
   run)
     echo "== $(date -u +%FT%TZ)"
-    export R2_ACCOUNT_ID B2_KEY_ID B2_APPLICATION_KEY R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY
+    export R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY
     R2_ACCOUNT_ID="$(tr -d '[:space:]' <"$keys/r2-account-id")"
     R2_ACCESS_KEY_ID="$(account_of qrtz-r2)"
     R2_SECRET_ACCESS_KEY="$(security find-generic-password -s qrtz-r2 -w)"
-    B2_KEY_ID="$(account_of qrtz-b2)"
-    B2_APPLICATION_KEY="$(security find-generic-password -s qrtz-b2 -w)"
     if ! "$repo/scripts/modules/publish.sh" --timestamp; then
       osascript -e 'display notification "The weekly re-sign failed; see ~/Library/Logs/qrtz-timestamp.log. Installs stop 8 days after the last good one." with title "qrtz package index"' || true
       exit 1

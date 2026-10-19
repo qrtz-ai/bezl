@@ -12,8 +12,8 @@
 //! 4. Helper: no Private Cloud Compute model and no network entitlement.
 //! 5. ADR 0157 (tightening ADR 0079 and 0153): the downloader's only callers are qrtz-app's `setup.rs` (the signed
 //!    speech bundle, `Downloader` only) and `module_hosting.rs` (the package manager's one fetcher, `fetch_meta` and
-//!    `fetch_range`, to the hosts pinned in `module_hosts.json`: `https://modules.qrtz.ai`, Backblaze B2 mirrors,
-//!    and `modelMirrors`, exactly `https://huggingface.co`). `local_models.rs` keeps only the pause/progress types
+//!    `fetch_range`, to the host pinned in `module_hosts.json`: exactly `https://modules.qrtz.ai` (ADR 0167: no
+//!    Backblaze B2 mirror), and `modelMirrors`, exactly `https://huggingface.co`). `local_models.rs` keeps only the pause/progress types
 //!    (`DownloadControl`, `Progress`); naming `Downloader` or any fetch there (the retired direct-HF
 //!    `download_files` path) fails, and `download_files` has no caller outside qrtz-speech's `download_bundle`.
 //!    The pinned models are fixed Hugging Face revisions with sha256s; ctrl's Laya model (ADR 0116) goes through
@@ -474,8 +474,8 @@ fn only_setup_and_the_package_fetcher_call_the_downloader() {
             }
         }
     }
-    // ADR 0153: the module hosts are exactly the primary (Cloudflare R2 behind modules.qrtz.ai) and Backblaze B2
-    // mirrors, https, no path, query or credentials; adding a host changes this test and the ADR.
+    // ADR 0153 / ADR 0167: exactly one package host (Cloudflare R2 behind modules.qrtz.ai), no B2 mirror;
+    // https, no path, query or credentials. Adding a host changes this test and the ADR.
     let hosts: Value = serde_json::from_str(
         &std::fs::read_to_string(r.join("crates/qrtz-app/src/module_hosts.json")).unwrap(),
     )
@@ -485,18 +485,10 @@ fn only_setup_and_the_package_fetcher_call_the_downloader() {
         "module_hosts.json primary"
     );
     let mirrors = hosts["mirrors"].as_array().unwrap();
-    assert!(mirrors.len() <= 2, "module_hosts.json: at most two mirrors");
-    for m in mirrors {
-        let m = m.as_str().unwrap();
-        let host = m.strip_prefix("https://").unwrap_or_else(|| panic!("{m}: https"));
-        assert!(
-            host.ends_with(".backblazeb2.com")
-                && host
-                    .bytes()
-                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-'),
-            "{m}: a Backblaze B2 host and nothing after it"
-        );
-    }
+    assert!(
+        mirrors.is_empty(),
+        "module_hosts.json: no package-host mirror (ADR 0167), got {mirrors:?}"
+    );
     // ADR 0157: the only extra mirror host a signed tree may point at (the pinned models' upstream).
     assert_eq!(
         hosts["modelMirrors"],

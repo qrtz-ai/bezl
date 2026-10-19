@@ -19,10 +19,10 @@ v1 ships one signed, notarized qrtz.app and its package hosting: `modules.qrtz.a
   `tools/qrtz-publish/packages/inference.voice/qrtz.json`.
 - **`scripts/modules/release-keys.sh`**: the whole key ceremony in one command (offline only). Root 1 has threshold 2,
   so it is signed by both root keys and a key rotation needs both.
-- **`scripts/modules/publish.sh`**: build, verify, upload to R2 and B2, and a live check, with credentials from env
-  vars only. `--no-upload` builds and verifies; `--timestamp` is the re-sign.
+- **`scripts/modules/publish.sh`**: build, verify, upload to R2, and a live check, with credentials from env
+  vars only. `--no-upload` builds and verifies; `--timestamp` is the re-sign. Sole host: `modules.qrtz.ai` (ADR 0167).
 - **`scripts/modules/timestamp-job.sh install`**: the automatic re-sign, a launchd job that runs every day at 09:00
-  and after a missed run. It uses only the timestamp key and gets the R2/B2 keys from your keychain. A failure posts a
+  and after a missed run. It uses only the timestamp key and gets the R2 key from your keychain. A failure posts a
   notification.
 - **Proven end to end on the box** with throwaway keys (deleted afterwards): `release-keys.sh` (threshold 2: root 1 signed by both root keys) → `publish.sh --no-upload` with the five real pinned
   model sets (1.7 GB, every file matching its pin) and the repo's own `qrtz.json` for echo, nano, ctrl, snap and
@@ -115,9 +115,8 @@ this, on your go, in the Cloudflare session on his browser ([§2](hosting-setup.
 do:** say go, then make the R2 API token yourself (R2 → **Manage API tokens** → **Create API token**, Object Read &
 Write, only bucket `qrtz-modules`, §2 step 6). Keep it in your password manager, not in chat or Bobs's browser.
 
-**B3. Backblaze B2 mirror.** You do [§3](hosting-setup.md#3-the-backblaze-b2-mirror): bucket `qrtz-modules-mirror`
-(public), plus an application key scoped to it. **Send us** the bucket's S3 endpoint if it isn't
-`s3.us-west-004.backblazeb2.com`. It's pinned in `module_hosts.json`.
+**B3. No package-host mirror.** Done by decision (2026-10-18, ADR 0167): Jared chose not to run Backblaze B2.
+`modules.qrtz.ai` is the sole package host; `module_hosts.json` has `mirrors: []`. Skip the old B2 setup steps.
 
 **B4. Keys, offline (replaces hosting-setup §4's manual commands).** While online, run `cargo fetch` in the checkout
 once. Then turn Wi-Fi off, plug in a USB stick (ideally encrypted APFS, named ROOTKEY-A) and run one of:
@@ -142,14 +141,13 @@ models (onboarding, and ctrl's model in its settings), then:
 # QRTZ_TEAM_ID defaults to MR26CCZ496
 export R2_ACCOUNT_ID=<Cloudflare account id: R2 overview page, right column>
 export R2_ACCESS_KEY_ID=<from step B2> R2_SECRET_ACCESS_KEY="$(security find-generic-password -s qrtz-r2 -w)"
-export B2_KEY_ID=<from step B3> B2_APPLICATION_KEY="$(security find-generic-password -s qrtz-b2 -w)"
 scripts/modules/publish.sh --no-upload    # build + verify only: check the list it prints
-scripts/modules/publish.sh                # upload to R2, then B2, then check both hosts
+scripts/modules/publish.sh                # upload to R2, then check modules.qrtz.ai
 ```
 
-(Store the two secrets first: `security add-generic-password -s qrtz-r2 -a <R2 access key id> -w`, and the same
-with `-s qrtz-b2` and the B2 key id.) **Send us** the last 10 lines of the output. **Then turn on the automatic
-re-sign** (a timestamp older than 8 days stops new installs everywhere):
+(Store the R2 secret first: `security add-generic-password -s qrtz-r2 -a <R2 access key id> -w`.) **Send us** the
+last 10 lines of the output. **Then turn on the automatic re-sign** (a timestamp older than 8 days stops new
+installs everywhere):
 
 ```sh
 echo "$R2_ACCOUNT_ID" > ~/.qrtz-keys/r2-account-id

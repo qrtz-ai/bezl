@@ -3,11 +3,11 @@
 //! network code of its own). The app's Extensions screen, the `qrtz` CLI and the speech model download all go through
 //! [`Packages`]: one installer, one fetcher, one verify path.
 //!
-//! - **Hosts** are pinned in this binary (`module_hosts.json`): `https://modules.qrtz.ai` (Cloudflare R2), then
-//!   each mirror (Backblaze B2), then, for a model file only, the signed tree's own mirror URL when it is under a
-//!   pinned model mirror host (`https://huggingface.co`). Nothing else is reachable from here, and nothing is
-//!   reached without a consent: `refresh` takes a `RefreshConsent`, `apply` an `InstallConsent` for exactly the plan
-//!   the user saw.
+//! - **Hosts** are pinned in this binary (`module_hosts.json`): the sole package host `https://modules.qrtz.ai`
+//!   (Cloudflare R2; ADR 0167, no Backblaze B2 mirror), then, for a model file only, the signed tree's own mirror
+//!   URL when it is under a pinned model mirror host (`https://huggingface.co`). Nothing else is reachable from
+//!   here, and nothing is reached without a consent: `refresh` takes a `RefreshConsent`, `apply` an
+//!   `InstallConsent` for exactly the plan the user saw.
 //! - **Transport** is `qrtz-speech`'s downloader (ADR 0078's one network path): HTTPS only, size caps, exact byte
 //!   ranges. Hosts are untrusted: every blob is checked against its signed sha256 before it enters the store.
 //! - **Code checks** (Bozniak's rule 7, both paths): on macOS, `codesign --verify --strict --deep` against the
@@ -41,9 +41,9 @@ impl Hosts {
     pub fn pinned() -> Self {
         serde_json::from_str(HOSTS).expect("module_hosts.json")
     }
-    /// The package hosts are set up once the offline root exists and is pinned here (`hosting-setup.md`). Before
-    /// that nothing is published to them, so the fetcher never asks them for a blob (audit P0-3: no failed requests
-    /// to `modules.qrtz.ai` and B2 ahead of every Hugging Face file).
+    /// The package host is set up once the offline root exists and is pinned here (`hosting-setup.md`). Before
+    /// that nothing is published to it, so the fetcher never asks it for a blob (audit P0-3: no failed requests
+    /// to `modules.qrtz.ai` ahead of every Hugging Face file).
     pub fn configured(&self) -> bool {
         self.root1_sha256.is_some()
     }
@@ -54,7 +54,7 @@ impl Hosts {
     }
 }
 
-/// The package hosts in order, plus the allowed model mirror hosts, over the shared downloader.
+/// The sole package host, plus the allowed model mirror hosts, over the shared downloader.
 pub struct HttpTransport {
     hosts: Vec<Downloader>,
     /// `(allowed prefix, downloader)`: a mirror URL `<prefix>/<path>` is fetched as `<path>` from the downloader's
@@ -280,18 +280,14 @@ mod tests {
     fn the_pinned_hosts_are_https_and_name_no_user() {
         let h = Hosts::pinned();
         assert_eq!(h.primary, "https://modules.qrtz.ai");
-        for m in &h.mirrors {
-            assert!(
-                m.starts_with("https://") && m.ends_with(".backblazeb2.com"),
-                "{m}"
-            );
-        }
+        assert!(h.mirrors.is_empty(), "ADR 0167: no package-host mirror");
+        assert_eq!(h.all(), ["https://modules.qrtz.ai"]);
         assert!(h.all().iter().all(|u| !u.contains('?') && !u.ends_with('/')));
         assert_eq!(h.model_mirrors, ["https://huggingface.co"]);
     }
 
     /// P0-3: with no pinned root (today), the pinned transport reaches only the model mirror: a pinned model file
-    /// never waits on modules.qrtz.ai or B2 first.
+    /// never waits on modules.qrtz.ai first.
     #[test]
     fn the_pinned_hosts_are_skipped_until_the_root_is_pinned() {
         let h = Hosts::pinned();

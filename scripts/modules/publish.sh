@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Publish the package index to modules.qrtz.ai (Cloudflare R2) and its B2 mirror (ADR 0153, ADR 0157,
-# docs/modules/production-setup.md). Runs on the release Mac, which holds ~/.qrtz-keys (index + timestamp keys).
+# Publish the package index to modules.qrtz.ai (Cloudflare R2; ADR 0153, ADR 0157, ADR 0167,
+# docs/modules/production-setup.md). Sole package host: no Backblaze B2 mirror. Runs on the release Mac, which
+# holds ~/.qrtz-keys (index + timestamp keys).
 #
-#   scripts/modules/publish.sh                 build, verify, upload (R2 then B2), check the live hosts
+#   scripts/modules/publish.sh                 build, verify, upload (R2), check the live host
 #   scripts/modules/publish.sh --no-upload     build and verify only (safe to run any time)
 #   scripts/modules/publish.sh --timestamp     re-sign the timestamp and upload only it (at least weekly)
 #
@@ -13,16 +14,15 @@
 #
 # Environment:
 #   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY   the R2 API token (Object Read & Write, bucket only)
-#   B2_KEY_ID, B2_APPLICATION_KEY                            the B2 application key (bucket only)
 #   QRTZ_TEAM_ID        the Developer ID team (10 characters; the publisher team of every package, models too;
 #                       default MR26CCZ496)
-#   optional: R2_BUCKET (qrtz-modules), B2_BUCKET (qrtz-modules-mirror), QRTZ_KEYS (~/.qrtz-keys),
+#   optional: R2_BUCKET (qrtz-modules), QRTZ_KEYS (~/.qrtz-keys),
 #   QRTZ_PUBLISH_OUT (~/qrtz-publish-out), QRTZ_MODELS_DIR (~/Library/Application Support/ai.qrtz.desktop/models),
 #   QRTZ_PUBLISH_MODELS (space-separated package names; default: every pinned model whose dir exists),
 #   QRTZ_PUBLISH_PACKAGES (space-separated built package dirs, each with its qrtz.json; default none),
 #   QRTZ_ROOT1_SHA256 (default: the pin in crates/qrtz-app/src/module_hosts.json, else $QRTZ_PUBLISH_OUT/ROOT1_SHA256),
 #   QRTZ_PUBLISH_BIN (a built qrtz-publish; default: cargo build --release -p qrtz-publish),
-#   QRTZ_PRIMARY_URL (https://modules.qrtz.ai), QRTZ_MIRROR_URL (from module_hosts.json) for the live check.
+#   QRTZ_PRIMARY_URL (https://modules.qrtz.ai) for the live check.
 # Secrets are read from the environment only (e.g. `export R2_SECRET_ACCESS_KEY=$(security find-generic-password
 # -s qrtz-r2 -w)`); nothing here writes them to disk or prints them. rclone gets them as RCLONE_CONFIG_* variables,
 # so there is no rclone.conf with keys in it.
@@ -50,7 +50,6 @@ out="${QRTZ_PUBLISH_OUT:-$HOME/qrtz-publish-out}"
 models_dir="${QRTZ_MODELS_DIR:-$HOME/Library/Application Support/ai.qrtz.desktop/models}"
 hosts_json="$repo/crates/qrtz-app/src/module_hosts.json"
 r2_bucket="${R2_BUCKET:-qrtz-modules}"
-b2_bucket="${B2_BUCKET:-qrtz-modules-mirror}"
 
 [[ -f "$keys/timestamp.key" ]] || die "$keys: no timestamp key (run scripts/modules/release-keys.sh first)"
 [[ "$mode" == timestamp || -f "$keys/index.key" ]] || die "$keys: no index key (run scripts/modules/release-keys.sh first)"
@@ -135,7 +134,7 @@ fi
 }
 
 command -v rclone >/dev/null || die "rclone not found (brew install rclone)"
-for v in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY B2_KEY_ID B2_APPLICATION_KEY; do
+for v in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do
   [[ -n "${!v:-}" ]] || die "$v is not set"
 done
 # rclone remotes from the environment only (no config file with secrets).
@@ -143,7 +142,6 @@ export RCLONE_CONFIG_QRTZR2_TYPE=s3 RCLONE_CONFIG_QRTZR2_PROVIDER=Cloudflare
 export RCLONE_CONFIG_QRTZR2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" RCLONE_CONFIG_QRTZR2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
 export RCLONE_CONFIG_QRTZR2_ENDPOINT="https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com"
 export RCLONE_CONFIG_QRTZR2_NO_CHECK_BUCKET=true RCLONE_CONFIG_QRTZR2_ACL=private
-export RCLONE_CONFIG_QRTZB2_TYPE=b2 RCLONE_CONFIG_QRTZB2_ACCOUNT="$B2_KEY_ID" RCLONE_CONFIG_QRTZB2_KEY="$B2_APPLICATION_KEY"
 
 ts='v1/timestamp.json*'
 upload() { # <remote:bucket>
@@ -156,18 +154,14 @@ upload() { # <remote:bucket>
   rclone copy "$out" "$1" --include "$ts" --header-upload "Cache-Control: public, max-age=300" --ignore-times -v
 }
 upload "qrtzr2:$r2_bucket"
-upload "qrtzb2:$b2_bucket"
 
-# The live check: what the hosts serve is what was signed.
+# The live check: what the host serves is what was signed.
 primary="${QRTZ_PRIMARY_URL:-https://modules.qrtz.ai}"
-mirror="${QRTZ_MIRROR_URL:-$(grep -o 'https://[a-z0-9.-]*backblazeb2\.com' "$hosts_json" | head -1)}"
 want="$(shasum -a 256 "$out/v1/timestamp.json" 2>/dev/null | cut -d' ' -f1 || sha256sum "$out/v1/timestamp.json" | cut -d' ' -f1)"
-for h in "$primary" "$mirror"; do
-  got="$(curl -fsS -H 'Cache-Control: no-cache' "$h/v1/timestamp.json?nocache=$RANDOM" | (shasum -a 256 2>/dev/null || sha256sum) | cut -d' ' -f1 || true)"
-  if [[ "$got" == "$want" ]]; then
-    echo "publish: $h serves the new timestamp"
-  else
-    echo "publish: WARNING: $h doesn't serve the new timestamp yet (cache or DNS); check $h/v1/timestamp.json in a few minutes" >&2
-  fi
-done
+got="$(curl -fsS -H 'Cache-Control: no-cache' "$primary/v1/timestamp.json?nocache=$RANDOM" | (shasum -a 256 2>/dev/null || sha256sum) | cut -d' ' -f1 || true)"
+if [[ "$got" == "$want" ]]; then
+  echo "publish: $primary serves the new timestamp"
+else
+  echo "publish: WARNING: $primary doesn't serve the new timestamp yet (cache or DNS); check $primary/v1/timestamp.json in a few minutes" >&2
+fi
 echo "publish: done"
