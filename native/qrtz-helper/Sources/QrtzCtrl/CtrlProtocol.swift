@@ -45,6 +45,10 @@ public enum CtrlRoute: Equatable, Sendable {
     /// `pmset sleepnow` makes, without spawning it). Nothing quit or closed, no key event. No app, no content, no gate
     /// (the host defers it while the user is typing or clicking).
     case sleepSystem
+    /// ADR 0191: turn the Wi-Fi radio on or off, in the helper's own process (CoreWLAN `setPower` on the default
+    /// interface, the menu bar switch). No network is joined, left or scanned and nothing about one comes over the
+    /// wire: only `on`. No app, no content, no gate (the host defers an off while the user is typing or clicking).
+    case setWifi(on: Bool)
     case scripting(app: String, verb: String)
     case axPerform(app: String, role: String, element: String, action: String)
     case axSet(app: String, role: String, element: String, attribute: String)
@@ -73,9 +77,10 @@ public enum CtrlRoute: Equatable, Sendable {
     /// ADR 0178: `screensaver_running` too (ScreenSaverEngine in the process list, read in this process).
     /// ADR 0180: `display_asleep` too (the main display's sleep state, read in this process).
     /// ADR 0183: `last_sleep` too (when the Mac last slept, `kern.sleeptime`, read in this process).
+    /// ADR 0191: `wifi_on` too (the Wi-Fi radio's power, read in this process; never a network's name).
     public static let applessChecks: Set<String> = ["output_muted", "dark_mode", "output_volume", "focus_on", CtrlClipboard.check,
                                                     CtrlDock.check, CtrlVolumes.check, CtrlScreensaver.check, CtrlDisplay.check,
-                                                    CtrlSystemSleep.check]
+                                                    CtrlSystemSleep.check, CtrlWifi.check]
     /// Slice 7b's selective closes (ADR 0114 / 0119) have no fixed script: the backend reads the tabs first
     /// (`CtrlTabs`) and closes only the ones it can tell about; a backend that can't tell refuses, and the host asks.
     public static let tabVerbs: Set<String> = ["close_saved_tabs", "close_unpinned_tabs"]
@@ -98,6 +103,12 @@ public enum CtrlRoute: Equatable, Sendable {
             case CtrlDisplay.op: return .sleepDisplay
             // ADR 0183: the bare op likewise.
             case CtrlSystemSleep.op: return .sleepSystem
+            // ADR 0191: `on` must be a JSON true/false (objCType "c", ADR 0141), and nothing else is read from the
+            // request (a network name riding along is ignored, never used).
+            case CtrlWifi.op:
+                guard let n = o["on"] as? NSNumber, String(cString: n.objCType) == "c", let b = o["on"] as? Bool
+                else { return nil }
+                return .setWifi(on: b)
             // ADR 0176: `single` must be a JSON true/false (objCType "c", ADR 0141); a number, a string or no field is
             // a bad request.
             case "eject_volumes":
@@ -290,7 +301,7 @@ public final class CtrlServer {
             guard let t = targetPid else { throw CtrlFailure("app.not_running") }
             do { try CtrlPolicy.checkKey(combo, targetPid: t, frontmostPid: frontmostPid) } catch { throw CtrlFailure("policy.refused") }
         case .files, .openURL, .launchHidden, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume,
-             .setFocus, .openFolder, .clearClipboard, .ejectVolumes, .sleepDisplay, .sleepSystem: break
+             .setFocus, .openFolder, .clearClipboard, .ejectVolumes, .sleepDisplay, .sleepSystem, .setWifi: break
         }
     }
 
@@ -300,7 +311,7 @@ public final class CtrlServer {
              let .pidKey(a, _): return a
         case .openFolder: return CtrlFolders.finder
         case .files, .takesOver, .quitApps, .hideApps, .unhideApps, .muteOutput, .unmuteOutput, .setVolume, .setFocus,
-             .clearClipboard, .ejectVolumes, .sleepDisplay, .sleepSystem:
+             .clearClipboard, .ejectVolumes, .sleepDisplay, .sleepSystem, .setWifi:
             return nil
         }
     }

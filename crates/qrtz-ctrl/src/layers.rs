@@ -556,6 +556,14 @@ const INTENTS: &[IntentDef] = &[
         slot: Slot::None,
         irreversible: false,
     },
+    // ADR 0191: turn the Wi-Fi radio on or off; reversible, no gate, no app (off deferred while the user is typing or
+    // clicking).
+    IntentDef {
+        id: "wifi_power",
+        app: AppMode::None,
+        slot: Slot::None,
+        irreversible: false,
+    },
     // ADR 0135: mute the Mac's sound output; reversible, no gate, no app.
     IntentDef {
         id: "mute",
@@ -847,6 +855,133 @@ const SYSTEM_SLEEP_NOT_WORDS: &[&str] = &[
     "log",
     "logout",
 ];
+/// ADR 0191: words that say the Wi-Fi radio should be on ("on" itself counts only where it isn't "on my mac", see
+/// [`wifi_on_said`]).
+const WIFI_ON_WORDS: &[&str] = &["enable", "enabled", "activate", "reenable", "re-enable"];
+/// ADR 0191: words that say it should be off.
+const WIFI_OFF_WORDS: &[&str] = &["off", "disable", "disabled", "deactivate"];
+/// ADR 0191: words after which "on" is a preposition, not the switch: "turn off wifi on my mac", "… on weekdays".
+const WIFI_ON_PREP_NEXT: &[&str] = &[
+    "my",
+    "the",
+    "this",
+    "that",
+    "your",
+    "our",
+    "a",
+    "an",
+    "weekdays",
+    "weekends",
+    "weekday",
+    "weekend",
+    "mondays",
+    "tuesdays",
+    "wednesdays",
+    "thursdays",
+    "fridays",
+    "saturdays",
+    "sundays",
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+];
+/// ADR 0191: words that make a Wi-Fi task something else ctrl doesn't do: a network by name or password (free text),
+/// joining / leaving / forgetting one, scanning, the hotspot, Wi-Fi calling, its settings, a toggle or restart (two
+/// moves, or a read first), another radio, or a negation ("don't turn off the wifi", "keep wifi on").
+const WIFI_NOT_WORDS: &[&str] = &[
+    "password",
+    "passwords",
+    "network",
+    "networks",
+    "ssid",
+    "name",
+    "join",
+    "joins",
+    "connect",
+    "connects",
+    "connected",
+    "connecting",
+    "reconnect",
+    "disconnect",
+    "disconnects",
+    "forget",
+    "scan",
+    "hotspot",
+    "tether",
+    "tethering",
+    "share",
+    "sharing",
+    "calling",
+    "calls",
+    "settings",
+    "setting",
+    "preferences",
+    "toggle",
+    "flip",
+    "restart",
+    "reset",
+    "reboot",
+    "cycle",
+    "bluetooth",
+    "airdrop",
+    "airplane",
+    "ethernet",
+    "vpn",
+    "signal",
+    "speed",
+    "router",
+    "don't",
+    "dont",
+    "never",
+    "not",
+    "keep",
+    "stays",
+    "stay",
+    "leave",
+];
+
+/// ADR 0191: the task names Wi-Fi: "wifi", "wi-fi", or "wi" + "fi".
+fn wifi_named(toks: &[Tok]) -> bool {
+    has(toks, &["wifi", "wi-fi", "wifis"]) || toks.windows(2).any(|w| w[0].w == "wi" && w[1].w == "fi")
+}
+
+/// ADR 0191: "on" is the switch ("turn on wifi", "turn the wifi on", "wifi back on at 8") unless it starts a place or
+/// a day ("turn off wifi on my mac", "… on weekdays") or begins the task ("on mondays …").
+fn wifi_on_said(toks: &[Tok]) -> bool {
+    if has(toks, WIFI_ON_WORDS) {
+        return true;
+    }
+    toks.iter().enumerate().any(|(i, t)| {
+        if t.w != "on" || i == 0 {
+            return false;
+        }
+        let prev = toks[i - 1].w.as_str();
+        let next = toks.get(i + 1).map(|n| n.w.as_str());
+        let switch_verb = matches!(prev, "turn" | "switch" | "turns" | "switches" | "flick");
+        switch_verb || !next.is_some_and(|n| WIFI_ON_PREP_NEXT.contains(&n))
+    })
+}
+
+/// ADR 0191: which way the task turns Wi-Fi: `Some(true)` on, `Some(false)` off, `None` neither or both ("turn the
+/// wifi off and on again" is a restart: two moves, not built).
+fn wifi_dir(toks: &[Tok]) -> Option<bool> {
+    match (wifi_on_said(toks), has(toks, WIFI_OFF_WORDS)) {
+        (true, false) => Some(true),
+        (false, true) => Some(false),
+        _ => None,
+    }
+}
+
+/// ADR 0191: "turn off my wifi", "turn wi-fi back on", "every night at 11 turn off the wifi", "disable wifi". Wi-Fi
+/// named, exactly one direction, and none of the words that mean another thing.
+fn wifi_task(toks: &[Tok]) -> bool {
+    wifi_named(toks) && wifi_dir(toks).is_some() && !has(toks, WIFI_NOT_WORDS)
+}
+
 /// ADR 0183: "put my mac to sleep", "sleep my mac", "every night at 11 put the computer to sleep". A Mac word plus a
 /// sleep word, and none of the words that mean another thing (the display alone is ADR 0180).
 fn system_sleep_task(toks: &[Tok]) -> bool {
@@ -1252,6 +1387,15 @@ fn intent_prior(id: &str, toks: &[Tok], apps: &AppsObs) -> i64 {
             p -= 3000;
             let full = named.iter().any(|(a, h)| *h as usize == a.tokens.len());
             if system_sleep_task(toks) && !full && !site {
+                p += 9500;
+            }
+        }
+        "wifi_power" => {
+            // ADR 0191: "turn off my wifi", "turn wi-fi back on". No app named in full, no site. Without it it sits
+            // well below.
+            p -= 3000;
+            let full = named.iter().any(|(a, h)| *h as usize == a.tokens.len());
+            if wifi_task(toks) && !full && !site {
                 p += 9500;
             }
         }
@@ -1805,6 +1949,15 @@ fn move_question(
         "display_sleep" => vec![route("system.display_sleep", 4500)],
         // ADR 0183: one move — the whole Mac sleeps.
         "system_sleep" => vec![route("system.system_sleep", 4500)],
+        // ADR 0191: one move, the direction the words say: a failed "off" never backtracks into turning it on.
+        "wifi_power" => vec![route(
+            if wifi_dir(toks) == Some(true) {
+                "system.wifi_on"
+            } else {
+                "system.wifi_off"
+            },
+            4500,
+        )],
         "mute" => vec![route("system.mute", 4500)],
         "unmute" => vec![route("system.unmute", 4500)],
         "set_volume" => vec![route("system.set_volume", 4500)],
@@ -2067,6 +2220,7 @@ fn intent_label(id: &str) -> &'static str {
         "eject_disks" => "eject your disks",
         "display_sleep" => "turn off your display",
         "system_sleep" => "put your mac to sleep",
+        "wifi_power" => "turn wi-fi on or off",
         "mute" => "mute your mac",
         "unmute" => "unmute your mac",
         "set_volume" => "set the volume",
@@ -2105,6 +2259,8 @@ fn route_label(id: &str) -> &'static str {
         "system.eject_all" => "eject every external disk, none forced",
         "system.display_sleep" => "put the displays to sleep, the mac stays awake",
         "system.system_sleep" => "put the whole mac to sleep, nothing closed",
+        "system.wifi_on" => "turn the wi-fi radio on, no network picked",
+        "system.wifi_off" => "turn the wi-fi radio off, nothing else changed",
         "system.eject_one" => "eject the one external disk, never forced",
         "system.mute" => "mute the sound output",
         "system.unmute" => "turn the sound output back on",
@@ -2228,4 +2384,70 @@ pub(crate) fn focus_mode_of(toks: &[Tok]) -> crate::ladder::FocusMode {
         .find(|(w, _)| has(toks, w))
         .map(|(_, m)| *m)
         .unwrap_or(F::DoNotDisturb)
+}
+
+// Run 49: the labels are what the decision layer reads. Laya scores an option by its text (CtrlLayaSequence encodes
+// each option's label after its `<mask>`), so an option that falls through to a generic label, or two options of one
+// question with the same text, can't be told apart by the model; and the model has 32 option slots.
+#[cfg(test)]
+mod label_tests {
+    use super::*;
+
+    #[test]
+    fn every_intent_has_its_own_label() {
+        let mut seen = BTreeMap::new();
+        for d in INTENTS {
+            let l = intent_label(d.id);
+            assert_ne!(l, "something else", "{} has no label", d.id);
+            assert_eq!(l, l.to_lowercase(), "{}: ui text is lowercase", d.id);
+            if let Some(other) = seen.insert(l, d.id) {
+                // Two intents may share a label only when one task reads as either (none do today).
+                panic!("{} and {other} share the label {l:?}", d.id);
+            }
+        }
+    }
+
+    #[test]
+    fn every_offered_move_has_a_label_and_no_question_repeats_one() {
+        let phrasings = [
+            "", "on", "off", "turn on", "turn off", "up", "down", "stop", "toggle", "all", "one", "delete",
+            "sort", "old", "light", "dark", "hide", "show", "wifi on", "wifi off", "clean", "trash",
+        ];
+        for d in INTENTS {
+            for p in phrasings {
+                let toks = tokens(p);
+                let q = move_question(d.id, &toks, &BTreeMap::new(), None);
+                assert!(q.choices.len() <= MAX_OPTIONS, "{} {p:?}", d.id);
+                let mut labels = BTreeMap::new();
+                for c in &q.choices {
+                    let l = label(&c.opt, None);
+                    if c.opt.id.starts_with("route.") {
+                        assert_ne!(l, "a route", "{} {p:?}: {} has no label", d.id, c.opt.id);
+                    }
+                    assert_eq!(l, l.to_lowercase(), "{}: ui text is lowercase", c.opt.id);
+                    if let Some(other) = labels.insert(l.clone(), c.opt.id.clone()) {
+                        panic!("{} {p:?}: {} and {other} both read {l:?}", d.id, c.opt.id);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_question_fits_the_models_option_slots() {
+        // laya_multilingual_e8_L512_options32: marker_map [1, 32, L], probabilities [1, 32] (CtrlLayaSequence.maxOptions).
+        const LAYA_OPTION_SLOTS: usize = 32;
+        const { assert!(MAX_OPTIONS <= LAYA_OPTION_SLOTS) };
+        // There are more intents than a question holds (30 > 19 + "none of these"): `finish` keeps the best by prior,
+        // so the intent question never overflows the slots however many intents are added.
+        let q = finish(
+            Node::ChooseIntent,
+            INTENTS
+                .iter()
+                .map(|d| choice(opt(format!("intent.{}", d.id), OptionKind::Intent), 0))
+                .collect(),
+        );
+        assert_eq!(q.choices.len(), MAX_OPTIONS);
+        assert!(INTENTS.len() > MAX_OPTIONS - 1);
+    }
 }

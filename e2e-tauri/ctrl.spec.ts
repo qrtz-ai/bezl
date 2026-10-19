@@ -948,6 +948,44 @@ test('ctrl: hide the dock and always show the dock set its auto-hide without a c
   expect(errors).toEqual([]);
 });
 
+// ADR 0191: "turn off my wifi" / "turn wi-fi back on" sets the wi-fi radio in the helper, one direction, no card.
+test('ctrl: turn off my wifi sets the wi-fi radio without a card', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?dev=1');
+  await page.getByTestId('nav-ctrl').click();
+  const ctrl = page.locator('[data-subapp="ctrl"]');
+  for (const [text, move, other] of [
+    [
+      'every night at 11 turn off the wifi',
+      'turn the wi-fi radio off, nothing else changed',
+      'turn the wi-fi radio on, no network picked',
+    ],
+    [
+      'turn wi-fi back on',
+      'turn the wi-fi radio on, no network picked',
+      'turn the wi-fi radio off, nothing else changed',
+    ],
+  ] as const) {
+    await ctrl.getByTestId('ctrl-task-input').fill(text);
+    await ctrl.getByTestId('ctrl-task-add').click();
+    const task = ctrl.getByTestId('ctrl-task').filter({ hasText: text });
+    await task.getByTestId('ctrl-task-run').click();
+    const run = ctrl.getByTestId('ctrl-run').first();
+    await expect(run.getByTestId('ctrl-run-status')).toHaveText('done');
+    await expect(ctrl.getByTestId('ctrl-confirm')).toHaveCount(0);
+    const decisions = ctrl.getByTestId('ctrl-decisions').first();
+    await expect(decisions).toContainText('turn wi-fi on or off');
+    await expect(decisions).toContainText(move);
+    await expect(decisions).not.toContainText(other);
+  }
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await axe(page, 'ctrl')).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 // ADR 0183: "put my mac to sleep" puts the whole mac to sleep in the helper, no card, nothing asked.
 test('ctrl: put my mac to sleep sleeps the mac without a card', async ({
   page,

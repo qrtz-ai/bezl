@@ -352,6 +352,9 @@ public final class MacCtrlBackend: CtrlBackend {
             let before = CtrlSystemSleepMac.lastSleep()
             try CtrlSystemSleepMac.sleepNow()
             lock.lock(); pendingSleepBaseline = before; lock.unlock()
+        case let .setWifi(on):
+            // ADR 0191: the Wi-Fi radio's power (CoreWLAN, this process); no network picked, nothing read about one.
+            try CtrlWifiMac.setPower(on)
         case let .ejectVolumes(single):
             // ADR 0176: the volumes from the mount table (never a path from the host), each unmounted and ejected in
             // this process without force: one in use stays mounted (a file open, a copy, a backup) and the act says
@@ -440,6 +443,8 @@ public final class MacCtrlBackend: CtrlBackend {
         case CtrlVolumes.check: return ejectableVolumes()?.count
         // ADR 0180: the main display's sleep state, read in this process (no app asked, no prompt).
         case CtrlDisplay.check: return CtrlDisplayMac.asleep() ? 1 : 0
+        // ADR 0191: the Wi-Fi radio's power only, read in this process (no Location, no network name).
+        case CtrlWifi.check: return CtrlWifi.value(powerOn: CtrlWifiMac.powerOn())
         // ADR 0183: when the Mac last slept; right after the act, waits (bounded) for the sleep to happen and end.
         case CtrlSystemSleep.check:
             lock.lock(); let baseline = pendingSleepBaseline; pendingSleepBaseline = nil; lock.unlock()

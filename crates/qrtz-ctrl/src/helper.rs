@@ -85,6 +85,10 @@ pub enum Check {
     /// helper waits (bounded, under the host's helper timeout) for it to change, so the read after the act is the
     /// sleep it asked for, taken once the Mac is awake again. Verified as increased.
     LastSleep,
+    /// ADR 0191: 1 if the Wi-Fi radio is on, 0 if it's off (`null`: no Wi-Fi interface). Read in the helper's own
+    /// process from CoreWLAN's power state only: never the network's name, the networks around, or anything that
+    /// needs Location.
+    WifiOn,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -601,6 +605,11 @@ pub struct FakeWorld {
     pub system_sleep_refused: bool,
     /// ADR 0183: how many times the fake Mac slept.
     pub system_sleeps: u32,
+    /// ADR 0191: the Wi-Fi radio (`None`: no Wi-Fi interface, so the act fails like the Mac helper's `wifi.none`).
+    /// `wifi_refused`: the system refuses the power change (the Mac's "require an administrator to turn Wi-Fi on or
+    /// off" setting answers `wifi.needs_admin`).
+    pub wifi: Option<bool>,
+    pub wifi_refused: bool,
     /// ADR 0140: the output volume in percent (read back only while unmuted).
     pub volume: i64,
     /// ADR 0158: the user made the "qrtz Set Focus" shortcut (false: `focus.no_shortcut`).
@@ -680,6 +689,8 @@ impl FakeWorld {
             last_sleep: Some(1_760_000_000),
             system_sleep_refused: false,
             system_sleeps: 0,
+            wifi: Some(true),
+            wifi_refused: false,
             focus_shortcut: false,
             shortcuts_denied: false,
             focus: crate::ladder::FocusMode::Off,
@@ -922,6 +933,15 @@ impl FakeWorld {
                 self.last_sleep = Some(self.last_sleep.unwrap_or(0) + 60);
                 Ok(())
             }
+            // ADR 0191: only the radio's power changes; no network is joined or left by name, nothing is read.
+            Route::Workspace(WorkspaceOp::SetWifi { on }) => match self.wifi {
+                None => Err("wifi.none".into()),
+                Some(_) if self.wifi_refused => Err("wifi.needs_admin".into()),
+                Some(_) => {
+                    self.wifi = Some(*on);
+                    Ok(())
+                }
+            },
             // ADR 0168: nothing read, everything gone.
             Route::Workspace(WorkspaceOp::ClearClipboard) => match self.clipboard {
                 Some(_) => {
@@ -1059,6 +1079,7 @@ impl FakeWorld {
                     Check::ScreensaverRunning => Some(i64::from(self.screensaver_running)),
                     Check::DisplayAsleep => Some(i64::from(self.display_asleep)),
                     Check::LastSleep => self.last_sleep,
+                    Check::WifiOn => self.wifi.map(i64::from),
                     Check::FocusOn => Some(i64::from(self.focus != crate::ladder::FocusMode::Off)),
                     Check::FolderOpen { folder } => self
                         .apps

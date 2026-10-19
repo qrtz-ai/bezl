@@ -143,6 +143,15 @@ public func IOPMSleepSystem(_ fb: io_connect_t) -> IOReturn { 0 }
 @discardableResult public func IOServiceClose(_ connect: io_connect_t) -> kern_return_t { 0 }
 public func sysctlbyname(_ name: UnsafePointer<CChar>!, _ oldp: UnsafeMutableRawPointer!, _ oldlenp: UnsafeMutablePointer<Int>!,
                          _ newp: UnsafeMutableRawPointer!, _ newlen: Int) -> Int32 { -1 }
+// CoreWLAN (ADR 0191)
+open class CWInterface: NSObject {
+    open func powerOn() -> Bool { false }
+    open func setPower(_ power: Bool) throws {}
+}
+open class CWWiFiClient: NSObject {
+    open class func shared() -> CWWiFiClient { CWWiFiClient() }
+    open func interface() -> CWInterface? { nil }
+}
 // Core ML
 public enum MLComputeUnits { case cpuOnly, cpuAndGPU, all, cpuAndNeuralEngine }
 open class MLModelConfiguration: NSObject { open var computeUnits: MLComputeUnits = .all }

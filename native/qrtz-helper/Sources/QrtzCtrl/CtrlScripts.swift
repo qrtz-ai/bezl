@@ -158,3 +158,27 @@ public enum CtrlSystemSleep {
         return now
     }
 }
+
+/// ADR 0191: "turn off my wifi" / "turn wi-fi back on". The act sets the Wi-Fi radio's power the way the menu bar
+/// switch does (CoreWLAN: `setPower` on the default Wi-Fi interface), in the helper's own process: no process spawned
+/// (no networksetup), no Apple Event, no key event, no network joined, left or scanned. The measure is the radio's
+/// power (`powerOn`), read in this process; nothing that needs Location (a network's name, the networks around) is
+/// ever read. The names and the error mapping live here (Foundation) so Linux tests see them; the calls are in
+/// mac/CtrlWifiMac.swift.
+public enum CtrlWifi {
+    public static let op = "set_wifi"
+    public static let check = "wifi_on"
+    /// CoreWLAN's `kCWOperationNotPermittedErr`: the Mac requires an administrator to turn Wi-Fi on or off (a System
+    /// Settings option). Assumed until a Mac check, like ADR 0158's error numbers; anything else is `wifi.refused`.
+    public static let notPermittedCode = -3930
+
+    /// The failure an act answers for a CoreWLAN error code (never a prompt, never retried another way).
+    public static func failure(code: Int) -> String {
+        code == notPermittedCode ? "wifi.needs_admin" : "wifi.refused"
+    }
+
+    /// The measure's value: 1 on, 0 off, nil with no Wi-Fi interface.
+    public static func value(powerOn: Bool?) -> Int? {
+        powerOn.map { $0 ? 1 : 0 }
+    }
+}

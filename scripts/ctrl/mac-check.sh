@@ -13,7 +13,7 @@ here="$root/scripts/ctrl/mac-check"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 if [ "${1:-}" = "--typecheck" ]; then
-  strip() { grep -v -E '^#if os\(macOS\)|^#endif|^import (AppKit|ApplicationServices|CoreML|CoreServices|Carbon|CoreGraphics|IOKit)' "$1"; }
+  strip() { grep -v -E '^#if os\(macOS\)|^#endif|^import (AppKit|ApplicationServices|CoreML|CoreServices|Carbon|CoreGraphics|IOKit|CoreWLAN)' "$1"; }
   for f in "$src"/mac/*.swift; do strip "$f" >"$tmp/mac_$(basename "$f")"; done
   strip "$here/main.swift" >"$tmp/main.swift"
   swiftc -typecheck -swift-version 5 -module-name ctrl_check "$root/scripts/ctrl/mac-stubs.swift" "$here/stubs-extra.swift" \

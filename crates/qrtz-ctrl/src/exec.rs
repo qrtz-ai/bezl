@@ -118,6 +118,10 @@ pub const DISPLAY_SLEEP_MOVE: &str = "route.system.display_sleep";
 /// ADR 0183: "put my mac to sleep" / "every night at 11 sleep my mac": the whole Mac sleeps.
 pub const SYSTEM_SLEEP_MOVE: &str = "route.system.system_sleep";
 
+/// ADR 0191: "turn on my wifi" / "every night at 11 turn off wi-fi": the Wi-Fi radio's power, one direction per task.
+pub const WIFI_ON_MOVE: &str = "route.system.wifi_on";
+pub const WIFI_OFF_MOVE: &str = "route.system.wifi_off";
+
 /// ADR 0176: "eject my disks" / "eject all drives": every ejectable local volume the helper lists.
 pub const EJECT_ALL_MOVE: &str = "route.system.eject_all";
 /// ADR 0176: "eject the usb drive": the one ejectable volume, only while exactly one is mounted.
@@ -225,6 +229,18 @@ pub fn step_for(s: &CtrlState, goal: &Goal) -> Option<Step> {
             verify: Verify {
                 check: Check::LastSleep,
                 expect: Expect::Increased,
+            },
+            content: BTreeMap::new(),
+        });
+    }
+    // ADR 0191: the Wi-Fi radio's power in the helper's own process; verified by its power state reading back.
+    if mv == WIFI_ON_MOVE || mv == WIFI_OFF_MOVE {
+        let on = mv == WIFI_ON_MOVE;
+        return Some(Step::Act {
+            routes: vec![Route::Workspace(WorkspaceOp::SetWifi { on })],
+            verify: Verify {
+                check: Check::WifiOn,
+                expect: if on { Expect::One } else { Expect::Zero },
             },
             content: BTreeMap::new(),
         });
@@ -913,6 +929,14 @@ impl Driver<'_> {
                 && self.helper.measure(&Check::DisplayAsleep) == Some(1)
             {
                 return sink.push(log, finish(TaskStatus::Done));
+            }
+            // ADR 0191: Wi-Fi already the way the task wants it is done with nothing acted. A Mac with no Wi-Fi
+            // interface (`null`) gets the act, which says so (`wifi.none`).
+            if fplan.is_none() && (mv == WIFI_ON_MOVE || mv == WIFI_OFF_MOVE) {
+                let want = i64::from(mv == WIFI_ON_MOVE);
+                if self.helper.measure(&Check::WifiOn) == Some(want) {
+                    return sink.push(log, finish(TaskStatus::Done));
+                }
             }
             // ADR 0178: the screen saver already up is done with nothing acted (amendment 1: already off, for a stop).
             if fplan.is_none() && (mv == SCREENSAVER_MOVE || mv == SCREENSAVER_STOP_MOVE) {

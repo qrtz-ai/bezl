@@ -140,6 +140,8 @@ const INTENTS = {
   ),
   display_sleep: opt('intent.display_sleep', 'turn off your display', 0.07),
   system_sleep: opt('intent.system_sleep', 'put your mac to sleep', 0.07),
+  wifi_on: opt('intent.wifi_power', 'turn wi-fi on or off', 0.07),
+  wifi_off: opt('intent.wifi_power', 'turn wi-fi on or off', 0.07),
   open_email: opt('intent.open_app', 'open an app', 0.07),
 };
 type Intent =
@@ -177,6 +179,8 @@ type Intent =
   | 'screensaver_stop'
   | 'display_sleep'
   | 'system_sleep'
+  | 'wifi_on'
+  | 'wifi_off'
   | 'open_email';
 /** What an unclear task is asked (the three most likely intents). */
 const ASKED = [INTENTS.close_tabs, INTENTS.clean_folder, INTENTS.close_windows];
@@ -390,6 +394,25 @@ const REST: Record<Intent, Omit<CtrlDecision, 'id'>[]> = {
       opt(
         'route.system.system_sleep',
         'put the whole mac to sleep, nothing closed',
+        0.97,
+      ),
+    ]),
+  ],
+  // ADR 0191: the wi-fi radio's power in the helper's own process, one direction; no app question, no card.
+  wifi_on: [
+    act('choose_move', [
+      opt(
+        'route.system.wifi_on',
+        'turn the wi-fi radio on, no network picked',
+        0.97,
+      ),
+    ]),
+  ],
+  wifi_off: [
+    act('choose_move', [
+      opt(
+        'route.system.wifi_off',
+        'turn the wi-fi radio off, nothing else changed',
         0.97,
       ),
     ]),
@@ -781,8 +804,31 @@ const windowsOf = (text: string): Intent | null => {
   return minimized ? 'minimize_app' : null;
 };
 
+// ADR 0191: wi-fi named plus exactly one direction ("on" not as "on my mac" / "on weekdays"); never a network by name
+// or password, joining / leaving one, the hotspot, wi-fi calling, its settings, a toggle or restart, another radio or
+// a negation.
+const wifiOf = (text: string): Intent | null => {
+  if (!/\b(wifi|wi-fi|wi fi|wifis)\b/i.test(text)) return null;
+  if (
+    /\b(password|passwords|network|networks|ssid|name|join|joins|connect|connects|connected|connecting|reconnect|disconnect|disconnects|forget|scan|hotspot|tether|tethering|share|sharing|calling|calls|settings|setting|preferences|toggle|flip|restart|reset|reboot|cycle|bluetooth|airdrop|airplane|ethernet|vpn|signal|speed|router|don't|dont|never|not|keep|stays|stay|leave)\b/i.test(
+      text,
+    )
+  )
+    return null;
+  const off = /\b(off|disable|disabled|deactivate)\b/i.test(text);
+  const on =
+    /\b(enable|enabled|activate|reenable|re-enable)\b/i.test(text) ||
+    /\b(turn|turns|switch|switches|flick)\s+on\b/i.test(text) ||
+    /\S\s+on\b(?!\s+(my|the|this|that|your|our|a|an|weekdays?|weekends?|(mon|tues|wednes|thurs|fri|satur|sun)days?)\b)/i.test(
+      text,
+    );
+  if (on === off) return null;
+  return on ? 'wifi_on' : 'wifi_off';
+};
+
 const intentOf = (text: string): Intent | null =>
   windowsOf(text) ??
+  wifiOf(text) ??
   ejectOf(text) ??
   displaySleepOf(text) ??
   systemSleepOf(text) ??

@@ -9,7 +9,7 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 "$root/scripts/ctrl/objc-names.sh"
 for f in "$src"/mac/*.swift; do
-  grep -v -E '^#if os\(macOS\)|^#endif|^import (AppKit|ApplicationServices|CoreML|CoreServices|Carbon|CoreGraphics|IOKit)' "$f" >"$tmp/mac_$(basename "$f")"
+  grep -v -E '^#if os\(macOS\)|^#endif|^import (AppKit|ApplicationServices|CoreML|CoreServices|Carbon|CoreGraphics|IOKit|CoreWLAN)' "$f" >"$tmp/mac_$(basename "$f")"
 done
 swiftc -typecheck -swift-version 5 -module-name QrtzCtrl "$root/scripts/ctrl/mac-stubs.swift" "$src"/*.swift "$tmp"/mac_*.swift
 echo "QrtzCtrl mac sources typecheck against the stubs"

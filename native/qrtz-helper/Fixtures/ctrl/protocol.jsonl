@@ -43,5 +43,7 @@
 {"type":"ctrl.act","id":"c33","actionId":"a13","route":{"route":"workspace","op":"sleep_system"},"content":{}}
 {"type":"ctrl.measure","id":"c34","check":{"check":"last_sleep"}}
 {"type":"ctrl.act","id":"c35","actionId":"a14","route":{"route":"scripting","app":"com.apple.systemevents","verb":"stop_screen_saver"},"content":{}}
+{"type":"ctrl.act","id":"c36","actionId":"a15","route":{"route":"workspace","op":"set_wifi","on":false},"content":{}}
+{"type":"ctrl.measure","id":"c37","check":{"check":"wifi_on"}}
 {"type":"ctrl.laya.warm","id":"c12","model":"/models/ctrl/laya/laya.mlmodelc"}
 {"type":"ctrl.laya.warm.result","id":"c12","state":"started"}

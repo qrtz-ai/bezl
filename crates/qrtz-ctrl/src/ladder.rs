@@ -123,6 +123,12 @@ pub enum WorkspaceOp {
     /// mouse or opening the lid wakes it), no gate, but deferred while the user is typing or clicking: it stops
     /// everything on the Mac, so it never happens under their hands.
     SleepSystem,
+    /// ADR 0191: turn the Wi-Fi radio on or off, in the helper's own process (CoreWLAN: `setPower` on the default
+    /// Wi-Fi interface, what the menu bar switch does). No app is told anything, no key event, no network is joined,
+    /// left or scanned, and nothing about a network (name, password, list) is read or crosses the wire: only `on`, a
+    /// strict JSON bool. Reversible (turn it back on), no gate, no permission. Off is deferred while the user is
+    /// typing or clicking: cutting the network under their hands drops whatever they're doing online right now.
+    SetWifi { on: bool },
 }
 
 /// ADR 0166: the Finder, the app that shows a folder.
@@ -332,7 +338,8 @@ impl Route {
                 | WorkspaceOp::ClearClipboard
                 | WorkspaceOp::EjectVolumes { .. }
                 | WorkspaceOp::SleepDisplay
-                | WorkspaceOp::SleepSystem,
+                | WorkspaceOp::SleepSystem
+                | WorkspaceOp::SetWifi { .. },
             ) => None,
             Route::Workspace(WorkspaceOp::OpenUrl { app, .. } | WorkspaceOp::LaunchHidden { app }) => {
                 Some(app)
@@ -530,6 +537,17 @@ pub fn judge(route: &Route, env: &Env) -> Verdict {
                 // happens while they're typing or clicking: retry later (a quiet Mac sleeps, as asked).
                 WorkspaceOp::SleepSystem => {
                     if env.user_active() {
+                        return Verdict::Defer {
+                            why: DeferReason::UserActiveInTarget,
+                        };
+                    }
+                    return Verdict::Allowed;
+                }
+                // ADR 0191: no app or window, no input. Turning the Wi-Fi on takes nothing from anyone; turning it off
+                // drops whatever the user is doing online, so like a sleep it never happens while they're typing or
+                // clicking: retry later (a quiet Mac goes offline, as asked).
+                WorkspaceOp::SetWifi { on } => {
+                    if !on && env.user_active() {
                         return Verdict::Defer {
                             why: DeferReason::UserActiveInTarget,
                         };
