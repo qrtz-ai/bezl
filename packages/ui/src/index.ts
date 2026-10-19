@@ -26,3 +26,5 @@ export * from './case';
 export * from './Setup';
 export * from './ModuleSettings';
 export * from './Marketplace';
+export * from './Modal';
+export * from './Menu';

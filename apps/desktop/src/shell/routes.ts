@@ -9,24 +9,52 @@ import {
 /**
  * The main window's routes (ADR 0091), under a hash router (`index.html#/…`; the Tauri custom protocol has no
  * server to answer deep paths):
- *   /<app id>                               a sub app; `/` and anything unknown → the first registry app
+ *   /qrtz                                   the qrtz page: the app manager (installed, available); the default
+ *   /qrtz/item/:name                        the qrtz page with that app's detail modal open
+ *   /qrtz/settings                          qrtz's own (global) settings, behind the qrtz page's gear
+ *   /<app id>                               a sub app; `/` and anything unknown → /qrtz
  *   /note/meetings/:meetingId/:tab?         a meeting; tab ∈ transcript (default) | summary | notes
- *   /talk|note|ctrl|snap/settings               a module's own settings page, in its view (ADR 0161)
- *   /marketplace/installed                   the module manager
- *   /marketplace/item/:name                  an extension's detail page
- * Other sub apps have one view each, so any deeper path goes to `/<app id>`.
+ *   /talk|note|ctrl|snap/settings           a module's own settings page, in its view (ADR 0161)
+ * The old /marketplace… and /settings routes redirect to the qrtz page. Other sub apps have one view each, so
+ * any deeper path goes to `/<app id>`.
  */
 const MODULE_VIEWS_WITH_SETTINGS = ['talk', 'note', 'ctrl', 'snap'];
 const MEETING = '/note/meetings/:meetingId/:tab?';
+const ITEM = /^[a-z][a-z0-9.-]{0,63}$/;
 
-/** The canonical path for `pathname`; equal to it when it's already a valid route. */
+/** The qrtz page's id in the sidebar and the route. */
+export const QRTZ = 'qrtz';
+/**
+ * The two sub apps the qrtz page is made of, each with its own scoped client: the app manager (`marketplace`:
+ * packages, switches, permissions, models) and qrtz's settings (`settings`: config writes, backups, logs,
+ * updates). One page for the user; two least-privilege IPC identities, unchanged from before.
+ */
+export const QRTZ_PARTS = { manager: 'marketplace', settings: 'settings' };
+const isPart = (id: string) => id === 'marketplace' || id === 'settings';
+
+/** The qrtz page's canonical path for its sub-path (`''`, `settings`, `item/<name>`). */
+function qrtzRoute(rest: readonly string[]): string {
+  if (rest.length === 1 && rest[0] === SETTINGS_PATH) return '/qrtz/settings';
+  if (rest.length === 2 && rest[0] === 'item' && ITEM.test(rest[1] ?? ''))
+    return `/qrtz/item/${rest[1]}`;
+  return '/qrtz';
+}
+
+/**
+ * The canonical path for `pathname`; equal to it when it's already a valid route. `apps` are the sub apps the
+ * sidebar shows below qrtz (the qrtz page itself is always there).
+ */
 export function resolveRoute(
   pathname: string,
   apps: readonly string[],
 ): string {
-  const fallback = `/${apps[0] ?? ''}`;
   const [app, ...rest] = pathname.split('/').filter(Boolean);
-  if (!app || !apps.includes(app)) return fallback;
+  if (app === QRTZ) return qrtzRoute(rest);
+  // Redirects from before the qrtz page: the marketplace and the module manager are its body, an item its modal.
+  if (app === 'marketplace')
+    return rest[0] === 'item' ? qrtzRoute(rest) : '/qrtz';
+  if (app === 'settings') return '/qrtz/settings';
+  if (!app || isPart(app) || !apps.includes(app)) return '/qrtz';
   if (rest.length === 0) return `/${app}`;
   if (
     rest.length === 1 &&
@@ -34,17 +62,6 @@ export function resolveRoute(
     MODULE_VIEWS_WITH_SETTINGS.includes(app)
   )
     return `/${app}/${SETTINGS_PATH}`;
-  if (app === 'marketplace') {
-    if (rest.length === 1 && rest[0] === 'installed')
-      return '/marketplace/installed';
-    if (
-      rest.length === 2 &&
-      rest[0] === 'item' &&
-      /^[a-z][a-z0-9.-]{0,63}$/.test(rest[1] ?? '')
-    )
-      return `/marketplace/item/${rest[1]}`;
-    return '/marketplace';
-  }
   if (app === 'note') {
     const m = matchPath(MEETING, pathname);
     if (m?.params.meetingId)
@@ -64,9 +81,36 @@ export function splitRoute(path: string): { app: string; sub: string } {
 export const joinRoute = (app: string, sub = '') =>
   sub ? `/${app}/${sub}` : `/${app}`;
 
+/**
+ * Which sub app shows a resolved page path, and its own sub-path: the qrtz page's settings view is the settings
+ * sub app; the rest of the qrtz page (the list and an item's modal) is the app manager.
+ */
+export function hostOf(
+  page: string,
+  sub: string,
+): { host: string; sub: string } {
+  if (page !== QRTZ) return { host: page, sub };
+  return sub === SETTINGS_PATH
+    ? { host: QRTZ_PARTS.settings, sub: '' }
+    : { host: QRTZ_PARTS.manager, sub };
+}
+
+/** The page path a sub app's own sub-path is at (the inverse of `hostOf`). */
+export function pageOf(host: string, sub: string): string {
+  if (host === QRTZ_PARTS.settings) return '/qrtz/settings';
+  if (host === QRTZ_PARTS.manager)
+    return qrtzRoute(sub.split('/').filter(Boolean));
+  return joinRoute(host, sub);
+}
+
 /** Where a navigation request (palette, tray, notification, a sub app) goes. */
 export function navTarget(r: NavRequest, apps: readonly string[]): string {
-  if (!apps.includes(r.app)) return resolveRoute('/', apps);
+  if (r.app === QRTZ || r.app === 'marketplace') {
+    if (r.settings) return '/qrtz/settings';
+    return r.item ? qrtzRoute(['item', r.item]) : '/qrtz';
+  }
+  if (r.app === 'settings') return '/qrtz/settings';
+  if (!apps.includes(r.app)) return '/qrtz';
   if (r.app === 'note' && r.meetingId)
     return joinRoute('note', meetingPath(r.meetingId, r.tab));
   if (r.settings) return resolveRoute(joinRoute(r.app, SETTINGS_PATH), apps);

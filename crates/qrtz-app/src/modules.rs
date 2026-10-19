@@ -66,7 +66,7 @@ pub fn modules_using(capability: &str) -> Vec<&'static str> {
 fn off(id: &str) -> AppError {
     AppError::new(
         ErrorCode::Unavailable,
-        format!("{id} is switched off in apps"),
+        format!("{id} is switched off in qrtz"),
     )
     .retryable(false)
 }

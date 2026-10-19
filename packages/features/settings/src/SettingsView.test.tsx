@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { QrtzClient } from '@qrtz/core';
-import { defaultConfig } from '@qrtz/core';
+import { defaultConfig, onNavigateRequest, type NavRequest } from '@qrtz/core';
 import { QrtzClientProvider } from '@qrtz/core/react';
 import { ipcSamples } from '@qrtz/core/ipc/samples';
 import { ThemeProvider } from '@qrtz/ui';
@@ -41,8 +41,8 @@ describe('global settings (ADR 0146 M1.4)', () => {
     });
     const q = (id: string) => el.querySelector(`[data-testid="${id}"]`);
     for (const id of [
-      'open-marketplace',
-      'speech-settings',
+      'speech-auto-update',
+      'speech-warm-after-download',
       'offline-note',
       'theme',
       'menu-bar-icon',
@@ -69,10 +69,30 @@ describe('global settings (ADR 0146 M1.4)', () => {
       'excluded-apps',
       'pause-hotkey',
       'speaker-mode',
+      // The qrtz page is the app manager now: no apps section and no link to it.
+      'extensions-link',
+      'open-marketplace',
+      'modules-note',
+      // Each app's models are managed in its detail on the qrtz page: no speech section here.
+      'speech-settings',
+      'speech-setup',
+      'speech-download',
+      'speech-delete',
+      'speech-pause',
     ])
       expect(q(id), id).toBeNull();
-    expect(q('modules-note')?.textContent).toContain('behind the gear');
+    expect(el.textContent).not.toContain('apps page');
+    // The qrtz page's settings page: titled like every app's, and its close goes back to the qrtz page.
+    expect(q('settings')?.querySelector('h1')?.textContent).toBe(
+      'qrtz settings',
+    );
+    const seen: NavRequest[] = [];
+    const off = onNavigateRequest((r) => seen.push(r));
+    await act(async () => (q('settings-close') as HTMLElement).click());
+    off();
+    expect(seen).toEqual([{ app: 'qrtz' }]);
     root.unmount();
+    el.remove();
   });
 
   it('export diagnostics and check for updates only when pressed', async () => {

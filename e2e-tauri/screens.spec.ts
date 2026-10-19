@@ -228,7 +228,7 @@ test('note and talk point to settings while speech is not downloaded', async ({
   // Visited sub apps stay mounted (hidden), so scope to the talk app.
   const talk = page.locator('[data-subapp="talk"]');
   await expect(talk.getByTestId('speech-notice')).toBeVisible();
-  await talk.getByTestId('speech-notice-settings').click();
+  await talk.getByTestId('speech-notice-open').click();
   await expect(page.getByTestId('speech-settings')).toBeVisible();
   await page.getByTestId('speech-download').click();
   await expect(page.getByTestId('speech-installed')).toBeVisible({

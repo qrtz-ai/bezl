@@ -94,7 +94,7 @@ describe('speech setup', () => {
     const v = view({ state: 'idle', done: 0, total: 0 }, { configured: false });
     expect(panel(v)).toContain('speech isn&#x27;t available in this build');
     expect(
-      renderToStaticMarkup(<SpeechNotice status={v} onOpenSettings={noop} />),
+      renderToStaticMarkup(<SpeechNotice status={v} onOpen={noop} />),
     ).toBe('');
   });
 
@@ -104,12 +104,12 @@ describe('speech setup', () => {
       { installed: '1.0.0' },
     );
     expect(
-      renderToStaticMarkup(<SpeechNotice status={v} onOpenSettings={noop} />),
+      renderToStaticMarkup(<SpeechNotice status={v} onOpen={noop} />),
     ).toBe('');
     const missing = renderToStaticMarkup(
       <SpeechNotice
         status={view({ state: 'idle', done: 0, total: 0 })}
-        onOpenSettings={noop}
+        onOpen={noop}
       />,
     );
     expect(missing).toContain('speech isn&#x27;t downloaded');

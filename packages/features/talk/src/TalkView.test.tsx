@@ -126,7 +126,7 @@ describe("echo's view offers parakeet in place (ADR 0175)", () => {
     );
     expect(v.q('echo-offer')).not.toBeNull();
     expect(v.q('speech-notice')).toBeNull();
-    expect(v.q('speech-notice-settings')).toBeNull();
+    expect(v.q('speech-notice-open')).toBeNull();
     await act(async () => v.q('echo-download')!.click());
     await v.emit('speech:status', downloading);
     await v.settle();

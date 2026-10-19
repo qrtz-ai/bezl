@@ -210,7 +210,7 @@ export default function NoteView() {
             ) : null}
             <SpeechNotice
               status={speechSetup.speech}
-              onOpenSettings={() => requestNavigate({ app: 'settings' })}
+              onOpen={() => requestNavigate({ app: 'qrtz', item: 'nano' })}
             />
             <Stack as="ul" gap={0} scroll grow aria-label="meetings">
               {visible.length === 0 ? (

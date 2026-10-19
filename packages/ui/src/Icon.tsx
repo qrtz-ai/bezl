@@ -79,6 +79,8 @@ export const ICONS = {
   'edit-3': Edit3,
   'mic-off': MicOff,
   more: MoreHorizontal,
+  // The qrtz page's per-app actions menu.
+  'more-horizontal': MoreHorizontal,
   pause: Pause,
   play: Play,
   refresh: RefreshCw,

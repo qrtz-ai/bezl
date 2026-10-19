@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useTheme } from './theme';
+import { transition } from './tokens';
 import { Text } from './Text';
 import { Badge, type BadgeTone } from './Badge';
 import { GridCard } from './Card';
@@ -44,10 +45,10 @@ export function ExtensionGlyph({
   size = 'md',
 }: {
   icon: IconName;
-  size?: 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg';
 }) {
   const t = useTheme();
-  const px = size === 'lg' ? 56 : 40;
+  const px = size === 'lg' ? 56 : size === 'sm' ? 32 : 40;
   return (
     <div
       aria-hidden
@@ -63,7 +64,10 @@ export function ExtensionGlyph({
         color: t.color.text,
       }}
     >
-      <Icon name={icon} size={size === 'lg' ? 'xl' : 'lg'} />
+      <Icon
+        name={icon}
+        size={size === 'lg' ? 'xl' : size === 'sm' ? 'md' : 'lg'}
+      />
     </div>
   );
 }
@@ -366,5 +370,187 @@ export function ModuleRow({
       </div>
       {children}
     </GridCard>
+  );
+}
+
+/** The qrtz page's app lists ("installed", "available"): a plain list of AppRows, one per line. */
+export function AppList({
+  children,
+  'aria-label': label,
+  'data-testid': testId,
+}: {
+  children: ReactNode;
+  'aria-label'?: string;
+  'data-testid'?: string;
+}) {
+  return (
+    <ul
+      aria-label={label}
+      data-testid={testId}
+      data-app-list=""
+      style={{
+        margin: 0,
+        padding: 0,
+        display: 'grid',
+        gap: 2,
+        minWidth: 0,
+      }}
+    >
+      {children}
+    </ul>
+  );
+}
+
+/**
+ * One app on the qrtz page, in a short row: glyph, name, one line of description, the version and size, an
+ * optional status word, and its action on the right (a download icon, an inline progress bar, or the "more
+ * actions" menu). Clicking anywhere on the row but the action opens the app's detail (`onOpen`); the action's
+ * clicks and keys never reach the row.
+ */
+export function AppRow({
+  name,
+  icon,
+  description,
+  meta,
+  status,
+  statusTone = 'muted',
+  action,
+  onOpen,
+}: {
+  name: string;
+  icon: IconName;
+  description: string;
+  /** Already formatted (`v0.3.0 · 628 mb with dependencies`, `v0.2.0 · built in`). */
+  meta: string;
+  /** A short word beside the action: built in, update, off, restart to update, couldn't install. */
+  status?: string | null;
+  statusTone?: 'muted' | 'warning' | 'danger' | 'success';
+  action?: ReactNode;
+  onOpen: () => void;
+}) {
+  const t = useTheme();
+  const [hover, setHover] = useState(false);
+  return (
+    <li
+      data-testid={`app-row-${name}`}
+      data-app-row=""
+      style={{ listStyle: 'none', minWidth: 0 }}
+    >
+      <div
+        onClick={onOpen}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr) auto auto',
+          alignItems: 'center',
+          columnGap: t.space[3],
+          minHeight: 52,
+          padding: `${t.space[2]} ${t.space[3]}`,
+          borderRadius: t.radius.md,
+          cursor: 'pointer',
+          background: hover ? t.color.surfaceHover : 'transparent',
+          transition: transition('background', 'hover', t),
+          minWidth: 0,
+        }}
+      >
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen();
+          }}
+          aria-label={`${name} details`}
+          data-testid={`app-open-${name}`}
+          style={{
+            all: 'unset',
+            boxSizing: 'border-box',
+            display: 'grid',
+            gridTemplateColumns: 'auto minmax(0, 1fr)',
+            alignItems: 'center',
+            columnGap: t.space[3],
+            minWidth: 0,
+            borderRadius: t.radius.sm,
+          }}
+        >
+          <ExtensionGlyph icon={icon} size="sm" />
+          <span style={{ display: 'grid', gap: 0, minWidth: 0 }}>
+            <span
+              style={{
+                display: 'flex',
+                alignItems: 'baseline',
+                gap: t.space[2],
+                minWidth: 0,
+              }}
+            >
+              <Text truncate>{lowerTitle(name)}</Text>
+              <Text
+                variant="caption"
+                muted
+                truncate
+                data-testid={`app-meta-${name}`}
+              >
+                {meta.toLowerCase()}
+              </Text>
+            </span>
+            <Text variant="caption" muted truncate>
+              {description.toLowerCase()}
+            </Text>
+          </span>
+        </button>
+        {status ? (
+          <Text
+            variant="caption"
+            tone={statusTone}
+            data-testid={`app-status-${name}`}
+          >
+            {status.toLowerCase()}
+          </Text>
+        ) : (
+          <span />
+        )}
+        <span
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            minWidth: 26,
+          }}
+        >
+          {action}
+        </span>
+      </div>
+    </li>
+  );
+}
+
+/**
+ * A compact progress bar in a row's action slot, in place of its icon while an app downloads (its package and its
+ * models, one bar). The percentage is its tooltip and its accessible value.
+ */
+export function RowProgress({
+  value,
+  label,
+  'data-testid': testId,
+}: {
+  value: number;
+  label: string;
+  'data-testid'?: string;
+}) {
+  const pct = Math.round(Math.max(0, Math.min(1, value)) * 100);
+  return (
+    <span
+      title={`${pct}%`}
+      style={{ display: 'block', width: 72 }}
+      data-testid={testId ? `${testId}-wrap` : undefined}
+    >
+      <Progress
+        value={value}
+        label={`${label.toLowerCase()} · ${pct}%`}
+        data-testid={testId}
+      />
+    </span>
   );
 }

@@ -380,7 +380,7 @@ function Showcase({
                   done: 100_000_000,
                   total: 412_000_000,
                 })}
-                onOpenSettings={noop}
+                onOpen={noop}
               />
             </div>
           </Section>

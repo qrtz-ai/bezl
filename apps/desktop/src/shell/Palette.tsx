@@ -5,6 +5,9 @@ import { registry } from './subapps';
 import { shellClient } from './shellClient';
 import { filterCommands, type Command } from './filter';
 import { useModuleSwitches } from './useModuleSwitches';
+import { QRTZ, QRTZ_PARTS } from './routes';
+
+const QRTZ_PAGE_PARTS = new Set(Object.values(QRTZ_PARTS));
 
 type Client = ReturnType<typeof shellClient>;
 const listMeetings = (c: Client, query: string) =>
@@ -25,7 +28,7 @@ export function Palette({
   const [i, setI] = useState(0);
   const [session, setSession] = useState<SessionView | null>(null);
   const client = useMemo(shellClient, []);
-  // ADR 0146: no commands or meetings for a module switched off in settings → modules.
+  // ADR 0146: no commands or meetings for an app switched off on the qrtz page.
   const switches = useModuleSwitches();
   const nanoOn = isViewOn(switches, 'note');
   useEffect(() => {
@@ -78,9 +81,27 @@ export function Palette({
         };
     return [
       ...(nanoOn ? [rec] : []),
+      // The qrtz page (the app manager) and its settings; the rest are the apps the sidebar lists.
+      {
+        id: 'nav.qrtz',
+        title: 'go to qrtz',
+        keywords: 'open apps install update remove manager store marketplace',
+        run: () => onNavigate(QRTZ),
+      },
+      {
+        id: 'nav.qrtz-settings',
+        title: 'qrtz settings',
+        icon: 'settings',
+        keywords: 'open preferences settings theme backup logs updates',
+        run: () => requestNavigate({ app: QRTZ, settings: true }),
+      },
       ...registry
         .list()
-        .filter(({ manifest }) => isViewOn(switches, manifest.id))
+        .filter(
+          ({ manifest }) =>
+            isViewOn(switches, manifest.id) &&
+            !QRTZ_PAGE_PARTS.has(manifest.id),
+        )
         .map(({ manifest }) => ({
           id: `nav.${manifest.id}`,
           title: `go to ${manifest.name}`,

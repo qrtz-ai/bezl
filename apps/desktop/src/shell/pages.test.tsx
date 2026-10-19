@@ -15,16 +15,21 @@ window.qrtzTransport = createTauriTransport(createMockBridge());
 const { routes } = await import('./App');
 const { registry } = await import('./subapps');
 
-/** Every routed page (each sidebar app, plus each module's own settings and the module manager). */
-const ROUTES: [app: string, path: string][] = [
+/** Every routed page: each sidebar app, each module's own settings, and the qrtz page (its list, an app's modal
+ * over it, its settings). The qrtz page's parts never route by their own ids. */
+const ROUTES: [host: string, path: string][] = [
   ...registry
     .list()
-    .map((a) => [a.manifest.id, `/${a.manifest.id}`] as [string, string]),
+    .map((a) => a.manifest.id)
+    .filter((id) => id !== 'marketplace' && id !== 'settings')
+    .map((id) => [id, `/${id}`] as [string, string]),
   ['talk', '/talk/settings'],
   ['note', '/note/settings'],
   ['ctrl', '/ctrl/settings'],
   ['snap', '/snap/settings'],
-  ['marketplace', '/marketplace/installed'],
+  ['marketplace', '/qrtz'],
+  ['marketplace', '/qrtz/item/echo'],
+  ['settings', '/qrtz/settings'],
 ];
 
 describe('page layout', () => {
@@ -55,6 +60,10 @@ describe('page layout', () => {
       const header = page.firstElementChild as HTMLElement;
       expect(header.style.height).toBe('40px');
       expect(header.querySelector('h1')).not.toBeNull();
+      // The qrtz page: title "qrtz" and its gear; its settings: "qrtz settings" with a close button.
+      if (path === '/qrtz') expect(header.textContent).toBe('qrtz');
+      if (path === '/qrtz/settings')
+        expect(header.querySelector('h1')?.textContent).toBe('qrtz settings');
       // The main area scrolls vertically only and never bounces.
       const main = el.querySelector<HTMLElement>('[data-scroll-root]')!;
       expect(main.style.overflowX).toBe('hidden');

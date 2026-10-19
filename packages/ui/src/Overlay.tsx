@@ -3,7 +3,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useRef,
   useState,
   type ReactNode,
@@ -12,8 +11,9 @@ import {
 import { lowerTitle } from './case';
 import { useTheme } from './theme';
 import { Text } from './Text';
+import { useModalLayer } from './Modal';
 
-/** Modal dialog: backdrop, Esc / backdrop-click to close, focus moves into the panel. */
+/** Modal dialog: backdrop, Esc / backdrop-click to close, focus moves into the panel and stays there. */
 export function Dialog({
   open,
   onClose,
@@ -33,27 +33,7 @@ export function Dialog({
 }) {
   const t = useTheme();
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const prev = document.activeElement as HTMLElement | null;
-    const onKey = (e: KeyboardEvent) => {
-      // A sheet left open in a hidden (inert) sub app must not take Escape from the visible one.
-      if (ref.current?.closest('[inert]')) return;
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    const f = ref.current?.querySelector<HTMLElement>(
-      'input, textarea, button, [tabindex]',
-    );
-    (f ?? ref.current)?.focus();
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      prev?.focus?.();
-    };
-  }, [open, onClose]);
+  useModalLayer(ref, open, onClose);
   if (!open) return null;
   return (
     <div

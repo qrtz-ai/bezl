@@ -51,6 +51,7 @@ vi.mock('./subapps', async () => {
     registry: createRegistry([
       app('note'),
       app('talk', () => talkLoaded),
+      app('marketplace'),
       app('settings'),
     ]),
   };
@@ -109,7 +110,7 @@ describe('shell routing (ADR 0091)', () => {
     expect(q('path-note')!.textContent).toBe('meetings/m1/summary');
 
     for (let i = 0; i < 3; i++) {
-      await click('nav-settings');
+      await click('nav-qrtz');
       await click('nav-note');
       await click('nav-talk');
     }
@@ -117,14 +118,14 @@ describe('shell routing (ADR 0091)', () => {
     await click('nav-note');
     expect(router.state.location.pathname).toBe('/note/meetings/m1/summary');
     expect(q('bump-note')!.textContent).toBe('1');
-    expect(mounts).toEqual({ note: 1, talk: 1, settings: 1 });
+    expect(mounts).toEqual({ note: 1, talk: 1, marketplace: 1 });
     act(() => root.unmount());
   });
 
-  it('unknown routes go to the default app; navigation requests go through the router with the meeting', async () => {
+  it('unknown routes go to the qrtz page; navigation requests go through the router with the meeting', async () => {
     const { router, root, q, click } = await boot('/nope/x');
-    expect(router.state.location.pathname).toBe('/note');
-    expect(q('path-note')!.textContent).toBe('');
+    expect(router.state.location.pathname).toBe('/qrtz');
+    expect(q('path-marketplace')!.textContent).toBe('');
 
     await act(async () =>
       requestNavigate({ app: 'note', meetingId: 'm9', tab: 'notes' }),
@@ -133,11 +134,11 @@ describe('shell routing (ADR 0091)', () => {
     expect(q('path-note')!.textContent).toBe('meetings/m9/notes');
 
     await act(async () => requestNavigate({ app: 'settings' }));
-    expect(router.state.location.pathname).toBe('/settings');
+    expect(router.state.location.pathname).toBe('/qrtz/settings');
 
     // A hidden app's navigate (an effect, e.g. a recording starting) updates its own remembered route and never switches apps.
     await click('go-note');
-    expect(router.state.location.pathname).toBe('/settings');
+    expect(router.state.location.pathname).toBe('/qrtz/settings');
     expect(q('path-note')!.textContent).toBe('meetings/m2/notes');
     await click('nav-note');
     expect(router.state.location.pathname).toBe('/note/meetings/m2/notes');
@@ -148,6 +149,67 @@ describe('shell routing (ADR 0091)', () => {
       await new Promise((r) => setTimeout(r, 10));
     });
     expect(router.state.location.pathname).toBe('/note/meetings/m1');
+    act(() => root.unmount());
+  });
+
+  it('the sidebar is qrtz (plain text, no icon) and then the apps; no apps or settings tabs', async () => {
+    const { el, root, q } = await boot('/');
+    const rows = [...el.querySelectorAll('nav [data-testid^="nav-"]')].map(
+      (b) => b.getAttribute('data-testid'),
+    );
+    expect(rows).toEqual(['nav-qrtz', 'nav-note', 'nav-talk']);
+    expect(q('nav-qrtz')!.textContent).toBe('qrtz');
+    expect(q('nav-qrtz')!.querySelector('svg')).toBeNull();
+    expect(q('nav-marketplace')).toBeNull();
+    expect(q('nav-settings')).toBeNull();
+    // The qrtz page is the landing route.
+    expect(q('nav-qrtz')!.getAttribute('aria-current')).toBe('page');
+    act(() => root.unmount());
+  });
+
+  it("the qrtz page's settings open at /qrtz/settings (its gear), and the qrtz row returns there", async () => {
+    const { router, root, q, host, click } = await boot('/qrtz');
+    expect(host('marketplace')!.hidden).toBe(false);
+    await act(async () => requestNavigate({ app: 'qrtz', settings: true }));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    expect(router.state.location.pathname).toBe('/qrtz/settings');
+    expect(host('settings')!.hidden).toBe(false);
+    expect(host('marketplace')!.hidden).toBe(true);
+    // Still the qrtz row in the sidebar.
+    expect(q('nav-qrtz')!.getAttribute('aria-current')).toBe('page');
+    await click('nav-note');
+    await click('nav-qrtz');
+    expect(router.state.location.pathname).toBe('/qrtz/settings');
+    // Closing settings goes back to the list.
+    await act(async () => requestNavigate({ app: 'qrtz' }));
+    expect(router.state.location.pathname).toBe('/qrtz');
+    expect(host('marketplace')!.hidden).toBe(false);
+    act(() => root.unmount());
+  });
+
+  it.each([
+    ['/marketplace', '/qrtz', 'marketplace', ''],
+    ['/marketplace/installed', '/qrtz', 'marketplace', ''],
+    ['/marketplace/item/echo', '/qrtz/item/echo', 'marketplace', 'item/echo'],
+    ['/settings', '/qrtz/settings', 'settings', ''],
+  ])('redirects the old route %s to %s', async (from, to, hostId, sub) => {
+    const { router, root, q, host } = await boot(from);
+    expect(router.state.location.pathname).toBe(to);
+    expect(host(hostId)!.hidden).toBe(false);
+    expect(q(`path-${hostId}`)!.textContent).toBe(sub);
+    act(() => root.unmount());
+  });
+
+  it("an app's modal deep link (a notice's models button) opens on the qrtz page", async () => {
+    const { router, root, q } = await boot('/note');
+    await act(async () => requestNavigate({ app: 'qrtz', item: 'nano' }));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    expect(router.state.location.pathname).toBe('/qrtz/item/nano');
+    expect(q('path-marketplace')!.textContent).toBe('item/nano');
     act(() => root.unmount());
   });
 });

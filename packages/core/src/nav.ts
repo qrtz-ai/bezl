@@ -10,6 +10,8 @@ export interface NavRequest {
   tab?: MeetingTab;
   /** ADR 0161: open the module's own settings page in its view (the module manager's "settings"). */
   settings?: boolean;
+  /** The qrtz page (`app: 'qrtz'`): open this app's detail modal (`/qrtz/item/<name>`), e.g. its models. */
+  item?: string;
 }
 
 /** The sub-path a module view opens its own settings page at (`/talk/settings`, `/ctrl/settings`, `/note/settings`). */

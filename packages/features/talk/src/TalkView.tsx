@@ -316,7 +316,7 @@ function TalkOn({
       {offer ? null : (
         <SpeechNotice
           status={speechSetup.speech}
-          onOpenSettings={() => requestNavigate({ app: 'settings' })}
+          onOpen={() => requestNavigate({ app: 'qrtz', item: 'echo' })}
         />
       )}
       {state && state.phase !== 'idle' ? (

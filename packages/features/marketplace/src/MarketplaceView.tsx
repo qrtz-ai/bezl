@@ -6,28 +6,34 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  AppList,
+  AppRow,
   Button,
   Callout,
   Dialog,
   EmptyState,
-  CardGrid,
-  ExtensionCard,
   ExtensionHeader,
   FactList,
   IconButton,
   IconLine,
   IconLines,
   InstallProgress,
-  ModuleRow,
+  Menu,
+  Modal,
+  ModuleSettingsButton,
   Page,
+  RowProgress,
+  SettingRow,
   SettingsSection,
+  Spinner,
   Stack,
-  Tabs,
+  Switch,
   Text,
   Toolbar,
   formatBytes,
   useToast,
   type ExtensionStatus,
+  type MenuItem,
 } from '@qrtz/ui';
 import {
   MODULE_IDS,
@@ -50,9 +56,11 @@ import {
 import { useQrtz, useSubAppRoute } from '@qrtz/core/react';
 import {
   KIND_ICON,
+  MODEL_APPS,
   PERMISSIONS,
   infoFor,
   installedRow,
+  isModelApp,
   isModuleId,
   listings,
   lockedDependencies,
@@ -63,6 +71,7 @@ import {
   type MarketRoute,
 } from './catalog';
 import { ModulePermissions, usePermissions } from './ModulePermissions';
+import { AppModels } from './AppModels';
 
 type Verb = 'install' | 'update' | 'remove';
 /** The host's answer while modules.qrtz.ai isn't live (packages_ipc NOT_SET_UP: details.reason "not-set-up"). */
@@ -111,10 +120,12 @@ const ING: Record<Verb, string> = {
 };
 
 /**
- * ADR 0161: the marketplace. Browse (an app-store grid of extensions from the stored signed index), a detail page
- * per extension, and the module manager (`installed`). Opening it never goes online: "check for apps" and an
- * install the user confirms are the only network, and an install shows its plan (what is added, removed and
- * downloaded) before anything moves.
+ * The qrtz page (ADR 0161, Jared 2026-10-18): the app manager, under the shared page header ("qrtz", and a gear
+ * that opens qrtz's own settings at /qrtz/settings). An "installed" list, then an "available" one, each app a
+ * short row; clicking a row opens its detail modal (`item/NAME`): description, version, size with what it pulls
+ * in, permissions, models, versions, and install / update / remove / open. Opening it never goes online: "check
+ * for apps" and an install the user confirms are the only network, and an install shows its plan (what is added,
+ * removed and downloaded) before anything moves.
  */
 export default function MarketplaceView() {
   const qrtz = useQrtz();
@@ -138,10 +149,12 @@ export default function MarketplaceView() {
     null,
   );
   const [progress, setProgress] = useState<PackagesProgress | null>(null);
+  /** The apps whose last install or update failed: their row shows the error and a retry. */
+  const [failed, setFailed] = useState<Readonly<Record<string, Verb>>>({});
 
   // modules.qrtz.ai isn't live yet (no root pinned in this build): a friendly "coming soon", not an error.
   const [soon, setSoon] = useState(false);
-  // Bundled echo has no index entry: its card shows the app's version ("v0.2.0 · built in").
+  // Bundled echo has no index entry: its row shows the app's version ("v0.2.0 · built in").
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const fail = useCallback(
@@ -200,18 +213,28 @@ export default function MarketplaceView() {
       .then(setState, fail)
       .finally(() => setChecking(false));
   };
+  const markFailed = (name: string, verb: Verb) =>
+    verb !== 'remove' && setFailed((f) => ({ ...f, [name]: verb }));
   const propose = (name: string, verb: Verb) => {
     setError(null);
     setUnavailable(false);
+    setFailed((f) => {
+      const { [name]: _gone, ...rest } = f;
+      return rest;
+    });
     const op: PackageOp =
       verb === 'install'
         ? { op: 'install', names: [name] }
         : verb === 'update'
           ? { op: 'update', names: [name], latest: true }
           : { op: 'remove', names: [name] };
-    qrtz
-      .invoke('packages:plan', op)
-      .then((plan) => setPending({ name, verb, plan }), fail);
+    qrtz.invoke('packages:plan', op).then(
+      (plan) => setPending({ name, verb, plan }),
+      (e: Error) => {
+        markFailed(name, verb);
+        fail(e);
+      },
+    );
   };
   const confirm = () => {
     const p = pending;
@@ -224,10 +247,16 @@ export default function MarketplaceView() {
         planSha256: p.plan.planSha256,
         downloadBytes: p.plan.downloadBytes,
       })
-      .then(() => {
-        toast(`${p.name} ${PAST[p.verb]}`, 'success');
-        return load();
-      }, fail)
+      .then(
+        () => {
+          toast(`${p.name} ${PAST[p.verb]}`, 'success');
+          return load();
+        },
+        (e: Error) => {
+          markFailed(p.name, p.verb);
+          fail(e);
+        },
+      )
       .finally(() => {
         setWorking(null);
         setProgress(null);
@@ -268,35 +297,46 @@ export default function MarketplaceView() {
       ? progress.doneBytes / progress.totalBytes
       : 0;
   const busy = working !== null || pending !== null;
+  // ADR 0172: an update reaches a running module at the next launch; until then it runs its old version.
+  const updated = state?.pendingRestart ?? [];
+  const restartPending = (name: string) =>
+    (updated as readonly string[]).includes(name);
+  const openApp = (name: string) => {
+    const view = infoFor(name).view;
+    if (view) requestNavigate({ app: view });
+  };
+  const appSettings = (name: string) => {
+    const view = infoFor(name).view;
+    if (view) requestNavigate({ app: view, settings: true });
+  };
+  /** Echo ships inside qrtz.app (ADR 0174): never removed, from the row or the modal. */
+  const removable = (name: string) =>
+    !!installedRow(name, rows) && !isBundledModule(name);
 
-  /** `block`: a card's button, full width so install, update and open are one size and shape. */
-  const primary = (name: string, size: 'sm' | 'md' = 'sm', block = false) => {
+  /** The modal's main button: install / update / open. */
+  const primary = (name: string) => {
     const s = statusFor(name);
     const view = infoFor(name).view;
     if (s === 'working')
       return (
-        <Button size={size} block={block} loading disabled>
+        <Button loading disabled>
           {ING[working?.verb ?? 'install']}
         </Button>
       );
     if (s === 'available')
       return (
         <Button
-          size={size}
-          block={block}
           icon="download"
           disabled={busy}
           onClick={() => propose(name, 'install')}
           data-testid={`extension-install-${name}`}
         >
-          install
+          {failed[name] ? 'retry' : 'install'}
         </Button>
       );
     if (s === 'update')
       return (
         <Button
-          size={size}
-          block={block}
           icon="update"
           disabled={busy}
           onClick={() => propose(name, 'update')}
@@ -307,11 +347,9 @@ export default function MarketplaceView() {
       );
     return view ? (
       <Button
-        size={size}
-        block={block}
         variant="secondary"
         disabled={!enabled(name)}
-        onClick={() => requestNavigate({ app: view })}
+        onClick={() => openApp(name)}
         data-testid={`extension-launch-${name}`}
       >
         open
@@ -319,16 +357,128 @@ export default function MarketplaceView() {
     ) : null;
   };
 
-  const tabs = (
-    <Tabs
-      tabs={[
-        { id: 'browse', label: 'get apps' },
-        { id: 'installed', label: 'installed apps' },
-      ]}
-      value={at.page === 'installed' ? 'installed' : 'browse'}
-      onChange={(id) => go({ page: id })}
-    />
-  );
+  /** The row's action on the right: a download icon, the inline progress, or the "more actions" menu. */
+  const rowAction = (name: string, installed: boolean) => {
+    const s = statusFor(name);
+    if (s === 'working')
+      return working?.verb === 'remove' ? (
+        <Spinner label={`removing ${name}`} />
+      ) : (
+        <RowProgress
+          value={pct}
+          label={`${ING[working?.verb ?? 'install']} ${name}`}
+          data-testid={`app-progress-${name}`}
+        />
+      );
+    if (!installed)
+      return failed[name] ? (
+        <IconButton
+          icon="refresh"
+          tone="danger"
+          label={`retry downloading ${name}`}
+          disabled={busy}
+          onClick={() => propose(name, 'install')}
+          data-testid={`app-retry-${name}`}
+        />
+      ) : (
+        <IconButton
+          icon="download"
+          label={`download ${name}`}
+          disabled={busy}
+          onClick={() => propose(name, 'install')}
+          data-testid={`app-download-${name}`}
+        />
+      );
+    const view = infoFor(name).view;
+    const on = enabled(name);
+    const items: MenuItem[] = [
+      ...(view
+        ? [
+            {
+              id: 'open',
+              label: 'open',
+              icon: 'open' as const,
+              disabled: !on,
+              onSelect: () => openApp(name),
+            },
+          ]
+        : []),
+      ...(s === 'update'
+        ? [
+            {
+              id: 'update',
+              label: failed[name] ? 'retry update' : 'update',
+              icon: 'update' as const,
+              disabled: busy,
+              onSelect: () => propose(name, 'update'),
+            },
+          ]
+        : []),
+      ...(restartPending(name)
+        ? [
+            {
+              id: 'restart',
+              label: 'restart to update',
+              icon: 'restart' as const,
+              onSelect: relaunch,
+            },
+          ]
+        : []),
+      ...(view
+        ? [
+            {
+              id: 'settings',
+              label: 'app settings',
+              icon: 'settings' as const,
+              disabled: !on,
+              onSelect: () => appSettings(name),
+            },
+          ]
+        : []),
+      ...(removable(name)
+        ? [
+            {
+              id: 'remove',
+              label: 'remove',
+              icon: 'trash' as const,
+              danger: true,
+              disabled: busy,
+              onSelect: () => propose(name, 'remove'),
+            },
+          ]
+        : []),
+    ];
+    return (
+      <Menu
+        label={`more actions for ${name}`}
+        items={items}
+        badge={s === 'update'}
+        data-testid={`app-menu-${name}`}
+      />
+    );
+  };
+
+  /** The short word beside a row's action. */
+  const rowStatus = (
+    name: string,
+    installed: boolean,
+  ): { text: string; tone: 'muted' | 'warning' | 'danger' } | null => {
+    const s = statusFor(name);
+    if (s === 'working') return null;
+    if (failed[name])
+      return {
+        text:
+          failed[name] === 'update' ? "couldn't update" : "couldn't download",
+        tone: 'danger',
+      };
+    if (!installed) return null;
+    if (restartPending(name))
+      return { text: 'restart to update', tone: 'warning' };
+    if (s === 'update') return { text: 'update', tone: 'warning' };
+    if (!enabled(name)) return { text: 'off', tone: 'muted' };
+    if (isBundledModule(name)) return { text: 'built in', tone: 'muted' };
+    return null;
+  };
 
   const consent = pending ? (
     <Dialog
@@ -380,8 +530,8 @@ export default function MarketplaceView() {
       title="apps coming soon"
       data-testid="marketplace-soon"
     >
-      apps will appear here once qrtz.ai's app server is live. qrtz starts empty
-      until then.
+      apps will appear here once qrtz.ai&apos;s app server is live. qrtz starts
+      empty until then.
     </Callout>
   ) : null;
 
@@ -419,8 +569,6 @@ export default function MarketplaceView() {
     />
   ) : null;
 
-  // ADR 0172: an update reaches a running module at the next launch; until then it runs its old version.
-  const updated = state?.pendingRestart ?? [];
   const restartBox = updated.length ? (
     <Callout
       tone="info"
@@ -442,8 +590,8 @@ export default function MarketplaceView() {
     </Callout>
   ) : null;
 
-  const installBar =
-    working && working.verb !== 'remove' ? (
+  const installBar = (name: string) =>
+    working && working.name === name && working.verb !== 'remove' ? (
       <InstallProgress
         value={pct}
         label={`${ING[working.verb]} ${working.name}`}
@@ -455,215 +603,141 @@ export default function MarketplaceView() {
       />
     ) : null;
 
-  if (at.page === 'item')
-    return (
-      <Page
-        data-testid="marketplace-item"
-        title="apps"
-        leading={
-          <IconButton
-            icon="back"
-            label="back to apps"
-            onClick={() => go({ page: 'browse' })}
-            data-testid="marketplace-back"
-          />
-        }
-      >
-        {unavailableBox}
-        {errorBox}
-        {restartBox}
-        <Detail
-          name={at.name}
-          entry={entryOf(at.name)}
-          status={statusFor(at.name)}
-          action={primary(at.name, 'md')}
-          rows={rows}
-          busy={busy}
-          appVersion={appVersion}
-          onRemove={() => propose(at.name, 'remove')}
-        />
-        {working?.name === at.name ? installBar : null}
-        {consent}
-      </Page>
-    );
+  const installedNames = [
+    ...new Set([
+      ...rows.filter((r) => r.kind === 'extension').map((r) => r.name),
+      ...installedIds.filter((n) => !installedRow(n, rows)),
+    ]),
+  ];
+  const availableNames = listings(available, installedIds)
+    .map((l) => l.name)
+    .filter((n) => !installedNames.includes(n));
+  const shared = rows.filter((r) => r.kind !== 'extension');
+  const onIds = MODEL_APPS.filter((id) => hostInstalled(id) && enabled(id));
 
-  if (at.page === 'installed') {
-    const names = [
-      ...new Set([
-        ...rows.filter((r) => r.kind === 'extension').map((r) => r.name),
-        ...installedIds.filter((n) => !installedRow(n, rows)),
-      ]),
-    ];
-    const shared = rows.filter((r) => r.kind !== 'extension');
+  const row = (name: string, installed: boolean) => {
+    const info = infoFor(name);
+    const r = installedRow(name, rows);
+    const deps = r ? lockedDependencies(r, rows) : [];
+    const st = rowStatus(name, installed);
     return (
-      <Page data-testid="module-manager" title="apps">
-        {tabs}
-        {soonBox}
-        {unavailableBox}
-        {errorBox}
-        {restartBox}
-        {installBar}
-        <SettingsSection title="installed apps" data-testid="module-list">
-          {names.length ? null : (
-            <EmptyState
-              icon="package"
-              title="nothing installed yet. qrtz starts empty: get apps from browse."
-              action={
-                <Button
-                  size="sm"
-                  icon="download"
-                  onClick={() => go({ page: 'browse' })}
-                  data-testid="module-list-browse"
-                >
-                  get apps
-                </Button>
-              }
-            />
-          )}
-          {names.length ? (
-            <CardGrid data-testid="module-grid">
-              {names.map((name) => {
-                const info = infoFor(name);
-                const row = installedRow(name, rows);
-                const deps = row ? lockedDependencies(row, rows) : [];
-                const s = statusFor(name);
-                const on = enabled(name);
-                return (
-                  <ModuleRow
-                    key={name}
-                    name={name}
-                    icon={info.icon}
-                    status={s}
-                    meta={
-                      row
-                        ? `v${row.version} · ${formatBytes(row.sizeBytes + deps.reduce((n, d) => n + d.sizeBytes, 0))}${row.disabled ? ` · switched off: ${row.disabled}` : ''}`
-                        : metaLine(name, undefined, appVersion)
-                    }
-                    enabled={on}
-                    toggleDisabled={!isModuleId(name) || !!row?.disabled}
-                    onToggle={(v) => setEnabled(name, v)}
-                    actions={
-                      <>
-                        {s === 'update' ? primary(name) : null}
-                        {info.view ? (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            icon="settings"
-                            disabled={!on}
-                            onClick={() =>
-                              info.view &&
-                              requestNavigate({
-                                app: info.view,
-                                settings: true,
-                              })
-                            }
-                            data-testid={`module-settings-${name}`}
-                          >
-                            settings
-                          </Button>
-                        ) : null}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => go({ page: 'item', name })}
-                          data-testid={`module-details-${name}`}
-                        >
-                          details
-                        </Button>
-                        {row ? (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            icon="trash"
-                            disabled={busy}
-                            onClick={() => propose(name, 'remove')}
-                            data-testid={`module-remove-${name}`}
-                          >
-                            remove
-                          </Button>
-                        ) : null}
-                      </>
-                    }
-                  >
-                    {on && isModuleId(name) ? (
-                      <ModulePermissions
-                        module={name}
-                        perms={perms}
-                        onAsk={allow}
-                        onOpen={openPane}
-                        onRestart={relaunch}
-                        pending={asking}
-                      />
-                    ) : null}
-                    {deps.length ? (
-                      <IconLines
-                        aria-label={`${name} dependencies`}
-                        data-testid={`module-deps-${name}`}
-                      >
-                        {deps.map((d) => (
-                          <IconLine
-                            key={d.name}
-                            icon={KIND_ICON[d.kind]}
-                            title={d.name}
-                            meta={`${d.kind} · v${d.version} · ${formatBytes(d.sizeBytes)}`}
-                          />
-                        ))}
-                      </IconLines>
-                    ) : null}
-                  </ModuleRow>
-                );
-              })}
-            </CardGrid>
-          ) : null}
-        </SettingsSection>
-        <SettingsSection title="shared" data-testid="module-shared">
-          {shared.length ? (
-            <IconLines aria-label="shared packages">
-              {shared.map((d) => (
-                <IconLine
-                  key={`${d.name}@${d.version}`}
-                  icon={KIND_ICON[d.kind]}
-                  title={d.name}
-                  meta={`${formatBytes(d.sizeBytes)} · ${usedByLine(d)}`}
-                />
-              ))}
-            </IconLines>
-          ) : (
-            <Text variant="caption" muted>
-              no shared services or models installed.
-            </Text>
-          )}
-          {canPrune(state) ? (
-            <Stack dir="row" gap={2} align="center">
-              <Button
-                size="sm"
-                variant="secondary"
-                icon="trash"
-                disabled={busy}
-                onClick={() => void prune()}
-                data-testid="module-prune"
-              >
-                {`clean up · ${formatBytes(state?.reclaimable.bytes ?? 0)}`}
-              </Button>
-              <Text variant="caption" muted>
-                deletes files that nothing installed uses any more.
-              </Text>
-            </Stack>
-          ) : shared.length ? (
-            <Text variant="caption" muted data-testid="module-prune-none">
-              nothing to clean up: everything here is in use.
-            </Text>
-          ) : null}
-        </SettingsSection>
-        {consent}
-      </Page>
+      <AppRow
+        key={name}
+        name={name}
+        icon={info.icon}
+        description={info.description}
+        meta={
+          r
+            ? `v${r.version} · ${formatBytes(r.sizeBytes + deps.reduce((n, d) => n + d.sizeBytes, 0))}`
+            : metaLine(name, entryOf(name), appVersion)
+        }
+        status={st?.text ?? null}
+        statusTone={st?.tone ?? 'muted'}
+        action={rowAction(name, installed)}
+        onOpen={() => go({ page: 'item', name })}
+      />
     );
-  }
+  };
+
+  const item = at.page === 'item' ? at.name : null;
+  const modal = item ? (
+    <Modal
+      open
+      title={item}
+      closeLabel={`close ${item}`}
+      onClose={() => go({ page: 'list' })}
+      data-testid="app-modal"
+    >
+      <Stack gap={6}>
+        {installBar(item)}
+        <Detail
+          name={item}
+          entry={entryOf(item)}
+          status={statusFor(item)}
+          action={primary(item)}
+          rows={rows}
+          appVersion={appVersion}
+        />
+        {isModuleId(item) && hostInstalled(item) ? (
+          <SettingsSection title="on this mac" data-testid="extension-switch">
+            <SettingRow label={`${item} on`}>
+              <Switch
+                label={`${item} on`}
+                checked={enabled(item)}
+                onChange={(v) => setEnabled(item, v)}
+                disabled={!!installedRow(item, rows)?.disabled}
+                data-testid={`module-enabled-${item}`}
+              />
+            </SettingRow>
+            {enabled(item) ? (
+              <ModulePermissions
+                module={item}
+                perms={perms}
+                onAsk={allow}
+                onOpen={openPane}
+                onRestart={relaunch}
+                pending={asking}
+              />
+            ) : (
+              <Text variant="caption" muted>
+                {`${item} is off: no sidebar row, no hotkeys, nothing running.`}
+              </Text>
+            )}
+          </SettingsSection>
+        ) : null}
+        {isModelApp(item) && hostInstalled(item) ? (
+          <AppModels app={item} on={onIds} />
+        ) : null}
+        <Stack dir="row" gap={2} wrap>
+          {restartPending(item) ? (
+            <Button
+              variant="secondary"
+              icon="restart"
+              onClick={relaunch}
+              data-testid={`extension-restart-${item}`}
+            >
+              restart to update
+            </Button>
+          ) : null}
+          {infoFor(item).view && hostInstalled(item) ? (
+            <Button
+              variant="ghost"
+              icon="settings"
+              disabled={!enabled(item)}
+              onClick={() => appSettings(item)}
+              data-testid={`module-settings-${item}`}
+            >
+              app settings
+            </Button>
+          ) : null}
+          {removable(item) ? (
+            <Button
+              variant="danger"
+              icon="trash"
+              disabled={busy}
+              onClick={() => propose(item, 'remove')}
+              data-testid={`extension-remove-${item}`}
+            >
+              remove
+            </Button>
+          ) : null}
+        </Stack>
+      </Stack>
+    </Modal>
+  ) : null;
 
   return (
-    <Page data-testid="marketplace" title="apps">
-      {tabs}
+    <Page
+      data-testid="qrtz-page"
+      title="qrtz"
+      actions={
+        <ModuleSettingsButton
+          module="qrtz"
+          onClick={() => requestNavigate({ app: 'qrtz', settings: true })}
+          data-testid="qrtz-settings-open"
+        />
+      }
+    >
       <Toolbar
         end={
           <Button
@@ -689,49 +763,89 @@ export default function MarketplaceView() {
       {unavailableBox}
       {errorBox}
       {restartBox}
-      {installBar}
-      {listings(available, installedIds).length ? null : (
-        <EmptyState
-          icon="package"
-          title={
-            soon
-              ? 'nothing to install yet.'
-              : 'qrtz starts empty. check for apps to install your first one.'
-          }
-          action={
-            soon ? null : (
+      <SettingsSection title="installed" data-testid="qrtz-installed">
+        {installedNames.length ? (
+          <AppList aria-label="installed apps" data-testid="installed-list">
+            {installedNames.map((n) => row(n, true))}
+          </AppList>
+        ) : (
+          <Text variant="caption" muted data-testid="installed-empty">
+            nothing installed yet. qrtz starts empty: download an app below.
+          </Text>
+        )}
+      </SettingsSection>
+      <SettingsSection title="available" data-testid="qrtz-available">
+        {availableNames.length ? (
+          <AppList aria-label="available apps" data-testid="available-list">
+            {availableNames.map((n) => row(n, false))}
+          </AppList>
+        ) : installedNames.length && available.length ? (
+          <Text variant="caption" muted data-testid="available-none">
+            every app is installed.
+          </Text>
+        ) : (
+          <EmptyState
+            icon="package"
+            title={
+              soon
+                ? 'nothing to install yet.'
+                : 'qrtz starts empty. check for apps to install your first one.'
+            }
+            action={
+              soon ? null : (
+                <Button
+                  size="sm"
+                  icon="refresh"
+                  loading={checking}
+                  disabled={checking}
+                  onClick={check}
+                  data-testid="marketplace-empty-check"
+                >
+                  check for apps
+                </Button>
+              )
+            }
+          />
+        )}
+      </SettingsSection>
+      {shared.length || canPrune(state) ? (
+        <SettingsSection title="shared" data-testid="module-shared">
+          {shared.length ? (
+            <IconLines aria-label="shared packages">
+              {shared.map((d) => (
+                <IconLine
+                  key={`${d.name}@${d.version}`}
+                  icon={KIND_ICON[d.kind]}
+                  title={d.name}
+                  meta={`${formatBytes(d.sizeBytes)} · ${usedByLine(d)}`}
+                />
+              ))}
+            </IconLines>
+          ) : null}
+          {canPrune(state) ? (
+            <Stack dir="row" gap={2} align="center">
               <Button
                 size="sm"
-                icon="refresh"
-                loading={checking}
-                disabled={checking}
-                onClick={check}
-                data-testid="marketplace-empty-check"
+                variant="secondary"
+                icon="trash"
+                disabled={busy}
+                onClick={() => void prune()}
+                data-testid="module-prune"
               >
-                check for apps
+                {`clean up · ${formatBytes(state?.reclaimable.bytes ?? 0)}`}
               </Button>
-            )
-          }
-        />
-      )}
-      <CardGrid data-testid="marketplace-grid">
-        {listings(available, installedIds).map(({ name, entry }) => {
-          const info = infoFor(name);
-          return (
-            <ExtensionCard
-              key={name}
-              name={name}
-              icon={info.icon}
-              description={info.description}
-              meta={metaLine(name, entry, appVersion)}
-              status={statusFor(name)}
-              progress={working?.name === name ? pct : null}
-              action={primary(name, 'sm', true)}
-              onOpen={() => go({ page: 'item', name })}
-            />
-          );
-        })}
-      </CardGrid>
+              <Text variant="caption" muted>
+                deletes files that nothing installed uses any more.
+              </Text>
+            </Stack>
+          ) : (
+            <Text variant="caption" muted data-testid="module-prune-none">
+              nothing to clean up: everything here is in use.
+            </Text>
+          )}
+        </SettingsSection>
+      ) : null}
+      {modal}
       {consent}
     </Page>
   );
@@ -743,9 +857,7 @@ function Detail({
   status,
   action,
   rows,
-  busy,
   appVersion,
-  onRemove,
 }: {
   name: string;
   appVersion: string | null;
@@ -753,11 +865,10 @@ function Detail({
   status: ExtensionStatus;
   action: ReactNode;
   rows: PackagesState['packages'];
-  busy: boolean;
-  onRemove: () => void;
 }) {
   const info = infoFor(name);
   const row = installedRow(name, rows);
+  const deps = row ? lockedDependencies(row, rows) : [];
   return (
     <Stack gap={6}>
       <ExtensionHeader
@@ -791,6 +902,17 @@ function Detail({
                   ? 'built in'
                   : 'on this mac',
             },
+            ...(row && !entry
+              ? [
+                  {
+                    label: 'with dependencies',
+                    value: formatBytes(
+                      row.sizeBytes + deps.reduce((n, d) => n + d.sizeBytes, 0),
+                    ),
+                    'data-testid': 'fact-install-size',
+                  },
+                ]
+              : []),
             ...(entry
               ? [
                   {
@@ -847,6 +969,20 @@ function Detail({
               />
             ))}
           </IconLines>
+        ) : deps.length ? (
+          <IconLines
+            aria-label="dependencies"
+            data-testid={`module-deps-${name}`}
+          >
+            {deps.map((d) => (
+              <IconLine
+                key={d.name}
+                icon={KIND_ICON[d.kind]}
+                title={d.name}
+                meta={`${d.kind} · v${d.version} · ${formatBytes(d.sizeBytes)}`}
+              />
+            ))}
+          </IconLines>
         ) : (
           <Text variant="caption" muted>
             none.
@@ -857,19 +993,35 @@ function Detail({
           twice.
         </Text>
       </SettingsSection>
-      {row ? (
-        <Stack dir="row">
-          <Button
-            variant="ghost"
-            icon="trash"
-            disabled={busy}
-            onClick={onRemove}
-            data-testid={`extension-remove-${name}`}
-          >
-            remove
-          </Button>
-        </Stack>
-      ) : null}
+      <SettingsSection title="changelog" data-testid="extension-changelog">
+        {entry?.versions.length ? (
+          <IconLines aria-label="versions">
+            {entry.versions.map((v) => (
+              <IconLine
+                key={v}
+                icon={v === row?.version ? 'check' : 'circle'}
+                title={`v${v}`}
+                meta={
+                  v === row?.version
+                    ? 'installed'
+                    : v === entry.version
+                      ? 'newest'
+                      : undefined
+                }
+                data-testid={`changelog-${v}`}
+              />
+            ))}
+          </IconLines>
+        ) : (
+          <Text variant="caption" muted>
+            {isBundledModule(name) && appVersion
+              ? `v${appVersion}, built into this qrtz.`
+              : row
+                ? `v${row.version} is installed.`
+                : 'no versions listed yet.'}
+          </Text>
+        )}
+      </SettingsSection>
     </Stack>
   );
 }

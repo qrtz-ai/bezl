@@ -9,7 +9,7 @@ import { ConfigSchema, defineSubApp } from '@qrtz/core';
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-// ADR 0146: nano switched off in settings → modules.
+// ADR 0146: nano switched off on the qrtz page.
 vi.mock('./useModuleSwitches', () => ({
   useModuleSwitches: () =>
     ConfigSchema.parse({ modules: { nano: { enabled: false } } }),
@@ -25,14 +25,19 @@ vi.mock('./subapps', async () => {
       }),
     });
   return {
-    registry: createRegistry([app('note'), app('talk'), app('settings')]),
+    registry: createRegistry([
+      app('note'),
+      app('talk'),
+      app('marketplace'),
+      app('settings'),
+    ]),
   };
 });
 
 const { routes } = await import('./App');
 
 describe('module switches (ADR 0146)', () => {
-  it('a switched-off module has no tab, and its route falls back to the first visible app', async () => {
+  it('a switched-off module has no tab, and its route falls back to the qrtz page', async () => {
     const router = createMemoryRouter(routes, {
       initialEntries: ['/note/meetings/m1'],
     });
@@ -46,10 +51,10 @@ describe('module switches (ADR 0146)', () => {
     const q = (id: string) => el.querySelector(`[data-testid="${id}"]`);
     expect(q('nav-note')).toBeNull();
     expect(q('nav-talk')).not.toBeNull();
-    expect(q('nav-settings')).not.toBeNull();
+    expect(q('nav-qrtz')).not.toBeNull();
     expect(q('view-note')).toBeNull();
-    // The first visible app in registry order (by name here: settings, talk).
-    expect(router.state.location.pathname).toBe('/settings');
+    expect(router.state.location.pathname).toBe('/qrtz');
+    expect(q('view-marketplace')).not.toBeNull();
     root.unmount();
   });
 });

@@ -2,7 +2,9 @@ import {
   type CSSProperties,
   type FormEvent,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
+  type Ref,
 } from 'react';
 import { useTheme } from './theme';
 import { Text } from './Text';
@@ -423,51 +425,93 @@ export function Toolbar({
   );
 }
 
-/** Square icon button with an accessible label. */
+/**
+ * Square icon button with an accessible label (also its tooltip). `badge` draws a small dot on its corner (an
+ * update is waiting); `onClick` gets the event, so a button inside a clickable row can stop it.
+ */
 export function IconButton({
   icon,
   label,
   onClick,
   pressed,
+  disabled,
+  badge,
   tone = 'default',
+  ref,
   'data-testid': testId,
   'aria-expanded': expanded,
+  'aria-haspopup': hasPopup,
+  'aria-controls': controls,
 }: {
   icon: IconName;
   label: string;
-  onClick: () => void;
+  onClick: (e: MouseEvent<HTMLButtonElement>) => void;
   pressed?: boolean;
-  tone?: 'default' | 'record';
+  disabled?: boolean;
+  badge?: boolean;
+  tone?: 'default' | 'record' | 'danger';
+  ref?: Ref<HTMLButtonElement>;
   'data-testid'?: string;
   'aria-expanded'?: boolean;
+  'aria-haspopup'?: 'menu';
+  'aria-controls'?: string;
 }) {
   const t = useTheme();
   return (
     <button
+      ref={ref}
       type="button"
       aria-label={label.toLowerCase()}
       title={label.toLowerCase()}
       aria-pressed={pressed}
       aria-expanded={expanded}
+      aria-haspopup={hasPopup}
+      aria-controls={controls}
+      disabled={disabled}
       data-testid={testId}
+      data-badge={badge ? '' : undefined}
       onClick={onClick}
       style={{
         all: 'unset',
-        cursor: 'pointer',
+        position: 'relative',
+        boxSizing: 'border-box',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
         width: 26,
         height: 26,
         flexShrink: 0,
         display: 'grid',
         placeItems: 'center',
         borderRadius: t.radius.md,
-        border: `1px solid ${t.color.border}`,
+        border: `1px solid ${tone === 'danger' ? t.color.danger : t.color.border}`,
         background: pressed ? t.color.accent : 'transparent',
-        color: tone === 'record' ? t.color.recording : t.color.text,
+        color:
+          tone === 'record'
+            ? t.color.recording
+            : tone === 'danger'
+              ? t.color.danger
+              : t.color.text,
         ...typeStyle('caption', t),
         transition: transition('background', 'hover', t),
       }}
     >
       <Icon name={icon} size="sm" fill={icon === 'stop'} />
+      {badge ? (
+        <span
+          aria-hidden
+          data-testid={testId ? `${testId}-badge` : undefined}
+          style={{
+            position: 'absolute',
+            top: -3,
+            right: -3,
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            background: t.color.warning,
+            border: `2px solid ${t.color.bg}`,
+          }}
+        />
+      ) : null}
     </button>
   );
 }

@@ -4,19 +4,18 @@ import {
   Callout,
   Dialog,
   LongText,
-  Page,
+  ModuleSettingsPage,
   Progress,
   Select,
   SettingRow,
   SettingsSection,
-  SpeechSetupPanel,
   Stack,
   Switch,
   Text,
 } from '@qrtz/ui';
 import type { IpcResponse } from '@qrtz/core';
 import { requestNavigate } from '@qrtz/core';
-import { useQrtz, useQrtzEvent, useSpeechSetup } from '@qrtz/core/react';
+import { useQrtz, useQrtzEvent } from '@qrtz/core/react';
 
 export default function SettingsView() {
   const qrtz = useQrtz();
@@ -29,7 +28,6 @@ export default function SettingsView() {
   const live = useQrtzEvent('helper:status');
   const backupProgress = useQrtzEvent('data:backup-progress');
   const [error, setError] = useState<string | null>(null);
-  const setup = useSpeechSetup();
 
   const refresh = () => {
     setError(null);
@@ -155,7 +153,12 @@ export default function SettingsView() {
     </SettingRow>
   );
   return (
-    <Page data-testid="settings" title="settings">
+    // The qrtz page's settings, behind its gear (like every app's own settings page); close goes back to it.
+    <ModuleSettingsPage
+      module="qrtz"
+      onClose={() => requestNavigate({ app: 'qrtz' })}
+      data-testid="settings"
+    >
       {error ? (
         <Callout
           tone="danger"
@@ -168,42 +171,44 @@ export default function SettingsView() {
           }
         />
       ) : null}
-      {/* ADR 0161: extensions are installed, switched on and off and removed in the marketplace; each one's own
-          settings are in its view. Settings keeps only what spans all of qrtz. */}
-      <SettingsSection title="apps" data-testid="extensions-link">
-        <Stack dir="row" gap={2} align="center" justify="between">
-          <Text variant="caption" muted data-testid="modules-note">
-            install, switch off and remove apps on the apps page. each one's own
-            settings are in its view, behind the gear.
-          </Text>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="package"
-            onClick={() => requestNavigate({ app: 'marketplace' })}
-            data-testid="open-marketplace"
-          >
-            apps
-          </Button>
-        </Stack>
+      <SettingsSection title="privacy" data-testid="privacy-card">
+        <Text variant="caption" muted data-testid="offline-note">
+          qrtz runs entirely on this computer: audio, transcripts and notes
+          never leave it. it only goes online when you ask: to check for and
+          download signed apps, models and speech updates.
+        </Text>
       </SettingsSection>
-      <SettingsSection title="speech" data-testid="speech-settings">
-        {setup.error ? (
-          <Callout
-            tone="danger"
-            title={setup.error}
-            data-testid="speech-settings-error"
-          />
-        ) : null}
-        <SpeechSetupPanel
-          status={setup.speech}
-          manage
-          onDownload={setup.download}
-          onPause={setup.pause}
-          onResume={setup.resume}
-          onDelete={setup.remove}
-          onCheck={setup.check}
-        />
+      <SettingsSection title="app">
+        <SettingRow label="theme">
+          <Select
+            value={String(cfg?.theme ?? 'dark')}
+            onChange={(e) =>
+              void qrtz
+                .invoke('config:set', { patch: { theme: e.target.value } })
+                .then(setCfg)
+                .catch((err: Error) => setError(err.message))
+            }
+            data-testid="theme"
+          >
+            <option value="dark">dark</option>
+            <option value="light">light</option>
+            <option value="system">system</option>
+          </Select>
+        </SettingRow>
+        {toggle(
+          'menu bar icon',
+          'menu-bar-icon',
+          appCfg.menuBarIcon,
+          true,
+          (v) => void patchApp({ menuBarIcon: v }),
+        )}
+        {toggle(
+          'open at login',
+          'launch-at-login',
+          appCfg.launchAtLogin,
+          false,
+          (v) => void patchApp({ launchAtLogin: v }),
+        )}
         {toggle(
           'update speech automatically',
           'speech-auto-update',
@@ -249,45 +254,6 @@ export default function SettingsView() {
               .then(setCfg)
               .catch((e: Error) => setError(e.message));
           },
-        )}
-      </SettingsSection>
-      <SettingsSection title="privacy" data-testid="privacy-card">
-        <Text variant="caption" muted data-testid="offline-note">
-          qrtz runs entirely on this computer: audio, transcripts and notes
-          never leave it. it only goes online when you ask: to check for and
-          download signed apps, models and speech updates.
-        </Text>
-      </SettingsSection>
-      <SettingsSection title="app">
-        <SettingRow label="theme">
-          <Select
-            value={String(cfg?.theme ?? 'dark')}
-            onChange={(e) =>
-              void qrtz
-                .invoke('config:set', { patch: { theme: e.target.value } })
-                .then(setCfg)
-                .catch((err: Error) => setError(err.message))
-            }
-            data-testid="theme"
-          >
-            <option value="dark">dark</option>
-            <option value="light">light</option>
-            <option value="system">system</option>
-          </Select>
-        </SettingRow>
-        {toggle(
-          'menu bar icon',
-          'menu-bar-icon',
-          appCfg.menuBarIcon,
-          true,
-          (v) => void patchApp({ menuBarIcon: v }),
-        )}
-        {toggle(
-          'open at login',
-          'launch-at-login',
-          appCfg.launchAtLogin,
-          false,
-          (v) => void patchApp({ launchAtLogin: v }),
         )}
       </SettingsSection>
       <SettingsSection title="backup" data-testid="backup-card">
@@ -430,6 +396,6 @@ export default function SettingsView() {
       >
         <LongText data-testid="licenses-text">{licenses}</LongText>
       </Dialog>
-    </Page>
+    </ModuleSettingsPage>
   );
 }

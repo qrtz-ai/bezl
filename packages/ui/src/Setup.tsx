@@ -1,3 +1,5 @@
+import { useTheme } from './theme';
+import { Icon } from './Icon';
 import { Button } from './Button';
 import { Callout } from './Callout';
 import { Stack } from './Layout';
@@ -39,8 +41,8 @@ export function formatBytes(n: number): string {
 const BUSY = new Set(['checking', 'downloading', 'paused', 'installing']);
 
 /**
- * The speech module: size, download progress with pause / resume, retry on error, and (in settings) update,
- * re-download and delete. Settings → speech renders this.
+ * The speech module: size, download progress with pause / resume, retry on error, and (with `manage`) update,
+ * re-download and delete. Each app's own models are managed in its detail on the qrtz page (ModelsPanel).
  */
 export function SpeechSetupPanel({
   status,
@@ -230,10 +232,11 @@ export function SpeechSetupPanel({
  */
 export function SpeechNotice({
   status,
-  onOpenSettings,
+  onOpen,
 }: {
   status: SpeechSetupView | null;
-  onOpenSettings: () => void;
+  /** Opens this app's detail on the qrtz page, where its models are managed. */
+  onOpen: () => void;
 }) {
   if (!status?.configured) return null;
   const d = status.download;
@@ -241,11 +244,11 @@ export function SpeechNotice({
     <Button
       size="sm"
       variant="secondary"
-      icon="settings"
-      onClick={onOpenSettings}
-      data-testid="speech-notice-settings"
+      icon="model"
+      onClick={onOpen}
+      data-testid="speech-notice-open"
     >
-      settings
+      models
     </Button>
   );
   if (BUSY.has(d.state))
@@ -282,4 +285,187 @@ export function SpeechNotice({
       />
     );
   return null;
+}
+
+/** One of an app's model sets, and whether deleting this app's models would keep it (another app uses it). */
+export interface ModelSetView {
+  name: string;
+  /** "kept, used by nano": a switched-on app still needs it, so delete leaves it. */
+  keptFor?: readonly string[];
+}
+
+/**
+ * An app's models, in its detail on the qrtz page: each model set (and which ones another app keeps), their size
+ * on disk and state, download / pause / resume / retry while they're missing, and "delete models" (danger; the
+ * feature asks to confirm). `deleteBlocked`: nothing this app alone uses is on disk, so there is nothing to delete.
+ */
+export function ModelsPanel({
+  status,
+  sets,
+  error,
+  onDownload,
+  onPause,
+  onResume,
+  onDelete,
+  deleteBlocked,
+  'data-testid': testId = 'models',
+}: {
+  status: SpeechSetupView | null;
+  sets: readonly ModelSetView[];
+  error?: string | null;
+  onDownload: () => void;
+  onPause: () => void;
+  onResume: () => void;
+  onDelete: () => void;
+  deleteBlocked?: boolean;
+  'data-testid'?: string;
+}) {
+  const t = useTheme();
+  const lines = (
+    <ul
+      aria-label="model sets"
+      style={{ margin: 0, padding: 0, display: 'grid', gap: 2 }}
+    >
+      {sets.map((m) => (
+        <li
+          key={m.name}
+          data-testid={`${testId}-set-${m.name}`}
+          style={{
+            listStyle: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            gap: t.space[3],
+            minHeight: 28,
+            minWidth: 0,
+          }}
+        >
+          <Icon name="model" size="sm" tone="muted" />
+          <Text truncate>{m.name.toLowerCase()}</Text>
+          {m.keptFor?.length ? (
+            <span style={{ marginLeft: 'auto', flexShrink: 0 }}>
+              <Text
+                variant="caption"
+                muted
+                data-testid={`${testId}-kept-${m.name}`}
+              >
+                {`kept, used by ${m.keptFor.join(', ')}`}
+              </Text>
+            </span>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+  if (!status)
+    return (
+      <Stack gap={2} data-testid={testId}>
+        {lines}
+        <Spinner label="loading models" />
+      </Stack>
+    );
+  if (!status.configured)
+    return (
+      <Stack gap={2} data-testid={testId}>
+        {lines}
+        <Text variant="caption" muted>
+          models aren&apos;t available in this build.
+        </Text>
+      </Stack>
+    );
+  const d = status.download;
+  const size = status.latestBytes ?? d.total;
+  return (
+    <Stack gap={3} data-testid={testId} aria-live="polite">
+      {lines}
+      {error ? (
+        <Callout tone="danger" title={error} data-testid={`${testId}-error`} />
+      ) : null}
+      {BUSY.has(d.state) ? (
+        <Stack gap={2}>
+          <Progress
+            value={d.total ? d.done / d.total : 0}
+            label="model download"
+            data-testid={`${testId}-progress`}
+          />
+          <Stack dir="row" gap={3} align="center" justify="between">
+            <Text variant="caption" muted>
+              {d.state === 'checking'
+                ? 'checking…'
+                : d.state === 'installing'
+                  ? 'installing…'
+                  : `${d.state === 'paused' ? 'paused · ' : ''}${formatBytes(d.done)} of ${formatBytes(d.total || size || 0)}`}
+            </Text>
+            {d.state === 'paused' ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                icon="play"
+                onClick={onResume}
+                data-testid={`${testId}-resume`}
+              >
+                resume
+              </Button>
+            ) : d.state === 'downloading' ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                icon="pause"
+                onClick={onPause}
+                data-testid={`${testId}-pause`}
+              >
+                pause
+              </Button>
+            ) : null}
+          </Stack>
+        </Stack>
+      ) : d.state === 'error' ? (
+        <Callout
+          tone="danger"
+          title={d.error ?? "the models couldn't be downloaded"}
+          data-testid={`${testId}-download-error`}
+          action={
+            <Button
+              size="sm"
+              variant="secondary"
+              icon="refresh"
+              onClick={onDownload}
+              data-testid={`${testId}-retry`}
+            >
+              retry
+            </Button>
+          }
+        />
+      ) : status.installed ? (
+        <Stack dir="row" gap={3} align="center" justify="between">
+          <Text variant="caption" muted data-testid={`${testId}-state`}>
+            {`on this mac · ${formatBytes(status.bytes)}`}
+          </Text>
+          <Button
+            size="sm"
+            variant="danger"
+            icon="trash"
+            disabled={deleteBlocked}
+            onClick={onDelete}
+            data-testid={`${testId}-delete`}
+          >
+            delete models
+          </Button>
+        </Stack>
+      ) : (
+        <Stack dir="row" gap={3} align="center" justify="between">
+          <Text variant="caption" muted data-testid={`${testId}-state`}>
+            {size ? `not downloaded · ${formatBytes(size)}` : 'not downloaded'}
+          </Text>
+          <Button
+            size="sm"
+            icon="download"
+            onClick={onDownload}
+            data-testid={`${testId}-download`}
+          >
+            download
+          </Button>
+        </Stack>
+      )}
+    </Stack>
+  );
 }

@@ -670,7 +670,7 @@ function gateCtrl(h: Partial<Handlers>, on: () => boolean): Partial<Handlers> {
       ch,
       (...a: unknown[]) => {
         if (!on())
-          throw new AppError('E_UNAVAILABLE', 'ctrl is switched off in apps');
+          throw new AppError('E_UNAVAILABLE', 'ctrl is switched off in qrtz');
         return (fn as (...b: unknown[]) => unknown)(...a);
       },
     ]),

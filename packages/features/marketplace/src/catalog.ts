@@ -167,23 +167,46 @@ export function listings(
   return out;
 }
 
-/** The marketplace's sub-routes: browse (''), `installed` (the module manager), `item/<name>` (a detail page). */
-export type MarketRoute =
-  | { page: 'browse' }
-  | { page: 'installed' }
-  | { page: 'item'; name: string };
+/** The qrtz page's sub-routes: the app list (''), and `item/<name>` (the list with that app's detail modal open). */
+export type MarketRoute = { page: 'list' } | { page: 'item'; name: string };
 
 export function parseMarketRoute(path: string): MarketRoute {
   const [a, b] = path.split('/').filter(Boolean);
-  if (a === 'installed') return { page: 'installed' };
   if (a === 'item' && b && /^[a-z][a-z0-9.-]{0,63}$/.test(b))
     return { page: 'item', name: b };
-  return { page: 'browse' };
+  return { page: 'list' };
 }
 
 export const marketPath = (r: MarketRoute) =>
-  r.page === 'browse'
-    ? ''
-    : r.page === 'installed'
-      ? 'installed'
-      : `item/${r.name}`;
+  r.page === 'item' ? `item/${r.name}` : '';
+
+/** The apps whose models the scoped speech calls reach (`extensions: [<id>]`, ADR 0175). */
+export const MODEL_APPS = ['echo', 'nano', 'ctrl'] as const;
+export type ModelApp = (typeof MODEL_APPS)[number];
+export const isModelApp = (n: string): n is ModelApp =>
+  (MODEL_APPS as readonly string[]).includes(n);
+
+/**
+ * Each app's model sets: its `model:` dependencies in modules/<id>/module.json (checked by catalog.test), which
+ * the host's `sets_needed_by` reads. A scoped `speech:delete` removes only the sets no other switched-on app
+ * needs; `keptFor` says which stay and why.
+ */
+export const MODEL_SETS: Record<ModelApp, readonly string[]> = {
+  echo: ['parakeet-tdt-v2'],
+  nano: ['nemotron-560ms', 'nemotron3-diarizer', 'localvqe'],
+  ctrl: ['laya'],
+};
+
+/** For each of `app`'s sets, the other switched-on apps that also need it (so deleting `app`'s models keeps it). */
+export function keptFor(
+  app: ModelApp,
+  on: readonly string[],
+  sets: Record<ModelApp, readonly string[]> = MODEL_SETS,
+): { name: string; keptFor: string[] }[] {
+  return sets[app].map((name) => ({
+    name,
+    keptFor: MODEL_APPS.filter(
+      (o) => o !== app && on.includes(o) && sets[o].includes(name),
+    ),
+  }));
+}
