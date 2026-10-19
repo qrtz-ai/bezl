@@ -1595,6 +1595,197 @@ function spokenAmounts(t: string): string {
   return out;
 }
 
+/** ADR 0230: the month names a spoken date can follow, as the recogniser writes them. Same lists in cleanup.rs. */
+export const DATE_MONTHS = new Set([
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+]);
+/** ADR 0230: months that are also first names; only DATE_BEFORE_ANY or a weekday before them. */
+export const DATE_NAME_MONTHS = new Set(['April', 'May', 'June', 'August']);
+export const DATE_BEFORE_ANY = new Set([
+  'on',
+  'by',
+  'until',
+  'till',
+  'since',
+  'starting',
+]);
+export const DATE_BEFORE_MONTH_ONLY = new Set(
+  'through before after to for from of is was'.split(' '),
+);
+/** ADR 0230: after these a bare "first" can be the adverb ("Let's focus on October first, then November"). */
+export const DATE_FIRST_NOT_AFTER = new Set(
+  'on to for from of is was'.split(' '),
+);
+export const DATE_WEEKDAYS = new Set(
+  'Monday Tuesday Wednesday Thursday Friday Saturday Sunday'.split(' '),
+);
+/** ADR 0230: the words that may follow the day when it has no mark of its own (not "and" / "or"). */
+export const DATE_AFTER = new Set(
+  'at in to through until till from for by is was works would will should could so because if when then we i you they he she it instead'.split(
+    ' ',
+  ),
+);
+const ORDINAL_UNITS =
+  'first second third fourth fifth sixth seventh eighth ninth'.split(' ');
+const ORDINAL_TEENS =
+  'tenth eleventh twelfth thirteenth fourteenth fifteenth sixteenth seventeenth eighteenth nineteenth'.split(
+    ' ',
+  );
+const ORDINAL_OTHER =
+  'twentieth thirtieth fortieth fiftieth sixtieth seventieth eightieth ninetieth hundredth thousandth'.split(
+    ' ',
+  );
+const isOrdinalWord = (w: string) =>
+  ORDINAL_UNITS.includes(w) ||
+  ORDINAL_TEENS.includes(w) ||
+  ORDINAL_OTHER.includes(w);
+
+/** ADR 0230: a day 1-31 spoken as an ordinal ("fifth", "twenty first"): the value and the words used. */
+function spokenDay(w: readonly string[]): [number, number] | null {
+  const first = w[0];
+  if (first === undefined) return null;
+  const u = ORDINAL_UNITS.indexOf(first);
+  if (u >= 0) return [u + 1, 1];
+  const t = ORDINAL_TEENS.indexOf(first);
+  if (t >= 0) return [t + 10, 1];
+  if (first === 'twentieth') return [20, 1];
+  if (first === 'thirtieth') return [30, 1];
+  const unit = w[1] === undefined ? -1 : ORDINAL_UNITS.indexOf(w[1]);
+  if (unit < 0) return null;
+  if (first === 'twenty') return [21 + unit, 2];
+  if (first === 'thirty' && unit === 0) return [31, 2];
+  return null;
+}
+
+function ordinalFigure(n: number): string {
+  const suffix =
+    n % 100 >= 11 && n % 100 <= 13
+      ? 'th'
+      : n % 10 === 1
+        ? 'st'
+        : n % 10 === 2
+          ? 'nd'
+          : n % 10 === 3
+            ? 'rd'
+            : 'th';
+  return `${n}${suffix}`;
+}
+
+const DATE_MARKS = /[.,!?;:]+$/;
+
+/** ADR 0230: a spoken date's day as a figure ("on October twenty first" → "on October 21st"). Same rule as
+ * cleanup.rs `spoken_dates`; runs last, after the amounts. */
+function spokenDates(t: string, dict: readonly DictionaryEntry[]): string {
+  let any = false;
+  for (const m of DATE_MONTHS) any ||= t.includes(m);
+  if (!any) return t;
+  const toks: { s: number; e: number; line: number }[] = [];
+  let line = 0;
+  let start = -1;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (/\s/.test(c)) {
+      if (start >= 0) toks.push({ s: start, e: i, line });
+      start = -1;
+      if (c === '\n') line += 1;
+    } else if (start < 0) start = i;
+  }
+  if (start >= 0) toks.push({ s: start, e: t.length, line });
+  const word = (k: number) => t.slice(toks[k].s, toks[k].e);
+  const inDict = (m: string) =>
+    dict.some(
+      (d) =>
+        asciiLower(d.term.trim()) === asciiLower(m) ||
+        d.aliases.some((a) => asciiLower(a.trim()) === asciiLower(m)),
+    );
+  const numberish = (w: string) => {
+    const b = bare(w);
+    return isNumberWord(b) || isOrdinalWord(b) || AMOUNT_NEAR_REFUSE.has(b);
+  };
+  const body = (w: string) => w.replace(DATE_MARKS, '');
+  const lower = (w: string) => /^[a-z-]+$/.test(w);
+  const edits: [number, number, string][] = [];
+  for (let k = 1; k < toks.length; k++) {
+    const month = word(k);
+    if (
+      !DATE_MONTHS.has(month) ||
+      toks[k - 1].line !== toks[k].line ||
+      inDict(month)
+    )
+      continue;
+    const before = word(k - 1);
+    let okBefore: boolean;
+    if (/^[A-Za-z]+$/.test(before)) {
+      const low = asciiLower(before);
+      okBefore =
+        DATE_BEFORE_ANY.has(low) ||
+        (!DATE_NAME_MONTHS.has(month) && DATE_BEFORE_MONTH_ONLY.has(low)) ||
+        DATE_WEEKDAYS.has(before);
+    } else
+      okBefore = before.endsWith(',') && DATE_WEEKDAYS.has(before.slice(0, -1));
+    if (!okBefore) continue;
+    const sameLine = (q: number) =>
+      q < toks.length && toks[q].line === toks[k].line;
+    if (!sameLine(k + 1)) continue;
+    const w1 = word(k + 1);
+    const b1 = body(w1);
+    if (!lower(b1)) continue;
+    const p1 = b1.split('-');
+    let day: number;
+    let last: number;
+    const d1 = spokenDay(p1);
+    if (d1 !== null && d1[1] === p1.length) {
+      day = d1[0];
+      last = k + 1;
+    } else if (b1.length === w1.length && p1.length === 1 && sameLine(k + 2)) {
+      const b2 = body(word(k + 2));
+      if (!lower(b2) || b2.includes('-')) continue;
+      const d2 = spokenDay([b1, b2]);
+      if (d2 === null || d2[1] !== 2) continue;
+      day = d2[0];
+      last = k + 2;
+    } else continue;
+    if (
+      last === k + 1 &&
+      b1 === 'first' &&
+      DATE_FIRST_NOT_AFTER.has(asciiLower(before))
+    )
+      continue;
+    const w = word(last);
+    const bodyLen = body(w).length;
+    const marked = bodyLen !== w.length;
+    const next = sameLine(last + 1) ? word(last + 1) : null;
+    const next2 = sameLine(last + 2) ? word(last + 2) : null;
+    const next3 = sameLine(last + 3) ? word(last + 3) : null;
+    if (next !== null) {
+      if (!marked && !DATE_AFTER.has(bare(next))) continue;
+      if (
+        /[0-9]/.test(next) ||
+        numberish(next) ||
+        (next2 !== null && numberish(next2)) ||
+        (next3 !== null && isOrdinalWord(bare(next3)))
+      )
+        continue;
+    }
+    edits.push([toks[k + 1].s, toks[last].s + bodyLen, ordinalFigure(day)]);
+  }
+  let out = t;
+  for (const [a, b, text] of edits.reverse())
+    out = out.slice(0, a) + text + out.slice(b);
+  return out;
+}
+
 export function ruleCleanup(
   raw: string,
   dict: readonly DictionaryEntry[] = [],
@@ -1654,5 +1845,5 @@ export function ruleCleanup(
   // "i" before a dot only at a sentence end, not the "i" of "i.e." (ADR 0101, N160).
   t = t.replace(/\bi\b(?=[\s,!?']|\.(?![A-Za-z])|$)/g, 'I');
   t = applyDictionary(t, dict);
-  return spokenAmounts(terminalPunctuation(t, dict));
+  return spokenDates(spokenAmounts(terminalPunctuation(t, dict)), dict);
 }

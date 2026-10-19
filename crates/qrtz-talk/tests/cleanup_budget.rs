@@ -129,4 +129,13 @@ fn the_cleanup_chain_fits_its_budget_on_a_long_dictation() {
         .text
         .ends_with("Please take the backup tonight, will you?"));
     assert_fits_budget(&text, " ending in an imperative tag");
+    // ADR 0230: ending in a spoken date, so the date scan (which already reads every text with "May" in it) fires.
+    let text = format!(
+        "{}Thanks. Let's meet on October twenty first at noon",
+        long_dictation()
+    );
+    assert!(cleanup_dictation(&text, &dictionary(), true)
+        .text
+        .ends_with("Let's meet on October 21st at noon."));
+    assert_fits_budget(&text, " ending in a spoken date");
 }

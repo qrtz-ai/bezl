@@ -57,6 +57,7 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
     // ADR 0206 (cycle 66): "Hey <term> ..." may end with "?" instead of "." and gain a comma after the term.
     // ADR 0227 (cycle 76): a sentence ending in ", <negative contraction> <pronoun>" (a tag) may end with "?".
     // ADR 0229 (cycle 78): so may one opening with "Let's" / "Please" and ending in ", shall we" / ", <modal> you".
+    // ADR 0230 (cycle 79): a month's ordinal day may be written as a figure ("on October 21st").
     let old = if new != old && new == without_subject_repeats(&old) {
         new.clone()
     } else {
@@ -96,8 +97,10 @@ fn same(raw: &str, dict: &[DictionaryEntry]) {
                     .iter()
                     .any(|t| body.ends_with(&format!(", {t}")))
         });
+        // ADR 0230: a spoken day after a month written as a figure ("October twenty first" -> "October 21st").
+        let date = days_as_words(&new).replace('-', " ") == old.replace('-', " ");
         assert!(
-            list || opener || tag || imperative,
+            list || opener || tag || imperative || date,
             "rule_cleanup({raw:?}): {new:?} vs cycle 59 {old:?}"
         );
     }
@@ -532,4 +535,66 @@ fn the_long_dictation_runs_in_a_quarter_of_the_budget() {
         median <= 0.5,
         "cleanup took {median:.3} ms (median); ADR 0199 ceiling 0.5 ms"
     );
+}
+
+/// ADR 0230's one allowed edit, undone (written independently of cleanup.rs): every "<Month> <n>st/nd/rd/th" (n 1-31)
+/// back to the ordinal words the recogniser wrote ("October 21st" -> "October twenty first").
+fn days_as_words(t: &str) -> String {
+    const MONTHS: [&str; 12] = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ];
+    const UNITS: [&str; 19] = [
+        "first",
+        "second",
+        "third",
+        "fourth",
+        "fifth",
+        "sixth",
+        "seventh",
+        "eighth",
+        "ninth",
+        "tenth",
+        "eleventh",
+        "twelfth",
+        "thirteenth",
+        "fourteenth",
+        "fifteenth",
+        "sixteenth",
+        "seventeenth",
+        "eighteenth",
+        "nineteenth",
+    ];
+    let words = |n: usize| match n {
+        1..=19 => UNITS[n - 1].to_owned(),
+        20 => "twentieth".to_owned(),
+        21..=29 => format!("twenty {}", UNITS[n - 21]),
+        30 => "thirtieth".to_owned(),
+        31 => "thirty first".to_owned(),
+        _ => unreachable!(),
+    };
+    let toks: Vec<&str> = t.split(' ').collect();
+    let mut out: Vec<String> = Vec::new();
+    for (i, w) in toks.iter().enumerate() {
+        let after_month = i > 0 && MONTHS.contains(&toks[i - 1].rsplit('\n').next().unwrap_or_default());
+        let digits = w.bytes().take_while(u8::is_ascii_digit).count();
+        let n: usize = w[..digits].parse().unwrap_or(0);
+        let rest = &w[digits..];
+        let suffix = ["st", "nd", "rd", "th"].iter().find(|s| rest.starts_with(**s));
+        match (after_month, suffix) {
+            (true, Some(s)) if (1..=31).contains(&n) => out.push(format!("{}{}", words(n), &rest[s.len()..])),
+            _ => out.push((*w).to_owned()),
+        }
+    }
+    out.join(" ")
 }

@@ -797,6 +797,78 @@
       "category": "imperative-tag",
       "raw": "Let's go, shall we",
       "ideal": "Let's go, shall we?"
+    },
+    {
+      "id": "p129",
+      "category": "itn-date",
+      "raw": "Let's meet on October twenty first",
+      "ideal": "Let's meet on October 21st."
+    },
+    {
+      "id": "p130",
+      "category": "itn-date",
+      "raw": "The launch is on October fifth, so plan for it.",
+      "ideal": "The launch is on October 5th, so plan for it."
+    },
+    {
+      "id": "p131",
+      "category": "itn-date",
+      "raw": "Can we push the review to November third",
+      "ideal": "Can we push the review to November 3rd?"
+    },
+    {
+      "id": "p132",
+      "category": "itn-date",
+      "raw": "Please send the contract by May second.",
+      "ideal": "Please send the contract by May 2nd."
+    },
+    {
+      "id": "p133",
+      "category": "itn-date",
+      "raw": "The deadline is March thirty first",
+      "ideal": "The deadline is March 31st."
+    },
+    {
+      "id": "p134",
+      "category": "itn-date",
+      "raw": "Starting January tenth we will meet weekly",
+      "ideal": "Starting January 10th we will meet weekly."
+    },
+    {
+      "id": "p135",
+      "category": "itn-date",
+      "raw": "Let's meet on October fifth at three p.m.",
+      "ideal": "Let's meet on October 5th at 3 p.m."
+    },
+    {
+      "id": "p136",
+      "category": "itn-date",
+      "raw": "Saturday, August fifteenth. The sea was calm.",
+      "ideal": "Saturday, August 15th. The sea was calm."
+    },
+    {
+      "id": "p137",
+      "category": "itn-date",
+      "raw": "Our offsite is the week of September twenty-second",
+      "ideal": "Our offsite is the week of September 22nd."
+    },
+    {
+      "id": "p138",
+      "category": "itn-date",
+      "raw": "I have been out since February twelfth.",
+      "ideal": "I have been out since February 12th."
+    },
+    {
+      "id": "p139",
+      "category": "itn-date",
+      "raw": "Hi Priya, the invoice is due by June thirtieth.",
+      "ideal": "Hi Priya, the invoice is due by June 30th."
+    },
+    {
+      "id": "p140",
+      "category": "itn-date",
+      "raw": "Tuesday, August eighteenth",
+      "ideal": "Tuesday, August 18th"
     }
   ],
   "keep": [
@@ -2825,6 +2897,138 @@
       "rule": "imperative-tag",
       "raw": "Let's wait and see if they will",
       "expect": "Let's wait and see if they will."
+    },
+    {
+      "id": "k334",
+      "rule": "date",
+      "raw": "Give it to April first.",
+      "expect": "Give it to April first."
+    },
+    {
+      "id": "k335",
+      "rule": "date",
+      "raw": "You can go after June first.",
+      "expect": "You can go after June first."
+    },
+    {
+      "id": "k336",
+      "rule": "date",
+      "raw": "Let's focus on October first, then November.",
+      "expect": "Let's focus on October first, then November."
+    },
+    {
+      "id": "k337",
+      "rule": "date",
+      "raw": "My priority is March first.",
+      "expect": "My priority is March first."
+    },
+    {
+      "id": "k338",
+      "rule": "date",
+      "raw": "In March first we went home.",
+      "expect": "In March first we went home."
+    },
+    {
+      "id": "k339",
+      "rule": "date",
+      "raw": "On April fourth graders take the state test.",
+      "expect": "On April fourth graders take the state test."
+    },
+    {
+      "id": "k340",
+      "rule": "date",
+      "raw": "We are out on October fifth and sixth.",
+      "expect": "We are out on October fifth and sixth."
+    },
+    {
+      "id": "k341",
+      "rule": "date",
+      "raw": "We are out on October fifth, sixth, and seventh.",
+      "expect": "We are out on October fifth, sixth, and seventh."
+    },
+    {
+      "id": "k342",
+      "rule": "date",
+      "raw": "We launched on October fifth, 2026, in Austin.",
+      "expect": "We launched on October fifth, 2026, in Austin."
+    },
+    {
+      "id": "k343",
+      "rule": "date",
+      "raw": "We met on October twenty one at the cafe.",
+      "expect": "We met on October twenty one at the cafe."
+    },
+    {
+      "id": "k344",
+      "rule": "date",
+      "raw": "He arrived on October fifth the team cheered.",
+      "expect": "He arrived on October fifth the team cheered."
+    },
+    {
+      "id": "k345",
+      "rule": "date",
+      "raw": "The Fourth of July parade starts at noon.",
+      "expect": "The Fourth of July parade starts at noon."
+    },
+    {
+      "id": "k346",
+      "rule": "date",
+      "raw": "We moved to October first, then to November.",
+      "expect": "We moved to October first, then to November."
+    },
+    {
+      "id": "k347",
+      "rule": "date",
+      "raw": "I talked to May first and then to Sam.",
+      "expect": "I talked to May first and then to Sam."
+    },
+    {
+      "id": "k348",
+      "rule": "date",
+      "raw": "In June, first we test the app.",
+      "expect": "In June, first we test the app."
+    },
+    {
+      "id": "k349",
+      "rule": "date",
+      "raw": "I'll check on June first, then on Sam.",
+      "expect": "I'll check on June first, then on Sam."
+    },
+    {
+      "id": "k350",
+      "rule": "date",
+      "raw": "Book it for Monday, October fifth, twenty twenty six.",
+      "expect": "Book it for Monday, October fifth, twenty twenty six."
+    },
+    {
+      "id": "k351",
+      "rule": "date",
+      "raw": "Is it on October fifth or sixth?",
+      "expect": "Is it on October fifth or sixth?"
+    },
+    {
+      "id": "k352",
+      "rule": "date",
+      "raw": "It's due on October 5th.",
+      "expect": "It's due on October 5th."
+    },
+    {
+      "id": "k353",
+      "rule": "date",
+      "raw": "We finished second in March.",
+      "expect": "We finished second in March."
+    },
+    {
+      "id": "k354",
+      "rule": "date",
+      "raw": "Starting March second half sales picked up.",
+      "expect": "Starting March second half sales picked up."
+    },
+    {
+      "id": "k355",
+      "rule": "date",
+      "raw": "We met on October fifth, or the sixth at the latest.",
+      "expect": "We met on October fifth, or the sixth at the latest."
     }
   ]
 }

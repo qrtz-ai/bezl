@@ -1072,6 +1072,258 @@ fn spoken_clock(w: &[&str]) -> Option<String> {
     Some(format!("{hour}:{minutes:02}"))
 }
 
+/// ADR 0230: the month names a spoken date can follow, as the recogniser writes them (capitalised).
+pub const DATE_MONTHS: &[&str] = &[
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+];
+/// ADR 0230: months that are also first names ("Give it to April first", "You can go after June first"); they take
+/// only [`DATE_BEFORE_ANY`] or a weekday before them.
+pub const DATE_NAME_MONTHS: &[&str] = &["April", "May", "June", "August"];
+/// ADR 0230: the words right before a month that make it a date for any month ("on October fifth", "by May first").
+pub const DATE_BEFORE_ANY: &[&str] = &["on", "by", "until", "till", "since", "starting"];
+/// ADR 0230: the words right before a month that make it a date only for a month that isn't a first name ("move it
+/// to October fifth", "the week of March third", "the deadline is November first").
+pub const DATE_BEFORE_MONTH_ONLY: &[&str] = &[
+    "through", "before", "after", "to", "for", "from", "of", "is", "was",
+];
+/// ADR 0230: the words of [`DATE_BEFORE_ANY`] / [`DATE_BEFORE_MONTH_ONLY`] that don't make a bare "first" a day:
+/// after them "first" can be the adverb ("Let's focus on October first, then November", "My priority is March
+/// first", "Let's get to October first"). "twenty first" / "thirty first" and every other day still convert.
+pub const DATE_FIRST_NOT_AFTER: &[&str] = &["on", "to", "for", "from", "of", "is", "was"];
+/// ADR 0230: a weekday right before the month (with or without its comma) also makes it a date ("Tuesday, August
+/// eighteenth").
+pub const DATE_WEEKDAYS: &[&str] = &[
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+];
+/// ADR 0230: the words that may follow the day when it has no mark of its own: prepositions, conjunctions that open a
+/// clause, pronouns and auxiliaries, none of which an ordinal can modify ("on April fourth graders" is refused, "on
+/// April fourth at noon" is a date). Not "and" / "or" ("on April third and fourth graders").
+pub const DATE_AFTER: &[&str] = &[
+    "at", "in", "to", "through", "until", "till", "from", "for", "by", "is", "was", "works", "would", "will",
+    "should", "could", "so", "because", "if", "when", "then", "we", "i", "you", "they", "he", "she", "it",
+    "instead",
+];
+const ORDINAL_UNITS: &[&str] = &[
+    "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth",
+];
+const ORDINAL_TEENS: &[&str] = &[
+    "tenth",
+    "eleventh",
+    "twelfth",
+    "thirteenth",
+    "fourteenth",
+    "fifteenth",
+    "sixteenth",
+    "seventeenth",
+    "eighteenth",
+    "nineteenth",
+];
+/// Ordinal words that can't be a day but still mark a list or a number nearby ("fortieth", "hundredth").
+const ORDINAL_OTHER: &[&str] = &[
+    "twentieth",
+    "thirtieth",
+    "fortieth",
+    "fiftieth",
+    "sixtieth",
+    "seventieth",
+    "eightieth",
+    "ninetieth",
+    "hundredth",
+    "thousandth",
+];
+
+/// The marks a spoken day may carry at its end.
+const DATE_MARKS: &[char] = &['.', ',', '!', '?', ';', ':'];
+
+fn is_ordinal_word(w: &str) -> bool {
+    ORDINAL_UNITS.contains(&w) || ORDINAL_TEENS.contains(&w) || ORDINAL_OTHER.contains(&w)
+}
+
+/// ADR 0230: a day of the month, 1-31, spoken as an ordinal: "fifth", "eighteenth", "twentieth", "twenty first" /
+/// "twenty-first", "thirtieth", "thirty first". `w` is the run of lowercase words after the month, hyphens split;
+/// the value and the words used.
+fn spoken_day(w: &[&str]) -> Option<(u32, usize)> {
+    let first = *w.first()?;
+    if let Some(u) = ORDINAL_UNITS.iter().position(|o| *o == first) {
+        return Some((u as u32 + 1, 1));
+    }
+    if let Some(t) = ORDINAL_TEENS.iter().position(|o| *o == first) {
+        return Some((t as u32 + 10, 1));
+    }
+    match first {
+        "twentieth" => return Some((20, 1)),
+        "thirtieth" => return Some((30, 1)),
+        _ => {}
+    }
+    let unit = ORDINAL_UNITS.iter().position(|o| Some(o) == w.get(1))? as u32 + 1;
+    match first {
+        "twenty" => Some((20 + unit, 2)),
+        "thirty" if unit == 1 => Some((31, 2)),
+        _ => None,
+    }
+}
+
+/// "21" → "21st", "12" → "12th".
+fn ordinal_figure(n: u32) -> String {
+    let suffix = match (n % 10, n % 100) {
+        (_, 11..=13) => "th",
+        (1, _) => "st",
+        (2, _) => "nd",
+        (3, _) => "rd",
+        _ => "th",
+    };
+    format!("{n}{suffix}")
+}
+
+/// ADR 0230: a spoken date's day as a figure, the way the recogniser writes it when it writes digits ("Saturday,
+/// August 15th"): "on October twenty first" → "on October 21st", "by May fifth." → "by May 5th.". The day is an
+/// ordinal 1-31 in lowercase words right after a capitalised month (no mark between them), the month right after
+/// one of [`DATE_BEFORE_ANY`], one of [`DATE_BEFORE_MONTH_ONLY`] (not for [`DATE_NAME_MONTHS`]) or a weekday, all
+/// on one line. After the day: its own mark, the end of the text or line, or one of [`DATE_AFTER`]; neither of the
+/// next two words is a number or ordinal word, the third is no ordinal, and the next one is no figure (a year,
+/// "fifth, sixth", "fifth and sixth", "fifth, or the sixth"). A bare "first" after one of [`DATE_FIRST_NOT_AFTER`]
+/// stays (the adverb). A month spelled like a dictionary term or alias is never touched. Runs last, after the
+/// amounts. Anything else stays as spoken: "in March first we", "on April fourth graders", "October twenty one",
+/// "the fifth of May", "October fifth, 2026". Only the words around each month are read (ADR 0199's budget).
+fn spoken_dates(t: String, dict: &[DictionaryEntry]) -> String {
+    let mut edits: Vec<(usize, usize, String)> = Vec::new();
+    // One pass for a month's capital (an ASCII byte is always a char boundary), then the months it can start.
+    for (s, &c) in t.as_bytes().iter().enumerate() {
+        if s == 0 || !matches!(c, b'J' | b'F' | b'M' | b'A' | b'S' | b'O' | b'N' | b'D') {
+            continue;
+        }
+        for month in DATE_MONTHS {
+            if month.as_bytes()[0] == c && t[s..].starts_with(month) {
+                if let Some(edit) = date_at(&t, s, s + month.len(), dict) {
+                    edits.push(edit);
+                }
+            }
+        }
+    }
+    if edits.is_empty() {
+        return t;
+    }
+    let mut out = t;
+    for (a, b, text) in edits.into_iter().rev() {
+        out.replace_range(a..b, &text);
+    }
+    out
+}
+
+/// ADR 0230: the next run of non-whitespace at or after byte `from`, and whether a line break comes before it.
+fn next_word(t: &str, from: usize) -> Option<(&str, usize, bool)> {
+    let rest = &t[from..];
+    let lead = rest.find(|c: char| !c.is_whitespace())?;
+    let at = from + lead;
+    let len = t[at..].find(char::is_whitespace).unwrap_or(t.len() - at);
+    Some((&t[at..at + len], at, rest[..lead].contains('\n')))
+}
+
+/// ADR 0230: the edit [`spoken_dates`] makes for the month at `s..e`, if it is one: (day start, day end, figure).
+fn date_at(t: &str, s: usize, e: usize, dict: &[DictionaryEntry]) -> Option<(usize, usize, String)> {
+    let month = &t[s..e];
+    // The month is a whole word, after a word on its own line.
+    if t[e..].chars().next().is_some_and(|c| !c.is_whitespace()) {
+        return None;
+    }
+    let head = &t[..s];
+    let pe = head.trim_end_matches(char::is_whitespace).len();
+    if pe == s || pe == 0 || head[pe..].contains('\n') {
+        return None;
+    }
+    let ps = head[..pe]
+        .char_indices()
+        .rev()
+        .find(|(_, c)| c.is_whitespace())
+        .map_or(0, |(i, c)| i + c.len_utf8());
+    let before = &head[ps..pe];
+    let in_dict = dict.iter().any(|d| {
+        d.term.trim().eq_ignore_ascii_case(month)
+            || d.aliases.iter().any(|a| a.trim().eq_ignore_ascii_case(month))
+    });
+    if in_dict {
+        return None;
+    }
+    let low = before.to_ascii_lowercase();
+    let ok_before = if before.bytes().all(|b| b.is_ascii_alphabetic()) {
+        DATE_BEFORE_ANY.contains(&low.as_str())
+            || (!DATE_NAME_MONTHS.contains(&month) && DATE_BEFORE_MONTH_ONLY.contains(&low.as_str()))
+            || DATE_WEEKDAYS.contains(&before)
+    } else {
+        DATE_WEEKDAYS.contains(&before.strip_suffix(',').unwrap_or_default())
+    };
+    if !ok_before {
+        return None;
+    }
+    // The day: one word ("fifth", "twenty-first") or "twenty" / "thirty" and a unit ordinal, lowercase, on the
+    // month's line, with a mark allowed only after its last word.
+    let on_line = |from: usize| next_word(t, from).filter(|w| !w.2);
+    let body = |w: &str| w.trim_end_matches(DATE_MARKS).len();
+    let lower = |w: &str| !w.is_empty() && w.bytes().all(|b| b.is_ascii_lowercase() || b == b'-');
+    let (w1, s1, _) = on_line(e)?;
+    let b1 = &w1[..body(w1)];
+    if !lower(b1) {
+        return None;
+    }
+    let p1: Vec<&str> = b1.split('-').collect();
+    let (day, last, last_at) = match spoken_day(&p1) {
+        Some((d, n)) if n == p1.len() => (d, w1, s1),
+        _ if b1.len() == w1.len() && p1.len() == 1 => {
+            let (w2, s2, _) = on_line(s1 + w1.len())?;
+            let b2 = &w2[..body(w2)];
+            if !lower(b2) || b2.contains('-') {
+                return None;
+            }
+            match spoken_day(&[b1, b2]) {
+                Some((d, 2)) => (d, w2, s2),
+                _ => return None,
+            }
+        }
+        _ => return None,
+    };
+    if last_at == s1 && b1 == "first" && DATE_FIRST_NOT_AFTER.contains(&low.as_str()) {
+        return None;
+    }
+    let body_len = body(last);
+    let numberish = |w: &str| {
+        let b = bare(w);
+        is_number_word(&b) || is_ordinal_word(&b) || AMOUNT_NEAR_REFUSE.contains(&b.as_str())
+    };
+    if let Some((n, ns, _)) = on_line(last_at + last.len()) {
+        if body_len == last.len() && !DATE_AFTER.contains(&bare(n).as_str()) {
+            return None;
+        }
+        let n2 = on_line(ns + n.len());
+        let n3 = n2.and_then(|(w, at, _)| on_line(at + w.len())).map(|w| w.0);
+        let n2 = n2.map(|w| w.0);
+        if n.bytes().any(|b| b.is_ascii_digit())
+            || numberish(n)
+            || n2.is_some_and(numberish)
+            || n3.is_some_and(|w| is_ordinal_word(&bare(w)))
+        {
+            return None;
+        }
+    }
+    Some((s1, last_at + body_len, ordinal_figure(day)))
+}
+
 /// ADR 0101: immediate repeats of a whole word, collapsed where [`collapses`] says so. ADR 0199: a scan for the pattern
 /// `(?i)(?<![\w'])(\w+)(?:[\s,]+\1(?![\w']))+` (ASCII `\w`). The apostrophe is part of a word on both sides, so
 /// "you, you're" and "it, it's" are not repeats. The word is a whole run of word characters (a shorter one would be
@@ -2046,7 +2298,8 @@ fn remove_fillers(src: &str) -> String {
 /// capitalization, terminal punctuation (ADR 0101: which repeats collapse, and no "." on a short dictation; ADR 0188:
 /// nor on a list of short lines; ADR 0201: whose line commas go; ADR 0206: "Hey <dictionary name>, <question>?"; ADR
 /// 0227: "..., isn't it?"), then
-/// spoken amounts as figures (ADR 0193: "$25", "15%", "3:30 p.m.").
+/// spoken amounts as figures (ADR 0193: "$25", "15%", "3:30 p.m."), and a spoken date's day as a figure (ADR 0230:
+/// "on October 21st").
 pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
     let mut t = format!(" {raw} ");
     t = layout_command(NEW_PARAGRAPH, &t, "\n\n");
@@ -2069,7 +2322,7 @@ pub fn rule_cleanup(raw: &str, dict: &[DictionaryEntry]) -> String {
     t = sentence_starts(&t);
     t = lone_i(&t);
     t = apply_dictionary(&t, dict);
-    spoken_amounts(terminal_punctuation(t, dict))
+    spoken_dates(spoken_amounts(terminal_punctuation(t, dict)), dict)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

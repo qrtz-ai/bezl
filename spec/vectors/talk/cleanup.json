@@ -3086,6 +3086,176 @@
     {
       "raw": "Let's wait and see if they will",
       "expect": "Let's wait and see if they will."
+    },
+    {
+      "raw": "Let's meet on October twenty first",
+      "dict": false,
+      "expect": "Let's meet on October 21st."
+    },
+    {
+      "raw": "The launch is on October fifth, so plan for it.",
+      "dict": false,
+      "expect": "The launch is on October 5th, so plan for it."
+    },
+    {
+      "raw": "Can we push the review to November third",
+      "dict": false,
+      "expect": "Can we push the review to November 3rd?"
+    },
+    {
+      "raw": "Please send the contract by May second.",
+      "dict": false,
+      "expect": "Please send the contract by May 2nd."
+    },
+    {
+      "raw": "The deadline is March thirty first",
+      "dict": false,
+      "expect": "The deadline is March 31st."
+    },
+    {
+      "raw": "Starting January tenth we will meet weekly",
+      "dict": false,
+      "expect": "Starting January 10th we will meet weekly."
+    },
+    {
+      "raw": "Let's meet on October fifth at three p.m.",
+      "dict": false,
+      "expect": "Let's meet on October 5th at 3 p.m."
+    },
+    {
+      "raw": "Saturday, August fifteenth. The sea was calm.",
+      "dict": false,
+      "expect": "Saturday, August 15th. The sea was calm."
+    },
+    {
+      "raw": "Our offsite is the week of September twenty-second",
+      "dict": false,
+      "expect": "Our offsite is the week of September 22nd."
+    },
+    {
+      "raw": "I have been out since February twelfth.",
+      "dict": false,
+      "expect": "I have been out since February 12th."
+    },
+    {
+      "raw": "Hi Priya, the invoice is due by June thirtieth.",
+      "dict": false,
+      "expect": "Hi Priya, the invoice is due by June 30th."
+    },
+    {
+      "raw": "Tuesday, August eighteenth",
+      "dict": false,
+      "expect": "Tuesday, August 18th"
+    },
+    {
+      "raw": "Give it to April first.",
+      "dict": false,
+      "expect": "Give it to April first."
+    },
+    {
+      "raw": "You can go after June first.",
+      "dict": false,
+      "expect": "You can go after June first."
+    },
+    {
+      "raw": "Let's focus on October first, then November.",
+      "dict": false,
+      "expect": "Let's focus on October first, then November."
+    },
+    {
+      "raw": "My priority is March first.",
+      "dict": false,
+      "expect": "My priority is March first."
+    },
+    {
+      "raw": "In March first we went home.",
+      "dict": false,
+      "expect": "In March first we went home."
+    },
+    {
+      "raw": "On April fourth graders take the state test.",
+      "dict": false,
+      "expect": "On April fourth graders take the state test."
+    },
+    {
+      "raw": "We are out on October fifth and sixth.",
+      "dict": false,
+      "expect": "We are out on October fifth and sixth."
+    },
+    {
+      "raw": "We are out on October fifth, sixth, and seventh.",
+      "dict": false,
+      "expect": "We are out on October fifth, sixth, and seventh."
+    },
+    {
+      "raw": "We launched on October fifth, 2026, in Austin.",
+      "dict": false,
+      "expect": "We launched on October fifth, 2026, in Austin."
+    },
+    {
+      "raw": "We met on October twenty one at the cafe.",
+      "dict": false,
+      "expect": "We met on October twenty one at the cafe."
+    },
+    {
+      "raw": "He arrived on October fifth the team cheered.",
+      "dict": false,
+      "expect": "He arrived on October fifth the team cheered."
+    },
+    {
+      "raw": "The Fourth of July parade starts at noon.",
+      "dict": false,
+      "expect": "The Fourth of July parade starts at noon."
+    },
+    {
+      "raw": "We moved to October first, then to November.",
+      "dict": false,
+      "expect": "We moved to October first, then to November."
+    },
+    {
+      "raw": "I talked to May first and then to Sam.",
+      "dict": false,
+      "expect": "I talked to May first and then to Sam."
+    },
+    {
+      "raw": "In June, first we test the app.",
+      "dict": false,
+      "expect": "In June, first we test the app."
+    },
+    {
+      "raw": "I'll check on June first, then on Sam.",
+      "dict": false,
+      "expect": "I'll check on June first, then on Sam."
+    },
+    {
+      "raw": "Book it for Monday, October fifth, twenty twenty six.",
+      "dict": false,
+      "expect": "Book it for Monday, October fifth, twenty twenty six."
+    },
+    {
+      "raw": "Is it on October fifth or sixth?",
+      "dict": false,
+      "expect": "Is it on October fifth or sixth?"
+    },
+    {
+      "raw": "It's due on October 5th.",
+      "dict": false,
+      "expect": "It's due on October 5th."
+    },
+    {
+      "raw": "We finished second in March.",
+      "dict": false,
+      "expect": "We finished second in March."
+    },
+    {
+      "raw": "Starting March second half sales picked up.",
+      "dict": false,
+      "expect": "Starting March second half sales picked up."
+    },
+    {
+      "raw": "We met on October fifth, or the sixth at the latest.",
+      "dict": false,
+      "expect": "We met on October fifth, or the sixth at the latest."
     }
   ],
   "dictionaryOnly": [
