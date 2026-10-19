@@ -27,7 +27,7 @@ printf '{"type":"ping","id":"a"}\n{"type":"permissions.check"}\n{"type":"shutdow
 
 ## 2. Accessibility scraping (3 min)
 
-Give your terminal Accessibility permission (System Settings → Privacy & Security → Accessibility). Join a test call, turn on captions, and open the participants and chat panels.
+Give qrtz Accessibility permission (System Settings → Privacy & Security → Accessibility): **qrtz-app** for a `bun start` dev build, **qrtz** for `/Applications/qrtz.app`. Not your terminal: see [dev-permissions.md](dev-permissions.md). Join a test call, turn on captions, and open the participants and chat panels.
 
 ```sh
 native/qrtz-helper/.build/release/qrtz-helper --dump-ax > /tmp/ax.jsonl

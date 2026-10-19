@@ -1,0 +1,5 @@
+# `tauri dev` runs `cargo run` here; on macOS the runner signs qrtz-app and its helpers with stable identities and
+# launches it as its own responsible process, so Accessibility & co. are granted to qrtz and survive rebuilds.
+# Relative to apps/desktop/src-tauri. Tests and other binaries run unchanged. docs/dev-permissions.md
+[target.'cfg(target_os = "macos")']
+runner = "../../../scripts/dev/run.sh"
