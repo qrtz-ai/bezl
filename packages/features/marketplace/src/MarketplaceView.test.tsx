@@ -314,6 +314,10 @@ describe('no onboarding: permissions and the speech yes live at the switch (ADR 
     expect(downloads()).toBe(0);
     await click('module-enabled-echo');
     expect(downloads()).toBe(1);
+    // Only echo's models (audit P0-3): the request names the extension switched on.
+    expect(
+      f.calls.find((c) => c.channel === 'speech:download')?.payload,
+    ).toEqual({ extensions: ['echo'] });
   });
 
   it('switching echo on with speech installed downloads nothing', async () => {

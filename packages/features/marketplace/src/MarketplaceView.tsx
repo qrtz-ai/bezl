@@ -61,7 +61,9 @@ import { ModulePermissions, usePermissions } from './ModulePermissions';
 
 type Verb = 'install' | 'update' | 'remove';
 /** The modules whose models are the speech download (ctrl's model has its own yes in ctrl's settings, ADR 0116). */
-const SPEECH_MODULES: readonly string[] = ['echo', 'nano'];
+const SPEECH_MODULES = ['echo', 'nano'] as const;
+const isSpeechModule = (n: string): n is (typeof SPEECH_MODULES)[number] =>
+  (SPEECH_MODULES as readonly string[]).includes(n);
 const PAST: Record<Verb, string> = {
   install: 'installed',
   update: 'updated',
@@ -179,15 +181,19 @@ export default function MarketplaceView() {
       );
   const { perms, ask } = usePermissions();
   const allow = (p: OsPermission) => void ask(p).catch(fail);
-  // ADR 0163: switching echo or nano on is the user's yes to its speech models. If speech is neither installed nor
-  // on its way, the download starts here; nothing downloads at launch. The speech download is still one bundle for
-  // echo and nano: fetching only the switched-on module's models is the installer's (ADR 0157, audit P0-3).
+  // ADR 0163: switching echo or nano on is the user's yes to that extension's speech models, and only those
+  // (speech:download {extensions: [name]}, resolved from its module.json model deps, audit P0-3): echo fetches
+  // Parakeet, nano Nemotron + the diarizer + LocalVQE. speech:status reports for the switched-on set, so the
+  // download starts only when this one's models are missing and nothing is already downloading. Nothing downloads
+  // at launch.
   const downloadSpeechFor = (name: string) =>
-    SPEECH_MODULES.includes(name)
+    isSpeechModule(name)
       ? qrtz.invoke('speech:status').then((s) => {
           const idle = ['idle', 'error'].includes(s.download.state);
           if (s.configured && !s.installed && idle)
-            return qrtz.invoke('speech:download', {}).then(() => undefined);
+            return qrtz
+              .invoke('speech:download', { extensions: [name] })
+              .then(() => undefined);
         })
       : Promise.resolve();
   const setEnabled = (name: string, on: boolean) => {
