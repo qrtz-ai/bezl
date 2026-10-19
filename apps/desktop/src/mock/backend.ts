@@ -24,6 +24,7 @@ import {
   moduleOfView,
   modulePatchError,
   pickModuleSettings,
+  patchIsObject,
   patchTouchesHostOnly,
   isStreamEvent,
   type Config,
@@ -332,7 +333,10 @@ export function createMockBridge(): TauriBridge {
     }),
     'config:get': () => config,
     'config:set': ({ patch }) => {
-      // Like crates/qrtz-app: `modules.<id>.installed` and `onboarding` are the host's to write.
+      // Like crates/qrtz-app: a patch is an object (P3.5), and `modules.<id>.installed`, `bundledFallback` and
+      // `onboarding` are the host's to write.
+      if (!patchIsObject(patch))
+        throw new AppError('E_VALIDATION', 'a config patch is an object');
       if (patchTouchesHostOnly(patch))
         throw new AppError('E_VALIDATION', 'only qrtz writes that setting');
       config = applyConfigPatch(config, patch);

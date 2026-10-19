@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyConfigPatch,
+  deepMerge,
   defaultConfig,
   loadConfig,
   migrateLegacyConfig,
+  patchIsObject,
   patchTouchesHostOnly,
 } from './config';
 
@@ -154,5 +156,36 @@ describe('config', () => {
     ).toBe(true);
     expect(patchTouchesHostOnly({ theme: 'dark' })).toBe(false);
     expect(patchTouchesHostOnly(null)).toBe(false);
+  });
+
+  it('P3.5: replacing modules or a module entry with a non-object counts as touching its host keys (host 91cdf32)', () => {
+    for (const p of [
+      { modules: null },
+      { modules: [] },
+      { modules: 'x' },
+      { modules: { echo: null } },
+      { modules: { echo: 1 } },
+      { modules: { nano: { enabled: true }, echo: [] } },
+      { modules: { snap: false } },
+    ])
+      expect(patchTouchesHostOnly(p), JSON.stringify(p)).toBe(true);
+    expect(patchTouchesHostOnly({ modules: {} })).toBe(false);
+    // the global switch is a scalar
+    expect(patchTouchesHostOnly({ modules: { enabled: false } })).toBe(false);
+    expect(
+      patchTouchesHostOnly({
+        modules: { enabled: true, nano: { enabled: true } },
+      }),
+    ).toBe(false);
+    expect(patchTouchesHostOnly({ theme: 'dark' })).toBe(false);
+    expect(patchIsObject(null)).toBe(false);
+    expect(patchIsObject([])).toBe(false);
+    expect(patchIsObject('x')).toBe(false);
+    expect(patchIsObject({})).toBe(true);
+    // what deepMerge would have done with them
+    const cfg = {
+      modules: { echo: { installed: true, bundledFallback: true } },
+    };
+    expect(deepMerge(cfg, { modules: { echo: null } }).modules.echo).toBe(null);
   });
 });

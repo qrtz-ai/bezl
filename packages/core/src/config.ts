@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MODULE_IDS } from './modules';
 
 /**
  * App configuration (non-secret). Every field has a default so old files keep loading, and removed fields are
@@ -222,20 +223,29 @@ export function applyConfigPatch(cfg: Config, patch: unknown): Config {
  * `patch_touches_installed` / `patch_touches_bundled_fallback` and `onboarding.rs` `patch_touches_onboarding`):
  * `modules.<id>.installed` (ADR 0169), `modules.<id>.bundledFallback` (ADR 0181) and `onboarding` (ADR 0184). The
  * mock backend refuses these the same way the host does.
+ *
+ * P3.5 (91cdf32): replacing `modules`, or a module's own entry, with something that isn't an object
+ * (`{modules: null}`, `{modules: {echo: null}}`) counts as touching them too, since `deepMerge` would apply it as a
+ * replacement and wipe the host-written keys below it. `modules.enabled` (the global switch) is a legitimate scalar.
  */
 export function patchTouchesHostOnly(patch: unknown): boolean {
-  if (!patch || typeof patch !== 'object') return false;
-  const p = patch as Record<string, unknown>;
-  if ('onboarding' in p) return true;
-  const m = p.modules;
-  return (
-    !!m &&
-    typeof m === 'object' &&
-    Object.values(m as Record<string, unknown>).some(
-      (v) =>
-        !!v &&
-        typeof v === 'object' &&
-        ('installed' in v || 'bundledFallback' in v),
-    )
+  if (!isPlainObject(patch)) return false;
+  if ('onboarding' in patch) return true;
+  if (!('modules' in patch)) return false;
+  const m = patch.modules;
+  if (!isPlainObject(m)) return true;
+  return Object.entries(m).some(([id, v]) =>
+    isPlainObject(v)
+      ? 'installed' in v || 'bundledFallback' in v
+      : (MODULE_IDS as readonly string[]).includes(id),
   );
+}
+
+/** A `config:set` patch is an object: anything else would replace the whole config (`deepMerge`; host `patch_is_object`). */
+export function patchIsObject(patch: unknown): boolean {
+  return isPlainObject(patch);
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
