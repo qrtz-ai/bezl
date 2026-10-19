@@ -3378,7 +3378,7 @@ checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 
 [[package]]
 name = "qrtz-app"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -3413,7 +3413,7 @@ dependencies = [
 
 [[package]]
 name = "qrtz-backup"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "qrtz-model",
  "qrtz-storage",
@@ -3429,14 +3429,14 @@ dependencies = [
 
 [[package]]
 name = "qrtz-cloexec"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "libc",
 ]
 
 [[package]]
 name = "qrtz-ctrl"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "hex",
  "serde",
@@ -3447,7 +3447,7 @@ dependencies = [
 
 [[package]]
 name = "qrtz-desktop"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "qrtz-app",
  "qrtz-cloexec",
@@ -3471,7 +3471,7 @@ dependencies = [
 
 [[package]]
 name = "qrtz-helper-bridge"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "jsonschema",
  "libc",
@@ -3486,7 +3486,7 @@ dependencies = [
 
 [[package]]
 name = "qrtz-ipc"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "async-trait",
  "jsonschema",
@@ -3498,7 +3498,7 @@ dependencies = [
 
 [[package]]
 name = "qrtz-lifecycle"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "async-trait",
  "indexmap 2.14.2",
@@ -3520,7 +3520,7 @@ dependencies = [
 
 [[package]]
 name = "qrtz-llm"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "qrtz-model",
  "qrtz-storage",
@@ -3535,7 +3535,7 @@ dependencies = [
 
 [[package]]
 name = "qrtz-model"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "serde",
  "serde_json",
@@ -3544,7 +3544,7 @@ dependencies = [
 
 [[package]]
 name = "qrtz-modules"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "async-trait",
  "ed25519-dalek",
@@ -3563,7 +3563,7 @@ dependencies = [
 
 [[package]]
 name = "qrtz-publish"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "async-trait",
  "ed25519-dalek",
@@ -3580,7 +3580,7 @@ dependencies = [
 
 [[package]]
 name = "qrtz-speech"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "async-trait",
  "ed25519-dalek",
@@ -3604,7 +3604,7 @@ dependencies = [
 
 [[package]]
 name = "qrtz-speech-types"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "async-trait",
  "jsonschema",
@@ -3617,7 +3617,7 @@ dependencies = [
 
 [[package]]
 name = "qrtz-storage"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "indexmap 2.14.2",
  "qrtz-model",
@@ -3635,7 +3635,7 @@ dependencies = [
 
 [[package]]
 name = "qrtz-talk"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
