@@ -305,6 +305,23 @@ const LEGACY_LOCK: &str = "modules/modules.lock.json";
 /// Holds `.qrtz-install.lock` for one change: the app and the CLI never write at once.
 struct Guard(#[allow(dead_code)] std::fs::File);
 
+/// The root documents one refresh was served (N189): kept so its commit can verify them again.
+#[derive(Default)]
+struct Fetched {
+    /// `1.root.json` and its signature, when there was no stored trust.
+    bootstrap: Option<(Vec<u8>, Vec<u8>)>,
+    /// Each newer root after the stored (or bootstrapped) one, in order.
+    roots: Vec<(Vec<u8>, Vec<u8>)>,
+}
+
+/// One host's verified answer to a refresh, not yet stored.
+struct Committed {
+    fetched: Fetched,
+    verified: Verified,
+    ts: Vec<u8>,
+    ts_sig: Vec<u8>,
+}
+
 impl Installer {
     pub fn new(
         root: impl Into<PathBuf>,
@@ -363,11 +380,14 @@ impl Installer {
 
     // ---- trust and the index (ADR 0153) ----
 
+    /// The root chain from `trust` (or root 1, bootstrapped against the pin), each newer root verified as it comes.
+    /// Every document served is kept in `got` so the commit can verify it again against trust that moved meanwhile.
     async fn roots(
         &self,
         src: &dyn Transport,
         host: usize,
         trust: Option<Trust>,
+        got: &mut Fetched,
     ) -> Result<Trust, InstallError> {
         let net = InstallError::Network;
         let mut t = match trust {
@@ -383,7 +403,9 @@ impl Installer {
                 ) else {
                     return Err(InstallError::Network(format!("{p}: not found")));
                 };
-                Trust::bootstrap(self.pinned_root_sha256.as_deref(), &b, &s)?
+                let t = Trust::bootstrap(self.pinned_root_sha256.as_deref(), &b, &s)?;
+                got.bootstrap = Some((b, s));
+                t
             }
         };
         for _ in 0..1000 {
@@ -397,6 +419,7 @@ impl Installer {
                 .map_err(net)?
                 .ok_or_else(|| InstallError::Network(format!("{p}.sig: not found")))?;
             t.update_root(&b, &s)?;
+            got.roots.push((b, s));
         }
         Ok(t)
     }
@@ -457,34 +480,77 @@ impl Installer {
     /// Network refresh: roots, then the newest fresh timestamp and its index from the first host that serves a good
     /// one (a stale, expired or badly signed host is skipped: the freeze attack has to win every host). Then every
     /// installed package is rechecked against the fresh list (rule 6).
+    ///
+    /// N189 (ADR 0210, follow-up): the requests and their signature checks run without `.qrtz-install.lock`, against a
+    /// snapshot of the stored trust, so a refresh stuck on a dead network or a captive portal (up to 15 s to connect
+    /// and 60 s to read, per request) blocks no install. The lock is taken only to commit: the stored trust is read
+    /// again; if it moved (another refresh or an adopted sideload committed meanwhile) what this refresh fetched is
+    /// verified again against it, so nothing it added (a newer root, a revocation, a higher version) is lost or
+    /// rolled back; a pair older than the stored one is refused (`Rollback`). If that check can't pass, the refresh
+    /// starts over once from the new trust. Then the index and trust are saved and the lock is rechecked.
     pub async fn refresh(
         &self,
         src: &dyn Transport,
         _consent: &RefreshConsent,
         now_ms: u64,
     ) -> Result<Refreshed, InstallError> {
-        let _g = self.guard()?;
-        let stored = self.trust()?;
+        let mut retried = false;
+        loop {
+            let snapshot = self.trust()?;
+            let (t, got) = self.fetch_newest(src, snapshot.clone(), now_ms).await?;
+            let _g = self.guard()?;
+            let current = self.trust()?;
+            let (t, v) = if current.as_ref().map(|t| &t.state) == snapshot.as_ref().map(|t| &t.state) {
+                (t, got.verified)
+            } else {
+                match self.reverify(current, &got, now_ms) {
+                    Ok(tv) => tv,
+                    Err(_) if !retried => {
+                        retried = true;
+                        continue;
+                    }
+                    Err(e) => return Err(e),
+                }
+            };
+            self.save_index(&v, &got.ts, &got.ts_sig)?;
+            t.save(&self.trust_path())?;
+            let notices = self.recheck(t.revocation(), t.effective_now(now_ms))?;
+            return Ok(Refreshed {
+                timestamp_version: v.timestamp.version,
+                index_version: v.index.version,
+                notices,
+            });
+        }
+    }
+
+    /// The network half of [`Installer::refresh`], no lock held: the first host whose roots, timestamp and index
+    /// verify against `stored` (nothing is written).
+    async fn fetch_newest(
+        &self,
+        src: &dyn Transport,
+        stored: Option<Trust>,
+        now_ms: u64,
+    ) -> Result<(Trust, Committed), InstallError> {
         let mut errs = vec![];
         for host in 0..src.hosts() {
             let attempt = async {
-                let mut t = self.roots(src, host, stored.clone()).await?;
+                let mut got = Fetched::default();
+                let mut t = self.roots(src, host, stored.clone(), &mut got).await?;
                 t.check_root_fresh(now_ms)?;
                 let (v, ts, ts_sig) = self.pair(src, host, &t, Mode::Network, now_ms).await?;
                 t.commit(&v, now_ms)?;
-                Ok::<_, InstallError>((t, v, ts, ts_sig))
+                Ok::<_, InstallError>((
+                    t,
+                    Committed {
+                        fetched: got,
+                        verified: v,
+                        ts,
+                        ts_sig,
+                    },
+                ))
             };
             match attempt.await {
-                Ok((t, v, ts, ts_sig)) => {
-                    self.save_index(&v, &ts, &ts_sig)?;
-                    t.save(&self.trust_path())?;
-                    let notices = self.recheck(t.revocation(), t.effective_now(now_ms))?;
-                    return Ok(Refreshed {
-                        timestamp_version: v.timestamp.version,
-                        index_version: v.index.version,
-                        notices,
-                    });
-                }
+                Ok(r) => return Ok(r),
                 Err(e) => errs.push(e),
             }
         }
@@ -494,6 +560,43 @@ impl Installer {
             .or(errs.first())
             .cloned();
         Err(pick.unwrap_or(InstallError::Network("no hosts".into())))
+    }
+
+    /// Under the lock, when the stored trust moved during the fetch: the same documents verified again, offline,
+    /// against `current` (its newer roots skipped, the rest of the chain applied; the network rules, so an older or
+    /// equivocating pair than the one now stored is refused), and committed on top of it.
+    fn reverify(
+        &self,
+        current: Option<Trust>,
+        got: &Committed,
+        now_ms: u64,
+    ) -> Result<(Trust, Verified), InstallError> {
+        let f = &got.fetched;
+        let mut t = match current {
+            Some(t) => t,
+            None => {
+                // trust.json went away meanwhile (a reset): root 1 again, against the pin.
+                let (b, s) = f.bootstrap.as_ref().ok_or(InstallError::StalePlan)?;
+                Trust::bootstrap(self.pinned_root_sha256.as_deref(), b, s)?
+            }
+        };
+        for (b, s) in &f.roots {
+            if crate::index::Root::parse(b)?.version <= t.root.version {
+                continue;
+            }
+            t.update_root(b, s)?;
+        }
+        t.check_root_fresh(now_ms)?;
+        let v = t.verify_pair(
+            Mode::Network,
+            &got.ts,
+            &got.ts_sig,
+            &got.verified.index_bytes,
+            &got.verified.index_sig,
+            now_ms,
+        )?;
+        t.commit(&v, now_ms)?;
+        Ok((t, v))
     }
 
     /// Rule 6: a fresh list disables what it revokes (and every extension that depends on it), and clears stale marks.
@@ -1095,7 +1198,9 @@ impl Installer {
         let pkg = Qrtzpkg::open(file)?;
         let file_sha = pkg.sha256()?;
         let src = PkgTransport(&pkg);
-        let mut trust = self.roots(&src, 0, self.trust()?).await?;
+        let mut trust = self
+            .roots(&src, 0, self.trust()?, &mut Fetched::default())
+            .await?;
         let (carried, ts, ts_sig) = self.pair(&src, 0, &trust, Mode::Sideload, now_ms).await?;
         let snap = VerifiedSnapshot::verify(
             &trust.carried(&carried.timestamp, carried.timestamp_sha256.clone()),

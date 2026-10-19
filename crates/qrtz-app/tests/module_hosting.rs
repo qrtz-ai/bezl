@@ -828,3 +828,182 @@ async fn check_for_updates_refreshes_the_signed_index_and_installs_nothing() {
     assert_eq!(r["state"], "not-set-up");
     assert_eq!(w.hits(), before, "an unconfigured host gets no request");
 }
+
+/// N189 (ADR 0210 follow-up): a refresh stuck on a host that accepts and never answers (a black-holed network, a
+/// captive portal) holds no install lock while it waits, so `packages:apply` of a package already in the store
+/// installs at once instead of failing with "another install is running" for a minute or more.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_refresh_stuck_on_a_silent_host_blocks_no_install() {
+    use qrtz_app::packages_ipc::PackagesIpc;
+    use qrtz_app::ports::PackagesPort;
+    use serde_json::json;
+    let w = world().await;
+    let ipc = PackagesIpc::new(w.client("ui", &[&w.primary]));
+    ipc.call("packages:refresh", json!(null)).await.unwrap();
+    let apply = |plan: serde_json::Value| {
+        let ipc = &ipc;
+        async move {
+            ipc.call(
+                "packages:apply",
+                json!({"planSha256": plan["planSha256"], "downloadBytes": plan["downloadBytes"]}),
+            )
+            .await
+        }
+    };
+    let install = json!({"op": "install", "names": ["nano"]});
+    let plan = ipc.call("packages:plan", install.clone()).await.unwrap();
+    apply(plan).await.unwrap();
+    let plan = ipc
+        .call("packages:plan", json!({"op": "remove", "names": ["nano"]}))
+        .await
+        .unwrap();
+    apply(plan).await.unwrap();
+    // Its blobs stay in the store until a prune: installing it again fetches nothing.
+    let plan = ipc.call("packages:plan", install).await.unwrap();
+    assert_eq!(plan["downloadBytes"], 0, "{plan}");
+
+    // The only host: accepts every connection and never sends a byte.
+    let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://127.0.0.1:{}", silent.local_addr().unwrap().port());
+    let (connected, accepted) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut held = vec![];
+        for s in silent.incoming().flatten() {
+            held.push(s);
+            let _ = connected.send(());
+        }
+    });
+    let stuck = std::sync::Arc::new(Packages::with(
+        Installer::new(w.dir.join("ui"), Some(w.pin.clone()), Box::new(NoAppleChecks)),
+        w.transport(&[base]),
+    ));
+    let now = w.now;
+    let refresh = tokio::spawn({
+        let stuck = stuck.clone();
+        async move { stuck.refresh(&RefreshConsent::user_asked(), now).await }
+    });
+    tokio::task::spawn_blocking(move || accepted.recv_timeout(std::time::Duration::from_secs(10)))
+        .await
+        .unwrap()
+        .expect("the refresh reached the silent host");
+
+    let a = apply(plan).await.expect("an install while a refresh waits");
+    assert_eq!(a["changes"].as_array().map(Vec::len), Some(3), "{a}");
+    assert!(
+        !refresh.is_finished(),
+        "the refresh is still waiting on the silent host"
+    );
+    assert!(echo_lock(&stuck).disabled.is_none());
+    refresh.abort();
+}
+
+/// Plays a host through `inner`; the moment this refresh asks for the index (its timestamp already verified against
+/// its snapshot of the trust, before its commit), another client refreshes the same data dir to completion.
+struct MidRefresh {
+    inner: HttpTransport,
+    other: std::sync::Mutex<Option<Packages>>,
+    now: u64,
+}
+
+#[async_trait::async_trait]
+impl qrtz_modules::fetch::Transport for MidRefresh {
+    fn hosts(&self) -> usize {
+        qrtz_modules::fetch::Transport::hosts(&self.inner)
+    }
+    async fn get(&self, host: usize, path: &str, max: usize) -> Result<Option<Vec<u8>>, String> {
+        if path.starts_with("v1/index/") {
+            let other = self.other.lock().unwrap().take();
+            if let Some(o) = other {
+                o.refresh(&RefreshConsent::user_asked(), self.now)
+                    .await
+                    .expect("the other refresh isn't blocked by this one");
+            }
+        }
+        qrtz_modules::fetch::Transport::get(&self.inner, host, path, max).await
+    }
+    async fn get_range(
+        &self,
+        src: &qrtz_modules::fetch::Source,
+        sha256: &str,
+        start: u64,
+        len: u64,
+    ) -> Result<Vec<u8>, String> {
+        self.inner.get_range(src, sha256, start, len).await
+    }
+}
+
+/// Index v2 (revoking nano@0.3.0) on its own server, v3 (revoking nothing) on the primary and the mirror.
+async fn two_versions(w: &World) -> (Server, Revoked) {
+    let pulled = Revoked {
+        package: "nano".into(),
+        versions: vec!["0.3.0".into()],
+        reason: "pulled: crash on launch".into(),
+    };
+    w.republish(vec![pulled.clone()], w.now + 1000);
+    let v2 = Server::start().await;
+    serve(&w.out, &v2);
+    w.republish(vec![], w.now + 2000);
+    (v2, pulled)
+}
+
+/// N189: the stored trust moves while a refresh fetches (another refresh commits v2): the commit re-verifies the
+/// fetched v3 against it and builds on it, so v2's revocation is kept, not overwritten by the stale snapshot.
+#[tokio::test]
+async fn trust_that_moves_mid_refresh_is_reverified_and_kept() {
+    let w = world().await;
+    let (v2, pulled) = two_versions(&w).await;
+    let now = w.now + 3000;
+    let mid = MidRefresh {
+        inner: w.transport(std::slice::from_ref(&w.primary.base)),
+        other: std::sync::Mutex::new(Some(w.client("c", &[&v2]))),
+        now,
+    };
+    let a = Installer::new(w.dir.join("c"), Some(w.pin.clone()), Box::new(NoAppleChecks));
+    let r = a.refresh(&mid, &RefreshConsent::user_asked(), now).await.unwrap();
+    assert!(
+        mid.other.lock().unwrap().is_none(),
+        "the other refresh ran mid-way"
+    );
+    assert_eq!(r.index_version, 3);
+    let t = a.trust().unwrap().unwrap();
+    assert_eq!(t.state.index.as_ref().unwrap().version, 3);
+    assert!(
+        t.revocation()
+            .unwrap()
+            .revoked
+            .iter()
+            .any(|x| x.package == pulled.package),
+        "v2's revocation accumulates under v3"
+    );
+    let (_, v) = a.cached_index().unwrap();
+    assert_eq!(v.index.version, 3);
+}
+
+/// N189: a refresh that fetched v2 while another committed v3 is refused at its commit (no rollback, retried once
+/// from the new trust and refused again), and v3 stays stored and cached.
+#[tokio::test]
+async fn an_older_pair_committed_after_a_newer_one_is_a_rollback() {
+    let w = world().await;
+    let (v2, _) = two_versions(&w).await;
+    let now = w.now + 3000;
+    let mid = MidRefresh {
+        inner: w.transport(std::slice::from_ref(&v2.base)),
+        other: std::sync::Mutex::new(Some(w.client("c", &[&w.primary]))),
+        now,
+    };
+    let a = Installer::new(w.dir.join("c"), Some(w.pin.clone()), Box::new(NoAppleChecks));
+    let e = a
+        .refresh(&mid, &RefreshConsent::user_asked(), now)
+        .await
+        .unwrap_err();
+    assert!(e.to_string().contains("older than the stored"), "{e}");
+    assert!(
+        mid.other.lock().unwrap().is_none(),
+        "the other refresh ran mid-way"
+    );
+    let t = a.trust().unwrap().unwrap();
+    assert_eq!(t.state.index.as_ref().unwrap().version, 3);
+    assert_eq!(t.state.timestamp.as_ref().unwrap().version, 3);
+    let (_, v) = a.cached_index().unwrap();
+    assert_eq!(v.index.version, 3);
+}
