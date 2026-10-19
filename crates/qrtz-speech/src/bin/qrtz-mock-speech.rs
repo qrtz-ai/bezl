@@ -17,6 +17,7 @@ use std::os::fd::FromRawFd;
 
 const BYTES_PER_MS: u64 = 32; // 16 kHz, 16-bit mono
 
+#[cfg(target_os = "linux")]
 fn errno_name(r: i64) -> String {
     if r >= 0 {
         return "ok".into();

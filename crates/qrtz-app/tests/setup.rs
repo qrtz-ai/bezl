@@ -123,6 +123,10 @@ fn mode(p: &Path) -> u32 {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "installs run the module health check, and the module spawner is Linux-only (spawn.rs: the macOS spawner is not built yet)"
+)]
 async fn speech_downloads_with_progress_pauses_resumes_and_deletes() {
     let tmp = tempfile::tempdir().unwrap();
     let env = speech_env(tmp.path()).await;
@@ -162,6 +166,10 @@ async fn speech_downloads_with_progress_pauses_resumes_and_deletes() {
     call(&r, "speech:resume", json!(null)).await;
     until("installed", async || {
         let s = call(&r, "speech:status", json!(null)).await;
+        assert_ne!(
+            s["download"]["state"], "error",
+            "the install failed, it will not finish: {s}"
+        );
         s["installed"] == "1.0.0" && s["download"]["state"] == "idle"
     })
     .await;
@@ -191,6 +199,10 @@ async fn speech_downloads_with_progress_pauses_resumes_and_deletes() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "installs run the module health check, and the module spawner is Linux-only (spawn.rs: the macOS spawner is not built yet)"
+)]
 async fn a_download_a_quit_cut_short_resumes_on_the_next_launch_and_a_user_pause_does_not() {
     let tmp = tempfile::tempdir().unwrap();
     let env = speech_env(tmp.path()).await;
@@ -257,6 +269,10 @@ async fn a_download_a_quit_cut_short_resumes_on_the_next_launch_and_a_user_pause
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "installs run the module health check, and the module spawner is Linux-only (spawn.rs: the macOS spawner is not built yet)"
+)]
 async fn a_damaged_download_is_an_error_with_retry() {
     let tmp = tempfile::tempdir().unwrap();
     let env = speech_env(tmp.path()).await;
