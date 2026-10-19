@@ -188,11 +188,14 @@ public enum NotchGeometry {
     public static let sideGrow = 70.0, dropGrow = 32.0
     /// The most a state can widen it, each side, past `sideGrow`.
     public static let widenMax = 90.0
+    /// Spare panel width each side past the widest shape, so a spring's overshoot at `widenMax` is never clipped by
+    /// the panel edge (bounce ≤ 0.35 overshoots ≤ ~7% of the up-to-168 pt side travel, ≈ 12 pt).
+    public static let bounceRoom = 12.0
     public static let restRadius = 8.0, expandedRadius = 14.0, expandedEar = 8.0
     public static let padding = 14.0, gap = 8.0, iconSize = 14.0, fontSize = 13.158
     /// The panel never moves or resizes while shown: big enough for the widest state.
     public static func panelSize(notchWidth: Double, notchHeight: Double) -> (w: Double, h: Double) {
-        (notchWidth + 2 * (sideGrow + widenMax + expandedEar), notchHeight + dropGrow + 4)
+        (notchWidth + 2 * (sideGrow + widenMax + expandedEar + bounceRoom), notchHeight + dropGrow + 4)
     }
 
     /// The shape's width and height for a body widened by `extra` (0 = the normal expanded size), with its ears.
@@ -226,7 +229,7 @@ public struct NotchMotion: Equatable, Sendable {
     public static let ranges: [(String, Double, Double)] = [
         ("expandDuration", 0.05, 1.5), ("expandBounce", 0, 0.35),
         ("collapseDuration", 0.05, 1.5), ("collapseBounce", 0, 0.35),
-        ("fadeInDelay", 0, 0.6), ("fadeInDuration", 0, 0.6), ("fadeOutDuration", 0, 0.6),
+        ("fadeInDelay", 0, 0.6), ("fadeInDuration", 0, 0.6), ("fadeOutDuration", 0, 0.1),
         ("widenDuration", 0.05, 1.5), ("widenBounce", 0, 0.35),
         ("radiusCollapsed", 0, 16), ("radiusExpanded", 0, 32), ("shoulder", 0, 16),
     ]
@@ -247,6 +250,10 @@ public struct NotchMotion: Equatable, Sendable {
             self[keyPath: kp] = max(r.1, min(r.2, v))
         }
     }
+
+    /// The content's fade when the surface hides. Secure input (a password field) hides it at once, whatever the
+    /// motion settings; any other hide is capped at 0.1 s (also when built in code, past the wire clamp).
+    public func hideContentFade(secure: Bool) -> Double { secure ? 0 : max(0, min(0.1, fadeOutDuration)) }
 
     public var json: JSONValue { .object(Dictionary(uniqueKeysWithValues: Self.keys.map { ($0.0, .number(self[keyPath: $0.1])) })) }
 }

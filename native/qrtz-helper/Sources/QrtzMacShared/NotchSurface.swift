@@ -118,7 +118,8 @@ public final class NotchSurface: @unchecked Sendable {
         let t = target()
         watchSecureInput(arbiter.visible?.priority == .module)
         guard let t else {
-            if drawn != nil { retract() }
+            // Hidden while the arbiter still has an entry: secure input suppressed module content. Its text goes now.
+            if drawn != nil { retract(secure: arbiter.visible != nil) }
             return
         }
         let wasDrawn = drawn != nil
@@ -137,11 +138,11 @@ public final class NotchSurface: @unchecked Sendable {
                              userInfo: [.announcement: stage.announcement, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
     }
 
-    private func retract() {
+    private func retract(secure: Bool = false) {
         drawn = nil
         hideGeneration += 1
         let gen = hideGeneration
-        stage.retract { [weak self] in
+        stage.retract(secure: secure) { [weak self] in
             guard let self, self.hideGeneration == gen, self.drawn == nil else { return }  // a show took over
             self.panel.orderOut(nil)
             self.stage.running = false
@@ -477,7 +478,7 @@ final class NotchStageView: NSView {
     /// Show: the shape springs from the rest rect (or from where a retract left it) to the expanded size on a system
     /// spring with `.snappy`'s bounce (by default perceptual 0.3 s, bounce 0.15; `motion`); the content fades in as the shape arrives
     /// (from 0.11 s over 0.09 s). The overshoot (~0.6% of the travel: under 1 pt each side and down) stays inside
-    /// the panel, which has `widenMax` + ear spare each side and 4 pt below (`NotchGeometry.panelSize`), so nothing
+    /// the panel, which has `widenMax` + ear + `bounceRoom` spare each side and 4 pt below (`NotchGeometry.panelSize`), so nothing
     /// clips and it reaches no further over the menu bar than the panel already does. Reduce Motion: a 120 ms fade.
     func expand(fromCurrent: Bool) {
         generation += 1
@@ -515,8 +516,9 @@ final class NotchStageView: NSView {
 
     /// Hide: the content fades out, then the shape retracts into the rest rect on a no-bounce system spring
     /// (`.smooth`'s bounce 0 at a 0.3 s perceptual duration, so nothing pokes back out of the notch); `done` unless a
-    /// show took over.
-    func retract(_ done: @escaping () -> Void) {
+    /// show took over. `secure` (secure input turned on): the content's opacity goes to 0 at once, no fade, whatever
+    /// `motion` says (`NotchMotion.hideContentFade`); only the empty black shape then retracts.
+    func retract(secure: Bool = false, _ done: @escaping () -> Void) {
         generation += 1
         let gen = generation
         guard let root = layer, let rowLayer = row.layer else { done(); return }
@@ -525,13 +527,19 @@ final class NotchStageView: NSView {
             guard let self, self.generation == gen else { return }
             done()
         }
+        if secure {
+            rowLayer.removeAllAnimations()
+            CATransaction.begin(); CATransaction.setDisableActions(true); rowLayer.opacity = 0; CATransaction.commit()
+        }
         if reduceMotion {
             let o0 = presentedOpacity(root)
             root.removeAllAnimations()
             CATransaction.begin(); CATransaction.setDisableActions(true); root.opacity = 0; CATransaction.commit()
-            let fade = CABasicAnimation(keyPath: "opacity")
-            fade.fromValue = o0; fade.toValue = 0; fade.duration = 0.12
-            root.add(fade, forKey: "notch.fade")
+            if !secure {
+                let fade = CABasicAnimation(keyPath: "opacity")
+                fade.fromValue = o0; fade.toValue = 0; fade.duration = 0.12
+                root.add(fade, forKey: "notch.fade")
+            }
         } else {
             let from = presentedPath() ?? expandedPath
             let c0 = presentedOpacity(rowLayer)
@@ -540,10 +548,13 @@ final class NotchStageView: NSView {
             CATransaction.begin(); CATransaction.setDisableActions(true)
             shape.path = to; rowLayer.opacity = 0
             CATransaction.commit()
-            let fade = CABasicAnimation(keyPath: "opacity")
-            fade.fromValue = c0; fade.toValue = 0; fade.duration = motion.fadeOutDuration
-            fade.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            rowLayer.add(fade, forKey: "notch.content")
+            let out = motion.hideContentFade(secure: secure)
+            if out > 0 {
+                let fade = CABasicAnimation(keyPath: "opacity")
+                fade.fromValue = c0; fade.toValue = 0; fade.duration = out
+                fade.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                rowLayer.add(fade, forKey: "notch.content")
+            }
             let shrink = CASpringAnimation(perceptualDuration: motion.collapseDuration, bounce: motion.collapseBounce)
             shrink.keyPath = "path"
             shrink.fromValue = from; shrink.toValue = to

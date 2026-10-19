@@ -40,6 +40,7 @@ export const NOTCH_GEOMETRY = {
   sideGrow: 70,
   dropGrow: 32,
   widenMax: 90,
+  bounceRoom: 12,
   restRadius: 8,
   expandedRadius: 14,
   expandedEar: 8,
@@ -169,7 +170,8 @@ export function NotchSurface({
   const nw = notch ? notchWidth : g.fakeNotchWidth;
   const top = notch ? notchHeight : g.fakeNotchHeight;
   const restH = notch ? notchHeight : 0;
-  const panelW = nw + 2 * (g.sideGrow + g.widenMax + g.expandedEar);
+  const panelW =
+    nw + 2 * (g.sideGrow + g.widenMax + g.expandedEar + g.bounceRoom);
   const panelH = top + g.dropGrow + 4;
   const [p, setP] = useState(open ? 1 : 0);
   const [c, setC] = useState(open ? 1 : 0);

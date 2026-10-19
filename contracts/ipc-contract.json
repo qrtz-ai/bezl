@@ -14391,7 +14391,7 @@
                   "default": 0.06,
                   "type": "number",
                   "minimum": 0,
-                  "maximum": 0.6
+                  "maximum": 0.1
                 },
                 "widenDuration": {
                   "default": 0.2,

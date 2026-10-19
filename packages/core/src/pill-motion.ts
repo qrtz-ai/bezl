@@ -67,7 +67,7 @@ export const PILL_MOTION_PARAMS = [
     label: 'fade out duration',
     unit: 's',
     min: 0,
-    max: 0.6,
+    max: 0.1,
     step: 0.01,
     def: 0.06,
   },
